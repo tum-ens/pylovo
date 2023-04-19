@@ -1,0 +1,7 @@
+id,definition,peak_load,yearly_consumption,peak_load_per_m2,yearly_consumption_per_m2,sim_factor
+1,Commercial,,,79.00,245.70,0.50
+5,Public,,,29.00,155.70,0.60
+9,SFH,30.00,0.00,,,0.07
+10,MFH,30.00,0.00,,,0.07
+11,TH,30.00,0.00,,,0.07
+12,AB,30.00,0.00,,,0.07

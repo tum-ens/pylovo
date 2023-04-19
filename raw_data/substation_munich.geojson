@@ -1,0 +1,4127 @@
+{
+  "type": "FeatureCollection",
+  "generator": "overpass-ide",
+  "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL.",
+  "timestamp": "2022-06-17T12:52:53Z",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/23058322",
+        "addr:housenumber": "55 1/2",
+        "addr:street": "Münchner Straße",
+        "barrier": "fence",
+        "fence_type": "metal",
+        "name": "Umspannwerk Hohenbrunn",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "short_name": "HBR",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6817068,
+              48.0493718
+            ],
+            [
+              11.682573,
+              48.049457
+            ],
+            [
+              11.6821254,
+              48.0507552
+            ],
+            [
+              11.6819831,
+              48.0511905
+            ],
+            [
+              11.6819419,
+              48.0512856
+            ],
+            [
+              11.6808709,
+              48.0511172
+            ],
+            [
+              11.6806715,
+              48.0505519
+            ],
+            [
+              11.680798,
+              48.0501651
+            ],
+            [
+              11.680964,
+              48.0498516
+            ],
+            [
+              11.6815026,
+              48.049934
+            ],
+            [
+              11.6817068,
+              48.0493718
+            ]
+          ]
+        ]
+      },
+      "id": "way/23058322"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/23102373",
+        "area": "yes",
+        "barrier": "fence",
+        "fence_type": "metal",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "substation": "transition",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6654592,
+              48.0978169
+            ],
+            [
+              11.665338,
+              48.0975533
+            ],
+            [
+              11.6656682,
+              48.0974856
+            ],
+            [
+              11.6657894,
+              48.0977492
+            ],
+            [
+              11.6654592,
+              48.0978169
+            ]
+          ]
+        ]
+      },
+      "id": "way/23102373"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/24658608",
+        "landuse": "industrial",
+        "name": "Umspannwerk Erding",
+        "power": "substation",
+        "substation": "transmission",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.9103171,
+              48.3135328
+            ],
+            [
+              11.9095141,
+              48.3136516
+            ],
+            [
+              11.9091635,
+              48.3126041
+            ],
+            [
+              11.9099643,
+              48.3124614
+            ],
+            [
+              11.9099739,
+              48.3124906
+            ],
+            [
+              11.9103171,
+              48.3135328
+            ]
+          ]
+        ]
+      },
+      "id": "way/24658608"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/27052080",
+        "access": "no",
+        "addr:housenumber": "40",
+        "addr:street": "Gündinger Weg",
+        "barrier": "fence",
+        "frequency": "50;16.7",
+        "location": "outdoor",
+        "name": "Umspannwerk Karlsfeld/West",
+        "name:abbreviation": "KAW",
+        "operator": "DB Energie GmbH",
+        "operator:2": "DB Energie GmbH",
+        "operator:wikidata": "Q1152043",
+        "operator:wikipedia": "de:DB Energie",
+        "power": "substation",
+        "railway:ref": "IMKFU",
+        "substation": "transition",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4345805,
+              48.2167729
+            ],
+            [
+              11.4341669,
+              48.2154391
+            ],
+            [
+              11.4344775,
+              48.2153157
+            ],
+            [
+              11.4346668,
+              48.2152862
+            ],
+            [
+              11.4347184,
+              48.2152319
+            ],
+            [
+              11.4347675,
+              48.215178
+            ],
+            [
+              11.4357777,
+              48.2151339
+            ],
+            [
+              11.4362622,
+              48.2166763
+            ],
+            [
+              11.4345805,
+              48.2167729
+            ]
+          ]
+        ]
+      },
+      "id": "way/27052080"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/27366433",
+        "barrier": "fence",
+        "frequency": "50",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "operator": "Bayernwerk Netz GmbH",
+        "power": "substation",
+        "substation": "transition",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.756366,
+              48.0873566
+            ],
+            [
+              11.7565205,
+              48.0871846
+            ],
+            [
+              11.7568037,
+              48.0872993
+            ],
+            [
+              11.7566406,
+              48.087477
+            ],
+            [
+              11.756366,
+              48.0873566
+            ]
+          ]
+        ]
+      },
+      "id": "way/27366433"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/27469541",
+        "barrier": "fence",
+        "fence_type": "chain_link",
+        "name": "Umspannwerk Isarau",
+        "operator": "E.ON Netz",
+        "operator:wikidata": "Q15806976",
+        "operator:wikipedia": "de:E.ON Netz",
+        "power": "substation",
+        "source": "yahoo",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6547017,
+              48.2022739
+            ],
+            [
+              11.6546322,
+              48.2022511
+            ],
+            [
+              11.6541932,
+              48.2014389
+            ],
+            [
+              11.6551865,
+              48.2012737
+            ],
+            [
+              11.6551796,
+              48.2012553
+            ],
+            [
+              11.6554289,
+              48.2012138
+            ],
+            [
+              11.6554364,
+              48.2012126
+            ],
+            [
+              11.655467,
+              48.2012944
+            ],
+            [
+              11.6561634,
+              48.2011832
+            ],
+            [
+              11.6562092,
+              48.2012239
+            ],
+            [
+              11.6562185,
+              48.2012503
+            ],
+            [
+              11.6562262,
+              48.2012719
+            ],
+            [
+              11.6565542,
+              48.2015601
+            ],
+            [
+              11.6565629,
+              48.2015822
+            ],
+            [
+              11.6567069,
+              48.2019459
+            ],
+            [
+              11.6547017,
+              48.2022739
+            ]
+          ]
+        ]
+      },
+      "id": "way/27469541"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/27999317",
+        "frequency": "50",
+        "location": "outdoor",
+        "power": "substation",
+        "substation": "transition",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.3506372,
+              48.1617031
+            ],
+            [
+              11.3507831,
+              48.1615142
+            ],
+            [
+              11.3510491,
+              48.1616058
+            ],
+            [
+              11.3509032,
+              48.1617947
+            ],
+            [
+              11.3506372,
+              48.1617031
+            ]
+          ]
+        ]
+      },
+      "id": "way/27999317"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/28152310",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Dießen",
+        "name:abbreviation": "DIS",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.1041431,
+              47.9344289
+            ],
+            [
+              11.103726,
+              47.9335507
+            ],
+            [
+              11.1045838,
+              47.9333751
+            ],
+            [
+              11.1047609,
+              47.9339823
+            ],
+            [
+              11.1048045,
+              47.9342688
+            ],
+            [
+              11.1041431,
+              47.9344289
+            ]
+          ]
+        ]
+      },
+      "id": "way/28152310"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/28269867",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Puchheim",
+        "name:abbreviation": "PUCH",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.340862,
+              48.1694265
+            ],
+            [
+              11.341296,
+              48.1690412
+            ],
+            [
+              11.3414318,
+              48.1689243
+            ],
+            [
+              11.3419335,
+              48.1692107
+            ],
+            [
+              11.341358,
+              48.1696987
+            ],
+            [
+              11.340862,
+              48.1694265
+            ]
+          ]
+        ]
+      },
+      "id": "way/28269867"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/28444859",
+        "name": "Umspannwerk Unterschleißheim",
+        "name:abbreviation": "USH",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5576324,
+              48.2829627
+            ],
+            [
+              11.5577852,
+              48.2828532
+            ],
+            [
+              11.5578451,
+              48.2828103
+            ],
+            [
+              11.5581352,
+              48.2826028
+            ],
+            [
+              11.5582331,
+              48.2825288
+            ],
+            [
+              11.5590304,
+              48.2830136
+            ],
+            [
+              11.5597011,
+              48.2834519
+            ],
+            [
+              11.559219,
+              48.2839387
+            ],
+            [
+              11.558716,
+              48.2836162
+            ],
+            [
+              11.5576324,
+              48.2829627
+            ]
+          ]
+        ]
+      },
+      "id": "way/28444859"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/29011071",
+        "barrier": "fixme",
+        "frequency": "50",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "name": "Umspannwerk Türkenfeld",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.1009526,
+              48.1158963
+            ],
+            [
+              11.1010128,
+              48.1153687
+            ],
+            [
+              11.1023241,
+              48.1154186
+            ],
+            [
+              11.1022013,
+              48.1160128
+            ],
+            [
+              11.1016089,
+              48.1160243
+            ],
+            [
+              11.1009526,
+              48.1158963
+            ]
+          ]
+        ]
+      },
+      "id": "way/29011071"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/30215711",
+        "frequency": "50",
+        "location": "outdoor",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "substation": "transmission",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5928085,
+              48.1890366
+            ],
+            [
+              11.5926297,
+              48.1880868
+            ],
+            [
+              11.5930695,
+              48.1880439
+            ],
+            [
+              11.5932663,
+              48.1889902
+            ],
+            [
+              11.593079,
+              48.1890071
+            ],
+            [
+              11.5928085,
+              48.1890366
+            ]
+          ]
+        ]
+      },
+      "id": "way/30215711"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/32789967",
+        "barrier": "fence",
+        "name": "Umspannwerk Neubiberg",
+        "operator": "Bayernwerk",
+        "operator:wikidata": "Q1273383",
+        "operator:wikipedia": "de:Bayernwerk",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6493733,
+              48.07859
+            ],
+            [
+              11.6492174,
+              48.0781871
+            ],
+            [
+              11.6498081,
+              48.0780943
+            ],
+            [
+              11.649966,
+              48.0784869
+            ],
+            [
+              11.6495452,
+              48.0785605
+            ],
+            [
+              11.6493733,
+              48.07859
+            ]
+          ]
+        ]
+      },
+      "id": "way/32789967"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/33898157",
+        "landuse": "industrial",
+        "name": "Umspannwerk Markt Schwaben",
+        "operator": "Bayernwerk AG",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.8457083,
+              48.1878123
+            ],
+            [
+              11.8452544,
+              48.187781
+            ],
+            [
+              11.8451758,
+              48.1877723
+            ],
+            [
+              11.8452298,
+              48.187406
+            ],
+            [
+              11.8452793,
+              48.1872234
+            ],
+            [
+              11.8464716,
+              48.1873914
+            ],
+            [
+              11.8464922,
+              48.1874362
+            ],
+            [
+              11.8463258,
+              48.1878098
+            ],
+            [
+              11.846311,
+              48.187843
+            ],
+            [
+              11.8457083,
+              48.1878123
+            ]
+          ]
+        ]
+      },
+      "id": "way/33898157"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/34070588",
+        "barrier": "fence",
+        "fence_type": "chain_link",
+        "frequency": "50",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "name": "Vaterstetten",
+        "operator": "Bayernwerk",
+        "operator:wikidata": "Q1273383",
+        "operator:wikipedia": "de:Bayernwerk",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.7780663,
+              48.1127554
+            ],
+            [
+              11.7785265,
+              48.1123538
+            ],
+            [
+              11.7788431,
+              48.1124989
+            ],
+            [
+              11.7793314,
+              48.1127228
+            ],
+            [
+              11.7789227,
+              48.1131395
+            ],
+            [
+              11.7780663,
+              48.1127554
+            ]
+          ]
+        ]
+      },
+      "id": "way/34070588"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/34115655",
+        "barrier": "fence",
+        "name": "Umspannwerk Potzham",
+        "name:abbreviation": "POTZ",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6187065,
+              48.0319423
+            ],
+            [
+              11.6193149,
+              48.0318458
+            ],
+            [
+              11.619467,
+              48.0322746
+            ],
+            [
+              11.6188586,
+              48.0323711
+            ],
+            [
+              11.6187065,
+              48.0319423
+            ]
+          ]
+        ]
+      },
+      "id": "way/34115655"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/34884866",
+        "name": "Umspannwerk Dachau",
+        "name:abbreviation": "DAH",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.454286,
+              48.2713077
+            ],
+            [
+              11.4557144,
+              48.2706735
+            ],
+            [
+              11.4562737,
+              48.2712358
+            ],
+            [
+              11.4556562,
+              48.2715163
+            ],
+            [
+              11.4552351,
+              48.2716983
+            ],
+            [
+              11.4547142,
+              48.2715679
+            ],
+            [
+              11.4544896,
+              48.2714712
+            ],
+            [
+              11.4543331,
+              48.2713516
+            ],
+            [
+              11.454286,
+              48.2713077
+            ]
+          ]
+        ]
+      },
+      "id": "way/34884866"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/35932721",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "name": "Umspannwerk Wörth",
+        "operator": "EON_Netz; Sempt-Elektrizitätswerke Erding",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.9103411,
+              48.2431898
+            ],
+            [
+              11.9111552,
+              48.2426125
+            ],
+            [
+              11.911639,
+              48.2429902
+            ],
+            [
+              11.911701,
+              48.2431029
+            ],
+            [
+              11.9111208,
+              48.2434446
+            ],
+            [
+              11.9109751,
+              48.2434572
+            ],
+            [
+              11.910633,
+              48.2434585
+            ],
+            [
+              11.9103411,
+              48.2431898
+            ]
+          ]
+        ]
+      },
+      "id": "way/35932721"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/36071742",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "name": "Landsham",
+        "operator": "Bayernwerk Netz GmbH",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.7778454,
+              48.1771347
+            ],
+            [
+              11.7780304,
+              48.176739
+            ],
+            [
+              11.778241,
+              48.1767847
+            ],
+            [
+              11.7782538,
+              48.1767581
+            ],
+            [
+              11.7782617,
+              48.1767251
+            ],
+            [
+              11.7783112,
+              48.1766113
+            ],
+            [
+              11.7789027,
+              48.1766999
+            ],
+            [
+              11.7789356,
+              48.1767895
+            ],
+            [
+              11.7789466,
+              48.1769779
+            ],
+            [
+              11.7788177,
+              48.1773327
+            ],
+            [
+              11.7778454,
+              48.1771347
+            ]
+          ]
+        ]
+      },
+      "id": "way/36071742"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/38378928",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Schwaig",
+        "operator": "EON_Netz",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.8262794,
+              48.3356289
+            ],
+            [
+              11.8268405,
+              48.3358497
+            ],
+            [
+              11.826619,
+              48.3360902
+            ],
+            [
+              11.8265591,
+              48.3360662
+            ],
+            [
+              11.8261576,
+              48.3359061
+            ],
+            [
+              11.8261133,
+              48.3358153
+            ],
+            [
+              11.8262794,
+              48.3356289
+            ]
+          ]
+        ]
+      },
+      "id": "way/38378928"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/43401826",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Föhrenwald",
+        "name:abbreviation": "FOE",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4392933,
+              47.8995622
+            ],
+            [
+              11.4398685,
+              47.8987984
+            ],
+            [
+              11.4400278,
+              47.8987644
+            ],
+            [
+              11.4405033,
+              47.8989403
+            ],
+            [
+              11.4402725,
+              47.8992974
+            ],
+            [
+              11.4403173,
+              47.8993099
+            ],
+            [
+              11.4405608,
+              47.8993851
+            ],
+            [
+              11.4401871,
+              47.8999316
+            ],
+            [
+              11.4392871,
+              47.89963
+            ],
+            [
+              11.4392933,
+              47.8995622
+            ]
+          ]
+        ]
+      },
+      "id": "way/43401826"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/43640300",
+        "addr:housenumber": "120",
+        "addr:street": "Putzbrunner Straße",
+        "building": "service",
+        "name": "Umspannwerk Perlach",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6498586,
+              48.0952396
+            ],
+            [
+              11.6497975,
+              48.0951533
+            ],
+            [
+              11.6504217,
+              48.0949504
+            ],
+            [
+              11.6504832,
+              48.0950345
+            ],
+            [
+              11.6498586,
+              48.0952396
+            ]
+          ]
+        ]
+      },
+      "id": "way/43640300"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/43661901",
+        "name": "Umspannwerk Ismaning",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6857363,
+              48.2334572
+            ],
+            [
+              11.6857915,
+              48.2330314
+            ],
+            [
+              11.6866436,
+              48.2330804
+            ],
+            [
+              11.686637,
+              48.2331312
+            ],
+            [
+              11.6865884,
+              48.2335062
+            ],
+            [
+              11.6857363,
+              48.2334572
+            ]
+          ]
+        ]
+      },
+      "id": "way/43661901"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/45038813",
+        "addr:housenumber": "97",
+        "addr:street": "Ingolstädter Landstraße",
+        "barrier": "fence",
+        "landuse": "industrial",
+        "name": "Umspannwerk Hochbrück",
+        "operator": "Bayernwerk AG",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6026676,
+              48.2464132
+            ],
+            [
+              11.6037971,
+              48.2462689
+            ],
+            [
+              11.6039187,
+              48.2466779
+            ],
+            [
+              11.6039608,
+              48.2468328
+            ],
+            [
+              11.6037792,
+              48.246843
+            ],
+            [
+              11.6031284,
+              48.2468581
+            ],
+            [
+              11.6027969,
+              48.2468433
+            ],
+            [
+              11.6026929,
+              48.2464975
+            ],
+            [
+              11.6026676,
+              48.2464132
+            ]
+          ]
+        ]
+      },
+      "id": "way/45038813"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/48359999",
+        "frequency": "50",
+        "location": "outdoor",
+        "power": "substation",
+        "substation": "transmission",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5948311,
+              48.1888303
+            ],
+            [
+              11.5949366,
+              48.1891537
+            ],
+            [
+              11.5938551,
+              48.1893105
+            ],
+            [
+              11.5937917,
+              48.189116
+            ],
+            [
+              11.5937736,
+              48.1890605
+            ],
+            [
+              11.5938003,
+              48.1889797
+            ],
+            [
+              11.5948311,
+              48.1888303
+            ]
+          ]
+        ]
+      },
+      "id": "way/48359999"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/50752506",
+        "power": "substation",
+        "substation": "transmission",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.2623672,
+              48.2245741
+            ],
+            [
+              11.2621344,
+              48.224259
+            ],
+            [
+              11.2629263,
+              48.2239994
+            ],
+            [
+              11.2630329,
+              48.2241436
+            ],
+            [
+              11.2631591,
+              48.2243145
+            ],
+            [
+              11.2623672,
+              48.2245741
+            ]
+          ]
+        ]
+      },
+      "id": "way/50752506"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/51353400",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Fürstenfeldbruck",
+        "operator": "EON_Netz;Stadtwerke Fürstenfeldbruck",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.2186686,
+              48.1773342
+            ],
+            [
+              11.219358,
+              48.1772511
+            ],
+            [
+              11.2195372,
+              48.1779887
+            ],
+            [
+              11.2188474,
+              48.1779906
+            ],
+            [
+              11.2186686,
+              48.1773342
+            ]
+          ]
+        ]
+      },
+      "id": "way/51353400"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/51362501",
+        "name": "Umspannwerk Olching",
+        "operator": "EON_Netz",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.3325596,
+              48.2120533
+            ],
+            [
+              11.332025,
+              48.2122788
+            ],
+            [
+              11.331478,
+              48.2117725
+            ],
+            [
+              11.3320426,
+              48.2115647
+            ],
+            [
+              11.3322996,
+              48.2118076
+            ],
+            [
+              11.3325596,
+              48.2120533
+            ]
+          ]
+        ]
+      },
+      "id": "way/51362501"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/52834995",
+        "addr:housenumber": "44",
+        "addr:street": "Stahlgruberring",
+        "landuse": "industrial",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6704625,
+              48.1345694
+            ],
+            [
+              11.6711537,
+              48.1344292
+            ],
+            [
+              11.6712778,
+              48.1347237
+            ],
+            [
+              11.670613,
+              48.1349326
+            ],
+            [
+              11.6704625,
+              48.1345694
+            ]
+          ]
+        ]
+      },
+      "id": "way/52834995"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/55184731",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "building": "yes",
+        "layer": "1",
+        "name": "Umspannwerk Corneliusstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5748934,
+              48.1323829
+            ],
+            [
+              11.574744,
+              48.132289
+            ],
+            [
+              11.5748339,
+              48.132223
+            ],
+            [
+              11.5747994,
+              48.1322012
+            ],
+            [
+              11.5747526,
+              48.1322343
+            ],
+            [
+              11.5744883,
+              48.132067
+            ],
+            [
+              11.5746172,
+              48.1319757
+            ],
+            [
+              11.5748852,
+              48.1321453
+            ],
+            [
+              11.5748377,
+              48.132179
+            ],
+            [
+              11.5748682,
+              48.1321983
+            ],
+            [
+              11.5749593,
+              48.1321338
+            ],
+            [
+              11.5749454,
+              48.132125
+            ],
+            [
+              11.5749974,
+              48.1320882
+            ],
+            [
+              11.5750107,
+              48.1320966
+            ],
+            [
+              11.5750376,
+              48.1320771
+            ],
+            [
+              11.5750712,
+              48.1320538
+            ],
+            [
+              11.575087,
+              48.1320642
+            ],
+            [
+              11.5752149,
+              48.1321466
+            ],
+            [
+              11.5751751,
+              48.1321762
+            ],
+            [
+              11.5748934,
+              48.1323829
+            ]
+          ]
+        ]
+      },
+      "id": "way/55184731"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56036258",
+        "barrier": "fence",
+        "name": "Umspannwerk Milbertshofen",
+        "name:en": "Substation Milbertshofen",
+        "operator": "Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5572051,
+              48.1865699
+            ],
+            [
+              11.5569886,
+              48.1874354
+            ],
+            [
+              11.5564544,
+              48.1873688
+            ],
+            [
+              11.5566581,
+              48.1865688
+            ],
+            [
+              11.5566662,
+              48.1865493
+            ],
+            [
+              11.5566782,
+              48.1865388
+            ],
+            [
+              11.5566932,
+              48.1865297
+            ],
+            [
+              11.55672,
+              48.1865249
+            ],
+            [
+              11.5570148,
+              48.1865503
+            ],
+            [
+              11.5572051,
+              48.1865699
+            ]
+          ]
+        ]
+      },
+      "id": "way/56036258"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56042849",
+        "name": "Umspannwerk Heidemannstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.602909,
+              48.2015943
+            ],
+            [
+              11.602177,
+              48.2016936
+            ],
+            [
+              11.6020627,
+              48.2012676
+            ],
+            [
+              11.6027647,
+              48.2011755
+            ],
+            [
+              11.602909,
+              48.2015943
+            ]
+          ]
+        ]
+      },
+      "id": "way/56042849"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56079372",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Hasenbergl",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5502638,
+              48.2135449
+            ],
+            [
+              11.5502634,
+              48.2132993
+            ],
+            [
+              11.5509316,
+              48.2132988
+            ],
+            [
+              11.5509319,
+              48.2135445
+            ],
+            [
+              11.5507362,
+              48.2135446
+            ],
+            [
+              11.5502638,
+              48.2135449
+            ]
+          ]
+        ]
+      },
+      "id": "way/56079372"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56081365",
+        "barrier": "fence",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Pasing",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "ref": "6387",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4712209,
+              48.1463874
+            ],
+            [
+              11.471239,
+              48.1462443
+            ],
+            [
+              11.4712407,
+              48.1459204
+            ],
+            [
+              11.4712446,
+              48.1457126
+            ],
+            [
+              11.4713331,
+              48.1457108
+            ],
+            [
+              11.4714647,
+              48.1457112
+            ],
+            [
+              11.4715962,
+              48.1457103
+            ],
+            [
+              11.4716033,
+              48.1461761
+            ],
+            [
+              11.4715813,
+              48.1462062
+            ],
+            [
+              11.4714031,
+              48.1463312
+            ],
+            [
+              11.4712209,
+              48.1463874
+            ]
+          ]
+        ]
+      },
+      "id": "way/56081365"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56081938",
+        "name": "Umspannwerk Moosach",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5062309,
+              48.1770408
+            ],
+            [
+              11.50574,
+              48.1767384
+            ],
+            [
+              11.5059464,
+              48.1763149
+            ],
+            [
+              11.5066132,
+              48.1764461
+            ],
+            [
+              11.5066006,
+              48.1764713
+            ],
+            [
+              11.5063239,
+              48.1769713
+            ],
+            [
+              11.5062309,
+              48.1770408
+            ]
+          ]
+        ]
+      },
+      "id": "way/56081938"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56180407",
+        "name": "Umspannwerk Allach",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.463931,
+              48.1840564
+            ],
+            [
+              11.4639685,
+              48.18376
+            ],
+            [
+              11.4640447,
+              48.1833819
+            ],
+            [
+              11.4650865,
+              48.1835275
+            ],
+            [
+              11.4648948,
+              48.1841906
+            ],
+            [
+              11.463931,
+              48.1840564
+            ]
+          ]
+        ]
+      },
+      "id": "way/56180407"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56219734",
+        "barrier": "fence",
+        "name": "Umspannwerk Aubing",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4292432,
+              48.149136
+            ],
+            [
+              11.4292463,
+              48.1485968
+            ],
+            [
+              11.4295216,
+              48.1485975
+            ],
+            [
+              11.429722,
+              48.148598
+            ],
+            [
+              11.429719,
+              48.1491232
+            ],
+            [
+              11.4296786,
+              48.1491231
+            ],
+            [
+              11.4296785,
+              48.1491371
+            ],
+            [
+              11.4292944,
+              48.1491361
+            ],
+            [
+              11.4292432,
+              48.149136
+            ]
+          ]
+        ]
+      },
+      "id": "way/56219734"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56220633",
+        "name": "Umspannwerk Germering",
+        "name:abbreviation": "GER",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.377252,
+              48.1289438
+            ],
+            [
+              11.3773188,
+              48.1289477
+            ],
+            [
+              11.3773668,
+              48.1289495
+            ],
+            [
+              11.3776317,
+              48.1289626
+            ],
+            [
+              11.377612,
+              48.1291621
+            ],
+            [
+              11.3776086,
+              48.1291837
+            ],
+            [
+              11.3776052,
+              48.1292052
+            ],
+            [
+              11.3775918,
+              48.129205
+            ],
+            [
+              11.3775109,
+              48.129201
+            ],
+            [
+              11.3775057,
+              48.129248
+            ],
+            [
+              11.3771012,
+              48.1292281
+            ],
+            [
+              11.3770171,
+              48.1292235
+            ],
+            [
+              11.3770587,
+              48.1289476
+            ],
+            [
+              11.3771355,
+              48.128938
+            ],
+            [
+              11.377252,
+              48.1289438
+            ]
+          ]
+        ]
+      },
+      "id": "way/56220633"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56220636",
+        "name": "Umspannwerk Planegg",
+        "operator": "E.ON Netz",
+        "operator:wikidata": "Q15806976",
+        "operator:wikipedia": "de:E.ON Netz",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4242062,
+              48.1057522
+            ],
+            [
+              11.4242218,
+              48.1055958
+            ],
+            [
+              11.424301,
+              48.1055131
+            ],
+            [
+              11.424718,
+              48.1054131
+            ],
+            [
+              11.4248681,
+              48.1056691
+            ],
+            [
+              11.4244305,
+              48.1057595
+            ],
+            [
+              11.4244236,
+              48.1057411
+            ],
+            [
+              11.4243859,
+              48.1057473
+            ],
+            [
+              11.4243923,
+              48.1057655
+            ],
+            [
+              11.4243232,
+              48.1057775
+            ],
+            [
+              11.4242806,
+              48.1057948
+            ],
+            [
+              11.4242259,
+              48.1057798
+            ],
+            [
+              11.4242062,
+              48.1057522
+            ]
+          ]
+        ]
+      },
+      "id": "way/56220636"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/56322275",
+        "power": "substation",
+        "substation": "transition",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.8745618,
+              47.8818377
+            ],
+            [
+              11.8742707,
+              47.8819649
+            ],
+            [
+              11.8740208,
+              47.8817077
+            ],
+            [
+              11.8739926,
+              47.8816786
+            ],
+            [
+              11.8742838,
+              47.8815514
+            ],
+            [
+              11.8745618,
+              47.8818377
+            ]
+          ]
+        ]
+      },
+      "id": "way/56322275"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57691464",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "20",
+        "addr:postcode": "80335",
+        "addr:street": "Seidlstraße",
+        "building": "yes",
+        "name": "Umspannwerk Seidlstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "roof:colour": "grey",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5578763,
+              48.1446325
+            ],
+            [
+              11.5578558,
+              48.1445937
+            ],
+            [
+              11.5576719,
+              48.144247
+            ],
+            [
+              11.5576784,
+              48.1442455
+            ],
+            [
+              11.5578863,
+              48.144195
+            ],
+            [
+              11.5579559,
+              48.1442867
+            ],
+            [
+              11.5580328,
+              48.1443929
+            ],
+            [
+              11.5581509,
+              48.1445649
+            ],
+            [
+              11.5580067,
+              48.1446019
+            ],
+            [
+              11.5578763,
+              48.1446325
+            ]
+          ]
+        ]
+      },
+      "id": "way/57691464"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57692180",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "36",
+        "addr:postcode": "80333",
+        "addr:street": "Theresienstraße",
+        "building": "yes",
+        "name": "Umspannwerk",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.575458,
+              48.1481728
+            ],
+            [
+              11.5753931,
+              48.1480668
+            ],
+            [
+              11.576009,
+              48.1478955
+            ],
+            [
+              11.5760715,
+              48.147878
+            ],
+            [
+              11.5761148,
+              48.1479484
+            ],
+            [
+              11.5760545,
+              48.1479648
+            ],
+            [
+              11.5759272,
+              48.1479975
+            ],
+            [
+              11.5755755,
+              48.148096
+            ],
+            [
+              11.5755996,
+              48.1481342
+            ],
+            [
+              11.575458,
+              48.1481728
+            ]
+          ]
+        ]
+      },
+      "id": "way/57692180"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57692665",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "7",
+        "addr:postcode": "80539",
+        "addr:street": "Wurzerstraße",
+        "building": "industrial",
+        "name": "Umspannwerk Wurzerstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5825427,
+              48.1396536
+            ],
+            [
+              11.5827277,
+              48.1400051
+            ],
+            [
+              11.5824956,
+              48.1400595
+            ],
+            [
+              11.5823107,
+              48.139708
+            ],
+            [
+              11.5825427,
+              48.1396536
+            ]
+          ]
+        ]
+      },
+      "id": "way/57692665"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57701237",
+        "name": "Umspannwerk Muffatwerk",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5893281,
+              48.1332161
+            ],
+            [
+              11.5894842,
+              48.1331722
+            ],
+            [
+              11.5897187,
+              48.1331053
+            ],
+            [
+              11.5898945,
+              48.1333833
+            ],
+            [
+              11.5896301,
+              48.1334578
+            ],
+            [
+              11.5892629,
+              48.133561
+            ],
+            [
+              11.5890825,
+              48.1332854
+            ],
+            [
+              11.5891559,
+              48.1332646
+            ],
+            [
+              11.5892808,
+              48.1332291
+            ],
+            [
+              11.5893281,
+              48.1332161
+            ]
+          ]
+        ]
+      },
+      "id": "way/57701237"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57706670",
+        "name": "Umspannwerk Grafinger Straße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6113734,
+              48.1246546
+            ],
+            [
+              11.6109704,
+              48.1246775
+            ],
+            [
+              11.610783,
+              48.124696
+            ],
+            [
+              11.6099186,
+              48.1247785
+            ],
+            [
+              11.609864,
+              48.1247841
+            ],
+            [
+              11.6098021,
+              48.1244678
+            ],
+            [
+              11.6100523,
+              48.1242295
+            ],
+            [
+              11.6102535,
+              48.1240691
+            ],
+            [
+              11.6111037,
+              48.124004
+            ],
+            [
+              11.6111584,
+              48.1241265
+            ],
+            [
+              11.6113367,
+              48.1241285
+            ],
+            [
+              11.6113734,
+              48.1246546
+            ]
+          ]
+        ]
+      },
+      "id": "way/57706670"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57827418",
+        "name": "Umspannwerk Ausstellung",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.540409,
+              48.1297481
+            ],
+            [
+              11.5406323,
+              48.129729
+            ],
+            [
+              11.5407451,
+              48.1303189
+            ],
+            [
+              11.5407857,
+              48.1305235
+            ],
+            [
+              11.5404284,
+              48.1305494
+            ],
+            [
+              11.5404239,
+              48.1305164
+            ],
+            [
+              11.5404398,
+              48.1305151
+            ],
+            [
+              11.5404075,
+              48.1303377
+            ],
+            [
+              11.5403443,
+              48.1303429
+            ],
+            [
+              11.5403316,
+              48.1302733
+            ],
+            [
+              11.5401528,
+              48.1302878
+            ],
+            [
+              11.5401347,
+              48.1301753
+            ],
+            [
+              11.5400748,
+              48.1298478
+            ],
+            [
+              11.5401548,
+              48.1298097
+            ],
+            [
+              11.5402554,
+              48.1297644
+            ],
+            [
+              11.540409,
+              48.1297481
+            ]
+          ]
+        ]
+      },
+      "id": "way/57827418"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57829573",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "12",
+        "addr:street": "Schwarzenbergstraße",
+        "building": "yes",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Stadelheim",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5872991,
+              48.0992844
+            ],
+            [
+              11.5872156,
+              48.099423
+            ],
+            [
+              11.5871488,
+              48.099405
+            ],
+            [
+              11.5867633,
+              48.0993015
+            ],
+            [
+              11.5868405,
+              48.0991733
+            ],
+            [
+              11.5868468,
+              48.0991629
+            ],
+            [
+              11.5872991,
+              48.0992844
+            ]
+          ]
+        ]
+      },
+      "id": "way/57829573"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/57830966",
+        "name": "Umspannwerk MBB-Ottobrunn",
+        "operator": "Bayernwerk AG",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6551337,
+              48.0490886
+            ],
+            [
+              11.6554555,
+              48.0491015
+            ],
+            [
+              11.6556285,
+              48.0491085
+            ],
+            [
+              11.6556133,
+              48.0493246
+            ],
+            [
+              11.6555915,
+              48.0495296
+            ],
+            [
+              11.655516,
+              48.0495579
+            ],
+            [
+              11.6552019,
+              48.0495452
+            ],
+            [
+              11.6552042,
+              48.0495204
+            ],
+            [
+              11.6551449,
+              48.0495185
+            ],
+            [
+              11.6550872,
+              48.0495166
+            ],
+            [
+              11.6551099,
+              48.0493072
+            ],
+            [
+              11.6551337,
+              48.0490886
+            ]
+          ]
+        ]
+      },
+      "id": "way/57830966"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/69744236",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Bogenhausen",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "ref": "1908",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6216312,
+              48.1535314
+            ],
+            [
+              11.621562,
+              48.1534807
+            ],
+            [
+              11.6215514,
+              48.1530909
+            ],
+            [
+              11.6215543,
+              48.1529958
+            ],
+            [
+              11.6230691,
+              48.1529985
+            ],
+            [
+              11.6230668,
+              48.1535875
+            ],
+            [
+              11.6225902,
+              48.1535723
+            ],
+            [
+              11.6216312,
+              48.1535314
+            ]
+          ]
+        ]
+      },
+      "id": "way/69744236"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/83640530",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "76",
+        "addr:postcode": "80686",
+        "addr:street": "Fürstenrieder Straße",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Laim",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5018553,
+              48.1347756
+            ],
+            [
+              11.5015134,
+              48.1342518
+            ],
+            [
+              11.5026839,
+              48.1341558
+            ],
+            [
+              11.5026829,
+              48.1347123
+            ],
+            [
+              11.5026842,
+              48.1347327
+            ],
+            [
+              11.5018553,
+              48.1347756
+            ]
+          ]
+        ]
+      },
+      "id": "way/83640530"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/83641750",
+        "landuse": "industrial",
+        "name": "Umspannwerk Hadern",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4806611,
+              48.1170133
+            ],
+            [
+              11.4806609,
+              48.1169842
+            ],
+            [
+              11.480664,
+              48.1165587
+            ],
+            [
+              11.4811111,
+              48.1166052
+            ],
+            [
+              11.4811315,
+              48.1170267
+            ],
+            [
+              11.4806611,
+              48.1170133
+            ]
+          ]
+        ]
+      },
+      "id": "way/83641750"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/83657281",
+        "addr:housenumber": "180",
+        "addr:street": "Kistlerhofstraße",
+        "name": "Umspannwerk Kistlerhofstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5067243,
+              48.0944236
+            ],
+            [
+              11.5067005,
+              48.0948349
+            ],
+            [
+              11.5065057,
+              48.0949412
+            ],
+            [
+              11.5062751,
+              48.0947656
+            ],
+            [
+              11.5061144,
+              48.0948577
+            ],
+            [
+              11.5060181,
+              48.0947867
+            ],
+            [
+              11.505766,
+              48.0945901
+            ],
+            [
+              11.5055998,
+              48.0944618
+            ],
+            [
+              11.5055134,
+              48.0943995
+            ],
+            [
+              11.5067243,
+              48.0944236
+            ]
+          ]
+        ]
+      },
+      "id": "way/83657281"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/83658835",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "56",
+        "addr:postcode": "81379",
+        "addr:street": "Hofmannstraße",
+        "building": "yes",
+        "frequency": "50",
+        "height": "10",
+        "location": "indoor",
+        "name": "Umspannwerk Siemens Hofmannstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "roof:colour": "grey",
+        "roof:shape": "flat",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5272298,
+              48.0950298
+            ],
+            [
+              11.5270327,
+              48.0950556
+            ],
+            [
+              11.526988,
+              48.0949079
+            ],
+            [
+              11.5271526,
+              48.0948814
+            ],
+            [
+              11.5271746,
+              48.0948779
+            ],
+            [
+              11.5272298,
+              48.0950298
+            ]
+          ]
+        ]
+      },
+      "id": "way/83658835"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/83659804",
+        "name": "Umspannwerk Thalkirchen",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.537404,
+              48.1005357
+            ],
+            [
+              11.537526,
+              48.10054
+            ],
+            [
+              11.5376134,
+              48.1006182
+            ],
+            [
+              11.5379686,
+              48.1006549
+            ],
+            [
+              11.5380655,
+              48.1006649
+            ],
+            [
+              11.5381406,
+              48.1006651
+            ],
+            [
+              11.5381368,
+              48.1008751
+            ],
+            [
+              11.5381362,
+              48.1008974
+            ],
+            [
+              11.5373622,
+              48.1008205
+            ],
+            [
+              11.537404,
+              48.1005357
+            ]
+          ]
+        ]
+      },
+      "id": "way/83659804"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/85284549",
+        "addr:housenumber": "1",
+        "addr:street": "Schöllkrinnenweg",
+        "frequency": "50",
+        "location": "outdoor",
+        "operator": "EON_Netz",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6254916,
+              48.3103792
+            ],
+            [
+              11.6263162,
+              48.3106022
+            ],
+            [
+              11.6263383,
+              48.3106416
+            ],
+            [
+              11.6263484,
+              48.310671
+            ],
+            [
+              11.6260078,
+              48.3112108
+            ],
+            [
+              11.6256513,
+              48.3111114
+            ],
+            [
+              11.6255345,
+              48.3110454
+            ],
+            [
+              11.6251403,
+              48.3109251
+            ],
+            [
+              11.6254916,
+              48.3103792
+            ]
+          ]
+        ]
+      },
+      "id": "way/85284549"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/87341319",
+        "fixme": "Prüfen, ob Station oder Umspannwerk; Name fehlt noch",
+        "power": "substation",
+        "source": "Bing",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              10.9743472,
+              48.3469941
+            ],
+            [
+              10.9744374,
+              48.3477728
+            ],
+            [
+              10.9743347,
+              48.3477329
+            ],
+            [
+              10.9742371,
+              48.3478457
+            ],
+            [
+              10.9729966,
+              48.3474016
+            ],
+            [
+              10.97376,
+              48.3468568
+            ],
+            [
+              10.9743472,
+              48.3469941
+            ]
+          ]
+        ]
+      },
+      "id": "way/87341319"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/90683229",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Althegneberg",
+        "operator": "E.ON Netz",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.0745413,
+              48.244511
+            ],
+            [
+              11.0740034,
+              48.2445115
+            ],
+            [
+              11.0739422,
+              48.24419
+            ],
+            [
+              11.0739148,
+              48.2437746
+            ],
+            [
+              11.0746367,
+              48.2437615
+            ],
+            [
+              11.0746757,
+              48.2437979
+            ],
+            [
+              11.0745984,
+              48.2443462
+            ],
+            [
+              11.0745413,
+              48.244511
+            ]
+          ]
+        ]
+      },
+      "id": "way/90683229"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92688991",
+        "frequency": "50",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "operator": "E.ON Wasserkraft GmbH",
+        "power": "substation",
+        "substation": "transmission",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.2205928,
+              48.0564497
+            ],
+            [
+              12.2208258,
+              48.0565663
+            ],
+            [
+              12.2209398,
+              48.0566346
+            ],
+            [
+              12.2208643,
+              48.0567094
+            ],
+            [
+              12.2209338,
+              48.0567422
+            ],
+            [
+              12.2209136,
+              48.0567612
+            ],
+            [
+              12.2208932,
+              48.0567806
+            ],
+            [
+              12.2208725,
+              48.0568002
+            ],
+            [
+              12.2208521,
+              48.0568195
+            ],
+            [
+              12.2209284,
+              48.0568849
+            ],
+            [
+              12.2209473,
+              48.0569061
+            ],
+            [
+              12.2209728,
+              48.0569343
+            ],
+            [
+              12.2209805,
+              48.0569428
+            ],
+            [
+              12.2209833,
+              48.0569458
+            ],
+            [
+              12.2209966,
+              48.0569604
+            ],
+            [
+              12.2208573,
+              48.0570711
+            ],
+            [
+              12.2208025,
+              48.0570996
+            ],
+            [
+              12.2207296,
+              48.0571125
+            ],
+            [
+              12.22071,
+              48.0571122
+            ],
+            [
+              12.2206406,
+              48.0571113
+            ],
+            [
+              12.2204015,
+              48.0569952
+            ],
+            [
+              12.2201639,
+              48.0568887
+            ],
+            [
+              12.2202264,
+              48.0568264
+            ],
+            [
+              12.2201979,
+              48.0568137
+            ],
+            [
+              12.2201449,
+              48.0567924
+            ],
+            [
+              12.220045,
+              48.0567505
+            ],
+            [
+              12.2203075,
+              48.0564565
+            ],
+            [
+              12.2203826,
+              48.0563722
+            ],
+            [
+              12.2205928,
+              48.0564497
+            ]
+          ]
+        ]
+      },
+      "id": "way/92688991"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92688993",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.2707443,
+              48.1132257
+            ],
+            [
+              12.2703546,
+              48.1131407
+            ],
+            [
+              12.2704938,
+              48.1128274
+            ],
+            [
+              12.2708358,
+              48.1128912
+            ],
+            [
+              12.2708755,
+              48.1129416
+            ],
+            [
+              12.2707443,
+              48.1132257
+            ]
+          ]
+        ]
+      },
+      "id": "way/92688993"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92692523",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.2237102,
+              48.0467196
+            ],
+            [
+              12.2241337,
+              48.0462766
+            ],
+            [
+              12.2246,
+              48.0459567
+            ],
+            [
+              12.2251662,
+              48.0462422
+            ],
+            [
+              12.2244248,
+              48.0468082
+            ],
+            [
+              12.2243183,
+              48.0469481
+            ],
+            [
+              12.2239664,
+              48.0468818
+            ],
+            [
+              12.2240113,
+              48.0468217
+            ],
+            [
+              12.2237102,
+              48.0467196
+            ]
+          ]
+        ]
+      },
+      "id": "way/92692523"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92701104",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.1550478,
+              47.9610833
+            ],
+            [
+              12.1559545,
+              47.9610263
+            ],
+            [
+              12.1560167,
+              47.9614942
+            ],
+            [
+              12.1559794,
+              47.9615581
+            ],
+            [
+              12.1551129,
+              47.9616048
+            ],
+            [
+              12.1550478,
+              47.9610833
+            ]
+          ]
+        ]
+      },
+      "id": "way/92701104"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92744658",
+        "barrier": "fixme",
+        "landuse": "industrial",
+        "name": "Umspannwerk Stollnkirchen",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.1818255,
+              48.2538501
+            ],
+            [
+              12.1816927,
+              48.2540572
+            ],
+            [
+              12.1814881,
+              48.2543761
+            ],
+            [
+              12.1807579,
+              48.2541771
+            ],
+            [
+              12.1808706,
+              48.2540061
+            ],
+            [
+              12.1809,
+              48.2539582
+            ],
+            [
+              12.1810953,
+              48.2536653
+            ],
+            [
+              12.1818255,
+              48.2538501
+            ]
+          ]
+        ]
+      },
+      "id": "way/92744658"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92749693",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.0491663,
+              48.1066543
+            ],
+            [
+              12.0489619,
+              48.1063561
+            ],
+            [
+              12.0496598,
+              48.1061428
+            ],
+            [
+              12.0498641,
+              48.106441
+            ],
+            [
+              12.0491663,
+              48.1066543
+            ]
+          ]
+        ]
+      },
+      "id": "way/92749693"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92749696",
+        "frequency": "50",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "name": "Umspannwerk Altdorf",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              12.1813255,
+              48.152785
+            ],
+            [
+              12.1814145,
+              48.1532051
+            ],
+            [
+              12.180611,
+              48.153271
+            ],
+            [
+              12.1805336,
+              48.1528509
+            ],
+            [
+              12.1811887,
+              48.1527971
+            ],
+            [
+              12.1812615,
+              48.1527911
+            ],
+            [
+              12.1812968,
+              48.1527877
+            ],
+            [
+              12.1813255,
+              48.152785
+            ]
+          ]
+        ]
+      },
+      "id": "way/92749696"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/92899436",
+        "barrier": "fixme",
+        "landuse": "industrial",
+        "location": "outdoor",
+        "name": "Umspannwerk Odelzhausen",
+        "operator": "Bayernwerk AG",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.1872869,
+              48.3120517
+            ],
+            [
+              11.1880211,
+              48.3120252
+            ],
+            [
+              11.1880317,
+              48.3121612
+            ],
+            [
+              11.1880496,
+              48.3123924
+            ],
+            [
+              11.1881805,
+              48.3123886
+            ],
+            [
+              11.1882032,
+              48.3125325
+            ],
+            [
+              11.1880129,
+              48.3126295
+            ],
+            [
+              11.1873438,
+              48.3126952
+            ],
+            [
+              11.1873172,
+              48.3123532
+            ],
+            [
+              11.1872869,
+              48.3120517
+            ]
+          ]
+        ]
+      },
+      "id": "way/92899436"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/99204176",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "7",
+        "addr:postcode": "80337",
+        "addr:street": "Waltherstraße",
+        "building": "yes",
+        "name": "Umspannwerk Waltherstraße",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5632279,
+              48.1280852
+            ],
+            [
+              11.5632918,
+              48.1282181
+            ],
+            [
+              11.563111,
+              48.1282503
+            ],
+            [
+              11.5630551,
+              48.1281356
+            ],
+            [
+              11.5630897,
+              48.1281286
+            ],
+            [
+              11.5629713,
+              48.1278378
+            ],
+            [
+              11.5631227,
+              48.127817
+            ],
+            [
+              11.5632279,
+              48.1280852
+            ]
+          ]
+        ]
+      },
+      "id": "way/99204176"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/112235917",
+        "name": "Umspannwerk Hochstadt",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.2649574,
+              48.0545778
+            ],
+            [
+              11.2648949,
+              48.0540697
+            ],
+            [
+              11.2650003,
+              48.0540668
+            ],
+            [
+              11.2654595,
+              48.0540525
+            ],
+            [
+              11.2657631,
+              48.054043
+            ],
+            [
+              11.2657988,
+              48.0545543
+            ],
+            [
+              11.2654992,
+              48.0545627
+            ],
+            [
+              11.2649574,
+              48.0545778
+            ]
+          ]
+        ]
+      },
+      "id": "way/112235917"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/114226195",
+        "name": "Umspannwerk Lochham",
+        "name:abbreviation": "LOCH",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.4498967,
+              48.1220006
+            ],
+            [
+              11.4496839,
+              48.1212248
+            ],
+            [
+              11.4501292,
+              48.1211862
+            ],
+            [
+              11.4503653,
+              48.1219667
+            ],
+            [
+              11.4498967,
+              48.1220006
+            ]
+          ]
+        ]
+      },
+      "id": "way/114226195"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/131526374",
+        "addr:housenumber": "41",
+        "addr:street": "Am Söldnermoos",
+        "name": "Umspannwerk Hallbergmoos",
+        "operator": "E.ON Netz",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.7387436,
+              48.3262355
+            ],
+            [
+              11.7391539,
+              48.3267535
+            ],
+            [
+              11.7380301,
+              48.327147
+            ],
+            [
+              11.7376199,
+              48.3266289
+            ],
+            [
+              11.7387436,
+              48.3262355
+            ]
+          ]
+        ]
+      },
+      "id": "way/131526374"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/134700817",
+        "building": "yes",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Starnberg",
+        "operator": "E.ON Netz GmbH",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.3477733,
+              48.0064437
+            ],
+            [
+              11.3477746,
+              48.0060753
+            ],
+            [
+              11.3480206,
+              48.0060757
+            ],
+            [
+              11.3480193,
+              48.0064441
+            ],
+            [
+              11.3477733,
+              48.0064437
+            ]
+          ]
+        ]
+      },
+      "id": "way/134700817"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/134700818",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.3269014,
+              48.04221
+            ],
+            [
+              11.326888,
+              48.0420132
+            ],
+            [
+              11.3271574,
+              48.042005
+            ],
+            [
+              11.3271708,
+              48.0422018
+            ],
+            [
+              11.3269014,
+              48.04221
+            ]
+          ]
+        ]
+      },
+      "id": "way/134700818"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/134797741",
+        "frequency": "50",
+        "location": "outdoor",
+        "name": "Umspannwerk Argelsried",
+        "name:abbreviation": "ARGL",
+        "power": "substation",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.3082383,
+              48.0980605
+            ],
+            [
+              11.3087754,
+              48.0978422
+            ],
+            [
+              11.3089366,
+              48.0979554
+            ],
+            [
+              11.3089904,
+              48.0979931
+            ],
+            [
+              11.3091644,
+              48.0979838
+            ],
+            [
+              11.3095305,
+              48.0982408
+            ],
+            [
+              11.308987,
+              48.0985861
+            ],
+            [
+              11.3082383,
+              48.0980605
+            ]
+          ]
+        ]
+      },
+      "id": "way/134797741"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/143175464",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "8",
+        "addr:postcode": "81539",
+        "addr:street": "Zehentbauernstraße",
+        "building": "yes",
+        "frequency": "50",
+        "location": "indoor",
+        "name": "Umspannwerk Giesing",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "source": "Bing",
+        "substation": "distribution",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5761709,
+              48.1136647
+            ],
+            [
+              11.5762203,
+              48.1136637
+            ],
+            [
+              11.5763705,
+              48.1136608
+            ],
+            [
+              11.5763954,
+              48.1136603
+            ],
+            [
+              11.5764102,
+              48.1139957
+            ],
+            [
+              11.5761857,
+              48.1140001
+            ],
+            [
+              11.5761709,
+              48.1136647
+            ]
+          ]
+        ]
+      },
+      "id": "way/143175464"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/171381940",
+        "name:abbreviation": "HKR",
+        "power": "substation",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5040196,
+              48.0298899
+            ],
+            [
+              11.5043973,
+              48.0304255
+            ],
+            [
+              11.5040204,
+              48.0305443
+            ],
+            [
+              11.5031276,
+              48.0292785
+            ],
+            [
+              11.503237,
+              48.0292271
+            ],
+            [
+              11.5034981,
+              48.0291459
+            ],
+            [
+              11.5040196,
+              48.0298899
+            ]
+          ]
+        ]
+      },
+      "id": "way/171381940"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/253808984",
+        "addr:city": "München",
+        "addr:country": "DE",
+        "addr:housenumber": "54",
+        "addr:postcode": "80637",
+        "addr:street": "Landshuter Allee",
+        "building": "industrial",
+        "building:levels": "3",
+        "operator": "Stadtwerke München",
+        "operator:wikidata": "Q882871",
+        "operator:wikipedia": "de:Stadtwerke München",
+        "power": "substation",
+        "roof:colour": "#666666",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.5376708,
+              48.1530217
+            ],
+            [
+              11.5377182,
+              48.1530208
+            ],
+            [
+              11.5377259,
+              48.1531956
+            ],
+            [
+              11.5376477,
+              48.1531971
+            ],
+            [
+              11.5376484,
+              48.1532138
+            ],
+            [
+              11.5376019,
+              48.1532147
+            ],
+            [
+              11.5374176,
+              48.1532183
+            ],
+            [
+              11.5374092,
+              48.1530268
+            ],
+            [
+              11.5374579,
+              48.1530259
+            ],
+            [
+              11.5376708,
+              48.1530217
+            ]
+          ]
+        ]
+      },
+      "id": "way/253808984"
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "@id": "way/387327253",
+        "barrier": "fence",
+        "name": "Umspannwerk Sauerlach",
+        "operator": "EON_Netz",
+        "power": "substation",
+        "source": "survey",
+        "voltage": "110000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              11.6686708,
+              47.973383
+            ],
+            [
+              11.6687584,
+              47.9730065
+            ],
+            [
+              11.6696072,
+              47.9730951
+            ],
+            [
+              11.6695195,
+              47.9734716
+            ],
+            [
+              11.6686708,
+              47.973383
+            ]
+          ]
+        ]
+      },
+      "id": "way/387327253"
+    }
+  ]
+}
