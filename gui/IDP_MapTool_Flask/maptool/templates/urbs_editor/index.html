@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block head %}
+  {{ super() }}
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/handsontable@7.2.2/dist/handsontable.full.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/handsontable@7.2.2/dist/handsontable.full.min.css" rel="stylesheet" media="screen">
+{% endblock %}
+
+{% block content %}
+<div class="feature-editor urbs-editor">
+  <div class="feature-editor__buttons-tab feature-editor__second-column">
+    <button class="feature-editor__buttons-tab__tablinks" id="storageButton" title="Storage" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'storage', true)"><span>St</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="storageButton" title="Storage" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'storage_conf', true)"><span>St Conf</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="supimButton" title="Supim" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'supim', true)"><span>Sup</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="timevareffButton" title="Timevareff" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'timevareff', true)"><span>TVE</span></button>
+  </div>
+  <div class="feature-editor__buttons-tab">
+    <button class="feature-editor__buttons-tab__tablinks" id="buildingsButton" title="Buildings" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'buildings', true)"><span>B</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="demandButton" title="Demand" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'demand', true)"><span>D</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="transmissionButton" title="Transmission" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'transmission', true)"><span>T</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="globalButton" title="Global" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'global'); maptool_urbs_setup.fillSelectedEditor(this, 'global', true)"><span>G</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="commodityButton" title="Commodity" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'commodity', true)"><span>C</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="processesButton" title="Processes" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'processes', true)"><span>P</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="process_confButton" title="Process Configuration" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'process_conf', false)"><span>P Conf</span></button>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="buildings">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="buildingsSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'buildings')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="demand">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="demandSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'demand')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="transmission">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="transmissionSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'transmission')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="global">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="globalSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'global')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="commodity">
+    <button class="button feature-editor__featurelist-tab__add-feature-button" onclick="maptool_urbs_commodity.openNewCommodityForm()">Add Commodity</button>
+    <select class ="feature-editor__featurelist-tab__feature-select" id="commoditySelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'commodity')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="processes">
+    <button type='button' class="button feature-editor__featurelist-tab__add-feature-button" id="pro_propAddButton" onclick="maptool_urbs_process.openNewProcessForm(false)">Add Process</button>
+    <select class ="feature-editor__featurelist-tab__feature-select" id="pro_propSelect" onchange="maptool_urbs_setup.fillSelectedEditor(this, 'pro_prop')" multiple></select>  
+  </div>
+  <div class="feature-editor__featurelist-tab feature-editor__feature-tab" id="process_conf">
+    <div id="process_confHOTContainer" style="width: 100%; height: 100%; overflow: auto"></div>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="storage">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="storageSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'storage')" multiple>
+    </select>
+  </div>
+  <div class="feature-editor__featurelist-tab feature-editor__feature-tab" id="storage_conf">
+    <div id="storage_confHOTContainer" style="width: 100%; height: 100%; overflow: auto"></div>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="supim">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="supimSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'supim')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="timevareff">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="timevareffSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'timevareff')" multiple></select>
+  </div>
+
+  <div class="feature-editor__selected-feature-editor" id="buildingsEditor">
+    <form id="buildingsForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="demandEditor" style="display: inline-block">
+    <form>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="electricity">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button" id="electricitySelect">Electricity</button>
+        <div class="panel" id="demand_electricityPanel"></div>
+        <div class="feature-editor__selected-feature-editor__demand__graph" id="main"></div>
+      </div>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="electricity-reactive">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button" id="electricity-reactiveSelect">Electricity-Reactive</button>
+        <div class="panel" id="demand_electricity_reactivePanel"></div>
+        <div class="feature-editor__selected-feature-editor__demand__graph"></div>
+      </div>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="mobility">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button"  id="mobilitySelect">Mobility</button>
+        <div class="panel" id="demand_mobilityPanel"></div>
+        <div class="feature-editor__selected-feature-editor__demand__graph"></div>
+      </div>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="space_heat">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button" id="space_heatSelect">Space Heat</button>
+        <div class="panel" id="demand_space_heatPanel"></div>
+        <div class="feature-editor__selected-feature-editor__demand__graph"></div>
+      </div>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="water_heat">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button"  id="water_heatSelect">Water Heat</button>
+        <div class="panel" id="demand_water_heatPanel"></div>
+        <div class="feature-editor__selected-feature-editor__demand__graph"></div>
+      </div>
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="transmission_cable_dataEditor">
+    <form id="transmission_cable_dataForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="transmission_trafo_dataEditor">
+    <form id="transmission_trafo_dataForm">
+    </form>
+    <button type='button' class="button feature-editor__featurelist-tab__add-feature-button"  id="newTrafo_dataButton" onclick="maptool_urbs_trans.openNewTrafoDataForm()">Add Trafo Data</button>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="transmission_voltage_limitsEditor">
+    <form id="transmission_voltage_limitsForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="globalEditor">
+    <form id="globalForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="commodityEditor">
+    <form id="commodityForm">
+      <button type='button' class="button feature-editor__featurelist-tab__add-feature-button" id="BuySellPriceButton">Add Buy Sell Price CSV</button>
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="pro_propEditor">
+    <form id="pro_propForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor__secondary-editor" id="pro_com_propEditor">
+    <form id="pro_com_propForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="storageEditor">
+    <form id="storageForm">
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="supimEditor" style="display: inline-block">
+    <form>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="solar">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button" id="solarSelect">Solar</button>
+        <div class="panel" id="solarPanel"></div>
+        <div class="feature-editor__selected-feature-editor__supim__graph" id="main"></div>
+      </div>
+    </form>
+  </div>
+  <div class="feature-editor__selected-feature-editor" id="timevareffEditor" style="display: inline-block">
+    <form>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="charging_station">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button" id="charging_stationSelect">Charging Station</button>
+        <div class="panel" id="charging_stationPanel"></div>
+        <div class="feature-editor__selected-feature-editor__timevareff__graph" id="main"></div>
+      </div>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="heatpump_air">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button" id="heatpump_airSelect">Heatpump Air</button>
+        <div class="panel" id="heatpump_airPanel"></div>
+        <div class="feature-editor__selected-feature-editor__timevareff__graph"></div>
+      </div>
+      <div class="feature-editor__selected-feature-editor__profile-select" id="heatpump_air_heizstrom">
+        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button"  id="heatpump_air_heizstromSelect">Heatpump Air Heizstrom Select</button>
+        <div class="panel" id="heatpump_air_heizstromPanel"></div>
+        <div class="feature-editor__selected-feature-editor__timevareff__graph"></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="optionsPopup">
+  <div class="formPopup" id="urbsProcessPopupForm">
+    <form class="formContainer">
+      Please give a name for the new process:
+      <div class="form-popup__version-select">
+        <input type="text" name="newProcessTextInput" id="newProcessTextInput" placeholder="Process Name" onchange="maptool_urbs_process.processFormCommoditySelection(document.getElementById('pro_propCommSelect'))">
+      </div>
+      Select a commodity for your new process:
+      <div class="form-popup__version-select">
+        <select class ="feature-editor__featurelist-tab__feature-select" id="pro_propCommSelect" onchange="maptool_urbs_process.processFormCommoditySelection(this)">
+          <option value="none" selected disabled hidden>Select an Option</option>
+          <option value="newCommodity">New Commodity</option>
+        </select>
+        <div class="hidden form-popup__version-select__comm" id="newProcessCommDiv">
+          <input type="text" name="newProcessCommTextInput" id="newProcessCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_process.processFormCommoditySelection(document.getElementById('pro_propCommSelect'))">
+          <input type="number" name="newProcessCommRatioInput" id="newProcessCommRatioInput" placeholder="Ratio">
+          <input type="number" name="newProcessCommRatioMinInput" id="newProcessCommRatioMinInput" placeholder="Ratio Min">
+        </div>
+      </div>
+      <div class="form-popup__version-select__comm__checkboxes" id="newProcessCommCheckboxDiv">
+        <input type="radio" name="inout" id="newProcessCommCheckboxIn" checked>
+        <label>In</label>
+        <input type="radio" name="inout" id="newProcessCommCheckboxOut">
+        <label>Out</label>
+      </div>
+      <button type="button" class="btn" id="newProcessCreateButton" onclick="maptool_urbs_process.createNewProcessPropertyOrCommodity(false)" disabled>Create Process</button>
+      <button type="button" class="btn cancel" onclick="maptool_urbs_process.closeNewProcessForm(false)">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<div class="optionsPopup">
+  <div class="formPopup" id="urbsProcessCommodityPopupForm">
+    <form class="formContainer">
+      Select a new commodity for your process:
+      <div class="form-popup__version-select">
+        <select class ="feature-editor__featurelist-tab__feature-select" id="pro_propAddCommSelect" onchange="maptool_urbs_process.processAddCommoditySelection(this)">
+          <option value="none" selected disabled hidden>Select an Option</option>
+          <option value="newCommodity">New Commodity</option>
+        </select>
+        <div class="hidden form-popup__version-select__comm" id="ProcessAddCommDiv">
+          <input type="text" name="newProcessCommTextInput" id="ProcessAddCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_process.processAddCommoditySelection(document.getElementById('pro_propAddCommSelect'))">
+          <input type="number" name="newProcessCommRatioInput" id="ProcessAddCommRatioInput" placeholder="Ratio">
+          <input type="number" name="newProcessCommRatioMinInput" id="ProcessAddCommRatioMinInput" placeholder="Ratio Min">
+        </div>
+      </div>
+      <div class="form-popup__version-select__comm__checkboxes" id="ProcessAddCommCheckboxDiv">
+        <input type="radio" name="inout" id="ProcessAddCommCheckboxIn" checked>
+        <label>In</label>
+        <input type="radio" name="inout" id="ProcessAddCommCheckboxOut"> 
+        <label>Out</label>
+      </div>
+      <button type="button" class="btn" id="ProcessAddCreateButton" onclick="maptool_urbs_process.createNewProcessPropertyOrCommodity(true)" disabled>Add Commodity</button>
+      <button type="button" class="btn cancel" onclick="maptool_urbs_process.closeNewProcessForm(true)">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<div class="optionsPopup">
+  <div class="formPopup" id="urbsNewCommodityPopupForm">
+    <form class="formContainer">
+      Enter a name for your new commodity:
+      <div class="form-popup__version-select">
+        <div class="form-popup__version-select__comm" id="newCommDiv">
+          <input type="text" name="newCommTextInput" id="newCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_commodity.commodityFormCheckValidInput(this.text)">
+        </div>
+      </div>
+      <button type="button" class="btn" id="newCommCreateButton" onclick="maptool_urbs_commodity.createNewCommodity(document.getElementById('newCommTextInput').value)" disabled>Add Commodity</button>
+      <button type="button" class="btn cancel" onclick="maptool_urbs_commodity.closeNewCommodityForm(true)">Cancel</button>
+    </form>
+  </div>
+</div>
+
+{% include "urbs_editor/include/trafo_data_form.html" %}
+
+
+<div class="action-buttons">
+  <button class="button action-buttons__button" type="button" id="returnUrbsSetupButton" onclick="maptool_return_urbs.returnUrbsSetup()">Finish Urbs Setup</button>
+</div>
+
+<script defer src="{{url_for('static', filename='/network_editor/generate_editable_network.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/return_urbs_setup.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/generate_urbs_setup_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/demand_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/buildings_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/transmission_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/process_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/commodity_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/storage_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/supim_editor.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_editor/timevareff_editor.js')}}"></script>
+
+
+{% endblock %}

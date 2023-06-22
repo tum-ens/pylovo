@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block head %}
+  {{ super() }}
+  <script src="https://cdn.plot.ly/plotly-2.24.1.min.js" charset="utf-8"></script>
+{% endblock %}
+
+{% block content %}
+<div class="feature-editor">
+  <div class="feature-editor__buttons-tab">
+    <button class="feature-editor__buttons-tab__tablinks" id="busListButton" onclick="maptool_urbs_res_setup.openEditableNetworkList(event, 'bus')"><span>Buses</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="lineListButton" onclick="maptool_urbs_res_setup.openEditableNetworkList(event, 'line')"><span>Lines</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="trafoListButton" onclick="maptool_urbs_res_setup.openEditableNetworkList(event, 'trafo')"><span>Trafos</span></button>
+    <button class="feature-editor__buttons-tab__tablinks" id="ext_gridListButton" onclick="maptool_urbs_res_setup.openEditableNetworkList(event, 'ext_grid')"><span>Ext. Grid</span></button>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="bus">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="busSelect" onchange="maptool_urbs_res_setup.fillSelectedEditableNetworkFeatureEditor(this, 'bus')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="line">
+    <select class ="feature-editor__featurelist-tab__feature-select"  id="lineSelect" onchange="maptool_urbs_res_setup.fillSelectedEditableNetworkFeatureEditor(this, 'line')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="trafo">
+    <select  class ="feature-editor__featurelist-tab__feature-select" id="trafoSelect" onchange="maptool_urbs_res_setup.fillSelectedEditableNetworkFeatureEditor(this, 'trafo')" multiple></select>
+  </div>
+  <div class="feature-editor__featurelist-tab" id="ext_grid">
+    <select class ="feature-editor__featurelist-tab__feature-select" id="ext_gridSelect" onchange="maptool_urbs_res_setup.fillSelectedEditableNetworkFeatureEditor(this, 'ext_grid')" multiple></select>
+  </div>
+  <div class="feature-editor__selected-feature-results" id="busEditor">
+  </div>
+  <div class="feature-editor__selected-feature-results" id="lineEditor">
+  </div>
+  <div class="feature-editor__selected-feature-results" id="trafoEditor">
+  </div>
+  <div class="feature-editor__selected-feature-results" id="ext_gridEditor">
+  </div>
+</div>
+
+
+
+<script defer src="{{url_for('static', filename='/network_editor/generate_editable_network.js')}}"></script>
+<script defer src="{{url_for('static', filename='/network_editor/display_editable_network_features.js')}}"></script>
+<script defer src="{{url_for('static', filename='/urbs_results/setup_urbs_results.js')}}"></script>
+
+{% endblock %}

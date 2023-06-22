@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-VERSION_ID = "11"
+VERSION_ID = "11.2"
 VERSION_COMMENT = "Initial version without any parameter changes"
 
 # PARAMETERS
@@ -70,3 +70,7 @@ LARGE_COMPONENT_DIVIDER = 1000
 VN = 400  # V
 V_BAND_LOW = 0.95  # +-5%
 V_BAND_HIGH = 1.05
+
+
+def changeVersionID (version_id):
+    VERSION_ID = version_id

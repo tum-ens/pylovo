@@ -1,0 +1,660 @@
+{
+    "_buildings": {
+          "from_database": {
+                "footprint_area": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "PV_cap_kW": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+                },
+                "use": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                },
+                "free_walls": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "lat": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "lon": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "floors": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "dwellings": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "occupants": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+                },
+                "ref_level_roof": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                },
+                "ref_level_wall": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                },
+                "ref_level_floor": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                 },
+                 "ref_level_window": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                 }
+          },
+          "from_user_input": {
+                "dist_to_heat_source": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "year_class": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "size_class": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "storey_area": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "area_corr_factor": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "heated_area": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "window_area": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "dwelling_size": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "U": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "V": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "C": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "Tau": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "Tset": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "act_start": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "act_end": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "hw_demand_day": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "hw_tank_cap": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                }
+          }
+    },
+    "commodity": {
+          "name": {
+                "type": "string",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "type": {
+                "type": "list",
+                "tooltip": "",
+                "default_val": "",
+                "list_options": ["Buy", "Sell", "Demand", "SupIm", "Stock"]
+          },
+          "price": {
+                "type": "float",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "max": {
+                "type": "int",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "max_per_hour": {
+                "type": "int",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "electrical": {
+                "type": "int",
+                "tooltip": "",
+                "default_val": ""
+          }
+    },
+    "global": {
+          "CO2 limit": {
+                "type": "int",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "Cost limit": {
+                "type": "int",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "TransDist": {
+                "type": "int",
+                "tooltip": "",
+                "default_val": "0"
+          },
+          "tsam": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": "true"
+          },
+          "tsam_season": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "PF_elec": {
+                "type": "float",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "PF_HP": {
+                "type": "float",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "retrofit": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "uncoordinated": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": "false"
+          },
+          "flexible": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": "true"
+          },
+          "lp": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "excel": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "assumelowq": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "grid_curtailment": {
+                "type": "boolean",
+                "tooltip": "",
+                "default_val": ""
+          },
+          "power_price_kw": {
+                "type": "float",
+                "tooltip": "",
+                "default_val": ""
+          }
+    },
+    "process": {
+          "pro_com_prop": {
+                "ratio": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "ratio-min": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                }
+          },
+          "pro_prop": {
+                "name": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "cap_up": {
+                      "type": "list",
+                      "tooltip": "",
+                      "default_val": "",
+                      "list_options": ["%inst_cap", "*2", "%roof_area", ""]
+                },
+                "ramp-up-grad": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "ramp-down-grad": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "min-fraction": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "start-time": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "inv-cost": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "fix-cost": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "var-cost": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "wacc": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "deprecation": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "area-per-cap": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "cap-block": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "start-price": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "on-off": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "pf-min": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "decommissionable": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "decom-saving": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "inv-cost-fix": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                }
+          },
+          "pro_conf": {
+                  "import": {
+                        "default_val_trafo": 1000,
+                        "default_val_main_bus": "",
+                        "default_val_other":"" 
+                  },
+                  "import_hp": {
+                        "default_val_trafo": 1000,
+                        "default_val_main_bus": "",
+                        "default_val_other":"" 
+                  },
+                  "feed_in": {
+                        "default_val_trafo": 1000,
+                        "default_val_main_bus": "",
+                        "default_val_other":"" 
+                  },
+                  "Slack": {
+                        "default_val_trafo": 1000,
+                        "default_val_main_bus": "",
+                        "default_val_other":"" 
+                  },
+                  "Q_feeder_central": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": 1000,
+                        "default_val_other":"" 
+                  },
+                  "Rooftop PV": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"0" 
+                  },
+                  "Gas boiler": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"" 
+                  },
+                  "Heat_dummy_space": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"150" 
+                  },
+                  "Heat_dummy_water": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"150" 
+                  },
+                  "heatpump_air": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"0" 
+                  },
+                  "heatpump_air_heizstrom": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"0" 
+                  },
+                  "elec_hp_to_usable": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"150" 
+                  },
+                  "curtailment": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"150" 
+                  },
+                  "Slack_heat": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"150" 
+                  },
+                  "charging_station": {
+                        "default_val_trafo": "",
+                        "default_val_main_bus": "",
+                        "default_val_other":"11" 
+                  }
+          }
+    },
+    "storage": {
+          "sto_conf": {
+                "urbs_name": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                }
+          },
+          "sto_prop": {
+                "name": {
+                      "type": "string",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "commodity": {
+                      "type": "list",
+                      "tooltip": "",
+                      "default_val": "",
+                      "list_options": []
+                },
+                "cap_up": {
+                      "type": "list",
+                      "tooltip": "",
+                      "default_val": "",
+                      "list_options": ["%inst_cap", "*2", "%roof_area", ""]
+                },
+                "eff_in": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "eff_out": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "inv_cost_p": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "inv_cost_c": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "fix_cost_p": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "fix_cost_c": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "var_cost_p": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "var_cost_c": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "wacc": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "depreciation": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "init": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "discharge": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "ep_ratio": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "c_block": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "p_block": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "decommissionable": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "decom-saving-p": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "decom-saving-c": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                }
+          }
+    },
+    "transmission": {
+          "cable_data": {
+                "id": {
+                      "type": "list",
+                      "tooltip": "",
+                      "default_val": "",
+                      "list_options": ["NAYY 4x150", "NAYY 4x50", "NAYY 4x50 SE","_others"]
+                },
+                "material_cost": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": "10000"
+                },
+                "digging_cost": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": "90000"
+                },
+                "loading_limit": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": "0.7"
+                },
+                "wacc": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": "0.06"
+                },
+                "deprecation": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": "40"
+                }
+          },
+          "trafo_data": {
+                "id": {
+                      "type": "list",
+                      "tooltip": "",
+                      "default_val": "",
+                      "list_options": []
+                },
+                "inv-cost": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "fix-cost": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "var-cost": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "cap": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "wacc": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": ""
+                },
+                "depreciation": {
+                      "type": "int",
+                      "tooltip": "",
+                      "default_val": ""
+                }
+          },
+          "voltage_limits": {
+                "v_min": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": "0.95"
+                },
+                "v_max": {
+                      "type": "float",
+                      "tooltip": "",
+                      "default_val": "1.03"
+                }
+          }
+    }
+}

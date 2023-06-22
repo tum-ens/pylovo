@@ -1,0 +1,16 @@
+name,cap_up,ramp-up-grad,ramp-down-grad,min-fraction,start-time,inv-cost,fix-cost,var-cost,wacc,depreciation,area-per-cap,cap-block,start-price,on-off,pf-min,decommissionable,decom-saving,inv-cost-fix
+import,,inf,inf,0,,0,0,0,0.07,30,,,,,,,,
+import_hp,,inf,inf,0,,0,0,0,0.07,30,,,,,,,,
+feed_in,,inf,inf,0,,0,0,0,0.07,30,,,,,,,,
+Slack,%inst_cap,inf,inf,0,,99999,0,999,0.07,30,,,,,,,,
+Q_feeder_central,,inf,inf,0,,0,0,0.042,0.07,30,,,,,,,,
+Rooftop PV,%roof_area,inf,inf,0,,914,12.5,0,0.027,20,,,,,0.95,,,4074
+Gas boiler,,inf,inf,0,,500,0,0,0.027,20,,,,,,,,
+Heat_dummy_space,%inst_cap,inf,inf,0,,0,0,0,0.07,1,,,,,,,,
+Heat_dummy_water,*2,inf,inf,0,,0,0,0,0.07,1,,,,,,,,
+heatpump_air,,inf,inf,0,,1440,60,0,0.02,18,,,,,,,,5924
+heatpump_air_heizstrom,,inf,inf,0,,1440,60,0,0.02,18,,,,,,,,5924
+elec_hp_to_usable,%inst_cap,inf,inf,0,,0,0,0,0.07,1,,,,,,,,
+curtailment,%inst_cap,inf,inf,0,,0,0,0,0.07,20,,,,,,,,
+Slack_heat,%inst_cap,inf,inf,0,,99999,0,999,0.07,30,,,,,,,,
+charging_station,%inst_cap,inf,inf,0,,0,0,0,0.07,1,,,,,,,,

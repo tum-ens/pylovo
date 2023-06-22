@@ -1,0 +1,16 @@
+﻿Property,value
+CO2 limit,0
+Cost limit,inf
+TransDist,0
+tsam,1
+tsam_season,0
+PF_elec,0.9
+PF_HP,0.95
+retrofit,0
+uncoordinated,0
+flexible,1
+lp,1
+excel,0
+assumelowq,1
+grid_curtailment,1
+power_price_kw,50

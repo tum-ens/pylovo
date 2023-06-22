@@ -1,0 +1,43 @@
+
+Gurobi 9.1.2 (win64) logging started Fri Jun  9 17:53:09 2023
+
+Changed value of parameter logfile to resultTrans-Dist-20230609T1752flex_all.log
+   Prev:   Default: 
+Changed value of parameter MIPFocus to 1
+   Prev: 0  Min: 0  Max: 3  Default: 0
+No parameters matching 'Parallel' found
+Changed value of parameter Threads to 32
+   Prev: 0  Min: 0  Max: 1024  Default: 0
+Changed value of parameter MIPGap to 0.01
+   Prev: 0.0001  Min: 0.0  Max: inf  Default: 0.0001
+Changed value of parameter SimplexPricing to 2
+   Prev: -1  Min: -1  Max: 3  Default: -1
+Changed value of parameter DegenMoves to 0
+   Prev: -1  Min: -1  Max: 2000000000  Default: -1
+Gurobi Optimizer version 9.1.2 build v9.1.2rc0 (win64)
+Thread count: 4 physical cores, 4 logical processors, using up to 32 threads
+
+Warning: Thread count (32) is larger than processor count (4)
+         Reduce the value of the Threads parameter to improve performance
+
+Optimize a model with 14056 rows, 11251 columns and 54158 nonzeros
+Model fingerprint: 0xb7ba902c
+Variable types: 11219 continuous, 32 integer (6 binary)
+Coefficient statistics:
+  Matrix range     [1e-06, inf]
+  Objective range  [1e+00, 1e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [2e-02, 2e+03]
+Warning: Model contains large matrix coefficient range
+         Consider reformulating model or setting NumericFocus parameter
+         to avoid numerical issues.
+Presolve removed 8201 rows and 6901 columns
+Presolve time: 0.01s
+
+Explored 0 nodes (0 simplex iterations) in 0.02 seconds
+Thread count was 1 (of 4 available processors)
+
+Solution count 0
+
+Model is infeasible or unbounded
+Best objective -, best bound -, gap -

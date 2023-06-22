@@ -1,0 +1,5 @@
+urbs_name,import,import_hp,feed_in,Slack,Q_feeder_central,Rooftop PV,Gas boiler,Heat_dummy_space,Heat_dummy_water,heatpump_air,heatpump_air_heizstrom,elec_hp_to_usable,curtailment,Slack_heat,charging_station
+Trafostation_OS,1000,1000,1000,1000,,,,,,,,,,,
+main_busbar,,,,,1000,,,,,,,,,,
+Consumer Nodebus 137,,,,,,0,0,0,0,0,0,0,0,0,0
+Consumer Nodebus 142,,,,,,0,0,0,0,0,0,0,0,0,0
