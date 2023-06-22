@@ -4,7 +4,7 @@ import os
 LOCAL_PATH =  os.path.dirname(os.path.abspath(__file__))
 
 #SAVE_PATH       =  os.path.join(LOCAL_PATH, './urbs_file.xlsx')                            # path to save exported excel file
-SAVE_PATH       =  os.path.join(LOCAL_PATH, '../../urbs_optimizer/Input/urbs_file.xlsx')                    # path to save exported excel file
+SAVE_PATH       =  os.path.join(LOCAL_PATH, '../../urbs/Input/urbs_file.xlsx')                    # path to save exported excel file
 
 PANDAPOWER_PATH     = os.path.join(LOCAL_PATH, './dataset/_transmission/test.xlsx')  # path which includes pandapower network files
 VOLTAGE_LIMITS_PATH = os.path.join(LOCAL_PATH, './dataset/_transmission/voltage_limits.csv')
