@@ -59,7 +59,7 @@ Then navigate to http://127.0.0.1:5000 in a browser of your choice (though prefe
 You can define your own plots in Python in maptool/urbs_results/urbs_results_plotting.py
 
 A plot function needs to call plotly's to_html function with parameters full_html=False, include_plotlyjs=False and return the filename (without full path) as a string.
-You can make sure the plot appears in the frontend by calling the new plotting function in the corresponding if clause in urbs_results_generate_plot() under maptool/urbs_results/routes.py. There are several example plots included that show the structure which needs to be followed
+You can make sure the plot appears in the frontend by calling the new plotting function in the corresponding if clause in urbs_results_generate_plot() under maptool/urbs_results/routes.py. There are several example plots included that show the structure which needs to be followed.
 
 
 ## Usage
