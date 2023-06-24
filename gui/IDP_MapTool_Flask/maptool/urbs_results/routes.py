@@ -48,6 +48,8 @@ def urbs_results_generate_plot():
         print(feature_name_dict)
         hdf_path = session.get('result_location') + '/' + URBS_RESULT_FILENAME
 
+        #plot functions need to return the name of the generated plot
+        #the returned name needs to be appended to the plot_filenames array
         
         plot_filenames = []
         if data_path == 'bus':
@@ -62,6 +64,17 @@ def urbs_results_generate_plot():
             #print(data_path, feature_name_from, feature_name_to)
             #plot_filenames.append(cap_tra_generate_plot(hdf_path=hdf_path, site_name=feature_name_from))
             #plot_filenames.append(cap_tra_generate_plot(hdf_path=hdf_path, site_name=feature_name_to))
+        if data_path == 'trafo':
+            feature_name_lv = feature_name_dict['lv_bus']
+            feature_name_hv = feature_name_dict['hv_bus']
+
+            #insert plot function here
+
+        if data_path == 'ext_grid':
+            feature_name = feature_name_dict['bus']
+            #insert plot function here
+
+
         return_json = {}
         for filename in plot_filenames:
             with open(URBS_RESULT_PLOT_SAVE_PATH + filename + '.html') as fp:

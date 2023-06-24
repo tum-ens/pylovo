@@ -5,6 +5,10 @@ import plotly.io as io
 io.renderers.default = "browser"
 from maptool.config import * 
 
+#plot functions need to return the name of the generated plot
+#they need to call the write_html function as well and the filename that is returned and the filename of the new html need to match
+
+
 def aggregateHTMLFiles(filenames):
     #TODO: combine a given number of divs into single html file to be passed to the frontend
     return 0

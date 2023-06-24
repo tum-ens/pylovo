@@ -237,6 +237,16 @@ var maptool_urbs_res_setup = function (){
             targetName['to_bus'] = maptool_network_gen.NetworkObject['busList'][target_idx_to].feature.properties.name;
 
         }
+        if(feature == 'trafo') {
+            target_idx_lv = maptool_network_gen.NetworkObject[feature + 'List'][targetIndex].feature.properties.lv_bus;
+            target_idx_hv = maptool_network_gen.NetworkObject[feature + 'List'][targetIndex].feature.properties.hv_bus;
+            targetName['lv_bus'] = maptool_network_gen.NetworkObject['busList'][target_idx_lv].feature.properties.name;
+            targetName['hv_bus'] = maptool_network_gen.NetworkObject['busList'][target_idx_hv].feature.properties.name;
+        }
+        if(feature == 'ext_grid') {
+            target_idx = maptool_network_gen.NetworkObject[feature + 'List'][targetIndex].feature.properties.bus;
+            targetName['bus'] = maptool_network_gen.NetworkObject['busList'][target_idx].feature.properties.name;
+        }
 
         //we retrieve the plots associated with our selected feature from the backend
         getPlotOfFeature(feature, targetName);
