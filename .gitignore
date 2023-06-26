@@ -8,3 +8,5 @@ results/grids/
 results/grid_parameters/
 
 examples/results/
+#raw_data
+site/

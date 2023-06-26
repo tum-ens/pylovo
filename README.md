@@ -45,7 +45,7 @@ The main script runs in Python, in addition you would need:
 
 users can by commenting or uncommenting corresponding codes in plot_result.py to select the required plots.
 
-## Outpus data:
+## Output data:
 
 1. A folder of all local distribution grid results will be created as .csv files, named as 'kcid{a}bcid{b}' (a,b are variables), such files can be easily read in python or input to pandapower;
 

@@ -25,14 +25,22 @@ setup(
     install_requires=[
         "pandas",
         "numpy",
-        "sqlalchemy<2", # As long as pandas is not compatible with sqlalchemy 2.0, This option seems to be safest.
+        "sqlalchemy<2",  # As long as pandas is not compatible with sqlalchemy 2.0, This option seems to be safest.
         "psycopg2",
         "scipy",
         "pandapower",
         "matplotlib",
         "plotly",
         "geopandas",
-        "contextily"
+        "contextily",
     ],
-    extras_require={"dev": ["gdal"]},
+    extras_require={
+        "dev": [
+            "gdal",
+            "mkdocs",
+            "mkdocs-material",
+            "mkdocstrings-python",
+            "mkdocs-autorefs",
+        ]
+    },
 )

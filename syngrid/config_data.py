@@ -1,34 +1,56 @@
 import os
 
 # Database connection configuration
-# DBNAME = "syngrid_db"
-# USER = "syngrid"
-# PASSWORD = "syngrid"
-# HOST = "localhost"
-# PORT = "1111"
-DBNAME = "syngrid_db"
-USER = "syngrid"
+DBNAME = "pylovo_db"
+USER = "pylovo"
+PASSWORD = "ens"
 HOST = "localhost"
 PORT = "1111"
-PASSWORD = "syngrid"
+# HOST = "10.162.28.8"
+# PORT = "5432"
+
+# DBNAME = "syngrid_db"
+# USER = "syngrid"
+# HOST = "localhost"
+# PORT = "1111"
+# PASSWORD = "syngrid"
 
 # Directory where the result csv and json files be saved
 RESULT_DIR = f"{os.getcwd()}\\results"
 
 # Raw data
 OGR_FILE_LIST = [
-    {
-        "path": ".\\raw_data\\Res_9162000\\Res_9162000.shp",
-        "table_name": "res",
-    },  # München
-    {
-        "path": ".\\raw_data\\Res_9474126\\Res_9474126.shp",
-        "table_name": "res",
-    },  # Forchheim
-    {"path": ".\\raw_data\\Oth_9162000\\Oth_9162000.shp", "table_name": "oth"},
-    {"path": ".\\raw_data\\Oth_9474126\\Oth_9474126.shp", "table_name": "oth"},
-    {"path": ".\\raw_data\\substation_munich.geojson", "table_name": "transformers"},
+    {"path": ".\\raw_data\\Res_9174115\\Res_9174115.shp", "table_name": "res"},
+    {"path": ".\\raw_data\\Oth_9174115\\Oth_9174115.shp", "table_name": "oth"}
 ]
+
+# OGR_FILE_LIST = [
+#     # Neufahrn bei Freising
+#     {"path": ".\\raw_data\\Res_9178145\\Res_9178145.shp","table_name": "res",},
+#     {"path": ".\\raw_data\\Oth_9178145\\Oth_9178145.shp", "table_name": "oth"},
+#     # Garching
+#     {"path": ".\\raw_data\\Res_9184119\\Res_9184119.shp","table_name": "res",},
+#     {"path": ".\\raw_data\\Oth_9184119\\Oth_9184119.shp", "table_name": "oth"},
+# ]
+
+# OGR_FILE_LIST = [
+    # München
+    # {"path": ".\\raw_data\\Res_9162000\\Res_9162000.shp","table_name": "res",},
+    # {"path": ".\\raw_data\\Oth_9162000\\Oth_9162000.shp", "table_name": "oth"},
+    # {"path": ".\\raw_data\\substation_munich.geojson", "table_name": "transformers"},
+    # # Forchheim
+    # {"path": ".\\raw_data\\Res_9474126\\Res_9474126.shp","table_name": "res",},
+    # {"path": ".\\raw_data\\Oth_9474126\\Oth_9474126.shp", "table_name": "oth"},
+    # Dachau
+    # {"path": ".\\raw_data\\Res_9174115\\Res_9174115.shp", "table_name": "res", },
+    # {"path": ".\\raw_data\\Oth_9174115\\Oth_9174115.shp", "table_name": "oth"},
+    # Bergkirchen
+    # {"path": ".\\raw_data\\Res_9174113\\Res_9174113.shp", "table_name": "res", },
+    # {"path": ".\\raw_data\\Oth_9174113\\Oth_9174113.shp", "table_name": "oth"},
+    # Ingolstadt
+    # {"path": ".\\raw_data\\Res_9161000\\Res_9161000.shp", "table_name": "res", },
+    # {"path": ".\\raw_data\\Oth_9161000\\Oth_9161000.shp", "table_name": "oth"},
+# ]
 
 CSV_FILE_LIST = [
     {"path": ".\\raw_data\\betriebsmittel.csv", "table_name": "betriebsmittel"},
