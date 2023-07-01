@@ -7,7 +7,7 @@ from syngrid.SyngridDatabaseConstructor import SyngridDatabaseConstructor
 
 sgc = SyngridDatabaseConstructor()
 #sgc.create_functions_from_dump()
-#sgc.create_table(table_name="all")
+#sgc.create_table(table_name="ways")
 #sgc.csv_to_db()
 #sgc.ogr_to_db()
 sgc.ways_to_db()

@@ -1,0 +1,672 @@
+html {
+  height: 100%;
+}
+
+body {
+    height: 100%;
+    background: #fafafa;
+    color: #333333;
+    overflow: hidden;
+  }
+  
+h1, h2, h3, h4, h5, h6 {
+color: #444444;
+}
+
+ul{
+  margin: 0;
+  margin-block-start: 0;
+  margin-block-end: 0;
+  list-style-type: none;
+  padding: 0px;
+  height : 100%;
+  overflow: hidden;
+  overflow-y:scroll;
+}
+
+li {
+  margin: 0;
+  background-color: rgb(86, 23, 202);
+  height:3.0674846625766871165644171779141%;
+  display: flex;
+}
+
+.hidden {
+  display: none;
+}
+
+.feature-editor__featurelist-tab__demand-select {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+  margin: 0;
+  border: none
+}
+
+.flex-container {
+  height: 95%;
+  width: 100%;
+  top: 0%;
+  left: 0%;
+  position: absolute;
+  margin-top: 3rem;
+}
+
+#map{
+    height: 100%;
+    width: 100%;
+    z-index: 1;
+}
+
+.leaflet-top {
+  top: 10%;
+  transform: translate(0%, 10%);
+}
+
+.legend {
+  line-height: 18px;
+  background-color: white;
+  color: #555;
+  padding: 5px;
+  border-radius: 2px;
+}
+.legend i {
+  width: 10px;
+  height: 10px;
+  float: left;
+  margin-right: 8px;
+}
+
+.dot {
+  height: 25px;
+  width: 25px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.button {
+  background-color: #0065BD; 
+  border: none;
+  border-radius: 2px;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  transition-duration: 0.4s;
+  pointer-events: all;
+}
+
+.button:hover {
+  background-color: #003359; 
+  color: white;
+}
+
+.button:disabled {
+  background-color: #4e4e4e;
+}
+
+/* || Navigation Bar --------------------------*/
+.bg-steel {
+background-color: #0065BD;
+}
+
+.site-header .navbar-nav .nav-link {
+color: #cbd5db;
+cursor: pointer;
+z-index: 999;
+}
+
+.site-header .navbar-nav .nav-link:hover {
+color: #ffffff;
+}
+
+.site-header .navbar-nav .nav-link.active {
+font-weight: 500;
+}
+
+
+/* || Network in Postcode Area Selection Element --------------------------*/
+.list-selection {
+  position: absolute;
+  top: 2.5%;
+  right: 1%;
+  background: #ffffff;
+  color: #333333;
+  height: 90%;
+  width: 10%;
+  min-height: 20em;
+  min-width: 10em;
+  z-index: 99;
+  display: none;
+  pointer-events: none;
+}
+
+/* || Body Element for Network Feature Editor --------------------------*/
+.feature-editor {
+  position: absolute;
+  top: 2.5%;
+  right: 1%;
+  background: #ffffff00;
+  color: #333333;
+  height: 80%;
+  width: 75%;
+  min-height: 40em;
+  min-width: 40em;
+  z-index: 99;
+  display: auto;
+  pointer-events: none;
+}
+
+.urbs-editor {
+  right: 3%;
+}
+
+/* || Body Element for Feature Editor Tab Selection --------------------------*/
+.feature-editor__buttons-tab{
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  background: #0065bd00;
+  color: #e90000;
+  height: 5%;
+  width: 2%;
+  opacity: 1;
+  pointer-events: all;
+}
+
+.feature-editor__second-column {
+  right: -2.5%;
+}
+
+.feature-editor__buttons-tab button {
+  background-color: #0065bd;
+  color: white;
+  padding: 40px 15px;
+  width: 100%;
+  right:0.25em;
+  min-width: 2em;
+  border: none;
+  outline: none;
+  text-align: right;
+  transition: 0.3s;
+  display: none;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	align-self: center;
+  cursor:pointer;
+  position:relative;
+	font-size: 18px;
+  white-space: nowrap;
+  box-shadow: 5px 0px 5px #a9a9a95e;
+}
+
+.feature-editor__buttons-tab button:hover {
+  background-color: #3f90d6;
+  
+}
+
+.feature-editor__buttons-tab button.active {
+  background-color: #ffffff;
+  left: 0;
+  transition: left .2s;
+  color: black;
+  border-bottom-right-radius: 2px;
+  border-top-right-radius: 2px;
+  box-shadow: 2px 5px 5px #8383835e, 
+              2px -5px 5px #8383835e;
+  z-index: 2;
+}
+
+.feature-editor__buttons-tab__tablinks span{
+  display: inline-block;
+  transform: rotate(90deg);
+}
+
+.feature-editor__featurelist-tab__add-feature-button {
+  width: 100%;
+  padding: 6px;
+}
+
+.feature-editor__featurelist-tab{
+  position: absolute;
+  top: 0px;
+  right: 2%;
+  color: #000000;
+  height: 100%;
+  width: 15%;
+  pointer-events: all;
+  display: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none; 
+}
+
+.feature-editor__feature-tab {
+  position: absolute;
+  top: 0px;
+  right: 5%;
+  color: #000000;
+  background-color: #ffffff;
+  height: 100%;
+  width: 100%;
+  pointer-events: all;
+  display: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none; 
+}
+
+/* || Editor List of Features --------------------------*/
+.feature-editor__featurelist-tab__feature-select {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+  border: solid 1px #e7e7e7;
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+  border-top-left-radius: 2px;
+  outline: none;
+  pointer-events: all;
+  box-shadow:  2px 5px 5px #a9a9a95e;
+
+}
+
+.feature-editor__featurelist-tab__feature-select::-webkit-scrollbar, .feature-editor__featurelist-tab__stdtype-feature-select::-webkit-scrollbar {
+  display: none;
+}
+
+.feature-editor__featurelist-tab__feature-select option:hover {
+  background-color: #c0d7e9;
+}
+
+.feature-editor__featurelist-tab__feature-select option:checked {
+  background-color: #0065BD;
+  color: #ffffff;
+}
+
+.feature-editor__featurelist-tab__feature-select option:checked:after {
+  background-color: #0065BD;
+  color: #ffffff;
+}
+
+.feature-editor__selected-feature-editor__delete-button {
+  width: 100%;
+}
+
+.feature-editor__selected-feature-editor{
+  position: absolute;
+  top: 0px;
+  right: 17%;
+  background: #ffffff;
+  color: #000000;
+  height: 100%;
+  width: 25%;
+  opacity: 1;
+  display: auto;
+  pointer-events: all;
+  display: none;
+}
+
+.feature-editor__selected-feature-editor__div {
+  background-color: #ffffff;
+  height: auto;
+  position: relative;
+  display: block;
+}
+
+.secondary-feature-label {
+  position: relative;
+  top: 0rem;
+  bottom: 0rem;
+  color: #0065BD;
+}
+
+.feature-editor__selected-feature-editor__secondary-editor {
+  display: none;
+  width: 20rem;
+  height: 30rem;
+  position: relative;
+  right: 42%;
+  top:40%;
+  float:right;
+  overflow: hidden;
+  pointer-events: all;
+  background-color: #ffffff;
+}
+
+.feature-editor__featurelist-tab__stdtype-feature-select {
+  width: 100%;
+  height: 33%;
+  background-color: #ffffff;
+  border: solid 1px #e7e7e7;
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+  border-top-left-radius: 2px;
+  outline: none;
+  pointer-events: all;
+  box-shadow:  2px 5px 5px #a9a9a95e;
+  display: none
+}
+
+/* || Feature Editor Main Form --------------------------*/
+form {
+  width: 100%;
+  height: 100%;
+  overflow-y:auto;
+  box-shadow: -5px 5px 5px #a9a9a95e, -1px 5px 5px #a9a9a95e;
+}
+
+.feature-editor__selected-feature-editor__div label {
+  position: relative;
+  bottom: 2rem;
+  padding: 0px 5px 0px 5px;
+}
+
+.feature-editor__selected-feature-editor__stdtype-feature-select{
+  width: 100%;
+  position: relative;
+  top: 2rem;
+}
+
+input[type=text], input[type=number]{
+  position: relative;
+  top: 2rem;
+  width: 95%;
+  margin: 0px 5px 8px 5px;
+  padding: 5px 10px;
+  box-sizing: border-box;
+  border: none;
+  color: #808080;
+  border-bottom: solid 2px #CCCCCC;
+}
+
+input[type=text]:focus, input[type=number]:focus {
+  outline: none;
+  border: none;
+  font-weight: 600;
+  color: #0065BD;
+  border-bottom: solid 2px #0065BD;
+}
+
+input[type=text]:focus + label, input[type=number]:focus + label {
+  color: #0065BD;
+  font-weight: bold;
+}
+
+.feature-editor__selected-feature-editor__profile-select {
+  background-color: #ffffff;
+  margin-bottom: 25px;
+}
+
+.feature-editor__selected-feature-editor__profile-select select{
+  width: 100%;
+}
+
+.feature-editor__selected-feature-editor__profile-select label{
+  width: 100%;
+  color: #0065BD;
+}
+
+.feature-editor__selected-feature-editor__demand__graph, .feature-editor__selected-feature-editor__supim__graph, .feature-editor__selected-feature-editor__timevareff__graph {
+  min-height: 200px;
+}
+
+/* Delete Features Popup */
+* {
+  box-sizing: border-box;
+}
+.openBtn {
+  display: flex;
+  justify-content: left;
+}
+.openButton {
+  border: none;
+  border-radius: 5px;
+  background-color: #1c87c9;
+  color: white;
+  padding: 14px 20px;
+  cursor: pointer;
+  position: fixed;
+}
+.optionsPopup {
+  position: relative;
+  text-align: center;
+  width: 100%;
+}
+.formPopup {
+  display: none;
+  position: fixed;
+  left: 45%;
+  top: 5%;
+  transform: translate(-50%, 5%);
+  border: 3px solid #999999;
+  z-index: 9999;
+}
+.formContainer {
+  max-width: 300px;
+  padding: 20px;
+  background-color: #fff;
+}
+
+.form-popup__version-select {
+  padding-bottom: 2rem;
+}
+
+.form-popup__version-select__comm__checkboxes {
+  padding-top: 2rem;
+}
+
+.form-popup__version-select__comm__checkboxes label{
+  padding-right: 2rem;
+}
+
+.form-popup__version-select label{
+  padding-left: 0.5rem;
+}
+
+.form_popup__version-select__radio-button {
+  float: left;
+  clear: both;
+}
+
+.formContainer input[type=number],
+.formContainer input[type=password] {
+  width: 100%;
+  padding: 15px;
+  margin: 5px 0 20px 0;
+  border: none;
+  background: #eee;
+}
+.formContainer input[type=number]:focus,
+.formContainer input[type=password]:focus {
+  background-color: #ddd;
+  outline: none;
+}
+.formContainer .btn {
+  padding: 12px 20px;
+  border: none;
+  background-color: #8ebf42;
+  color: #fff;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 15px;
+  opacity: 0.8;
+}
+.formContainer .cancel {
+  background-color: #cc0000;
+}
+.formContainer .btn:hover,
+.openButton:hover {
+  opacity: 1;
+}
+
+.formContainer .btn:disabled {
+  background-color: #585858;
+}
+
+
+.feature-editor__selected-feature-results {
+  position: absolute;
+  top: 0px;
+  right: 17%;
+  background: #ffffff;
+  color: #000000;
+  height: 100%;
+  width: 65%;
+  opacity: 1;
+  display: none;
+  pointer-events: all;
+  z-index: 1;
+  overflow-y: auto;
+}
+
+/* || Generic Buttons --------------------------*/
+.action-buttons {
+  position: absolute;
+  bottom: 2.5%;
+  right: 1%;
+  background: #ff000000;
+  color: #333333;
+  height: 5%;
+  width: 100%;
+  min-height: 3em;
+  min-width: 6em;
+  z-index: 99;
+  display: auto;
+  pointer-events: none;
+}
+
+.action-buttons-searchfield {
+  position:absolute;
+  pointer-events: fill;
+  left: 2rem;
+  bottom: 0rem;
+  height: 100%;
+}
+
+.action-buttons-searchfield input[type=number] {
+  padding: 6px;
+  border: none;
+  font-size: 17px;
+  height: 100%;
+  top:0%;
+  margin: 0px 0px 8px 5px
+}
+
+.action-buttons__button {
+  position: absolute;
+  white-space: nowrap;
+  padding: 12px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  transition-duration: 0.4s;
+  pointer-events: all;
+  bottom: 0rem;
+}
+
+#returnEditedNetButton, #selectNetworkButton, #returnUrbsSetupButton {
+  right: 0rem;
+}
+
+#selectPLZAreaButton{
+  right: 11rem;
+}
+
+.urbs-results {
+  height: 200%;
+  overflow-y: scroll;
+}
+
+/* width */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: #f1f1f1; 
+}
+ 
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #888; 
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Style the accordion panel. Note: hidden by default */
+
+.panel {
+  background-color: white;
+  display: none;
+  overflow: scroll;
+  max-height: 20rem;
+}
+
+.panel label {
+  display: flex;
+  align-items: center;
+}
+.panel input[type=checkbox]{
+  flex: none;
+}
+
+.urbs-checkbox{
+  width: 100%;
+  top: 0.5rem;
+  bottom: 0rem !important; 
+}
+
+.urbs-checkbox input[type="checkbox"]{
+  margin-right: 95%;
+}
+
+/* Style the tab */
+.tab {
+  overflow: hidden;
+  border: 1px solid #ccc;
+  background-color: #f1f1f1;
+}
+
+/* Style the buttons that are used to open the tab content */
+.tab button {
+  background-color: inherit;
+  float: left;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  transition: 0.3s;
+}
+
+/* Change background color of buttons on hover */
+.tab button:hover {
+  background-color: #ddd;
+}
+
+/* Create an active/current tablink class */
+.tab button.active {
+  background-color: #ccc;
+}
+
+/* Style the tab content */
+.tabcontent {
+  display: none;
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-top: none;
+}

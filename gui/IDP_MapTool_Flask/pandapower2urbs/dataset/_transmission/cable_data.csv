@@ -1,0 +1,5 @@
+id,deprecation,digging_cost,loading_limit,material_cost,wacc
+NAYY 4x150,40,90000,0.7,10000,0.06
+NAYY 4x50,40,90000,0.7,10000,0.06
+NAYY 4x50 SE,40,90000,0.7,10000,0.06
+_others,40,90000,0.7,10000,0.06

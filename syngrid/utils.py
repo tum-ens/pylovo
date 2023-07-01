@@ -39,8 +39,10 @@ def oneSimultaneousLoad(installed_power, load_count, sim_factor):
 
 
 def positionSubstation(pgr, plz, kcid, bcid):
+    print("positionSubstation", plz, kcid, bcid)
     # Hole die Gebäuden in dem Load Area Cluster
     connection_points = pgr.getBuildingConnectionPointsFromBc(kcid, bcid)
+    print("connectionPoints", connection_points)
     if len(connection_points) == 1:
         pgr.upsertSubstationSelection(plz, kcid, bcid, connection_points[0])
         return
@@ -49,6 +51,7 @@ def positionSubstation(pgr, plz, kcid, bcid):
 
     # Calculate the sum of distance*load from each vertice to the others
     loads = pgr.generateLoadVector(kcid, bcid)
+    print("LOADSHERE", loads)
     total_load_per_vertice = dist_mat.dot(loads)
 
     # Find the vertice_id of optimal building

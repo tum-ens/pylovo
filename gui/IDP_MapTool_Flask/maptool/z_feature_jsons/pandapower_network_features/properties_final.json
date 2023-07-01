@@ -1,0 +1,827 @@
+{
+      "bus": {
+            "index": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "vn_kv": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "zone": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_vm_pu": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_vm_pu": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "load": {
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "const_z_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "const_i_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "sn_mva": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "scaling": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "controllable": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "sgen": {
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "sn_mva": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "scaling": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "controllable": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "k": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "rx": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "switch": {
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "element": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "et": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "closed": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_ka": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "z_ohm": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "line": {
+            "index": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "from_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "to_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "length_km": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "std_type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "r0_ohm_per_km": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "x0_ohm_per_km": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "c0_nf_per_km": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "g_us_per_km": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "parallel": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "df": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_loading_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "endtemp_degree": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "trafo": {
+            "index": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "std_type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "hv_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "lv_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "vk_percent_characteristic": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },            
+            "vkr_percent_characteristic": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "vk0_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "vkr0_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "mag0_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "mag0_rx": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "si0_hv_partial": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "vector_group": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_step_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_dependent_impedance": 
+            {
+                  "type": "bool",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_step_degree": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_pos": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_phase_shifter": {
+                  "type": "bool",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "parallel": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_loading_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "df": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "pt_percent": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "xn_ohm": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "oltc": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "power_station_unit": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "trafo3w": {
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "std_type": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "hv_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "mv_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "lv_bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_step_degree": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_at_star_point": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "tap_pos": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "ext_grid": {
+            "index": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "name": {
+                  "type": "string",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "bus": {
+                  "type": "int",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "vm_pu": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "va_degree": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_p_mw": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "max_q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "min_q_mvar": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "s_sc_max_mva": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "s_sc_min_mva": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "rx_max": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "rx_min": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "r0x0_max": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "x0x_max": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "in_service": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "controllable": {
+                  "type": "boolean",
+                  "tooltip": "",
+                  "default_val": ""
+            },
+            "slack_weight": {
+                  "type": "float",
+                  "tooltip": "",
+                  "default_val": ""
+            }
+      },
+      "std_type": {
+            "line": {
+                  "name": {
+                        "type": "string",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "r_ohm_per_km": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "x_ohm_per_km": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "max_i_ka": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "c_nf_per_km": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "q_mm2": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "type": {
+                        "type": "string",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "alpha": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  }
+            },
+            "trafo": {
+                  "name": {
+                        "type": "string",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "sn_mva": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vn_hv_kv": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vn_lv_kv": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vk_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vkr_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "pfe_kw": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "i0_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "shift_degree": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_side": {
+                        "type": "string",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_neutral": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_min": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_max": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_step_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_step_degree": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_phase_shifter": {
+                        "type": "boolean",
+                        "tooltip": "",
+                        "default_val": ""
+                  }
+            },
+            "trafo3w": {
+                  "vn_hv_kv": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vn_mv_kv": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vn_lv_kv": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "sn_hv_mva": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "sn_mv_mva": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "sn_lv_mva": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vk_hv_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vk_mv_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vk_lv_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vkr_hv_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vkr_mv_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "vkr_lv_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "pfe_kw": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "i0_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "shift_mv_degree": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "shift_lv_degree": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_side": {
+                        "type": "string",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_neutral": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_min": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_max": {
+                        "type": "int",
+                        "tooltip": "",
+                        "default_val": ""
+                  },
+                  "tap_step_percent": {
+                        "type": "float",
+                        "tooltip": "",
+                        "default_val": ""
+                  }
+            }
+      }
+}

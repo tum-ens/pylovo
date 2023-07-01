@@ -11,7 +11,7 @@ from pandapower.plotting.plotly.mapbox_plot import set_mapbox_token
 import plotly
 
 from syngrid.config_data import *
-from syngrid.config_version import *
+import syngrid.config_version as conf_version
 from syngrid import pgReaderWriter as pg, utils
 
 
@@ -20,11 +20,23 @@ class GridGenerator:
     Generates the grid for the given plz area
     """
 
-    def __init__(self, plz):
-        self.pgr = pg.PgReaderWriter()
-        self.plz = str(plz)
+    def __init__(self, plz, **kwargs):
+        if 'geom_shape' in kwargs:
+            self.geom_shape = kwargs.get('geom_shape')
+            self.plz = str(plz)
+            if len(self.plz) != 6:
+                raise ValueError(f'{self.plz} is not a valid ID. Your custom PLZ needs to have exactly 6 digits and cannot start with a leading 0')
+
+        else :
+            self.plz = str(plz)
+
+        if 'version_id' in kwargs:
+            conf_version.VERSION_ID = kwargs.get('version_id')
+            print("GRID GENERATOR ID", kwargs.get('version_id'), conf_version.VERSION_ID)
+        
+        self.pgr = pg.PgReaderWriter(version_id=conf_version.VERSION_ID)
         self.pgr.insert_version_if_not_exists()
-        self.pgr.insert_parameter_tables(consumer_categories=CONSUMER_CATEGORIES)
+        self.pgr.insert_parameter_tables(consumer_categories=conf_version.CONSUMER_CATEGORIES)
 
     def __del__(self):
         self.pgr.__del__()
@@ -113,8 +125,8 @@ class GridGenerator:
                     print(
                         "no building component deleted. Useless ways and transformers are deleted from tem tables."
                     )
-                elif conn_building_count >= LARGE_COMPONENT_LOWER_BOUND:
-                    cluster_count = int(conn_building_count / LARGE_COMPONENT_DIVIDER)
+                elif conn_building_count >= conf_version.LARGE_COMPONENT_LOWER_BOUND:
+                    cluster_count = int(conn_building_count / conf_version.LARGE_COMPONENT_DIVIDER)
                     self.pgr.updateLargeKmeansCluster(related_vertices, cluster_count)
                     print(f"large component {i} updated")
                 else:
@@ -122,8 +134,8 @@ class GridGenerator:
                     print(f"component {i} updated")
         elif len(component_ids) == 1:
             conn_building_count = self.pgr.countConnectedBuildings(vertices)
-            if conn_building_count >= LARGE_COMPONENT_LOWER_BOUND:
-                cluster_count = int(conn_building_count / LARGE_COMPONENT_DIVIDER)
+            if conn_building_count >= conf_version.LARGE_COMPONENT_LOWER_BOUND:
+                cluster_count = int(conn_building_count / conf_version.LARGE_COMPONENT_DIVIDER)
                 self.pgr.updateLargeKmeansCluster(vertices, cluster_count)
                 print(f" {cluster_count} component updated")
             else:
@@ -148,7 +160,7 @@ class GridGenerator:
         """
         kcid_length = self.pgr.getKcidLength()
         for kcounter in range(kcid_length):
-            kcid = self.pgr.getNextUnfinishedKcid(self.plz)
+            kcid = self.pgr.getNextUnfinishedKcid(self.plz) #passt
             print(f"working on kcid {kcid}")
             # Building clustering
             transformer_list = self.pgr.getIncludedTransformers(kcid)
@@ -180,7 +192,7 @@ class GridGenerator:
         cluster_list = self.pgr.getListFromPlz(self.plz)
         ci_count = 0
         ci_process = 0
-        main_street_available_cables = CABLE_COST_DICT.keys()
+        main_street_available_cables = conf_version.CABLE_COST_DICT.keys()
         for id in cluster_list:
             kcid = id[0]
             bcid = id[1]
@@ -202,7 +214,7 @@ class GridGenerator:
             )
 
             # test cable_cost dict
-            local_length_dict = {c: 0 for c in CABLE_COST_DICT.keys()}
+            local_length_dict = {c: 0 for c in conf_version.CABLE_COST_DICT.keys()}
 
             # create network
             net = pp.create_empty_network()
@@ -237,7 +249,7 @@ class GridGenerator:
                     sim_load = utils.simultaneousPeakLoad(
                         buildings_df, consumer_df, connection_node_list
                     )
-                    Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))  # current in kA
+                    Imax = sim_load / (conf_version.VN * conf_version.V_BAND_LOW * np.sqrt(3))  # current in kA
 
                     local_length_dict = self.pgr.installConsumerCables(
                         branch_deviation,
@@ -246,7 +258,7 @@ class GridGenerator:
                         vertices_dict,
                         Pd,
                         net,
-                        CONNECTION_AVAILABLE_CABLES,
+                        conf_version.CONNECTION_AVAILABLE_CABLES,
                         local_length_dict,
                     )
 
@@ -296,7 +308,7 @@ class GridGenerator:
                     vertices_dict,
                     Pd,
                     net,
-                    CONNECTION_AVAILABLE_CABLES,
+                    conf_version.CONNECTION_AVAILABLE_CABLES,
                     local_length_dict,
                 )
                 # for available load branch, select the min size cable
@@ -444,7 +456,7 @@ class GridGenerator:
             plt.xlabel("trafo_size(kVA)", fontsize=14)
             plt.ylabel("trafo_count", fontsize=14)
             plt.title(
-                "trafo count analysis for VERSION {}".format(VERSION_ID), fontsize=16
+                "trafo count analysis for VERSION {}".format(conf_version.VERSION_ID), fontsize=16
             )
 
         if plot_load_num_per_trafo:
@@ -468,7 +480,7 @@ class GridGenerator:
                 notch=True,
             )
             plt.title(
-                "load and bus number per trafo for VERSION {}".format(VERSION_ID),
+                "load and bus number per trafo for VERSION {}".format(conf_version.VERSION_ID),
                 fontsize=16,
             )
             plt.ylabel("trafo_size(kVA)", fontsize=14)
@@ -493,7 +505,7 @@ class GridGenerator:
                 notch=True,
             )
             plt.title(
-                "sim peak load per trafo for VERSION {}".format(VERSION_ID), fontsize=16
+                "sim peak load per trafo for VERSION {}".format(conf_version.VERSION_ID), fontsize=16
             )
             plt.ylabel("trafo_size(kVA)", fontsize=14)
             plt.xlabel("sim peak load", fontsize=14)
@@ -518,7 +530,7 @@ class GridGenerator:
                 notch=True,
             )
             plt.title(
-                "max and avg distance per trafo for VERSION {}".format(VERSION_ID),
+                "max and avg distance per trafo for VERSION {}".format(conf_version.VERSION_ID),
                 fontsize=16,
             )
             plt.ylabel("trafo_size(kVA)", fontsize=14)
@@ -538,12 +550,12 @@ class GridGenerator:
             plt.pie(
                 cable_length, labels=cable_label, explode=explode_list, autopct="%.1f%%"
             )
-            plt.title("cable installed for VERSION {}".format(VERSION_ID), fontsize=16)
+            plt.title("cable installed for VERSION {}".format(conf_version.VERSION_ID), fontsize=16)
 
         plt.show()
         if save_plots:
             savepath_folder = Path(
-                RESULT_DIR, "figures", f"version_{VERSION_ID}", self.plz
+                RESULT_DIR, "figures", f"version_{conf_version.VERSION_ID}", self.plz
             )
             savepath_folder.mkdir(parents=True, exist_ok=True)
             savepath_file = Path(savepath_folder, "result_analysis_figure.png")
@@ -577,12 +589,12 @@ class GridGenerator:
                 grid_index += 1
 
         figure = vlevel_plotly(
-            net_plot, on_map=True, colors_dict=PLOT_COLOR_DICT, projection="epsg:4326"
+            net_plot, on_map=True, colors_dict=conf_version.PLOT_COLOR_DICT, projection="epsg:4326"
         )
 
         if save_plots:
             savepath_folder = Path(
-                RESULT_DIR, "figures", f"version_{VERSION_ID}", self.plz
+                RESULT_DIR, "figures", f"version_{conf_version.VERSION_ID}", self.plz
             )
             savepath_folder.mkdir(parents=True, exist_ok=True)
             savepath_file = Path(savepath_folder, "trafo_on_map.html")
@@ -595,7 +607,7 @@ class GridGenerator:
         """
         Save one grid to file and to database
         """
-        savepath_folder = Path(RESULT_DIR, "grids", f"version_{VERSION_ID}", self.plz)
+        savepath_folder = Path(RESULT_DIR, "grids", f"version_{conf_version.VERSION_ID}", self.plz)
         savepath_folder.mkdir(parents=True, exist_ok=True)
         filename = f"kcid{kcid}bcid{bcid}.json"
         savepath_file = Path(savepath_folder, filename)
@@ -612,5 +624,71 @@ class GridGenerator:
         if postcode_count:
             raise ValueError(
                 f"The grids for the postcode area {self.plz} is already generated "
-                f"for the version {VERSION_ID}."
+                f"for the version {conf_version.VERSION_ID}."
             )
+
+
+    def generate_grid_from_geom(self):
+        self.check_if_results_exist() #passt
+        self.cache_and_preprocess_static_objects_from_geom() #passt
+        self.preprocess_ways_from_geom() #passt
+        self.apply_kmeans_clustering() #passt
+        self.position_substations() #passt
+        self.install_cables() #passt
+        self.pgr.saveInformationAndResetTables(plz=self.plz)
+
+
+    def cache_and_preprocess_static_objects_from_geom(self):
+        """
+        Caches static objects (postcode, buildings, transformers) from raw data tables and
+        stores in temporary tables.
+        FROM: postcode, res, oth, transformers
+        INTO: postcode_result, buildings_tem
+        :return:
+        """
+
+        self.pgr.copyPostcodeResultTableWithNewShape(self.plz, self.geom_shape) #passt
+        print(f"working on plz {self.plz}")
+
+        self.pgr.setResidentialBuildingsTableFromShapefile(self.plz, self.geom_shape) #passt
+        self.pgr.setOtherBuildingsTableFromShapefile(self.plz, self.geom_shape) #passt
+        #print(self.pgr.test__getBuildingGeoJSONFromTEM())
+        print("buildings_tem table prepared")
+        self.pgr.removeDuplicateBuildings() #passt
+        print("duplicate buildings removed from buildings_tem")
+
+        self.pgr.setLoadareaClusterSiedlungstyp(self.plz) #passt
+        print("hausabstand and siedlungstyp in postcode_result")
+
+        unloadcount = self.pgr.setBuildingPeakLoad() #passt
+        print(
+            f"building peakload calculated in buildings_tem, {unloadcount} unloaded buildings are removed from "
+            f"buildings_tem"
+        )
+        too_large = self.pgr.removeTooLargeConsumers() #passt
+        print(f"{too_large} too large consumers removed from buildings_tem")
+
+        self.pgr.assignCloseBuildings() #passt
+        print("all close buildings assigned and removed from buildings_tem")
+
+        self.pgr.insertTransformers(self.plz) #passt
+        print("transformers inserted in to the buildings_tem table")
+        self.pgr.dropIndoorTransformers() #passt
+        print("indoor transformers dropped from the buildings_tem table")
+
+    def preprocess_ways_from_geom(self):
+        """
+        Cache ways, create network, connect buildings to the ways network
+        FROM: ways, buildings_tem
+        INTO: ways_tem, buildings_tem, ways_tem_vertices_pgr, ways_tem_
+        :return:
+        """
+        ways_count = self.pgr.SetWaysTemTableFromShapefile(self.geom_shape) #passt
+        print(f"ways_tem table filled with {ways_count} ways")
+        self.pgr.connectUnconnectedWays() #passt
+        print("ways connection finished in ways_tem")
+        self.pgr.drawBuildingConnection() #passt
+        print("building connection finished in ways_tem")
+        self.pgr.updateWaysCost() #passt
+        unconn = self.pgr.setVerticeId() #passt
+        print(f"vertice id set, {unconn} buildings with no vertice id")

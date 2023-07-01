@@ -1,0 +1,12 @@
+<div class="optionsPopup">
+    <div class="formPopup" id="urbsNewTrafoDataPopupForm">
+      <form class="formContainer">
+        Enter sn_mva value:
+        <div class="form-popup__version-select">
+            <input type="number" name="newTrafoDataTextInput" id="newTrafoDataTextInput" placeholder="sn_mva" onchange="maptool_urbs_trans.trafoDataFormCheckValidInput(this.value)">
+        </div>
+        <button type="button" class="btn" id="newTrafoDataCreateButton" onclick="maptool_urbs_trans.createNewTrafoData(document.getElementById('newTrafoDataTextInput').value)" disabled>Add Trafo Data</button>
+        <button type="button" class="btn cancel" onclick="maptool_urbs_trans.closeNewTrafoDataForm()">Cancel</button>
+      </form>
+    </div>
+  </div>

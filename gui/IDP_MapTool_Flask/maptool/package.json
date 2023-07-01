@@ -1,0 +1,14 @@
+{
+  "name": "maptool",
+  "version": "1.0.0",
+  "description": "TUM IDP project",
+  "main": "index.js",
+  "dependencies": {
+    "leaflet": "^1.9.3"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

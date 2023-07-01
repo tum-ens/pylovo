@@ -1,0 +1,4 @@
+name,commodity,cap_up,eff_in,eff_out,inv_cost_p,inv_cost_c,fix_cost_p,fix_cost_c,var_cost_p,var_cost_c,wacc,depreciation,init,discharge,ep_ratio,c_block,p_block,decommissionable,decom-saving-p,decom-saving-c
+battery_private,electricity,,0.96,1,0,500,0,5,0.001,0,0.07,20,,0,3.0,,,,,
+heat_storage,common_heat,,0.9,1,99,200,0,0,0.001,0,0.07,20,,0,,,,,,
+mobility_storage,mobility,%inst_cap,1.0,1,0,0,0,0,0.001,0,0.07,20,,0,,,,,,

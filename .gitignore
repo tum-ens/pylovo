@@ -8,3 +8,6 @@ results/grids/
 results/grid_parameters/
 
 examples/results/
+gui/IDP_MapTool_Flask/maptool/urbs_results/plots/cap_pro.html
+gui/IDP_MapTool_Flask/maptool/urbs_results/plots/e_pro_in.html
+gui/IDP_MapTool_Flask/maptool/urbs_results/plots/e_pro_out.html
