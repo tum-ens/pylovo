@@ -30,9 +30,10 @@ var maptool_urbs_timevareff = function() {
 
             let lengths = [Object.keys(TimevareffObject.charging_station).length, 
               Object.keys(TimevareffObject.heatpump_air).length,
-              Object.keys(TimevareffObject.heatpump_air_heizstrom).length,
-]
-
+              Object.keys(TimevareffObject.heatpump_air_heizstrom).length,]
+            
+          //checkbox values are stored in an array as strings of 0 and 1
+          //each array entry contains one string and represents all checkboxes for one profile
             for (let i = 0; i < listLength; i++) {
               TimevareffObject.bus_timevareff[i] = lengths.map((i => length => '0'.repeat(length - 1))(0));
               //TimevareffObject.bus_timevareff[i] = new Array(3).fill('0'.repeat(Object.keys(TimevareffObject.charging_station).length));
@@ -40,6 +41,11 @@ var maptool_urbs_timevareff = function() {
         });
     }
 
+  /**
+   * TODO: generalize this function probably
+   * when the user selects an element in the ui in the timevareff tab, this function sets all checkboxes for that element to the right value
+   * @param {event target object} target 
+   */
     function fillSelectedFeatureTimevareffEditor(target) {
       let sel = document.getElementById('timevareffSelect');
       maptool_urbs_setup.resetLoadBusStyle(target);
@@ -66,6 +72,14 @@ var maptool_urbs_timevareff = function() {
       }
   }
 
+  /**
+   * TODO: generalize function or at least rename it (needs to generalize select Id and FeatureObject)
+   * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
+   * @param {html element} checkbox 
+   * @param {string} demand_type 
+   * @param {int} key 
+   * @param {int} demandIndex 
+   */
     function check_uncheck_demand(checkbox, demand_type, key, demandIndex) {
         let listElem = document.getElementById('timevareffSelect').selectedIndex;
         let chars = TimevareffObject.bus_timevareff[listElem][demandIndex].split('')
@@ -104,6 +118,12 @@ var maptool_urbs_timevareff = function() {
         TimevareffObject.bus_timevareff[listElem][demandIndex] = chars.join('');
     }
 
+   /** TODO: Generalize this function
+   * generates html elements for the checkboxes
+   * @param {list} data  list containing all possible time series of a profile, could be swapped out with just length value tbh
+   * @param {string} name key for getting the correct html div element and setting the checkbox onclick function
+   * @param {int} index secondary key for setting the checkbox onclick function
+   */
     function populatTimevareffEditor (data, name, index) {
         let testDiv = document.getElementById(name + "Panel")
         for (key in data) {

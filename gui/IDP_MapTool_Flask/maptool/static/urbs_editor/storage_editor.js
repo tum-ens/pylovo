@@ -57,6 +57,9 @@ var maptool_urbs_storage = function () {
         });
     }
 
+    /**
+     * @param {list[string]} commodities 
+     */
     function fillStorageEditorCommodityList(commodities) {
         let commoditySelect = document.getElementById('storageFormDiv').querySelector('#commodity');
         for (idx in commodities) {
@@ -67,6 +70,9 @@ var maptool_urbs_storage = function () {
         }
     }
 
+    /**
+     * sets up handsontable html element for sto_conf
+     */
     function createSto_Conf_Editor() {
         var data = [];
         var headers_c = ['urbs_name'];

@@ -25,7 +25,7 @@ var maptool_net_display = function() {
     }
 
     /**
-     * displays the right std_types editor window and fills the input fields with the rigth values
+     * displays the right std_types editor window and fills the input fields with the right values
      * @param {html select element} sel 
      * @param {string} listName 
      */

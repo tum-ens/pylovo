@@ -463,7 +463,7 @@ var maptool_urbs_setup = function() {
         if(featureName == 'pro_prop') {
             document.getElementById(featureName + 'Editor').style.display='inline-block';
             fillSelectedFeatureEditorFields(maptool_urbs_process.ProcessObject.pro_propList[sel.value], featureName);
-            console.log(sel.value);
+            console.log(maptool_urbs_process.ProcessObject.pro_com_propList);
             maptool_urbs_process.fillSecondaryEditorList(maptool_urbs_process.ProcessObject.pro_com_propList[sel.value]);
         }
         if(featureName == 'commodity') {

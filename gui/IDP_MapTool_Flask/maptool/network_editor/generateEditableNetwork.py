@@ -21,27 +21,38 @@ trafo_properties = data['trafo']
 trafo3w_properties = data['trafo3w']
 f.close()
 
-def extractPropertiesFromNet(input, index, properties):
+#input (dict): contains all secondary features of a type for a single primary feature (e.g. all loads of a bus)
+def extractPropertiesFromNet(input):
     if input.empty:
         return {}
     output = {}
     input = input.fillna('')
+    #a feature may have multiple secondary features of a type
+    #we add all of them with simple int counters as indices
     for idx in range(len(input.index)):
         output[idx] = {}
         for entry in input:
             output[idx][entry] = input.T.loc[entry].iloc[idx]
     return output
 
+#creates and returns a geoJSON object for a feature of the original pandapower network
+#isLines                (bool): flag for if the geojson object to create is going to be a line or point object
+#ppdata                 (dict): the pandapower network object
+#featureName            (string): determines how we handle feature extraction and geojson creation
+#featureProperties      (list[string]): contains the names of all properties for a feature (e.g. bus, line etc)
+#propertyGroupNames     (list[string]): only relevant for bus features; contains names of all secondary features we want to add (switch, sgen, load)
+#propertyGroupFeatures  (list[list[string]]): only relevant for bus features; contains the names of all properties for a secondary feature 
 def createFeatures (isLines, ppdata, featureName, featureProperties, propertyGroupNames, propertyGroupFeatures):
     input_data = ppdata[featureName]
     input_data = input_data.fillna('')
     input_geoCoords = pd.DataFrame()
-
+    
+    #only busses and lines have their own coordinate data, ext_grids and trafo geojsons get coords based on the busses they're attached to
     if featureName == 'bus' or featureName == 'line':
         input_geoCoords = ppdata[featureName + '_geodata']
+        #the bus coords in the pandapower network by default have a column we don't need, so we drop it
         if featureName == 'bus':
             input_geoCoords = input_geoCoords.drop(['coords'], axis=1)
-
     else:
         input_geoCoords = ppdata.bus_geodata
         temp = pd.DataFrame()
@@ -63,6 +74,7 @@ def createFeatures (isLines, ppdata, featureName, featureProperties, propertyGro
 
     input_geoJSON = {"type" : "FeatureCollection", "features": []}
 
+    #each set of coordinates defines a feature to be turned into a geojson
     for point in input_geoCoords.T:
         currentFeatureProperties = {}
         index = 0
@@ -76,16 +88,19 @@ def createFeatures (isLines, ppdata, featureName, featureProperties, propertyGro
                         currentFeatureProperties[property] = input_data.loc[index][property]
                     else:
                         currentFeatureProperties[property] = ""
-
+        #if a feature has secondary features (e.g bus and load) they are extracted here and added to the geojson properties
         if propertyGroupNames and propertyGroupFeatures:
             for property in propertyGroupNames:
                 if property in ppdata:
                     try:
                         propertyGroup = ppdata[property].loc[ppdata[property].bus == index]
                     except KeyError:
+                        #we want to include the secondary feature in our geojson even if it doesn't exist in the original net, 
+                        #since the user might want to add it in the gui
                         propertyGroup = pd.DataFrame()
-                extractedProperties = extractPropertiesFromNet(propertyGroup, index, propertyGroupFeatures[propertyGroupNames.index(property)])
+                extractedProperties = extractPropertiesFromNet(propertyGroup)
                 currentFeatureProperties[property] = extractedProperties
+        
         inputCoordinates = input_geoCoords.loc[point].tolist() 
         if featureName == 'line':
             inputCoordinates = inputCoordinates[0]   

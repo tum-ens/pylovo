@@ -8,6 +8,10 @@ var maptool_urbs_demand = function () {
     "bus_demands" : []
   }
 
+  /**
+   * retrieves all demand profiles from the backend
+   * @returns Promise to make sure functions during setup are called in order
+   */
   function fetchDemandProfiles() {
     return fetch('urbs/demand_profiles')
     .then(function (response) {
@@ -36,7 +40,9 @@ var maptool_urbs_demand = function () {
                   Object.keys(DemandObject.demand_mobility).length,
                   Object.keys(DemandObject.demand_space_heat).length,
                   Object.keys(DemandObject.demand_water_heat).length]
-
+        
+        //checkbox values are stored in an array as strings of 0 and 1
+        //each array entry contains one string and represents all checkboxes for one profile
         for (let i = 0; i < listLength; i++) {
             DemandObject.bus_demands[i] = lengths.map((i => length => '0'.repeat(length - 1))(0));
             //DemandObject.bus_demands[i] = new Array(5).fill('0'.repeat(Object.keys(DemandObject.demand_electricity).length - 1));
@@ -44,7 +50,10 @@ var maptool_urbs_demand = function () {
     })
   }
 
-  
+  /**
+   * onclick function for map features, fills editor with the demand info of the clicked feature
+   * @param {event target object} target map feature that has been selected
+   */
   function fillSelectedFeatureDemandEditor(target) {
       let sel = document.getElementById('demandSelect');
       maptool_urbs_setup.resetLoadBusStyle(target)
@@ -73,6 +82,13 @@ var maptool_urbs_demand = function () {
   
   let charts = [];
   
+  /**
+   * TODO: switch demand data with Object.keys(demand_data).length - 1 as parameter, no need to pass entire object
+   * creates checkboxes for every profile of a demand type and attaches them to the correct panel in the demand editor div
+   * @param {dict} demand_data 
+   * @param {string} demandName key for getting html div container and setting checkbox onclick functions
+   * @param {int} demandIndex needed for setup of the onclick function
+   */
   function populateDemandEditor (demand_data, demandName, demandIndex) {
       let testDiv = document.getElementById(demandName + "Panel")
       for (let key = 0; key < Object.keys(demand_data).length - 1; key++) {
@@ -90,10 +106,17 @@ var maptool_urbs_demand = function () {
       }
   }
   
-  
+  /**
+   * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
+   * @param {html element} checkbox 
+   * @param {string} demand_type 
+   * @param {int} key 
+   * @param {int} demandIndex 
+   */
   function check_uncheck_demand(checkbox, demand_type, key, demandIndex) {
       let listElem = document.getElementById('demandSelect').selectedIndex;
       let chars = DemandObject.bus_demands[listElem][demandIndex].split('')
+      //add graph to chart
       if (checkbox.checked) {
           let data = DemandObject[demand_type][key];
   
@@ -115,6 +138,7 @@ var maptool_urbs_demand = function () {
           chars[key] = '1';
   
       }
+      //remove graph from chart
       else {
           let option = charts[demandIndex].getOption();
           let index = option.series.findIndex(data => data.name === 'Test' + checkbox.name);
@@ -147,6 +171,7 @@ var maptool_urbs_demand = function () {
     });
   }
   
+  //sets up the charts displaying the profile timeline for every demand type
   let graphs = document.getElementsByClassName("feature-editor__selected-feature-editor__demand__graph");
   for (let i = 0; i < graphs.length; i++) {
       var myChart = echarts.init(graphs[i]);

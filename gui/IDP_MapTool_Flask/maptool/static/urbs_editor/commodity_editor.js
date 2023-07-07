@@ -113,9 +113,6 @@ var maptool_urbs_commodity = function () {
                 commodityList.add(option);
                 CommodityObject.commodityPropertiesList[com_name] = JSON.parse(JSON.stringify(CommodityObject.commodityPropertiesTemplate));
                 
-                //we insert a new column into the commodity table
-                maptool_urbs_process.hot.alter('insert_col', maptool_urbs_process.hot.countCols(), 1)
-                maptool_urbs_process.hot.headers[maptool_urbs_process.hot.headers.length - 1] = com_name;
         
                 //TODO: Replace with addCommToProcessCreationFormList function
                 let pro_propCommOption = document.createElement("option");

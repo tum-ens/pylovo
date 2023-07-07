@@ -1,6 +1,8 @@
 import json
 import pandapower as pp
 
+#featureProperties  (dict): dict containing names and data types of all properties for a feature type (e.g bus, line etc)
+#featureListElement (dict): dict containing data for a single feature that was returned from the frontend
 def createFeatureFromGeoJSONProperties(featureProperties, featureListElement):
     new_feature_data = {}
     for property in featureProperties:
@@ -38,7 +40,6 @@ switch_features = data['switch']
 trafo_properties = data['trafo']
 trafo3w_properties = data['trafo3w']
 f.close()
-
 
 def recreatePandapowerNetwork(net_features):
     newNet = pp.create_empty_network()
@@ -99,7 +100,6 @@ def recreatePandapowerNetwork(net_features):
         if not bus['switch'] == {}:
             switchList.append(bus['switch'])
     
-
     for loads in loadList:
         # print(loads)
         for key in loads:
