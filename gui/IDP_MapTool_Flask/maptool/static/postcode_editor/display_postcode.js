@@ -267,14 +267,21 @@ var maptool_display_postcode = function (){
     function returnSelectedBuildings() {
         let newID = document.getElementById("newNetIDInput").value;
         let newVersion = document.getElementById("newNetVersionInput").value;
-    
-        console.log(newID, newVersion);
+        let buildings = [];
+
+
+        map.eachLayer( function(layer) {
+            if(layer.feature != undefined) {
+                buildings.push(layer.feature.properties);
+            }
+        } );
+        console.log(newID, newVersion, buildings);
         
         fetch("http://127.0.0.1:5000/postcode/area/new-net-id", {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'},
-            body: JSON.stringify({ID: newID, version: newVersion})
+            body: JSON.stringify({"ID": newID, "version": newVersion, "buildings": buildings})
         }).then(function (response) {
             if(response.status == 400) {
                 alert("Version " + newVersion +  " already exists for ID " + newID);

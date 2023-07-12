@@ -95,10 +95,23 @@ def postcodeAreaNewId():
         print(request.get_json())
         plz = request.get_json()['ID']
         version = request.get_json()['version']
+        buildings = request.get_json()['buildings']
+
+        res = []
+        oth = []
+
+        for building in buildings:
+            if building['type'] == 'res':
+                res.append(building['id'])
+            elif building['type'] == 'oth':
+                oth.append(building['id'])
+
+        print(res, oth)
+
         shape = session["new_area_shape"]
         gg = GridGenerator(plz=str(plz), geom_shape=shape, version_id=str(version))
         try:
-            gg.generate_grid_from_geom()
+            gg.generate_grid_from_geom(buildings={'res': res, 'oth': oth})
         except ValueError as ve:
             print(ve)
             return Response(status=400)

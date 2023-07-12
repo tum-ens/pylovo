@@ -628,9 +628,9 @@ class GridGenerator:
             )
 
 
-    def generate_grid_from_geom(self):
+    def generate_grid_from_geom(self, buildings):
         self.check_if_results_exist() #passt
-        self.cache_and_preprocess_static_objects_from_geom() #passt
+        self.cache_and_preprocess_static_objects_from_geom(buildings) #passt
         self.preprocess_ways_from_geom() #passt
         self.apply_kmeans_clustering() #passt
         self.position_substations() #passt
@@ -638,7 +638,7 @@ class GridGenerator:
         self.pgr.saveInformationAndResetTables(plz=self.plz)
 
 
-    def cache_and_preprocess_static_objects_from_geom(self):
+    def cache_and_preprocess_static_objects_from_geom(self, buildings):
         """
         Caches static objects (postcode, buildings, transformers) from raw data tables and
         stores in temporary tables.
@@ -650,8 +650,10 @@ class GridGenerator:
         self.pgr.copyPostcodeResultTableWithNewShape(self.plz, self.geom_shape) #passt
         print(f"working on plz {self.plz}")
 
-        self.pgr.setResidentialBuildingsTableFromShapefile(self.plz, self.geom_shape) #passt
-        self.pgr.setOtherBuildingsTableFromShapefile(self.plz, self.geom_shape) #passt
+        #self.pgr.setResidentialBuildingsTableFromShapefile(self.plz, self.geom_shape) #passt
+        #self.pgr.setOtherBuildingsTableFromShapefile(self.plz, self.geom_shape) #passt
+        self.pgr.setResidentialBuildingsTableFromOSMID(self.plz, buildings['res']) #passt
+        self.pgr.setOtherBuildingsTableFromOSMID(self.plz, buildings['oth']) #passt
         #print(self.pgr.test__getBuildingGeoJSONFromTEM())
         print("buildings_tem table prepared")
         self.pgr.removeDuplicateBuildings() #passt

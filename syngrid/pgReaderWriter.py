@@ -1546,7 +1546,7 @@ class PgReaderWriter:
     def setResidentialBuildingsTableFromShapefile(self, plz, shape, **kwargs):
         """
         * Fills buildings_tem with residential buildings which are inside the selected polygon
-        * Sets the loadarea cluster to first plz that intersects  (TODO: BAD, TEMPORARY, NEEDS TO BE REPLACED WITH PROPERLY THOUGHT OUT ID)
+        * Sets the loadarea cluster to first plz that intersects
         :param shape:
         :return:
         """
@@ -1562,7 +1562,7 @@ class PgReaderWriter:
     def setOtherBuildingsTableFromShapefile(self, plz, shape, **kwargs):
         """
         * Fills buildings_tem with other buildings which are inside the selected polygon
-        * Sets the loadarea cluster to first plz that intersects shapefile (TODO: BAD, TEMPORARY, NEEDS TO BE REPLACED WITH PROPERLY THOUGHT OUT ID)
+        * Sets the loadarea cluster to first plz that intersects shapefile
         * Sets all floors to 1
         :param shape:
         :return:
@@ -1576,6 +1576,41 @@ class PgReaderWriter:
             UPDATE buildings_tem SET in_loadarea_cluster = %(p)s WHERE in_loadarea_cluster ISNULL;
             UPDATE buildings_tem SET floors = 1 WHERE floors ISNULL;"""
         self.cur.execute(query, {"v": conf_version.VERSION_ID, "p": plz, "shape": shape})
+        print(self.cur.statusmessage)
+
+    def setResidentialBuildingsTableFromOSMID(self, plz, buildings, **kwargs):
+        """
+        * Fills buildings_tem with residential buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects 
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """INSERT INTO buildings_tem (osm_id, area, type, geom, center, floors)
+                SELECT osm_id, area, building_t, geom, ST_Centroid(geom), floors::int FROM res
+                WHERE res.osm_id = ANY(%(buildings)s);
+                UPDATE buildings_tem SET in_loadarea_cluster = %(p)s WHERE in_loadarea_cluster ISNULL;"""
+        self.cur.execute(query, {"v": conf_version.VERSION_ID, "p": plz, "buildings": buildings})
+        print(self.cur.statusmessage)
+
+    def setOtherBuildingsTableFromOSMID(self, plz, buildings, **kwargs):
+        """
+        * Fills buildings_tem with other buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects shapefile
+        * Sets all floors to 1
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """INSERT INTO buildings_tem(osm_id, area, type, geom, center)
+                SELECT osm_id, area, use, geom, ST_Centroid(geom) FROM oth AS o 
+                WHERE o.use in ('Commercial', 'Public')
+                AND o.osm_id = ANY(%(buildings)s);
+            UPDATE buildings_tem SET in_loadarea_cluster = %(p)s WHERE in_loadarea_cluster ISNULL;
+            UPDATE buildings_tem SET floors = 1 WHERE floors ISNULL;"""
+        self.cur.execute(query, {"v": conf_version.VERSION_ID, "p": plz, "buildings": buildings})
         print(self.cur.statusmessage)
 
     def getConnectedComponent(self):
