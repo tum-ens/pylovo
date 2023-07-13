@@ -5,9 +5,12 @@ import pandapower as pp
 from maptool.network_editor.generateEditableNetwork import createGeoJSONofNetwork
 import json
 
-#When user submits postal code or area selection in gui we return the corresponding postal code area boundary
+
 @bp.route('/postcode', methods=['GET', 'POST'])
 def postcode():
+    """
+    When user submits postal code or area selection in gui we return the corresponding postal code area boundary
+    """
     if request.method == 'POST':
         plz = {'value' : request.get_json()}
         session['plz'] = plz

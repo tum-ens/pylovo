@@ -9,19 +9,23 @@ Pylovo GUI
 Pylovo is a python tool for low-voltage distribution grid generation. This documentation
 concerns itself mainly with the code and usage of its web-based user interface.
 
-Check out the :doc:`usage` section for further information, including how to
-:ref:`install <installation>` the project.
+Check out the :doc:`setup` section for further information, including how to
+:ref:`install <installation>` the project and :ref:`connect <database_connection>` to the pylovo database.
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
+
+.. automodule:: maptool.postcode_editor.routes
+      :members:
 
 Contents
 --------
 
 .. toctree::
 
-   usage
+   setup
+   usage/usage
 
 
 

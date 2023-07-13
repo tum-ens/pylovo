@@ -1,4 +1,4 @@
-Usage
+Setup
 *****
 
 .. _installation:
@@ -47,14 +47,19 @@ to the IDP_Maptool_Flask folder and running the following commands
     cd path/to/repo/pylovo/gui/IDP_Maptool_Flask
     flask --app maptool --debug run
 
+.. _database_connection:
+
 Database connection
 ===================
 
-To gain access to the pylovo database you will need to request a username and password from the ENS chair.
-If you are working from your own machine you will also need to utilize a VPN to connect to the MWN network, which us a prerequisite for connecting to the database server. We recommend using EduVPN_ for this purpose.
-Once you have them you can open a tunnel to the database in a terminal of your choice.
+| To gain access to the pylovo database you will need to request a username and password from the ENS chair.
+| If you are working from your own machine you will also need to utilize a VPN to connect to the MWN network, 
+  which us a prerequisite for connecting to the database server. We recommend using EduVPN_ for this purpose. 
+  Follow the instructions in the link to set up a connection.
+  
+Once you have received username and password you can open a tunnel to the database in a terminal of your choice.
 ::
     ssh -L 1111:localhost:5432 [username]@10.195.1.137
 
-Running the user interface
-===========================
+You will need to connect to the database every time you use pylovo.
+

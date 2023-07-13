@@ -11,10 +11,16 @@ copyright = '2023, Daniel Baur'
 author = 'Daniel Baur'
 release = '2023'
 
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath('../../gui/IDP_Maptool_Flask'))
+autodoc_mock_imports = ['flask', 'syngrid']
+
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage']
 
 templates_path = ['_templates']
 exclude_patterns = []
