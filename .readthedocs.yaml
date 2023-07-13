@@ -12,7 +12,7 @@ conda:
 build:
   os: ubuntu-22.04
   tools:
-    python: "3.8.16"
+    python: "3.8"
     # You can also specify other tool versions:
     # nodejs: "19"
     # rust: "1.64"
