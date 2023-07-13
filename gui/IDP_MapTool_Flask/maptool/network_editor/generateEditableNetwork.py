@@ -1,25 +1,6 @@
 import pandas as pd
 import json
-
-f = open('maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json')
-data = json.load(f)
-
-line_std_properties = data['std_type']['line']
-trafo_std_properties = data['std_type']['trafo']
-trafo3w_std_properties = data['std_type']['trafo3w']
-
-line_properties = data['line']
-
-ext_grid_properties = data['ext_grid']
-
-bus_properties = data['bus']
-load_features = data['load']
-sgen_features = data['sgen']
-switch_features = data['switch']
-
-trafo_properties = data['trafo']
-trafo3w_properties = data['trafo3w']
-f.close()
+import os
 
 #input (dict): contains all secondary features of a type for a single primary feature (e.g. all loads of a bus)
 def extractPropertiesFromNet(input):
@@ -117,6 +98,29 @@ def extractStdTypes(ppdata):
 
 
 def createGeoJSONofNetwork(net, bus, trafo, line, ext_grid, std_types):
+    documentation_path =  os.path.abspath('../gui/IDP_Maptool_Flask/maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json')
+    directory_path = 'maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json'
+    f = open(directory_path)
+    data = json.load(f)
+
+    line_std_properties = data['std_type']['line']
+    trafo_std_properties = data['std_type']['trafo']
+    trafo3w_std_properties = data['std_type']['trafo3w']
+
+    line_properties = data['line']
+
+    ext_grid_properties = data['ext_grid']
+
+    bus_properties = data['bus']
+    load_features = data['load']
+    sgen_features = data['sgen']
+    switch_features = data['switch']
+
+    trafo_properties = data['trafo']
+    trafo3w_properties = data['trafo3w']
+    f.close()
+
+
     output = {}
     output['bus'] = createFeatures(False, net, 'bus', bus_properties, ['load', 'sgen', 'switch'], [load_features, sgen_features, switch_features]) if bus else {}
     output['trafo'] = createFeatures(True, net, 'trafo', trafo_properties, '', '') if trafo else {}

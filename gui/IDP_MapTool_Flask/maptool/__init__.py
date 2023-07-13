@@ -54,7 +54,8 @@ def create_app(test_config=None):
     app.register_blueprint(network_bp)
     app.register_blueprint(urbs_bp)
     app.register_blueprint(urbs_results_bp)
-
+    
+    session["json_path_key"] = True
 
 
     #On first opening, display postal code selection gui

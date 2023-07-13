@@ -18,6 +18,9 @@ Check out the :doc:`setup` section for further information, including how to
 
 .. automodule:: maptool.postcode_editor.routes
       :members:
+.. automodule:: maptool.network_editor.recreatePandapowerNetwork
+      :members:
+
 
 Contents
 --------

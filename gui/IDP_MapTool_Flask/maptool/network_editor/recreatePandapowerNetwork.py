@@ -1,5 +1,6 @@
 import json
 import pandapower as pp
+import os
 
 #featureProperties  (dict): dict containing names and data types of all properties for a feature type (e.g bus, line etc)
 #featureListElement (dict): dict containing data for a single feature that was returned from the frontend
@@ -21,27 +22,33 @@ def createFeatureFromGeoJSONProperties(featureProperties, featureListElement):
 
     return new_feature_data
 
-f = open('maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json')
-data = json.load(f)
-
-line_std_properties = data['std_type']['line']
-trafo_std_properties = data['std_type']['trafo']
-trafo3w_std_properties = data['std_type']['trafo3w']
-
-line_properties = data['line']
-
-ext_grid_properties = data['ext_grid']
-
-bus_properties = data['bus']
-load_features = data['load']
-sgen_features = data['sgen']
-switch_features = data['switch']
-
-trafo_properties = data['trafo']
-trafo3w_properties = data['trafo3w']
-f.close()
-
 def recreatePandapowerNetwork(net_features):
+    """
+        Hello World I guess
+    """
+    documentation_path =  os.path.abspath('../gui/IDP_Maptool_Flask/maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json')
+    runtime_path = 'maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json'
+    f = open(runtime_path)
+    data = json.load(f)
+
+    line_std_properties = data['std_type']['line']
+    trafo_std_properties = data['std_type']['trafo']
+    trafo3w_std_properties = data['std_type']['trafo3w']
+
+    line_properties = data['line']
+
+    ext_grid_properties = data['ext_grid']
+
+    bus_properties = data['bus']
+    load_features = data['load']
+    sgen_features = data['sgen']
+    switch_features = data['switch']
+
+    trafo_properties = data['trafo']
+    trafo3w_properties = data['trafo3w']
+    f.close()
+
+
     newNet = pp.create_empty_network()
 
     line_std_typesList = net_features['line_stdList']

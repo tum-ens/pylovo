@@ -15,8 +15,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.abspath('../../gui/IDP_Maptool_Flask'))
-autodoc_mock_imports = ['flask', 'syngrid']
-
+sys.path.insert(0, os.path.abspath('../..'))
+print(sys.path)
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
