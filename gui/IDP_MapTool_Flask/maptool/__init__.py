@@ -5,7 +5,7 @@
 import sys
 import os
 
-from flask import Flask, render_template, jsonify, request, session
+from flask import Flask, render_template, session
 
 #--------------------------------PURELY FOR DEBUG--------------------------------#
 #uses a generic network to test visualization and editabilty in case the database is unavailable again
@@ -55,9 +55,6 @@ def create_app(test_config=None):
     app.register_blueprint(urbs_bp)
     app.register_blueprint(urbs_results_bp)
     
-    session["json_path_key"] = True
-
-
     #On first opening, display postal code selection gui
     @app.route('/')
     def home():

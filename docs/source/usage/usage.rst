@@ -1,9 +1,6 @@
 Usage
 *****
 
-.. _maptool: http://127.0.0.1:5000
-
-
 Starting the webserver
 ===========================
 First, you need to activate the virtual environment, navigate to the tool directory and start the flask server
@@ -25,8 +22,11 @@ Accessing the tool
 | Open a browser of your choice and enter the address `http://127.0.0.1:5000 <http://127.0.0.1:5000>`_.
 | You should now have the following view:
 
-[INSERT IMAGE HERE]
+.. image:: ../images/maptool_view_default.png
+    :width: 800
+    :alt: Default view
 
+| The tool opens to the area selection page by default.
 
 Using the tool
 ==============

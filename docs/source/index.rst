@@ -16,12 +16,6 @@ Check out the :doc:`setup` section for further information, including how to
    :maxdepth: 2
    :caption: Contents:
 
-.. automodule:: maptool.postcode_editor.routes
-      :members:
-.. automodule:: maptool.network_editor.recreatePandapowerNetwork
-      :members:
-
-
 Contents
 --------
 
@@ -29,7 +23,7 @@ Contents
 
    setup
    usage/usage
-
+   dev/development
 
 
 Indices and tables
