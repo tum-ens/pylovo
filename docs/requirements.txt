@@ -1,0 +1,11 @@
+flask==2.2.2
+pandapower==2.11.1
+pandas
+numpy
+sqlalchemy<2
+psycopg2
+scipy
+matplotlib
+plotly
+geopandas
+contextily
