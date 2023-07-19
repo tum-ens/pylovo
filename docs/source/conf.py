@@ -14,14 +14,15 @@ release = '2023'
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath('../../gui/IDP_Maptool_Flask/maptool'))
+sys.path.insert(0, os.path.abspath('../../gui/IDP_Maptool_Flask'))
 sys.path.insert(0, os.path.abspath('../..'))
-print(sys.path)
+sys.path.insert(0, os.path.abspath('..'))
+print("SYSPATH", sys.path)
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension']
-autoapi_dirs = ['../../gui/IDP_Maptool_Flask/maptool']
+autoapi_dirs = ['../../gui/IDP_MapTool_Flask/maptool']
 templates_path = ['_templates']
 exclude_patterns = []
 
