@@ -23,6 +23,7 @@ print("SYSPATH", sys.path)
 
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension']
 autoapi_dirs = ['../../gui/IDP_MapTool_Flask/maptool']
+
 templates_path = ['_templates']
 exclude_patterns = []
 
