@@ -7,6 +7,8 @@ import subprocess
 from sqlalchemy import create_engine
 
 from syngrid.config_data import *
+# from raw_data.import_building_data import OGR_FILE_LIST
+# uncomment for automated building import of buildings in regiostar_samples
 
 
 class SyngridDatabaseConstructor:
@@ -71,9 +73,14 @@ class SyngridDatabaseConstructor:
                 f"Table name {table_name} is not a valid parameter value for the function create_table. See config.py"
             )
 
-    def ogr_to_db(self):
+    def ogr_to_db(self, ogr_file_list):
+        """
+            OGR/GDAL is a translator library for raster and vector geospatial data formats
+            inserts building data specified in OGR_FILE_LIST into syngrid_db
+        """
 
-        for file_dict in OGR_FILE_LIST:
+
+        for file_dict in ogr_file_list:
             st = time.time()
             file_path = Path(file_dict["path"])
             assert file_path.exists()
@@ -94,12 +101,14 @@ class SyngridDatabaseConstructor:
                     "-nln",
                     table_name,
                     "-nlt",
-                    "MULTIPOLYGON",
+                    # "MULTIPOLYGON",
+                    "PROMOTE_TO_MULTI",
                     "-t_srs",
                     "EPSG:3035",
                     "-lco",
                     "geometry_name=geom",
-                ]
+                ],
+                shell=True
             )
             et = time.time()
             print(f"{file_name} is successfully imported to db in {int(et-st)} s")
@@ -131,7 +140,7 @@ class SyngridDatabaseConstructor:
             print(f"{file_name} is successfully imported to db in {int(et - st)} s")
 
     def ways_to_db(self):
-        """This function transform the output of osm2po to thw ways table, refer to the issue
+        """This function transform the output of osm2po to the ways table, refer to the issue
         https://github.com/TongYe1997/Connector-syn-grid/issues/19"""
 
         st = time.time()

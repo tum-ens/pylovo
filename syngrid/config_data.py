@@ -1,39 +1,28 @@
 import os
 
-# Database connection configuration
-# DBNAME = "syngrid_db"
-# USER = "syngrid"
-# PASSWORD = "syngrid"
-# HOST = "localhost"
-# PORT = "1111"
-DBNAME = "syngrid_db"
-USER = "syngrid"
-HOST = "localhost"
-PORT = "1111"
-PASSWORD = "syngrid"
+# Database connection configuration only for TUM members with LRZ access
+DBNAME = "pylovo_db"
+USER = "pylovo"
+HOST = "10.162.28.8"
+PORT = "5432"
+PASSWORD = "pylovo"
 
 # Directory where the result csv and json files be saved
 RESULT_DIR = f"{os.getcwd()}\\results"
 
 # Raw data
-OGR_FILE_LIST = [
-    {
-        "path": ".\\raw_data\\Res_9162000\\Res_9162000.shp",
-        "table_name": "res",
-    },  # München
-    {
-        "path": ".\\raw_data\\Res_9474126\\Res_9474126.shp",
-        "table_name": "res",
-    },  # Forchheim
-    {"path": ".\\raw_data\\Oth_9162000\\Oth_9162000.shp", "table_name": "oth"},
-    {"path": ".\\raw_data\\Oth_9474126\\Oth_9474126.shp", "table_name": "oth"},
-    {"path": ".\\raw_data\\substation_munich.geojson", "table_name": "transformers"},
-]
+# import files for buildings
+# OGR_FILE_LIST = [
+# dummy_region_name
+#     {"path": ".\\raw_data\\buildings\\Res_<ags_number>.shp", "table_name":res"},
+#     {"path": ".\\raw_data\\buildings\\Oth_<ags_number>.shp", "table_name": "oth"},
+#     {"path": ".\\raw_data\\<substation_region_name>.geojson", "table_name": "transformers"},
+# ]
 
 CSV_FILE_LIST = [
     {"path": ".\\raw_data\\betriebsmittel.csv", "table_name": "betriebsmittel"},
     {"path": ".\\raw_data\\postcode.csv", "table_name": "postcode"},
-    # {"path": ".\\raw_data\\ways.csv", "table_name": "ways"},
+    # {"path": ".\\raw_data\\ways_Bayern.csv", "table_name": "ways"},
 ]
 
 # Database schema - table structure
@@ -62,6 +51,32 @@ CREATE_QUERIES = {
     ont_vertice_id bigint,
     CONSTRAINT building_clusters_pkey PRIMARY KEY (version_id, k_mean_cluster, building_cluster, loadarea_cluster)
 )""",
+    "lines_result": """
+CREATE TABLE IF NOT EXISTS public.lines_result
+(   version_id character varying(10) NOT NULL, 
+    geom geometry(Geometry,3035),
+    in_loadarea_cluster integer,
+    in_building_cluster integer,
+    k_mean_cluster integer,
+    line_name varchar(15),
+    std_type varchar(15),
+    from_bus integer,
+    to_bus integer,
+    length_km numeric
+)""",
+    #     "lines_tem": """CREATE TABLE IF NOT EXISTS public.lines_tem
+    # (   osm_id character varying(80) COLLATE pg_catalog."default" NOT NULL,
+    #     area numeric,
+    #     type character varying(30) COLLATE pg_catalog."default",
+    #     geom geometry(Geometry,3035),
+    #     in_loadarea integer,
+    #     cable_type text,
+    #     in_loadarea_cluster integer,
+    #     vertice_id integer,
+    #     in_building_cluster integer,
+    #     k_mean_cluster integer,
+    #     connection_point integer
+    # )""",
     "buildings_result": """
 CREATE TABLE IF NOT EXISTS public.buildings_result
 (   version_id character varying(10) NOT NULL, 

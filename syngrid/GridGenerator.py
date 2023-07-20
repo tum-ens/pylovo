@@ -1,18 +1,14 @@
-import os
 import warnings
 from pathlib import Path
 
-import numpy as np
 import pandapower as pp
-import matplotlib.pyplot as plt
-from pandapower import io_utils
+import plotly
 from pandapower.plotting.plotly import vlevel_plotly
 from pandapower.plotting.plotly.mapbox_plot import set_mapbox_token
-import plotly
 
+from syngrid import pgReaderWriter as pg, utils
 from syngrid.config_data import *
 from syngrid.config_version import *
-from syngrid import pgReaderWriter as pg, utils
 
 
 class GridGenerator:
@@ -177,6 +173,8 @@ class GridGenerator:
                     print("Smax in building_clusters is updated.")
 
     def install_cables(self):
+        """the pandapower network for each cluster (kcid, bcid) is generated and filled with the corresponding
+        bus and line elements"""
         cluster_list = self.pgr.getListFromPlz(self.plz)
         ci_count = 0
         ci_process = 0
@@ -210,6 +208,8 @@ class GridGenerator:
             # add std_type:
             self.pgr.createCableStdType(net)
 
+            # Add buses and load to network
+
             # lv mv bus
             self.pgr.createLVMVbus(self.plz, kcid, bcid, net)
 
@@ -224,7 +224,10 @@ class GridGenerator:
                 consumer_list, load_units, net, load_type, buildings_df
             )
 
-            # consider connection nodes to install bus lines, starts from furthest node and forms increasing branches until current limit satisfied
+            # Add lines to network
+
+            # consider connection nodes to install bus lines, starts from furthest node and
+            # forms increasing branches until current limit satisfied
             # each branch line has a 5 * 1e-6 deviation so as to see clearly in plotly
 
             branch_deviation = 0
@@ -240,6 +243,9 @@ class GridGenerator:
                     Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))  # current in kA
 
                     local_length_dict = self.pgr.installConsumerCables(
+                        self.plz,
+                        kcid,
+                        bcid,
                         branch_deviation,
                         connection_node_list,
                         ont_vertice,
@@ -255,7 +261,7 @@ class GridGenerator:
                             Imax, net, main_street_available_cables
                         )
                         self.pgr.createLineOnttoLVbus(
-                            connection_node_list[0], branch_deviation, net, cable, count
+                            self.plz, bcid, kcid, connection_node_list[0], branch_deviation, net, cable, count
                         )
                     else:
                         cable, count = self.pgr.findMinimalAvailableCable(
@@ -265,6 +271,9 @@ class GridGenerator:
                             vertices_dict[connection_nodes[0]],
                         )
                         length = self.pgr.createLineStarttoLVbus(
+                            self.plz,
+                            bcid,
+                            kcid,
                             connection_node_list[0],
                             branch_deviation,
                             net,
@@ -290,6 +299,9 @@ class GridGenerator:
                     utils, furthest_node_path_list, buildings_df, consumer_df
                 )
                 local_length_dict = self.pgr.installConsumerCables(
+                    self.plz,
+                    bcid,
+                    kcid,
                     branch_deviation,
                     branch_node_list,
                     ont_vertice,
@@ -309,6 +321,9 @@ class GridGenerator:
                 #           bus line for the branch shall be separately drawn through each connection points
                 if len(branch_node_list) >= 2:
                     local_length_dict = self.pgr.createLineNodetoNode(
+                        self.plz,
+                        kcid,
+                        bcid,
                         branch_node_list,
                         branch_deviation,
                         vertices_dict,
@@ -322,10 +337,13 @@ class GridGenerator:
                 branch_start_node = branch_node_list[-1]
                 if branch_start_node == ont_vertice:
                     self.pgr.createLineOnttoLVbus(
-                        branch_start_node, branch_deviation, net, cable, count
+                        self.plz, bcid, kcid, branch_start_node, branch_deviation, net, cable, count
                     )
                 else:
                     length = self.pgr.createLineStarttoLVbus(
+                        self.plz,
+                        bcid,
+                        kcid,
                         branch_start_node,
                         branch_deviation,
                         net,
@@ -360,194 +378,192 @@ class GridGenerator:
         print("result analysis finished")
         self.pgr.conn.commit()
 
-    def plot_results(
-        self,
-        plot_trafo=1,
-        plot_load_num_per_trafo=1,
-        plot_peak_load_per_trafo=1,
-        plot_distance_per_trafo=1,
-        plot_cable=1,
-        save_plots=True,
-    ):
-
-        assert {
-            plot_trafo,
-            plot_load_num_per_trafo,
-            plot_peak_load_per_trafo,
-            plot_distance_per_trafo,
-            plot_cable,
-        }.issubset({0, 1})
-        assert isinstance(save_plots, bool)
-
-        trafo_dict = self.pgr.read_trafo_dict(self.plz)
-        (
-            load_num_per_trafo_dict,
-            bus_num_per_trafo_dict,
-            peak_load_per_trafo_dict,
-            max_distance_per_trafo_dict,
-            avg_distance_per_trafo_dict,
-        ) = self.pgr.read_per_trafo_dict(self.plz)
-        cable_dict = self.pgr.read_cable_dict(self.plz)
-
-        try:
-            trafo_num = list(trafo_dict.values())
-        except:
-            print("trafo num dict not well prepared")
-            plot_trafo = 0
-
-        try:
-            load_num_dict_keys = np.array(
-                list(map(float, load_num_per_trafo_dict.keys()))
-            )
-        except:
-            print("load and bus num dict not well prepared")
-            plot_load_num_per_trafo = 0
-        else:
-            keys_order = np.argsort(load_num_dict_keys)
-
-        try:
-            peak_load_dict_test = list(peak_load_per_trafo_dict.values())
-        except:
-            print("peak load dict not well prepared")
-            plot_peak_load_per_trafo = 0
-
-        try:
-            distance_dict_test = list(max_distance_per_trafo_dict.values())
-        except:
-            print("peak load dict not well prepared")
-            plot_peak_load_per_trafo = 0
-
-        plot_num = sum(
-            [
-                plot_trafo,
-                plot_load_num_per_trafo,
-                plot_peak_load_per_trafo,
-                plot_distance_per_trafo,
-                plot_cable,
-            ]
-        )
-        plot_position = 0
-
-        if plot_trafo:
-
-            plot_position += 1
-
-            trafo_size = list(map(float, trafo_dict.keys()))
-
-            plt.subplot(plot_num, 1, plot_position)
-            plt.bar(
-                trafo_size,
-                height=trafo_num,
-                color="black",
-                label="Model result",
-            )
-            plt.xlabel("trafo_size(kVA)", fontsize=14)
-            plt.ylabel("trafo_count", fontsize=14)
-            plt.title(
-                "trafo count analysis for VERSION {}".format(VERSION_ID), fontsize=16
-            )
-
-        if plot_load_num_per_trafo:
-
-            box_positions = []
-            for i in range(2):
-                for k in keys_order:
-                    box_positions.append(3 * k + i + 1)
-
-            # plot load_num per trafo:
-            plot_position += 1
-            plt.subplot(plot_num, 1, plot_position)
-            plt.boxplot(
-                list(load_num_per_trafo_dict.values())
-                + list(bus_num_per_trafo_dict.values()),
-                labels=list(load_num_per_trafo_dict.keys()) * 2,
-                positions=tuple(box_positions),
-                vert=True,
-                showfliers=False,
-                patch_artist=True,
-                notch=True,
-            )
-            plt.title(
-                "load and bus number per trafo for VERSION {}".format(VERSION_ID),
-                fontsize=16,
-            )
-            plt.ylabel("trafo_size(kVA)", fontsize=14)
-            plt.xlabel("load_number", fontsize=14)
-
-        if plot_peak_load_per_trafo:
-
-            box_positions = []
-            for k in keys_order:
-                box_positions.append(2 * k + 1)
-
-            # plot bus_num per trafo:
-            plot_position += 1
-            plt.subplot(plot_num, 1, plot_position)
-            plt.boxplot(
-                list(peak_load_per_trafo_dict.values()),
-                labels=list(load_num_per_trafo_dict.keys()),
-                positions=tuple(box_positions),
-                vert=True,
-                showfliers=False,
-                patch_artist=True,
-                notch=True,
-            )
-            plt.title(
-                "sim peak load per trafo for VERSION {}".format(VERSION_ID), fontsize=16
-            )
-            plt.ylabel("trafo_size(kVA)", fontsize=14)
-            plt.xlabel("sim peak load", fontsize=14)
-
-        if plot_distance_per_trafo:
-            box_positions = []
-            for i in range(2):
-                for k in keys_order:
-                    box_positions.append(3 * k + i + 1)
-
-            # plot sim_peak_load per trafo:
-            plot_position += 1
-            plt.subplot(plot_num, 1, plot_position)
-            plt.boxplot(
-                list(max_distance_per_trafo_dict.values())
-                + list(avg_distance_per_trafo_dict.values()),
-                labels=list(max_distance_per_trafo_dict.keys()) * 2,
-                positions=tuple(box_positions),
-                vert=True,
-                showfliers=False,
-                patch_artist=True,
-                notch=True,
-            )
-            plt.title(
-                "max and avg distance per trafo for VERSION {}".format(VERSION_ID),
-                fontsize=16,
-            )
-            plt.ylabel("trafo_size(kVA)", fontsize=14)
-            plt.xlabel("max / avg distance", fontsize=14)
-
-        if plot_cable:
-
-            cable_length = list(cable_dict.values())
-            cable_label = list(cable_dict.keys())
-            top_three = np.argsort(cable_length)[:3]
-            explode_list = np.zeros(len(cable_length))
-            for i in range(3):
-                explode_list[top_three[i]] = 0.1
-
-            plot_position += 1
-            plt.subplot(plot_num, 1, plot_position)
-            plt.pie(
-                cable_length, labels=cable_label, explode=explode_list, autopct="%.1f%%"
-            )
-            plt.title("cable installed for VERSION {}".format(VERSION_ID), fontsize=16)
-
-        plt.show()
-        if save_plots:
-            savepath_folder = Path(
-                RESULT_DIR, "figures", f"version_{VERSION_ID}", self.plz
-            )
-            savepath_folder.mkdir(parents=True, exist_ok=True)
-            savepath_file = Path(savepath_folder, "result_analysis_figure.png")
-            plt.savefig(savepath_file)
+    # def plot_results(
+    #     self,
+    #     plot_trafo=1,
+    #     plot_load_num_per_trafo=1,
+    #     plot_peak_load_per_trafo=1,
+    #     plot_distance_per_trafo=1,
+    #     plot_cable=1,
+    #     save_plots=True,
+    # ):
+    #
+    #     assert {
+    #         plot_trafo,
+    #         plot_load_num_per_trafo,
+    #         plot_peak_load_per_trafo,
+    #         plot_distance_per_trafo,
+    #         plot_cable,
+    #     }.issubset({0, 1})
+    #     assert isinstance(save_plots, bool)
+    #
+    #     trafo_dict = self.pgr.read_trafo_dict(self.plz)
+    #     (
+    #         load_num_per_trafo_dict,
+    #         bus_num_per_trafo_dict,
+    #         peak_load_per_trafo_dict,
+    #         max_distance_per_trafo_dict,
+    #         avg_distance_per_trafo_dict,
+    #     ) = self.pgr.read_per_trafo_dict(self.plz)
+    #     cable_dict = self.pgr.read_cable_dict(self.plz)
+    #
+    #     try:
+    #         trafo_num = list(trafo_dict.values())
+    #     except:
+    #         print("trafo num dict not well prepared")
+    #         plot_trafo = 0
+    #
+    #     try:
+    #         load_num_dict_keys = np.array(
+    #             list(map(float, load_num_per_trafo_dict.keys()))
+    #         )
+    #     except:
+    #         print("load and bus num dict not well prepared")
+    #         plot_load_num_per_trafo = 0
+    #     else:
+    #         keys_order = np.argsort(load_num_dict_keys)
+    #
+    #     try:
+    #         peak_load_dict_test = list(peak_load_per_trafo_dict.values())
+    #     except:
+    #         print("peak load dict not well prepared")
+    #         plot_peak_load_per_trafo = 0
+    #
+    #     try:
+    #         distance_dict_test = list(max_distance_per_trafo_dict.values())
+    #     except:
+    #         print("peak load dict not well prepared")
+    #         plot_peak_load_per_trafo = 0
+    #
+    #     plot_num = sum(
+    #         [
+    #             plot_trafo,
+    #             plot_load_num_per_trafo,
+    #             plot_peak_load_per_trafo,
+    #             plot_distance_per_trafo,
+    #             plot_cable,
+    #         ]
+    #     )
+    #     plot_position = 0
+    #     if plot_trafo:
+    #
+    #         plot_position += 1
+    #
+    #         trafo_size = list(map(float, trafo_dict.keys()))
+    #
+    #         plt.subplot(plot_num, 1, plot_position)
+    #         plt.bar(
+    #             trafo_size,
+    #             height=trafo_num,
+    #             color="black",
+    #             label="Model result",
+    #         )
+    #         plt.xlabel("trafo_size(kVA)", fontsize=14)
+    #         plt.ylabel("trafo_count", fontsize=14)
+    #         plt.title(
+    #             "trafo count analysis for VERSION {}".format(VERSION_ID), fontsize=16
+    #         )
+    #
+    #     if plot_load_num_per_trafo:
+    #
+    #         box_positions = []
+    #         for i in range(2):
+    #             for k in keys_order:
+    #                 box_positions.append(3 * k + i + 1)
+    #
+    #         # plot load_num per trafo:
+    #         plot_position += 1
+    #         plt.subplot(plot_num, 1, plot_position)
+    #         plt.boxplot(
+    #             list(load_num_per_trafo_dict.values())
+    #             + list(bus_num_per_trafo_dict.values()),
+    #             labels=list(load_num_per_trafo_dict.keys()) * 2,
+    #             positions=tuple(box_positions),
+    #             vert=True,
+    #             showfliers=False,
+    #             patch_artist=True,
+    #             notch=True,
+    #         )
+    #         plt.title(
+    #             "load and bus number per trafo for VERSION {}".format(VERSION_ID),
+    #             fontsize=16,
+    #         )
+    #         plt.ylabel("trafo_size(kVA)", fontsize=14)
+    #         plt.xlabel("load_number", fontsize=14)
+    #
+    #     if plot_peak_load_per_trafo:
+    #
+    #         box_positions = []
+    #         for k in keys_order:
+    #             box_positions.append(2 * k + 1)
+    #
+    #         # plot bus_num per trafo:
+    #         plot_position += 1
+    #         plt.subplot(plot_num, 1, plot_position)
+    #         plt.boxplot(
+    #             list(peak_load_per_trafo_dict.values()),
+    #             labels=list(load_num_per_trafo_dict.keys()),
+    #             positions=tuple(box_positions),
+    #             vert=True,
+    #             showfliers=False,
+    #             patch_artist=True,
+    #             notch=True,
+    #         )
+    #         plt.title(
+    #             "sim peak load per trafo for VERSION {}".format(VERSION_ID), fontsize=16
+    #         )
+    #         plt.ylabel("trafo_size(kVA)", fontsize=14)
+    #         plt.xlabel("sim peak load", fontsize=14)
+    #
+    #     if plot_distance_per_trafo:
+    #         box_positions = []
+    #         for i in range(2):
+    #             for k in keys_order:
+    #                 box_positions.append(3 * k + i + 1)
+    #
+    #         # plot sim_peak_load per trafo:
+    #         plot_position += 1
+    #         plt.subplot(plot_num, 1, plot_position)
+    #         plt.boxplot(
+    #             list(max_distance_per_trafo_dict.values())
+    #             + list(avg_distance_per_trafo_dict.values()),
+    #             labels=list(max_distance_per_trafo_dict.keys()) * 2,
+    #             positions=tuple(box_positions),
+    #             vert=True,
+    #             showfliers=False,
+    #             patch_artist=True,
+    #             notch=True,
+    #         )
+    #         plt.title(
+    #             "max and avg distance per trafo for VERSION {}".format(VERSION_ID),
+    #             fontsize=16,
+    #         )
+    #         plt.ylabel("trafo_size(kVA)", fontsize=14)
+    #         plt.xlabel("max / avg distance", fontsize=14)
+    #
+    #     if plot_cable:
+    #
+    #         cable_length = list(cable_dict.values())
+    #         cable_label = list(cable_dict.keys())
+    #         top_three = np.argsort(cable_length)[:3]
+    #         explode_list = np.zeros(len(cable_length))
+    #         for i in range(3):
+    #             explode_list[top_three[i]] = 0.1
+    #
+    #         plot_position += 1
+    #         plt.subplot(plot_num, 1, plot_position)
+    #         plt.pie(
+    #             cable_length, labels=cable_label, explode=explode_list, autopct="%.1f%%"
+    #         )
+    #         plt.title("cable installed for VERSION {}".format(VERSION_ID), fontsize=16)
+    #
+    #     if save_plots:
+    #         savepath_folder = Path(
+    #             RESULT_DIR, "figures", f"version_{VERSION_ID}", self.plz
+    #         )
+    #         savepath_folder.mkdir(parents=True, exist_ok=True)
+    #         savepath_file = Path(savepath_folder, "result_analysis_figure.png")
+    #         plt.savefig(savepath_file)
 
     def plot_trafo_on_map(self, save_plots=False):
 
@@ -565,11 +581,11 @@ class GridGenerator:
                 pp.create_bus(
                     net_plot,
                     name="Distribution_grid_"
-                    + str(grid_index)
-                    + "<br>"
-                    + "transformer: "
-                    + str(trafo_size)
-                    + "_kVA",
+                         + str(grid_index)
+                         + "<br>"
+                         + "transformer: "
+                         + str(trafo_size)
+                         + "_kVA",
                     vn_kv=trafo_size,
                     geodata=trafo_geom,
                     type="b",

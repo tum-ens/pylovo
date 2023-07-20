@@ -1,22 +1,20 @@
-import os
-import re
 import json
-import psycopg2 as pg
-from sqlalchemy import create_engine, text
-import numpy as np
-import pandas as pd
-import pandapower as pp
-import time
-from scipy.spatial.distance import squareform
-from scipy.cluster.hierarchy import linkage, fcluster
 import math
+import time
 from decimal import *
-import pandapower.topology as top
-import geopandas as gpd
 
+import geopandas as gpd
+import pandapower as pp
+import pandapower.topology as top
+import psycopg2 as pg
+from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.spatial.distance import squareform
+from shapely.geometry import LineString
+from sqlalchemy import create_engine, text
+
+from syngrid import utils
 from syngrid.config_data import *
 from syngrid.config_version import *
-from syngrid import utils
 
 
 class PgReaderWriter:
@@ -97,8 +95,8 @@ class PgReaderWriter:
         return np.array(capacities), transformer2cost
 
     def getBuildingsFromKc(
-        self,
-        kcid,
+            self,
+            kcid,
     ) -> pd.DataFrame:
         """
         Args:
@@ -133,6 +131,8 @@ class PgReaderWriter:
         buildings_df = pd.read_sql_query(buildings_query, con=self.conn, params=params)
         buildings_df.set_index("vertice_id", drop=False, inplace=True)
         buildings_df.sort_index(inplace=True)
+        # dropping duplicate indices
+        # buildings_df = buildings_df[~buildings_df.index.duplicated(keep='first')]
 
         print(f"{len(buildings_df)}Building data fetched. ...")
 
@@ -145,6 +145,7 @@ class PgReaderWriter:
         buildings_df = self.getBuildingsFromBc(plz, kcid, bcid)
         consumer_df = self.getConsumerCategories()
         consumer_list = buildings_df.vertice_id.to_list()
+        consumer_list = list(dict.fromkeys(consumer_list))  # removing duplicates
 
         connection_nodes = [i for i in vertices_list if i not in consumer_list]
 
@@ -361,15 +362,18 @@ class PgReaderWriter:
                 )
 
     def installConsumerCables(
-        self,
-        branch_deviation,
-        branch_node_list,
-        ont_vertice,
-        vertices_dict,
-        Pd,
-        net,
-        connection_available_cables,
-        local_length_dict,
+            self,
+            plz,
+            bcid,
+            kcid,
+            branch_deviation,
+            branch_node_list,
+            ont_vertice,
+            vertices_dict,
+            Pd,
+            net,
+            connection_available_cables,
+            local_length_dict,
     ):
         # lines
         # first draw house connections from consumer node to corresponding connection node
@@ -400,7 +404,7 @@ class PgReaderWriter:
                 current_available_cables_df = line_df[
                     (line_df["max_i_ka"] >= Imax / count)
                     & (line_df.index.isin(connection_available_cables))
-                ]
+                    ]
 
                 if len(current_available_cables_df) == 0:
                     count += 1
@@ -414,12 +418,12 @@ class PgReaderWriter:
                     voltage_available_cables_df = current_available_cables_df[
                         current_available_cables_df["cable_impedence"]
                         <= 2 * 1e-3 / (Imax * cost_km / count)
-                    ]
+                        ]
                 else:
                     voltage_available_cables_df = current_available_cables_df[
                         current_available_cables_df["cable_impedence"]
                         <= 4 * 1e-3 / (Imax * cost_km / count)
-                    ]
+                        ]
 
                 if len(voltage_available_cables_df) == 0:
                     count += 1
@@ -434,9 +438,7 @@ class PgReaderWriter:
 
             pp.create_line(
                 net,
-                from_bus=pp.get_element_index(
-                    net, "bus", f"Connection Nodebus {start_vid}"
-                ),
+                from_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {start_vid}"),
                 to_bus=pp.get_element_index(net, "bus", f"Consumer Nodebus {end_vid}"),
                 length_km=cost_km,
                 std_type=cable,
@@ -444,6 +446,17 @@ class PgReaderWriter:
                 geodata=line_geodata,
                 parallel=count,
             )
+
+            self.insert_lines(geom=line_geodata,
+                              plz=plz,
+                              bcid=bcid,
+                              kcid=kcid,
+                              line_name=f"Line to {end_vid}",
+                              std_type=cable,
+                              from_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {start_vid}"),
+                              to_bus=pp.get_element_index(net, "bus", f"Consumer Nodebus {end_vid}"),
+                              length_km=cost_km
+                              )
 
         return local_length_dict
 
@@ -454,7 +467,7 @@ class PgReaderWriter:
             current_available_cables = line_df[
                 (line_df.index.isin(cables_list))
                 & (line_df["max_i_ka"] >= Imax / count)
-            ]
+                ]
             if len(current_available_cables) == 0:
                 count += 1
                 continue
@@ -467,7 +480,7 @@ class PgReaderWriter:
                 voltage_available_cables = current_available_cables[
                     current_available_cables["cable_impedence"]
                     <= 400 * 0.045 / (Imax * distance / count)
-                ]
+                    ]
                 if len(voltage_available_cables) == 0:
                     count += 1
                     continue
@@ -485,23 +498,26 @@ class PgReaderWriter:
         return cable, count
 
     def createLineNodetoNode(
-        self,
-        branch_node_list,
-        branch_deviation,
-        vertices_dict,
-        local_length_dict,
-        cable,
-        ont_vertice,
-        count,
-        net,
+            self,
+            plz,
+            kcid,
+            bcid,
+            branch_node_list,
+            branch_deviation,
+            vertices_dict,
+            local_length_dict,
+            cable,
+            ont_vertice,
+            count,
+            net,
     ):
         for i in range(len(branch_node_list) - 1):
             # to get the line geodata, we now need to consider all the nodes in database, not only connection points
             node_path_list = self.getPathToBus(branch_node_list[i], ont_vertice)
             # end at next connection point
             node_path_list = node_path_list[
-                : node_path_list.index(branch_node_list[i + 1]) + 1
-            ]
+                             : node_path_list.index(branch_node_list[i + 1]) + 1
+                             ]
             node_path_list.reverse()  # to keep the correct direction
 
             start_vid = node_path_list[0]
@@ -534,10 +550,21 @@ class PgReaderWriter:
                 parallel=count,
             )
 
+            self.insert_lines(geom=line_geodata,
+                              plz=plz,
+                              bcid=bcid,
+                              kcid=kcid,
+                              line_name=f"Line to {end_vid}",
+                              std_type=cable,
+                              from_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {start_vid}"),
+                              to_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {end_vid}"),
+                              length_km=cost_km
+                              )
+
         return local_length_dict
 
     def createLineOnttoLVbus(
-        self, branch_start_node, branch_deviation, net, cable, count
+            self, plz, bcid, kcid, branch_start_node, branch_deviation, net, cable, count
     ):
         end_vid = branch_start_node
         node_geodata = self.getNodeGeom(end_vid)
@@ -564,15 +591,29 @@ class PgReaderWriter:
             parallel=count,
         )
 
+        self.insert_lines(geom=line_geodata,
+                          plz=plz,
+                          bcid=bcid,
+                          kcid=kcid,
+                          line_name=f"Line to {end_vid}",
+                          std_type=cable,
+                          from_bus=pp.get_element_index(net, "bus", "LVbus 1"),
+                          to_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {end_vid}"),
+                          length_km=cost_km
+                          )
+
     def createLineStarttoLVbus(
-        self,
-        branch_start_node,
-        branch_deviation,
-        net,
-        vertices_dict,
-        cable,
-        count,
-        ont_vertice,
+            self,
+            plz,
+            bcid,
+            kcid,
+            branch_start_node,
+            branch_deviation,
+            net,
+            vertices_dict,
+            cable,
+            count,
+            ont_vertice,
     ):
 
         node_path_list = self.getPathToBus(branch_start_node, ont_vertice)
@@ -608,10 +649,21 @@ class PgReaderWriter:
             parallel=count,
         )
 
+        self.insert_lines(geom=line_geodata,
+                          plz=plz,
+                          bcid=bcid,
+                          kcid=kcid,
+                          line_name=f"Line to {branch_start_node}",
+                          std_type=cable,
+                          from_bus=pp.get_element_index(net, "bus", "LVbus 1"),
+                          to_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {branch_start_node}"),
+                          length_km=cost_km
+                          )
+
         return length
 
     def findFurthestNodePathList(
-        self, connection_node_list, vertices_dict, ont_vertice
+            self, connection_node_list, vertices_dict, ont_vertice
     ):
         connection_node_dict = {n: vertices_dict[n] for n in connection_node_list}
         furthest_node = max(connection_node_dict, key=connection_node_dict.get)
@@ -624,9 +676,9 @@ class PgReaderWriter:
         return furthest_node_path
 
     def getMaximumLoadBranch(
-        self, utils, furthest_node_path_list, buildings_df, consumer_df
+            self, utils, furthest_node_path_list, buildings_df, consumer_df
     ):
-        # TODO explanation?
+        # TOD O explanation?
         branch_node_list = []
         for node in furthest_node_path_list:
             branch_node_list.append(node)
@@ -1240,7 +1292,7 @@ class PgReaderWriter:
                 possible_transformers = np.array([100, 160, 250, 400, 630])
                 sim_load = possible_transformers[
                     possible_transformers > float(sim_load)
-                ][0].item()
+                    ][0].item()
                 self.updateBuildingCluster(
                     transformer_id,
                     pre_result_dict[transformer_id],
@@ -1253,7 +1305,7 @@ class PgReaderWriter:
         print("pre transformer clusters completed")
 
     def updateBuildingCluster(
-        self, transformer_id, conn_id_list, count, kcid, lcid, sim_Load
+            self, transformer_id, conn_id_list, count, kcid, lcid, sim_Load
     ):
         query = """UPDATE buildings_tem SET in_building_cluster = %(count)s WHERE vertice_id = %(t)s;
                 UPDATE buildings_tem SET in_building_cluster = %(count)s WHERE connection_point IN %(c)s AND type != 'Transformer';
@@ -1302,8 +1354,8 @@ class PgReaderWriter:
             residential_count = Decimal(data[1])
             residential_factor = Decimal(data[2])
             residential_sim_load = residential_load * (
-                residential_factor
-                + (1 - residential_factor) * (residential_count ** Decimal(-3 / 4))
+                    residential_factor
+                    + (1 - residential_factor) * (residential_count ** Decimal(-3 / 4))
             )
         else:
             residential_sim_load = 0
@@ -1324,8 +1376,8 @@ class PgReaderWriter:
             commercial_count = Decimal(data[1])
             commercial_factor = Decimal(data[2])
             commercial_sim_load = commercial_load * (
-                commercial_factor
-                + (1 - commercial_factor) * (commercial_count ** Decimal(-3 / 4))
+                    commercial_factor
+                    + (1 - commercial_factor) * (commercial_count ** Decimal(-3 / 4))
             )
         else:
             commercial_sim_load = 0
@@ -1345,7 +1397,7 @@ class PgReaderWriter:
             public_count = Decimal(data[1])
             public_factor = Decimal(data[2])
             public_sim_load = public_load * (
-                public_factor + (1 - public_factor) * (public_count ** Decimal(-3 / 4))
+                    public_factor + (1 - public_factor) * (public_count ** Decimal(-3 / 4))
             )
         else:
             public_sim_load = 0
@@ -1364,17 +1416,17 @@ class PgReaderWriter:
             industrial_count = Decimal(data[1])
             industrial_factor = Decimal(data[2])
             industrial_sim_load = industrial_load * (
-                industrial_factor
-                + (1 - industrial_factor) * (industrial_count ** Decimal(-3 / 4))
+                    industrial_factor
+                    + (1 - industrial_factor) * (industrial_count ** Decimal(-3 / 4))
             )
         else:
             industrial_sim_load = 0
 
         total_sim_load = (
-            residential_sim_load
-            + commercial_sim_load
-            + industrial_sim_load
-            + public_sim_load
+                residential_sim_load
+                + commercial_sim_load
+                + industrial_sim_load
+                + public_sim_load
         )
 
         return total_sim_load
@@ -1555,14 +1607,14 @@ class PgReaderWriter:
         return count
 
     def tryClustering(
-        self,
-        Z,
-        cluster_amount,
-        localid2vid,
-        buildings,
-        consumer_cat_df,
-        transformer_capacities,
-        double_trans,
+            self,
+            Z,
+            cluster_amount,
+            localid2vid,
+            buildings,
+            consumer_cat_df,
+            transformer_capacities,
+            double_trans,
     ):
         flat_groups = fcluster(Z, t=cluster_amount, criterion="maxclust")
         cluster_ids = np.unique(flat_groups)
@@ -1578,19 +1630,19 @@ class PgReaderWriter:
                 buildings, consumer_cat_df, vid_list
             )
             if (
-                total_sim_load >= max(transformer_capacities) and len(vid_list) >= 5
+                    total_sim_load >= max(transformer_capacities) and len(vid_list) >= 5
             ):  # the cluster is too big
                 invalid_cluster_dict[cluster_id] = vid_list
             elif total_sim_load < max(transformer_capacities):
                 # find the smallest transformer, that satisfies the load
                 opt_transformer = transformer_capacities[
                     transformer_capacities > total_sim_load
-                ][0]
+                    ][0]
                 opt_double_transformer = double_trans[
                     double_trans > total_sim_load * 1.15
-                ][0]
+                    ][0]
                 if (opt_double_transformer - total_sim_load) > (
-                    opt_transformer - total_sim_load
+                        opt_transformer - total_sim_load
                 ):
                     cluster_dict[cluster_id] = (vid_list, opt_transformer)
                 else:
@@ -1624,102 +1676,103 @@ class PgReaderWriter:
         # Transform to a condensed distance vector for linkage
         dist_vector = squareform(dist_mat)
         # hierarchical clustering
-        Z = linkage(dist_vector, method="average")
+        if len(dist_vector) > 0:  # todo: check if this addition changes logic
+            Z = linkage(dist_vector, method="average")
 
-        # transform to flat clustering
-        valid_cluster_dict = {}
-        invalid_trans_cluster_dict = {}
-        cluster_amount = 2
+            # transform to flat clustering
+            valid_cluster_dict = {}
+            invalid_trans_cluster_dict = {}
+            cluster_amount = 2
 
-        new_localid2vid = localid2vid
-        while True:
-            invalid_cluster_dict, cluster_dict, cluster_count = self.tryClustering(
-                Z,
-                cluster_amount,
-                new_localid2vid,
-                buildings,
-                consumer_cat_df,
-                transformer_capacities,
-                double_trans,
-            )
-            # combination and re_index
-            if len(cluster_dict) != 0:
-                current_valid_amount = len(valid_cluster_dict)
-                valid_cluster_dict.update(
-                    {x + current_valid_amount: y for x, y in cluster_dict.items()}
+            new_localid2vid = localid2vid
+            while True:
+                invalid_cluster_dict, cluster_dict, cluster_count = self.tryClustering(
+                    Z,
+                    cluster_amount,
+                    new_localid2vid,
+                    buildings,
+                    consumer_cat_df,
+                    transformer_capacities,
+                    double_trans,
                 )
-                valid_cluster_dict = dict(enumerate(valid_cluster_dict.values()))
-
-            if len(invalid_cluster_dict) != 0:
-                current_invalid_amount = len(invalid_trans_cluster_dict)
-                invalid_trans_cluster_dict.update(
-                    {
-                        x + current_invalid_amount: y
-                        for x, y in invalid_cluster_dict.items()
-                    }
-                )
-                invalid_trans_cluster_dict = dict(
-                    enumerate(invalid_trans_cluster_dict.values())
-                )
-
-            if len(invalid_trans_cluster_dict) == 0:
-                # terminate when there is not too_large cluster and amount of double transformers are within limit
                 # combination and re_index
-                print(
-                    f"altogether {len(valid_cluster_dict)} single transformer clusters found"
-                )
-                break
+                if len(cluster_dict) != 0:
+                    current_valid_amount = len(valid_cluster_dict)
+                    valid_cluster_dict.update(
+                        {x + current_valid_amount: y for x, y in cluster_dict.items()}
+                    )
+                    valid_cluster_dict = dict(enumerate(valid_cluster_dict.values()))
 
-            else:
-                print(f"found {len(invalid_trans_cluster_dict)} too_large clusters")
-                # first deal with those too_large clusters
+                if len(invalid_cluster_dict) != 0:
+                    current_invalid_amount = len(invalid_trans_cluster_dict)
+                    invalid_trans_cluster_dict.update(
+                        {
+                            x + current_invalid_amount: y
+                            for x, y in invalid_cluster_dict.items()
+                        }
+                    )
+                    invalid_trans_cluster_dict = dict(
+                        enumerate(invalid_trans_cluster_dict.values())
+                    )
 
-                # get local_ids for those buildings which are in a too_large clusters
-                # print(f'altogether {len(invalid_cluster_dict)} too_large clusters found')
-                invalid_vertice_ids = list(invalid_trans_cluster_dict[0])
-                invalid_local_ids = [vid2localid[v] for v in invalid_vertice_ids]
-                # print(invalid_local_ids)
+                if len(invalid_trans_cluster_dict) == 0:
+                    # terminate when there is not too_large cluster and amount of double transformers are within limit
+                    # combination and re_index
+                    print(
+                        f"altogether {len(valid_cluster_dict)} single transformer clusters found"
+                    )
+                    break
 
-                new_localid2vid = {
-                    k: v for k, v in localid2vid.items() if k in invalid_local_ids
-                }
-                new_localid2vid = dict(enumerate(new_localid2vid.values()))
+                else:
+                    print(f"found {len(invalid_trans_cluster_dict)} too_large clusters")
+                    # first deal with those too_large clusters
 
-                new_dist_mat = dist_mat[invalid_local_ids]
-                new_dist_mat = new_dist_mat[:, invalid_local_ids]
-                new_dist_vector = squareform(new_dist_mat)
-                Z = linkage(new_dist_vector, method="average")
-                cluster_amount = 2
-                # have to refresh double_dict every iteration
-                del invalid_trans_cluster_dict[0]
-                invalid_trans_cluster_dict = dict(
-                    enumerate(invalid_trans_cluster_dict.values())
-                )
+                    # get local_ids for those buildings which are in a too_large clusters
+                    # print(f'altogether {len(invalid_cluster_dict)} too_large clusters found')
+                    invalid_vertice_ids = list(invalid_trans_cluster_dict[0])
+                    invalid_local_ids = [vid2localid[v] for v in invalid_vertice_ids]
+                    # print(invalid_local_ids)
+
+                    new_localid2vid = {
+                        k: v for k, v in localid2vid.items() if k in invalid_local_ids
+                    }
+                    new_localid2vid = dict(enumerate(new_localid2vid.values()))
+
+                    new_dist_mat = dist_mat[invalid_local_ids]
+                    new_dist_mat = new_dist_mat[:, invalid_local_ids]
+                    new_dist_vector = squareform(new_dist_mat)
+                    Z = linkage(new_dist_vector, method="average")
+                    cluster_amount = 2
+                    # have to refresh double_dict every iteration
+                    del invalid_trans_cluster_dict[0]
+                    invalid_trans_cluster_dict = dict(
+                        enumerate(invalid_trans_cluster_dict.values())
+                    )
 
                 continue
 
-        # at break of this iteration we have a possible clustering which is electrically valid and of min cluster
-        # numbers combine to an overall dict of all buildings about their post_defined cluster_ids:(vid_list,
-        # opt_transformer) current_valid_amount = len(valid_cluster_dict) total cost of transformers
-        # total_transformer_cost = sum([transformer2cost[v[1]] for v in valid_cluster_dict.values()])
+            # at break of this iteration we have a possible clustering which is electrically valid and of min cluster
+            # numbers combine to an overall dict of all buildings about their post_defined cluster_ids:(vid_list,
+            # opt_transformer) current_valid_amount = len(valid_cluster_dict) total cost of transformers
+            # total_transformer_cost = sum([transformer2cost[v[1]] for v in valid_cluster_dict.values()])
 
-        # record result
-        # trafo_count = {100: 0, 160: 0, 250: 0, 400: 0, 630: 0, 1030: 0, 1260: 0}
-        # for key in valid_cluster_dict:
-        #     trafo_count[valid_cluster_dict[key][1]] = trafo_count[valid_cluster_dict[key][1]] + 1
-        # print(trafo_count)
+            # record result
+            # trafo_count = {100: 0, 160: 0, 250: 0, 400: 0, 630: 0, 1030: 0, 1260: 0}
+            # for key in valid_cluster_dict:
+            #     trafo_count[valid_cluster_dict[key][1]] = trafo_count[valid_cluster_dict[key][1]] + 1
+            # print(trafo_count)
 
-        # Upsert into the database
-        self.clearBuildingClustersInKMeanCluster(plz, kcid)
-        for bcid in valid_cluster_dict:
-            self.upsertBuildingCluster(
-                plz,
-                kcid,
-                bcid,
-                vertices=valid_cluster_dict[bcid][0],
-                s_max=valid_cluster_dict[bcid][1],
-            )
-        print(f"BC upsert done for load_cluster {plz} k_mean cluster {kcid} ...")
+            # Upsert into the database
+            self.clearBuildingClustersInKMeanCluster(plz, kcid)
+            for bcid in valid_cluster_dict:
+                self.upsertBuildingCluster(
+                    plz,
+                    kcid,
+                    bcid,
+                    vertices=valid_cluster_dict[bcid][0],
+                    s_max=valid_cluster_dict[bcid][1],
+                )
+            print(f"BC upsert done for load_cluster {plz} k_mean cluster {kcid} ...")
 
     def drawBuildingConnection(self):
         """
@@ -1743,21 +1796,25 @@ class PgReaderWriter:
 
     def insertTransformers(self, plz):
         """
-        * Add up the existing transformers from transformers table to the buildings_tem table
-        * Removes all other transformers from the transformers table? #TODO dont remove transformers, just copy relevant ones to the buildings_tem
+        Add up the existing transformers from transformers table to the buildings_tem table
         :param plz:
         :return:
         """
         insert_query = """
-            DELETE FROM transformers WHERE ST_Within(geom, (SELECT geom FROM postcode_result LIMIT 1)) IS FALSE;
-            DELETE FROM transformers WHERE voltage IS NOT NULL;
             UPDATE transformers SET geom = ST_Centroid(geom) WHERE ST_GeometryType(geom) =  'ST_Polygon';
             INSERT INTO buildings_tem (osm_id, center)
-                SELECT ogc_fid::varchar, geom FROM transformers;
+                SELECT ogc_fid::varchar, geom 
+                FROM transformers WHERE ST_Within(geom, (SELECT geom FROM postcode_result LIMIT 1)) IS FALSE;
             UPDATE buildings_tem SET in_loadarea_cluster = %(p)s WHERE in_loadarea_cluster ISNULL;
             UPDATE buildings_tem SET type = 'Transformer' WHERE type ISNULL;
             UPDATE buildings_tem SET peak_load_in_kw = -1 WHERE peak_load_in_kw ISNULL;"""
         self.cur.execute(insert_query, {"p": plz})
+
+    def delete_transformers(self):
+        """all transformers are deleted from table transformers in database"""
+        delete_query = """TRUNCATE TABLE transformers;"""
+        self.cur.execute(delete_query)
+        print('Transformers deleted.')
 
     def setVerticeId(self):
         """
@@ -1923,6 +1980,19 @@ class PgReaderWriter:
 
     def saveInformationAndResetTables(self, plz):
 
+        # finding duplicates that violate the buildings_result_pkey constraint
+        # the key of building result is (version_id, osm_id, in_loadarea_cluster)
+        query = f"""
+                DELETE FROM buildings_tem a USING(
+                    SELECT MIN(ctid) as ctid, osm_id, in_loadarea_cluster
+                    FROM buildings_tem
+                    GROUP BY (osm_id, in_loadarea_cluster) HAVING COUNT(*) > 1
+                    ) b
+                WHERE a.osm_id = b.osm_id
+                AND a.in_loadarea_cluster = b.in_loadarea_cluster
+                AND a.ctid <> b.ctid;"""
+        self.cur.execute(query)
+
         # Save results
         query = f"""
                 INSERT INTO buildings_result 
@@ -2024,6 +2094,7 @@ class PgReaderWriter:
 
         load_count_dict = {}
         bus_count_dict = {}
+        cable_length_dict = {}
         trafo_dict = {}
         print("start basic parameter counting")
         for kcid, bcid in cluster_list:
@@ -2041,6 +2112,7 @@ class PgReaderWriter:
                     bus_list.append(row.bus)
                 bus_list = list(set(bus_list))
                 bus_count = len(bus_list)
+                cable_length = net.line['length_km'].sum()
 
                 for row in net.trafo[["sn_mva", "lv_bus"]].itertuples():
                     capacity = round(row.sn_mva * 1e3)
@@ -2050,11 +2122,14 @@ class PgReaderWriter:
 
                         load_count_dict[capacity].append(load_count)
                         bus_count_dict[capacity].append(bus_count)
+                        cable_length_dict[capacity].append(cable_length)
+
                     else:
                         trafo_dict[capacity] = 1
 
                         load_count_dict[capacity] = [load_count]
                         bus_count_dict[capacity] = [bus_count]
+                        cable_length_dict[capacity] = [cable_length]
 
             time += 1
             if time / count >= 0.1:
@@ -2069,7 +2144,7 @@ class PgReaderWriter:
         print(bus_count_string)
 
         update_query = """INSERT INTO public.grid_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)
-        VALUES(%s, %s, %s, %s, %s);"""
+        VALUES(%s, %s, %s, %s, %s);"""  # TODO: check - should values be updated for same plz and version if analysis is started? And Add a column
         self.cur.execute(
             update_query,
             vars=(VERSION_ID, plz, trafo_string, load_count_string, bus_count_string),
@@ -2099,14 +2174,14 @@ class PgReaderWriter:
 
                     if type in cable_length_dict:
                         cable_length_dict[type] += (
-                            cable_df[cable_df["std_type"] == type]["parallel"]
-                            * cable_df[cable_df["std_type"] == type]["length_km"]
+                                cable_df[cable_df["std_type"] == type]["parallel"]
+                                * cable_df[cable_df["std_type"] == type]["length_km"]
                         ).sum()
 
                     else:
                         cable_length_dict[type] = (
-                            cable_df[cable_df["std_type"] == type]["parallel"]
-                            * cable_df[cable_df["std_type"] == type]["length_km"]
+                                cable_df[cable_df["std_type"] == type]["parallel"]
+                                * cable_df[cable_df["std_type"] == type]["length_km"]
                         ).sum()
             time += 1
             if time / count >= 0.1:
@@ -2121,7 +2196,7 @@ class PgReaderWriter:
         WHERE version_id = %(v)s AND plz = %(p)s;"""
         self.cur.execute(
             update_query, {"v": VERSION_ID, "c": cable_length_string, "p": plz}
-        )
+        )  # TODO: change to cable_length_per_type, add cable_length_per_trafo
 
         print("cable count finished")
 
@@ -2147,7 +2222,7 @@ class PgReaderWriter:
                 load_bus = pd.unique(net.load["bus"]).tolist()
 
                 top.create_nxgraph(net, respect_switches=False)
-                all_distance = (
+                trafo_distance_to_buses = (
                     top.calc_distance_to_bus(
                         net,
                         net.trafo["lv_bus"].tolist()[0],
@@ -2164,7 +2239,7 @@ class PgReaderWriter:
                 ].index.tolist()
                 commercial_bus_index = net.bus[
                     net.bus["zone"] == "Commercial"
-                ].index.tolist()
+                    ].index.tolist()
                 public_bus_index = net.bus[net.bus["zone"] == "Public"].index.tolist()
 
                 residential_house_num = net.load[
@@ -2178,27 +2253,27 @@ class PgReaderWriter:
                 ].shape[0]
 
                 residential_sum_load = (
-                    net.load[net.load["bus"].isin(residential_bus_index)][
-                        "max_p_mw"
-                    ].sum()
-                    * 1e3
+                        net.load[net.load["bus"].isin(residential_bus_index)][
+                            "max_p_mw"
+                        ].sum()
+                        * 1e3
                 )
                 public_sum_load = (
-                    net.load[net.load["bus"].isin(public_bus_index)]["max_p_mw"].sum()
-                    * 1e3
+                        net.load[net.load["bus"].isin(public_bus_index)]["max_p_mw"].sum()
+                        * 1e3
                 )
                 commercial_sum_load = (
-                    net.load[net.load["bus"].isin(commercial_bus_index)][
-                        "max_p_mw"
-                    ].sum()
-                    * 1e3
+                        net.load[net.load["bus"].isin(commercial_bus_index)][
+                            "max_p_mw"
+                        ].sum()
+                        * 1e3
                 )
 
                 sim_peak_load = 0
                 for building_type, sum_load, house_num in zip(
-                    ["Residential", "Public", "Commercial"],
-                    [residential_sum_load, public_sum_load, commercial_sum_load],
-                    [residential_house_num, public_house_num, commercial_house_num],
+                        ["Residential", "Public", "Commercial"],
+                        [residential_sum_load, public_sum_load, commercial_sum_load],
+                        [residential_house_num, public_house_num, commercial_house_num],
                 ):
                     if house_num:
                         sim_peak_load += utils.oneSimultaneousLoad(
@@ -2207,8 +2282,8 @@ class PgReaderWriter:
                             sim_factor=SIM_FACTOR[building_type],
                         )
 
-                avg_distance = (sum(all_distance) / len(all_distance)) * 1e3
-                max_distance = max(all_distance) * 1e3
+                avg_distance = (sum(trafo_distance_to_buses) / len(trafo_distance_to_buses)) * 1e3
+                max_distance = max(trafo_distance_to_buses) * 1e3
 
                 trafo_size = round(trafo_sizes * 1e3)
 
@@ -2218,6 +2293,8 @@ class PgReaderWriter:
                     trafo_max_distance_dict[trafo_size].append(max_distance)
 
                     trafo_avg_distance_dict[trafo_size].append(avg_distance)
+
+
                 else:
                     trafo_load_dict[trafo_size] = [sim_peak_load]
                     trafo_max_distance_dict[trafo_size] = [max_distance]
@@ -2265,13 +2342,20 @@ class PgReaderWriter:
         self.cur.execute(read_query, {"v": VERSION_ID, "p": plz})
         result = self.cur.fetchall()
 
-        load_dict = result[0][0]
-        bus_dict = result[0][1]
-        peak_dict = result[0][2]
-        max_dict = result[0][3]
-        avg_dict = result[0][4]
+        # Sort all parameters according to transformer size
+        load_dict = dict(sorted(result[0][0].items(), key=lambda x: int(x[0])))
+        bus_dict = dict(sorted(result[0][1].items(), key=lambda x: int(x[0])))
+        peak_dict = dict(sorted(result[0][2].items(), key=lambda x: int(x[0])))
+        max_dict = dict(sorted(result[0][3].items(), key=lambda x: int(x[0])))
+        avg_dict = dict(sorted(result[0][4].items(), key=lambda x: int(x[0])))
 
-        return load_dict, bus_dict, peak_dict, max_dict, avg_dict
+        trafo_dict = dict(sorted(self.read_trafo_dict(plz).items(), key=lambda x: int(x[0]), reverse=True))
+        # Create list with all parameter dicts
+        data_list = [load_dict, bus_dict, peak_dict, max_dict, avg_dict]
+        data_labels = ['Load Number [-]', 'Bus Number [-]', 'Simultaneous peak load [kW]',
+                       'Max. Trafo-Distance [m]', 'Avg. Trafo-Distance [m]']
+
+        return data_list, data_labels, trafo_dict
 
     def read_cable_dict(self, plz):
         read_query = """SELECT cable_length FROM public.grid_parameters
@@ -2298,9 +2382,9 @@ class PgReaderWriter:
     # Getter functions with Geopandas
 
     def getGeoDataFrame(
-        self,
-        table,
-        **kwargs,
+            self,
+            table,
+            **kwargs,
     ) -> gpd.GeoDataFrame:
         """
         Args:
@@ -2315,9 +2399,9 @@ class PgReaderWriter:
         else:
             filters = ""
         query = (
-            f"""SELECT * FROM public.{table} 
+                f"""SELECT * FROM public.{table} 
                     WHERE version_id = %(v)s """
-            + filters
+                + filters
         )
 
         params = {"v": VERSION_ID}
@@ -2325,3 +2409,92 @@ class PgReaderWriter:
             gdf = gpd.read_postgis(query, con=connection, params=params)
 
         return gdf
+
+    def get_number_of_households(self, plz):
+        """
+        function sums up all the houses / households that are contained in all the buildings
+        for a plz (and computation version)
+        """
+        no_households_query = """SELECT SUM(houses_per_building) FROM buildings_result
+                    WHERE version_id = %(v)s 
+                    AND in_loadarea_cluster = %(p)s;"""
+        self.cur.execute(no_households_query, {"v": VERSION_ID, "p": plz})
+        no_households = self.cur.fetchone()[0]
+
+        return no_households
+
+    def get_number_of_houses(self, plz):
+        """
+        function counts the number of buildings connected to the grid (Anzahl Hausanschlüsse)
+        for a plz (and computation version)
+        """
+        no_houses_query = """SELECT COUNT(osm_id) FROM buildings_result
+                    WHERE version_id = %(v)s 
+                    AND in_loadarea_cluster = %(p)s;"""
+        self.cur.execute(no_houses_query, {"v": VERSION_ID, "p": plz})
+        no_houses = self.cur.fetchone()[0]
+
+        return no_houses
+
+    def get_dist_btw_houses(self, plz):
+        """
+        average distance between houses (Hausabstand) is retrieved from the syngrid database
+        for a location (plz) and version
+        """
+        house_dist_query = """SELECT hausabstand FROM postcode_result
+                    WHERE version_id = %(v)s 
+                    AND id = %(p)s;"""
+        self.cur.execute(house_dist_query, {"v": VERSION_ID, "p": plz})
+        house_dist = self.cur.fetchone()[0]
+
+        return int(house_dist)
+
+    def insert_lines(
+            self,
+            geom,
+            plz,
+            bcid,
+            kcid,
+            line_name,
+            std_type,
+            from_bus,
+            to_bus,
+            length_km
+    ):
+        """writes lines / cables that belong to a network into the database"""
+        line_insertion_query = """INSERT INTO lines_result (
+                    version_id, 
+                    geom,
+                    in_loadarea_cluster,
+                    in_building_cluster,
+                    k_mean_cluster,
+                    line_name,
+                    std_type,
+                    from_bus,
+                    to_bus,
+                    length_km
+                    ) 
+                VALUES(
+                %(v)s, 
+                ST_SetSRID(%(geom)s::geometry,3035),
+                %(plz)s, 
+                %(bcid)s, 
+                %(kcid)s, 
+                %(line_name)s,
+                %(std_type)s,
+                %(from_bus)s,
+                %(to_bus)s,
+                %(length_km)s
+                ); """
+        self.cur.execute(line_insertion_query, {
+            "v": VERSION_ID,
+            "geom": LineString(geom).wkb_hex,
+            "plz": int(plz),
+            "bcid": int(bcid),
+            "kcid": int(kcid),
+            "line_name": line_name,
+            "std_type": std_type,
+            "from_bus": int(from_bus),
+            "to_bus": int(to_bus),
+            "length_km": length_km
+        })

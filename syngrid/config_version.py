@@ -2,8 +2,11 @@
 import numpy as np
 import pandas as pd
 
-VERSION_ID = "11"
-VERSION_COMMENT = "Initial version without any parameter changes"
+# Change version if you changed any grid parameters or queries (e.g. transformer query)
+VERSION_ID = "1.15"
+
+# state here which parameters, queries are used to compute the grids with current VERSION_ID
+VERSION_COMMENT = "initial parameters for cables, transformers and consumers, transformer_query_1"
 
 # PARAMETERS
 CABLE_COST_DICT = {
