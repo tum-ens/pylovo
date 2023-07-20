@@ -6,8 +6,8 @@ Setup
 Prerequisites
 =============
 
-* Anaconda_: We strongly recommend setting up virtual environments for pylovo and the urbs optimizer
-* EduVPN_: If you are working from your own machine you will need a VPN to connect to the MWN network, which is necessary for accessing the database server
+* Anaconda_: We strongly recommend setting up virtual environments for pylovo and the urbs optimizer.
+* EduVPN_: If you are working from your own machine you will need a VPN to connect to the MWN network. A connection to the network is necessary for accessing the database server.
 
 .. _Anaconda: https://www.anaconda.com/
 .. _EduVPN: https://doku.lrz.de/vpn-eduvpn-installation-und-konfiguration-11491448.html?showLanguage=en_GB
@@ -28,9 +28,10 @@ Next we set up our virtual environments. Open the anaconda powershell prompt and
 
 You can test whether the environments have been properly created via
 ::
+    #to enter a virtual environment
     conda activate TUM_Syngrid
     conda activate urbs310
-    #to leave an environment:
+    #to leave a virtual environment:
     conda deactivate
 
 Finally we install pylovo

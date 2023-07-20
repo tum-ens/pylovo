@@ -2,9 +2,16 @@ import json
 import pandapower as pp
 import os
 
-#featureProperties  (dict): dict containing names and data types of all properties for a feature type (e.g bus, line etc)
-#featureListElement (dict): dict containing data for a single feature that was returned from the frontend
+
 def createFeatureFromGeoJSONProperties(featureProperties, featureListElement):
+    """
+    creates a dict of key value pairs containing the properties of a feature and their respecive values and makes sure they have the correct type
+    
+    :param featureProperties: dict containing names and data types of all properties for a feature type (e.g bus, line etc)
+    :type featureProperties: dict
+    :param featureListElement: dict containing data for a single feature that was returned from the frontend
+    :type featureListElement: dict
+    """
     new_feature_data = {}
     for property in featureProperties:
         value_to_insert = featureListElement.get(property)
@@ -24,9 +31,14 @@ def createFeatureFromGeoJSONProperties(featureProperties, featureListElement):
 
 def recreatePandapowerNetwork(net_features):
     """
-        Hello World I guess
+    fills in an empty pandapower network one feature at a time by extracting each feature's properties, setting their correct type and 
+    adding it to the network object. 
+
+    :param net_features: json containing the network features extracted and returned from the frontend
+    :type net_features: dict
+    :return: newly created and filled pandapower network
+    :rtype: dict
     """
-    documentation_path =  os.path.abspath('../gui/IDP_Maptool_Flask/maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json')
     runtime_path = 'maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json'
     f = open(runtime_path)
     data = json.load(f)
@@ -47,7 +59,6 @@ def recreatePandapowerNetwork(net_features):
     trafo_properties = data['trafo']
     trafo3w_properties = data['trafo3w']
     f.close()
-
 
     newNet = pp.create_empty_network()
 
@@ -73,7 +84,6 @@ def recreatePandapowerNetwork(net_features):
     busListCoords = net_features['busListCoords']
     for idx in range(0, len(busList)):
         bus_data = createFeatureFromGeoJSONProperties(bus_properties, busList[idx])        
-
         pp.create_bus(newNet, index=bus_data["index"], name=bus_data["name"], vn_kv=bus_data["vn_kv"], geodata=busListCoords[idx], type=bus_data["type"], in_service=bus_data["in_service"], max_vm_pu=bus_data["max_vm_pu"],  min_vm_pu=bus_data["min_vm_pu"])
 
     lineList = net_features['lineList']

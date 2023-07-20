@@ -2,8 +2,16 @@ import pandas as pd
 import json
 import os
 
-#input (dict): contains all secondary features of a type for a single primary feature (e.g. all loads of a bus)
 def extractPropertiesFromNet(input):
+    """
+    helper function creating a properties dict for secondary features (e.g. loads of a bus) to be included in the properties
+    of the final feature geoJSON
+
+    :param input: contains all secondary features of a type for a single primary feature
+    :type input: dict
+    :return: json containing key value pairs of secondary feature properties and their values for every primary feature
+    :rtype: dict
+    """
     if input.empty:
         return {}
     output = {}
@@ -16,14 +24,26 @@ def extractPropertiesFromNet(input):
             output[idx][entry] = input.T.loc[entry].iloc[idx]
     return output
 
-#creates and returns a geoJSON object for a feature of the original pandapower network
-#isLines                (bool): flag for if the geojson object to create is going to be a line or point object
-#ppdata                 (dict): the pandapower network object
-#featureName            (string): determines how we handle feature extraction and geojson creation
-#featureProperties      (list[string]): contains the names of all properties for a feature (e.g. bus, line etc)
-#propertyGroupNames     (list[string]): only relevant for bus features; contains names of all secondary features we want to add (switch, sgen, load)
-#propertyGroupFeatures  (list[list[string]]): only relevant for bus features; contains the names of all properties for a secondary feature 
+
 def createFeatures (isLines, ppdata, featureName, featureProperties, propertyGroupNames, propertyGroupFeatures):
+    """
+    creates and returns a geoJSON object for a feature of the original pandapower network
+    
+    :param isLines: flag for if the geojson object to create is going to be a line or point object
+    :type isLines: bool
+    :param ppdata: the pandapower network object
+    :type ppdata: dict
+    :param featureName: determines how we handle feature extraction and geojson creation
+    :type featureName: string
+    :param featureProperties: contains the names of all properties for a feature (e.g. bus, line etc)
+    :type featureProperties: list[string]
+    :param propertyGroupNames: only relevant for bus features; contains names of all secondary features we want to add (switch, sgen, load)
+    :type propertyGroupNames: list[string]
+    :param propertyGroupFeatures: only relevant for bus features; contains the names of all properties for a secondary feature
+    :type propertyGroupFeatures: list[list[string]]
+    :return: geoJSON dict containing all features of a single type (bus, line etc) of a network
+    :rtype: dict 
+    """
     input_data = ppdata[featureName]
     input_data = input_data.fillna('')
     input_geoCoords = pd.DataFrame()
@@ -94,18 +114,37 @@ def createFeatures (isLines, ppdata, featureName, featureProperties, propertyGro
     return input_geoJSON
 
 def extractStdTypes(ppdata):
+    """
+    std_types are already saved in a convenient datastructure in the pandapower network, so we just extract them as is
+
+    :return: json string of all std_types grouped by feature (line, trafo)
+    :rtype: string
+    """
     return json.dumps(ppdata.std_types)
 
 
 def createGeoJSONofNetwork(net, bus, trafo, line, ext_grid, std_types):
-    documentation_path =  os.path.abspath('../gui/IDP_Maptool_Flask/maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json')
+    """
+    creates the final json object that contains geoJSON objects for every feature type we want to display on the GUI map
+    
+    :param net: the pandapower network
+    :type net: dict
+    :param bus: flag determining whether we want to include busses in the displayable network
+    :type bus: bool
+    :param trafo: flag determining whether we want to include trafos in the displayable network
+    :type trafo: bool
+    :param line: flag determining whether we want to include lines in the displayable network
+    :type line: bool
+    :param ext_grid: flag determining whether we want to include ext_grids in the displayable network
+    :type ext_grid: bool
+    :param std_types: flag determining whether we want to include std_types in the frontend editor
+    :type std_types: bool
+    :return: json object containing geojsons for every feature of the original pdp net we want to display
+    :rtype: dict
+    """
     directory_path = 'maptool\\z_feature_jsons\\pandapower_network_features\\properties_final.json'
     f = open(directory_path)
     data = json.load(f)
-
-    line_std_properties = data['std_type']['line']
-    trafo_std_properties = data['std_type']['trafo']
-    trafo3w_std_properties = data['std_type']['trafo3w']
 
     line_properties = data['line']
 
@@ -119,7 +158,6 @@ def createGeoJSONofNetwork(net, bus, trafo, line, ext_grid, std_types):
     trafo_properties = data['trafo']
     trafo3w_properties = data['trafo3w']
     f.close()
-
 
     output = {}
     output['bus'] = createFeatures(False, net, 'bus', bus_properties, ['load', 'sgen', 'switch'], [load_features, sgen_features, switch_features]) if bus else {}

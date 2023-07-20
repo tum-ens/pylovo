@@ -17,14 +17,25 @@ from maptool.config import *
 #prop.write('infeasible.ilp')
 
 
-#As a frist step we always return the html for the current window
 @bp.route('/urbs', methods=['GET', 'POST'])
 def urbs_setup():
+    """
+    called when the urbs editor window is first opened
+
+    :return: path to the html file for the current window
+    :rtype: string
+    """
     return render_template('urbs_editor/index.html')
 
-#one page load javascript fetches the json file containing parameter names, types, default values etc for generation and maintenance of the editor environment
 @bp.route('/urbs/urbs_setup_properties', methods=['GET', 'POST'])
 def urbs_setup_properties():
+    """
+    on page load the frontend fetches the json file containing parameter names, types, default values etc 
+    for generation and maintenance of the editor environment
+
+    :return: json containing all data information necessary for setting up the urbs editor GUI
+    :rtype: dict
+    """
     if request.method == 'GET':
         f = open('maptool\\z_feature_jsons\\urbs_setup_features\\urbs_setup_features.json', 'r')
         urbs_setup_props = json.load(f)
@@ -32,18 +43,16 @@ def urbs_setup_properties():
 
 
 @bp.route('/urbs/editableNetwork', methods=['GET', 'POST'])
-def editableNetwork():
-    #on opening of the network view the js code requests full information of the previously selected network
-    #we return the network with previously chosen and session-dependant plz, kcid and bcid with all features
+def retrieveEditableNetwork():
+    """
+    on opening of the network view the js code requests full information of the previously selected network
+    we return the network with previously chosen and session-dependant plz, kcid and bcid with all features
+
+    :return: a json filled with geoJSON featureCollections created from the network selected in previous steps
+    :rtype: dict
+    """
     if request.method == 'GET':
-        #--------------------------------COMMENT OUT IF DATABASE CONNECTION DOES NOT WORK--------------------------------#
-        # plz = session.get('plz')['value']
-        # kcid_bcid = session.get('kcid_bcid')['value']
-        # plz_version = session['plz_version']
-        # gg = GridGenerator(plz=plz, version_id=plz_version)
-        # pg = gg.pgr
         testnet = pp.from_excel("pandapower2urbs\\dataset\\_transmission\\test.xlsx")
-        #--------------------------------COMMENT OUT IF DATABASE CONNECTION DOES NOT WORK--------------------------------#
 
         #--------------------------------PURELY FOR DEBUG--------------------------------#
         #from maptool import net as testnet
@@ -60,10 +69,15 @@ def editableNetwork():
     if request.method == 'POST':
         #print(request.get_json())
         return 'Success', 200
-
-#at them moment we use purely pre-defined profiles the user can choose from. They are extracted from the csv template and sent to the frontend here   
+ 
 @bp.route('/urbs/demand_profiles', methods=['GET', 'POST'])
-def demandProfiles():
+def retrieveDemandProfilesForSetup():
+    """
+    Pre-defined demand profiles are extracted from the csv template and sent to the frontend here  
+    
+    :return: a dict containing all demand profiles
+    :rtype: dict
+    """
     demand_electricity = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs/dataset/demand/profiles/electricity.csv'), sep=',')
     demand_electricity_reactive = pd.read_csv(os.path.join(os.getcwd(),'pandapower2urbs/dataset/demand/profiles/electricity-reactive.csv'), sep=',')
     demand_mobility = pd.read_csv(os.path.join(os.getcwd(),'pandapower2urbs/dataset/demand/profiles/mobility.csv'), sep=',')
@@ -81,6 +95,13 @@ def demandProfiles():
     
 @bp.route('/urbs/transmission_profiles', methods=['GET', 'POST'])
 def formatTransmissionSetup():
+    """
+    transmission data is extracted from the csv template and sent to the frontend here. We also send the previously saved sn_mva value for 
+    generation of the default kont 
+    
+    :return: a dict containing all trafo data and the sn_mva of the network trafo chosen in the network editor
+    :rtype: dict
+    """
     trafo_data = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs_dataset_template/dataset/_transmission/trafo_data.csv'), sep=',')
     trans_json = {
         "trafo_data" : trafo_data.to_json(),
@@ -91,6 +112,12 @@ def formatTransmissionSetup():
 
 @bp.route('/urbs/process_profiles', methods=['GET', 'POST'])
 def formatProcessSetup():
+    """
+    process data is extracted from the csv template and sent to the frontend here
+    
+    :return: a dict containing all process and process commodity properties
+    :rtype: dict
+    """
     pro_prop = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs_dataset_template/dataset/process/pro_prop.csv'), sep=',')
     pro_com_prop = pd.read_csv(os.path.join(os.getcwd(),'pandapower2urbs_dataset_template/dataset/process/pro_com_prop.csv'), sep=',')
     process_json = {
@@ -102,6 +129,12 @@ def formatProcessSetup():
 
 @bp.route('/urbs/storage_profiles', methods=['GET', 'POST'])
 def formatStorageSetup():
+    """
+    storage data is extracted from the csv template and sent to the frontend here
+    
+    :return: a dict containing all storage properties
+    :rtype: dict
+    """
     sto_prop = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs_dataset_template/dataset/storage/sto_prop.csv'), sep=',')
     storage_json = {
         "sto_prop" : sto_prop.to_json(),
@@ -111,6 +144,12 @@ def formatStorageSetup():
 
 @bp.route('/urbs/commodity_profiles', methods=['GET', 'POST'])
 def formatCommoditySetup():
+    """
+    commodity data is extracted from the csv template and sent to the frontend here
+    
+    :return: a dict containing all commodity properties
+    :rtype: dict
+    """
     com_prop = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs_dataset_template/dataset/commodity/com_prop.csv'), sep=',')
     com_prop.replace([np.inf, -np.inf], "inf", inplace=True)
     commodity_json = {
@@ -121,6 +160,13 @@ def formatCommoditySetup():
 
 @bp.route('/urbs/supim_profiles', methods=['GET', 'POST'])
 def supimProfiles():
+    """
+    Pre-defined supim profiles are extracted from the csv template and sent to the frontend here. Empty spots in the profile are filled with 0 to
+    avoid issues during the pandapower2urbs step
+    
+    :return: a dict containing all supim profiles
+    :rtype: dict
+    """
     supim_solar = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs_dataset_template/dataset/supim/profiles/solar.csv'), sep=',')
     supim_solar = supim_solar.fillna(0)
     supim_solar.to_csv('pandapower2urbs\\dataset\\supim\\profiles\\solar.csv', index=False)
@@ -131,6 +177,12 @@ def supimProfiles():
 
 @bp.route('/urbs/timevareff_profiles', methods=['GET', 'POST'])
 def timevareffProfiles():
+    """
+    Pre-defined timevareff profiles are extracted from the csv template and sent to the frontend here  
+    
+    :return: a dict containing all timevareff profiles
+    :rtype: dict
+    """
     charging_station = pd.read_csv(os.path.join(os.getcwd(), 'pandapower2urbs_dataset_template/dataset/timevareff/profiles/charging_station.csv'), sep=',')
     heatpump_air = pd.read_csv(os.path.join(os.getcwd(),'pandapower2urbs_dataset_template/dataset/timevareff/profiles/heatpump_air.csv'), sep=',')
     heatpump_air_heizstrom = pd.read_csv(os.path.join(os.getcwd(),'pandapower2urbs_dataset_template/dataset/timevareff/profiles/heatpump_air_heizstrom.csv'), sep=',')
@@ -144,20 +196,42 @@ def timevareffProfiles():
     return timevareff_json
 
 
-#help function that returns all the index positions of a char in a list
-#used to find which flags are set to 1 in the demand, supim, timevareff checkbox editors and correctly write to css
 def find(s, ch):
+    """
+    help function that returns all the index positions of a char in a list
+    used to find which flags were set to 1 in the demand, supim, timevareff checkbox editors
+
+    :param s: string of 0s and 1s symbolizing the chosen row of a given profile
+    :type s: string
+    :param ch: the symbol we are looking for, generally '1'
+    :type ch: char
+    :return: list with indices of the chars in the input string that equal the char we search for
+    :rtype: list[int]
+    """
     return [i for i, ltr in enumerate(s) if ltr == ch]
 
-def createCSVFromCheckboxes (json_data, columns): 
+def createDFromCheckboxes (json_data, columns): 
+    """
+    creates a pandas dataframe that lists all entries of a profile that have been selected for every bus in the network 
+    as a string of indices
+
+    :param json_data: json with key value pairs of bus indices an lists of strings symbolizing all entries of all profiles
+    :type json_data: list[string]
+    :param columns: list containing the names of all profiles
+    :type columns: list[string]
+    :return: pandas dataframe where profile names are the columns and strings of type "bus_name, column_1_entry_1;column_1_entry_2, column_2_entry_1,,..."  
+    :type: pandas dataframe
+    """
     conf = []
 
     for bus in json_data:
         current_row = []
         current_row.append(bus)
         for profile in json_data[bus]:
+            #for a profile string, we find all parts of the string that are '1', symbolizing that that entry of the profile has been chosen for the current bus
             chosen_profiles = find(profile, '1')
             chosen_profiles_str = ''
+            #if nothing has been selected for a bus, we simply select the last entry in the list by default
             if chosen_profiles:
                 chosen_profiles_str = ';'.join(str(p) for p in chosen_profiles)
             else:
@@ -165,21 +239,26 @@ def createCSVFromCheckboxes (json_data, columns):
             current_row.append(chosen_profiles_str)
         conf.append(current_row)
     
-    demand_df = pd.DataFrame(conf, columns=columns)
-    return demand_df
+    profiles_df = pd.DataFrame(conf, columns=columns)
+    return profiles_df
 
-#the js returns the aggregated profiles the user chose for load bus and each type of demand
-#the returned datastructure is changed into a csv that fits the demanded format
 @bp.route('/urbs/demand_csv_setup', methods=['GET', 'POST'])
-def formatDemandCSV():
+def createPdp2UrbsDemandCSV():
+    """
+    the js returns the aggregated profiles the user chose for each load bus and each type of demand
+    the returned datastructure is changed into a csv that fits the demanded format
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         demand_profiles = ["site","electricity","electricity-reactive","mobility","space_heat","water_heat"]
-        demand_df = createCSVFromCheckboxes(request.get_json(), demand_profiles)
+        demand_df = createDFromCheckboxes(request.get_json(), demand_profiles)
         demand_df.to_csv('pandapower2urbs\\dataset\\demand\\demand_conf.csv', index=False)
         return 'Success', 200
 
 @bp.route('/urbs/buildings_csv_setup', methods=['GET', 'POST'])
-def formatBuildingsCSV():
+def createPdp2UrbsBuildingsCSV():
     if request.method == 'POST':
         buildings_user_data = json.loads(request.get_json())
 
@@ -221,7 +300,7 @@ def formatBuildingsCSV():
         return 'Success', 200
 
 @bp.route('/urbs/transmission_csv_setup', methods=['GET', 'POST'])
-def formatTransmissionCSV():
+def createPdp2UrbsTransmissionCSV():
     if request.method == 'POST':
         trans_data = request.get_json()
         for table in trans_data:
@@ -247,7 +326,7 @@ def formatTransmissionCSV():
         return 'Success', 200
 
 @bp.route('/urbs/global_csv_setup', methods=['GET', 'POST'])
-def formatGlobalCSV():
+def createPdp2GlobalCSV():
     if request.method == 'POST':
         global_columns = ['Property', 'value']
         global_conf = []
@@ -261,7 +340,7 @@ def formatGlobalCSV():
         return 'Success', 200
 
 @bp.route('/urbs/commodity_csv_setup', methods=['GET', 'POST'])
-def formatCommodityCSV():
+def createPdp2CommodityCSV():
     if request.method == 'POST':
         commodity_data = json.loads(request.get_json())
         columns = ['name']
@@ -279,7 +358,7 @@ def formatCommodityCSV():
 
 
 @bp.route('/urbs/process_csv_setup', methods=['GET', 'POST'])
-def formatProcessCSV():
+def createPdp2ProcessCSV():
     if request.method == 'POST':
         #combine with sto_conf into single method
         process_data = request.get_json()
@@ -321,7 +400,7 @@ def formatProcessCSV():
         return 'Success', 200
 
 @bp.route('/urbs/storage_csv_setup', methods=['GET', 'POST'])
-def formatStorageCSV():
+def createPdp2StorageCSV():
     if request.method == 'POST':
         storage_data = request.get_json()
         sto_conf_df = pd.read_json(storage_data['sto_conf'], orient='split')
@@ -346,18 +425,32 @@ def formatStorageCSV():
         return 'Success', 200
     
 @bp.route('/urbs/supim_csv_setup', methods=['GET', 'POST'])
-def formatSupimCSV():
+def createPdp2SupimCSV():
+    """
+    the js returns the aggregated profiles the user chose for each load bus and each type of supim
+    the returned datastructure is changed into a csv that fits the demanded format
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         supim_profiles = ["site","solar"]
-        supim_df = createCSVFromCheckboxes(request.get_json(), supim_profiles)
+        supim_df = createDFromCheckboxes(request.get_json(), supim_profiles)
         supim_df.to_csv('pandapower2urbs\\dataset\\supim\\supim_conf.csv', index=False)
         return 'Success', 200
 
 @bp.route('/urbs/timevareff_csv_setup', methods=['GET', 'POST'])
-def formatTimevareffCSV():
+def createPdp2TimevareffCSV():
+    """
+    the js returns the aggregated profiles the user chose for each load bus and each type of timevareff
+    the returned datastructure is changed into a csv that fits the demanded format
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         timevareff_profiles = ["site","charging_station","heatpump_air","heatpump_air_heizstrom"]
-        timevareff_df = createCSVFromCheckboxes(request.get_json(), timevareff_profiles)
+        timevareff_df = createDFromCheckboxes(request.get_json(), timevareff_profiles)
         timevareff_df.to_csv('pandapower2urbs\\dataset\\timevareff\\timevareff_conf.csv', index=False)
 
         return 'Success', 200

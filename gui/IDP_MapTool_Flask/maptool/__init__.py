@@ -25,7 +25,13 @@ from flask import Flask, render_template, session
 
 def create_app(test_config=None):
     """
-    Test
+    Flask factory that sets up the application and sets the default webpage template. 
+    It also connects the subpage blueprints to the app
+    
+    :param test_config: application config file name, defaults to None
+    :type test_config: string, optional
+    :return: application object reference
+    :rtype: Flask Application Object
     """
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
@@ -49,7 +55,7 @@ def create_app(test_config=None):
     from maptool.urbs_editor import bp as urbs_bp
     from maptool.urbs_results import bp as urbs_results_bp
 
-
+    
     app.register_blueprint(postcode_bp)
     app.register_blueprint(network_bp)
     app.register_blueprint(urbs_bp)
