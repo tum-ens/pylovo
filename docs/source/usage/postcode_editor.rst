@@ -31,7 +31,7 @@ Building selection & network generation
     :width: 49%
 
 | Once the user presses the **Select Area** button, all buildings within the selected area will be displayed on the map. The user can now delete
-| individual buildings by clicking on them and then clicking the **delete Building** button in the popup window.
+  individual buildings by clicking on them and then clicking the **delete Building** button in the popup window.
 | Once the user is happy with their selection of buildings, they can generate a network based on their selection by pressing the **Generate Network** button.
 
 Network generation & selection by ID

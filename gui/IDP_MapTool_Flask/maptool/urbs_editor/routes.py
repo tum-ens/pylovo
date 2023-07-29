@@ -45,7 +45,7 @@ def urbs_setup_properties():
 @bp.route('/urbs/editableNetwork', methods=['GET', 'POST'])
 def retrieveEditableNetwork():
     """
-    on opening of the network view the js code requests full information of the previously selected network
+    on opening of the urbs setup view the js code requests full information of the previously selected network
     we return the network with previously chosen and session-dependant plz, kcid and bcid with all features
 
     :return: a json filled with geoJSON featureCollections created from the network selected in previous steps
@@ -245,7 +245,7 @@ def createDFromCheckboxes (json_data, columns):
 @bp.route('/urbs/demand_csv_setup', methods=['GET', 'POST'])
 def createPdp2UrbsDemandCSV():
     """
-    the js returns the aggregated profiles the user chose for each load bus and each type of demand
+    the frontend returns the aggregated profiles the user chose for each load bus and each type of demand
     the returned datastructure is changed into a csv that fits the demanded format
 
     :return: response indicating successful data transfer
@@ -259,6 +259,13 @@ def createPdp2UrbsDemandCSV():
 
 @bp.route('/urbs/buildings_csv_setup', methods=['GET', 'POST'])
 def createPdp2UrbsBuildingsCSV():
+    """
+    the function takes returned building data for every bus, fetches additional building info from the database and aggregates it into
+    two csv-files
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         buildings_user_data = json.loads(request.get_json())
 
@@ -301,6 +308,12 @@ def createPdp2UrbsBuildingsCSV():
 
 @bp.route('/urbs/transmission_csv_setup', methods=['GET', 'POST'])
 def createPdp2UrbsTransmissionCSV():
+    """
+    reshapes returned data and saves it into csv files
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         trans_data = request.get_json()
         for table in trans_data:
@@ -341,6 +354,12 @@ def createPdp2GlobalCSV():
 
 @bp.route('/urbs/commodity_csv_setup', methods=['GET', 'POST'])
 def createPdp2CommodityCSV():
+    """
+    reshapes returned data and saves it into csv files
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         commodity_data = json.loads(request.get_json())
         columns = ['name']
@@ -359,6 +378,12 @@ def createPdp2CommodityCSV():
 
 @bp.route('/urbs/process_csv_setup', methods=['GET', 'POST'])
 def createPdp2ProcessCSV():
+    """
+    reshapes returned data and saves it into csv files
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         #combine with sto_conf into single method
         process_data = request.get_json()
@@ -401,6 +426,12 @@ def createPdp2ProcessCSV():
 
 @bp.route('/urbs/storage_csv_setup', methods=['GET', 'POST'])
 def createPdp2StorageCSV():
+    """
+    reshapes returned data and saves it into csv files
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         storage_data = request.get_json()
         sto_conf_df = pd.read_json(storage_data['sto_conf'], orient='split')
@@ -427,7 +458,7 @@ def createPdp2StorageCSV():
 @bp.route('/urbs/supim_csv_setup', methods=['GET', 'POST'])
 def createPdp2SupimCSV():
     """
-    the js returns the aggregated profiles the user chose for each load bus and each type of supim
+    the frontend returns the aggregated profiles the user chose for each load bus and each type of supim
     the returned datastructure is changed into a csv that fits the demanded format
 
     :return: response indicating successful data transfer
@@ -442,7 +473,7 @@ def createPdp2SupimCSV():
 @bp.route('/urbs/timevareff_csv_setup', methods=['GET', 'POST'])
 def createPdp2TimevareffCSV():
     """
-    the js returns the aggregated profiles the user chose for each load bus and each type of timevareff
+    the frontend returns the aggregated profiles the user chose for each load bus and each type of timevareff
     the returned datastructure is changed into a csv that fits the demanded format
 
     :return: response indicating successful data transfer
@@ -458,6 +489,7 @@ def createPdp2TimevareffCSV():
 import subprocess
 
 def switch_conda_environment(env_path, env_name):
+
     cmd = f'cd {env_path} && conda run -n {env_name} python.exe run_automatedoutput.py'
     urbs_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True)
     for stdout_line in iter(urbs_process.stdout.readline, ""):
@@ -470,6 +502,14 @@ def switch_conda_environment(env_path, env_name):
 
 @bp.route('/urbs/pdp2Urbs', methods=['GET', 'POST'])
 def runPdp2Urbs():
+    """
+    executes pandapower to urbs input file conversion and the urbs run. 
+    Due to differences in requirements we create a subprocess that activates the urbs
+    conda environment and executes the program
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     pp2u.convertPandapower2Urbs()
     cmd = f'cd {URBS_RUN_FILE_PATH} && conda run -n {URBS_CONDA_ENV_NAME} python.exe run_automatedoutput.py'
     urbs_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True)

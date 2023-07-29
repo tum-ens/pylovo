@@ -8,12 +8,6 @@ from maptool.config import *
 #plot functions need to return the name of the generated plot
 #they need to call the write_html function as well and the filename that is returned and the filename of the new html need to match
 
-
-def aggregateHTMLFiles(filenames):
-    #TODO: combine a given number of divs into single html file to be passed to the frontend
-    return 0
-
-
 def cap_pro_generate_plot(hdf_path, site_name, save_path=URBS_RESULT_PLOT_SAVE_PATH):
     hdf = pd.read_hdf(hdf_path, key='result/cap_pro')
     
