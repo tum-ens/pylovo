@@ -340,6 +340,12 @@ def createPdp2UrbsTransmissionCSV():
 
 @bp.route('/urbs/global_csv_setup', methods=['GET', 'POST'])
 def createPdp2GlobalCSV():
+    """
+    reshapes returned data and saves it into csv files
+
+    :return: response indicating successful data transfer
+    :rtype: JavaScript Fetch API Response
+    """
     if request.method == 'POST':
         global_columns = ['Property', 'value']
         global_conf = []

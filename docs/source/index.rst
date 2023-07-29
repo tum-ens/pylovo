@@ -25,6 +25,7 @@ Contents
    setup
    usage/usage
    dev/development
+   js_api/index
 
 
 Indices and tables

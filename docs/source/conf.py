@@ -17,12 +17,14 @@ import sys
 sys.path.insert(0, os.path.abspath('../../gui/IDP_Maptool_Flask'))
 sys.path.insert(0, os.path.abspath('../..'))
 sys.path.insert(0, os.path.abspath('..'))
-print("SYSPATH", sys.path)
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension']
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension', 'sphinx_js']
+
 autoapi_dirs = ['../../gui/IDP_MapTool_Flask/maptool']
+
+js_source_path = "../../gui/IDP_MapTool_Flask/maptool/static/postcode_editor"
 
 templates_path = ['_templates']
 exclude_patterns = []

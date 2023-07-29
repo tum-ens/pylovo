@@ -112,6 +112,7 @@ var maptool_display_postcode = function (){
     
     /**
      * onclick function for the Choose Version button of the version select gui element
+     * 
      * @returns nothing. Return statement exists simply to break out of function in case of faulty input
      */
     function chooseVersionOfPlzNetwork() {
@@ -157,15 +158,13 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * @param {HTML button element} btn 
+     * @param {HTML_button_element} btn 
      * @param {string} plz_type             Flag used to determine whether user wants to generate new networks from area selection or look at already existing ones
      */
     function getPostalCodeArea(btn, plz_type) {
-        /**
-         * if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file, 
-         * which we display on the map
-         * We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects
-         */
+        // if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file, 
+        // which we display on the map
+        // We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects
         if (plz_type == 'plz-number') {
             let plz = document.getElementById("PLZ").value;
             fetch("http://127.0.0.1:5000/postcode/plz", {
@@ -294,14 +293,14 @@ var maptool_display_postcode = function (){
     
     
     /**
-     * 
-     * @param {int} kcid                    the k cluster id of a network
-     * @param {int} bcid                    the building cluster id of a network
-     * @param {geoJSON dict} line_geoJSON   a dict containing all the lines of a network
-     * 
      * adds all lines of a network to a new layer and displays it on the map
      * further defines several inner functions to handle click, mouseover and mouseout functionality and attaches them to the layer
      * We only display the lines of all networks for performance reasons, showing buses adds too many nodes.
+     * 
+     * @param {int} kcid                    the k cluster id of a network
+     * @param {int} bcid                    the building cluster id of a network
+     * @param {geoJSON_dict} line_geoJSON   a dict containing all the lines of a network
+     * 
      */
     function displayPreviewNet(kcid, bcid, line_geoJSON) {
         let linePreviewLayer = L.geoJSON(line_geoJSON, {
@@ -358,10 +357,10 @@ var maptool_display_postcode = function (){
     }
     
     /**
+     * creates options for each network we have gotten from the backend
      * 
      * @param {string} listName key for the html select element we want to attach options to
      * @param {list} list       list containing the objects we want to create select options for
-     * creates options for each network we have gotten from the backend
      */
     function populateNetList(listName, list) {
         let networkList = document.getElementsByClassName("list-selection");
@@ -379,9 +378,10 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * @param {html select element} sel reference to the network select html element
      * onclick function for the network select html element
      * makes sure a network selected in the html select element is highlighted on the map by manually triggering a click event for it
+     * 
+     * @param {HTML_select_element} sel reference to the network select html element
      */
     function highlightSelectedPreviewLayer(sel) {
         let idx = parseInt(sel.options[sel.selectedIndex].value);
@@ -408,8 +408,9 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * @param {event} e 
      * mouseover function for buildings on the map
+     * 
+     * @param {event} e 
      */
     function highlightBuildingFeature(e) {
         var layer = e.target;
@@ -429,8 +430,9 @@ var maptool_display_postcode = function (){
         layer.bringToFront();
     }
     /**
-     * @param {event} e 
      * mouseout function for buildings on the map
+     * 
+     * @param {event} e 
      */
     function resetBuildingHighlight(e) {
         if(e.target.feature.properties.type == 'res') {
@@ -441,25 +443,28 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * @param {event} e 
      * onclick function for buildings on the map
+     * 
+     * @param {event} e 
      */
     function zoomToBuildingFeature(e) {
         map.fitBounds(e.target.getBounds());
     }
     
     /**
-     * @param {event} e 
      * aggregate onclick function for buildings on the map in case click events should have multiple effects
+     * 
+     * @param {event} e s
      */
     function displayBuildingEditOptions(e) {
         zoomToBuildingFeature(e);
     }
     
     /**
-     * @param {dict} feature 
-     * @param {leaflet layer object} layer 
      * is called when buildings are displayed on the map and defines different behaviours for each object on the map
+     * 
+     * @param {dict} feature 
+     * @param {leaflet_layer_object} layer 
      */
     function onEachFeature(feature, layer) {
         createBuildingPopup(feature, layer);
@@ -471,10 +476,11 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * @param {dict} feature 
-     * @param {leaflet layer object} layer 
      * is called for each building when they are placed on the map and attaches a popup to it, containing a button that allows the user to delete that building
      * the popup could contain other information as well
+     * 
+     * @param {dict} feature 
+     * @param {leaflet_layer_object} layer 
      */
     function createBuildingPopup(feature, layer) {
         var container = L.DomUtil.create('div');
