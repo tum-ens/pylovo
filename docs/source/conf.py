@@ -24,8 +24,8 @@ extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension', 
 
 autoapi_dirs = ['../../gui/IDP_MapTool_Flask/maptool']
 
-js_source_path = "../../gui/IDP_MapTool_Flask/maptool/static/postcode_editor"
-
+js_source_path = ["../../gui/IDP_MapTool_Flask/maptool/static/network_editor", "../../gui/IDP_MapTool_Flask/maptool/static/postcode_editor"]
+root_for_relative_js_paths = "."
 templates_path = ['_templates']
 exclude_patterns = []
 

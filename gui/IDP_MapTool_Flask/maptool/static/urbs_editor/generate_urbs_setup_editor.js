@@ -76,7 +76,7 @@ var maptool_urbs_setup = function() {
             populateUrbsEditor('global', UrbsPropertiesJSON['global'],'');
             populateUrbsEditor('pro_prop', UrbsPropertiesJSON['process']['pro_prop'],'maptool_urbs_process.writeBackProcessFeatures(this, false)');
             populateUrbsEditor('pro_com_prop', UrbsPropertiesJSON['process']['pro_com_prop'],'maptool_urbs_process.writeBackProcessFeatures(this, true)');
-            populateEditableNetworkEditorSecondaryFeature('pro_prop', 'pro_com_prop')
+            populateUrbsNetworkEditorSecondaryFeature('pro_prop', 'pro_com_prop')
             populateUrbsEditor('storage', UrbsPropertiesJSON['storage']['sto_prop'],'');
 
             //ensures that the feature buttons are made visible once the network visualization has concluded and the editors been filed
@@ -256,10 +256,12 @@ var maptool_urbs_setup = function() {
     }
 
     /**
+     * TODO
+     * 
      * @param {string} primaryFeatureName       Key for the primary feature editor to which the secondary feature list is getting attached to
      * @param {string} secondaryFeatureName     Key for the secondary feature  
      */
-    function populateEditableNetworkEditorSecondaryFeature(primaryFeatureName, secondaryFeatureName) {
+    function populateUrbsNetworkEditorSecondaryFeature(primaryFeatureName, secondaryFeatureName) {
         let editor_form = document.getElementById(primaryFeatureName + 'Form');
 
         //the secondary feature list is placed into its own div

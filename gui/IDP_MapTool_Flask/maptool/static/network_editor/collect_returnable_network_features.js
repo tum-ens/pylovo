@@ -1,4 +1,7 @@
 var maptool_return_net = function() {
+    /**
+     * TODO
+     */
     function returnEditedNet() {
         fetch("http://127.0.0.1:5000/networks/urbs_results", {
                     method: 'POST',
@@ -14,6 +17,7 @@ var maptool_return_net = function() {
     
     /**
      * goes through every list in the network object and extracts features and their properties from the saved map objects
+     * 
      * @returns dict containing all data of the network to be processed in the backend
      */
     function extractNetworFeatures() {

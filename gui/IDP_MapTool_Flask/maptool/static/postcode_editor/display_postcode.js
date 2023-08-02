@@ -497,6 +497,11 @@ var maptool_display_postcode = function (){
         layer.bindPopup(popup);
     }
     
+    /**
+     * closes popup window
+     * 
+     * @param {string} id html id of the window to be closed
+     */
     function closeForm(id) {
         document.getElementById(id).style.display = 'none';
     }

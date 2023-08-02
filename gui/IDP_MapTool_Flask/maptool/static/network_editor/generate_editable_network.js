@@ -155,7 +155,13 @@ var maptool_network_gen = function (){
         });
     }
 
-    //The busses connected to the trafo need to have specific names to work with urbs later
+    /**
+     * The busses connected to the trafo need to have specific names to work with urbs later
+     * TODO
+     * 
+     * @param {*} busList 
+     * @param {*} trafoList 
+     */
     function changeTrafoBusNames(busList, trafoList) {
         trafoList.forEach(trafo => {
             busList.forEach(bus => {
@@ -202,6 +208,7 @@ var maptool_network_gen = function (){
  * function that adds a FeatureCollection to the leaflet map
  * we set styles and onclick functions here and save references to each added feature in the NetworkObject
  * lines (lines, trafos) and circlemarkers (busses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
+ * 
  * @param {boolean} isLines 
  * @param {FeatureCollection geoJSON} input_geoJSON 
  * @param {string} featureName 

@@ -118,7 +118,7 @@ var maptool_urbs_res_setup = function (){
      * @param {event} e 
      * @param {string} listName 
      */
-    function openEditableNetworkList(e, listName) {
+    function openUrbsNetworkList(e, listName) {
         tabcontent = document.getElementsByClassName("feature-editor__featurelist-tab");
         for (i = 0; i < tabcontent.length; i++) {
         tabcontent[i].style.display = "none";
@@ -325,7 +325,7 @@ var maptool_urbs_res_setup = function (){
     });
     
     return {
-        openEditableNetworkList: openEditableNetworkList,
+        openUrbsNetworkList: openUrbsNetworkList,
         fillSelectedEditableNetworkFeatureEditor: fillSelectedEditableNetworkFeatureEditor,
         clickOnMarker: clickOnMarker
     }

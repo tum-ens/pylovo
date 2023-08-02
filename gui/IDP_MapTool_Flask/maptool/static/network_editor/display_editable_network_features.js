@@ -147,6 +147,7 @@ var maptool_net_display = function() {
     }
 
     /**
+     * TODO
      * 
      * @param {*} primaryFeatureName 
      * @param {*} secondaryFeatureName 
@@ -202,7 +203,12 @@ var maptool_net_display = function() {
         featureCreateButton.setAttribute('onclick', 'maptool_net_display.addSecondaryFeature("' + primaryFeatureName + '", "' + secondaryFeatureName + '")') 
         editor_form.appendChild(featureCreateButton);
     }
-
+    /**
+     * TODO
+     * 
+     * @param {*} primaryFeatureName 
+     * @param {*} secondaryFeatureName 
+     */
     function addSecondaryFeature(primaryFeatureName, secondaryFeatureName) {
         let idxInFeatureList = document.getElementById(primaryFeatureName + "Select").selectedIndex;
         let primaryFeatureIndex = maptool_network_gen.NetworkObject[primaryFeatureName + "List"][idxInFeatureList].feature.properties.index;
@@ -221,7 +227,13 @@ var maptool_net_display = function() {
         console.log("Added new " + secondaryFeatureName)
     }
 
-    //gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
+    /**
+     * gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
+     * TODO
+     * 
+     * @param {*} e 
+     * @param {*} listName 
+     */
     function openEditableNetworkList(e, listName) {
         tabcontent = document.getElementsByClassName("feature-editor__featurelist-tab");
         for (i = 0; i < tabcontent.length; i++) {
@@ -252,7 +264,13 @@ var maptool_net_display = function() {
         }
     }
 
-    //writes values of the currently selected feature into the input fields of the editor window
+    /**
+     * writes values of the currently selected feature into the input fields of the editor window
+     * TODO
+     * 
+     * @param {*} sel 
+     * @param {*} listName 
+     */
     function fillSelectedEditableNetworkFeatureEditor(sel, listName) {
         let idx = parseInt(sel.selectedIndex);    
         let selectedObject = maptool_network_gen.NetworkObject[listName + 'List'][idx];
@@ -260,7 +278,13 @@ var maptool_net_display = function() {
         clickOnMarker(selectedObject, listName, 0);
     }
 
-    //resets the styling of the previously selected feature and sets the new styling of the now selected feature
+    /**
+     * resets the styling of the previously selected feature and sets the new styling of the now selected feature
+     * TODO
+     * 
+     * @param {*} target 
+     * @param {*} feature 
+     */
     function resetStyle(target, feature) {
         let zoomLevel = 14;
         if(feature == 'bus' || feature == 'ext_grid') {
@@ -287,7 +311,15 @@ var maptool_net_display = function() {
         selectedList.selectedIndex = newIndex;
     }
 
-    //When clicking on a map element or making a selection from a list, we highlight the relevant element, open the Editor window and fill its input fields with the relevant values
+    /**
+     * When clicking on a map element or making a selection from a list,
+     *  we highlight the relevant element, open the Editor window and fill its input fields with the relevant values
+     * TODO
+     * 
+     * @param {*} target 
+     * @param {*} feature 
+     * @param {*} drawModeOverride 
+     */
     function clickOnMarker(target, feature, drawModeOverride) {
         if((!map.pm.globalDrawModeEnabled()) || drawModeOverride) {
             //resets previously selected markers
@@ -383,7 +415,12 @@ var maptool_net_display = function() {
             }
         }
     }
-
+    /**
+     * TODO
+     * 
+     * @param {*} sel 
+     * @param {*} secondaryFeatureName 
+     */
     function openSecondaryEditor(sel, secondaryFeatureName) {
         document.getElementById('loadEditor').style.display='none';
         document.getElementById('sgenEditor').style.display='none';
@@ -410,7 +447,13 @@ var maptool_net_display = function() {
         }
     }
 
-    //onchange function for editor view. If a field is changed, its new value is written back to the relevant object
+    /**
+     * onchange function for editor view. If a field is changed, its new value is written back to the relevant object
+     * TODO
+     * 
+     * @param {*} target 
+     * @param {*} targetDiv 
+     */
     function writeBackEditedNetworkFeature(target, targetDiv) {
         let feature = target.parentElement.id.replace("FormDiv", "");
         let secondary_feature = '';
@@ -451,7 +494,12 @@ var maptool_net_display = function() {
             featureEditor.querySelector('#' + value).value = featureValues[value];
         }
     }
-
+    /**
+     * TODO
+     * 
+     * @param {*} id 
+     * @param {*} feature 
+     */
     function updateStdTypeFeaturesInEditor(id, feature) {
         let featureEditor = document.getElementById(feature + 'FormDiv');
         let featureValues = maptool_network_gen.NetworkObject[feature + '_stdList'][id];
@@ -478,8 +526,14 @@ var maptool_net_display = function() {
     });
     }
 
-    //Purely for debug atm, we will want to keep feature information within the markers themselves
-    //might be worth considering to display the editor window via the popup (visually too messy?)
+    /**
+     * Purely for debug atm, we will want to keep feature information within the markers themselves 
+     * might be worth considering to display the editor window via the popup (visually too messy?)
+     * TODO
+     * 
+     * @param {*} feature 
+     * @param {*} layer 
+     */
     function createPopup(feature, layer) {
         var popup = L.popup();
         popup.setContent(

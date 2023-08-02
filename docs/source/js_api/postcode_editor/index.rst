@@ -1,4 +1,8 @@
-display_postcode.js
+Postcode Editor
 ===================
 
-.. js:autofunction:: getPostalCodeArea
+.. toctree::
+   :maxdepth: 2
+
+   ./display_postcode
+

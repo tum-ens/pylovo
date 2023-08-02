@@ -5,6 +5,7 @@ var maptool_add_delete = function() {
     /**
      * onclick function for the add feature buttons in the GUI
      * switches leaflet map mode to draw and makes sure we place down the correct marker type
+     * 
      * @param {string} feature name of the network feature type we want to create
      */
     function addFeature(feature) {
@@ -113,6 +114,7 @@ var maptool_add_delete = function() {
     
     /**
      * delete function used for features that do not have other features attached to them aka lines, trafos, ext_grids
+     * 
      * @param {string} featureName key for the type of the feature we want to delete
      */
     function deleteFeature(featureName) {
