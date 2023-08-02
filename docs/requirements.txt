@@ -1,4 +1,4 @@
 flask==2.2.2
-sphinx==1.6
+sphinx>=1.6
 sphinx-autoapi
 sphinx-js
