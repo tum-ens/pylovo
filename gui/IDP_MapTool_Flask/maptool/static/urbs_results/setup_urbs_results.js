@@ -5,7 +5,9 @@
 var maptool_urbs_res_setup = function (){
     let clicked;
 
-
+    /**
+     * retrieve network data and setup editor
+     */
     function SetupUrbsResultEditor() {    
         let fetchString = '/urbs_results/editableNetwork';
         fetch(fetchString)
@@ -14,7 +16,7 @@ var maptool_urbs_res_setup = function (){
         }).then(function (ppdata) {
             console.log(ppdata)
             //create leaflet overlay of the network
-            displayNetNew(ppdata);
+            displayUrbsNet(ppdata);
 
             tabcontent = document.getElementsByClassName("feature-editor__buttons-tab__tablinks");
             for (i = 0; i < tabcontent.length; i++) {
@@ -31,16 +33,16 @@ var maptool_urbs_res_setup = function (){
 
     /**
      * aggregate function calling the actual functions that place the feature sgeojsons on the leaflet map
-     * @param {geojson dict} ppdata 
+     * @param {dict} ppdata 
      */
-    function displayNetNew(ppdata) {
-        addGeoJSONtoMap(true, ppdata['trafo'], 'trafo');
+    function displayUrbsNet(ppdata) {
+        addUrbsGeoJSONtoMap(true, ppdata['trafo'], 'trafo');
         //console.log('added all trafos');
-        addGeoJSONtoMap(true, ppdata['line'], 'line');
+        addUrbsGeoJSONtoMap(true, ppdata['line'], 'line');
         //console.log("added all lines");
-        addGeoJSONtoMap(false, ppdata['ext_grid'], 'ext_grid');
+        addUrbsGeoJSONtoMap(false, ppdata['ext_grid'], 'ext_grid');
         //console.log('added all external grids');
-        addGeoJSONtoMap(false, ppdata['bus'], 'bus');
+        addUrbsGeoJSONtoMap(false, ppdata['bus'], 'bus');
         //console.log('added all buses');
     }
 
@@ -48,11 +50,12 @@ var maptool_urbs_res_setup = function (){
  * function that adds a FeatureCollection to the leaflet map
  * we set styles and onclick functions here and save references to each added feature in the NetworkObject
  * lines (lines, trafos) and circlemarkers (busses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
+ * 
  * @param {boolean} isLines 
- * @param {FeatureCollection geoJSON} input_geoJSON 
+ * @param {geoJSON_FeatureCollection} input_geoJSON 
  * @param {string} featureName 
  */
-    function addGeoJSONtoMap(isLines, input_geoJSON, featureName) {
+    function addUrbsGeoJSONtoMap(isLines, input_geoJSON, featureName) {
         let newGeoJson
         if (isLines) {
             newGeoJson = L.geoJSON(input_geoJSON, {
@@ -62,7 +65,7 @@ var maptool_urbs_res_setup = function (){
                     maptool_net_display.createPopup(feature, layer);
                     maptool_network_gen.NetworkObject[featureName + 'List'].push(layer);
                     layer.on('click', function(e) {
-                        clickOnMarker(e.target, featureName);
+                        clickOnUrbsMarker(e.target, featureName);
                     })
                 },
                 style: maptool_network_gen.NetworkObject[featureName + 'Styles'][1]
@@ -80,7 +83,7 @@ var maptool_urbs_res_setup = function (){
                         if (Object.keys(feature.properties.load).length > 0) {
                             marker.setStyle(maptool_network_gen.NetworkObject.busStyles[1]);
                             marker.on('click', function(e) {
-                                clickOnMarker(e.target, featureName);
+                                clickOnUrbsMarker(e.target, featureName);
                             });
                         }
                     }
@@ -115,6 +118,7 @@ var maptool_urbs_res_setup = function (){
     /**
      * gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
      * editors are closed, lists are hidden, buttons are set to inactive
+     * 
      * @param {event} e 
      * @param {string} listName 
      */
@@ -151,22 +155,23 @@ var maptool_urbs_res_setup = function (){
     /**
      * onchange method for the feature lists in the GUI window
      * picks the corresponding map object for the selected list element to execute the clickonmarker function on
-     * @param {html select object} sel reference to the select element that just changed
+     * 
+     * @param {HTML_select_object} sel reference to the select element that just changed
      * @param {string} listName key for NetworkObject list
      */
-    function fillSelectedEditableNetworkFeatureEditor(sel, listName) {
+    function fillSelectedUrbsNetworkFeatureEditor(sel, listName) {
         let idx = parseInt(sel.options[sel.selectedIndex].value);    
         let selectedObject = maptool_network_gen.NetworkObject[listName + 'List'][idx];
         
-        clickOnMarker(selectedObject, listName, 0);
+        clickOnUrbsMarker(selectedObject, listName, 0);
     }
 
     /**
      * resets the style of the previously selected feature
-     * @param {html element} target 
+     * @param {HTML_element} target 
      * @param {string} feature 
      */
-    function resetStyle(target, feature) {
+    function resetUrbsStyle(target, feature) {
         let zoomLevel = 14;
         if(feature == 'bus' || feature == 'ext_grid') {
             map.setView(target.getLatLng(), Math.max(map.getZoom(), zoomLevel));
@@ -190,13 +195,13 @@ var maptool_urbs_res_setup = function (){
     /**
      * When clicking on a map element or making a selection from a list, 
      * we highlight the relevant element, open the Editor window and fill its input fields with the relevant values
-     * @param {html element} target the object that has been interacted with on the map. Null in case we have clicked on a list element
+     * @param {HTML_element} target the object that has been interacted with on the map. Null in case we have clicked on a list element
      * @param {string} feature      key for accessing f.e. featurelist in the NetworkObject
      */
-    function clickOnMarker(target, feature) {
+    function clickOnUrbsMarker(target, feature) {
         //resets previously selected marker to it's original display style
         if(target != null) {
-            resetStyle(target, feature);
+            resetUrbsStyle(target, feature);
         }
 
         let featureList = maptool_network_gen.NetworkObject[feature + 'List'];
@@ -293,7 +298,7 @@ var maptool_urbs_res_setup = function (){
     /**
      * makes sure inline script is executed once we add a plot to the GUI, which makes the plot visible and interactible
      * from  https://stackoverflow.com/questions/2592092/executing-script-elements-inserted-with-innerhtml
-     * @param {html element} elm   html div element we want to add the plot to
+     * @param {HTML_element} elm   html div element we want to add the plot to
      * @param {*} html             html code we want to add to the div 
      */
     function setInnerHTML(elm, html) {
@@ -326,7 +331,7 @@ var maptool_urbs_res_setup = function (){
     
     return {
         openUrbsNetworkList: openUrbsNetworkList,
-        fillSelectedEditableNetworkFeatureEditor: fillSelectedEditableNetworkFeatureEditor,
-        clickOnMarker: clickOnMarker
+        fillSelectedUrbsNetworkFeatureEditor: fillSelectedUrbsNetworkFeatureEditor,
+        clickOnUrbsMarker: clickOnUrbsMarker
     }
 }();

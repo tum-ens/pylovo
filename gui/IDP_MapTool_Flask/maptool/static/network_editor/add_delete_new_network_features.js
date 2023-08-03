@@ -38,7 +38,7 @@ var maptool_add_delete = function() {
     /**
      * closes feature deletion popup window and resets style of all highlighted features in the map view
      */
-    function closeForm() {
+    function closeFeatureDeleteForm() {
         for (feature in featuresToDeleteList) {
             featuresToDeleteList[feature][0].setStyle(featuresToDeleteList[feature][0].defaultOptions);
         }
@@ -50,8 +50,9 @@ var maptool_add_delete = function() {
     //TODO: Change featuresToDeleteList to dict. Why did I even make this a list in the first place? 
     /**
      * if you try to delete a bus, the function tries to find all connected features (lines, ext_grids, trafos) and marks them as about to be deleted as well 
+     * 
      * @param {string} featureName name of the feature type to delete
-     * @param {string array} featureLists contains feature names of all features that may be connected to the deletable feature
+     * @param {list} featureLists contains feature names of all features that may be connected to the deletable feature
      */
     function prepareFeatureDelete(featureName, featureLists) {
         if(featureName == 'bus') {
@@ -296,7 +297,7 @@ var maptool_add_delete = function() {
 
       return {
         addFeature: addFeature,
-        closeForm: closeForm,
+        closeFeatureDeleteForm: closeFeatureDeleteForm,
         prepareFeatureDelete: prepareFeatureDelete,
         deleteConnectedFeatures: deleteConnectedFeatures,
         deleteFeature: deleteFeature

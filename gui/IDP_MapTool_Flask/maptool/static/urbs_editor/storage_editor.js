@@ -21,9 +21,10 @@ var maptool_urbs_storage = function () {
 
     /**
      * called from generate_urbs_setup_editor.js during setup of the urbs setup editor window
+     * 
      * @returns Promise signalling that the fetch operation concluded
      */
-    function fetchProfiles() {
+    function fetchStorageProfiles() {
         return fetch('urbs/storage_profiles')
         .then(function (response) {
             return response.json();
@@ -58,7 +59,8 @@ var maptool_urbs_storage = function () {
     }
 
     /**
-     * @param {list[string]} commodities 
+     * creates html select options for all commodites in the storage editor window
+     * @param {list} commodities 
      */
     function fillStorageEditorCommodityList(commodities) {
         let commoditySelect = document.getElementById('storageFormDiv').querySelector('#commodity');
@@ -112,7 +114,7 @@ var maptool_urbs_storage = function () {
     return {
         StorageObject: StorageObject,
         hot: hot,
-        fetchProfiles: fetchProfiles,
+        fetchStorageProfiles: fetchStorageProfiles,
         fillStorageEditorCommodityList: fillStorageEditorCommodityList,
         createSto_Conf_Editor: createSto_Conf_Editor
     };

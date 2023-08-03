@@ -107,6 +107,7 @@ var maptool_urbs_process = function() {
 
     /**
      * creates dict entry templates to use if we want to add new processes or new process commodities
+     * 
      * @param {dict} processes              dict with process feature:value key:value pairs
      * @param {dict} process_commodities    dict with pro_com feature:value key:value pairs
      */
@@ -133,6 +134,7 @@ var maptool_urbs_process = function() {
 
     /**
      * we create options with text based on the keys of a dict and attach them to a html select
+     * 
      * @param {string} htmlListName id of the html select element we want to add options to
      * @param {dict} listEntries    dict containing data for all options we want to add
      */
@@ -149,6 +151,7 @@ var maptool_urbs_process = function() {
      * are made visible, all others are hidden
      * The pro_com_propSelect element technically contains options for all commodities added to all processes, but we hide all options not added to the
      * currently selected process
+     * 
      * @param {dict} target_properties 
      */
     function fillSecondaryEditorList(target_properties) {
@@ -178,6 +181,7 @@ var maptool_urbs_process = function() {
 
     /**
      * onclick button for the forms' cancel button, closes dialogue window and resets all input fields
+     * 
      * @param {bool} isCommodity 
      */
     function closeNewProcessForm(isCommodity) {
@@ -193,7 +197,8 @@ var maptool_urbs_process = function() {
     /**
      * onchange function for the input fields of the process creation popup form
      * makes sure "Create Process" button is disabled until all inputs are set correctly 
-     * @param {html select element} sel the commodity select element
+     * 
+     * @param {HTML_select_element} sel the commodity select element
      */
     function processFormCommoditySelection(sel) {
         let processNameFlag = (document.getElementById("newProcessTextInput").value.length != 0);
@@ -218,7 +223,8 @@ var maptool_urbs_process = function() {
     /**
      * onchange function for the input fields of the popup form for adding a commodity to a process
      * makes sure "Create Process" button is disabled until all inputs are set correctly 
-     * @param {html select element} sel the commodity select element
+     * 
+     * @param {HTML_select_element} sel the commodity select element
      */
     function processAddCommoditySelection(sel) {
         
@@ -238,6 +244,7 @@ var maptool_urbs_process = function() {
 
     /**
      * TODO: Split commodity attachment into own function
+     * 
      * @param {bool} isCommodity 
      */
     function createNewProcessPropertyOrCommodity(isCommodity) {
@@ -292,6 +299,7 @@ var maptool_urbs_process = function() {
 
     /**
      * creates a new process and adds it to the ProcessObject & html pro_prop select
+     * 
      * @param {string} name 
      */
     function createNewProcessProperty(name) {
@@ -313,6 +321,7 @@ var maptool_urbs_process = function() {
 
     /**
      * we must add a newly defined process commodity to the list of commodities, the process_config table and the editor window of the process the commodity is associated with
+     * 
      * @param {string} pro_name 
      * @param {string} com_name 
      * @param {string} inOrOut 
@@ -352,7 +361,8 @@ var maptool_urbs_process = function() {
 
     /**
      * saves edited feature in the ProcessObject
-     * @param {event target object} target 
+     * 
+     * @param {event_target_object} target 
      * @param {bool} isPro_com_prop 
      */
     function writeBackProcessFeatures(target, isPro_com_prop) {
@@ -371,7 +381,10 @@ var maptool_urbs_process = function() {
             selectedElement[target.name] = target.value;
         }
     }
-    
+
+    /**
+     * sets up pro_conf handsontable table in the GUI
+     */
     function createPro_Conf_Editor() {
         var data = [];
         var headers = ['urbs_name'];

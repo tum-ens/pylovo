@@ -10,6 +10,7 @@ var maptool_urbs_demand = function () {
 
   /**
    * retrieves all demand profiles from the backend
+   * 
    * @returns Promise to make sure functions during setup are called in order
    */
   function fetchDemandProfiles() {
@@ -52,7 +53,8 @@ var maptool_urbs_demand = function () {
 
   /**
    * onclick function for map features, fills editor with the demand info of the clicked feature
-   * @param {event target object} target map feature that has been selected
+   * 
+   * @param {event_target_object} target map feature that has been selected
    */
   function fillSelectedFeatureDemandEditor(target) {
       let sel = document.getElementById('demandSelect');
@@ -85,6 +87,7 @@ var maptool_urbs_demand = function () {
   /**
    * TODO: switch demand data with Object.keys(demand_data).length - 1 as parameter, no need to pass entire object
    * creates checkboxes for every profile of a demand type and attaches them to the correct panel in the demand editor div
+   * 
    * @param {dict} demand_data 
    * @param {string} demandName key for getting html div container and setting checkbox onclick functions
    * @param {int} demandIndex needed for setup of the onclick function
@@ -108,7 +111,8 @@ var maptool_urbs_demand = function () {
   
   /**
    * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
-   * @param {html element} checkbox 
+   * 
+   * @param {HTML_element} checkbox 
    * @param {string} demand_type 
    * @param {int} key 
    * @param {int} demandIndex 

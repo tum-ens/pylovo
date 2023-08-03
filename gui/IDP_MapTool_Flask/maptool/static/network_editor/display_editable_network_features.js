@@ -26,7 +26,8 @@ var maptool_net_display = function() {
 
     /**
      * displays the right std_types editor window and fills the input fields with the right values
-     * @param {html select element} sel 
+     * 
+     * @param {HTML_select_element} sel 
      * @param {string} listName 
      */
     function fillStdTypeEditor(sel, listName) {
@@ -60,6 +61,7 @@ var maptool_net_display = function() {
     /**
      * fills html element with options for a given list of network features at intial editable network generation
      * the index property of a feature and the option index do not have to match
+     * 
      * @param {string} listName key for accessing and setting html element ids 
      */
     function populateLists(listName) {
@@ -83,6 +85,7 @@ var maptool_net_display = function() {
     /**
      * The feature editor window template for all feature types gets filled at runtime
      * input fields and labels depend entirely on the properties defined in the displayNetwork function
+     * 
      * @param {string}      listName            key for accessing and setting html element ids 
      * @param {dict}        selectedProperties  dict containing all properties of the feature for which we create the editor window
      * @param {dict}        std_typeList        dict containing all std_types, only needed for keys here
@@ -147,10 +150,10 @@ var maptool_net_display = function() {
     }
 
     /**
-     * TODO
+     * creates html elements for the secondary feature editor and adds select options for the secondary features
      * 
-     * @param {*} primaryFeatureName 
-     * @param {*} secondaryFeatureName 
+     * @param {string} primaryFeatureName 
+     * @param {string} secondaryFeatureName 
      */
     function populateEditableNetworkEditorSecondaryFeature(primaryFeatureName, secondaryFeatureName) {
         let editor_form = document.getElementById(primaryFeatureName + 'Form');
@@ -203,11 +206,12 @@ var maptool_net_display = function() {
         featureCreateButton.setAttribute('onclick', 'maptool_net_display.addSecondaryFeature("' + primaryFeatureName + '", "' + secondaryFeatureName + '")') 
         editor_form.appendChild(featureCreateButton);
     }
+
     /**
-     * TODO
+     * onclick function for the Add Secondary Feature buttons. Adds a new secondary feature to the GUI and the network object
      * 
-     * @param {*} primaryFeatureName 
-     * @param {*} secondaryFeatureName 
+     * @param {string} primaryFeatureName 
+     * @param {string} secondaryFeatureName 
      */
     function addSecondaryFeature(primaryFeatureName, secondaryFeatureName) {
         let idxInFeatureList = document.getElementById(primaryFeatureName + "Select").selectedIndex;
@@ -229,10 +233,9 @@ var maptool_net_display = function() {
 
     /**
      * gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
-     * TODO
      * 
-     * @param {*} e 
-     * @param {*} listName 
+     * @param {event} e 
+     * @param {string} listName 
      */
     function openEditableNetworkList(e, listName) {
         tabcontent = document.getElementsByClassName("feature-editor__featurelist-tab");
@@ -266,10 +269,9 @@ var maptool_net_display = function() {
 
     /**
      * writes values of the currently selected feature into the input fields of the editor window
-     * TODO
      * 
-     * @param {*} sel 
-     * @param {*} listName 
+     * @param {HTML_select_element} sel 
+     * @param {string} listName 
      */
     function fillSelectedEditableNetworkFeatureEditor(sel, listName) {
         let idx = parseInt(sel.selectedIndex);    
@@ -280,10 +282,9 @@ var maptool_net_display = function() {
 
     /**
      * resets the styling of the previously selected feature and sets the new styling of the now selected feature
-     * TODO
      * 
-     * @param {*} target 
-     * @param {*} feature 
+     * @param {event_target_object} target 
+     * @param {string} feature 
      */
     function resetStyle(target, feature) {
         let zoomLevel = 14;
@@ -314,11 +315,10 @@ var maptool_net_display = function() {
     /**
      * When clicking on a map element or making a selection from a list,
      *  we highlight the relevant element, open the Editor window and fill its input fields with the relevant values
-     * TODO
      * 
-     * @param {*} target 
-     * @param {*} feature 
-     * @param {*} drawModeOverride 
+     * @param {event_target_object} target 
+     * @param {string} feature 
+     * @param {bool} drawModeOverride 
      */
     function clickOnMarker(target, feature, drawModeOverride) {
         if((!map.pm.globalDrawModeEnabled()) || drawModeOverride) {
@@ -416,10 +416,10 @@ var maptool_net_display = function() {
         }
     }
     /**
-     * TODO
+     * onclick function for the Secondary Feature buttons in the editor window, opens the secondary feature editor window
      * 
-     * @param {*} sel 
-     * @param {*} secondaryFeatureName 
+     * @param {HTML_select_element} sel 
+     * @param {string} secondaryFeatureName 
      */
     function openSecondaryEditor(sel, secondaryFeatureName) {
         document.getElementById('loadEditor').style.display='none';
@@ -449,10 +449,9 @@ var maptool_net_display = function() {
 
     /**
      * onchange function for editor view. If a field is changed, its new value is written back to the relevant object
-     * TODO
      * 
-     * @param {*} target 
-     * @param {*} targetDiv 
+     * @param {event_target_object} target 
+     * @param {string} targetDiv 
      */
     function writeBackEditedNetworkFeature(target, targetDiv) {
         let feature = target.parentElement.id.replace("FormDiv", "");
@@ -495,10 +494,10 @@ var maptool_net_display = function() {
         }
     }
     /**
-     * TODO
+     * if a new std_type is selected in an editor window of another feature, this function updates all input fields associated with the std_type
      * 
-     * @param {*} id 
-     * @param {*} feature 
+     * @param {string} id      name of the std_type
+     * @param {string} feature name of the feature for which the std_type was changed
      */
     function updateStdTypeFeaturesInEditor(id, feature) {
         let featureEditor = document.getElementById(feature + 'FormDiv');
@@ -529,10 +528,9 @@ var maptool_net_display = function() {
     /**
      * Purely for debug atm, we will want to keep feature information within the markers themselves 
      * might be worth considering to display the editor window via the popup (visually too messy?)
-     * TODO
      * 
-     * @param {*} feature 
-     * @param {*} layer 
+     * @param {dict} feature                the feature for which we create a popup
+     * @param {leaflet_layer_object} layer  the leaflet map layer we attach the popup to
      */
     function createPopup(feature, layer) {
         var popup = L.popup();

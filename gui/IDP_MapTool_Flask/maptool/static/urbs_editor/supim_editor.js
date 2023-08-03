@@ -4,6 +4,11 @@ var maptool_urbs_supim = function() {
       'bus_supim': {}
   } 
 
+  /**
+   * retrieves supim profiles
+   * 
+   * @returns Promise to make sure functions during setup are called in order
+   */
   function fetchSupimProfiles() {
       return fetch('urbs/supim_profiles')
       .then(function (response) {
@@ -32,6 +37,7 @@ var maptool_urbs_supim = function() {
 
   /** TODO: Generalize this function
    * generates html elements for the checkboxes
+   * 
    * @param {list} data  list containing all possible time series of a profile, could be swapped out with just length value tbh
    * @param {string} name key for getting the correct html div element and setting the checkbox onclick function
    * @param {int} index secondary key for setting the checkbox onclick function
@@ -42,7 +48,7 @@ var maptool_urbs_supim = function() {
           let checkbox = document.createElement('INPUT');
           checkbox.setAttribute("type", "checkbox");
           checkbox.setAttribute("name", "checkbox_" + key);
-          checkbox.setAttribute("onclick", "maptool_urbs_supim.check_uncheck_demand(this, '" + name + "', " + key + ", '" + index + "')");
+          checkbox.setAttribute("onclick", "maptool_urbs_supim.check_uncheck_supim(this, '" + name + "', " + key + ", '" + index + "')");
           
           let label = document.createElement('LABEL')
           label.appendChild(checkbox);
@@ -55,7 +61,8 @@ var maptool_urbs_supim = function() {
 
   /**
    * when the user selects an element in the ui in the supim tab, this function sets all checkboxes for that element to the right value
-   * @param {event target object} target 
+   * 
+   * @param {event_target_object} target 
    */
   function fillSelectedFeatureSupimEditor(target) {
       let sel = document.getElementById('supimSelect');
@@ -68,13 +75,13 @@ var maptool_urbs_supim = function() {
               for (let i = 0;  i < checkboxDiv.children.length; i++) {
                   if (chars[i] == '1') {
                       checkboxDiv.children[i].firstChild.checked = true;
-                      check_uncheck_demand(checkboxDiv.children[i].firstChild, table, i, dict_index);
+                      check_uncheck_supim(checkboxDiv.children[i].firstChild, table, i, dict_index);
                   }
                   else {
                       let wasTrue = checkboxDiv.children[i].firstChild.checked;
                       checkboxDiv.children[i].firstChild.checked = false;
                       if(wasTrue) {
-                          check_uncheck_demand(checkboxDiv.children[i].firstChild, table, i, dict_index);
+                        check_uncheck_supim(checkboxDiv.children[i].firstChild, table, i, dict_index);
                       }
                   }
               }
@@ -88,12 +95,13 @@ var maptool_urbs_supim = function() {
   /**
    * TODO: generalize function or at least rename it (needs to generalize select Id and FeatureObject)
    * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
-   * @param {html element} checkbox 
+   * 
+   * @param {HTML_element} checkbox 
    * @param {string} demand_type 
    * @param {int} key 
    * @param {int} demandIndex 
    */
-  function check_uncheck_demand(checkbox, demand_type, key, demandIndex) {
+  function check_uncheck_supim(checkbox, demand_type, key, demandIndex) {
       let listElem = document.getElementById('supimSelect').selectedIndex;
       let chars = SupimObject.bus_supim[listElem][demandIndex].split('')
       if (checkbox.checked) {
@@ -183,7 +191,7 @@ var maptool_urbs_supim = function() {
   return {
       SupimObject: SupimObject,
       fetchSupimProfiles: fetchSupimProfiles, 
-      check_uncheck_demand: check_uncheck_demand,
+      check_uncheck_supim: check_uncheck_supim,
       fillSelectedFeatureSupimEditor: fillSelectedFeatureSupimEditor
   };
 }();

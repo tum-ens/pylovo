@@ -11,7 +11,7 @@ var maptool_urbs_commodity = function () {
     /**
      * retrieves commodity feature templates from the backend and generates a dict for each commodity, holding default values for all inputs
      */
-    function fetchProfiles() {
+    function fetchCommodityProfiles() {
         fetch('urbs/commodity_profiles')
         .then(function (response) {
             return response.json();
@@ -45,10 +45,6 @@ var maptool_urbs_commodity = function () {
         });
     }
 
-    function createBuySellPriceEditor() {
-
-    }
-
     /**
      * opens the GUI form for creating a new commodity
      */
@@ -69,6 +65,7 @@ var maptool_urbs_commodity = function () {
     /**
      * makes sure we cannot create a commodity with now name and
      * enables or disables the confirm button in the new commodity form
+     * 
      * @param {string} comm_name text contained in the input field for a new commodity name
      */
     function commodityFormCheckValidInput(comm_name) {
@@ -82,6 +79,7 @@ var maptool_urbs_commodity = function () {
     }
     /**
      * Once a new commodity has been created, this function adds it to the GUI forms for creating new commodities and adding commodities to processes 
+     * 
      * @param {string} name of the new commodity
      */
     //TODO: There are a few lists that still need to be included here
@@ -102,6 +100,7 @@ var maptool_urbs_commodity = function () {
 
     /**
      * adds the newly created commodity to the commodity editor list, the pro_conf table and the CommodityObject
+     * 
      * @param {string} com_name 
      */
     function createNewCommodity(com_name) {
@@ -130,7 +129,8 @@ var maptool_urbs_commodity = function () {
     /**
      * onchange function for all commodity editor input fields 
      * writes changed value back to the relevant entry in the CommodityObject
-     * @param {event target object} target 
+     * 
+     * @param {event_target_object} target 
      */
     function writeBackCommodityFeatures(target) {
         console.log(target);
@@ -150,7 +150,7 @@ var maptool_urbs_commodity = function () {
 
     return {
         CommodityObject: CommodityObject,
-        fetchProfiles: fetchProfiles,
+        fetchCommodityProfiles: fetchCommodityProfiles,
         createBuySellPriceEditor: createBuySellPriceEditor,
         openNewCommodityForm: openNewCommodityForm,
         closeNewCommodityForm: closeNewCommodityForm,

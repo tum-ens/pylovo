@@ -111,7 +111,8 @@ var maptool_network_gen = function (){
             trafo_properties = properties['trafo']
             trafo3w_properties = properties['trafo3w']
         });
-    
+        
+        //we fetch the preprocessed GeoJSON data of the selected network
         fetch('/networks/editableNetwork')
         .then(function (response) {
             return response.json();
@@ -156,11 +157,10 @@ var maptool_network_gen = function (){
     }
 
     /**
-     * The busses connected to the trafo need to have specific names to work with urbs later
-     * TODO
+     * The busses connected to the trafo need to have specific names to work with urbs later so we change them here
      * 
-     * @param {*} busList 
-     * @param {*} trafoList 
+     * @param {list} busList  list of all busses
+     * @param {list} trafoList list of all trafos 
      */
     function changeTrafoBusNames(busList, trafoList) {
         trafoList.forEach(trafo => {
@@ -178,6 +178,7 @@ var maptool_network_gen = function (){
 
     /**
      * small aggregate function for all std types
+     * 
      * @param {dict} ppdata dict retrieved from the backend
      */
     function extractStdTypes(ppdata) {
@@ -188,6 +189,7 @@ var maptool_network_gen = function (){
     
     /**
      * aggregate function calling the actual functions that place the feature geojsons on the leaflet map
+     * 
      * @param {dict} ppdata dict retrieved from the backend
      */
     function displayNetNew(ppdata) {
@@ -210,7 +212,7 @@ var maptool_network_gen = function (){
  * lines (lines, trafos) and circlemarkers (busses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
  * 
  * @param {boolean} isLines 
- * @param {FeatureCollection geoJSON} input_geoJSON 
+ * @param {geoJSON_FeatureCollection} input_geoJSON 
  * @param {string} featureName 
  */
     function addGeoJSONtoMap(isLines, input_geoJSON, featureName) {

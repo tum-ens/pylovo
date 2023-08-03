@@ -9,7 +9,8 @@ var maptool_urbs_buildings = function () {
      * called during setup of the urbs editor window
      * Fills the buildingsPropertiesList with dicts containing rudimentary information about each building
      * Properties of a building are determined by the UrbsPropertiesJSON and set to null initially, while names and coordinates are extracted from the corresponding busses
-     * @param {json dict} UrbsPropertiesJSON contains information about all inputs for all urbs setup features
+     * 
+     * @param {dict} UrbsPropertiesJSON contains information about all inputs for all urbs setup features
      */
     function prepareBuildingsObject(UrbsPropertiesJSON) {
         let propertiesToAdd = UrbsPropertiesJSON['_buildings']['from_user_input'];
@@ -27,7 +28,8 @@ var maptool_urbs_buildings = function () {
     /**
      * onclick method for bus circlemarkers on the map and onchange method of the buildings list element
      * resets the style of the previously selected bus and fills all editor input fields with the correct values
-     * @param {event target object} target 
+     * 
+     * @param {event_target_object} target 
      */
     function fillSelectedFeatureBuildingEditor(target) {
         maptool_urbs_setup.resetLoadBusStyle(target)
@@ -56,7 +58,8 @@ var maptool_urbs_buildings = function () {
     /**
      * onchange function for all building editor input fields 
      * writes changed value back to the relevant entry in the BuildingsObject
-     * @param {event target object} target 
+     * 
+     * @param {event_target_object} target 
      */
     function writeBackEditedBuildingFeatures(target) {
         let idxInFeatureList = document.getElementById("buildingsSelect").selectedIndex;

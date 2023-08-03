@@ -6,7 +6,11 @@ var maptool_urbs_timevareff = function() {
         "bus_timevareff" : []
     }
 
-    
+    /**
+     * retrieves timevareff profiles
+     * 
+     * @returns Promise to make sure functions during setup are called in order
+     */
     function fetchFeatureProfiles() {
         return fetch('urbs/timevareff_profiles')
         .then(function (response) {
@@ -44,7 +48,8 @@ var maptool_urbs_timevareff = function() {
   /**
    * TODO: generalize this function probably
    * when the user selects an element in the ui in the timevareff tab, this function sets all checkboxes for that element to the right value
-   * @param {event target object} target 
+   * 
+   * @param {event_target_object} target 
    */
     function fillSelectedFeatureTimevareffEditor(target) {
       let sel = document.getElementById('timevareffSelect');
@@ -57,13 +62,13 @@ var maptool_urbs_timevareff = function() {
               for (let i = 0;  i < checkboxDiv.children.length; i++) {
                   if (chars[i] == '1') {
                       checkboxDiv.children[i].firstChild.checked = true;
-                      check_uncheck_demand(checkboxDiv.children[i].firstChild, table, i, dict_index);
+                      check_uncheck_timevareff(checkboxDiv.children[i].firstChild, table, i, dict_index);
                   }
                   else {
                       let wasTrue = checkboxDiv.children[i].firstChild.checked;
                       checkboxDiv.children[i].firstChild.checked = false;
                       if(wasTrue) {
-                          check_uncheck_demand(checkboxDiv.children[i].firstChild, table, i, dict_index);
+                        check_uncheck_timevareff(checkboxDiv.children[i].firstChild, table, i, dict_index);
                       }
                   }
               }
@@ -75,12 +80,13 @@ var maptool_urbs_timevareff = function() {
   /**
    * TODO: generalize function or at least rename it (needs to generalize select Id and FeatureObject)
    * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
-   * @param {html element} checkbox 
+   * 
+   * @param {HTML_element} checkbox 
    * @param {string} demand_type 
    * @param {int} key 
    * @param {int} demandIndex 
    */
-    function check_uncheck_demand(checkbox, demand_type, key, demandIndex) {
+    function check_uncheck_timevareff(checkbox, demand_type, key, demandIndex) {
         let listElem = document.getElementById('timevareffSelect').selectedIndex;
         let chars = TimevareffObject.bus_timevareff[listElem][demandIndex].split('')
         if (checkbox.checked) {
@@ -120,6 +126,7 @@ var maptool_urbs_timevareff = function() {
 
    /** TODO: Generalize this function
    * generates html elements for the checkboxes
+   * 
    * @param {list} data  list containing all possible time series of a profile, could be swapped out with just length value tbh
    * @param {string} name key for getting the correct html div element and setting the checkbox onclick function
    * @param {int} index secondary key for setting the checkbox onclick function
@@ -130,7 +137,7 @@ var maptool_urbs_timevareff = function() {
             let checkbox = document.createElement('INPUT');
             checkbox.setAttribute("type", "checkbox");
             checkbox.setAttribute("name", "checkbox_" + key);
-            checkbox.setAttribute("onclick", "maptool_urbs_timevareff.check_uncheck_demand(this, '" + name + "', " + key + ", '" + index + "')");
+            checkbox.setAttribute("onclick", "maptool_urbs_timevareff.check_uncheck_timevareff(this, '" + name + "', " + key + ", '" + index + "')");
             
             let label = document.createElement('LABEL')
             label.appendChild(checkbox);
@@ -193,7 +200,7 @@ var maptool_urbs_timevareff = function() {
     return {
         TimevareffObject: TimevareffObject,
         fetchFeatureProfiles: fetchFeatureProfiles,
-        check_uncheck_demand: check_uncheck_demand,
+        check_uncheck_timevareff: check_uncheck_timevareff,
         fillSelectedFeatureTimevareffEditor: fillSelectedFeatureTimevareffEditor
     };
 

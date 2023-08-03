@@ -6,10 +6,11 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * called from generate_urbs_setup_editor.js during setup of the urbs setup editor window
-     * we fetch default values from the backend 
+     * Called from generate_urbs_setup_editor.js during setup of the urbs setup editor window.
+     * We fetch default values from the backend.
      * the fetched data contains default values for trafo_data as well as 
      * the sn_mva value of the network trafo to generate the kont option for trafo data
+     * 
      * @returns Promise signalling that the fetch operation concluded
      */
     function fetchTransmissionProfiles() {
@@ -44,7 +45,8 @@ var maptool_urbs_trans = function() {
     /**
      * THIS IS REDUNDANT, SHOULD BE INCLUDED IN FETCHTRANSMISSIONPROFILES
      * prefills the TransmissionObject
-     * @param {JSON Object} TransmissionPropertiesJSON 
+     * 
+     * @param {dict} TransmissionPropertiesJSON 
      * @param {string}      listName
      */
     function prepareCableDataList(TransmissionPropertiesJSON, listName) {
@@ -62,7 +64,8 @@ var maptool_urbs_trans = function() {
     /**
      * called from generate_urbs_setup_editor.js during setup of the urbs setup editor window
      * Creates select options for cable_data, trafo_data and voltage_limits
-     * @param {JSON Object} UrbsPropertiesJSON json containing all features and their properties for all input categories of the urbs setup
+     * 
+     * @param {dict} UrbsPropertiesJSON json containing all features and their properties for all input categories of the urbs setup
      */
     function populateTransmissionEditorList(UrbsPropertiesJSON) {
         let transmissionEditorList = document.getElementById("transmissionSelect");
@@ -91,10 +94,10 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * @param {html element} target     reference to the changed html input element
-     * 
      * Saves changed inputs in the corresponding feature object within the TransmissionObject and, if the changed input was
      * the id select, calls a function that adjusts all other fields to match the id
+     * 
+     * @param {HTML_element} target     reference to the changed html input element
      */
     function writeBackTransmissionFeatures(target) {
         let feature = document.getElementById('transmissionSelect').value;
@@ -110,6 +113,7 @@ var maptool_urbs_trans = function() {
 
     /**
      * If the Select element in the transmission editor changes, all other fields are updated with the values corresponding to the newly selected element
+     * 
      * @param {string} id key for TransmissionObject list element that contains values for a given id
      */
     function fillInputFieldsOfSelectedID(id, feature) {
@@ -142,6 +146,7 @@ var maptool_urbs_trans = function() {
      * onchange method for the #newTrafoDataTextInput
      * checks that the sn_mva value the user puts in is valid and that a value has been given at all before 
      * enabling the accept button of the creation form
+     * 
      * @param {string} text value in the input field
      */
     function trafoDataFormCheckValidInput(text) {
@@ -157,6 +162,7 @@ var maptool_urbs_trans = function() {
     /**
      * onclick function for the #newTrafoDataCreateButton of the new trafo data form
      * creates a new ront and adds it to the TransmissionObject, trafo_data editor id select
+     * 
      * @param {string} sn_mva 
      */
     function createNewTrafoData(sn_mva) {

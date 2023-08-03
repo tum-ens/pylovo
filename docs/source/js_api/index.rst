@@ -6,3 +6,5 @@ Javascript API Reference
 
    postcode_editor/index
    network_editor/index
+   urbs_editor/index
+   urbs_results/index

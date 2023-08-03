@@ -1,3 +1,5 @@
+//TODO: secondary feature lists not behaving correctly
+
 var maptool_urbs_setup = function() {
     let UrbsPropertiesJSON = {};
     
@@ -5,7 +7,10 @@ var maptool_urbs_setup = function() {
     //Needed so the marker style can be readjusted once another marker is selected
     let clicked;
 
-    //function that fetches the urbsPropertyJSON file stored in the backend. The file defines all inputs for all features as well as tooltips, types and default values
+    /**
+     * function that fetches the urbsPropertyJSON file stored in the backend. The file defines all inputs for all features as well as tooltips, types and default values
+     * @returns Promise to make sure functions during setup are called in order
+     */
     function GetUrbsSetupProperties () {
         return fetch('urbs/urbs_setup_properties')
             .then(function (response) {
@@ -50,9 +55,9 @@ var maptool_urbs_setup = function() {
                 populateUrbsEditor('transmission_voltage_limits', UrbsPropertiesJSON['transmission']['voltage_limits'],'');
                 maptool_urbs_trans.fillTrafoDataEditorIdSelect();
             })
-            maptool_urbs_commodity.fetchProfiles();
+            maptool_urbs_commodity.fetchCommodityProfiles();
             maptool_urbs_process.fetchProcessProfiles();
-            maptool_urbs_storage.fetchProfiles().then ((res) =>{
+            maptool_urbs_storage.fetchStorageProfiles().then ((res) =>{
                 maptool_urbs_storage.fillStorageEditorCommodityList(Object.keys(maptool_urbs_commodity.CommodityObject.commodityPropertiesList))
             });
             maptool_urbs_supim.fetchSupimProfiles().then((res) => {
@@ -100,7 +105,11 @@ var maptool_urbs_setup = function() {
         });
     }
     
-    //aggregate function for displaying the full network
+    /**
+     * aggregate function for displaying the full network
+     * 
+     * @param {dict} ppdata 
+     */
     function displayUrbsEditorNet(ppdata) {
         addGeoJSONtoUrbsEditorMap(true, ppdata['line'], 'line');
         addGeoJSONtoUrbsEditorMap(false, ppdata['ext_grid'], 'ext_grid');
@@ -112,8 +121,9 @@ var maptool_urbs_setup = function() {
      * creates a new geojson layer for leaflet map
      * distinguishes between line (for lines and trafos) and circle marker (for busses and ext_grids) formats
      * because line geojsons do not have the pointToLayer option
+     * 
      * @param {bool}                isLines 
-     * @param {GeoJSON Object}      input_geoJSON 
+     * @param {GeoJSON_Object}      input_geoJSON 
      * @param {string}              featureName 
      */
     function addGeoJSONtoUrbsEditorMap(isLines, input_geoJSON, featureName) {
@@ -175,14 +185,12 @@ var maptool_urbs_setup = function() {
     }
 
     /**
-     * @param {string}      feature             name of the feature (i.e demand, process etc) for which input fields are to be generated
-     * @param {dict}        propertiesToAdd     properties for which inputs are created, as well as tooltips, types and default values 
-     *                                          loaded from the UrbsPropertiesJSON file fetched from the backend
-     * @param {function}    writebackFunction   since the storage objects for each feature may not be the same, we can pass a custom function for each feature that 
-     *                                          saves inputs on changes to the html element
-     * 
      * We create the form and div elements holding input fields and associated labels from scratch right after page load and attach them to the corresponding static
      * editor div
+     * 
+     * @param {string}      feature             name of the feature (i.e demand, process etc) for which input fields are to be generated
+     * @param {dict}        propertiesToAdd     properties for which inputs are created, as well as tooltips, types and default values loaded from the UrbsPropertiesJSON file fetched from the backend
+     * @param {function}    writebackFunction   since the storage objects for each feature may not be the same, we can pass a custom function for each feature that 
      */
     function populateUrbsEditor(feature, propertiesToAdd, writebackFunction) {
         let form = document.getElementById(feature + 'Form');
@@ -256,7 +264,7 @@ var maptool_urbs_setup = function() {
     }
 
     /**
-     * TODO
+     * creates html elements for the secondary feature editor and adds select options for the secondary features
      * 
      * @param {string} primaryFeatureName       Key for the primary feature editor to which the secondary feature list is getting attached to
      * @param {string} secondaryFeatureName     Key for the secondary feature  
@@ -278,7 +286,7 @@ var maptool_urbs_setup = function() {
         //The new div contains only a select element that displays all the secondary features attached to the primary feature
         let featureSelect = document.createElement('SELECT');
         featureSelect.id = secondaryFeatureName + 'Select';
-        featureSelect.setAttribute('onchange', 'maptool_urbs_setup.openSecondaryEditor(this, "' + secondaryFeatureName + '")')
+        featureSelect.setAttribute('onchange', 'maptool_urbs_setup.openSecondaryProcessEditor(this, "' + secondaryFeatureName + '")')
         featureSelect.classList.add('feature-editor__featurelist-tab__feature-select');
         featureSelect.multiple = true;
 
@@ -297,14 +305,15 @@ var maptool_urbs_setup = function() {
 
 
    /**
-    * Function makes secondary feature window visible and fills all input fields with the saved values, if any exist
+    * Function makes secondary feature window visible and fills all input fields with the saved values, if any exist.
     * At the moment the process editor is the only one with a secondary editor, namely the pro_com_prop editor
-    * @param {html select element} sel      gets passed as "this" reference when the onchange method for the select element is called, needed to 
+    * 
+    * @param {HTML_select_element} sel      gets passed as "this" reference when the onchange method for the select element is called, needed to 
     *                                       retrieve the currently selected secondary feature
     * @param {string} secondaryFeatureName  key for relevant html elements 
     */
     //TODO: currently hardcoded for process. Either generalize or put into process_editor.js
-    function openSecondaryEditor(sel, secondaryFeatureName) {
+    function openSecondaryProcessEditor(sel, secondaryFeatureName) {
         document.getElementById(secondaryFeatureName + 'Editor').style.display='block';
         
         let key = document.getElementById('pro_propSelect').value;
@@ -332,6 +341,7 @@ var maptool_urbs_setup = function() {
     
    /**
     * Function gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
+    * 
     * @param {event} e              object for the onclick event of the clicked tablink button, necassary to change the button to active
     * @param {string} listName      key to access the relevant list tab html element by id
     * @param {boolean} hasEditor    some features (like global) do not have a separate editor which means that the section of the code that opens previously open editors 
@@ -392,7 +402,8 @@ var maptool_urbs_setup = function() {
     
     /**
      * function that switches bus styles back to default once they are deselected when the user clicks on another node on the map or another element in the list
-     * @param {event target object} target the leaflet object whose onclick method has been triggered via click on the map or selection via the list 
+     * 
+     * @param {event_target_object} target the leaflet object whose onclick method has been triggered via click on the map or selection via the list 
      */
     function resetLoadBusStyle(target) {
         let zoomLevel = 14;
@@ -412,10 +423,12 @@ var maptool_urbs_setup = function() {
         highlightSelectedElementInList(target, "supimSelect");
 
     }
-    /*
-    target (Event target object):   the leaflet object whose onclick method has been triggered via click on the map or selection via the list
-    selectId (String):              id of the relevant html element
-    Method that changes the selectedIndex of a given select element to the option corresponding to the onclick event target
+
+   /**
+    * Method that changes the selectedIndex of a given select element to the option corresponding to the onclick event target
+    * 
+    * @param {event_target_object} target the leaflet object whose onclick method has been triggered via click on the map or selection via the list
+    * @param {string} selectId id of the relevant html element
     */
     function highlightSelectedElementInList(target, selectId) {
         let featureList = maptool_urbs_buildings.BuildingsObject['busWithLoadList'];
@@ -424,12 +437,11 @@ var maptool_urbs_setup = function() {
         selectedList.selectedIndex = newIndex;
     }
     
-
-    /*
-    sel (Html select element):  gets passed as "this" reference when the onchange method for the select element is called, needed to
-                                retrieve the currently selected secondary feature
-    featureName (String):       key for corresponding html element and call of correct editor fill method
-    An aggregate function that calls the relevant editor fill method for each feature and makes sure other editor windows are closed
+   /**
+    * An aggregate function that calls the relevant editor fill method for each feature and makes sure other editor windows are closeds
+    * 
+    * @param {HTML_select_element} sel gets passed as "this" reference when the onchange method for the select element is called, needed to retrieve the currently selected secondary feature
+    * @param {string} featureName key for corresponding html element and call of correct editor fill method
     */
     function fillSelectedEditor(sel, featureName) {
         //all open primary and secondary feature editors are closed when a new editor window is opened
@@ -494,11 +506,12 @@ var maptool_urbs_setup = function() {
         }
     }
 
-    /* 
-    target (Dict):          Object that contains all current input values for a single feature
-    featureName (String):   key used to access the html elements 
-    Function that fills each input field of a single feature once the editor window is opened
-    */
+    /**
+     * Function that fills each input field of a single feature once the editor window is opened
+     * 
+     * @param {dict} target Object that contains all current input values for a single feature
+     * @param {string} featureName key used to access the html elements 
+     */
     function fillSelectedFeatureEditorFields(target, featureName) {
         let editor_form = document.getElementById(featureName + 'Form');
         let editor_divs = editor_form.children;
@@ -518,6 +531,11 @@ var maptool_urbs_setup = function() {
         }
     }
 
+    /**
+     * getter function for the UrbsPropertiesJSON
+     * 
+     * @returns urbs properties dict
+     */
     function getUrbsPropertiesJSON() {
         return UrbsPropertiesJSON;
     }
@@ -536,6 +554,6 @@ var maptool_urbs_setup = function() {
         openUrbsEditorList: openUrbsEditorList,
         resetLoadBusStyle: resetLoadBusStyle,
         fillSelectedEditor: fillSelectedEditor,
-        openSecondaryEditor: openSecondaryEditor
+        openSecondaryProcessEditor: openSecondaryProcessEditor
       }
 }();

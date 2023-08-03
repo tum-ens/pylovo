@@ -1,4 +1,8 @@
 var maptool_return_urbs =  function() {
+    
+    /**
+     * returns all urbs input values step by step, waits until all have been returned and signals to the backend to execute pdp2urbs 
+     */
     function returnUrbsSetup() {
         const buildings = returnUrbsSetup_Buildings();
         const demand = returnUrbsSetup_DemandConf();
@@ -130,6 +134,7 @@ var maptool_return_urbs =  function() {
     }
 
     /**
+     * returns data of one setup category to the backend
      * 
      * @param {string} url      address we send data to on the backend side
      * @param {json} jsonData   data we want to return to the backend
