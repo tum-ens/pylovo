@@ -9,6 +9,7 @@ process_editor.js
 .. js:autofunction:: closeNewProcessForm
 .. js:autofunction:: processFormCommoditySelection
 .. js:autofunction:: processAddCommoditySelection
+.. js:autofunction:: openSecondaryProcessEditor
 .. js:autofunction:: createNewProcessPropertyOrCommodity
 .. js:autofunction:: createNewProcessProperty
 .. js:autofunction:: createNewProcessCommodity

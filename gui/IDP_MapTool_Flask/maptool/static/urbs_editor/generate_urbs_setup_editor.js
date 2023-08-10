@@ -45,7 +45,7 @@ var maptool_urbs_setup = function() {
             //in each editor component, the editor list is also filled
             //TODO: These methods may be generalized into a single generic function
             maptool_urbs_demand.fetchDemandProfiles().then((res) => {
-                populateUrbsEditorLoadBusLists('demand', 'busWithLoad');
+                populateUrbsEditorLoadBusLists('demand');
             })
             maptool_urbs_trans.fetchTransmissionProfiles().then((res) =>{
                 maptool_urbs_trans.populateTransmissionEditorList(UrbsPropertiesJSON);
@@ -55,29 +55,28 @@ var maptool_urbs_setup = function() {
                 populateUrbsEditor('transmission_voltage_limits', UrbsPropertiesJSON['transmission']['voltage_limits'],'');
                 maptool_urbs_trans.fillTrafoDataEditorIdSelect();
             })
-            maptool_urbs_commodity.fetchCommodityProfiles();
             maptool_urbs_process.fetchProcessProfiles();
-            maptool_urbs_storage.fetchStorageProfiles().then ((res) =>{
-                maptool_urbs_storage.fillStorageEditorCommodityList(Object.keys(maptool_urbs_commodity.CommodityObject.commodityPropertiesList))
+            maptool_urbs_commodity.fetchCommodityProfiles().then((res) => {
+                maptool_urbs_storage.fetchStorageProfiles().then((res_2) =>{
+                    maptool_urbs_storage.fillStorageEditorCommodityList(Object.keys(maptool_urbs_commodity.CommodityObject.commodityPropertiesList))
+                });
             });
             maptool_urbs_supim.fetchSupimProfiles().then((res) => {
-                populateUrbsEditorLoadBusLists('supim', 'busWithLoad');
+                populateUrbsEditorLoadBusLists('supim');
             })
             maptool_urbs_timevareff.fetchFeatureProfiles().then((res) => {
-                populateUrbsEditorLoadBusLists('timevareff', 'busWithLoad');
+                populateUrbsEditorLoadBusLists('timevareff');
             })
 
             //several components set their parameters per bus. Here the respective feature lists are filled with busses that fulfill the criteria
             //to be editable, in this case meaning busses with one or more loads attached
-            //TODO: the second parameter is a holdover from when editor list datastructures worked differently and should be removed, since it's not needed
-            populateUrbsEditorLoadBusLists('buildings', 'busWithLoad');            
+            populateUrbsEditorLoadBusLists('buildings');            
             maptool_urbs_buildings.prepareBuildingsObject(UrbsPropertiesJSON);
 
             //Here the content of each editor window is created. Each editor window is filled at runtime based on the predefined inputs in the UrbsPropertiesJSON
             //Changes to the JSON allow quick changes to editor makeup by adding or removing input fields
             populateUrbsEditor('buildings', UrbsPropertiesJSON['_buildings']['from_user_input'], 'maptool_urbs_buildings.writeBackEditedBuildingFeatures(this)');
             populateUrbsEditor('commodity', UrbsPropertiesJSON['commodity'],'maptool_urbs_commodity.writeBackCommodityFeatures(this)');
-            maptool_urbs_commodity.createBuySellPriceEditor();
             populateUrbsEditor('global', UrbsPropertiesJSON['global'],'');
             populateUrbsEditor('pro_prop', UrbsPropertiesJSON['process']['pro_prop'],'maptool_urbs_process.writeBackProcessFeatures(this, false)');
             populateUrbsEditor('pro_com_prop', UrbsPropertiesJSON['process']['pro_com_prop'],'maptool_urbs_process.writeBackProcessFeatures(this, true)');
@@ -166,13 +165,12 @@ var maptool_urbs_setup = function() {
         map.fitBounds(newGeoJson.getBounds());
     }
     
-    //TODO: The networkListName parameter is useless, since all info is only stored in busWithLoads
     /**
      * @param {string} htmlListName name of the html select element that is supposed to be filled with the busses with attached loads      
      */
-    function populateUrbsEditorLoadBusLists(htmlListName, networkListName) {
+    function populateUrbsEditorLoadBusLists(htmlListName) {
         var x = document.getElementById(htmlListName + "Select");
-        let networkList = maptool_urbs_buildings.BuildingsObject[networkListName + 'List'];
+        let networkList = maptool_urbs_buildings.BuildingsObject['busWithLoadList'];
         //Since indices need not be assigned in a linear fashion, we make sure they are ordered in our list display
         networkList = networkList.sort(function (a, b) {
             return parseInt(a.feature.properties.index) - parseInt(b.feature.properties.index);
@@ -210,7 +208,6 @@ var maptool_urbs_setup = function() {
                 input.pattern = "^inf$|\-?\d+\.?\d+|\-?\d+";
             }
             //at the moment list options are passed only in UrbsPropertiesJSON
-            //TODO: for some elements (e.g. trafos) these might also be extracted from the previous network-edit step
             else if(propertiesToAdd[property]['type'] == 'list') {
                 input = document.createElement("select");
                 input.classList.add('feature-editor__selected-feature-editor__stdtype-feature-select')
@@ -286,7 +283,7 @@ var maptool_urbs_setup = function() {
         //The new div contains only a select element that displays all the secondary features attached to the primary feature
         let featureSelect = document.createElement('SELECT');
         featureSelect.id = secondaryFeatureName + 'Select';
-        featureSelect.setAttribute('onchange', 'maptool_urbs_setup.openSecondaryProcessEditor(this, "' + secondaryFeatureName + '")')
+        featureSelect.setAttribute('onchange', 'maptool_urbs_process.openSecondaryProcessEditor(this, "' + secondaryFeatureName + '")')
         featureSelect.classList.add('feature-editor__featurelist-tab__feature-select');
         featureSelect.multiple = true;
 
@@ -302,43 +299,7 @@ var maptool_urbs_setup = function() {
         featureCreateButton.setAttribute('onclick', 'maptool_urbs_process.openNewProcessForm(true)') 
         editor_form.appendChild(featureCreateButton);
     }
-
-
-   /**
-    * Function makes secondary feature window visible and fills all input fields with the saved values, if any exist.
-    * At the moment the process editor is the only one with a secondary editor, namely the pro_com_prop editor
-    * 
-    * @param {HTML_select_element} sel      gets passed as "this" reference when the onchange method for the select element is called, needed to 
-    *                                       retrieve the currently selected secondary feature
-    * @param {string} secondaryFeatureName  key for relevant html elements 
-    */
-    //TODO: currently hardcoded for process. Either generalize or put into process_editor.js
-    function openSecondaryProcessEditor(sel, secondaryFeatureName) {
-        document.getElementById(secondaryFeatureName + 'Editor').style.display='block';
-        
-        let key = document.getElementById('pro_propSelect').value;
-    
-        let inOrOutFlag = (sel.value.slice(-3) === ' In') ? true : false;
-
-        let target_properties = maptool_urbs_process.ProcessObject.pro_com_propList[key][(inOrOutFlag) ? "In" : "Out"][(inOrOutFlag) ? sel.value.slice(0, -3) : sel.value.slice(0, -4)];
-        let editor_form = document.getElementById(secondaryFeatureName + 'Form');
-        let editor_elems = editor_form.children[0].children;
-
-        console.log(editor_elems);
-
-        for (let i = 0; i < editor_elems.length; i++) {
-            if (editor_elems[i].nodeName == 'INPUT') {
-                if(target_properties[editor_elems[i].name] != null) {
-                    editor_elems[i].value = target_properties[editor_elems[i].name];
-                    console.log(editor_elems[i].value, target_properties[editor_elems[i].name])
-                }
-                else {
-                    editor_elems[i].value = '';
-                }
-            }
-        }
-    }
-    
+ 
    /**
     * Function gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
     * 
@@ -554,6 +515,5 @@ var maptool_urbs_setup = function() {
         openUrbsEditorList: openUrbsEditorList,
         resetLoadBusStyle: resetLoadBusStyle,
         fillSelectedEditor: fillSelectedEditor,
-        openSecondaryProcessEditor: openSecondaryProcessEditor
       }
 }();

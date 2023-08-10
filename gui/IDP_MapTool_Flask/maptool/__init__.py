@@ -1,7 +1,3 @@
-#-----------------------------CRUCIAL PYTHON TODOS-----------------------------#
-# TODO: receive final pandapower net and verify correctness
-# TODO: add interaction with urbs tool
-
 import sys
 import os
 

@@ -42,7 +42,7 @@ var maptool_display_postcode = function (){
         btn = document.getElementById("selectPLZAreaButton");
         btn.disabled = false;
         btn.innerText="Select Area";
-        btn.setAttribute('onclick',"maptool_display_postcode.getPostalCodeArea(this, 'plz-area')")
+        btn.setAttribute('onclick',"maptool_display_postcode.getPostalCodeAreaByShape(this)")
         });
 
     /**
@@ -69,7 +69,7 @@ var maptool_display_postcode = function (){
                 
                 for (version in versionData) {
                     let versionRadioButtonDiv = document.createElement("div");
-                    versionRadioButtonDiv.classList.add("form_popup__version-select__radio-button");
+                    versionRadioButtonDiv.classList.add("popup-window__div__form__version-select__radio-button");
                     let versionRadioButton = document.createElement("INPUT");
                     versionRadioButton.setAttribute("type", "radio");
                     versionRadioButton.name = "versionRadioButton";
@@ -86,7 +86,7 @@ var maptool_display_postcode = function (){
                 }
     
                 let versionRadioButtonDiv = document.createElement("div");
-                versionRadioButtonDiv.classList.add("form_popup__version-select__radio-button");
+                versionRadioButtonDiv.classList.add("popup-window__div__form__version-select__radio-button");
                 let newVersionRadioButton = document.createElement("INPUT");
                 newVersionRadioButton.setAttribute("type", "radio");
                 newVersionRadioButton.name = "versionRadioButton";
@@ -148,7 +148,7 @@ var maptool_display_postcode = function (){
             }).then(function (response) {
                 console.log(response)
             }).then(function () {
-                getPostalCodeArea(null, 'plz-number');
+                getPostalCodeAreaByID(document.getElementById("PLZ").value)
                 closeForm("plzVersionPopupForm");
             }).catch((err) => console.error(err));
         } 
@@ -156,94 +156,93 @@ var maptool_display_postcode = function (){
             alert("please select a version");
         }
     }
-    
+
     /**
-     * @param {HTML_button_element} btn 
-     * @param {string} plz_type             Flag used to determine whether user wants to generate new networks from area selection or look at already existing ones
+     * if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file, 
+     * which we display on the map
+     * We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects
+     * @param {int} plz 
      */
-    function getPostalCodeArea(btn, plz_type) {
-        // if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file, 
-        // which we display on the map
-        // We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects
-        if (plz_type == 'plz-number') {
-            let plz = document.getElementById("PLZ").value;
-            fetch("http://127.0.0.1:5000/postcode/plz", {
-                        method: 'POST',
-                        headers: {
-                            'Content-type': 'application/json'},
-                        body: JSON.stringify(plz)
-                }).then(function (response) {
-                    return response.json();
-                }).then(function (postcodeData) {
-                    let postcodeGeoJSON = L.geoJSON(postcodeData, {style:{ color: '#003359', dashArray: '5'}}).addTo(map);
-                    map.fitBounds(postcodeGeoJSON.getBounds());
-                    console.log('starting Postcode nets fetch');
-                    fetch('/postcode/nets')
-                    .then(function (response) {
-                        return response.json();
-                    }).then(function (postcodeNets) {
-                        for(let i = 0; i < postcodeNets.length; i++) {
-                            displayPreviewNet(postcodeNets[i][0], postcodeNets[i][1], JSON.parse(postcodeNets[i][2])["line"]);
-                        }
-                        console.log('added all nets in plz area');
-                        populateNetList('network', netList)
-                    });
-                }).catch((err) => console.error(err));
-        }
-        /**
-         * if the user wants to generate networks from a newly selected area shape, we initially return the shape the user has selected and receive a response
-         * containing the building shapes contained in the selected area
-         * We check res and oth buildings for emptiness and display them on the map
-         * We also change the Select Area button to Generate Network button
-         */
-        if (plz_type == 'plz-area') {
-            var layers = L.PM.Utils.findLayers(map);
-            if(layers.length != 0) {
-                var group = L.featureGroup();
-                layers.forEach((layer)=>{
-                    group.addLayer(layer);
-                });
-                shapes = group.toGeoJSON();
-                fetch("http://127.0.0.1:5000/postcode/area", {
+    function getPostalCodeAreaByID(plz) {
+        fetch("http://127.0.0.1:5000/postcode/plz", {
                     method: 'POST',
                     headers: {
                         'Content-type': 'application/json'},
-                    body: JSON.stringify(shapes)
-                }).then(function (response) {
-                    return(response.json());
-                }).then(function (building_data) {
-                    group.remove();
-                    var layers = L.PM.Utils.findLayers(map);
-                    layers.forEach((layer) =>{
-                            layer.remove();
-                        });
-                    if(building_data.res_buildings.features != null) {
-                        res_building_geojson = L.geoJSON(building_data.res_buildings, {
-                            style : res_style,
-                            onEachFeature: function(feature, layer) {
-                                feature.properties.type = 'res';
-                                onEachFeature (feature, layer);
-                            }
-                        }).addTo(map);
+                    body: JSON.stringify(plz)
+            }).then(function (response) {
+                return response.json();
+            }).then(function (postcodeData) {
+                let postcodeGeoJSON = L.geoJSON(postcodeData, {style:{ color: '#003359', dashArray: '5'}}).addTo(map);
+                map.fitBounds(postcodeGeoJSON.getBounds());
+                console.log('starting Postcode nets fetch');
+                fetch('/postcode/nets')
+                .then(function (response) {
+                    return response.json();
+                }).then(function (postcodeNets) {
+                    for(let i = 0; i < postcodeNets.length; i++) {
+                        displayPreviewNet(postcodeNets[i][0], postcodeNets[i][1], JSON.parse(postcodeNets[i][2])["line"]);
                     }
-                    if(building_data.oth_buildings.features != null) {
-                        oth_building_geojson = L.geoJSON(building_data.oth_buildings, {
-                            style : oth_style,
-                            onEachFeature: function(feature, layer) {
-                                feature.properties.type = 'oth'
-                                onEachFeature (feature, layer);
-                            }
-                        }).addTo(map);
-                    }
-                    if(building_data.res_buildings.features != null || building_data.oth_buildings.features != null) {
-                        btn.innerText="Generate Network";
-                        btn.setAttribute('onclick','maptool_display_postcode.openAreaPopup()')
-                    }
-                }).catch((err) => console.error(err));
-            }
+                    console.log('added all nets in plz area');
+                    populateNetList('network', netList)
+                });
+            }).catch((err) => console.error(err));
+    }
+
+    /**
+     * if the user wants to generate networks from a newly selected area shape, we initially return the shape the user has selected and receive a response
+     * containing the building shapes contained in the selected area
+     * We check res and oth buildings for emptiness and display them on the map
+     * We also change the Select Area button to Generate Network button
+     * 
+     * @param {HTML_button_element} btn 
+     */
+    function getPostalCodeAreaByShape(btn){
+        var layers = L.PM.Utils.findLayers(map);
+        if(layers.length != 0) {
+            var group = L.featureGroup();
+            layers.forEach((layer)=>{
+                group.addLayer(layer);
+            });
+            shapes = group.toGeoJSON();
+            fetch("http://127.0.0.1:5000/postcode/area", {
+                method: 'POST',
+                headers: {
+                    'Content-type': 'application/json'},
+                body: JSON.stringify(shapes)
+            }).then(function (response) {
+                return(response.json());
+            }).then(function (building_data) {
+                group.remove();
+                var layers = L.PM.Utils.findLayers(map);
+                layers.forEach((layer) =>{
+                        layer.remove();
+                    });
+                if(building_data.res_buildings.features != null) {
+                    res_building_geojson = L.geoJSON(building_data.res_buildings, {
+                        style : res_style,
+                        onEachFeature: function(feature, layer) {
+                            feature.properties.type = 'res';
+                            onEachFeature (feature, layer);
+                        }
+                    }).addTo(map);
+                }
+                if(building_data.oth_buildings.features != null) {
+                    oth_building_geojson = L.geoJSON(building_data.oth_buildings, {
+                        style : oth_style,
+                        onEachFeature: function(feature, layer) {
+                            feature.properties.type = 'oth'
+                            onEachFeature (feature, layer);
+                        }
+                    }).addTo(map);
+                }
+                if(building_data.res_buildings.features != null || building_data.oth_buildings.features != null) {
+                    btn.innerText="Generate Network";
+                    btn.setAttribute('onclick','maptool_display_postcode.openAreaPopup()')
+                }
+            }).catch((err) => console.error(err));
         }
     }
-    
+
     /**
      * onclick function for the Generate Network button
      * makes the area version input GUI visible and adds a listener to it that makes sure the form can only be submitted if the inputs are correct
@@ -268,7 +267,6 @@ var maptool_display_postcode = function (){
         let newVersion = document.getElementById("newNetVersionInput").value;
         let buildings = [];
 
-
         map.eachLayer( function(layer) {
             if(layer.feature != undefined) {
                 buildings.push(layer.feature.properties);
@@ -285,10 +283,23 @@ var maptool_display_postcode = function (){
             if(response.status == 400) {
                 alert("Version " + newVersion +  " already exists for ID " + newID);
             }
+            else {
+                fetch("http://127.0.0.1:5000/postcode/plz/version", {
+                    method: 'POST',
+                    headers: {
+                        'Content-type': 'application/json'},
+                    body: JSON.stringify(newVersion)
+                }).then(function (response) {
+                    console.log(response)
+                }).then(function () {
+                    getPostalCodeAreaByID(newID)
+                }).catch((err) => console.error(err));
+            }
             return response;
         }).catch((err) => console.error(err));
     
         closeForm("plzAreaPopupForm");
+
     }
     
     
@@ -509,7 +520,7 @@ var maptool_display_postcode = function (){
     return {
         selectVersionOfPostalCodeNetwork: selectVersionOfPostalCodeNetwork,
         chooseVersionOfPlzNetwork:chooseVersionOfPlzNetwork,
-        getPostalCodeArea: getPostalCodeArea,
+        getPostalCodeAreaByShape: getPostalCodeAreaByShape,
         openAreaPopup: openAreaPopup,
         returnSelectedBuildings: returnSelectedBuildings,
         highlightSelectedPreviewLayer: highlightSelectedPreviewLayer,

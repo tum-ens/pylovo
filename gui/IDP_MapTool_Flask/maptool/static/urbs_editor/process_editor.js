@@ -1,4 +1,3 @@
-//TODO: Pro_com_prop deletion possible
 //TODO: On process creation, make sure that ratio, ratio min are saved if we choose a new commodity
 
 /**
@@ -243,6 +242,40 @@ var maptool_urbs_process = function() {
     }
 
     /**
+    * Function makes secondary feature window visible and fills all input fields with the saved values, if any exist.
+    * At the moment the process editor is the only one with a secondary editor, namely the pro_com_prop editor
+    * 
+    * @param {HTML_select_element} sel      gets passed as "this" reference when the onchange method for the select element is called, needed to 
+    *                                       retrieve the currently selected secondary feature
+    * @param {string} secondaryFeatureName  key for relevant html elements 
+    */
+    function openSecondaryProcessEditor(sel, secondaryFeatureName) {
+        document.getElementById(secondaryFeatureName + 'Editor').style.display='block';
+        
+        let key = document.getElementById('pro_propSelect').value;
+    
+        let inOrOutFlag = (sel.value.slice(-3) === ' In') ? true : false;
+
+        let target_properties = maptool_urbs_process.ProcessObject.pro_com_propList[key][(inOrOutFlag) ? "In" : "Out"][(inOrOutFlag) ? sel.value.slice(0, -3) : sel.value.slice(0, -4)];
+        let editor_form = document.getElementById(secondaryFeatureName + 'Form');
+        let editor_elems = editor_form.children[0].children;
+
+        console.log(editor_elems);
+
+        for (let i = 0; i < editor_elems.length; i++) {
+            if (editor_elems[i].nodeName == 'INPUT') {
+                if(target_properties[editor_elems[i].name] != null) {
+                    editor_elems[i].value = target_properties[editor_elems[i].name];
+                    console.log(editor_elems[i].value, target_properties[editor_elems[i].name])
+                }
+                else {
+                    editor_elems[i].value = '';
+                }
+            }
+        }
+    }
+
+    /**
      * TODO: Split commodity attachment into own function
      * 
      * @param {bool} isCommodity 
@@ -335,6 +368,10 @@ var maptool_urbs_process = function() {
         option.text = com_name;
         option.value = com_name;
         commodityList.add(option);
+
+        maptool_urbs_commodity.addCommToProcessCreationFormList(com_name);
+        maptool_urbs_commodity.addCommToStorageComList(com_name);
+
         maptool_urbs_commodity.CommodityObject.commodityPropertiesList[com_name] = JSON.parse(JSON.stringify(maptool_urbs_commodity.CommodityObject.commodityPropertiesTemplate));
         
         const select = document.querySelector("#pro_com_propSelect");
@@ -444,6 +481,7 @@ var maptool_urbs_process = function() {
         processAddCommoditySelection: processAddCommoditySelection,
         createNewProcessPropertyOrCommodity: createNewProcessPropertyOrCommodity,
         writeBackProcessFeatures: writeBackProcessFeatures,
+        openSecondaryProcessEditor: openSecondaryProcessEditor,
         createPro_Conf_Editor: createPro_Conf_Editor
     }
 }();

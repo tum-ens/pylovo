@@ -2,7 +2,8 @@ display_postcode.js
 ===================
 .. js:autofunction:: selectVersionOfPostalCodeNetwork
 .. js:autofunction:: chooseVersionOfPlzNetwork
-.. js:autofunction:: getPostalCodeArea
+.. js:autofunction:: getPostalCodeAreaByID
+.. js:autofunction:: getPostalCodeAreaByShape
 .. js:autofunction:: openAreaPopup
 .. js:autofunction:: returnSelectedBuildings
 .. js:autofunction:: displayPreviewNet

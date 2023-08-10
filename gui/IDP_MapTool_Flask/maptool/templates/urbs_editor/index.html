@@ -24,6 +24,7 @@
     <button class="feature-editor__buttons-tab__tablinks" id="processesButton" title="Processes" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'processes', true)"><span>P</span></button>
     <button class="feature-editor__buttons-tab__tablinks" id="process_confButton" title="Process Configuration" onclick="maptool_urbs_setup.openUrbsEditorList(event, 'process_conf', false)"><span>P Conf</span></button>
   </div>
+
   <div class="feature-editor__featurelist-tab" id="buildings">
     <select class ="feature-editor__featurelist-tab__feature-select" id="buildingsSelect"  onchange="maptool_urbs_setup.fillSelectedEditor(this, 'buildings')" multiple></select>
   </div>
@@ -94,6 +95,7 @@
       </div>
     </form>
   </div>
+  
   <div class="feature-editor__selected-feature-editor" id="transmission_cable_dataEditor">
     <form id="transmission_cable_dataForm">
     </form>
@@ -158,78 +160,11 @@
   </div>
 </div>
 
-<div class="optionsPopup">
-  <div class="formPopup" id="urbsProcessPopupForm">
-    <form class="formContainer">
-      Please give a name for the new process:
-      <div class="form-popup__version-select">
-        <input type="text" name="newProcessTextInput" id="newProcessTextInput" placeholder="Process Name" onchange="maptool_urbs_process.processFormCommoditySelection(document.getElementById('pro_propCommSelect'))">
-      </div>
-      Select a commodity for your new process:
-      <div class="form-popup__version-select">
-        <select class ="feature-editor__featurelist-tab__feature-select" id="pro_propCommSelect" onchange="maptool_urbs_process.processFormCommoditySelection(this)">
-          <option value="none" selected disabled hidden>Select an Option</option>
-          <option value="newCommodity">New Commodity</option>
-        </select>
-        <div class="hidden form-popup__version-select__comm" id="newProcessCommDiv">
-          <input type="text" name="newProcessCommTextInput" id="newProcessCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_process.processFormCommoditySelection(document.getElementById('pro_propCommSelect'))">
-          <input type="number" name="newProcessCommRatioInput" id="newProcessCommRatioInput" placeholder="Ratio">
-          <input type="number" name="newProcessCommRatioMinInput" id="newProcessCommRatioMinInput" placeholder="Ratio Min">
-        </div>
-      </div>
-      <div class="form-popup__version-select__comm__checkboxes" id="newProcessCommCheckboxDiv">
-        <input type="radio" name="inout" id="newProcessCommCheckboxIn" checked>
-        <label>In</label>
-        <input type="radio" name="inout" id="newProcessCommCheckboxOut">
-        <label>Out</label>
-      </div>
-      <button type="button" class="btn" id="newProcessCreateButton" onclick="maptool_urbs_process.createNewProcessPropertyOrCommodity(false)" disabled>Create Process</button>
-      <button type="button" class="btn cancel" onclick="maptool_urbs_process.closeNewProcessForm(false)">Cancel</button>
-    </form>
-  </div>
-</div>
+{% include "urbs_editor/include/new_pro_form.html" %}
 
-<div class="optionsPopup">
-  <div class="formPopup" id="urbsProcessCommodityPopupForm">
-    <form class="formContainer">
-      Select a new commodity for your process:
-      <div class="form-popup__version-select">
-        <select class ="feature-editor__featurelist-tab__feature-select" id="pro_propAddCommSelect" onchange="maptool_urbs_process.processAddCommoditySelection(this)">
-          <option value="none" selected disabled hidden>Select an Option</option>
-          <option value="newCommodity">New Commodity</option>
-        </select>
-        <div class="hidden form-popup__version-select__comm" id="ProcessAddCommDiv">
-          <input type="text" name="newProcessCommTextInput" id="ProcessAddCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_process.processAddCommoditySelection(document.getElementById('pro_propAddCommSelect'))">
-          <input type="number" name="newProcessCommRatioInput" id="ProcessAddCommRatioInput" placeholder="Ratio">
-          <input type="number" name="newProcessCommRatioMinInput" id="ProcessAddCommRatioMinInput" placeholder="Ratio Min">
-        </div>
-      </div>
-      <div class="form-popup__version-select__comm__checkboxes" id="ProcessAddCommCheckboxDiv">
-        <input type="radio" name="inout" id="ProcessAddCommCheckboxIn" checked>
-        <label>In</label>
-        <input type="radio" name="inout" id="ProcessAddCommCheckboxOut"> 
-        <label>Out</label>
-      </div>
-      <button type="button" class="btn" id="ProcessAddCreateButton" onclick="maptool_urbs_process.createNewProcessPropertyOrCommodity(true)" disabled>Add Commodity</button>
-      <button type="button" class="btn cancel" onclick="maptool_urbs_process.closeNewProcessForm(true)">Cancel</button>
-    </form>
-  </div>
-</div>
+{% include "urbs_editor/include/new_pro_com_form.html" %}
 
-<div class="optionsPopup">
-  <div class="formPopup" id="urbsNewCommodityPopupForm">
-    <form class="formContainer">
-      Enter a name for your new commodity:
-      <div class="form-popup__version-select">
-        <div class="form-popup__version-select__comm" id="newCommDiv">
-          <input type="text" name="newCommTextInput" id="newCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_commodity.commodityFormCheckValidInput(this.text)">
-        </div>
-      </div>
-      <button type="button" class="btn" id="newCommCreateButton" onclick="maptool_urbs_commodity.createNewCommodity(document.getElementById('newCommTextInput').value)" disabled>Add Commodity</button>
-      <button type="button" class="btn cancel" onclick="maptool_urbs_commodity.closeNewCommodityForm(true)">Cancel</button>
-    </form>
-  </div>
-</div>
+{% include "urbs_editor/include/new_com_form.html" %}
 
 {% include "urbs_editor/include/trafo_data_form.html" %}
 

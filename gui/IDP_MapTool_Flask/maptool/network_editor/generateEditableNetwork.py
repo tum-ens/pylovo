@@ -156,7 +156,6 @@ def createGeoJSONofNetwork(net, bus, trafo, line, ext_grid, std_types):
     switch_features = data['switch']
 
     trafo_properties = data['trafo']
-    trafo3w_properties = data['trafo3w']
     f.close()
 
     output = {}

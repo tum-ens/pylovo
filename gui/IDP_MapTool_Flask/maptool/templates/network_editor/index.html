@@ -11,7 +11,6 @@
         <button class="feature-editor__buttons-tab__tablinks" id="busListButton" onclick="maptool_net_display.openEditableNetworkList(event, 'bus')"><span>Buses</span></button>
         <button class="feature-editor__buttons-tab__tablinks" id="lineListButton" onclick="maptool_net_display.openEditableNetworkList(event, 'line')"><span>Lines</span></button>
         <button class="feature-editor__buttons-tab__tablinks" id="trafoListButton" onclick="maptool_net_display.openEditableNetworkList(event, 'trafo')"><span>Trafos</span></button>
-        <button class="feature-editor__buttons-tab__tablinks" id="trafo3wListButton" onclick="maptool_net_display.openEditableNetworkList(event, 'trafo3w')"><span>Trafos 3w</span></button>
         <button class="feature-editor__buttons-tab__tablinks" id="ext_gridListButton" onclick="maptool_net_display.openEditableNetworkList(event, 'ext_grid')"><span>Ext. Grid</span></button>
         <button class="feature-editor__buttons-tab__tablinks" id="std_typesListButton" onclick="maptool_net_display.openEditableNetworkList(event, 'std_types')"><span>Std Types</span></button>
       </div>
@@ -24,12 +23,8 @@
         <select class ="feature-editor__featurelist-tab__feature-select"  id="lineSelect" onchange="maptool_net_display.fillSelectedEditableNetworkFeatureEditor(this, 'line')" multiple></select>
       </div>
       <div class="feature-editor__featurelist-tab" id="trafo">
-        <button class="button feature-editor__featurelist-tab__add-feature-button" onclick="maptool_add_delete.addFeature('trafo')">Add Trafo</button>
+        <button class="button feature-editor__featurelist-tab__add-feature-button" id="addTrafoButton" disabled onclick="maptool_add_delete.addFeature('trafo')">Add Trafo</button>
         <select  class ="feature-editor__featurelist-tab__feature-select" id="trafoSelect" onchange="maptool_net_display.fillSelectedEditableNetworkFeatureEditor(this, 'trafo')" multiple></select>
-      </div>
-      <div class="feature-editor__featurelist-tab" id="trafo3w">
-        <button class="button feature-editor__featurelist-tab__add-feature-button" onclick="maptool_add_delete.addFeature('trafo3ws')">Add Trafo 3w</button>
-        <select class ="feature-editor__featurelist-tab__feature-select" id="trafo3wSelect" onchange="maptool_net_display.fillSelectedEditableNetworkFeatureEditor(this, 'trafo3w')" multiple></select>
       </div>
       <div class="feature-editor__featurelist-tab" id="ext_grid">
         <button class="button feature-editor__featurelist-tab__add-feature-button" onclick="maptool_add_delete.addFeature('ext_grid')">Add Ext. Grid</button>
@@ -40,12 +35,10 @@
         <select class ="panel feature-editor__featurelist-tab__stdtype-feature-select" id="line_std_typesSelect" onchange="maptool_net_display.fillStdTypeEditor(this, 'line_std') " multiple></select>
         <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button"  id="trafo_std_typesSelectButton">Trafo Std Types</button>
         <select class ="feature-editor__featurelist-tab__stdtype-feature-select" id="trafo_std_typesSelect" onchange="maptool_net_display.fillStdTypeEditor(this, 'trafo_std')" multiple></select>
-        <button type='button' class="accordion button feature-editor__featurelist-tab__add-feature-button"  id="ext_grid_std_typesSelectButton">Trafo3w Std Types</button>
-        <select class ="feature-editor__featurelist-tab__stdtype-feature-select" id="trafo3w_std_typesSelect" onchange="maptool_net_display.fillStdTypeEditor(this, 'trafo3w_std')" multiple></select>
       </div>
       <div class="feature-editor__selected-feature-editor" id="busEditor">
           <form id="busForm"></form>
-          <button class="button feature-editor__selected-feature-editor__delete-button" onclick="maptool_add_delete.prepareFeatureDelete('bus', ['line', 'trafo', 'trafo3w', 'ext_grid'])">Delete Feature</button>
+          <button class="button feature-editor__selected-feature-editor__delete-button" onclick="maptool_add_delete.prepareFeatureDelete('bus', ['line', 'trafo', 'ext_grid'])">Delete Feature</button>
       </div>
       <div class="feature-editor__selected-feature-editor__secondary-editor" id="loadEditor">
         <form id="loadForm"></form>
@@ -64,10 +57,6 @@
         <form id="trafoForm"></form>
         <button class="button feature-editor__selected-feature-editor__delete-button" onclick="maptool_add_delete.deleteFeature('trafo')">Delete Feature</button>
       </div>
-      <div class="feature-editor__selected-feature-editor" id="trafo3wEditor">
-        <form id="trafo3wForm"></form>
-        <button class="button feature-editor__selected-feature-editor__delete-button" onclick="maptool_add_delete.deleteFeature('trafo3w')">Delete Feature</button>
-      </div>
       <div class="feature-editor__selected-feature-editor" id="ext_gridEditor">
         <form id="ext_gridForm"></form>
         <button class="button feature-editor__selected-feature-editor__delete-button" onclick="maptool_add_delete.deleteFeature('ext_grid')">Delete Feature</button>
@@ -75,20 +64,12 @@
       <div class="feature-editor__selected-feature-editor" id="std_typesEditor">
         <form id="line_std_typesForm"></form>
         <form id="trafo_std_typesForm"></form>
-        <form id="trafo3w_std_typesForm"></form>
         <button class="button feature-editor__selected-feature-editor__delete-button" onclick="maptool_add_delete.deleteFeature('std_types')">Delete Feature</button>
       </div>
     </div>
 
-    <div class="optionsPopup">
-      <div class="formPopup" id="popupForm">
-        <form class="formContainer">
-          All features connected to the bus will also be deleted
-          <button type="button" class="btn" onclick="maptool_add_delete.deleteConnectedFeatures()">Delete Features</button>
-          <button type="button" class="btn cancel" onclick="maptool_add_delete.closeFeatureDeleteForm()">Cancel</button>
-        </form>
-      </div>
-    </div>
+    {% include "network_editor/include/delete_connected_bus_features_form.html" %}
+
 
     <div class="action-buttons">
       <a href="/urbs">

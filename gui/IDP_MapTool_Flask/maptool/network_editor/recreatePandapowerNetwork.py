@@ -45,7 +45,6 @@ def recreatePandapowerNetwork(net_features):
 
     line_std_properties = data['std_type']['line']
     trafo_std_properties = data['std_type']['trafo']
-    trafo3w_std_properties = data['std_type']['trafo3w']
 
     line_properties = data['line']
 
@@ -57,7 +56,6 @@ def recreatePandapowerNetwork(net_features):
     switch_features = data['switch']
 
     trafo_properties = data['trafo']
-    trafo3w_properties = data['trafo3w']
     f.close()
 
     newNet = pp.create_empty_network()
@@ -73,12 +71,6 @@ def recreatePandapowerNetwork(net_features):
     for type in trafo_std_typesList:
         std_type_data = createFeatureFromGeoJSONProperties(trafo_std_properties, trafo_std_typesList[type])        
         pp.create_std_type(newNet, std_type_data, type, element='trafo')
-
-    trafo3w_std_typesList = net_features['trafo3w_stdList']
-
-    for type in trafo3w_std_typesList:
-        std_type_data = createFeatureFromGeoJSONProperties(trafo3w_std_properties, trafo3w_std_typesList[type])        
-        pp.create_std_type(newNet, std_type_data, type, element='trafo3w')
 
     busList = net_features['busList']
     busListCoords = net_features['busListCoords']

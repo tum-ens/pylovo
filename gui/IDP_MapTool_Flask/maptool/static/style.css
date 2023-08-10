@@ -431,12 +431,14 @@ input[type=text]:focus + label, input[type=number]:focus + label {
   cursor: pointer;
   position: fixed;
 }
-.optionsPopup {
+
+/* Generic Popup Form */
+.popup-window {
   position: relative;
   text-align: center;
   width: 100%;
 }
-.formPopup {
+.popup-window__div {
   display: none;
   position: fixed;
   left: 45%;
@@ -445,47 +447,47 @@ input[type=text]:focus + label, input[type=number]:focus + label {
   border: 3px solid #999999;
   z-index: 9999;
 }
-.formContainer {
+.popup-window__div__form {
   max-width: 300px;
   padding: 20px;
   background-color: #fff;
 }
 
-.form-popup__version-select {
+.popup-window__div__form__version-select {
   padding-bottom: 2rem;
 }
 
-.form-popup__version-select__comm__checkboxes {
+.popup-window__div__form__version-select__comm__checkboxes {
   padding-top: 2rem;
 }
 
-.form-popup__version-select__comm__checkboxes label{
+.popup-window__div__form__version-select__comm__checkboxes label{
   padding-right: 2rem;
 }
 
-.form-popup__version-select label{
+.popup-window__div__form__version-select label{
   padding-left: 0.5rem;
 }
 
-.form_popup__version-select__radio-button {
+.popup-window__div__form__version-select__radio-button {
   float: left;
   clear: both;
 }
 
-.formContainer input[type=number],
-.formContainer input[type=password] {
+.popup-window__div__form input[type=number],
+.popup-window__div__form input[type=password] {
   width: 100%;
   padding: 15px;
   margin: 5px 0 20px 0;
   border: none;
   background: #eee;
 }
-.formContainer input[type=number]:focus,
-.formContainer input[type=password]:focus {
+.popup-window__div__form input[type=number]:focus,
+.popup-window__div__form input[type=password]:focus {
   background-color: #ddd;
   outline: none;
 }
-.formContainer .btn {
+.popup-window__div__form .btn {
   padding: 12px 20px;
   border: none;
   background-color: #8ebf42;
@@ -495,15 +497,15 @@ input[type=text]:focus + label, input[type=number]:focus + label {
   margin-bottom: 15px;
   opacity: 0.8;
 }
-.formContainer .cancel {
+.popup-window__div__form .cancel {
   background-color: #cc0000;
 }
-.formContainer .btn:hover,
+.popup-window__div__form .btn:hover,
 .openButton:hover {
   opacity: 1;
 }
 
-.formContainer .btn:disabled {
+.popup-window__div__form .btn:disabled {
   background-color: #585858;
 }
 

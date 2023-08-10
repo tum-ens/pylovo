@@ -12,7 +12,7 @@ var maptool_urbs_commodity = function () {
      * retrieves commodity feature templates from the backend and generates a dict for each commodity, holding default values for all inputs
      */
     function fetchCommodityProfiles() {
-        fetch('urbs/commodity_profiles')
+        return fetch('urbs/commodity_profiles')
         .then(function (response) {
             return response.json();
         }).then(function (data) {
@@ -82,7 +82,6 @@ var maptool_urbs_commodity = function () {
      * 
      * @param {string} name of the new commodity
      */
-    //TODO: There are a few lists that still need to be included here
     function addCommToProcessCreationFormList(name) {
         let commSelect = document.getElementById("pro_propCommSelect");
         let commAddSelect = document.getElementById("pro_propAddCommSelect");
@@ -96,6 +95,20 @@ var maptool_urbs_commodity = function () {
         newAddOption.text = name;
         commSelect.appendChild(newOption);
         commAddSelect.appendChild(newAddOption);
+    }
+
+    /**
+     * Once a new commodity has been created, this function adds it to the GUI form of the storage editor
+     * @param {string} name 
+     */
+    function addCommToStorageComList(name) {
+        let commSelect = document.getElementById('storageFormDiv').querySelector('#commodity');
+        let newOption = document.createElement("option");
+        newOption.value = name;
+        newOption.text = name;
+
+        commSelect.appendChild(newOption);
+        console.log(commSelect);
     }
 
     /**
@@ -113,16 +126,8 @@ var maptool_urbs_commodity = function () {
                 CommodityObject.commodityPropertiesList[com_name] = JSON.parse(JSON.stringify(CommodityObject.commodityPropertiesTemplate));
                 
         
-                //TODO: Replace with addCommToProcessCreationFormList function
-                let pro_propCommOption = document.createElement("option");
-                pro_propCommOption.text = com_name;
-                pro_propCommOption.value = com_name;
-                document.getElementById('pro_propCommSelect').add(pro_propCommOption);
-
-                let pro_propAddCommOption = document.createElement("option");
-                pro_propAddCommOption.text = com_name;
-                pro_propAddCommOption.value = com_name;
-                document.getElementById('pro_propAddCommSelect').add(pro_propAddCommOption);
+                addCommToProcessCreationFormList(com_name);
+                addCommToStorageComList(com_name);
 
                 closeNewCommodityForm();
     }
@@ -151,7 +156,8 @@ var maptool_urbs_commodity = function () {
     return {
         CommodityObject: CommodityObject,
         fetchCommodityProfiles: fetchCommodityProfiles,
-        createBuySellPriceEditor: createBuySellPriceEditor,
+        addCommToProcessCreationFormList: addCommToProcessCreationFormList,
+        addCommToStorageComList: addCommToStorageComList,
         openNewCommodityForm: openNewCommodityForm,
         closeNewCommodityForm: closeNewCommodityForm,
         commodityFormCheckValidInput: commodityFormCheckValidInput,

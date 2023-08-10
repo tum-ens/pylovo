@@ -8,7 +8,6 @@ generate_urbs_setup_editor.js
 .. js:autofunction:: populateUrbsEditorLoadBusLists
 .. js:autofunction:: populateUrbsEditor
 .. js:autofunction:: populateUrbsNetworkEditorSecondaryFeature
-.. js:autofunction:: openSecondaryProcessEditor
 .. js:autofunction:: openUrbsEditorList
 .. js:autofunction:: resetLoadBusStyle
 .. js:autofunction:: highlightSelectedElementInList

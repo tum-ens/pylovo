@@ -11,7 +11,7 @@ var maptool_net_display = function() {
      * function creates options for each std_type select element in the GUI
      */
     function fillStdTypeList() {
-        let lists = [maptool_network_gen.NetworkObject.line_stdList, maptool_network_gen.NetworkObject.trafo_stdList, maptool_network_gen.NetworkObject.trafo3w_stdList];
+        let lists = [maptool_network_gen.NetworkObject.line_stdList, maptool_network_gen.NetworkObject.trafo_stdList];
 
         let st_type_selects = document.getElementsByClassName('feature-editor__featurelist-tab__stdtype-feature-select');
         for (let i = 0; i < st_type_selects.length; i++) {
@@ -37,7 +37,6 @@ var maptool_net_display = function() {
         //the std_type editor forms are all located within the same div and only one should be visible at a time
         document.getElementById('line_std_typesForm').style.display = (sel.id == 'line_std_typesSelect') ? 'inline-block' : 'none';
         document.getElementById('trafo_std_typesForm').style.display = (sel.id == 'trafo_std_typesSelect') ? 'inline-block' : 'none';
-        document.getElementById('trafo3w_std_typesForm').style.display = (sel.id == 'trafo3w_std_typesSelect') ? 'inline-block' : 'none';
 
         selectedObject = maptool_network_gen.NetworkObject[listName + 'List'][idx];
         

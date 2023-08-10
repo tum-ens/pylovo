@@ -1,3 +1,6 @@
+// TODO: Make sure trafo deletion and re-adding works properly. Atm adding a trafo after the last was deleted does not work
+//          Cache feature properties somehow, possibly during network creation, as a way to add features back even if list is empty
+
 var maptool_add_delete = function() {
     //array that contains all features connected to a bus that's about to be deleted
     let featuresToDeleteList = [];
@@ -14,12 +17,12 @@ var maptool_add_delete = function() {
         if(feature == 'bus' || feature =='ext_grid') {
             type = 'Point'
             map.pm.enableDraw('CircleMarker', {
-                snappable: false, 
+                snappable: (feature == 'ext_grid'), 
                 snapDistance: 20,
                 requireSnapToFinish : (feature == 'ext_grid'), //busses can be placed anywhere, ext_grids need to be placed on a bus
                 continueDrawing: false,
                 pathOptions: style,
-                snapIgnore: (feature == 'ext_grid'),
+                snapIgnore: (feature != 'ext_grid'),
     
               })
         }
@@ -43,7 +46,7 @@ var maptool_add_delete = function() {
             featuresToDeleteList[feature][0].setStyle(featuresToDeleteList[feature][0].defaultOptions);
         }
         featuresToDeleteList = [];
-        document.getElementById("popupForm").style.display = "none";
+        document.getElementById("deleteConnectedBusFeaturesForm").style.display = "none";
       }
     
     //TODO: This is awful. Change this
@@ -57,7 +60,7 @@ var maptool_add_delete = function() {
     function prepareFeatureDelete(featureName, featureLists) {
         if(featureName == 'bus') {
             //opens the delete popup window that allows the user to back out of deleting the bus
-            document.getElementById("popupForm").style.display = "block";
+            document.getElementById("deleteConnectedBusFeaturesForm").style.display = "block";
             let featureSelect = document.getElementById(featureName + 'Select');
     
             featuresToDeleteList.push([maptool_network_gen.NetworkObject['busList'][featureSelect.selectedIndex], 'bus', featureSelect.selectedIndex]);
@@ -106,11 +109,11 @@ var maptool_add_delete = function() {
             lineCount += (featureName == 'line');
             trafoCount += (featureName == 'trafo');
             ext_gridCount += (featureName == 'ext_grid');
-        } 
+        }
     
         featuresToDeleteList = [];
         document.getElementById('busEditor').style.display = 'none';
-        document.getElementById("popupForm").style.display = "none";
+        document.getElementById("deleteConnectedBusFeaturesForm").style.display = "none";
     }
     
     /**
@@ -126,7 +129,10 @@ var maptool_add_delete = function() {
             featureSelect.remove(featureSelect.selectedIndex);
             document.getElementById(featureName + 'Editor').style.display = 'none';
         }
-    
+        if(featureName == "trafo") {
+            addTrafoButton = document.getElementById("addTrafoButton");
+            addTrafoButton.disabled = false;
+        } 
     }
     
     let snapped = false;   
@@ -143,11 +149,13 @@ var maptool_add_delete = function() {
                 snappedFeature = e.layerInteractedWith.feature.properties.index;
                 snapped = true;
             }
-            else {
+            else{
                 snappedFeature = e.layerInteractedWith._parentCopy.feature.properties.index
             }
-        });
-        
+
+            console.log(snappedFeature);
+
+        });        
         workingLayer.on('pm:unsnap', (e) => {
             snapped = false; 
             snappedFeature = undefined;   
@@ -289,7 +297,7 @@ var maptool_add_delete = function() {
         featureSelect.add(option);
     
         let selectedObject = maptool_network_gen.NetworkObject[featureName + 'List'][featureSelect.options.length - 1];
-        //console.log(selectedObject);
+        console.log(selectedObject);
         maptool_net_display.clickOnMarker(selectedObject, featureName, 1);
     
         e.marker.remove();

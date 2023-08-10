@@ -1,7 +1,6 @@
 var maptool_network_gen = function (){
     let line_std_properties = {};
     let trafo_std_properties = {};
-    let trafo3w_std_properties = {};
 
     let line_properties = {};
 
@@ -17,12 +16,10 @@ var maptool_network_gen = function (){
         'busList' : [],
         'lineList' : [],
         'trafoList' : [],
-        'trafo3wList' : [],
         'ext_gridList' : [],
 
         'line_stdList' : [],
         'trafo_stdList' : [],
-        'trafo3w_stdList' : [],
         
         'loadList': [],
         'sgenList': [],
@@ -97,7 +94,6 @@ var maptool_network_gen = function (){
         }).then(function(properties) {
             line_std_properties = properties['std_type']['line']
             trafo_std_properties = properties['std_type']['trafo']
-            trafo3w_std_properties = properties['std_type']['trafo3w']
 
             line_properties = properties['line']
 
@@ -109,7 +105,6 @@ var maptool_network_gen = function (){
             switch_features = properties['switch']
 
             trafo_properties = properties['trafo']
-            trafo3w_properties = properties['trafo3w']
         });
         
         //we fetch the preprocessed GeoJSON data of the selected network
@@ -152,7 +147,6 @@ var maptool_network_gen = function (){
             maptool_net_display.populateEditableNetworkEditor('ext_grid', ext_grid_properties, null, null);
             maptool_net_display.populateEditableNetworkEditor('line_std_types', line_std_properties, null, null);
             maptool_net_display.populateEditableNetworkEditor('trafo_std_types', trafo_std_properties, null, null);
-            maptool_net_display.populateEditableNetworkEditor('trafo3w_std_types', trafo3w_std_properties, null, null);
         });
     }
 
@@ -184,7 +178,6 @@ var maptool_network_gen = function (){
     function extractStdTypes(ppdata) {
         NetworkObject.line_stdList= ppdata['line'];
         NetworkObject.trafo_stdList = ppdata['trafo'];
-        NetworkObject.trafo3w_stdList = ppdata['trafo3w'];
     }
     
     /**

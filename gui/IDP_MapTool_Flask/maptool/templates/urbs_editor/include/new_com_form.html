@@ -1,0 +1,14 @@
+<div class="popup-window">
+    <div class="popup-window__div" id="urbsNewCommodityPopupForm">
+      <form class="popup-window__div__form">
+        Enter a name for your new commodity:
+        <div class="popup-window__div__form__version-select">
+          <div class="popup-window__div__form__version-select__comm" id="newCommDiv">
+            <input type="text" name="newCommTextInput" id="newCommTextInput" placeholder="Commodity Name" onchange="maptool_urbs_commodity.commodityFormCheckValidInput(this.text)">
+          </div>
+        </div>
+        <button type="button" class="btn" id="newCommCreateButton" onclick="maptool_urbs_commodity.createNewCommodity(document.getElementById('newCommTextInput').value)" disabled>Add Commodity</button>
+        <button type="button" class="btn cancel" onclick="maptool_urbs_commodity.closeNewCommodityForm(true)">Cancel</button>
+      </form>
+    </div>
+  </div>

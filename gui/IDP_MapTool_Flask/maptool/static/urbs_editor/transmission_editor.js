@@ -40,8 +40,7 @@ var maptool_urbs_trans = function() {
             }
         });
     }
-
-    //TODO: Allow adding additional cables
+    
     /**
      * THIS IS REDUNDANT, SHOULD BE INCLUDED IN FETCHTRANSMISSIONPROFILES
      * prefills the TransmissionObject
@@ -154,7 +153,6 @@ var maptool_urbs_trans = function() {
             document.getElementById("newTrafoDataCreateButton").disabled = false;
         }
         else {
-            //TODO: check if ront with this sn_mva already exists
             document.getElementById("newTrafoDataCreateButton").disabled = true;
         }
     }
