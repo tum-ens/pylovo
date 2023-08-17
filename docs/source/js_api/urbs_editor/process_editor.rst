@@ -7,11 +7,12 @@ process_editor.js
 .. js:autofunction:: fillSecondaryEditorList
 .. js:autofunction:: openNewProcessForm
 .. js:autofunction:: closeNewProcessForm
-.. js:autofunction:: processFormCommoditySelection
+.. js:autofunction:: newProcessFormVerifyInputs
 .. js:autofunction:: processAddCommoditySelection
 .. js:autofunction:: openSecondaryProcessEditor
-.. js:autofunction:: createNewProcessPropertyOrCommodity
+.. js:autofunction:: createNewProcess
+.. js:autofunction:: addCommodityToProcess
 .. js:autofunction:: createNewProcessProperty
 .. js:autofunction:: createNewProcessCommodity
 .. js:autofunction:: writeBackProcessFeatures
-.. js:autofunction:: createPro_Conf_Editor
+.. js:autofunction:: createPro_ConfEditor

@@ -28,7 +28,7 @@ def urbs_setup():
     return render_template('urbs_editor/index.html')
 
 @bp.route('/urbs/urbs_setup_properties', methods=['GET', 'POST'])
-def urbs_setup_properties():
+def urbsSetupProperties():
     """
     on page load the frontend fetches the json file containing parameter names, types, default values etc 
     for generation and maintenance of the editor environment

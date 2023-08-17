@@ -100,7 +100,7 @@ var maptool_urbs_process = function() {
                 ProcessObject.pro_com_propList[process][direction][process_commodities['Commodity'][idx]] = pro_comPropertyJSON;
             }
             populateProcessEditorList('pro_prop', Object.keys(ProcessObject.pro_propList));
-            createPro_Conf_Editor();
+            createPro_ConfEditor();
         });
     }
 
@@ -199,7 +199,7 @@ var maptool_urbs_process = function() {
      * 
      * @param {HTML_select_element} sel the commodity select element
      */
-    function processFormCommoditySelection(sel) {
+    function newProcessFormVerifyInputs(sel) {
         let processNameFlag = (document.getElementById("newProcessTextInput").value.length != 0);
         document.getElementById("newProcessCreateButton").disabled = true;
 
@@ -276,58 +276,63 @@ var maptool_urbs_process = function() {
     }
 
     /**
-     * TODO: Split commodity attachment into own function
-     * 
-     * @param {bool} isCommodity 
+     * onclick function of the "Add Process" button. Calls helper function that adds process to process list and pro_conf table
+     * as well as attachment of process commodity
      */
-    function createNewProcessPropertyOrCommodity(isCommodity) {
-        if(isCommodity) {
-            let inOrOut = (document.getElementById('ProcessAddCommCheckboxIn').checked) ? "In" : "Out";
-            //we either create a new commodity or simply attach an existing one to a process
-            if (document.getElementById("pro_propAddCommSelect").value == 'newCommodity') {
-                createNewProcessCommodity(document.getElementById("pro_propSelect").value, document.getElementById("ProcessAddCommTextInput").value, inOrOut);
-            }
-            else {
-                ProcessObject.pro_com_propList[document.getElementById("pro_propSelect").value][inOrOut][document.getElementById("pro_propAddCommSelect").value] = JSON.parse(JSON.stringify(ProcessObject.pro_com_propTemplate));
-                
-                //we only add pro_com_prop options to the select once and then make them visible depending on if the associated process has one attached
-                //if the option has not been created, we dp so here
-                const select = document.querySelector("#pro_com_propSelect");
-                const optionLabels = Array.from(select.options).map((opt) => opt.value);
-                const hasOption = optionLabels.includes(document.getElementById("pro_propAddCommSelect").value + " " + inOrOut);
-                
-                if(!hasOption) {
-                    let option = document.createElement("option");
-                    option.text = document.getElementById("pro_propAddCommSelect").value + " " + inOrOut;
-                    option.value = document.getElementById("pro_propAddCommSelect").value + " " + inOrOut;
-                    document.getElementById('pro_com_propSelect').add(option);
-                }
-            }
+    function createNewProcess() {
+        let inOrOut = (document.getElementById('newProcessCommCheckboxIn').checked) ? "In" : "Out";
+        let newProcessName = document.getElementById("newProcessTextInput").value;
+        let newProcessAttachedComm = document.getElementById("pro_propCommSelect").value;
+        createNewProcessProperty(newProcessName);
+        if (newProcessAttachedComm == 'newCommodity') {
+            createNewProcessCommodity(newProcessName, document.getElementById("newProcessCommTextInput").value, inOrOut);
         }
-        //creates new process and either creates a new commodity to attach or attaches a preexisting commodity
         else {
-            let inOrOut = (document.getElementById('newProcessCommCheckboxIn').checked) ? "In" : "Out";
-            createNewProcessProperty(document.getElementById("newProcessTextInput").value);
-            if (document.getElementById("pro_propCommSelect").value == 'newCommodity') {
-                createNewProcessCommodity(document.getElementById("newProcessTextInput").value, document.getElementById("newProcessCommTextInput").value, inOrOut);
-            }
-            else {
-                ProcessObject.pro_com_propList[document.getElementById("newProcessTextInput").value] = {"In": {}, "Out": {}};
-                ProcessObject.pro_com_propList[document.getElementById("newProcessTextInput").value][inOrOut][document.getElementById("pro_propCommSelect").value] =JSON.parse(JSON.stringify(ProcessObject.pro_com_propTemplate));
-                
-                const select = document.querySelector("#pro_com_propSelect");
-                const optionLabels = Array.from(select.options).map((opt) => opt.value);
-                const hasOption = optionLabels.includes(document.getElementById("pro_propAddCommSelect").value + " " + inOrOut);
-                
-                if(!hasOption) {
-                    let option = document.createElement("option");
-                    option.text = document.getElementById("pro_propCommSelect").value + " " + inOrOut;
-                    option.value = document.getElementById("pro_propCommSelect").value + " " + inOrOut;
-                    document.getElementById('pro_com_propSelect').add(option);
-                }
+            ProcessObject.pro_com_propList[newProcessName] = {"In": {}, "Out": {}};
+            ProcessObject.pro_com_propList[newProcessName][inOrOut][newProcessAttachedComm] =JSON.parse(JSON.stringify(ProcessObject.pro_com_propTemplate));
+            
+            const select = document.querySelector("#pro_com_propSelect");
+            const optionLabels = Array.from(select.options).map((opt) => opt.value);
+            const hasOption = optionLabels.includes(document.getElementById("pro_propAddCommSelect").value + " " + inOrOut);
+            
+            if(!hasOption) {
+                let option = document.createElement("option");
+                option.text = document.getElementById("pro_propCommSelect").value + " " + inOrOut;
+                option.value = document.getElementById("pro_propCommSelect").value + " " + inOrOut;
+                document.getElementById('pro_com_propSelect').add(option);
             }
         }
-        closeNewProcessForm(isCommodity)
+        closeNewProcessForm(false);
+    }
+
+
+    /**
+     *  adds process commodity to the pro_com secondary feature editor and calls function creating a new commodity, if the user chooses to create an entirely
+     * new commodity to attach to the process
+     */
+    function addCommodityToProcess() {
+        let inOrOut = (document.getElementById('ProcessAddCommCheckboxIn').checked) ? "In" : "Out";
+        //we either create a new commodity or simply attach an existing one to a process
+        if (document.getElementById("pro_propAddCommSelect").value == 'newCommodity') {
+            createNewProcessCommodity(document.getElementById("pro_propSelect").value, document.getElementById("ProcessAddCommTextInput").value, inOrOut);
+        }
+        else {
+            ProcessObject.pro_com_propList[document.getElementById("pro_propSelect").value][inOrOut][document.getElementById("pro_propAddCommSelect").value] = JSON.parse(JSON.stringify(ProcessObject.pro_com_propTemplate));
+            
+            //we only add pro_com_prop options to the select once and then make them visible depending on if the associated process has one attached
+            //if the option has not been created, we dp so here
+            const select = document.querySelector("#pro_com_propSelect");
+            const optionLabels = Array.from(select.options).map((opt) => opt.value);
+            const hasOption = optionLabels.includes(document.getElementById("pro_propAddCommSelect").value + " " + inOrOut);
+            
+            if(!hasOption) {
+                let option = document.createElement("option");
+                option.text = document.getElementById("pro_propAddCommSelect").value + " " + inOrOut;
+                option.value = document.getElementById("pro_propAddCommSelect").value + " " + inOrOut;
+                document.getElementById('pro_com_propSelect').add(option);
+            }
+        }
+        closeNewProcessForm(true)
     }
 
     /**
@@ -348,7 +353,6 @@ var maptool_urbs_process = function() {
         //we insert a new column into the commodity table
         hot.alter('insert_col', hot.countCols(), 1)
         hot.headers[hot.headers.length - 1] = name;
-
     }   
 
 
@@ -386,6 +390,9 @@ var maptool_urbs_process = function() {
             document.getElementById('pro_com_propSelect').add(pro_com_propOption);
         }
 
+        let ratio = document.getElementById("newProcessCommRatioInput").value;
+        let ratio_min = document.getElementById("newProcessCommRatioMinInput").value;
+
         let pro_propCommOption = document.createElement("option");
         pro_propCommOption.text = com_name;
         pro_propCommOption.value = com_name;
@@ -393,7 +400,11 @@ var maptool_urbs_process = function() {
         if (!Object.keys(ProcessObject.pro_com_propList).includes(pro_name)) {
             ProcessObject.pro_com_propList[pro_name] = {"In": {}, "Out": {}};
         }
+
         ProcessObject.pro_com_propList[pro_name][inOrOut][com_name] = JSON.parse(JSON.stringify(ProcessObject.pro_com_propTemplate));
+        ProcessObject.pro_com_propList[pro_name][inOrOut][com_name]["ratio"]= ratio;
+        ProcessObject.pro_com_propList[pro_name][inOrOut][com_name]["ratio-min"] = ratio_min;
+        console.log(ProcessObject.pro_com_propList)
     }
 
     /**
@@ -422,7 +433,7 @@ var maptool_urbs_process = function() {
     /**
      * sets up pro_conf handsontable table in the GUI
      */
-    function createPro_Conf_Editor() {
+    function createPro_ConfEditor() {
         var data = [];
         var headers = ['urbs_name'];
         var placeholders = []
@@ -477,11 +488,12 @@ var maptool_urbs_process = function() {
         fillSecondaryEditorList: fillSecondaryEditorList,
         openNewProcessForm: openNewProcessForm,
         closeNewProcessForm: closeNewProcessForm,
-        processFormCommoditySelection: processFormCommoditySelection,
+        newProcessFormVerifyInputs: newProcessFormVerifyInputs,
         processAddCommoditySelection: processAddCommoditySelection,
-        createNewProcessPropertyOrCommodity: createNewProcessPropertyOrCommodity,
+        createNewProcess: createNewProcess,
+        addCommodityToProcess: addCommodityToProcess,
         writeBackProcessFeatures: writeBackProcessFeatures,
         openSecondaryProcessEditor: openSecondaryProcessEditor,
-        createPro_Conf_Editor: createPro_Conf_Editor
+        createPro_ConfEditor: createPro_ConfEditor
     }
 }();

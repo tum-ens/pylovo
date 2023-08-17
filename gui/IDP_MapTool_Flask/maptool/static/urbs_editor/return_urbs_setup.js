@@ -16,7 +16,7 @@ var maptool_return_urbs =  function() {
         const timevareff = returnUrbsSetup_Timevareff();
         
         //makes sure we have returned all data before telling the backend to run the pdp2urbs function and switching to the urbs_results window
-        Promise.all([buildings, demand, transmission, global, commodity,process, storage, supim, timevareff]).then((res) => {
+        Promise.all([buildings, demand, transmission, global, commodity, process, storage, supim, timevareff]).then((res) => {
             const pdp2urbs = runPdp2Urbs();
             Promise.all([pdp2urbs]).then(res => {
                 console.log("finsihed pdp2urbs")
