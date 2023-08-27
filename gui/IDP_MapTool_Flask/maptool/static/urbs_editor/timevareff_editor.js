@@ -189,7 +189,7 @@ var maptool_urbs_timevareff = function() {
                 type: 'value'
               }
             ],
-            series: []
+            series: [{showSymbol: false}]
           };
     
         // Display the chart using the configuration items and data just specified.

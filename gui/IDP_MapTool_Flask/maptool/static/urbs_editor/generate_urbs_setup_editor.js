@@ -1,4 +1,5 @@
-//TODO: secondary feature lists not behaving correctly
+//TODO: add commodity to supim if that is set as its type
+//TODO: allow uploading of buy-sell info
 
 var maptool_urbs_setup = function() {
     let UrbsPropertiesJSON = {};

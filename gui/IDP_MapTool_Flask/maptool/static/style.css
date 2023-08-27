@@ -369,6 +369,7 @@ form {
   width: 100%;
   position: relative;
   top: 2rem;
+  margin-bottom: 1rem;
 }
 
 input[type=text], input[type=number]{

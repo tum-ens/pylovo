@@ -179,7 +179,7 @@ var maptool_urbs_supim = function() {
               type: 'value'
             }
           ],
-          series: []
+          series: [{showSymbol: false}]
         };
   
       // Display the chart using the configuration items and data just specified.

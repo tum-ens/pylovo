@@ -48,6 +48,8 @@ to the IDP_Maptool_Flask folder and running the following commands
     cd path/to/repo/pylovo/gui/IDP_Maptool_Flask
     flask --app maptool --debug run
 
+This shoudld start the flask server and allow you to open the GUI by navigating to http:127.0.0.1:5000 in a webbrowser of your choice
+
 .. _database_connection:
 
 Database connection

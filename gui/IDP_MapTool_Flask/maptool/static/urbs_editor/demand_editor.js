@@ -216,7 +216,7 @@ var maptool_urbs_demand = function () {
               type: 'value'
             }
           ],
-          series: []
+          series: [{showSymbol: false}]
         };
   
       // Display the chart using the configuration items and data just specified.

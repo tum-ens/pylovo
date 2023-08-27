@@ -115,6 +115,7 @@ def postcodeAreaReturnBuildings():
     :rtype: dict
     """
     if request.method == 'POST':
+        print("HEYOHEYOHEYO")
         shape = str(request.get_json()['features'][0]['geometry'])
         session["new_area_shape"] = shape
         gg = GridGenerator(plz='199999', geom_shape=shape)
