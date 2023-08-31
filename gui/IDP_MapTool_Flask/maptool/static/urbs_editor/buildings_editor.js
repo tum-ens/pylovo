@@ -8,7 +8,7 @@ var maptool_urbs_buildings = function () {
     /**
      * called during setup of the urbs editor window
      * Fills the buildingsPropertiesList with dicts containing rudimentary information about each building
-     * Properties of a building are determined by the UrbsPropertiesJSON and set to null initially, while names and coordinates are extracted from the corresponding busses
+     * Properties of a building are determined by the UrbsPropertiesJSON and set to null initially, while names and coordinates are extracted from the corresponding buses
      * 
      * @param {dict} UrbsPropertiesJSON contains information about all inputs for all urbs setup features
      */

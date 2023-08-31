@@ -1,827 +1,826 @@
 {
-      "bus": {
-            "index": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "vn_kv": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "zone": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_vm_pu": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_vm_pu": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "bus":{
+         "index":{
+            "type":"int",
+            "tooltip":"SHOULD NOT BE VISIBLE",
+            "default_val":""
+         },
+         "name":{
+            "type":"string",
+            "tooltip":"identifier of the bus",
+            "default_val":""
+         },
+         "vn_kv":{
+            "type":"float",
+            "tooltip":"grid voltage level",
+            "default_val":""
+         },
+         "type":{
+            "type":"string",
+            "tooltip":"type of the bus: n = node, b = busbar",
+            "default_val":""
+         },
+         "zone":{
+            "type":"string",
+            "tooltip":"grid region",
+            "default_val":""
+         },
+         "max_vm_pu":{
+            "type":"float",
+            "tooltip":"maximum bus voltage in p.u.",
+            "default_val":""
+         },
+         "min_vm_pu":{
+            "type":"float",
+            "tooltip":"minimum bus voltage in p.u.",
+            "default_val":""
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         }
       },
-      "load": {
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "const_z_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "const_i_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "sn_mva": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "scaling": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "controllable": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "load":{
+         "name":{
+            "type":"string",
+            "tooltip":"identifier of the load",
+            "default_val":""
+         },
+         "bus":{
+            "type":"int",
+            "tooltip":"index of the bus the load is attached to, SHOULD NOT BE VISIBLE",
+            "default_val":""
+         },
+         "p_mw":{
+            "type":"float",
+            "tooltip":"active power of the load",
+            "default_val":"0"
+         },
+         "q_mvar":{
+            "type":"float",
+            "tooltip":"reactive power of the load",
+            "default_val":"0"
+         },
+         "const_z_percent":{
+            "type":"float",
+            "tooltip":"percentage of p_mw and q_mvar that will be associated to constant impedance load at rated voltage",
+            "default_val":"0"
+         },
+         "const_i_percent":{
+            "type":"float",
+            "tooltip":" percentage of p_mw and q_mvar that will be associated to constant current load at rated voltage",
+            "default_val":"0"
+         },
+         "sn_mva":{
+            "type":"float",
+            "tooltip":"nominal power of the load",
+            "default_val":""
+         },
+         "scaling":{
+            "type":"float",
+            "tooltip":"OPTIONAL scaling factor to be set customly. Multiplys with p_mw and q_mvar",
+            "default_val":"1"
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         },
+         "type":{
+            "type":"string",
+            "tooltip":"type variable to classify the load: wye/delta",
+            "default_val":"wye"
+         },
+         "controllable":{
+            "type":"boolean",
+            "tooltip":"boolean that states whether load is controllable or not",
+            "default_val":""
+         },
+         "max_p_mw":{
+            "type":"float",
+            "tooltip":"maximum active power load",
+            "default_val":""
+         },
+         "min_p_mw":{
+            "type":"float",
+            "tooltip":"minimum active power load",
+            "default_val":""
+         },
+         "max_q_mvar":{
+            "type":"float",
+            "tooltip":"maximum reactive power load",
+            "default_val":""
+         },
+         "min_q_mvar":{
+            "type":"float",
+            "tooltip":"minimum reactive power load",
+            "default_val":""
+         }
       },
-      "sgen": {
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "sn_mva": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "scaling": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "controllable": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "k": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "rx": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "sgen":{
+         "name":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "bus":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "type":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "p_mw":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "q_mvar":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "sn_mva":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "scaling":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "max_p_mw":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "min_p_mw":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "max_q_mvar":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "min_q_mvar":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "controllable":{
+            "type":"boolean",
+            "tooltip":"",
+            "default_val":""
+         },
+         "k":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "rx":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         }
       },
-      "switch": {
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "element": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "et": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "closed": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_ka": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "z_ohm": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "switch":{
+         "name":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "bus":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "element":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "et":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "type":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "closed":{
+            "type":"boolean",
+            "tooltip":"",
+            "default_val":""
+         },
+         "in_ka":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "z_ohm":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         }
       },
-      "line": {
-            "index": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "from_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "to_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "length_km": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "std_type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "r0_ohm_per_km": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "x0_ohm_per_km": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "c0_nf_per_km": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "g_us_per_km": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "parallel": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "df": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_loading_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "endtemp_degree": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "line":{
+         "index":{
+            "type":"int",
+            "tooltip":"SHOULD NOT BE VISIBLE",
+            "default_val":""
+         },
+         "name":{
+            "type":"string",
+            "tooltip":"string identifier of the line",
+            "default_val":""
+         },
+         "from_bus":{
+            "type":"int",
+            "tooltip":"ID of the bus on one side which the line is connected with",
+            "default_val":""
+         },
+         "to_bus":{
+            "type":"int",
+            "tooltip":"ID of the bus on the other side which the line is connected with",
+            "default_val":""
+         },
+         "length_km":{
+            "type":"float",
+            "tooltip":"the line length in km",
+            "default_val":""
+         },
+         "std_type":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":"name of the standard linetype"
+         },
+         "r0_ohm_per_km":{
+            "type":"float",
+            "tooltip":"zero sequence line resistance in ohm per km",
+            "default_val":""
+         },
+         "x0_ohm_per_km":{
+            "type":"float",
+            "tooltip":"zero sequence line reactance in ohm per km",
+            "default_val":""
+         },
+         "c0_nf_per_km":{
+            "type":"float",
+            "tooltip":"zero sequence capacitance of the line",
+            "default_val":""
+         },
+         "g_us_per_km":{
+            "type":"float",
+            "tooltip":"zero sequence line capacitance in nano Farad per km",
+            "default_val":""
+         },
+         "parallel":{
+            "type":"int",
+            "tooltip":"number of parallel line systems",
+            "default_val":"1"
+         },
+         "df":{
+            "type":"float",
+            "tooltip":"derating factor: maximal current of line in relation to nominal current of line (from 0 to 1)",
+            "default_val":"1"
+         },
+         "type":{
+            "type":"string",
+            "tooltip":"type of line (ol for overhead line or cs for cable system)",
+            "default_val":""
+         },
+         "max_loading_percent":{
+            "type":"float",
+            "tooltip":"maximum current loading",
+            "default_val":""
+         },
+         "endtemp_degree":{
+            "type":"float",
+            "tooltip":"Short-Circuit end temperature of the line",
+            "default_val":""
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         }
       },
-      "trafo": {
-            "index": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "std_type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "hv_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "lv_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "vk_percent_characteristic": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },            
-            "vkr_percent_characteristic": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "vk0_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "vkr0_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "mag0_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "mag0_rx": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "si0_hv_partial": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "vector_group": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_step_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_dependent_impedance": 
-            {
-                  "type": "bool",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_step_degree": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_pos": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_phase_shifter": {
-                  "type": "bool",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "parallel": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_loading_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "df": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "pt_percent": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "xn_ohm": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "oltc": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "power_station_unit": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "trafo":{
+         "index":{
+            "type":"int",
+            "tooltip":"SHOULD NOT BE VISIBLE",
+            "default_val":""
+         },
+         "name":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":"custom name for this transformer"
+         },
+         "std_type":{
+            "type":"string",
+            "tooltip":"The used standard type from the standard type library",
+            "default_val":""
+         },
+         "hv_bus":{
+            "type":"int",
+            "tooltip":"index of the bus on the high-voltage side on which the transformer will be connected to",
+            "default_val":""
+         },
+         "lv_bus":{
+            "type":"int",
+            "tooltip":"index of the bus on the low-voltage side on which the transformer will be connected to",
+            "default_val":""
+         },
+         "vk_percent_characteristic":{
+            "type":"int",
+            "tooltip":"index of the characteristic from net.characteristic for the adjustment of the parameter vk_percent for the calculation of tap dependent impedance",
+            "default_val":""
+         },
+         "vkr_percent_characteristic":{
+            "type":"int",
+            "tooltip":"index of the characteristic from net.characteristic for the adjustment of the parameter vk_percent for the calculation of tap dependent impedance",
+            "default_val":""
+         },
+         "vk0_percent":{
+            "type":"float",
+            "tooltip":"zero sequence relative short-circuit voltage",
+            "default_val":""
+         },
+         "vkr0_percent":{
+            "type":"float",
+            "tooltip":"real part of zero sequence relative short-circuit voltage",
+            "default_val":""
+         },
+         "mag0_percent":{
+            "type":"float",
+            "tooltip":"ratio between magnetizing and short circuit impedance (zero sequence)z_mag0 / z0",
+            "default_val":""
+         },
+         "mag0_rx":{
+            "type":"float",
+            "tooltip":"zero sequence magnetizing r/x ratio",
+            "default_val":""
+         },
+         "si0_hv_partial":{
+            "type":"float",
+            "tooltip":"zero sequence short circuit impedance distribution in hv side",
+            "default_val":""
+         },
+         "vector_group":{
+            "type":"string",
+            "tooltip":"vector group of the transformer",
+            "default_val":""
+         },
+         "tap_step_percent":{
+            "type":"float",
+            "tooltip":"tap step size for voltage magnitude in percent",
+            "default_val":""
+         },
+         "tap_dependent_impedance":{
+            "type":"boolean",
+            "tooltip":"true if transformer impedance must be adjusted dependent on the tap position of the transformer",
+            "default_val":""
+         },
+         "tap_step_degree":{
+            "type":"float",
+            "tooltip":"tap step size for voltage angle in degree",
+            "default_val":""
+         },
+         "tap_pos":{
+            "type":"int",
+            "tooltip":"current tap position of the transformer. Defaults to the medium position (tap_neutral)",
+            "default_val":""
+         },
+         "tap_phase_shifter":{
+            "type":"boolean",
+            "tooltip":"whether the transformer is an ideal phase shifter",
+            "default_val":""
+         },
+         "parallel":{
+            "type":"int",
+            "tooltip":"number of parallel transformers",
+            "default_val":""
+         },
+         "max_loading_percent":{
+            "type":"float",
+            "tooltip":"maximum current loading",
+            "default_val":""
+         },
+         "df":{
+            "type":"float",
+            "tooltip":"derating factor: maximal current of transformer in relation to nominal current of transformer (from 0 to 1)",
+            "default_val":""
+         },
+         "pt_percent":{
+            "type":"float",
+            "tooltip":"(short circuit only)",
+            "default_val":""
+         },
+         "xn_ohm":{
+            "type":"float",
+            "tooltip":"impedance of the grounding reactor (Z_N) for short circuit calculation",
+            "default_val":""
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         },
+         "oltc":{
+            "type":"boolean",
+            "tooltip":"(short circuit only)",
+            "default_val":""
+         },
+         "power_station_unit":{
+            "type":"boolean",
+            "tooltip":"specifies if the transformer is part of a power_station_unit (short-circuit relevant).",
+            "default_val":""
+         }
       },
-      "trafo3w": {
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "std_type": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "hv_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "mv_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "lv_bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_step_degree": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_at_star_point": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "tap_pos": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "trafo3w":{
+         "name":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "std_type":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":""
+         },
+         "hv_bus":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "mv_bus":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "lv_bus":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "tap_step_degree":{
+            "type":"float",
+            "tooltip":"",
+            "default_val":""
+         },
+         "tap_at_star_point":{
+            "type":"boolean",
+            "tooltip":"",
+            "default_val":""
+         },
+         "tap_pos":{
+            "type":"int",
+            "tooltip":"",
+            "default_val":""
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         }
       },
-      "ext_grid": {
-            "index": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "name": {
-                  "type": "string",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "bus": {
-                  "type": "int",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "vm_pu": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "va_degree": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_p_mw": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "max_q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "min_q_mvar": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "s_sc_max_mva": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "s_sc_min_mva": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "rx_max": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "rx_min": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "r0x0_max": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "x0x_max": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "in_service": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "controllable": {
-                  "type": "boolean",
-                  "tooltip": "",
-                  "default_val": ""
-            },
-            "slack_weight": {
-                  "type": "float",
-                  "tooltip": "",
-                  "default_val": ""
-            }
+      "ext_grid":{
+         "index":{
+            "type":"int",
+            "tooltip":"SHOULD NOT BE VISIBLE",
+            "default_val":""
+         },
+         "name":{
+            "type":"string",
+            "tooltip":"",
+            "default_val":"name of of the external grid"
+         },
+         "bus":{
+            "type":"int",
+            "tooltip":"index of bus where the ext_grid is connected",
+            "default_val":""
+         },
+         "vm_pu":{
+            "type":"float",
+            "tooltip":"voltage at the slack node in per unit",
+            "default_val":"1"
+         },
+         "va_degree":{
+            "type":"float",
+            "tooltip":"voltage angle at the slack node in degrees",
+            "default_val":"0"
+         },
+         "max_p_mw":{
+            "type":"float",
+            "tooltip":"maximum active power injection",
+            "default_val":""
+         },
+         "min_p_mw":{
+            "type":"float",
+            "tooltip":"minimum active power injection",
+            "default_val":""
+         },
+         "max_q_mvar":{
+            "type":"float",
+            "tooltip":"maximum reactive power injection",
+            "default_val":""
+         },
+         "min_q_mvar":{
+            "type":"float",
+            "tooltip":"minimum reactive power injection",
+            "default_val":""
+         },
+         "s_sc_max_mva":{
+            "type":"float",
+            "tooltip":"maximal short circuit apparent power to calculate internal impedance of ext_grid for short circuit calculations",
+            "default_val":""
+         },
+         "s_sc_min_mva":{
+            "type":"float",
+            "tooltip":"minimal short circuit apparent power to calculate internal impedance of ext_grid for short circuit calculations",
+            "default_val":""
+         },
+         "rx_max":{
+            "type":"float",
+            "tooltip":"maximal R/X-ratio to calculate internal impedance of ext_grid for short circuit calculations",
+            "default_val":""
+         },
+         "rx_min":{
+            "type":"float",
+            "tooltip":"minimal R/X-ratio to calculate internal impedance of ext_grid for short circuit calculations",
+            "default_val":""
+         },
+         "r0x0_max":{
+            "type":"float",
+            "tooltip":"maximal R/X-ratio to calculate Zero sequence internal impedance of ext_grid",
+            "default_val":""
+         },
+         "x0x_max":{
+            "type":"float",
+            "tooltip":"maximal X0/X-ratio to calculate Zero sequence internal impedance of ext_grid",
+            "default_val":""
+         },
+         "in_service":{
+            "type":"boolean",
+            "tooltip":"True for in_service or False for out of service",
+            "default_val":""
+         },
+         "controllable":{
+            "type":"boolean",
+            "tooltip":"",
+            "default_val":""
+         },
+         "slack_weight":{
+            "type":"float",
+            "tooltip":"Contribution factor for distributed slack power flow calculation (active power balancing)",
+            "default_val":"1"
+         }
       },
-      "std_type": {
-            "line": {
-                  "name": {
-                        "type": "string",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "r_ohm_per_km": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "x_ohm_per_km": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "max_i_ka": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "c_nf_per_km": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "q_mm2": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "type": {
-                        "type": "string",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "alpha": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  }
+      "std_type":{
+         "line":{
+            "name":{
+               "type":"string",
+               "tooltip":"SHOULD NOT BE VISIBLE",
+               "default_val":""
             },
-            "trafo": {
-                  "name": {
-                        "type": "string",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "sn_mva": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vn_hv_kv": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vn_lv_kv": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vk_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vkr_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "pfe_kw": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "i0_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "shift_degree": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_side": {
-                        "type": "string",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_neutral": {
-                        "type": "int",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_min": {
-                        "type": "int",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_max": {
-                        "type": "int",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_step_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_step_degree": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_phase_shifter": {
-                        "type": "boolean",
-                        "tooltip": "",
-                        "default_val": ""
-                  }
+            "r_ohm_per_km":{
+               "type":"float",
+               "tooltip":"line resistance in ohm per km",
+               "default_val":""
             },
-            "trafo3w": {
-                  "vn_hv_kv": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vn_mv_kv": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vn_lv_kv": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "sn_hv_mva": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "sn_mv_mva": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "sn_lv_mva": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vk_hv_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vk_mv_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vk_lv_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vkr_hv_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vkr_mv_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "vkr_lv_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "pfe_kw": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "i0_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "shift_mv_degree": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "shift_lv_degree": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_side": {
-                        "type": "string",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_neutral": {
-                        "type": "int",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_min": {
-                        "type": "int",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_max": {
-                        "type": "int",
-                        "tooltip": "",
-                        "default_val": ""
-                  },
-                  "tap_step_percent": {
-                        "type": "float",
-                        "tooltip": "",
-                        "default_val": ""
-                  }
+            "x_ohm_per_km":{
+               "type":"float",
+               "tooltip":"line reactance in ohm per km",
+               "default_val":""
+            },
+            "max_i_ka":{
+               "type":"float",
+               "tooltip":"maximal thermal current [kilo Ampere]",
+               "default_val":""
+            },
+            "c_nf_per_km":{
+               "type":"float",
+               "tooltip":"capacitance of the line (line-to-earth) [nano Farad per km]",
+               "default_val":""
+            },
+            "q_mm2":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "type":{
+               "type":"string",
+               "tooltip":"type of line",
+               "default_val":""
+            },
+            "alpha":{
+               "type":"float",
+               "tooltip":"temperature coefficient of resistance",
+               "default_val":""
             }
+         },
+         "trafo":{
+            "name":{
+               "type":"string",
+               "tooltip":"SHOULD NOT BE VISIBLE",
+               "default_val":""
+            },
+            "sn_mva":{
+               "type":"float",
+               "tooltip":"rated apparent power",
+               "default_val":""
+            },
+            "vn_hv_kv":{
+               "type":"float",
+               "tooltip":"rated voltage on high voltage side",
+               "default_val":""
+            },
+            "vn_lv_kv":{
+               "type":"float",
+               "tooltip":"rated voltage on low voltage side",
+               "default_val":""
+            },
+            "vk_percent":{
+               "type":"float",
+               "tooltip":"relative short-circuit voltage",
+               "default_val":""
+            },
+            "vkr_percent":{
+               "type":"float",
+               "tooltip":"real part of relative short-circuit voltage",
+               "default_val":""
+            },
+            "pfe_kw":{
+               "type":"float",
+               "tooltip":"iron losses in kW",
+               "default_val":""
+            },
+            "i0_percent":{
+               "type":"float",
+               "tooltip":"open loop losses in percent of rated current",
+               "default_val":""
+            },
+            "shift_degree":{
+               "type":"float",
+               "tooltip":"angle shift over the transformer",
+               "default_val":""
+            },
+            "tap_side":{
+               "type":"string",
+               "tooltip":"position of tap changer (hv, lv)",
+               "default_val":""
+            },
+            "tap_neutral":{
+               "type":"int",
+               "tooltip":" tap position where the transformer ratio is equal to the ratio of the rated voltages",
+               "default_val":""
+            },
+            "tap_min":{
+               "type":"int",
+               "tooltip":"maximal allowed tap position",
+               "default_val":""
+            },
+            "tap_max":{
+               "type":"int",
+               "tooltip":"minimal allowed tap position",
+               "default_val":""
+            },
+            "tap_step_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "tap_step_degree":{
+               "type":"float",
+               "tooltip":"tap step size for voltage magnitude in percent",
+               "default_val":""
+            },
+            "tap_phase_shifter":{
+               "type":"boolean",
+               "tooltip":"whether the transformer is an ideal phase shifter",
+               "default_val":""
+            }
+         },
+         "trafo3w":{
+            "vn_hv_kv":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vn_mv_kv":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vn_lv_kv":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "sn_hv_mva":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "sn_mv_mva":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "sn_lv_mva":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vk_hv_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vk_mv_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vk_lv_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vkr_hv_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vkr_mv_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "vkr_lv_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "pfe_kw":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "i0_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "shift_mv_degree":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "shift_lv_degree":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            },
+            "tap_side":{
+               "type":"string",
+               "tooltip":"",
+               "default_val":""
+            },
+            "tap_neutral":{
+               "type":"int",
+               "tooltip":"",
+               "default_val":""
+            },
+            "tap_min":{
+               "type":"int",
+               "tooltip":"",
+               "default_val":""
+            },
+            "tap_max":{
+               "type":"int",
+               "tooltip":"",
+               "default_val":""
+            },
+            "tap_step_percent":{
+               "type":"float",
+               "tooltip":"",
+               "default_val":""
+            }
+         }
       }
-}
+   }

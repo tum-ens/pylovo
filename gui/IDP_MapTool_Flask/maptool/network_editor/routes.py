@@ -55,7 +55,20 @@ def editableNetwork():
         print(net_features) #debug to compare pre- and post-editing network
         json_net = createGeoJSONofNetwork(net_features, True, True, True, True, True)
         json_net = json.dumps(json_net, default=str, indent=6)
-        return json_net
+
+        postcode_gdf = pg.getGeoDataFrame(table="postcode_result", id=plz, version_id=plz_version)
+        postcode_boundary = json.loads(postcode_gdf.to_crs(epsg=4326).boundary.to_json())['features'][0]['geometry']
+        postcode_boundary['type'] = 'Polygon'
+        postcode_shape = str(postcode_boundary)
+        print(postcode_shape)
+        
+        buildings_res = gg.pgr.test__getBuildingGeoJSONFromShapefile('res', postcode_shape)
+        buildings_oth = gg.pgr.test__getBuildingGeoJSONFromShapefile('oth', postcode_shape)
+
+        print(buildings_res)
+        print(buildings_oth)
+
+        return {'net': json_net, 'res': buildings_res, 'oth': buildings_oth}
 
     if request.method == 'POST':
         #print(request.get_json())

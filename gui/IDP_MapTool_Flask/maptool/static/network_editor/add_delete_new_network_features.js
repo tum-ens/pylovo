@@ -19,7 +19,7 @@ var maptool_add_delete = function() {
             map.pm.enableDraw('CircleMarker', {
                 snappable: (feature == 'ext_grid'), 
                 snapDistance: 20,
-                requireSnapToFinish : (feature == 'ext_grid'), //busses can be placed anywhere, ext_grids need to be placed on a bus
+                requireSnapToFinish : (feature == 'ext_grid'), //buses can be placed anywhere, ext_grids need to be placed on a bus
                 continueDrawing: false,
                 pathOptions: style,
                 snapIgnore: (feature != 'ext_grid'),
@@ -31,7 +31,7 @@ var maptool_add_delete = function() {
             map.pm.enableDraw('Line', {
                 snappable: true,
                 snapDistance: 20,
-                requireSnapToFinish: true, //lines need to form a connection between two busses
+                requireSnapToFinish: true, //lines need to form a connection between two buses
                 pathOptions: style,
                 snapIgnore: true,
               })
@@ -177,7 +177,7 @@ var maptool_add_delete = function() {
     
     /**
      *  event listeners ensuring that new features on the map are added to the correct NetworkObject list,
-     *  given the correct styling and initialized with the correct values (e.g. name, index, connected busses)
+     *  given the correct styling and initialized with the correct values (e.g. name, index, connected buses)
      */
     map.on('pm:create', (e) => {
         let featureName = '';

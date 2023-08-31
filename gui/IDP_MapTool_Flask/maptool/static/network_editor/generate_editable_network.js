@@ -1,3 +1,5 @@
+//TODO: check network editor entry fields for correct types, tooltips
+
 var maptool_network_gen = function (){
     let line_std_properties = {};
     let trafo_std_properties = {};
@@ -111,8 +113,10 @@ var maptool_network_gen = function (){
         fetch('/networks/editableNetwork')
         .then(function (response) {
             return response.json();
-        }).then(function (ppdata) {
-            
+        }).then(function (data) {
+            console.log(data)
+            //let postcodeGeoJSON = L.geoJSON(data, {style:{ color: '#003359', dashArray: '5'}}).addTo(map);
+            ppdata = JSON.parse(data['net'])
             var layers = L.PM.Utils.findLayers(map);
             layers.forEach((layer) =>{
                     layer.remove();
@@ -151,9 +155,9 @@ var maptool_network_gen = function (){
     }
 
     /**
-     * The busses connected to the trafo need to have specific names to work with urbs later so we change them here
+     * The buses connected to the trafo need to have specific names to work with urbs later so we change them here
      * 
-     * @param {list} busList  list of all busses
+     * @param {list} busList  list of all buses
      * @param {list} trafoList list of all trafos 
      */
     function changeTrafoBusNames(busList, trafoList) {
@@ -202,7 +206,7 @@ var maptool_network_gen = function (){
 /**
  * function that adds a FeatureCollection to the leaflet map
  * we set styles and onclick functions here and save references to each added feature in the NetworkObject
- * lines (lines, trafos) and circlemarkers (busses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
+ * lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
  * 
  * @param {boolean} isLines 
  * @param {geoJSON_FeatureCollection} input_geoJSON 

@@ -139,6 +139,7 @@ var maptool_net_display = function() {
                 input.setAttribute('onchange', 'maptool_net_display.writeBackEditedNetworkFeature(this, "' + formDivId + '")');
                 input.id = idx;
                 input.name = idx;
+                input.title = selectedProperties[idx]["tooltip"]
                 formDiv.appendChild(input);
                 formDiv.appendChild(label);
             }
@@ -345,7 +346,7 @@ var maptool_net_display = function() {
             for (let i = 0; i < editor_divs.length; i++) {
                 let target_properties = target.feature.properties
                 
-                //At the moment we know that only busses have more than one div and we know that load is the second, sgen the third div 
+                //At the moment we know that only buses have more than one div and we know that load is the second, sgen the third div 
                 if(feature == 'bus') {
                     let secondaryFeature = '';
                     if (i == 1) {

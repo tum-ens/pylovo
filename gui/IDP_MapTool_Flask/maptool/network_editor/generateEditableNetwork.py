@@ -48,7 +48,7 @@ def createFeatures (isLines, ppdata, featureName, featureProperties, propertyGro
     input_data = input_data.fillna('')
     input_geoCoords = pd.DataFrame()
     
-    #only busses and lines have their own coordinate data, ext_grids and trafo geojsons get coords based on the busses they're attached to
+    #only buses and lines have their own coordinate data, ext_grids and trafo geojsons get coords based on the buses they're attached to
     if featureName == 'bus' or featureName == 'line':
         input_geoCoords = ppdata[featureName + '_geodata']
         #the bus coords in the pandapower network by default have a column we don't need, so we drop it
@@ -129,7 +129,7 @@ def createGeoJSONofNetwork(net, bus, trafo, line, ext_grid, std_types):
     
     :param net: the pandapower network
     :type net: dict
-    :param bus: flag determining whether we want to include busses in the displayable network
+    :param bus: flag determining whether we want to include buses in the displayable network
     :type bus: bool
     :param trafo: flag determining whether we want to include trafos in the displayable network
     :type trafo: bool

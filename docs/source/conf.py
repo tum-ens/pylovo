@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'pylovo gui'
+project = 'pylovo'
 copyright = '2023, Daniel Baur'
 author = 'Daniel Baur'
 release = '2023'
@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.abspath('..'))
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension', 'sphinx_js']
 
 autoapi_dirs = ['../../gui/IDP_MapTool_Flask/maptool']
+autoapi_add_toctree_entry = False
 
 js_source_path = ["../../gui/IDP_MapTool_Flask/maptool/static/network_editor", 
                   "../../gui/IDP_MapTool_Flask/maptool/static/postcode_editor", 

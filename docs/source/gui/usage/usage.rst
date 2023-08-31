@@ -22,7 +22,7 @@ Accessing the tool
 | Open a browser of your choice and enter the address `http://127.0.0.1:5000 <http://127.0.0.1:5000>`_.
 | You should now have the following view:
 
-.. image:: ../images/usage/maptool_view_default.png
+.. image:: ../../images/usage/maptool_view_default.png
     :width: 800
     :alt: Default view
 

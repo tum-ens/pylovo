@@ -49,7 +49,7 @@ var maptool_urbs_res_setup = function (){
 /**
  * function that adds a FeatureCollection to the leaflet map
  * we set styles and onclick functions here and save references to each added feature in the NetworkObject
- * lines (lines, trafos) and circlemarkers (busses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
+ * lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
  * 
  * @param {boolean} isLines 
  * @param {geoJSON_FeatureCollection} input_geoJSON 
@@ -96,7 +96,7 @@ var maptool_urbs_res_setup = function (){
     }
 
     /**
-     * @param {string} htmlListName name of the html select element that is supposed to be filled with the busses with attached loads      
+     * @param {string} htmlListName name of the html select element that is supposed to be filled with the buses with attached loads      
      */
     function populateUrbsResultsLoadBusLists() {
         var x = document.getElementById("busSelect");
@@ -208,7 +208,7 @@ var maptool_urbs_res_setup = function (){
         let selectedList = document.getElementById(feature + "Select");
         let featureIndex = featureList.findIndex((entry) => entry === target);
         
-        //since for example the GUI bus list does not hold all busses, there is no 1to1 connection between the GUI select and the NetworkObjet list
+        //since for example the GUI bus list does not hold all buses, there is no 1to1 connection between the GUI select and the NetworkObjet list
         //therefore we need to manually find the correct option in the GUI select via the options value field, which corresponds to the index of the map object 
         //in the NetworkObject list
         let newIndex = selectedList.selectedIndex;

@@ -11,11 +11,11 @@ existing networks via a numerical ID or they draw a shape on the map to generate
 
 Area selection via ID
 ======================
-.. image:: ../images/dev/sequence/pylovo_sequence_postcode_id.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_postcode_id.png
 
 Area selection via shape
 --------------------------
-.. image:: ../images/dev/sequence/pylovo_sequence_postcode_area.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_postcode_area.png
 
 If the user decides to create a new grid via area selection, the sequence will continue the same way as with network selection via ID once the user
 has decided to generate the new networks.
@@ -26,27 +26,27 @@ Network editor
 
 Setup
 =====
-.. image:: ../images/dev/sequence/pylovo_sequence_network.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_network.png
 
 Usage
 =====
-.. image:: ../images/dev/sequence/pylovo_sequence_network_usage.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_network_usage.png
 
 Urbs setup editor
 ------------------
 
 Setup
 =====
-.. image:: ../images/dev/sequence/pylovo_sequence_urbs_setup.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_urbs_setup.png
 
 Usage
 =====
 
 New commodity creation
 ^^^^^^^^^^^^^^^^^^^^^^
-.. image:: ../images/dev/sequence/pylovo_sequence_urbs_setup_comm_creation.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_urbs_setup_comm_creation.png
 
 New process creation
 ^^^^^^^^^^^^^^^^^^^^
-.. image:: ../images/dev/sequence/pylovo_sequence_urbs_setup_process_creation.png
+.. image:: ../../images/dev/sequence/pylovo_sequence_urbs_setup_process_creation.png
 

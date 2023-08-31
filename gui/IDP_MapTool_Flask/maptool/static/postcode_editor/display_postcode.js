@@ -204,6 +204,7 @@ var maptool_display_postcode = function (){
                 group.addLayer(layer);
             });
             shapes = group.toGeoJSON();
+            console.log(shapes)
             fetch("http://127.0.0.1:5000/postcode/area", {
                 method: 'POST',
                 headers: {

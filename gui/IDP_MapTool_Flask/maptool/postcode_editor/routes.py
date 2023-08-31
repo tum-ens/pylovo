@@ -115,13 +115,17 @@ def postcodeAreaReturnBuildings():
     :rtype: dict
     """
     if request.method == 'POST':
-        print("HEYOHEYOHEYO")
         shape = str(request.get_json()['features'][0]['geometry'])
         session["new_area_shape"] = shape
         gg = GridGenerator(plz='199999', geom_shape=shape)
         res_buildings = gg.pgr.test__getBuildingGeoJSONFromShapefile('res', shape)
         oth_buildings = gg.pgr.test__getBuildingGeoJSONFromShapefile('oth', shape)
         #gg.generate_grid_from_geom()
+
+        # print(shape)
+        # print(res_buildings)
+        # print(oth_buildings)
+
         return {"res_buildings" : res_buildings, "oth_buildings" : oth_buildings}
 
 @bp.route('/postcode/area/new-net-id', methods=['GET', 'POST'])

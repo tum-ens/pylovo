@@ -69,8 +69,8 @@ var maptool_urbs_setup = function() {
                 populateUrbsEditorLoadBusLists('timevareff');
             })
 
-            //several components set their parameters per bus. Here the respective feature lists are filled with busses that fulfill the criteria
-            //to be editable, in this case meaning busses with one or more loads attached
+            //several components set their parameters per bus. Here the respective feature lists are filled with buses that fulfill the criteria
+            //to be editable, in this case meaning buses with one or more loads attached
             populateUrbsEditorLoadBusLists('buildings');            
             maptool_urbs_buildings.prepareBuildingsObject(UrbsPropertiesJSON);
 
@@ -119,7 +119,7 @@ var maptool_urbs_setup = function() {
     
     /**
      * creates a new geojson layer for leaflet map
-     * distinguishes between line (for lines and trafos) and circle marker (for busses and ext_grids) formats
+     * distinguishes between line (for lines and trafos) and circle marker (for buses and ext_grids) formats
      * because line geojsons do not have the pointToLayer option
      * 
      * @param {bool}                isLines 
@@ -138,7 +138,7 @@ var maptool_urbs_setup = function() {
             newGeoJson = L.geoJSON(input_geoJSON, {
                 onEachFeature: function(feature, layer) {
                     if (featureName == 'bus') {
-                        //we need all busses to be displayed, but we only want busses with loads to appear in our editor lists
+                        //we need all buses to be displayed, but we only want buses with loads to appear in our editor lists
                         if (Object.keys(feature.properties.load).length > 0) { 
                             maptool_urbs_buildings.BuildingsObject['busWithLoadList'].push(layer);  
                         }
@@ -147,7 +147,7 @@ var maptool_urbs_setup = function() {
                 pointToLayer: function (feature, latlng) {
                     var marker = L.circleMarker(latlng, maptool_network_gen.NetworkObject.nonEditableStyles[0]);
                     if(featureName == 'bus') {
-                        //only busses with attached loads get an onclick listener
+                        //only buses with attached loads get an onclick listener
                         if (Object.keys(feature.properties.load).length > 0) {
                             marker.setStyle(maptool_network_gen.NetworkObject.busStyles[1]);
                             marker.on('click', function(e) {
@@ -167,7 +167,7 @@ var maptool_urbs_setup = function() {
     }
     
     /**
-     * @param {string} htmlListName name of the html select element that is supposed to be filled with the busses with attached loads      
+     * @param {string} htmlListName name of the html select element that is supposed to be filled with the buses with attached loads      
      */
     function populateUrbsEditorLoadBusLists(htmlListName) {
         var x = document.getElementById(htmlListName + "Select");
@@ -379,7 +379,7 @@ var maptool_urbs_setup = function() {
         target.setStyle(maptool_network_gen.NetworkObject['busStyles'][0]);
         clicked = target;
         
-        //we want to make sure the correct option is selected in all lists containing busses
+        //we want to make sure the correct option is selected in all lists containing buses
         highlightSelectedElementInList(target, "demandSelect");
         highlightSelectedElementInList(target, "buildingsSelect");
         highlightSelectedElementInList(target, "supimSelect");

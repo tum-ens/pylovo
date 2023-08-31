@@ -50,16 +50,16 @@ Adding features
 | Every feature type list has an "Add [Feature]" button at the top. Clicking this button changes the map settings to draw mode. You can exit draw mode at any time
   by pressing **esc**
 
-Adding busses
+Adding buses
 -------------
-| Busses can be added anywhere on the map without restrictions. Simply click on the map where you want the bus to appear. The corresponding editor window will
+| Buses can be added anywhere on the map without restrictions. Simply click on the map where you want the bus to appear. The corresponding editor window will
   automatically be opened.
 | IMPORTANT NOTE: The tool makes no assumptions about where a bus is placed. It is up to the user to ensure the placement makes logical sense in the context of the 
   current network.
 
 Adding lines
 ------------
-| Lines need to connect to two different busses to be viable. The user needs to start drawing by clicking on a bus, otherwise the tool will immediately exit draw mode.
+| Lines need to connect to two different buses to be viable. The user needs to start drawing by clicking on a bus, otherwise the tool will immediately exit draw mode.
   After starting from a bus, the user can draw as many intermediate points as they want. To finish creating the line the user needs to double click on a bus again.
 | IMPORTANT  NOTE: Using urbs requires there be no circular line connections in the network. At the moment the tool does not check that this is the case. It is up to the user
   to make sure newly created lines do not create circles in the network graph.
@@ -72,13 +72,13 @@ Adding trafos
 
 Adding external grids
 ---------------------
-| Adding external grids works much in the same way as adding busses, with the difference that external grids need to be placed on an already existing bus.
+| Adding external grids works much in the same way as adding buses, with the difference that external grids need to be placed on an already existing bus.
   Once the user has entered draw mode, they can create a new grid by double clicking on a bus on the map.
 | Similarly to the trafo, we only allow one external grid at a time. While an ext_grid exists, the Add button will be disabled.
 
 Adding secondary features
 =========================
-| Only busses have secondary features.
+| Only buses have secondary features.
 | While all of them can be added by clicking the corresponding button in the bus editor window, only loads are relevant for the actual usage of the tool
   as of right now.
 | We determine whether a bus will be interpreted as a node to which we can attach processes in the urbs setup step, by the fact that they have at least
@@ -87,7 +87,7 @@ Adding secondary features
 Deleting features
 =================
 
-.. image:: ../images/usage/network_editor/maptool_view_feature_delete_explained.png
+.. image:: ../../images/usage/network_editor/maptool_view_feature_delete_explained.png
 
 | All network features can be deleted by clicking on the "Delete Feature" button in the editor window. 
 | For lines, trafos and ext_grids, clicking this button will instantly delete the feature. Since buses are referenced by other 
