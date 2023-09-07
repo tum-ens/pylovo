@@ -99,7 +99,7 @@ Access Database
 ===============
 
 Outside the server (from ssh client a.k.a. your own computer)
----------------------------------------------------------
+--------------------------------------------------------------
 
 | To gain access to the pylovo database from your own machine you will need to request a username and password from the ENS chair.
 | If you are working from your own machine you will also need to utilize a VPN to connect to the MWN network, 
