@@ -41,7 +41,10 @@ User
 ----
 
 ::
+
+    #activate environment
     conda activate TUM_Syngrid
+    #navigate to pylovo main code folder
     cd path/to/git_repo/pylovo
     pip install -e .
 
@@ -50,7 +53,10 @@ Developer
 ---------
 
 ::
+
+    #activate environment
     conda activate TUM_Syngrid
+    #navigate to pylovo main code folder
     cd path/to/git_repo/pylovo
     pip install -e .[dev]
 
@@ -63,7 +69,7 @@ to the IDP_Maptool_Flask folder and running the following commands
     cd path/to/repo/pylovo/gui/IDP_Maptool_Flask
     flask --app maptool --debug run
 
-This shoudld start the flask server and allow you to open the GUI by navigating to http:127.0.0.1:5000 in a webbrowser of your choice
+This should start the flask server and allow you to open the GUI by navigating to http:127.0.0.1:5000 in a webbrowser of your choice
 
 
 Advanced installation - Database construction
