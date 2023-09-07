@@ -66,5 +66,4 @@ Repository structure
     :maxdepth: 2
 
     pylovo/installation
-    pylovo/usage
     gui/index

@@ -9,9 +9,10 @@ var maptool_return_net = function() {
                         'Content-type': 'application/json'},
                     body: JSON.stringify(extractNetworFeatures())
             }).then(function (response) {
+                window.location.href = '/urbs'
                 return response.json();
             }).catch((err) => console.error(err));
-    
+        
         console.log("returned Network");
     }
     

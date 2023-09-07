@@ -3,11 +3,10 @@ import os
 # Database connection configuration
 DBNAME = "pylovo_db"
 USER = "pylovo"
-PASSWORD = "ens"
+PASSWORD = "pylovo"
 HOST = "localhost"
-PORT = "1111"
-# HOST = "10.162.28.8"
-# PORT = "5432"
+PORT = "5432"
+HOST = "10.162.28.8"
 
 # DBNAME = "syngrid_db"
 # USER = "syngrid"

@@ -50,7 +50,9 @@ var maptool_display_postcode = function (){
      * returns all versions of network associated with the passed id and generates the radiobuttons for the version select gui element
      */
     function selectVersionOfPostalCodeNetwork() {
-        let plz = document.getElementById("PLZ").value;
+        let plz_select = document.getElementById("PLZ")
+        let plz = plz_select.options[plz_select.selectedIndex].text
+        console.log(plz)
         fetch("http://127.0.0.1:5000/postcode", {
                     method: 'POST',
                     headers: {
@@ -83,30 +85,8 @@ var maptool_display_postcode = function (){
                     versionRadioButtonDiv.append(versionLabel);    
                     versionRadioButtonDiv.append(document.createElement("br"))
                     versionRadioButtonsDiv.append(versionRadioButtonDiv);
-                }
-    
-                let versionRadioButtonDiv = document.createElement("div");
-                versionRadioButtonDiv.classList.add("popup-window__div__form__version-select__radio-button");
-                let newVersionRadioButton = document.createElement("INPUT");
-                newVersionRadioButton.setAttribute("type", "radio");
-                newVersionRadioButton.name = "versionRadioButton";
-                newVersionRadioButton.id = "newVersionRadioButton";
-                newVersionRadioButton.value = "0.0";
-                versionRadioButtonDiv.append(newVersionRadioButton);
-    
-                let newVersionLabel = document.createElement("LABEL");
-                newVersionLabel.htmlFor = "newVersionRadioButton";
-                newVersionLabel.innerHTML = "New Version";
-                versionRadioButtonDiv.append(newVersionLabel);  
-    
-                let newVersionTextInput = document.createElement("INPUT");
-                newVersionTextInput.setAttribute("type", "number");
-                newVersionTextInput.name = "newVersionTextInput";
-                newVersionTextInput.id = "newVersionTextInput";
-                newVersionTextInput.placeholder = "new Version";
-                versionRadioButtonsDiv.append(versionRadioButtonDiv);
-                versionRadioButtonsDiv.append(newVersionTextInput);
-    
+                } 
+                
             }).catch((err) => console.error(err));
     }
     
@@ -148,7 +128,9 @@ var maptool_display_postcode = function (){
             }).then(function (response) {
                 console.log(response)
             }).then(function () {
-                getPostalCodeAreaByID(document.getElementById("PLZ").value)
+                let plz_select = document.getElementById("PLZ")
+                let plz = plz_select.options[plz_select.selectedIndex].text
+                getPostalCodeAreaByID(plz)
                 closeForm("plzVersionPopupForm");
             }).catch((err) => console.error(err));
         } 
@@ -265,7 +247,6 @@ var maptool_display_postcode = function (){
      */
     function returnSelectedBuildings() {
         let newID = document.getElementById("newNetIDInput").value;
-        let newVersion = document.getElementById("newNetVersionInput").value;
         let buildings = [];
 
         map.eachLayer( function(layer) {
@@ -273,13 +254,13 @@ var maptool_display_postcode = function (){
                 buildings.push(layer.feature.properties);
             }
         } );
-        console.log(newID, newVersion, buildings);
+        console.log(newID, buildings);
         
         fetch("http://127.0.0.1:5000/postcode/area/new-net-id", {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'},
-            body: JSON.stringify({"ID": newID, "version": newVersion, "buildings": buildings})
+            body: JSON.stringify({"ID": newID, "buildings": buildings})
         }).then(function (response) {
             if(response.status == 400) {
                 alert("Version " + newVersion +  " already exists for ID " + newID);
@@ -415,9 +396,10 @@ var maptool_display_postcode = function (){
                         'Content-type': 'application/json'},
                     body: JSON.stringify(kcid_bcid)
             }).then(function (response) {
+                window.location.href = '/networks';
                 return response.json();
             }).catch((err) => console.error(err));
-    }
+            }
     
     /**
      * mouseover function for buildings on the map
@@ -517,6 +499,32 @@ var maptool_display_postcode = function (){
     function closeForm(id) {
         document.getElementById(id).style.display = 'none';
     }
+
+
+    /**
+     * fetches all postcode ids for which results already exist in the database and writes them to a dropdown menu in the GUI
+     * so that the user can select them without having to know exactly what exists in the db
+     */
+    function createPLZIDDropdown() {
+        fetch('/postcoce/all_plz_ids')
+        .then (function(response) {
+            return response.json();
+        }).then(function (plz_ids) {
+            plz_select = document.getElementById('PLZ');
+            for (i = 0; i < plz_ids.length; i++) {
+                option = document.createElement('OPTION');
+                option.value = i;
+                option.text = plz_ids[i];
+                plz_select.append(option);
+            }
+        });
+    }
+
+    window.addEventListener("load", (event) => {
+        if(window.location.pathname == '/') {
+            createPLZIDDropdown()
+        }
+    });
 
     return {
         selectVersionOfPostalCodeNetwork: selectVersionOfPostalCodeNetwork,

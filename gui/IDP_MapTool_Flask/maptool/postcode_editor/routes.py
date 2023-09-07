@@ -22,6 +22,20 @@ def postcode():
         versions = pg.getAllVersionsofPLZ(request.get_json())
 
         return versions
+    
+@bp.route('/postcoce/all_plz_ids', methods=['GET'])
+def postcodeAllPlzIds():
+    """
+    fetches all postcode ids for which results already exist in the database
+
+    :return list of all plz ids
+    :rtype list[int]
+    """
+    gg = GridGenerator(plz=session['plz']['value'])
+    pg = gg.pgr
+    plz_ids = pg.get_all_postcode_results()
+    plz_ids = [id_tuple[0] for id_tuple in plz_ids]
+    return plz_ids
 
 @bp.route('/postcode/plz/version', methods=['GET', 'POST'])
 def postcodePlzVersion():
@@ -32,18 +46,21 @@ def postcodePlzVersion():
     :rtype: JavaScript Fetch API Response
     """
     if request.method == 'POST':
+        plz = session['plz']['value']
         plz_version = request.get_json()
         session['plz_version'] = plz_version
         
-        gg = GridGenerator(plz=session['plz']['value'], version_id=plz_version)
-        
+        gg = GridGenerator(plz)
+        grids = gg.pgr.check_if_grid_exists(plz, plz_version)
+        print(grids)
         #if a network already exists for the selected version, the code stops, otherwise a new grid is generated
         #either way, we return sucess unless we catch an error during grid generation
-        try:      
-            gg.generate_grid()
-        except ValueError as ve:
-            print(ve)
-            return 'Failure', -100
+        if not grids:
+            try:      
+                gg.generate_grid()
+            except ValueError as ve:
+                print(ve)
+                return 'Failure', -100
         
         return 'Success', 200
 
@@ -97,7 +114,7 @@ def postcodeFetchNetsForID():
 
         for kcid, bcid, grid in nets:
             grid_json_string = json.dumps(grid)
-            net = pp.from_json_string(grid_json_string)
+            net = pp.from_json_string(grid_json_string, convert=True)
             #we only display the lines of all preview nets for performance reasons
             net_json = json.dumps(createGeoJSONofNetwork(net, False, False, True, False, False), default=str, indent=6)
             netList.append([kcid, bcid, net_json])
@@ -140,7 +157,6 @@ def postcodeAreaCreateNewGridFromBuildings():
     if request.method =='POST':
         print(request.get_json())
         plz = request.get_json()['ID']
-        version = request.get_json()['version']
         buildings = request.get_json()['buildings']
 
         res = []
@@ -154,7 +170,7 @@ def postcodeAreaCreateNewGridFromBuildings():
 
 
         shape = session["new_area_shape"]
-        gg = GridGenerator(plz=str(plz), geom_shape=shape, version_id=str(version))
+        gg = GridGenerator(plz=str(plz), geom_shape=shape)
         try:
             gg.generate_grid_from_geom(buildings={'res': res, 'oth': oth})
         except ValueError as ve:

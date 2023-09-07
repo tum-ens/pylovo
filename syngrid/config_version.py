@@ -2,8 +2,8 @@
 import numpy as np
 import pandas as pd
 
-VERSION_ID = "11.2"
-VERSION_COMMENT = "Initial version without any parameter changes"
+VERSION_ID = "20"
+VERSION_COMMENT = "pylovo GUI networks version ID"
 
 # PARAMETERS
 CABLE_COST_DICT = {

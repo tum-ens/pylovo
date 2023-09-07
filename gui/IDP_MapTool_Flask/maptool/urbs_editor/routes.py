@@ -271,8 +271,7 @@ def createPdp2UrbsBuildingsCSV():
 
         buildings_df_columns =['bid','footprint_area', 'PV_cap_kW','use', 'free_walls', 'floors', 'dwellings', 'occupants','ref_level_roof', 'ref_level_wall', 'ref_level_floor','ref_level_window']      
         plz = session.get('plz')['value']
-        plz_version = session['plz_version']
-        gg = GridGenerator(plz=plz, version_id=plz_version)
+        gg = GridGenerator(plz=plz)
         pg = gg.pgr
 
         buildings_osm_id_list = []
