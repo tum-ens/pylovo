@@ -271,8 +271,7 @@ def createPdp2UrbsBuildingsCSV():
 
         buildings_df_columns =['bid','footprint_area', 'PV_cap_kW','use', 'free_walls', 'floors', 'dwellings', 'occupants','ref_level_roof', 'ref_level_wall', 'ref_level_floor','ref_level_window']      
         plz = session.get('plz')['value']
-        plz_version = session['plz_version']
-        gg = GridGenerator(plz=plz, version_id=plz_version)
+        gg = GridGenerator(plz=plz)
         pg = gg.pgr
 
         buildings_osm_id_list = []
@@ -516,16 +515,16 @@ def runPdp2Urbs():
     :return: response indicating successful data transfer
     :rtype: JavaScript Fetch API Response
     """
-    pp2u.convertPandapower2Urbs()
-    cmd = f'cd {URBS_RUN_FILE_PATH} && conda run -n {URBS_CONDA_ENV_NAME} python.exe run_automatedoutput.py'
-    urbs_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True)
-    for stdout_line in iter(urbs_process.stdout.readline, ""):
-        yield stdout_line 
-    urbs_process.stdout.close()
-    return_code = urbs_process.wait()
-    if return_code:
-        raise subprocess.CalledProcessError(return_code, cmd)
-    print(f"Switched to conda environment: {URBS_CONDA_ENV_NAME}")
+    # pp2u.convertPandapower2Urbs()
+    # cmd = f'cd {URBS_RUN_FILE_PATH} && conda run -n {URBS_CONDA_ENV_NAME} python.exe run_automatedoutput.py'
+    # urbs_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True)
+    # for stdout_line in iter(urbs_process.stdout.readline, ""):
+    #     yield stdout_line 
+    # urbs_process.stdout.close()
+    # return_code = urbs_process.wait()
+    # if return_code:
+    #     raise subprocess.CalledProcessError(return_code, cmd)
+    # print(f"Switched to conda environment: {URBS_CONDA_ENV_NAME}")
     
     return 'Success', 200
 

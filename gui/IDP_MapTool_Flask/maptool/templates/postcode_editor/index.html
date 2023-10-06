@@ -15,11 +15,12 @@
 
 <div class="action-buttons">
   <div class="action-buttons-searchfield">
-    <input type="number" id="PLZ" value="80801">
+    <select id="PLZ" style="width:200px;">
+      <option selected disabled hidden value="0">Select PLZ ID:</option>
+    </select>
     <button class="button action-buttons__button" id="submit-plz-button" type="submit" onclick="maptool_display_postcode.selectVersionOfPostalCodeNetwork()">Submit</button>
   </div>
   <button class="button action-buttons__button" id="selectPLZAreaButton" type="button" onclick="maptool_display_postcode.getPostalCodeAreaByShape(this)" disabled>Select Area</button>
-  <a href="/networks" >
     <button class="button action-buttons__button" id="selectNetworkButton" type="button" onclick="maptool_display_postcode.sendBackSelectedNetworkKcidBcid()" disabled>Select Network</button>
   </a>
 </div>  

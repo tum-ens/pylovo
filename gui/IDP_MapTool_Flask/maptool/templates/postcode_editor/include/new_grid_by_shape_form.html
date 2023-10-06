@@ -1,10 +1,9 @@
 <div class="popup-window">
     <div class="popup-window__div" id="plzAreaPopupForm">
       <form class="popup-window__div__form">
-        Please define an ID and version number for your new network:
+        Please define an ID for your new network:
         <div class="popup-window__div__form__version-select" >
           <input type="text" id="newNetIDInput" placeholder="ID (6 Digits)" pattern="[1-9][0-9]{5}" minlength="6" maxlength="6" required>
-          <input type="text" id="newNetVersionInput" placeholder="Version (max. 6 Digits)" pattern="(([1-9]{1,2})[.]){0,1}[0-9]{1,3}" minlength="1" maxlength="6" required >
         </div>
         <button type="button" class="btn" id="submitBtn" onclick="maptool_display_postcode.returnSelectedBuildings()" disabled>Generate Network</button>
         <button type="button" class="btn cancel" onclick="maptool_display_postcode.closeForm('plzAreaPopupForm')">Cancel</button>

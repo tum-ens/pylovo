@@ -3,14 +3,14 @@ CO2 limit,
 Cost limit,
 PF_HP,
 PF_elec,
-TransDist,
+TransDist,0
+flexible,1
 power_price_kw,
+tsam,1
 assumelowq,0
 excel,0
-flexible,0
 grid_curtailment,0
 lp,0
 retrofit,0
-tsam,0
 tsam_season,0
 uncoordinated,0

@@ -11,6 +11,9 @@ Visual overview
     :width: 800
     :alt: Default view
 
+NOTE: If you have never used the GUI before, selecting Network/Urbs Setup/Urbs Results in the editor selection (1) will cause errors as the tool will check for local files that
+do not exist yet.
+
 Network generation by area
 ==========================
 
@@ -27,7 +30,7 @@ Building selection & network generation
 ----------------------------------------
 .. image:: ../../images/usage/postcode_editor/maptool_view_area_selection_buildings_explained.png
     :width: 49%
-.. image:: ../../images/usage/postcode_editor/maptool_view_area_selection_buildings_explained.png
+.. image:: ../../images/usage/postcode_editor/maptool_view_area_selection_buildings_explained_delete.png
     :width: 49%
 
 | Once the user presses the **Select Area** button, all buildings within the selected area will be displayed on the map. The user can now delete

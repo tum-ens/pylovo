@@ -42,11 +42,10 @@ var maptool_urbs_trans = function() {
     }
     
     /**
-     * THIS IS REDUNDANT, SHOULD BE INCLUDED IN FETCHTRANSMISSIONPROFILES
      * prefills the TransmissionObject
      * 
-     * @param {dict} TransmissionPropertiesJSON 
-     * @param {string}      listName
+     * @param {dict} TransmissionPropertiesJSON dict containing all data for the transmission object
+     * @param {string}      listName            name of the list in the JSOn whose features we want to extract
      */
     function prepareCableDataList(TransmissionPropertiesJSON, listName) {
         TransmissionPropertiesJSON[listName].id.list_options.forEach(featureName => {

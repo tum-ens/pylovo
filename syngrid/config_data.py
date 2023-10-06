@@ -1,55 +1,22 @@
 import os
 
-# Database connection configuration
+# Database connection configuration only for TUM members with LRZ access
 DBNAME = "pylovo_db"
 USER = "pylovo"
-PASSWORD = "ens"
-HOST = "localhost"
-PORT = "1111"
-# HOST = "10.162.28.8"
-# PORT = "5432"
-
-# DBNAME = "syngrid_db"
-# USER = "syngrid"
-# HOST = "localhost"
-# PORT = "1111"
-# PASSWORD = "syngrid"
+HOST = "10.162.28.8"
+PORT = "5432"
+PASSWORD = "pylovo"
 
 # Directory where the result csv and json files be saved
 RESULT_DIR = f"{os.getcwd()}\\results"
 
 # Raw data
-OGR_FILE_LIST = [
-    {"path": ".\\raw_data\\Res_9174115\\Res_9174115.shp", "table_name": "res"},
-    {"path": ".\\raw_data\\Oth_9174115\\Oth_9174115.shp", "table_name": "oth"}
-]
-
+# import files for buildings
 # OGR_FILE_LIST = [
-#     # Neufahrn bei Freising
-#     {"path": ".\\raw_data\\Res_9178145\\Res_9178145.shp","table_name": "res",},
-#     {"path": ".\\raw_data\\Oth_9178145\\Oth_9178145.shp", "table_name": "oth"},
-#     # Garching
-#     {"path": ".\\raw_data\\Res_9184119\\Res_9184119.shp","table_name": "res",},
-#     {"path": ".\\raw_data\\Oth_9184119\\Oth_9184119.shp", "table_name": "oth"},
-# ]
-
-# OGR_FILE_LIST = [
-    # München
-    # {"path": ".\\raw_data\\Res_9162000\\Res_9162000.shp","table_name": "res",},
-    # {"path": ".\\raw_data\\Oth_9162000\\Oth_9162000.shp", "table_name": "oth"},
-    # {"path": ".\\raw_data\\substation_munich.geojson", "table_name": "transformers"},
-    # # Forchheim
-    # {"path": ".\\raw_data\\Res_9474126\\Res_9474126.shp","table_name": "res",},
-    # {"path": ".\\raw_data\\Oth_9474126\\Oth_9474126.shp", "table_name": "oth"},
-    # Dachau
-    # {"path": ".\\raw_data\\Res_9174115\\Res_9174115.shp", "table_name": "res", },
-    # {"path": ".\\raw_data\\Oth_9174115\\Oth_9174115.shp", "table_name": "oth"},
-    # Bergkirchen
-    # {"path": ".\\raw_data\\Res_9174113\\Res_9174113.shp", "table_name": "res", },
-    # {"path": ".\\raw_data\\Oth_9174113\\Oth_9174113.shp", "table_name": "oth"},
-    # Ingolstadt
-    # {"path": ".\\raw_data\\Res_9161000\\Res_9161000.shp", "table_name": "res", },
-    # {"path": ".\\raw_data\\Oth_9161000\\Oth_9161000.shp", "table_name": "oth"},
+# dummy_region_name
+#     {"path": ".\\raw_data\\buildings\\Res_<ags_number>.shp", "table_name":res"},
+#     {"path": ".\\raw_data\\buildings\\Oth_<ags_number>.shp", "table_name": "oth"},
+#     {"path": ".\\raw_data\\<substation_region_name>.geojson", "table_name": "transformers"},
 # ]
 
 CSV_FILE_LIST = [
@@ -57,6 +24,35 @@ CSV_FILE_LIST = [
     {"path": ".\\raw_data\\postcode.csv", "table_name": "postcode"},
     # {"path": ".\\raw_data\\ways.csv", "table_name": "ways"},
 ]
+
+CLUSTERING_PARAMETERS = ["version_id",
+                         "plz",
+                         "bcid",
+                         "kcid",
+                         "no_connection_buses",
+                         "no_branches",
+                         "no_house_connections",
+                         "no_house_connections_per_branch",
+                         "no_households",
+                         "no_household_equ",
+                         "no_households_per_branch",
+                         "max_no_of_households_of_a_branch",
+                         "house_distance_km",
+                         "transformer_mva",
+                         "osm_trafo",
+                         "max_trafo_dis",
+                         "avg_trafo_dis",
+                         "cable_length_km",
+                         "cable_len_per_house",
+                         "max_power_mw",
+                         "simultaneous_peak_load_mw",
+                         "resistance",
+                         "reactance",
+                         "ratio",
+                         "vsw_per_branch",
+                         "max_vsw_of_a_branch"]
+MUNICIPAL_REGISTER = ['plz', 'pop', 'area', 'lat', 'lon', 'ags', 'name_city', 'fed_state', 'regio7', 'regio5',
+                      'pop_den']
 
 # Database schema - table structure
 CREATE_QUERIES = {
@@ -83,6 +79,19 @@ CREATE_QUERIES = {
     cable integer,
     ont_vertice_id bigint,
     CONSTRAINT building_clusters_pkey PRIMARY KEY (version_id, k_mean_cluster, building_cluster, loadarea_cluster)
+)""",
+    "lines_result": """
+CREATE TABLE IF NOT EXISTS public.lines_result
+(   version_id character varying(10) NOT NULL, 
+    geom geometry(Geometry,3035),
+    in_loadarea_cluster integer,
+    in_building_cluster integer,
+    k_mean_cluster integer,
+    line_name varchar(15),
+    std_type varchar(15),
+    from_bus integer,
+    to_bus integer,
+    length_km numeric
 )""",
     "buildings_result": """
 CREATE TABLE IF NOT EXISTS public.buildings_result
@@ -122,6 +131,85 @@ CREATE TABLE IF NOT EXISTS public.buildings_result
     #     connection_point integer,
     #     CONSTRAINT "buildings_result.center_pkey" PRIMARY KEY (id)
     # )""",
+    "sample_set": """CREATE TABLE IF NOT EXISTS public.sample_set
+    (classification_id numeric,
+    plz integer,
+    pop numeric,
+    area numeric,
+    lat numeric,
+    lon numeric,
+    ags integer,
+    name_city character varying(86),
+    fed_state integer,
+    regio7 integer,
+    regio5 integer,
+    pop_den numeric,
+    bin_no int,
+    bins numeric,
+    perc_bin numeric,
+    count numeric,
+    perc numeric,
+    CONSTRAINT municipal_register_pkey PRIMARY KEY (classification_id, plz)
+    )""",
+    "classification_version": """CREATE TABLE IF NOT EXISTS public.classification_version
+    (classification_id character varying(10) NOT NULL,
+    version_comment character varying, 
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    classification_region character varying,
+    CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
+    )""",
+    "municipal_register": """CREATE TABLE IF NOT EXISTS public.municipal_register
+    (plz integer,
+    pop numeric,
+    area numeric,
+    lat numeric,
+    lon numeric,
+    ags integer,
+    name_city character varying(86),
+    fed_state integer,
+    regio7 integer,
+    regio5 integer,
+    pop_den numeric,
+    CONSTRAINT municipal_register_pkey PRIMARY KEY (plz, ags)
+    )""",
+    "clustering_parameters": """CREATE TABLE IF NOT EXISTS public.clustering_parameters
+    (
+              version_id character varying(10) NOT NULL,
+              plz character varying(5) NOT NULL,
+              kcid integer NOT NULL ,
+              bcid integer NOT NULL,
+
+              no_connection_buses integer,
+              no_branches integer,
+
+              no_house_connections integer,
+              no_house_connections_per_branch numeric,
+              no_households integer,
+              no_household_equ numeric,
+              no_households_per_branch numeric,
+              max_no_of_households_of_a_branch numeric,
+              house_distance_km numeric,
+
+              transformer_mva numeric,
+              osm_trafo bool,
+
+              max_trafo_dis numeric,
+              avg_trafo_dis numeric,
+
+              cable_length_km numeric,
+              cable_len_per_house numeric,
+
+              max_power_mw numeric,
+              simultaneous_peak_load_mw numeric,
+
+              resistance numeric,
+              reactance numeric,
+              ratio numeric,
+              vsw_per_branch numeric,
+              max_vsw_of_a_branch numeric,
+              CONSTRAINT clustering_parameters_pkey PRIMARY KEY (version_id, plz, bcid, kcid)
+    )
+    """,
     "buildings_tem": """CREATE TABLE IF NOT EXISTS public.buildings_tem
 (
     osm_id character varying(80) COLLATE pg_catalog."default",

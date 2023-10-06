@@ -1,3 +1,7 @@
 site,charging_station,heatpump_air,heatpump_air_heizstrom
-Consumer Nodebus 137,145,0,0
-Consumer Nodebus 142,145,0,0
+Consumer Nodebus 4,145,0,0
+Consumer Nodebus 7,145,0,0
+Consumer Nodebus 12,145,0,0
+Consumer Nodebus 14,145,0,0
+Consumer Nodebus 17,145,0,0
+Consumer Nodebus 19,145,0,0

@@ -66,19 +66,19 @@ var maptool_add_delete = function() {
             featuresToDeleteList.push([maptool_network_gen.NetworkObject['busList'][featureSelect.selectedIndex], 'bus', featureSelect.selectedIndex]);
             for (featureType in featureLists) {
                 for (idx in maptool_network_gen.NetworkObject[featureLists[featureType] + 'List']) {
-                    if (featureSelect.options[featureSelect.selectedIndex].text ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.from_bus) {
+                    if (featureSelect.options[featureSelect.selectedIndex].value ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.from_bus) {
                         featuresToDeleteList.push( [maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx], featureLists[featureType], idx]);
                     }
-                    if (featureSelect.options[featureSelect.selectedIndex].text ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.to_bus) {
+                    if (featureSelect.options[featureSelect.selectedIndex].value ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.to_bus) {
                         featuresToDeleteList.push( [maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx], featureLists[featureType], idx]);
                     }
-                    if(featureSelect.options[featureSelect.selectedIndex].text ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.bus) {
+                    if(featureSelect.options[featureSelect.selectedIndex].value ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.bus) {
                         featuresToDeleteList.push( [maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx], featureLists[featureType], idx]);
                     }
-                    if(featureSelect.options[featureSelect.selectedIndex].text ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.hv_bus) {
+                    if(featureSelect.options[featureSelect.selectedIndex].value ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.hv_bus) {
                         featuresToDeleteList.push( [maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx], featureLists[featureType], idx]);
                     }   
-                    if(featureSelect.options[featureSelect.selectedIndex].text ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.lv_bus) {
+                    if(featureSelect.options[featureSelect.selectedIndex].value ==  maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx].feature.properties.lv_bus) {
                         featuresToDeleteList.push( [maptool_network_gen.NetworkObject[featureLists[featureType] + 'List'][idx], featureLists[featureType], idx]);
                     }
                     

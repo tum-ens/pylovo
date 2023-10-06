@@ -33,7 +33,7 @@ var maptool_urbs_res_setup = function (){
 
     /**
      * aggregate function calling the actual functions that place the feature sgeojsons on the leaflet map
-     * @param {dict} ppdata 
+     * @param {dict} ppdata grid data
      */
     function displayUrbsNet(ppdata) {
         addUrbsGeoJSONtoMap(true, ppdata['trafo'], 'trafo');
@@ -119,8 +119,8 @@ var maptool_urbs_res_setup = function (){
      * gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
      * editors are closed, lists are hidden, buttons are set to inactive
      * 
-     * @param {event} e 
-     * @param {string} listName 
+     * @param {event} e         event that triggered the function call
+     * @param {string} listName name of the element to be opened
      */
     function openUrbsNetworkList(e, listName) {
         tabcontent = document.getElementsByClassName("feature-editor__featurelist-tab");
@@ -168,8 +168,8 @@ var maptool_urbs_res_setup = function (){
 
     /**
      * resets the style of the previously selected feature
-     * @param {HTML_element} target 
-     * @param {string} feature 
+     * @param {HTML_element} target the map object whose style we want to change
+     * @param {string} feature      the name of the map object type
      */
     function resetUrbsStyle(target, feature) {
         let zoomLevel = 14;

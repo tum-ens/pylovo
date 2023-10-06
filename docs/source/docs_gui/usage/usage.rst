@@ -15,7 +15,7 @@ We are setting multiple flags for running the server:
 * **app**:  The name of the folder containing the init file for the flask code, in this case maptool
 * **debug**: If this flag is not set, the server will not automatically restart, if adjustments to the code are made
 
-Next, open a new terminal and connect to the pylovo database as described on the :ref:`setup page <database_connection>`
+Make sure you have connected to the LRZ net via EduVPN, otherwise the tool will not be able to access the pylovo database.
 
 Accessing the tool
 ==================

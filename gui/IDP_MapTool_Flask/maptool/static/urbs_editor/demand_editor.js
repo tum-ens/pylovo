@@ -112,10 +112,10 @@ var maptool_urbs_demand = function () {
   /**
    * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
    * 
-   * @param {HTML_element} checkbox 
-   * @param {string} demand_type 
-   * @param {int} key 
-   * @param {int} demandIndex 
+   * @param {HTML_element} checkbox checkbox html element whose onchange event triggered the function calls
+   * @param {string} demand_type which demand category the checkbox belongs to
+   * @param {int} key the index of the checkbox in the list
+   * @param {int} demandIndex the index of the demand category 
    */
   function check_uncheck_demand(checkbox, demand_type, key, demandIndex) {
       let listElem = document.getElementById('demandSelect').selectedIndex;

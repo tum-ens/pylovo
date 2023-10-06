@@ -8,6 +8,20 @@ from maptool.config import *
 #plot functions need to return the name of the generated plot
 #they need to call the write_html function as well and the filename that is returned and the filename of the new html need to match
 
+# def EXAMPLE_generate_plot(hdf_path, site_name, save_path=URBS_RESULT_PLOT_SAVE_PATH):
+#     hdf = pd.read_hdf(hdf_path, key=KEY_EXAMPLE)
+    
+#     #----------------------------GENERATE PLOT HERE----------------------------#
+#     INSERT PLOTLY CODE HERE
+#     #----------------------------GENERATE PLOT HERE----------------------------#
+    
+#     #filename = site_name + EXAMPLE
+#     filename = EXAMPLE
+#     fig.write_html(save_path + filename + ".html", full_html=False, include_plotlyjs=False, div_id=site_name + filename)
+#     return(filename)
+
+
+
 def cap_pro_generate_plot(hdf_path, site_name, save_path=URBS_RESULT_PLOT_SAVE_PATH):
     hdf = pd.read_hdf(hdf_path, key='result/cap_pro')
     

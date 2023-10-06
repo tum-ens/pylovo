@@ -1,3 +1,7 @@
+// TODO: Add new plz to list if generating new grids
+// TODO: make sure fetching new grid works once generation is complete
+
+
 var maptool_display_postcode = function (){
     //leaflet map layer object that saves the last selected object to reset its style once a new one is selected
     let previousSelectedPreviewLayer;
@@ -50,7 +54,9 @@ var maptool_display_postcode = function (){
      * returns all versions of network associated with the passed id and generates the radiobuttons for the version select gui element
      */
     function selectVersionOfPostalCodeNetwork() {
-        let plz = document.getElementById("PLZ").value;
+        let plz_select = document.getElementById("PLZ")
+        let plz = plz_select.options[plz_select.selectedIndex].text
+        console.log(plz)
         fetch("http://127.0.0.1:5000/postcode", {
                     method: 'POST',
                     headers: {
@@ -83,30 +89,8 @@ var maptool_display_postcode = function (){
                     versionRadioButtonDiv.append(versionLabel);    
                     versionRadioButtonDiv.append(document.createElement("br"))
                     versionRadioButtonsDiv.append(versionRadioButtonDiv);
-                }
-    
-                let versionRadioButtonDiv = document.createElement("div");
-                versionRadioButtonDiv.classList.add("popup-window__div__form__version-select__radio-button");
-                let newVersionRadioButton = document.createElement("INPUT");
-                newVersionRadioButton.setAttribute("type", "radio");
-                newVersionRadioButton.name = "versionRadioButton";
-                newVersionRadioButton.id = "newVersionRadioButton";
-                newVersionRadioButton.value = "0.0";
-                versionRadioButtonDiv.append(newVersionRadioButton);
-    
-                let newVersionLabel = document.createElement("LABEL");
-                newVersionLabel.htmlFor = "newVersionRadioButton";
-                newVersionLabel.innerHTML = "New Version";
-                versionRadioButtonDiv.append(newVersionLabel);  
-    
-                let newVersionTextInput = document.createElement("INPUT");
-                newVersionTextInput.setAttribute("type", "number");
-                newVersionTextInput.name = "newVersionTextInput";
-                newVersionTextInput.id = "newVersionTextInput";
-                newVersionTextInput.placeholder = "new Version";
-                versionRadioButtonsDiv.append(versionRadioButtonDiv);
-                versionRadioButtonsDiv.append(newVersionTextInput);
-    
+                } 
+                
             }).catch((err) => console.error(err));
     }
     
@@ -148,7 +132,9 @@ var maptool_display_postcode = function (){
             }).then(function (response) {
                 console.log(response)
             }).then(function () {
-                getPostalCodeAreaByID(document.getElementById("PLZ").value)
+                let plz_select = document.getElementById("PLZ")
+                let plz = plz_select.options[plz_select.selectedIndex].text
+                getPostalCodeAreaByID(plz)
                 closeForm("plzVersionPopupForm");
             }).catch((err) => console.error(err));
         } 
@@ -161,7 +147,7 @@ var maptool_display_postcode = function (){
      * if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file, 
      * which we display on the map
      * We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects
-     * @param {int} plz 
+     * @param {int} plz the 5 or 6 digit ID with which a grid is associated
      */
     function getPostalCodeAreaByID(plz) {
         fetch("http://127.0.0.1:5000/postcode/plz", {
@@ -265,7 +251,6 @@ var maptool_display_postcode = function (){
      */
     function returnSelectedBuildings() {
         let newID = document.getElementById("newNetIDInput").value;
-        let newVersion = document.getElementById("newNetVersionInput").value;
         let buildings = [];
 
         map.eachLayer( function(layer) {
@@ -273,23 +258,23 @@ var maptool_display_postcode = function (){
                 buildings.push(layer.feature.properties);
             }
         } );
-        console.log(newID, newVersion, buildings);
+        console.log(newID, buildings);
         
         fetch("http://127.0.0.1:5000/postcode/area/new-net-id", {
             method: 'POST',
             headers: {
                 'Content-type': 'application/json'},
-            body: JSON.stringify({"ID": newID, "version": newVersion, "buildings": buildings})
+            body: JSON.stringify({"ID": newID, "buildings": buildings})
         }).then(function (response) {
             if(response.status == 400) {
-                alert("Version " + newVersion +  " already exists for ID " + newID);
+                alert("Version 20 already exists for ID " + newID);
             }
             else {
                 fetch("http://127.0.0.1:5000/postcode/plz/version", {
                     method: 'POST',
                     headers: {
                         'Content-type': 'application/json'},
-                    body: JSON.stringify(newVersion)
+                    body: JSON.stringify(20)
                 }).then(function (response) {
                     console.log(response)
                 }).then(function () {
@@ -415,14 +400,15 @@ var maptool_display_postcode = function (){
                         'Content-type': 'application/json'},
                     body: JSON.stringify(kcid_bcid)
             }).then(function (response) {
+                window.location.href = '/networks';
                 return response.json();
             }).catch((err) => console.error(err));
-    }
+            }
     
     /**
      * mouseover function for buildings on the map
      * 
-     * @param {event} e 
+     * @param {event} e The event that gets triggered on mouseover of an object on the map
      */
     function highlightBuildingFeature(e) {
         var layer = e.target;
@@ -444,7 +430,7 @@ var maptool_display_postcode = function (){
     /**
      * mouseout function for buildings on the map
      * 
-     * @param {event} e 
+     * @param {event} e The event that gets triggered on mouseout of an object on the map
      */
     function resetBuildingHighlight(e) {
         if(e.target.feature.properties.type == 'res') {
@@ -457,7 +443,7 @@ var maptool_display_postcode = function (){
     /**
      * onclick function for buildings on the map
      * 
-     * @param {event} e 
+     * @param {event} e The event that gets triggered on click on an object on the map
      */
     function zoomToBuildingFeature(e) {
         map.fitBounds(e.target.getBounds());
@@ -466,7 +452,7 @@ var maptool_display_postcode = function (){
     /**
      * aggregate onclick function for buildings on the map in case click events should have multiple effects
      * 
-     * @param {event} e s
+     * @param {event} e The event that gets triggered on click on an object on the map
      */
     function displayBuildingEditOptions(e) {
         zoomToBuildingFeature(e);
@@ -475,7 +461,7 @@ var maptool_display_postcode = function (){
     /**
      * is called when buildings are displayed on the map and defines different behaviours for each object on the map
      * 
-     * @param {dict} feature 
+     * @param {dict} feature                     
      * @param {leaflet_layer_object} layer 
      */
     function onEachFeature(feature, layer) {
@@ -517,6 +503,32 @@ var maptool_display_postcode = function (){
     function closeForm(id) {
         document.getElementById(id).style.display = 'none';
     }
+
+
+    /**
+     * fetches all postcode ids for which results already exist in the database and writes them to a dropdown menu in the GUI
+     * so that the user can select them without having to know exactly what exists in the db
+     */
+    function createPLZIDDropdown() {
+        fetch('/postcoce/all_plz_ids')
+        .then (function(response) {
+            return response.json();
+        }).then(function (plz_ids) {
+            plz_select = document.getElementById('PLZ');
+            for (i = 0; i < plz_ids.length; i++) {
+                option = document.createElement('OPTION');
+                option.value = i;
+                option.text = plz_ids[i];
+                plz_select.append(option);
+            }
+        });
+    }
+
+    window.addEventListener("load", (event) => {
+        if(window.location.pathname == '/') {
+            createPLZIDDropdown()
+        }
+    });
 
     return {
         selectVersionOfPostalCodeNetwork: selectVersionOfPostalCodeNetwork,

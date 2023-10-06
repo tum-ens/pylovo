@@ -1,5 +1,7 @@
 display_postcode.js
 ===================
+
+.. js:autofunction:: createPLZIDDropdown
 .. js:autofunction:: selectVersionOfPostalCodeNetwork
 .. js:autofunction:: chooseVersionOfPlzNetwork
 .. js:autofunction:: getPostalCodeAreaByID

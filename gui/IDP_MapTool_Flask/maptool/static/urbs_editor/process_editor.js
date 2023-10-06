@@ -181,7 +181,7 @@ var maptool_urbs_process = function() {
     /**
      * onclick button for the forms' cancel button, closes dialogue window and resets all input fields
      * 
-     * @param {bool} isCommodity 
+     * @param {bool} isCommodity determines which form needs to be closed
      */
     function closeNewProcessForm(isCommodity) {
         let form = (isCommodity) ? document.getElementById("urbsProcessCommodityPopupForm") :  document.getElementById("urbsProcessPopupForm");
@@ -338,7 +338,7 @@ var maptool_urbs_process = function() {
     /**
      * creates a new process and adds it to the ProcessObject & html pro_prop select
      * 
-     * @param {string} name 
+     * @param {string} name name of the new process
      */
     function createNewProcessProperty(name) {
         console.log("new Process")
@@ -359,9 +359,9 @@ var maptool_urbs_process = function() {
     /**
      * we must add a newly defined process commodity to the list of commodities, the process_config table and the editor window of the process the commodity is associated with
      * 
-     * @param {string} pro_name 
-     * @param {string} com_name 
-     * @param {string} inOrOut 
+     * @param {string} pro_name name of the process the commodity is attached tos
+     * @param {string} com_name name of the new process commodity
+     * @param {string} inOrOut type of the new process commodity
      */
     function createNewProcessCommodity(pro_name, com_name, inOrOut) {
         console.log("new Process Commodity")

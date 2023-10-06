@@ -29,7 +29,7 @@ var maptool_urbs_buildings = function () {
      * onclick method for bus circlemarkers on the map and onchange method of the buildings list element
      * resets the style of the previously selected bus and fills all editor input fields with the correct values
      * 
-     * @param {event_target_object} target 
+     * @param {event_target_object} target the map object that has been selected
      */
     function fillSelectedFeatureBuildingEditor(target) {
         maptool_urbs_setup.resetLoadBusStyle(target)
@@ -59,7 +59,7 @@ var maptool_urbs_buildings = function () {
      * onchange function for all building editor input fields 
      * writes changed value back to the relevant entry in the BuildingsObject
      * 
-     * @param {event_target_object} target 
+     * @param {event_target_object} target the html editor element that has been changed
      */
     function writeBackEditedBuildingFeatures(target) {
         let idxInFeatureList = document.getElementById("buildingsSelect").selectedIndex;

@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'pylovo'
+project = 'installation'
 copyright = '2023, Daniel Baur'
 author = 'Daniel Baur'
 release = '2023'
@@ -25,15 +25,13 @@ extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'autoapi.extension', 
 autoapi_dirs = ['../../gui/IDP_MapTool_Flask/maptool']
 autoapi_add_toctree_entry = False
 
-js_source_path = ["../../gui/IDP_MapTool_Flask/maptool/static/network_editor", 
-                  "../../gui/IDP_MapTool_Flask/maptool/static/postcode_editor", 
+js_source_path = ["../../gui/IDP_MapTool_Flask/maptool/static/network_editor",
+                  "../../gui/IDP_MapTool_Flask/maptool/static/postcode_editor",
                   "../../gui/IDP_MapTool_Flask/maptool/static/urbs_editor",
                   "../../gui/IDP_MapTool_Flask/maptool/static/urbs_results"]
 root_for_relative_js_paths = "."
 templates_path = ['_templates']
 exclude_patterns = []
-
-
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

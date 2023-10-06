@@ -208,9 +208,9 @@ var maptool_network_gen = function (){
  * we set styles and onclick functions here and save references to each added feature in the NetworkObject
  * lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
  * 
- * @param {boolean} isLines 
- * @param {geoJSON_FeatureCollection} input_geoJSON 
- * @param {string} featureName 
+ * @param {boolean} isLines                             distinguishes if the geometry we want to place on the map is a point or a line
+ * @param {geoJSON_FeatureCollection} input_geoJSON     the data structure containing all our grid information
+ * @param {string} featureName                          name of the feature type to be added to the map (e.g. line, bus etc)
  */
     function addGeoJSONtoMap(isLines, input_geoJSON, featureName) {
         let newGeoJson

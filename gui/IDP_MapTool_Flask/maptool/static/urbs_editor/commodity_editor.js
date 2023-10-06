@@ -99,7 +99,7 @@ var maptool_urbs_commodity = function () {
 
     /**
      * Once a new commodity has been created, this function adds it to the GUI form of the storage editor
-     * @param {string} name 
+     * @param {string} name the name of the commodity
      */
     function addCommToStorageComList(name) {
         let commSelect = document.getElementById('storageFormDiv').querySelector('#commodity');
@@ -114,7 +114,7 @@ var maptool_urbs_commodity = function () {
     /**
      * adds the newly created commodity to the commodity editor list, the pro_conf table and the CommodityObject
      * 
-     * @param {string} com_name 
+     * @param {string} com_name the name of the commodity
      */
     function createNewCommodity(com_name) {
                 //we grab the commodity list and add a new option. All values are blank at the start. We also add a blank entry to the Commodity Object List
@@ -135,7 +135,7 @@ var maptool_urbs_commodity = function () {
      * onchange function for all commodity editor input fields 
      * writes changed value back to the relevant entry in the CommodityObject
      * 
-     * @param {event_target_object} target 
+     * @param {event_target_object} target the html element whose onchange event called the function
      */
     function writeBackCommodityFeatures(target) {
         console.log(target);

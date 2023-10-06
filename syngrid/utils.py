@@ -21,7 +21,7 @@ def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):
         sim_factor = consumer_cat_df.loc[cat[0]]['sim_factor']  # g_inf
 
         # Calculate simultaneous load (Kerber.2011) Gl. 3.2 - S. 23
-        sim_load = installed_power * (sim_factor + (1 - sim_factor) * (load_count ** (-3 / 4)))
+        sim_load = oneSimultaneousLoad(installed_power, load_count, sim_factor)
         category_load_dict[cat[0]] = sim_load
 
     # print(category_load_dict)
@@ -33,6 +33,11 @@ def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):
 
 
 def oneSimultaneousLoad(installed_power, load_count, sim_factor):
+    # calculation of the simultaneaous load of multiple consumers of the same kind (public, commercial or residential)
+    if isinstance(load_count, int):
+        if load_count == 0:
+            return 0
+
     sim_load = installed_power * (sim_factor + (1 - sim_factor) * (load_count ** (-3 / 4)))
 
     return sim_load

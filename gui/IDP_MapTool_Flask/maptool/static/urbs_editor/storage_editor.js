@@ -58,7 +58,7 @@ var maptool_urbs_storage = function () {
 
     /**
      * creates html select options for all commodites in the storage editor window
-     * @param {list} commodities 
+     * @param {list} commodities contains names of all commodities
      */
     function fillStorageEditorCommodityList(commodities) {
         let commoditySelect = document.getElementById('storageFormDiv').querySelector('#commodity');

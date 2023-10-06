@@ -108,7 +108,7 @@ var maptool_urbs_setup = function() {
     /**
      * aggregate function for displaying the full network
      * 
-     * @param {dict} ppdata 
+     * @param {dict} ppdata the grid data
      */
     function displayUrbsEditorNet(ppdata) {
         addGeoJSONtoUrbsEditorMap(true, ppdata['line'], 'line');
@@ -122,9 +122,9 @@ var maptool_urbs_setup = function() {
      * distinguishes between line (for lines and trafos) and circle marker (for buses and ext_grids) formats
      * because line geojsons do not have the pointToLayer option
      * 
-     * @param {bool}                isLines 
-     * @param {GeoJSON_Object}      input_geoJSON 
-     * @param {string}              featureName 
+ * @param {boolean} isLines                             distinguishes if the geometry we want to place on the map is a point or a line
+ * @param {geoJSON_FeatureCollection} input_geoJSON     the data structure containing all our grid information
+ * @param {string} featureName                          name of the feature type to be added to the map (e.g. line, bus etc)
      */
     function addGeoJSONtoUrbsEditorMap(isLines, input_geoJSON, featureName) {
         let newGeoJson;

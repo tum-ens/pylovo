@@ -62,7 +62,7 @@ var maptool_urbs_supim = function() {
   /**
    * when the user selects an element in the ui in the supim tab, this function sets all checkboxes for that element to the right value
    * 
-   * @param {event_target_object} target 
+   * @param {event_target_object} target html object whose onchange event triggered the function call
    */
   function fillSelectedFeatureSupimEditor(target) {
       let sel = document.getElementById('supimSelect');
@@ -96,10 +96,10 @@ var maptool_urbs_supim = function() {
    * TODO: generalize function or at least rename it (needs to generalize select Id and FeatureObject)
    * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
    * 
-   * @param {HTML_element} checkbox 
-   * @param {string} demand_type 
-   * @param {int} key 
-   * @param {int} demandIndex 
+   * @param {HTML_element} checkbox checkbox html element whose onchange event triggered the function calls
+   * @param {string} demand_type which demand category the checkbox belongs to
+   * @param {int} key the index of the checkbox in the list
+   * @param {int} demandIndex the index of the demand category 
    */
   function check_uncheck_supim(checkbox, demand_type, key, demandIndex) {
       let listElem = document.getElementById('supimSelect').selectedIndex;

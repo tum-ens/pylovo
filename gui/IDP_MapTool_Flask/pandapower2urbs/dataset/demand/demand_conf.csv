@@ -1,3 +1,7 @@
 site,electricity,electricity-reactive,mobility,space_heat,water_heat
-Consumer Nodebus 137,56,56,145,56,56
-Consumer Nodebus 142,56,56,145,56,56
+Consumer Nodebus 4,56,56,145,56,56
+Consumer Nodebus 7,56,56,145,56,56
+Consumer Nodebus 12,56,56,145,56,56
+Consumer Nodebus 14,56,56,145,56,56
+Consumer Nodebus 17,56,56,145,56,56
+Consumer Nodebus 19,56,56,145,56,56

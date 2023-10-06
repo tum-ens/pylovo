@@ -19,7 +19,7 @@ var maptool_return_urbs =  function() {
         Promise.all([buildings, demand, transmission, global, commodity, process, storage, supim, timevareff]).then((res) => {
             const pdp2urbs = runPdp2Urbs();
             Promise.all([pdp2urbs]).then(res => {
-                console.log("finsihed pdp2urbs")
+                console.log("finished pdp2urbs")
                 document.location.href = "/urbs_results";
             })
         });

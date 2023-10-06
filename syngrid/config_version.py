@@ -2,8 +2,11 @@
 import numpy as np
 import pandas as pd
 
-VERSION_ID = "11.2"
-VERSION_COMMENT = "Initial version without any parameter changes"
+# Change version if you changed any grid parameters or queries (e.g. transformer query)
+VERSION_ID = "20"
+
+# state here which parameters, queries are used to compute the grids with current VERSION_ID
+VERSION_COMMENT = "testing"
 
 # PARAMETERS
 CABLE_COST_DICT = {
@@ -42,14 +45,16 @@ CONNECTION_AVAILABLE_CABLES = [
 # installed_power * (sim_factor + (1 - sim_factor) * (load_count ** (-3 / 4)))
 SIM_FACTOR = {"Residential": 0.07, "Public": 0.6, "Commercial": 0.5}
 
+PEAK_LOAD_HOUSEHOLD = 30.00
+
 CONSUMER_CATEGORIES = pd.DataFrame(
     data=[
         (1, "Commercial", np.nan, np.nan, 79.00, 245.70, 0.50),
         (2, "Public", np.nan, np.nan, 29.00, 155.70, 0.60),
-        (9, "SFH", 30.00, 0.00, np.nan, np.nan, 0.07),
-        (10, "MFH", 30.00, 0.00, np.nan, np.nan, 0.07),
-        (11, "TH", 30.00, 0.00, np.nan, np.nan, 0.07),
-        (12, "AB", 30.00, 0.00, np.nan, np.nan, 0.07),
+        (9, "SFH", PEAK_LOAD_HOUSEHOLD, 0.00, np.nan, np.nan, 0.07),
+        (10, "MFH", PEAK_LOAD_HOUSEHOLD, 0.00, np.nan, np.nan, 0.07),
+        (11, "TH", PEAK_LOAD_HOUSEHOLD, 0.00, np.nan, np.nan, 0.07),
+        (12, "AB", PEAK_LOAD_HOUSEHOLD, 0.00, np.nan, np.nan, 0.07),
     ],
     columns=[
         "id",
@@ -72,5 +77,5 @@ V_BAND_LOW = 0.95  # +-5%
 V_BAND_HIGH = 1.05
 
 
-def changeVersionID (version_id):
+def changeVersionID(version_id):
     VERSION_ID = version_id

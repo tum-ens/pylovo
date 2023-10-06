@@ -166,7 +166,7 @@ $$;
 --
 
 CREATE FUNCTION public.draw_way_connections() RETURNS void
-    LANGUAGE plpgsql
+    LANGUAGE PLPGSQL
     AS $$
 declare
 	way RECORD;
@@ -190,7 +190,14 @@ begin
 			continue;
 		END IF;
 
+		-- check whether the intersection of ST_Buffer(way.geom,0.1) , old_street.geom is a line
+		-- this is necessary for the next SELECT statement with ST_LineInterpolatePoint()-function
+-- 		IF ST_Intersection(ST_Buffer(way.geom,0.1) , old_street.geom) != "ST_LineString" THEN
+-- 		    continue;
+-- 		END IF;
+
 		SELECT
+			-- ST_LineInterpolatePoint(ST_LineMerge(ST_Intersection(ST_Buffer(way.geom,0.1) , old_street.geom)),0.5) AS geom
 			ST_LineInterpolatePoint(ST_Intersection(ST_Buffer(way.geom,0.1) , old_street.geom),0.5) AS geom
 		INTO interpolate_point;
 
