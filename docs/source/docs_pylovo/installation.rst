@@ -118,7 +118,8 @@ Outside the server (from ssh client a.k.a. your own computer)
 Create SQL functions
 ====================
 
-Prewritten SQL functions must be created for once, when the database is created. Run the file syngrid/dump_functions.sql:
+| Prewritten SQL functions must be created for once, when the database is created.
+| Run the file syngrid/dump_functions.sql:
 
 ::
 
