@@ -132,7 +132,7 @@ var maptool_urbs_commodity = function () {
                 closeNewCommodityForm();
     }
     /**
-     * onchange function for all commodity editor input fields 
+     * onchange function for all commodity editor input fields that
      * writes changed value back to the relevant entry in the CommodityObject
      * 
      * @param {event_target_object} target the html element whose onchange event called the function

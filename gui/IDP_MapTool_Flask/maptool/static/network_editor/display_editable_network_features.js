@@ -58,8 +58,8 @@ var maptool_net_display = function() {
     }
 
     /**
-     * fills html element with options for a given list of network features at intial editable network generation
-     * the index property of a feature and the option index do not have to match
+     * fills html element with options for a given list of network features at intial editable network generation. 
+     * The index property of a feature and the option index do not have to match
      * 
      * @param {string} listName key for accessing and setting html element ids 
      */
@@ -82,8 +82,8 @@ var maptool_net_display = function() {
     }
 
     /**
-     * The feature editor window template for all feature types gets filled at runtime
-     * input fields and labels depend entirely on the properties defined in the displayNetwork function
+     * The feature editor window template for all feature types gets filled at runtime. 
+     * Input fields and labels depend entirely on the properties defined in the displayNetwork function
      * 
      * @param {string}      listName            key for accessing and setting html element ids 
      * @param {dict}        selectedProperties  dict containing all properties of the feature for which we create the editor window
@@ -531,7 +531,6 @@ var maptool_net_display = function() {
 
     /**
      * Purely for debug atm, we will want to keep feature information within the markers themselves 
-     * might be worth considering to display the editor window via the popup (visually too messy?)
      * 
      * @param {dict} feature the feature for which we create a popup
      * @param {leaflet_layer_object} layer the leaflet map layer we attach the popup to

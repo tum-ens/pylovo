@@ -1,4 +1,3 @@
-//TODO: check network editor entry fields for correct types, tooltips
 
 var maptool_network_gen = function (){
     let line_std_properties = {};
@@ -204,9 +203,9 @@ var maptool_network_gen = function (){
     }
 
 /**
- * function that adds a FeatureCollection to the leaflet map
- * we set styles and onclick functions here and save references to each added feature in the NetworkObject
- * lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
+ * function that adds a FeatureCollection to the leaflet map. 
+ * We set styles and onclick functions here and save references to each added feature in the NetworkObject. 
+ * Lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
  * 
  * @param {boolean} isLines                             distinguishes if the geometry we want to place on the map is a point or a line
  * @param {geoJSON_FeatureCollection} input_geoJSON     the data structure containing all our grid information

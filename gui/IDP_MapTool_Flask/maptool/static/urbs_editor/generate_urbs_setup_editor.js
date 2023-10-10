@@ -10,6 +10,7 @@ var maptool_urbs_setup = function() {
 
     /**
      * function that fetches the urbsPropertyJSON file stored in the backend. The file defines all inputs for all features as well as tooltips, types and default values
+     * 
      * @returns Promise to make sure functions during setup are called in order
      */
     function GetUrbsSetupProperties () {
@@ -118,8 +119,8 @@ var maptool_urbs_setup = function() {
     }
     
     /**
-     * creates a new geojson layer for leaflet map
-     * distinguishes between line (for lines and trafos) and circle marker (for buses and ext_grids) formats
+     * creates a new geojson layer for leaflet map. 
+     * Distinguishes between line (for lines and trafos) and circle marker (for buses and ext_grids) formats 
      * because line geojsons do not have the pointToLayer option
      * 
  * @param {boolean} isLines                             distinguishes if the geometry we want to place on the map is a point or a line

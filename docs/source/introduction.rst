@@ -11,7 +11,7 @@ pylovo (python tool for low-voltage distribution grid generation)
 | To look at these problems the research association “Energy - Sector Coupling and Micro-Grids", or "STROM" for short, 
   is developing a digital automatized energy supply planning tool to rapidly advance the transformation of the energy system. 
   The tool will be able to use available local data including renewable resource potentials, distribution grid topology and energy demand 
-  to help with the planning of power and heat supply structures. The tool is built on two central components: syngrid, a module for 
+  to help with the planning of power and heat supply structures. The tool is built on two central components: pylovo, a module for 
   generating synthetic distribution grids for a free-selected research area as well as the optimization framework urbs, a linear programming 
   model for multi-commodity energy systems with a focus on optimal storage sizing and use.
 

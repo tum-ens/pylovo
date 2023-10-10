@@ -86,7 +86,7 @@ def postcodeReturnAreaBoundary():
 @bp.route('/postcode/nets', methods=['GET', 'POST'])
 def postcodeFetchNetsForID():
     """
-    the JS Fetch API sends a POST request once the user has selected one of the preview nets 
+    the JS Fetch API sends a POST request once the user has selected one of the preview nets. 
     The request includes the kcid and bcid of the chosen network
 
     :return: response indicating successful data transfer
@@ -148,8 +148,8 @@ def postcodeAreaReturnBuildings():
 @bp.route('/postcode/area/new-net-id', methods=['GET', 'POST'])
 def postcodeAreaCreateNewGridFromBuildings():
     """
-    called once the user has finished deleting buildings in the frontend. It extracts the osmID of each building
-    sent from the frontend, separates them into residential and other buildings and calls the pylovo functions necessary for generating a new grid
+    called once the user has finished deleting buildings in the frontend. It extracts the osmID of each building. 
+    Sent from the frontend, separates them into residential and other buildings and calls the pylovo functions necessary for generating a new grid
 
     :return: response indicating whether a new network grid was sucessfully created
     :rtype: JavaScript Fetch API Response

@@ -7,8 +7,8 @@ var maptool_urbs_trans = function() {
 
     /**
      * Called from generate_urbs_setup_editor.js during setup of the urbs setup editor window.
-     * We fetch default values from the backend.
-     * the fetched data contains default values for trafo_data as well as 
+     * We fetch default values from the backend. 
+     * The fetched data contains default values for trafo_data as well as 
      * the sn_mva value of the network trafo to generate the kont option for trafo data
      * 
      * @returns Promise signalling that the fetch operation concluded
@@ -60,7 +60,7 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * called from generate_urbs_setup_editor.js during setup of the urbs setup editor window
+     * called from generate_urbs_setup_editor.js during setup of the urbs setup editor window. 
      * Creates select options for cable_data, trafo_data and voltage_limits
      * 
      * @param {dict} UrbsPropertiesJSON json containing all features and their properties for all input categories of the urbs setup
@@ -124,7 +124,7 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * onclick function for the #newTrafo_dataButton
+     * onclick function for the #newTrafo_dataButton that
      * opens the form for creating a new ront
      */
     function openNewTrafoDataForm() {
@@ -132,7 +132,7 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * onclick function for the cancel and accept button of the #urbsNewTrafoDataPopupForm
+     * onclick function for the cancel and accept button of the #urbsNewTrafoDataPopupForm that
      * closes the form for creating a new ront and resets its input field
      */
     function closeNewTrafoDataForm() {
@@ -141,7 +141,7 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * onchange method for the #newTrafoDataTextInput
+     * onchange method for the #newTrafoDataTextInput that
      * checks that the sn_mva value the user puts in is valid and that a value has been given at all before 
      * enabling the accept button of the creation form
      * 
@@ -157,7 +157,7 @@ var maptool_urbs_trans = function() {
     }
 
     /**
-     * onclick function for the #newTrafoDataCreateButton of the new trafo data form
+     * onclick function for the #newTrafoDataCreateButton of the new trafo data form that
      * creates a new ront and adds it to the TransmissionObject, trafo_data editor id select
      * 
      * @param {string} sn_mva 

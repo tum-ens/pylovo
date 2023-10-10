@@ -85,8 +85,8 @@ var maptool_urbs_demand = function () {
   let charts = [];
   
   /**
-   * TODO: switch demand data with Object.keys(demand_data).length - 1 as parameter, no need to pass entire object
-   * creates checkboxes for every profile of a demand type and attaches them to the correct panel in the demand editor div
+   * TODO: switch demand data with Object.keys(demand_data).length - 1 as parameter, no need to pass entire object. 
+   * Creates checkboxes for every profile of a demand type and attaches them to the correct panel in the demand editor div
    * 
    * @param {dict} demand_data 
    * @param {string} demandName key for getting html div container and setting checkbox onclick functions

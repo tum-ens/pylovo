@@ -6,7 +6,7 @@ var maptool_add_delete = function() {
     let featuresToDeleteList = [];
 
     /**
-     * onclick function for the add feature buttons in the GUI
+     * onclick function for the add feature buttons in the GUI that
      * switches leaflet map mode to draw and makes sure we place down the correct marker type
      * 
      * @param {string} feature name of the network feature type we want to create
@@ -49,8 +49,6 @@ var maptool_add_delete = function() {
         document.getElementById("deleteConnectedBusFeaturesForm").style.display = "none";
       }
     
-    //TODO: This is awful. Change this
-    //TODO: Change featuresToDeleteList to dict. Why did I even make this a list in the first place? 
     /**
      * if you try to delete a bus, the function tries to find all connected features (lines, ext_grids, trafos) and marks them as about to be deleted as well 
      * 

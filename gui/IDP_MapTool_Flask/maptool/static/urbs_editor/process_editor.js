@@ -147,7 +147,7 @@ var maptool_urbs_process = function() {
     }
     /**
      * called at runtime to make sure only the correct elements are displayed in the pro_com_prop list. All options whose names are keys in target_properties
-     * are made visible, all others are hidden
+     * are made visible, all others are hidden. 
      * The pro_com_propSelect element technically contains options for all commodities added to all processes, but we hide all options not added to the
      * currently selected process
      * 
@@ -194,8 +194,8 @@ var maptool_urbs_process = function() {
     }
 
     /**
-     * onchange function for the input fields of the process creation popup form
-     * makes sure "Create Process" button is disabled until all inputs are set correctly 
+     * onchange function for the input fields of the process creation popup form that
+     * makes sure the "Create Process" button is disabled until all inputs are set correctly 
      * 
      * @param {HTML_select_element} sel the commodity select element
      */
@@ -220,7 +220,7 @@ var maptool_urbs_process = function() {
     }
 
     /**
-     * onchange function for the input fields of the popup form for adding a commodity to a process
+     * onchange function for the input fields of the popup form for adding a commodity to a process that
      * makes sure "Create Process" button is disabled until all inputs are set correctly 
      * 
      * @param {HTML_select_element} sel the commodity select element
@@ -307,7 +307,7 @@ var maptool_urbs_process = function() {
 
 
     /**
-     *  adds process commodity to the pro_com secondary feature editor and calls function creating a new commodity, if the user chooses to create an entirely
+     * adds process commodity to the pro_com secondary feature editor and calls function creating a new commodity, if the user chooses to create an entirely
      * new commodity to attach to the process
      */
     function addCommodityToProcess() {

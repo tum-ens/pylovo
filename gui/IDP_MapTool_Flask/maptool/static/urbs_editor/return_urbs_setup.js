@@ -125,6 +125,7 @@ var maptool_return_urbs =  function() {
 
     /**
      * function telling the backend to run the pandapower2urbs script once all relevant data has been returned
+     * 
      * @returns Promise signifying that the data was correctly received and processed in the backend
      */
     function runPdp2Urbs() {

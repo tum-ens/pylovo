@@ -14,8 +14,8 @@ from maptool.config import *
 @bp.route('/urbs_results', methods=['GET', 'POST'])
 def urbs_results_setup():
     """
-    called when the urbs results window is first opened
-    finds the last changed directory in the urbs results directory, which we can assume to be the directory that has the results of our urbs run
+    called when the urbs results window is first opened. 
+    Finds the last changed directory in the urbs results directory, which we can assume to be the directory that has the results of our urbs run
 
     :return: path to the html file for the current window
     :rtype: string
@@ -29,8 +29,8 @@ def urbs_results_setup():
 @bp.route('/urbs_results/editableNetwork', methods=['GET', 'POST'])
 def urbs_resultsNetwork():
     """
-    on opening of the urbs results view the js code requests full information of the previously selected network
-    we return the network with previously chosen and session-dependant plz, kcid and bcid with all features
+    on opening of the urbs results view the js code requests full information of the previously selected network. 
+    We return the network with previously chosen and session-dependant plz, kcid and bcid with all features
 
     :return: a json filled with geoJSON featureCollections created from the network selected in previous steps
     :rtype: dict

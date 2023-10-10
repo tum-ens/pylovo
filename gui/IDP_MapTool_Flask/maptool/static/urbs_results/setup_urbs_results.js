@@ -33,6 +33,7 @@ var maptool_urbs_res_setup = function (){
 
     /**
      * aggregate function calling the actual functions that place the feature sgeojsons on the leaflet map
+     * 
      * @param {dict} ppdata grid data
      */
     function displayUrbsNet(ppdata) {
@@ -47,8 +48,8 @@ var maptool_urbs_res_setup = function (){
     }
 
 /**
- * function that adds a FeatureCollection to the leaflet map
- * we set styles and onclick functions here and save references to each added feature in the NetworkObject
+ * function that adds a FeatureCollection to the leaflet map. 
+ * We set styles and onclick functions here and save references to each added feature in the NetworkObject
  * lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function
  * 
  * @param {boolean} isLines 
@@ -153,7 +154,7 @@ var maptool_urbs_res_setup = function (){
     }
 
     /**
-     * onchange method for the feature lists in the GUI window
+     * onchange method for the feature lists in the GUI window that 
      * picks the corresponding map object for the selected list element to execute the clickonmarker function on
      * 
      * @param {HTML_select_object} sel reference to the select element that just changed
@@ -168,6 +169,7 @@ var maptool_urbs_res_setup = function (){
 
     /**
      * resets the style of the previously selected feature
+     * 
      * @param {HTML_element} target the map object whose style we want to change
      * @param {string} feature      the name of the map object type
      */
@@ -195,6 +197,7 @@ var maptool_urbs_res_setup = function (){
     /**
      * When clicking on a map element or making a selection from a list, 
      * we highlight the relevant element, open the Editor window and fill its input fields with the relevant values
+     * 
      * @param {HTML_element} target the object that has been interacted with on the map. Null in case we have clicked on a list element
      * @param {string} feature      key for accessing f.e. featurelist in the NetworkObject
      */
@@ -260,6 +263,7 @@ var maptool_urbs_res_setup = function (){
 
     /**
      * sends the feature type and the name of the feature we want to generate a plot for to the backend
+     * 
      * @param {string} feature      to distinguish what type of plot we want to generate in the backend
      * @param {string} targetName   key needed to access data for a specific site in the hdf5 file
      */
@@ -296,8 +300,9 @@ var maptool_urbs_res_setup = function (){
     }
 
     /**
-     * makes sure inline script is executed once we add a plot to the GUI, which makes the plot visible and interactible
+     * makes sure inline script is executed once we add a plot to the GUI, which makes the plot visible and interactible, code
      * from  https://stackoverflow.com/questions/2592092/executing-script-elements-inserted-with-innerhtml
+     * 
      * @param {HTML_element} elm   html div element we want to add the plot to
      * @param {*} html             html code we want to add to the div 
      */

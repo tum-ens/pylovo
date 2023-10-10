@@ -6,8 +6,8 @@ var maptool_urbs_buildings = function () {
     }
     
     /**
-     * called during setup of the urbs editor window
-     * Fills the buildingsPropertiesList with dicts containing rudimentary information about each building
+     * called during setup of the urbs editor window. 
+     * Fills the buildingsPropertiesList with dicts containing rudimentary information about each building. 
      * Properties of a building are determined by the UrbsPropertiesJSON and set to null initially, while names and coordinates are extracted from the corresponding buses
      * 
      * @param {dict} UrbsPropertiesJSON contains information about all inputs for all urbs setup features
@@ -26,8 +26,8 @@ var maptool_urbs_buildings = function () {
     }
     
     /**
-     * onclick method for bus circlemarkers on the map and onchange method of the buildings list element
-     * resets the style of the previously selected bus and fills all editor input fields with the correct values
+     * onclick method for bus circlemarkers on the map and onchange method of the buildings list element. 
+     * Resets the style of the previously selected bus and fills all editor input fields with the correct values
      * 
      * @param {event_target_object} target the map object that has been selected
      */
@@ -56,8 +56,8 @@ var maptool_urbs_buildings = function () {
     }
 
     /**
-     * onchange function for all building editor input fields 
-     * writes changed value back to the relevant entry in the BuildingsObject
+     * onchange function for all building editor input fields.
+     * Writes changed value back to the relevant entry in the BuildingsObject
      * 
      * @param {event_target_object} target the html editor element that has been changed
      */

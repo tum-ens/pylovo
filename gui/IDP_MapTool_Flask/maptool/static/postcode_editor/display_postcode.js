@@ -50,7 +50,7 @@ var maptool_display_postcode = function (){
         });
 
     /**
-     * onclick function for submit plz button
+     * onclick function for submit plz button that
      * returns all versions of network associated with the passed id and generates the radiobuttons for the version select gui element
      */
     function selectVersionOfPostalCodeNetwork() {
@@ -145,7 +145,7 @@ var maptool_display_postcode = function (){
 
     /**
      * if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file, 
-     * which we display on the map
+     * which we display on the map. 
      * We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects
      * @param {int} plz the 5 or 6 digit ID with which a grid is associated
      */
@@ -176,8 +176,8 @@ var maptool_display_postcode = function (){
 
     /**
      * if the user wants to generate networks from a newly selected area shape, we initially return the shape the user has selected and receive a response
-     * containing the building shapes contained in the selected area
-     * We check res and oth buildings for emptiness and display them on the map
+     * containing the building shapes contained in the selected area. 
+     * We check res and oth buildings for emptiness and display them on the map. 
      * We also change the Select Area button to Generate Network button
      * 
      * @param {HTML_button_element} btn 
@@ -231,7 +231,7 @@ var maptool_display_postcode = function (){
     }
 
     /**
-     * onclick function for the Generate Network button
+     * onclick function for the Generate Network button that
      * makes the area version input GUI visible and adds a listener to it that makes sure the form can only be submitted if the inputs are correct
      */
     function openAreaPopup() {
@@ -245,8 +245,8 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * onclick function for the Generate Network button within the area version input GUI
-     * at the moment it only returns the new id and gives an error warning, if the selected version already exists for a given ID
+     * onclick function for the Generate Network button within the area version input GUI. 
+     * At the moment it only returns the new id and gives an error warning, if the selected version already exists for a given ID
      * It also closes the GUI form
      */
     function returnSelectedBuildings() {
@@ -290,8 +290,8 @@ var maptool_display_postcode = function (){
     
     
     /**
-     * adds all lines of a network to a new layer and displays it on the map
-     * further defines several inner functions to handle click, mouseover and mouseout functionality and attaches them to the layer
+     * adds all lines of a network to a new layer and displays it on the map. 
+     * Further defines several inner functions to handle click, mouseover and mouseout functionality and attaches them to the layer. 
      * We only display the lines of all networks for performance reasons, showing buses adds too many nodes.
      * 
      * @param {int} kcid                    the k cluster id of a network
@@ -375,8 +375,8 @@ var maptool_display_postcode = function (){
     }
     
     /**
-     * onclick function for the network select html element
-     * makes sure a network selected in the html select element is highlighted on the map by manually triggering a click event for it
+     * onclick function for the network select html element. 
+     * Makes sure a network selected in the html select element is highlighted on the map by manually triggering a click event for it
      * 
      * @param {HTML_select_element} sel reference to the network select html element
      */

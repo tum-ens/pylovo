@@ -45,8 +45,8 @@ def urbsSetupProperties():
 @bp.route('/urbs/editableNetwork', methods=['GET', 'POST'])
 def retrieveEditableNetwork():
     """
-    on opening of the urbs setup view the js code requests full information of the previously selected network
-    we return the network with previously chosen and session-dependant plz, kcid and bcid with all features
+    on opening of the urbs setup view the js code requests full information of the previously selected network. 
+    We return the network with previously chosen and session-dependant plz, kcid and bcid with all features
 
     :return: a json filled with geoJSON featureCollections created from the network selected in previous steps
     :rtype: dict
@@ -198,8 +198,8 @@ def timevareffProfiles():
 
 def find(s, ch):
     """
-    help function that returns all the index positions of a char in a list
-    used to find which flags were set to 1 in the demand, supim, timevareff checkbox editors
+    help function that returns all the index positions of a char in a list. 
+    Used to find which flags were set to 1 in the demand, supim, timevareff checkbox editors
 
     :param s: string of 0s and 1s symbolizing the chosen row of a given profile
     :type s: string
@@ -245,8 +245,8 @@ def createDFromCheckboxes (json_data, columns):
 @bp.route('/urbs/demand_csv_setup', methods=['GET', 'POST'])
 def createPdp2UrbsDemandCSV():
     """
-    the frontend returns the aggregated profiles the user chose for each load bus and each type of demand
-    the returned datastructure is changed into a csv that fits the demanded format
+    the frontend returns the aggregated profiles the user chose for each load bus and each type of demand. 
+    The returned datastructure is changed into a csv that fits the demanded format
 
     :return: response indicating successful data transfer
     :rtype: JavaScript Fetch API Response
@@ -463,8 +463,8 @@ def createPdp2StorageCSV():
 @bp.route('/urbs/supim_csv_setup', methods=['GET', 'POST'])
 def createPdp2SupimCSV():
     """
-    the frontend returns the aggregated profiles the user chose for each load bus and each type of supim
-    the returned datastructure is changed into a csv that fits the demanded format
+    the frontend returns the aggregated profiles the user chose for each load bus and each type of supim. 
+    The returned datastructure is changed into a csv that fits the demanded format
 
     :return: response indicating successful data transfer
     :rtype: JavaScript Fetch API Response
@@ -478,8 +478,8 @@ def createPdp2SupimCSV():
 @bp.route('/urbs/timevareff_csv_setup', methods=['GET', 'POST'])
 def createPdp2TimevareffCSV():
     """
-    the frontend returns the aggregated profiles the user chose for each load bus and each type of timevareff
-    the returned datastructure is changed into a csv that fits the demanded format
+    the frontend returns the aggregated profiles the user chose for each load bus and each type of timevareff. 
+    The returned datastructure is changed into a csv that fits the demanded format
 
     :return: response indicating successful data transfer
     :rtype: JavaScript Fetch API Response
@@ -515,16 +515,16 @@ def runPdp2Urbs():
     :return: response indicating successful data transfer
     :rtype: JavaScript Fetch API Response
     """
-    # pp2u.convertPandapower2Urbs()
-    # cmd = f'cd {URBS_RUN_FILE_PATH} && conda run -n {URBS_CONDA_ENV_NAME} python.exe run_automatedoutput.py'
-    # urbs_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True)
-    # for stdout_line in iter(urbs_process.stdout.readline, ""):
-    #     yield stdout_line 
-    # urbs_process.stdout.close()
-    # return_code = urbs_process.wait()
-    # if return_code:
-    #     raise subprocess.CalledProcessError(return_code, cmd)
-    # print(f"Switched to conda environment: {URBS_CONDA_ENV_NAME}")
+    pp2u.convertPandapower2Urbs()
+    cmd = f'cd {URBS_RUN_FILE_PATH} && conda run -n {URBS_CONDA_ENV_NAME} python.exe run_automatedoutput.py'
+    urbs_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True)
+    for stdout_line in iter(urbs_process.stdout.readline, ""):
+        yield stdout_line 
+    urbs_process.stdout.close()
+    return_code = urbs_process.wait()
+    if return_code:
+        raise subprocess.CalledProcessError(return_code, cmd)
+    print(f"Switched to conda environment: {URBS_CONDA_ENV_NAME}")
     
     return 'Success', 200
 

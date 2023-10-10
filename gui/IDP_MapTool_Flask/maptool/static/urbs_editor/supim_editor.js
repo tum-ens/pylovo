@@ -35,7 +35,7 @@ var maptool_urbs_supim = function() {
     })
   }
 
-  /** TODO: Generalize this function
+  /**
    * generates html elements for the checkboxes
    * 
    * @param {list} data  list containing all possible time series of a profile, could be swapped out with just length value tbh
@@ -93,7 +93,6 @@ var maptool_urbs_supim = function() {
   let charts = [];
   
   /**
-   * TODO: generalize function or at least rename it (needs to generalize select Id and FeatureObject)
    * removes or adds a graph to the demand chart and marks whether the checkbox is set in the DemandObject
    * 
    * @param {HTML_element} checkbox checkbox html element whose onchange event triggered the function calls
