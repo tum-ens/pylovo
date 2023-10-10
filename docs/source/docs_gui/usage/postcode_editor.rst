@@ -29,9 +29,7 @@ Area selection
 Building selection & network generation
 ----------------------------------------
 .. image:: ../../images/usage/postcode_editor/maptool_view_area_selection_buildings_explained.png
-    :width: 45%
 .. image:: ../../images/usage/postcode_editor/maptool_view_area_selection_buildings_explained_delete.png
-    :width: 45%
 
 | Once the user presses the **Select Area** button, all buildings within the selected area will be displayed on the map. The user can now delete
   individual buildings by clicking on them and then clicking the **delete Building** button in the popup window.
@@ -41,9 +39,7 @@ Network generation & selection by ID
 ====================================
 
 .. image:: ../../images/usage/postcode_editor/maptool_view_id_selection_version_explained.png
-    :width: 45%
 .. image:: ../../images/usage/postcode_editor/maptool_view_id_selection_explained.png
-    :width: 45%
 
 | If a user instead wants to work on a previously generated network, they can do so by supplying the associated ID code.
   After entering it into the ID selection field (3.1) and pressing the **Submit** button (3.2), the tool will ask the user to select an available

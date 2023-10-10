@@ -31,7 +31,7 @@ and infrastructure parameters, etc. The result outputs a feasible solution of ag
 within the research scope and automatically analyses the important grid statistics such that users to evaluate the
 general grid properties.
 
-#. This tool focuses far only on distribution grid level. The result is presented at a collection of local grids
+#. This tool focuses only on the distribution grid level so far. The result is presented at a collection of local grids
    where the transformer is connected to a constant external grid as the transmission level conjunction. For
    consumers, over-sized loads could be supplied directly by medium voltage level grid or equiped with individual
    transformers. Those loads are regarded as 'large consumers' and would not be presented in final result graphics (but
