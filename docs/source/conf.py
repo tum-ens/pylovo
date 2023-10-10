@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'installation'
+project = 'pylovo'
 copyright = '2023, Daniel Baur'
 author = 'Daniel Baur'
 release = '2023'
@@ -38,3 +38,18 @@ exclude_patterns = []
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+
+latex_elements = {
+# The paper size ('letterpaper' or 'a4paper').
+    'papersize': 'letterpaper',
+
+# The font size ('10pt', '11pt' or '12pt').
+    'pointsize': '11pt',
+
+# Additional stuff for the LaTeX preamble.
+    'preamble': r'''
+        \usepackage{charter}
+        \usepackage[defaultsans]{lato}
+        \usepackage{inconsolata}
+    ''',
+}

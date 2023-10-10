@@ -1,7 +1,14 @@
 .. pylovo gui documentation master file, created by sphinx-quickstart on Wed Jul 12 12:49:48 2023
 
-Foreword
-********
+.. toctree::
+    :maxdepth: 2
+    
+    docs_pylovo/installation
+    docs_gui/index
+
+
+pylovo (python tool for low-voltage distribution grid generation)
+******************************************************************
 
 | Our climate goals and current political events more than ever demonstrate the need for transitioning towards locally sourced, 
   environmentally less harmful heating solutions. 
@@ -22,8 +29,8 @@ Foreword
   of the optimization of said grids.
 
 
-pylovo (python tool for low-voltage distribution grid generation)
-******************************************************************
+Preamble
+========
 
 This tool provides a comprehensive public-data-based module to generate synthetic distribution grid for a
 freely-selected research area. The main data input is the buildings, roads and transformers geographic data obtained
@@ -32,9 +39,6 @@ research areas), consumer categories (to estimate loading performances of differ
 and infrastructure parameters, etc. The result outputs a feasible solution of aggregated distribution grid networks
 within the research scope and automatically analyses the important grid statistics such that users to evaluate the
 general grid properties.
-
-Preamble
-========
 
 #. This tool focuses far only on distribution grid level. The result is presented at a collection of local grids
    where the transformer is connected to a constant external grid as the transmission level conjunction. For
@@ -105,9 +109,3 @@ Repository structure
    ├── main_constructor.py :                       Sample script to construct a syngrid database
    ├── main_grid_generation.py :                   Sample script to generate grid in a region
    └── setup.py :                                  Python package configuration
-
-.. toctree::
-    :maxdepth: 2
-
-    docs_pylovo/installation
-    docs_gui/index
