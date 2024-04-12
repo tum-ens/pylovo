@@ -3,9 +3,9 @@ import os
 # Database connection configuration only for TUM members with LRZ access
 DBNAME = "pylovo_db"
 USER = "pylovo"
-HOST = "10.162.28.8"
-PORT = "5432"
-PASSWORD = "pylovo"
+PASSWORD = "ens"
+HOST = "localhost"
+PORT = "1111"
 
 # Directory where the result csv and json files be saved
 RESULT_DIR = f"{os.getcwd()}\\results"
@@ -18,6 +18,11 @@ RESULT_DIR = f"{os.getcwd()}\\results"
 #     {"path": ".\\raw_data\\buildings\\Oth_<ags_number>.shp", "table_name": "oth"},
 #     {"path": ".\\raw_data\\<substation_region_name>.geojson", "table_name": "transformers"},
 # ]
+OGR_FILE_LIST = [
+    {"path": ".\\raw_data\\Res_9174115\\Res_9174115.shp", "table_name": "res"},
+    {"path": ".\\raw_data\\Oth_9174115\\Oth_9174115.shp", "table_name": "oth"}
+]
+
 
 CSV_FILE_LIST = [
     {"path": ".\\raw_data\\betriebsmittel.csv", "table_name": "betriebsmittel"},

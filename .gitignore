@@ -1,8 +1,10 @@
 .idea/
 __pycache__/
+csv/
 syngrid.egg-info/
 examples/.ipynb_checkpoints/
 results/figures/
 results/grids/
 results/grid_parameters/
-classification
+examples/results/
+site/
