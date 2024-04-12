@@ -1,4 +1,4 @@
-"""import time
+import time
 
 import geopandas as gpd
 import numpy as np
@@ -9,9 +9,9 @@ MIN_DISTANCE_BETWEEN_TRAFOS = 8
 VOLTAGE_THRESHOLD = 110000
 EPSG = 32633
 
-SUBSTATIONS_GEOJSON = 'transformer_query_1\\substations_bayern.geojson'
-SHOPPING_MALL_GEOJSON = 'transformer_query_1\\shopping_mall_bayern.geojson'
-OUTPUT_GEOJSON = 'transformer_query_1\\substations_bayern_processed.geojson'
+SUBSTATIONS_GEOJSON = './raw_data/transformer_query_1/substations_bayern.geojson'
+SHOPPING_MALL_GEOJSON = './raw_data/transformer_query_1/shopping_mall_bayern.geojson'
+OUTPUT_GEOJSON = './raw_data/transformer_query_1/substations_bayern_processed.geojson'
 
 # SUBSTATIONS_GEOJSON = 'substations_muc.geojson'
 # SHOPPING_MALL_GEOJSON = 'shopping_mall_muc.geojson'
@@ -60,7 +60,7 @@ distance_matrix = gdf_substations['centroid'].apply(lambda c: gdf_substations['c
 distance_matrix = distance_matrix.where(np.triu(np.ones(distance_matrix.shape)).astype(bool))
 # set diagonal to nan
 np.fill_diagonal(distance_matrix.values, float('nan'))
-distance_matrix = distance_matrix[(distance_matrix < MIN_DISTANCE_BETWEEN_TRAFOS).any(1)]
+distance_matrix = distance_matrix[(distance_matrix < MIN_DISTANCE_BETWEEN_TRAFOS).any(axis=1)]
 index_list = list(distance_matrix.index)
 gdf_substations.drop(index=index_list, inplace=True)
 print('After step 4:')
@@ -89,12 +89,13 @@ gdf_substations.drop('@id', axis=1, inplace=True)
 # export geojson
 gdf_substations.to_file(OUTPUT_GEOJSON, driver='GeoJSON')
 print("--- %s seconds ---" % (time.time() - start_time))
-"""
+
 # import the transformers onto the database
+import os
 from syngrid.SyngridDatabaseConstructor import SyngridDatabaseConstructor
 
 trafo_file_list = [
-    {"path": ".\\transformer_query_1\\substations_bayern_processed.geojson", "table_name": "transformers"},
+    {"path": os.path.join('.', 'transformer_query_1', 'substations_bayern_processed.geojson'), "table_name": "transformers"},
 ]
 sgc = SyngridDatabaseConstructor()
 sgc.ogr_to_db(trafo_file_list)

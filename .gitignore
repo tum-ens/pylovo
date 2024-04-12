@@ -1,10 +1,25 @@
+.env
 .idea/
 __pycache__/
-csv/
-syngrid.egg-info/
-examples/.ipynb_checkpoints/
-results/figures/
-results/grids/
-results/grid_parameters/
-examples/results/
+raw_data/buildings
+raw_data/public_2po_4pgr.sql
+results/*
+*/results/*
+classification/results
+executable_scripts/results
 site/
+syngrid/config_version.py
+examples/.ipynb_checkpoints/
+docs/source/images/dev/sequence/pylovo_sequence_postcode_id.clip
+docs/source/images/dev/sequence/pylovo_sequence_network.clip
+docs/build/*
+docs/meta/*
+# for macOS users
+*.DS_Store
+# when setup.py is run
+pylovo.egg-info/*
+syngrid.egg-info/
+# logs 
+log.txt
+#gui generated files
+pandapower2urbs*

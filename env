@@ -1,0 +1,5 @@
+DBNAME = "pylovo_db_1_0_0"
+USER = "pylovo"
+HOST = "10.162.28.8"
+PORT = "5555"
+PASSWORD = "ensdbpylovorm3"

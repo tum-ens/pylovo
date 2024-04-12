@@ -4,6 +4,7 @@ import sys
 
 import pandas as pd
 
+from syngrid.GridGenerator import GridGenerator
 from syngrid.SyngridDatabaseConstructor import SyngridDatabaseConstructor
 
 
@@ -20,7 +21,7 @@ def create_list_of_shp_files(files_to_add, path_to_this_folder):
         else:
             raise ValueError("shape file cannot be assigned to res or oth")
         path = file
-        path = path.replace(path_to_this_folder, ".\\raw_data")
+        path = path.replace(path_to_this_folder, "./raw_data")  # ".\\raw_data")  #
         ogr_ls_dict.append({"path": path, "table_name": table_name})
     if ogr_ls_dict:
         return ogr_ls_dict
@@ -28,25 +29,34 @@ def create_list_of_shp_files(files_to_add, path_to_this_folder):
         raise Exception("Shapefiles of buildings for requested PLZ are not available.")
 
 
-def import_buildings_for_single_plz(plz, plz_regiostar):
+def import_buildings_for_single_plz(gg: GridGenerator) -> None:  # , plz_regiostar):
+    """imports building data to db for plz:\n
+    * PLZ is matched with AGS\n
+    * file name is generated\n
+    * buildings files are imported to database with SyngridDatabaseConstructor\n
+    * AGS is added to AGS as not to import same building data again
+
+    :param gg: Grid generator object to get the plz and functions from
+    :type plz: string
     """
-    imports building data to db for plz
-    """
+    # get AGS for PLZ
+    pg = gg.pgr
+    ags_to_add = pg.get_municipal_register_for_plz(plz=gg.plz)
+
     # check whether plz exists
-    if int(plz) not in plz_regiostar['plz'].values:
+    if ags_to_add.empty:
         raise Exception("PLZ does not exist in register")
     # get name and ags for the desired plz
-    ags_to_add = plz_regiostar[plz_regiostar['plz'] == int(plz)]
-    print('LV grids will be generated for', ags_to_add.iloc[0]['plz'], ags_to_add.iloc[0]['name'])
+    gg.logger.info(f"LV grids will be generated for {ags_to_add.iloc[0]['plz']} {ags_to_add.iloc[0]['name_city']}")
     ags = ags_to_add.iloc[0]['ags']
-    print('It´s AGS is:', ags)
+    gg.logger.info(f'It´s AGS is:{ags}')
 
     # check in ags_log if ags is already on the database
-    df_log = pd.read_csv('raw_data\\ags_log.csv', index_col=0)
+    df_log = pg.get_ags_log()
     if ags in df_log['ags'].values:
-        print('Buildings of AGS are already on the pylovo database.')
+        gg.logger.info('Buildings of AGS are already on the pylovo database.')
     else:
-        print('Buildings are not yet on the database and will be added to pylovo database.')
+        gg.logger.info('Buildings are not yet on the database and will be added to pylovo database.')
 
         # absolute path to search all shape files inside a subfolders
         path_to_this_folder = os.path.dirname(__file__)
@@ -66,15 +76,11 @@ def import_buildings_for_single_plz(plz, plz_regiostar):
         ogr_ls_dict = create_list_of_shp_files(files_to_add, path_to_this_folder)
 
         # adding the buildings to the database
-        sgc = SyngridDatabaseConstructor()
+        sgc = SyngridDatabaseConstructor(pgr=pg)
         sgc.ogr_to_db(ogr_ls_dict)
 
-        # adding the added ags to the log file
-        df_new_ags = pd.DataFrame(columns=['ags'])
-        df_new_ags.at[0, 'ags'] = ags
-        df_log = pd.concat([df_log, df_new_ags])
-        df_log.reset_index(inplace=True, drop=True)
-        df_log.to_csv('raw_data\\ags_log.csv')
+        # adding the added ags to the log table
+        pg.write_ags_log(ags)
 
 
 def import_buildings_for_multiple_plz(sample_plz):
@@ -95,7 +101,9 @@ def import_buildings_for_multiple_plz(sample_plz):
     ags_to_add = list(set(ags_to_add))  # dropping duplicates
 
     # check in ags_log if any ags are already on the database
-    df_log = pd.read_csv('raw_data\\ags_log.csv', index_col=0)
+    gg = GridGenerator(plz='80639')
+    pg = gg.pgr
+    df_log = pg.get_ags_log()
     log_ags_list = df_log['ags'].values.tolist()
     ags_to_add = list(set(ags_to_add).difference(log_ags_list))  # dropping already imported ags
     ags_to_add = list(map(str, ags_to_add))
@@ -116,8 +124,5 @@ def import_buildings_for_multiple_plz(sample_plz):
     sgc.ogr_to_db(ogr_ls_dict)
 
     # adding the added ags to the log file
-    new_ags = {'ags': ags_to_add}
-    df_new_ags = pd.DataFrame(new_ags)
-    df_log = pd.concat([df_log, df_new_ags])
-    df_log.reset_index(inplace=True, drop=True)
-    df_log.to_csv('raw_data\\ags_log.csv')
+    for ags in ags_to_add:
+        pg.write_ags_log(int(ags))

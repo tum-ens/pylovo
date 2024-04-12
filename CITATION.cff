@@ -1,0 +1,18 @@
+cff-version: 1.0.0
+message: "If you use this software, please cite it using these metadata."
+authors:
+  - family-names: "Reveron Baecker"
+    given-names: "Beneharo"
+    alias: "@bereba"
+    affiliation: "TUM"
+    orcid: "https://orcid.org/0000-0001-6560-134X"
+  - family-names: "Candas"
+    given-names: "Soner"
+    alias: "@sonercandas"
+    affiliation: "gridX"
+title: "pylovo"
+type: software
+license: MIT
+version: 1.0.0
+date-released: 2023-03-26
+url: "https://github.com/rl-institut/super-repo/"

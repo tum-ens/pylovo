@@ -1,0 +1,8 @@
+.cache/
+.idea/
+**/__pycache__
+*.pyc
+GV100AD*.ASC
+Datensatzbeschreibung_GV100AD.pdf
+LIESMICH_GV100.txt
+copyright_GV100.txt

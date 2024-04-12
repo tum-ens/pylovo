@@ -1,6 +1,7 @@
 import json
 import math
 import time
+from typing import *
 from decimal import *
 
 import geopandas as gpd
@@ -21,25 +22,42 @@ class PgReaderWriter:
     """
     This class is the interface with the database. Functions communicating with the database
     are listed under this class.
+    Use this class to interact with the database and to utilize connection resources.
     """
 
     # Konstruktor
-    def __init__(self):
-        self.conn = pg.connect(
-            database=DBNAME, user=USER, password=PASSWORD, host=HOST, port=PORT
+    def __init__(
+            self, dbname=DBNAME, user=USER, pw=PASSWORD, host=HOST, port=PORT, **kwargs
+        ):
+        try:
+            self.conn = pg.connect(
+                database=dbname, user=user, password=pw, host=host, port=port
+            )
+            self.cur = self.conn.cursor()
+            self.db_path = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{dbname}"
+            self.sqla_engine = create_engine(self.db_path)
+        except pg.OperationalError as err:
+            self.logger.warning(
+                f"Connecting to {dbname} was not successful. Make sure, that you have established the SSH "
+                f"connection with correct port mapping."
+            )
+            raise err
+
+        self.logger = utils.create_logger(
+            "PgReaderWriter", log_file=kwargs.get("log_file", "log.txt"), log_level=LOG_LEVEL
         )
-        self.cur = self.conn.cursor()
-        self.db_path = f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}"
-        self.sqla_engine = create_engine(self.db_path)
-        print("PgReaderWriter is constructed. ")
+
+        self.logger.debug(f"PgReaderWriter is constructed and connected to {self.db_path}.")
 
     # Dekonstruktor
     def __del__(self):
         self.cur.close()
         self.conn.close()
-        print("PgReaderWriter closed.")
 
-    def getConsumerCategories(self):
+        if hasattr(self, 'logger'):
+            print("PgReaderWriter closed.")
+
+    def get_consumer_categories(self):
         """
         Returns: A dataframe with self-defined consumer categories and typical values
         """
@@ -47,10 +65,10 @@ class PgReaderWriter:
         cc_df = pd.read_sql_query(query, self.conn)
         cc_df.set_index("definition", drop=False, inplace=True)
         cc_df.sort_index(inplace=True)
-        print("Consumer categories fetched.")
+        self.logger.debug("Consumer categories fetched.")
         return cc_df
 
-    def getSiedlungstypFromPlz(self, plz) -> int:
+    def get_siedlungstyp_from_plz(self, plz) -> int:
         """
         Args:
             plz:
@@ -64,7 +82,7 @@ class PgReaderWriter:
 
         return siedlungstyp
 
-    def getTransformatorData(self, siedlungstyp):  # TODO
+    def get_transformator_data(self, siedlungstyp : int = None) -> tuple[np.array, dict]:
         """
         Args:
             siedlungstyp: 1=Stadt, 2=Dorf, 3=Land
@@ -91,12 +109,12 @@ class PgReaderWriter:
         capacities = [i[0] for i in data]
         transformer2cost = {i[0]: i[1] for i in data}
 
-        print("Transformer data fetched.")
+        self.logger.debug("Transformer data fetched.")
         return np.array(capacities), transformer2cost
 
-    def getBuildingsFromKc(
+    def get_buildings_from_kc(
             self,
-            kcid,
+            kcid : int,
     ) -> pd.DataFrame:
         """
         Args:
@@ -105,27 +123,27 @@ class PgReaderWriter:
         """
         buildings_query = """SELECT * FROM public.buildings_tem 
                         WHERE connection_point IS NOT NULL
-                        AND k_mean_cluster = %(k)s
-                        AND in_building_cluster ISNULL;"""
+                        AND kcid = %(k)s
+                        AND bcid ISNULL;"""
         params = {"k": kcid}
 
         buildings_df = pd.read_sql_query(buildings_query, con=self.conn, params=params)
         buildings_df.set_index("vertice_id", drop=False, inplace=True)
         buildings_df.sort_index(inplace=True)
 
-        print(
+        self.logger.debug(
             f"Building data fetched. {len(buildings_df)} buildings from kc={kcid} ..."
         )
 
         return buildings_df
 
-    def getBuildingsFromBc(self, plz, kcid, bcid) -> pd.DataFrame:
+    def get_buildings_from_bc(self, plz : int, kcid : int, bcid : int) -> pd.DataFrame:
 
         buildings_query = """SELECT * FROM buildings_tem
                         WHERE type != 'Transformer'
-                        AND in_loadarea_cluster = %(p)s
-                        AND in_building_cluster = %(b)s
-                        AND k_mean_cluster = %(k)s;"""
+                        AND plz = %(p)s
+                        AND bcid = %(b)s
+                        AND kcid = %(k)s;"""
         params = {"p": plz, "b": bcid, "k": kcid}
 
         buildings_df = pd.read_sql_query(buildings_query, con=self.conn, params=params)
@@ -134,16 +152,18 @@ class PgReaderWriter:
         # dropping duplicate indices
         # buildings_df = buildings_df[~buildings_df.index.duplicated(keep='first')]
 
-        print(f"{len(buildings_df)}Building data fetched. ...")
+        self.logger.debug(f"{len(buildings_df)} building data fetched.")
 
         return buildings_df
 
-    def prepareVerticesList(self, plz, kcid, bcid):
-        vertices_dict, ont_vertice = self.getVerticesFromBcid(plz, kcid, bcid)
+    def prepare_vertices_list(
+            self, plz : int, kcid : int, bcid : int
+        ) -> tuple[dict, int, list, pd.DataFrame, pd.DataFrame, list, list]:
+        vertices_dict, ont_vertice = self.get_vertices_from_bcid(plz, kcid, bcid)
         vertices_list = list(vertices_dict.keys())
 
-        buildings_df = self.getBuildingsFromBc(plz, kcid, bcid)
-        consumer_df = self.getConsumerCategories()
+        buildings_df = self.get_buildings_from_bc(plz, kcid, bcid)
+        consumer_df = self.get_consumer_categories()
         consumer_list = buildings_df.vertice_id.to_list()
         consumer_list = list(dict.fromkeys(consumer_list))  # removing duplicates
 
@@ -159,7 +179,9 @@ class PgReaderWriter:
             connection_nodes,
         )
 
-    def getConsumerSimultaneousLoadDict(self, utils, consumer_list, buildings_df):
+    def get_consumer_simultaneous_load_dict(
+            self, consumer_list : list, buildings_df : pd.DataFrame
+        ) -> tuple[dict, dict, dict]:
         Pd = {
             consumer: 0 for consumer in consumer_list
         }  # dict of all vertices in bc, 0 as default
@@ -179,7 +201,7 @@ class PgReaderWriter:
 
         return Pd, Load_units, Load_type
 
-    def createCableStdType(self, net):
+    def create_cable_std_type(self, net : pp.pandapowerNet) -> None:
         pp.create_std_type(
             net,
             {
@@ -254,8 +276,8 @@ class PgReaderWriter:
         )
         return None
 
-    def createLVMVbus(self, plz, kcid, bcid, net):
-        geodata = self.getOntGeomFromBcid(plz, kcid, bcid)
+    def create_lvmv_bus(self, plz : int, kcid : int, bcid : int, net : pp.pandapowerNet) -> None:
+        geodata = self.get_ont_geom_from_bcid(plz, kcid, bcid)
 
         pp.create_bus(
             net,
@@ -282,8 +304,8 @@ class PgReaderWriter:
 
         return None
 
-    def createTransformer(self, plz, kcid, bcid, net):
-        s_max = self.getSMaxFromBcid(plz, kcid, bcid)
+    def create_transformer(self, plz : int, kcid : int, bcid : int, net : pp.pandapowerNet) -> None:
+        s_max = self.get_smax_from_bcid(plz, kcid, bcid)
         if s_max in (250, 400, 630):
             trafo_name = f"{str(s_max)} transformer"
             trafo_std = f"{str(s_max * 1e-3)} MVA 20/0.4 kV"
@@ -312,9 +334,9 @@ class PgReaderWriter:
         net.trafo.at[trafo_index, "sn_mva"] = s_max * 1e-3
         return None
 
-    def createConnectionBus(self, connection_nodes, net):
+    def create_connection_bus(self, connection_nodes : list, net : pp.pandapowerNet):
         for i in range(len(connection_nodes)):
-            node_geodata = self.getNodeGeom(connection_nodes[i])
+            node_geodata = self.get_node_geom(connection_nodes[i])
             pp.create_bus(
                 net,
                 name=f"Connection Nodebus {connection_nodes[i]}",
@@ -325,9 +347,11 @@ class PgReaderWriter:
                 type="n",
             )
 
-    def createConsumerBusandLoad(self, consumer_list, Lu, net, load_type, building_df):
+    def create_consumer_bus_and_load(
+            self, consumer_list : list, load_units: dict, net : pp.pandapowerNet, load_type : dict, building_df : pd.DataFrame
+    ) -> None:
         for i in range(len(consumer_list)):
-            node_geodata = self.getNodeGeom(consumer_list[i])
+            node_geodata = self.get_node_geom(consumer_list[i])
 
             ltype = load_type[consumer_list[i]]
 
@@ -350,7 +374,7 @@ class PgReaderWriter:
                 type="n",
                 zone=ltype,
             )
-            for j in range(1, Lu[consumer_list[i]] + 1):
+            for j in range(1, load_units[consumer_list[i]] + 1):
                 pp.create_load(
                     net=net,
                     bus=pp.get_element_index(
@@ -361,36 +385,36 @@ class PgReaderWriter:
                     max_p_mw=peak_load * 1e-3,
                 )
 
-    def installConsumerCables(
+    def install_consumer_cables(
             self,
-            plz,
-            bcid,
-            kcid,
-            branch_deviation,
-            branch_node_list,
-            ont_vertice,
-            vertices_dict,
-            Pd,
-            net,
-            connection_available_cables,
-            local_length_dict,
-    ):
+            plz : int,
+            bcid : int,
+            kcid : int,
+            branch_deviation : float,
+            branch_node_list : list,
+            ont_vertice : int,
+            vertices_dict : dict,
+            Pd : dict,
+            net : pp.pandapowerNet,
+            connection_available_cables: list[str],
+            local_length_dict : dict,
+    ) -> dict:
         # lines
         # first draw house connections from consumer node to corresponding connection node
-        consumer_list = self.getVerticesFromConnectionPoints(branch_node_list)
+        consumer_list = self.get_vertices_from_connection_points(branch_node_list)
         branch_consumer_list = [n for n in consumer_list if n in vertices_dict.keys()]
-        for vertice in branch_consumer_list:
-            path_list = self.getPathToBus(vertice, ont_vertice)
+        for vertice in branch_consumer_list: # TODO: looping for duplicate vertices
+            path_list = self.get_path_to_bus(vertice, ont_vertice)
             start_vid = path_list[1]
             end_vid = path_list[0]
 
-            geodata = self.getNodeGeom(start_vid)
+            geodata = self.get_node_geom(start_vid)
             start_node_geodata = (
                 float(geodata[0]) + 5 * 1e-6 * branch_deviation,
                 float(geodata[1]) + 5 * 1e-6 * branch_deviation,
             )
 
-            end_node_geodata = self.getNodeGeom(end_vid)
+            end_node_geodata = self.get_node_geom(end_vid)
 
             line_geodata = [start_node_geodata, end_node_geodata]
 
@@ -460,7 +484,7 @@ class PgReaderWriter:
 
         return local_length_dict
 
-    def findMinimalAvailableCable(self, Imax, net, cables_list, distance=0):
+    def find_minimal_available_cable(self, Imax:float, net:pp.pandapowerNet, cables_list:list, distance:int=0) -> tuple[int, int]:
         count = 1
         while 1:
             line_df = pd.DataFrame.from_dict(net.std_types["line"], orient="index")
@@ -497,27 +521,36 @@ class PgReaderWriter:
 
         return cable, count
 
-    def createLineNodetoNode(
+    def create_line_node_to_node(
             self,
-            plz,
-            kcid,
-            bcid,
-            branch_node_list,
-            branch_deviation,
-            vertices_dict,
-            local_length_dict,
-            cable,
-            ont_vertice,
-            count,
-            net,
-    ):
+            plz : int,
+            kcid : int,
+            bcid : int,
+            branch_node_list : list,
+            branch_deviation : float,
+            vertices_dict : dict,
+            local_length_dict : dict,
+            cable : int,
+            ont_vertice : int,
+            count : float,
+            net : pp.pandapowerNet
+    ) -> dict:
+        """creates the lines / cables from one Connection Nodebus to the next. Adds them to the pandapower network
+        and lines result table"""
         for i in range(len(branch_node_list) - 1):
             # to get the line geodata, we now need to consider all the nodes in database, not only connection points
-            node_path_list = self.getPathToBus(branch_node_list[i], ont_vertice)
+            node_path_list = self.get_path_to_bus(branch_node_list[i], ont_vertice)  # gets the path along ways_result
             # end at next connection point
+            if branch_node_list[i + 1] not in node_path_list:  # if next node of branch node list not in node path list
+                self.logger.debug(f"creating line to node i + 1: {i+1} node: {branch_node_list[i + 1]}")
+                node_path_list = self.get_path_to_bus(branch_node_list[i], branch_node_list[i + 1])
+                # node_path_list = [branch_node_list[i], branch_node_list[i + 1]]
+                # intermediate nodes up to next connection nodebus are neglected
+                # the cable will directly connect to next connection nodebus
+
             node_path_list = node_path_list[
                              : node_path_list.index(branch_node_list[i + 1]) + 1
-                             ]
+                             ]  # the node path list goes up to the index (branch_node_list[i + 1]) +1
             node_path_list.reverse()  # to keep the correct direction
 
             start_vid = node_path_list[0]
@@ -525,7 +558,7 @@ class PgReaderWriter:
 
             line_geodata = []
             for p in node_path_list:
-                node_geodata = self.getNodeGeom(p)
+                node_geodata = self.get_node_geom(p)
                 node_geodata = (
                     float(node_geodata[0]) + 5 * 1e-6 * branch_deviation,
                     float(node_geodata[1]) + 5 * 1e-6 * branch_deviation,
@@ -560,14 +593,13 @@ class PgReaderWriter:
                               to_bus=pp.get_element_index(net, "bus", f"Connection Nodebus {end_vid}"),
                               length_km=cost_km
                               )
-
         return local_length_dict
 
-    def createLineOnttoLVbus(
-            self, plz, bcid, kcid, branch_start_node, branch_deviation, net, cable, count
+    def create_line_ont_to_lv_bus(
+            self, plz:int, bcid:int, kcid:int, branch_start_node: int, branch_deviation:float, net:pp.pandapowerNet, cable: int, count: int
     ):
         end_vid = branch_start_node
-        node_geodata = self.getNodeGeom(end_vid)
+        node_geodata = self.get_node_geom(end_vid)
         node_geodata = (
             float(node_geodata[0]) + 5 * 1e-6 * branch_deviation,
             float(node_geodata[1]) + 5 * 1e-6 * branch_deviation,
@@ -602,25 +634,25 @@ class PgReaderWriter:
                           length_km=cost_km
                           )
 
-    def createLineStarttoLVbus(
+    def create_line_start_to_lv_bus(
             self,
-            plz,
-            bcid,
-            kcid,
-            branch_start_node,
-            branch_deviation,
-            net,
-            vertices_dict,
-            cable,
-            count,
-            ont_vertice,
-    ):
+            plz: int,
+            bcid: int,
+            kcid: int,
+            branch_start_node: int,
+            branch_deviation: float,
+            net: pp.pandapowerNet,
+            vertices_dict: dict,
+            cable: int,
+            count: int,
+            ont_vertice: int,
+    ) -> int:
 
-        node_path_list = self.getPathToBus(branch_start_node, ont_vertice)
+        node_path_list = self.get_path_to_bus(branch_start_node, ont_vertice)
 
         line_geodata = []
         for p in node_path_list:
-            node_geodata = self.getNodeGeom(p)
+            node_geodata = self.get_node_geom(p)
             node_geodata = (
                 float(node_geodata[0]) + 5 * 1e-6 * branch_deviation,
                 float(node_geodata[1]) + 5 * 1e-6 * branch_deviation,
@@ -662,22 +694,22 @@ class PgReaderWriter:
 
         return length
 
-    def findFurthestNodePathList(
-            self, connection_node_list, vertices_dict, ont_vertice
+    def find_furthest_node_path_list(
+            self, connection_node_list: list, vertices_dict: dict, ont_vertice: int
     ):
         connection_node_dict = {n: vertices_dict[n] for n in connection_node_list}
         furthest_node = max(connection_node_dict, key=connection_node_dict.get)
         # all the connection nodes in the path from transformer to furthest node are considered as potential branch loads
-        furthest_node_path_list = self.getPathToBus(furthest_node, ont_vertice)
+        furthest_node_path_list = self.get_path_to_bus(furthest_node, ont_vertice)
         furthest_node_path = [
             p for p in furthest_node_path_list if p in connection_node_list
         ]
 
         return furthest_node_path
 
-    def getMaximumLoadBranch(
-            self, utils, furthest_node_path_list, buildings_df, consumer_df
-    ):
+    def get_maximum_load_branch(
+            self, furthest_node_path_list:list, buildings_df:pd.DataFrame, consumer_df:pd.DataFrame
+    ) -> tuple[list, float]:
         # TOD O explanation?
         branch_node_list = []
         for node in furthest_node_path_list:
@@ -686,7 +718,8 @@ class PgReaderWriter:
                 buildings_df, consumer_df, branch_node_list
             )  # sim_peak load in kW
             Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))  # current in kA
-            if Imax >= 0.313 and len(branch_node_list) > 1:
+            if Imax >= 0.313 and len(
+                    branch_node_list) > 1:  # 0.313 is the current limit of the largest allowed cable 4x185SE
                 branch_node_list.remove(node)
                 break
             elif Imax >= 0.313 and len(branch_node_list) == 1:
@@ -698,7 +731,7 @@ class PgReaderWriter:
 
         return branch_node_list, Imax
 
-    def deviateBusGeodata(self, branch_node_list, branch_deviation, net):
+    def deviate_bus_geodata(self, branch_node_list:list, branch_deviation:float, net:pp.pandapowerNet):
         for node in branch_node_list:
             net.bus_geodata.at[
                 pp.get_element_index(net, "bus", f"Connection Nodebus {node}"), "x"
@@ -707,26 +740,20 @@ class PgReaderWriter:
                 pp.get_element_index(net, "bus", f"Connection Nodebus {node}"), "y"
             ] += (5 * 1e-6 * branch_deviation)
 
-    def getVerticesFromBcid(self, lcid, kcid, bcid):
-        ont_query = """SELECT ont_vertice_id FROM building_clusters 
-                    WHERE version_id = %(v)s 
-                    AND loadarea_cluster = %(l)s 
-                    AND k_mean_cluster = %(k)s
-                    AND building_cluster = %(b)s;"""
-        self.cur.execute(ont_query, {"v": VERSION_ID, "l": lcid, "k": kcid, "b": bcid})
-        ont = self.cur.fetchone()[0]
+    def get_vertices_from_bcid(self, lcid:int, kcid:int, bcid:int) -> tuple[dict, int]:
+        ont = self.get_ont_info_from_bc(lcid, kcid, bcid)["ont_vertice_id"]
 
         consumer_query = """SELECT vertice_id FROM buildings_tem
-                    WHERE in_loadarea_cluster = %(l)s 
-                    AND k_mean_cluster = %(k)s
-                    AND in_building_cluster = %(b)s;"""
+                    WHERE plz = %(l)s 
+                    AND kcid = %(k)s
+                    AND bcid = %(b)s;"""
         self.cur.execute(consumer_query, {"l": lcid, "k": kcid, "b": bcid})
         consumer = [t[0] for t in self.cur.fetchall()]
 
         connection_query = """SELECT DISTINCT connection_point FROM buildings_tem
-                    WHERE in_loadarea_cluster = %(l)s 
-                    AND k_mean_cluster = %(k)s
-                    AND in_building_cluster = %(b)s;"""
+                    WHERE plz = %(l)s 
+                    AND kcid = %(k)s
+                    AND bcid = %(b)s;"""
         self.cur.execute(connection_query, {"l": lcid, "k": kcid, "b": bcid})
         connection = [t[0] for t in self.cur.fetchall()]
 
@@ -740,7 +767,7 @@ class PgReaderWriter:
 
         return vertice_cost_dict, ont
 
-    def getVerticesFromConnectionPoints(self, connection):
+    def get_vertices_from_connection_points(self, connection:list) -> list:
         query = """SELECT vertice_id FROM buildings_tem 
                     WHERE connection_point IN %(c)s
                     AND type != 'Transformer';"""
@@ -748,27 +775,48 @@ class PgReaderWriter:
         data = self.cur.fetchall()
         return [t[0] for t in data]
 
-    def getPathToBus(self, vertice, ont):
+    def get_path_to_bus(self, vertice:int, ont: int) -> list:
+        """routing problem: find the shortest path from vertice to the ont (ortsnetztrafo)"""
         query = """SELECT node FROM pgr_Dijkstra(
                     'SELECT id, source, target, cost, reverse_cost FROM ways_tem', %(v)s, %(o)s, false);"""
+        """query = WITH
+                    dijkstra AS(
+                        SELECT * FROM pgr_Dijkstra(
+                                        'SELECT id, source, target, cost, reverse_cost FROM ways_tem', %(v)s, %(o)s, false)
+                    ),
+                        get_geom AS(
+                            SELECT dijkstra. *,
+                            -- adjusting directionality
+                                CASE
+                                    WHEN dijkstra.node = ways.source THEN geom
+                                    ELSE ST_Reverse(geom)
+                                END AS route_geom
+                            FROM dijkstra JOIN ways ON(edge=id)
+                            ORDER BY seq)
+                        SELECT seq, cost,
+                        degrees(ST_azimuth(ST_StartPoint(route_geom), ST_EndPoint(route_geom))) AS azimuth,
+                        ST_AsText(route_geom),
+                        route_geom
+                    FROM get_geom
+                    ORDER BY seq;"""
         self.cur.execute(query, {"o": ont, "v": vertice})
         data = self.cur.fetchall()
         way_list = [t[0] for t in data]
 
         return way_list
 
-    def getOntGeomFromBcid(self, lcid, kcid, bcid):
+    def get_ont_geom_from_bcid(self, lcid:int, kcid:int, bcid:int):
         query = """SELECT ST_X(ST_Transform(geom,4326)), ST_Y(ST_Transform(geom,4326)) FROM transformer_positions
                     WHERE version_id = %(v)s 
-                    AND loadarea_cluster = %(l)s 
-                    AND k_mean_cluster = %(k)s
-                    AND building_cluster = %(b)s;"""
+                    AND plz = %(l)s 
+                    AND kcid = %(k)s
+                    AND bcid = %(b)s;"""
         self.cur.execute(query, {"v": VERSION_ID, "l": lcid, "k": kcid, "b": bcid})
         geo = self.cur.fetchone()
 
         return geo
 
-    def getNodeGeom(self, vid):
+    def get_node_geom(self, vid:int):
         query = """SELECT ST_X(ST_Transform(the_geom,4326)), ST_Y(ST_Transform(the_geom,4326)) 
                     FROM ways_tem_vertices_pgr
                     WHERE id = %(id)s;"""
@@ -777,38 +825,38 @@ class PgReaderWriter:
 
         return geo
 
-    def getSMaxFromBcid(self, lcid, kcid, bcid):
+    def get_smax_from_bcid(self, lcid:int, kcid:int, bcid:int) -> int:
         query = """SELECT s_max FROM building_clusters
                     WHERE version_id = %(v)s 
-                    AND loadarea_cluster = %(l)s 
-                    AND k_mean_cluster = %(k)s
-                    AND building_cluster = %(b)s;"""
+                    AND plz = %(l)s 
+                    AND kcid = %(k)s
+                    AND bcid = %(b)s;"""
         self.cur.execute(query, {"v": VERSION_ID, "l": lcid, "k": kcid, "b": bcid})
         s_max = self.cur.fetchone()[0]
 
         return s_max
 
-    def getListFromPlz(self, plz):
-        query = """SELECT DISTINCT k_mean_cluster, building_cluster FROM building_clusters 
-                    WHERE  version_id = %(v)s AND loadarea_cluster = %(p)s 
-                    ORDER BY k_mean_cluster, building_cluster;"""
+    def get_list_from_plz(self, plz:int) -> list:
+        query = """SELECT DISTINCT kcid, bcid FROM building_clusters 
+                    WHERE  version_id = %(v)s AND plz = %(p)s 
+                    ORDER BY kcid, bcid;"""
         self.cur.execute(query, {"p": plz, "v": VERSION_ID})
         cluster_list = self.cur.fetchall()
 
         return cluster_list
 
-    def getBuildingConnectionPointsFromBc(self, kcid, bcid):
+    def get_building_connection_points_from_bc(self, kcid:int, bcid:int) -> list:
         """
         Args:
             kcid: kmeans_cluster ID
-            bcid: building_cluster ID
-        Returns: A daframe with all building information
+            bcid: building cluster ID
+        Returns: A dataframe with all building information
         """
         count_query = """SELECT DISTINCT connection_point
                         FROM public.buildings_tem
                         WHERE vertice_id IS NOT NULL
-                            AND in_building_cluster = %(b)s 
-                            AND k_mean_cluster = %(k)s;"""
+                            AND bcid = %(b)s 
+                            AND kcid = %(k)s;"""
         params = {"b": bcid, "k": kcid}
         self.cur.execute(count_query, params)
         try:
@@ -818,12 +866,12 @@ class PgReaderWriter:
 
         return cp
 
-    def getSingleConnectionPointFromBc(self, kcid, bcid):
+    def get_single_connection_point_from_bc(self, kcid:int, bcid:int) -> int:
         count_query = """SELECT connection_point
                                 FROM public.buildings_tem AS b
                                 WHERE b.vertice_id IS NOT NULL
-                                    AND b.in_building_cluster = %(b)s 
-                                    AND b.k_mean_cluster = %(k)s
+                                    AND b.bcid = %(b)s 
+                                    AND b.kcid = %(k)s
                                     LIMIT 1;"""
         params = {"b": bcid, "k": kcid}
         self.cur.execute(count_query, params)
@@ -831,10 +879,10 @@ class PgReaderWriter:
 
         return conn_id
 
-    def getDistanceMatrixFromKMeanCluster(self, kcid):
+    def get_distance_matrix_from_kmean_cluster(self, kcid:int) -> tuple[dict, np.ndarray, dict]:
         """
         Args:
-            kcid: k_mean_cluster ID
+            kcid: k mean cluster id
         Returns: Die Distanzmatrix der Gebäuden als np.array und das Mapping zwischen vertice_id und lokale ID als dict
         """
         # Creates a distance matrix from the buildings in the loadarea cluster or smaller in the building cluster
@@ -842,46 +890,19 @@ class PgReaderWriter:
         costmatrix_query = """SELECT * FROM pgr_dijkstraCostMatrix(
                             'SELECT id, source, target, cost, reverse_cost FROM public.ways_tem',
                             (SELECT array_agg(DISTINCT b.connection_point) FROM (SELECT * FROM buildings_tem 
-                            WHERE k_mean_cluster = %(k)s
-                            AND in_building_cluster ISNULL
+                            WHERE kcid = %(k)s
+                            AND bcid ISNULL
                             ORDER BY connection_point) AS b),
                             false);"""
         params = {"k": kcid}
 
-        st = time.time()
-        cost_df = pd.read_sql_query(
-            costmatrix_query,
-            con=self.conn,
-            params=params,
-            dtype={"start_vid": np.int16, "end_vid": np.int16, "agg_cost": np.int16},
-        )
-        cost_arr = cost_df.to_numpy()
-        et = time.time()
-        print(f"Elapsed time for SQL to cost_arr: {et - st}")
-        # Speichere die echte vertices_ids mit neuen Indexen
-        # 0 5346
-        # 1 3263
-        # 2 3653
-        # ...
-        localid2vid = dict(enumerate(cost_df["start_vid"].unique()))
-        vid2localid = {y: x for x, y in localid2vid.items()}
+        return self._calculate_cost_arr_dist_matrix(costmatrix_query, params)
 
-        # Square distance matrix
-        dist_matrix = np.zeros([len(localid2vid), len(localid2vid)])
-        st = time.time()
-        for i in range(len(cost_df)):
-            start_id = vid2localid[cost_arr[i, 0]]
-            end_id = vid2localid[cost_arr[i, 1]]
-            dist_matrix[start_id][end_id] = cost_arr[i, 2]
-        et = time.time()
-        print(f"Elapsed time for dist_matrix creation: {et - st}")
-        return localid2vid, dist_matrix, vid2localid
-
-    def getDistanceMatrixFromBuildingCluster(self, kcid, bcid):
+    def get_distance_matrix_from_building_cluster(self, kcid:int, bcid:int) -> tuple[dict, np.ndarray, dict]:
         """
         Args:
-            kcid: k_mean_cluster ID
-            bcid: building_cluster ID
+            kcid: k mean cluster ID
+            bcid: building cluster ID
         Returns: Die Distanzmatrix der Gebäuden als np.array und das Mapping zwischen vertice_id und lokale ID als dict
         """
         # Creates a distance matrix from the buildings in the loadarea cluster or smaller in the building cluster
@@ -889,56 +910,29 @@ class PgReaderWriter:
         costmatrix_query = """SELECT * FROM pgr_dijkstraCostMatrix(
                             'SELECT id, source, target, cost, reverse_cost FROM public.ways_tem',
                             (SELECT array_agg(DISTINCT b.connection_point) FROM (SELECT * FROM buildings_tem 
-                                WHERE k_mean_cluster = %(k)s
-                                AND in_building_cluster = %(b)s 
+                                WHERE kcid = %(k)s
+                                AND bcid = %(b)s 
                                 ORDER BY connection_point) AS b),
                             false);"""
         params = {"b": bcid, "k": kcid}
 
-        st = time.time()
-        cost_df = pd.read_sql_query(
-            costmatrix_query,
-            con=self.conn,
-            params=params,
-            dtype={"start_vid": np.int32, "end_vid": np.int32, "agg_cost": np.int16},
-        )
-        cost_arr = cost_df.to_numpy()
-        et = time.time()
-        print(f"Elapsed time for SQL to cost_arr: {et - st}")
-        # Speichere die echte vertices_ids mit neuen Indexen
-        # 0 5346
-        # 1 3263
-        # 2 3653
-        # ...
-        localid2vid = dict(enumerate(cost_df["start_vid"].unique()))
-        vid2localid = {y: x for x, y in localid2vid.items()}
+        return self._calculate_cost_arr_dist_matrix(costmatrix_query, params)
 
-        # Square distance matrix
-        dist_matrix = np.zeros([len(localid2vid), len(localid2vid)])
-        st = time.time()
-        for i in range(len(cost_df)):
-            start_id = vid2localid[cost_arr[i, 0]]
-            end_id = vid2localid[cost_arr[i, 1]]
-            dist_matrix[start_id][end_id] = cost_arr[i, 2]
-        et = time.time()
-        print(f"Elapsed time for dist_matrix creation: {et - st}")
-        return localid2vid, dist_matrix, vid2localid
-
-    def upsertBuildingCluster(self, lcid, kcid, bcid, vertices, s_max):
+    def upsert_building_cluster(self, lcid:int, kcid:int, bcid:int, vertices:list, s_max:float):
         """
         Assign buildings in buildings_tem the bcid and stores the cluster in building_clusters
         Args:
-            bcid: building_cluster ID
-            lcid: loadarea_cluster ID
+            bcid: building cluster ID
+            lcid: loadarea cluster ID - plz
             vertices: Liste der vertice_id von gewählten Gebäuden
             s_max: Scheinleistung der vorgesehenen Transformator
         """
         # Insert references to building elements in which cluster they are.
         building_query = """UPDATE public.buildings_tem 
-        SET in_building_cluster = %(bc)s 
-        WHERE in_loadarea_cluster = %(lc)s 
-        AND k_mean_cluster = %(kc)s 
-        AND in_building_cluster ISNULL 
+        SET bcid = %(bc)s 
+        WHERE plz = %(lc)s 
+        AND kcid = %(kc)s 
+        AND bcid ISNULL 
         AND connection_point IN %(vid)s 
         AND type != 'Transformer'; """
 
@@ -952,16 +946,16 @@ class PgReaderWriter:
         self.cur.execute(building_query, params)
 
         # Insert new clustering
-        cluster_query = """INSERT INTO building_clusters (version_id, loadarea_cluster, k_mean_cluster, building_cluster, s_max) 
+        cluster_query = """INSERT INTO building_clusters (version_id, plz, kcid, bcid, s_max) 
                 VALUES(%(v)s, %(lc)s, %(kc)s, %(bc)s, %(s)s); """
 
         params = {"v": VERSION_ID, "lc": lcid, "bc": bcid, "kc": kcid, "s": int(s_max)}
         self.cur.execute(cluster_query, params)
 
-    def removeTooLargeConsumers(self):
+    def zero_too_large_consumers(self) -> int:
         """
-        Sets the load to zero if the peak load is too large
-        :return:
+        Sets the load to zero if the peak load is too large (> 100)
+        :return: number of the large customers
         """
         query = """
             UPDATE buildings_tem SET peak_load_in_kw = 0 
@@ -972,41 +966,41 @@ class PgReaderWriter:
 
         return too_large
 
-    def clearBuildingClustersInKMeanCluster(self, lcid, kcid):
-        # Remove old clustering at same loadarea_cluster
+    def clear_building_clusters_in_kmean_cluster(self, lcid:int, kcid:int):
+        # Remove old clustering at same loadarea cluster
         clear_query = """DELETE FROM building_clusters
                 WHERE  version_id = %(v)s 
-                AND loadarea_cluster = %(lc)s
-                AND k_mean_cluster = %(kc)s
-                AND building_cluster >= 0; """
+                AND plz = %(lc)s
+                AND kcid = %(kc)s
+                AND bcid >= 0; """
 
         params = {"v": VERSION_ID, "lc": lcid, "kc": kcid}
         self.cur.execute(clear_query, params)
-        print(
-            f"Building clusters with loadarea_cluster = {lcid}, k_mean cluster = {kcid} area cleared."
+        self.logger.debug(
+            f"Building clusters with plz = {lcid}, k_mean cluster = {kcid} area cleared."
         )
 
-    def upsertSubstationSelection(self, lcid, kcid, bcid, connection_id):
-        """Writes the vertice_id of chosen building as ONT location in the building_cluster table"""
+    def upsert_substation_selection(self, lcid:int, kcid:int, bcid:int, connection_id:int):
+        """Writes the vertice_id of chosen building as ONT location in the building_clusters table"""
 
         query = """UPDATE building_clusters SET ont_vertice_id = %(c)s 
-                    WHERE version_id = %(v)s AND loadarea_cluster = %(l)s AND k_mean_cluster = %(k)s AND building_cluster = %(b)s; 
+                    WHERE version_id = %(v)s AND plz = %(l)s AND kcid = %(k)s AND bcid = %(b)s; 
                     UPDATE building_clusters SET model_status = 1 
-                    WHERE version_id = %(v)s AND loadarea_cluster = %(l)s AND k_mean_cluster = %(k)s AND building_cluster = %(b)s;
-                INSERT INTO transformer_positions (version_id, loadarea_cluster, k_mean_cluster, building_cluster, geom, ogc_fid, comment)
+                    WHERE version_id = %(v)s AND plz = %(l)s AND kcid = %(k)s AND bcid = %(b)s;
+                INSERT INTO transformer_positions (version_id, plz, kcid, bcid, geom, ogc_fid, comment)
                     VALUES (%(v)s, %(l)s, %(k)s, %(b)s, (SELECT the_geom FROM ways_tem_vertices_pgr WHERE id = %(c)s), %(c)s::varchar, 'on_way');"""
         params = {"v": VERSION_ID, "c": connection_id, "b": bcid, "k": kcid, "l": lcid}
 
         self.cur.execute(query, params)
 
-    def countKmeanClusterConsumers(self, kcid):
-        query = """SELECT COUNT(DISTINCT vertice_id) FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type != 'Transformer' AND in_building_cluster ISNULL;"""
+    def count_kmean_cluster_consumers(self, kcid:int) -> int:
+        query = """SELECT COUNT(DISTINCT vertice_id) FROM buildings_tem WHERE kcid = %(k)s AND type != 'Transformer' AND bcid ISNULL;"""
         self.cur.execute(query, {"k": kcid})
         count = self.cur.fetchone()[0]
 
         return count
 
-    def updateSmax(self, plz, kcid, bcid, note: int):
+    def update_s_max(self, plz:int, kcid:int, bcid:int, note: int):
         """
         Updates Smax in building_clusters
         :param plz:
@@ -1015,15 +1009,15 @@ class PgReaderWriter:
         :param note:
         :return:
         """
-        sdl = self.getSiedlungstypFromPlz(plz)
-        transformer_capacities, _ = self.getTransformatorData(sdl)
+        sdl = self.get_siedlungstyp_from_plz(plz)
+        transformer_capacities, _ = self.get_transformator_data(sdl)
 
         if note == 0:
             old_query = """SELECT s_max FROM building_clusters
                             WHERE  version_id = %(v)s 
-                            AND loadarea_cluster = %(p)s
-                            AND k_mean_cluster = %(k)s
-                            AND building_cluster = %(b)s;"""
+                            AND plz = %(p)s
+                            AND kcid = %(k)s
+                            AND bcid = %(b)s;"""
             self.cur.execute(
                 old_query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid}
             )
@@ -1032,9 +1026,9 @@ class PgReaderWriter:
             new_s_max = transformer_capacities[transformer_capacities > s_max][0].item()
             update_query = """UPDATE building_clusters SET s_max = %(n)s
                             WHERE version_id = %(v)s 
-                            AND loadarea_cluster = %(p)s
-                            AND k_mean_cluster = %(k)s
-                            AND building_cluster = %(b)s;"""
+                            AND plz = %(p)s
+                            AND kcid = %(k)s
+                            AND bcid = %(b)s;"""
             self.cur.execute(
                 update_query,
                 {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": new_s_max},
@@ -1045,9 +1039,9 @@ class PgReaderWriter:
             np.sort(combined, axis=None)
             old_query = """SELECT s_max FROM building_clusters
                                         WHERE version_id = %(v)s 
-                                        AND loadarea_cluster = %(p)s
-                                        AND k_mean_cluster = %(k)s
-                                        AND building_cluster = %(b)s;"""
+                                        AND plz = %(p)s
+                                        AND kcid = %(k)s
+                                        AND bcid = %(b)s;"""
             self.cur.execute(
                 old_query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid}
             )
@@ -1057,76 +1051,76 @@ class PgReaderWriter:
             new_s_max = np.ceil(s_max / 630) * 630
             update_query = """UPDATE building_clusters SET s_max = %(n)s
                                             WHERE version_id = %(v)s 
-                                            AND loadarea_cluster = %(p)s 
-                                            AND k_mean_cluster = %(k)s 
-                                            AND building_cluster = %(b)s;"""
+                                            AND plz = %(p)s 
+                                            AND kcid = %(k)s 
+                                            AND bcid = %(b)s;"""
             self.cur.execute(
                 update_query,
                 {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": new_s_max},
             )
-            print("double or multiple transformer group s_max assigned")
+            self.logger.debug("double or multiple transformer group s_max assigned")
 
-    def setOneBuildingKmeanCluster(self, plz, kcid):
-        count_query = """SELECT COUNT(*) FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type = 'Transformer';"""
+    def set_one_building_kmean_cluster(self, plz:int, kcid:int):
+        count_query = """SELECT COUNT(*) FROM buildings_tem WHERE kcid = %(k)s AND type = 'Transformer';"""
         self.cur.execute(count_query, {"k": kcid})
         count = self.cur.fetchone()[0]
 
         if count >= 1:
             query_1 = """
                 WITH one (ogc_fid) AS 
-                SELECT osm_id FROM buildings_tem b WHERE b.k_mean_cluster = %(k)s AND b.type = 'Transformer' ORDER BY b.center<->
-                    (SELECT center FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type != 'Transformer' LIMIT 1) LIMIT 1
-                INSERT INTO transformer_positions (version_id, loadarea_cluster, ogc_fid, geom)
-                    SELECT %(v)s as version_id, in_loadarea_cluster, osm_id, center FROM buildings_tem AS b, one AS o 
-                        WHERE b.k_mean_cluster = %(k)s AND b.type = 'Transformer' AND b.osm_id != o.ogc_fid;
+                SELECT osm_id FROM buildings_tem b WHERE b.kcid = %(k)s AND b.type = 'Transformer' ORDER BY b.center<->
+                    (SELECT center FROM buildings_tem WHERE kcid = %(k)s AND type != 'Transformer' LIMIT 1) LIMIT 1
+                INSERT INTO transformer_positions (version_id, plz, ogc_fid, geom)
+                    SELECT %(v)s as version_id, plz, osm_id, center FROM buildings_tem AS b, one AS o 
+                        WHERE b.kcid = %(k)s AND b.type = 'Transformer' AND b.osm_id != o.ogc_fid;
                 UPDATE transformer_positions SET comment = 'Unused' WHERE comment ISNULL;
-                DELETE FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type = 'Transformer' AND osm_id IN (
-                    SELECT ogc_fid FROM transformer_positions WHERE version_id = %(v)s AND loadarea_cluster = %(p)s AND comment = 'Unused');
-                UPDATE buildings_tem SET in_building_cluster = -1 WHERE k_mean_cluster = %(k)s;
-                INSERT INTO building_clusters (version_id, loadarea_cluster, k_mean_cluster, building_cluster, ont_vertice_id, s_max)
+                DELETE FROM buildings_tem WHERE kcid = %(k)s AND type = 'Transformer' AND osm_id IN (
+                    SELECT ogc_fid FROM transformer_positions WHERE version_id = %(v)s AND plz = %(p)s AND comment = 'Unused');
+                UPDATE buildings_tem SET bcid = -1 WHERE kcid = %(k)s;
+                INSERT INTO building_clusters (version_id, plz, kcid, bcid, ont_vertice_id, s_max)
                 VALUES (%(v)s, %(p)s, %(k)s,-1, 
-                    (SELECT vertice_id FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type = 'Transformer'), 
-                    (SELECT CEILING(SUM(peak_load_in_kw)) FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type != 'Transformer'));
-                INSERT INTO transformer_positions (version_id, loadarea_cluster,k_mean_cluster, building_cluster, ogc_fid, geom)
-                    SELECT %(v)s as version_id, in_loadarea_cluster, k_mean_cluster, in_building_cluster, osm_id, center FROM buildings_tem
-                        WHERE k_mean_cluster = %(k)s AND type = 'Transformer';
+                    (SELECT vertice_id FROM buildings_tem WHERE kcid = %(k)s AND type = 'Transformer'), 
+                    (SELECT CEILING(SUM(peak_load_in_kw)) FROM buildings_tem WHERE kcid = %(k)s AND type != 'Transformer'));
+                INSERT INTO transformer_positions (version_id, plz,kcid, bcid, ogc_fid, geom)
+                    SELECT %(v)s as version_id, plz, kcid, bcid, osm_id, center FROM buildings_tem
+                        WHERE kcid = %(k)s AND type = 'Transformer';
                 UPDATE transformer_positions SET comment = 'Normal' WHERE comment ISNULL;"""
             self.cur.execute(query_1, {"v": VERSION_ID, "k": kcid, "p": plz})
         else:
-            query_2 = """UPDATE buildings_tem SET in_building_cluster = -1 WHERE k_mean_cluster = %(k)s;
-                INSERT INTO transformer_positions (version_id, ogc_fid, loadarea_cluster, k_mean_cluster, building_cluster)
-                    SELECT %(v)s as version_id, connection_point::varchar, in_loadarea_cluster, k_mean_cluster, in_building_cluster FROM buildings_tem 
-                    WHERE k_mean_cluster = %(k)s LIMIT 1;
+            query_2 = """UPDATE buildings_tem SET bcid = -1 WHERE kcid = %(k)s;
+                INSERT INTO transformer_positions (version_id, ogc_fid, plz, kcid, bcid)
+                    SELECT %(v)s as version_id, connection_point::varchar, plz, kcid, bcid FROM buildings_tem 
+                    WHERE kcid = %(k)s LIMIT 1;
                 UPDATE transformer_positions t SET geom = (SELECT the_geom FROM ways_tem_vertices_pgr AS w WHERE w.id = t.ogc_fid::int) WHERE geom ISNULL;
                 UPDATE transformer_positions SET comment = 'on_way' WHERE comment ISNULL;
-                INSERT INTO building_clusters (version_id, loadarea_cluster, k_mean_cluster, building_cluster, ont_vertice_id, s_max)
+                INSERT INTO building_clusters (version_id, plz, kcid, bcid, ont_vertice_id, s_max)
                     VALUES (%(v)s as version_id, %(p)s, %(k)s, -1,
-                    (SELECT connection_point FROM buildings_tem WHERE k_mean_cluster = %(k)s LIMIT 1),
-                    (SELECT CEILING(SUM(peak_load_in_kw)) FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type != 'Transformer'));"""
+                    (SELECT connection_point FROM buildings_tem WHERE kcid = %(k)s LIMIT 1),
+                    (SELECT CEILING(SUM(peak_load_in_kw)) FROM buildings_tem WHERE kcid = %(k)s AND type != 'Transformer'));"""
             self.cur.execute(query_2, {"v": VERSION_ID, "k": kcid, "p": plz})
 
-    def getUnfinishedBcids(self, lcid, kcid):
+    def get_unfinished_bcids(self, lcid:int, kcid:int) -> list:
         """
         Args:
-            lcid: loadarea_cluster ID
-        Returns: Eine Liste von nicht modellierten building_cluster ID aus dem gegebenen loadarea
+            lcid: loadarea cluster ID
+        Returns: Eine Liste von nicht modellierten building cluster ID aus dem gegebenen loadarea
         """
-        query = """SELECT DISTINCT building_cluster FROM building_clusters
+        query = """SELECT DISTINCT bcid FROM building_clusters
             WHERE version_id = %(v)s 
-            AND k_mean_cluster = %(kc)s
-            AND loadarea_cluster = %(lc)s
+            AND kcid = %(kc)s
+            AND plz = %(lc)s
             AND model_status ISNULL
-            ORDER BY building_cluster; """
+            ORDER BY bcid; """
         params = {"v": VERSION_ID, "lc": lcid, "kc": kcid}
         self.cur.execute(query, params)
         bcid_list = [t[0] for t in data] if (data := self.cur.fetchall()) else []
         return bcid_list
 
-    def getWaysFromBc(self, lcid, kcid, bcid, ofc_fid):
+    def get_ways_from_bc(self, lcid:int, kcid:int, bcid:int, ofc_fid:Any) -> tuple[pd.DataFrame, list]:
         consumer_query = """SELECT vertice_id FROM buildings_tem 
-                            WHERE in_loadarea_cluster = %(l)s
-                                AND k_mean_cluster = %(k)s
-                                AND in_building_cluster = %(b)s
+                            WHERE plz = %(l)s
+                                AND kcid = %(k)s
+                                AND bcid = %(b)s
                                 AND type != 'Transformer';"""
         self.cur.execute(consumer_query, {"l": lcid, "k": kcid, "b": bcid})
         consumer_list = [t[0] for t in self.cur.fetchall()]
@@ -1142,91 +1136,91 @@ class PgReaderWriter:
         query = """SELECT * FROM ways_tem 
                     WHERE id IN %(e)s;"""
         ways_df = pd.read_sql_query(query, self.conn, params={"e": tuple(edge_list)})
-        print(
+        self.logger.debug(
             f"Ways imported.{len(ways_df)} ways for lc={lcid}, kc={kcid}, bc={bcid} ..."
         )
 
         return ways_df, vertice_list
 
-    def getOntInfoFromBc(self, lcid, kcid, bcid):
+    def get_ont_info_from_bc(self, lcid:int, kcid:int, bcid:int) -> dict:
 
         query = """SELECT ont_vertice_id, s_max
                     FROM building_clusters
                     WHERE version_id = %(v)s 
-                    AND k_mean_cluster = %(k)s
-                    AND building_cluster = %(b)s
-                    AND loadarea_cluster = %(l)s; """
+                    AND kcid = %(k)s
+                    AND bcid = %(b)s
+                    AND plz = %(l)s; """
         params = {"v": VERSION_ID, "l": lcid, "k": kcid, "b": bcid}
         self.cur.execute(query, params)
         info = self.cur.fetchall()
         if not info:
-            print(f"found no ont information for kcid {kcid}, bcid {bcid}")
+            self.logger.debug(f"found no ont information for kcid {kcid}, bcid {bcid}")
             return None
 
         return {"ont_vertice_id": info[0][0], "s_max": info[0][1]}
 
-    def getCables(self, anw):
+    def get_cables(self,  anw: tuple) -> pd.DataFrame:
         query = """SELECT name, max_i_a, r_mohm_per_km, x_mohm_per_km, z_mohm_per_km, kosten_eur FROM betriebsmittel
                     WHERE typ = 'Kabel' AND anwendungsgebiet IN %(a)s ORDER BY max_i_a DESC; """
         cables_df = pd.read_sql_query(query, self.conn, params={"a": anw})
-        print(f"{len(cables_df)} different cable types are imported...")
+        self.logger.debug(f"{len(cables_df)} different cable types are imported...")
         return cables_df
 
-    def getNextUnfinishedKcid(self, plz):
+    def get_next_unfinished_kcid(self, plz:int) -> int:
         """
-        Returns: one unmodeled k_mean_cluster ID
+        :return: one unmodeled k mean cluster ID - plz
         """
-        query = """SELECT k_mean_cluster FROM buildings_tem 
-                    WHERE k_mean_cluster NOT IN (
-                        SELECT DISTINCT k_mean_cluster FROM building_clusters
-                        WHERE version_id = %(v)s AND  building_clusters.loadarea_cluster = %(plz)s) AND k_mean_cluster IS NOT NULL
-                    ORDER BY k_mean_cluster
+        query = """SELECT kcid FROM buildings_tem 
+                    WHERE kcid NOT IN (
+                        SELECT DISTINCT kcid FROM building_clusters
+                        WHERE version_id = %(v)s AND  building_clusters.plz = %(plz)s) AND kcid IS NOT NULL
+                    ORDER BY kcid
                     LIMIT 1;"""
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
         kcid = self.cur.fetchone()[0]
         return kcid
 
-    def getLcidLength(self):
+    def get_lcid_length(self) -> int:
         query = """SELECT COUNT(DISTINCT cluster_id) FROM loadarea
                    WHERE cluster_id <> -1"""
         self.cur.execute(query)
         lcid_length = self.cur.fetchone()[0]
-        print(f"selected lcids altogether {lcid_length} ...")
+        self.logger.debug(f"selected lcids altogether {lcid_length}.")
         return lcid_length
 
-    def countNoKmeanBuildings(self):
+    def count_no_kmean_buildings(self):
         """
         Counts relative buildings in buildings_tem, which could not be clustered via k-means
         :return: count
         """
-        query = """SELECT COUNT(*) FROM buildings_tem WHERE peak_load_in_kw != 0 AND k_mean_cluster ISNULL;"""
+        query = """SELECT COUNT(*) FROM buildings_tem WHERE peak_load_in_kw != 0 AND kcid ISNULL;"""
         self.cur.execute(query)
         count = self.cur.fetchone()[0]
 
         return count
 
-    def getIncludedTransformers(self, kcid):
+    def get_included_transformers(self, kcid:int) -> list:
         """
         Reads the vertice ids of transformers from a given kcid
         :param kcid:
         :return: list
         """
-        query = """SELECT vertice_id FROM buildings_tem WHERE k_mean_cluster = %(k)s AND type = 'Transformer';"""
+        query = """SELECT vertice_id FROM buildings_tem WHERE kcid = %(k)s AND type = 'Transformer';"""
         self.cur.execute(query, {"k": kcid})
         transformers_list = (
             [t[0] for t in data] if (data := self.cur.fetchall()) else []
         )
         return transformers_list
 
-    def getKcidLength(self):
-        query = """SELECT COUNT(DISTINCT k_mean_cluster) FROM buildings_tem WHERE k_mean_cluster IS NOT NULL; """
+    def get_kcid_length(self) -> int:
+        query = """SELECT COUNT(DISTINCT kcid) FROM buildings_tem WHERE kcid IS NOT NULL; """
         self.cur.execute(query)
         kcid_length = self.cur.fetchone()[0]
         return kcid_length
 
-    def getConsumerToTransformerDataframe(self, kcid, transformer_list):
+    def get_consumer_to_transformer_df(self, kcid:int, transformer_list:list) -> pd.DataFrame:
         consumer_query = """SELECT DISTINCT connection_point FROM buildings_tem 
-                            WHERE k_mean_cluster = %(k)s AND type != 'Transformer';"""
+                            WHERE kcid = %(k)s AND type != 'Transformer';"""
         self.cur.execute(consumer_query, {"k": kcid})
         consumer_list = [t[0] for t in self.cur.fetchall()]
 
@@ -1243,11 +1237,11 @@ class PgReaderWriter:
 
         return cost_df
 
-    def asignTransformerClusters(self, plz, kcid, transformer_list):
+    def assign_transformer_clusters(self, plz:int, kcid:int, transformer_list:list) -> None:
         """Assign buildings to the existing transformers and store it as bcid in buildings_tem"""
-        print(f"{len(transformer_list)} transformer found")
+        self.logger.debug(f"{len(transformer_list)} transformer found")
 
-        cost_df = self.getConsumerToTransformerDataframe(kcid, transformer_list)
+        cost_df = self.get_consumer_to_transformer_df(kcid, transformer_list)
         cost_df = cost_df.drop(cost_df[cost_df["agg_cost"] >= 300].index)
         # for t in cost_df['end_vid']: cost_df_tem = cost_df[cost_df['end_vid'] == t] cost_list =
         # cost_df_tem.sort_values(by = ['agg_cost'])['agg_cost'].values for i in range(len(cost_list) - 1): if
@@ -1266,34 +1260,34 @@ class PgReaderWriter:
             if end_transformer_id in full_transformer_list:
                 continue
             pre_result_dict[end_transformer_id].append(start_consumer_id.item())
-            sim_load = self.calculateSimLoad(pre_result_dict[end_transformer_id])
+            sim_load = self.calculate_sim_load(pre_result_dict[end_transformer_id])
             if float(sim_load) >= 630:
                 # this transformer can not take anymore consumers, delete every dataframe record related
-                print(f"transformer {end_transformer_id} capacity exceeded")
+                self.logger.info(f"transformer {end_transformer_id} capacity exceeded")
                 pre_result_dict[end_transformer_id].remove(start_consumer_id.item())
                 full_transformer_list.append(end_transformer_id)
                 if len(full_transformer_list) != len(transformer_list):
                     continue
-                print("all transformer full")
+                self.logger.info("all transformer full")
                 break
             else:
-                # this consumer has been asigned to specific transformer so delete related in dataframe
+                # this consumer has been assigned to specific transformer so delete related in dataframe
                 assigned_consumer_list.append(start_consumer_id)
 
-        print("transformer selection finished")
+        self.logger.debug("transformer selection finished")
         building_cluster_count = 0
         for transformer_id in transformer_list:
             if len(pre_result_dict[transformer_id]) == 0:
-                print(f"transformer {transformer_id} has no asigned consumer, deleted")
-                self.deleteUselessTransformers([transformer_id])
+                self.logger.debug(f"transformer {transformer_id} has no asigned consumer, deleted")
+                self.delete_transformers([transformer_id])
             else:
                 building_cluster_count = building_cluster_count - 1
-                sim_load = self.calculateSimLoad(pre_result_dict[transformer_id])
+                sim_load = self.calculate_sim_load(pre_result_dict[transformer_id])
                 possible_transformers = np.array([100, 160, 250, 400, 630])
                 sim_load = possible_transformers[
                     possible_transformers > float(sim_load)
                     ][0].item()
-                self.updateBuildingCluster(
+                self.update_building_cluster(
                     transformer_id,
                     pre_result_dict[transformer_id],
                     building_cluster_count,
@@ -1302,16 +1296,16 @@ class PgReaderWriter:
                     sim_load,
                 )
             continue
-        print("pre transformer clusters completed")
+        self.logger.debug("pre transformer clusters completed")
 
-    def updateBuildingCluster(
-            self, transformer_id, conn_id_list, count, kcid, lcid, sim_Load
-    ):
-        query = """UPDATE buildings_tem SET in_building_cluster = %(count)s WHERE vertice_id = %(t)s;
-                UPDATE buildings_tem SET in_building_cluster = %(count)s WHERE connection_point IN %(c)s AND type != 'Transformer';
-                INSERT INTO building_clusters (version_id, loadarea_cluster, k_mean_cluster, building_cluster, ont_vertice_id, s_max)
+    def update_building_cluster(
+            self, transformer_id:int, conn_id_list:Union[list, tuple], count:int, kcid:int, lcid:int, sim_load:int
+    ) -> None:
+        query = """UPDATE buildings_tem SET bcid = %(count)s WHERE vertice_id = %(t)s;
+                UPDATE buildings_tem SET bcid = %(count)s WHERE connection_point IN %(c)s AND type != 'Transformer';
+                INSERT INTO building_clusters (version_id, plz, kcid, bcid, ont_vertice_id, s_max)
                     VALUES (%(v)s, %(lc)s, %(k)s, %(count)s, %(t)s, %(l)s);
-                INSERT INTO transformer_positions (version_id, loadarea_cluster, k_mean_cluster, building_cluster, geom, ogc_fid, comment)
+                INSERT INTO transformer_positions (version_id, plz, kcid, bcid, geom, ogc_fid, comment)
                     VALUES (%(v)s, %(lc)s, %(k)s, %(count)s, 
                     (SELECT center FROM buildings_tem WHERE vertice_id = %(t)s), 
                     (SELECT osm_id FROM buildings_tem WHERE vertice_id = %(t)s), 'Normal' );"""
@@ -1324,11 +1318,11 @@ class PgReaderWriter:
                 "t": transformer_id,
                 "k": kcid,
                 "lc": lcid,
-                "l": sim_Load,
+                "l": sim_load,
             },
         )
 
-    def connectUnconnectedWays(self):
+    def connect_unconnected_ways(self) -> None:
         """
         Updates ways_tem
         :return:
@@ -1336,7 +1330,7 @@ class PgReaderWriter:
         query = """SELECT public.draw_way_connections();"""
         self.cur.execute(query)
 
-    def calculateSimLoad(self, conn_list):
+    def calculate_sim_load(self, conn_list:Union[tuple, list]) -> Decimal:
         residential = """WITH residential AS 
         (SELECT b.peak_load_in_kw AS load, b.houses_per_building AS count, c.sim_factor
         FROM buildings_tem AS b
@@ -1431,22 +1425,21 @@ class PgReaderWriter:
 
         return total_sim_load
 
-    def copyPostcodeResultTable(self, plz):
+    def copy_postcode_result_table(self, plz:int) -> None:
         """
         Copies the given plz entry from postcode to the postcode_result table
         :param plz:
         :return:
         """
         query = """INSERT INTO postcode_result (version_id, id, geom) 
-                    SELECT %(v)s as version_id, plz::INT, geom FROM postcode 
+                    SELECT %(v)s as version_id, plz, geom FROM postcode 
                     WHERE plz = %(p)s
                     LIMIT 1 
                     ON CONFLICT (version_id,id) DO NOTHING;"""
 
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
-        print(self.cur.statusmessage)
 
-    def countPostcodeResult(self, plz):
+    def count_postcode_result(self, plz:int) -> int:
         """
         :param plz:
         :return:
@@ -1457,7 +1450,18 @@ class PgReaderWriter:
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
         return int(self.cur.fetchone()[0])
 
-    def setLoadareaClusterSiedlungstyp(self, plz):
+    def count_clustering_parameters(self, plz:int) -> int:
+        """
+        :param plz:
+        :return:
+        """
+        query = """SELECT COUNT(*) FROM clustering_parameters
+                    WHERE version_id = %(v)s
+                    AND plz = %(p)s"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        return int(self.cur.fetchone()[0])
+
+    def set_loadarea_cluster_siedlungstyp(self, plz:int) -> None:
         """
         Sets hausabstand and siedlungstyp for the given plz in table postcode_result
         :param plz:
@@ -1496,7 +1500,7 @@ class PgReaderWriter:
                     AND id = %(p)s;"""
         self.cur.execute(query, {"v": VERSION_ID, "avg": avg_dis, "p": plz})
 
-    def setBuildingPeakLoad(self):
+    def set_building_peak_load(self) -> int:
         """
         * Sets the area, type and peak_load in the buildings_tem table
         * Removes buildings with zero load from the buildings_tem table
@@ -1529,7 +1533,7 @@ class PgReaderWriter:
 
         return count
 
-    def setResidentialBuildingsTable(self, plz):
+    def set_residential_buildings_table(self, plz:int):
         """
         * Fills buildings_tem with residential buildings which are inside the plz area
         * Sets the loadarea cluster initially to plz
@@ -1542,11 +1546,10 @@ class PgReaderWriter:
                 SELECT osm_id, area, building_t, geom, ST_Centroid(geom), floors::int FROM res
                 WHERE ST_Contains((SELECT post.geom FROM postcode_result as post WHERE version_id = %(v)s
                 AND id = %(plz)s LIMIT 1), ST_Centroid(res.geom));
-                UPDATE buildings_tem SET in_loadarea_cluster = %(plz)s WHERE in_loadarea_cluster ISNULL;"""
+                UPDATE buildings_tem SET plz = %(plz)s WHERE plz ISNULL;"""
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
-        print(self.cur.statusmessage)
 
-    def setOtherBuildingsTable(self, plz):
+    def set_other_buildings_table(self, plz:int):
         """
         * Fills buildings_tem with other buildings which are inside the plz area
         * Sets the loadarea cluster initially to plz
@@ -1561,12 +1564,77 @@ class PgReaderWriter:
                 WHERE o.use in ('Commercial', 'Public')
                 AND ST_Contains((SELECT post.geom FROM postcode_result as post WHERE version_id = %(v)s
                     AND  id = %(plz)s), ST_Centroid(o.geom));;
-            UPDATE buildings_tem SET in_loadarea_cluster = %(plz)s WHERE in_loadarea_cluster ISNULL;
+            UPDATE buildings_tem SET plz = %(plz)s WHERE plz ISNULL;
             UPDATE buildings_tem SET floors = 1 WHERE floors ISNULL;"""
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
-        print(self.cur.statusmessage)
 
-    def getConnectedComponent(self):
+    def set_residential_buildings_table_from_shape_file(self, plz:int, shape: Any) -> None:
+        """
+        * Fills buildings_tem with residential buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """INSERT INTO buildings_tem (osm_id, area, type, geom, center, floors)
+                SELECT osm_id, area, building_t, geom, ST_Centroid(geom), floors::int FROM res
+                WHERE ST_Contains(ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035), ST_Centroid(res.geom));
+                UPDATE buildings_tem SET plz = %(p)s WHERE plz ISNULL;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "shape": shape})
+
+    def set_other_buildings_table_from_shapefile(self, plz:int, shape:Any) -> None:
+        """
+        * Fills buildings_tem with other buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects shapefile
+        * Sets all floors to 1
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """INSERT INTO buildings_tem(osm_id, area, type, geom, center)
+                SELECT osm_id, area, use, geom, ST_Centroid(geom) FROM oth AS o 
+                WHERE o.use in ('Commercial', 'Public')
+                AND ST_Contains(ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035), ST_Centroid(o.geom));
+            UPDATE buildings_tem SET plz = %(p)s WHERE plz ISNULL;
+            UPDATE buildings_tem SET floors = 1 WHERE floors ISNULL;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "shape": shape})
+
+    def set_residential_buildings_table_from_osmid(self, plz:int, buildings:list) -> None:
+        """
+        * Fills buildings_tem with residential buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """INSERT INTO buildings_tem (osm_id, area, type, geom, center, floors)
+                SELECT osm_id, area, building_t, geom, ST_Centroid(geom), floors::int FROM res
+                WHERE res.osm_id = ANY(%(buildings)s);
+                UPDATE buildings_tem SET plz = %(p)s WHERE plz ISNULL;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "buildings": buildings})
+
+    def set_other_buildings_table_from_osmid(self, plz:int, buildings:list) -> None:
+        """
+        * Fills buildings_tem with other buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects shapefile
+        * Sets all floors to 1
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """INSERT INTO buildings_tem(osm_id, area, type, geom, center)
+                SELECT osm_id, area, use, geom, ST_Centroid(geom) FROM oth AS o 
+                WHERE o.use in ('Commercial', 'Public')
+                AND o.osm_id = ANY(%(buildings)s);
+            UPDATE buildings_tem SET plz = %(p)s WHERE plz ISNULL;
+            UPDATE buildings_tem SET floors = 1 WHERE floors ISNULL;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "buildings": buildings})
+
+    def get_connected_component(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Reads from ways_tem
         :return:
@@ -1580,14 +1648,14 @@ class PgReaderWriter:
 
         return component, node
 
-    def countBuildingsinKmeancluster(self, kcid):
-        query = """SELECT COUNT(*) FROM buildings_tem WHERE k_mean_cluster = %(k)s;"""
+    def count_buildings_kcid(self, kcid:int) -> int:
+        query = """SELECT COUNT(*) FROM buildings_tem WHERE kcid = %(k)s;"""
         self.cur.execute(query, {"k": kcid})
         count = self.cur.fetchone()[0]
 
         return count
 
-    def SetWaysTemTable(self, plz):
+    def set_ways_tem_table(self, plz:int) -> int:
         """
         * Inserts ways inside the plz area to the ways_tem table
         :param plz:
@@ -1606,16 +1674,34 @@ class PgReaderWriter:
 
         return count
 
-    def tryClustering(
+    def set_ways_tem_table_from_shapefile(self, shape:Any) -> int:
+        """
+        * Inserts ways inside the plz area to the ways_tem table
+        :param shape:
+        :return: number of ways in ways_tem
+        """
+        query = """INSERT INTO ways_tem
+            SELECT * FROM ways AS w 
+            WHERE ST_Intersects(w.geom, ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035));
+            SELECT COUNT(*) FROM ways_tem;"""
+        self.cur.execute(query, {"v": VERSION_ID, "shape": shape})
+        count = self.cur.fetchone()[0]
+
+        if count == 0:
+            raise ValueError(f"Ways table is empty for the given plz: {shape}")
+
+        return count
+
+    def try_clustering(
             self,
-            Z,
-            cluster_amount,
-            localid2vid,
-            buildings,
-            consumer_cat_df,
-            transformer_capacities,
-            double_trans,
-    ):
+            Z: np.ndarray,
+            cluster_amount: int,
+            localid2vid: dict,
+            buildings: pd.DataFrame,
+            consumer_cat_df: pd.DataFrame,
+            transformer_capacities: np.ndarray,
+            double_trans: np.ndarray,
+    ) -> tuple[dict, dict, int]:
         flat_groups = fcluster(Z, t=cluster_amount, criterion="maxclust")
         cluster_ids = np.unique(flat_groups)
         cluster_count = len(cluster_ids)
@@ -1652,7 +1738,7 @@ class PgReaderWriter:
                 cluster_dict[cluster_id] = (vid_list, opt_transformer)
         return invalid_cluster_dict, cluster_dict, cluster_count
 
-    def createBuildingClustersForKcid(self, plz, kcid):
+    def create_building_clusters_for_kcid(self, plz:int, kcid:int) -> None:
         """
         Cluster buildings with average linkage clustering
         :param plz:
@@ -1660,17 +1746,17 @@ class PgReaderWriter:
         :return:
         """
         # Hole die Gebäuden in dem Load Area Cluster
-        buildings = self.getBuildingsFromKc(kcid)
+        buildings = self.get_buildings_from_kc(kcid)
         # Hole die Verbraucherkategorien
-        consumer_cat_df = self.getConsumerCategories()
+        consumer_cat_df = self.get_consumer_categories()
         # Siedlungstyp (1,2,3)
-        siedlungstyp = self.getSiedlungstypFromPlz(plz)
+        siedlungstyp = self.get_siedlungstyp_from_plz(plz)
         # Transformatordaten
-        transformer_capacities, _ = self.getTransformatorData(siedlungstyp)
+        transformer_capacities, _ = self.get_transformator_data(siedlungstyp)
         double_trans = np.multiply(transformer_capacities[2:4], 2)
 
         # Distance Matrix von Verbrauchern in einem Load Area Cluster
-        localid2vid, dist_mat, vid2localid = self.getDistanceMatrixFromKMeanCluster(
+        localid2vid, dist_mat, vid2localid = self.get_distance_matrix_from_kmean_cluster(
             kcid
         )
         # Transform to a condensed distance vector for linkage
@@ -1686,7 +1772,7 @@ class PgReaderWriter:
 
             new_localid2vid = localid2vid
             while True:
-                invalid_cluster_dict, cluster_dict, cluster_count = self.tryClustering(
+                invalid_cluster_dict, cluster_dict, cluster_count = self.try_clustering(
                     Z,
                     cluster_amount,
                     new_localid2vid,
@@ -1718,13 +1804,13 @@ class PgReaderWriter:
                 if len(invalid_trans_cluster_dict) == 0:
                     # terminate when there is not too_large cluster and amount of double transformers are within limit
                     # combination and re_index
-                    print(
+                    self.logger.debug(
                         f"altogether {len(valid_cluster_dict)} single transformer clusters found"
                     )
                     break
 
                 else:
-                    print(f"found {len(invalid_trans_cluster_dict)} too_large clusters")
+                    self.logger.debug(f"found {len(invalid_trans_cluster_dict)} too_large clusters")
                     # first deal with those too_large clusters
 
                     # get local_ids for those buildings which are in a too_large clusters
@@ -1763,20 +1849,20 @@ class PgReaderWriter:
             # print(trafo_count)
 
             # Upsert into the database
-            self.clearBuildingClustersInKMeanCluster(plz, kcid)
+            self.clear_building_clusters_in_kmean_cluster(plz, kcid)
             for bcid in valid_cluster_dict:
-                self.upsertBuildingCluster(
+                self.upsert_building_cluster(
                     plz,
                     kcid,
                     bcid,
                     vertices=valid_cluster_dict[bcid][0],
                     s_max=valid_cluster_dict[bcid][1],
                 )
-            print(f"BC upsert done for load_cluster {plz} k_mean cluster {kcid} ...")
+            self.logger.debug(f"BC upsert done for load_cluster {plz} k_mean cluster {kcid} ...")
 
-    def drawBuildingConnection(self):
+    def draw_building_connection(self) -> None:
         """
-        Updates ways_tem, creates pgr network topology in new tables: #TODO
+        Updates ways_tem, creates pgr network topology in new tables:
         :return:
         """
         connection_query = """ SELECT public.draw_home_connections(); """
@@ -1794,29 +1880,33 @@ class PgReaderWriter:
         )
         self.cur.execute(analyze_query)
 
-    def insertTransformers(self, plz):
+    def insert_transformers(self, plz:int) -> None:
         """
         Add up the existing transformers from transformers table to the buildings_tem table
         :param plz:
         :return:
         """
         insert_query = """
-            UPDATE transformers SET geom = ST_Centroid(geom) WHERE ST_GeometryType(geom) =  'ST_Polygon';
-            INSERT INTO buildings_tem (osm_id, center)
-                SELECT ogc_fid::varchar, geom 
-                FROM transformers WHERE ST_Within(geom, (SELECT geom FROM postcode_result LIMIT 1)) IS FALSE;
-            UPDATE buildings_tem SET in_loadarea_cluster = %(p)s WHERE in_loadarea_cluster ISNULL;
+            --UPDATE transformers SET geom = ST_Centroid(geom) WHERE ST_GeometryType(geom) =  'ST_Polygon';
+            INSERT INTO buildings_tem (osm_id, geom)--(osm_id,center)
+                SELECT osm_id, geom 
+                --FROM transformers WHERE ST_Within(geom, (SELECT geom FROM postcode_result LIMIT 1)) IS FALSE;
+                FROM transformers as t
+                    WHERE ST_Within(t.geom, (SELECT geom FROM postcode_result WHERE id = %(p)s AND version_id = %(v)s)); --IS FALSE;
+            UPDATE buildings_tem SET plz = %(p)s WHERE plz ISNULL;
+            UPDATE buildings_tem SET center = ST_Centroid(geom) WHERE center ISNULL;
             UPDATE buildings_tem SET type = 'Transformer' WHERE type ISNULL;
             UPDATE buildings_tem SET peak_load_in_kw = -1 WHERE peak_load_in_kw ISNULL;"""
-        self.cur.execute(insert_query, {"p": plz})
+        self.cur.execute(insert_query, {"p": plz, "v": VERSION_ID})
 
-    def delete_transformers(self):
+    def delete_transformers(self) -> None:
         """all transformers are deleted from table transformers in database"""
-        delete_query = """TRUNCATE TABLE transformers;"""
+        delete_query = """DELETE FROM transformers;"""
         self.cur.execute(delete_query)
-        print('Transformers deleted.')
+        self.conn.commit()
+        self.logger.info('Transformers deleted.')
 
-    def setVerticeId(self):
+    def set_vertice_id(self) -> int:
         """
         Updates buildings_tem with the vertice_id s from ways_tem_vertices_pgr
         :return:
@@ -1841,9 +1931,9 @@ class PgReaderWriter:
 
         return count
 
-    def generateLoadVector(self, kcid, bcid):
+    def generate_load_vector(self, kcid:int, bcid:int) -> np.ndarray:
         query = """SELECT SUM(peak_load_in_kw)::float FROM buildings_tem 
-                WHERE k_mean_cluster = %(k)s AND in_building_cluster = %(b)s 
+                WHERE kcid = %(k)s AND bcid = %(b)s 
                 GROUP BY connection_point 
                 ORDER BY connection_point;"""
         self.cur.execute(query, {"k": kcid, "b": bcid})
@@ -1851,7 +1941,7 @@ class PgReaderWriter:
 
         return load
 
-    def assignCloseBuildings(self):
+    def assign_close_buildings(self) -> None:
         """
         * Set peak load to zero, if a building is too near or touching to a too large customer?
         :return:
@@ -1876,9 +1966,9 @@ class PgReaderWriter:
 
         return None
 
-    def countConnectedBuildings(self, vertices):
+    def count_connected_buildings(self, vertices:Union[list, tuple]) -> int:
         """
-        FROM: buildings_tem
+        Get count from buildings_tem where type is not transformer
         :param vertices: np.array
         :return: count of buildings with given vertice_id s from buildings_tem
         """
@@ -1888,7 +1978,7 @@ class PgReaderWriter:
 
         return count
 
-    def updateWaysCost(self):
+    def update_ways_cost(self) -> None:
         """
         Calculates the length of each way and stores in ways_tem.cost as meter
         """
@@ -1896,9 +1986,9 @@ class PgReaderWriter:
         UPDATE ways_tem SET reverse_cost = cost;"""
         self.cur.execute(query)
 
-    def countOneBuildingCluster(self):
+    def count_one_building_cluster(self) -> int:
         query = """SELECT COUNT(*) FROM building_clusters bc 
-            WHERE (SELECT COUNT(*) FROM buildings_tem b WHERE b.k_mean_cluster = bc.k_mean_cluster AND b.in_building_cluster = bc.building_cluster) = 1;"""
+            WHERE (SELECT COUNT(*) FROM buildings_tem b WHERE b.kcid = bc.kcid AND b.bcid = bc.bcid) = 1;"""
         self.cur.execute(query)
         try:
             count = self.cur.fetchone()[0]
@@ -1907,7 +1997,19 @@ class PgReaderWriter:
 
         return count
 
-    def dropIndoorTransformers(self):
+    def count_indoor_transformers(self) -> None:
+        """counts indoor transformers before deleting them"""
+        query = f"""WITH union_table (ungeom) AS 
+                (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
+            SELECT COUNT(*) 
+                FROM buildings_tem 
+                WHERE ST_Within(center, (SELECT ungeom FROM union_table))
+                AND type = 'Transformer';"""
+        self.cur.execute(query)
+        count = self.cur.fetchone()[0]
+        self.logger.debug(f"{count} indoor transformers will be deleted")
+
+    def drop_indoor_transformers(self) -> None:
         """
         Drop transformer if it is inside a building with zero load
         :return:
@@ -1918,7 +2020,7 @@ class PgReaderWriter:
                 AND type = 'Transformer';"""
         self.cur.execute(query)
 
-    def updateLargeKmeansCluster(self, vertices, cluster_count):
+    def update_large_kmeans_cluster(self, vertices:Union[list, tuple], cluster_count:int):
         """
         Applies k-means clustering to large components and updated values in buildings_tem
         :param vertices:
@@ -1928,8 +2030,8 @@ class PgReaderWriter:
         query = """
                 WITH kmean AS (SELECT osm_id, ST_ClusterKMeans(center, %(ca)s)
                 OVER() AS cid FROM buildings_tem WHERE vertice_id IN %(v)s),
-                maxk AS (SELECT MAX(k_mean_cluster) AS max_k FROM buildings_tem)
-            UPDATE buildings_tem b SET k_mean_cluster = (CASE 
+                maxk AS (SELECT MAX(kcid) AS max_k FROM buildings_tem)
+            UPDATE buildings_tem b SET kcid = (CASE 
             WHEN m.max_k ISNULL THEN k.cid + 1 
             ELSE m.max_k + k.cid + 1
             END)
@@ -1937,15 +2039,15 @@ class PgReaderWriter:
             WHERE b.osm_id = k.osm_id;"""
         self.cur.execute(query, {"ca": cluster_count, "v": tuple(map(int, vertices))})
 
-    def updateKmeansCluster(self, vertices):
+    def update_kmeans_cluster(self, vertices: list) -> None:
         """
         Applies k-means clustering and updated values in buildings_tem
         :param vertices:
         :return:
         """
         query = """
-                WITH maxk AS (SELECT MAX(k_mean_cluster) AS max_k FROM buildings_tem)
-            UPDATE buildings_tem SET k_mean_cluster = (CASE 
+                WITH maxk AS (SELECT MAX(kcid) AS max_k FROM buildings_tem)
+            UPDATE buildings_tem SET kcid = (CASE 
             WHEN m.max_k ISNULL THEN 1 
             ELSE m.max_k + 1
             END)
@@ -1953,7 +2055,7 @@ class PgReaderWriter:
             WHERE vertice_id IN %(v)s;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
-    def deleteUselessWays(self, vertices):
+    def delete_ways(self, vertices: list) -> None:
         """
         Deletes selected ways from ways_tem and ways_tem_vertices_pgr
         :param vertices:
@@ -1963,7 +2065,7 @@ class PgReaderWriter:
                 DELETE FROM ways_tem_vertices_pgr WHERE id IN %(v)s;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
-    def deleteUselessTransformers(self, vertices):
+    def delete_transformers(self, vertices: list) -> None:
         """
         Deletes selected transformers from buildings_tem
         :param vertices:
@@ -1973,23 +2075,23 @@ class PgReaderWriter:
                 DELETE FROM buildings_tem WHERE vertice_id IN %(v)s;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
-    def deleteIsolatedBuilding(self, plz, kcid):
-        query = """DELETE FROM buildings_tem WHERE in_loadarea_cluster = %(p)s
-                    AND k_mean_cluster = %(k)s AND in_building_cluster ISNULL;"""
+    def delete_isolated_building(self, plz:int, kcid):
+        query = """DELETE FROM buildings_tem WHERE plz = %(p)s
+                    AND kcid = %(k)s AND bcid ISNULL;"""
         self.cur.execute(query, {"p": plz, "k": kcid})
 
-    def saveInformationAndResetTables(self, plz):
+    def save_and_reset_tables(self, plz:int):
 
         # finding duplicates that violate the buildings_result_pkey constraint
-        # the key of building result is (version_id, osm_id, in_loadarea_cluster)
+        # the key of building result is (version_id, osm_id, plz)
         query = f"""
                 DELETE FROM buildings_tem a USING(
-                    SELECT MIN(ctid) as ctid, osm_id, in_loadarea_cluster
+                    SELECT MIN(ctid) as ctid, osm_id, plz
                     FROM buildings_tem
-                    GROUP BY (osm_id, in_loadarea_cluster) HAVING COUNT(*) > 1
+                    GROUP BY (osm_id, plz) HAVING COUNT(*) > 1
                     ) b
                 WHERE a.osm_id = b.osm_id
-                AND a.in_loadarea_cluster = b.in_loadarea_cluster
+                AND a.plz = b.plz
                 AND a.ctid <> b.ctid;"""
         self.cur.execute(query)
 
@@ -2008,17 +2110,14 @@ class PgReaderWriter:
         # Clear temporary tables
         query = """DELETE FROM buildings_tem"""
         self.cur.execute(query)
-        print(self.cur.statusmessage)
         query = """DELETE FROM ways_tem"""
         self.cur.execute(query)
-        print(self.cur.statusmessage)
         query = """DELETE FROM ways_tem_vertices_pgr"""
         self.cur.execute(query)
-        print(self.cur.statusmessage)
 
         self.conn.commit()
 
-    def removeDuplicateBuildings(self):
+    def remove_duplicate_buildings(self):
         """
         * Remove buildings without geometry or osm_id
         * Remove buildings which are duplicates of other buildings and have a copied id
@@ -2035,19 +2134,6 @@ class PgReaderWriter:
                     AND osm_id LIKE '%copy%';"""
         self.cur.execute(query)
 
-    def getCableCostFromBcid(self, cable):
-        cable_query = """SELECT cable FROM building_clusters 
-                        WHERE version_id = %(v)s
-                        AND loadarea_cluster = %(l)s
-                        AND k_mean_cluster = %(k)s 
-                        AND building_cluster = %(b)s;"""
-        self.cur.execute(
-            cable_query, {"v": VERSION_ID, "l": cable[0], "k": cable[1], "b": cable[2]}
-        )
-        cost = self.cur.fetchone()[0]
-
-        return cost
-
     def insert_version_if_not_exists(self):
         count_query = f"""SELECT COUNT(*) 
         FROM version 
@@ -2055,7 +2141,7 @@ class PgReaderWriter:
         self.cur.execute(count_query)
         version_exists = self.cur.fetchone()[0]
         if version_exists:
-            print(f"Version: {VERSION_ID} (already exists)")
+            self.logger.info(f"Version: {VERSION_ID} (already exists)")
         else:
             # create new version
             consumer_categories_str = CONSUMER_CATEGORIES.to_json().replace("'", "''")
@@ -2075,19 +2161,19 @@ class PgReaderWriter:
             insert_query = f"""INSERT INTO version (version_id, version_comment, consumer_categories, cable_cost_dict, connection_available_cables, other_parameters) VALUES
             ('{VERSION_ID}', '{VERSION_COMMENT}', '{consumer_categories_str}', '{cable_cost_dict_str}', '{connection_available_cables_str}', '{other_paramters_str}')"""
             self.cur.execute(insert_query)
-            print(f"Version: {VERSION_ID} (created for the first time)")
+            self.logger.info(f"Version: {VERSION_ID} (created for the first time)")
 
     def insert_parameter_tables(self, consumer_categories: pd.DataFrame):
-        with self.sqla_engine.connect() as conn:
+        with self.sqla_engine.begin() as conn:
             conn.execute(text("DELETE FROM consumer_categories"))
             consumer_categories.to_sql(
                 name="consumer_categories", con=conn, if_exists="append", index=False
             )
 
-        print("Parameter tables are inserted")
+        self.logger.debug("Parameter tables are inserted")
 
-    def analyse_basic_parameters(self, plz):
-        cluster_list = self.getListFromPlz(plz)
+    def analyse_basic_parameters(self, plz:int):
+        cluster_list = self.get_list_from_plz(plz)
         count = len(cluster_list)
         time = 0
         percent = 0
@@ -2096,7 +2182,7 @@ class PgReaderWriter:
         bus_count_dict = {}
         cable_length_dict = {}
         trafo_dict = {}
-        print("start basic parameter counting")
+        self.logger.debug("start basic parameter counting")
         for kcid, bcid in cluster_list:
             load_count = 0
             bus_list = []
@@ -2104,7 +2190,7 @@ class PgReaderWriter:
                 net = self.read_net(plz, kcid, bcid)
                 # net = pp.from_json(os.path.join(RESULT_DIR, "grid_genereation_result", file))
             except Exception as e:
-                print(f" local network {kcid},{bcid} is problematic")
+                self.logger.warning(f" local network {kcid},{bcid} is problematic")
                 raise e
             else:
                 for row in net.load[["name", "bus"]].itertuples():
@@ -2134,15 +2220,17 @@ class PgReaderWriter:
             time += 1
             if time / count >= 0.1:
                 percent += 10
-                print(f"{percent} percent finished")
+                self.logger.info(f"{percent} percent finished")
                 time = 0
-
+        self.logger.info("analyse_basic_parameters finished.")
         trafo_string = json.dumps(trafo_dict)
         load_count_string = json.dumps(load_count_dict)
         bus_count_string = json.dumps(bus_count_dict)
 
-        print(bus_count_string)
+        self.insert_grid_parameters(plz, trafo_string, load_count_string, bus_count_string)
 
+
+    def insert_grid_parameters(self, plz:int, trafo_string:str, load_count_string: str, bus_count_string:str):
         update_query = """INSERT INTO public.grid_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)
         VALUES(%s, %s, %s, %s, %s);"""  # TODO: check - should values be updated for same plz and version if analysis is started? And Add a column
         self.cur.execute(
@@ -2150,10 +2238,10 @@ class PgReaderWriter:
             vars=(VERSION_ID, plz, trafo_string, load_count_string, bus_count_string),
         )
 
-        print("basic parameter count finished")
+        self.logger.debug("basic parameter count finished")
 
-    def analyse_cables(self, plz):
-        cluster_list = self.getListFromPlz(plz)
+    def analyse_cables(self, plz:int):
+        cluster_list = self.get_list_from_plz(plz)
         count = len(cluster_list)
         time = 0
         percent = 0
@@ -2164,7 +2252,7 @@ class PgReaderWriter:
             try:
                 net = self.read_net(plz, kcid, bcid)
             except Exception as e:
-                print(f" local network {kcid},{bcid} is problematic")
+                self.logger.debug(f" local network {kcid},{bcid} is problematic")
                 raise e
             else:
                 cable_df = net.line[net.line["in_service"] == True]
@@ -2186,9 +2274,9 @@ class PgReaderWriter:
             time += 1
             if time / count >= 0.1:
                 percent += 10
-                print(f"{percent} % processed")
+                self.logger.info(f"{percent} % processed")
                 time = 0
-
+        self.logger.info("analyse_cables finished.")
         cable_length_string = json.dumps(cable_length_dict)
 
         update_query = """UPDATE public.grid_parameters
@@ -2198,10 +2286,10 @@ class PgReaderWriter:
             update_query, {"v": VERSION_ID, "c": cable_length_string, "p": plz}
         )  # TODO: change to cable_length_per_type, add cable_length_per_trafo
 
-        print("cable count finished")
+        self.logger.debug("cable count finished")
 
-    def analyse_per_trafo_parameters(self, plz):
-        cluster_list = self.getListFromPlz(plz)
+    def analyse_per_trafo_parameters(self, plz:int):
+        cluster_list = self.get_list_from_plz(plz)
         count = len(cluster_list)
         time = 0
         percent = 0
@@ -2214,7 +2302,7 @@ class PgReaderWriter:
             try:
                 net = self.read_net(plz, kcid, bcid)
             except Exception as e:
-                print(f" local network {kcid},{bcid} is problematic")
+                self.logger.warning(f" local network {kcid},{bcid} is problematic")
                 raise e
             else:
                 trafo_sizes = net.trafo["sn_mva"].tolist()[0]
@@ -2303,9 +2391,9 @@ class PgReaderWriter:
             time += 1
             if time / count >= 0.1:
                 percent += 10
-                print(f"{percent} % processed")
+                self.logger.info(f"{percent} % processed")
                 time = 0
-
+        self.logger.info("analyse_per_trafo_parameters finished.")
         trafo_load_string = json.dumps(trafo_load_dict)
         trafo_max_distance_string = json.dumps(trafo_max_distance_dict)
         trafo_avg_distance_string = json.dumps(trafo_avg_distance_dict)
@@ -2325,9 +2413,9 @@ class PgReaderWriter:
             },
         )
 
-        print("per trafo analysis finished")
+        self.logger.debug("per trafo analysis finished")
 
-    def read_trafo_dict(self, plz):  # TODO add plz
+    def read_trafo_dict(self, plz:int) -> dict:
         read_query = """SELECT trafo_num FROM public.grid_parameters 
         WHERE version_id = %(v)s AND plz = %(p)s;"""
         self.cur.execute(read_query, {"v": VERSION_ID, "p": plz})
@@ -2335,7 +2423,7 @@ class PgReaderWriter:
 
         return trafo_num_dict
 
-    def read_per_trafo_dict(self, plz):
+    def read_per_trafo_dict(self, plz:int) -> tuple[list[dict, dict, dict, dict, dict], list[str], dict]:
         read_query = """SELECT load_count_per_trafo, bus_count_per_trafo, sim_peak_load_per_trafo,
         max_distance_per_trafo, avg_distance_per_trafo FROM public.grid_parameters 
         WHERE version_id = %(v)s AND plz = %(p)s;"""
@@ -2357,7 +2445,7 @@ class PgReaderWriter:
 
         return data_list, data_labels, trafo_dict
 
-    def read_cable_dict(self, plz):
+    def read_cable_dict(self, plz:int) -> dict:
         read_query = """SELECT cable_length FROM public.grid_parameters
         WHERE version_id = %(v)s AND plz = %(p)s;"""
         self.cur.execute(read_query, {"v": VERSION_ID, "p": plz})
@@ -2365,12 +2453,12 @@ class PgReaderWriter:
 
         return cable_length
 
-    def save_net(self, plz, kcid, bcid, json_string):
+    def save_net(self, plz:int, kcid:int, bcid:int, json_string:str) -> None:
         insert_query = "INSERT INTO grids VALUES (%s, %s, %s, %s, %s)"
         self.cur.execute(insert_query, vars=(VERSION_ID, plz, kcid, bcid, json_string))
 
-    def read_net(self, plz, kcid, bcid):
-        read_query = "SELECT grid FROM grids WHERE version_id=%s AND plz=%s AND kcid=%s AND bcid=%s LIMIT 1"
+    def read_net(self, plz:int, kcid:int, bcid:int) -> json:
+        read_query = "SELECT grid FROM grids WHERE version_id = %s AND plz = %s AND kcid = %s AND bcid = %s LIMIT 1"
         self.cur.execute(read_query, vars=(VERSION_ID, plz, kcid, bcid))
         grid_tuple = self.cur.fetchall()[0]
         grid_dict = grid_tuple[0]
@@ -2381,9 +2469,9 @@ class PgReaderWriter:
 
     # Getter functions with Geopandas
 
-    def getGeoDataFrame(
+    def get_geo_df(
             self,
-            table,
+            table:str,
             **kwargs,
     ) -> gpd.GeoDataFrame:
         """
@@ -2394,7 +2482,7 @@ class PgReaderWriter:
         """
         if kwargs:
             filters = " AND " + " AND ".join(
-                [f"{key} = {value}" for key, value in kwargs.items()]
+                [f"{key} = {value}" for key, value in kwargs.items() if key != 'version_id']
             )
         else:
             filters = ""
@@ -2403,40 +2491,265 @@ class PgReaderWriter:
                     WHERE version_id = %(v)s """
                 + filters
         )
+        version = VERSION_ID
+        if 'version_id' in kwargs:
+            version = kwargs.get('version_id')
 
-        params = {"v": VERSION_ID}
+        params = {"v": version}
         with self.sqla_engine.begin() as connection:
             gdf = gpd.read_postgis(query, con=connection, params=params)
 
         return gdf
 
-    def get_number_of_households(self, plz):
+    def get_grid_versions_with_plz(self, plz:int) -> list[tuple]:
+        query = (
+            f"""SELECT DISTINCT version_id FROM grids WHERE plz = %(p)s"""
+        )
+        self.cur.execute(query, {"p": plz})
+        result = self.cur.fetchall()
+        return result
+
+    def get_grids_of_version(self, plz:int, version_id:str) -> list[tuple]:
+        query = (
+            f"""SELECT kcid, bcid, grid
+                FROM grids 
+                WHERE plz = %(p)s AND version_id = %(v)s""")
+        self.cur.execute(query, {"p": plz, "v": version_id})
+        result = self.cur.fetchall()
+        return result
+
+    def copy_postcode_result_table_with_new_shape(self, plz:int, shape:Any) -> None:
+        """
+        Copies the given plz entry from postcode to the postcode_result table
+        :param plz:
+        :return:
+        """
+        query = """INSERT INTO postcode_result (version_id, id, siedlungstyp, geom, hausabstand) 
+                    VALUES(%(v)s, %(p)s::INT, null, ST_Multi(ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035)), null)
+                    ON CONFLICT (version_id,id) DO NOTHING;"""
+
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "shape": shape})
+
+    # Pure Test method to make sure intersection between a GeoJSON shape and PLZ area geom data gives correct results
+    def test__getPlzIntersectionFromShapefile(self, shape:Any) -> list[tuple]:
+        """
+        * Fills buildings_tem with residential buildings which are inside the selected polygon
+        * Sets the loadarea cluster to first plz that intersects shapefile
+        :param shape:
+        :return:
+        """
+
+        # Fill table
+        query = """SELECT plz FROM postcode WHERE ST_Intersects(postcode.geom, ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035));"""
+        self.cur.execute(query, {"v": VERSION_ID, "shape": shape})
+        result = self.cur.fetchall()
+        return result
+
+    def test__getBuildingGeoJSONFromShapefile(self, building_type:str, shape:Any) -> str:
+        query = ""
+        if building_type == 'res':
+            query = """SELECT json_build_object(
+                    'type', 'FeatureCollection',
+                    'features', json_agg(ST_AsGeoJSON(t.*)::json)
+                )
+                FROM (SELECT ST_Transform(geom, 4326), osm_id from res
+                WHERE ST_Contains(ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035), ST_Centroid(res.geom))) as t(geom, id);"""
+
+        if building_type == 'oth':
+            query = """SELECT json_build_object(
+                    'type', 'FeatureCollection',
+                    'features', json_agg(ST_AsGeoJSON(t.*)::json)
+                )
+                FROM (SELECT ST_Transform(geom, 4326), osm_id from oth
+                WHERE ST_Contains(ST_Transform(ST_GeomFromGeoJSON(%(shape)s), 3035), ST_Centroid(oth.geom))) as t(geom, id);"""
+
+        self.cur.execute(query, {"v": VERSION_ID, "shape": shape})
+        result = self.cur.fetchall()
+        return result[0][0]
+
+    def get_all_buildings_tem(self) -> list[tuple]:
+
+        query = """SELECT * from buildings_tem;"""
+
+        self.cur.execute(query)
+        result = self.cur.fetchall()
+        return result
+
+    def test__getBuildingOfBus(self, plz:int, lat:float, lon:float) -> str:
+
+        query = """ SELECT  osm_id FROM buildings_result 
+                    WHERE version_id = %(v)s AND plz = %(p)s AND
+                    ST_CONTAINS(geom, ST_TRANSFORM(ST_SetSRID(ST_POINT(%(x)s, %(y)s), 4326), 3035))
+                    """
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "x": lat, "y": lon})
+        result = self.cur.fetchall()
+        if not result:
+            return ()
+        return result[0][0]
+
+    def test_getAdditionalBuildingData(self, osm_id:str) -> list:
+        query = """ SELECT build_res.area, 
+                            peak_load_in_kw, 
+                            res.use, 
+                            oth.use, 
+                            res.free_walls, 
+                            oth.free_walls, 
+                            build_res.floors, 
+                            houses_per_building,
+                            res.occupants,
+                            res.refurb_wal,
+                            res.refurb_roo,
+                            res.refurb_bas,
+                            res.refurb_win
+                    FROM buildings_result build_res 
+                    LEFT JOIN res ON build_res.osm_id = res.osm_id 
+                    LEFT JOIN oth ON build_res.osm_id = oth.osm_id
+                    WHERE build_res.osm_id = %(o)s LIMIT 1
+            """
+        self.cur.execute(query, {"o": osm_id})
+        temp_result = self.cur.fetchall()[0]
+
+        result = list(temp_result)
+        if result[5] == None:
+            # oth.free_walls
+            del result[5]
+        elif result[4] == None:
+            # res.free_walls,
+            del result[4]
+
+        if result[3] == None:
+            # oth.use
+            del result[3]
+        elif result[2] == None:
+            # res.use
+            del result[2]
+
+        return result
+
+    def get_building_data(self, plz, lat, lon):
+        """
+        Retrieves building data for a given postal code based on the given PLZ (postal code), latitude, and longitude.
+        Returns information on the building at that location.
+
+        """
+        query = """ SELECT build_res.area,
+                           peak_load_in_kw,
+                           res.use,
+                           oth.use,
+                           res.free_walls,
+                           oth.free_walls,
+                           build_res.floors,
+                           houses_per_building,
+                           res.occupants,
+                           res.refurb_wal,
+                           res.refurb_roo,
+                           res.refurb_bas,
+                           res.refurb_win, 
+                           build_res.type,
+                           res.constructi,
+                           ST_AsText(res.geom) as res_geom,
+                           ST_AsText(oth.geom) as oth_geom,
+                           build_res.osm_id
+                    FROM buildings_result build_res
+                             LEFT JOIN res ON build_res.osm_id = res.osm_id
+                             LEFT JOIN oth ON build_res.osm_id = oth.osm_id
+                    
+                    WHERE build_res.osm_id = (WITH osm_id_result AS (SELECT osm_id
+                                                 FROM buildings_result
+                                                 WHERE version_id =%(v)s 
+                                                        AND in_loadarea_cluster=%(p)s 
+                                                        AND ST_CONTAINS(geom, ST_TRANSFORM(ST_SetSRID(ST_POINT(%(x)s, %(y)s), 4326), 3035)))
+                                              SELECT osm_id
+                                              FROM osm_id_result)
+                    LIMIT 1
+            """
+
+        params = {"v": VERSION_ID, "p": plz, "x": lat, "y": lon}
+        # with self.sqla_engine.begin() as connection:
+        #     gdf = gpd.read_postgis(query, con=connection, params=params)
+
+        self.cur.execute(query, params)
+        temp_result = self.cur.fetchall()[0]
+
+        result = list(temp_result)
+        if result[16] == None:
+            # oth_geom
+            del result[16]
+        elif result[15] == None:
+            # res_geom
+            del result[15]
+        if result[5] == None:
+            # oth.free_walls
+            del result[5]
+        elif result[4] == None:
+            # res.free_walls,
+            del result[4]
+
+        if result[3] == None:
+            # oth.use
+            del result[3]
+        elif result[2] == None:
+            # res.use
+            del result[2]
+
+        # gdf.dropna(axis="columns", subset=["oth_geom", "res_geom"], inplace=True)
+        # gdf.dropna(axis="columns", subset=["oth.free_walls", "res.free_walls"], inplace=True)
+        # gdf.dropna(axis="columns", subset=["oth.use", "res.use"], inplace=True)
+        # print(result == gdf.iloc[0].tolist())
+        # print(gdf)
+        return result
+
+    def check_if_grid_exists(self, plz:int, version:str) -> list[tuple]:
+        query = """ SELECT DISTINCT id from postcode_result WHERE id = %(plz)s AND version_id = %(version)s
+                """
+        self.cur.execute(query, {'plz': plz, 'version': version})
+        result = self.cur.fetchall()
+        return result
+
+    def get_all_postcode_results(self) -> list[tuple]:
+        query = """ SELECT DISTINCT id from postcode_result"""
+
+        self.cur.execute(query)
+        result = self.cur.fetchall()
+        return result
+
+    def read_net_of_specific_version(self, plz:int, kcid:int, bcid:int, version: str):
+        read_query = "SELECT grid FROM grids WHERE version_id = %s AND plz = %s AND kcid = %s AND bcid = %s LIMIT 1"
+        self.cur.execute(read_query, vars=(version, plz, kcid, bcid))
+        grid_tuple = self.cur.fetchall()[0]
+        grid_dict = grid_tuple[0]
+        grid_json_string = json.dumps(grid_dict)
+        net = pp.from_json_string(grid_json_string)
+
+        return net
+
+    def get_number_of_households(self, plz:int) -> int:
         """
         function sums up all the houses / households that are contained in all the buildings
         for a plz (and computation version)
         """
         no_households_query = """SELECT SUM(houses_per_building) FROM buildings_result
                     WHERE version_id = %(v)s 
-                    AND in_loadarea_cluster = %(p)s;"""
+                    AND plz = %(p)s;"""
         self.cur.execute(no_households_query, {"v": VERSION_ID, "p": plz})
         no_households = self.cur.fetchone()[0]
 
         return no_households
 
-    def get_number_of_houses(self, plz):
+    def get_number_of_houses(self, plz:int) -> int:
         """
         function counts the number of buildings connected to the grid (Anzahl Hausanschlüsse)
         for a plz (and computation version)
         """
         no_houses_query = """SELECT COUNT(osm_id) FROM buildings_result
                     WHERE version_id = %(v)s 
-                    AND in_loadarea_cluster = %(p)s;"""
+                    AND plz = %(p)s;"""
         self.cur.execute(no_houses_query, {"v": VERSION_ID, "p": plz})
         no_houses = self.cur.fetchone()[0]
 
         return no_houses
 
-    def get_dist_btw_houses(self, plz):
+    def get_dist_btw_houses(self, plz:int) -> int:
         """
         average distance between houses (Hausabstand) is retrieved from the syngrid database
         for a location (plz) and version
@@ -2451,23 +2764,23 @@ class PgReaderWriter:
 
     def insert_lines(
             self,
-            geom,
-            plz,
-            bcid,
-            kcid,
-            line_name,
-            std_type,
-            from_bus,
-            to_bus,
-            length_km
-    ):
+            geom: list,
+            plz: int,
+            bcid: int,
+            kcid: int,
+            line_name: str,
+            std_type: str,
+            from_bus: int,
+            to_bus: int,
+            length_km: float
+    ) -> None:
         """writes lines / cables that belong to a network into the database"""
         line_insertion_query = """INSERT INTO lines_result (
                     version_id, 
                     geom,
-                    in_loadarea_cluster,
-                    in_building_cluster,
-                    k_mean_cluster,
+                    plz,
+                    bcid,
+                    kcid,
                     line_name,
                     std_type,
                     from_bus,
@@ -2498,3 +2811,203 @@ class PgReaderWriter:
             "to_bus": int(to_bus),
             "length_km": length_km
         })
+
+    def delete_plz_from_all_tables(self, plz:int, version_id:str) -> None:
+        """for the given Version ID and plz all entries of corresponding networks in all tables are deleted"""
+        query = """DELETE FROM building_clusters
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": int(plz)})
+        self.conn.commit()
+
+        query = """DELETE FROM buildings_result
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": int(plz)})
+        self.conn.commit()
+
+        query = """DELETE FROM grid_parameters
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": plz})
+        self.conn.commit()
+
+        query = """DELETE FROM grids
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": plz})
+        self.conn.commit()
+
+        query = """DELETE FROM lines_result
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": int(plz)})
+        self.conn.commit()
+
+        query = """DELETE FROM postcode_result
+        WHERE version_id = %(v)s AND id = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": int(plz)})
+        self.conn.commit()
+
+        query = """DELETE FROM transformer_positions
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": int(plz)})
+        self.conn.commit()
+
+        query = """DELETE FROM ways_result
+        WHERE version_id = %(v)s AND plz = %(p)s;"""
+        self.cur.execute(query, {"v": version_id, "p": plz})
+        self.conn.commit()
+
+    def delete_version_from_all_tables(self, version_id:str) -> None:
+        """for the given Version ID all entries of corresponding networks in all tables are deleted"""
+        query = """DELETE FROM building_clusters
+        WHERE version_id = %(v)s ;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM buildings_result
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM grid_parameters
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM grids
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM lines_result
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM postcode_result
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM transformer_positions
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM ways_result
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+
+        query = """DELETE FROM version
+        WHERE version_id = %(v)s;"""
+        self.cur.execute(query, {"v": version_id})
+        self.conn.commit()
+        self.logger.info(f"Version {version_id} deleted from all tables")
+
+    def get_clustering_parameters(self, plz:int, kcid: int, bcid: int) -> pd.DataFrame:
+        """get clustering parameter for a certain net/ grid"""
+        query = """SELECT * 
+                FROM public.clustering_parameters 
+                WHERE version_id = %(v)s AND
+                    plz = %(p)s AND
+                    kcid = %(k)s AND
+                    bcid = %(b)s;"""
+        params = {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid}
+        df_query = pd.read_sql_query(query, con=self.conn, params=params, )
+        columns = CLUSTERING_PARAMETERS
+        df_parameter = pd.DataFrame(df_query, columns=columns)
+        return df_parameter
+
+    def get_clustering_parameters_for_plz_list(self, plz_tuple: tuple) -> pd.DataFrame:
+        """get clustering parameter for multiple plz"""
+        query = """
+                WITH plz_table(plz) AS (
+                    VALUES %(p)s
+                    ),
+                clustering AS(
+                    SELECT * 
+                    FROM public.clustering_parameters 
+                    WHERE version_id = %(v)s
+                    )
+                SELECT c.* 
+                FROM clustering c
+                FULL JOIN plz_table p
+                ON p.plz = c.plz;"""
+        params = {"v": VERSION_ID, "p": plz_tuple}
+        df_query = pd.read_sql_query(query, con=self.conn, params=params, )
+        columns = CLUSTERING_PARAMETERS
+        df_parameter = pd.DataFrame(df_query, columns=columns)
+        return df_parameter
+
+    def get_municipal_register_for_plz(self, plz: str) -> pd.DataFrame:
+        """get entry of table municipal register for given PLZ"""
+        query = """SELECT * 
+        FROM public.municipal_register
+        WHERE plz = %(p)s;"""
+        self.cur.execute(query, {"p": plz})
+        register = self.cur.fetchall()
+        df_register = pd.DataFrame(register, columns=MUNICIPAL_REGISTER)
+        return df_register
+
+    def get_municipal_register(self) -> pd.DataFrame:
+        """get municipal register """
+        query = """SELECT * 
+        FROM public.municipal_register;"""
+        self.cur.execute(query)
+        register = self.cur.fetchall()
+        df_register = pd.DataFrame(register, columns=MUNICIPAL_REGISTER)
+        return df_register
+
+    def get_ags_log(self) -> pd.DataFrame:
+        """get ags log: the amtliche gemeindeschluessel of the municipalities of which the buildings
+        have already been imported to the database
+        :return: table with column of ags
+        :rtype: DataFrame
+         """
+        query = """SELECT * 
+        FROM public.ags_log;"""
+        df_query = pd.read_sql_query(query, con=self.conn, )
+        return df_query
+
+    def write_ags_log(self, ags: int) -> None:
+        """write ags log to database: the amtliche gemeindeschluessel of the municipalities of which the buildings
+        have already been imported to the database
+        :param ags:  ags to be added
+        :rtype ags: numpy integer 64
+         """
+        query = """INSERT INTO ags_log (ags) 
+                VALUES(%(a)s); """
+        self.cur.execute(query, {"a": int(ags), })
+        self.conn.commit()
+
+    def _calculate_cost_arr_dist_matrix(self, costmatrix_query:str, params:dict) -> tuple[dict, np.ndarray, dict]:
+        """
+        Helper function for calculating cost array and distance matrix from given parameters
+        """
+        st = time.time()
+        cost_df = pd.read_sql_query(
+            costmatrix_query,
+            con=self.conn,
+            params=params,
+            dtype={"start_vid": np.int32, "end_vid": np.int32, "agg_cost": np.int32},
+        )
+        cost_arr = cost_df.to_numpy()
+        et = time.time()
+        self.logger.debug(f"Elapsed time for SQL to cost_arr: {et - st}")
+        # Speichere die echte vertices_ids mit neuen Indexen
+        # 0 5346
+        # 1 3263
+        # 2 3653
+        # ...
+        localid2vid = dict(enumerate(cost_df["start_vid"].unique()))
+        vid2localid = {y: x for x, y in localid2vid.items()}
+
+        # Square distance matrix
+        dist_matrix = np.zeros([len(localid2vid), len(localid2vid)])
+        st = time.time()
+        for i in range(len(cost_df)):
+            start_id = vid2localid[cost_arr[i, 0]]
+            end_id = vid2localid[cost_arr[i, 1]]
+            dist_matrix[start_id][end_id] = cost_arr[i, 2]
+        et = time.time()
+        self.logger.debug(f"Elapsed time for dist_matrix creation: {et - st}")
+        return localid2vid, dist_matrix, vid2localid
+

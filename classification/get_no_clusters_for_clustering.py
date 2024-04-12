@@ -1,0 +1,7 @@
+import warnings
+
+from classification.clustering.cluster_settings import get_best_no_of_clusters_ch_index_for_classification_version
+
+warnings.filterwarnings('ignore')
+
+get_best_no_of_clusters_ch_index_for_classification_version()
