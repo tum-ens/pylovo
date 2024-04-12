@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pylovo &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation" href="docs_pylovo/installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="visualisation/index.html">Visualisation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">pylovo</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pylovo">
+<h1>pylovo<a class="headerlink" href="#pylovo" title="Permalink to this heading"></a></h1>
+<section id="python-tool-for-low-voltage-distribution-grid-generation">
+<h2>python tool for low-voltage distribution grid generation<a class="headerlink" href="#python-tool-for-low-voltage-distribution-grid-generation" title="Permalink to this heading"></a></h2>
+<p>This tool provides a comprehensive public-data-based module to generate synthetic low-voltage distribution grids for a
+freely-selected research area. The main data input is the buildings, roads and transformers geographic data that are obtained
+from OpenStreetMap, with additional auxiliary datasets including postal code area polygons (to identify and select
+research areas), consumer categories (to estimate loading performances of different types of buildings and households)
+and infrastructure parameters, etc. The result outputs a feasible solution of aggregated distribution grid networks
+within the research scope and automatically analyses the important grid statistics to enable the user to evaluate the
+general grid properties for the generated synthetic grids.</p>
+<p>At the current state of the project the data is prepared for Bavaria, but will be extended to Germany.
+Due to the large amount of data, external users need to setup a local posgresql database for the grid generation process.
+All the geographic data during the process is presented in PostGIS Geometry format where a Spatial Reference System
+should be defined to recognize the exact positions. For the Spatial Reference System by default, the SRID is selected as epsg:3035 since here the
+basic unit of geographic analysis is meter. When transforming to pandapower network, the geodata should be presented
+as lon/lat coordination which is epsg:4326 (automatically done in script), be careful of the two different reference
+system settings;</p>
+<p>A comprehensive documentation can be found under <a class="reference external" href="https://pylovo.readthedocs.io/en/latest/">https://pylovo.readthedocs.io/en/latest/</a>
+A step by step tutorial to understand the product of this tool in jupyter notebooks can be found under examples.</p>
+<p>In this documentation you can find instructions and information on:</p>
+<ul class="simple">
+<li><p>how to install pylovo in <a class="reference internal" href="docs_pylovo/installation.html"><span class="doc">Installation</span></a>.</p></li>
+<li><p>how to generate grids in <span class="xref std std-doc">grid_generation</span>.</p></li>
+</ul>
+<a class="reference internal image-reference" href="_images/grid_generation_part_forchheim.png"><img alt="Default view" src="_images/grid_generation_part_forchheim.png" style="width: 300px;" /></a>
+<ul class="simple">
+<li><p>how the grids are generated in <a class="reference internal" href="grid_generation/explanation/grid_generation_process.html"><span class="doc">Grid Generation Process</span></a>.</p></li>
+<li><p>how to create grid classes and representative grids in <a class="reference internal" href="classification/index.html"><span class="doc">Classification of Pylovo Grids</span></a>.</p></li>
+</ul>
+<a class="reference internal image-reference" href="_images/classification_3grids.png"><img alt="Default view" src="_images/classification_3grids.png" style="width: 600px;" /></a>
+<ul class="simple">
+<li><p>how to visualise your results in <a class="reference internal" href="visualisation/index.html"><span class="doc">Visualisation</span></a>.</p></li>
+</ul>
+<a class="reference internal image-reference" href="_images/contextily.png"><img alt="Default view" src="_images/contextily.png" style="width: 300px;" /></a>
+</section>
+<section id="contents">
+<h2>Contents<a class="headerlink" href="#contents" title="Permalink to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="docs_pylovo/installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#install-package">Install package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#advanced-installation-database-construction">Advanced installation - Database construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#install-postgresql-on-linux">Install postgresql on linux</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#access-database">Access Database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#create-sql-functions">Create SQL functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#load-raw-data-to-the-database">Load raw data to the database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#input-data-model">Input data model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="docs_pylovo/installation.html#further-input-data">Further Input Data</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="grid_generation/index.html">Grid Generation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="grid_generation/index.html#contents">Contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="classification/index.html">Classification of Pylovo Grids</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="classification/index.html#overview-of-the-classification">Overview of the Classification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="classification/index.html#run-the-classification">Run the Classification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="classification/index.html#how-the-classification-works">How the Classification Works</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="visualisation/index.html">Visualisation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="visualisation/index.html#contents">Contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="legal-notice">
+<h2>Legal Notice<a class="headerlink" href="#legal-notice" title="Permalink to this heading"></a></h2>
+<p><a class="reference external" href="https://opensource.org/license/MIT">MIT License</a> , Copyright (C) 2023-2024 Beneharo Reveron Baecker</p>
+</section>
+<section id="acknowledgement">
+<h2>Acknowledgement<a class="headerlink" href="#acknowledgement" title="Permalink to this heading"></a></h2>
+<p>The development of this software has been supported by contributions of the following persons: Soner Candas, Deniz Tepe,
+Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="docs_pylovo/installation.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

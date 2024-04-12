@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>display_postcode.js &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/graphviz.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="Network Editor" href="../network_editor/index.html" />
+    <link rel="prev" title="Postcode Editor" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../visualisation/index.html">Visualisation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">Pylovo GUI</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../../usage/usage.html">Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../dev/development.html">Development</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html">Javascript API Reference</a><ul class="current">
+<li class="toctree-l4 current"><a class="reference internal" href="index.html">Postcode Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network_editor/index.html">Network Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../urbs_editor/index.html">Urbs Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../urbs_results/index.html">Urbs Results</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../index.html#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Pylovo GUI</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Javascript API Reference</a></li>
+          <li class="breadcrumb-item"><a href="index.html">Postcode Editor</a></li>
+      <li class="breadcrumb-item active">display_postcode.js</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/docs_gui/js_api/postcode_editor/display_postcode.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="display-postcode-js">
+<h1>display_postcode.js<a class="headerlink" href="#display-postcode-js" title="Permalink to this heading"></a></h1>
+<dl class="js function">
+<dt class="sig sig-object js" id="createPLZIDDropdown">
+<span class="sig-name descname"><span class="n"><span class="pre">createPLZIDDropdown</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#createPLZIDDropdown" title="Permalink to this definition"></a></dt>
+<dd><p>fetches all postcode ids for which results already exist in the database and writes them to a dropdown menu in the GUI
+so that the user can select them without having to know exactly what exists in the db</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="selectVersionOfPostalCodeNetwork">
+<span class="sig-name descname"><span class="n"><span class="pre">selectVersionOfPostalCodeNetwork</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#selectVersionOfPostalCodeNetwork" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for submit plz button
+returns all versions of network associated with the passed id and generates the radiobuttons for the version select gui element</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="chooseVersionOfPlzNetwork">
+<span class="sig-name descname"><span class="n"><span class="pre">chooseVersionOfPlzNetwork</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#chooseVersionOfPlzNetwork" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the Choose Version button of the version select gui element</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>nothing. Return statement exists simply to break out of function in case of faulty input</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="getPostalCodeAreaByID">
+<span class="sig-name descname"><span class="n"><span class="pre">getPostalCodeAreaByID</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#getPostalCodeAreaByID" title="Permalink to this definition"></a></dt>
+<dd><p>if the user wants to look at preexisting networks we initially post the plz again and get the outline of our network area as a geojson file,
+which we display on the map
+We then fetch all networks included in that area and display only the lines to avoid performance hits due to too many objects</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>plz</strong> (<em>int</em>) – the 5 or 6 digit ID with which a grid is associated</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="getPostalCodeAreaByShape">
+<span class="sig-name descname"><span class="n"><span class="pre">getPostalCodeAreaByShape</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">btn</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#getPostalCodeAreaByShape" title="Permalink to this definition"></a></dt>
+<dd><p>if the user wants to generate networks from a newly selected area shape, we initially return the shape the user has selected and receive a response
+containing the building shapes contained in the selected area
+We check res and oth buildings for emptiness and display them on the map
+We also change the Select Area button to Generate Network button</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>btn</strong> (<em>HTML_button_element</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="openAreaPopup">
+<span class="sig-name descname"><span class="n"><span class="pre">openAreaPopup</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openAreaPopup" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the Generate Network button
+makes the area version input GUI visible and adds a listener to it that makes sure the form can only be submitted if the inputs are correct</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="returnSelectedBuildings">
+<span class="sig-name descname"><span class="n"><span class="pre">returnSelectedBuildings</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#returnSelectedBuildings" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the Generate Network button within the area version input GUI
+at the moment it only returns the new id and gives an error warning, if the selected version already exists for a given ID
+It also closes the GUI form</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="displayPreviewNet">
+<span class="sig-name descname"><span class="n"><span class="pre">displayPreviewNet</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kcid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bcid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">line_geoJSON</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#displayPreviewNet" title="Permalink to this definition"></a></dt>
+<dd><p>adds all lines of a network to a new layer and displays it on the map
+further defines several inner functions to handle click, mouseover and mouseout functionality and attaches them to the layer
+We only display the lines of all networks for performance reasons, showing buses adds too many nodes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>kcid</strong> (<em>int</em>) – the k cluster id of a network</p></li>
+<li><p><strong>bcid</strong> (<em>int</em>) – the building cluster id of a network</p></li>
+<li><p><strong>line_geoJSON</strong> (<em>geoJSON_dict</em>) – a dict containing all the lines of a network</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="styleWhenMouseOver">
+<span class="sig-name descname"><span class="n"><span class="pre">styleWhenMouseOver</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#styleWhenMouseOver" title="Permalink to this definition"></a></dt>
+<dd><p>changes color of network in GUI when the mouse hovers above it</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="styleWhenMouseOut">
+<span class="sig-name descname"><span class="n"><span class="pre">styleWhenMouseOut</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#styleWhenMouseOut" title="Permalink to this definition"></a></dt>
+<dd><p>changes color of network in GUI back of default once the mouse no longer hovers above it</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="populateNetList">
+<span class="sig-name descname"><span class="n"><span class="pre">populateNetList</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">listName</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">list</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#populateNetList" title="Permalink to this definition"></a></dt>
+<dd><p>creates options for each network we have gotten from the backend</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>listName</strong> (<em>string</em>) – key for the html select element we want to attach options to</p></li>
+<li><p><strong>list</strong> (<em>list</em>) – list containing the objects we want to create select options for</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="highlightSelectedPreviewLayer">
+<span class="sig-name descname"><span class="n"><span class="pre">highlightSelectedPreviewLayer</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#highlightSelectedPreviewLayer" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the network select html element
+makes sure a network selected in the html select element is highlighted on the map by manually triggering a click event for it</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sel</strong> (<em>HTML_select_element</em>) – reference to the network select html element</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="sendBackSelectedNetworkKcidBcid">
+<span class="sig-name descname"><span class="n"><span class="pre">sendBackSelectedNetworkKcidBcid</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#sendBackSelectedNetworkKcidBcid" title="Permalink to this definition"></a></dt>
+<dd><p>extracts kcid and bcid from the feature properties of the selected element in the netlist and sends it to the backend</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="highlightBuildingFeature">
+<span class="sig-name descname"><span class="n"><span class="pre">highlightBuildingFeature</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">e</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#highlightBuildingFeature" title="Permalink to this definition"></a></dt>
+<dd><p>mouseover function for buildings on the map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>e</strong> (<em>event</em>) – The event that gets triggered on mouseover of an object on the map</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="resetBuildingHighlight">
+<span class="sig-name descname"><span class="n"><span class="pre">resetBuildingHighlight</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">e</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#resetBuildingHighlight" title="Permalink to this definition"></a></dt>
+<dd><p>mouseout function for buildings on the map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>e</strong> (<em>event</em>) – The event that gets triggered on mouseout of an object on the map</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="zoomToBuildingFeature">
+<span class="sig-name descname"><span class="n"><span class="pre">zoomToBuildingFeature</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">e</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#zoomToBuildingFeature" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for buildings on the map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>e</strong> (<em>event</em>) – The event that gets triggered on click on an object on the map</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="displayBuildingEditOptions">
+<span class="sig-name descname"><span class="n"><span class="pre">displayBuildingEditOptions</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">e</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#displayBuildingEditOptions" title="Permalink to this definition"></a></dt>
+<dd><p>aggregate onclick function for buildings on the map in case click events should have multiple effects</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>e</strong> (<em>event</em>) – The event that gets triggered on click on an object on the map</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="onEachFeature">
+<span class="sig-name descname"><span class="n"><span class="pre">onEachFeature</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onEachFeature" title="Permalink to this definition"></a></dt>
+<dd><p>is called when buildings are displayed on the map and defines different behaviours for each object on the map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>feature</strong> (<em>dict</em>) – </p></li>
+<li><p><strong>layer</strong> (<em>leaflet_layer_object</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createBuildingPopup">
+<span class="sig-name descname"><span class="n"><span class="pre">createBuildingPopup</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#createBuildingPopup" title="Permalink to this definition"></a></dt>
+<dd><p>is called for each building when they are placed on the map and attaches a popup to it, containing a button that allows the user to delete that building
+the popup could contain other information as well</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>feature</strong> (<em>dict</em>) – </p></li>
+<li><p><strong>layer</strong> (<em>leaflet_layer_object</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Postcode Editor" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../network_editor/index.html" class="btn btn-neutral float-right" title="Network Editor" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

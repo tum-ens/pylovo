@@ -1,0 +1,54 @@
+:py:mod:`maptool.network_editor.routes`
+=======================================
+
+.. py:module:: maptool.network_editor.routes
+
+
+Module Contents
+---------------
+
+
+Functions
+~~~~~~~~~
+
+.. autoapisummary::
+
+   maptool.network_editor.routes.networks
+   maptool.network_editor.routes.networkProperties
+   maptool.network_editor.routes.editableNetwork
+   maptool.network_editor.routes.urbs_results
+
+
+
+.. py:function:: networks()
+
+   once the Select Network button in the postcode view is pressed, we return the editable network view 
+
+   :return: path to the network editor html file
+   :rtype: string
+
+
+.. py:function:: networkProperties()
+
+   on networks window load the frontend fetches the network properties json file as well
+
+   :return: json dict containing the properties of every network feature the user can edit
+   :rtype: dict
+
+
+.. py:function:: editableNetwork()
+
+   on networks window load the frontend fetches a network based on the plz id, kcid and bcid the user selected in the postcode editor.
+
+   :return: json string of the pandapower network the user has requested
+   :rtype: string
+
+
+.. py:function:: urbs_results()
+
+   fetched when the "Finish Editing" button is clicked in the network editor
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+

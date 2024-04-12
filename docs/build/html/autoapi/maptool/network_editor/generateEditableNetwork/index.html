@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>maptool.network_editor.generateEditableNetwork &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/graphviz.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../visualisation/index.html">Visualisation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../docs_gui/index.html">Pylovo GUI</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active"><code class="xref py py-mod docutils literal notranslate"><span class="pre">maptool.network_editor.generateEditableNetwork</span></code></li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../../_sources/autoapi/maptool/network_editor/generateEditableNetwork/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-maptool.network_editor.generateEditableNetwork">
+<span id="maptool-network-editor-generateeditablenetwork"></span><h1><a class="reference internal" href="#module-maptool.network_editor.generateEditableNetwork" title="maptool.network_editor.generateEditableNetwork"><code class="xref py py-mod docutils literal notranslate"><span class="pre">maptool.network_editor.generateEditableNetwork</span></code></a><a class="headerlink" href="#module-maptool.network_editor.generateEditableNetwork" title="Permalink to this heading"></a></h1>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Permalink to this heading"></a></h2>
+<section id="functions">
+<h3>Functions<a class="headerlink" href="#functions" title="Permalink to this heading"></a></h3>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#maptool.network_editor.generateEditableNetwork.extractPropertiesFromNet" title="maptool.network_editor.generateEditableNetwork.extractPropertiesFromNet"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extractPropertiesFromNet</span></code></a>(input)</p></td>
+<td><p>helper function creating a properties dict for secondary features (e.g. loads of a bus) to be included in the properties</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#maptool.network_editor.generateEditableNetwork.createFeatures" title="maptool.network_editor.generateEditableNetwork.createFeatures"><code class="xref py py-obj docutils literal notranslate"><span class="pre">createFeatures</span></code></a>(isLines, ppdata, featureName, ...)</p></td>
+<td><p>creates and returns a geoJSON object for a feature of the original pandapower network</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#maptool.network_editor.generateEditableNetwork.extractStdTypes" title="maptool.network_editor.generateEditableNetwork.extractStdTypes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">extractStdTypes</span></code></a>(ppdata)</p></td>
+<td><p>std_types are already saved in a convenient datastructure in the pandapower network, so we just extract them as is</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#maptool.network_editor.generateEditableNetwork.createGeoJSONofNetwork" title="maptool.network_editor.generateEditableNetwork.createGeoJSONofNetwork"><code class="xref py py-obj docutils literal notranslate"><span class="pre">createGeoJSONofNetwork</span></code></a>(net, bus, trafo, line, ...)</p></td>
+<td><p>creates the final json object that contains geoJSON objects for every feature type we want to display on the GUI map</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py function">
+<dt class="sig sig-object py" id="maptool.network_editor.generateEditableNetwork.extractPropertiesFromNet">
+<span class="sig-prename descclassname"><span class="pre">maptool.network_editor.generateEditableNetwork.</span></span><span class="sig-name descname"><span class="pre">extractPropertiesFromNet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#maptool.network_editor.generateEditableNetwork.extractPropertiesFromNet" title="Permalink to this definition"></a></dt>
+<dd><p>helper function creating a properties dict for secondary features (e.g. loads of a bus) to be included in the properties
+of the final feature geoJSON</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>input</strong> (<em>dict</em>) – contains all secondary features of a type for a single primary feature</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>json containing key value pairs of secondary feature properties and their values for every primary feature</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="maptool.network_editor.generateEditableNetwork.createFeatures">
+<span class="sig-prename descclassname"><span class="pre">maptool.network_editor.generateEditableNetwork.</span></span><span class="sig-name descname"><span class="pre">createFeatures</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">isLines</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ppdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">featureName</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">featureProperties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">propertyGroupNames</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">propertyGroupFeatures</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#maptool.network_editor.generateEditableNetwork.createFeatures" title="Permalink to this definition"></a></dt>
+<dd><p>creates and returns a geoJSON object for a feature of the original pandapower network</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>isLines</strong> (<em>bool</em>) – flag for if the geojson object to create is going to be a line or point object</p></li>
+<li><p><strong>ppdata</strong> (<em>dict</em>) – the pandapower network object</p></li>
+<li><p><strong>featureName</strong> (<em>string</em>) – determines how we handle feature extraction and geojson creation</p></li>
+<li><p><strong>featureProperties</strong> (<em>list</em><em>[</em><em>string</em><em>]</em>) – contains the names of all properties for a feature (e.g. bus, line etc)</p></li>
+<li><p><strong>propertyGroupNames</strong> (<em>list</em><em>[</em><em>string</em><em>]</em>) – only relevant for bus features; contains names of all secondary features we want to add (switch, sgen, load)</p></li>
+<li><p><strong>propertyGroupFeatures</strong> (<em>list</em><em>[</em><em>list</em><em>[</em><em>string</em><em>]</em><em>]</em>) – only relevant for bus features; contains the names of all properties for a secondary feature</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>geoJSON dict containing all features of a single type (bus, line etc) of a network</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="maptool.network_editor.generateEditableNetwork.extractStdTypes">
+<span class="sig-prename descclassname"><span class="pre">maptool.network_editor.generateEditableNetwork.</span></span><span class="sig-name descname"><span class="pre">extractStdTypes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ppdata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#maptool.network_editor.generateEditableNetwork.extractStdTypes" title="Permalink to this definition"></a></dt>
+<dd><p>std_types are already saved in a convenient datastructure in the pandapower network, so we just extract them as is</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>json string of all std_types grouped by feature (line, trafo)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>string</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="maptool.network_editor.generateEditableNetwork.createGeoJSONofNetwork">
+<span class="sig-prename descclassname"><span class="pre">maptool.network_editor.generateEditableNetwork.</span></span><span class="sig-name descname"><span class="pre">createGeoJSONofNetwork</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">net</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bus</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trafo</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">line</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ext_grid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">std_types</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#maptool.network_editor.generateEditableNetwork.createGeoJSONofNetwork" title="Permalink to this definition"></a></dt>
+<dd><p>creates the final json object that contains geoJSON objects for every feature type we want to display on the GUI map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>net</strong> (<em>dict</em>) – the pandapower network</p></li>
+<li><p><strong>bus</strong> (<em>bool</em>) – flag determining whether we want to include buses in the displayable network</p></li>
+<li><p><strong>trafo</strong> (<em>bool</em>) – flag determining whether we want to include trafos in the displayable network</p></li>
+<li><p><strong>line</strong> (<em>bool</em>) – flag determining whether we want to include lines in the displayable network</p></li>
+<li><p><strong>ext_grid</strong> (<em>bool</em>) – flag determining whether we want to include ext_grids in the displayable network</p></li>
+<li><p><strong>std_types</strong> (<em>bool</em>) – flag determining whether we want to include std_types in the frontend editor</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>json object containing geojsons for every feature of the original pdp net we want to display</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -10,10 +10,6 @@ executable_scripts/results
 site/
 syngrid/config_version.py
 examples/.ipynb_checkpoints/
-docs/source/images/dev/sequence/pylovo_sequence_postcode_id.clip
-docs/source/images/dev/sequence/pylovo_sequence_network.clip
-docs/build/*
-docs/meta/*
 # for macOS users
 *.DS_Store
 # when setup.py is run

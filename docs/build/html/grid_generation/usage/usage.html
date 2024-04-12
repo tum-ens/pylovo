@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tool Usage &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Short Summary of the Grid Generation Steps" href="../explanation/overview.html" />
+    <link rel="prev" title="Main workflow" href="../main_workflow/main_workflow.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Grid Generation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../main_workflow/main_workflow.html">Main workflow</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Tool Usage</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#database-connection">Database connection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#configuration">Configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#run">Run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#result-inspection">Result inspection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#tutorials-examples">Tutorials / Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/overview.html">Short Summary of the Grid Generation Steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/resources.html">Resources and Interfaces for Grid Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/building_data_import.html">Building Data Import</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/grid_generation_process.html">Grid Generation Process</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../visualisation/index.html">Visualisation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Grid Generation</a></li>
+      <li class="breadcrumb-item active">Tool Usage</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/grid_generation/usage/usage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="tool-usage">
+<h1>Tool Usage<a class="headerlink" href="#tool-usage" title="Permalink to this heading"></a></h1>
+<section id="database-connection">
+<h2>Database connection<a class="headerlink" href="#database-connection" title="Permalink to this heading"></a></h2>
+<p>For connecting to the virtual machine,
+see [Advanced Installation/Outside the VM][outside-the-vm-from-ssh-client-aka-your-own-computer]</p>
+<p>The database connections parameters can be changed in <code class="docutils literal notranslate"><span class="pre">config_data.py</span></code></p>
+<p>If you will use your own database you need to create a database and a user for the database
+and use the <code class="docutils literal notranslate"><span class="pre">config_data.py</span></code> file to set the connection parameters.</p>
+</section>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Permalink to this heading"></a></h2>
+<p>If you want to manage the input data,
+see [Advanced Installation/Load raw data to the database][load-raw-data-to-the-database]</p>
+<p>To change the <strong>parameters</strong> and the <strong>version</strong>, edit the file <code class="docutils literal notranslate"><span class="pre">config_version.py</span></code>.</p>
+</section>
+<section id="run">
+<h2>Run<a class="headerlink" href="#run" title="Permalink to this heading"></a></h2>
+<p>The grid generation scripts such as <code class="docutils literal notranslate"><span class="pre">grid_generation_for_single_plz.py</span></code> demonstrates how to run the grid generation tool.
+If the grids for the given region and version are already generated, the code will terminate with an error statement.
+There are other examples in the <cite>executable_scripts</cite> directory that you can use to manipulate the database by changing PLZ’s
+from the scripts.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Before running the scripts make sure you configured the IP of the database that you want to work for.
+If you would like to connect to the remote db get your .env file from the responsible person and put it in the root directory of the project.
+If you are going to work on a local database or you will create your own db set the config from the <cite>config_data.py</cite> file.</p>
+</div>
+</section>
+<section id="result-inspection">
+<h2>Result inspection<a class="headerlink" href="#result-inspection" title="Permalink to this heading"></a></h2>
+<p>Download [QGIS]. Go to <cite>QGIS</cite> directory in pylovo. Open QGIS file.
+Database connection settings have to be set to the database that is used by pylovo.
+Initial data (ways, buildings and transformers)
+as well as the networks (transformers, cables, buildings) can be visualised.
+Go to QGIS visualisation docu for more details</p>
+</section>
+<section id="tutorials-examples">
+<h2>Tutorials / Examples<a class="headerlink" href="#tutorials-examples" title="Permalink to this heading"></a></h2>
+<p>Individual networks can also be visualised as explained in the <cite>examples</cite> directory.
+In the examples notebooks you will learn more about:</p>
+<ul class="simple">
+<li><p>the objects / elements the LV grids are made up of</p></li>
+<li><p>the pandapower networks that are used to store the LV grids</p></li>
+<li><p>graph representation of the networks</p></li>
+<li><p>and parameter visualisation options</p></li>
+</ul>
+<p>[QGIS]: <a class="reference external" href="https://www.qgis.org/de/site/forusers/download.html">https://www.qgis.org/de/site/forusers/download.html</a>
+Refer to the Jupyter notebooks and other analysis tools?</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../main_workflow/main_workflow.html" class="btn btn-neutral float-left" title="Main workflow" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../explanation/overview.html" class="btn btn-neutral float-right" title="Short Summary of the Grid Generation Steps" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

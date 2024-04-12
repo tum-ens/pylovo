@@ -1,0 +1,240 @@
+:py:mod:`maptool.urbs_editor.routes`
+====================================
+
+.. py:module:: maptool.urbs_editor.routes
+
+
+Module Contents
+---------------
+
+
+Functions
+~~~~~~~~~
+
+.. autoapisummary::
+
+   maptool.urbs_editor.routes.urbs_setup
+   maptool.urbs_editor.routes.urbsSetupProperties
+   maptool.urbs_editor.routes.retrieveEditableNetwork
+   maptool.urbs_editor.routes.retrieveDemandProfilesForSetup
+   maptool.urbs_editor.routes.formatTransmissionSetup
+   maptool.urbs_editor.routes.formatProcessSetup
+   maptool.urbs_editor.routes.formatStorageSetup
+   maptool.urbs_editor.routes.formatCommoditySetup
+   maptool.urbs_editor.routes.supimProfiles
+   maptool.urbs_editor.routes.timevareffProfiles
+   maptool.urbs_editor.routes.find
+   maptool.urbs_editor.routes.createDFromCheckboxes
+   maptool.urbs_editor.routes.createPdp2UrbsDemandCSV
+   maptool.urbs_editor.routes.createPdp2UrbsBuildingsCSV
+   maptool.urbs_editor.routes.createPdp2UrbsTransmissionCSV
+   maptool.urbs_editor.routes.createPdp2GlobalCSV
+   maptool.urbs_editor.routes.createPdp2CommodityCSV
+   maptool.urbs_editor.routes.createPdp2ProcessCSV
+   maptool.urbs_editor.routes.createPdp2StorageCSV
+   maptool.urbs_editor.routes.createPdp2SupimCSV
+   maptool.urbs_editor.routes.createPdp2TimevareffCSV
+   maptool.urbs_editor.routes.switch_conda_environment
+   maptool.urbs_editor.routes.runPdp2Urbs
+
+
+
+.. py:function:: urbs_setup()
+
+   called when the urbs editor window is first opened
+
+   :return: path to the html file for the current window
+   :rtype: string
+
+
+.. py:function:: urbsSetupProperties()
+
+   on page load the frontend fetches the json file containing parameter names, types, default values etc 
+   for generation and maintenance of the editor environment
+
+   :return: json containing all data information necessary for setting up the urbs editor GUI
+   :rtype: dict
+
+
+.. py:function:: retrieveEditableNetwork()
+
+   on opening of the urbs setup view the js code requests full information of the previously selected network
+   we return the network with previously chosen and session-dependant plz, kcid and bcid with all features
+
+   :return: a json filled with geoJSON featureCollections created from the network selected in previous steps
+   :rtype: dict
+
+
+.. py:function:: retrieveDemandProfilesForSetup()
+
+   Pre-defined demand profiles are extracted from the csv template and sent to the frontend here  
+
+   :return: a dict containing all demand profiles
+   :rtype: dict
+
+
+.. py:function:: formatTransmissionSetup()
+
+   transmission data is extracted from the csv template and sent to the frontend here. We also send the previously saved sn_mva value for 
+   generation of the default kont 
+
+   :return: a dict containing all trafo data and the sn_mva of the network trafo chosen in the network editor
+   :rtype: dict
+
+
+.. py:function:: formatProcessSetup()
+
+   process data is extracted from the csv template and sent to the frontend here
+
+   :return: a dict containing all process and process commodity properties
+   :rtype: dict
+
+
+.. py:function:: formatStorageSetup()
+
+   storage data is extracted from the csv template and sent to the frontend here
+
+   :return: a dict containing all storage properties
+   :rtype: dict
+
+
+.. py:function:: formatCommoditySetup()
+
+   commodity data is extracted from the csv template and sent to the frontend here
+
+   :return: a dict containing all commodity properties
+   :rtype: dict
+
+
+.. py:function:: supimProfiles()
+
+   Pre-defined supim profiles are extracted from the csv template and sent to the frontend here. Empty spots in the profile are filled with 0 to
+   avoid issues during the pandapower2urbs step
+
+   :return: a dict containing all supim profiles
+   :rtype: dict
+
+
+.. py:function:: timevareffProfiles()
+
+   Pre-defined timevareff profiles are extracted from the csv template and sent to the frontend here  
+
+   :return: a dict containing all timevareff profiles
+   :rtype: dict
+
+
+.. py:function:: find(s, ch)
+
+   help function that returns all the index positions of a char in a list
+   used to find which flags were set to 1 in the demand, supim, timevareff checkbox editors
+
+   :param s: string of 0s and 1s symbolizing the chosen row of a given profile
+   :type s: string
+   :param ch: the symbol we are looking for, generally '1'
+   :type ch: char
+   :return: list with indices of the chars in the input string that equal the char we search for
+   :rtype: list[int]
+
+
+.. py:function:: createDFromCheckboxes(json_data, columns)
+
+   creates a pandas dataframe that lists all entries of a profile that have been selected for every bus in the network 
+   as a string of indices
+
+   :param json_data: json with key value pairs of bus indices an lists of strings symbolizing all entries of all profiles
+   :type json_data: list[string]
+   :param columns: list containing the names of all profiles
+   :type columns: list[string]
+   :return: pandas dataframe where profile names are the columns and strings of type "bus_name, column_1_entry_1;column_1_entry_2, column_2_entry_1,,..."  
+   :type: pandas dataframe
+
+
+.. py:function:: createPdp2UrbsDemandCSV()
+
+   the frontend returns the aggregated profiles the user chose for each load bus and each type of demand
+   the returned datastructure is changed into a csv that fits the demanded format
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2UrbsBuildingsCSV()
+
+   the function takes returned building data for every bus, fetches additional building info from the database and aggregates it into
+   two csv-files
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2UrbsTransmissionCSV()
+
+   reshapes returned data and saves it into csv files
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2GlobalCSV()
+
+   reshapes returned data and saves it into csv files
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2CommodityCSV()
+
+   reshapes returned data and saves it into csv files
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2ProcessCSV()
+
+   reshapes returned data and saves it into csv files
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2StorageCSV()
+
+   reshapes returned data and saves it into csv files
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2SupimCSV()
+
+   the frontend returns the aggregated profiles the user chose for each load bus and each type of supim
+   the returned datastructure is changed into a csv that fits the demanded format
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: createPdp2TimevareffCSV()
+
+   the frontend returns the aggregated profiles the user chose for each load bus and each type of timevareff
+   the returned datastructure is changed into a csv that fits the demanded format
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: switch_conda_environment(env_path, env_name)
+
+
+.. py:function:: runPdp2Urbs()
+
+   executes pandapower to urbs input file conversion and the urbs run. 
+   Due to differences in requirements we create a subprocess that activates the urbs
+   conda environment and executes the program
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+

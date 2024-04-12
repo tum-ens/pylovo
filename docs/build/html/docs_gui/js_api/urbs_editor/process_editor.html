@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>process_editor.js &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/graphviz.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="return_urbs_setup.js" href="return_urbs_setup.html" />
+    <link rel="prev" title="generate_urbs_setup_editor.js" href="generate_urbs_setup_editor.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../visualisation/index.html">Visualisation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">Pylovo GUI</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../../usage/usage.html">Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../dev/development.html">Development</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html">Javascript API Reference</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../postcode_editor/index.html">Postcode Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network_editor/index.html">Network Editor</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="index.html">Urbs Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../urbs_results/index.html">Urbs Results</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../index.html#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Pylovo GUI</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Javascript API Reference</a></li>
+          <li class="breadcrumb-item"><a href="index.html">Urbs Editor</a></li>
+      <li class="breadcrumb-item active">process_editor.js</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/docs_gui/js_api/urbs_editor/process_editor.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="process-editor-js">
+<h1>process_editor.js<a class="headerlink" href="#process-editor-js" title="Permalink to this heading"></a></h1>
+<dl class="js function">
+<dt class="sig sig-object js" id="fetchProcessProfiles">
+<span class="sig-name descname"><span class="n"><span class="pre">fetchProcessProfiles</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fetchProcessProfiles" title="Permalink to this definition"></a></dt>
+<dd><p>retrieves pre-existing process property data from the pandapower2urbs templates in the backend</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createProcessJSONTemplates">
+<span class="sig-name descname"><span class="n"><span class="pre">createProcessJSONTemplates</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">processes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_commodities</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#createProcessJSONTemplates" title="Permalink to this definition"></a></dt>
+<dd><p>creates dict entry templates to use if we want to add new processes or new process commodities</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>processes</strong> (<em>dict</em>) – dict with process feature:value key:value pairs</p></li>
+<li><p><strong>process_commodities</strong> (<em>dict</em>) – dict with pro_com feature:value key:value pairs</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="populateProcessEditorList">
+<span class="sig-name descname"><span class="n"><span class="pre">populateProcessEditorList</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">htmlListName</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">listEntries</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#populateProcessEditorList" title="Permalink to this definition"></a></dt>
+<dd><p>we create options with text based on the keys of a dict and attach them to a html select</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>htmlListName</strong> (<em>string</em>) – id of the html select element we want to add options to</p></li>
+<li><p><strong>listEntries</strong> (<em>dict</em>) – dict containing data for all options we want to add</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="fillSecondaryEditorList">
+<span class="sig-name descname"><span class="n"><span class="pre">fillSecondaryEditorList</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target_properties</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fillSecondaryEditorList" title="Permalink to this definition"></a></dt>
+<dd><p>called at runtime to make sure only the correct elements are displayed in the pro_com_prop list. All options whose names are keys in target_properties
+are made visible, all others are hidden
+The pro_com_propSelect element technically contains options for all commodities added to all processes, but we hide all options not added to the
+currently selected process</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>target_properties</strong> (<em>dict</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="openNewProcessForm">
+<span class="sig-name descname"><span class="n"><span class="pre">openNewProcessForm</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">isCommodity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openNewProcessForm" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>isCommodity</strong> (<em>bool</em>) – determines whether the process creation dialogue or the pro_com_prop creation dialogue is opened</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="closeNewProcessForm">
+<span class="sig-name descname"><span class="n"><span class="pre">closeNewProcessForm</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">isCommodity</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#closeNewProcessForm" title="Permalink to this definition"></a></dt>
+<dd><p>onclick button for the forms’ cancel button, closes dialogue window and resets all input fields</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>isCommodity</strong> (<em>bool</em>) – determines which form needs to be closed</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="newProcessFormVerifyInputs">
+<span class="sig-name descname"><span class="n"><span class="pre">newProcessFormVerifyInputs</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#newProcessFormVerifyInputs" title="Permalink to this definition"></a></dt>
+<dd><p>onchange function for the input fields of the process creation popup form
+makes sure “Create Process” button is disabled until all inputs are set correctly</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sel</strong> (<em>HTML_select_element</em>) – the commodity select element</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="processAddCommoditySelection">
+<span class="sig-name descname"><span class="n"><span class="pre">processAddCommoditySelection</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#processAddCommoditySelection" title="Permalink to this definition"></a></dt>
+<dd><p>onchange function for the input fields of the popup form for adding a commodity to a process
+makes sure “Create Process” button is disabled until all inputs are set correctly</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sel</strong> (<em>HTML_select_element</em>) – the commodity select element</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="openSecondaryProcessEditor">
+<span class="sig-name descname"><span class="n"><span class="pre">openSecondaryProcessEditor</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">secondaryFeatureName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openSecondaryProcessEditor" title="Permalink to this definition"></a></dt>
+<dd><p>Function makes secondary feature window visible and fills all input fields with the saved values, if any exist.
+At the moment the process editor is the only one with a secondary editor, namely the pro_com_prop editor</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sel</strong> (<em>HTML_select_element</em>) – gets passed as “this” reference when the onchange method for the select element is called, needed to retrieve the currently selected secondary feature</p></li>
+<li><p><strong>secondaryFeatureName</strong> (<em>string</em>) – key for relevant html elements</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createNewProcess">
+<span class="sig-name descname"><span class="n"><span class="pre">createNewProcess</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#createNewProcess" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function of the “Add Process” button. Calls helper function that adds process to process list and pro_conf table
+as well as attachment of process commodity</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="addCommodityToProcess">
+<span class="sig-name descname"><span class="n"><span class="pre">addCommodityToProcess</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#addCommodityToProcess" title="Permalink to this definition"></a></dt>
+<dd><p>adds process commodity to the pro_com secondary feature editor and calls function creating a new commodity, if the user chooses to create an entirely
+new commodity to attach to the process</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createNewProcessProperty">
+<span class="sig-name descname"><span class="n"><span class="pre">createNewProcessProperty</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#createNewProcessProperty" title="Permalink to this definition"></a></dt>
+<dd><p>creates a new process and adds it to the ProcessObject &amp; html pro_prop select</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>string</em>) – name of the new process</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createNewProcessCommodity">
+<span class="sig-name descname"><span class="n"><span class="pre">createNewProcessCommodity</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pro_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">com_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inOrOut</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#createNewProcessCommodity" title="Permalink to this definition"></a></dt>
+<dd><p>we must add a newly defined process commodity to the list of commodities, the process_config table and the editor window of the process the commodity is associated with</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pro_name</strong> (<em>string</em>) – name of the process the commodity is attached tos</p></li>
+<li><p><strong>com_name</strong> (<em>string</em>) – name of the new process commodity</p></li>
+<li><p><strong>inOrOut</strong> (<em>string</em>) – type of the new process commodity</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="writeBackProcessFeatures">
+<span class="sig-name descname"><span class="n"><span class="pre">writeBackProcessFeatures</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">isPro_com_prop</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#writeBackProcessFeatures" title="Permalink to this definition"></a></dt>
+<dd><p>saves edited feature in the ProcessObject</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>target</strong> (<em>event_target_object</em>) – </p></li>
+<li><p><strong>isPro_com_prop</strong> (<em>bool</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createPro_ConfEditor">
+<span class="sig-name descname"><span class="n"><span class="pre">createPro_ConfEditor</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#createPro_ConfEditor" title="Permalink to this definition"></a></dt>
+<dd><p>sets up pro_conf handsontable table in the GUI</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generate_urbs_setup_editor.html" class="btn btn-neutral float-left" title="generate_urbs_setup_editor.js" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="return_urbs_setup.html" class="btn btn-neutral float-right" title="return_urbs_setup.js" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

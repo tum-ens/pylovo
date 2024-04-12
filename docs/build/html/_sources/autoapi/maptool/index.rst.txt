@@ -1,0 +1,51 @@
+:py:mod:`maptool`
+=================
+
+.. py:module:: maptool
+
+
+Subpackages
+-----------
+.. toctree::
+   :titlesonly:
+   :maxdepth: 3
+
+   network_editor/index.rst
+   postcode_editor/index.rst
+   urbs_editor/index.rst
+   urbs_results/index.rst
+
+
+Submodules
+----------
+.. toctree::
+   :titlesonly:
+   :maxdepth: 1
+
+   config/index.rst
+
+
+Package Contents
+----------------
+
+
+Functions
+~~~~~~~~~
+
+.. autoapisummary::
+
+   maptool.create_app
+
+
+
+.. py:function:: create_app(test_config=None)
+
+   Flask factory that sets up the application and sets the default webpage template. 
+   It also connects the subpage blueprints to the app
+
+   :param test_config: application config file name, defaults to None
+   :type test_config: string, optional
+   :return: application object reference
+   :rtype: Flask Application Object
+
+

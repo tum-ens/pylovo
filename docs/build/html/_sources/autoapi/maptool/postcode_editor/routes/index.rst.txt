@@ -1,0 +1,89 @@
+:py:mod:`maptool.postcode_editor.routes`
+========================================
+
+.. py:module:: maptool.postcode_editor.routes
+
+
+Module Contents
+---------------
+
+
+Functions
+~~~~~~~~~
+
+.. autoapisummary::
+
+   maptool.postcode_editor.routes.postcode
+   maptool.postcode_editor.routes.postcodeAllPlzIds
+   maptool.postcode_editor.routes.postcodePlzVersion
+   maptool.postcode_editor.routes.postcodeReturnAreaBoundary
+   maptool.postcode_editor.routes.postcodeFetchNetsForID
+   maptool.postcode_editor.routes.postcodeAreaReturnBuildings
+   maptool.postcode_editor.routes.postcodeAreaCreateNewGridFromBuildings
+
+
+
+.. py:function:: postcode()
+
+   When user submits postal code in gui we return all versions 
+   of the id for which networks are found in the database
+
+   :return: list of all versions
+   :rtype: list[string]
+
+
+.. py:function:: postcodeAllPlzIds()
+
+   fetches all postcode ids for which results already exist in the database
+
+   :return list of all plz ids
+   :rtype list[int]
+
+
+.. py:function:: postcodePlzVersion()
+
+   fetched from the postcode version select gui, caches the selected network version and tries to generate a network grid for it
+
+   :return: response indicating whether a network grid of the requested version already exists
+   :rtype: JavaScript Fetch API Response
+
+
+.. py:function:: postcodeReturnAreaBoundary()
+
+   called if the user uses an id to define network area, returns the area's boundary shape for display on the GUI map
+
+   :return: a geoJSON feature dict containing the shape information of the area boundary 
+   :rtype: dict
+
+
+.. py:function:: postcodeFetchNetsForID()
+
+   the JS Fetch API sends a POST request once the user has selected one of the preview nets 
+   The request includes the kcid and bcid of the chosen network
+
+   :return: response indicating successful data transfer
+   :rtype: JavaScript Fetch API Response
+
+   the JS Fetch API sends a GET request immediately after receiving and displaying the boundary area shape of a PLZ region
+
+   :return: a list geojson featurecollections of all networks associated with the id the user selected
+   :rtype: list
+
+
+.. py:function:: postcodeAreaReturnBuildings()
+
+   called if the user uses a shape to define a new network area, fetches all buildings within the area and returns them to the frontend
+
+   :return: dict containing geoJSON feature objects for residential buildings and other buildings. The geoJSON objects also hold each building's osmID
+   :rtype: dict
+
+
+.. py:function:: postcodeAreaCreateNewGridFromBuildings()
+
+   called once the user has finished deleting buildings in the frontend. It extracts the osmID of each building
+   sent from the frontend, separates them into residential and other buildings and calls the pylovo functions necessary for generating a new grid
+
+   :return: response indicating whether a new network grid was sucessfully created
+   :rtype: JavaScript Fetch API Response
+
+

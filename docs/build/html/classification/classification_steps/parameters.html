@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calculate Parameters for Grids &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Filter Grids" href="filter_grids.html" />
+    <link rel="prev" title="Grid Generation for Classification" href="grid_generation_for_classification.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Classification of Pylovo Grids</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../index.html#overview-of-the-classification">Overview of the Classification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#run-the-classification">Run the Classification</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#how-the-classification-works">How the Classification Works</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">Classification Steps</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="sampling.html">Create a Sample Set of PLZ for Clustering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="grid_generation_for_classification.html">Grid Generation for Classification</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Calculate Parameters for Grids</a></li>
+<li class="toctree-l4"><a class="reference internal" href="filter_grids.html">Filter Grids</a></li>
+<li class="toctree-l4"><a class="reference internal" href="clustering.html">Cluster the Grids</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../visualisation/index.html">Visualisation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Classification of Pylovo Grids</a></li>
+          <li class="breadcrumb-item"><a href="index.html">Classification Steps</a></li>
+      <li class="breadcrumb-item active">Calculate Parameters for Grids</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/classification/classification_steps/parameters.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="calculate-parameters-for-grids">
+<h1>Calculate Parameters for Grids<a class="headerlink" href="#calculate-parameters-for-grids" title="Permalink to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="classification.parameter_calculation.GridParameters.GridParameters">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">classification.parameter_calculation.GridParameters.</span></span><span class="sig-name descname"><span class="pre">GridParameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bcid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kcid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pgReaderWriter</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#classification.parameter_calculation.GridParameters.GridParameters" title="Permalink to this definition"></a></dt>
+<dd><p>A set of parameters and functions to calculate and save grid parameters
+for a plz that are generated with a certain VERSION_ID</p>
+</dd></dl>
+
+<p>has the attributes</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="bp">self</span><span class="o">.</span><span class="n">version_id</span> <span class="o">=</span> <span class="n">VERSION_ID</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">plz</span> <span class="o">=</span> <span class="n">plz</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">bcid</span> <span class="o">=</span> <span class="n">bcid</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">kcid</span> <span class="o">=</span> <span class="n">kcid</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_connection_buses</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_branches</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_house_connections</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_house_connections_per_branch</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_households</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_household_equ</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">no_households_per_branch</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">max_no_of_households_of_a_branch</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">house_distance_km</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">transformer_mva</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">osm_trafo</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">max_trafo_dis</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">avg_trafo_dis</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">cable_length_km</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">cable_len_per_house</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">max_power_mw</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">simultaneous_peak_load_mw</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">resistance</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">reactance</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">ratio</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">vsw_per_branch</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">max_vsw_of_a_branch</span> <span class="o">=</span> <span class="kc">None</span>
+</pre></div>
+</div>
+<p>that are calculated in the function:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="classification.parameter_calculation.GridParameters.GridParameters.calc_grid_parameters">
+<span class="sig-prename descclassname"><span class="pre">classification.parameter_calculation.GridParameters.GridParameters.</span></span><span class="sig-name descname"><span class="pre">calc_grid_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#classification.parameter_calculation.GridParameters.GridParameters.calc_grid_parameters" title="Permalink to this definition"></a></dt>
+<dd><p>calculate parameters of each grid
+save results to table ‘clustering_parameters’ on database</p>
+</dd></dl>
+
+<p>To calculate the parameters for all grids in the classification version use:</p>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="grid_generation_for_classification.html" class="btn btn-neutral float-left" title="Grid Generation for Classification" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="filter_grids.html" class="btn btn-neutral float-right" title="Filter Grids" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

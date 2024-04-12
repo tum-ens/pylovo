@@ -1,0 +1,22 @@
+:py:mod:`maptool.postcode_editor`
+=================================
+
+.. py:module:: maptool.postcode_editor
+
+
+Submodules
+----------
+.. toctree::
+   :titlesonly:
+   :maxdepth: 1
+
+   routes/index.rst
+
+
+Package Contents
+----------------
+
+.. py:data:: bp
+
+   
+

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create a Sample Set of PLZ for Clustering &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Grid Generation for Classification" href="grid_generation_for_classification.html" />
+    <link rel="prev" title="Classification Steps" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Classification of Pylovo Grids</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../index.html#overview-of-the-classification">Overview of the Classification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#run-the-classification">Run the Classification</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#how-the-classification-works">How the Classification Works</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">Classification Steps</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Create a Sample Set of PLZ for Clustering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="grid_generation_for_classification.html">Grid Generation for Classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="parameters.html">Calculate Parameters for Grids</a></li>
+<li class="toctree-l4"><a class="reference internal" href="filter_grids.html">Filter Grids</a></li>
+<li class="toctree-l4"><a class="reference internal" href="clustering.html">Cluster the Grids</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../visualisation/index.html">Visualisation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Classification of Pylovo Grids</a></li>
+          <li class="breadcrumb-item"><a href="index.html">Classification Steps</a></li>
+      <li class="breadcrumb-item active">Create a Sample Set of PLZ for Clustering</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/classification/classification_steps/sampling.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="create-a-sample-set-of-plz-for-clustering">
+<h1>Create a Sample Set of PLZ for Clustering<a class="headerlink" href="#create-a-sample-set-of-plz-for-clustering" title="Permalink to this heading"></a></h1>
+<section id="motivation">
+<h2>Motivation<a class="headerlink" href="#motivation" title="Permalink to this heading"></a></h2>
+<p>To capture the diversity of different types of settlements and represent them for the chosen region adequately a
+sampling algorithm is developed. For the area of interest that could be a Bundesland or Germany generating grids for
+the whole region takes to long. The number of PLZ is reduced from 8181 (Germany) or e.g. 2065 (Bayern) to 100 PLZ in
+the representative sample set.</p>
+</section>
+<section id="usage">
+<h2>Usage<a class="headerlink" href="#usage" title="Permalink to this heading"></a></h2>
+<p>The sample set is created with the function:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="classification.sampling.sample.create_sample_set">
+<span class="sig-prename descclassname"><span class="pre">classification.sampling.sample.</span></span><span class="sig-name descname"><span class="pre">create_sample_set</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#classification.sampling.sample.create_sample_set" title="Permalink to this definition"></a></dt>
+<dd><p>complete process of creating a sample set of representative PLZ for a Region
+that is either Germany or a federal state
+All subprocesses of sampling the PLZ are executed in this function.
+The result is written to database table ‘sample set’ with the classification version set in
+config_classification</p>
+</dd></dl>
+
+<p>The result can be retrieved from the database as a DataFrame with</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="classification.sampling.sample.get_sample_set">
+<span class="sig-prename descclassname"><span class="pre">classification.sampling.sample.</span></span><span class="sig-name descname"><span class="pre">get_sample_set</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#classification.sampling.sample.get_sample_set" title="Permalink to this definition"></a></dt>
+<dd><p>get a sample set from the database that has already been created</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>table of a complete sample set</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>pd.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="joining-regiostar-with-the-municipal-register">
+<h2>Joining Regiostar with the Municipal Register<a class="headerlink" href="#joining-regiostar-with-the-municipal-register" title="Permalink to this heading"></a></h2>
+<p>In order to sample areas from the Regiostar Classes they need to be mapped with the Municipal Register
+(Gemeindeverzeichnis) from Germany. You can refer to <a class="reference internal" href="../../docs_pylovo/municipal_register/municipal_register.html"><span class="doc">Municipal Register</span></a>
+for more details.</p>
+</section>
+<section id="sampling-algorithm">
+<h2>Sampling Algorithm<a class="headerlink" href="#sampling-algorithm" title="Permalink to this heading"></a></h2>
+<p>To make sure all settlement types are represented in the sample set the Regio 7 Dataset with seven different types of
+municipalities is chosen.</p>
+<a class="reference internal image-reference" href="../../_images/regiostar.png"><img alt="Default view" src="../../_images/regiostar.png" style="width: 600px;" /></a>
+<p>The share of PLZ samples from each RegioStar 7 class corresponds to the  population share of the class of the total
+population. (An analysis by the Chair of Renewable and
+Sustainable Energy Systems at TUM have shown that the percentage of energy usage of a Regio7 class corresponds to its
+population share.)</p>
+<p>For Bayern the distribution of samples are:</p>
+<a class="reference internal image-reference" href="../../_images/anz_samples.png"><img alt="Default view" src="../../_images/anz_samples.png" style="width: 400px;" /></a>
+<p>Within the classes the population density distribution of the class is reproduced.</p>
+<a class="reference internal image-reference" href="../../_images/pop_den.png"><img alt="Default view" src="../../_images/pop_den.png" style="width: 600px;" /></a>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Classification Steps" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="grid_generation_for_classification.html" class="btn btn-neutral float-right" title="Grid Generation for Classification" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

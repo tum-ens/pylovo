@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Main workflow &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Tool Usage" href="../usage/usage.html" />
+    <link rel="prev" title="Grid Generation" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Grid Generation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Main workflow</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#main-workflow-of-the-model">Main workflow of the model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#main-workflow-of-the-model-depricated">Main workflow of the model (depricated)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#software-preparation">Software preparation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#output-data">Output data</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../usage/usage.html">Tool Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/overview.html">Short Summary of the Grid Generation Steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/resources.html">Resources and Interfaces for Grid Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/building_data_import.html">Building Data Import</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../explanation/grid_generation_process.html">Grid Generation Process</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../visualisation/index.html">Visualisation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Grid Generation</a></li>
+      <li class="breadcrumb-item active">Main workflow</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/grid_generation/main_workflow/main_workflow.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="main-workflow">
+<h1>Main workflow<a class="headerlink" href="#main-workflow" title="Permalink to this heading"></a></h1>
+<section id="main-workflow-of-the-model">
+<h2>Main workflow of the model<a class="headerlink" href="#main-workflow-of-the-model" title="Permalink to this heading"></a></h2>
+<ol class="arabic">
+<li><p>The research scope identification is done by either manually setting the plz code in grid generator scripts or
+an automatic search according to the administrative name of the district.</p></li>
+<li><p>Run grid generator script, and the process will be proceeded to:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>extract correlated buildings, roads and transformers involved in the selected area;</p></li>
+<li><p>estimate the buildings’ peak load and remove too large consumers (connected directly to medium-voltage grid)</p></li>
+<li><p>connect the buildings and transformers to the roads and analyse the network topology, remove isolated components;</p></li>
+<li><p>according to edge-distance matrix, assign transformers with corresponding neighboring buildings, regarding cable
+length limit and capacity limit;</p></li>
+<li><p>the remaining unsupplied buildings are subdivided into local distribution grids by hierarchical clustering, with
+timely simultaneous peak load validation to determine proper cluster sizes;</p></li>
+<li><p>the optimal positions of manually grouped distribution grids are determined by minimal power-distance algorithm,
+aiming to minimize the network voltage band, energy losses on conductors and with shorter total cable length;</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>At the end of GridGeneration.py process, the basic nodal elements of all the local distribution grids have been
+determined. The installation of cables are determined in Cable_installation.py with support of pandapower;</p></li>
+<li><p>The timely power flow calculation shall afterwards be conducted with random assignment of household load profiles,
+the default validation period is one year from 00:00:00 01.01.2019 - 24:00:00 31.12.2019 with time step of 15
+minutes, where users can freely shorten or prolong the period or increase the time step by modifying default
+parameters and run power_flow_calculation.py</p></li>
+<li><p>In branch result_analysis presents the plot_result.py where according to pandapower result from step 3, the grid
+generation result will be analysed to multiple perspectives including:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>some general overviews of total numbers of transformers, loads, cable length, etc.;</p></li>
+<li><p>numerical statistics of each size of transformers;</p></li>
+<li><p>spatial distribution of transformers;</p></li>
+<li><p>load estimation of household;</p></li>
+<li><p>spatial detailed picture of a single distribution grid (picked by random index);</p></li>
+</ul>
+</div></blockquote>
+</li>
+</ol>
+<p>users can by commenting or uncommenting corresponding codes in plot_result.py to select the required plots.</p>
+</section>
+<section id="main-workflow-of-the-model-depricated">
+<h2>Main workflow of the model (depricated)<a class="headerlink" href="#main-workflow-of-the-model-depricated" title="Permalink to this heading"></a></h2>
+<ol class="arabic">
+<li><p>The research scope identification is done by either manually setting the plz code in GridGeneration.py main script or
+an automatic search according to the administrative name of the district.</p></li>
+<li><p>Run GridGeneration.py script, and the process will be proceeded to:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>extract correlated buildings, roads and transformers involved in the selected area</p></li>
+<li><p>estimate the buildings’ peak load and remove too large consumers (connected directly to medium-voltage grid)</p></li>
+<li><p>connect the buildings and transformers to the roads and analyse the network topology, remove isolated components</p></li>
+<li><p>according to edge-distance matrix, assign transformers with corresponding neighbouring buildings, regarding cable
+length limit and capacity limit</p></li>
+<li><p>the remaining unsupplied buildings are subdivided into local distribution grids by hierarchical clustering, with
+timely simultaneous peak load validation to determine proper cluster sizes</p></li>
+<li><p>the optimal positions of manually grouped distribution grids are determined by a minimal power-distance algorithm,
+aiming to minimize the network voltage band, energy losses on conductors and total cable length</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>At the end of GridGeneration.py process, the basic nodal elements of all the local distribution grids have been
+determined. The installation of cables are determined in Cable_installation.py with support of pandapower;</p></li>
+<li><p>The timely power flow calculation shall afterward be conducted with random assignment of household load profiles, the
+default validation period is one year from 00:00:00 01.01.2019 - 24:00:00 31.12.2019 with time step of 15 minutes,
+where users can freely shorten or prolong the period or increase the time step by modifying defaulte parameters and
+run power_flow_calculation.py</p></li>
+<li><p>Some example vizualizations with an overview on total numbers and statistics of transformers, loads, cable length,
+etc. on one side and a detialed spatial picture of chosen distribution grids on the other side are in development and
+will be provided in a jupyter notebook in the examples directory.</p></li>
+</ol>
+</section>
+<section id="software-preparation">
+<h2>Software preparation<a class="headerlink" href="#software-preparation" title="Permalink to this heading"></a></h2>
+<p>The main script runs in Python, in addition you would need:</p>
+<ol class="arabic simple">
+<li><p>PostgreSQL: default database;</p></li>
+</ol>
+</section>
+<section id="output-data">
+<h2>Output data<a class="headerlink" href="#output-data" title="Permalink to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>A folder of all local distribution grid results will be created (if you toggle the default
+SAVE_GRID_FOLDER in config, it is default False so the results only get saved to the database)
+as .csv files, named as ‘kcid{a}bcid{b}’ (a,b are
+variables), such files can be easily read in python or input to pandapower;</p></li>
+<li><p>A folder of all statistical analysis will be created, which the plotting process is based on;</p></li>
+<li><p>Detailed building, road and transformer records will be saves in ‘_result’ table in SQL;</p></li>
+<li><p>All the graphics will also be saved as .png in a separate folder;</p></li>
+</ol>
+<p><a href="#id1"><span class="problematic" id="id2">*</span></a>5. There are some auxiliary tables that result_analysis.py would use but not correlated with final results, you can
+either delete them and the process will generate them again, or keep them to save some computational effort for next
+run.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="Grid Generation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../usage/usage.html" class="btn btn-neutral float-right" title="Tool Usage" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

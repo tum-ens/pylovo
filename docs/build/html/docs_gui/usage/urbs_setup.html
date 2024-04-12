@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Urbs Setup Editor &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/graphviz.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Urbs Results" href="urbs_results.html" />
+    <link rel="prev" title="Network Editor" href="network_editor.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../visualisation/index.html">Visualisation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Pylovo GUI</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="usage.html">Usage</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="usage.html#starting-the-webserver">Starting the webserver</a></li>
+<li class="toctree-l4"><a class="reference internal" href="usage.html#accessing-the-tool">Accessing the tool</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="usage.html#using-the-tool">Using the tool</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../dev/development.html">Development</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../js_api/index.html">Javascript API Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Pylovo GUI</a></li>
+          <li class="breadcrumb-item"><a href="usage.html">Usage</a></li>
+      <li class="breadcrumb-item active">Urbs Setup Editor</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/docs_gui/usage/urbs_setup.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="urbs-setup-editor">
+<h1>Urbs Setup Editor<a class="headerlink" href="#urbs-setup-editor" title="Permalink to this heading"></a></h1>
+<div class="line-block">
+<div class="line">This editor is used for setting up all parameters we need for the eventual run of our optimization model
+via urbs.</div>
+</div>
+<section id="features">
+<h2>Features<a class="headerlink" href="#features" title="Permalink to this heading"></a></h2>
+<section id="building">
+<h3>Building<a class="headerlink" href="#building" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Here parameters for individual buildings are set. Each building corresponds to a bus with load from previous steps. The data entered here is supplemented with additional information
+fetched from the database.</div>
+</div>
+</section>
+<section id="demand">
+<h3>Demand<a class="headerlink" href="#demand" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Demands are time series for an entire year measured in hours describing how much of a commodity is requested at any given hour. At the moment demand profiles are predefined for
+a select few commodities. For these commodities the user can select as many profiles as they want.</div>
+</div>
+</section>
+<section id="transmission">
+<h3>Transmission<a class="headerlink" href="#transmission" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Describes possible transports of commodities between buses. The default trafo profile “kont” is generated based on the “sn_mva” of the trafo set in the network editor step.</div>
+</div>
+</section>
+<section id="global">
+<h3>Global<a class="headerlink" href="#global" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Here we set a few global values needed for the urbs run.</div>
+</div>
+</section>
+<section id="commodity">
+<h3>Commodity<a class="headerlink" href="#commodity" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Commodities are goods that can be generated, stored, transmitted or consumed. They come in several types:</div>
+</div>
+<ul class="simple">
+<li><p><strong>Buy:</strong> commodities which can be sold with a buy price that may vary for each time step</p></li>
+<li><p><strong>Sell:</strong> commodities which can be sold with a sell price that may vary for each time step</p></li>
+<li><p><strong>SupIm:</strong> stands for Supply Intermittent commodities for which availability is not constant</p></li>
+<li><p><strong>Stock:</strong> commodities which may be purchased for a fixed price</p></li>
+<li><p><strong>Demand:</strong> requested commodities of the energy system, usually end products of the model</p></li>
+</ul>
+<div class="line-block">
+<div class="line">Since demand and SupIm rely on predefined profiles at the moment, we recommend the user not to set them as types.</div>
+<div class="line">Commodities can and must be attached to processes to be considered in the urbs model</div>
+</div>
+</section>
+<section id="process">
+<h3>Process<a class="headerlink" href="#process" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Processes change input commodities into output commodities. Each process can have multiple commodities attached to itself, regardless of any other process.</div>
+</div>
+<section id="process-commodity">
+<h4>Process-Commodity<a class="headerlink" href="#process-commodity" title="Permalink to this heading"></a></h4>
+<div class="line-block">
+<div class="line">Process-Commodities are secondary features attached to individual processes. They are defined as input or output commodities.</div>
+</div>
+</section>
+</section>
+<section id="process-configuration">
+<h3>Process-Configuration<a class="headerlink" href="#process-configuration" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">A table that defines how many of each process are attached to each bus with loads. We distinguish between 3 value types:</div>
+</div>
+<ul class="simple">
+<li><p><strong>Empty field:</strong> It is forbidden to add any amount of this process to this bus</p></li>
+<li><p><strong>field value = 0:</strong> There are currently none of this process attached to this bus, but it is possible for the optimization model to add to it during runtime</p></li>
+<li><p><strong>field value &gt; 0:</strong> Sets an upper bound for how many of this process can be attached to this bus</p></li>
+</ul>
+</section>
+<section id="storage">
+<h3>Storage<a class="headerlink" href="#storage" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">Describes multiple technical facilities that can store energy. Each is connected to one commodity.</div>
+</div>
+</section>
+<section id="storage-configuration">
+<h3>Storage-Configuration<a class="headerlink" href="#storage-configuration" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">A table that defines how many of each storage type are attached to each bus with loads. We distinguish between 3 input types:</div>
+</div>
+<ul class="simple">
+<li><p><strong>Empty field:</strong> It is forbidden to add any amount of this storage to this bus</p></li>
+<li><p><strong>field value = 0:</strong> There are currently none of this storage attached to this bus, but it is possible for the optimization model to add to it during runtime</p></li>
+<li><p><strong>field value &gt; 0:</strong> Sets an upper bound for how many of this storage can be attached to this bus</p></li>
+</ul>
+</section>
+<section id="supim">
+<h3>SupIm<a class="headerlink" href="#supim" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">SupIm (Supply Intermittent) are time series for an entire year measured in hours describing how much of a commodity of type SupIm is requested at any given hour. At the moment demand profiles are predefined for
+a select few commodities. For these commodities the user can select as many profiles as they want.</div>
+</div>
+</section>
+</section>
+<section id="adding-commodities">
+<h2>Adding commodities<a class="headerlink" href="#adding-commodities" title="Permalink to this heading"></a></h2>
+<div class="line-block">
+<div class="line">You can add new commodities by selecting the commodity (C) tab on right side of the screen and pressing the “Add Commodity” button.</div>
+<div class="line">A popup window will open. Enter the name of the new commodity and click the “Add Commodity” button to finish the process.</div>
+</div>
+<section id="adding-buy-sell-price">
+<h3>Adding Buy-Sell-Price<a class="headerlink" href="#adding-buy-sell-price" title="Permalink to this heading"></a></h3>
+<p>This feature is work in progress</p>
+</section>
+</section>
+<section id="adding-processes">
+<h2>Adding processes<a class="headerlink" href="#adding-processes" title="Permalink to this heading"></a></h2>
+<div class="line-block">
+<div class="line">You can add new commodities by selecting the process (P) tab on right side of the screen and pressing the “Add Process” button.</div>
+<div class="line">A popup window will open. Adding a process requires attaching at least one commodity to it. You can select one of the pre-existing commodities via the dropdown menu.</div>
+<div class="line">You can also choose to select “New Commodity” from the dropdown. After setting the name and clicking “Create Process” the process and the new commodity will be added to their
+respective lists.</div>
+</div>
+<section id="adding-process-commodities">
+<h3>Adding process commodities<a class="headerlink" href="#adding-process-commodities" title="Permalink to this heading"></a></h3>
+<div class="line-block">
+<div class="line">You have to add one commodity on creation of a given process. Additional process commodities can be added by selecting a process in the GUI and scrolling down to the
+bottom of the editor window. Clicking on the “Add PRO_COM_PROP” button will allow you to add a preexisting or new commodity and set it as input or output commodity.</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="network_editor.html" class="btn btn-neutral float-left" title="Network Editor" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="urbs_results.html" class="btn btn-neutral float-right" title="Urbs Results" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

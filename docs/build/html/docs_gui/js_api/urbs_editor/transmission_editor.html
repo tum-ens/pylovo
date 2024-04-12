@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>transmission_editor.js &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/graphviz.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="Urbs Results" href="../urbs_results/index.html" />
+    <link rel="prev" title="timevareff_editor.js" href="timevareff_editor.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../visualisation/index.html">Visualisation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">Pylovo GUI</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../../usage/usage.html">Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../dev/development.html">Development</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html">Javascript API Reference</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../postcode_editor/index.html">Postcode Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network_editor/index.html">Network Editor</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="index.html">Urbs Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../urbs_results/index.html">Urbs Results</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../index.html#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Pylovo GUI</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Javascript API Reference</a></li>
+          <li class="breadcrumb-item"><a href="index.html">Urbs Editor</a></li>
+      <li class="breadcrumb-item active">transmission_editor.js</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/docs_gui/js_api/urbs_editor/transmission_editor.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="transmission-editor-js">
+<h1>transmission_editor.js<a class="headerlink" href="#transmission-editor-js" title="Permalink to this heading"></a></h1>
+<dl class="js function">
+<dt class="sig sig-object js" id="fetchTransmissionProfiles">
+<span class="sig-name descname"><span class="n"><span class="pre">fetchTransmissionProfiles</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fetchTransmissionProfiles" title="Permalink to this definition"></a></dt>
+<dd><p>Called from generate_urbs_setup_editor.js during setup of the urbs setup editor window.
+We fetch default values from the backend.
+the fetched data contains default values for trafo_data as well as
+the sn_mva value of the network trafo to generate the kont option for trafo data</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Promise signalling that the fetch operation concluded</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="prepareCableDataList">
+<span class="sig-name descname"><span class="n"><span class="pre">prepareCableDataList</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">TransmissionPropertiesJSON</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">listName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#prepareCableDataList" title="Permalink to this definition"></a></dt>
+<dd><p>prefills the TransmissionObject</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>TransmissionPropertiesJSON</strong> (<em>dict</em>) – dict containing all data for the transmission object</p></li>
+<li><p><strong>listName</strong> (<em>string</em>) – name of the list in the JSOn whose features we want to extract</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="populateTransmissionEditorList">
+<span class="sig-name descname"><span class="n"><span class="pre">populateTransmissionEditorList</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">UrbsPropertiesJSON</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#populateTransmissionEditorList" title="Permalink to this definition"></a></dt>
+<dd><p>called from generate_urbs_setup_editor.js during setup of the urbs setup editor window
+Creates select options for cable_data, trafo_data and voltage_limits</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>UrbsPropertiesJSON</strong> (<em>dict</em>) – json containing all features and their properties for all input categories of the urbs setup</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="fillTrafoDataEditorIdSelect">
+<span class="sig-name descname"><span class="n"><span class="pre">fillTrafoDataEditorIdSelect</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#fillTrafoDataEditorIdSelect" title="Permalink to this definition"></a></dt>
+<dd><p>after the editor form for trafo_data has been selected, we add the kont and ronts as options to the id selection</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="writeBackTransmissionFeatures">
+<span class="sig-name descname"><span class="n"><span class="pre">writeBackTransmissionFeatures</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#writeBackTransmissionFeatures" title="Permalink to this definition"></a></dt>
+<dd><p>Saves changed inputs in the corresponding feature object within the TransmissionObject and, if the changed input was
+the id select, calls a function that adjusts all other fields to match the id</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>target</strong> (<em>HTML_element</em>) – reference to the changed html input element</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="fillInputFieldsOfSelectedID">
+<span class="sig-name descname"><span class="n"><span class="pre">fillInputFieldsOfSelectedID</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fillInputFieldsOfSelectedID" title="Permalink to this definition"></a></dt>
+<dd><p>If the Select element in the transmission editor changes, all other fields are updated with the values corresponding to the newly selected element</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>id</strong> (<em>string</em>) – key for TransmissionObject list element that contains values for a given id</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="openNewTrafoDataForm">
+<span class="sig-name descname"><span class="n"><span class="pre">openNewTrafoDataForm</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#openNewTrafoDataForm" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the #newTrafo_dataButton
+opens the form for creating a new ront</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="closeNewTrafoDataForm">
+<span class="sig-name descname"><span class="n"><span class="pre">closeNewTrafoDataForm</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#closeNewTrafoDataForm" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the cancel and accept button of the #urbsNewTrafoDataPopupForm
+closes the form for creating a new ront and resets its input field</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="trafoDataFormCheckValidInput">
+<span class="sig-name descname"><span class="n"><span class="pre">trafoDataFormCheckValidInput</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">text</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#trafoDataFormCheckValidInput" title="Permalink to this definition"></a></dt>
+<dd><p>onchange method for the #newTrafoDataTextInput
+checks that the sn_mva value the user puts in is valid and that a value has been given at all before
+enabling the accept button of the creation form</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>text</strong> (<em>string</em>) – value in the input field</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="createNewTrafoData">
+<span class="sig-name descname"><span class="n"><span class="pre">createNewTrafoData</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sn_mva</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#createNewTrafoData" title="Permalink to this definition"></a></dt>
+<dd><p>onclick function for the #newTrafoDataCreateButton of the new trafo data form
+creates a new ront and adds it to the TransmissionObject, trafo_data editor id select</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sn_mva</strong> (<em>string</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="timevareff_editor.html" class="btn btn-neutral float-left" title="timevareff_editor.js" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../urbs_results/index.html" class="btn btn-neutral float-right" title="Urbs Results" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>setup_urbs_results.js &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/graphviz.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="prev" title="Urbs Results" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../classification/index.html">Classification of Pylovo Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../visualisation/index.html">Visualisation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">Pylovo GUI</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../../index.html#contents">Contents</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../../usage/usage.html">Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../dev/development.html">Development</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../index.html">Javascript API Reference</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../postcode_editor/index.html">Postcode Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../network_editor/index.html">Network Editor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../urbs_editor/index.html">Urbs Editor</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="index.html">Urbs Results</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../index.html#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Pylovo GUI</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Javascript API Reference</a></li>
+          <li class="breadcrumb-item"><a href="index.html">Urbs Results</a></li>
+      <li class="breadcrumb-item active">setup_urbs_results.js</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/docs_gui/js_api/urbs_results/setup_urbs_results.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="setup-urbs-results-js">
+<h1>setup_urbs_results.js<a class="headerlink" href="#setup-urbs-results-js" title="Permalink to this heading"></a></h1>
+<dl class="js function">
+<dt class="sig sig-object js" id="SetupUrbsResultEditor">
+<span class="sig-name descname"><span class="n"><span class="pre">SetupUrbsResultEditor</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#SetupUrbsResultEditor" title="Permalink to this definition"></a></dt>
+<dd><p>retrieve network data and setup editor</p>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="displayUrbsNet">
+<span class="sig-name descname"><span class="n"><span class="pre">displayUrbsNet</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ppdata</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#displayUrbsNet" title="Permalink to this definition"></a></dt>
+<dd><p>aggregate function calling the actual functions that place the feature sgeojsons on the leaflet map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ppdata</strong> (<em>dict</em>) – grid data</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="addUrbsGeoJSONtoMap">
+<span class="sig-name descname"><span class="n"><span class="pre">addUrbsGeoJSONtoMap</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">isLines</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_geoJSON</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">featureName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#addUrbsGeoJSONtoMap" title="Permalink to this definition"></a></dt>
+<dd><p>function that adds a FeatureCollection to the leaflet map
+we set styles and onclick functions here and save references to each added feature in the NetworkObject
+lines (lines, trafos) and circlemarkers (buses, ext_grids) need to be handled differently because lines do not have the pointToLayer function</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>isLines</strong> (<em>boolean</em>) – </p></li>
+<li><p><strong>input_geoJSON</strong> (<em>geoJSON_FeatureCollection</em>) – </p></li>
+<li><p><strong>featureName</strong> (<em>string</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="populateUrbsResultsLoadBusLists">
+<span class="sig-name descname"><span class="n"><span class="pre">populateUrbsResultsLoadBusLists</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">htmlListName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#populateUrbsResultsLoadBusLists" title="Permalink to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>htmlListName</strong> (<em>string</em>) – name of the html select element that is supposed to be filled with the buses with attached loads</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="openUrbsNetworkList">
+<span class="sig-name descname"><span class="n"><span class="pre">openUrbsNetworkList</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">e</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">listName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#openUrbsNetworkList" title="Permalink to this definition"></a></dt>
+<dd><p>gets called when one of the tablink buttons in the GUI gets pressed and opens the relevant feature list, while hiding all other GUI elements
+editors are closed, lists are hidden, buttons are set to inactive</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>e</strong> (<em>event</em>) – event that triggered the function call</p></li>
+<li><p><strong>listName</strong> (<em>string</em>) – name of the element to be opened</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="fillSelectedUrbsNetworkFeatureEditor">
+<span class="sig-name descname"><span class="n"><span class="pre">fillSelectedUrbsNetworkFeatureEditor</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">listName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#fillSelectedUrbsNetworkFeatureEditor" title="Permalink to this definition"></a></dt>
+<dd><p>onchange method for the feature lists in the GUI window
+picks the corresponding map object for the selected list element to execute the clickonmarker function on</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sel</strong> (<em>HTML_select_object</em>) – reference to the select element that just changed</p></li>
+<li><p><strong>listName</strong> (<em>string</em>) – key for NetworkObject list</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="resetUrbsStyle">
+<span class="sig-name descname"><span class="n"><span class="pre">resetUrbsStyle</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feature</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#resetUrbsStyle" title="Permalink to this definition"></a></dt>
+<dd><p>resets the style of the previously selected feature</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>target</strong> (<em>HTML_element</em>) – the map object whose style we want to change</p></li>
+<li><p><strong>feature</strong> (<em>string</em>) – the name of the map object type</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="clickOnUrbsMarker">
+<span class="sig-name descname"><span class="n"><span class="pre">clickOnUrbsMarker</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feature</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#clickOnUrbsMarker" title="Permalink to this definition"></a></dt>
+<dd><p>When clicking on a map element or making a selection from a list,
+we highlight the relevant element, open the Editor window and fill its input fields with the relevant values</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>target</strong> (<em>HTML_element</em>) – the object that has been interacted with on the map. Null in case we have clicked on a list element</p></li>
+<li><p><strong>feature</strong> (<em>string</em>) – key for accessing f.e. featurelist in the NetworkObject</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="getPlotOfFeature">
+<span class="sig-name descname"><span class="n"><span class="pre">getPlotOfFeature</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">feature</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">targetName</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#getPlotOfFeature" title="Permalink to this definition"></a></dt>
+<dd><p>sends the feature type and the name of the feature we want to generate a plot for to the backend</p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>feature</strong> (<em>string</em>) – to distinguish what type of plot we want to generate in the backend</p></li>
+<li><p><strong>targetName</strong> (<em>string</em>) – key needed to access data for a specific site in the hdf5 file</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="js function">
+<dt class="sig sig-object js" id="setInnerHTML">
+<span class="sig-name descname"><span class="n"><span class="pre">setInnerHTML</span></span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">elm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">html</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#setInnerHTML" title="Permalink to this definition"></a></dt>
+<dd><p>makes sure inline script is executed once we add a plot to the GUI, which makes the plot visible and interactible
+from  <a class="reference external" href="https://stackoverflow.com/questions/2592092/executing-script-elements-inserted-with-innerhtml">https://stackoverflow.com/questions/2592092/executing-script-elements-inserted-with-innerhtml</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Arguments<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>elm</strong> (<em>HTML_element</em>) – html div element we want to add the plot to</p></li>
+<li><p><strong>html</strong> (<em>*</em>) – html code we want to add to the div</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Urbs Results" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

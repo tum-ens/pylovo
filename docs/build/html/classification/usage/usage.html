@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Usage &mdash; pylovo 2024 documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Classification Steps" href="../classification_steps/index.html" />
+    <link rel="prev" title="Short Summary of the Classification Steps" href="../overview/overview.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            pylovo
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Classification of Pylovo Grids</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../index.html#overview-of-the-classification">Overview of the Classification</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#run-the-classification">Run the Classification</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Usage</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#step-1-configure-the-classification">Step 1: Configure the classification</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-2-calculate-the-data-for-clustering">Step 2: Calculate the Data for Clustering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-3-inspect-sampling-results-optional">Step 3: Inspect sampling results (optional)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-4-inspect-grid-generation-results-optional">Step 4: Inspect grid generation results (optional)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-5-inspect-grid-parameters-optional">Step 5: Inspect grid parameters (optional)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-6-choose-parameters-for-clustering">Step 6: Choose parameters for clustering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-7-choose-number-of-clusters">Step 7: Choose number of clusters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#step-8-clustering-results">Step 8: Clustering results</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#how-the-classification-works">How the Classification Works</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../visualisation/index.html">Visualisation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">pylovo</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Classification of Pylovo Grids</a></li>
+      <li class="breadcrumb-item active">Usage</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/classification/usage/usage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="usage">
+<h1>Usage<a class="headerlink" href="#usage" title="Permalink to this heading"></a></h1>
+<section id="step-1-configure-the-classification">
+<h2>Step 1: Configure the classification<a class="headerlink" href="#step-1-configure-the-classification" title="Permalink to this heading"></a></h2>
+<p>Open the file <code class="code docutils literal notranslate"><span class="pre">config_classification.py</span></code>. Set up the classification by giving it a classification version,
+a description and a region, e.g.:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">CLASSIFICATION_VERSION</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">VERSION_COMMENT</span> <span class="o">=</span> <span class="s2">&quot;set sample with inspected building quality&quot;</span>
+<span class="n">CLASSIFICATION_REGION</span> <span class="o">=</span> <span class="s1">&#39;Bayern&#39;</span>
+</pre></div>
+</div>
+<p>A classification version is a unique identifier for your classification and can only be used once. The version comment can be used
+to describe the settings used in the classification version.
+For the region either choose one of the federal states of Germany</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">REGION_DICT</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s1">&#39;Schleswig-Hohlstein&#39;</span><span class="p">,</span>
+           <span class="mi">2</span><span class="p">:</span> <span class="s1">&#39;Hamburg&#39;</span><span class="p">,</span>
+           <span class="mi">3</span><span class="p">:</span> <span class="s1">&#39;Niedersachsen&#39;</span><span class="p">,</span>
+           <span class="mi">4</span><span class="p">:</span> <span class="s1">&#39;Bremen&#39;</span><span class="p">,</span>
+           <span class="mi">5</span><span class="p">:</span> <span class="s1">&#39;Nordrhein-Westfalen&#39;</span><span class="p">,</span>
+           <span class="mi">6</span><span class="p">:</span> <span class="s1">&#39;Hessen&#39;</span><span class="p">,</span>
+           <span class="mi">7</span><span class="p">:</span> <span class="s1">&#39;Rheinland-Pfalz&#39;</span><span class="p">,</span>
+           <span class="mi">8</span><span class="p">:</span> <span class="s1">&#39;Baden-Württemberg&#39;</span><span class="p">,</span>
+           <span class="mi">9</span><span class="p">:</span> <span class="s1">&#39;Bayern&#39;</span><span class="p">,</span>
+           <span class="mi">10</span><span class="p">:</span> <span class="s1">&#39;Saarland&#39;</span><span class="p">,</span>
+           <span class="mi">11</span><span class="p">:</span> <span class="s1">&#39;Berlin&#39;</span><span class="p">,</span>
+           <span class="mi">12</span><span class="p">:</span> <span class="s1">&#39;Brandenburg&#39;</span><span class="p">,</span>
+           <span class="mi">13</span><span class="p">:</span> <span class="s1">&#39;Mecklenburg-Vorpommern&#39;</span><span class="p">,</span>
+           <span class="mi">14</span><span class="p">:</span> <span class="s1">&#39;Sachsen&#39;</span><span class="p">,</span>
+           <span class="mi">15</span><span class="p">:</span> <span class="s1">&#39;Sachsen-Anhalt&#39;</span><span class="p">,</span>
+           <span class="mi">16</span><span class="p">:</span> <span class="s1">&#39;Thüringen&#39;</span><span class="p">,</span>
+           <span class="p">}</span>
+</pre></div>
+</div>
+<div class="line-block">
+<div class="line">that are listed as values in the dictionary or use <code class="code docutils literal notranslate"><span class="pre">'Germany'</span></code> for the entire country.</div>
+<div class="line">Make sure that you have the building data for the chosen region.</div>
+</div>
+<p>Once you run the classification the constants that you have set will be saved
+in the database table <code class="code docutils literal notranslate"><span class="pre">classification_version</span></code>.</p>
+</section>
+<section id="step-2-calculate-the-data-for-clustering">
+<h2>Step 2: Calculate the Data for Clustering<a class="headerlink" href="#step-2-calculate-the-data-for-clustering" title="Permalink to this heading"></a></h2>
+<div class="line-block">
+<div class="line">To generate the grids, calculate the grid parameters and filter erroneous grids run the file <code class="code docutils literal notranslate"><span class="pre">prepare_data_for_clustering.py</span></code>.</div>
+</div>
+<p>Threshold values for filtering can be set in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code>.</p>
+<p>The processes run here are explained in <a class="reference internal" href="../classification_steps/sampling.html"><span class="doc">Create a Sample Set of PLZ for Clustering</span></a>,
+<a class="reference internal" href="../classification_steps/grid_generation_for_classification.html"><span class="doc">Grid Generation for Classification</span></a>,
+<a class="reference internal" href="../classification_steps/parameters.html"><span class="doc">Calculate Parameters for Grids</span></a> and
+<a class="reference internal" href="../classification_steps/filter_grids.html"><span class="doc">Filter Grids</span></a>.</p>
+</section>
+<section id="step-3-inspect-sampling-results-optional">
+<h2>Step 3: Inspect sampling results (optional)<a class="headerlink" href="#step-3-inspect-sampling-results-optional" title="Permalink to this heading"></a></h2>
+<p>In the notebook <code class="code docutils literal notranslate"><span class="pre">examples_sampling.analyse_sampling_results</span></code> the samples drawn in the region of classification
+are visualised on a map.</p>
+<a class="reference internal image-reference" href="../../_images/karte_samples2.png"><img alt="Default view" src="../../_images/karte_samples2.png" style="width: 400px;" /></a>
+<p>The distribution of samples within Regiostar 7 classes is shown.</p>
+<a class="reference internal image-reference" href="../../_images/anz_samples.png"><img alt="Default view" src="../../_images/anz_samples.png" style="width: 400px;" /></a>
+</section>
+<section id="step-4-inspect-grid-generation-results-optional">
+<h2>Step 4: Inspect grid generation results (optional)<a class="headerlink" href="#step-4-inspect-grid-generation-results-optional" title="Permalink to this heading"></a></h2>
+<p>The generated grids can be visualised in QGIS (all grids)</p>
+<a class="reference internal image-reference" href="../../_images/qgis6.png"><img alt="Default view" src="../../_images/qgis6.png" style="width: 400px;" /></a>
+<p>or using plotting functions (individual grids). For more details see <a class="reference internal" href="../../visualisation/index.html"><span class="doc">Visualisation</span></a></p>
+</section>
+<section id="step-5-inspect-grid-parameters-optional">
+<h2>Step 5: Inspect grid parameters (optional)<a class="headerlink" href="#step-5-inspect-grid-parameters-optional" title="Permalink to this heading"></a></h2>
+<p>In the package <code class="code docutils literal notranslate"><span class="pre">examples_grid_parameters</span></code> the parameters of the grids can be analysed. In the notebook
+<code class="code docutils literal notranslate"><span class="pre">analyse_clustering_parameters</span></code> a matrix of scatter plots called pairplot is shown to gain an overview of the data.</p>
+<a class="reference internal image-reference" href="../../_images/pairplot.png"><img alt="Default view" src="../../_images/pairplot.png" style="width: 400px;" /></a>
+<p>The grids can be sorted by a parameter to show grids with specific characteristics.</p>
+<p>The notebook <code class="code docutils literal notranslate"><span class="pre">vsw_analysis</span></code> focuses on the ‘Verbrauchersummenwiderstand’ (resistance in the network) that can be
+an indicator for voltage drop of branches.</p>
+</section>
+<section id="step-6-choose-parameters-for-clustering">
+<h2>Step 6: Choose parameters for clustering<a class="headerlink" href="#step-6-choose-parameters-for-clustering" title="Permalink to this heading"></a></h2>
+<p>To fast track step 6  you can call <code class="code docutils literal notranslate"><span class="pre">get_parameters_for_clustering</span></code>. The optimal parameters for clustering
+are calculated and outputed in the console. They should then be inserted in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code> as explained below.</p>
+<p>The package <code class="code docutils literal notranslate"><span class="pre">examples_correlation_and_factor_analysis</span></code> has the tools to choose the parameters for clustering.
+In this work, it is proposed to choose the clustering parameters according to the factor analysis.</p>
+<p>The notebook <code class="code docutils literal notranslate"><span class="pre">1_0_factor_analysis</span></code> guides you through the process of finding the number of and the parameters
+that are mathematically optimal for clustering. The resulting parameters are listed at the end of the document.</p>
+<a class="reference internal image-reference" href="../../_images/factor_analysis.png"><img alt="Default view" src="../../_images/factor_analysis.png" style="width: 400px;" /></a>
+<p>The proposed parameters do not need to be taken for clustering. Other preferences and considerations can be taken into account.
+Additional information like the explained variance of the factors or components can be found in the notebook
+<code class="code docutils literal notranslate"><span class="pre">1_1_explained</span> <span class="pre">variance_eigen_decomposition</span></code>.</p>
+<a class="reference internal image-reference" href="../../_images/eigendecomposition.png"><img alt="Default view" src="../../_images/eigendecomposition.png" style="width: 400px;" /></a>
+<p>The correlation matrix and clustermap are plotted in the notebook <code class="code docutils literal notranslate"><span class="pre">1_2_correlation_matrix</span></code></p>
+<p>After you have choosen the parameters set them in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code>, like:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># set clustering parameters</span>
+<span class="n">param1</span> <span class="o">=</span> <span class="s1">&#39;no_branches&#39;</span>
+<span class="n">param2</span> <span class="o">=</span> <span class="s1">&#39;avg_trafo_dis&#39;</span>
+<span class="n">param3</span> <span class="o">=</span> <span class="s1">&#39;max_no_of_households_of_a_branch&#39;</span>
+<span class="n">param4</span> <span class="o">=</span> <span class="s1">&#39;no_house_connections_per_branch&#39;</span>
+<span class="n">LIST_OF_CLUSTERING_PARAMETERS</span> <span class="o">=</span> <span class="p">[</span><span class="n">param1</span><span class="p">,</span> <span class="n">param2</span><span class="p">,</span> <span class="n">param3</span><span class="p">,</span> <span class="n">param4</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="step-7-choose-number-of-clusters">
+<h2>Step 7: Choose number of clusters<a class="headerlink" href="#step-7-choose-number-of-clusters" title="Permalink to this heading"></a></h2>
+<p>To fast track step 6  you can call <code class="code docutils literal notranslate"><span class="pre">get_no_clusters_for_clustering</span></code>. The optimal no_clusters for clustering
+are calculated and outputed in the console. They should then be inserted in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code> as explained below.</p>
+<p>In the package <code class="code docutils literal notranslate"><span class="pre">examples_indices</span></code> you will find two indices for finding the optimal number of clusters:</p>
+<ul class="simple">
+<li><p>Calinski Harabasz Index or CH Index and</p></li>
+<li><p>Davies Bouldin Index or DB Index</p></li>
+</ul>
+<p>It is recommended to choose the number of clusters with the CH index from the notebook
+<code class="code docutils literal notranslate"><span class="pre">1_CH_index</span></code>. The DB Index can be used for reference.</p>
+<a class="reference internal image-reference" href="../../_images/ch_index.png"><img alt="Default view" src="../../_images/ch_index.png" style="width: 400px;" /></a>
+<p>Again according to the goals of clustering with orientation of the index results set the numbers of clusters
+for the cluster algorithms in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># set number of clusters</span>
+<span class="n">N_CLUSTERS_KMEDOID</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">N_CLUSTERS_KMEANS</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">N_CLUSTERS_GMM</span> <span class="o">=</span> <span class="mi">4</span>  <span class="c1"># refers to gmm tied</span>
+</pre></div>
+</div>
+</section>
+<section id="step-8-clustering-results">
+<h2>Step 8: Clustering results<a class="headerlink" href="#step-8-clustering-results" title="Permalink to this heading"></a></h2>
+<p>You now have the option to investigate the results in <code class="code docutils literal notranslate"><span class="pre">examples_clustering</span></code>. For each of the clusterin algorithms</p>
+<ul class="simple">
+<li><p>kmeans,</p></li>
+<li><p>kmedoids and</p></li>
+<li><p>gmm tied</p></li>
+</ul>
+<p>there are two notebooks. In the first one, the representative grids  are presented. Their clustering parameters can be
+compared with the radar plot. The representative grids are plotted individually.</p>
+<a class="reference internal image-reference" href="../../_images/radar_plot_kmeans.png"><img alt="Default view" src="../../_images/radar_plot_kmeans.png" style="width: 400px;" /></a>
+<p>In the second notebook is more concerned with the overall clusters and the distribution of clusters over the regiostar
+classes are plotted.</p>
+<a class="reference internal image-reference" href="../../_images/distribution_regio5_clusters.png"><img alt="Default view" src="../../_images/distribution_regio5_clusters.png" style="width: 400px;" /></a>
+<p>To view the clustering results in QGIS run <code class="code docutils literal notranslate"><span class="pre">apply_clustering_for_QGIS_visualisation</span></code> and open QGIS.
+There you have the option to identify the clusters of the grids by color</p>
+<a class="reference internal image-reference" href="../../_images/clusters_qgis.png"><img alt="Default view" src="../../_images/clusters_qgis.png" style="width: 400px;" /></a>
+<p>More details about the clustering functions can be found in <a class="reference internal" href="../classification_steps/clustering.html"><span class="doc">Cluster the Grids</span></a></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../overview/overview.html" class="btn btn-neutral float-left" title="Short Summary of the Classification Steps" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../classification_steps/index.html" class="btn btn-neutral float-right" title="Classification Steps" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Beneharo Reveron Baecker.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
