@@ -31,8 +31,6 @@ general grid properties for the generated synthetic grids.
 
 At the current state of the project the data is prepared for Bavaria, but will be extended to Germany.
 Due to the large amount of data, external users need to setup a local posgresql database for the grid generation process.
-
-A comprehensive documentation can be found under https://pylovo.readthedocs.io/en/latest/
 A step by step tutorial to understand the product of this tool in jupyter notebooks can be found under examples.
 
 License and Citation
