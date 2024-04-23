@@ -1,4 +1,7 @@
 flask
 sphinx>=4.1.0
+sphinx_rtd_theme
+sphinx-autodocgen
 sphinx-autoapi
 sphinx-js==3.2.1
+astroid==2.15.6

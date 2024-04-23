@@ -35,12 +35,6 @@ Due to the large amount of data, external users need to setup a local posgresql 
 A comprehensive documentation can be found under https://pylovo.readthedocs.io/en/latest/
 A step by step tutorial to understand the product of this tool in jupyter notebooks can be found under examples.
 
-Documentation
-=============
-| The documentation is created with Markdown using `MkDocs <https://www.mkdocs.org/>`_.
-| All files are stored in the ``docs`` folder of the repository.
-[//]: # (| The documentation page is `tum-ens.github.io/pylovo/ <https://tum-ens.github.io/pylovo/>`_)
-
 License and Citation
 ====================
 | The code of this repository is licensed under the **MIT License** (MIT).
