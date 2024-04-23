@@ -47,6 +47,6 @@ License and Citation
     :target: LICENSE.txt
     :alt: License
 
-.. |badge_documentation| image:: https://img.shields.io/github/actions/workflow/status/tum-ens/pylovo/gh-pages.yml?branch=production
-    :target: https://tum-ens.github.io/pylovo/ 
+.. |badge_documentation| image:: https://readthedocs.org/projects/pylovo/badge/?version=latest
+    :target: https://pylovo.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation
