@@ -46,5 +46,5 @@ License and Citation
     :alt: License
 
 .. |badge_documentation| image:: https://readthedocs.org/projects/pylovo/badge/?version=latest
-    :target: https://pylovo.readthedocs.io/en/latest/?badge=latest
+    :target: https://pylovo.readthedocs.io/en/main/?badge=main
     :alt: Documentation
