@@ -27,4 +27,3 @@ formats:
 python:
   install:
   - requirements: docs/requirements.txt
-  skip_install: true
