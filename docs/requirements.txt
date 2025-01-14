@@ -2,3 +2,4 @@ flask
 sphinx
 sphinx-autoapi
 sphinx-js
+sphinx_rtd_theme
