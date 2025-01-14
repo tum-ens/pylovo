@@ -3,7 +3,7 @@
 
 import time
 
-from syngrid.GridGenerator import GridGenerator
+from pylovo.GridGenerator import GridGenerator
 
 # enter a plz to generate grid for:
 # plz = "99999"  # test muc

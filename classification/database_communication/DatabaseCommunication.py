@@ -7,8 +7,8 @@ from sqlalchemy import create_engine
 from classification.clustering.clustering_algorithms import *
 from classification.clustering.config_clustering import *
 from classification.config_classification import *
-from syngrid.config_data import *
-from syngrid.config_version import *
+from pylovo.config_data import *
+from pylovo.config_version import *
 
 
 class DatabaseCommunication:

@@ -6,7 +6,7 @@ import plotly.express as px
 from matplotlib import pyplot as plt
 
 from plotting.config_plots import ACCESS_TOKEN_PLOTLY
-from syngrid.GridGenerator import GridGenerator
+from pylovo.GridGenerator import GridGenerator
 
 sys.path.append(os.path.abspath('..'))
 px.set_mapbox_access_token(ACCESS_TOKEN_PLOTLY)
