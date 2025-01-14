@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - Add best practice files (issue/PR templates, changelog, contributing, release_procedure) to repository
 - Add module to generate all grids for an AGS region
-- Add function to get all grids form a PLZ
+- Add function to get all grids from a PLZ
 - Add flags for grid analysis and plotting as it is a time-consuming process
 
 ### Changed
