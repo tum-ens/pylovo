@@ -1,8 +1,8 @@
 import networkx as nx
 import pandas as pd
 
-from syngrid.config_version import SIM_FACTOR
-from syngrid.utils import oneSimultaneousLoad
+from pylovo.config_version import SIM_FACTOR
+from pylovo.utils import oneSimultaneousLoad
 
 
 def calculate_line_with_sim_factor(pandapower_net, networkx_graph) -> pd.DataFrame:

@@ -8,9 +8,9 @@ import time
 
 from classification.clustering.filter_grids import apply_filter_to_grids
 from parameter_calculation.perform_classification_tasks_for_multiple_plz import calculate_parameters_for_multiple_plz
-from raw_data.import_building_data import import_buildings_for_multiple_plz
+from raw_data.preprocessing_scripts.import_building_data import import_buildings_for_multiple_plz
 from sampling.sample import get_sample_set  # , create_sample_set
-from syngrid.generate_grid_for_multiple_plz import generate_grid_for_multiple_plz
+from pylovo.GridGenerator import GridGenerator
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
@@ -34,7 +34,9 @@ print("--- %s seconds for step 2: building import---" % (time.time() - start_tim
 # check whether grid was already generated
 
 start_time = time.time()
-generate_grid_for_multiple_plz(df_samples=samples)
+# initialize GridGenerator with the provided postal code (PLZ)
+gg = GridGenerator()
+gg.generate_grid_for_multiple_plz(df_plz=samples, analyze_grids=True)
 print("--- %s seconds for step 3: grid generation---" % (time.time() - start_time))
 
 # %% 4. calculate grid parameters

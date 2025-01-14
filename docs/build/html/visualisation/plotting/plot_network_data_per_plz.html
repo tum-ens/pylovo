@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Plot Network Data per PLZ &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -41,7 +43,6 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../classification/index.html">Classification of Pylovo Grids</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Visualisation</a><ul class="current">
@@ -86,41 +87,46 @@
            <div itemprop="articleBody">
              
   <section id="plot-network-data-per-plz">
-<h1>Plot Network Data per PLZ<a class="headerlink" href="#plot-network-data-per-plz" title="Permalink to this heading"></a></h1>
+<h1>Plot Network Data per PLZ<a class="headerlink" href="#plot-network-data-per-plz" title="Link to this heading"></a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="plotting.plot_for_plz.plot_pie_of_trafo_cables">
-<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_pie_of_trafo_cables</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_pie_of_trafo_cables" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_pie_of_trafo_cables</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_pie_of_trafo_cables" title="Link to this definition"></a></dt>
 <dd><p>plots a pie chart of the trafos and cable types for a plz</p>
 </dd></dl>
 
-<a class="reference internal image-reference" href="../../_images/pie_plot.png"><img alt="Default view" src="../../_images/pie_plot.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/pie_plot.png"><img alt="Default view" src="../../_images/pie_plot.png" style="width: 600px;" />
+</a>
 <dl class="py function">
 <dt class="sig sig-object py" id="plotting.plot_for_plz.plot_hist_trafos">
-<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_hist_trafos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_hist_trafos" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_hist_trafos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_hist_trafos" title="Link to this definition"></a></dt>
 <dd><p>plots histogram of trafo sizes in plz</p>
 </dd></dl>
 
-<a class="reference internal image-reference" href="../../_images/hist_trafos.png"><img alt="Default view" src="../../_images/hist_trafos.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/hist_trafos.png"><img alt="Default view" src="../../_images/hist_trafos.png" style="width: 600px;" />
+</a>
 <dl class="py function">
 <dt class="sig sig-object py" id="plotting.plot_for_plz.plot_boxplot_plz">
-<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_boxplot_plz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_boxplot_plz" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_boxplot_plz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_boxplot_plz" title="Link to this definition"></a></dt>
 <dd><p>boxplot of load number, bus number, simultaneaous load peak, max trafo distance, avg trafo distance</p>
 </dd></dl>
 
-<a class="reference internal image-reference" href="../../_images/boxplot_plz.png"><img alt="Default view" src="../../_images/boxplot_plz.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/boxplot_plz.png"><img alt="Default view" src="../../_images/boxplot_plz.png" style="width: 600px;" />
+</a>
 <dl class="py method">
 <dt class="sig sig-object py" id="syngrid.GridGenerator.plot_trafo_on_map">
-<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">plot_trafo_on_map</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.plot_trafo_on_map" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">plot_trafo_on_map</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.plot_trafo_on_map" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
-<a class="reference internal image-reference" href="../../_images/trafos_on_map.png"><img alt="Default view" src="../../_images/trafos_on_map.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/trafos_on_map.png"><img alt="Default view" src="../../_images/trafos_on_map.png" style="width: 600px;" />
+</a>
 <dl class="py function">
 <dt class="sig sig-object py" id="plotting.plot_for_plz.plot_cable_length_of_types">
-<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_cable_length_of_types</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_cable_length_of_types" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">plotting.plot_for_plz.</span></span><span class="sig-name descname"><span class="pre">plot_cable_length_of_types</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plot_for_plz.plot_cable_length_of_types" title="Link to this definition"></a></dt>
 <dd><p>plots distribution of cable length by length</p>
 </dd></dl>
 
-<a class="reference internal image-reference" href="../../_images/cable_type_distribution.png"><img alt="Default view" src="../../_images/cable_type_distribution.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/cable_type_distribution.png"><img alt="Default view" src="../../_images/cable_type_distribution.png" style="width: 600px;" />
+</a>
 </section>
 
 

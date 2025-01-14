@@ -17,7 +17,6 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   main_workflow/main_workflow
    usage/usage
    explanation/overview
    explanation/resources

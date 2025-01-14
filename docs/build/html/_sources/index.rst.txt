@@ -26,7 +26,7 @@ A step by step tutorial to understand the product of this tool in jupyter notebo
 In this documentation you can find instructions and information on:
 
 
-* how to install pylovo in :doc:`docs_pylovo/installation`.
+* how to install pylovo in :doc:`installation`.
 * how to generate grids in :doc:`grid_generation`.
 
 .. image:: images/grid_generation/grid_generation_part_forchheim.png
@@ -54,7 +54,7 @@ Contents
 .. toctree::
     :maxdepth: 2
 
-    docs_pylovo/installation
+    installation/installation
     grid_generation/index
     classification/index
     visualisation/index

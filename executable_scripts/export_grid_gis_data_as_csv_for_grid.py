@@ -5,7 +5,7 @@ import os
 import sys
 
 from plotting.export_net import get_bus_line_geo_for_network
-from syngrid.GridGenerator import GridGenerator
+from pylovo.GridGenerator import GridGenerator
 
 # enter the grid data for the grid you want to export
 plz = '91207'

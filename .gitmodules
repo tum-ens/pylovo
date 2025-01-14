@@ -1,4 +1,0 @@
-[submodule "gui/urbs"]
-	path = gui/urbs
-	url = https://github.com/DBaur22/urbs
-	branch = urbs_optimizer

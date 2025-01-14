@@ -12,7 +12,7 @@ from pandapower.topology import create_nxgraph
 from shapely import linestrings
 
 from plotting.config_plots import *
-from syngrid.GridGenerator import GridGenerator
+from pylovo.GridGenerator import GridGenerator
 
 
 def get_network_info_for_plotting(df_network_info: pd.DataFrame) -> (str, int, int):

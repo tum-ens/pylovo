@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Plot Graphs for Classification &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -40,7 +42,7 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../installation/installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../classification/index.html">Classification of Pylovo Grids</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Visualisation</a><ul class="current">
@@ -85,150 +87,41 @@
            <div itemprop="articleBody">
              
   <section id="plot-graphs-for-classification">
-<h1>Plot Graphs for Classification<a class="headerlink" href="#plot-graphs-for-classification" title="Permalink to this heading"></a></h1>
+<h1>Plot Graphs for Classification<a class="headerlink" href="#plot-graphs-for-classification" title="Link to this heading"></a></h1>
 <p>The plots to visualise results from the classification process are:</p>
 <section id="sampling">
-<h2>Sampling<a class="headerlink" href="#sampling" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_samples_on_map">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_samples_on_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_samples_on_map" title="Permalink to this definition"></a></dt>
-<dd><p>plot the PLZ in the sample set on a plotly map</p>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/karte_samples2.png"><img alt="Default view" src="../../_images/karte_samples2.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_samples_per_regiostarclass">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_samples_per_regiostarclass</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_samples_per_regiostarclass" title="Permalink to this definition"></a></dt>
-<dd><p>plot bar chart with number of samples per regiostar 7 class</p>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/anz_samples.png"><img alt="Default view" src="../../_images/anz_samples.png" style="width: 400px;" /></a>
+<h2>Sampling<a class="headerlink" href="#sampling" title="Link to this heading"></a></h2>
+<a class="reference internal image-reference" href="../../_images/karte_samples2.png"><img alt="Default view" src="../../_images/karte_samples2.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/anz_samples.png"><img alt="Default view" src="../../_images/anz_samples.png" style="width: 400px;" />
+</a>
 </section>
 <section id="parameter-reduction">
-<h2>Parameter Reduction<a class="headerlink" href="#parameter-reduction" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_factor_analysis">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_factor_analysis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_comps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_factor_analysis" title="Permalink to this definition"></a></dt>
-<dd><p>plot factor analysis for dataset</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids</p></li>
-<li><p><strong>n_comps</strong> (<em>int</em>) – number of components for factor analysis</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/factor_analysis.png"><img alt="Default view" src="../../_images/factor_analysis.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_eigendecomposition">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_eigendecomposition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_eigendecomposition" title="Permalink to this definition"></a></dt>
-<dd><p>plot the explained variance of the principal components</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids</p>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/eigendecomposition.png"><img alt="Default view" src="../../_images/eigendecomposition.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_correlation_matrix">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_correlation_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.plotting_classification.plot_correlation_matrix" title="Permalink to this definition"></a></dt>
-<dd><p>plot correlation matrix</p>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/corrmatrix.png"><img alt="Default view" src="../../_images/corrmatrix.png" style="width: 400px;" /></a>
+<h2>Parameter Reduction<a class="headerlink" href="#parameter-reduction" title="Link to this heading"></a></h2>
+<a class="reference internal image-reference" href="../../_images/factor_analysis.png"><img alt="Default view" src="../../_images/factor_analysis.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/eigendecomposition.png"><img alt="Default view" src="../../_images/eigendecomposition.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/corrmatrix.png"><img alt="Default view" src="../../_images/corrmatrix.png" style="width: 400px;" />
+</a>
 </section>
 <section id="indices">
-<h2>Indices<a class="headerlink" href="#indices" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_ch_index_for_clustering_algos">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_ch_index_for_clustering_algos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_of_clusters_allowed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">range</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">range(3,</span> <span class="pre">8)</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_ch_index_for_clustering_algos" title="Permalink to this definition"></a></dt>
-<dd><p>plot the calinski harabasz index for the indicated range of clusters and the clusterin algorithms kmeans,
-kmedoids, gmm</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids</p></li>
-<li><p><strong>no_of_clusters_allowed</strong> (<em>range</em>) – the range the number of clusters allowed to have, , defaults range(3, 8)</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/ch_index.png"><img alt="Default view" src="../../_images/ch_index.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_db_index_for_clustering_algos">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_db_index_for_clustering_algos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_of_clusters_allowed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">range</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">range(3,</span> <span class="pre">8)</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_db_index_for_clustering_algos" title="Permalink to this definition"></a></dt>
-<dd><p>plot the davies bouldin index for the indicated range of clusters and the clusterin algorithms kmeans,
-kmedoids, gmm</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids</p></li>
-<li><p><strong>no_of_clusters_allowed</strong> (<em>range</em>) – the range the number of clusters allowed to have, defaults range(3, 8)</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/db_index_results.png"><img alt="Default view" src="../../_images/db_index_results.png" style="width: 400px;" /></a>
+<h2>Indices<a class="headerlink" href="#indices" title="Link to this heading"></a></h2>
+<a class="reference internal image-reference" href="../../_images/ch_index.png"><img alt="Default view" src="../../_images/ch_index.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/db_index_results.png"><img alt="Default view" src="../../_images/db_index_results.png" style="width: 400px;" />
+</a>
 </section>
 <section id="clustering-results">
-<h2>Clustering Results<a class="headerlink" href="#clustering-results" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_radar_graph">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_radar_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">representative_networks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">list_of_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_radar_graph" title="Permalink to this definition"></a></dt>
-<dd><p>plots the representative networks of a clustering algorithm as radar graphs</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>representative_networks</strong> (<em>pd.DataFrame</em>) – table of parameters of representative networks</p></li>
-<li><p><strong>list_of_parmeters</strong> (<em>list</em><em> of </em><em>strings</em>) – parameters that are plotted in radar graph</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/radar_plot_kmeans.png"><img alt="Default view" src="../../_images/radar_plot_kmeans.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_percentage_of_clusters">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_percentage_of_clusters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_percentage_of_clusters" title="Permalink to this definition"></a></dt>
-<dd><p>plot the distribution of clusters as a bar chart</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids that are clustered and thus have a column named ‘clusters’</p>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/distribution_clusters.png"><img alt="Default view" src="../../_images/distribution_clusters.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_stacked_distribution_of_clusters_per_regio_5">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_stacked_distribution_of_clusters_per_regio_5</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_stacked_distribution_of_clusters_per_regio_5" title="Permalink to this definition"></a></dt>
-<dd><p>plot stacked bar chart of distribution of clusters for each regio 5 class</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids that are clustered and thus have a column named ‘clusters’</p>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/distribution_regio5_clusters.png"><img alt="Default view" src="../../_images/distribution_regio5_clusters.png" style="width: 400px;" /></a>
-<dl class="py function">
-<dt class="sig sig-object py" id="plotting.plotting_classification.plot_bar_distribution_of_clusters_per_regio_5">
-<span class="sig-prename descclassname"><span class="pre">plotting.plotting_classification.</span></span><span class="sig-name descname"><span class="pre">plot_bar_distribution_of_clusters_per_regio_5</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_grid_parameters</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#plotting.plotting_classification.plot_bar_distribution_of_clusters_per_regio_5" title="Permalink to this definition"></a></dt>
-<dd><p>plot bar chart of distribution of clusters for each regio 5 class</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>df_grid_parameters</strong> (<em>pd.DataFrame</em>) – set of parameters for grids that are clustered and thus have a column named ‘clusters’</p>
-</dd>
-</dl>
-</dd></dl>
-
-<a class="reference internal image-reference" href="../../_images/regio5_bars.png"><img alt="Default view" src="../../_images/regio5_bars.png" style="width: 400px;" /></a>
+<h2>Clustering Results<a class="headerlink" href="#clustering-results" title="Link to this heading"></a></h2>
+<a class="reference internal image-reference" href="../../_images/radar_plot_kmeans.png"><img alt="Default view" src="../../_images/radar_plot_kmeans.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/distribution_clusters.png"><img alt="Default view" src="../../_images/distribution_clusters.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/distribution_regio5_clusters.png"><img alt="Default view" src="../../_images/distribution_regio5_clusters.png" style="width: 400px;" />
+</a>
+<a class="reference internal image-reference" href="../../_images/regio5_bars.png"><img alt="Default view" src="../../_images/regio5_bars.png" style="width: 400px;" />
+</a>
 </section>
 </section>
 
