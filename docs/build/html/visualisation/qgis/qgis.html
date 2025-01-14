@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>QGIS Visualisation &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -41,7 +43,6 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../classification/index.html">Classification of Pylovo Grids</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Visualisation</a><ul class="current">
@@ -86,37 +87,40 @@
            <div itemprop="articleBody">
              
   <section id="qgis-visualisation">
-<h1>QGIS Visualisation<a class="headerlink" href="#qgis-visualisation" title="Permalink to this heading"></a></h1>
+<h1>QGIS Visualisation<a class="headerlink" href="#qgis-visualisation" title="Link to this heading"></a></h1>
 <p>Open QGIS.</p>
 <section id="visualisation-structure">
-<h2>Visualisation structure<a class="headerlink" href="#visualisation-structure" title="Permalink to this heading"></a></h2>
+<h2>Visualisation structure<a class="headerlink" href="#visualisation-structure" title="Link to this heading"></a></h2>
 <p>The visualisation takes the geometry columns from the pylovo database. The layer names in QGIS correspond to the
 database table names. In QGIS the layers have been grouped:</p>
-<a class="reference internal image-reference" href="../../_images/layer_menu.png"><img alt="Default view" src="../../_images/layer_menu.png" style="width: 200px;" /></a>
+<a class="reference internal image-reference" href="../../_images/layer_menu.png"><img alt="Default view" src="../../_images/layer_menu.png" style="width: 200px;" />
+</a>
 <p>Individual elements or groups can be selected for visualisation.</p>
 </section>
 <section id="raw-data">
-<h2>Raw Data<a class="headerlink" href="#raw-data" title="Permalink to this heading"></a></h2>
+<h2>Raw Data<a class="headerlink" href="#raw-data" title="Link to this heading"></a></h2>
 <p>Look at the geodata pylovo uses to generate the grids. This data does not change for different versions.</p>
-<a class="reference internal image-reference" href="../../_images/qgis5.png"><img alt="Default view" src="../../_images/qgis5.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/qgis5.png"><img alt="Default view" src="../../_images/qgis5.png" style="width: 600px;" />
+</a>
 <p>If you find any irregularities in your grid:
 Check the raw data: Have the buildings been imported as expected? Are the ways complete and connected?</p>
 </section>
 <section id="grids">
-<h2>Grids<a class="headerlink" href="#grids" title="Permalink to this heading"></a></h2>
+<h2>Grids<a class="headerlink" href="#grids" title="Link to this heading"></a></h2>
 <p>These are the results of the pylovo grid generation. If you have created networks for the same PLZ with multiple
 versions
 make sure to filter the version you would like to see.
 Click on the filter symbol next to the layer name. In the query panel you can apply a filter like:
 <cite>“version_id”=’3.8’</cite>.</p>
-<a class="reference internal image-reference" href="../../_images/qgis6.png"><img alt="Default view" src="../../_images/qgis6.png" style="width: 600px;" /></a>
+<a class="reference internal image-reference" href="../../_images/qgis6.png"><img alt="Default view" src="../../_images/qgis6.png" style="width: 600px;" />
+</a>
 <p>If you would only like to see a specific grid enter a query like:
 <cite>“version_id” = ‘3.3’ AND “in_building_cluster” = ‘5’ AND “k_mean_cluster” = ‘1’</cite>.</p>
 <p>Pylovo partitions the buildings of a PLZ for a grid using k-means cluster (kcid, k-means cluster ID) and
 building cluster (bcid, builings cluster ID).</p>
 <p>Some more specific information about the different layers:</p>
 <section id="transformers">
-<h3>Transformers<a class="headerlink" href="#transformers" title="Permalink to this heading"></a></h3>
+<h3>Transformers<a class="headerlink" href="#transformers" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p>black circle with white filling</p></li>
 <li><p>within circle: cluster - ID: [kcid].[bcid]</p></li>
@@ -125,7 +129,7 @@ building cluster (bcid, builings cluster ID).</p>
 </ul>
 </section>
 <section id="buildings">
-<h3>Buildings<a class="headerlink" href="#buildings" title="Permalink to this heading"></a></h3>
+<h3>Buildings<a class="headerlink" href="#buildings" title="Link to this heading"></a></h3>
 <p>The buildings (consumers) of each grid are colored in a different colour.
 If you visualise a new postcode area that has a cluster ids that has not previously existed, e.g. 9.59 and 10.01,
 they will have the same colour.
@@ -133,28 +137,30 @@ In this case douple click on the layer. Go to the <cite>symbol</cite> tab. click
 Now for all cluster IDs the colours will be newly created.</p>
 </section>
 <section id="postcode">
-<h3>Postcode<a class="headerlink" href="#postcode" title="Permalink to this heading"></a></h3>
+<h3>Postcode<a class="headerlink" href="#postcode" title="Link to this heading"></a></h3>
 <p>On the outside of the postcode area marked in red, you will find the PLZ code.</p>
 </section>
 <section id="clusters">
-<h3>Clusters<a class="headerlink" href="#clusters" title="Permalink to this heading"></a></h3>
+<h3>Clusters<a class="headerlink" href="#clusters" title="Link to this heading"></a></h3>
 <p>By selecting the cluster layer, the cluster index for each grid can be shown. It can be identified by the color of the
 transformer.</p>
-<a class="reference internal image-reference" href="../../_images/clusters_qgis1.png"><img alt="Default view" src="../../_images/clusters_qgis1.png" style="width: 800px;" /></a>
+<a class="reference internal image-reference" href="../../_images/clusters_qgis1.png"><img alt="Default view" src="../../_images/clusters_qgis1.png" style="width: 800px;" />
+</a>
 </section>
 <section id="representative-grids">
-<h3>Representative Grids<a class="headerlink" href="#representative-grids" title="Permalink to this heading"></a></h3>
+<h3>Representative Grids<a class="headerlink" href="#representative-grids" title="Link to this heading"></a></h3>
 <p>Similarly the representative grids of the clusters can be shown.</p>
-<a class="reference internal image-reference" href="../../_images/rep_grids_qgis.png"><img alt="Default view" src="../../_images/rep_grids_qgis.png" style="width: 800px;" /></a>
+<a class="reference internal image-reference" href="../../_images/rep_grids_qgis.png"><img alt="Default view" src="../../_images/rep_grids_qgis.png" style="width: 800px;" />
+</a>
 </section>
 </section>
 <section id="visualize-from-csv">
-<h2>Visualize from csv<a class="headerlink" href="#visualize-from-csv" title="Permalink to this heading"></a></h2>
+<h2>Visualize from csv<a class="headerlink" href="#visualize-from-csv" title="Link to this heading"></a></h2>
 <p>With the files <code class="code docutils literal notranslate"><span class="pre">export_grid_gis_data_as_csv</span></code> and <code class="code docutils literal notranslate"><span class="pre">export_grid_gis_data_as_csv_for_multiple_plz</span></code> the
 pandapower networks’ information can exported to csv.  This is performed by the function</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="plotting.export_net.get_bus_line_geo_for_network">
-<span class="sig-prename descclassname"><span class="pre">plotting.export_net.</span></span><span class="sig-name descname"><span class="pre">get_bus_line_geo_for_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pandapower_net</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">net_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.export_net.get_bus_line_geo_for_network" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">plotting.export_net.</span></span><span class="sig-name descname"><span class="pre">get_bus_line_geo_for_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pandapower_net</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">net_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#plotting.export_net.get_bus_line_geo_for_network" title="Link to this definition"></a></dt>
 <dd><p>get bus and line data for a single pandapower net,
 export lines (cables) and buses (trafo position, consumers, connections) as geometric elements in csv table
 to be used in qgis</p>
@@ -162,7 +168,8 @@ to be used in qgis</p>
 
 <p>This way additional function about the grids can be visualised. This function would also enable to show grids in QGIS
 that are not on the database.</p>
-<a class="reference internal image-reference" href="../../_images/net_description.png"><img alt="Default view" src="../../_images/net_description.png" style="width: 800px;" /></a>
+<a class="reference internal image-reference" href="../../_images/net_description.png"><img alt="Default view" src="../../_images/net_description.png" style="width: 800px;" />
+</a>
 </section>
 </section>
 

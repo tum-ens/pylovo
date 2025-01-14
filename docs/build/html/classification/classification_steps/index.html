@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Classification Steps &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -41,7 +43,7 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../installation/installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Classification of Pylovo Grids</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../index.html#overview-of-the-classification">Overview of the Classification</a></li>
@@ -88,7 +90,7 @@
            <div itemprop="articleBody">
              
   <section id="classification-steps">
-<h1>Classification Steps<a class="headerlink" href="#classification-steps" title="Permalink to this heading"></a></h1>
+<h1>Classification Steps<a class="headerlink" href="#classification-steps" title="Link to this heading"></a></h1>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="sampling.html">Create a Sample Set of PLZ for Clustering</a><ul>
@@ -98,28 +100,10 @@
 <li class="toctree-l2"><a class="reference internal" href="sampling.html#sampling-algorithm">Sampling Algorithm</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="grid_generation_for_classification.html">Grid Generation for Classification</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="grid_generation_for_classification.html#raw_data.import_building_data.import_buildings_for_multiple_plz"><code class="docutils literal notranslate"><span class="pre">import_buildings_for_multiple_plz()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="parameters.html">Calculate Parameters for Grids</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="parameters.html#classification.parameter_calculation.GridParameters.GridParameters"><code class="docutils literal notranslate"><span class="pre">GridParameters</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="parameters.html#classification.parameter_calculation.GridParameters.GridParameters.calc_grid_parameters"><code class="docutils literal notranslate"><span class="pre">calc_grid_parameters()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="filter_grids.html">Filter Grids</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="filter_grids.html#classification.clustering.filter_grids.apply_filter_to_grids"><code class="docutils literal notranslate"><span class="pre">apply_filter_to_grids()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="filter_grids.html#classification.database_communication.DatabaseCommunication.DatabaseCommunication.get_clustering_parameters_for_classification_version"><code class="docutils literal notranslate"><span class="pre">get_clustering_parameters_for_classification_version()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="clustering.html">Cluster the Grids</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="clustering.html#classification.clustering.clustering_algorithms.kmedoids_clustering"><code class="docutils literal notranslate"><span class="pre">kmedoids_clustering()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="clustering.html#classification.clustering.clustering_algorithms.gmm_tied_clustering"><code class="docutils literal notranslate"><span class="pre">gmm_tied_clustering()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="clustering.html#classification.clustering.clustering_algorithms.kmeans_clustering"><code class="docutils literal notranslate"><span class="pre">kmeans_clustering()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="clustering.html#classification.clustering.clustering_algorithms.reindex_cluster_indices"><code class="docutils literal notranslate"><span class="pre">reindex_cluster_indices()</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="clustering.html#classification.database_communication.DatabaseCommunication.DatabaseCommunication.save_transformers_with_classification_info"><code class="docutils literal notranslate"><span class="pre">save_transformers_with_classification_info()</span></code></a></li>
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="grid_generation_for_classification.html">Grid Generation for Classification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameters.html">Calculate Parameters for Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="filter_grids.html">Filter Grids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="clustering.html">Cluster the Grids</a></li>
 </ul>
 </div>
 </section>

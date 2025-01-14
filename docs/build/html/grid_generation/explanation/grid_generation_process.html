@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Grid Generation Process &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -41,18 +43,14 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../installation/installation.html">Installation</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Grid Generation</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../index.html#contents">Contents</a><ul class="current">
-<li class="toctree-l3"><a class="reference internal" href="../main_workflow/main_workflow.html">Main workflow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../usage/usage.html">Tool Usage</a></li>
 <li class="toctree-l3"><a class="reference internal" href="overview.html">Short Summary of the Grid Generation Steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="resources.html">Resources and Interfaces for Grid Generation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="building_data_import.html">Building Data Import</a></li>
 <li class="toctree-l3 current"><a class="current reference internal" href="#">Grid Generation Process</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#syngrid.SyngridDatabaseConstructor.SyngridDatabaseConstructor"><code class="docutils literal notranslate"><span class="pre">SyngridDatabaseConstructor</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#syngrid.pgReaderWriter.PgReaderWriter"><code class="docutils literal notranslate"><span class="pre">PgReaderWriter</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#syngrid.GridGenerator.GridGenerator"><code class="docutils literal notranslate"><span class="pre">GridGenerator</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#step-1">Step 1</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#step-2">Step 2</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#step-3">Step 3</a></li>
@@ -96,43 +94,12 @@
            <div itemprop="articleBody">
              
   <section id="grid-generation-process">
-<h1>Grid Generation Process<a class="headerlink" href="#grid-generation-process" title="Permalink to this heading"></a></h1>
+<h1>Grid Generation Process<a class="headerlink" href="#grid-generation-process" title="Link to this heading"></a></h1>
 <p>The functionalities of the grid generation process are divided into three classes:</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="syngrid.SyngridDatabaseConstructor.SyngridDatabaseConstructor">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">syngrid.SyngridDatabaseConstructor.</span></span><span class="sig-name descname"><span class="pre">SyngridDatabaseConstructor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pgr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.SyngridDatabaseConstructor.SyngridDatabaseConstructor" title="Permalink to this definition"></a></dt>
-<dd><p>Constructs a ready to use syngrid database. Be careful about overwriting the tables.
-It uses pgReaderWriter to connect to the database and create tables and import data.</p>
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="syngrid.pgReaderWriter.PgReaderWriter">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">syngrid.pgReaderWriter.</span></span><span class="sig-name descname"><span class="pre">PgReaderWriter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dbname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'pylovo_db'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">user</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'pylovo'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pw</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'pylovo'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">host</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'localhost'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5555'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.pgReaderWriter.PgReaderWriter" title="Permalink to this definition"></a></dt>
-<dd><p>This class is the interface with the database. Functions communicating with the database
-are listed under this class.
-Use this class to interact with the database and to utilize connection resources.</p>
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="syngrid.GridGenerator.GridGenerator">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">GridGenerator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">999999</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.GridGenerator" title="Permalink to this definition"></a></dt>
-<dd><p>Generates the grid for the given plz area</p>
-</dd></dl>
-
 <p>The higher level functions of the GridGenerator are explained in more detail since they contain the assumptions and logic
 of grid generation. For a visual representation refer to <a class="reference internal" href="overview.html"><span class="doc">Short Summary of the Grid Generation Steps</span></a>.</p>
 <section id="step-1">
-<h2>Step 1<a class="headerlink" href="#step-1" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="syngrid.GridGenerator.GridGenerator.cache_and_preprocess_static_objects">
-<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">cache_and_preprocess_static_objects</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.GridGenerator.cache_and_preprocess_static_objects" title="Permalink to this definition"></a></dt>
-<dd><p>Caches static objects (postcode, buildings, transformers) from raw data tables and
-stores in temporary tables.
-FROM: postcode, res, oth, transformers
-INTO: postcode_result, buildings_tem
-:return:</p>
-</dd></dl>
-
+<h2>Step 1<a class="headerlink" href="#step-1" title="Link to this heading"></a></h2>
 <p>The selected zip code (PLZ) is searched in the table
 <code class="code docutils literal notranslate"><span class="pre">postcode</span></code> and stored in the <code class="code docutils literal notranslate"><span class="pre">postcode_result</span> <span class="pre">table</span></code>. The zip code
 defines the geographical area for which the network generation takes place.
@@ -151,16 +118,7 @@ Finally, the transformers from transformers are also transferred to <code class=
 are transferred.</p>
 </section>
 <section id="step-2">
-<h2>Step 2<a class="headerlink" href="#step-2" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="syngrid.GridGenerator.GridGenerator.preprocess_ways">
-<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">preprocess_ways</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.GridGenerator.preprocess_ways" title="Permalink to this definition"></a></dt>
-<dd><p>Cache ways, create network, connect buildings to the ways network
-FROM: ways, buildings_tem
-INTO: ways_tem, buildings_tem, ways_tem_vertices_pgr, <a href="#id1"><span class="problematic" id="id2">ways_tem_</span></a>
-:return:</p>
-</dd></dl>
-
+<h2>Step 2<a class="headerlink" href="#step-2" title="Link to this heading"></a></h2>
 <p>The ways from <code class="code docutils literal notranslate"><span class="pre">ways</span></code>, which are located in the zip code area, will be
 stored on <code class="code docutils literal notranslate"><span class="pre">ways_tem</span></code>. In way sections that overlap, connection nodes are created.
 Then the buildings are connected to the ways.
@@ -169,16 +127,7 @@ from the existing ways to the center of the building. Finally,
 the buildings from <code class="code docutils literal notranslate"><span class="pre">buildings_tem</span></code> are assigned a node from <code class="code docutils literal notranslate"><span class="pre">ways_tem</span></code>.</p>
 </section>
 <section id="step-3">
-<h2>Step 3<a class="headerlink" href="#step-3" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="syngrid.GridGenerator.GridGenerator.apply_kmeans_clustering">
-<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">apply_kmeans_clustering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.GridGenerator.apply_kmeans_clustering" title="Permalink to this definition"></a></dt>
-<dd><p>Reads ways and vertices from ways_tem, applies k-means clustering
-FROM: ways_tem, buildings_tem
-INTO: ways_tem, vertices_pgr, buildings_tem,
-:return:</p>
-</dd></dl>
-
+<h2>Step 3<a class="headerlink" href="#step-3" title="Link to this heading"></a></h2>
 <p>Since the number of buildings in a postal code is too large for a coherent
 network, the buildings are divided into subgroups.
 The kmeans cluster algorithm divides the buildings into subgroups based on the geographic distance.
@@ -187,17 +136,7 @@ for a postal code is usually single-digit. Each kmeans cluster is assigned an ID
 (kcid, kmeans cluster ID).</p>
 </section>
 <section id="step-4">
-<h2>Step 4<a class="headerlink" href="#step-4" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="syngrid.GridGenerator.GridGenerator.position_substations">
-<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">position_substations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.GridGenerator.position_substations" title="Permalink to this definition"></a></dt>
-<dd><p>Iterates over k-means clusters and building clusters inside and positions substations for each cluster.
-Considers existing transformers.
-FROM: buildings_tem, building_clusters
-INTO: buildings_tem, building_clusters,
-:return:</p>
-</dd></dl>
-
+<h2>Step 4<a class="headerlink" href="#step-4" title="Link to this heading"></a></h2>
 <p>For the positioning of the transformers, existing transformers from OSM are considered first.
 Buildings at a certain distance from the transformer are connected to the transformer.
 The shape of the supply area transforms
@@ -205,7 +144,7 @@ from a circle (allowed linear distance), to a polygon,
 because the distance to the consumers is measured along the streets.</p>
 </section>
 <section id="step-5">
-<h2>Step 5<a class="headerlink" href="#step-5" title="Permalink to this heading"></a></h2>
+<h2>Step 5<a class="headerlink" href="#step-5" title="Link to this heading"></a></h2>
 <p>The kmeans clusters are further divided into so-called building clusters.
 A buildings cluster becomes a network in which all buildings are connected to a low-voltage transformer.
 The buildings are grouped
@@ -220,14 +159,7 @@ coincidence factor. The multilevel coincidence factor for each cable section is
 evaluated by summing  the classified consumers (residential, public, commercial) of that cable section</p>
 </section>
 <section id="step-6">
-<h2>Step 6<a class="headerlink" href="#step-6" title="Permalink to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="syngrid.GridGenerator.GridGenerator.install_cables">
-<span class="sig-prename descclassname"><span class="pre">syngrid.GridGenerator.GridGenerator.</span></span><span class="sig-name descname"><span class="pre">install_cables</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#syngrid.GridGenerator.GridGenerator.install_cables" title="Permalink to this definition"></a></dt>
-<dd><p>the pandapower network for each cluster (kcid, bcid) is generated and filled with the corresponding
-bus and line elements</p>
-</dd></dl>
-
+<h2>Step 6<a class="headerlink" href="#step-6" title="Link to this heading"></a></h2>
 <p>Branches are created to connect the consumers to the transformer, resulting in a radial network.
 First, the consumers are connected to the road by cables.
 A consumer is created as a <code class="code docutils literal notranslate"><span class="pre">consumer</span> <span class="pre">node</span></code> bus and every point
@@ -242,7 +174,7 @@ cable installation is based on the realistic decision making of a technician
 and avoids the use of additional costly network components.</p>
 </section>
 <section id="step-7">
-<h2>Step 7<a class="headerlink" href="#step-7" title="Permalink to this heading"></a></h2>
+<h2>Step 7<a class="headerlink" href="#step-7" title="Link to this heading"></a></h2>
 <p>The data from the tables with the extension
 <code class="code docutils literal notranslate"><span class="pre">tem</span></code> are deleted and transferred to the result tables <code class="code docutils literal notranslate"><span class="pre">bulidings_result</span></code>,
 <code class="code docutils literal notranslate"><span class="pre">ways_result</span></code>.</p>

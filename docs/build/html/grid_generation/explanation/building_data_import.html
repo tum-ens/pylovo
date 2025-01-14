@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Building Data Import &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -41,17 +43,13 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../installation/installation.html">Installation</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Grid Generation</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../index.html#contents">Contents</a><ul class="current">
-<li class="toctree-l3"><a class="reference internal" href="../main_workflow/main_workflow.html">Main workflow</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../usage/usage.html">Tool Usage</a></li>
 <li class="toctree-l3"><a class="reference internal" href="overview.html">Short Summary of the Grid Generation Steps</a></li>
 <li class="toctree-l3"><a class="reference internal" href="resources.html">Resources and Interfaces for Grid Generation</a></li>
-<li class="toctree-l3 current"><a class="current reference internal" href="#">Building Data Import</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#raw_data.import_building_data.import_buildings_for_single_plz"><code class="docutils literal notranslate"><span class="pre">import_buildings_for_single_plz()</span></code></a></li>
-</ul>
-</li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Building Data Import</a></li>
 <li class="toctree-l3"><a class="reference internal" href="grid_generation_process.html">Grid Generation Process</a></li>
 </ul>
 </li>
@@ -87,7 +85,7 @@
            <div itemprop="articleBody">
              
   <section id="building-data-import">
-<h1>Building Data Import<a class="headerlink" href="#building-data-import" title="Permalink to this heading"></a></h1>
+<h1>Building Data Import<a class="headerlink" href="#building-data-import" title="Link to this heading"></a></h1>
 <p>The building data is the basis for the grid generation as the building data contains geographical information as
 well as the load that each consumer requires.</p>
 <p>The building data is available at TUM as a dataset comprised of .shp files for residential <code class="code docutils literal notranslate"><span class="pre">res</span></code> and other
@@ -96,27 +94,11 @@ municipalities in Germany. The building dataset containing of files is to be unz
 <code class="code docutils literal notranslate"><span class="pre">raw_data/buildings</span></code>.</p>
 <p>The files for Munich are thus named like this: <code class="code docutils literal notranslate"><span class="pre">Oth_9162000</span></code> and <code class="code docutils literal notranslate"><span class="pre">Res_9162000</span></code>.</p>
 <p>The task of importing the building data before further Grid Generation steps is handled by</p>
-<dl class="py function">
-<dt class="sig sig-object py" id="raw_data.import_building_data.import_buildings_for_single_plz">
-<span class="sig-prename descclassname"><span class="pre">raw_data.import_building_data.</span></span><span class="sig-name descname"><span class="pre">import_buildings_for_single_plz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="grid_generation_process.html#syngrid.GridGenerator.GridGenerator" title="syngrid.GridGenerator.GridGenerator"><span class="pre">GridGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#raw_data.import_building_data.import_buildings_for_single_plz" title="Permalink to this definition"></a></dt>
-<dd><p>imports building data to db for plz:</p>
-<ul class="simple">
-<li><p>PLZ is matched with AGS</p></li>
-<li><p>file name is generated</p></li>
-<li><p>buildings files are imported to database with SyngridDatabaseConstructor</p></li>
-<li><p>AGS is added to AGS as not to import same building data again</p></li>
-</ul>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>gg</strong> – Grid generator object to get the plz and functions from</p>
-</dd>
-</dl>
-</dd></dl>
-
 <p>Remark: The mapping of AGS with PLZ is not always unique. This might lead to unexpected building data import.</p>
 <p>In this example, the PLZ for grid generation only overlapped with the AGS that buildings were imported in the most upper
 part of the PLZ area.</p>
-<a class="reference internal image-reference" href="../../_images/ags_plz_mismatch.png"><img alt="Default view" src="../../_images/ags_plz_mismatch.png" style="width: 500px;" /></a>
+<a class="reference internal image-reference" href="../../_images/ags_plz_mismatch.png"><img alt="Default view" src="../../_images/ags_plz_mismatch.png" style="width: 500px;" />
+</a>
 <p>The imported buildings can be inspected using the QGIS visualisation <a class="reference internal" href="../../visualisation/qgis/qgis.html"><span class="doc">QGIS Visualisation</span></a> in the
 <code class="code docutils literal notranslate"><span class="pre">raw_data</span></code> tab</p>
 </section>

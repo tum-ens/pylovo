@@ -1,19 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en" >
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Usage &mdash; pylovo 2024 documentation</title>
-      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
-      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
   
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=6fefd858"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
@@ -41,7 +43,7 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../../docs_pylovo/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../installation/installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../grid_generation/index.html">Grid Generation</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../index.html">Classification of Pylovo Grids</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="../index.html#overview-of-the-classification">Overview of the Classification</a></li>
@@ -91,9 +93,9 @@
            <div itemprop="articleBody">
              
   <section id="usage">
-<h1>Usage<a class="headerlink" href="#usage" title="Permalink to this heading"></a></h1>
+<h1>Usage<a class="headerlink" href="#usage" title="Link to this heading"></a></h1>
 <section id="step-1-configure-the-classification">
-<h2>Step 1: Configure the classification<a class="headerlink" href="#step-1-configure-the-classification" title="Permalink to this heading"></a></h2>
+<h2>Step 1: Configure the classification<a class="headerlink" href="#step-1-configure-the-classification" title="Link to this heading"></a></h2>
 <p>Open the file <code class="code docutils literal notranslate"><span class="pre">config_classification.py</span></code>. Set up the classification by giving it a classification version,
 a description and a region, e.g.:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">CLASSIFICATION_VERSION</span> <span class="o">=</span> <span class="mi">1</span>
@@ -131,7 +133,7 @@ For the region either choose one of the federal states of Germany</p>
 in the database table <code class="code docutils literal notranslate"><span class="pre">classification_version</span></code>.</p>
 </section>
 <section id="step-2-calculate-the-data-for-clustering">
-<h2>Step 2: Calculate the Data for Clustering<a class="headerlink" href="#step-2-calculate-the-data-for-clustering" title="Permalink to this heading"></a></h2>
+<h2>Step 2: Calculate the Data for Clustering<a class="headerlink" href="#step-2-calculate-the-data-for-clustering" title="Link to this heading"></a></h2>
 <div class="line-block">
 <div class="line">To generate the grids, calculate the grid parameters and filter erroneous grids run the file <code class="code docutils literal notranslate"><span class="pre">prepare_data_for_clustering.py</span></code>.</div>
 </div>
@@ -142,41 +144,47 @@ in the database table <code class="code docutils literal notranslate"><span clas
 <a class="reference internal" href="../classification_steps/filter_grids.html"><span class="doc">Filter Grids</span></a>.</p>
 </section>
 <section id="step-3-inspect-sampling-results-optional">
-<h2>Step 3: Inspect sampling results (optional)<a class="headerlink" href="#step-3-inspect-sampling-results-optional" title="Permalink to this heading"></a></h2>
+<h2>Step 3: Inspect sampling results (optional)<a class="headerlink" href="#step-3-inspect-sampling-results-optional" title="Link to this heading"></a></h2>
 <p>In the notebook <code class="code docutils literal notranslate"><span class="pre">examples_sampling.analyse_sampling_results</span></code> the samples drawn in the region of classification
 are visualised on a map.</p>
-<a class="reference internal image-reference" href="../../_images/karte_samples2.png"><img alt="Default view" src="../../_images/karte_samples2.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/karte_samples2.png"><img alt="Default view" src="../../_images/karte_samples2.png" style="width: 400px;" />
+</a>
 <p>The distribution of samples within Regiostar 7 classes is shown.</p>
-<a class="reference internal image-reference" href="../../_images/anz_samples.png"><img alt="Default view" src="../../_images/anz_samples.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/anz_samples.png"><img alt="Default view" src="../../_images/anz_samples.png" style="width: 400px;" />
+</a>
 </section>
 <section id="step-4-inspect-grid-generation-results-optional">
-<h2>Step 4: Inspect grid generation results (optional)<a class="headerlink" href="#step-4-inspect-grid-generation-results-optional" title="Permalink to this heading"></a></h2>
+<h2>Step 4: Inspect grid generation results (optional)<a class="headerlink" href="#step-4-inspect-grid-generation-results-optional" title="Link to this heading"></a></h2>
 <p>The generated grids can be visualised in QGIS (all grids)</p>
-<a class="reference internal image-reference" href="../../_images/qgis6.png"><img alt="Default view" src="../../_images/qgis6.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/qgis6.png"><img alt="Default view" src="../../_images/qgis6.png" style="width: 400px;" />
+</a>
 <p>or using plotting functions (individual grids). For more details see <a class="reference internal" href="../../visualisation/index.html"><span class="doc">Visualisation</span></a></p>
 </section>
 <section id="step-5-inspect-grid-parameters-optional">
-<h2>Step 5: Inspect grid parameters (optional)<a class="headerlink" href="#step-5-inspect-grid-parameters-optional" title="Permalink to this heading"></a></h2>
+<h2>Step 5: Inspect grid parameters (optional)<a class="headerlink" href="#step-5-inspect-grid-parameters-optional" title="Link to this heading"></a></h2>
 <p>In the package <code class="code docutils literal notranslate"><span class="pre">examples_grid_parameters</span></code> the parameters of the grids can be analysed. In the notebook
 <code class="code docutils literal notranslate"><span class="pre">analyse_clustering_parameters</span></code> a matrix of scatter plots called pairplot is shown to gain an overview of the data.</p>
-<a class="reference internal image-reference" href="../../_images/pairplot.png"><img alt="Default view" src="../../_images/pairplot.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="images/classification/pairplot.png"><img alt="Default view" src="images/classification/pairplot.png" style="width: 400px;" />
+</a>
 <p>The grids can be sorted by a parameter to show grids with specific characteristics.</p>
 <p>The notebook <code class="code docutils literal notranslate"><span class="pre">vsw_analysis</span></code> focuses on the ‘Verbrauchersummenwiderstand’ (resistance in the network) that can be
 an indicator for voltage drop of branches.</p>
 </section>
 <section id="step-6-choose-parameters-for-clustering">
-<h2>Step 6: Choose parameters for clustering<a class="headerlink" href="#step-6-choose-parameters-for-clustering" title="Permalink to this heading"></a></h2>
+<h2>Step 6: Choose parameters for clustering<a class="headerlink" href="#step-6-choose-parameters-for-clustering" title="Link to this heading"></a></h2>
 <p>To fast track step 6  you can call <code class="code docutils literal notranslate"><span class="pre">get_parameters_for_clustering</span></code>. The optimal parameters for clustering
 are calculated and outputed in the console. They should then be inserted in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code> as explained below.</p>
 <p>The package <code class="code docutils literal notranslate"><span class="pre">examples_correlation_and_factor_analysis</span></code> has the tools to choose the parameters for clustering.
 In this work, it is proposed to choose the clustering parameters according to the factor analysis.</p>
 <p>The notebook <code class="code docutils literal notranslate"><span class="pre">1_0_factor_analysis</span></code> guides you through the process of finding the number of and the parameters
 that are mathematically optimal for clustering. The resulting parameters are listed at the end of the document.</p>
-<a class="reference internal image-reference" href="../../_images/factor_analysis.png"><img alt="Default view" src="../../_images/factor_analysis.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/factor_analysis.png"><img alt="Default view" src="../../_images/factor_analysis.png" style="width: 400px;" />
+</a>
 <p>The proposed parameters do not need to be taken for clustering. Other preferences and considerations can be taken into account.
 Additional information like the explained variance of the factors or components can be found in the notebook
 <code class="code docutils literal notranslate"><span class="pre">1_1_explained</span> <span class="pre">variance_eigen_decomposition</span></code>.</p>
-<a class="reference internal image-reference" href="../../_images/eigendecomposition.png"><img alt="Default view" src="../../_images/eigendecomposition.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/eigendecomposition.png"><img alt="Default view" src="../../_images/eigendecomposition.png" style="width: 400px;" />
+</a>
 <p>The correlation matrix and clustermap are plotted in the notebook <code class="code docutils literal notranslate"><span class="pre">1_2_correlation_matrix</span></code></p>
 <p>After you have choosen the parameters set them in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code>, like:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># set clustering parameters</span>
@@ -189,7 +197,7 @@ Additional information like the explained variance of the factors or components 
 </div>
 </section>
 <section id="step-7-choose-number-of-clusters">
-<h2>Step 7: Choose number of clusters<a class="headerlink" href="#step-7-choose-number-of-clusters" title="Permalink to this heading"></a></h2>
+<h2>Step 7: Choose number of clusters<a class="headerlink" href="#step-7-choose-number-of-clusters" title="Link to this heading"></a></h2>
 <p>To fast track step 6  you can call <code class="code docutils literal notranslate"><span class="pre">get_no_clusters_for_clustering</span></code>. The optimal no_clusters for clustering
 are calculated and outputed in the console. They should then be inserted in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code> as explained below.</p>
 <p>In the package <code class="code docutils literal notranslate"><span class="pre">examples_indices</span></code> you will find two indices for finding the optimal number of clusters:</p>
@@ -199,7 +207,8 @@ are calculated and outputed in the console. They should then be inserted in <cod
 </ul>
 <p>It is recommended to choose the number of clusters with the CH index from the notebook
 <code class="code docutils literal notranslate"><span class="pre">1_CH_index</span></code>. The DB Index can be used for reference.</p>
-<a class="reference internal image-reference" href="../../_images/ch_index.png"><img alt="Default view" src="../../_images/ch_index.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/ch_index.png"><img alt="Default view" src="../../_images/ch_index.png" style="width: 400px;" />
+</a>
 <p>Again according to the goals of clustering with orientation of the index results set the numbers of clusters
 for the cluster algorithms in <code class="code docutils literal notranslate"><span class="pre">clustering.config_clustering</span></code>:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># set number of clusters</span>
@@ -210,7 +219,7 @@ for the cluster algorithms in <code class="code docutils literal notranslate"><s
 </div>
 </section>
 <section id="step-8-clustering-results">
-<h2>Step 8: Clustering results<a class="headerlink" href="#step-8-clustering-results" title="Permalink to this heading"></a></h2>
+<h2>Step 8: Clustering results<a class="headerlink" href="#step-8-clustering-results" title="Link to this heading"></a></h2>
 <p>You now have the option to investigate the results in <code class="code docutils literal notranslate"><span class="pre">examples_clustering</span></code>. For each of the clusterin algorithms</p>
 <ul class="simple">
 <li><p>kmeans,</p></li>
@@ -219,13 +228,16 @@ for the cluster algorithms in <code class="code docutils literal notranslate"><s
 </ul>
 <p>there are two notebooks. In the first one, the representative grids  are presented. Their clustering parameters can be
 compared with the radar plot. The representative grids are plotted individually.</p>
-<a class="reference internal image-reference" href="../../_images/radar_plot_kmeans.png"><img alt="Default view" src="../../_images/radar_plot_kmeans.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/radar_plot_kmeans.png"><img alt="Default view" src="../../_images/radar_plot_kmeans.png" style="width: 400px;" />
+</a>
 <p>In the second notebook is more concerned with the overall clusters and the distribution of clusters over the regiostar
 classes are plotted.</p>
-<a class="reference internal image-reference" href="../../_images/distribution_regio5_clusters.png"><img alt="Default view" src="../../_images/distribution_regio5_clusters.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/distribution_regio5_clusters.png"><img alt="Default view" src="../../_images/distribution_regio5_clusters.png" style="width: 400px;" />
+</a>
 <p>To view the clustering results in QGIS run <code class="code docutils literal notranslate"><span class="pre">apply_clustering_for_QGIS_visualisation</span></code> and open QGIS.
 There you have the option to identify the clusters of the grids by color</p>
-<a class="reference internal image-reference" href="../../_images/clusters_qgis.png"><img alt="Default view" src="../../_images/clusters_qgis.png" style="width: 400px;" /></a>
+<a class="reference internal image-reference" href="../../_images/clusters_qgis.png"><img alt="Default view" src="../../_images/clusters_qgis.png" style="width: 400px;" />
+</a>
 <p>More details about the clustering functions can be found in <a class="reference internal" href="../classification_steps/clustering.html"><span class="doc">Cluster the Grids</span></a></p>
 </section>
 </section>

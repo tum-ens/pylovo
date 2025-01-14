@@ -47,6 +47,3 @@ In the examples notebooks you will learn more about:
 * the pandapower networks that are used to store the LV grids
 * graph representation of the networks
 * and parameter visualisation options
-
-[QGIS]: https://www.qgis.org/de/site/forusers/download.html
-Refer to the Jupyter notebooks and other analysis tools?
