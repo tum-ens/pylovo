@@ -1,8 +1,8 @@
-from syngrid.GridGenerator import GridGenerator
+from pylovo.GridGenerator import GridGenerator
 
 # select plz and version you want to delete the networks for
-plz = "91301"
-version_id = "3"
+plz = "80803"
+version_id = "1.0"
 
 # delete networks
 gg = GridGenerator(plz=plz)
