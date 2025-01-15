@@ -27,7 +27,7 @@ Overview of the Classification
 Run the Classification
 ----------------------
 
-| To use this package pylovo needs to be fully set up. Please refer to :doc:`../docs_pylovo/installation`.
+| To use this package pylovo needs to be fully set up. Please refer to :doc:`../installation/installation`.
 | To apply the classification visit this page:
 
 .. toctree::

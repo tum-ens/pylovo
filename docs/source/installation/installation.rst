@@ -1,18 +1,14 @@
 Installation
 ************
 
-Set up pylovo
+Setup Repository and Environment
 ==============
-To install **pylovo**, you must clone the repository from GitHub and set up a virtual environment. The following steps will guide you through the installation process.
-
-- Start by cloning the repository from GitHub into a directory of your choice.
-- We strongly recommend setting up a virtual environment to avoid conflicts with other packages.
-
-If you have installed the suitable Python version on your system, you can create a virtual environment with the following command:
+| Start by cloning the repository from GitHub into a directory of your choice.
+| We recommend setting up a virtual environment to avoid conflicts with other packages. If you have installed the required Python version (Python3.12) on your system, you can create a virtual environment with the following command:
 
 ::
 
-    python3.12 -m venv pylovo-env
+    python3.12 -m venv pylovo-env-3-12
 
 Alternatively, you can use `pyenv <https://github.com/pyenv/pyenv>`_ or `virtualenv <https://virtualenv.pypa.io/en/latest/index.html#>`_ to use Python 3.12.
 
@@ -29,12 +25,14 @@ After activating the virtual environment, install the required packages:
 
     pip install -r requirements.txt
 
-
-A. External users: Create your database
+Database Configuration
 =========================================
+A. External users: Create your database
+----------------------------------------
 - Install PostgreSQL on your machine.
 - Create your database with the appropriate configuration (dbname, user, password, host, port).
-- Create a ``.env`` file in the root directory of the repository with your configuration, which might look like this:
+- Create a ``.env`` file in the root directory of the repository with these configurations or adjust the connections parameters in the ``config_data.py``.
+- Your configurations might might look like this:
 
 ::
 
@@ -44,48 +42,50 @@ A. External users: Create your database
     PORT = "5432"
     PASSWORD = "yourpassword"
 
+- `GDAL <https://gdal.org/en/stable/index.html>`_ is required for some geo-transformations. Ensure it is installed on your system. (e.g. for Ubuntu 24.04: ``sudo apt install gdal-bin``).
 
 Input data
-----------
-The minimum data requirements for the ``raw_data`` directory are described below:
-
+~~~~~~~~~~
+The minimum data requirements for the ``raw_data`` directory are described below.
 Some larger data files, which you can request from the maintainers at ENS, are not included in the repository due to their size (an online source will be available soon):
 
-- Building shapefiles in the ``buildings`` directory
-- Street SQL data in the ``ways`` directory
+- Building shapefiles (``res_<ags> and oth_<ags>``) in the ``buildings`` directory
+- Street SQL data (``ways_public_2po_4pgr.sql``) in the ``ways`` directory
+- The postcode data (``postcode.csv``) for Germany including the geometries in the ``raw_data`` directory
 
-Other data files included in the repository:
+Other required data files that are already included in the raw_data directory of the repository:
 
 - ``transformer_data/substations_bayern.geojson``
 - ``consumer_categories.csv``
 - ``equipment_data.csv``
-- ``postcode.csv``
 
 
 Load raw data to the database
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The ``main_constructor.py`` script initializes and populates the **pylovo** database. Run:
 
 ::
 
-    python executable_scripts/main_constructor.py
+    python3.12 executable_scripts/main_constructor.py
 
 .. warning::
 
-   This script should only be used when a new database is required, as it will completely
-   overwrite any existing database. Use caution when running this script in production environments.
+   This script should only be used when a new database is required, as it will overwrite existing tables in your database. Use caution when running this script in production environments.
+
 
 Below is a detailed outline of its functionality:
 
 1. **Database Initialization**
-   A new database is created and initialized using the ``SyngridDatabaseConstructor`` class, including the required PostGIS and pgRouting extensions.
+   A new database is created and initialized using the class ``SyngridDatabaseConstructor``. This includes the addition of required PostGIS and pgRouting extensions to your database.
 
 2. **Importing Raw Data**
+
    - CSV files containing raw data (specified by a predefined file list, ``CSV_FILE_LIST``) are imported into the database.
    - The ways data is processed and imported into the database.
    - The imported ways data is converted into a format suitable for further analysis (e.g., transforming OSM road network data into custom "ways" tables).
 
 3. **Enhancing the Database with SQL Functions**
+
    - Essential SQL functions for querying and processing the data are added to the database.
    - This includes utility functions for geospatial data transformations and advanced query support.
 
@@ -96,15 +96,34 @@ Below is a detailed outline of its functionality:
    - **Building Dataset Import**: The AGS (Amtlicher Gemeindeschlüssel) is required for linking municipal data with building datasets (see :doc:`../../grid_generation/index`).
    - **Area Classification**: The Regiostar class is necessary for categorizing municipalities, enabling accurate analyses (see :doc:`../../classification/index`).
 
-
 B. ENS students and employees: Access ENS database
-====================================================
+---------------------------------------------------
 - The pylovo tool is designed to work with a database hosted on the ENS server. The database is accessible from the ENS network, so you must be connected to the ENS network to access it.
 - If you are working from home, you also need to use a VPN to connect to the MWN network—a prerequisite for connecting to the database server. We recommend using EduVPN_. Follow the instructions in the link to set up a connection.
 
 .. _EduVPN: https://doku.lrz.de/vpn-eduvpn-installation-und-konfiguration-11491448.html?showLanguage=en_GB
 
 - To gain access to the pylovo database from your own machine, you will need to request a username and password from the ENS chair.
+
+
+Additional hints
+==============================
+.. hint::
+    - If you are working on Windows, we recommend using the Windows Subsystem for Linux (WSL) for the setup and to run the scripts.
+    - To avoid path conflicts run all scripts from the directory root or setup your IDE running configuration accordingly.
+    - As it appears within the repository make sure to exclude your virtual environment directory from version control and from your IDE project.
+    - Our default spatial reference system for geographic data is EPSG:3035 (meters - LAEA Europe). OSM-Input data are often given in EPSG:3857 (meters - web maps). The pandapower networks are per default generated in EPSG:4326 (lon/lat - world). Be mindful of these different reference systems.
+
+
+Explore more materials
+==============================
+
+For deeper understanding of the tool and the results you can...
+
+- ...follow the documentation to generateo your first synthetic grid with pylovo :doc:`../../grid_generation/usage/usage`)
+- ...go through the jupyter notebook tutorials.
+- ...after generating grids open the QGIS file to directly visualize the data from your database with the predefined layouts (see :doc:`../visualisation/qgis/qgis`).
+- ...read our publication (see :doc:`../../further_reading`) to understand the methodology in more detail
 
 
 Optional steps

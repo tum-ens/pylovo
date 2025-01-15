@@ -13,6 +13,6 @@ authors:
 title: "pylovo"
 type: software
 license: MIT
-version: 1.0.0
-date-released: 2023-03-26
-url: "https://github.com/rl-institut/super-repo/"
+version: 0.2.0
+date-released: 2025-01-14
+url: "https://github.com/tum-ens/pylovo"

@@ -16,7 +16,7 @@ Plot Network Data per PLZ
     :width: 600
     :alt: Default view
 
-.. py:method:: syngrid.GridGenerator.plot_trafo_on_map
+.. py:method:: pylovo.GridGenerator.plot_trafo_on_map
 .. image:: ../../images/visualisation/trafos_on_map.png
     :width: 600
     :alt: Default view
