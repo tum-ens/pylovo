@@ -1,48 +1,45 @@
-Tool Usage
+Generate Synthetic Grids
 **********
-
-Database connection
-=============================
-For connecting to the virtual machine,
-see [Advanced Installation/Outside the VM][outside-the-vm-from-ssh-client-aka-your-own-computer]
-
-The database connections parameters can be changed in ``config_data.py``
-
-If you will use your own database you need to create a database and a user for the database
-and use the ``config_data.py`` file to set the connection parameters.
 
 Configuration
 =============
-If you want to manage the input data,
-see [Advanced Installation/Load raw data to the database][load-raw-data-to-the-database]
+| To allow distinction for different parameters you can define grids with different version entries in ``config_version.py``.
+| Please enter your VERSION_ID and your VERSION_COMMENT in the ``config_version.py`` file.
+| If you don't want to change any parameters you can start with the current base version configurations.
 
-To change the **parameters** and the **version**, edit the file ``config_version.py``.
+Create your first grid
+=========================================
+After defining your plz in the ``grid_generation_for_single_plz.py`` script, you can run:
 
-Run
-===
-The grid generation scripts such as ``grid_generation_for_single_plz.py`` demonstrates how to run the grid generation tool.
-If the grids for the given region and version are already generated, the code will terminate with an error statement.
-There are other examples in the `executable_scripts` directory that you can use to manipulate the database by changing PLZ's
-from the scripts. 
+::
 
-.. warning::
-    Before running the scripts make sure you configured the IP of the database that you want to work for. 
-    If you would like to connect to the remote db get your .env file from the responsible person and put it in the root directory of the project.
-    If you are going to work on a local database or you will create your own db set the config from the `config_data.py` file.
+    python3.12 executable_scripts/grid_generation_for_single_plz.py
 
-Result inspection
+If the grids for the given region and version are already generated, the code will terminate.
+
+Apart from this you can:
+
+- create grids for multiple PLZs or all PLZ within an AGS region.
+- activate the flags to analyze the grid and visualize some basic results.
+- export the grid data as csv.
+- delete specified grids/versions.
+
+.. note::
+    - Before running the scripts make sure you followed all steps descripbed in the :doc:`installation/installation` section.
+    - If you are from TUM and would like to connect to the remote db get your .env file from a ENS pylovo maintainer and save it in the root directory of the project.
+
+Result inspection with QGIS
 ==================
-Download [QGIS]. Go to `QGIS` directory in pylovo. Open QGIS file.
-Database connection settings have to be set to the database that is used by pylovo.
-Initial data (ways, buildings and transformers)
-as well as the networks (transformers, cables, buildings) can be visualised.
-Go to QGIS visualisation docu for more details
+- Download `QGIS <https://www.qgis.org/download/>`_. Go to the `QGIS` directory in pylovo and open the QGIS file.
+- The database connection settings have to be set to the database that is used by pylovo.
+- Initial data (ways, buildings and transformers) as well as the networks (transformers, cables, buildings) can be visualised.
+- See :doc:`../../visualisation/qgis/qgis` visualisation docu for more details
 
 Tutorials / Examples
 =====================
-Individual networks can also be visualised as explained in the `examples` directory.
-In the examples notebooks you will learn more about:
+In the `notebook_tutorials.py` you will learn more about the following topics:
 
+* visualizing individual networks
 * the objects / elements the LV grids are made up of
 * the pandapower networks that are used to store the LV grids
 * graph representation of the networks

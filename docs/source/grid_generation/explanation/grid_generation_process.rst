@@ -3,15 +3,15 @@ Grid Generation Process
 
 The functionalities of the grid generation process are divided into three classes:
 
-.. autoclass:: syngrid.SyngridDatabaseConstructor.SyngridDatabaseConstructor
+.. autoclass:: pylovo.SyngridDatabaseConstructor.SyngridDatabaseConstructor
 
 .. initializes database and read raw data.
 
-.. autoclass:: syngrid.pgReaderWriter.PgReaderWriter
+.. autoclass:: pylovo.pgReaderWriter.PgReaderWriter
 
 .. reads and writes from / to database.
 
-.. autoclass:: syngrid.GridGenerator.GridGenerator
+.. autoclass:: pylovo.GridGenerator.GridGenerator
 
 .. generates grids.
 
@@ -21,7 +21,7 @@ of grid generation. For a visual representation refer to :doc:`overview`.
 Step 1
 ------
 
-.. autofunction:: syngrid.GridGenerator.GridGenerator.cache_and_preprocess_static_objects
+.. autofunction:: pylovo.GridGenerator.GridGenerator.cache_and_preprocess_static_objects
 
 The selected zip code (PLZ) is searched in the table
 :code:`postcode` and stored in the :code:`postcode_result table`. The zip code
@@ -43,7 +43,7 @@ are transferred.
 Step 2
 ------
 
-.. autofunction:: syngrid.GridGenerator.GridGenerator.preprocess_ways
+.. autofunction:: pylovo.GridGenerator.GridGenerator.preprocess_ways
 
 The ways from :code:`ways`, which are located in the zip code area, will be
 stored on :code:`ways_tem`. In way sections that overlap, connection nodes are created.
@@ -55,7 +55,7 @@ the buildings from :code:`buildings_tem` are assigned a node from :code:`ways_te
 Step 3
 ------
 
-.. autofunction:: syngrid.GridGenerator.GridGenerator.apply_kmeans_clustering
+.. autofunction:: pylovo.GridGenerator.GridGenerator.apply_kmeans_clustering
 
 Since the number of buildings in a postal code is too large for a coherent
 network, the buildings are divided into subgroups.
@@ -67,7 +67,7 @@ for a postal code is usually single-digit. Each kmeans cluster is assigned an ID
 Step 4
 ------
 
-.. autofunction:: syngrid.GridGenerator.GridGenerator.position_substations
+.. autofunction:: pylovo.GridGenerator.GridGenerator.position_substations
 
 For the positioning of the transformers, existing transformers from OSM are considered first.
 Buildings at a certain distance from the transformer are connected to the transformer.
@@ -94,7 +94,7 @@ evaluated by summing  the classified consumers (residential, public, commercial)
 Step 6
 ------
 
-.. autofunction:: syngrid.GridGenerator.GridGenerator.install_cables
+.. autofunction:: pylovo.GridGenerator.GridGenerator.install_cables
 
 Branches are created to connect the consumers to the transformer, resulting in a radial network.
 First, the consumers are connected to the road by cables.
@@ -112,7 +112,7 @@ and avoids the use of additional costly network components.
 Step 7
 ------
 
-.. autofunction:: syngrid.pgReaderWriter.PgReaderWriter.saveInformationAndResetTables
+.. autofunction:: pylovo.pgReaderWriter.PgReaderWriter.saveInformationAndResetTables
 
 The data from the tables with the extension
 :code:`tem` are deleted and transferred to the result tables :code:`bulidings_result`,

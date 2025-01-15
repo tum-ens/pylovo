@@ -6,20 +6,9 @@ import pandas as pd
 VERSION_ID = "1.0"
 
 # state here which parameters, queries are used to compute the grids with current VERSION_ID
-VERSION_COMMENT = "please enter your version comment to indicate the changes between versions"
+VERSION_COMMENT = "base version"
 
-# PARAMETERS
-CABLE_COST_DICT = {
-    "NAYY 4x185 SE": 33,
-    "NAYY 4x150 SE": 24,
-    "NAYY 4x120 SE": 19,
-    "NAYY 4x95 SE": 16,
-    "NAYY 4x50 SE": 11,
-    "NYY 4x16 SE": 7,
-    "NYY 4x35 SE": 16,
-    "NYY 4x95 SE": 37,
-    "NYY 4x70 SE": 28,
-}
+
 PLOT_COLOR_DICT = {
     100: "gold",
     160: "orange",
@@ -42,6 +31,20 @@ CONNECTION_AVAILABLE_CABLES = [
     "NYY 4x35 SE",
     "NYY 4x70 SE",
 ]
+
+# PARAMETERS
+CABLE_COST_DICT = {
+    "NAYY 4x185 SE": 33,
+    "NAYY 4x150 SE": 24,
+    "NAYY 4x120 SE": 19,
+    "NAYY 4x95 SE": 16,
+    "NAYY 4x50 SE": 11,
+    "NYY 4x16 SE": 7,
+    "NYY 4x35 SE": 16,
+    "NYY 4x95 SE": 37,
+    "NYY 4x70 SE": 28,
+}
+
 # installed_power * (sim_factor + (1 - sim_factor) * (load_count ** (-3 / 4)))
 SIM_FACTOR = {"Residential": 0.07, "Public": 0.6, "Commercial": 0.5}
 

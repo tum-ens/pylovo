@@ -5,7 +5,7 @@ __pycache__/
 /pylovo-env-3-12/
 /raw_data/buildings/*
 /raw_data/ways/ways_public_2po_4pgr.sql
-results/*
+/raw_data/postcode.csv
 classification/results
 tutorials/.ipynb_checkpoints/
 # for macOS users
@@ -13,7 +13,7 @@ tutorials/.ipynb_checkpoints/
 # logs
 log.txt
 # docs
-docs/source/images/dev/sequence/pylovo_sequence_postcode_id.clip
-docs/source/images/dev/sequence/pylovo_sequence_network.clip
-docs/build/*
-docs/meta/*
+/docs/source/images/dev/sequence/pylovo_sequence_postcode_id.clip
+/docs/source/images/dev/sequence/pylovo_sequence_network.clip
+/docs/build/
+/docs/meta/

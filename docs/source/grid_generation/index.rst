@@ -11,8 +11,7 @@ You can read about:
 * The steps of the building data import are explained.
 * There is a more detailed explanation of the grid generation process.
 
-Contents
---------
+**Structure**
 
 .. toctree::
    :maxdepth: 2
