@@ -5,6 +5,7 @@ __pycache__/
 /pylovo-env-3-12/
 /raw_data/buildings/*
 /raw_data/ways/ways_public_2po_4pgr.sql
+/raw_data/postcode.csv
 classification/results
 tutorials/.ipynb_checkpoints/
 # for macOS users

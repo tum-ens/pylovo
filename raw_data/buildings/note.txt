@@ -1,0 +1,1 @@
+Add your building shapefiles in this folder.
