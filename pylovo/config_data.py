@@ -20,8 +20,8 @@ SAVE_GRID_FOLDER = False
 LOG_LEVEL = "INFO"
 
 CSV_FILE_LIST = [
-    {"path": os.path.join(".", "raw_data", "equipment_data.csv"), "table_name": "betriebsmittel"},
-    {"path": os.path.join(".", "raw_data", "postcode.csv"), "table_name": "postcode"},
+    {"path": os.path.join("raw_data", "equipment_data.csv"), "table_name": "betriebsmittel"},
+    {"path": os.path.join("raw_data", "postcode.csv"), "table_name": "postcode"},
 ]
 
 CLUSTERING_PARAMETERS = ["version_id",
@@ -56,6 +56,34 @@ MUNICIPAL_REGISTER = ['plz', 'pop', 'area', 'lat', 'lon', 'ags', 'name_city', 'f
 
 # Database schema - table structure
 CREATE_QUERIES = {
+    "res": """CREATE TABLE IF NOT EXISTS public.res
+(
+    ogc_fid integer,
+    osm_id varchar(80),
+    area numeric(23, 15),
+    use varchar(80),
+    comment varchar(80),
+    free_walls numeric(18),
+    building_t varchar(80),
+    occupants numeric(23, 15),
+    floors numeric(18),
+    constructi varchar(80),
+    refurb_wal numeric(23, 15),
+    refurb_roo numeric(23, 15),
+    refurb_bas numeric(23, 15),
+    refurb_win numeric(23, 15),
+    geom geometry(MultiPolygon,3035)
+)""",
+    "oth": """CREATE TABLE IF NOT EXISTS public.oth
+(
+    ogc_fid integer,
+    osm_id varchar(80),
+    area numeric(23, 15),
+    use varchar(80),
+    comment varchar(80),
+    free_walls numeric(18),
+    geom geometry(MultiPolygon,3035)
+)""",
     "betriebsmittel": """CREATE TABLE IF NOT EXISTS public.betriebsmittel
 (
     name character varying(100) COLLATE pg_catalog."default" NOT NULL,
