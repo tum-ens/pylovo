@@ -22,8 +22,6 @@ body:
         - Python version
         - Operating System
         - Tool version
-      validations:
-        required: true
 
   - type: textarea
     id: example
@@ -36,8 +34,6 @@ body:
         ```python
 
         ```
-    validations:
-      required: true
 
   - type: textarea
     id: problem
@@ -45,8 +41,6 @@ body:
       label: Issue description
       description: >
         Provide any additional information you think might be relevant.
-    validations:
-      required: true
 
   - type: textarea
     id: expected-behavior
@@ -54,8 +48,6 @@ body:
       label: Expected behavior
       description: >
         Describe or show a code example of the expected behavior.
-    validations:
-      required: true
 
   - type: textarea
     id: screenshots
@@ -63,8 +55,6 @@ body:
       label: Screenshots
       description: >
         If applicable, add screenshots to help explain your problem.
-    validations:
-      required: false
 
   - type: textarea
     id: additional-info
@@ -72,5 +62,3 @@ body:
       label: Additional information
       description: >
         Add any other context about the problem here.
-    validations:
-      required: false
