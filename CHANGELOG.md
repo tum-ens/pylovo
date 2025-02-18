@@ -11,7 +11,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
 
-## [0.2.0] Maintain tool usability - 2025-01-14
+## [0.2.1] - 2025-02-18
+### Fixed
+- Fix buggy issue templates for github
+- Fix buildings directory structure for import
+
+## [0.2.0] - 2025-01-14
 ### Added
 - Add best practice files (issue/PR templates, changelog, contributing, release_procedure) to repository
 - Add module to generate all grids for an AGS region
