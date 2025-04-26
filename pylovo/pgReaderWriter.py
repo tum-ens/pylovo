@@ -2072,11 +2072,11 @@ class PgReaderWriter:
         self.cur.execute(query, vars={"p": plz})
 
         # Clear temporary tables
-        query = """DELETE FROM buildings_tem"""
+        query = """TRUNCATE TABLE buildings_tem"""
         self.cur.execute(query)
-        query = """DELETE FROM ways_tem"""
+        query = """TRUNCATE TABLE ways_tem"""
         self.cur.execute(query)
-        query = """DELETE FROM ways_tem_vertices_pgr"""
+        query = """TRUNCATE TABLE ways_tem_vertices_pgr"""
         self.cur.execute(query)
 
         self.conn.commit()
