@@ -22,7 +22,7 @@ import_buildings_for_multiple_plz(sample_plz=df_plz_ags)
 df_plz = df_plz_ags[['plz']]
 # initialize GridGenerator
 gg = GridGenerator()
-gg.generate_grid_for_multiple_plz(df_plz=df_plz)
+gg.generate_grid_for_multiple_plz(df_plz=df_plz, n_jobs=None)
 
 # End timing and print results
 elapsed_time = time.time() - start_time

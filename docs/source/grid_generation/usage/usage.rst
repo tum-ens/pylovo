@@ -20,6 +20,7 @@ If the grids for the given region and version are already generated, the code wi
 Apart from this you can:
 
 - create grids for multiple PLZs or all PLZ within an AGS region.
+- control the number of parallel workers when generating multiple PLZs via ``n_jobs``.
 - activate the flags to analyze the grid and visualize some basic results.
 - export the grid data as csv.
 - delete specified grids/versions.

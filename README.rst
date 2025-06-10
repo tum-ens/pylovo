@@ -32,6 +32,7 @@ general grid properties for the generated synthetic grids.
 At the current state of the project the data is prepared for Bavaria, but will be extended to Germany.
 Due to the large amount of data, external users need to setup a local PosgreSQL database for the grid generation process.
 A step by step tutorial to understand the product of this tool can be found in the notebook_tutorials directory.
+When generating grids for several postal codes, ``GridGenerator.generate_grid_for_multiple_plz`` accepts an ``n_jobs`` argument to run multiple workers in parallel. By default, half of the available CPU cores are used.
 
 License
 ====================

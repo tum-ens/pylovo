@@ -380,38 +380,44 @@ class GridGenerator:
 
         self.logger.info(f"Grid with kcid:{kcid} bcid:{bcid} is stored. ")
 
-    def generate_grid_for_multiple_plz(self, df_plz: pd.DataFrame, analyze_grids: bool = False) -> None:
-        """generates grid for all plz contained in the column 'plz' of df_samples
+    def generate_grid_for_multiple_plz(
+        self,
+        df_plz: pd.DataFrame,
+        analyze_grids: bool = False,
+        n_jobs: int | None = None,
+    ) -> None:
+        """Generates grids for all postal codes contained in ``df_plz``.
 
-        :param df_plz: table that contains PLZ for grid generation
-        :type df_plz: pd.DataFrame
-        :param analyze_grids: option to analyse the results after grid generation, defaults to False
-        :type analyze_grids: bool
+        Each postal code is processed by its own :class:`GridGenerator` instance.
+        ``n_jobs`` controls the number of worker processes. If ``n_jobs`` is
+        ``None`` (default), half of the available CPU cores are used.
+
+        Args:
+            df_plz: Table containing a column ``plz`` with the postal codes to
+                process.
+            analyze_grids: Optionally analyse the results after grid generation.
+            n_jobs: Number of parallel jobs. ``1`` disables parallel execution.
         """
-        self.pgr.create_temp_tables() # create temp tables for the grid generation
-        
-        for index, row in df_plz.iterrows():
-            self.plz = str(row['plz'])
-            print('-------------------- start', self.plz, '---------------------------')
-            try:
-                self.generate_grid()
-                self.pgr.save_tables(plz=self.plz) # Save data from temporary tables to result tables
-                self.pgr.reset_tables() # Reset temporary tables
-                if analyze_grids:
-                    self.analyse_results()
-            except ResultExistsError:
-                print('Grids for this PLZ have already been generated.')
-            except Exception as e:
-                self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
-                self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
-                self.pgr.conn.rollback() # rollback the transaction
-                self.pgr.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION),self.plz)  # delete from sample set
-                continue
-            print('-------------------- end', self.plz, '-----------------------------')
-        
-        
-        self.pgr.drop_temp_tables() # drop temp tables
-        self.pgr.commit_changes() # commit the changes to the database
+
+        from joblib import Parallel, delayed
+        import os
+
+        available = os.cpu_count() or 1
+        if n_jobs is None:
+            n_jobs = max(1, available // 2)
+
+        plz_values = [str(p) for p in df_plz["plz"]]
+
+        def _worker(worker_plz: str) -> None:
+            gg = GridGenerator(plz=worker_plz)
+            gg.generate_grid_for_single_plz(worker_plz, analyze_grids=analyze_grids)
+
+        if n_jobs == 1 or len(plz_values) == 1:
+            for plz in plz_values:
+                _worker(plz)
+        else:
+            Parallel(n_jobs=n_jobs)(delayed(_worker)(plz) for plz in plz_values)
+
     
     def generate_grid_for_single_plz(self, plz: str, analyze_grids: bool = False) -> None:
         """
