@@ -1,5 +1,7 @@
+import os
 import warnings
 from pathlib import Path
+from joblib import Parallel, delayed
 
 import pandapower as pp
 import numpy as np
@@ -380,12 +382,8 @@ class GridGenerator:
 
         self.logger.info(f"Grid with kcid:{kcid} bcid:{bcid} is stored. ")
 
-    def generate_grid_for_multiple_plz(
-        self,
-        df_plz: pd.DataFrame,
-        analyze_grids: bool = False,
-        n_jobs: int | None = None,
-    ) -> None:
+    def generate_grid_for_multiple_plz(self, df_plz: pd.DataFrame, analyze_grids: bool = False,
+                                       n_jobs: int | None = None,) -> None:
         """Generates grids for all postal codes contained in ``df_plz``.
 
         Each postal code is processed by its own :class:`GridGenerator` instance.
@@ -399,13 +397,9 @@ class GridGenerator:
             n_jobs: Number of parallel jobs. ``1`` disables parallel execution.
         """
 
-        from joblib import Parallel, delayed
-        import os
-
-        available = os.cpu_count() or 1
+        available_cpu = os.cpu_count() or 1
         if n_jobs is None:
-            n_jobs = max(1, available // 2)
-
+            n_jobs = max(1, available_cpu // 2)
         plz_values = [str(p) for p in df_plz["plz"]]
 
         def _worker(worker_plz: str) -> None:
@@ -417,7 +411,6 @@ class GridGenerator:
                 _worker(plz)
         else:
             Parallel(n_jobs=n_jobs)(delayed(_worker)(plz) for plz in plz_values)
-
     
     def generate_grid_for_single_plz(self, plz: str, analyze_grids: bool = False) -> None:
         """
