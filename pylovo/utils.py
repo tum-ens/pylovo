@@ -3,30 +3,62 @@ import osm2geojson
 import requests
 
 import logging
+from logging.handlers import QueueHandler, QueueListener
+from multiprocessing import Queue
 
 
-def create_logger(name, log_file, log_level):
-    log_file = log_file
+def create_logger(name, log_file, log_level, queue: Queue | None = None):
+    """Return a logger optionally using a multiprocessing queue."""
     logger = logging.getLogger(name=name)
-    logger.handlers.clear()  # Clear existing handlers to prevent duplication
+    logger.handlers.clear()  # WHY: avoid duplicated handlers when called repeatedly
 
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    # to print log messages to a file
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(formatter)
+    if queue is not None:
+        # WHY: workers send log records to the queue
+        handler = QueueHandler(queue)
+        logger.addHandler(handler)
+    else:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
 
-    # to print log messages to console
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-
-    
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
     logger.setLevel(log_level)
     logger.propagate = False
 
     return logger
+
+
+def setup_queue_listener(log_file: str, log_level: int):
+    """Create a queue based logging listener.
+
+    Parameters
+    ----------
+    log_file : str
+        File path where log output should be written.
+    log_level : int
+        Logging level applied to the listener.
+
+    Returns
+    -------
+    tuple[Queue, QueueListener]
+        The queue used by workers and the started listener instance.
+    """
+    queue: Queue = Queue()
+
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(formatter)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    listener = QueueListener(queue, file_handler, console_handler)
+    listener.start()
+
+    return queue, listener
 
 
 def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):

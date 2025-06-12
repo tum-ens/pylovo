@@ -1,5 +1,7 @@
 import warnings
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import pandas as pd
 
 import pandapower as pp
 import numpy as np
@@ -17,13 +19,16 @@ class GridGenerator:
     Generates the grid for the given plz area
     """
 
-    def __init__(self, plz=999999, **kwargs):
+    def __init__(self, plz=999999, log_queue=None, **kwargs):
         self.plz = str(plz)
-        self.pgr = pg.PgReaderWriter()
+        self.pgr = pg.PgReaderWriter(log_queue=log_queue)
         self.pgr.insert_version_if_not_exists()
         self.pgr.insert_parameter_tables(consumer_categories=CONSUMER_CATEGORIES)
         self.logger = utils.create_logger(
-            name="GridGenerator", log_file=kwargs.get("log_file", "log.txt"), log_level=LOG_LEVEL
+            name="GridGenerator",
+            log_file=kwargs.get("log_file", "log.txt"),
+            log_level=LOG_LEVEL,
+            queue=log_queue,
         )
 
     def __del__(self):
@@ -380,38 +385,75 @@ class GridGenerator:
 
         self.logger.info(f"Grid with kcid:{kcid} bcid:{bcid} is stored. ")
 
-    def generate_grid_for_multiple_plz(self, df_plz: pd.DataFrame, analyze_grids: bool = False) -> None:
-        """generates grid for all plz contained in the column 'plz' of df_samples
+    def generate_grid_for_multiple_plz(
+        self, df_plz: pd.DataFrame, analyze_grids: bool = False, n_jobs: int = N_JOBS
+    ) -> None:
+        """Generate grids for a list of postal codes.
 
-        :param df_plz: table that contains PLZ for grid generation
-        :type df_plz: pd.DataFrame
-        :param analyze_grids: option to analyse the results after grid generation, defaults to False
-        :type analyze_grids: bool
+        Parameters
+        ----------
+        df_plz : pandas.DataFrame
+            DataFrame with a column ``plz`` listing the target postal codes.
+        analyze_grids : bool, optional
+            If ``True`` results are analyzed after each grid generation.
+        n_jobs : int, optional
+            Number of worker processes to use. Defaults to ``N_JOBS`` from config.
+            When ``n_jobs`` is greater than one a ``QueueListener`` ensures ordered log output from workers.
         """
-        self.pgr.create_temp_tables() # create temp tables for the grid generation
-        
-        for index, row in df_plz.iterrows():
-            self.plz = str(row['plz'])
-            print('-------------------- start', self.plz, '---------------------------')
-            try:
-                self.generate_grid()
-                self.pgr.save_tables(plz=self.plz) # Save data from temporary tables to result tables
-                self.pgr.reset_tables() # Reset temporary tables
-                if analyze_grids:
-                    self.analyse_results()
-            except ResultExistsError:
-                print('Grids for this PLZ have already been generated.')
-            except Exception as e:
-                self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
-                self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
-                self.pgr.conn.rollback() # rollback the transaction
-                self.pgr.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION),self.plz)  # delete from sample set
-                continue
-            print('-------------------- end', self.plz, '-----------------------------')
-        
-        
-        self.pgr.drop_temp_tables() # drop temp tables
-        self.pgr.commit_changes() # commit the changes to the database
+        if n_jobs <= 1:
+            # sequential processing for single-core usage
+            self.pgr.create_temp_tables()  # create temp tables for the grid generation
+
+            for _, row in df_plz.iterrows():
+                self.plz = str(row['plz'])
+                print('-------------------- start', self.plz, '---------------------------')
+                try:
+                    self.generate_grid()
+                    self.pgr.save_tables(plz=self.plz)  # Save data from temporary tables to result tables
+                    self.pgr.reset_tables()  # Reset temporary tables
+                    if analyze_grids:
+                        self.analyse_results()
+                except ResultExistsError:
+                    print('Grids for this PLZ have already been generated.')
+                except Exception as e:
+                    self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
+                    self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
+                    self.pgr.conn.rollback()  # rollback the transaction
+                    self.pgr.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), self.plz)  # delete from sample set
+                    continue
+                print('-------------------- end', self.plz, '-------------------------------')
+
+            self.pgr.drop_temp_tables()  # drop temp tables
+            self.pgr.commit_changes()  # commit the changes to the database
+        else:
+            # spawn separate workers for each PLZ using a logging queue
+            log_queue, listener = utils.setup_queue_listener("log.txt", LOG_LEVEL)
+            self.logger = utils.create_logger(
+                name="GridGenerator",
+                log_file="log.txt",
+                log_level=LOG_LEVEL,
+                queue=log_queue,
+            )
+
+            def _worker(plz_str: str) -> str:
+                # WHY: each worker creates its own connection and logger
+                gg = GridGenerator(plz=plz_str, log_queue=log_queue)
+                gg.generate_grid_for_single_plz(plz=plz_str, analyze_grids=analyze_grids)
+                return plz_str
+
+            with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                futures = {
+                    executor.submit(_worker, str(row["plz"])): str(row["plz"])
+                    for _, row in df_plz.iterrows()
+                }
+                for future in as_completed(futures):
+                    plz_str = futures[future]
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        self.logger.error(f"Parallel worker failed for PLZ {plz_str}: {exc}")
+
+            listener.stop()
     
     def generate_grid_for_single_plz(self, plz: str, analyze_grids: bool = False) -> None:
         """

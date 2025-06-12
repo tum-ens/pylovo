@@ -30,8 +30,10 @@ within the research scope and can automatically analyse the important grid stati
 general grid properties for the generated synthetic grids.
 
 At the current state of the project the data is prepared for Bavaria, but will be extended to Germany.
-Due to the large amount of data, external users need to setup a local PosgreSQL database for the grid generation process.
 A step by step tutorial to understand the product of this tool can be found in the notebook_tutorials directory.
+Due to the large amount of data, external users need to setup a local PosgreSQL database for the grid generation process.
+Grid generation tasks can be executed in parallel. ``N_JOBS`` in ``pylovo/config_data.yml`` specifies what percentage of CPU cores is used (50% by default).
+When running in parallel a QueueListener collects log messages from all workers for ordered output.
 
 License
 ====================

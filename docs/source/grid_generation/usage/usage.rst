@@ -6,6 +6,8 @@ Configuration
 | To allow distinction for different parameters you can define grids with different version entries in ``config_version.py``.
 | Please enter your VERSION_ID and your VERSION_COMMENT in the ``config_version.py`` file.
 | If you don't want to change any parameters you can start with the current base version configurations.
+| The ``config_data.yml`` file includes ``N_JOBS`` which defines the percentage of CPU cores used for grid generation (default 50%).
+| Parallel execution uses a multiprocessing queue so that log messages from all workers are written sequentially.
 
 Create your first grid
 =========================================

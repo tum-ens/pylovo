@@ -7,6 +7,7 @@ import time
 from classification.sampling.sample import get_municipal_register_as_dataframe
 from raw_data.preprocessing_scripts.import_building_data import import_buildings_for_multiple_plz
 from pylovo.GridGenerator import GridGenerator
+from pylovo.config_loader import N_JOBS  # number of workers derived from CPU percentage
 
 ags = 9162000
 
@@ -22,7 +23,7 @@ import_buildings_for_multiple_plz(sample_plz=df_plz_ags)
 df_plz = df_plz_ags[['plz']]
 # initialize GridGenerator
 gg = GridGenerator()
-gg.generate_grid_for_multiple_plz(df_plz=df_plz)
+gg.generate_grid_for_multiple_plz(df_plz=df_plz, n_jobs=N_JOBS)
 
 # End timing and print results
 elapsed_time = time.time() - start_time

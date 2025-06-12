@@ -30,10 +30,21 @@ class PgReaderWriter:
 
     # Constructor
     def __init__(
-            self, dbname=DBNAME, user=USER, pw=PASSWORD, host=HOST, port=PORT, **kwargs
-        ):
+        self,
+        dbname=DBNAME,
+        user=USER,
+        pw=PASSWORD,
+        host=HOST,
+        port=PORT,
+        *,
+        log_queue=None,
+        **kwargs,
+    ):
         self.logger = utils.create_logger(
-            "PgReaderWriter", log_file=kwargs.get("log_file", "log.txt"), log_level=LOG_LEVEL
+            "PgReaderWriter",
+            log_file=kwargs.get("log_file", "log.txt"),
+            log_level=LOG_LEVEL,
+            queue=log_queue,
         )
         try:
             self.conn = pg.connect(

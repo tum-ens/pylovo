@@ -13,6 +13,8 @@ SAVE_GRID_FOLDER: False
 
 # Logging configuration for PgReaderWriter & GridGenerator
 LOG_LEVEL: INFO
+# Percentage of CPU cores to use for parallel workers
+N_JOBS: 50
 
 CLUSTERING_PARAMETERS:
   - version_id

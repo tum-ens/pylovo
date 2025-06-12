@@ -1,6 +1,7 @@
 import yaml
 import os
 import pandas as pd
+import multiprocessing
 from dotenv import load_dotenv, find_dotenv
 
 def load_yaml_config(filepath: str):
@@ -32,6 +33,13 @@ TARGET_SCHEMA = os.getenv("TARGET_SCHEMA", CONFIG_DATA["TARGET_SCHEMA"])
 RESULT_DIR = os.path.join(os.getcwd(), "results")
 SAVE_GRID_FOLDER = CONFIG_DATA["SAVE_GRID_FOLDER"]
 LOG_LEVEL = CONFIG_DATA["LOG_LEVEL"]
+# Read desired worker utilization from the environment or config file
+N_JOBS_PERCENT = int(os.getenv("N_JOBS", CONFIG_DATA.get("N_JOBS", 50)))
+# keep percentage in sensible bounds
+N_JOBS_PERCENT = max(1, min(N_JOBS_PERCENT, 100))
+# round to nearest integer number of cores
+N_JOBS = max(1, round(multiprocessing.cpu_count() * N_JOBS_PERCENT / 100))
+
 CLUSTERING_PARAMETERS = CONFIG_DATA["CLUSTERING_PARAMETERS"]
 MUNICIPAL_REGISTER = CONFIG_DATA["MUNICIPAL_REGISTER"]
 CSV_FILE_LIST = [
