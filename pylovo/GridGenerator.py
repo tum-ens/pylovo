@@ -1,6 +1,7 @@
 import warnings
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from multiprocessing import queues
 import pandas as pd
 
 import pandapower as pp
@@ -33,6 +34,13 @@ class GridGenerator:
 
     def __del__(self):
         self.pgr.__del__()
+
+    @staticmethod
+    def _worker(plz_str: str, analyze_grids: bool, log_queue: queues.Queue) -> str:
+        """Run grid generation in a worker process."""
+        gg = GridGenerator(plz=plz_str, log_queue=log_queue)
+        gg.generate_grid_for_single_plz(plz=plz_str, analyze_grids=analyze_grids)
+        return plz_str
 
     def generate_grid(self):
         self.check_if_results_exist()
@@ -435,16 +443,15 @@ class GridGenerator:
                 queue=log_queue,
             )
 
-            def _worker(plz_str: str) -> str:
-                # WHY: each worker creates its own connection and logger
-                gg = GridGenerator(plz=plz_str, log_queue=log_queue)
-                gg.generate_grid_for_single_plz(plz=plz_str, analyze_grids=analyze_grids)
-                return plz_str
-
             # WHY: ProcessPoolExecutor handles spawning worker processes
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
                 futures = {
-                    executor.submit(_worker, str(row["plz"])): str(row["plz"])
+                    executor.submit(
+                        GridGenerator._worker,  # WHY: static method so it can be pickled
+                        str(row["plz"]),
+                        analyze_grids,
+                        log_queue,
+                    ): str(row["plz"])
                     for _, row in df_plz.iterrows()
                 }
                 for future in as_completed(futures):
