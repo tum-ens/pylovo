@@ -1,15 +1,13 @@
-from __future__ import annotations
-
 import numpy as np
 import osm2geojson
 import requests
 
 import logging
 from logging.handlers import QueueHandler, QueueListener
-from multiprocessing import Queue
+from multiprocessing import queues
 
 
-def create_logger(name, log_file, log_level, queue: Queue | None = None):
+def create_logger(name, log_file, log_level, queue: queues.Queue | None = None):
     """Return a logger optionally using a multiprocessing queue."""
     logger = logging.getLogger(name=name)
     logger.handlers.clear()  # WHY: avoid duplicated handlers when called repeatedly
@@ -46,10 +44,10 @@ def setup_queue_listener(log_file: str, log_level: int):
 
     Returns
     -------
-    tuple[Queue, QueueListener]
+    tuple[queues.Queue, QueueListener]
         The queue used by workers and the started listener instance.
     """
-    queue: Queue = Queue()
+    queue: queues.Queue = queues.Queue()
 
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler = logging.FileHandler(log_file)
