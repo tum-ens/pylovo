@@ -7,6 +7,20 @@ from logging.handlers import QueueHandler, QueueListener
 import multiprocessing
 from multiprocessing import queues
 
+# Process-wide queue used for logging from workers
+LOG_QUEUE: queues.Queue | None = None
+
+
+def set_worker_queue(queue: queues.Queue | None) -> None:
+    """Store the queue in a module level variable so workers can access it."""
+    global LOG_QUEUE
+    LOG_QUEUE = queue
+
+
+def get_worker_queue() -> queues.Queue | None:
+    """Return the process-wide logging queue."""
+    return LOG_QUEUE
+
 
 def create_logger(name, log_file, log_level, queue: queues.Queue | None = None):
     """Return a logger optionally using a multiprocessing queue."""

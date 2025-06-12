@@ -33,7 +33,7 @@ At the current state of the project the data is prepared for Bavaria, but will b
 A step by step tutorial to understand the product of this tool can be found in the notebook_tutorials directory.
 Due to the large amount of data, external users need to setup a local PosgreSQL database for the grid generation process.
 Grid generation tasks can be executed in parallel. ``N_JOBS`` in ``pylovo/config_data.yml`` specifies what percentage of CPU cores is used (50% by default).
-When running in parallel a QueueListener collects log messages from all workers for ordered output.
+When running in parallel a ``QueueListener`` collects log messages from all workers for ordered output. Each worker stores the shared queue via ``utils.set_worker_queue`` so that individual ``GridGenerator`` instances write to a single log file.
 
 License
 ====================
