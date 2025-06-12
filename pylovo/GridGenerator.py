@@ -441,6 +441,7 @@ class GridGenerator:
                 gg.generate_grid_for_single_plz(plz=plz_str, analyze_grids=analyze_grids)
                 return plz_str
 
+            # WHY: ProcessPoolExecutor handles spawning worker processes
             with ProcessPoolExecutor(max_workers=n_jobs) as executor:
                 futures = {
                     executor.submit(_worker, str(row["plz"])): str(row["plz"])
@@ -453,6 +454,7 @@ class GridGenerator:
                     except Exception as exc:
                         self.logger.error(f"Parallel worker failed for PLZ {plz_str}: {exc}")
 
+            # WHY: ensure all log records are written before exiting
             listener.stop()
     
     def generate_grid_for_single_plz(self, plz: str, analyze_grids: bool = False) -> None:

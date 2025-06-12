@@ -4,6 +4,7 @@ import requests
 
 import logging
 from logging.handlers import QueueHandler, QueueListener
+import multiprocessing
 from multiprocessing import queues
 
 
@@ -47,7 +48,8 @@ def setup_queue_listener(log_file: str, log_level: int):
     tuple[queues.Queue, QueueListener]
         The queue used by workers and the started listener instance.
     """
-    queue: queues.Queue = queues.Queue()
+    # WHY: use multiprocessing.Queue so child processes can send records
+    queue: queues.Queue = multiprocessing.Queue()
 
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler = logging.FileHandler(log_file)
