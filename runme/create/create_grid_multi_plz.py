@@ -13,7 +13,7 @@ from src.config_loader import ANALYZE_GRIDS, USE_INFDB
 start_time = time.time()
 
 # enter the PLZ for which the geodata is exported
-plz_list = [80802, 80687]
+plz_list = [80331,80333,80797,80799,80805,80807,81675,81929,81369,81241]
 
 if not USE_INFDB:
     # get ags info for plz areas
