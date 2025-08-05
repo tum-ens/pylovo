@@ -35,7 +35,7 @@ class InfdbClient:
         self.cur.close()
         self.conn.close()
 
-    def get_relevant_buildings_in_plz(self, plz: int) -> list[tuple]:
+    def get_relevant_buildings_in_plz_from_infdb(self, plz: int) -> list[tuple]:
         """
         Retrieve all buildings whose centroids are contained within a specified postcode (PLZ).
 
