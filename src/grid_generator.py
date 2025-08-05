@@ -173,12 +173,11 @@ class GridGenerator:
         INTO: buildings_tem
         """
         if USE_INFDB:
-            buildings_data = self.inf_dbc.get_relevant_buildings_in_plz(self.plz)
+            buildings_data = self.inf_dbc.get_relevant_buildings_in_plz_from_infdb(self.plz)
             self.dbc.set_buildings_table(buildings_data)
         else:
             self.dbc.set_residential_buildings_table(self.plz)
             self.dbc.set_other_buildings_table(self.plz)
-
         self.logger.info("Buildings_tem table prepared")
         self.dbc.remove_duplicate_buildings()
         self.logger.info("Duplicate buildings removed from buildings_tem")
