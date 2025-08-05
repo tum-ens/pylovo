@@ -28,6 +28,13 @@ Apart from this you can:
 - export the grid data as csv.
 - delete specified grids/versions.
 
+Parallel execution
+==================
+Multiple PLZ areas can be processed in parallel. Adjust the
+``N_JOBS_PERCENTAGE`` option in ``config/config_data.yaml`` to specify how
+many CPU cores are used. Separate log files for each PLZ are created in the
+``logs`` directory.
+
 .. note::
     - Before running the scripts make sure you followed all steps descripbed in the :doc:`installation/installation` section.
     - If you are from TUM and would like to connect to the remote db get your .env file from a ENS pylovo maintainer and save it in the root directory of the project.

@@ -1,6 +1,8 @@
+import os
 import traceback
 import warnings
 from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandapower as pp
@@ -74,40 +76,72 @@ class GridGenerator:
         self.dbc.commit_changes()  # commit the changes to the database
         print('-------------------- end', self.plz, '-----------------------------')
 
-    def generate_grid_for_multiple_plz(self, df_plz: pd.DataFrame, analyze_grids: bool = False) -> None:
-        """generates grid for all plz contained in the column 'plz' of df_samples
+    @staticmethod
+    def _worker(plz: int, analyze_grids: bool) -> None:
+        """Execute grid generation for a single PLZ inside a worker process.
 
-        :param df_plz: table that contains PLZ for grid generation
-        :type df_plz: pd.DataFrame
-        :param analyze_grids: option to analyse the results after grid generation, defaults to False
-        :type analyze_grids: bool
+        Each worker creates its own ``GridGenerator`` instance to ensure
+        separate database connections and dedicated log files.
         """
-        for index, row in df_plz.iterrows():
-            self.plz = int(row['plz'])
-            print('-------------------- start', self.plz, '---------------------------')
-            self.dbc.create_temp_tables()  # create temp tables for the grid generation
-            try:
-                self.generate_grid()
-                self.dbc.save_tables(plz=self.plz)  # Save data from temporary tables to result tables
-                self.dbc.commit_changes()  # commit the changes to the database
-                if analyze_grids:
-                    pc = ParameterCalculator()
-                    pc.calc_parameters_per_plz(plz=self.plz)
-                    self.dbc.commit_changes()  # commit the changes to the database
-            except ResultExistsError:
-                self.dbc.logger.info(f"Grid for the postcode area {self.plz} has already been generated.")
-            except Exception as e:
-                self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
-                self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
-                self.dbc.conn.rollback()  # rollback the transaction
-                self.dbc.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION),
-                                                          self.plz)  # delete from sample set
-                continue
-            print('-------------------- end', self.plz, '-----------------------------')
+        log_dir = Path("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)  # ensure log directory exists
+        log_file = log_dir / f"log_{plz}.txt"  # unique log file per PLZ
+        gg = GridGenerator(log_file=str(log_file))  # new instance for this worker
+        gg.generate_grid_for_single_plz(plz, analyze_grids)
 
-        self.dbc.drop_temp_tables()  # drop temp tables
-        self.dbc.refresh_materialized_views()  # update the materialized views to reflect changes in their base tables
-        self.dbc.commit_changes()  # commit the changes to the database
+    def generate_grid_for_multiple_plz(self, df_plz: pd.DataFrame, analyze_grids: bool = False, n_jobs: int | None = None) -> None:
+        """Generate grids for all PLZs contained in the ``plz`` column of ``df_plz``.
+
+        Args:
+            df_plz: Table that contains PLZ for grid generation.
+            analyze_grids: Option to analyse the results after grid generation.
+            n_jobs: Optional number of parallel worker processes. If ``None``
+                the value is derived from ``N_JOBS_PERCENTAGE`` in the
+                configuration. ``n_jobs`` must be at least ``1``; ``1`` will
+                execute sequentially.
+        """
+        if n_jobs is None:
+            cores = os.cpu_count() or 1  # determine available CPU cores
+            n_jobs = max(1, round(cores * N_JOBS_PERCENTAGE / 100))  # scale by configured percentage
+
+        if n_jobs < 1:
+            raise ValueError("n_jobs must be at least 1")
+
+        if n_jobs == 1:
+            # Sequential execution identical to previous behaviour
+            for index, row in df_plz.iterrows():
+                self.plz = int(row['plz'])
+                print('-------------------- start', self.plz, '---------------------------')
+                self.dbc.create_temp_tables()  # create temp tables for the grid generation
+                try:
+                    self.generate_grid()
+                    self.dbc.save_tables(plz=self.plz)  # Save data from temporary tables to result tables
+                    self.dbc.commit_changes()  # commit the changes to the database
+                    if analyze_grids:
+                        pc = ParameterCalculator()
+                        pc.calc_parameters_per_plz(plz=self.plz)
+                        self.dbc.commit_changes()  # commit the changes to the database
+                except ResultExistsError:
+                    self.dbc.logger.info(f"Grid for the postcode area {self.plz} has already been generated.")
+                except Exception as e:
+                    self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
+                    self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
+                    self.dbc.conn.rollback()  # rollback the transaction
+                    self.dbc.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION),
+                                                              self.plz)  # delete from sample set
+                    continue
+                print('-------------------- end', self.plz, '-----------------------------')
+
+            self.dbc.drop_temp_tables()  # drop temp tables
+            self.dbc.refresh_materialized_views()  # update the materialized views to reflect changes in their base tables
+            self.dbc.commit_changes()  # commit the changes to the database
+        else:
+            # Parallel execution using a process pool
+            self.dbc.__del__()  # close unused connection in parent process
+            plz_list = df_plz['plz'].astype(int).tolist()
+            with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                from itertools import repeat
+                executor.map(GridGenerator._worker, plz_list, repeat(analyze_grids))
 
     def generate_grid(self):
         if self.dbc.is_grid_generated(self.plz):

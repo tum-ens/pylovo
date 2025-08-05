@@ -27,6 +27,13 @@ At the current state of the project the data is prepared for Bavaria, but will b
 Due to the large amount of data, external users need to setup a local PosgreSQL database for the grid generation process.
 A step by step tutorial to understand the product of this tool can be found in the notebook_tutorials directory.
 
+Parallel grid generation
+========================
+From version X, pylovo can process multiple PLZ areas concurrently. The number of
+worker processes is determined by ``N_JOBS_PERCENTAGE`` in
+``config/config_data.yaml`` which defaults to 50% of the available CPU cores.
+Logs for each PLZ are written to the ``logs`` directory.
+
 License
 ====================
 | The code of this repository is licensed under the **MIT License** (MIT).
