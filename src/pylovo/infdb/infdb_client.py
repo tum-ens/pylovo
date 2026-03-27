@@ -105,10 +105,10 @@ class InfdbClient:
         - id (source is md5 text) -> way_id (generated int)
             pylovo expects an integer id, so we generate numeric ids during fetch.
 
-        3) Combining ways_segmented + connection_lines (UNION ALL)
+        3) Combining ways_per_junction + connection_lines (UNION ALL)
         - Previously, all relevant ways lived in a single table.
         - Now the road network is split across:
-            * ways_segmented      (regular road segments)
+            * ways_per_junction      (regular road segments)
             * connection_lines    (synthetic connection segments, e.g., building-to-road)
         - To ensure pylovo inserts a complete network, we combine both tables in a
             single result set using `UNION ALL` so we keep all rows.
@@ -172,8 +172,8 @@ class InfdbClient:
                     length_geo AS cost,
                     length_geo AS reverse_cost,
                     geom,
-                    ('ways_segmented:' || id::text) AS remote_id
-                FROM ways_segmented
+                    ('ways_per_junction:' || id::text) AS remote_id
+                FROM ways_per_junction
                 WHERE postcode = %(plz)s
 
                 UNION ALL
