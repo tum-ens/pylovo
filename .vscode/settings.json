@@ -1,0 +1,7 @@
+{
+    "workbench.colorTheme": "Kimbie Dark",
+    "terminal.integrated.commandsToSkipShell": [
+        "workbench.action.terminal.paste"
+    ],
+    "terminal.integrated.defaultProfile.windows": "Ubuntu (WSL)"
+}

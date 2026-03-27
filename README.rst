@@ -82,7 +82,7 @@ Quick Start
 
    a) ...first, initialize the database with infdb-db service ``bash infdb-start.sh up -d --build``
    b) ...second, configure and import the required data with infdb-import service ``bash infdb-import.sh``
-   c) ...third, run the required preprocessing basedata tool ``bash tools/infdb-basedata/run.sh``
+   c) ...third, run the required preprocessing basedata tool steps ``bash tools/tools.sh -p basedata-buildings <ags>`` and ``bash tools/tools.sh -p basedata-ways <ags>``
 
 2. | **Install pylovo**:
    | Input data has been prepared, next lets focus on pylovo - setup the repository as follows:
