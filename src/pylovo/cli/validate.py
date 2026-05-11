@@ -10,7 +10,7 @@ from pylovo.analysis.comparison_helpers import run_grid_comparison
 def run_comparison(plz: int | None = None, output_dir: str | None = None) -> None:
     """Run the grid comparison workflow directly from the validation CLI."""
     effective_plz = plz if plz is not None else 91301
-    effective_output_dir = Path(output_dir) if output_dir is not None else Path("validation/metrics")
+    effective_output_dir = Path(output_dir) if output_dir is not None else Path("validations/metrics")
     run_grid_comparison(plz=effective_plz, output_dir=effective_output_dir)
 
 
