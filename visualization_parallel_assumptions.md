@@ -1,60 +1,43 @@
-# Visualization Reset Assumptions
+# Visualization Reset Brief
 
-This note restarts the visualization discussion with the revised assumptions.
+This file is the starting point for any future work on line visualization.
 
-## Main goals
+## Current code state
 
-- Show all electrically parallel cables as separate visible lines whenever the electrical model defines them that way.
-- Make it possible to click a line in GIS and understand the full cable extent, not only the next segment up to the next split.
-- Avoid visual inconsistencies caused by shifted geometries by design, not by repeated local fixes.
-- Keep implementation changes as small as possible and avoid growing the core generation code unnecessarily.
-- Respect the newer split-based topology instead of trying to restore the old pre-split behavior.
+- Recent generator-side line-visualization logic has been removed again.
+- The variable CRS work stays in place and is not part of the visualization reset.
+- The `parallel` column stays in place in `lines_result` and `lines_result_with_grid`.
+- The default exported GIS geometry is again one geometry per real line segment.
 
-## Current assumptions
+## Fixed decisions
 
-- `lines_result` should remain the table for real installed line segments.
-- Visualization-specific helper data should be kept separate from `lines_result`. #Prefer a helper table such as `lines_helper` and expose the combined output through a joined materialized view.#
-- The `parallel` attribute is the intended indicator for electrically parallel cables and should be available in the GIS-facing output.
-- All persisted geodata should remain in the configured target CRS.
-- Any visualization method must work with split nodes as part of the design, not as an exception.
+- A segment with `parallel > 1` must still be shown as one line in the default visualization.
+- The number of electrical cables is communicated by the `parallel` attribute, not by drawing multiple shifted copies.
+- `lines_result` must remain a table of real installed segments.
+- Split nodes are part of the actual topology and must be respected by any future visualization.
+- Future visualization work should keep code changes as small as possible.
 
-## Open points to audit
+## Important clarification about `parallel`
 
-- It is still not clear enough to users why pylovo sometimes represents multiple cables with `parallel > 1` and sometimes not. The current code audit shows that this is a sizing result, not a topology result: the code increases `count` only when one cable is not sufficient for current and voltage-drop limits.
-- It is still open whether shared first downstream segments should be shown as shared visual lanes or whether a separate postprocessing layer should aggregate them differently.
-- It is still open whether `lines_result_with_grid` alone is the right GIS layer for user-facing interpretation.
+- `parallel` is currently an electrical sizing result.
+- It is increased when one cable is not sufficient for current and voltage-drop limits.
+- It is not created just because a route contains a split node.
+- Therefore, `parallel = 1` does not mean a line is visually unimportant. It only means one cable is electrically sufficient.
 
-## Audit result on `parallel`
+## Preferred direction for future work
 
-- `parallel` is currently decided in the cable sizing step, mainly in `CableInstaller.find_minimal_available_cable()` for feeder lines and in the analogous sizing loop for consumer connection cables.
-- The algorithm starts with `count = 1` and only increases it when no single cable satisfies the electrical limits.
-- Therefore, `parallel > 1` means: multiple electrical cables are required in parallel for that line object.
-- Therefore, `parallel = 1` does not mean: the line is not important for visualization. It only means one cable is electrically sufficient.
-- Split nodes do not create `parallel` by themselves. They only change how line objects are routed and segmented.
-- The `parallel` value is persisted into both the electrical result (`pandapower_line.parallel`) and the GIS segment result (`lines_result.parallel`, exposed through `lines_result_with_grid`).
+- Keep the default GIS segment layer simple: one segment row, one geometry, one `parallel` value.
+- If users need better interpretability, build that in a separate postprocessing layer.
+- A future helper layer may combine downstream segments so clicking a feature reveals a full cable or feeder extent.
+- Any helper geometry should be derived after generation, not by adding more generator-side shift logic.
 
-## Reconsidered assumptions
+## Constraints for a future agent
 
-- ### Visual offsets must not be the primary mechanism for explaining topology to users.
-- ### The user-facing layer should not stop at the next connection-cable intersection if the intent is to understand one cable's downstream reach.
-- ### It may be better to build a postprocessed feeder or cable-extent layer that combines segments across splits for visualization purposes.
-- ### If visual shifts are kept, they must be deterministic and topology-safe so neighboring lines cannot appear disconnected or inconsistent.
-- ### A design that requires many invasive changes in the generation code is not acceptable if the same result can be achieved by lighter postprocessing.
+- Do not reintroduce shifted parallel copies into the default segment layer unless explicitly requested.
+- Do not mix helper visualization rows into `lines_result`.
+- Do not undo the CRS-related changes.
+- Before adding new visualization logic, first verify that the result cannot be achieved by a lightweight derived view or helper table.
 
-## Design direction
+## Good first step for the next iteration
 
-- Keep core electrical and segment results clean.
-- Add visualization logic in a postprocessing step whenever possible.
-- Prefer deriving a dedicated GIS layer for cable interpretation over encoding more visualization behavior directly into line generation.
-- Use the electrical model as the source of truth first, then derive readable geometry from it.
-
-## Minimal reset implementation sketch
-
-- Keep `lines_result` unchanged as the source for real installed segments.
-- Keep `parallel` on `lines_result` and use it only as an electrical attribute, not as a proxy for visual grouping.
-- Add a separate helper structure for visualization. #Preferred direction: a `lines_helper` table plus a joined materialized view.#
-- Build the helper data in postprocessing from `lines_result`, `pandapower_line`, and the split topology.
-- In that helper layer, assign stable visual lane indices per electrical cable group instead of recomputing shifts during generation.
-- Add a second derived layer for cable extent or feeder extent, so clicking one feature can show the whole downstream cable path across multiple split segments.
-- Keep the first reset version minimal: derive helper geometries after generation, do not add more branching logic to core cable installation.
-- Once the postprocessed layer is accepted, remove as much generator-side visualization logic as possible.
+- Design a small postprocessing helper layer for cable or feeder extent visualization while leaving `lines_result` unchanged.

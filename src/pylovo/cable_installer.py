@@ -1,12 +1,10 @@
 """Cable installation module for electrical grid generation."""
 
-from collections import Counter
-
 import numpy as np
 import pandas as pd
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM, VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM, SMALL_LOAD_THRESHOLD_KW, VOLTAGE_DROP_DISTRIBUTION_PERCENT, DEFAULT_POWER_FACTOR, VERSION_ID
+from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM, VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM, SMALL_LOAD_THRESHOLD_KW, VOLTAGE_DROP_DISTRIBUTION_PERCENT, DEFAULT_POWER_FACTOR
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -16,7 +14,6 @@ class CableInstaller:
 
     _NOMINAL_VOLTAGE_KV = VN * 1e-3
     _THREE_PHASE_FACTOR = np.sqrt(3)
-    _VISUAL_BRANCH_OFFSET_STEP = 2 * 1e-6
 
     def __init__(self, backend: IElectricalBackend, dbc, logger, cables: list,
                  feeder_cables: pd.DataFrame, consumer_connection_cables: pd.DataFrame):
@@ -38,229 +35,6 @@ class CableInstaller:
 
         # Cache cable data from database as DataFrame (single source of truth)
         self._cable_df = self._build_cable_dataframe(cables)
-        self._lane_deviations_by_edge: dict[tuple[int, int], list[float]] = {}
-        self._lane_deviations_by_prefix: dict[tuple[int, int], list[float]] = {}
-        self._used_lane_deviations_by_start: dict[int, list[float]] = {}
-
-    @staticmethod
-    def _lane_deviation_in_use(used_deviations: list[float], deviation: float) -> bool:
-        return any(abs(float(used_deviation) - float(deviation)) < 1e-9 for used_deviation in used_deviations)
-
-    @staticmethod
-    def _select_lane_subset(available_deviations: list[float], count: int, preferred_deviation: float) -> list[float]:
-        if count >= len(available_deviations):
-            return list(available_deviations)
-
-        ordered = sorted(float(deviation) for deviation in available_deviations)
-        candidate_windows = [ordered[index:index + count] for index in range(len(ordered) - count + 1)]
-
-        def _window_score(window: list[float]) -> tuple[float, float, int]:
-            mean_deviation = sum(window) / len(window)
-            sign_penalty = 0.0
-            if preferred_deviation < 0 and mean_deviation >= 0:
-                sign_penalty = 0.5
-            elif preferred_deviation > 0 and mean_deviation <= 0:
-                sign_penalty = 0.5
-
-            # When multiple windows are equally close, prefer the one farther from the center
-            # if the caller asked for a non-zero side, so sibling branches do not collapse into the middle lane.
-            extreme_preference = -abs(mean_deviation) if abs(preferred_deviation) > 1e-12 else abs(mean_deviation)
-            return (abs(mean_deviation - preferred_deviation) + sign_penalty, extreme_preference, -window[-1])
-
-        return min(candidate_windows, key=_window_score)
-
-    @staticmethod
-    def _select_lane_subset_with_usage(
-        available_deviations: list[float],
-        count: int,
-        preferred_deviation: float,
-        usage_counts: Counter[float],
-    ) -> list[float]:
-        if count >= len(available_deviations):
-            return list(available_deviations)
-
-        ordered = sorted(float(deviation) for deviation in available_deviations)
-        candidate_windows = [ordered[index:index + count] for index in range(len(ordered) - count + 1)]
-
-        def _window_score(window: list[float]) -> tuple[float, float, float, float, int]:
-            mean_deviation = sum(window) / len(window)
-            sign_penalty = 0.0
-            if preferred_deviation < 0 and mean_deviation >= 0:
-                sign_penalty = 0.5
-            elif preferred_deviation > 0 and mean_deviation <= 0:
-                sign_penalty = 0.5
-
-            usage_penalty = sum(usage_counts.get(round(float(deviation), 6), 0) for deviation in window)
-            max_lane_usage = max(usage_counts.get(round(float(deviation), 6), 0) for deviation in window)
-            extreme_preference = -abs(mean_deviation) if abs(preferred_deviation) > 1e-12 else abs(mean_deviation)
-            return (usage_penalty, max_lane_usage, abs(mean_deviation - preferred_deviation) + sign_penalty, extreme_preference, -window[-1])
-
-        return min(candidate_windows, key=_window_score)
-
-    def _resolve_lane_deviations(
-        self,
-        plz: int,
-        kcid: int,
-        bcid: int,
-        start_vid: int,
-        end_vid: int,
-        count: int,
-        branch_deviation: float,
-        ont_vertice: int,
-        prefix_key: tuple[int, int] | None = None,
-    ) -> list[float]:
-        centered_deviations = self.dbc._centered_lane_deviations(int(count))
-        if start_vid == ont_vertice:
-            if prefix_key is not None:
-                self._lane_deviations_by_prefix[prefix_key] = centered_deviations
-            self._lane_deviations_by_edge[(start_vid, end_vid)] = centered_deviations
-            return centered_deviations
-
-        if prefix_key is not None:
-            cached_prefix_deviations = self._lane_deviations_by_prefix.get(prefix_key)
-            if cached_prefix_deviations is not None and len(cached_prefix_deviations) == int(count):
-                self._lane_deviations_by_edge[(start_vid, end_vid)] = cached_prefix_deviations
-                return cached_prefix_deviations
-
-        start_node_geodata = self._get_line_node_coordinates(start_vid, f"Connection Nodebus {start_vid}")
-        self.dbc.cur.execute(
-            """
-            SELECT ST_X(ST_Transform(ST_EndPoint(lr.geom), 4326)),
-                   ST_Y(ST_Transform(ST_EndPoint(lr.geom), 4326))
-            FROM pylovo.lines_result lr
-            JOIN pylovo.grid_result gr ON gr.grid_result_id = lr.grid_result_id
-            WHERE gr.version_id = %(v)s
-              AND gr.plz = %(p)s
-              AND gr.kcid = %(k)s
-              AND gr.bcid = %(b)s
-              AND lr.to_bus = %(node)s
-            ORDER BY lr.lines_result_id
-            """,
-            {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "node": start_vid},
-        )
-        upstream_line_endpoints = self.dbc.cur.fetchall()
-        upstream_deviations = [
-            round((float(endpoint_x) - float(start_node_geodata[0])) / self.dbc._VISUAL_PARALLEL_OFFSET_STEP, 6)
-            for endpoint_x, _ in upstream_line_endpoints
-        ]
-        if len(upstream_deviations) >= int(count):
-            usage_counts = Counter(
-                round(float(deviation), 6)
-                for deviation in self._used_lane_deviations_by_start.get(start_vid, [])
-            )
-            remaining_deviations = [
-                deviation
-                for deviation in upstream_deviations
-                if not self._lane_deviation_in_use(self._used_lane_deviations_by_start.get(start_vid, []), deviation)
-            ]
-            if len(remaining_deviations) >= int(count):
-                selected_deviations = self._select_lane_subset(remaining_deviations, int(count), branch_deviation)
-            else:
-                selected_deviations = self._select_lane_subset_with_usage(
-                    upstream_deviations,
-                    int(count),
-                    branch_deviation,
-                    usage_counts,
-                )
-            self._used_lane_deviations_by_start.setdefault(start_vid, []).extend(selected_deviations)
-            if prefix_key is not None:
-                self._lane_deviations_by_prefix[prefix_key] = selected_deviations
-            self._lane_deviations_by_edge[(start_vid, end_vid)] = selected_deviations
-            return selected_deviations
-
-        path_to_ont = self.dbc.get_path_to_bus(start_vid, ont_vertice)
-        if len(path_to_ont) < 2:
-            self._lane_deviations_by_edge[(start_vid, end_vid)] = centered_deviations
-            return centered_deviations
-
-        upstream_start_vid = int(path_to_ont[1])
-        upstream_deviations = self._lane_deviations_by_edge.get((upstream_start_vid, start_vid))
-        if upstream_deviations and len(upstream_deviations) >= int(count):
-            usage_counts = Counter(
-                round(float(deviation), 6)
-                for deviation in self._used_lane_deviations_by_start.get(start_vid, [])
-            )
-            remaining_deviations = [
-                deviation
-                for deviation in upstream_deviations
-                if not self._lane_deviation_in_use(self._used_lane_deviations_by_start.get(start_vid, []), deviation)
-            ]
-            if len(remaining_deviations) >= int(count):
-                selected_deviations = self._select_lane_subset(remaining_deviations, int(count), branch_deviation)
-            else:
-                selected_deviations = self._select_lane_subset_with_usage(
-                    upstream_deviations,
-                    int(count),
-                    branch_deviation,
-                    usage_counts,
-                )
-            self._used_lane_deviations_by_start.setdefault(start_vid, []).extend(selected_deviations)
-            if prefix_key is not None:
-                self._lane_deviations_by_prefix[prefix_key] = selected_deviations
-            self._lane_deviations_by_edge[(start_vid, end_vid)] = selected_deviations
-            return selected_deviations
-
-        if prefix_key is not None:
-            self._lane_deviations_by_prefix[prefix_key] = centered_deviations
-        self._lane_deviations_by_edge[(start_vid, end_vid)] = centered_deviations
-        return centered_deviations
-
-    def _infer_turn_lane_preference(
-        self,
-        plz: int,
-        kcid: int,
-        bcid: int,
-        start_vid: int,
-        line_geodata: list[tuple[float, float]],
-        default_deviation: float,
-    ) -> float:
-        if len(line_geodata) < 2:
-            return default_deviation
-
-        self.dbc.cur.execute(
-            """
-            SELECT ST_X(ST_Transform(ST_PointN(lr.geom, GREATEST(ST_NPoints(lr.geom) - 1, 1)), 4326)),
-                   ST_Y(ST_Transform(ST_PointN(lr.geom, GREATEST(ST_NPoints(lr.geom) - 1, 1)), 4326)),
-                   ST_X(ST_Transform(ST_EndPoint(lr.geom), 4326)),
-                   ST_Y(ST_Transform(ST_EndPoint(lr.geom), 4326))
-            FROM pylovo.lines_result lr
-            JOIN pylovo.grid_result gr ON gr.grid_result_id = lr.grid_result_id
-            WHERE gr.version_id = %(v)s
-              AND gr.plz = %(p)s
-              AND gr.kcid = %(k)s
-              AND gr.bcid = %(b)s
-              AND lr.to_bus = %(node)s
-            ORDER BY lr.lines_result_id
-            LIMIT 1
-            """,
-            {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "node": start_vid},
-        )
-        incoming_segment = self.dbc.cur.fetchone()
-        if incoming_segment is None:
-            path_to_ont = self.dbc.get_path_to_bus(start_vid, self.dbc.get_ont_info_from_bc(plz, kcid, bcid)["ont_vertice_id"])
-            if len(path_to_ont) < 2:
-                return default_deviation
-
-            upstream_vid = int(path_to_ont[1])
-            upstream_coords = self._get_line_node_coordinates(upstream_vid, f"Connection Nodebus {upstream_vid}")
-            start_coords = self._get_line_node_coordinates(start_vid, f"Connection Nodebus {start_vid}")
-            incoming_angle = np.arctan2(
-                float(start_coords[1]) - float(upstream_coords[1]),
-                float(start_coords[0]) - float(upstream_coords[0]),
-            )
-        else:
-            incoming_prev_x, incoming_prev_y, incoming_end_x, incoming_end_y = incoming_segment
-            incoming_angle = np.arctan2(
-                float(incoming_end_y) - float(incoming_prev_y),
-                float(incoming_end_x) - float(incoming_prev_x),
-            )
-
-        outgoing_angle = np.arctan2(
-            float(line_geodata[1][1]) - float(line_geodata[0][1]),
-            float(line_geodata[1][0]) - float(line_geodata[0][0]),
-        )
-        signed_turn = ((outgoing_angle - incoming_angle + np.pi) % (2 * np.pi)) - np.pi
-        return float(signed_turn / np.pi)
 
     @staticmethod
     def _extract_cable_names(cable_df: pd.DataFrame) -> list[str]:
@@ -619,7 +393,7 @@ class CableInstaller:
 
     def create_line_start_to_lv_bus(self, plz: int, bcid: int, kcid: int,
                                      branch_start_node: int,
-                                     branch_deviation: float, vertices_dict: dict, cable: str, count: int,
+                                     vertices_dict: dict, cable: str, count: int,
                                      ont_vertice: int) -> int:
         """Create line from branch start to LV bus."""
         node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
@@ -651,21 +425,6 @@ class CableInstaller:
         self.backend.create_component(line_spec)
 
         line_name = f"L{branch_start_node}"[:15]
-        prefix_key = None
-        if len(node_path_list) > 1:
-            prefix_key = (ont_vertice, int(node_path_list[-2]))
-        lane_preference = branch_deviation
-        lane_deviations = self._resolve_lane_deviations(
-            plz,
-            kcid,
-            bcid,
-            ont_vertice,
-            branch_start_node,
-            count,
-            lane_preference,
-            ont_vertice,
-            prefix_key=prefix_key,
-        )
         self.dbc.insert_lines(
             geom=line_geodata, plz=plz, bcid=bcid, kcid=kcid, line_name=line_name,
             std_type=cable,
@@ -673,26 +432,14 @@ class CableInstaller:
             to_bus=branch_start_node,
             length_km=length_km,
             parallel=count,
-            anchor_start_point=True,
-            lane_deviations=lane_deviations,
         )
 
         return length
 
-    def deviate_bus_geodata(self, branch_node_list: list, branch_deviation: float):
-        """Update bus geodata for visualization (no-op for backends without geodata)."""
-        offset = self._VISUAL_BRANCH_OFFSET_STEP * branch_deviation
-        for node in branch_node_list:
-            bus_name = f"Connection Nodebus {node}"
-            coords = self.backend.get_bus_coordinates(bus_name)
-            if coords:
-                self.backend.set_bus_coordinates(bus_name, coords[0] + offset, coords[1])
-
     def create_line_node_to_node(self, plz: int, kcid: int, bcid: int,
-                                  branch_node_list: list, branch_deviation: float,
+                                  branch_node_list: list,
                                   vertices_dict: dict, local_length_dict: dict,
-                                  cable: str, ont_vertice: int, count: float,
-                                  lane_deviations_override: list[float] | None = None) -> dict:
+                                  cable: str, ont_vertice: int, count: float) -> dict:
         """Create lines between connection nodes."""
         for i in range(len(branch_node_list) - 1):
             node_path_list = self.dbc.get_path_to_bus(branch_node_list[i], ont_vertice)
@@ -729,37 +476,6 @@ class CableInstaller:
             self.backend.create_component(line_spec)
 
             line_name = f"L{end_vid}"[:15]
-            prefix_key = None
-            if len(node_path_list) > 1:
-                prefix_key = (start_vid, int(node_path_list[1]))
-            if lane_deviations_override is not None:
-                lane_deviations = list(lane_deviations_override)
-                self._used_lane_deviations_by_start.setdefault(start_vid, []).extend(lane_deviations)
-                if prefix_key is not None:
-                    self._lane_deviations_by_prefix[prefix_key] = lane_deviations
-                self._lane_deviations_by_edge[(start_vid, end_vid)] = lane_deviations
-            else:
-                lane_preference = branch_deviation
-                if start_vid != ont_vertice:
-                    lane_preference = self._infer_turn_lane_preference(
-                        plz,
-                        kcid,
-                        bcid,
-                        start_vid,
-                        line_geodata,
-                        branch_deviation,
-                    )
-                lane_deviations = self._resolve_lane_deviations(
-                    plz,
-                    kcid,
-                    bcid,
-                    start_vid,
-                    end_vid,
-                    int(count),
-                    lane_preference,
-                    ont_vertice,
-                    prefix_key=prefix_key,
-                )
             self.dbc.insert_lines(
                 geom=line_geodata, plz=plz, bcid=bcid, kcid=kcid, line_name=line_name,
                 std_type=cable,
@@ -767,9 +483,6 @@ class CableInstaller:
                 to_bus=end_vid,
                 length_km=length_km,
                 parallel=count,
-                anchor_start_point=start_vid == ont_vertice,
-                anchor_end_point=True,
-                lane_deviations=lane_deviations,
             )
 
         return local_length_dict

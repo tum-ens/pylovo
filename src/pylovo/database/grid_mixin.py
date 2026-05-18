@@ -11,66 +11,8 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 
 
 class GridMixin(BaseMixin, ABC):
-    _VISUAL_PARALLEL_OFFSET_STEP = 1e-6
-    _VISUAL_PARALLEL_OFFSET_RATIO_Y = 0.5
-
     def __init__(self):
         super().__init__()
-
-    @staticmethod
-    def _centered_lane_deviations(parallel: int) -> list[float]:
-        center_offset = (parallel - 1) / 2
-        return [float(index) - center_offset for index in range(parallel)]
-
-    def _translate_visual_line_geometry(
-        self,
-        geom: list,
-        deviation: float,
-        anchor_start_point: bool = False,
-        anchor_end_point: bool = False,
-    ) -> LineString:
-        offset_x = self._VISUAL_PARALLEL_OFFSET_STEP * deviation
-        offset_y = self._VISUAL_PARALLEL_OFFSET_STEP * self._VISUAL_PARALLEL_OFFSET_RATIO_Y * deviation
-        translated_coords = []
-        for index, (x, y) in enumerate(geom):
-            if anchor_start_point and index == 0:
-                translated_coords.append((x, y))
-                continue
-            if anchor_end_point and index == len(geom) - 1:
-                translated_coords.append((x, y))
-                continue
-            translated_coords.append((x + offset_x, y + offset_y))
-        return LineString(translated_coords)
-
-    def _build_visual_line_geometries(
-        self,
-        geom: list,
-        parallel: int,
-        anchor_start_point: bool = False,
-        anchor_end_point: bool = False,
-        lane_deviations: list[float] | None = None,
-    ) -> list[LineString]:
-        base_line = LineString(geom)
-        if parallel <= 1 or len(geom) < 2 or base_line.length == 0:
-            return [base_line]
-
-        visual_lines = []
-        effective_lane_deviations = lane_deviations or self._centered_lane_deviations(parallel)
-        for deviation in effective_lane_deviations:
-            if abs(deviation) < 1e-12:
-                visual_lines.append(base_line)
-                continue
-
-            visual_lines.append(
-                self._translate_visual_line_geometry(
-                    geom,
-                    deviation,
-                    anchor_start_point=anchor_start_point,
-                    anchor_end_point=anchor_end_point,
-                )
-            )
-
-        return visual_lines
 
     def fetch_cables(self) -> list:
         query = f"""SELECT name,
@@ -207,9 +149,7 @@ class GridMixin(BaseMixin, ABC):
         return way_list
 
     def insert_lines(self, geom: list, plz: int, bcid: int, kcid: int, line_name: str, std_type: str, from_bus: int,
-            to_bus: int, length_km: float, parallel: int = 1, anchor_start_point: bool = False,
-            anchor_end_point: bool = False,
-            lane_deviations: list[float] | None = None) -> None:
+            to_bus: int, length_km: float, parallel: int = 1) -> None:
         """writes lines / cables that belong to a network into the database"""
         if not getattr(self, "_lines_result_parallel_schema_checked", False):
             self.cur.execute("ALTER TABLE pylovo.lines_result ADD COLUMN IF NOT EXISTS parallel integer;")
@@ -260,18 +200,10 @@ class GridMixin(BaseMixin, ABC):
                                           %(to_bus)s,
                                           %(parallel)s,
                                           %(length_km)s); """
-        for visual_geometry in self._build_visual_line_geometries(
-            geom,
-            max(1, int(parallel)),
-            anchor_start_point=anchor_start_point,
-            anchor_end_point=anchor_end_point,
-            lane_deviations=lane_deviations,
-        ):
-            self.cur.execute(line_insertion_query,
-                             {"v": VERSION_ID, "geom": visual_geometry.wkb_hex, "plz": int(plz), "bcid": int(bcid),
-                                 "kcid": int(kcid), "line_name": line_name, "std_type": std_type,
-                                 "from_bus": int(from_bus), "to_bus": int(to_bus), "parallel": int(parallel),
-                                 "length_km": length_km})
+        self.cur.execute(line_insertion_query,
+                         {"v": VERSION_ID, "geom": LineString(geom).wkb_hex, "plz": int(plz), "bcid": int(bcid),
+                          "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
+                          "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km})
 
     def is_grid_generated(self, plz: int):
         """
