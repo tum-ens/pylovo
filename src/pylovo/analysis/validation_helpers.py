@@ -57,7 +57,7 @@ def get_bus_line_geo(net, net_index: int, projection: str):
     Args:
         net: Pandapower network
         net_index: Index identifier for the network
-        projection: EPSG projection string (e.g., "epsg:3035")
+        projection: EPSG projection string (e.g., "epsg:25832")
 
     Returns:
         Tuple of (line_geodataframe, bus_geodataframe)

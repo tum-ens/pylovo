@@ -521,11 +521,11 @@ class ClusteringMixin(BaseMixin, ABC):
         
         # Check if there's a transformer with a specific capacity in this area
         # Use a more robust approach to handle GEOS topology issues
-        transformer_query = """
+        transformer_query = f"""
             SELECT transformer_rated_power
             FROM pylovo.transformers t
             WHERE t.transformer_rated_power IS NOT NULL
-            AND ST_Intersects(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, 3035)), 0)))
+            AND ST_Intersects(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)))
             LIMIT 1
         """
         
@@ -538,11 +538,11 @@ class ClusteringMixin(BaseMixin, ABC):
         except Exception as e:
             # If ST_Intersects fails due to topology issues, try with a small buffer
             try:
-                fallback_query = """
+                fallback_query = f"""
                     SELECT transformer_rated_power
                     FROM pylovo.transformers t
                     WHERE t.transformer_rated_power IS NOT NULL
-                    AND ST_DWithin(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, 3035)), 0)), 1.0)
+                    AND ST_DWithin(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)), 1.0)
                     LIMIT 1
                 """
                 self.cur.execute(fallback_query, {"cluster_geom_wkt": cluster_geom_wkt})
@@ -860,8 +860,8 @@ class ClusteringMixin(BaseMixin, ABC):
                    AND plz = %(p)s \
                    AND kcid = %(k)s \
                    AND bcid = %(b)s),
-                (SELECT geom FROM ways_tem_vertices_pgr WHERE id = %(c)s),
-                'on_way');"""
+                                (SELECT geom FROM ways_tem_vertices_pgr WHERE id = %(c)s),
+                                'on_way');"""
         params = {"v": VERSION_ID, "c": connection_id, "b": bcid, "k": kcid, "p": plz}
 
         self.cur.execute(query, params)

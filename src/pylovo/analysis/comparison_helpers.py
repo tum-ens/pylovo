@@ -14,7 +14,7 @@ from shapely.geometry import Point
 
 from pylovo.analysis.grid_analysis import compute_comparison_parameters
 from pylovo.analysis.validation_helpers import MINI_GRID_BUS_THRESHOLD
-from pylovo.config_loader import GRID_DATA_PATH, VERSION_ID
+from pylovo.config_loader import GRID_DATA_PATH, TARGET_EPSG, VERSION_ID
 from pylovo.database.config_table_structure import CREATE_QUERIES
 from pylovo.database.database_client import DatabaseClient
 
@@ -136,7 +136,7 @@ def extract_bus_geometries(net: pp.pandapowerNet) -> gpd.GeoDataFrame:
     is_geographic = (
         min(xs) >= -180 and max(xs) <= 180 and min(ys) >= -90 and max(ys) <= 90
     )
-    crs = "EPSG:4326" if is_geographic else "EPSG:32632"
+    crs = "EPSG:4326" if is_geographic else f"EPSG:{TARGET_EPSG}"
 
     return gpd.GeoDataFrame({"bus_index": indices}, geometry=geoms, crs=crs)
 
@@ -314,7 +314,7 @@ def _load_buildings_for_plz(dbc: DatabaseClient, plz: int) -> gpd.GeoDataFrame |
         return None
 
     buildings_df["geometry"] = buildings_df["wkt"].apply(wkt.loads)
-    return gpd.GeoDataFrame(buildings_df, geometry="geometry", crs="EPSG:3035")
+    return gpd.GeoDataFrame(buildings_df, geometry="geometry", crs=f"EPSG:{TARGET_EPSG}")
 
 
 def _infer_real_grid_consumer_buses(net: pp.pandapowerNet, buildings_gdf: gpd.GeoDataFrame | None) -> list[int] | None:
@@ -333,7 +333,7 @@ def _infer_real_grid_consumer_buses(net: pp.pandapowerNet, buildings_gdf: gpd.Ge
         return None
 
     if buildings_gdf.crs is None:
-        buildings_gdf = buildings_gdf.set_crs(epsg=3035, allow_override=True)
+        buildings_gdf = buildings_gdf.set_crs(epsg=TARGET_EPSG, allow_override=True)
 
     if bus_gdf.crs.to_string() != buildings_gdf.crs.to_string():
         bus_gdf = bus_gdf.to_crs(buildings_gdf.crs)

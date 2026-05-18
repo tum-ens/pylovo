@@ -1,5 +1,6 @@
 import traceback
 import warnings
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -904,7 +905,7 @@ class GridGenerator:
         installer: CableInstaller,
         kcid: int,
         bcid: int,
-    ) -> list[dict[str, int | list[int]]]:
+    ) -> list[dict[str, int | float | list[int]]]:
         """Freeze the finalized branch topology before any feeder cable is sized.
 
         The previous implementation sized and installed branch backbones inside the
@@ -917,7 +918,6 @@ class GridGenerator:
         branch tree is known.
         """
         branch_plans: list[dict[str, int | list[int]]] = []
-        branch_deviation = 0
         branch_index = 0
         connection_node_list = list(connection_nodes)
         installed_connection_nodes = set()
@@ -951,7 +951,6 @@ class GridGenerator:
             branch_plans.append(
                 {
                     "branch_index": branch_index,
-                    "branch_deviation": branch_deviation,
                     "attachment_node": attachment_node,
                     "branch_nodes": list(branch_node_list),
                 }
@@ -961,9 +960,58 @@ class GridGenerator:
                 connection_node_list.remove(vertice)
             installed_connection_nodes.update(branch_node_list)
 
-            installer.deviate_bus_geodata(branch_node_list, branch_deviation)
-            branch_deviation += 1
             branch_index += 1
+
+        center_offset = (len(branch_plans) - 1) / 2 if branch_plans else 0
+        for plan in branch_plans:
+            branch_deviation = float(plan["branch_index"]) - center_offset
+            plan["branch_deviation"] = branch_deviation
+            installer.deviate_bus_geodata(list(plan["branch_nodes"]), branch_deviation)
+
+        plans_by_attachment_node: dict[int, list[dict[str, int | float | list[int]]]] = {}
+        for plan in branch_plans:
+            attachment_node = int(plan["attachment_node"])
+            branch_start_node = int(list(plan["branch_nodes"])[-1])
+            attachment_path = self.dbc.get_path_to_bus(branch_start_node, attachment_node)
+            attachment_first_step = branch_start_node
+            if len(attachment_path) >= 2:
+                attachment_first_step = int(attachment_path[-2])
+
+            attachment_coords = installer._get_line_node_coordinates(
+                attachment_node,
+                f"Connection Nodebus {attachment_node}",
+            )
+            first_step_coords = installer._get_line_node_coordinates(
+                attachment_first_step,
+                f"Connection Nodebus {attachment_first_step}",
+            )
+            plan["attachment_first_step"] = attachment_first_step
+            plan["attachment_angle"] = float(
+                np.arctan2(
+                    first_step_coords[1] - attachment_coords[1],
+                    first_step_coords[0] - attachment_coords[0],
+                )
+            )
+            plans_by_attachment_node.setdefault(attachment_node, []).append(plan)
+
+        for grouped_plans in plans_by_attachment_node.values():
+            plans_by_first_step: dict[int, list[dict[str, int | float | list[int]]]] = {}
+            for plan in grouped_plans:
+                attachment_first_step = int(plan["attachment_first_step"])
+                plans_by_first_step.setdefault(attachment_first_step, []).append(plan)
+
+            ordered_groups = sorted(
+                plans_by_first_step.values(),
+                key=lambda grouped: (
+                    float(grouped[0]["attachment_angle"]),
+                    min(int(plan["branch_index"]) for plan in grouped),
+                ),
+            )
+            attachment_center_offset = (len(ordered_groups) - 1) / 2
+            for local_index, grouped in enumerate(ordered_groups):
+                attachment_deviation = float(local_index) - attachment_center_offset
+                for plan in grouped:
+                    plan["attachment_deviation"] = attachment_deviation
 
         return branch_plans
 
@@ -982,6 +1030,7 @@ class GridGenerator:
         """Install planned backbone lines on the finalized split tree."""
         children_by_node: dict[int, list[int]] = {}
         downstream_nodes_by_node: dict[int, list[int]] = {}
+        edge_jobs: list[dict[str, int | float | str]] = []
 
         for plan in branch_plans:
             branch_nodes = list(plan["branch_nodes"])
@@ -1012,31 +1061,10 @@ class GridGenerator:
 
         for plan in branch_plans:
             branch_nodes = list(plan["branch_nodes"])
-            branch_deviation = int(plan["branch_deviation"])
+            branch_deviation = float(plan["branch_deviation"])
+            attachment_deviation = float(plan.get("attachment_deviation", branch_deviation))
             branch_index = int(plan["branch_index"])
             attachment_node = int(plan["attachment_node"])
-
-            for index in range(len(branch_nodes) - 1):
-                parent = int(branch_nodes[index + 1])
-                child = int(branch_nodes[index])
-                sim_load = utils.simultaneousPeakLoad(
-                    buildings_df, consumer_df, downstream_nodes_by_node[child]
-                )
-                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-                edge_distance = vertices_dict[child] - vertices_dict[parent]
-                cable, count = installer.find_minimal_available_cable(Imax, edge_distance)
-                local_length_dict = installer.create_line_node_to_node(
-                    self.plz,
-                    kcid,
-                    bcid,
-                    [child, parent],
-                    branch_deviation,
-                    vertices_dict,
-                    local_length_dict,
-                    cable,
-                    ont_vertice,
-                    count,
-                )
 
             branch_start_node = int(branch_nodes[-1])
             if branch_start_node == ont_vertice:
@@ -1045,12 +1073,18 @@ class GridGenerator:
                 )
                 Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3)) if sim_load > 0 else 0.0
                 cable, count = installer.find_minimal_available_cable(Imax)
-                installer.create_line_ont_to_lv_bus(
-                    self.plz, bcid, kcid, branch_start_node, branch_deviation, cable, count, ont_vertice
-                )
-                self.logger.debug(
-                    f"Branch {branch_index} connected directly to transformer after two-pass sizing "
-                    f"(cable={cable}, parallels={count}, load_kw={sim_load:.2f})."
+                edge_jobs.append(
+                    {
+                        "kind": "ont_to_lv_bus",
+                        "branch_index": branch_index,
+                        "branch_start_node": branch_start_node,
+                        "start_node": ont_vertice,
+                        "end_node": branch_start_node,
+                        "cable": cable,
+                        "count": count,
+                        "sim_load": sim_load,
+                        "sort_distance": 0.0,
+                    }
                 )
             elif attachment_node != ont_vertice:
                 sim_load = utils.simultaneousPeakLoad(
@@ -1059,21 +1093,28 @@ class GridGenerator:
                 Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
                 edge_distance = vertices_dict[branch_start_node] - vertices_dict[attachment_node]
                 cable, count = installer.find_minimal_available_cable(Imax, edge_distance)
-                local_length_dict = installer.create_line_node_to_node(
-                    self.plz,
-                    kcid,
-                    bcid,
-                    [branch_start_node, attachment_node],
-                    branch_deviation,
-                    vertices_dict,
-                    local_length_dict,
-                    cable,
-                    ont_vertice,
-                    count,
-                )
-                self.logger.debug(
-                    f"Branch {branch_index} attached to finalized split node {attachment_node} after two-pass sizing "
-                    f"(cable={cable}, parallels={count}, load_kw={sim_load:.2f})."
+                export_path = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
+                if attachment_node not in export_path:
+                    export_path = self.dbc.get_path_to_bus(branch_start_node, attachment_node)
+                export_path = export_path[: export_path.index(attachment_node) + 1]
+                export_path.reverse()
+                export_start_node = int(export_path[0])
+                export_end_node = int(export_path[-1])
+                edge_jobs.append(
+                    {
+                        "kind": "node_to_node",
+                        "branch_index": branch_index,
+                        "start_node": export_start_node,
+                        "end_node": export_end_node,
+                        "path_nodes": list(export_path),
+                        "prefix_key": (export_start_node, int(export_path[1])) if len(export_path) > 1 else (export_start_node, export_end_node),
+                        "branch_deviation": attachment_deviation,
+                        "cable": cable,
+                        "count": count,
+                        "sim_load": sim_load,
+                        "sort_distance": float(vertices_dict[export_end_node]),
+                        "is_attachment_edge": 1,
+                    }
                 )
             else:
                 sim_load = utils.simultaneousPeakLoad(
@@ -1081,15 +1122,233 @@ class GridGenerator:
                 )
                 Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
                 cable, count = installer.find_minimal_available_cable(Imax, vertices_dict[branch_start_node])
+                edge_jobs.append(
+                    {
+                        "kind": "start_to_lv_bus",
+                        "branch_index": branch_index,
+                        "branch_start_node": branch_start_node,
+                        "start_node": ont_vertice,
+                        "end_node": branch_start_node,
+                        "branch_deviation": attachment_deviation,
+                        "cable": cable,
+                        "count": count,
+                        "sim_load": sim_load,
+                        "sort_distance": float(vertices_dict[branch_start_node]),
+                    }
+                )
+
+            for index in range(len(branch_nodes) - 2, -1, -1):
+                parent = int(branch_nodes[index + 1])
+                child = int(branch_nodes[index])
+                sim_load = utils.simultaneousPeakLoad(
+                    buildings_df, consumer_df, downstream_nodes_by_node[child]
+                )
+                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
+                edge_distance = vertices_dict[child] - vertices_dict[parent]
+                cable, count = installer.find_minimal_available_cable(Imax, edge_distance)
+                export_path = self.dbc.get_path_to_bus(child, ont_vertice)
+                if parent not in export_path:
+                    export_path = self.dbc.get_path_to_bus(child, parent)
+                export_path = export_path[: export_path.index(parent) + 1]
+                export_path.reverse()
+                export_start_node = int(export_path[0])
+                export_end_node = int(export_path[-1])
+                edge_jobs.append(
+                    {
+                        "kind": "node_to_node",
+                        "branch_index": branch_index,
+                        "start_node": export_start_node,
+                        "end_node": export_end_node,
+                        "path_nodes": list(export_path),
+                        "prefix_key": (export_start_node, int(export_path[1])) if len(export_path) > 1 else (export_start_node, export_end_node),
+                        "branch_deviation": branch_deviation,
+                        "cable": cable,
+                        "count": count,
+                        "sim_load": sim_load,
+                        "sort_distance": float(vertices_dict[export_end_node]),
+                        "is_attachment_edge": 0,
+                    }
+                )
+
+        pending_jobs = list(edge_jobs)
+        ordered_jobs: list[dict[str, int | float | str]] = []
+        while pending_jobs:
+            ready_jobs = [
+                job
+                for job in pending_jobs
+                if not any(
+                    int(other_job.get("end_node", -1)) == int(job.get("start_node", -2))
+                    for other_job in pending_jobs
+                    if other_job is not job
+                )
+            ]
+            if not ready_jobs:
+                ready_jobs = list(pending_jobs)
+
+            ready_jobs.sort(
+                key=lambda job: (
+                    float(job["sort_distance"]),
+                    -int(job.get("is_attachment_edge", 0)),
+                    -int(job["count"]),
+                    int(job["branch_index"]),
+                    int(job.get("branch_start_node", job.get("start_node", 0))),
+                )
+            )
+            next_job = ready_jobs[0]
+            ordered_jobs.append(next_job)
+            pending_jobs.remove(next_job)
+
+        for job in ordered_jobs:
+            kind = str(job["kind"])
+            if kind != "node_to_node":
+                continue
+            start_node = int(job["start_node"])
+            end_node = int(job["end_node"])
+            count = int(job["count"])
+            existing_deviations = installer._lane_deviations_by_edge.get((start_node, end_node))
+            candidate_deviations = self.dbc._centered_lane_deviations(count)
+            if existing_deviations is None or len(candidate_deviations) > len(existing_deviations):
+                installer._lane_deviations_by_edge[(start_node, end_node)] = candidate_deviations
+
+        lane_pool_by_node: dict[int, list[float]] = {}
+        for job in ordered_jobs:
+            end_node = int(job["end_node"])
+            count = int(job["count"])
+            candidate_deviations = self.dbc._centered_lane_deviations(count)
+            existing_deviations = lane_pool_by_node.get(end_node)
+            if existing_deviations is None or len(candidate_deviations) > len(existing_deviations):
+                lane_pool_by_node[end_node] = candidate_deviations
+
+        def _planned_turn_preference(start_node: int, path_nodes: list[int], fallback: float) -> float:
+            if len(path_nodes) < 2:
+                return fallback
+
+            path_to_ont = self.dbc.get_path_to_bus(start_node, ont_vertice)
+            if len(path_to_ont) < 2:
+                return fallback
+
+            upstream_node = int(path_to_ont[1])
+            first_step = int(path_nodes[1])
+            start_coords = installer._get_line_node_coordinates(start_node, f"Connection Nodebus {start_node}")
+            upstream_coords = installer._get_line_node_coordinates(upstream_node, f"Connection Nodebus {upstream_node}")
+            first_step_coords = installer._get_line_node_coordinates(first_step, f"Connection Nodebus {first_step}")
+            incoming_angle = float(np.arctan2(start_coords[1] - upstream_coords[1], start_coords[0] - upstream_coords[0]))
+            outgoing_angle = float(np.arctan2(first_step_coords[1] - start_coords[1], first_step_coords[0] - start_coords[0]))
+            signed_turn = ((outgoing_angle - incoming_angle + np.pi) % (2 * np.pi)) - np.pi
+            return float(signed_turn / np.pi)
+
+        jobs_by_start_node: dict[int, list[dict[str, int | float | str | list[int] | tuple[int, int] | list[float]]]] = {}
+        for job in ordered_jobs:
+            if str(job["kind"]) != "node_to_node":
+                continue
+            start_node = int(job["start_node"])
+            if start_node == ont_vertice:
+                continue
+            jobs_by_start_node.setdefault(start_node, []).append(job)
+
+        for start_node, start_jobs in jobs_by_start_node.items():
+            available_deviations = list(lane_pool_by_node.get(start_node, [0.0]))
+            usage_counts: Counter[float] = Counter()
+            jobs_by_prefix: dict[tuple[int, int], list[dict[str, int | float | str | list[int] | tuple[int, int] | list[float]]]] = {}
+            for job in start_jobs:
+                prefix_key = tuple(job["prefix_key"])
+                jobs_by_prefix.setdefault(prefix_key, []).append(job)
+
+            grouped_jobs = list(jobs_by_prefix.values())
+            grouped_jobs.sort(
+                key=lambda grouped: (
+                    -max(int(job["count"]) for job in grouped),
+                    -abs(_planned_turn_preference(int(grouped[0]["start_node"]), list(grouped[0]["path_nodes"]), float(grouped[0]["branch_deviation"]))),
+                    min(int(job["branch_index"]) for job in grouped),
+                )
+            )
+
+            for grouped in grouped_jobs:
+                required_count = max(int(job["count"]) for job in grouped)
+                preferred_deviation = _planned_turn_preference(
+                    int(grouped[0]["start_node"]),
+                    list(grouped[0]["path_nodes"]),
+                    float(grouped[0]["branch_deviation"]),
+                )
+                remaining_deviations = [
+                    deviation
+                    for deviation in available_deviations
+                    if usage_counts.get(round(float(deviation), 6), 0) == 0
+                ]
+                if len(remaining_deviations) >= required_count:
+                    selected_deviations = installer._select_lane_subset(
+                        remaining_deviations,
+                        required_count,
+                        preferred_deviation,
+                    )
+                else:
+                    selected_deviations = installer._select_lane_subset_with_usage(
+                        available_deviations,
+                        required_count,
+                        preferred_deviation,
+                        usage_counts,
+                    )
+                usage_counts.update(round(float(deviation), 6) for deviation in selected_deviations)
+                for job in grouped:
+                    job["lane_deviations"] = list(selected_deviations)
+
+        for job in ordered_jobs:
+            kind = str(job["kind"])
+            branch_index = int(job["branch_index"])
+            cable = str(job["cable"])
+            count = int(job["count"])
+            sim_load = float(job["sim_load"])
+
+            if kind == "ont_to_lv_bus":
+                branch_start_node = int(job["branch_start_node"])
+                installer.create_line_ont_to_lv_bus(
+                    self.plz, bcid, kcid, branch_start_node, cable, count, ont_vertice
+                )
+                self.logger.debug(
+                    f"Branch {branch_index} connected directly to transformer after two-pass sizing "
+                    f"(cable={cable}, parallels={count}, load_kw={sim_load:.2f})."
+                )
+            elif kind == "start_to_lv_bus":
+                branch_start_node = int(job["branch_start_node"])
+                branch_deviation = float(job["branch_deviation"])
                 length = installer.create_line_start_to_lv_bus(
-                    self.plz, bcid, kcid, branch_start_node, branch_deviation,
-                    vertices_dict, cable, count, ont_vertice
+                    self.plz,
+                    bcid,
+                    kcid,
+                    branch_start_node,
+                    branch_deviation,
+                    vertices_dict,
+                    cable,
+                    count,
+                    ont_vertice,
                 )
                 local_length_dict[cable] += length
                 self.logger.debug(
                     f"Branch {branch_index} connected to LV bus after two-pass sizing "
                     f"(cable={cable}, parallels={count}, length_km={length:.4f}, load_kw={sim_load:.2f})."
                 )
+            else:
+                start_node = int(job["start_node"])
+                end_node = int(job["end_node"])
+                branch_deviation = float(job["branch_deviation"])
+                local_length_dict = installer.create_line_node_to_node(
+                    self.plz,
+                    kcid,
+                    bcid,
+                    [end_node, start_node],
+                    branch_deviation,
+                    vertices_dict,
+                    local_length_dict,
+                    cable,
+                    ont_vertice,
+                    count,
+                    lane_deviations_override=list(job.get("lane_deviations", [])) or None,
+                )
+                if int(job.get("is_attachment_edge", 0)) == 1:
+                    self.logger.debug(
+                        f"Branch {branch_index} attached to finalized split node {end_node} after two-pass sizing "
+                        f"(cable={cable}, parallels={count}, load_kw={sim_load:.2f})."
+                    )
 
         return local_length_dict
 
@@ -1183,7 +1442,6 @@ class GridGenerator:
                     self.plz,
                     bcid,
                     kcid,
-                    int(plan["branch_deviation"]),
                     list(plan["branch_nodes"]),
                     ont_vertice,
                     vertices_dict,

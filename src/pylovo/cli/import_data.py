@@ -4,15 +4,12 @@ Import operations for pylovo data.
 import argparse
 import sys
 import time
-import subprocess
 from pathlib import Path
 
 from pylovo.data_import.import_transformers import (
-    get_trafos_processed_geojson_path,
-    get_trafos_processed_3035_geojson_path,
+    get_trafos_processed_target_geojson_path,
     fetch_trafos,
     process_trafos,
-    EPSG,
 )
 import pylovo.database.database_constructor
 
@@ -27,21 +24,7 @@ def import_transformers_osm(relation_id: int):
     print("Processing transformers...")
     process_trafos(relation_id)
 
-    in_file = get_trafos_processed_geojson_path(relation_id)
-    out_file = get_trafos_processed_3035_geojson_path(relation_id)
-
-    # Convert the GeoJSON file to EPSG:3035
-    subprocess.run(
-        [
-            "ogr2ogr",
-            "-f", "GeoJSON",
-            "-s_srs", f"EPSG:{EPSG}",
-            "-t_srs", "EPSG:3035",
-            out_file,
-            in_file
-        ],
-        shell=False
-    )
+    out_file = get_trafos_processed_target_geojson_path(relation_id)
 
     # Load into database
     print("Loading transformers into database...")

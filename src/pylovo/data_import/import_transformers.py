@@ -1,9 +1,11 @@
 import os
+from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import json
 
+from pylovo.config_loader import TARGET_EPSG
 from pylovo.utils import query_overpass_for_geojson
 
 
@@ -17,7 +19,7 @@ RELATION_ID = 2145268
 AREA_THRESHOLD = 60
 MIN_DISTANCE_BETWEEN_TRAFOS = 8
 VOLTAGE_THRESHOLD = 110000
-EPSG = 32633
+EPSG = TARGET_EPSG
 
 # Get project root (supports Docker/pip install via PYLOVO_ROOT env var)
 def _get_project_root():
@@ -42,12 +44,14 @@ def get_shopping_mall_geojson_path(relation_id: int) -> str:
     return os.path.join(PROJECT_ROOT, "data", "transformer_data", "fetched_trafos", f"{relation_id}_shopping_mall.geojson")
 
 
-def get_trafos_processed_geojson_path(relation_id: int) -> str:
-    return os.path.join(PROJECT_ROOT, "data", "transformer_data", "processed_trafos", f"{relation_id}_trafos_processed.geojson")
-
-
-def get_trafos_processed_3035_geojson_path(relation_id: int) -> str:
-    return os.path.join(PROJECT_ROOT, "data", "transformer_data", "processed_trafos", f"{relation_id}_trafos_processed_3035.geojson")
+def get_trafos_processed_target_geojson_path(relation_id: int) -> str:
+    return os.path.join(
+        PROJECT_ROOT,
+        "data",
+        "transformer_data",
+        "processed_trafos",
+        f"{relation_id}_trafos_processed_{TARGET_EPSG}.geojson",
+    )
 
 
 def fetch_trafos(relation_id: int) -> None:
@@ -77,7 +81,7 @@ def fetch_trafos(relation_id: int) -> None:
 
 
 def process_trafos(relation_id: int) -> None:
-    """Process trafo data and output it as GeoJSON into output_geojson.
+    """Process trafo data and write the canonical target-CRS GeoJSON.
 
     Args:
         relation_id (int): relation ID of the area of interest that specifies which file is used as processing input
@@ -90,7 +94,7 @@ def process_trafos(relation_id: int) -> None:
 
     # the geodata imported from the geojson is imported in the CRS (Coordinate Reference System) WGS84, "EPSG","4326".
     # It has lan and lat values. For area calculations it needs to be converted into a planar projection.
-    gdf_substations = gdf_substations.to_crs(EPSG)
+    gdf_substations = gdf_substations.to_crs(epsg=TARGET_EPSG)
 
     # 1. eliminate all trafos that lay within other trafo geometries
     gdf_substations['geom_type'] = gdf_substations.geom_type
@@ -132,7 +136,7 @@ def process_trafos(relation_id: int) -> None:
 
     # 5. how many trafos are there in / next to mall?
     gdf_shopping = gpd.read_file(get_shopping_mall_geojson_path(relation_id))
-    gdf_shopping = gdf_shopping.to_crs(EPSG)
+    gdf_shopping = gdf_shopping.to_crs(epsg=TARGET_EPSG)
     union_of_shopping = gdf_shopping.geometry.unary_union
     gdf_substations['within_shopping'] = gdf_substations.within(union_of_shopping)
     gdf_substations.drop(gdf_substations[gdf_substations['within_shopping']].index, inplace=True)
@@ -152,8 +156,7 @@ def process_trafos(relation_id: int) -> None:
         gdf_substations.drop('@id', axis=1, inplace=True)
 
     # Ensure output directory exists
-    processed_dir = "data" / "transformer_data" / "processed_trafos"
+    processed_dir = Path(PROJECT_ROOT) / "data" / "transformer_data" / "processed_trafos"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    # gis_preparation geojson
-    gdf_substations.to_file(get_trafos_processed_geojson_path(relation_id), driver='GeoJSON')
+    gdf_substations.to_file(get_trafos_processed_target_geojson_path(relation_id), driver='GeoJSON')

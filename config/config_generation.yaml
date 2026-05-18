@@ -95,7 +95,7 @@ TRANSFORMER_MAPPING:
 MAX_BROWNFIELD_TRAFO_DISTANCE: 750 # Maximum assignment distance to an existing brownfield transformer
 MAX_GREENFIELD_TRAFO_DISTANCE: 900 # Maximum distance from a greenfield transformer to any cluster connection point
 # Larger components are divided by k-means clustering in roughly LARGE_COMPONENT_DIVIDER sizes
-LARGE_COMPONENT_LOWER_BOUND: 5000 # Threshold for number of buildings in a component to apply k-means clustering
-LARGE_COMPONENT_DIVIDER: 2500 # Divider to derive the target number of clusters for k-means clustering
+LARGE_COMPONENT_LOWER_BOUND: 2500 # Threshold for number of buildings in a component to apply k-means clustering
+LARGE_COMPONENT_DIVIDER: 1250 # Divider to derive the target number of clusters for k-means clustering
 # Seed for the initialization of the k-means clustering for transformer placement - keeping the same ensures deterministic behavior
 K_MEANS_SEED: 3329829316 # Has to be an integer between 0 and 4294967295

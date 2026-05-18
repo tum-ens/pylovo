@@ -159,9 +159,9 @@ class PreprocessingMixin(BaseMixin, ABC):
 
     def insert_postcode(self, postcode_row: tuple) -> None:
         """Insert a single postcode row (plz, note, qkm, population, geom) into the postcode table."""
-        query = """
+        query = f"""
             INSERT INTO pylovo.postcode (plz, note, qkm, population, geom)
-            VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, 3035))
+            VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}))
             ON CONFLICT (plz) DO NOTHING;"""
         self.cur.execute(query, postcode_row)
 
@@ -215,10 +215,10 @@ class PreprocessingMixin(BaseMixin, ABC):
         Returns:
             None
         """
-        insert_query = """
+        insert_query = f"""
             INSERT INTO buildings_tem
             (osm_id, area, type, geom, center, floors, households_per_building, address_street_id, construction_year)
-            VALUES (%s, %s, %s, ST_Transform(%s::geometry, 3035), ST_Transform(%s::geometry, 3035), %s, %s, %s, %s)
+            VALUES (%s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}), %s, %s, %s, %s)
         """
         self.cur.executemany(insert_query, buildings_data)
         # self.conn.commit() only for debugging
@@ -253,10 +253,10 @@ class PreprocessingMixin(BaseMixin, ABC):
         """)
 
         # Bulk insert all buildings with geometry transformation
-        insert_query = """
+        insert_query = f"""
             INSERT INTO testing_buildings
             (osm_id, area, type, geom, center, floors, households_per_building, address_street_id, construction_year)
-            VALUES (%s, %s, %s, ST_Transform(%s::geometry, 3035), ST_Transform(%s::geometry, 3035), %s, %s, %s, %s)
+            VALUES (%s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}), %s, %s, %s, %s)
         """
         self.cur.executemany(insert_query, buildings_data)
 
@@ -604,10 +604,10 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise ValueError("No rows to insert into ways_tem")
 
         # Normal mode - insert all ways
-        insert_query = """
+        insert_query = f"""
             INSERT INTO ways_tem
             (clazz, source, target, cost, reverse_cost, geom, way_id)
-            VALUES (%s, %s, %s, %s, %s, ST_Transform(%s::geometry, 3035), %s)
+            VALUES (%s, %s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}), %s)
         """
         self.cur.executemany(insert_query, ways_data)
         self.cur.execute("SELECT COUNT(*) FROM ways_tem")
@@ -642,13 +642,13 @@ class PreprocessingMixin(BaseMixin, ABC):
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
         self.cur.executemany(insert_query, ways_data)
-        
+
         # Filter and insert only ways that intersect with testing geometry
-        filter_query = """
+        filter_query = f"""
             INSERT INTO ways_tem
             (clazz, source, target, cost, reverse_cost, geom, way_id)
             SELECT tw.clazz, tw.source, tw.target, tw.cost, tw.reverse_cost, 
-                   ST_Transform(tw.geom, 3035), tw.way_id
+                    ST_Transform(tw.geom, {TARGET_EPSG}), tw.way_id
             FROM temp_ways tw
             CROSS JOIN pylovo.postcode p
             WHERE p.plz = %(plz)s
@@ -735,6 +735,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         edge_table = f"ways_tem_{plz}"
         vertices_table = f"{edge_table}_vertices_pgr"
 
+        # Align endpoints before extracting vertices so pgRouting does not split components on
+        # floating-point noise introduced by geometric preprocessing.
+        self.cur.execute(f"""
+            UPDATE {edge_table}
+            SET geom = ST_SnapToGrid(geom, 0.000001)
+            WHERE geom IS NOT NULL;
+        """)
+
         # Ensure source and target columns exist on the edge table
         # (required before pgr_extractVertices can work)
         self.cur.execute(f"""
@@ -808,7 +816,9 @@ class PreprocessingMixin(BaseMixin, ABC):
         query = """UPDATE buildings_tem b
                    SET vertice_id = (SELECT id
                                      FROM ways_tem_vertices_pgr AS v
-                                     WHERE ST_Equals(v.geom, b.center));"""
+                                     WHERE ST_DWithin(v.geom, b.center, 0.000001)
+                                     ORDER BY ST_Distance(v.geom, b.center)
+                                     LIMIT 1);"""
         self.cur.execute(query)
 
         query2 = """UPDATE buildings_tem b
@@ -956,9 +966,9 @@ class PreprocessingMixin(BaseMixin, ABC):
             osm_id = f"manual/{int(time.time())}"
 
         # Insert into transformers table
-        transformer_query = """
+        transformer_query = f"""
             INSERT INTO pylovo.transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, geom)
-            VALUES (%(osm_id)s, %(type)s, %(transformer_rated_power)s, %(geom_type)s, %(within_shopping)s, ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), 3035))
+            VALUES (%(osm_id)s, %(type)s, %(transformer_rated_power)s, %(geom_type)s, %(within_shopping)s, ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), {TARGET_EPSG}))
             RETURNING osm_id
         """
         self.cur.execute(transformer_query, {

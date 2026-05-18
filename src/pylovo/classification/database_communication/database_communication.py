@@ -85,7 +85,7 @@ class DatabaseCommunication:
 
     def create_wkt_element(self, geom):
         """transform geometry entry so that it can be imported to database"""
-        return WKTElement(geom.wkt, srid=3035)
+        return WKTElement(geom.wkt, srid=TARGET_EPSG)
 
     def save_transformers_with_classification_info(self) -> None:
         """write clusters of algorithms kmedoid, kmeans, gmm tied to database table transformer classified,
@@ -177,7 +177,7 @@ class DatabaseCommunication:
         # write transformer data with cluster info to database
         df_transformers_classified.to_sql(name='transformer_classified', con=self.dbc.sqla_engine,
                                           if_exists='append',
-                                          index=False, dtype={'geom': Geometry(geometry_type='POINT', srid=3035)})
+                                          index=False, dtype={'geom': Geometry(geometry_type='POINT', srid=TARGET_EPSG)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)
         self.dbc.conn.commit()

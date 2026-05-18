@@ -1,3 +1,7 @@
+# Database schema - table structure
+from pylovo.config_loader import TARGET_EPSG
+
+
 INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
 
 CREATE_QUERIES = {
@@ -45,7 +49,7 @@ CREATE_QUERIES = {
         note varchar,
         qkm double precision,
         population integer,
-        geom geometry(MultiPolygon,3035),
+        geom geometry(MultiPolygon,{TARGET_EPSG}),
         CONSTRAINT "plz-5stellig_pkey" PRIMARY KEY (postcode_id)
     )
     """,
@@ -53,7 +57,7 @@ CREATE_QUERIES = {
     CREATE TABLE IF NOT EXISTS pylovo.postcode_result (   
         version_id varchar(10) NOT NULL,
         postcode_result_plz integer NOT NULL,
-        geom geometry(MultiPolygon,3035),
+        geom geometry(MultiPolygon,{TARGET_EPSG}),
         house_distance double precision,
         avg_households_per_building double precision,
         settlement_type integer,
@@ -101,11 +105,12 @@ CREATE_QUERIES = {
     CREATE TABLE IF NOT EXISTS pylovo.lines_result (
         lines_result_id SERIAL PRIMARY KEY,
         grid_result_id bigint NOT NULL,
-        geom geometry(LineString,3035),
+        geom geometry(LineString,{TARGET_EPSG}),
         line_name varchar(50),
         std_type varchar(50),
         from_bus integer,
         to_bus integer,
+        parallel integer,
         length_km double precision,
         CONSTRAINT fk_lines_result_grid_result
             FOREIGN KEY (grid_result_id)
@@ -131,9 +136,9 @@ CREATE_QUERIES = {
         grid_result_id bigint NOT NULL,
         area double precision,
         type varchar(30),
-        geom geometry(MultiPolygon,3035),
+        geom geometry(MultiPolygon,{TARGET_EPSG}),
         households_per_building integer,
-        center geometry(Point,3035),
+        center geometry(Point,{TARGET_EPSG}),
         peak_load_in_kw double precision,
         vertice_id integer,
         floors integer,
@@ -362,13 +367,13 @@ CREATE_QUERIES = {
         transformer_rated_power integer,
         geom_type varchar,
         within_shopping boolean,
-        geom geometry(MultiPoint, 3035)
+        geom geometry(MultiPoint, {TARGET_EPSG})
     )
     """,
     "transformer_positions": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_positions (
         grid_result_id bigint PRIMARY KEY,
-        geom geometry(Point,3035),
+        geom geometry(Point,{TARGET_EPSG}),
         osm_id varchar,
         version_id varchar(10),
         "comment" varchar,
@@ -390,7 +395,7 @@ CREATE_QUERIES = {
     "transformer_classified": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_classified (
         grid_result_id bigint NOT NULL,
-        geom geometry(Point,3035),
+        geom geometry(Point,{TARGET_EPSG}),
         kmedoid_clusters integer,
         kmedoid_representative_grid bool,
         kmeans_clusters integer,
@@ -421,7 +426,7 @@ CREATE_QUERIES = {
         target integer,
         cost double precision,
         reverse_cost double precision,
-        geom geometry(LineString,3035),
+        geom geometry(LineString,{TARGET_EPSG}),
         way_id integer PRIMARY KEY
     )
     """,
@@ -433,7 +438,7 @@ CREATE_QUERIES = {
         target integer,
         cost double precision,
         reverse_cost double precision,
-        geom geometry(LineString,3035),
+        geom geometry(LineString,{TARGET_EPSG}),
         way_id integer NOT NULL,
         plz integer,
         CONSTRAINT pk_ways_result PRIMARY KEY (version_id, way_id, plz),
@@ -476,7 +481,7 @@ CREATE_QUERIES = {
                        refurb_roo double precision,
                        refurb_bas double precision,
                        refurb_win double precision,
-                       geom       geometry(MultiPolygon, 3035)
+                      geom       geometry(MultiPolygon, {TARGET_EPSG})
                    )
     """,
     "oth": """CREATE TABLE IF NOT EXISTS pylovo.oth
@@ -486,7 +491,7 @@ CREATE_QUERIES = {
                                    use        varchar(80),
                                    comment    varchar(80),
                                    free_walls integer,
-                                   geom       geometry(MultiPolygon, 3035)
+                                   geom       geometry(MultiPolygon, {TARGET_EPSG})
                                )
     """,
     "transformer_positions_with_grid": """CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_positions_with_grid AS (
@@ -564,6 +569,7 @@ CREATE_QUERIES = {
             lr.std_type,
             lr.from_bus,
             lr.to_bus,
+            lr.parallel,
             lr.length_km,
             gr.version_id, gr.kcid, gr.bcid, gr.plz
         FROM pylovo.lines_result lr
@@ -581,9 +587,9 @@ TEMP_CREATE_QUERIES = {
         osm_id varchar,
         area double precision,
         type varchar(80),
-        geom geometry(Geometry,3035),  -- needs to be geometry as multipoint & multipolygon get inserted here
+        geom geometry(Geometry,{TARGET_EPSG}),  -- needs to be geometry as multipoint & multipolygon get inserted here
         households_per_building integer,
-        center geometry(Point,3035),
+        center geometry(Point,{TARGET_EPSG}),
         peak_load_in_kw double precision,
         plz integer,
         vertice_id bigint,
@@ -601,7 +607,7 @@ TEMP_CREATE_QUERIES = {
         target integer,
         cost double precision,
         reverse_cost double precision,
-        geom geometry(LineString,3035),
+        geom geometry(LineString,{TARGET_EPSG}),
         way_id integer,
         plz integer
     )""",
@@ -620,4 +626,14 @@ REFRESH_QUERIES = {
     "lines_result_with_grid": """
     REFRESH MATERIALIZED VIEW pylovo.lines_result_with_grid
     """,
+}
+
+CREATE_QUERIES = {
+    name: query.format(TARGET_EPSG=TARGET_EPSG)
+    for name, query in CREATE_QUERIES.items()
+}
+
+TEMP_CREATE_QUERIES = {
+    name: query.format(TARGET_EPSG=TARGET_EPSG)
+    for name, query in TEMP_CREATE_QUERIES.items()
 }

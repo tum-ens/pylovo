@@ -3,7 +3,7 @@ Load polygon geometries into the pylovo database for testing purposes.
 """
 
 from pylovo.database.database_client import DatabaseClient
-from pylovo.config_loader import DBNAME, HOST, PORT
+from pylovo.config_loader import DBNAME, HOST, PORT, TARGET_EPSG
 
 # =============================================================================
 # TEST POSTCODE DATA CONFIGURATION
@@ -81,8 +81,9 @@ def load_test_postcodes():
                             ),
                             4326
                         ),
-                        3035
-               )
+                        {TARGET_EPSG}
+                    )
+                )
                 ON CONFLICT (plz) DO UPDATE SET
                     allocated_plz = EXCLUDED.allocated_plz,
                     note = EXCLUDED.note,
