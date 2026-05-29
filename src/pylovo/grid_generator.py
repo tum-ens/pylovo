@@ -963,6 +963,45 @@ class GridGenerator:
 
         return branch_plans
 
+    def _get_split_visualization_edges(
+        self,
+        branch_plans: list[dict[str, int | list[int]]],
+        ont_vertice: int,
+    ) -> list[dict[str, int]]:
+        """Return real line edges that should get shifted split-topology helpers."""
+        children_by_parent: dict[int, set[int]] = {}
+        for plan in branch_plans:
+            branch_nodes = [int(node) for node in plan["branch_nodes"]]
+            attachment_node = int(plan["attachment_node"])
+
+            for index in range(len(branch_nodes) - 1):
+                parent = int(branch_nodes[index + 1])
+                child = int(branch_nodes[index])
+                children_by_parent.setdefault(parent, set()).add(child)
+
+            branch_start_node = int(branch_nodes[-1])
+            if branch_start_node != ont_vertice:
+                children_by_parent.setdefault(attachment_node, set()).add(branch_start_node)
+
+        split_edges = []
+        for parent, children in children_by_parent.items():
+            ordered_children = sorted(children)
+            if len(ordered_children) <= 1:
+                continue
+
+            for child_index, child in enumerate(ordered_children[1:], start=1):
+                sign = 1 if child_index % 2 else -1
+                magnitude = (child_index + 1) // 2
+                split_edges.append(
+                    {
+                        "from_bus": int(parent),
+                        "to_bus": int(child),
+                        "offset_rank": int(sign * magnitude),
+                    }
+                )
+
+        return split_edges
+
     def _install_backbone_lines_two_pass(
         self,
         installer: CableInstaller,
@@ -1199,6 +1238,22 @@ class GridGenerator:
                 local_length_dict,
                 kcid,
                 bcid,
+            )
+            split_visualization_edges = self._get_split_visualization_edges(branch_plans, ont_vertice)
+            self.dbc.rebuild_lines_result_helpers_for_split_topology(
+                self.plz,
+                kcid,
+                bcid,
+                split_visualization_edges,
+            )
+            split_visualization_nodes = sorted(
+                {int(edge["from_bus"]) for edge in split_visualization_edges}
+            )
+            self.dbc.rebuild_split_points_for_split_topology(
+                self.plz,
+                kcid,
+                bcid,
+                split_visualization_nodes,
             )
 
             branch_index = len(branch_plans)

@@ -118,6 +118,53 @@ CREATE_QUERIES = {
             ON DELETE CASCADE
     )
     """,
+    "lines_result_helper": """
+    CREATE TABLE IF NOT EXISTS pylovo.lines_result_helper (
+        lines_result_helper_id SERIAL PRIMARY KEY,
+        source_lines_result_id bigint NOT NULL,
+        grid_result_id bigint NOT NULL,
+        geom geometry(Geometry,{TARGET_EPSG}),
+        line_name varchar(50),
+        std_type varchar(50),
+        from_bus integer,
+        to_bus integer,
+        parallel integer,
+        length_km double precision,
+        helper_type varchar(50),
+        CONSTRAINT fk_lines_result_helper_source_line
+            FOREIGN KEY (source_lines_result_id)
+            REFERENCES pylovo.lines_result (lines_result_id)
+            ON DELETE CASCADE,
+        CONSTRAINT fk_lines_result_helper_grid_result
+            FOREIGN KEY (grid_result_id)
+            REFERENCES pylovo.grid_result (grid_result_id)
+            ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_lines_result_helper_grid_result_id
+    ON pylovo.lines_result_helper (grid_result_id);
+    CREATE INDEX IF NOT EXISTS idx_lines_result_helper_geom
+    ON pylovo.lines_result_helper USING gist (geom)
+    """,
+    "split_points": """
+    CREATE TABLE IF NOT EXISTS pylovo.split_points (
+        split_point_id SERIAL PRIMARY KEY,
+        grid_result_id bigint NOT NULL,
+        split_bus integer NOT NULL,
+        outgoing_count integer,
+        split_type varchar(50),
+        geom geometry(Point,{TARGET_EPSG}),
+        CONSTRAINT fk_split_points_grid_result
+            FOREIGN KEY (grid_result_id)
+            REFERENCES pylovo.grid_result (grid_result_id)
+            ON DELETE CASCADE,
+        CONSTRAINT uq_split_points_grid_bus
+            UNIQUE (grid_result_id, split_bus)
+    );
+    CREATE INDEX IF NOT EXISTS idx_split_points_grid_result_id
+    ON pylovo.split_points (grid_result_id);
+    CREATE INDEX IF NOT EXISTS idx_split_points_geom
+    ON pylovo.split_points USING gist (geom)
+    """,
     "consumer_categories": """
     CREATE TABLE IF NOT EXISTS pylovo.consumer_categories (
         consumer_category_id integer PRIMARY KEY,
@@ -563,6 +610,9 @@ CREATE_QUERIES = {
     CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.lines_result_with_grid AS (
         SELECT
             lr.lines_result_id as id,
+            false AS is_helper,
+            NULL::bigint AS source_lines_result_id,
+            NULL::varchar(50) AS helper_type,
             lr.grid_result_id,
             lr.geom,
             lr.line_name,
@@ -574,6 +624,28 @@ CREATE_QUERIES = {
             gr.version_id, gr.kcid, gr.bcid, gr.plz
         FROM pylovo.lines_result lr
         JOIN pylovo.grid_result gr ON lr.grid_result_id = gr.grid_result_id
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM pylovo.lines_result_helper lrh
+            WHERE lrh.source_lines_result_id = lr.lines_result_id
+        )
+        UNION ALL
+        SELECT
+            -lrh.lines_result_helper_id as id,
+            true AS is_helper,
+            lrh.source_lines_result_id,
+            lrh.helper_type,
+            lrh.grid_result_id,
+            lrh.geom,
+            lrh.line_name,
+            lrh.std_type,
+            lrh.from_bus,
+            lrh.to_bus,
+            lrh.parallel,
+            lrh.length_km,
+            gr.version_id, gr.kcid, gr.bcid, gr.plz
+        FROM pylovo.lines_result_helper lrh
+        JOIN pylovo.grid_result gr ON lrh.grid_result_id = gr.grid_result_id
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_lines_result_with_grid_uq_id
     ON pylovo.lines_result_with_grid (id);
