@@ -18,7 +18,7 @@
  * 1. Filter buildings that need connections (peak_load_in_kw != 0)
  * 2. For each building, first try to match using address_street_id
  * 3. If no address match, find the closest suitable way within 2000 units
- * 4. Generate shortest connection line from building center to way
+ * 4. Generate shortest connection line from building centroid to way
  * 5. Calculate the exact connection point on the way geometry
  * 6. Create indexed temporary table for efficient downstream processing
  *
@@ -38,8 +38,8 @@ BEGIN
     -- These are the buildings that need to be connected to the way network
     WITH buildings AS (
         SELECT 
-            osm_id,              -- Unique building identifier
-            center,              -- Geometric center point of the building
+            objectid,              -- Unique building identifier
+            centroid,              -- Geometric centroid point of the building
             address_street_id    -- Street ID from address data
         FROM buildings_tem
         WHERE peak_load_in_kw <> 0  -- Only buildings with non-zero electrical load
@@ -50,11 +50,11 @@ BEGIN
     -- First try address-based match, then fall back to nearest way search
     closest_road AS (
         SELECT 
-            b.osm_id,                                                              -- Building identifier
-            b.center,                                                              -- Building center point
+            b.objectid,                                                              -- Building identifier
+            b.centroid,                                                              -- Building centroid point
             COALESCE(direct_way.way_id, nearest_way.way_id) AS old_way_id,        -- ID of the matched way (address-based or nearest)
             COALESCE(direct_way.geom, nearest_way.geom) AS old_geom,              -- Geometry of the matched way
-            ST_ShortestLine(b.center, COALESCE(direct_way.geom, nearest_way.geom)) AS new_geom  -- Shortest connection line from building to way
+            ST_ShortestLine(b.centroid, COALESCE(direct_way.geom, nearest_way.geom)) AS new_geom  -- Shortest connection line from building to way
         FROM buildings b
         
         -- FIRST PRIORITY: Try to find direct match using address_street_id
@@ -70,9 +70,9 @@ BEGIN
             SELECT way_id, geom
             FROM ways_tem w
             WHERE w.clazz != 110                              -- Exclude ways which are connection lines (from buildings to ways)
-              AND ST_DWithin(b.center, w.geom, 2000)         -- Limit search to 2000 units radius for performance
-              AND ST_Distance(b.center, w.geom) > 0.1        -- Exclude ways that are too close (avoid geometric errors)
-            ORDER BY b.center <-> w.geom                      -- Sort by distance using KNN operator (<->)
+              AND ST_DWithin(b.centroid, w.geom, 2000)         -- Limit search to 2000 units radius for performance
+              AND ST_Distance(b.centroid, w.geom) > 0.1        -- Exclude ways that are too close (avoid geometric errors)
+            ORDER BY b.centroid <-> w.geom                      -- Sort by distance using KNN operator (<->)
             LIMIT 1                                           -- Take only the closest way
         ) nearest_way ON (direct_way.way_id IS NULL)          -- Only execute if no direct match found
         
@@ -84,8 +84,8 @@ BEGIN
     -- Determine the exact point on each way where the building should connect
     connection_line AS (
         SELECT 
-            c.osm_id,                                           -- Building identifier
-            c.center,                                           -- Building center point
+            c.objectid,                                           -- Building identifier
+            c.centroid,                                           -- Building centroid point
             c.old_way_id,                                       -- Connected way ID
             c.old_geom,                                         -- Connected way geometry
             c.new_geom,                                         -- Connection line geometry
@@ -96,9 +96,9 @@ BEGIN
 
     -- FINAL SELECT: Create the results table with deduplication
     -- Handle cases where multiple buildings might connect to the same point
-    SELECT DISTINCT ON (osm_id)                    -- Ensure one record per building
-        osm_id,              -- Building identifier
-        center,              -- Building center point
+    SELECT DISTINCT ON (objectid)                    -- Ensure one record per building
+        objectid,              -- Building identifier
+        centroid,              -- Building centroid point
         new_geom,            -- Connection line from building to way
         old_way_id,          -- ID of way that will be connected to
         old_geom,            -- Geometry of way that will be connected to

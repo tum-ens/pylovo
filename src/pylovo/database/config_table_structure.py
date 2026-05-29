@@ -177,21 +177,70 @@ CREATE_QUERIES = {
     )
     """,
     "buildings_result": """
+    DROP MATERIALIZED VIEW IF EXISTS pylovo.buildings_result_with_grid CASCADE;
+    DO $$
+    BEGIN
+        IF to_regclass('pylovo.buildings_result') IS NOT NULL THEN
+            ALTER TABLE pylovo.buildings_result DROP CONSTRAINT IF EXISTS fk_buildings_result_type;
+            ALTER TABLE pylovo.buildings_result DROP CONSTRAINT IF EXISTS buildings_result_pkey;
+
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'osm_id')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'objectid') THEN
+                ALTER TABLE pylovo.buildings_result RENAME COLUMN osm_id TO objectid;
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'area')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'floor_area') THEN
+                ALTER TABLE pylovo.buildings_result RENAME COLUMN area TO floor_area;
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'floors')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'floor_number') THEN
+                ALTER TABLE pylovo.buildings_result RENAME COLUMN floors TO floor_number;
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'households_per_building')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'households') THEN
+                ALTER TABLE pylovo.buildings_result RENAME COLUMN households_per_building TO households;
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'center')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'centroid') THEN
+                ALTER TABLE pylovo.buildings_result RENAME COLUMN center TO centroid;
+            END IF;
+
+        END IF;
+    END $$;
+
     CREATE TABLE IF NOT EXISTS pylovo.buildings_result (
         version_id varchar(10) NOT NULL,
-        osm_id varchar NOT NULL,
+        objectid text NOT NULL,
         grid_result_id bigint NOT NULL,
-        area double precision,
+        id integer,
+        feature_id integer,
+        height double precision,
+        floor_area double precision,
+        floor_number integer,
+        building_use text,
+        building_use_id text,
+        building_type text,
         type varchar(30),
+        occupants integer,
+        households integer,
+        construction_year text,
+        postcode integer,
+        address_street_id bigint,
+        street text,
+        house_number text,
         geom geometry(MultiPolygon,{TARGET_EPSG}),
-        households_per_building integer,
-        center geometry(Point,{TARGET_EPSG}),
+        centroid geometry(Point,{TARGET_EPSG}),
+        gemeindeschluessel text,
+        changelog_id bigint,
+        assigned_way_id text,
         peak_load_in_kw double precision,
         vertice_id integer,
-        floors integer,
-        construction_year text,
         connection_point integer,
-        CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, osm_id),
+        CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid),
         CONSTRAINT fk_buildings_result_grid_result
             FOREIGN KEY (version_id, grid_result_id)
             REFERENCES pylovo.grid_result (version_id, grid_result_id)
@@ -201,6 +250,52 @@ CREATE_QUERIES = {
             REFERENCES pylovo.consumer_categories (definition)
             ON DELETE CASCADE
     );
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS id integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS feature_id integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS objectid text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS height double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_area double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_number integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use_id text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_type text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS type varchar(30);
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS occupants integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS households integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS construction_year text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS postcode integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS address_street_id bigint;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS street text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS house_number text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS geom geometry(MultiPolygon,{TARGET_EPSG});
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS centroid geometry(Point,{TARGET_EPSG});
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS gemeindeschluessel text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS changelog_id bigint;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS assigned_way_id text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS peak_load_in_kw double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS vertice_id integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS connection_point integer;
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'buildings_result_pkey'
+              AND conrelid = 'pylovo.buildings_result'::regclass
+        ) THEN
+            ALTER TABLE pylovo.buildings_result ADD CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid);
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'fk_buildings_result_type'
+              AND conrelid = 'pylovo.buildings_result'::regclass
+        ) THEN
+            ALTER TABLE pylovo.buildings_result
+                ADD CONSTRAINT fk_buildings_result_type
+                FOREIGN KEY (type)
+                REFERENCES pylovo.consumer_categories (definition)
+                ON DELETE CASCADE;
+        END IF;
+    END $$;
     CREATE INDEX IF NOT EXISTS idx_buildings_result_grid_result_id
     ON pylovo.buildings_result (grid_result_id);
     """,
@@ -596,14 +691,14 @@ CREATE_QUERIES = {
             "buildings_result_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.buildings_result_with_grid AS (
         SELECT
-            (br.version_id || '_' || br.osm_id) AS id,
+            (br.version_id || '_' || br.objectid) AS result_uid,
             br.*,
             gr.kcid, gr.bcid, gr.plz
         FROM pylovo.buildings_result br
         JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_buildings_result_with_grid_uq_id
-    ON pylovo.buildings_result_with_grid (id);
+    ON pylovo.buildings_result_with_grid (result_uid);
     CREATE INDEX IF NOT EXISTS idx_buildings_result_with_grid_geom ON pylovo.buildings_result_with_grid USING gist (geom)
     """,
     "lines_result_with_grid": """
@@ -656,21 +751,34 @@ CREATE_QUERIES = {
 TEMP_CREATE_QUERIES = {
     "buildings_tem": """CREATE TABLE IF NOT EXISTS pylovo.buildings_tem
     (
-        osm_id varchar,
-        area double precision,
-        type varchar(80),
+        id integer,
+        feature_id integer,
+        objectid text,
+        height double precision,
+        floor_area double precision,
+        floor_number integer,
+        building_use text,
+        building_use_id text,
+        building_type text,
+        occupants integer,
+        households integer,
+        construction_year text,
+        postcode integer,
+        address_street_id bigint,
+        street text,
+        house_number text,
         geom geometry(Geometry,{TARGET_EPSG}),  -- needs to be geometry as multipoint & multipolygon get inserted here
-        households_per_building integer,
-        center geometry(Point,{TARGET_EPSG}),
+        centroid geometry(Point,{TARGET_EPSG}),
+        gemeindeschluessel text,
+        changelog_id bigint,
+        assigned_way_id text,
+        type varchar(80),
         peak_load_in_kw double precision,
         plz integer,
         vertice_id bigint,
         bcid integer,
         kcid integer,
-        floors integer,
-        connection_point integer,
-        address_street_id integer,
-        construction_year text
+        connection_point integer
     )""",
     "ways_tem": """CREATE TABLE IF NOT EXISTS pylovo.ways_tem
     (

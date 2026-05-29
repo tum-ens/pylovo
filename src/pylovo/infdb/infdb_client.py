@@ -45,20 +45,33 @@ class InfdbClient:
             plz (str): The plz of the buildings to get
 
         Returns:
-            list[tuple]: A list of tuples, where each tuple contains:
-                - id (int): Unique building identifier
-                - floor_area (float): Floor area of the building in square meters
-                - building_type (str): Type of building (e.g., 'SFH' for Single Family House)
-                - geom (str): Building geometry in PostGIS EWKB format as hex string
-                - center (str): Building centroid geometry in PostGIS EWKB format as hex string
-                - floor_number (int): Number of floors in the building
-                - households (int): Number of households in the building
-                - address_street_id (int): id of the way that the building is connected to
-                - construction_year (str): Year the building was constructed
+            list[tuple]: A list of tuples containing the source building columns plus
+                a derived type used by the generation pipeline.
         """
         query = """
-            SELECT id, floor_area, COALESCE(building_type, building_use) as type,
-                   geom, ST_Centroid(geom) as center, floor_number, households, address_street_id, construction_year
+            SELECT
+                id,
+                feature_id,
+                objectid,
+                height,
+                floor_area,
+                floor_number,
+                building_use,
+                building_use_id,
+                building_type,
+                occupants,
+                households,
+                construction_year,
+                postcode,
+                address_street_id,
+                street,
+                house_number,
+                geom,
+                COALESCE(centroid, ST_Centroid(geom)) AS centroid,
+                gemeindeschluessel,
+                changelog_id,
+                assigned_way_id,
+                COALESCE(building_type, building_use) AS type
             FROM basedata.buildings
             WHERE postcode = %(p)s
             AND building_use IN ('Commercial', 'Public', 'Residential')

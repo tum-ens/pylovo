@@ -200,7 +200,7 @@ class DatabaseCommunication:
         query = """WITH buildings(grid_result_id) AS (
                        SELECT DISTINCT grid_result_id
                        FROM pylovo.buildings_result
-                       WHERE households_per_building > %(h)s
+                       WHERE households > %(h)s
                    )
                    
                    UPDATE pylovo.clustering_parameters c

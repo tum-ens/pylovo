@@ -299,7 +299,7 @@ def _load_buildings_for_plz(dbc: DatabaseClient, plz: int) -> gpd.GeoDataFrame |
     """Load building geometries for the postcode area used in real-grid comparison fallback."""
     try:
         query = f"""
-            SELECT br.osm_id, br.peak_load_in_kw, ST_AsText(br.geom) as wkt
+            SELECT br.objectid, br.peak_load_in_kw, ST_AsText(br.geom) as wkt
             FROM pylovo.buildings_result br
             JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id
             WHERE gr.plz = {plz} AND br.version_id = '{VERSION_ID}'

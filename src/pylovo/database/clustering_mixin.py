@@ -103,7 +103,7 @@ class ClusteringMixin(BaseMixin, ABC):
         :return: (selected_vertices, coordinates) - vertice IDs and coordinates of the buildings within the connected component as tuple of two np.arrays
         """
         query = """
-                SELECT vertice_id, ST_AsText(center) as wkt 
+                SELECT vertice_id, ST_AsText(centroid) as wkt 
                 FROM buildings_tem
                 WHERE vertice_id IN %(v)s
                 """
@@ -712,8 +712,8 @@ class ClusteringMixin(BaseMixin, ABC):
                         (SELECT grid_result_id
                          FROM pylovo.grid_result
                          WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(k)s AND bcid = %(count)s),
-                        (SELECT center FROM buildings_tem WHERE vertice_id = %(t)s),
-                        (SELECT osm_id FROM buildings_tem WHERE vertice_id = %(t)s),
+                        (SELECT centroid FROM buildings_tem WHERE vertice_id = %(t)s),
+                        (SELECT objectid FROM buildings_tem WHERE vertice_id = %(t)s),
                         'Normal'); \
                 """
         params = {"v": VERSION_ID, "count": count, "c": tuple(conn_id_list), "t": transformer_id, "k": kcid, "pc": plz,
@@ -722,7 +722,7 @@ class ClusteringMixin(BaseMixin, ABC):
 
     def calculate_sim_load(self, conn_list: Union[tuple, list]) -> Decimal:
         residential = """WITH residential AS
-                                  (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                                  (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                                    FROM buildings_tem AS b
                                             LEFT JOIN pylovo.consumer_categories AS c
                                                       ON b.type = c.definition
@@ -745,7 +745,7 @@ class ClusteringMixin(BaseMixin, ABC):
             residential_sim_load = 0
         # TODO can the following 4 repetitions simplified with a general function?
         commercial = """WITH commercial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                                   FROM buildings_tem AS b
                                            LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
@@ -767,7 +767,7 @@ class ClusteringMixin(BaseMixin, ABC):
             commercial_sim_load = 0
 
         public = """WITH public AS
-                             (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                             (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                               FROM buildings_tem AS b
                                        LEFT JOIN pylovo.consumer_categories AS c
                                                  ON c.definition = b.type
@@ -788,7 +788,7 @@ class ClusteringMixin(BaseMixin, ABC):
             public_sim_load = 0
 
         industrial = """WITH industrial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                                   FROM buildings_tem AS b
                                            LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type

@@ -159,14 +159,14 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         ways_table = f"ways_tem_{plz}"
 
         # finding duplicates that violate the buildings_result_pkey constraint
-        # the key of building result is (version_id, osm_id, plz)
+        # the key of building result is (version_id, objectid, plz)
         query = f"""
                 DELETE
-                FROM {buildings_table} a USING (SELECT MIN(ctid) as ctid, osm_id, plz
+                FROM {buildings_table} a USING (SELECT MIN(ctid) as ctid, objectid, plz
                                                 FROM {buildings_table}
-                                                GROUP BY (osm_id, plz)
+                                                GROUP BY (objectid, plz)
                                                 HAVING COUNT(*) > 1) b
-                WHERE a.osm_id = b.osm_id
+                WHERE a.objectid = b.objectid
                   AND a.plz = b.plz
                   AND a.ctid <> b.ctid;"""
         self.cur.execute(query)
@@ -174,10 +174,15 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         # Save building results
         query = f"""
             INSERT INTO pylovo.buildings_result
-                (version_id, osm_id, grid_result_id, area, type, geom, households_per_building, center,
-                peak_load_in_kw, vertice_id, floors, construction_year, connection_point)
-                SELECT '{VERSION_ID}' as version_id, osm_id, gr.grid_result_id, area, type, geom, households_per_building,
-                center, peak_load_in_kw, vertice_id, floors, bt.construction_year, bt.connection_point
+                (version_id, objectid, grid_result_id, id, feature_id, height, floor_area, floor_number,
+                 building_use, building_use_id, building_type, type, occupants, households, construction_year,
+                 postcode, address_street_id, street, house_number, geom, centroid, gemeindeschluessel,
+                 changelog_id, assigned_way_id, peak_load_in_kw, vertice_id, connection_point)
+                SELECT '{VERSION_ID}' as version_id, objectid, gr.grid_result_id, id, feature_id, height,
+                       floor_area, floor_number, building_use, building_use_id, building_type, type, occupants,
+                       households, bt.construction_year, postcode, address_street_id, street, house_number,
+                       geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, peak_load_in_kw,
+                       vertice_id, bt.connection_point
             FROM pylovo.{buildings_table} bt
             JOIN pylovo.grid_result gr
                 ON bt.plz = gr.plz AND bt.kcid = gr.kcid AND bt.bcid = gr.bcid and gr.version_id = '{VERSION_ID}'
