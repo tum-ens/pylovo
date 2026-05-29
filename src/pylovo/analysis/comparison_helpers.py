@@ -14,7 +14,7 @@ from shapely.geometry import Point
 
 from pylovo.analysis.grid_analysis import compute_comparison_parameters
 from pylovo.analysis.validation_helpers import MINI_GRID_BUS_THRESHOLD
-from pylovo.config_loader import GRID_DATA_PATH, VERSION_ID
+from pylovo.config_loader import GRID_DATA_PATH, TARGET_EPSG, VERSION_ID
 from pylovo.database.config_table_structure import CREATE_QUERIES
 from pylovo.database.database_client import DatabaseClient
 
@@ -38,9 +38,9 @@ def export_synthetic_comparison_parameters_for_plz(
     calculator.dbc.conn.commit()
 
     calculator.dbc.cur.execute(
-        """
+        f"""
         SELECT kcid, bcid, COALESCE(power_flow_status, 'converged')
-        FROM grid_result
+        FROM pylovo.grid_result
                 WHERE plz = %s AND version_id = %s
         ORDER BY kcid, bcid
         """,
@@ -59,7 +59,7 @@ def export_synthetic_comparison_parameters_for_plz(
             if len(net.bus) < MINI_GRID_BUS_THRESHOLD:
                 continue
             calculator.dbc.cur.execute(
-                "SELECT grid_result_id FROM grid_result WHERE plz=%s AND kcid=%s AND bcid=%s AND version_id=%s",
+                f"SELECT grid_result_id FROM pylovo.grid_result WHERE plz=%s AND kcid=%s AND bcid=%s AND version_id=%s",
                 (plz, kcid, bcid, calculator.version_id),
             )
             grid_result_id = calculator.dbc.cur.fetchone()[0]
@@ -136,7 +136,7 @@ def extract_bus_geometries(net: pp.pandapowerNet) -> gpd.GeoDataFrame:
     is_geographic = (
         min(xs) >= -180 and max(xs) <= 180 and min(ys) >= -90 and max(ys) <= 90
     )
-    crs = "EPSG:4326" if is_geographic else "EPSG:32632"
+    crs = "EPSG:4326" if is_geographic else f"EPSG:{TARGET_EPSG}"
 
     return gpd.GeoDataFrame({"bus_index": indices}, geometry=geoms, crs=crs)
 
@@ -299,9 +299,9 @@ def _load_buildings_for_plz(dbc: DatabaseClient, plz: int) -> gpd.GeoDataFrame |
     """Load building geometries for the postcode area used in real-grid comparison fallback."""
     try:
         query = f"""
-            SELECT br.osm_id, br.peak_load_in_kw, ST_AsText(br.geom) as wkt
-            FROM buildings_result br
-            JOIN grid_result gr ON br.grid_result_id = gr.grid_result_id
+            SELECT br.objectid, br.peak_load_in_kw, ST_AsText(br.geom) as wkt
+            FROM pylovo.buildings_result br
+            JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id
             WHERE gr.plz = {plz} AND br.version_id = '{VERSION_ID}'
         """
         buildings_df = pd.read_sql(query, dbc.sqla_engine)
@@ -314,7 +314,7 @@ def _load_buildings_for_plz(dbc: DatabaseClient, plz: int) -> gpd.GeoDataFrame |
         return None
 
     buildings_df["geometry"] = buildings_df["wkt"].apply(wkt.loads)
-    return gpd.GeoDataFrame(buildings_df, geometry="geometry", crs="EPSG:3035")
+    return gpd.GeoDataFrame(buildings_df, geometry="geometry", crs=f"EPSG:{TARGET_EPSG}")
 
 
 def _infer_real_grid_consumer_buses(net: pp.pandapowerNet, buildings_gdf: gpd.GeoDataFrame | None) -> list[int] | None:
@@ -333,7 +333,7 @@ def _infer_real_grid_consumer_buses(net: pp.pandapowerNet, buildings_gdf: gpd.Ge
         return None
 
     if buildings_gdf.crs is None:
-        buildings_gdf = buildings_gdf.set_crs(epsg=3035, allow_override=True)
+        buildings_gdf = buildings_gdf.set_crs(epsg=TARGET_EPSG, allow_override=True)
 
     if bus_gdf.crs.to_string() != buildings_gdf.crs.to_string():
         bus_gdf = bus_gdf.to_crs(buildings_gdf.crs)
@@ -345,8 +345,8 @@ def _infer_real_grid_consumer_buses(net: pp.pandapowerNet, buildings_gdf: gpd.Ge
 
 def _upsert_comparison_parameters(calculator: "ParameterCalculator", grid_result_id: int, params: dict) -> None:
     """Persist the active comparison metric set to ``grid_parameters``."""
-    query = """
-        INSERT INTO grid_parameters (
+    query = f"""
+        INSERT INTO pylovo.grid_parameters (
             grid_result_id,
             power_flow_status,
             feeder_lines,
@@ -386,7 +386,7 @@ def _upsert_comparison_parameters(calculator: "ParameterCalculator", grid_result
 
 def _reset_grid_parameters_table(calculator: "ParameterCalculator") -> None:
     """Recreate ``grid_parameters`` with the current comparison schema."""
-    calculator.dbc.cur.execute("DROP TABLE IF EXISTS grid_parameters")
+    calculator.dbc.cur.execute("DROP TABLE IF EXISTS pylovo.grid_parameters")
     calculator.dbc.cur.execute(CREATE_QUERIES["grid_parameters"])
 
 

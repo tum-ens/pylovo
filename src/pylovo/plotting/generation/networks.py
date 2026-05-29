@@ -6,7 +6,6 @@ including geographic visualizations with contextily basemaps and generic
 network layouts.
 """
 
-import json
 import math
 import random
 from typing import Tuple, Optional
@@ -20,7 +19,6 @@ from matplotlib.figure import Figure
 from pandapower.plotting import create_generic_coordinates
 from pandapower.plotting.plotly import simple_plotly
 from pandapower.topology import create_nxgraph
-from shapely.geometry import LineString
 
 from pylovo.config_loader import (NODE_COLOR_TRAFO, NODE_COLOR_CONSUMER, NODE_COLOR_CONNECTION_BUS)
 from pylovo.grid_generator import GridGenerator
@@ -126,7 +124,6 @@ def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Op
         The Figure object containing the plot.
     """
     gg = GridGenerator(plz=plz)
-    net = gg.dbc.read_net_db(plz=plz, kcid=kcid, bcid=bcid)
     dbc_client = gg.dbc
 
     if ax is None:
@@ -143,23 +140,22 @@ def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Op
     buildings_8_gdf = buildings_gdf[buildings_gdf.bcid == bcid]
     buildings_8_gdf = buildings_8_gdf[buildings_8_gdf.kcid == kcid]
 
-    # Cables / lines - parse GeoJSON from geo column
-    line_geometries = []
-    for idx, row in net.line.iterrows():
-        if pd.notna(row.get("geo")):
-            try:
-                geo_dict = json.loads(row["geo"])
-                coords = geo_dict["coordinates"]
-                line_geometries.append(LineString(coords))
-            except (json.JSONDecodeError, KeyError, TypeError):
-                line_geometries.append(None)
-        else:
-            line_geometries.append(None)
+    line_gdf = dbc_client.get_geo_df_join(
+        [
+            "pl.*",
+            "gr.kcid",
+            "gr.bcid",
+            "gr.plz",
+            "ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), 3035) AS geom",
+        ],
+        "pandapower_line pl",
+        "grid_result gr",
+        ("pl.grid_result_id", "gr.grid_result_id"),
+        plz=int(plz),
+    )
+    line_gdf = line_gdf[(line_gdf.bcid == bcid) & (line_gdf.kcid == kcid)]
 
-    net.line_gdf = gpd.GeoDataFrame(net.line.copy(), geometry=line_geometries,
-        crs="EPSG:4326").to_crs(buildings_8_gdf.crs.to_string())
-
-    ax = net.line_gdf.plot(ax=ax, edgecolor="black", linewidth=1, label="Lines")
+    ax = line_gdf.plot(ax=ax, edgecolor="black", linewidth=1, label="Lines")
     ax = buildings_8_gdf.plot(ax=ax, column="peak_load_in_kw", cmap="YlOrBr", legend=True,
         legend_kwds={'label': "Peak load in kW"})
 

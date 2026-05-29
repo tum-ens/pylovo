@@ -3,7 +3,7 @@ Load polygon geometries into the pylovo database for testing purposes.
 """
 
 from pylovo.database.database_client import DatabaseClient
-from pylovo.config_loader import DBNAME, HOST, PORT, TARGET_SCHEMA
+from pylovo.config_loader import DBNAME, HOST, PORT, TARGET_EPSG
 
 # =============================================================================
 # TEST POSTCODE DATA CONFIGURATION
@@ -70,7 +70,7 @@ def load_test_postcodes():
                 polygon_wkt = f"POLYGON(({coords_str}))"
 
                 # Insert the postcode data
-                insert_query = """
+                insert_query = f"""
                 INSERT INTO pylovo.postcode (postcode_id, plz, allocated_plz, note, qkm, population, geom)
                 VALUES (
                     %s, %s, %s, %s, %s, %s,
@@ -81,7 +81,7 @@ def load_test_postcodes():
                             ),
                             4326
                         ),
-                        3035
+                        {TARGET_EPSG}
                     )
                 )
                 ON CONFLICT (plz) DO UPDATE SET
@@ -134,7 +134,7 @@ def main():
         print(f"Database: {DBNAME}")
         print(f"Host: {HOST}")
         print(f"Port: {PORT}")
-        print(f"Schema: {TARGET_SCHEMA}")
+        print("Schema: pylovo")
         print("=" * 50)
     except Exception as e:
         print(f"❌ Configuration error: {e}")

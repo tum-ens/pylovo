@@ -57,7 +57,7 @@ def get_bus_line_geo(net, net_index: int, projection: str):
     Args:
         net: Pandapower network
         net_index: Index identifier for the network
-        projection: EPSG projection string (e.g., "epsg:3035")
+        projection: EPSG projection string (e.g., "epsg:25832")
 
     Returns:
         Tuple of (line_geodataframe, bus_geodataframe)
@@ -427,7 +427,7 @@ def export_synthetic_grids_to_excel(
             rows = [(int(plz), int(kcid), int(bcid))]
         else:
             dbc.cur.execute(
-                "SELECT plz, kcid, bcid FROM grid_result "
+                f"SELECT plz, kcid, bcid FROM pylovo.grid_result "
                 "WHERE version_id = %s AND grid IS NOT NULL",
                 (VERSION_ID,),
             )

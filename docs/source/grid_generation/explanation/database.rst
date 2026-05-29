@@ -85,6 +85,14 @@ Result Tables
 +---------------------+--------------------------------------------------------------------------------------+
 | lines_result        | Electrical lines of a grid.                                                          |
 +---------------------+--------------------------------------------------------------------------------------+
+| pandapower_bus      | Typed bus elements extracted from the pandapower net and linked by ``grid_result_id`` (includes ``geo`` as GeoJSON). |
++---------------------+--------------------------------------------------------------------------------------+
+| pandapower_line     | Typed line elements extracted from the pandapower net and linked by ``grid_result_id`` (includes ``geo`` as GeoJSON). |
++---------------------+--------------------------------------------------------------------------------------+
+| pandapower_trafo    | Typed transformer elements extracted from the pandapower net and linked by ``grid_result_id``. |
++---------------------+--------------------------------------------------------------------------------------+
+| pandapower_load     | Typed load elements extracted from the pandapower net and linked by ``grid_result_id``. |
++---------------------+--------------------------------------------------------------------------------------+
 
 Classification
 ==============
@@ -129,3 +137,34 @@ Spatial Data
 ------------
 
 All geometric data uses EPSG:3035 coordinate reference system.
+
+SQL-first Net Characteristic Queries
+------------------------------------
+
+For generated grids, you can query key characteristics directly from SQL without JSON deserialization.
+
+Pylovo expects pandapower 3.x ``geo`` columns for bus and line geodata.
+GeoJSON values are persisted directly in ``pylovo.pandapower_bus.geo`` and
+``pylovo.pandapower_line.geo`` without fallback conversion paths.
+
+Example: retrieve line and load aggregates per grid.
+
+.. code-block:: sql
+
+    SELECT
+        gr.grid_result_id,
+        gr.version_id,
+        gr.plz,
+        gr.kcid,
+        gr.bcid,
+        COUNT(pl.pp_index) AS line_count,
+        COALESCE(SUM(pl.length_km), 0.0) AS total_line_length_km,
+        COUNT(pld.pp_index) AS load_count,
+        COALESCE(SUM(pld.p_mw), 0.0) AS total_active_load_mw
+    FROM pylovo.grid_result gr
+    LEFT JOIN pylovo.pandapower_line pl
+        ON pl.grid_result_id = gr.grid_result_id
+    LEFT JOIN pylovo.pandapower_load pld
+        ON pld.grid_result_id = gr.grid_result_id
+    GROUP BY gr.grid_result_id, gr.version_id, gr.plz, gr.kcid, gr.bcid
+    ORDER BY gr.version_id, gr.plz, gr.kcid, gr.bcid;

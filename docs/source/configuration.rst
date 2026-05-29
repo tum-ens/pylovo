@@ -43,7 +43,6 @@ For the main Pylovo database:
     HOST="localhost"
     PORT="5432"
     PASSWORD="yourpassword"
-    TARGET_SCHEMA="pylovo"
 
 Optional Environment Variables
 -----------------------------

@@ -15,11 +15,11 @@ class GridMixin(BaseMixin, ABC):
         super().__init__()
 
     def fetch_cables(self) -> list:
-        query = """SELECT name,
+        query = f"""SELECT name,
                        r_mohm_per_km / 1000.0 as r_ohm_per_km,
                        x_mohm_per_km / 1000.0 as x_ohm_per_km,
                        max_i_a / 1000.0       as max_i_ka
-                FROM equipment_data
+            FROM pylovo.equipment_data
                 WHERE typ = 'Cable' \
                 """
         self.cur.execute(query)
@@ -57,8 +57,8 @@ class GridMixin(BaseMixin, ABC):
 
     def get_ont_info_from_bc(self, plz: int, kcid: int, bcid: int) -> dict | None:
 
-        query = """SELECT ont_vertice_id, transformer_rated_power
-                   FROM grid_result
+        query = f"""SELECT ont_vertice_id, transformer_rated_power
+                                     FROM pylovo.grid_result
                    WHERE version_id = %(v)s
                      AND kcid = %(k)s
                      AND bcid = %(b)s
@@ -73,9 +73,9 @@ class GridMixin(BaseMixin, ABC):
         return {"ont_vertice_id": info[0][0], "transformer_rated_power": info[0][1]}
 
     def get_ont_geom_from_bcid(self, plz: int, kcid: int, bcid: int):
-        query = """SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
-                   FROM transformer_positions tp
-                            JOIN grid_result gr
+        query = f"""SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
+                                     FROM pylovo.transformer_positions tp
+                                                        JOIN pylovo.grid_result gr
                                  ON tp.grid_result_id = gr.grid_result_id
                    WHERE gr.version_id = %(v)s
                      AND plz = %(p)s
@@ -87,8 +87,8 @@ class GridMixin(BaseMixin, ABC):
         return geo
 
     def get_transformer_rated_power_from_bcid(self, plz: int, kcid: int, bcid: int) -> int:
-        query = """SELECT transformer_rated_power
-                   FROM grid_result
+        query = f"""SELECT transformer_rated_power
+                                     FROM pylovo.grid_result
                    WHERE version_id = %(v)s
                      AND plz = %(p)s
                      AND kcid = %(k)s
@@ -148,32 +148,344 @@ class GridMixin(BaseMixin, ABC):
 
         return way_list
 
+    def _ensure_lines_result_visualization_schema(self) -> None:
+        if getattr(self, "_lines_result_visualization_schema_checked", False):
+            return
+
+        self.cur.execute("ALTER TABLE pylovo.lines_result ADD COLUMN IF NOT EXISTS parallel integer;")
+        self.cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS pylovo.lines_result_helper (
+                lines_result_helper_id SERIAL PRIMARY KEY,
+                source_lines_result_id bigint NOT NULL,
+                grid_result_id bigint NOT NULL,
+                geom geometry(Geometry,{TARGET_EPSG}),
+                line_name varchar(50),
+                std_type varchar(50),
+                from_bus integer,
+                to_bus integer,
+                parallel integer,
+                length_km double precision,
+                helper_type varchar(50),
+                CONSTRAINT fk_lines_result_helper_source_line
+                    FOREIGN KEY (source_lines_result_id)
+                    REFERENCES pylovo.lines_result (lines_result_id)
+                    ON DELETE CASCADE,
+                CONSTRAINT fk_lines_result_helper_grid_result
+                    FOREIGN KEY (grid_result_id)
+                    REFERENCES pylovo.grid_result (grid_result_id)
+                    ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_lines_result_helper_grid_result_id
+                ON pylovo.lines_result_helper (grid_result_id);
+            CREATE INDEX IF NOT EXISTS idx_lines_result_helper_geom
+                ON pylovo.lines_result_helper USING gist (geom);
+
+            CREATE TABLE IF NOT EXISTS pylovo.split_points (
+                split_point_id SERIAL PRIMARY KEY,
+                grid_result_id bigint NOT NULL,
+                split_bus integer NOT NULL,
+                outgoing_count integer,
+                split_type varchar(50),
+                geom geometry(Point,{TARGET_EPSG}),
+                CONSTRAINT fk_split_points_grid_result
+                    FOREIGN KEY (grid_result_id)
+                    REFERENCES pylovo.grid_result (grid_result_id)
+                    ON DELETE CASCADE,
+                CONSTRAINT uq_split_points_grid_bus
+                    UNIQUE (grid_result_id, split_bus)
+            );
+            CREATE INDEX IF NOT EXISTS idx_split_points_grid_result_id
+                ON pylovo.split_points (grid_result_id);
+            CREATE INDEX IF NOT EXISTS idx_split_points_geom
+                ON pylovo.split_points USING gist (geom);
+            """
+        )
+        self.cur.execute("DROP MATERIALIZED VIEW IF EXISTS pylovo.lines_result_with_grid CASCADE;")
+        self.cur.execute(
+            """
+            CREATE MATERIALIZED VIEW pylovo.lines_result_with_grid AS (
+                SELECT
+                    lr.lines_result_id as id,
+                    false AS is_helper,
+                    NULL::bigint AS source_lines_result_id,
+                    NULL::varchar(50) AS helper_type,
+                    lr.grid_result_id,
+                    lr.geom,
+                    lr.line_name,
+                    lr.std_type,
+                    lr.from_bus,
+                    lr.to_bus,
+                    lr.parallel,
+                    lr.length_km,
+                    gr.version_id, gr.kcid, gr.bcid, gr.plz
+                FROM pylovo.lines_result lr
+                JOIN pylovo.grid_result gr ON lr.grid_result_id = gr.grid_result_id
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM pylovo.lines_result_helper lrh
+                    WHERE lrh.source_lines_result_id = lr.lines_result_id
+                )
+                UNION ALL
+                SELECT
+                    -lrh.lines_result_helper_id as id,
+                    true AS is_helper,
+                    lrh.source_lines_result_id,
+                    lrh.helper_type,
+                    lrh.grid_result_id,
+                    lrh.geom,
+                    lrh.line_name,
+                    lrh.std_type,
+                    lrh.from_bus,
+                    lrh.to_bus,
+                    lrh.parallel,
+                    lrh.length_km,
+                    gr.version_id, gr.kcid, gr.bcid, gr.plz
+                FROM pylovo.lines_result_helper lrh
+                JOIN pylovo.grid_result gr ON lrh.grid_result_id = gr.grid_result_id
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_lines_result_with_grid_uq_id
+                ON pylovo.lines_result_with_grid (id);
+            CREATE INDEX IF NOT EXISTS idx_lines_result_with_grid_geom
+                ON pylovo.lines_result_with_grid USING gist (geom);
+            """
+        )
+        self._lines_result_visualization_schema_checked = True
+
+    def rebuild_lines_result_helpers_for_split_topology(
+        self,
+        plz: int,
+        kcid: int,
+        bcid: int,
+        split_edges: list[dict[str, int]],
+        offset_m: float = 0.5,
+    ) -> None:
+        """Create shifted helper rows for real lines that leave split nodes."""
+        self._ensure_lines_result_visualization_schema()
+
+        selected_grid_query = """
+            SELECT grid_result_id
+            FROM pylovo.grid_result
+            WHERE version_id = %(v)s
+              AND plz = %(plz)s
+              AND kcid = %(kcid)s
+              AND bcid = %(bcid)s
+            LIMIT 1
+        """
+        params = {"v": VERSION_ID, "plz": int(plz), "kcid": int(kcid), "bcid": int(bcid)}
+        self.cur.execute(selected_grid_query, params)
+        selected_grid = self.cur.fetchone()
+        if selected_grid is None:
+            return
+
+        grid_result_id = int(selected_grid[0])
+        self.cur.execute(
+            "DELETE FROM pylovo.lines_result_helper WHERE grid_result_id = %(grid_result_id)s;",
+            {"grid_result_id": grid_result_id},
+        )
+
+        if not split_edges:
+            return
+
+        insert_query = """
+            INSERT INTO pylovo.lines_result_helper (
+                source_lines_result_id,
+                grid_result_id,
+                geom,
+                line_name,
+                std_type,
+                from_bus,
+                to_bus,
+                parallel,
+                length_km,
+                helper_type
+            )
+            SELECT
+                lr.lines_result_id,
+                lr.grid_result_id,
+                CASE
+                    WHEN offset_geom.offset_line IS NULL OR ST_IsEmpty(offset_geom.offset_line) THEN lr.geom
+                    WHEN ST_Distance(ST_StartPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
+                         <= ST_Distance(ST_EndPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
+                    THEN ST_AddPoint(
+                        ST_AddPoint(
+                            offset_geom.offset_line,
+                            ST_StartPoint(lr.geom),
+                            0
+                        ),
+                        ST_EndPoint(lr.geom)
+                    )
+                    ELSE ST_AddPoint(
+                        ST_AddPoint(
+                            ST_Reverse(offset_geom.offset_line),
+                            ST_StartPoint(lr.geom),
+                            0
+                        ),
+                        ST_EndPoint(lr.geom)
+                    )
+                END,
+                lr.line_name,
+                lr.std_type,
+                lr.from_bus,
+                lr.to_bus,
+                lr.parallel,
+                lr.length_km,
+                'split_topology_offset'
+            FROM pylovo.lines_result lr
+            CROSS JOIN LATERAL (
+                SELECT ST_LineMerge(ST_OffsetCurve(lr.geom, %(offset_m)s * %(offset_rank)s)) AS offset_line
+            ) AS offset_geom
+            WHERE lr.grid_result_id = %(grid_result_id)s
+              AND lr.from_bus = %(from_bus)s
+              AND lr.to_bus = %(to_bus)s;
+        """
+        seen_edges = set()
+        for edge in split_edges:
+            from_bus = int(edge["from_bus"])
+            to_bus = int(edge["to_bus"])
+            offset_rank = int(edge["offset_rank"])
+            edge_key = (from_bus, to_bus, offset_rank)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            self.cur.execute(
+                insert_query,
+                {
+                    "grid_result_id": grid_result_id,
+                    "from_bus": from_bus,
+                    "to_bus": to_bus,
+                    "offset_rank": offset_rank,
+                    "offset_m": float(offset_m),
+                },
+            )
+
+    def rebuild_split_points_for_split_topology(
+        self,
+        plz: int,
+        kcid: int,
+        bcid: int,
+        split_nodes: list[int],
+    ) -> None:
+        """Store feeder split nodes (excluding transformer node) for GIS inspection."""
+        self._ensure_lines_result_visualization_schema()
+
+        selected_grid_query = """
+            SELECT grid_result_id, ont_vertice_id
+            FROM pylovo.grid_result
+            WHERE version_id = %(v)s
+              AND plz = %(plz)s
+              AND kcid = %(kcid)s
+              AND bcid = %(bcid)s
+            LIMIT 1
+        """
+        params = {"v": VERSION_ID, "plz": int(plz), "kcid": int(kcid), "bcid": int(bcid)}
+        self.cur.execute(selected_grid_query, params)
+        selected_grid = self.cur.fetchone()
+        if selected_grid is None:
+            return
+
+        grid_result_id = int(selected_grid[0])
+        ont_vertice_id = None if selected_grid[1] is None else int(selected_grid[1])
+        self.cur.execute(
+            "DELETE FROM pylovo.split_points WHERE grid_result_id = %(grid_result_id)s;",
+            {"grid_result_id": grid_result_id},
+        )
+
+        unique_nodes = sorted(
+            {
+                int(node)
+                for node in split_nodes
+                if node is not None and (ont_vertice_id is None or int(node) != ont_vertice_id)
+            }
+        )
+        if not unique_nodes:
+            return
+
+        feeder_cable_names = [str(name) for name in FEEDER_CABLES["name"].dropna().tolist()]
+        if not feeder_cable_names:
+            return
+
+        insert_query = """
+            INSERT INTO pylovo.split_points (
+                grid_result_id,
+                split_bus,
+                outgoing_count,
+                split_type,
+                geom
+            )
+            VALUES (
+                %(grid_result_id)s,
+                %(split_bus)s,
+                (
+                    SELECT COUNT(*)
+                    FROM pylovo.lines_result lr_count
+                    WHERE lr_count.grid_result_id = %(grid_result_id)s
+                      AND lr_count.from_bus = %(split_bus)s
+                                            AND lr_count.std_type = ANY(%(feeder_cables)s)
+                ),
+                                'feeder_split_topology',
+                COALESCE(
+                    (
+                        SELECT ST_StartPoint(lr_start.geom)
+                        FROM pylovo.lines_result lr_start
+                        WHERE lr_start.grid_result_id = %(grid_result_id)s
+                          AND lr_start.from_bus = %(split_bus)s
+                                                    AND lr_start.std_type = ANY(%(feeder_cables)s)
+                        ORDER BY lr_start.lines_result_id
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT ST_EndPoint(lr_end.geom)
+                        FROM pylovo.lines_result lr_end
+                        WHERE lr_end.grid_result_id = %(grid_result_id)s
+                          AND lr_end.to_bus = %(split_bus)s
+                                                    AND lr_end.std_type = ANY(%(feeder_cables)s)
+                        ORDER BY lr_end.lines_result_id
+                        LIMIT 1
+                    )
+                )
+            );
+        """
+        for split_bus in unique_nodes:
+            self.cur.execute(
+                insert_query,
+                {
+                    "grid_result_id": grid_result_id,
+                    "split_bus": split_bus,
+                    "feeder_cables": feeder_cable_names,
+                },
+            )
+
     def insert_lines(self, geom: list, plz: int, bcid: int, kcid: int, line_name: str, std_type: str, from_bus: int,
-            to_bus: int, length_km: float) -> None:
+            to_bus: int, length_km: float, parallel: int = 1) -> None:
         """writes lines / cables that belong to a network into the database"""
-        line_insertion_query = """INSERT INTO lines_result (grid_result_id,
+        self._ensure_lines_result_visualization_schema()
+
+        line_insertion_query = f"""INSERT INTO pylovo.lines_result (grid_result_id,
                                                             geom,
                                                             line_name,
                                                             std_type,
                                                             from_bus,
                                                             to_bus,
+                                                            parallel,
                                                             length_km)
                                   VALUES ((SELECT grid_result_id
-                                           FROM grid_result
+                           FROM pylovo.grid_result
                                            WHERE version_id = %(v)s
                                              AND plz = %(plz)s
                                              AND kcid = %(kcid)s
                                              AND bcid = %(bcid)s),
-                                          ST_Transform(ST_SetSRID(%(geom)s::geometry, 4326), 3035),
+                                          ST_Transform(ST_SetSRID(%(geom)s::geometry, 4326), {TARGET_EPSG}),
                                           %(line_name)s,
                                           %(std_type)s,
                                           %(from_bus)s,
                                           %(to_bus)s,
+                                          %(parallel)s,
                                           %(length_km)s); """
         self.cur.execute(line_insertion_query,
                          {"v": VERSION_ID, "geom": LineString(geom).wkb_hex, "plz": int(plz), "bcid": int(bcid),
-                             "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
-                             "to_bus": int(to_bus), "length_km": length_km})
+                          "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
+                          "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km})
 
     def is_grid_generated(self, plz: int):
         """
@@ -187,7 +499,7 @@ class GridMixin(BaseMixin, ABC):
         """
         query = f"""
             SELECT 1
-            FROM postcode_result
+            FROM pylovo.postcode_result
             WHERE version_id = %(version_id)s AND postcode_result_plz = %(plz)s
             LIMIT 1;
         """

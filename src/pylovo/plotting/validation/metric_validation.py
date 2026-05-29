@@ -164,29 +164,22 @@ def plot_cable_length_of_types(plz: int, figsize: Tuple[int, int] = (10, 6)) -> 
     from pylovo.grid_generator import GridGenerator
     gg = GridGenerator(plz=plz)
     dbc_client = gg.dbc
-    cluster_list = dbc_client.get_list_from_plz(plz)
-    cable_length_dict = {}
-
-    for kcid, bcid in cluster_list:
-        try:
-            net = dbc_client.read_net_db(plz, kcid, bcid)
-        except Exception as e:
-            print(f"Local network {kcid},{bcid} is problematic")
-            raise e
-        else:
-            cable_df = net.line[net.line["in_service"] == True]
-            cable_types = pd.unique(cable_df["std_type"]).tolist()
-
-            for cable_type in cable_types:
-                cable_length = (
-                    cable_df[cable_df["std_type"] == cable_type]["parallel"]
-                    * cable_df[cable_df["std_type"] == cable_type]["length_km"]
-                ).sum()
-
-                if cable_type in cable_length_dict:
-                    cable_length_dict[cable_type] += cable_length
-                else:
-                    cable_length_dict[cable_type] = cable_length
+    query = """
+        SELECT
+            pl.std_type,
+            COALESCE(SUM(COALESCE(pl.parallel, 1) * COALESCE(pl.length_km, 0.0)), 0.0) AS cable_length
+        FROM pylovo.pandapower_line pl
+        JOIN pylovo.grid_result gr
+          ON gr.grid_result_id = pl.grid_result_id
+        WHERE gr.version_id = %(v)s
+          AND gr.plz = %(p)s
+          AND COALESCE(pl.in_service, TRUE)
+          AND pl.std_type IS NOT NULL
+        GROUP BY pl.std_type
+        ORDER BY pl.std_type
+    """
+    dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
+    cable_length_dict = {std_type: float(length) for std_type, length in dbc_client.cur.fetchall()}
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.bar(cable_length_dict.keys(), height=cable_length_dict.values(), width=0.3)
@@ -215,7 +208,6 @@ def get_trafo_dicts(plz: int) -> Tuple[dict, dict, dict, dict]:
     from pylovo.grid_generator import GridGenerator
     gg = GridGenerator(plz=plz)
     dbc_client = gg.dbc
-    cluster_list = dbc_client.get_list_from_plz(plz)
 
     load_count_dict = {}
     bus_count_dict = {}
@@ -223,32 +215,58 @@ def get_trafo_dicts(plz: int) -> Tuple[dict, dict, dict, dict]:
     trafo_dict = {}
 
     print("Starting basic parameter counting")
-    for kcid, bcid in cluster_list:
-        load_count = 0
-        bus_list = []
-        net = dbc_client.read_net_db(plz, kcid, bcid)
+    query = """
+        WITH grid_scope AS (
+            SELECT grid_result_id
+            FROM pylovo.grid_result
+            WHERE version_id = %(v)s
+              AND plz = %(p)s
+        ),
+        load_counts AS (
+            SELECT grid_result_id, COUNT(*)::integer AS load_count
+            FROM pylovo.pandapower_load
+            GROUP BY grid_result_id
+        ),
+        load_bus_counts AS (
+            SELECT grid_result_id, COUNT(DISTINCT bus)::integer AS bus_count
+            FROM pylovo.pandapower_load
+            GROUP BY grid_result_id
+        ),
+        line_lengths AS (
+            SELECT grid_result_id, COALESCE(SUM(length_km), 0.0) AS cable_length
+            FROM pylovo.pandapower_line
+            GROUP BY grid_result_id
+        )
+        SELECT
+            ROUND(pt.sn_mva * 1000.0)::integer AS capacity,
+            COALESCE(lc.load_count, 0) AS load_count,
+            COALESCE(lbc.bus_count, 0) AS bus_count,
+            COALESCE(ll.cable_length, 0.0) AS cable_length
+        FROM grid_scope gs
+        JOIN pylovo.pandapower_trafo pt
+          ON pt.grid_result_id = gs.grid_result_id
+        LEFT JOIN load_counts lc
+          ON lc.grid_result_id = gs.grid_result_id
+        LEFT JOIN load_bus_counts lbc
+          ON lbc.grid_result_id = gs.grid_result_id
+        LEFT JOIN line_lengths ll
+          ON ll.grid_result_id = gs.grid_result_id
+        WHERE pt.sn_mva IS NOT NULL
+        ORDER BY capacity
+    """
+    dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
 
-        for row in net.load[["name", "bus"]].itertuples():
-            load_count += 1
-            bus_list.append(row.bus)
-
-        bus_list = list(set(bus_list))
-        bus_count = len(bus_list)
-        cable_length = net.line['length_km'].sum()
-
-        for row in net.trafo[["sn_mva", "lv_bus"]].itertuples():
-            capacity = round(row.sn_mva * 1e3)
-
-            if capacity in trafo_dict:
-                trafo_dict[capacity] += 1
-                load_count_dict[capacity].append(load_count)
-                bus_count_dict[capacity].append(bus_count)
-                cable_length_dict[capacity].append(cable_length)
-            else:
-                trafo_dict[capacity] = 1
-                load_count_dict[capacity] = [load_count]
-                bus_count_dict[capacity] = [bus_count]
-                cable_length_dict[capacity] = [cable_length]
+    for capacity, load_count, bus_count, cable_length in dbc_client.cur.fetchall():
+        if capacity in trafo_dict:
+            trafo_dict[capacity] += 1
+            load_count_dict[capacity].append(load_count)
+            bus_count_dict[capacity].append(bus_count)
+            cable_length_dict[capacity].append(cable_length)
+        else:
+            trafo_dict[capacity] = 1
+            load_count_dict[capacity] = [load_count]
+            bus_count_dict[capacity] = [bus_count]
+            cable_length_dict[capacity] = [cable_length]
 
     return load_count_dict, bus_count_dict, cable_length_dict, trafo_dict
 

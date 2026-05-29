@@ -27,7 +27,7 @@ def check_if_classification_version_exists():
     """
     cur = db_client.cur
     count_query = f"""SELECT COUNT(*) 
-            FROM classification_version 
+            FROM pylovo.classification_version 
             WHERE "classification_id" = {CLASSIFICATION_VERSION}"""
     cur.execute(count_query)
     version_exists = cur.fetchone()[0]
@@ -38,7 +38,7 @@ def check_if_classification_version_exists():
     # conn.commit()
     else:
         # create new version
-        insert_query = f"""INSERT INTO classification_version (classification_id, classification_version_comment, classification_region) VALUES
+        insert_query = f"""INSERT INTO pylovo.classification_version (classification_id, classification_version_comment, classification_region) VALUES
         ({CLASSIFICATION_VERSION}, '{CLASSIFICATION_VERSION_COMMENT}', '{CLASSIFICATION_REGION}')"""
         cur.execute(insert_query)
         print(cur.statusmessage)
@@ -146,7 +146,7 @@ def get_federal_state_id() -> int:
     return id
 
 
-def create_sample_set():
+def create_sample_set(restrict_to_postcode_result: bool = False):
     """complete process of creating a sample set of representative PLZ for a Region
     that is either Germany or a federal state
     All subprocesses of sampling the PLZ are executed in this function.
@@ -159,6 +159,14 @@ def create_sample_set():
 
     # some PLZ might appear multiple times for small municipalities that share PLZ
     regiostar_plz = regiostar_plz.drop_duplicates(subset="plz")
+
+    if restrict_to_postcode_result:
+        query = """SELECT DISTINCT postcode_result_plz
+                   FROM pylovo.postcode_result
+                   WHERE version_id = %(v)s;"""
+        db_client.cur.execute(query, {"v": VERSION_ID})
+        available_plz = {row[0] for row in db_client.cur.fetchall()}
+        regiostar_plz = regiostar_plz[regiostar_plz["plz"].isin(available_plz)]
 
     # restrict to federal state if indicated in config classification
     if CLASSIFICATION_REGION != 'Germany':
@@ -182,8 +190,8 @@ def get_sample_set() -> pd.DataFrame:
     """
     cur = db_client.cur
     query = f"""SELECT ss.plz, mr.pop, mr.area, mr.lat, mr.lon, ss.ags, mr.name_city, mr.fed_state, mr.regio7, mr.regio5, mr.pop_den
-    FROM sample_set ss
-    JOIN municipal_register mr ON ss.plz = mr.plz AND ss.ags = mr.ags
+    FROM pylovo.sample_set ss
+    JOIN pylovo.municipal_register mr ON ss.plz = mr.plz AND ss.ags = mr.ags
     WHERE ss.classification_id = {CLASSIFICATION_VERSION};"""
     cur.execute(query)
     sample_set = cur.fetchall()

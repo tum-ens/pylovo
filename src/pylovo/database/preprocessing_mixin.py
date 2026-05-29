@@ -26,7 +26,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             other_paramters_str = str(other_parameters_dict).replace("'", "''")
 
             # Use INSERT ... ON CONFLICT DO NOTHING to handle concurrent access safely
-            insert_query = f"""INSERT INTO version (version_id, version_comment, consumer_categories, connection_available_cables, other_parameters) 
+            insert_query = f"""INSERT INTO pylovo.version (version_id, version_comment, consumer_categories, connection_available_cables, other_parameters) 
                 VALUES ('{VERSION_ID}', '{VERSION_COMMENT}', '{consumer_categories_str}', '{connection_available_cables_str}', '{other_paramters_str}')
                 ON CONFLICT (version_id) DO NOTHING"""
             
@@ -77,7 +77,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         df = df.where(~df.isna(), None)
 
         insert_sql = ("""
-                      INSERT INTO equipment_data
+                      INSERT INTO pylovo.equipment_data
                       (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km, z_mohm_per_km, cost_eur, typ)
                       VALUES (%(version_id)s, %(name)s, %(s_max_kva)s, %(max_i_a)s, %(r_mohm_per_km)s,
                               %(x_mohm_per_km)s, %(z_mohm_per_km)s, %(cost_eur)s, %(typ)s)
@@ -129,7 +129,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         df = df.where(pd.notna(df), None)
 
         upsert_sql = ("""
-                      INSERT INTO consumer_categories
+                      INSERT INTO pylovo.consumer_categories
                       (consumer_category_id, definition, peak_load, yearly_consumption, peak_load_per_m2,
                        yearly_consumption_per_m2, sim_factor)
                       VALUES (%(consumer_category_id)s, %(definition)s, %(peak_load)s, %(yearly_consumption)s,
@@ -153,15 +153,15 @@ class PreprocessingMixin(BaseMixin, ABC):
     def postcode_exists_locally(self, plz: int) -> bool:
         """Returns True if the given PLZ already exists in the local postcode table."""
         self.cur.execute(
-            "SELECT 1 FROM postcode WHERE plz = %(p)s LIMIT 1;", {"p": plz}
+            "SELECT 1 FROM pylovo.postcode WHERE plz = %(p)s LIMIT 1;", {"p": plz}
         )
         return self.cur.fetchone() is not None
 
     def insert_postcode(self, postcode_row: tuple) -> None:
         """Insert a single postcode row (plz, note, qkm, population, geom) into the postcode table."""
-        query = """
-            INSERT INTO postcode (plz, note, qkm, population, geom)
-            VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, 3035))
+        query = f"""
+            INSERT INTO pylovo.postcode (plz, note, qkm, population, geom)
+            VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}))
             ON CONFLICT (plz) DO NOTHING;"""
         self.cur.execute(query, postcode_row)
 
@@ -171,9 +171,9 @@ class PreprocessingMixin(BaseMixin, ABC):
         :param plz:
         :return:
         """
-        query = """INSERT INTO postcode_result (version_id, postcode_result_plz, geom)
+        query = """INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz, geom)
                    SELECT %(v)s as version_id, plz, geom
-                   FROM postcode
+                   FROM pylovo.postcode
                    WHERE plz = %(p)s
                    LIMIT 1
                    ON CONFLICT (version_id,postcode_result_plz) DO NOTHING;"""
@@ -188,11 +188,11 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
 
         # Fill table
-        query = """INSERT INTO buildings_tem (osm_id, area, type, geom, center, floors)
-                   SELECT osm_id, area, building_t, geom, ST_Centroid(geom), floors::int
+        query = """INSERT INTO buildings_tem (objectid, floor_area, building_use, type, geom, centroid, floor_number)
+                   SELECT osm_id, area, building_t, building_t, geom, ST_Centroid(geom), floors::int
                    FROM res
                    WHERE ST_Contains((SELECT post.geom
-                                      FROM postcode_result as post
+                                      FROM pylovo.postcode_result as post
                                       WHERE version_id = %(v)s
                                         AND postcode_result_plz = %(plz)s
                                       LIMIT 1), ST_Centroid(res.geom));
@@ -215,10 +215,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         Returns:
             None
         """
-        insert_query = """
+        insert_query = f"""
             INSERT INTO buildings_tem
-            (osm_id, area, type, geom, center, floors, households_per_building, address_street_id, construction_year)
-            VALUES (%s, %s, %s, ST_Transform(%s::geometry, 3035), ST_Transform(%s::geometry, 3035), %s, %s, %s, %s)
+            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
+             building_type, occupants, households, construction_year, postcode, address_street_id, street,
+             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
+                    %s, %s, %s, %s)
         """
         self.cur.executemany(insert_query, buildings_data)
         # self.conn.commit() only for debugging
@@ -240,34 +244,56 @@ class PreprocessingMixin(BaseMixin, ABC):
         # Create temporary table - automatically dropped at end of session
         self.cur.execute("""
             CREATE TEMP TABLE IF NOT EXISTS testing_buildings (
-                osm_id integer,
-                area double precision,
-                type varchar,
+                id integer,
+                feature_id integer,
+                objectid text,
+                height double precision,
+                floor_area double precision,
+                floor_number integer,
+                building_use text,
+                building_use_id text,
+                building_type text,
+                occupants integer,
+                households integer,
+                construction_year text,
+                postcode integer,
+                address_street_id bigint,
+                street text,
+                house_number text,
                 geom geometry,
-                center geometry,
-                floors integer,
-                households_per_building integer,
-                address_street_id integer,
-                construction_year text
+                centroid geometry,
+                gemeindeschluessel text,
+                changelog_id bigint,
+                assigned_way_id text,
+                type varchar
             ) ON COMMIT DROP
         """)
 
         # Bulk insert all buildings with geometry transformation
-        insert_query = """
+        insert_query = f"""
             INSERT INTO testing_buildings
-            (osm_id, area, type, geom, center, floors, households_per_building, address_street_id, construction_year)
-            VALUES (%s, %s, %s, ST_Transform(%s::geometry, 3035), ST_Transform(%s::geometry, 3035), %s, %s, %s, %s)
+            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
+             building_type, occupants, households, construction_year, postcode, address_street_id, street,
+             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
+                    %s, %s, %s, %s)
         """
         self.cur.executemany(insert_query, buildings_data)
 
         # Filter and insert only buildings that intersect with the postcode geometry
         self.cur.execute("""
             INSERT INTO buildings_tem
-            (osm_id, area, type, geom, center, floors, households_per_building, address_street_id, construction_year)
-            SELECT tb.osm_id, tb.area, tb.type, tb.geom, tb.center, tb.floors, 
-                   tb.households_per_building, tb.address_street_id, tb.construction_year
+            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
+             building_type, occupants, households, construction_year, postcode, address_street_id, street,
+             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
+            SELECT tb.id, tb.feature_id, tb.objectid, tb.height, tb.floor_area, tb.floor_number,
+                   tb.building_use, tb.building_use_id, tb.building_type, tb.occupants, tb.households,
+                   tb.construction_year, tb.postcode, tb.address_street_id, tb.street, tb.house_number,
+                   tb.geom, tb.centroid, tb.gemeindeschluessel, tb.changelog_id, tb.assigned_way_id,
+                   tb.type
             FROM testing_buildings tb
-            CROSS JOIN postcode p
+            CROSS JOIN pylovo.postcode p
             WHERE p.plz = %(plz)s
             AND p.allocated_plz IS NOT NULL
             AND ST_Intersects(tb.geom, p.geom)
@@ -285,25 +311,25 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
 
         # Fill table
-        query = """INSERT INTO buildings_tem(osm_id, area, type, geom, center)
-                   SELECT osm_id, area, use, geom, ST_Centroid(geom)
+        query = """INSERT INTO buildings_tem(objectid, floor_area, building_use, type, geom, centroid)
+                   SELECT osm_id, area, use, use, geom, ST_Centroid(geom)
                    FROM oth AS o
                    WHERE o.use in ('Commercial', 'Public')
                      AND ST_Contains((SELECT post.geom
-                                      FROM postcode_result as post
+                                      FROM pylovo.postcode_result as post
                                       WHERE version_id = %(v)s
                                         AND postcode_result_plz = %(plz)s), ST_Centroid(o.geom));;
         UPDATE buildings_tem
         SET plz = %(plz)s
         WHERE plz ISNULL;
         UPDATE buildings_tem
-        SET floors = 1
-        WHERE floors ISNULL;"""
+        SET floor_number = 1
+        WHERE floor_number ISNULL;"""
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
 
     def remove_duplicate_buildings(self):
         """
-        * Remove buildings without geometry or osm_id
+        * Remove buildings without geometry or objectid
         * Remove buildings that are duplicates (copy id) of others
         :return:
         """
@@ -314,31 +340,31 @@ class PreprocessingMixin(BaseMixin, ABC):
 
         remove_noid_building = """DELETE
                                   FROM buildings_tem
-                                  WHERE osm_id ISNULL;"""
+                                  WHERE objectid ISNULL;"""
         self.cur.execute(remove_noid_building)
 
         query = """DELETE
                    FROM buildings_tem
                    WHERE geom IN
                          (SELECT geom FROM buildings_tem GROUP BY geom HAVING count(*) > 1)
-                     AND osm_id LIKE '%copy%';"""
+                     AND objectid LIKE '%copy%';"""
         self.cur.execute(query)
 
     def calculate_house_distance_metric(self, plz: int, sample_size: int = 50, k_nearest: int = 4) -> float:
         """Computes the average inter-building distance (meters) based on a random sample
         and writes house_distance into postcode_result. Returns the computed value.
         """
-        distance_query = f"""WITH some_buildings AS (SELECT osm_id, center
+        distance_query = f"""WITH some_buildings AS (SELECT objectid, centroid
                                                     FROM buildings_tem
                                                     ORDER BY RANDOM()
                                                     LIMIT {sample_size})
-                            SELECT b.osm_id, d.dist
+                            SELECT b.objectid, d.dist
                             FROM some_buildings AS b
                                      LEFT JOIN LATERAL (
-                                SELECT ST_Distance(b.center, b2.center) AS dist
+                                SELECT ST_Distance(b.centroid, b2.centroid) AS dist
                                 FROM buildings_tem AS b2
-                                WHERE b.osm_id <> b2.osm_id
-                                ORDER BY b.center <-> b2.center
+                                WHERE b.objectid <> b2.objectid
+                                ORDER BY b.centroid <-> b2.centroid
                                 LIMIT {k_nearest}) AS d
                                                ON TRUE;"""
         self.cur.execute(distance_query)
@@ -350,7 +376,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise ValueError("House distance calculation returned no distances.")
         avg_dis = float(sum(distance_vals) / len(distance_vals))
         update_query = """
-            UPDATE postcode_result
+            UPDATE pylovo.postcode_result
             SET house_distance = %(avg)s
             WHERE version_id = %(v)s
               AND postcode_result_plz = %(p)s;"""
@@ -362,16 +388,16 @@ class PreprocessingMixin(BaseMixin, ABC):
         and writes avg_households_per_building into postcode_result. Returns the value.
         """
         avg_query = """
-            SELECT AVG(households_per_building)::DOUBLE PRECISION
+            SELECT AVG(households)::DOUBLE PRECISION
             FROM buildings_tem
-            WHERE households_per_building IS NOT NULL
+            WHERE households IS NOT NULL
               AND type IN ('SFH','TH','MFH','AB');"""
         self.cur.execute(avg_query, {"p": plz})
         avg_val = self.cur.fetchone()[0]
         if avg_val is None:
             raise ValueError(f"No residential buildings with household data for ZIP {plz}.")
         update_query = """
-            UPDATE postcode_result
+            UPDATE pylovo.postcode_result
             SET avg_households_per_building = %(avg)s
             WHERE version_id = %(v)s
               AND postcode_result_plz = %(p)s;"""
@@ -400,7 +426,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         fetch_query = """
             SELECT avg_households_per_building, house_distance
-            FROM postcode_result
+            FROM pylovo.postcode_result
             WHERE version_id = %(v)s AND postcode_result_plz = %(p)s;"""
         self.cur.execute(fetch_query, {"v": VERSION_ID, "p": plz})
         row = self.cur.fetchone()
@@ -426,7 +452,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             settlement_type = 1
 
         update_query = """
-            UPDATE postcode_result
+            UPDATE pylovo.postcode_result
             SET settlement_type = %(stype)s
             WHERE version_id = %(v)s AND postcode_result_plz = %(p)s;"""
         self.cur.execute(update_query, {"stype": settlement_type, "v": VERSION_ID, "p": plz})
@@ -434,35 +460,36 @@ class PreprocessingMixin(BaseMixin, ABC):
 
     def set_building_peak_load(self) -> int:
         """
-        * Sets the area, type and peak_load in the buildings_tem table
+        * Sets floor_area, type and peak_load in the buildings_tem table
         * Removes buildings with zero load from the buildings_tem table
         :return: Number of removed unloaded buildings from buildings_tem
         """
         query = """
                 UPDATE buildings_tem
-                SET area = ST_Area(geom);
+                SET floor_area = ST_Area(geom)
+                WHERE floor_area IS NULL;
                 UPDATE buildings_tem
                 
-                -- Update households_per_building only if it has not been set already.
+                -- Update households only if it has not been set already.
                 -- For InfDB data this is already set.
-                SET households_per_building = (
+                SET households = (
                     CASE
                     WHEN type IN ('TH', 'Commercial', 'Public', 'Industrial') THEN 1
-                    WHEN type = 'SFH' AND area < 160 THEN 1
-                    WHEN type = 'SFH' AND area >= 160 THEN 2
-                    WHEN type IN ('MFH', 'AB') THEN floor(area / 50) * floors
+                    WHEN type = 'SFH' AND floor_area < 160 THEN 1
+                    WHEN type = 'SFH' AND floor_area >= 160 THEN 2
+                    WHEN type IN ('MFH', 'AB') THEN floor(floor_area / 50) * floor_number
                     ELSE 0
                     END
                 )
-                WHERE households_per_building IS NULL;
+                WHERE households IS NULL;
                 
                 UPDATE buildings_tem b
                 SET peak_load_in_kw = (CASE
-                                           WHEN b.type IN ('SFH', 'TH', 'MFH', 'AB') THEN b.households_per_building *
-                                                                                          (SELECT peak_load FROM consumer_categories WHERE definition = b.type)
-                                           WHEN b.type IN ('Commercial', 'Public', 'Industrial') THEN b.area *
+                                           WHEN b.type IN ('SFH', 'TH', 'MFH', 'AB') THEN b.households *
+                                                                                          (SELECT peak_load FROM pylovo.consumer_categories WHERE definition = b.type)
+                                           WHEN b.type IN ('Commercial', 'Public', 'Industrial') THEN b.floor_area *
                                                                                                       (SELECT peak_load_per_m2
-                                                                                                       FROM consumer_categories
+                                                                                                       FROM pylovo.consumer_categories
                                                                                                        WHERE definition = b.type) /
                                                                                                       1000
                                            ELSE 0
@@ -540,23 +567,23 @@ class PreprocessingMixin(BaseMixin, ABC):
         :return:
         """
         insert_query = """
-                       --UPDATE transformers SET geom = ST_Centroid(geom) WHERE ST_GeometryType(geom) =  'ST_Polygon';
-                       INSERT INTO buildings_tem (osm_id, geom)--(osm_id,center)
+                       --UPDATE pylovo.transformers SET geom = ST_Centroid(geom) WHERE ST_GeometryType(geom) =  'ST_Polygon';
+                       INSERT INTO buildings_tem (objectid, geom)--(objectid,centroid)
                        SELECT osm_id, geom
-                       --FROM transformers WHERE ST_Within(geom, (SELECT geom FROM postcode_result LIMIT 1)) IS FALSE;
-                       FROM transformers as t
+                       --FROM pylovo.transformers WHERE ST_Within(geom, (SELECT geom FROM pylovo.postcode_result LIMIT 1)) IS FALSE;
+                       FROM pylovo.transformers as t
                        WHERE ST_Within(t.geom, (SELECT geom
-                                                FROM postcode_result
+                                                FROM pylovo.postcode_result
                                                 WHERE postcode_result_plz = %(p)s
                                                   AND version_id = %(v)s)); --IS FALSE;
                        UPDATE buildings_tem
                        SET plz = %(p)s
                        WHERE plz ISNULL;
                        UPDATE buildings_tem
-                       SET center = ST_Centroid(geom)
-                       WHERE center ISNULL;
+                       SET centroid = ST_Centroid(geom)
+                       WHERE centroid ISNULL;
                        UPDATE buildings_tem
-                       SET type = 'Transformer'
+                       SET building_use = 'Transformer', type = 'Transformer'
                        WHERE type ISNULL;
                        UPDATE buildings_tem
                        SET peak_load_in_kw = -1
@@ -569,7 +596,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                                 (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
                    SELECT COUNT(*)
                    FROM buildings_tem
-                   WHERE ST_Within(center, (SELECT ungeom FROM union_table))
+                   WHERE ST_Within(centroid, (SELECT ungeom FROM union_table))
                      AND type = 'Transformer';"""
         self.cur.execute(query)
         count = self.cur.fetchone()[0]
@@ -584,7 +611,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                                 (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
                    DELETE
                    FROM buildings_tem
-                   WHERE ST_Within(center, (SELECT ungeom FROM union_table))
+                   WHERE ST_Within(centroid, (SELECT ungeom FROM union_table))
                      AND type = 'Transformer';"""
         self.cur.execute(query)   
 
@@ -604,10 +631,10 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise ValueError("No rows to insert into ways_tem")
 
         # Normal mode - insert all ways
-        insert_query = """
+        insert_query = f"""
             INSERT INTO ways_tem
             (clazz, source, target, cost, reverse_cost, geom, way_id)
-            VALUES (%s, %s, %s, %s, %s, ST_Transform(%s::geometry, 3035), %s)
+            VALUES (%s, %s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}), %s)
         """
         self.cur.executemany(insert_query, ways_data)
         self.cur.execute("SELECT COUNT(*) FROM ways_tem")
@@ -642,15 +669,15 @@ class PreprocessingMixin(BaseMixin, ABC):
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
         self.cur.executemany(insert_query, ways_data)
-        
+
         # Filter and insert only ways that intersect with testing geometry
-        filter_query = """
+        filter_query = f"""
             INSERT INTO ways_tem
             (clazz, source, target, cost, reverse_cost, geom, way_id)
             SELECT tw.clazz, tw.source, tw.target, tw.cost, tw.reverse_cost, 
-                   ST_Transform(tw.geom, 3035), tw.way_id
+                    ST_Transform(tw.geom, {TARGET_EPSG}), tw.way_id
             FROM temp_ways tw
-            CROSS JOIN postcode p
+            CROSS JOIN pylovo.postcode p
             WHERE p.plz = %(plz)s
             AND p.allocated_plz IS NOT NULL
             AND ST_Intersects(tw.geom, p.geom)
@@ -674,9 +701,9 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         query = """INSERT INTO ways_tem
                    SELECT *
-                   FROM ways AS w
+                   FROM pylovo.ways AS w
                    WHERE ST_Intersects(w.geom, (SELECT geom
-                                                FROM postcode_result
+                                                FROM pylovo.postcode_result
                                                 WHERE version_id = %(v)s
                                                   AND postcode_result_plz = %(p)s));
         SELECT COUNT(*)
@@ -734,6 +761,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         edge_table = f"ways_tem_{plz}"
         vertices_table = f"{edge_table}_vertices_pgr"
+
+        # Align endpoints before extracting vertices so pgRouting does not split components on
+        # floating-point noise introduced by geometric preprocessing.
+        self.cur.execute(f"""
+            UPDATE {edge_table}
+            SET geom = ST_SnapToGrid(geom, 0.000001)
+            WHERE geom IS NOT NULL;
+        """)
 
         # Ensure source and target columns exist on the edge table
         # (required before pgr_extractVertices can work)
@@ -808,7 +843,9 @@ class PreprocessingMixin(BaseMixin, ABC):
         query = """UPDATE buildings_tem b
                    SET vertice_id = (SELECT id
                                      FROM ways_tem_vertices_pgr AS v
-                                     WHERE ST_Equals(v.geom, b.center));"""
+                                     WHERE ST_DWithin(v.geom, b.centroid, 0.000001)
+                                     ORDER BY ST_Distance(v.geom, b.centroid)
+                                     LIMIT 1);"""
         self.cur.execute(query)
 
         query2 = """UPDATE buildings_tem b
@@ -838,13 +875,13 @@ class PreprocessingMixin(BaseMixin, ABC):
         :return: table with column ags
         """
         query = """SELECT *
-                   FROM ags_log;"""
+                   FROM pylovo.ags_log;"""
         df_query = pd.read_sql_query(query, con=self.conn, )
         return df_query
 
     def insert_equipment_data(self, equipment_df: pd.DataFrame):
         """Insert equipment_data rows for current VERSION_ID if not already present for this version."""
-        self.cur.execute("SELECT 1 FROM equipment_data WHERE version_id = %s LIMIT 1", (VERSION_ID,))
+        self.cur.execute("SELECT 1 FROM pylovo.equipment_data WHERE version_id = %s LIMIT 1", (VERSION_ID,))
         if self.cur.fetchone():
             return
 
@@ -863,7 +900,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         equipment_df = equipment_df.where(~equipment_df.isna(), None)
 
         insert_sql = """
-            INSERT INTO equipment_data
+            INSERT INTO pylovo.equipment_data
             (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km,
              z_mohm_per_km, cost_eur, typ)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -924,8 +961,8 @@ class PreprocessingMixin(BaseMixin, ABC):
                 t.geom_type,
                 t.within_shopping,
                 ST_AsText(ST_Transform(t.geom, 4326)) as geom_wkt
-            FROM transformers t
-            JOIN postcode p ON ST_Intersects(t.geom, p.geom)
+            FROM pylovo.transformers t
+            JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
             WHERE p.plz = %(plz)s
             LIMIT 1000
         """
@@ -956,9 +993,9 @@ class PreprocessingMixin(BaseMixin, ABC):
             osm_id = f"manual/{int(time.time())}"
 
         # Insert into transformers table
-        transformer_query = """
-            INSERT INTO transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, geom)
-            VALUES (%(osm_id)s, %(type)s, %(transformer_rated_power)s, %(geom_type)s, %(within_shopping)s, ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), 3035))
+        transformer_query = f"""
+            INSERT INTO pylovo.transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, geom)
+            VALUES (%(osm_id)s, %(type)s, %(transformer_rated_power)s, %(geom_type)s, %(within_shopping)s, ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), {TARGET_EPSG}))
             RETURNING osm_id
         """
         self.cur.execute(transformer_query, {
@@ -986,13 +1023,13 @@ class PreprocessingMixin(BaseMixin, ABC):
             bool: True if deletion was successful, False otherwise
         """
         # Check if the transformer position exists
-        check_query = "SELECT 1 FROM transformer_positions WHERE grid_result_id = %(grid_result_id)s"
+        check_query = "SELECT 1 FROM pylovo.transformer_positions WHERE grid_result_id = %(grid_result_id)s"
         self.cur.execute(check_query, {"grid_result_id": grid_result_id})
         if not self.cur.fetchone():
             return False
 
         # Delete the transformer position (grid_result will be deleted via CASCADE)
-        delete_query = "DELETE FROM transformer_positions WHERE grid_result_id = %(grid_result_id)s"
+        delete_query = "DELETE FROM pylovo.transformer_positions WHERE grid_result_id = %(grid_result_id)s"
         self.cur.execute(delete_query, {"grid_result_id": grid_result_id})
 
         # Commit the transaction to persist the deletion
@@ -1011,7 +1048,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             bool: True if deletion was successful, False otherwise
         """
         # Debug: Check if transformer exists before deletion
-        check_query = "SELECT osm_id, type FROM transformers WHERE osm_id = %(osm_id)s"
+        check_query = "SELECT osm_id, type FROM pylovo.transformers WHERE osm_id = %(osm_id)s"
         self.cur.execute(check_query, {"osm_id": osm_id})
         existing = self.cur.fetchone()
 
@@ -1020,13 +1057,13 @@ class PreprocessingMixin(BaseMixin, ABC):
         else:
             print(f"DEBUG: No transformer found with osm_id: {osm_id}")
             # Let's also check for similar OSM IDs
-            similar_query = "SELECT osm_id, type FROM transformers WHERE osm_id LIKE %(pattern)s"
+            similar_query = "SELECT osm_id, type FROM pylovo.transformers WHERE osm_id LIKE %(pattern)s"
             self.cur.execute(similar_query, {"pattern": f"%{osm_id.split('/')[-1]}%"})
             similar = self.cur.fetchall()
             if similar:
                 print(f"DEBUG: Found similar OSM IDs: {similar}")
 
-        delete_query = "DELETE FROM transformers WHERE osm_id = %(osm_id)s"
+        delete_query = "DELETE FROM pylovo.transformers WHERE osm_id = %(osm_id)s"
         self.cur.execute(delete_query, {"osm_id": osm_id})
 
         rows_affected = self.cur.rowcount
@@ -1051,12 +1088,12 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         try:
             query = """
-                UPDATE transformers
+                UPDATE pylovo.transformers
                 SET transformer_rated_power = NULL
                 WHERE osm_id IN (
                     SELECT t.osm_id
-                    FROM transformers t
-                    JOIN postcode p ON ST_Intersects(t.geom, p.geom)
+                    FROM pylovo.transformers t
+                    JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
                     WHERE p.plz = %(plz)s
                 )
             """
@@ -1082,7 +1119,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         query = """
             SELECT ST_XMin(ST_Transform(geom, 4326)) as minx, ST_YMin(ST_Transform(geom, 4326)) as miny,
                    ST_XMax(ST_Transform(geom, 4326)) as maxx, ST_YMax(ST_Transform(geom, 4326)) as maxy
-            FROM postcode
+            FROM pylovo.postcode
             WHERE plz = %(plz)s
         """
         self.cur.execute(query, {"plz": plz})
@@ -1105,7 +1142,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         query = """
             SELECT DISTINCT plz
-            FROM postcode
+            FROM pylovo.postcode
             ORDER BY plz
         """
         self.cur.execute(query)
@@ -1123,7 +1160,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             bool: True if successful, False otherwise
         """
         query = """
-            UPDATE transformers
+            UPDATE pylovo.transformers
             SET transformer_rated_power = %(transformer_rated_power)s
             WHERE osm_id = %(osm_id)s
         """
@@ -1146,8 +1183,8 @@ class PreprocessingMixin(BaseMixin, ABC):
             # First, check if there are any transformers in this PLZ
             check_query = """
                 SELECT COUNT(DISTINCT t.osm_id)
-                FROM transformers t
-                JOIN postcode p ON ST_Intersects(t.geom, p.geom)
+                FROM pylovo.transformers t
+                JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
                 WHERE p.plz = %(plz)s
             """
             self.cur.execute(check_query, {"plz": plz})
@@ -1159,12 +1196,12 @@ class PreprocessingMixin(BaseMixin, ABC):
                 return False
 
             query = """
-                UPDATE transformers
+                UPDATE pylovo.transformers
                 SET transformer_rated_power = %(transformer_rated_power)s
                 WHERE osm_id IN (
                     SELECT DISTINCT t.osm_id
-                    FROM transformers t
-                    JOIN postcode p ON ST_Intersects(t.geom, p.geom)
+                    FROM pylovo.transformers t
+                    JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
                     WHERE p.plz = %(plz)s
                 )
             """
@@ -1195,8 +1232,8 @@ class PreprocessingMixin(BaseMixin, ABC):
             # Get all transformer OSM IDs in the PLZ area
             query = """
                 SELECT DISTINCT t.osm_id
-                FROM transformers t
-                JOIN postcode p ON ST_Intersects(t.geom, p.geom)
+                FROM pylovo.transformers t
+                JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
                 WHERE p.plz = %(plz)s
             """
             self.cur.execute(query, {"plz": plz})
@@ -1229,7 +1266,7 @@ class PreprocessingMixin(BaseMixin, ABC):
 
             # Update each transformer
             update_query = """
-                UPDATE transformers
+                UPDATE pylovo.transformers
                 SET transformer_rated_power = %(transformer_rated_power)s
                 WHERE osm_id = %(osm_id)s
             """

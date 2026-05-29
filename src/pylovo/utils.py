@@ -106,7 +106,7 @@ def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):
         # Aggregate total installed power from the category cat
         installed_power = subset_df[subset_df['type'].isin(member_types)]["peak_load_in_kw"].values.sum()  # n*P_0
         # building amount from cat
-        load_count = subset_df[subset_df['type'].isin(member_types)]['households_per_building'].values.sum()
+        load_count = subset_df[subset_df['type'].isin(member_types)]['households'].values.sum()
         if load_count == 0:
             continue
 
@@ -147,12 +147,12 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
         for row in category_rows.itertuples():
             sim_factor = _get_sim_factor(consumer_cat_df, row.type)
             total_individual_sim_kw += oneSimultaneousLoad(
-                row.peak_load_in_kw, row.households_per_building, sim_factor
+                row.peak_load_in_kw, row.households, sim_factor
             )
 
         grouped_sim_kw = oneSimultaneousLoad(
             category_rows["peak_load_in_kw"].sum(),
-            category_rows["households_per_building"].sum(),
+            category_rows["households"].sum(),
             _get_sim_factor(consumer_cat_df, factor_definition),
         )
         scale = grouped_sim_kw / total_individual_sim_kw if total_individual_sim_kw > 0 else 0.0
@@ -160,7 +160,7 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
             scale_by_type[member_type] = scale
 
     for row in buildings_df.itertuples():
-        load_units[row.vertice_id] += row.households_per_building
+        load_units[row.vertice_id] += row.households
         if load_type[row.vertice_id] == "SFH":
             load_type[row.vertice_id] = row.type
         elif load_type[row.vertice_id] != row.type:
@@ -168,7 +168,7 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
 
         sim_load_per_building[row.vertice_id] += oneSimultaneousLoad(
             row.peak_load_in_kw,
-            row.households_per_building,
+            row.households,
             _get_sim_factor(consumer_cat_df, row.type),
         ) * scale_by_type.get(row.type, 1.0)
 

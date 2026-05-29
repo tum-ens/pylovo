@@ -107,7 +107,7 @@ Quick Start
 
 3. Configure pylovo:
 
-   a) Copy ``.env.example`` to ``.env`` and align credentials with InfDB setup in environment file.
+   a) Copy ``.env.example`` to ``.env`` and align credentials with InfDB setup in environment file. Set ``TARGET_EPSG`` to the projected CRS you want pylovo to store and transform operational data in.
    b) Optionally adjust grid generation parameters in ``config/config_generation.yaml``.
 
 4. Initialize pylovo database:

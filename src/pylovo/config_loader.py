@@ -97,6 +97,18 @@ def get_required_env_var(var_name: str, description: str) -> str:
         raise ValueError(f"Missing required environment variable: {var_name}")
     return value
 
+
+def get_int_env_var(var_name: str, default: int) -> int:
+    """Get integer environment variable with a typed fallback."""
+    value = os.getenv(var_name)
+    if value is None or value == "":
+        return default
+
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"Environment variable '{var_name}' must be an integer, got: {value}") from exc
+
 # =============================================================================
 # PROJECT ROOT AND CONFIG LOADING
 # =============================================================================
@@ -121,7 +133,6 @@ DBUSER = get_required_env_var("DBUSER", "Database username")
 HOST = get_required_env_var("HOST", "Database host address")
 PORT = get_required_env_var("PORT", "Database port number")
 PASSWORD = get_required_env_var("PASSWORD", "Database password")
-TARGET_SCHEMA = get_required_env_var("TARGET_SCHEMA", "Target schema name")
 
 # INFDB (external database) connection (recommended)
 USE_INFDB = os.getenv("USE_INFDB", "True").lower() in ("true", "1", "yes")
@@ -142,6 +153,9 @@ else:
 
 # Validation Data Path
 GRID_DATA_PATH = os.getenv("GRID_DATA_PATH")
+
+# Geospatial CRS configuration
+TARGET_EPSG = get_int_env_var("TARGET_EPSG", 25832)
 
 # =============================================================================
 # EXECUTION CONFIGURATION (from CONFIG_GENERATION)

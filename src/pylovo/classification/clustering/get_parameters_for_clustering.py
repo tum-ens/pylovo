@@ -1,4 +1,5 @@
 import warnings
+import numpy as np
 from factor_analyzer import FactorAnalyzer
 
 from pylovo.classification.database_communication.database_communication import DatabaseCommunication
@@ -17,9 +18,21 @@ def get_parameters_for_clustering() -> list:
              'resistance', 'reactance', 'simultaneous_peak_load_mw',
              'no_household_equ', 'max_power_mw'], axis=1, inplace=True)
 
+    # Remove perfectly collinear features to avoid singular correlation matrices in factor analysis.
+    corr = df.corr().abs()
+    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+    collinear_cols = [col for col in upper.columns if any(upper[col] >= 0.999999999)]
+    if collinear_cols:
+        df = df.drop(columns=collinear_cols)
+
     # Create factor analysis object and perform factor analysis
     fa = FactorAnalyzer()
-    fa.fit(df)
+    try:
+        fa.fit(df)
+    except np.linalg.LinAlgError:
+        # Fallback when the correlation matrix is still singular due to numerical issues.
+        fa = FactorAnalyzer(use_smc=False)
+        fa.fit(df)
 
     # Check Eigenvalues
     ev = fa.get_eigenvalues()

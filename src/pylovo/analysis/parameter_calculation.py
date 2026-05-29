@@ -243,7 +243,7 @@ class ParameterCalculator:
                     f"Failed to calculate/insert parameters for grid {kcid},{bcid} in PLZ {self.plz}: {e}"
                 )
 
-        print(f"Finished PLZ {self.plz}. Calculated: {calculated}, Skipped (already existed): {skipped}.")
+        print(f"Finished PLZ {self.plz}. Calculated new: {calculated}, Skipped existing: {skipped}.")
 
     # -------------------------------------------------------------------------
     # Shared Comparison-Parameter Helpers
@@ -1282,40 +1282,67 @@ class ParameterCalculator:
 
     def analyze_basic_parameters_for_plz(self, plz: int):
         """Aggregate basic counts per transformer size across all grids of a PLZ."""
-        cluster_list = self.dbc.get_list_from_plz(plz)
-        count = len(cluster_list)
-        time = 0
-        percent = 0
-
         load_count_dict = {}
         bus_count_dict = {}
         cable_length_dict = {}
         trafo_dict = {}
 
-        for kcid, bcid in cluster_list:
-            try:
-                net = self.dbc.read_net_db(plz, kcid, bcid)
-            except Exception as e:
-                self.dbc.logger.warning(f"Skipping local network {kcid},{bcid} in PLZ {plz}: {e}")
-                continue
+        query = """
+            WITH grid_scope AS (
+                SELECT grid_result_id
+                FROM pylovo.grid_result
+                WHERE version_id = %(v)s
+                  AND plz = %(p)s
+            ),
+            load_counts AS (
+                SELECT grid_result_id, COUNT(*)::integer AS load_count
+                FROM pylovo.pandapower_load
+                GROUP BY grid_result_id
+            ),
+            bus_counts AS (
+                SELECT grid_result_id, COUNT(*)::integer AS bus_count
+                FROM pylovo.pandapower_bus
+                GROUP BY grid_result_id
+            ),
+            line_lengths AS (
+                SELECT grid_result_id, COALESCE(SUM(length_km), 0.0) AS cable_length
+                FROM pylovo.pandapower_line
+                GROUP BY grid_result_id
+            )
+            SELECT
+                ROUND(pt.sn_mva * 1000.0)::integer AS capacity,
+                COALESCE(lc.load_count, 0) AS load_count,
+                COALESCE(bc.bus_count, 0) AS bus_count,
+                COALESCE(ll.cable_length, 0.0) AS cable_length
+            FROM grid_scope gs
+            JOIN pylovo.pandapower_trafo pt
+              ON pt.grid_result_id = gs.grid_result_id
+            LEFT JOIN load_counts lc
+              ON lc.grid_result_id = gs.grid_result_id
+            LEFT JOIN bus_counts bc
+              ON bc.grid_result_id = gs.grid_result_id
+            LEFT JOIN line_lengths ll
+              ON ll.grid_result_id = gs.grid_result_id
+            WHERE pt.sn_mva IS NOT NULL
+            ORDER BY capacity
+        """
+        self.dbc.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        rows = self.dbc.cur.fetchall()
+        count = len(rows)
+        time = 0
+        percent = 0
 
-            load_count = len(net.load)
-            bus_count = len(net.bus)
-            cable_length = net.line["length_km"].sum()
+        for capacity, load_count, bus_count, cable_length in rows:
+            if capacity not in trafo_dict:
+                trafo_dict[capacity] = 0
+                load_count_dict[capacity] = []
+                bus_count_dict[capacity] = []
+                cable_length_dict[capacity] = []
 
-            for row in net.trafo[["sn_mva"]].itertuples():
-                capacity = round(row.sn_mva * 1e3)
-
-                if capacity not in trafo_dict:
-                    trafo_dict[capacity] = 0
-                    load_count_dict[capacity] = []
-                    bus_count_dict[capacity] = []
-                    cable_length_dict[capacity] = []
-
-                trafo_dict[capacity] += 1
-                load_count_dict[capacity].append(load_count)
-                bus_count_dict[capacity].append(bus_count)
-                cable_length_dict[capacity].append(cable_length)
+            trafo_dict[capacity] += 1
+            load_count_dict[capacity].append(load_count)
+            bus_count_dict[capacity].append(bus_count)
+            cable_length_dict[capacity].append(cable_length)
 
             time += 1
             if count > 0 and time / count >= 0.1:
@@ -1332,28 +1359,22 @@ class ParameterCalculator:
 
     def analyze_cable_lengths_for_plz(self, plz: int):
         """Sum cable lengths per standard type across all grids of a PLZ."""
-        cluster_list = self.dbc.get_list_from_plz(plz)
-        cable_length_dict = {}
-
-        for kcid, bcid in cluster_list:
-            try:
-                net = self.dbc.read_net_db(plz, kcid, bcid)
-            except Exception:
-                self.dbc.logger.debug(f"Skipping local network {kcid},{bcid} in PLZ {plz} during cable aggregation.")
-                continue
-
-            if net.line.empty or "std_type" not in net.line.columns or "length_km" not in net.line.columns:
-                continue
-
-            if "in_service" in net.line.columns:
-                cable_df = net.line[net.line["in_service"] == True]
-            else:
-                cable_df = net.line
-
-            for std_type, group in cable_df.groupby("std_type"):
-                parallel = group["parallel"] if "parallel" in group.columns else 1
-                length = (parallel * group["length_km"]).sum()
-                cable_length_dict[std_type] = cable_length_dict.get(std_type, 0.0) + length
+        query = """
+            SELECT
+                pl.std_type,
+                COALESCE(SUM(COALESCE(pl.parallel, 1) * COALESCE(pl.length_km, 0.0)), 0.0) AS cable_length
+            FROM pylovo.pandapower_line pl
+            JOIN pylovo.grid_result gr
+              ON gr.grid_result_id = pl.grid_result_id
+            WHERE gr.version_id = %(v)s
+              AND gr.plz = %(p)s
+              AND COALESCE(pl.in_service, TRUE)
+              AND pl.std_type IS NOT NULL
+            GROUP BY pl.std_type
+            ORDER BY pl.std_type
+        """
+        self.dbc.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        cable_length_dict = {std_type: float(length) for std_type, length in self.dbc.cur.fetchall()}
 
         self.dbc.insert_cable_length(plz, json.dumps(cable_length_dict))
 

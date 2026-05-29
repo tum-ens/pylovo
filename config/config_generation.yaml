@@ -44,6 +44,7 @@ FEEDER_CABLES:
   - {name: NAYY_4_120, max_i_a: 242, r_mohm_per_km: 225, x_mohm_per_km: 80, z_mohm_per_km: 239, cost_eur: 19, typ: Cable}
   - {name: NAYY_4_150, max_i_a: 270, r_mohm_per_km: 208, x_mohm_per_km: 80, z_mohm_per_km: 223, cost_eur: 24, typ: Cable}
   - {name: NAYY_4_185, max_i_a: 313, r_mohm_per_km: 164, x_mohm_per_km: 80, z_mohm_per_km: 181, cost_eur: 33, typ: Cable}
+  - {name: NAYY_4_240, max_i_a: 357, r_mohm_per_km: 127, x_mohm_per_km: 80, z_mohm_per_km: 150, cost_eur: 45, typ: Cable}
 # - {name: NA2XS(F)2Y_1x240RM_12_20kV_ir_240, max_i_a: 456, r_mohm_per_km: 144, x_mohm_per_km: 182, z_mohm_per_km: 236, cost_eur: 45, typ: Cable}
 # - {name: NA2XS(F)2Y_1x150RM_12_20kV_ir_150, max_i_a: 353, r_mohm_per_km: 227, x_mohm_per_km: 195, z_mohm_per_km: 299, cost_eur: 35, typ: Cable}
 # - {name: NAYY_4_95, max_i_a: 215, r_mohm_per_km: 320, x_mohm_per_km: 82, z_mohm_per_km: 330, cost_eur: 21, typ: Cable}
@@ -94,7 +95,7 @@ TRANSFORMER_MAPPING:
 MAX_BROWNFIELD_TRAFO_DISTANCE: 750 # Maximum assignment distance to an existing brownfield transformer
 MAX_GREENFIELD_TRAFO_DISTANCE: 900 # Maximum distance from a greenfield transformer to any cluster connection point
 # Larger components are divided by k-means clustering in roughly LARGE_COMPONENT_DIVIDER sizes
-LARGE_COMPONENT_LOWER_BOUND: 5000 # Threshold for number of buildings in a component to apply k-means clustering
-LARGE_COMPONENT_DIVIDER: 2500 # Divider to derive the target number of clusters for k-means clustering
+LARGE_COMPONENT_LOWER_BOUND: 2500 # Threshold for number of buildings in a component to apply k-means clustering
+LARGE_COMPONENT_DIVIDER: 1250 # Divider to derive the target number of clusters for k-means clustering
 # Seed for the initialization of the k-means clustering for transformer placement - keeping the same ensures deterministic behavior
 K_MEANS_SEED: 3329829316 # Has to be an integer between 0 and 4294967295

@@ -65,8 +65,8 @@ BEGIN
         -- If connection point is very close to the start of the existing way
         -- Connect directly to the start point to avoid unnecessary way splitting
         IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
-            -- Create connection line from building center to way start point
-            final_geom := ST_MakeLine(r.center, ST_StartPoint(r.old_geom));
+            -- Create connection line from building centroid to way start point
+            final_geom := ST_MakeLine(r.centroid, ST_StartPoint(r.old_geom));
             
             -- Insert connection line with classification 110 (building connection)
             PERFORM insert_way_segment(110, final_geom);
@@ -74,14 +74,14 @@ BEGIN
             -- Remove this building from candidates since no way splitting is needed
             -- The connection uses the existing way endpoint
             DELETE FROM temp_building_connection_candidates
-            WHERE osm_id = r.osm_id;
+            WHERE objectid = r.objectid;
             
         -- CASE 2: CONNECTION NEAR WAY END POINT  
         -- If connection point is very close to the end of the existing way
         -- Connect directly to the end point to avoid unnecessary way splitting
         ELSIF ST_Distance(ST_EndPoint(r.old_geom), r.connection_point) < 0.1 THEN
-            -- Create connection line from building center to way end point
-            final_geom := ST_MakeLine(r.center, ST_EndPoint(r.old_geom));
+            -- Create connection line from building centroid to way end point
+            final_geom := ST_MakeLine(r.centroid, ST_EndPoint(r.old_geom));
             
             -- Insert connection line with classification 110 (building connection)
             PERFORM insert_way_segment(110, final_geom);
@@ -89,7 +89,7 @@ BEGIN
             -- Remove this building from candidates since no way splitting is needed
             -- The connection uses the existing way endpoint
             DELETE FROM temp_building_connection_candidates
-            WHERE osm_id = r.osm_id;
+            WHERE objectid = r.objectid;
 
         -- CASE 3: CONNECTION IN MIDDLE OF WAY
         -- Connection point requires splitting the existing way
