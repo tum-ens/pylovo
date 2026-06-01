@@ -367,13 +367,15 @@ class GridMixin(BaseMixin, ABC):
         grid_result_id: int,
         offset_m: float,
         min_overlap_m: float = 10.0,
+        min_collision_overlap_m: float = 0.01,
+        max_offset_rank: int = 10,
     ) -> None:
         """Create helper rows for remaining feeder lines that share route geometry."""
         feeder_cable_names = [str(name) for name in FEEDER_CABLES["name"].dropna().tolist()]
         if not feeder_cable_names:
             return
 
-        insert_query = """
+        source_query = """
             WITH candidate_pairs AS (
                 SELECT
                     a.lines_result_id AS a_id,
@@ -404,7 +406,8 @@ class GridMixin(BaseMixin, ABC):
             ),
             overlap_sources AS (
                 SELECT DISTINCT ON (source_lines_result_id)
-                    source_lines_result_id
+                    source_lines_result_id,
+                    overlap_m
                 FROM (
                     SELECT
                         CASE
@@ -416,6 +419,95 @@ class GridMixin(BaseMixin, ABC):
                     WHERE overlap_m >= %(min_overlap_m)s
                 ) sources
                 ORDER BY source_lines_result_id, overlap_m DESC
+            )
+            SELECT source_lines_result_id
+            FROM overlap_sources
+            ORDER BY overlap_m DESC, source_lines_result_id;
+        """
+        self.cur.execute(
+            source_query,
+            {
+                "grid_result_id": int(grid_result_id),
+                "feeder_cables": feeder_cable_names,
+                "min_overlap_m": float(min_overlap_m),
+            },
+        )
+        source_rows = self.cur.fetchall()
+
+        insert_query = """
+            WITH source_line AS (
+                SELECT *
+                FROM pylovo.lines_result
+                WHERE lines_result_id = %(source_lines_result_id)s
+            ),
+            candidate_ranks AS (
+                SELECT rank_abs * sign AS offset_rank
+                FROM generate_series(1, %(max_offset_rank)s) AS rank_abs
+                CROSS JOIN (VALUES (1), (-1)) AS signs(sign)
+            ),
+            candidate_geoms AS (
+                SELECT
+                    lr.*,
+                    candidate_ranks.offset_rank,
+                    CASE
+                        WHEN offset_geom.offset_line IS NULL OR ST_IsEmpty(offset_geom.offset_line) THEN lr.geom
+                        WHEN ST_Distance(ST_StartPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
+                             <= ST_Distance(ST_EndPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
+                        THEN ST_AddPoint(
+                            ST_AddPoint(
+                                offset_geom.offset_line,
+                                ST_StartPoint(lr.geom),
+                                0
+                            ),
+                            ST_EndPoint(lr.geom)
+                        )
+                        ELSE ST_AddPoint(
+                            ST_AddPoint(
+                                ST_Reverse(offset_geom.offset_line),
+                                ST_StartPoint(lr.geom),
+                                0
+                            ),
+                            ST_EndPoint(lr.geom)
+                        )
+                    END AS helper_geom
+                FROM source_line lr
+                CROSS JOIN candidate_ranks
+                CROSS JOIN LATERAL (
+                    SELECT ST_LineMerge(
+                        ST_OffsetCurve(lr.geom, %(offset_m)s * candidate_ranks.offset_rank)
+                    ) AS offset_line
+                ) AS offset_geom
+            ),
+            visible_geoms AS (
+                SELECT lr.lines_result_id::bigint AS source_id, lr.geom
+                FROM pylovo.lines_result lr
+                WHERE lr.grid_result_id = %(grid_result_id)s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM pylovo.lines_result_helper helper
+                      WHERE helper.source_lines_result_id = lr.lines_result_id
+                  )
+                UNION ALL
+                SELECT lrh.source_lines_result_id, lrh.geom
+                FROM pylovo.lines_result_helper lrh
+                WHERE lrh.grid_result_id = %(grid_result_id)s
+            ),
+            free_candidate AS (
+                SELECT candidate_geoms.*
+                FROM candidate_geoms
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM visible_geoms visible
+                    WHERE visible.geom && candidate_geoms.helper_geom
+                      AND ST_Length(
+                          ST_CollectionExtract(
+                              ST_Intersection(candidate_geoms.helper_geom, visible.geom),
+                              2
+                          )
+                      ) >= %(min_collision_overlap_m)s
+                )
+                ORDER BY ABS(offset_rank), offset_rank DESC
+                LIMIT 1
             )
             INSERT INTO pylovo.lines_result_helper (
                 source_lines_result_id,
@@ -432,27 +524,7 @@ class GridMixin(BaseMixin, ABC):
             SELECT
                 lr.lines_result_id,
                 lr.grid_result_id,
-                CASE
-                    WHEN offset_geom.offset_line IS NULL OR ST_IsEmpty(offset_geom.offset_line) THEN lr.geom
-                    WHEN ST_Distance(ST_StartPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
-                         <= ST_Distance(ST_EndPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
-                    THEN ST_AddPoint(
-                        ST_AddPoint(
-                            offset_geom.offset_line,
-                            ST_StartPoint(lr.geom),
-                            0
-                        ),
-                        ST_EndPoint(lr.geom)
-                    )
-                    ELSE ST_AddPoint(
-                        ST_AddPoint(
-                            ST_Reverse(offset_geom.offset_line),
-                            ST_StartPoint(lr.geom),
-                            0
-                        ),
-                        ST_EndPoint(lr.geom)
-                    )
-                END,
+                lr.helper_geom,
                 lr.line_name,
                 lr.std_type,
                 lr.from_bus,
@@ -460,22 +532,19 @@ class GridMixin(BaseMixin, ABC):
                 lr.parallel,
                 lr.length_km,
                 'shared_route_overlap_offset'
-            FROM overlap_sources
-            JOIN pylovo.lines_result lr
-              ON lr.lines_result_id = overlap_sources.source_lines_result_id
-            CROSS JOIN LATERAL (
-                SELECT ST_LineMerge(ST_OffsetCurve(lr.geom, %(offset_m)s)) AS offset_line
-            ) AS offset_geom;
+            FROM free_candidate lr;
         """
-        self.cur.execute(
-            insert_query,
-            {
-                "grid_result_id": int(grid_result_id),
-                "feeder_cables": feeder_cable_names,
-                "offset_m": float(offset_m),
-                "min_overlap_m": float(min_overlap_m),
-            },
-        )
+        for (source_lines_result_id,) in source_rows:
+            self.cur.execute(
+                insert_query,
+                {
+                    "grid_result_id": int(grid_result_id),
+                    "source_lines_result_id": int(source_lines_result_id),
+                    "offset_m": float(offset_m),
+                    "min_collision_overlap_m": float(min_collision_overlap_m),
+                    "max_offset_rank": int(max_offset_rank),
+                },
+            )
 
     def rebuild_split_points_for_split_topology(
         self,

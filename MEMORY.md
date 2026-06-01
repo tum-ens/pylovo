@@ -60,6 +60,12 @@
 - Why: Some split-generated topology rows, such as L1832 and L1898, share a lane segment even though they are not sibling edges from the same split parent, so the existing split-edge helper detection misses them.
 - What was rejected and why: Splitting real lines_result rows at internal vertices was rejected because it would alter installed topology persistence for a visualization problem. A 1 m overlap threshold was rejected because it affected more existing rows than needed for meaningful lane-segment overlays.
 
+## 2026-06-01 - Choose free offset slots for shared-route helpers
+
+- What was decided: Shared-route overlap helpers now try fixed offset slots in nearest-first order (+0.5 m, -0.5 m, +1.0 m, -1.0 m, and so on) and insert the first candidate that has no meaningful line-on-line overlap with currently visible real or helper geometries in the same grid.
+- Why: The L1898 helper correctly existed but was placed onto the same +0.5 m helper geometry as L1948, leaving a helper-helper overlap. Fixed-width slots make distance-only checks unnecessary; exact line overlap is the relevant occupied-slot test while point touches at split nodes remain valid.
+- What was rejected and why: Keeping a fixed +0.5 m offset for all shared-route helpers was rejected because later helpers can collide with existing split helpers. A generic too-close distance check was rejected because it could block valid topology connectors near split points.
+
 ## 2026-06-03 - Store selected generation parameters in version JSONB
 
 - What was decided: Add `pylovo.version.generation_parameters` as a JSONB snapshot populated from selected result-affecting `config_generation.yaml` settings: load calculation, equipment records, cable dimensioning limits, and transformer placement/clustering thresholds.
