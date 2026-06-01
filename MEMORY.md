@@ -53,3 +53,9 @@
 - What was decided: Exclude each grid's `ont_vertice_id` from `split_points`.
 - Why: Transformer positions are already represented by dedicated transformer layers; including transformer nodes in split points causes redundant visualization.
 - What was rejected and why: Keeping transformer nodes in `split_points` was rejected because it blurs the interpretation of true feeder split locations.
+
+## 2026-05-29 - Add shared-route overlap helpers for missed split visuals
+
+- What was decided: After split-edge helper generation, add a conservative overlap helper pass for remaining feeder lines_result rows that share at least 10 m of exact route geometry and do not already have helper rows. The shorter overlapping feeder row is helperized and marked with helper_type shared_route_overlap_offset.
+- Why: Some split-generated topology rows, such as L1832 and L1898, share a lane segment even though they are not sibling edges from the same split parent, so the existing split-edge helper detection misses them.
+- What was rejected and why: Splitting real lines_result rows at internal vertices was rejected because it would alter installed topology persistence for a visualization problem. A 1 m overlap threshold was rejected because it affected more existing rows than needed for meaningful lane-segment overlays.
