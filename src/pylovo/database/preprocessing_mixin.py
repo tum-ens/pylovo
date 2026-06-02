@@ -105,7 +105,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         df = equipment_data.copy()
         expected_cols = ["version_id", "name", "s_max_kva", "max_i_a", "r_mohm_per_km", "x_mohm_per_km",
-                         "z_mohm_per_km", "cost_eur", "typ"]
+                         "z_mohm_per_km", "cost_eur", "typ", "grid_role"]
         if "version_id" not in df.columns:
             df["version_id"] = VERSION_ID
 
