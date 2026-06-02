@@ -72,6 +72,24 @@
 - Why: Clicking/highlighting in QGIS should show clearer full feeder paths from transformers to split points instead of many small feeder fragments caused by house service branches. The stored `lines_result` rows and pandapower objects remain unchanged.
 - What was rejected and why: Creating a second comparison view was rejected because only one final view is needed. Changing the original generated graph or `lines_result` persistence was rejected because the requested simplification is visual only.
 
+## 2026-06-02 - Expand feeder uniform-cable task spec
+
+- What was decided: Rewrite `TASK.md` as a full execution-ready implementation spec for uniform feeder cable type and `parallel` count per hard-node section, while explicitly requiring small, targeted code changes.
+- Why: The future implementation needs enough background to avoid guessing, but should reuse `_install_backbone_lines_two_pass(...)`, existing cable selection, and existing line creation instead of starting a broad refactor.
+- What was rejected and why: A minimal-only task note was rejected because the user chose a fuller implementation spec. Schema changes, consumer cable changes, and hiding the GIS `+` symptom in SQL were rejected as first-line approaches because they are broader or less direct than fixing feeder assignment.
+
+## 2026-06-02 - Use total section length for feeder voltage drop
+
+- What was decided: Segment-level feeder cable sizing should pass the total routed length of the hard-node section to `find_minimal_available_cable(...)` for voltage-drop checks.
+- Why: Cable dimensioning is now decided for the combined feeder section, and voltage drop accumulates over that full section rather than only over the longest individual edge.
+- What was rejected and why: Using the maximum single-edge length was rejected because it preserves too much of the old per-edge sizing behavior and can understate voltage-drop requirements for combined sections.
+
+## 2026-06-02 - Implement uniform feeder cable sections in generator
+
+- What was decided: Add private `GridGenerator` helpers to derive feeder edges from `branch_plans`, group them into hard-node sections, and preselect one cable type and `parallel` count per section before existing line creation runs.
+- Why: This keeps the change local to `_install_backbone_lines_two_pass(...)`, preserves edge-level `lines_result` and backend records, and lets `lines_result_with_grid` become clean from uniform underlying feeder rows.
+- What was rejected and why: SQL-only cleanup was rejected because it would hide mixed feeder sizing instead of fixing it. New schema or persisted segment IDs were rejected because the finalized branch topology already contains enough information.
+
 ## 2026-06-03 - Store selected generation parameters in version JSONB
 
 - What was decided: Add `pylovo.version.generation_parameters` as a JSONB snapshot populated from selected result-affecting `config_generation.yaml` settings: load calculation, equipment records, cable dimensioning limits, and transformer placement/clustering thresholds.

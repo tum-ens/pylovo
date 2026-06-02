@@ -12,6 +12,12 @@
 - What worked instead: A scoped `uv run python` heredoc edit updated the target file successfully.
 - Note for next time: For large SQL block replacements after `apply_patch` fails, use a scoped heredoc Python edit instead of a dense one-liner.
 
+## 2026-06-02 - Markdown backticks in shell Python edit
+
+- What did not work: `apply_patch` hit the known bubblewrap loopback failure, and the first `uv run python -c` memory append used Markdown backticks inside a double-quoted shell argument, so the shell treated them as command substitutions.
+- What worked instead: Use a single-quoted shell argument for `python -c` when the embedded Markdown contains backticks, or avoid inline backticks in the shell string entirely.
+- Note for next time: For scoped Markdown edits after `apply_patch` fails, protect backticks with single-quoted shell strings before running the Python edit.
+
 ## 2026-06-03 - Shell backticks damaged Markdown memory entry
 
 - What did not work: Writing a `MEMORY.md` entry through `uv run python -c` inside a double-quoted shell command allowed Markdown backticks to be interpreted as shell command substitution.

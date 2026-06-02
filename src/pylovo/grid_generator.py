@@ -992,6 +992,97 @@ class GridGenerator:
 
         return split_edges
 
+    def _build_feeder_edges_from_branch_plans(
+        self,
+        branch_plans: list[dict[str, int | list[int]]],
+        ont_vertice: int,
+    ) -> list[tuple[int, int]]:
+        """Return directed feeder tree edges as ``(parent, child)`` pairs."""
+        feeder_edges: list[tuple[int, int]] = []
+
+        for plan in branch_plans:
+            branch_nodes = [int(node) for node in plan["branch_nodes"]]
+            attachment_node = int(plan["attachment_node"])
+
+            for index in range(len(branch_nodes) - 1):
+                parent = int(branch_nodes[index + 1])
+                child = int(branch_nodes[index])
+                feeder_edges.append((parent, child))
+
+            branch_start_node = int(branch_nodes[-1])
+            if branch_start_node != ont_vertice:
+                feeder_edges.append((attachment_node, branch_start_node))
+
+        return feeder_edges
+
+    def _group_feeder_edges_by_hard_node_section(
+        self,
+        children_by_node: dict[int, list[int]],
+        ont_vertice: int,
+    ) -> dict[int, list[tuple[int, int]]]:
+        """Group directed feeder edges into uniform sections between hard nodes."""
+        hard_nodes = {ont_vertice}
+        hard_nodes.update(
+            parent for parent, children in children_by_node.items() if len(children) > 1
+        )
+        sections_by_key: dict[int, list[tuple[int, int]]] = {}
+        section_index = 0
+
+        for hard_node in sorted(hard_nodes):
+            for first_child in children_by_node.get(hard_node, []):
+                section_edges = []
+                parent = hard_node
+                child = int(first_child)
+
+                while True:
+                    section_edges.append((parent, child))
+                    child_children = children_by_node.get(child, [])
+                    if child in hard_nodes or len(child_children) != 1:
+                        break
+
+                    parent = child
+                    child = int(child_children[0])
+
+                sections_by_key[section_index] = section_edges
+                section_index += 1
+
+        return sections_by_key
+
+    def _select_cables_for_feeder_sections(
+        self,
+        installer: CableInstaller,
+        sections_by_key: dict[int, list[tuple[int, int]]],
+        downstream_nodes_by_node: dict[int, list[int]],
+        buildings_df: pd.DataFrame,
+        consumer_df: pd.DataFrame,
+        vertices_dict: dict[int, float],
+    ) -> dict[tuple[int, int], tuple[str, int]]:
+        """Choose one feeder cable/count for every edge in each hard-node section."""
+        cable_by_edge: dict[tuple[int, int], tuple[str, int]] = {}
+
+        for section_edges in sections_by_key.values():
+            section_Imax = 0.0
+            section_distance = 0.0
+
+            for parent, child in section_edges:
+                sim_load = utils.simultaneousPeakLoad(
+                    buildings_df, consumer_df, downstream_nodes_by_node[child]
+                )
+                edge_Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
+                edge_distance = vertices_dict[child] - vertices_dict[parent]
+                section_Imax = max(section_Imax, edge_Imax)
+                section_distance += edge_distance
+
+            cable, count = installer.find_minimal_available_cable(
+                section_Imax,
+                section_distance,
+            )
+
+            for edge in section_edges:
+                cable_by_edge[edge] = (cable, count)
+
+        return cable_by_edge
+
     def _install_backbone_lines_two_pass(
         self,
         installer: CableInstaller,
@@ -1008,18 +1099,9 @@ class GridGenerator:
         children_by_node: dict[int, list[int]] = {}
         downstream_nodes_by_node: dict[int, list[int]] = {}
 
-        for plan in branch_plans:
-            branch_nodes = list(plan["branch_nodes"])
-            attachment_node = int(plan["attachment_node"])
-
-            for index in range(len(branch_nodes) - 1):
-                parent = int(branch_nodes[index + 1])
-                child = int(branch_nodes[index])
-                children_by_node.setdefault(parent, []).append(child)
-
-            branch_start_node = int(branch_nodes[-1])
-            if branch_start_node != ont_vertice:
-                children_by_node.setdefault(attachment_node, []).append(branch_start_node)
+        feeder_edges = self._build_feeder_edges_from_branch_plans(branch_plans, ont_vertice)
+        for parent, child in feeder_edges:
+            children_by_node.setdefault(parent, []).append(child)
 
         def _collect_downstream_nodes(node: int) -> list[int]:
             cached_nodes = downstream_nodes_by_node.get(node)
@@ -1034,6 +1116,18 @@ class GridGenerator:
             return downstream_nodes
 
         _collect_downstream_nodes(ont_vertice)
+        sections_by_key = self._group_feeder_edges_by_hard_node_section(
+            children_by_node,
+            ont_vertice,
+        )
+        cable_by_edge = self._select_cables_for_feeder_sections(
+            installer,
+            sections_by_key,
+            downstream_nodes_by_node,
+            buildings_df,
+            consumer_df,
+            vertices_dict,
+        )
 
         for plan in branch_plans:
             branch_nodes = list(plan["branch_nodes"])
@@ -1043,12 +1137,7 @@ class GridGenerator:
             for index in range(len(branch_nodes) - 1):
                 parent = int(branch_nodes[index + 1])
                 child = int(branch_nodes[index])
-                sim_load = utils.simultaneousPeakLoad(
-                    buildings_df, consumer_df, downstream_nodes_by_node[child]
-                )
-                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-                edge_distance = vertices_dict[child] - vertices_dict[parent]
-                cable, count = installer.find_minimal_available_cable(Imax, edge_distance)
+                cable, count = cable_by_edge[(parent, child)]
                 local_length_dict = installer.create_line_node_to_node(
                     self.plz,
                     kcid,
@@ -1079,9 +1168,7 @@ class GridGenerator:
                 sim_load = utils.simultaneousPeakLoad(
                     buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
                 )
-                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-                edge_distance = vertices_dict[branch_start_node] - vertices_dict[attachment_node]
-                cable, count = installer.find_minimal_available_cable(Imax, edge_distance)
+                cable, count = cable_by_edge[(attachment_node, branch_start_node)]
                 local_length_dict = installer.create_line_node_to_node(
                     self.plz,
                     kcid,
@@ -1101,8 +1188,7 @@ class GridGenerator:
                 sim_load = utils.simultaneousPeakLoad(
                     buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
                 )
-                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-                cable, count = installer.find_minimal_available_cable(Imax, vertices_dict[branch_start_node])
+                cable, count = cable_by_edge[(ont_vertice, branch_start_node)]
                 length = installer.create_line_start_to_lv_bus(
                     self.plz,
                     bcid,
