@@ -4,11 +4,7 @@ from pylovo.config_loader import TARGET_EPSG, FEEDER_CABLES
 
 INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
 
-FEEDER_CABLE_NAMES_SQL = ", ".join(
-    f"'{str(name).replace(chr(39), chr(39) + chr(39))}'"
-    for name in FEEDER_CABLES["name"].dropna().tolist()
-)
-FEEDER_CABLE_ARRAY_SQL = f"ARRAY[{FEEDER_CABLE_NAMES_SQL}]::varchar[]"
+
 
 CREATE_QUERIES = {
     "version": """CREATE TABLE IF NOT EXISTS pylovo.version (
@@ -30,6 +26,7 @@ CREATE_QUERIES = {
        z_mohm_per_km    integer,
        cost_eur         integer,
        typ              varchar(50),
+       grid_role        varchar(50),
        CONSTRAINT equipment_data_pkey PRIMARY KEY (version_id, name),
        CONSTRAINT fk_equipment_data_version
            FOREIGN KEY (version_id)
@@ -746,12 +743,16 @@ CREATE_QUERIES = {
         feeder_lines AS (
             SELECT *
             FROM visible_lines
-            WHERE std_type = ANY({FEEDER_CABLE_ARRAY_SQL})
+            WHERE std_type IN (
+                SELECT name FROM pylovo.equipment_data WHERE grid_role = 'feeder'
+            )
         ),
         non_feeder_lines AS (
             SELECT *
             FROM visible_lines
-            WHERE std_type <> ALL({FEEDER_CABLE_ARRAY_SQL})
+            WHERE std_type NOT IN (
+                SELECT name FROM pylovo.equipment_data WHERE grid_role = 'feeder'
+            )
                OR std_type IS NULL
         ),
         hard_nodes AS (

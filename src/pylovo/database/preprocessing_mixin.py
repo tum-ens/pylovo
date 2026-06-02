@@ -127,16 +127,17 @@ class PreprocessingMixin(BaseMixin, ABC):
 
         insert_sql = ("""
                       INSERT INTO pylovo.equipment_data
-                      (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km, z_mohm_per_km, cost_eur, typ)
+                      (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km, z_mohm_per_km, cost_eur, typ, grid_role)
                       VALUES (%(version_id)s, %(name)s, %(s_max_kva)s, %(max_i_a)s, %(r_mohm_per_km)s,
-                              %(x_mohm_per_km)s, %(z_mohm_per_km)s, %(cost_eur)s, %(typ)s)
+                              %(x_mohm_per_km)s, %(z_mohm_per_km)s, %(cost_eur)s, %(typ)s, %(grid_role)s)
                       ON CONFLICT (version_id, name) DO UPDATE SET s_max_kva        = EXCLUDED.s_max_kva,
                                                                    max_i_a          = EXCLUDED.max_i_a,
                                                                    r_mohm_per_km    = EXCLUDED.r_mohm_per_km,
                                                                    x_mohm_per_km    = EXCLUDED.x_mohm_per_km,
                                                                    z_mohm_per_km    = EXCLUDED.z_mohm_per_km,
                                                                    cost_eur         = EXCLUDED.cost_eur,
-                                                                   typ              = EXCLUDED.typ;""")
+                                                                   typ              = EXCLUDED.typ,
+                                                                   grid_role        = EXCLUDED.grid_role;""")
         rows = df.to_dict(orient='records')
         try:
             self.cur.executemany(insert_sql, rows)
@@ -823,8 +824,8 @@ class PreprocessingMixin(BaseMixin, ABC):
         insert_sql = """
             INSERT INTO pylovo.equipment_data
             (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km,
-             z_mohm_per_km, cost_eur, typ)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             z_mohm_per_km, cost_eur, typ, grid_role)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
         rows = []
         for _, r in equipment_df.iterrows():
@@ -837,7 +838,8 @@ class PreprocessingMixin(BaseMixin, ABC):
                 r.get('x_mohm_per_km'),
                 r.get('z_mohm_per_km'),
                 r.get('cost_eur'),
-                r.get('typ')
+                r.get('typ'),
+                r.get('grid_role')
             ))
         self.cur.executemany(insert_sql, rows)
         self.logger.debug("Inserted equipment_data for version %s", VERSION_ID)

@@ -202,10 +202,8 @@ class GridMixin(BaseMixin, ABC):
             """
         )
         self.cur.execute("DROP MATERIALIZED VIEW IF EXISTS pylovo.lines_result_with_grid CASCADE;")
-        feeder_cable_names = [str(name).replace("'", "''") for name in FEEDER_CABLES["name"].dropna().tolist()]
-        feeder_cable_array_sql = "ARRAY[" + ", ".join(f"'{name}'" for name in feeder_cable_names) + "]::varchar[]"
         self.cur.execute(
-            f"""
+            """
             CREATE MATERIALIZED VIEW pylovo.lines_result_with_grid AS (
                 WITH RECURSIVE visible_lines AS (
                     SELECT
@@ -246,12 +244,16 @@ class GridMixin(BaseMixin, ABC):
                 feeder_lines AS (
                     SELECT *
                     FROM visible_lines
-                    WHERE std_type = ANY({feeder_cable_array_sql})
+                    WHERE std_type IN (
+                        SELECT name FROM pylovo.equipment_data WHERE grid_role = 'feeder'
+                    )
                 ),
                 non_feeder_lines AS (
                     SELECT *
                     FROM visible_lines
-                    WHERE std_type <> ALL({feeder_cable_array_sql})
+                    WHERE std_type NOT IN (
+                        SELECT name FROM pylovo.equipment_data WHERE grid_role = 'feeder'
+                    )
                        OR std_type IS NULL
                 ),
                 hard_nodes AS (

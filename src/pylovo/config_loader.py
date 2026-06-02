@@ -202,7 +202,9 @@ if not CONSUMER_CATEGORIES.empty and "peak_load" in CONSUMER_CATEGORIES.columns:
 # Equipment data
 TRANSFORMERS = pd.DataFrame(CONFIG_GENERATION["TRANSFORMERS"])
 FEEDER_CABLES = pd.DataFrame(CONFIG_GENERATION["FEEDER_CABLES"])
+FEEDER_CABLES["grid_role"] = "feeder"
 CONSUMER_CONNECTION_CABLES = pd.DataFrame(CONFIG_GENERATION["CONSUMER_CONNECTION_CABLES"])
+CONSUMER_CONNECTION_CABLES["grid_role"] = "consumer_connection"
 
 # Derived combined equipment table for database storage and shared consumers.
 CONFIG_EQUIPMENT_DATA = pd.concat(
