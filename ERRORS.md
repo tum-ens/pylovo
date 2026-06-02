@@ -6,6 +6,12 @@
 - What worked instead: Temporary escalated `uv run python` edits were used before the reboot; after reboot, normal sandboxed shell commands worked again, but the `apply_patch` helper still hit the bubblewrap filesystem issue.
 - Note for next time: If filesystem tooling fails with `bwrap: loopback: Failed RTM_NEWADDR`, if shell commands work but `apply_patch` still fails, keep edits scoped and use `uv run python` as a temporary workaround.
 
+## 2026-06-02 - Large Python edit quoting after apply_patch failure
+
+- What didn't work: `apply_patch` hit the known bubblewrap loopback error, and an escalated `uv run python -c` one-liner failed because the large embedded SQL/Python replacement was too quote-heavy for shell parsing.
+- What worked instead: A scoped `uv run python` heredoc edit updated the target file successfully.
+- Note for next time: For large SQL block replacements after `apply_patch` fails, use a scoped heredoc Python edit instead of a dense one-liner.
+
 ## 2026-06-03 - Shell backticks damaged Markdown memory entry
 
 - What did not work: Writing a `MEMORY.md` entry through `uv run python -c` inside a double-quoted shell command allowed Markdown backticks to be interpreted as shell command substitution.

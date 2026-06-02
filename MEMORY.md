@@ -66,6 +66,12 @@
 - Why: The L1898 helper correctly existed but was placed onto the same +0.5 m helper geometry as L1948, leaving a helper-helper overlap. Fixed-width slots make distance-only checks unnecessary; exact line overlap is the relevant occupied-slot test while point touches at split nodes remain valid.
 - What was rejected and why: Keeping a fixed +0.5 m offset for all shared-route helpers was rejected because later helpers can collide with existing split helpers. A generic too-close distance check was rejected because it could block valid topology connectors near split points.
 
+## 2026-06-02 - Merge feeder visualization across house-connection segmentation
+
+- What was decided: `lines_result_with_grid` is now the single QGIS-facing topology view. It keeps house connection rows visible, but replaces feeder rows with merged feeder topology chains between hard nodes. Hard nodes are transformer vertices and persisted feeder `split_points`; feeder-degree-2 non-hard nodes, including house-connection branch points, are treated as pass-through nodes for visualization.
+- Why: Clicking/highlighting in QGIS should show clearer full feeder paths from transformers to split points instead of many small feeder fragments caused by house service branches. The stored `lines_result` rows and pandapower objects remain unchanged.
+- What was rejected and why: Creating a second comparison view was rejected because only one final view is needed. Changing the original generated graph or `lines_result` persistence was rejected because the requested simplification is visual only.
+
 ## 2026-06-03 - Store selected generation parameters in version JSONB
 
 - What was decided: Add `pylovo.version.generation_parameters` as a JSONB snapshot populated from selected result-affecting `config_generation.yaml` settings: load calculation, equipment records, cable dimensioning limits, and transformer placement/clustering thresholds.
