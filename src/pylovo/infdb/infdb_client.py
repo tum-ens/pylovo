@@ -39,7 +39,6 @@ class InfdbClient:
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """
         Retrieve all buildings whose centroids are contained within a specified postcode (PLZ).
-        In testing mode, filters buildings to only those within the testing geometry.
 
         Args:
             plz (str): The plz of the buildings to get

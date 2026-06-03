@@ -13,7 +13,6 @@ ANALYZE_GRIDS: True # Toggles analysis after grid generation (basic parameters, 
 LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # Toggles whether the grid json files will be saved in a folder or just in the db
 RESULT_DIR: results # Directory for storing analysis results and outputs
-TESTING: False # If True, only a small subset of data is used for faster testing
 
 # =============================================================================
 # GRID GENERATION CONFIGURATION

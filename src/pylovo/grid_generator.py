@@ -351,13 +351,8 @@ class GridGenerator:
         INTO: buildings_tem
         """
         if USE_INFDB:
-            if TESTING:
-                allocated_plz = self.dbc.get_plz_for_testing(self.plz)
-                buildings_data = self.inf_dbc.fetch_buildings_from_infdb(allocated_plz)
-                self.dbc.set_buildings_table_with_geometry_filter(buildings_data, allocated_plz)
-            else:
-                buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
-                self.dbc.set_buildings_table(buildings_data, self.plz)
+            buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
+            self.dbc.set_buildings_table(buildings_data, self.plz)
         else:
             self.dbc.set_residential_buildings_table(self.plz)
             self.dbc.set_other_buildings_table(self.plz)
@@ -410,13 +405,8 @@ class GridGenerator:
         INTO: ways_tem, buildings_tem, ways_tem_vertices_pgr, ways_tem_
         """
         if USE_INFDB:
-            if TESTING:
-                allocated_plz = self.dbc.get_plz_for_testing(self.plz)
-                ways_rows = self.inf_dbc.fetch_ways_from_infdb(allocated_plz)
-                ways_count = self.dbc.set_ways_tem_table_with_geometry_filter(ways_rows, allocated_plz)
-            else:
-                ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
-                ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows, self.plz)
+            ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
+            ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows, self.plz)
         else:
             ways_count = self.dbc.set_ways_tem_table(self.plz)
         self.logger.info(f"The ways_tem table filled with {ways_count} ways")
@@ -1149,8 +1139,6 @@ class GridGenerator:
         """
         # Get all clusters for the postal code area
         cluster_list = self.dbc.get_list_from_plz(self.plz)
-        if TESTING:
-            cluster_list = cluster_list[:5]  # Limit to first 5 clusters for testing
         total_clusters = len(cluster_list)
         ci_count = 0
         next_progress_checkpoint = 10

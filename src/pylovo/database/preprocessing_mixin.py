@@ -276,81 +276,6 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.executemany(insert_query, buildings_data)
         # self.conn.commit() only for debugging
 
-    def set_buildings_table_with_geometry_filter(self, buildings_data: list[tuple], allocated_plz: int) -> None:
-        """
-        Insert buildings data with geometry filtering for testing mode.
-        Only buildings that intersect with the testing geometry are inserted.
-
-        The temporary table approach is necessary here because:
-        1. We need to bulk insert all buildings first (for performance)
-        2. Then filter them against postcode geometry (complex spatial operation)
-        3. PostgreSQL can't efficiently do both in a single operation without either
-           a temp table or individual queries per building
-        """
-        if not buildings_data:
-            return
-
-        # Create temporary table - automatically dropped at end of session
-        self.cur.execute("""
-            CREATE TEMP TABLE IF NOT EXISTS testing_buildings (
-                id integer,
-                feature_id integer,
-                objectid text,
-                height double precision,
-                floor_area double precision,
-                floor_number integer,
-                building_use text,
-                building_use_id text,
-                building_type text,
-                occupants integer,
-                households integer,
-                construction_year text,
-                postcode integer,
-                address_street_id bigint,
-                street text,
-                house_number text,
-                geom geometry,
-                centroid geometry,
-                gemeindeschluessel text,
-                changelog_id bigint,
-                assigned_way_id text,
-                type varchar
-            ) ON COMMIT DROP
-        """)
-
-        # Bulk insert all buildings with geometry transformation
-        insert_query = f"""
-            INSERT INTO testing_buildings
-            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
-             building_type, occupants, households, construction_year, postcode, address_street_id, street,
-             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
-                    %s, %s, %s, %s)
-        """
-        self.cur.executemany(insert_query, buildings_data)
-
-        # Filter and insert only buildings that intersect with the postcode geometry
-        self.cur.execute("""
-            INSERT INTO buildings_tem
-            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
-             building_type, occupants, households, construction_year, postcode, address_street_id, street,
-             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
-            SELECT tb.id, tb.feature_id, tb.objectid, tb.height, tb.floor_area, tb.floor_number,
-                   tb.building_use, tb.building_use_id, tb.building_type, tb.occupants, tb.households,
-                   tb.construction_year, tb.postcode, tb.address_street_id, tb.street, tb.house_number,
-                   tb.geom, tb.centroid, tb.gemeindeschluessel, tb.changelog_id, tb.assigned_way_id,
-                   tb.type
-            FROM testing_buildings tb
-            CROSS JOIN pylovo.postcode p
-            WHERE p.plz = %(plz)s
-            AND p.allocated_plz IS NOT NULL
-            AND ST_Intersects(tb.geom, p.geom)
-        """, {"plz": allocated_plz})
-
-        # Explicitly drop temp table (though ON COMMIT DROP would handle it)
-        self.cur.execute("DROP TABLE IF EXISTS testing_buildings")
-
     def set_other_buildings_table(self, plz: int):
         """
         * Fills buildings_tem with other (non-residential) buildings inside the plz area
@@ -671,7 +596,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         Args:
             ways_data (list[tuple]): Each tuple should contain
                 (clazz, source, target, cost, reverse_cost, geom, way_id)
-            plz (int): PLZ for geometry filtering in testing mode
+            plz (int): PLZ for filtering the ways
 
         Returns:
             int: Number of inserted ways
@@ -688,59 +613,6 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.executemany(insert_query, ways_data)
         self.cur.execute("SELECT COUNT(*) FROM ways_tem")
         return self.cur.fetchone()[0]
-
-    def set_ways_tem_table_with_geometry_filter(self, ways_data: list[tuple], plz: int) -> int:
-        """
-        Insert ways data with geometry filtering for testing mode.
-        Only ways that intersect with the testing geometry are inserted.
-        """
-        if not ways_data:
-            return 0
-            
-        # Create a temporary table to hold the ways data
-        temp_table_query = """
-            CREATE TEMP TABLE temp_ways (
-                clazz integer,
-                source integer,
-                target integer,
-                cost double precision,
-                reverse_cost double precision,
-                geom geometry,
-                way_id integer
-            )
-        """
-        self.cur.execute(temp_table_query)
-        
-        # Insert all ways data into temp table
-        insert_query = """
-            INSERT INTO temp_ways
-            (clazz, source, target, cost, reverse_cost, geom, way_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        self.cur.executemany(insert_query, ways_data)
-
-        # Filter and insert only ways that intersect with testing geometry
-        filter_query = f"""
-            INSERT INTO ways_tem
-            (clazz, source, target, cost, reverse_cost, geom, way_id)
-            SELECT tw.clazz, tw.source, tw.target, tw.cost, tw.reverse_cost, 
-                    ST_Transform(tw.geom, {TARGET_EPSG}), tw.way_id
-            FROM temp_ways tw
-            CROSS JOIN pylovo.postcode p
-            WHERE p.plz = %(plz)s
-            AND p.allocated_plz IS NOT NULL
-            AND ST_Intersects(tw.geom, p.geom)
-        """
-        self.cur.execute(filter_query, {"plz": plz})
-        
-        # Get count of inserted ways
-        self.cur.execute("SELECT COUNT(*) FROM ways_tem")
-        count = self.cur.fetchone()[0]
-        
-        # Drop temp table
-        self.cur.execute("DROP TABLE temp_ways")
-        
-        return count
 
     def set_ways_tem_table(self, plz: int) -> int:
         """
@@ -969,22 +841,6 @@ class PreprocessingMixin(BaseMixin, ABC):
             ))
         self.cur.executemany(insert_sql, rows)
         self.logger.debug("Inserted equipment_data for version %s", VERSION_ID)
-
-    def get_plz_for_testing(self, plz) -> list:
-        """
-        Get the allocated_plz allocated to our dummy testing plz when testing. Each small testing plz must be allocated
-        to the larger real plz it is located in to fetch data correctly.
-        """
-        query = """
-                SELECT allocated_plz
-                FROM pylovo.postcode
-                WHERE plz = %(plz)s LIMIT 1
-                """
-
-        self.cur.execute(query, {"plz": plz})
-        allocated_plz = self.cur.fetchone()[0]
-
-        return allocated_plz
 
     def get_transformer_positions_for_plz_trafo_ui(self, plz: int) -> list[dict]:
         """

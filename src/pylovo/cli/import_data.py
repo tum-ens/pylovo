@@ -53,12 +53,6 @@ def import_transformers_ui_with_options(host: str, port: int, debug: bool, clean
     )
 
 
-def import_test_postcodes():
-    """Import test postcode geometries for testing."""
-    from pylovo.data_import.test_postcodes import main as test_main
-    test_main()
-
-
 def main():
     """Main entry point for import operations."""
     parser = argparse.ArgumentParser(
@@ -71,9 +65,6 @@ Examples:
   
   # Launch interactive transformer UI
   pylovo-import transformers-ui
-  
-  # Import test postcode geometries
-  pylovo-import test-postcodes
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -125,12 +116,6 @@ Examples:
         help="Automatically clean up port conflicts (default: True)"
     )
 
-    # Subcommand: test-postcodes
-    subparsers.add_parser(
-        "test-postcodes",
-        help="Import test postcode geometries"
-    )
-
     args = parser.parse_args()
 
     if not args.command:
@@ -148,8 +133,6 @@ Examples:
                 cleanup=args.cleanup,
                 auto_cleanup=args.auto_cleanup,
             )
-        elif args.command == "test-postcodes":
-            import_test_postcodes()
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback

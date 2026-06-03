@@ -65,3 +65,9 @@
 - What was decided: Add `pylovo.version.generation_parameters` as a JSONB snapshot populated from selected result-affecting `config_generation.yaml` settings: load calculation, equipment records, cable dimensioning limits, and transformer placement/clustering thresholds.
 - Why: These parameters materially affect generated grid results, but their YAML/list structure does not fit cleanly into many scalar table columns for the current need. A single JSONB cell keeps the version row informative while remaining simple to implement and queryable when needed.
 - What was rejected and why: Adding many scalar columns was rejected for now because the user chose the simpler JSONB-only approach. Storing all execution settings from `config_generation.yaml` was rejected because parallelism, logging, output folders, and similar runtime controls do not define the grid result itself.
+
+## 2026-06-03 - Remove testing-mode support artifacts
+
+- What was decided: Remove all testing-mode support artifacts by deleting the test postcode import module, removing the `pylovo-import test-postcodes` CLI path, and dropping `allocated_plz` from the fresh `postcode` table schema.
+- Why: The project no longer needs compatibility with the `TESTING` generation mode, so keeping test postcode import plumbing and the associated schema column would add dead code and confusing setup surface.
+- What was rejected and why: Actively dropping `allocated_plz` from existing databases was rejected for now because the chosen approach only changes the greenfield schema and avoids destructive migration behavior.
