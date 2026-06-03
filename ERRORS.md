@@ -5,3 +5,9 @@
 - What didn't work: `apply_patch` and sandboxed shell commands failed before the machine reboot because bubblewrap could not configure loopback networking.
 - What worked instead: Temporary escalated `uv run python` edits were used before the reboot; after reboot, normal sandboxed shell commands worked again, but the `apply_patch` helper still hit the bubblewrap filesystem issue.
 - Note for next time: If filesystem tooling fails with `bwrap: loopback: Failed RTM_NEWADDR`, if shell commands work but `apply_patch` still fails, keep edits scoped and use `uv run python` as a temporary workaround.
+
+## 2026-06-03 - Shell backticks damaged Markdown memory entry
+
+- What did not work: Writing a `MEMORY.md` entry through `uv run python -c` inside a double-quoted shell command allowed Markdown backticks to be interpreted as shell command substitution.
+- What worked instead: Rewrote the affected entry using a single-quoted shell command around the Python snippet so Markdown backticks were passed literally.
+- Note for next time: When using the fallback Python edit path, wrap the outer shell command in single quotes or avoid literal Markdown backticks in double-quoted command strings.

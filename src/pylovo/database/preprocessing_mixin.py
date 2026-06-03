@@ -14,31 +14,80 @@ class PreprocessingMixin(BaseMixin, ABC):
     def __init__(self):
         super().__init__()
 
+    @staticmethod
+    def _dataframe_records(df: pd.DataFrame) -> list[dict]:
+        return json.loads(df.to_json(orient="records"))
+
+    def _generation_parameters_snapshot(self) -> dict:
+        return {
+            "electrical_backend": ELECTRICAL_BACKEND,
+            "load_calculation": {
+                "peak_load_household": PEAK_LOAD_HOUSEHOLD,
+                "sim_factor": SIM_FACTOR,
+                "default_power_factor": DEFAULT_POWER_FACTOR,
+                "consumer_categories": self._dataframe_records(CONSUMER_CATEGORIES),
+            },
+            "equipment_data": self._dataframe_records(CONFIG_EQUIPMENT_DATA),
+            "cable_dimensioning": {
+                "vn": VN,
+                "v_band_low": V_BAND_LOW,
+                "v_band_high": V_BAND_HIGH,
+                "min_shared_prefix_length_m": MIN_SHARED_PREFIX_LENGTH_M,
+                "small_load_threshold_kw": SMALL_LOAD_THRESHOLD_KW,
+                "voltage_drop_small_load_percent_per_km": VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM,
+                "voltage_drop_large_load_percent_per_km": VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM,
+                "voltage_drop_distribution_percent": VOLTAGE_DROP_DISTRIBUTION_PERCENT,
+            },
+            "transformer_placement": {
+                "rural_max_households": RURAL_MAX_HOUSEHOLDS,
+                "urban_min_households": URBAN_MIN_HOUSEHOLDS,
+                "rural_min_building_distance": RURAL_MIN_BUILDING_DISTANCE,
+                "urban_max_building_distance": URBAN_MAX_BUILDING_DISTANCE,
+                "transformer_mapping": TRANSFORMER_MAPPING,
+                "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
+                "max_greenfield_trafo_distance": MAX_GREENFIELD_TRAFO_DISTANCE,
+                "large_component_lower_bound": LARGE_COMPONENT_LOWER_BOUND,
+                "large_component_divider": LARGE_COMPONENT_DIVIDER,
+                "k_means_seed": K_MEANS_SEED,
+            },
+        }
+
     def insert_version_if_not_exists(self):
         """Insert version if it doesn't exist, with proper handling for concurrent access."""
         try:
-            # Use a more robust approach with ON CONFLICT to handle race conditions
-            consumer_categories_str = CONSUMER_CATEGORIES.to_json().replace("'", "''")
-            connection_available_cables_str = str(CONSUMER_CONNECTION_CABLES["name"].tolist()).replace("'", "''")
-            other_parameters_dict = {"LARGE_COMPONENT_LOWER_BOUND": LARGE_COMPONENT_LOWER_BOUND,
-                                     "LARGE_COMPONENT_DIVIDER": LARGE_COMPONENT_DIVIDER, "VN": VN,
-                                     "V_BAND_LOW": V_BAND_LOW, "V_BAND_HIGH": V_BAND_HIGH, }
-            other_paramters_str = str(other_parameters_dict).replace("'", "''")
+            generation_parameters = json.dumps(
+                self._generation_parameters_snapshot(),
+                allow_nan=False,
+                sort_keys=True,
+            )
 
-            # Use INSERT ... ON CONFLICT DO NOTHING to handle concurrent access safely
-            insert_query = f"""INSERT INTO pylovo.version (version_id, version_comment, consumer_categories, connection_available_cables, other_parameters) 
-                VALUES ('{VERSION_ID}', '{VERSION_COMMENT}', '{consumer_categories_str}', '{connection_available_cables_str}', '{other_paramters_str}')
-                ON CONFLICT (version_id) DO NOTHING"""
-            
-            self.cur.execute(insert_query)
+            self.cur.execute("ALTER TABLE pylovo.version ADD COLUMN IF NOT EXISTS generation_parameters jsonb;")
+            insert_query = """
+                INSERT INTO pylovo.version (
+                    version_id,
+                    version_comment,
+                    generation_parameters
+                )
+                VALUES (%s, %s, %s::jsonb)
+                ON CONFLICT (version_id) DO UPDATE
+                    SET generation_parameters = EXCLUDED.generation_parameters
+                    WHERE pylovo.version.generation_parameters IS NULL;
+            """
+            self.cur.execute(
+                insert_query,
+                (
+                    VERSION_ID,
+                    VERSION_COMMENT,
+                    generation_parameters,
+                ),
+            )
             self.conn.commit()
-            
-            # Check if we actually inserted something (for logging purposes)
+
             if self.cur.rowcount > 0:
-                self.logger.info(f"Version: {VERSION_ID} (created for the first time)")
+                self.logger.info(f"Version: {VERSION_ID} (created or generation parameters backfilled)")
             else:
                 self.logger.debug(f"Version: {VERSION_ID} (already exists)")
-                
+
         except Exception as e:
             self.logger.error(f"Error inserting version {VERSION_ID}: {e}")
             self.conn.rollback()

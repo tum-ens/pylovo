@@ -59,3 +59,9 @@
 - What was decided: After split-edge helper generation, add a conservative overlap helper pass for remaining feeder lines_result rows that share at least 10 m of exact route geometry and do not already have helper rows. The shorter overlapping feeder row is helperized and marked with helper_type shared_route_overlap_offset.
 - Why: Some split-generated topology rows, such as L1832 and L1898, share a lane segment even though they are not sibling edges from the same split parent, so the existing split-edge helper detection misses them.
 - What was rejected and why: Splitting real lines_result rows at internal vertices was rejected because it would alter installed topology persistence for a visualization problem. A 1 m overlap threshold was rejected because it affected more existing rows than needed for meaningful lane-segment overlays.
+
+## 2026-06-03 - Store selected generation parameters in version JSONB
+
+- What was decided: Add `pylovo.version.generation_parameters` as a JSONB snapshot populated from selected result-affecting `config_generation.yaml` settings: load calculation, equipment records, cable dimensioning limits, and transformer placement/clustering thresholds.
+- Why: These parameters materially affect generated grid results, but their YAML/list structure does not fit cleanly into many scalar table columns for the current need. A single JSONB cell keeps the version row informative while remaining simple to implement and queryable when needed.
+- What was rejected and why: Adding many scalar columns was rejected for now because the user chose the simpler JSONB-only approach. Storing all execution settings from `config_generation.yaml` was rejected because parallelism, logging, output folders, and similar runtime controls do not define the grid result itself.

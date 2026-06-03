@@ -9,10 +9,9 @@ CREATE_QUERIES = {
         version_id varchar(10) PRIMARY KEY,
         version_comment varchar, 
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        consumer_categories varchar,
-        connection_available_cables varchar,   
-        other_parameters varchar
-    )
+        generation_parameters jsonb
+    );
+    ALTER TABLE pylovo.version ADD COLUMN IF NOT EXISTS generation_parameters jsonb;
     """,
     "equipment_data": """
    CREATE TABLE IF NOT EXISTS pylovo.equipment_data(
