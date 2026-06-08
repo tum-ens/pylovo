@@ -71,3 +71,9 @@
 - What was decided: Remove all testing-mode support artifacts by deleting the test postcode import module, removing the `pylovo-import test-postcodes` CLI path, and dropping `allocated_plz` from the fresh `postcode` table schema.
 - Why: The project no longer needs compatibility with the `TESTING` generation mode, so keeping test postcode import plumbing and the associated schema column would add dead code and confusing setup surface.
 - What was rejected and why: Actively dropping `allocated_plz` from existing databases was rejected for now because the chosen approach only changes the greenfield schema and avoids destructive migration behavior.
+
+## 2026-06-08 - Transformer UI manual inserts use target CRS multipoints
+
+- What was decided: Manual transformers added through pylovo-import transformers-ui are inserted as MultiPoint geometries transformed from Leaflet WGS84 clicks into TARGET_EPSG, and the remaining source hardcode to EPSG:3035 in network plotting now uses TARGET_EPSG.
+- Why: The project CRS default is now EPSG:25832, and the transformers table stores MultiPoint geometries in the configured target CRS. Normalizing manual UI inserts keeps new transformers compatible with the current schema.
+- What was rejected and why: Changing the Leaflet UI away from WGS84 was rejected because web maps naturally exchange lon/lat coordinates; converting at the database boundary is simpler and matches the existing API shape.

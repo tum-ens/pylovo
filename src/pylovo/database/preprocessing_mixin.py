@@ -900,7 +900,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         # Insert into transformers table
         transformer_query = f"""
             INSERT INTO pylovo.transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, geom)
-            VALUES (%(osm_id)s, %(type)s, %(transformer_rated_power)s, %(geom_type)s, %(within_shopping)s, ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), {TARGET_EPSG}))
+            VALUES (
+                %(osm_id)s,
+                %(type)s,
+                %(transformer_rated_power)s,
+                %(geom_type)s,
+                %(within_shopping)s,
+                ST_Multi(ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), {TARGET_EPSG}))
+            )
             RETURNING osm_id
         """
         self.cur.execute(transformer_query, {

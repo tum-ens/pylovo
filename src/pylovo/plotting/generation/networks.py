@@ -20,7 +20,7 @@ from pandapower.plotting import create_generic_coordinates
 from pandapower.plotting.plotly import simple_plotly
 from pandapower.topology import create_nxgraph
 
-from pylovo.config_loader import (NODE_COLOR_TRAFO, NODE_COLOR_CONSUMER, NODE_COLOR_CONNECTION_BUS)
+from pylovo.config_loader import (NODE_COLOR_TRAFO, NODE_COLOR_CONSUMER, NODE_COLOR_CONNECTION_BUS, TARGET_EPSG)
 from pylovo.grid_generator import GridGenerator
 
 
@@ -146,7 +146,7 @@ def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Op
             "gr.kcid",
             "gr.bcid",
             "gr.plz",
-            "ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), 3035) AS geom",
+            f"ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), {TARGET_EPSG}) AS geom",
         ],
         "pandapower_line pl",
         "grid_result gr",
