@@ -23,3 +23,9 @@
 - What did not work: Writing a `MEMORY.md` entry through `uv run python -c` inside a double-quoted shell command allowed Markdown backticks to be interpreted as shell command substitution.
 - What worked instead: Rewrote the affected entry using a single-quoted shell command around the Python snippet so Markdown backticks were passed literally.
 - Note for next time: When using the fallback Python edit path, wrap the outer shell command in single quotes or avoid literal Markdown backticks in double-quoted command strings.
+
+## 2026-06-09 - Markdown backticks broke fallback Python edit again
+
+- What did not work: After `apply_patch` failed with the known bubblewrap loopback issue, a double-quoted `uv run python -c` fallback for `improvements.md` allowed Markdown backticks to trigger shell command substitution.
+- What worked instead: Reran the same scoped `uv run python -c` edit with a single-quoted outer shell string, so Markdown backticks were passed literally to Python.
+- Note for next time: For fallback Python edits that include Markdown backticks, use a single-quoted outer command immediately.

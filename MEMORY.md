@@ -107,3 +107,9 @@
 - What was decided: Manual transformers added through pylovo-import transformers-ui are inserted as MultiPoint geometries transformed from Leaflet WGS84 clicks into TARGET_EPSG, and the remaining source hardcode to EPSG:3035 in network plotting now uses TARGET_EPSG.
 - Why: The project CRS default is now EPSG:25832, and the transformers table stores MultiPoint geometries in the configured target CRS. Normalizing manual UI inserts keeps new transformers compatible with the current schema.
 - What was rejected and why: Changing the Leaflet UI away from WGS84 was rejected because web maps naturally exchange lon/lat coordinates; converting at the database boundary is simpler and matches the existing API shape.
+
+## 2026-06-09 - Derive feeder voltage-drop budget from V_BAND_LOW
+
+- What was decided: Remove `VOLTAGE_DROP_DISTRIBUTION_PERCENT` and use `V_BAND_LOW: 0.95` as the single lower-voltage parameter. Feeder sizing now derives its total allowed voltage drop as `(1 - V_BAND_LOW) * 100`, giving a 5% feeder drop budget.
+- Why: Keeping both `V_BAND_LOW` and a separate feeder drop percentage created overlapping voltage-limit configuration. The user chose to keep only `V_BAND_LOW` and wanted a 5% allowable feeder drop.
+- What was rejected and why: Keeping `VOLTAGE_DROP_DISTRIBUTION_PERCENT` was rejected because it preserves redundant configuration. Using `V_BAND_LOW: 0.96` was rejected because the desired allowable feeder drop is 5%, not 4%.

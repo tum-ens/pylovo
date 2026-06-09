@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM, VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM, SMALL_LOAD_THRESHOLD_KW, VOLTAGE_DROP_DISTRIBUTION_PERCENT, DEFAULT_POWER_FACTOR
+from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM, VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM, SMALL_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -343,8 +343,9 @@ class CableInstaller:
                     current_available_cables["x_ohm_per_km"] ** 2
                 )
 
+                feeder_voltage_drop_percent = (1 - V_BAND_LOW) * 100
                 max_impedance = self._max_allowable_impedance_per_km(
-                    VOLTAGE_DROP_DISTRIBUTION_PERCENT,
+                    feeder_voltage_drop_percent,
                     Imax,
                     distance_km,
                     count,

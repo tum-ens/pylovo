@@ -36,7 +36,6 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "small_load_threshold_kw": SMALL_LOAD_THRESHOLD_KW,
                 "voltage_drop_small_load_percent_per_km": VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM,
                 "voltage_drop_large_load_percent_per_km": VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM,
-                "voltage_drop_distribution_percent": VOLTAGE_DROP_DISTRIBUTION_PERCENT,
             },
             "transformer_placement": {
                 "rural_max_households": RURAL_MAX_HOUSEHOLDS,
