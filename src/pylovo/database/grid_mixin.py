@@ -116,6 +116,14 @@ class GridMixin(BaseMixin, ABC):
         data = self.cur.fetchall()
         return [t[0] for t in data]
 
+    def get_consumer_vertices_from_connection_points(self, connection_points: list[int]) -> list[tuple[int, int]]:
+        query = """SELECT connection_point, vertice_id
+                   FROM buildings_tem
+                   WHERE connection_point IN %(c)s
+                     AND type != 'Transformer';"""
+        self.cur.execute(query, {'c': tuple(connection_points)})
+        return [(int(connection_point), int(vertice_id)) for connection_point, vertice_id in self.cur.fetchall()]
+
     def get_path_to_bus(self, vertice: int, ont: int) -> list:
         """routing problem: find the shortest path from vertice to the ont (ortsnetztrafo)"""
         query = """SELECT node

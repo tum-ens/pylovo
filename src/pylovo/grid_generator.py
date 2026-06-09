@@ -1091,7 +1091,7 @@ class GridGenerator:
         consumer_df: pd.DataFrame,
         vertices_dict: dict[int, float],
         ont_vertice: int,
-        local_length_dict: dict,
+        material_length_by_cable_km: dict,
         kcid: int,
         bcid: int,
     ) -> dict:
@@ -1138,13 +1138,13 @@ class GridGenerator:
                 parent = int(branch_nodes[index + 1])
                 child = int(branch_nodes[index])
                 cable, count = cable_by_edge[(parent, child)]
-                local_length_dict = installer.create_line_node_to_node(
+                material_length_by_cable_km = installer.create_line_node_to_node(
                     self.plz,
                     kcid,
                     bcid,
                     [child, parent],
                     vertices_dict,
-                    local_length_dict,
+                    material_length_by_cable_km,
                     cable,
                     ont_vertice,
                     count,
@@ -1169,13 +1169,13 @@ class GridGenerator:
                     buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
                 )
                 cable, count = cable_by_edge[(attachment_node, branch_start_node)]
-                local_length_dict = installer.create_line_node_to_node(
+                material_length_by_cable_km = installer.create_line_node_to_node(
                     self.plz,
                     kcid,
                     bcid,
                     [branch_start_node, attachment_node],
                     vertices_dict,
-                    local_length_dict,
+                    material_length_by_cable_km,
                     cable,
                     ont_vertice,
                     count,
@@ -1199,13 +1199,13 @@ class GridGenerator:
                     count,
                     ont_vertice,
                 )
-                local_length_dict[cable] += length
+                material_length_by_cable_km[cable] += length
                 self.logger.debug(
                     f"Branch {branch_index} connected to LV bus after two-pass sizing "
                     f"(cable={cable}, parallels={count}, length_km={length:.4f}, load_kw={sim_load:.2f})."
                 )
 
-        return local_length_dict
+        return material_length_by_cable_km
 
     def install_cables(self):
         """
@@ -1257,7 +1257,8 @@ class GridGenerator:
             if not all_available_cables:
                 all_available_cables = [cable[0] for cable in cables]
 
-            local_length_dict = {c: 0 for c in all_available_cables}
+            # Tracks installed cable material length, so parallel cables count multiple times.
+            material_length_by_cable_km = {c: 0 for c in all_available_cables}
 
             # Create cable installer
             installer = CableInstaller(
@@ -1291,7 +1292,7 @@ class GridGenerator:
             )
 
             for plan in branch_plans:
-                local_length_dict = installer.install_consumer_cables(
+                material_length_by_cable_km = installer.install_consumer_cables(
                     self.plz,
                     bcid,
                     kcid,
@@ -1299,17 +1300,17 @@ class GridGenerator:
                     ont_vertice,
                     vertices_dict,
                     sim_load_per_building,
-                    local_length_dict,
+                    material_length_by_cable_km,
                 )
 
-            local_length_dict = self._install_backbone_lines_two_pass(
+            material_length_by_cable_km = self._install_backbone_lines_two_pass(
                 installer,
                 branch_plans,
                 buildings_df,
                 consumer_df,
                 vertices_dict,
                 ont_vertice,
-                local_length_dict,
+                material_length_by_cable_km,
                 kcid,
                 bcid,
             )
@@ -1333,17 +1334,17 @@ class GridGenerator:
             branch_index = len(branch_plans)
 
             # Cluster summary
-            total_length = sum(local_length_dict.values())
-            used_cables = {k: v for k, v in local_length_dict.items() if v > 0}
-            if used_cables:
-                cable_summary = ", ".join([f"{k}:{v:.3f} km" for k, v in sorted(used_cables.items(), key=lambda x: -x[1])])
+            material_length = sum(material_length_by_cable_km.values())
+            used_material_lengths = {k: v for k, v in material_length_by_cable_km.items() if v > 0}
+            if used_material_lengths:
+                cable_summary = ", ".join([f"{k}:{v:.3f} km" for k, v in sorted(used_material_lengths.items(), key=lambda x: -x[1])])
             else:
                 cable_summary = "no cables installed"
 
             lines_count = backend.get_component_count('lines')
             self.logger.info(
                 f"Finished cluster kcid={kcid}, bcid={bcid}: branches={branch_index}, lines={lines_count}, "
-                f"total_length={total_length:.3f} km ({cable_summary})"
+                f"material_length={material_length:.3f} km ({cable_summary})"
             )
 
             # Track and report progress using real cluster counts.

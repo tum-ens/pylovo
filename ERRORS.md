@@ -29,3 +29,9 @@
 - What did not work: After `apply_patch` failed with the known bubblewrap loopback issue, a double-quoted `uv run python -c` fallback for `improvements.md` allowed Markdown backticks to trigger shell command substitution.
 - What worked instead: Reran the same scoped `uv run python -c` edit with a single-quoted outer shell string, so Markdown backticks were passed literally to Python.
 - Note for next time: For fallback Python edits that include Markdown backticks, use a single-quoted outer command immediately.
+
+## 2026-06-09 - Scoped fallback edits need small quote-safe replacements
+
+- What did not work: apply_patch failed with the known bubblewrap loopback error. A full-block uv run python edit wrapped in single shell quotes broke when the embedded SQL contained a single quoted Transformer literal. A large triple-quoted test-file payload also produced an unterminated string error.
+- What worked instead: Use small insertion or line-level replacements with quote-safe Python strings, or rewrite files with a single outer shell quote only when the payload avoids single quote characters.
+- Note for next time: After apply_patch fails, prefer small marker-based replacements over embedding large original blocks, especially when SQL or Markdown text contains mixed quote styles.
