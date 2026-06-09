@@ -62,16 +62,16 @@ CONSUMER_CONNECTION_CABLES:
 VN: 400  # Nominal voltage in the low voltage grid
 V_BAND_LOW: 0.95  # Lower voltage band defines a 5% feeder voltage-drop budget.
 V_BAND_HIGH: 1.05
+# Voltage drop limits for consumer connections (percentage of nominal voltage per km).
+VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM: 5.0
+VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM: 10.0
+
 # Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
 #  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
 ### Load thresholds for different voltage drop limits
 SMALL_LOAD_THRESHOLD_KW: 100  # Threshold below which stricter voltage drop limits apply
-# Voltage drop limits for consumer connections (percentage of nominal voltage per km).
-# The installer multiplies this value by service-drop length in km to derive the total drop budget.
-# With VN=400V this corresponds to a planning budget of ~2V per 100m for smaller loads and ~4V per 100m for larger direct connections.
-VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM: 5.0
-VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM: 10.0
+
 
 # =============================================================================
 # TRANSFORMER PLACEMENT PARAMETERS
