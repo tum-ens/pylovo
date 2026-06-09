@@ -76,7 +76,8 @@ class ClusteringMixin(BaseMixin, ABC):
         query = """SELECT COUNT(*)
                    FROM buildings_tem
                    WHERE vertice_id IN %(v)s
-                     AND type != 'Transformer';"""
+                     AND type != 'Transformer'
+                     AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
         count = self.cur.fetchone()[0]
 
@@ -106,6 +107,7 @@ class ClusteringMixin(BaseMixin, ABC):
                 SELECT vertice_id, ST_AsText(centroid) as wkt 
                 FROM buildings_tem
                 WHERE vertice_id IN %(v)s
+                  AND peak_load_in_kw != 0
                 """
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
         data = self.cur.fetchall()
@@ -125,7 +127,8 @@ class ClusteringMixin(BaseMixin, ABC):
         query = """
                 UPDATE buildings_tem
                 SET kcid = %(k)s
-                WHERE vertice_id IN %(v)s;
+                WHERE vertice_id IN %(v)s
+                  AND peak_load_in_kw != 0;
                 """
         for kcid in np.unique(kcids):
             self.cur.execute(query, {"k": int(kcid), "v": tuple(map(int, vertices[kcids == kcid]))})
@@ -144,7 +147,8 @@ class ClusteringMixin(BaseMixin, ABC):
                                 ELSE m.max_k + 1
                     END)
                 FROM maxk AS m
-                WHERE vertice_id IN %(v)s;"""
+                WHERE vertice_id IN %(v)s
+                  AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
     @staticmethod
@@ -203,6 +207,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                              FROM buildings_tem \
                                              WHERE kcid = %(k)s \
                                                AND bcid ISNULL \
+                                               AND peak_load_in_kw != 0 \
                                              ORDER BY connection_point) AS b), \
                                       false);"""
         params = {"k": kcid}
@@ -240,6 +245,7 @@ class ClusteringMixin(BaseMixin, ABC):
                    FROM buildings_tem
                    WHERE kcid = %(k)s
                      AND bcid = %(b)s
+                     AND peak_load_in_kw != 0
                    GROUP BY connection_point
                    ORDER BY connection_point;"""
         self.cur.execute(query, {"k": kcid, "b": bcid})
@@ -384,7 +390,8 @@ class ClusteringMixin(BaseMixin, ABC):
                               AND kcid = %(kc)s
                               AND bcid ISNULL
                               AND connection_point IN %(vid)s
-                              AND type != 'Transformer'; """
+                              AND type != 'Transformer'
+                              AND peak_load_in_kw != 0; """
 
         params = {"v": VERSION_ID, "pc": plz, "bc": bcid, "kc": kcid, "vid": tuple(map(int, vertices)), }
         self.cur.execute(building_query, params)
@@ -400,7 +407,8 @@ class ClusteringMixin(BaseMixin, ABC):
         consumer_query = """SELECT DISTINCT connection_point
                             FROM buildings_tem
                             WHERE kcid = %(k)s
-                              AND type != 'Transformer';"""
+                              AND type != 'Transformer'
+                              AND peak_load_in_kw != 0;"""
         self.cur.execute(consumer_query, {"k": kcid})
         consumer_list = [t[0] for t in self.cur.fetchall()]
 
@@ -419,6 +427,7 @@ class ClusteringMixin(BaseMixin, ABC):
                    FROM buildings_tem
                    WHERE kcid = %(k)s
                      AND type != 'Transformer'
+                     AND peak_load_in_kw != 0
                      AND bcid ISNULL;"""
         self.cur.execute(query, {"k": kcid})
         count = self.cur.fetchone()[0]
@@ -462,7 +471,8 @@ class ClusteringMixin(BaseMixin, ABC):
                              FROM buildings_tem
                              WHERE connection_point IS NOT NULL
                                AND kcid = %(k)s
-                               AND bcid ISNULL;"""
+                               AND bcid ISNULL
+                               AND peak_load_in_kw != 0;"""
         params = {"k": kcid}
 
         buildings_df = pd.read_sql_query(buildings_query, con=self.conn, params=params)
@@ -478,6 +488,7 @@ class ClusteringMixin(BaseMixin, ABC):
         buildings_query = """SELECT *
                              FROM buildings_tem
                              WHERE type != 'Transformer'
+                               AND peak_load_in_kw != 0
                                AND plz = %(p)s
                                AND bcid = %(b)s
                                AND kcid = %(k)s;"""
@@ -701,7 +712,8 @@ class ClusteringMixin(BaseMixin, ABC):
                 UPDATE buildings_tem
                 SET bcid = %(count)s
                 WHERE connection_point IN %(c)s
-                  AND type != 'Transformer';
+                  AND type != 'Transformer'
+                  AND peak_load_in_kw != 0;
 
                 INSERT INTO pylovo.grid_result (version_id, plz, kcid, bcid, ont_vertice_id, transformer_rated_power)
                 VALUES (%(v)s, %(pc)s, %(k)s, %(count)s, %(t)s, %(l)s);
@@ -727,6 +739,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                             LEFT JOIN pylovo.consumer_categories AS c
                                                       ON b.type = c.definition
                                    WHERE b.connection_point IN %(c)s
+                                     AND b.peak_load_in_kw != 0
                                      AND b.type IN ('SFH', 'MFH', 'AB', 'TH'))
                          SELECT SUM(load), SUM(count), sim_factor
                          FROM residential
@@ -750,6 +763,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                            LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
                                   WHERE b.connection_point IN %(c)s
+                                    AND b.peak_load_in_kw != 0
                                     AND b.type = 'Commercial')
                         SELECT SUM(load), SUM(count), sim_factor
                         FROM commercial
@@ -772,6 +786,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                        LEFT JOIN pylovo.consumer_categories AS c
                                                  ON c.definition = b.type
                               WHERE b.connection_point IN %(c)s
+                                AND b.peak_load_in_kw != 0
                                 AND b.type = 'Public')
                     SELECT SUM(load), SUM(count), sim_factor
                     FROM public
@@ -793,6 +808,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                            LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
                                   WHERE b.connection_point IN %(c)s
+                                    AND b.peak_load_in_kw != 0
                                     AND b.type = 'Industrial')
                         SELECT SUM(load), SUM(count), sim_factor
                         FROM industrial
@@ -824,7 +840,8 @@ class ClusteringMixin(BaseMixin, ABC):
                          FROM buildings_tem
                          WHERE vertice_id IS NOT NULL
                            AND bcid = %(b)s
-                           AND kcid = %(k)s;"""
+                           AND kcid = %(k)s
+                           AND peak_load_in_kw != 0;"""
         params = {"b": bcid, "k": kcid}
         self.cur.execute(count_query, params)
         try:
@@ -882,6 +899,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                              FROM buildings_tem
                                              WHERE kcid = %(k)s
                                                AND bcid = %(b)s
+                                               AND peak_load_in_kw != 0
                                              ORDER BY connection_point) AS b),
                                       false);"""
         params = {"b": bcid, "k": kcid}

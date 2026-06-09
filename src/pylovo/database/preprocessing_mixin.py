@@ -33,9 +33,8 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "v_band_low": V_BAND_LOW,
                 "v_band_high": V_BAND_HIGH,
                 "min_shared_prefix_length_m": MIN_SHARED_PREFIX_LENGTH_M,
-                "small_load_threshold_kw": SMALL_LOAD_THRESHOLD_KW,
-                "voltage_drop_small_load_percent_per_km": VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM,
-                "voltage_drop_large_load_percent_per_km": VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM,
+                "voltage_drop_load_percent_per_km": VOLTAGE_DROP_LOAD_PERCENT_PER_KM,
+                "mv_direct_connection_load_threshold_kw": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
             },
             "transformer_placement": {
                 "rural_max_households": RURAL_MAX_HOUSEHOLDS,
@@ -485,18 +484,18 @@ class PreprocessingMixin(BaseMixin, ABC):
 
     def update_too_large_consumers_to_zero(self) -> int:
         """
-        Sets the load to zero if the peak load is too large (> 100)
+        Sets Commercial/Public loads above the LV modeling threshold to zero.
         :return: number of the large customers
         """
         query = """
                 UPDATE buildings_tem
                 SET peak_load_in_kw = 0
-                WHERE peak_load_in_kw > 100
+                WHERE peak_load_in_kw > %(threshold)s
                   AND type IN ('Commercial', 'Public');
                 SELECT COUNT(*)
                 FROM buildings_tem
                 WHERE peak_load_in_kw = 0;"""
-        self.cur.execute(query)
+        self.cur.execute(query, {"threshold": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW})
         too_large = self.cur.fetchone()[0]
 
         return too_large

@@ -381,7 +381,9 @@ class GridGenerator:
             f"buildings_tem"
         )
         too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
-        self.logger.debug(f"{too_large_consumers} too large consumers removed from buildings_tem")
+        self.logger.debug(
+            f"{too_large_consumers} Commercial/Public consumers assumed MV-direct and excluded from LV modeling"
+        )
 
         self.dbc.assign_close_buildings()
         self.logger.debug("All close buildings assigned and removed from buildings_tem")

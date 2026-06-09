@@ -32,7 +32,8 @@ class GridMixin(BaseMixin, ABC):
                             FROM buildings_tem
                             WHERE plz = %(p)s
                               AND kcid = %(k)s
-                              AND bcid = %(b)s;"""
+                              AND bcid = %(b)s
+                              AND peak_load_in_kw != 0;"""
         self.cur.execute(consumer_query, {"p": plz, "k": kcid, "b": bcid})
         consumer = [t[0] for t in self.cur.fetchall()]
 
@@ -40,7 +41,8 @@ class GridMixin(BaseMixin, ABC):
                               FROM buildings_tem
                               WHERE plz = %(p)s
                                 AND kcid = %(k)s
-                                AND bcid = %(b)s;"""
+                                AND bcid = %(b)s
+                                AND peak_load_in_kw != 0;"""
         self.cur.execute(connection_query, {"p": plz, "k": kcid, "b": bcid})
         connection = [t[0] for t in self.cur.fetchall()]
 
@@ -111,7 +113,8 @@ class GridMixin(BaseMixin, ABC):
         query = """SELECT vertice_id
                    FROM buildings_tem
                    WHERE connection_point IN %(c)s
-                     AND type != 'Transformer';"""
+                     AND type != 'Transformer'
+                     AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {"c": tuple(connection)})
         data = self.cur.fetchall()
         return [t[0] for t in data]
@@ -120,7 +123,8 @@ class GridMixin(BaseMixin, ABC):
         query = """SELECT connection_point, vertice_id
                    FROM buildings_tem
                    WHERE connection_point IN %(c)s
-                     AND type != 'Transformer';"""
+                     AND type != 'Transformer'
+                     AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {'c': tuple(connection_points)})
         return [(int(connection_point), int(vertice_id)) for connection_point, vertice_id in self.cur.fetchall()]
 

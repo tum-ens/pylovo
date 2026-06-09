@@ -228,12 +228,11 @@ V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
 ALL_CABLES = pd.concat([FEEDER_CABLES, CONSUMER_CONNECTION_CABLES], ignore_index=True)
 MAX_CABLE_CURRENT_KA = ALL_CABLES["max_i_a"].max() / 1000  # Convert A to kA
 
-# Load thresholds for different voltage drop limits
-SMALL_LOAD_THRESHOLD_KW = CONFIG_GENERATION["SMALL_LOAD_THRESHOLD_KW"]
+# Consumer service-drop voltage-drop limit; installer converts percent per km to a total line budget.
+VOLTAGE_DROP_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LOAD_PERCENT_PER_KM"]
 
-# Voltage drop limits for consumer connections; installer converts percent per km to a total line budget.
-VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM"]
-VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM"]
+# Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
+MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
 
 # Consumer connection cables are defined directly by CONSUMER_CONNECTION_CABLES.
 

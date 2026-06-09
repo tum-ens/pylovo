@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM, VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM, SMALL_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR
+from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_LOAD_PERCENT_PER_KM, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -243,18 +243,13 @@ class CableInstaller:
             Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
 
             connection_available_cables = self._consumer_connection_cables
-            # Direct high-load supplies from a dedicated transformer connection point may use feeder cables as well.
-            if start_vid == ont_vertice and sim_load > SMALL_LOAD_THRESHOLD_KW:
+            # Direct transformer connection point may use feeder cables as well.
+            if start_vid == ont_vertice:
                 connection_available_cables = list(dict.fromkeys(
                     self._consumer_connection_cables + self._feeder_available_cables
                 ))
 
             voltage_available_cables_df = None
-            voltage_drop_percent_per_km = (
-                VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM
-                if sim_load <= SMALL_LOAD_THRESHOLD_KW
-                else VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM
-            )
             line_df = self._cable_df
             while True:
                 current_available_cables_df = line_df.loc[
@@ -273,7 +268,7 @@ class CableInstaller:
                 if Imax * length_km == 0:
                     voltage_available_cables_df = current_available_cables_df
                 else:
-                    total_voltage_drop_percent = voltage_drop_percent_per_km * length_km
+                    total_voltage_drop_percent = VOLTAGE_DROP_LOAD_PERCENT_PER_KM * length_km
                     max_impedance = self._max_allowable_impedance_for_total_drop(
                         total_voltage_drop_percent,
                         Imax,
