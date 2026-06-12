@@ -392,7 +392,7 @@ class CableInstaller:
     def create_line_start_to_lv_bus(self, plz: int, bcid: int, kcid: int,
                                      branch_start_node: int,
                                      vertices_dict: dict, cable: str, count: int,
-                                     ont_vertice: int) -> int:
+                                     ont_vertice: int, feeder_section_id: int | None = None) -> int:
         """Create line from branch start to LV bus."""
         node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
 
@@ -430,6 +430,7 @@ class CableInstaller:
             to_bus=branch_start_node,
             length_km=length_km,
             parallel=count,
+            feeder_section_id=feeder_section_id,
         )
 
         return length
@@ -437,7 +438,8 @@ class CableInstaller:
     def create_line_node_to_node(self, plz: int, kcid: int, bcid: int,
                                   branch_node_list: list,
                                   vertices_dict: dict, material_length_by_cable_km: dict,
-                                  cable: str, ont_vertice: int, count: float) -> dict:
+                                  cable: str, ont_vertice: int, count: float,
+                                  feeder_section_id: int | None = None) -> dict:
         """Create lines between connection nodes."""
         for i in range(len(branch_node_list) - 1):
             node_path_list = self.dbc.get_path_to_bus(branch_node_list[i], ont_vertice)
@@ -481,6 +483,7 @@ class CableInstaller:
                 to_bus=end_vid,
                 length_km=length_km,
                 parallel=count,
+                feeder_section_id=feeder_section_id,
             )
 
         return material_length_by_cable_km

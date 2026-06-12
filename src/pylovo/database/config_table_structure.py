@@ -113,13 +113,17 @@ CREATE_QUERIES = {
         to_bus integer,
         parallel integer,
         length_km double precision,
+        feeder_section_id integer,
         CONSTRAINT fk_lines_result_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
+    ALTER TABLE pylovo.lines_result ADD COLUMN IF NOT EXISTS feeder_section_id integer;
     CREATE INDEX IF NOT EXISTS idx_lines_result_grid_result_id
-    ON pylovo.lines_result (grid_result_id)
+    ON pylovo.lines_result (grid_result_id);
+    CREATE INDEX IF NOT EXISTS idx_lines_result_grid_section_id
+    ON pylovo.lines_result (grid_result_id, feeder_section_id)
     """,
     "lines_result_helper": """
     CREATE TABLE IF NOT EXISTS pylovo.lines_result_helper (
@@ -185,6 +189,7 @@ CREATE_QUERIES = {
         to_bus integer,
         parallel integer,
         length_km double precision,
+        feeder_section_id integer,
         version_id varchar(10) NOT NULL,
         kcid integer NOT NULL,
         bcid integer NOT NULL,
@@ -198,10 +203,13 @@ CREATE_QUERIES = {
             REFERENCES pylovo.lines_result (lines_result_id)
             ON DELETE CASCADE
     );
+    ALTER TABLE pylovo.lines_result_view ADD COLUMN IF NOT EXISTS feeder_section_id integer;
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_grid_result_id
     ON pylovo.lines_result_view (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_version_plz
     ON pylovo.lines_result_view (version_id, plz);
+    CREATE INDEX IF NOT EXISTS idx_lines_result_view_grid_section_id
+    ON pylovo.lines_result_view (grid_result_id, feeder_section_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_geom
     ON pylovo.lines_result_view USING gist (geom)
     """,

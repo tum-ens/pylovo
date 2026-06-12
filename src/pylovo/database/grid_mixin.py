@@ -615,13 +615,14 @@ class GridMixin(BaseMixin, ABC):
                 to_bus,
                 parallel,
                 length_km,
+                feeder_section_id,
                 version_id,
                 kcid,
                 bcid,
                 plz
             )
-            WITH RECURSIVE selected_grid AS (
-                SELECT grid_result_id, version_id, kcid, bcid, plz, ont_vertice_id
+            WITH selected_grid AS (
+                SELECT grid_result_id, version_id, kcid, bcid, plz
                 FROM pylovo.grid_result
                 WHERE grid_result_id = %(grid_result_id)s
             ),
@@ -644,7 +645,8 @@ class GridMixin(BaseMixin, ABC):
                     lr.from_bus,
                     lr.to_bus,
                     lr.parallel,
-                    lr.length_km
+                    lr.length_km,
+                    lr.feeder_section_id
                 FROM pylovo.lines_result lr
                 JOIN selected_grid sg ON sg.grid_result_id = lr.grid_result_id
                 WHERE NOT EXISTS (
@@ -665,111 +667,72 @@ class GridMixin(BaseMixin, ABC):
                     lrh.from_bus,
                     lrh.to_bus,
                     lrh.parallel,
-                    lrh.length_km
+                    lrh.length_km,
+                    source_lr.feeder_section_id
                 FROM pylovo.lines_result_helper lrh
                 JOIN selected_grid sg ON sg.grid_result_id = lrh.grid_result_id
+                JOIN pylovo.lines_result source_lr
+                  ON source_lr.lines_result_id = lrh.source_lines_result_id
             ),
-            feeder_lines AS (
+            feeder_section_lines AS (
                 SELECT *
                 FROM visible_lines
-                WHERE std_type IN (SELECT name FROM feeder_equipment)
+                WHERE feeder_section_id IS NOT NULL
+                  AND std_type IN (SELECT name FROM feeder_equipment)
             ),
-            non_feeder_lines AS (
+            passthrough_lines AS (
                 SELECT *
                 FROM visible_lines
-                WHERE std_type NOT IN (SELECT name FROM feeder_equipment)
+                WHERE feeder_section_id IS NULL
+                   OR std_type NOT IN (SELECT name FROM feeder_equipment)
                    OR std_type IS NULL
             ),
-            hard_nodes AS (
-                SELECT grid_result_id, ont_vertice_id AS bus
-                FROM selected_grid
-                WHERE ont_vertice_id IS NOT NULL
-                UNION
-                SELECT sp.grid_result_id, sp.split_bus AS bus
-                FROM pylovo.split_points sp
-                JOIN selected_grid sg ON sg.grid_result_id = sp.grid_result_id
+            section_start AS (
+                SELECT fsl.grid_result_id, fsl.feeder_section_id, fsl.from_bus
+                FROM feeder_section_lines fsl
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM feeder_section_lines incoming
+                    WHERE incoming.grid_result_id = fsl.grid_result_id
+                      AND incoming.feeder_section_id = fsl.feeder_section_id
+                      AND incoming.to_bus = fsl.from_bus
+                )
+                GROUP BY fsl.grid_result_id, fsl.feeder_section_id, fsl.from_bus
             ),
-            feeder_nodes AS (
-                SELECT grid_result_id, from_bus AS bus, source_id
-                FROM feeder_lines
-                UNION ALL
-                SELECT grid_result_id, to_bus AS bus, source_id
-                FROM feeder_lines
-            ),
-            node_degree AS (
-                SELECT grid_result_id, bus, COUNT(DISTINCT source_id) AS feeder_degree
-                FROM feeder_nodes
-                GROUP BY grid_result_id, bus
-            ),
-            pass_nodes AS (
-                SELECT nd.grid_result_id, nd.bus
-                FROM node_degree nd
-                LEFT JOIN hard_nodes hn
-                  ON hn.grid_result_id = nd.grid_result_id
-                 AND hn.bus = nd.bus
-                WHERE nd.feeder_degree = 2
-                  AND hn.bus IS NULL
-            ),
-            directed_edges AS (
-                SELECT source_id, grid_result_id, from_bus AS start_bus, to_bus AS end_bus
-                FROM feeder_lines
-                UNION ALL
-                SELECT source_id, grid_result_id, to_bus AS start_bus, from_bus AS end_bus
-                FROM feeder_lines
-            ),
-            chains AS (
-                SELECT
-                    de.grid_result_id,
-                    de.start_bus,
-                    de.end_bus AS current_bus,
-                    ARRAY[de.source_id] AS path_edges
-                FROM directed_edges de
-                LEFT JOIN pass_nodes pn
-                  ON pn.grid_result_id = de.grid_result_id
-                 AND pn.bus = de.start_bus
-                WHERE pn.bus IS NULL
-                UNION ALL
-                SELECT
-                    c.grid_result_id,
-                    c.start_bus,
-                    next_edge.end_bus AS current_bus,
-                    c.path_edges || next_edge.source_id
-                FROM chains c
-                JOIN pass_nodes pn
-                  ON pn.grid_result_id = c.grid_result_id
-                 AND pn.bus = c.current_bus
-                JOIN directed_edges next_edge
-                  ON next_edge.grid_result_id = c.grid_result_id
-                 AND next_edge.start_bus = c.current_bus
-                 AND NOT next_edge.source_id = ANY(c.path_edges)
-                WHERE cardinality(c.path_edges) < 100
-            ),
-            complete_chains AS (
-                SELECT c.*
-                FROM chains c
-                LEFT JOIN pass_nodes pn
-                  ON pn.grid_result_id = c.grid_result_id
-                 AND pn.bus = c.current_bus
-                WHERE pn.bus IS NULL
-                  AND c.start_bus < c.current_bus
+            section_end AS (
+                SELECT fsl.grid_result_id, fsl.feeder_section_id, fsl.to_bus
+                FROM feeder_section_lines fsl
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM feeder_section_lines outgoing
+                    WHERE outgoing.grid_result_id = fsl.grid_result_id
+                      AND outgoing.feeder_section_id = fsl.feeder_section_id
+                      AND outgoing.from_bus = fsl.to_bus
+                )
+                GROUP BY fsl.grid_result_id, fsl.feeder_section_id, fsl.to_bus
             ),
             merged_feeder_lines AS (
                 SELECT
                     true AS is_helper,
                     NULL::bigint AS source_lines_result_id,
-                    'merged_feeder_topology'::varchar(50) AS helper_type,
-                    c.grid_result_id,
-                    ST_LineMerge(ST_Collect(fl.geom)) AS geom,
-                    CONCAT('M', c.grid_result_id, '_', c.start_bus, '_', c.current_bus) AS line_name,
-                    STRING_AGG(DISTINCT fl.std_type, '+') AS std_type,
-                    c.start_bus AS from_bus,
-                    c.current_bus AS to_bus,
-                    MAX(fl.parallel) AS parallel,
-                    SUM(fl.length_km) AS length_km
-                FROM complete_chains c
-                JOIN feeder_lines fl
-                  ON fl.source_id = ANY(c.path_edges)
-                GROUP BY c.grid_result_id, c.start_bus, c.current_bus, c.path_edges
+                    'merged_feeder_section'::varchar(50) AS helper_type,
+                    fsl.grid_result_id,
+                    ST_LineMerge(ST_Collect(fsl.geom)) AS geom,
+                    CONCAT('M', fsl.grid_result_id, '_', fsl.feeder_section_id) AS line_name,
+                    STRING_AGG(DISTINCT fsl.std_type, '+') AS std_type,
+                    MIN(ss.from_bus) AS from_bus,
+                    MIN(se.to_bus) AS to_bus,
+                    MAX(fsl.parallel) AS parallel,
+                    SUM(fsl.length_km) AS length_km,
+                    fsl.feeder_section_id
+                FROM feeder_section_lines fsl
+                LEFT JOIN section_start ss
+                  ON ss.grid_result_id = fsl.grid_result_id
+                 AND ss.feeder_section_id = fsl.feeder_section_id
+                LEFT JOIN section_end se
+                  ON se.grid_result_id = fsl.grid_result_id
+                 AND se.feeder_section_id = fsl.feeder_section_id
+                GROUP BY fsl.grid_result_id, fsl.feeder_section_id
             )
             SELECT
                 mfl.is_helper,
@@ -783,6 +746,7 @@ class GridMixin(BaseMixin, ABC):
                 mfl.to_bus,
                 mfl.parallel,
                 mfl.length_km,
+                mfl.feeder_section_id,
                 sg.version_id,
                 sg.kcid,
                 sg.bcid,
@@ -791,28 +755,29 @@ class GridMixin(BaseMixin, ABC):
             JOIN selected_grid sg ON sg.grid_result_id = mfl.grid_result_id
             UNION ALL
             SELECT
-                nfl.is_helper,
-                nfl.source_lines_result_id,
-                nfl.helper_type,
-                nfl.grid_result_id,
-                nfl.geom,
-                nfl.line_name,
-                nfl.std_type,
-                nfl.from_bus,
-                nfl.to_bus,
-                nfl.parallel,
-                nfl.length_km,
+                pl.is_helper,
+                pl.source_lines_result_id,
+                pl.helper_type,
+                pl.grid_result_id,
+                pl.geom,
+                pl.line_name,
+                pl.std_type,
+                pl.from_bus,
+                pl.to_bus,
+                pl.parallel,
+                pl.length_km,
+                pl.feeder_section_id,
                 sg.version_id,
                 sg.kcid,
                 sg.bcid,
                 sg.plz
-            FROM non_feeder_lines nfl
-            JOIN selected_grid sg ON sg.grid_result_id = nfl.grid_result_id;
+            FROM passthrough_lines pl
+            JOIN selected_grid sg ON sg.grid_result_id = pl.grid_result_id;
         """
         self.cur.execute(insert_query, {"grid_result_id": grid_result_id})
 
     def insert_lines(self, geom: list, plz: int, bcid: int, kcid: int, line_name: str, std_type: str, from_bus: int,
-            to_bus: int, length_km: float, parallel: int = 1) -> None:
+            to_bus: int, length_km: float, parallel: int = 1, feeder_section_id: int | None = None) -> None:
         """writes lines / cables that belong to a network into the database"""
         self._ensure_lines_result_visualization_schema()
 
@@ -823,7 +788,8 @@ class GridMixin(BaseMixin, ABC):
                                                             from_bus,
                                                             to_bus,
                                                             parallel,
-                                                            length_km)
+                                                            length_km,
+                                                            feeder_section_id)
                                   VALUES ((SELECT grid_result_id
                            FROM pylovo.grid_result
                                            WHERE version_id = %(v)s
@@ -836,11 +802,13 @@ class GridMixin(BaseMixin, ABC):
                                           %(from_bus)s,
                                           %(to_bus)s,
                                           %(parallel)s,
-                                          %(length_km)s); """
+                                          %(length_km)s,
+                                          %(feeder_section_id)s); """
         self.cur.execute(line_insertion_query,
                          {"v": VERSION_ID, "geom": LineString(geom).wkb_hex, "plz": int(plz), "bcid": int(bcid),
                           "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
-                          "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km})
+                          "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km,
+                          "feeder_section_id": None if feeder_section_id is None else int(feeder_section_id)})
 
     def is_grid_generated(self, plz: int):
         """

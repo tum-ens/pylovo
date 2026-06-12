@@ -1130,6 +1130,11 @@ class GridGenerator:
             consumer_df,
             vertices_dict,
         )
+        section_by_edge = {
+            edge: int(section_id)
+            for section_id, section_edges in sections_by_key.items()
+            for edge in section_edges
+        }
 
         for plan in branch_plans:
             branch_nodes = list(plan["branch_nodes"])
@@ -1150,6 +1155,7 @@ class GridGenerator:
                     cable,
                     ont_vertice,
                     count,
+                    section_by_edge[(parent, child)],
                 )
 
             branch_start_node = int(branch_nodes[-1])
@@ -1181,6 +1187,7 @@ class GridGenerator:
                     cable,
                     ont_vertice,
                     count,
+                    section_by_edge[(attachment_node, branch_start_node)],
                 )
                 self.logger.debug(
                     f"Branch {branch_index} attached to finalized split node {attachment_node} after two-pass sizing "
@@ -1200,6 +1207,7 @@ class GridGenerator:
                     cable,
                     count,
                     ont_vertice,
+                    section_by_edge[(ont_vertice, branch_start_node)],
                 )
                 material_length_by_cable_km[cable] += length
                 self.logger.debug(
