@@ -715,18 +715,24 @@ class ClusteringMixin(BaseMixin, ABC):
                   AND type != 'Transformer'
                   AND peak_load_in_kw != 0;
 
-                INSERT INTO pylovo.grid_result (version_id, plz, kcid, bcid, ont_vertice_id, transformer_rated_power)
-                VALUES (%(v)s, %(pc)s, %(k)s, %(count)s, %(t)s, %(l)s);
-
+                WITH inserted_grid AS (
+                    INSERT INTO pylovo.grid_result
+                        (version_id, plz, kcid, bcid, ont_vertice_id, transformer_rated_power)
+                    VALUES (%(v)s, %(pc)s, %(k)s, %(count)s, %(t)s, %(l)s)
+                    RETURNING grid_result_id
+                ), transformer_row AS (
+                    SELECT b.centroid, tr.osm_id
+                    FROM buildings_tem b
+                    LEFT JOIN pylovo.transformers tr
+                        ON tr.osm_id = b.objectid
+                    WHERE b.vertice_id = %(t)s
+                    ORDER BY tr.osm_id IS NULL, b.objectid
+                    LIMIT 1
+                )
                 INSERT INTO pylovo.transformer_positions (version_id, grid_result_id, geom, osm_id, comment)
-                VALUES (
-                        %(v)s,
-                        (SELECT grid_result_id
-                         FROM pylovo.grid_result
-                         WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(k)s AND bcid = %(count)s),
-                        (SELECT centroid FROM buildings_tem WHERE vertice_id = %(t)s),
-                        (SELECT objectid FROM buildings_tem WHERE vertice_id = %(t)s),
-                        'Normal'); \
+                SELECT %(v)s, inserted_grid.grid_result_id, transformer_row.centroid, transformer_row.osm_id, 'Normal'
+                FROM inserted_grid
+                CROSS JOIN transformer_row; \
                 """
         params = {"v": VERSION_ID, "count": count, "c": tuple(conn_id_list), "t": transformer_id, "k": kcid, "pc": plz,
             "l": transformer_rated_power, }
