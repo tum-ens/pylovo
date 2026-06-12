@@ -164,241 +164,8 @@ class GridMixin(BaseMixin, ABC):
         if getattr(self, "_lines_result_visualization_schema_checked", False):
             return
 
-        self.cur.execute("ALTER TABLE pylovo.lines_result ADD COLUMN IF NOT EXISTS parallel integer;")
-        self.cur.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS pylovo.lines_result_helper (
-                lines_result_helper_id SERIAL PRIMARY KEY,
-                source_lines_result_id bigint NOT NULL,
-                grid_result_id bigint NOT NULL,
-                geom geometry(Geometry,{TARGET_EPSG}),
-                line_name varchar(50),
-                std_type varchar(50),
-                from_bus integer,
-                to_bus integer,
-                parallel integer,
-                length_km double precision,
-                helper_type varchar(50),
-                CONSTRAINT fk_lines_result_helper_source_line
-                    FOREIGN KEY (source_lines_result_id)
-                    REFERENCES pylovo.lines_result (lines_result_id)
-                    ON DELETE CASCADE,
-                CONSTRAINT fk_lines_result_helper_grid_result
-                    FOREIGN KEY (grid_result_id)
-                    REFERENCES pylovo.grid_result (grid_result_id)
-                    ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_lines_result_helper_grid_result_id
-                ON pylovo.lines_result_helper (grid_result_id);
-            CREATE INDEX IF NOT EXISTS idx_lines_result_helper_geom
-                ON pylovo.lines_result_helper USING gist (geom);
-
-            CREATE TABLE IF NOT EXISTS pylovo.split_points (
-                split_point_id SERIAL PRIMARY KEY,
-                grid_result_id bigint NOT NULL,
-                split_bus integer NOT NULL,
-                outgoing_count integer,
-                split_type varchar(50),
-                geom geometry(Point,{TARGET_EPSG}),
-                CONSTRAINT fk_split_points_grid_result
-                    FOREIGN KEY (grid_result_id)
-                    REFERENCES pylovo.grid_result (grid_result_id)
-                    ON DELETE CASCADE,
-                CONSTRAINT uq_split_points_grid_bus
-                    UNIQUE (grid_result_id, split_bus)
-            );
-            CREATE INDEX IF NOT EXISTS idx_split_points_grid_result_id
-                ON pylovo.split_points (grid_result_id);
-            CREATE INDEX IF NOT EXISTS idx_split_points_geom
-                ON pylovo.split_points USING gist (geom);
-            """
-        )
-        self.cur.execute("DROP MATERIALIZED VIEW IF EXISTS pylovo.lines_result_with_grid CASCADE;")
-        self.cur.execute(
-            """
-            CREATE MATERIALIZED VIEW pylovo.lines_result_with_grid AS (
-                WITH RECURSIVE visible_lines AS (
-                    SELECT
-                        lr.lines_result_id::bigint AS id,
-                        false AS is_helper,
-                        NULL::bigint AS source_lines_result_id,
-                        NULL::varchar(50) AS helper_type,
-                        lr.grid_result_id,
-                        lr.geom,
-                        lr.line_name,
-                        lr.std_type,
-                        lr.from_bus,
-                        lr.to_bus,
-                        lr.parallel,
-                        lr.length_km
-                    FROM pylovo.lines_result lr
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM pylovo.lines_result_helper lrh
-                        WHERE lrh.source_lines_result_id = lr.lines_result_id
-                    )
-                    UNION ALL
-                    SELECT
-                        -lrh.lines_result_helper_id::bigint AS id,
-                        true AS is_helper,
-                        lrh.source_lines_result_id,
-                        lrh.helper_type,
-                        lrh.grid_result_id,
-                        lrh.geom,
-                        lrh.line_name,
-                        lrh.std_type,
-                        lrh.from_bus,
-                        lrh.to_bus,
-                        lrh.parallel,
-                        lrh.length_km
-                    FROM pylovo.lines_result_helper lrh
-                ),
-                feeder_lines AS (
-                    SELECT *
-                    FROM visible_lines
-                    WHERE std_type IN (
-                        SELECT name FROM pylovo.equipment_data WHERE grid_role = 'feeder'
-                    )
-                ),
-                non_feeder_lines AS (
-                    SELECT *
-                    FROM visible_lines
-                    WHERE std_type NOT IN (
-                        SELECT name FROM pylovo.equipment_data WHERE grid_role = 'feeder'
-                    )
-                       OR std_type IS NULL
-                ),
-                hard_nodes AS (
-                    SELECT grid_result_id, ont_vertice_id AS bus
-                    FROM pylovo.grid_result
-                    WHERE ont_vertice_id IS NOT NULL
-                    UNION
-                    SELECT grid_result_id, split_bus AS bus
-                    FROM pylovo.split_points
-                ),
-                feeder_nodes AS (
-                    SELECT grid_result_id, from_bus AS bus, id
-                    FROM feeder_lines
-                    UNION ALL
-                    SELECT grid_result_id, to_bus AS bus, id
-                    FROM feeder_lines
-                ),
-                node_degree AS (
-                    SELECT grid_result_id, bus, COUNT(DISTINCT id) AS feeder_degree
-                    FROM feeder_nodes
-                    GROUP BY grid_result_id, bus
-                ),
-                pass_nodes AS (
-                    SELECT nd.grid_result_id, nd.bus
-                    FROM node_degree nd
-                    LEFT JOIN hard_nodes hn
-                      ON hn.grid_result_id = nd.grid_result_id
-                     AND hn.bus = nd.bus
-                    WHERE nd.feeder_degree = 2
-                      AND hn.bus IS NULL
-                ),
-                directed_edges AS (
-                    SELECT id, grid_result_id, from_bus AS start_bus, to_bus AS end_bus
-                    FROM feeder_lines
-                    UNION ALL
-                    SELECT id, grid_result_id, to_bus AS start_bus, from_bus AS end_bus
-                    FROM feeder_lines
-                ),
-                chains AS (
-                    SELECT
-                        de.grid_result_id,
-                        de.start_bus,
-                        de.end_bus AS current_bus,
-                        ARRAY[de.id] AS path_edges
-                    FROM directed_edges de
-                    LEFT JOIN pass_nodes pn
-                      ON pn.grid_result_id = de.grid_result_id
-                     AND pn.bus = de.start_bus
-                    WHERE pn.bus IS NULL
-                    UNION ALL
-                    SELECT
-                        c.grid_result_id,
-                        c.start_bus,
-                        next_edge.end_bus AS current_bus,
-                        c.path_edges || next_edge.id
-                    FROM chains c
-                    JOIN pass_nodes pn
-                      ON pn.grid_result_id = c.grid_result_id
-                     AND pn.bus = c.current_bus
-                    JOIN directed_edges next_edge
-                      ON next_edge.grid_result_id = c.grid_result_id
-                     AND next_edge.start_bus = c.current_bus
-                     AND NOT next_edge.id = ANY(c.path_edges)
-                    WHERE cardinality(c.path_edges) < 100
-                ),
-                complete_chains AS (
-                    SELECT c.*
-                    FROM chains c
-                    LEFT JOIN pass_nodes pn
-                      ON pn.grid_result_id = c.grid_result_id
-                     AND pn.bus = c.current_bus
-                    WHERE pn.bus IS NULL
-                      AND c.start_bus < c.current_bus
-                ),
-                merged_feeder_lines AS (
-                    SELECT
-                        -(1000000000000::bigint + ROW_NUMBER() OVER (ORDER BY c.grid_result_id, c.start_bus, c.current_bus)) AS id,
-                        true AS is_helper,
-                        NULL::bigint AS source_lines_result_id,
-                        'merged_feeder_topology'::varchar(50) AS helper_type,
-                        c.grid_result_id,
-                        ST_LineMerge(ST_Collect(fl.geom)) AS geom,
-                        CONCAT('M', c.grid_result_id, '_', c.start_bus, '_', c.current_bus) AS line_name,
-                        STRING_AGG(DISTINCT fl.std_type, '+') AS std_type,
-                        c.start_bus AS from_bus,
-                        c.current_bus AS to_bus,
-                        MAX(fl.parallel) AS parallel,
-                        SUM(fl.length_km) AS length_km
-                    FROM complete_chains c
-                    JOIN feeder_lines fl
-                      ON fl.id = ANY(c.path_edges)
-                    GROUP BY c.grid_result_id, c.start_bus, c.current_bus, c.path_edges
-                )
-                SELECT
-                    mfl.id,
-                    mfl.is_helper,
-                    mfl.source_lines_result_id,
-                    mfl.helper_type,
-                    mfl.grid_result_id,
-                    mfl.geom,
-                    mfl.line_name,
-                    mfl.std_type,
-                    mfl.from_bus,
-                    mfl.to_bus,
-                    mfl.parallel,
-                    mfl.length_km,
-                    gr.version_id, gr.kcid, gr.bcid, gr.plz
-                FROM merged_feeder_lines mfl
-                JOIN pylovo.grid_result gr ON mfl.grid_result_id = gr.grid_result_id
-                UNION ALL
-                SELECT
-                    nfl.id,
-                    nfl.is_helper,
-                    nfl.source_lines_result_id,
-                    nfl.helper_type,
-                    nfl.grid_result_id,
-                    nfl.geom,
-                    nfl.line_name,
-                    nfl.std_type,
-                    nfl.from_bus,
-                    nfl.to_bus,
-                    nfl.parallel,
-                    nfl.length_km,
-                    gr.version_id, gr.kcid, gr.bcid, gr.plz
-                FROM non_feeder_lines nfl
-                JOIN pylovo.grid_result gr ON nfl.grid_result_id = gr.grid_result_id
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_lines_result_with_grid_uq_id
-                ON pylovo.lines_result_with_grid (id);
-            CREATE INDEX IF NOT EXISTS idx_lines_result_with_grid_geom
-                ON pylovo.lines_result_with_grid USING gist (geom);
-            """
-        )
+        # Visualization schema and materialized views are global database setup.
+        # Running DDL here is unsafe during process-based parallel generation.
         self._lines_result_visualization_schema_checked = True
 
     def rebuild_lines_result_helpers_for_split_topology(
@@ -479,9 +246,20 @@ class GridMixin(BaseMixin, ABC):
                     lr.length_km,
                     'split_topology_offset'
                 FROM pylovo.lines_result lr
-                CROSS JOIN LATERAL (
-                    SELECT ST_LineMerge(ST_OffsetCurve(lr.geom, %(offset_m)s * %(offset_rank)s)) AS offset_line
-                ) AS offset_geom
+                LEFT JOIN LATERAL (
+                    SELECT dumped.geom AS offset_line
+                    FROM ST_Dump(
+                        ST_LineMerge(
+                            ST_CollectionExtract(
+                                ST_OffsetCurve(lr.geom, %(offset_m)s * %(offset_rank)s),
+                                2
+                            )
+                        )
+                    ) AS dumped
+                    WHERE GeometryType(dumped.geom) = 'LINESTRING'
+                    ORDER BY ST_Length(dumped.geom) DESC
+                    LIMIT 1
+                ) AS offset_geom ON TRUE
                 WHERE lr.grid_result_id = %(grid_result_id)s
                   AND lr.from_bus = %(from_bus)s
                   AND lr.to_bus = %(to_bus)s;
@@ -621,11 +399,20 @@ class GridMixin(BaseMixin, ABC):
                     END AS helper_geom
                 FROM source_line lr
                 CROSS JOIN candidate_ranks
-                CROSS JOIN LATERAL (
-                    SELECT ST_LineMerge(
-                        ST_OffsetCurve(lr.geom, %(offset_m)s * candidate_ranks.offset_rank)
-                    ) AS offset_line
-                ) AS offset_geom
+                LEFT JOIN LATERAL (
+                    SELECT dumped.geom AS offset_line
+                    FROM ST_Dump(
+                        ST_LineMerge(
+                            ST_CollectionExtract(
+                                ST_OffsetCurve(lr.geom, %(offset_m)s * candidate_ranks.offset_rank),
+                                2
+                            )
+                        )
+                    ) AS dumped
+                    WHERE GeometryType(dumped.geom) = 'LINESTRING'
+                    ORDER BY ST_Length(dumped.geom) DESC
+                    LIMIT 1
+                ) AS offset_geom ON TRUE
             ),
             visible_geoms AS (
                 SELECT lr.lines_result_id::bigint AS source_id, lr.geom
