@@ -10,11 +10,15 @@ def main():
     print(f"Loading {INPUT_FILE}...")
     results = split_to_subgrids(Path(INPUT_FILE), Path(OUTPUT_DIR), clear_output_dir=True)
     mv_path = results["mv_grid"]
-    lv_paths = results["lv_grids"]
+    logical_paths = results["logical_grids"]
+    radialized_paths = results["radialized_grids"]
+    manifest_path = results["manifest"]
 
     if mv_path is not None:
         print(f"Saved {mv_path}")
-    print(f"Saved {len(lv_paths)} LV subnets to {OUTPUT_DIR}")
+    print(f"Saved {len(logical_paths)} logical LV subnets to {OUTPUT_DIR}/logical")
+    print(f"Saved {len(radialized_paths)} radialized LV subnets to {OUTPUT_DIR}/radialized")
+    print(f"Saved manifest to {manifest_path}")
     print("Done.")
 
 

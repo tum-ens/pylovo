@@ -93,14 +93,35 @@ def export_synthetic_comparison_parameters_for_plz(
 
 
 def iter_real_grid_files(data_path: str) -> list[Path]:
-    """Return only LV JSON subnet files from the configured real-grid directory.
+    """Return LV subnet files for real-vs-synthetic comparison.
 
-    Searches both the top-level directory and a ``regular/`` subdirectory
-    (produced by :func:`~pylovo.analysis.validation_helpers.split_to_subgrids`).
+    The current DSO preprocessing writes two explicit variants: ``logical/`` for
+    traceability and ``radialized/`` for comparison against PyLoVo's radial
+    synthetic grids.  When the new layout is present, only regular radialized
+    grids with an LV comparison load marker are used.  Older JSON layouts remain
+    readable for transition periods.
     """
     path = Path(data_path)
-    candidates = sorted(path.glob("*.json")) + sorted((path / "regular").glob("*.json"))
+    radialized = sorted((path / "radialized").glob("LV_*__radialized__regular__lvload.xlsx"))
+    if radialized:
+        return radialized
+
+    legacy_radialized = sorted((path / "radialized").glob("LV_*__radialized__regular__ns.json"))
+    if legacy_radialized:
+        return legacy_radialized
+
+    candidates = (
+        sorted(path.glob("LV_*.xlsx"))
+        + sorted(path.glob("LV_*.json"))
+        + sorted((path / "regular").glob("LV_*.json"))
+    )
     return [file_path for file_path in candidates if file_path.stem.startswith("LV_")]
+
+
+def _load_real_grid_file(file_path: Path) -> pp.pandapowerNet:
+    if file_path.suffix.lower() == ".xlsx":
+        return pp.from_excel(str(file_path))
+    return pp.from_json(str(file_path))
 
 
 
@@ -152,7 +173,7 @@ def process_synthetic_grids(dbc: DatabaseClient, plz: int, output_dir: Path) -> 
 
 
 def process_real_grids(dbc: DatabaseClient, data_path: str, plz: int, output_dir: Path) -> pd.DataFrame:
-    """Calculate and export comparison parameters for real LV JSON subnets."""
+    """Calculate and export comparison parameters for real LV subnets."""
     print(f"Processing real grids from {data_path}...")
 
     buildings_gdf = _load_buildings_for_plz(dbc, plz)
@@ -165,7 +186,7 @@ def process_real_grids(dbc: DatabaseClient, data_path: str, plz: int, output_dir
 
     for file_path in iter_real_grid_files(data_path):
         try:
-            net = pp.from_json(str(file_path))
+            net = _load_real_grid_file(file_path)
             consumer_buses = _infer_real_grid_consumer_buses(net, buildings_gdf)
 
             params = compute_comparison_parameters(calc, net, consumer_buses=consumer_buses)
@@ -395,6 +416,7 @@ __all__ = [
     "export_synthetic_comparison_parameters_for_plz",
     "extract_bus_geometries",
     "iter_real_grid_files",
+    "_load_real_grid_file",
     "process_real_grids",
     "process_synthetic_grids",
     "run_grid_comparison",
