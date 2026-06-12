@@ -579,6 +579,238 @@ class GridMixin(BaseMixin, ABC):
                 },
             )
 
+    def rebuild_lines_result_view_for_grid(self, plz: int, kcid: int, bcid: int) -> None:
+        """Rebuild visualization rows for one generated grid."""
+        self._ensure_lines_result_visualization_schema()
+        selected_grid_query = """
+            SELECT grid_result_id
+            FROM pylovo.grid_result
+            WHERE version_id = %(v)s
+              AND plz = %(plz)s
+              AND kcid = %(kcid)s
+              AND bcid = %(bcid)s
+            LIMIT 1
+        """
+        params = {"v": VERSION_ID, "plz": int(plz), "kcid": int(kcid), "bcid": int(bcid)}
+        self.cur.execute(selected_grid_query, params)
+        selected_grid = self.cur.fetchone()
+        if selected_grid is None:
+            return
+
+        grid_result_id = int(selected_grid[0])
+        self.cur.execute(
+            "DELETE FROM pylovo.lines_result_view WHERE grid_result_id = %(grid_result_id)s;",
+            {"grid_result_id": grid_result_id},
+        )
+        insert_query = """
+            INSERT INTO pylovo.lines_result_view (
+                is_helper,
+                source_lines_result_id,
+                helper_type,
+                grid_result_id,
+                geom,
+                line_name,
+                std_type,
+                from_bus,
+                to_bus,
+                parallel,
+                length_km,
+                version_id,
+                kcid,
+                bcid,
+                plz
+            )
+            WITH RECURSIVE selected_grid AS (
+                SELECT grid_result_id, version_id, kcid, bcid, plz, ont_vertice_id
+                FROM pylovo.grid_result
+                WHERE grid_result_id = %(grid_result_id)s
+            ),
+            feeder_equipment AS (
+                SELECT ed.name
+                FROM pylovo.equipment_data ed
+                JOIN selected_grid sg ON sg.version_id = ed.version_id
+                WHERE ed.grid_role = 'feeder'
+            ),
+            visible_lines AS (
+                SELECT
+                    lr.lines_result_id::bigint AS source_id,
+                    false AS is_helper,
+                    NULL::bigint AS source_lines_result_id,
+                    NULL::varchar(50) AS helper_type,
+                    lr.grid_result_id,
+                    lr.geom,
+                    lr.line_name,
+                    lr.std_type,
+                    lr.from_bus,
+                    lr.to_bus,
+                    lr.parallel,
+                    lr.length_km
+                FROM pylovo.lines_result lr
+                JOIN selected_grid sg ON sg.grid_result_id = lr.grid_result_id
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM pylovo.lines_result_helper lrh
+                    WHERE lrh.source_lines_result_id = lr.lines_result_id
+                )
+                UNION ALL
+                SELECT
+                    -lrh.lines_result_helper_id::bigint AS source_id,
+                    true AS is_helper,
+                    lrh.source_lines_result_id,
+                    lrh.helper_type,
+                    lrh.grid_result_id,
+                    lrh.geom,
+                    lrh.line_name,
+                    lrh.std_type,
+                    lrh.from_bus,
+                    lrh.to_bus,
+                    lrh.parallel,
+                    lrh.length_km
+                FROM pylovo.lines_result_helper lrh
+                JOIN selected_grid sg ON sg.grid_result_id = lrh.grid_result_id
+            ),
+            feeder_lines AS (
+                SELECT *
+                FROM visible_lines
+                WHERE std_type IN (SELECT name FROM feeder_equipment)
+            ),
+            non_feeder_lines AS (
+                SELECT *
+                FROM visible_lines
+                WHERE std_type NOT IN (SELECT name FROM feeder_equipment)
+                   OR std_type IS NULL
+            ),
+            hard_nodes AS (
+                SELECT grid_result_id, ont_vertice_id AS bus
+                FROM selected_grid
+                WHERE ont_vertice_id IS NOT NULL
+                UNION
+                SELECT sp.grid_result_id, sp.split_bus AS bus
+                FROM pylovo.split_points sp
+                JOIN selected_grid sg ON sg.grid_result_id = sp.grid_result_id
+            ),
+            feeder_nodes AS (
+                SELECT grid_result_id, from_bus AS bus, source_id
+                FROM feeder_lines
+                UNION ALL
+                SELECT grid_result_id, to_bus AS bus, source_id
+                FROM feeder_lines
+            ),
+            node_degree AS (
+                SELECT grid_result_id, bus, COUNT(DISTINCT source_id) AS feeder_degree
+                FROM feeder_nodes
+                GROUP BY grid_result_id, bus
+            ),
+            pass_nodes AS (
+                SELECT nd.grid_result_id, nd.bus
+                FROM node_degree nd
+                LEFT JOIN hard_nodes hn
+                  ON hn.grid_result_id = nd.grid_result_id
+                 AND hn.bus = nd.bus
+                WHERE nd.feeder_degree = 2
+                  AND hn.bus IS NULL
+            ),
+            directed_edges AS (
+                SELECT source_id, grid_result_id, from_bus AS start_bus, to_bus AS end_bus
+                FROM feeder_lines
+                UNION ALL
+                SELECT source_id, grid_result_id, to_bus AS start_bus, from_bus AS end_bus
+                FROM feeder_lines
+            ),
+            chains AS (
+                SELECT
+                    de.grid_result_id,
+                    de.start_bus,
+                    de.end_bus AS current_bus,
+                    ARRAY[de.source_id] AS path_edges
+                FROM directed_edges de
+                LEFT JOIN pass_nodes pn
+                  ON pn.grid_result_id = de.grid_result_id
+                 AND pn.bus = de.start_bus
+                WHERE pn.bus IS NULL
+                UNION ALL
+                SELECT
+                    c.grid_result_id,
+                    c.start_bus,
+                    next_edge.end_bus AS current_bus,
+                    c.path_edges || next_edge.source_id
+                FROM chains c
+                JOIN pass_nodes pn
+                  ON pn.grid_result_id = c.grid_result_id
+                 AND pn.bus = c.current_bus
+                JOIN directed_edges next_edge
+                  ON next_edge.grid_result_id = c.grid_result_id
+                 AND next_edge.start_bus = c.current_bus
+                 AND NOT next_edge.source_id = ANY(c.path_edges)
+                WHERE cardinality(c.path_edges) < 100
+            ),
+            complete_chains AS (
+                SELECT c.*
+                FROM chains c
+                LEFT JOIN pass_nodes pn
+                  ON pn.grid_result_id = c.grid_result_id
+                 AND pn.bus = c.current_bus
+                WHERE pn.bus IS NULL
+                  AND c.start_bus < c.current_bus
+            ),
+            merged_feeder_lines AS (
+                SELECT
+                    true AS is_helper,
+                    NULL::bigint AS source_lines_result_id,
+                    'merged_feeder_topology'::varchar(50) AS helper_type,
+                    c.grid_result_id,
+                    ST_LineMerge(ST_Collect(fl.geom)) AS geom,
+                    CONCAT('M', c.grid_result_id, '_', c.start_bus, '_', c.current_bus) AS line_name,
+                    STRING_AGG(DISTINCT fl.std_type, '+') AS std_type,
+                    c.start_bus AS from_bus,
+                    c.current_bus AS to_bus,
+                    MAX(fl.parallel) AS parallel,
+                    SUM(fl.length_km) AS length_km
+                FROM complete_chains c
+                JOIN feeder_lines fl
+                  ON fl.source_id = ANY(c.path_edges)
+                GROUP BY c.grid_result_id, c.start_bus, c.current_bus, c.path_edges
+            )
+            SELECT
+                mfl.is_helper,
+                mfl.source_lines_result_id,
+                mfl.helper_type,
+                mfl.grid_result_id,
+                mfl.geom,
+                mfl.line_name,
+                mfl.std_type,
+                mfl.from_bus,
+                mfl.to_bus,
+                mfl.parallel,
+                mfl.length_km,
+                sg.version_id,
+                sg.kcid,
+                sg.bcid,
+                sg.plz
+            FROM merged_feeder_lines mfl
+            JOIN selected_grid sg ON sg.grid_result_id = mfl.grid_result_id
+            UNION ALL
+            SELECT
+                nfl.is_helper,
+                nfl.source_lines_result_id,
+                nfl.helper_type,
+                nfl.grid_result_id,
+                nfl.geom,
+                nfl.line_name,
+                nfl.std_type,
+                nfl.from_bus,
+                nfl.to_bus,
+                nfl.parallel,
+                nfl.length_km,
+                sg.version_id,
+                sg.kcid,
+                sg.bcid,
+                sg.plz
+            FROM non_feeder_lines nfl
+            JOIN selected_grid sg ON sg.grid_result_id = nfl.grid_result_id;
+        """
+        self.cur.execute(insert_query, {"grid_result_id": grid_result_id})
+
     def insert_lines(self, geom: list, plz: int, bcid: int, kcid: int, line_name: str, std_type: str, from_bus: int,
             to_bus: int, length_km: float, parallel: int = 1) -> None:
         """writes lines / cables that belong to a network into the database"""

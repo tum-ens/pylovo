@@ -1332,6 +1332,7 @@ class GridGenerator:
                 bcid,
                 split_visualization_nodes,
             )
+            self.dbc.rebuild_lines_result_view_for_grid(self.plz, kcid, bcid)
 
             branch_index = len(branch_plans)
 

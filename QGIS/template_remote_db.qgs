@@ -74,7 +74,7 @@
           <Option/>
         </customproperties>
       </layer-tree-layer>
-      <layer-tree-layer checked="Qt::Checked" expanded="1" id="lines_result_with_grid_8e7f157a_8eef_4ea8_8dec_c32353d42a1b" legend_exp="" legend_split_behavior="0" name="lines_result_with_grid" patch_size="-1,-1" providerKey="postgres" source="service='infdb_postgres' user='infdb_user' key='id' estimatedmetadata=true srid=25832 type=LineString checkPrimaryKeyUnicity='1' table=&quot;pylovo&quot;.&quot;lines_result_with_grid&quot; (geom)">
+      <layer-tree-layer checked="Qt::Checked" expanded="1" id="lines_result_view_8e7f157a_8eef_4ea8_8dec_c32353d42a1b" legend_exp="" legend_split_behavior="0" name="lines_result_view" patch_size="-1,-1" providerKey="postgres" source="service='infdb_postgres' user='infdb_user' key='id' estimatedmetadata=true srid=25832 type=LineString checkPrimaryKeyUnicity='1' table=&quot;pylovo&quot;.&quot;lines_result_view&quot; (geom)">
         <customproperties>
           <Option/>
         </customproperties>
@@ -151,7 +151,7 @@
       <item>ways_per_connection_46557502_a0e3_42ea_ad3a_f77056bcee2f</item>
       <item>transformer_classified_with_grid_03ecda5d_160b_462d_909d_055942b8cdbd</item>
       <item>transformer_positions_with_grid_b46e4dd2_7f1e_4f94_bbe2_7b715c1de6ba</item>
-      <item>lines_result_with_grid_8e7f157a_8eef_4ea8_8dec_c32353d42a1b</item>
+      <item>lines_result_view_8e7f157a_8eef_4ea8_8dec_c32353d42a1b</item>
       <item>buildings_result_with_grid_522363bc_0590_4100_abec_b218304da286</item>
     </custom-order>
   </layer-tree-group>
@@ -172,7 +172,7 @@
       <layer-setting enabled="0" id="buildings_result_with_grid_18e675af_1521_4b26_bbd0_7ddd8c6da526" maxScale="0" minScale="0" tolerance="12" type="1" units="1"/>
       <layer-setting enabled="0" id="buildings_result_with_grid_522363bc_0590_4100_abec_b218304da286" maxScale="0" minScale="0" tolerance="12" type="1" units="1"/>
       <layer-setting enabled="0" id="ways_per_connection_46557502_a0e3_42ea_ad3a_f77056bcee2f" maxScale="0" minScale="0" tolerance="12" type="1" units="1"/>
-      <layer-setting enabled="0" id="lines_result_with_grid_8e7f157a_8eef_4ea8_8dec_c32353d42a1b" maxScale="0" minScale="0" tolerance="12" type="1" units="1"/>
+      <layer-setting enabled="0" id="lines_result_view_8e7f157a_8eef_4ea8_8dec_c32353d42a1b" maxScale="0" minScale="0" tolerance="12" type="1" units="1"/>
     </individual-layer-settings>
   </snapping-settings>
   <relations/>
@@ -237,9 +237,9 @@
           <legendlayerfile isInOverview="0" layerid="transformer_positions_with_grid_b46e4dd2_7f1e_4f94_bbe2_7b715c1de6ba" visible="1"/>
         </filegroup>
       </legendlayer>
-      <legendlayer checked="Qt::Checked" drawingOrder="-1" name="lines_result_with_grid" open="true" showFeatureCount="0">
+      <legendlayer checked="Qt::Checked" drawingOrder="-1" name="lines_result_view" open="true" showFeatureCount="0">
         <filegroup hidden="false" open="true">
-          <legendlayerfile isInOverview="0" layerid="lines_result_with_grid_8e7f157a_8eef_4ea8_8dec_c32353d42a1b" visible="1"/>
+          <legendlayerfile isInOverview="0" layerid="lines_result_view_8e7f157a_8eef_4ea8_8dec_c32353d42a1b" visible="1"/>
         </filegroup>
       </legendlayer>
       <legendlayer checked="Qt::Checked" drawingOrder="-1" name="buildings_result" open="false" showFeatureCount="0">
@@ -18697,9 +18697,9 @@ def my_form_open(dialog, layer, feature):
         <xmax>11.58604304644197747</xmax>
         <ymax>48.1677856955417738</ymax>
       </wgs84extent>
-      <id>lines_result_with_grid_8e7f157a_8eef_4ea8_8dec_c32353d42a1b</id>
-      <datasource>service='infdb_postgres' user='infdb_user' password='infdb' key='id' estimatedmetadata=true srid=25832 type=LineString checkPrimaryKeyUnicity='1' table="pylovo"."lines_result_with_grid" (geom)</datasource>
-      <layername>lines_result_with_grid</layername>
+      <id>lines_result_view_8e7f157a_8eef_4ea8_8dec_c32353d42a1b</id>
+      <datasource>service='infdb_postgres' user='infdb_user' password='infdb' key='id' estimatedmetadata=true srid=25832 type=LineString checkPrimaryKeyUnicity='1' table="pylovo"."lines_result_view" (geom)</datasource>
+      <layername>lines_result_view</layername>
       <srs>
         <spatialrefsys nativeFormat="Wkt">
           <wkt>PROJCRS["ETRS89 / UTM zone 32N",BASEGEOGCRS["ETRS89",ENSEMBLE["European Terrestrial Reference System 1989 ensemble",MEMBER["European Terrestrial Reference Frame 1989"],MEMBER["European Terrestrial Reference Frame 1990"],MEMBER["European Terrestrial Reference Frame 1991"],MEMBER["European Terrestrial Reference Frame 1992"],MEMBER["European Terrestrial Reference Frame 1993"],MEMBER["European Terrestrial Reference Frame 1994"],MEMBER["European Terrestrial Reference Frame 1996"],MEMBER["European Terrestrial Reference Frame 1997"],MEMBER["European Terrestrial Reference Frame 2000"],MEMBER["European Terrestrial Reference Frame 2005"],MEMBER["European Terrestrial Reference Frame 2014"],MEMBER["European Terrestrial Reference Frame 2020"],ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]],ENSEMBLEACCURACY[0.1]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",4258]],CONVERSION["UTM zone 32N",METHOD["Transverse Mercator",ID["EPSG",9807]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",9,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["Scale factor at natural origin",0.9996,SCALEUNIT["unity",1],ID["EPSG",8805]],PARAMETER["False easting",500000,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",0,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1]],USAGE[SCOPE["Engineering survey, topographic mapping."],AREA["Europe between 6°E and 12°E: Austria; Denmark - onshore and offshore; Germany - onshore and offshore; Italy - onshore and offshore; Norway including Svalbard - onshore and offshore; Spain - offshore."],BBOX[36.53,6,84.01,12.01]],USAGE[SCOPE["Pan-European conformal mapping at scales larger than 1:500,000."],AREA["Europe between 6°E and 12°E and approximately 36°30'N to 84°N."],BBOX[36.53,6,84.01,12.01]],ID["EPSG",25832]]</wkt>
@@ -25700,7 +25700,7 @@ def my_form_open(dialog, layer, feature):
     <layer id="ways_per_connection_46557502_a0e3_42ea_ad3a_f77056bcee2f"/>
     <layer id="transformer_classified_with_grid_03ecda5d_160b_462d_909d_055942b8cdbd"/>
     <layer id="transformer_positions_with_grid_b46e4dd2_7f1e_4f94_bbe2_7b715c1de6ba"/>
-    <layer id="lines_result_with_grid_8e7f157a_8eef_4ea8_8dec_c32353d42a1b"/>
+    <layer id="lines_result_view_8e7f157a_8eef_4ea8_8dec_c32353d42a1b"/>
     <layer id="buildings_result_with_grid_522363bc_0590_4100_abec_b218304da286"/>
   </layerorder>
   <labelEngineSettings/>

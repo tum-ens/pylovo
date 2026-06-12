@@ -130,7 +130,7 @@ The schema includes several views that combine data across tables:
 +------------------------------------------+--------------------------------------------------------------------------+
 | buildings_result_with_grid               | Building results with grid cluster context.                              |
 +------------------------------------------+--------------------------------------------------------------------------+
-| lines_result_with_grid                   | Line results with grid cluster context.                                  |
+| lines_result_view                         | Line results with grid cluster context.                                  |
 +------------------------------------------+--------------------------------------------------------------------------+
 
 Spatial Data
