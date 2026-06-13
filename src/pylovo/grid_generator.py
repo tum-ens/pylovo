@@ -396,6 +396,10 @@ class GridGenerator:
         """
         self.dbc.insert_transformers(self.plz)
         self.logger.info("Transformers inserted into buildings_tem table")
+        removed_transformer_buildings = self.dbc.remove_transformer_evidence_buildings_from_buildings_tem()
+        self.logger.info(
+            f"Removed {removed_transformer_buildings} transformer-evidence buildings from buildings_tem consumer input"
+        )
         self.dbc.count_indoor_transformers()
         self.dbc.drop_indoor_transformers()
         self.logger.info("Indoor transformers removed from buildings_tem table")

@@ -563,6 +563,53 @@ class PreprocessingMixin(BaseMixin, ABC):
                        WHERE peak_load_in_kw ISNULL;"""
         self.cur.execute(insert_query, {"p": plz, "v": VERSION_ID})
 
+    def remove_transformer_evidence_buildings_from_buildings_tem(self) -> int:
+        """Remove load-building rows that are used as transformer evidence.
+
+        LoD2 transformer-station buildings can otherwise remain as Public or
+        Commercial consumers at the same vertex as the transformer.  That creates
+        artificial service cables routed back into the transformer node.
+        """
+        query = """
+            WITH transformer_buildings AS (
+                SELECT DISTINCT b.objectid, b.plz
+                FROM buildings_tem b
+                WHERE b.type != 'Transformer'
+                  AND b.building_use_id = '31001_2523'
+
+                UNION
+
+                SELECT DISTINCT b.objectid, b.plz
+                FROM buildings_tem b
+                JOIN pylovo.transformers t
+                  ON (
+                      t.osm_id = b.objectid
+                      OR t.osm_id = CONCAT('lod2/', b.objectid)
+                      OR (
+                          b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                          AND b.geom IS NOT NULL
+                          AND ST_Intersects(b.geom, t.geom)
+                      )
+                  )
+                WHERE b.type != 'Transformer'
+                  AND (
+                      t.osm_id = b.objectid
+                      OR t.osm_id = CONCAT('lod2/', b.objectid)
+                      OR b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                  )
+            ), deleted AS (
+                DELETE FROM buildings_tem b
+                USING transformer_buildings tb
+                WHERE b.objectid = tb.objectid
+                  AND b.plz IS NOT DISTINCT FROM tb.plz
+                RETURNING 1
+            )
+            SELECT COUNT(*) FROM deleted;
+        """
+        self.cur.execute(query)
+        return int(self.cur.fetchone()[0])
+
+
     def count_indoor_transformers(self) -> None:
         """Counts indoor transformers before deleting them"""
         query = """WITH union_table (ungeom) AS
