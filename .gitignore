@@ -167,5 +167,5 @@ cython_debug/
 
 # for macOS users
 *.DS_Store
-validation/grid_comparison/metrics/real_grid_metrics.csv
-validation/grid_comparison/metrics/synthetic_grid_metrics.csv
+validation/grid_comparison/metrics/*
+validations/metrics/*

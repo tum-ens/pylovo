@@ -1,5 +1,6 @@
 """Compose named LV grid parameter sets from the ParameterCalculator toolbox."""
 
+import copy
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import pandas as pd
@@ -42,6 +43,21 @@ def _calculate_resistance(
     return calculator.calculate_graph_resistance(net, only_in_service=True)
 
 
+def _with_absolute_line_lengths(net: pp.pandapowerNet) -> pp.pandapowerNet:
+    """Return a shallow analysis copy with non-negative line lengths.
+
+    Negative line lengths can arise from edge orientation in generated helper
+    routes.  Comparison metrics use physical distance magnitudes, while raw
+    negative counts stay available in the exported diagnostics.
+    """
+    analysis_net = copy.deepcopy(net)
+    if "length_km" in analysis_net.line.columns:
+        analysis_net.line["length_km"] = pd.to_numeric(
+            analysis_net.line["length_km"], errors="coerce"
+        ).abs()
+    return analysis_net
+
+
 def _calculate_buildings_per_feeder(
     consumer_buses: list[int],
     feeder_lines: int,
@@ -65,6 +81,10 @@ def compute_comparison_parameters(
 ) -> Dict[str, Any]:
     """Compute the active real-vs-synthetic comparison parameter set for one LV grid.
 
+    The active metrics must fail visibly when their topology assumptions are not
+    met.  Callers are responsible for recording failed rows; this function does
+    not replace failures with zero-valued metrics.
+
     Parameters
     ----------
     bus_type_config : dict, optional
@@ -72,47 +92,95 @@ def compute_comparison_parameters(
         When ``None`` the config is auto-detected from the bus naming
         convention (see :data:`~pylovo.analysis.parameter_calculation.SWF_BUS_TYPE_CONFIG`).
     """
+    from pylovo.analysis.parameter_calculation import PYLOVO_BUS_TYPE_CONFIG, SWF_BUS_TYPE_CONFIG
+
     uses_synthetic_naming = calculator.uses_synthetic_bus_naming(net)
+    active_bus_type_config = bus_type_config or (
+        PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+    )
+    root_idx = calculator.resolve_root_bus(net, uses_synthetic_naming)
+    resolved_consumer_buses = (
+        consumer_buses
+        if consumer_buses is not None
+        else calculator.resolve_consumer_buses(net, uses_synthetic_naming)
+    )
+    analysis_net = _with_absolute_line_lengths(net)
 
-    try:
-        root_idx = calculator.resolve_root_bus(net, uses_synthetic_naming)
-        resolved_consumer_buses = (
-            consumer_buses
-            if consumer_buses is not None
-            else calculator.resolve_consumer_buses(net, uses_synthetic_naming)
-        )
-
-        graph = pp.topology.create_nxgraph(net, respect_switches=True)
-        feeder_lines = calculator.count_feeders(
-            net, graph, root_idx, uses_synthetic_naming,
-            bus_type_config=bus_type_config,
-            recursive_expansion=True,
-        )
-        avg_trafo_distance, max_trafo_distance = calculator.calculate_trafo_distances(
-            graph,
-            root_idx,
-            resolved_consumer_buses,
-        )
-    except Exception as exc:
-        calculator.dbc.logger.error(f"Error calculating comparison parameters: {exc}")
-        import traceback
-
-        traceback.print_exc()
-        feeder_lines = 0
-        avg_trafo_distance = 0.0
-        max_trafo_distance = 0.0
-        graph = pp.topology.create_nxgraph(net, respect_switches=True)
+    graph = pp.topology.create_nxgraph(analysis_net, respect_switches=True)
+    feeder_lines_first_hop = calculator.count_feeders(
+        analysis_net,
+        graph,
+        root_idx,
+        uses_synthetic_naming,
+        bus_type_config=active_bus_type_config,
+        recursive_expansion=False,
+    )
+    feeder_lines_label_aware = calculator.count_feeders(
+        analysis_net,
+        graph,
+        root_idx,
+        uses_synthetic_naming,
+        bus_type_config=active_bus_type_config,
+        recursive_expansion=True,
+    )
+    feeder_lines_terminal_topology = calculator.count_feeders(
+        analysis_net,
+        graph,
+        root_idx,
+        True,
+        bus_type_config=active_bus_type_config,
+        recursive_expansion=True,
+    )
+    feeder_lines_collapse_non_kvs = calculator.count_feeders(
+        analysis_net,
+        graph,
+        root_idx,
+        False,
+        bus_type_config=active_bus_type_config,
+        recursive_expansion=True,
+    )
+    feeder_lines = feeder_lines_terminal_topology
+    avg_trafo_distance, max_trafo_distance = calculator.calculate_trafo_distances(
+        graph,
+        root_idx,
+        resolved_consumer_buses,
+    )
 
     transformer_mva = _get_transformer_mva(net)
-    graph_length = calculator.calculate_graph_length(net, only_in_service=True)
-    graph_resistance = _calculate_resistance(calculator, net)
+    graph_length = calculator.calculate_graph_length(analysis_net, only_in_service=True)
+    graph_resistance = _calculate_resistance(calculator, analysis_net)
     buildings_per_feeder = _calculate_buildings_per_feeder(
         resolved_consumer_buses,
         feeder_lines,
     )
+    line_df = net.line
+    active_line_df = line_df[line_df["in_service"]] if "in_service" in line_df.columns else line_df
+    length = pd.to_numeric(line_df.get("length_km", pd.Series(dtype=float)), errors="coerce")
 
     return {
+        "metric_status": "ok",
+        "metric_error": "",
+        "uses_synthetic_naming": bool(uses_synthetic_naming),
+        "root_bus": int(root_idx),
+        "bus_count": int(len(net.bus)),
+        "line_count": int(len(line_df)),
+        "active_line_count": int(len(active_line_df)),
+        "consumer_bus_count": int(len(resolved_consumer_buses)),
+        "load_count": int(len(net.load)),
+        "trafo_count": int(len(net.trafo)),
+        "ext_grid_count": int(len(net.ext_grid)),
+        "negative_length_count": int((length < 0).sum()),
+        "zero_length_count": int((length == 0).sum()),
+        "missing_length_count": int(length.isna().sum()),
         "feeder_lines": int(feeder_lines),
+        "feeder_lines_first_hop": int(feeder_lines_first_hop),
+        "feeder_lines_label_aware": int(feeder_lines_label_aware),
+        "feeder_lines_terminal_topology": int(feeder_lines_terminal_topology),
+        "feeder_lines_expand_all": int(feeder_lines_terminal_topology),
+        "feeder_lines_collapse_non_kvs": int(feeder_lines_collapse_non_kvs),
+        "feeder_count_delta_label_aware": int(feeder_lines_label_aware - feeder_lines),
+        "feeder_count_delta_expand_all": int(feeder_lines_terminal_topology - feeder_lines),
+        "feeder_count_delta_collapse_non_kvs": int(feeder_lines_collapse_non_kvs - feeder_lines),
         "buildings_per_feeder": float(buildings_per_feeder),
         "graph_length": float(graph_length),
         "avg_trafo_distance": float(avg_trafo_distance),

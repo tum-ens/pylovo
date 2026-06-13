@@ -7,11 +7,19 @@ from pathlib import Path
 from pylovo.analysis.comparison_helpers import run_grid_comparison
 
 
-def run_comparison(plz: int | None = None, output_dir: str | None = None) -> None:
+def run_comparison(
+    plz: int | None = None,
+    output_dir: str | None = None,
+    output_suffix: str = "",
+) -> None:
     """Run the grid comparison workflow directly from the validation CLI."""
     effective_plz = plz if plz is not None else 91301
     effective_output_dir = Path(output_dir) if output_dir is not None else Path("validations/metrics")
-    run_grid_comparison(plz=effective_plz, output_dir=effective_output_dir)
+    run_grid_comparison(
+        plz=effective_plz,
+        output_dir=effective_output_dir,
+        output_suffix=output_suffix,
+    )
 
 
 def main():
@@ -39,6 +47,11 @@ def main():
         default=None,
         help="Directory where comparison CSV outputs will be written.",
     )
+    compare_parser.add_argument(
+        "--output-suffix",
+        default="",
+        help="Optional suffix inserted before each output CSV extension.",
+    )
 
     args = parser.parse_args()
 
@@ -48,7 +61,11 @@ def main():
 
     try:
         if args.command == "compare-grids":
-            run_comparison(plz=args.plz, output_dir=args.output_dir)
+            run_comparison(
+                plz=args.plz,
+                output_dir=args.output_dir,
+                output_suffix=args.output_suffix,
+            )
         else:
              parser.print_help()
     except Exception as e:

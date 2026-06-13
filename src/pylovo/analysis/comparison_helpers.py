@@ -27,6 +27,7 @@ def export_synthetic_comparison_parameters_for_plz(
     plz: int,
     limit: int = None,
     output_dir: Path | None = None,
+    output_suffix: str = "",
 ) -> pd.DataFrame:
     """Compute, persist, and export the active comparison parameter set for synthetic grids.
 
@@ -54,6 +55,8 @@ def export_synthetic_comparison_parameters_for_plz(
     metrics_list = []
 
     for kcid, bcid, power_flow_status in grids:
+        grid_result_id = None
+        net = None
         try:
             net = calculator.dbc.read_net_db(plz, kcid, bcid, version_id=calculator.version_id)
             if len(net.bus) < MINI_GRID_BUS_THRESHOLD:
@@ -75,6 +78,12 @@ def export_synthetic_comparison_parameters_for_plz(
         except Exception as exc:
             calculator.dbc.logger.error(f"Error processing grid {kcid}_{bcid}: {exc}")
             calculator.dbc.conn.rollback()
+            params = _build_metric_error_row(net, exc)
+            params["power_flow_status"] = power_flow_status
+            params["grid_result_id"] = grid_result_id
+            params["kcid"] = kcid
+            params["bcid"] = bcid
+            metrics_list.append(params)
 
         calculator.dbc.conn.commit()
 
@@ -86,7 +95,7 @@ def export_synthetic_comparison_parameters_for_plz(
     df = pd.DataFrame(metrics_list)
     out_dir = Path(output_dir) if output_dir is not None else Path("validation/grid_comparison/metrics")
     out_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = out_dir / "synthetic_grid_metrics.csv"
+    csv_path = out_dir / _metric_filename("synthetic_grid_metrics.csv", output_suffix)
     df.to_csv(csv_path, index=False)
     print(f"Saved synthetic grid metrics to {csv_path}")
     return df
@@ -162,17 +171,33 @@ def extract_bus_geometries(net: pp.pandapowerNet) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame({"bus_index": indices}, geometry=geoms, crs=crs)
 
 
-def process_synthetic_grids(dbc: DatabaseClient, plz: int, output_dir: Path) -> pd.DataFrame:
+def process_synthetic_grids(
+    dbc: DatabaseClient,
+    plz: int,
+    output_dir: Path,
+    output_suffix: str = "",
+) -> pd.DataFrame:
     """Calculate and export comparison parameters for synthetic grids in one postcode area."""
     print(f"Processing synthetic grids for PLZ {plz}...")
     from pylovo.analysis.parameter_calculation import ParameterCalculator
 
     calc = ParameterCalculator()
     calc.dbc = dbc
-    return export_synthetic_comparison_parameters_for_plz(calc, plz, output_dir=output_dir)
+    return export_synthetic_comparison_parameters_for_plz(
+        calc,
+        plz,
+        output_dir=output_dir,
+        output_suffix=output_suffix,
+    )
 
 
-def process_real_grids(dbc: DatabaseClient, data_path: str, plz: int, output_dir: Path) -> pd.DataFrame:
+def process_real_grids(
+    dbc: DatabaseClient,
+    data_path: str,
+    plz: int,
+    output_dir: Path,
+    output_suffix: str = "",
+) -> pd.DataFrame:
     """Calculate and export comparison parameters for real LV subnets."""
     print(f"Processing real grids from {data_path}...")
 
@@ -185,6 +210,7 @@ def process_real_grids(dbc: DatabaseClient, data_path: str, plz: int, output_dir
     calc.dbc = dbc
 
     for file_path in iter_real_grid_files(data_path):
+        net = None
         try:
             net = _load_real_grid_file(file_path)
             consumer_buses = _infer_real_grid_consumer_buses(net, buildings_gdf)
@@ -195,26 +221,42 @@ def process_real_grids(dbc: DatabaseClient, data_path: str, plz: int, output_dir
             metrics_list.append(params)
         except Exception as exc:
             print(f"Error processing real grid {file_path.name}: {exc}")
+            params = _build_metric_error_row(net, exc)
+            params["grid_name"] = file_path.stem
+            params["file_name"] = file_path.name
+            metrics_list.append(params)
 
     if not metrics_list:
         return pd.DataFrame()
 
     df = pd.DataFrame(metrics_list)
     output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "real_grid_metrics.csv"
+    csv_path = output_dir / _metric_filename("real_grid_metrics.csv", output_suffix)
     df.to_csv(csv_path, index=False)
     print(f"Saved real grid metrics to {csv_path}")
     return df
 
 
-def run_grid_comparison(plz: int, output_dir: Path, data_path: str | None = None) -> None:
+def run_grid_comparison(
+    plz: int,
+    output_dir: Path,
+    data_path: str | None = None,
+    output_suffix: str = "",
+) -> None:
     """Run the full comparison workflow and write both metrics CSV files."""
     with DatabaseClient() as dbc:
-        process_synthetic_grids(dbc, plz, output_dir)
+        synthetic_df = process_synthetic_grids(dbc, plz, output_dir, output_suffix=output_suffix)
 
         grid_data_path = Path(data_path) if data_path is not None else Path(GRID_DATA_PATH)
         if grid_data_path.exists():
-            process_real_grids(dbc, str(grid_data_path), plz, output_dir)
+            real_df = process_real_grids(
+                dbc,
+                str(grid_data_path),
+                plz,
+                output_dir,
+                output_suffix=output_suffix,
+            )
+            _write_input_audit(synthetic_df, real_df, output_dir, output_suffix=output_suffix)
         else:
             print(f"GRID_DATA_PATH not found or invalid: {grid_data_path}")
 
@@ -364,6 +406,133 @@ def _infer_real_grid_consumer_buses(net: pp.pandapowerNet, buildings_gdf: gpd.Ge
     return joined["bus_index"].dropna().astype(int).unique().tolist()
 
 
+def _build_metric_error_row(net: pp.pandapowerNet | None, exc: Exception) -> dict:
+    """Return an explicit failed-metric row instead of silently emitting zeros."""
+    row = {
+        "metric_status": "error",
+        "metric_error": str(exc),
+        "uses_synthetic_naming": np.nan,
+        "root_bus": np.nan,
+        "bus_count": np.nan,
+        "line_count": np.nan,
+        "active_line_count": np.nan,
+        "consumer_bus_count": np.nan,
+        "load_count": np.nan,
+        "trafo_count": np.nan,
+        "ext_grid_count": np.nan,
+        "negative_length_count": np.nan,
+        "zero_length_count": np.nan,
+        "missing_length_count": np.nan,
+        "feeder_lines": np.nan,
+        "feeder_lines_first_hop": np.nan,
+        "feeder_lines_label_aware": np.nan,
+        "feeder_lines_terminal_topology": np.nan,
+        "feeder_lines_expand_all": np.nan,
+        "feeder_lines_collapse_non_kvs": np.nan,
+        "feeder_count_delta_label_aware": np.nan,
+        "feeder_count_delta_expand_all": np.nan,
+        "feeder_count_delta_collapse_non_kvs": np.nan,
+        "buildings_per_feeder": np.nan,
+        "graph_length": np.nan,
+        "avg_trafo_distance": np.nan,
+        "max_trafo_distance": np.nan,
+        "transformer_mva": np.nan,
+        "graph_resistance": np.nan,
+    }
+    if net is None:
+        return row
+
+    line_df = net.line
+    active_line_df = line_df[line_df["in_service"]] if "in_service" in line_df.columns else line_df
+    length = pd.to_numeric(line_df.get("length_km", pd.Series(dtype=float)), errors="coerce")
+    bus_names = net.bus["name"].fillna("") if "name" in net.bus.columns else pd.Series(dtype=str)
+    uses_synthetic_naming = bool(bus_names.astype(str).str.contains("LVbus", na=False).any())
+    if uses_synthetic_naming:
+        consumer_bus_count = int(bus_names.astype(str).str.contains("Consumer Nodebus", na=False).sum())
+    elif "bus" in net.load.columns:
+        consumer_bus_count = int(net.load["bus"].dropna().nunique())
+    else:
+        consumer_bus_count = np.nan
+    row.update({
+        "uses_synthetic_naming": uses_synthetic_naming,
+        "bus_count": int(len(net.bus)),
+        "line_count": int(len(line_df)),
+        "active_line_count": int(len(active_line_df)),
+        "consumer_bus_count": consumer_bus_count,
+        "load_count": int(len(net.load)),
+        "trafo_count": int(len(net.trafo)),
+        "ext_grid_count": int(len(net.ext_grid)),
+        "negative_length_count": int((length < 0).sum()),
+        "zero_length_count": int((length == 0).sum()),
+        "missing_length_count": int(length.isna().sum()),
+    })
+    return row
+
+
+def _metric_filename(filename: str, output_suffix: str = "") -> str:
+    """Return a metric filename with an optional suffix before the extension."""
+    if not output_suffix:
+        return filename
+    clean_suffix = output_suffix.strip().strip("_")
+    if not clean_suffix:
+        return filename
+    path = Path(filename)
+    return f"{path.stem}_{clean_suffix}{path.suffix}"
+
+
+def _write_input_audit(
+    synthetic_df: pd.DataFrame,
+    real_df: pd.DataFrame,
+    output_dir: Path,
+    output_suffix: str = "",
+) -> pd.DataFrame:
+    """Write a compact source-level audit for the comparison inputs."""
+    audit_cols = [
+        "metric_status",
+        "metric_error",
+        "bus_count",
+        "line_count",
+        "active_line_count",
+        "consumer_bus_count",
+        "load_count",
+        "trafo_count",
+        "ext_grid_count",
+        "negative_length_count",
+        "zero_length_count",
+        "missing_length_count",
+        "feeder_lines",
+        "feeder_lines_first_hop",
+        "feeder_lines_label_aware",
+        "feeder_lines_terminal_topology",
+        "feeder_lines_expand_all",
+        "feeder_lines_collapse_non_kvs",
+        "feeder_count_delta_label_aware",
+        "feeder_count_delta_expand_all",
+        "feeder_count_delta_collapse_non_kvs",
+    ]
+    frames = []
+    if not synthetic_df.empty:
+        synth = synthetic_df.copy()
+        synth["source"] = "Synthetic"
+        frames.append(synth)
+    if not real_df.empty:
+        real = real_df.copy()
+        real["source"] = "Real"
+        frames.append(real)
+    if not frames:
+        return pd.DataFrame()
+
+    audit_df = pd.concat(frames, ignore_index=True, sort=False)
+    id_cols = [col for col in ["source", "grid_result_id", "kcid", "bcid", "grid_name", "file_name", "power_flow_status"] if col in audit_df.columns]
+    selected_cols = id_cols + [col for col in audit_cols if col in audit_df.columns]
+    audit_df = audit_df[selected_cols]
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / _metric_filename("comparison_input_audit.csv", output_suffix)
+    audit_df.to_csv(csv_path, index=False)
+    print(f"Saved comparison input audit to {csv_path}")
+    return audit_df
+
+
 def _upsert_comparison_parameters(calculator: "ParameterCalculator", grid_result_id: int, params: dict) -> None:
     """Persist the active comparison metric set to ``grid_parameters``."""
     query = f"""
@@ -420,4 +589,5 @@ __all__ = [
     "process_real_grids",
     "process_synthetic_grids",
     "run_grid_comparison",
+    "_write_input_audit",
 ]
