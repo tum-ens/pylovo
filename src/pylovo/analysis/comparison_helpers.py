@@ -22,6 +22,32 @@ if TYPE_CHECKING:
     from pylovo.analysis.parameter_calculation import ParameterCalculator
 
 
+
+COMPARISON_METRIC_COLUMNS = [
+    "feeder_lines",
+    "graph_length",
+    "avg_trafo_distance",
+    "max_trafo_distance",
+    "transformer_mva",
+    "graph_resistance",
+]
+
+SYNTHETIC_METRIC_ID_COLUMNS = [
+    "grid_result_id",
+    "kcid",
+    "bcid",
+    "power_flow_status",
+    "metric_status",
+    "metric_error",
+]
+
+REAL_METRIC_ID_COLUMNS = [
+    "grid_name",
+    "file_name",
+    "metric_status",
+    "metric_error",
+]
+
 def export_synthetic_comparison_parameters_for_plz(
     calculator: "ParameterCalculator",
     plz: int,
@@ -96,7 +122,7 @@ def export_synthetic_comparison_parameters_for_plz(
     out_dir = Path(output_dir) if output_dir is not None else Path("validation/grid_comparison/metrics")
     out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / _metric_filename("synthetic_grid_metrics.csv", output_suffix)
-    df.to_csv(csv_path, index=False)
+    _select_export_columns(df, SYNTHETIC_METRIC_ID_COLUMNS).to_csv(csv_path, index=False)
     print(f"Saved synthetic grid metrics to {csv_path}")
     return df
 
@@ -232,7 +258,7 @@ def process_real_grids(
     df = pd.DataFrame(metrics_list)
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / _metric_filename("real_grid_metrics.csv", output_suffix)
-    df.to_csv(csv_path, index=False)
+    _select_export_columns(df, REAL_METRIC_ID_COLUMNS).to_csv(csv_path, index=False)
     print(f"Saved real grid metrics to {csv_path}")
     return df
 
@@ -259,6 +285,13 @@ def run_grid_comparison(
             _write_input_audit(synthetic_df, real_df, output_dir, output_suffix=output_suffix)
         else:
             print(f"GRID_DATA_PATH not found or invalid: {grid_data_path}")
+
+
+
+def _select_export_columns(df: pd.DataFrame, id_columns: list[str]) -> pd.DataFrame:
+    """Return the clean benchmark-facing metrics table."""
+    selected = [col for col in id_columns + COMPARISON_METRIC_COLUMNS if col in df.columns]
+    return df[selected].copy()
 
 
 def _classify_normalized_wasserstein(normalized_distance: float) -> str:
@@ -331,9 +364,9 @@ def compute_wasserstein_summary(
         pooled = pd.concat([synth_vals, real_vals], ignore_index=True)
         q25, q75 = np.nanpercentile(pooled, [25, 75])
         pooled_iqr = float(q75 - q25)
-        if pooled_iqr <= 0:
+        if pooled_iqr <= 1e-6:
             pooled_iqr = float(np.nanstd(pooled))
-        if pooled_iqr <= 0:
+        if pooled_iqr <= 1e-6:
             pooled_iqr = 1.0
 
         emd = float(wasserstein_distance(synth_vals.to_numpy(), real_vals.to_numpy()))
