@@ -325,12 +325,12 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query)
 
     def calculate_house_distance_metric(self, plz: int, sample_size: int = 50, k_nearest: int = 4) -> float:
-        """Computes the average inter-building distance (meters) based on a random sample
+        """Computes the average inter-building distance (meters) from a deterministic sample
         and writes house_distance into postcode_result. Returns the computed value.
         """
         distance_query = f"""WITH some_buildings AS (SELECT objectid, centroid
                                                     FROM buildings_tem
-                                                    ORDER BY RANDOM()
+                                                    ORDER BY md5(objectid::text)
                                                     LIMIT {sample_size})
                             SELECT b.objectid, d.dist
                             FROM some_buildings AS b
