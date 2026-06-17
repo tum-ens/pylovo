@@ -117,6 +117,54 @@ Transformers are reliably identified via `chr_name`:
 - **MV trafo bus `chr_name`**: Prefix `5` (MV side of the transformer).
 - **Authoritative trafo source**: The MV subnet file (`MV_5001.xlsx`) contains all 188 trafos. Each LV subnet file (`LV_XXX.xlsx`) has an `ext_grid` entry at the trafo LV bus but no `trafo` sheet. Using both sources for transformer features causes double-counting (188 + 85 = 273 instead of 186).
 
+## Element Naming And Metric Interpretation
+
+The SWF pandapower model separates topology into **nodes** and **edges**:
+
+- **Nodes / buses** live in `net.bus`. Their `name` describes a point in the network such as a cable node, house connection, KVS, or transformer station.
+- **Edges / lines / cables** live in `net.line`. They connect two buses through `from_bus` and `to_bus`. Their physical cable parameters are stored on the line row, while their endpoints are interpreted through the connected bus rows.
+- **Transformers** live in `net.trafo`. For LV subnet files, transformers are represented indirectly as an `ext_grid` at the LV-side transformer bus; the authoritative transformer table is kept in the MV subnet export.
+- **Loads** live in `net.load`. Their `bus` column marks consumer/load attachment points and is used as an explicit service endpoint signal in comparison metrics.
+
+This distinction matters for validation: the feeder-count metric uses **line names** to identify service-connection cables and **bus/node names** to decide whether the connected endpoints are service attachments or structural topology points. Cables and line rows define connectivity and length/resistance; bus names provide semantic hints about whether an endpoint is a KVS, house connection, transformer node, or generic topology node.
+
+### Node / Bus `name` Abbreviations
+
+The SWF `bus.name` field is used as a semantic layer where pure topology is ambiguous:
+
+| Node abbreviation | Meaning | Metric treatment |
+| :--- | :--- | :--- |
+| `KnFl` | Knoten - Freileitung | structural/topology-driven node |
+| `KnKb` | Knoten - Kabel | structural/topology-driven node |
+| `HaAn` | Hausanschluss | service endpoint, pruned when terminal |
+| `KVS` (`FM`, `STB`, `MFG`, `VT`) | Kabelverteilerschrank/-station variants | structural split/end point |
+| `Kn(n)_TrSt` | Knoten (neu) - Trafostation | transformer/root-side structural node |
+| `Kn(n)_Fl` | Knoten (neu) - Freileitung | structural/topology-driven node |
+| `Kn(n)_Kb` | Knoten (neu) - Kabel | structural/topology-driven node |
+| `Kn(n)_KbAn` | Knoten (neu) - Kabelanschluss, usually the cable-side attachment before a `HaAn` node | service/attachment node; pruned together with terminal house-connection stubs |
+| `Kn(n)_FlAn` | Knoten (neu) - Freileitungsanschluss, analogous overhead-line attachment | service/attachment node; pruned together with terminal house-connection stubs |
+| `ErLast` | Ersatzlast | service/load endpoint when present |
+
+### Edge / Line / Cable Rows
+
+Line rows represent the physical or electrical connection between two bus nodes:
+
+- A line row is not itself a KVS, house connection, or cable node. Those are bus/node concepts.
+- A line row can be a cable or overhead-line segment depending on its electrical type and connected node context.
+- The validation metrics use line rows for graph length, resistance, and connectivity.
+- The feeder-count metric uses `net.line.name` first to identify service-connection cables such as `NS_KbAn_*` and `NS_FlAn_*`. Bus names are then used as a guard so structural-looking edges, for example rare KVS-to-KVS rows with a `KbAn` line name, are not blindly removed.
+
+### Feeder-Count Rule Used For Comparison
+
+PyLoVo uses a hybrid feeder-count rule:
+
+- Service-connection line names (`NS_KbAn_*`, `NS_FlAn_*`) are pruned from the terminal feeder topology when they connect to a service endpoint.
+- Service endpoints include `HaAn`, `Kn(n)_KbAn`, `Kn(n)_FlAn`, explicit `net.load.bus` endpoints, and `ErLast`; these do not create feeder splits when they form terminal service stubs.
+- KVS nodes and structural cable/overhead nodes (`KnKb`, `Kn(n)_Kb`, `KnFl`, `Kn(n)_Fl`) remain topology-driven.
+- Rare `KbAn`/`FlAn` line rows between structural endpoints are kept, because the endpoint guard prevents line-name-only deletion from erasing real topology.
+
+This avoids tuning synthetic grids against individual house/service stubs while still preserving unlabeled or inconsistently labeled topology splits.
+
 ## Data Model Attributes
 - **Construction Year (`Baujahr`)**: `0` (Existing), `2030+` (Future).
 - **Expansion**: Future loads/gens are included in the dataset but marked with `Baujahr > 0`.

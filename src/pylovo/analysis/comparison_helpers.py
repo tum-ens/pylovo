@@ -427,9 +427,11 @@ def _build_metric_error_row(net: pp.pandapowerNet | None, exc: Exception) -> dic
         "feeder_lines_first_hop": np.nan,
         "feeder_lines_label_aware": np.nan,
         "feeder_lines_terminal_topology": np.nan,
+        "feeder_lines_terminal_backbone": np.nan,
         "feeder_lines_expand_all": np.nan,
         "feeder_lines_collapse_non_kvs": np.nan,
         "feeder_count_delta_label_aware": np.nan,
+        "feeder_count_delta_terminal_topology": np.nan,
         "feeder_count_delta_expand_all": np.nan,
         "feeder_count_delta_collapse_non_kvs": np.nan,
         "buildings_per_feeder": np.nan,
@@ -490,6 +492,8 @@ def _write_input_audit(
     audit_cols = [
         "metric_status",
         "metric_error",
+        "uses_synthetic_naming",
+        "root_bus",
         "bus_count",
         "line_count",
         "active_line_count",
@@ -504,11 +508,14 @@ def _write_input_audit(
         "feeder_lines_first_hop",
         "feeder_lines_label_aware",
         "feeder_lines_terminal_topology",
+        "feeder_lines_terminal_backbone",
         "feeder_lines_expand_all",
         "feeder_lines_collapse_non_kvs",
         "feeder_count_delta_label_aware",
+        "feeder_count_delta_terminal_topology",
         "feeder_count_delta_expand_all",
         "feeder_count_delta_collapse_non_kvs",
+        "buildings_per_feeder",
     ]
     frames = []
     if not synthetic_df.empty:

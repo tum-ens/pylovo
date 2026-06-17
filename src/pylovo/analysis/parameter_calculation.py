@@ -19,6 +19,7 @@ Several methods assume radial structure or a unique upstream path. Geographic an
 projected coordinates are auto-detected where spatial distance calculations need it.
 """
 
+from collections import deque
 import json
 import re
 from typing import Tuple, Dict, Any, List, Optional
@@ -45,8 +46,11 @@ from pylovo.config_loader import *
 
 SWF_BUS_TYPE_CONFIG: Dict[str, str] = {
     "name_column": "name",
-    "house_connection_pattern": r"NS_HaAn",
+    # Clear service/attachment nodes in the SWF export. Service cables are
+    # identified separately through line names such as NS_KbAn and NS_FlAn.
+    "house_connection_pattern": r"(NS_HaAn|NS_Kn\(n\)_(KbAn|FlAn)|ErLast)",
     "kvs_pattern": r"NS_KVS",
+    "service_line_pattern": r"NS_(KbAn|FlAn)",
 }
 
 PYLOVO_BUS_TYPE_CONFIG: Dict[str, str] = {
@@ -63,9 +67,10 @@ def classify_bus_types(
     """Build a mapping ``{bus_index: bus_type}`` from naming patterns.
 
     Recognised bus types:
-    - ``"house_connection"`` – leaf consumer buses (e.g. NS_HaAn, Consumer Nodebus)
-    - ``"kvs"`` – cable distribution stations treated as transparent splitters
-    - ``"backbone"`` – everything else (cable nodes, connection buses, …)
+    - ``"house_connection"`` – service/attachment buses that only count when
+      topology shows they continue or split the backbone.
+    - ``"kvs"`` – cable distribution stations treated as transparent splitters.
+    - ``"backbone"`` – everything else (cable nodes, connection buses, …).
 
     Parameters
     ----------
@@ -281,6 +286,8 @@ class ParameterCalculator:
         bus_type_config: Optional[Dict[str, str]] = None,
         expand_kvs: bool = True,
         recursive_expansion: bool = False,
+        additional_house_connection_buses: Optional[List[int]] = None,
+        collapse_service_connection_leaves: bool = False,
     ) -> int:
         """Count feeders using a unified topology-aware algorithm.
 
@@ -316,12 +323,25 @@ class ParameterCalculator:
             When ``True``, count terminal feeder branches recursively in the
             downstream backbone tree. This treats implicit synthetic split
             points and explicit real KVS split points symmetrically.
+        additional_house_connection_buses : list[int], optional
+            Consumer bus indices that should be treated as terminal house
+            connections even if their labels do not match the configured pattern.
+        collapse_service_connection_leaves : bool, default False
+            When counting recursively, collapse terminal non-KVS service stubs
+            that only became leaves after house/consumer endpoints were pruned.
+            This prevents individual house-connection attachment nodes from
+            being counted as feeder terminals.
         """
         if bus_type_config is None:
             bus_type_config = (
                 PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
             )
         bus_types = classify_bus_types(net, bus_type_config)
+        if additional_house_connection_buses:
+            for bus_idx in additional_house_connection_buses:
+                bus_idx = int(bus_idx)
+                if bus_idx != root_idx:
+                    bus_types[bus_idx] = "house_connection"
 
         return self._count_feeders_unified(
             net,
@@ -331,6 +351,8 @@ class ParameterCalculator:
             expand_kvs=expand_kvs,
             recursive_expansion=recursive_expansion,
             uses_synthetic_naming=uses_synthetic_naming,
+            collapse_service_connection_leaves=collapse_service_connection_leaves,
+            service_line_pattern=bus_type_config.get("service_line_pattern"),
         )
 
     def _count_feeders_unified(
@@ -342,6 +364,8 @@ class ParameterCalculator:
         expand_kvs: bool = True,
         recursive_expansion: bool = False,
         uses_synthetic_naming: bool = False,
+        collapse_service_connection_leaves: bool = False,
+        service_line_pattern: Optional[str] = None,
     ) -> int:
         """Core feeder counting logic shared by all grid representations.
 
@@ -353,6 +377,19 @@ class ParameterCalculator:
            documented in :meth:`count_feeders`.
         """
         graph_for_count = self._build_rooted_tree(graph, root_idx) if recursive_expansion else graph
+        if recursive_expansion and collapse_service_connection_leaves:
+            graph_for_count = self._remove_service_line_edges(
+                graph_for_count,
+                net,
+                bus_types,
+                root_idx,
+                service_line_pattern=service_line_pattern if not uses_synthetic_naming else None,
+            )
+            graph_for_count = self._collapse_service_connection_leaves(
+                graph_for_count,
+                bus_types,
+                root_idx,
+            )
 
         if root_idx not in graph_for_count:
             return 0
@@ -362,9 +399,9 @@ class ParameterCalculator:
         current = root_idx
 
         while graph_for_count.degree[current] == 1:
-            neighbors = list(graph_for_count.neighbors(current))
+            neighbors = [n for n in graph_for_count.neighbors(current) if n != previous]
             if not neighbors:
-                return 0
+                break
             previous, current = current, neighbors[0]
 
         while previous is not None and graph_for_count.degree[current] == 2:
@@ -385,6 +422,9 @@ class ParameterCalculator:
                 n for n in graph_for_count.neighbors(branch_point)
                 if not self._is_trafo_edge(net, branch_point, n)
             ]
+
+        if not downstream and graph_for_count.number_of_edges() > 0:
+            return 1
 
         if recursive_expansion:
             feeders = sum(
@@ -481,6 +521,110 @@ class ParameterCalculator:
             )
             for child in backbone_children
         )
+
+
+    @staticmethod
+    def _remove_service_line_edges(
+        graph: nx.Graph,
+        net: pp.pandapowerNet,
+        bus_types: Dict[int, str],
+        root_idx: int,
+        service_line_pattern: Optional[str] = None,
+    ) -> nx.Graph:
+        """Remove terminal service-connection line rows from feeder topology.
+
+        SWF line names such as NS_KbAn_* and NS_FlAn_* are the clearest
+        signal for house/service connection cables. A small endpoint guard keeps
+        rare structural-looking edges with the same line-name family, e.g. KVS to
+        KVS, in the backbone metric.
+        """
+        if not service_line_pattern or not hasattr(net, "line") or net.line.empty:
+            return graph
+        if "name" not in net.line.columns:
+            return graph
+
+        service_line_re = re.compile(service_line_pattern, re.IGNORECASE)
+        pruned = graph.copy()
+
+        for _, line in net.line.iterrows():
+            name = str(line.get("name", ""))
+            if not service_line_re.search(name):
+                continue
+            if "in_service" in line and not bool(line.get("in_service", True)):
+                continue
+
+            from_bus = int(line["from_bus"])
+            to_bus = int(line["to_bus"])
+            if from_bus == root_idx or to_bus == root_idx:
+                continue
+            if from_bus not in pruned or to_bus not in pruned:
+                continue
+            if not pruned.has_edge(from_bus, to_bus):
+                continue
+
+            if (
+                bus_types.get(from_bus, "backbone") == "house_connection"
+                or bus_types.get(to_bus, "backbone") == "house_connection"
+            ):
+                pruned.remove_edge(from_bus, to_bus)
+
+        return pruned
+
+
+    @staticmethod
+    def _collapse_service_connection_leaves(
+        graph: nx.Graph,
+        bus_types: Dict[int, str],
+        root_idx: int,
+    ) -> nx.Graph:
+        """Collapse terminal service stubs before counting feeder terminals.
+
+        The recursive feeder metric should describe backbone topology, not the
+        number of individual consumer attachment stubs.  After known
+        house/consumer leaves are removed, a non-KVS leaf with no original
+        topology split is treated as a service-parent artefact and removed as
+        well.  KVS leaves stay visible because they are meaningful
+        split/end points for this benchmark.
+        """
+        degree = dict(graph.degree)
+        removed: set[int] = set()
+        original_degree = dict(graph.degree)
+        original_has_house_neighbor = {
+            node: any(
+                bus_types.get(neighbor, "backbone") == "house_connection"
+                for neighbor in graph.neighbors(node)
+            )
+            for node in graph.nodes
+        }
+        queue = deque(node for node, deg in degree.items() if node != root_idx and deg <= 1)
+
+        def is_removable_leaf(node: int) -> bool:
+            if node == root_idx or degree.get(node, 0) > 1:
+                return False
+            bus_type = bus_types.get(node, "backbone")
+            if bus_type == "house_connection":
+                return True
+            return (
+                bus_type != "kvs"
+                and original_has_house_neighbor.get(node, False)
+                and original_degree.get(node, 0) <= 2
+            )
+
+        while queue:
+            node = queue.popleft()
+            if node in removed or not is_removable_leaf(node):
+                continue
+            removed.add(node)
+            for neighbor in graph.neighbors(node):
+                if neighbor in removed:
+                    continue
+                degree[neighbor] -= 1
+                if degree[neighbor] <= 1:
+                    queue.append(neighbor)
+
+        pruned = graph.copy()
+        pruned.remove_nodes_from(removed)
+        return pruned
 
     @staticmethod
     def _build_rooted_tree(graph: nx.Graph, root_idx: int) -> nx.Graph:

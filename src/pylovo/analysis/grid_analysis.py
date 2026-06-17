@@ -114,6 +114,7 @@ def compute_comparison_parameters(
         uses_synthetic_naming,
         bus_type_config=active_bus_type_config,
         recursive_expansion=False,
+        additional_house_connection_buses=resolved_consumer_buses,
     )
     feeder_lines_label_aware = calculator.count_feeders(
         analysis_net,
@@ -122,7 +123,11 @@ def compute_comparison_parameters(
         uses_synthetic_naming,
         bus_type_config=active_bus_type_config,
         recursive_expansion=True,
+        additional_house_connection_buses=resolved_consumer_buses,
     )
+    # Raw terminal topology expands unlabeled real split points like synthetic
+    # connection nodes. It is useful as a diagnostic, but still counts terminal
+    # service-parent stubs that only exist because consumer points attach there.
     feeder_lines_terminal_topology = calculator.count_feeders(
         analysis_net,
         graph,
@@ -130,6 +135,20 @@ def compute_comparison_parameters(
         True,
         bus_type_config=active_bus_type_config,
         recursive_expansion=True,
+        additional_house_connection_buses=resolved_consumer_buses,
+    )
+    # Active benchmark definition: count terminal backbone branches after pruning
+    # resolved consumer endpoints and terminal non-KVS service stubs. This keeps
+    # KVS/split topology visible without treating house connections as splits.
+    feeder_lines_terminal_backbone = calculator.count_feeders(
+        analysis_net,
+        graph,
+        root_idx,
+        True,
+        bus_type_config=active_bus_type_config,
+        recursive_expansion=True,
+        additional_house_connection_buses=resolved_consumer_buses,
+        collapse_service_connection_leaves=True,
     )
     feeder_lines_collapse_non_kvs = calculator.count_feeders(
         analysis_net,
@@ -138,8 +157,9 @@ def compute_comparison_parameters(
         False,
         bus_type_config=active_bus_type_config,
         recursive_expansion=True,
+        additional_house_connection_buses=resolved_consumer_buses,
     )
-    feeder_lines = feeder_lines_terminal_topology
+    feeder_lines = feeder_lines_terminal_backbone
     avg_trafo_distance, max_trafo_distance = calculator.calculate_trafo_distances(
         graph,
         root_idx,
@@ -176,9 +196,11 @@ def compute_comparison_parameters(
         "feeder_lines_first_hop": int(feeder_lines_first_hop),
         "feeder_lines_label_aware": int(feeder_lines_label_aware),
         "feeder_lines_terminal_topology": int(feeder_lines_terminal_topology),
+        "feeder_lines_terminal_backbone": int(feeder_lines_terminal_backbone),
         "feeder_lines_expand_all": int(feeder_lines_terminal_topology),
         "feeder_lines_collapse_non_kvs": int(feeder_lines_collapse_non_kvs),
         "feeder_count_delta_label_aware": int(feeder_lines_label_aware - feeder_lines),
+        "feeder_count_delta_terminal_topology": int(feeder_lines_terminal_topology - feeder_lines),
         "feeder_count_delta_expand_all": int(feeder_lines_terminal_topology - feeder_lines),
         "feeder_count_delta_collapse_non_kvs": int(feeder_lines_collapse_non_kvs - feeder_lines),
         "buildings_per_feeder": float(buildings_per_feeder),
