@@ -13,6 +13,8 @@ The active comparison workflow lives in `src/pylovo/analysis/comparison_helpers.
 
 The two metrics CSVs are intentionally narrow. They contain only grid identifiers/status columns plus the active benchmark metrics: `feeder_lines`, `graph_length`, `avg_trafo_distance`, `max_trafo_distance`, `transformer_mva`, and `graph_resistance`. Development diagnostics such as feeder-count variants, topology counts, and source-data quality flags are written to `comparison_input_audit.csv` instead.
 
+In `grid_comparison_notebook.ipynb`, set `SYNTHETIC_METRICS_FILE` and `REAL_METRICS_FILE` in the configuration cell to compare suffixed metric exports, for example a `dso20` run, without changing the helper code.
+
 ## Usage
 
 ```bash

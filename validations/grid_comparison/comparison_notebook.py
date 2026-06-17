@@ -63,17 +63,22 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def resolve_metrics_path(filename: str, metrics_dir: Path | None = None) -> Path | None:
+def resolve_metrics_path(filename: str | Path, metrics_dir: Path | None = None) -> Path | None:
+    filename = Path(filename)
     candidates: list[Path] = []
-    if metrics_dir is not None:
+    if filename.is_absolute():
+        candidates.append(filename)
+    elif metrics_dir is not None:
         candidates.append(Path(metrics_dir) / filename)
 
     project_root = _project_root()
     candidates.extend(
         [
+            project_root / "validations" / "metrics" / filename,
             project_root / "validation" / "metrics" / filename,
             project_root / "validation" / "grid_comparison" / "metrics" / filename,
             project_root / "metrics" / filename,
+            Path.cwd() / "validations" / "metrics" / filename,
             Path.cwd() / "validation" / "metrics" / filename,
             Path.cwd() / "metrics" / filename,
         ]
@@ -90,11 +95,15 @@ def resolve_metrics_path(filename: str, metrics_dir: Path | None = None) -> Path
     return None
 
 
-def _load_synthetic_metrics(metrics_dir: Path | None = None) -> tuple[pd.DataFrame, Path]:
-    synthetic_path = resolve_metrics_path("synthetic_grid_metrics.csv", metrics_dir)
+def _load_synthetic_metrics(
+    metrics_dir: Path | None = None,
+    metrics_filename: str | Path = "synthetic_grid_metrics.csv",
+) -> tuple[pd.DataFrame, Path]:
+    synthetic_path = resolve_metrics_path(metrics_filename, metrics_dir)
     if synthetic_path is None:
         raise FileNotFoundError(
-            "Synthetic comparison metrics CSV was not found. Run `uv run pylovo-validate compare-grids`."
+            f"Synthetic comparison metrics CSV '{metrics_filename}' was not found. "
+            "Run `uv run pylovo-validate compare-grids` or adjust SYNTHETIC_METRICS_FILE."
         )
 
     df_synth = pd.read_csv(synthetic_path)
@@ -106,11 +115,15 @@ def _load_synthetic_metrics(metrics_dir: Path | None = None) -> tuple[pd.DataFra
     return df_synth, synthetic_path
 
 
-def _load_real_metrics(metrics_dir: Path | None = None) -> tuple[pd.DataFrame, Path]:
-    real_path = resolve_metrics_path("real_grid_metrics.csv", metrics_dir)
+def _load_real_metrics(
+    metrics_dir: Path | None = None,
+    metrics_filename: str | Path = "real_grid_metrics.csv",
+) -> tuple[pd.DataFrame, Path]:
+    real_path = resolve_metrics_path(metrics_filename, metrics_dir)
     if real_path is None:
         raise FileNotFoundError(
-            "Real comparison metrics CSV was not found. Run `uv run pylovo-validate compare-grids`."
+            f"Real comparison metrics CSV '{metrics_filename}' was not found. "
+            "Run `uv run pylovo-validate compare-grids` or adjust REAL_METRICS_FILE."
         )
 
     df_real = pd.read_csv(real_path)
@@ -206,12 +219,20 @@ def load_notebook_data(
     metrics_dir: Path | None = None,
     metrics: list[str] | None = None,
     labels: dict[str, str] | None = None,
+    synthetic_metrics_filename: str | Path = "synthetic_grid_metrics.csv",
+    real_metrics_filename: str | Path = "real_grid_metrics.csv",
 ) -> ComparisonNotebookData:
     requested_metrics = list(metrics) if metrics is not None else list(DEFAULT_METRICS)
     active_labels = dict(labels) if labels is not None else dict(DEFAULT_LABELS)
 
-    df_synth_all, synthetic_path = _load_synthetic_metrics(metrics_dir)
-    df_real, real_path = _load_real_metrics(metrics_dir)
+    df_synth_all, synthetic_path = _load_synthetic_metrics(
+        metrics_dir,
+        metrics_filename=synthetic_metrics_filename,
+    )
+    df_real, real_path = _load_real_metrics(
+        metrics_dir,
+        metrics_filename=real_metrics_filename,
+    )
     df_all = pd.concat([df_synth_all, df_real], ignore_index=True, sort=False)
     available_metrics = [metric for metric in requested_metrics if metric in df_all.columns]
     missing_metrics = [metric for metric in requested_metrics if metric not in df_all.columns]
@@ -288,8 +309,16 @@ def load_and_render_overview(
     metrics_dir: Path | None = None,
     metrics: list[str] | None = None,
     labels: dict[str, str] | None = None,
+    synthetic_metrics_filename: str | Path = "synthetic_grid_metrics.csv",
+    real_metrics_filename: str | Path = "real_grid_metrics.csv",
 ) -> ComparisonNotebookData:
-    data = load_notebook_data(metrics_dir=metrics_dir, metrics=metrics, labels=labels)
+    data = load_notebook_data(
+        metrics_dir=metrics_dir,
+        metrics=metrics,
+        labels=labels,
+        synthetic_metrics_filename=synthetic_metrics_filename,
+        real_metrics_filename=real_metrics_filename,
+    )
     return render_top_overview(data)
 
 
