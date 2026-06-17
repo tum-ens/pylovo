@@ -450,7 +450,7 @@ def plot_metric_kde_diagonal(
                 hue_order=hue_order,
                 palette=palette,
                 bins=bins,
-                stat="count",
+                stat="probability",
                 common_norm=False,
                 element="bars",
                 alpha=0.28,
@@ -458,7 +458,7 @@ def plot_metric_kde_diagonal(
                 ax=ax,
                 legend=(i == 0),
             )
-            ax.set_ylabel("Count")
+            ax.set_ylabel("Share of Grids")
         else:
             sns.kdeplot(
                 data=sub,

@@ -350,7 +350,8 @@ def plot_comparison_distribution_plotly(
 def plot_comparison_histogram_plotly(
     df: pd.DataFrame, 
     metric_col: str, 
-    title: Optional[str] = None
+    title: Optional[str] = None,
+    histnorm: str = "probability",
 ) -> go.Figure:
     """
     Generate an overlaid histogram/KDE using Plotly.
@@ -363,6 +364,9 @@ def plot_comparison_histogram_plotly(
         Column name to plot.
     title : str, optional
         Plot title.
+    histnorm : str, optional
+        Plotly histogram normalization. Defaults to ``"probability"`` so each source
+        distribution is shown as share of grids rather than raw grid count.
         
     Returns
     -------
@@ -384,12 +388,14 @@ def plot_comparison_histogram_plotly(
         color_discrete_map=color_discrete_map,
         title=title or f"Histogram of {metric_col}",
         template="plotly_white",
-        opacity=0.6
+        opacity=0.6,
+        histnorm=histnorm,
     )
 
+    yaxis_title = "Share of Grids" if histnorm == "probability" else "Density" if histnorm else "Count"
     fig.update_layout(
         xaxis_title=metric_col.replace("_", " ").title(),
-        yaxis_title="Count",
+        yaxis_title=yaxis_title,
         legend_title="Source",
         font=dict(family="Arial", size=14)
     )
