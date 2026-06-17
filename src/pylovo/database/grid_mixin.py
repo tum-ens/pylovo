@@ -18,7 +18,8 @@ class GridMixin(BaseMixin, ABC):
         query = f"""SELECT name,
                        r_mohm_per_km / 1000.0 as r_ohm_per_km,
                        x_mohm_per_km / 1000.0 as x_ohm_per_km,
-                       max_i_a / 1000.0       as max_i_ka
+                       max_i_a / 1000.0       as max_i_ka,
+                       cost_eur
             FROM pylovo.equipment_data
                 WHERE typ = 'Cable' \
                 """

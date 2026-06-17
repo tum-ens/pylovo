@@ -23,7 +23,7 @@ class CableInstaller:
             backend: Electrical backend instance (e.g., PandapowerBackend)
             dbc: Database client for accessing grid data
             logger: Logger instance
-            cables: List of cable tuples from database (name, r_ohm_per_km, x_ohm_per_km, max_i_ka)
+            cables: List of cable tuples from database (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)
             feeder_cables: Configured feeder cable definitions
             consumer_connection_cables: Configured consumer connection cable definitions
         """
@@ -51,13 +51,14 @@ class CableInstaller:
         which is compatible with both pandapower and OpenDSS backends.
 
         Args:
-            cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka)
+            cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)
 
         Returns:
             DataFrame indexed by normalized cable name with electrical properties
         """
         cable_data = {}
-        for name, r_ohm, x_ohm, max_i_ka in cables:
+        for cable in cables:
+            name, r_ohm, x_ohm, max_i_ka, cost_eur = cable
             normalized_name = normalize_cable_name(name)
 
             try:
@@ -69,6 +70,7 @@ class CableInstaller:
                 'r_ohm_per_km': float(r_ohm),
                 'x_ohm_per_km': float(x_ohm),
                 'max_i_ka': float(max_i_ka),
+                'cost_eur': float(cost_eur),
                 'q_mm2': q_mm2
             }
 
@@ -285,7 +287,7 @@ class CableInstaller:
                 else:
                     break
 
-            cable = voltage_available_cables_df.sort_values(by=["q_mm2"]).index.tolist()[0]
+            cable = voltage_available_cables_df.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
             material_length_by_cable_km[cable] += count * length_km
 
             line_spec = LineSpec(
