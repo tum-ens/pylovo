@@ -9,6 +9,9 @@ The active comparison workflow lives in `src/pylovo/analysis/comparison_helpers.
 - **Input (Synthetic)**: grids for PLZ `91301` from the `pylovo` database.
 - **Output (Synthetic, canonical)**: `validations/metrics/synthetic_grid_metrics.csv`
 - **Output (Real)**: `validations/metrics/real_grid_metrics.csv`
+- **Output (Diagnostics)**: `validations/metrics/comparison_input_audit.csv`
+
+The two metrics CSVs are intentionally narrow. They contain only grid identifiers/status columns plus the active benchmark metrics: `feeder_lines`, `graph_length`, `avg_trafo_distance`, `max_trafo_distance`, `transformer_mva`, and `graph_resistance`. Development diagnostics such as feeder-count variants, topology counts, and source-data quality flags are written to `comparison_input_audit.csv` instead.
 
 ## Usage
 
