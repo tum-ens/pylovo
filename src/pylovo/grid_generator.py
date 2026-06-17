@@ -1062,9 +1062,20 @@ class GridGenerator:
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
         vertices_dict: dict[int, float],
+        ont_vertice: int,
     ) -> dict[tuple[int, int], tuple[str, int]]:
         """Choose one feeder cable/count for every edge in each hard-node section."""
         cable_by_edge: dict[tuple[int, int], tuple[str, int]] = {}
+
+        def _distance_from_transformer(node: int) -> float:
+            if node == ont_vertice:
+                return 0.0
+            try:
+                return float(vertices_dict[node])
+            except KeyError as exc:
+                raise KeyError(
+                    f"Missing routed distance for feeder node {node} while sizing feeder sections."
+                ) from exc
 
         for section_edges in sections_by_key.values():
             section_Imax = 0.0
@@ -1075,7 +1086,7 @@ class GridGenerator:
                     buildings_df, consumer_df, downstream_nodes_by_node[child]
                 )
                 edge_Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-                edge_distance = vertices_dict[child] - vertices_dict[parent]
+                edge_distance = _distance_from_transformer(child) - _distance_from_transformer(parent)
                 section_Imax = max(section_Imax, edge_Imax)
                 section_distance += edge_distance
 
@@ -1133,6 +1144,7 @@ class GridGenerator:
             buildings_df,
             consumer_df,
             vertices_dict,
+            ont_vertice,
         )
         section_by_edge = {
             edge: int(section_id)
