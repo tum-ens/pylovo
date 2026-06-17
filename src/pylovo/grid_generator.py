@@ -850,13 +850,13 @@ class GridGenerator:
             # This ensures cables are sized for the lowest expected voltage (95% of nominal)
             Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))  # current in kA
 
-            # Check if current exceeds the capacity of the largest available cable
-            # MAX_CABLE_CURRENT_KA is derived from the largest cable in equipment data
-            if Imax >= MAX_CABLE_CURRENT_KA and len(branch_node_list) > 1:
+            # Check if current exceeds the configured topology grouping cap.
+            # Cable sizing can still choose larger/parallel cables later.
+            if Imax >= FEEDER_SPLIT_MAX_CURRENT_KA and len(branch_node_list) > 1:
                 # Remove the last node if it would exceed current capacity
                 branch_node_list.remove(node)
                 break
-            elif Imax >= MAX_CABLE_CURRENT_KA and len(branch_node_list) == 1:
+            elif Imax >= FEEDER_SPLIT_MAX_CURRENT_KA and len(branch_node_list) == 1:
                 # Even a single node exceeds capacity - keep it but break the loop
                 break
 

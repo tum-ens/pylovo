@@ -223,10 +223,9 @@ V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
 # =============================================================================
 # CABLE DIMENSIONING PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
-# Calculate maximum cable current from all configured cable pools (largest available cable)
-# This ensures the current limit is always based on the actual largest configured cable.
-ALL_CABLES = pd.concat([FEEDER_CABLES, CONSUMER_CONNECTION_CABLES], ignore_index=True)
-MAX_CABLE_CURRENT_KA = ALL_CABLES["max_i_a"].max() / 1000  # Convert A to kA
+# Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
+# This is a topology-splitting parameter, not a final cable ampacity limit.
+FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
 
 # Consumer service-drop voltage-drop limit; installer converts percent per km to a total line budget.
 VOLTAGE_DROP_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LOAD_PERCENT_PER_KM"]

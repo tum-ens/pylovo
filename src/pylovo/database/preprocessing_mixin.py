@@ -33,6 +33,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "v_band_low": V_BAND_LOW,
                 "v_band_high": V_BAND_HIGH,
                 "min_shared_prefix_length_m": MIN_SHARED_PREFIX_LENGTH_M,
+                "feeder_split_max_current_ka": FEEDER_SPLIT_MAX_CURRENT_KA,
                 "voltage_drop_load_percent_per_km": VOLTAGE_DROP_LOAD_PERCENT_PER_KM,
                 "mv_direct_connection_load_threshold_kw": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
             },

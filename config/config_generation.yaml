@@ -68,6 +68,12 @@ VOLTAGE_DROP_LOAD_PERCENT_PER_KM: 5
 # Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
+# Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
+# This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
+# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
+# handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
+FEEDER_SPLIT_MAX_CURRENT_KA: 0.24
+
 # Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
 #  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
