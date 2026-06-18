@@ -54,6 +54,7 @@ def export_synthetic_comparison_parameters_for_plz(
     limit: int = None,
     output_dir: Path | None = None,
     output_suffix: str = "",
+    with_service_lines: bool = False,
 ) -> pd.DataFrame:
     """Compute, persist, and export the active comparison parameter set for synthetic grids.
 
@@ -93,7 +94,11 @@ def export_synthetic_comparison_parameters_for_plz(
             )
             grid_result_id = calculator.dbc.cur.fetchone()[0]
 
-            params = compute_comparison_parameters(calculator, net)
+            params = compute_comparison_parameters(
+                calculator,
+                net,
+                with_service_lines=with_service_lines,
+            )
             params["power_flow_status"] = power_flow_status
             params["grid_result_id"] = grid_result_id
             params["kcid"] = kcid
@@ -202,6 +207,7 @@ def process_synthetic_grids(
     plz: int,
     output_dir: Path,
     output_suffix: str = "",
+    with_service_lines: bool = False,
 ) -> pd.DataFrame:
     """Calculate and export comparison parameters for synthetic grids in one postcode area."""
     print(f"Processing synthetic grids for PLZ {plz}...")
@@ -214,6 +220,7 @@ def process_synthetic_grids(
         plz,
         output_dir=output_dir,
         output_suffix=output_suffix,
+        with_service_lines=with_service_lines,
     )
 
 
@@ -223,6 +230,7 @@ def process_real_grids(
     plz: int,
     output_dir: Path,
     output_suffix: str = "",
+    with_service_lines: bool = False,
 ) -> pd.DataFrame:
     """Calculate and export comparison parameters for real LV subnets."""
     print(f"Processing real grids from {data_path}...")
@@ -241,7 +249,12 @@ def process_real_grids(
             net = _load_real_grid_file(file_path)
             consumer_buses = _infer_real_grid_consumer_buses(net, buildings_gdf)
 
-            params = compute_comparison_parameters(calc, net, consumer_buses=consumer_buses)
+            params = compute_comparison_parameters(
+                calc,
+                net,
+                consumer_buses=consumer_buses,
+                with_service_lines=with_service_lines,
+            )
             params["grid_name"] = file_path.stem
             params["file_name"] = file_path.name
             metrics_list.append(params)
@@ -268,10 +281,17 @@ def run_grid_comparison(
     output_dir: Path,
     data_path: str | None = None,
     output_suffix: str = "",
+    with_service_lines: bool = False,
 ) -> None:
     """Run the full comparison workflow and write both metrics CSV files."""
     with DatabaseClient() as dbc:
-        synthetic_df = process_synthetic_grids(dbc, plz, output_dir, output_suffix=output_suffix)
+        synthetic_df = process_synthetic_grids(
+            dbc,
+            plz,
+            output_dir,
+            output_suffix=output_suffix,
+            with_service_lines=with_service_lines,
+        )
 
         grid_data_path = Path(data_path) if data_path is not None else Path(GRID_DATA_PATH)
         if grid_data_path.exists():
@@ -281,6 +301,7 @@ def run_grid_comparison(
                 plz,
                 output_dir,
                 output_suffix=output_suffix,
+                with_service_lines=with_service_lines,
             )
             _write_input_audit(synthetic_df, real_df, output_dir, output_suffix=output_suffix)
         else:

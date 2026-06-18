@@ -33,6 +33,7 @@ def _get_transformer_mva(net: pp.pandapowerNet) -> float:
 def _calculate_resistance(
     calculator: "ParameterCalculator",
     net: pp.pandapowerNet,
+    with_service_lines: bool = False,
 ) -> float:
     """Return the active comparison resistance proxy.
 
@@ -40,7 +41,11 @@ def _calculate_resistance(
     meaningful for both real and synthetic grids even when house-connection
     modelling differs or cable-distribution stations are absent.
     """
-    return calculator.calculate_graph_resistance(net, only_in_service=True)
+    return calculator.calculate_graph_resistance(
+        net,
+        only_in_service=True,
+        with_service_lines=with_service_lines,
+    )
 
 
 def _with_absolute_line_lengths(net: pp.pandapowerNet) -> pp.pandapowerNet:
@@ -78,6 +83,7 @@ def compute_comparison_parameters(
     net: pp.pandapowerNet,
     consumer_buses: list[int] | None = None,
     bus_type_config: Optional[Dict[str, str]] = None,
+    with_service_lines: bool = False,
 ) -> Dict[str, Any]:
     """Compute the active real-vs-synthetic comparison parameter set for one LV grid.
 
@@ -91,6 +97,10 @@ def compute_comparison_parameters(
         Naming-pattern dictionary forwarded to the unified feeder counter.
         When ``None`` the config is auto-detected from the bus naming
         convention (see :data:`~pylovo.analysis.parameter_calculation.SWF_BUS_TYPE_CONFIG`).
+    with_service_lines : bool, default False
+        Include terminal house/consumer service connections in length,
+        resistance, and transformer-distance metrics. The default benchmark
+        excludes them and measures feeder/backbone structure.
     """
     from pylovo.analysis.parameter_calculation import PYLOVO_BUS_TYPE_CONFIG, SWF_BUS_TYPE_CONFIG
 
@@ -160,15 +170,31 @@ def compute_comparison_parameters(
         additional_house_connection_buses=resolved_consumer_buses,
     )
     feeder_lines = feeder_lines_terminal_backbone
-    avg_trafo_distance, max_trafo_distance = calculator.calculate_trafo_distances(
-        graph,
-        root_idx,
-        resolved_consumer_buses,
-    )
+    if with_service_lines:
+        distance_graph = graph
+        avg_trafo_distance, max_trafo_distance = calculator.calculate_trafo_distances(
+            distance_graph,
+            root_idx,
+            resolved_consumer_buses,
+        )
+    else:
+        distance_graph = calculator.build_service_pruned_graph(analysis_net)
+        avg_trafo_distance, max_trafo_distance = calculator.calculate_feeder_terminal_distances(
+            distance_graph,
+            root_idx,
+        )
 
     transformer_mva = _get_transformer_mva(net)
-    graph_length = calculator.calculate_graph_length(analysis_net, only_in_service=True)
-    graph_resistance = _calculate_resistance(calculator, analysis_net)
+    graph_length = calculator.calculate_graph_length(
+        analysis_net,
+        only_in_service=True,
+        with_service_lines=with_service_lines,
+    )
+    graph_resistance = _calculate_resistance(
+        calculator,
+        analysis_net,
+        with_service_lines=with_service_lines,
+    )
     buildings_per_feeder = _calculate_buildings_per_feeder(
         resolved_consumer_buses,
         feeder_lines,

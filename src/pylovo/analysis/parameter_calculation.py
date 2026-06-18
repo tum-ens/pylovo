@@ -665,6 +665,21 @@ class ParameterCalculator:
         valid_consumers = [bus_idx for bus_idx in consumer_buses if bus_idx in graph]
         return self._calculate_path_lengths(graph, root_idx, valid_consumers)
 
+    def calculate_feeder_terminal_distances(
+        self,
+        graph: nx.Graph,
+        root_idx: int,
+    ) -> Tuple[float, float]:
+        """Calculate weighted root distances to terminal feeder/backbone nodes."""
+        if root_idx not in graph:
+            return 0.0, 0.0
+        terminal_nodes = [
+            node
+            for node, degree in graph.degree
+            if node != root_idx and degree <= 1
+        ]
+        return self._calculate_path_lengths(graph, root_idx, terminal_nodes)
+
     def analyze_single_grid(self, bcid: int, kcid: int) -> None:
         """Compute clustering parameters for a single local grid and persist them.
 
@@ -771,6 +786,59 @@ class ParameterCalculator:
             return 0
         return pandapower_net.bus["name"].fillna("").str.contains(bus_description, na=False).sum()
 
+    def build_service_pruned_graph(
+        self,
+        pandapower_net: pp.pandapowerNet,
+    ) -> nx.Graph:
+        """Return a topology graph with terminal service connections removed."""
+        uses_synthetic_naming = self.uses_synthetic_bus_naming(pandapower_net)
+        root_bus = self.resolve_root_bus(pandapower_net, uses_synthetic_naming)
+        graph = top.create_nxgraph(
+            pandapower_net,
+            include_lines=True,
+            include_trafos=False,
+            respect_switches=True,
+        )
+        bus_type_config = PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+        bus_types = classify_bus_types(pandapower_net, bus_type_config)
+
+        graph = self._remove_service_line_edges(
+            graph,
+            pandapower_net,
+            bus_types,
+            root_bus,
+            service_line_pattern=bus_type_config.get("service_line_pattern"),
+        )
+        return self._collapse_service_connection_leaves(graph, bus_types, root_bus)
+
+    def _line_indices_after_service_pruning(
+        self,
+        pandapower_net: pp.pandapowerNet,
+        only_in_service: bool = False,
+    ) -> set[int]:
+        """Return line indices after removing terminal consumer service stubs.
+
+        The comparison graph length should describe the LV backbone, not the
+        number or length of individual house/consumer service connections.  This
+        mirrors the service-pruning assumption used by the terminal feeder-count
+        metric.
+        """
+        line_df = pandapower_net.line
+        if line_df.empty:
+            return set()
+
+        graph = self.build_service_pruned_graph(pandapower_net)
+
+        kept_indices: set[int] = set()
+        for line_idx, line in line_df.iterrows():
+            if only_in_service and "in_service" in line and not bool(line.get("in_service", True)):
+                continue
+            from_bus = int(line["from_bus"])
+            to_bus = int(line["to_bus"])
+            if graph.has_edge(from_bus, to_bus):
+                kept_indices.add(line_idx)
+        return kept_indices
+
     def calculate_cable_length(self, pandapower_net: pp.pandapowerNet, only_in_service: bool = False) -> float:
         """Total circuit length in km across line elements.
 
@@ -785,37 +853,58 @@ class ParameterCalculator:
             line_df = line_df[line_df["in_service"]]
         return line_df["length_km"].sum()
 
-    def calculate_graph_length(self, pandapower_net: pp.pandapowerNet, only_in_service: bool = False) -> float:
-        """Total topology length in km across unique line segments.
+    def calculate_graph_length(
+        self,
+        pandapower_net: pp.pandapowerNet,
+        only_in_service: bool = False,
+        with_service_lines: bool = False,
+    ) -> float:
+        """Topology length in km across unique line segments.
 
-        This metric intentionally ignores the ``parallel`` circuit multiplier and
-        therefore reflects the routed graph length rather than installed circuit
-        length. It is the appropriate length basis for real-vs-synthetic grid
-        comparisons.
+        With the default ``with_service_lines=False``, terminal house/consumer
+        service-connection stubs are excluded so the metric describes the LV
+        feeder backbone. Set ``with_service_lines=True`` to reproduce the total
+        routed line-length metric used before this validation assumption.
         """
         line_df = pandapower_net.line
         if line_df.empty or "length_km" not in line_df.columns:
             return 0.0
         if only_in_service and "in_service" in line_df.columns:
             line_df = line_df[line_df["in_service"]]
+        if with_service_lines:
+            return float(line_df["length_km"].fillna(0.0).sum())
+        kept_indices = self._line_indices_after_service_pruning(pandapower_net, only_in_service=only_in_service)
+        if not kept_indices:
+            return 0.0
+        line_df = line_df.loc[list(kept_indices)]
         return float(line_df["length_km"].fillna(0.0).sum())
 
-    def calculate_graph_resistance(self, pandapower_net: pp.pandapowerNet, only_in_service: bool = False) -> float:
+    def calculate_graph_resistance(
+        self,
+        pandapower_net: pp.pandapowerNet,
+        only_in_service: bool = False,
+        with_service_lines: bool = False,
+    ) -> float:
         """Return the aggregate line-resistance proxy in ohms.
 
         The proxy sums the per-segment equivalent resistance
         ``length_km * r_ohm_per_km / parallel`` over active line segments and
         uses the same impedance-ready line-table validation as the path-based
-        impedance routines. Unlike :meth:`calculate_graph_length`, this metric
-        treats parallel conductors electrically, so grids that use many smaller
-        parallel cables do not collapse onto the same resistance proxy as a
-        single-conductor layout with the same routed length.
+        impedance routines. With the default ``with_service_lines=False``,
+        terminal service connections are excluded consistently with the active
+        backbone length and distance metrics.
         """
         line_table = self._build_impedance_line_table(pandapower_net)
         if line_table.empty:
             return 0.0
         if only_in_service and "in_service" in line_table.columns:
             line_table = line_table[line_table["in_service"]]
+        if not with_service_lines:
+            kept_indices = self._line_indices_after_service_pruning(
+                pandapower_net,
+                only_in_service=only_in_service,
+            )
+            line_table = line_table.loc[line_table.index.intersection(kept_indices)]
         if line_table.empty:
             return 0.0
         parallel = (

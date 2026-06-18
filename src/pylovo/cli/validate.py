@@ -11,6 +11,7 @@ def run_comparison(
     plz: int | None = None,
     output_dir: str | None = None,
     output_suffix: str = "",
+    with_service_lines: bool = False,
 ) -> None:
     """Run the grid comparison workflow directly from the validation CLI."""
     effective_plz = plz if plz is not None else 91301
@@ -19,6 +20,7 @@ def run_comparison(
         plz=effective_plz,
         output_dir=effective_output_dir,
         output_suffix=output_suffix,
+        with_service_lines=with_service_lines,
     )
 
 
@@ -52,6 +54,11 @@ def main():
         default="",
         help="Optional suffix inserted before each output CSV extension.",
     )
+    compare_parser.add_argument(
+        "--with-service-lines",
+        action="store_true",
+        help="Include terminal house/consumer service connections in line length, resistance, and distance metrics.",
+    )
 
     args = parser.parse_args()
 
@@ -65,6 +72,7 @@ def main():
                 plz=args.plz,
                 output_dir=args.output_dir,
                 output_suffix=args.output_suffix,
+                with_service_lines=args.with_service_lines,
             )
         else:
              parser.print_help()
