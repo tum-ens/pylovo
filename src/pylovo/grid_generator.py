@@ -642,12 +642,22 @@ class GridGenerator:
                 invalid_trans_cluster_dict = dict(enumerate(invalid_trans_cluster_dict.values()))
 
         # At this point, a valid clustering solution (minimum number of transformers) was found.
-        # Each cluster:
-        #   1. Contains buildings that can be supplied by a single transformer
-        #   2. Has an appropriately sized transformer assigned
         # The valid_cluster_dict maps building cluster IDs to tuples of (building_vertices_list, optimal_transformer_size)
-        # We could calculate the total transformer cost by summing the costs of all selected transformers:
-        # total_transformer_cost = sum([transformer2cost[v[1]] for v in valid_cluster_dict.values()])
+        # Each cluster 1) Contains buildings that can be supplied by a single transformer and 2) has an appropriately sized 
+        # transformer assigned. The hierarchical split procedure guarantees feasibility, but not minimality of the resulting 
+        # feasible partition as the splitting is iterative and path-dependent. 
+        # Therefore we add a conservative local merge step to test whether neighboring feasible clusters can be 
+        # recombined without violating the same load and distance constraints.
+        valid_cluster_dict = self._merge_feasible_greenfield_clusters(
+            valid_cluster_dict,
+            buildings,
+            consumer_cat_df,
+            transformer_capacities,
+            dist_mat,
+            vid2localid,
+            plz,
+            kcid,
+        )
 
         # Reorder bcids for consistency
         valid_cluster_dict = self._order_clusters_by_min_vertice(valid_cluster_dict)
@@ -659,6 +669,103 @@ class GridGenerator:
                                          transformer_rated_power=cluster_data[1])
 
         self.logger.debug(f"bcids for plz {plz} kcid {kcid} found...")
+
+    def _merge_feasible_greenfield_clusters(
+        self,
+        cluster_dict: dict,
+        buildings: pd.DataFrame,
+        consumer_cat_df: pd.DataFrame,
+        transformer_capacities: np.ndarray,
+        dist_mat: np.ndarray,
+        vid2localid: dict[int, int],
+        plz: int,
+        kcid: int,
+    ) -> dict:
+        """Merge neighboring undersized greenfield clusters if still feasible.
+
+        The load-constrained hierarchical split prevents oversized transformer
+        areas. This conservative pass only recombines already valid neighboring
+        clusters when the merged area still fits a configured single transformer
+        and satisfies the existing greenfield distance limit.
+        """
+        if not MERGE_GREENFIELD_CLUSTERS or len(cluster_dict) <= 1:
+            return cluster_dict
+
+        configured_merge_capacities = np.asarray(GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA, dtype=float)
+        merge_capacities = transformer_capacities[
+            np.isin(transformer_capacities, configured_merge_capacities)
+        ]
+        if len(merge_capacities) == 0:
+            self.logger.warning(
+                "Greenfield cluster merging skipped: none of the configured merge capacities "
+                f"{GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA} kVA are available for this settlement type."
+            )
+            return cluster_dict
+
+        merged_clusters = {
+            cluster_id: (list(vertices), transformer_size)
+            for cluster_id, (vertices, transformer_size) in cluster_dict.items()
+        }
+        merge_count = 0
+
+        while True:
+            best_candidate = None
+            cluster_items = list(merged_clusters.items())
+
+            for left_index in range(len(cluster_items)):
+                left_id, (left_vertices, _left_transformer) = cluster_items[left_index]
+                left_local_ids = [vid2localid[vid] for vid in left_vertices if vid in vid2localid]
+                if not left_local_ids:
+                    continue
+
+                for right_id, (right_vertices, _right_transformer) in cluster_items[left_index + 1:]:
+                    right_local_ids = [vid2localid[vid] for vid in right_vertices if vid in vid2localid]
+                    if not right_local_ids:
+                        continue
+
+                    combined_vertices = list(dict.fromkeys(left_vertices + right_vertices))
+                    combined_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, combined_vertices)
+                    feasible_capacities = merge_capacities[merge_capacities > combined_load]
+                    if len(feasible_capacities) == 0:
+                        continue
+
+                    if not self.dbc.cluster_has_feasible_transformer_position(
+                        combined_vertices,
+                        dist_mat,
+                        vid2localid,
+                        MAX_GREENFIELD_TRAFO_DISTANCE,
+                    ):
+                        continue
+
+                    nearest_distance = float(
+                        dist_mat[np.ix_(left_local_ids, right_local_ids)].min()
+                    )
+                    candidate = (
+                        nearest_distance,
+                        combined_load,
+                        int(feasible_capacities[0]),
+                        left_id,
+                        right_id,
+                        combined_vertices,
+                    )
+                    if best_candidate is None or candidate[:2] < best_candidate[:2]:
+                        best_candidate = candidate
+
+            if best_candidate is None:
+                break
+
+            _nearest_distance, _combined_load, transformer_size, left_id, right_id, combined_vertices = best_candidate
+            merged_clusters[left_id] = (combined_vertices, transformer_size)
+            del merged_clusters[right_id]
+            merge_count += 1
+
+        if merge_count:
+            self.logger.info(
+                f"Greenfield cluster merge complete for PLZ {plz}, KCID {kcid}: "
+                f"merged {merge_count} neighboring cluster pairs, final_clusters={len(merged_clusters)}"
+            )
+
+        return dict(enumerate(merged_clusters.values()))
 
     def _order_clusters_by_min_vertice(self, cluster_dict: dict) -> dict:
         """
