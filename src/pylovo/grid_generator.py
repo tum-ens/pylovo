@@ -385,8 +385,6 @@ class GridGenerator:
             f"{too_large_consumers} Commercial/Public consumers assumed MV-direct and excluded from LV modeling"
         )
 
-        self.dbc.assign_close_buildings()
-        self.logger.debug("All close buildings assigned and removed from buildings_tem")
 
     def prepare_transformers(self):
         """

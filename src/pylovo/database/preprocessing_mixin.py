@@ -501,39 +501,6 @@ class PreprocessingMixin(BaseMixin, ABC):
 
         return too_large
 
-    def assign_close_buildings(self) -> None:
-        """
-        * Set peak load to zero, if a building is too near or touching to a too large customer?
-        :return:
-        """
-        while True:
-            remove_query = """WITH close (un) AS (SELECT ST_Union(geom)
-                                                  FROM buildings_tem
-                                                  WHERE peak_load_in_kw = 0)
-                              UPDATE buildings_tem b
-                              SET peak_load_in_kw = 0
-                              FROM close AS c
-                              WHERE ST_Touches(b.geom, c.un)
-                                AND b.type IN ('Commercial', 'Public', 'Industrial')
-                                AND b.peak_load_in_kw != 0;"""
-            self.cur.execute(remove_query)
-
-            count_query = """WITH close (un) AS (SELECT ST_Union(geom)
-                                                 FROM buildings_tem
-                                                 WHERE peak_load_in_kw = 0)
-                             SELECT COUNT(*)
-                             FROM buildings_tem AS b,
-                                  close AS c
-                             WHERE ST_Touches(b.geom, c.un)
-                               AND b.type IN ('Commercial', 'Public', 'Industrial')
-                               AND b.peak_load_in_kw != 0;"""
-            self.cur.execute(count_query)
-            count = self.cur.fetchone()[0]
-            if count == 0 or count is None:
-                break
-
-        return None
-
     def set_buildings_tem_plz(self, plz: int) -> None:
         """Set the postcode on temporary building rows independently of transformer insertion."""
         query = """UPDATE buildings_tem
