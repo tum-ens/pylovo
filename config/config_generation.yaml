@@ -1,8 +1,8 @@
 # =============================================================================
 # Version CONFIGURATION
 # =============================================================================
-VERSION_ID: "1" # Change version if you changed any grid parameters or queries (e.g. transformer query)
-VERSION_COMMENT: default # State here which parameters, queries are used to compute the grids with current VERSION_ID
+VERSION_ID: "107" # Change version if you changed any grid parameters or queries (e.g. transformer query)
+VERSION_COMMENT: clean dso transformer data no open no merge # State here which parameters, queries are used to compute the grids with current VERSION_ID
 
 # =============================================================================
 # EXECUTION CONFIGURATION
@@ -19,7 +19,7 @@ RESULT_DIR: results # Directory for storing analysis results and outputs
 # =============================================================================
 ELECTRICAL_BACKEND: pandapower # Electrical backend configuration - Options: 'pandapower', 'opendss'
 ### Electrical load calculation parameters
-PEAK_LOAD_HOUSEHOLD: 17.425 # default: 14.5kW, around 15% of buildings have 30 kW with electric hot water supply
+PEAK_LOAD_HOUSEHOLD: 14.5 # default: 14.5kW, around 15% of buildings have 30 kW with electric hot water supply
 SIM_FACTOR: {Residential: 0.07, Public: 0.6, Commercial: 0.5} # Simultaneous load factor - formula: simultaneous_load(n) = peak_load * (sim_factor + (1 - sim_factor) * (n ** (-3 / 4)))
 DEFAULT_POWER_FACTOR: 0.95  # cos(phi) for residential loads
 
@@ -95,9 +95,18 @@ TRANSFORMER_MAPPING:
   3: [400, 630, 800]
 
 ### Clustering
-# Transformer placement parameters
-MAX_BROWNFIELD_TRAFO_DISTANCE: 750 # Maximum assignment distance to an existing brownfield transformer
-MAX_GREENFIELD_TRAFO_DISTANCE: 900 # Maximum distance from a greenfield transformer to any cluster connection point
+# Greenfield
+MAX_GREENFIELD_TRAFO_DISTANCE: 1600 # Maximum distance from a greenfield transformer to any cluster connection point
+MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
+# still fits a single standard transformer and the existing max-distance constraint.
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400, 630]
+
+# Brownfield
+MAX_BROWNFIELD_TRAFO_DISTANCE: 1400 # Maximum assignment distance to an existing brownfield transformer
+USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
+USE_OPEN_TRANSFORMER_POSITIONS: False # Include non-DSO open/manual transformer positions from pylovo.transformers
+
+## KMeans
 # Larger components are divided by k-means clustering in roughly LARGE_COMPONENT_DIVIDER sizes
 LARGE_COMPONENT_LOWER_BOUND: 2500 # Threshold for number of buildings in a component to apply k-means clustering
 LARGE_COMPONENT_DIVIDER: 1250 # Divider to derive the target number of clusters for k-means clustering

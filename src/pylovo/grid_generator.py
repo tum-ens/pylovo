@@ -394,9 +394,24 @@ class GridGenerator:
         FROM: transformers
         INTO: buildings_tem
         """
-        self.dbc.insert_transformers(self.plz)
-        self.logger.info("Transformers inserted into buildings_tem table")
-        removed_transformer_buildings = self.dbc.remove_transformer_evidence_buildings_from_buildings_tem()
+        self.dbc.set_buildings_tem_plz(self.plz)
+        use_existing_transformers = USE_DSO_TRANSFORMER_POSITIONS or USE_OPEN_TRANSFORMER_POSITIONS
+        if use_existing_transformers:
+            self.dbc.insert_transformers(
+                self.plz,
+                include_dso=USE_DSO_TRANSFORMER_POSITIONS,
+                include_open=USE_OPEN_TRANSFORMER_POSITIONS,
+            )
+            self.logger.info(
+                "Transformers inserted into buildings_tem table "
+                f"(dso={USE_DSO_TRANSFORMER_POSITIONS}, open={USE_OPEN_TRANSFORMER_POSITIONS})"
+            )
+        else:
+            self.logger.info("Existing transformer positions disabled by configuration")
+        removed_transformer_buildings = self.dbc.remove_transformer_evidence_buildings_from_buildings_tem(
+            include_dso=USE_DSO_TRANSFORMER_POSITIONS,
+            include_open=USE_OPEN_TRANSFORMER_POSITIONS,
+        )
         self.logger.info(
             f"Removed {removed_transformer_buildings} transformer-evidence buildings from buildings_tem consumer input"
         )
