@@ -534,10 +534,20 @@ class PreprocessingMixin(BaseMixin, ABC):
 
         return None
 
-    def insert_transformers(self, plz: int) -> None:
+    def set_buildings_tem_plz(self, plz: int) -> None:
+        """Set the postcode on temporary building rows independently of transformer insertion."""
+        query = """UPDATE buildings_tem
+                   SET plz = %(p)s
+                   WHERE plz ISNULL;"""
+        self.cur.execute(query, {"p": plz})
+
+
+    def insert_transformers(self, plz: int, include_dso: bool = False, include_open: bool = True) -> None:
         """
-        Add up the existing transformers from transformers table to the buildings_tem table
-        :param plz:
+        Add selected existing transformers from transformers table to buildings_tem.
+        :param plz: postcode area
+        :param include_dso: include imported DSO transformer positions
+        :param include_open: include non-DSO open/manual transformer positions
         :return:
         """
         insert_query = """
@@ -549,7 +559,12 @@ class PreprocessingMixin(BaseMixin, ABC):
                        WHERE ST_Within(t.geom, (SELECT geom
                                                 FROM pylovo.postcode_result
                                                 WHERE postcode_result_plz = %(p)s
-                                                  AND version_id = %(v)s)); --IS FALSE;
+                                                  AND version_id = %(v)s))
+                         AND (
+                             (%(include_dso)s AND (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
+                             OR
+                             (%(include_open)s AND NOT (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
+                         ); --IS FALSE;
                        UPDATE buildings_tem
                        SET plz = %(p)s
                        WHERE plz ISNULL;
@@ -562,9 +577,9 @@ class PreprocessingMixin(BaseMixin, ABC):
                        UPDATE buildings_tem
                        SET peak_load_in_kw = -1
                        WHERE peak_load_in_kw ISNULL;"""
-        self.cur.execute(insert_query, {"p": plz, "v": VERSION_ID})
+        self.cur.execute(insert_query, {"p": plz, "v": VERSION_ID, "include_dso": include_dso, "include_open": include_open})
 
-    def remove_transformer_evidence_buildings_from_buildings_tem(self) -> int:
+    def remove_transformer_evidence_buildings_from_buildings_tem(self, include_dso: bool = False, include_open: bool = True) -> int:
         """Remove load-building rows that are used as transformer evidence.
 
         LoD2 transformer-station buildings can otherwise remain as Public or
@@ -575,7 +590,8 @@ class PreprocessingMixin(BaseMixin, ABC):
             WITH transformer_buildings AS (
                 SELECT DISTINCT b.objectid, b.plz
                 FROM buildings_tem b
-                WHERE b.type != 'Transformer'
+                WHERE %(include_open)s
+                  AND b.type != 'Transformer'
                   AND b.building_use_id = '31001_2523'
 
                 UNION
@@ -594,6 +610,11 @@ class PreprocessingMixin(BaseMixin, ABC):
                   )
                 WHERE b.type != 'Transformer'
                   AND (
+                      (%(include_dso)s AND (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
+                      OR
+                      (%(include_open)s AND NOT (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
+                  )
+                  AND (
                       t.osm_id = b.objectid
                       OR t.osm_id = CONCAT('lod2/', b.objectid)
                       OR b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
@@ -607,7 +628,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             )
             SELECT COUNT(*) FROM deleted;
         """
-        self.cur.execute(query)
+        self.cur.execute(query, {"include_dso": include_dso, "include_open": include_open})
         return int(self.cur.fetchone()[0])
 
 
