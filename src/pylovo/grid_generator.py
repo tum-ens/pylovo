@@ -870,6 +870,12 @@ class GridGenerator:
         # Get all connection points in the building cluster
         connection_points = self.dbc.get_building_connection_points_from_bc(kcid, bcid)
 
+        if len(connection_points) == 0:
+            raise ValueError(
+                f"Greenfield cluster for PLZ {plz}, KCID {kcid}, BCID {bcid} has no active connection points. "
+                "This indicates an inconsistent clustering state after preprocessing."
+            )
+
         # If there's only one connection point, use it
         if len(connection_points) == 1:
             self.dbc.upsert_transformer_selection(plz, kcid, bcid, connection_points[0])
@@ -881,6 +887,11 @@ class GridGenerator:
 
         # Get distance matrix between all connection points
         localid2vid, dist_mat, _ = self.dbc.get_distance_matrix_from_bcid(kcid, bcid)
+        if dist_mat.size == 0:
+            raise ValueError(
+                f"Greenfield cluster for PLZ {plz}, KCID {kcid}, BCID {bcid} has {len(connection_points)} "
+                "active connection points but no route distance matrix. This indicates an inconsistent routing state."
+            )
 
         # Get load vector for each connection point
         loads = self.dbc.generate_load_vector(kcid, bcid)
@@ -909,6 +920,7 @@ class GridGenerator:
             f"Greenfield transformer positioned for PLZ {plz}, KCID {kcid}, BCID {bcid}: "
             f"selected connection point {ont_connection_id} from {len(connection_points)} candidates"
         )
+        return
 
     def prepare_vertices_list(self, plz: int, kcid: int, bcid: int) -> tuple[
         dict, int, list, pd.DataFrame, pd.DataFrame, list, list]:
