@@ -70,7 +70,7 @@ Without infdb, pylovo requires substantial user-provided geospatial data in the 
 
 * **Street network SQL**: Place the OSM-derived street network SQL file (``ways_public_2po_4pgr.sql``) in ``raw_data/ways/``. This file is generated using the `osm2po <http://osm2po.de/>`_ tool from OpenStreetMap data.
 
-* **Transformer data** (optional): Import from OpenStreetMap with ``pylovo-import transformers-osm --relation-id <99999>`` (or use prebuilt raw_data files for bavaria).
+* **Transformer data** (optional): Import from OpenStreetMap with ``pylovo-import transformers-osm --relation-id <99999>`` or import DSO transformer positions from CSV with ``pylovo-import transformers-dso-csv path/to/transformers.csv --source <region>``. See ``src/pylovo/data_import/README.md`` for the CSV format.
 
 Quick Start
 ------------------------------------------------------------------------

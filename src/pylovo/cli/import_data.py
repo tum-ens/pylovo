@@ -12,6 +12,7 @@ from pylovo.data_import.import_transformers import (
     process_trafos,
 )
 import pylovo.database.database_constructor
+from pylovo.data_import.dso_transformers import import_dso_transformers_csv
 
 
 def import_transformers_osm(relation_id: int):
@@ -33,6 +34,14 @@ def import_transformers_osm(relation_id: int):
 
     elapsed = time.time() - start_time
     print(f"✓ Completed in {elapsed:.1f}s")
+
+
+def import_transformers_dso_csv(csv_path: str, source: str | None, replace_source: bool):
+    """Import DSO transformer positions from a CSV file."""
+    start_time = time.time()
+    count = import_dso_transformers_csv(csv_path, source=source, replace_source=replace_source)
+    elapsed = time.time() - start_time
+    print(f"✓ Imported {count} DSO transformer positions in {elapsed:.1f}s")
 
 
 def import_transformers_ui():
@@ -63,6 +72,9 @@ Examples:
   # Import transformers from OSM by relation ID
   pylovo-import transformers-osm --relation-id 62464
   
+  # Import DSO transformer positions from CSV
+  pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
+
   # Launch interactive transformer UI
   pylovo-import transformers-ui
         """,
@@ -81,6 +93,25 @@ Examples:
         type=int,
         required=True,
         help="OSM relation ID of the area"
+    )
+
+    # Subcommand: transformers-dso-csv
+    dso_csv_parser = subparsers.add_parser(
+        "transformers-dso-csv",
+        help="Import DSO transformer positions from CSV"
+    )
+    dso_csv_parser.add_argument(
+        "csv_path",
+        help="Path to CSV with external_id, lon, lat and optional transformer_rated_power/source columns"
+    )
+    dso_csv_parser.add_argument(
+        "--source",
+        help="Source label used in generated ids dso/<source>/<external_id>; overrides a CSV source column"
+    )
+    dso_csv_parser.add_argument(
+        "--replace-source",
+        action="store_true",
+        help="Delete existing dso/<source>/... rows before importing this source"
     )
 
     # Subcommand: transformers-ui
@@ -125,6 +156,8 @@ Examples:
     try:
         if args.command == "transformers-osm":
             import_transformers_osm(args.relation_id)
+        elif args.command == "transformers-dso-csv":
+            import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
         elif args.command == "transformers-ui":
             import_transformers_ui_with_options(
                 host=args.host,
