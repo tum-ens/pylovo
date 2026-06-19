@@ -841,14 +841,15 @@ class PreprocessingMixin(BaseMixin, ABC):
         radius_m: float,
         max_buildings: int,
     ) -> int:
-        """Aggregate nearby street-side connection points on the same street.
+        """Aggregate nearby street-side connection points.
 
         This is a conservative open-data proxy for DSO house-connection
         aggregation. It writes the representative street-side node to
         ``buildings_tem.agg_connection_point``; the original connection point,
         building-side vertices, geometries, load values, and building rows remain
-        unchanged. Clustering is partitioned by available street identifiers so
-        nearby points on different parallel streets are not grouped.
+        unchanged. Clustering is partitioned by stable street identifiers when
+        available. If no street information exists, nearby points are grouped
+        geometrically without falling back to fragmented split-way IDs.
         """
         query = """
             WITH building_points AS (
@@ -857,8 +858,8 @@ class PreprocessingMixin(BaseMixin, ABC):
                     b.connection_point,
                     COALESCE(
                         NULLIF(b.address_street_id::text, ''),
-                        NULLIF(b.assigned_way_id, ''),
-                        NULLIF(b.street, '')
+                        NULLIF(b.street, ''),
+                        '__NO_STREET__'
                     ) AS street_key,
                     v.geom AS connection_geom
                 FROM buildings_tem b
@@ -877,7 +878,6 @@ class PreprocessingMixin(BaseMixin, ABC):
                         minpoints := 1
                     ) OVER (PARTITION BY street_key) AS cluster_id
                 FROM building_points
-                WHERE street_key IS NOT NULL
             ), cluster_stats AS (
                 SELECT
                     street_key,
