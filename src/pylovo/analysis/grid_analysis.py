@@ -34,6 +34,8 @@ def _calculate_resistance(
     calculator: "ParameterCalculator",
     net: pp.pandapowerNet,
     with_service_lines: bool = False,
+    consumer_buses: list[int] | None = None,
+    bus_type_config: Optional[Dict[str, str]] = None,
 ) -> float:
     """Return the active comparison resistance proxy.
 
@@ -45,6 +47,8 @@ def _calculate_resistance(
         net,
         only_in_service=True,
         with_service_lines=with_service_lines,
+        additional_house_connection_buses=consumer_buses,
+        bus_type_config=bus_type_config,
     )
 
 
@@ -178,7 +182,11 @@ def compute_comparison_parameters(
             resolved_consumer_buses,
         )
     else:
-        distance_graph = calculator.build_service_pruned_graph(analysis_net)
+        distance_graph = calculator.build_service_pruned_graph(
+            analysis_net,
+            additional_house_connection_buses=resolved_consumer_buses,
+            bus_type_config=active_bus_type_config,
+        )
         avg_trafo_distance, max_trafo_distance = calculator.calculate_feeder_terminal_distances(
             distance_graph,
             root_idx,
@@ -189,11 +197,15 @@ def compute_comparison_parameters(
         analysis_net,
         only_in_service=True,
         with_service_lines=with_service_lines,
+        additional_house_connection_buses=resolved_consumer_buses,
+        bus_type_config=active_bus_type_config,
     )
     graph_resistance = _calculate_resistance(
         calculator,
         analysis_net,
         with_service_lines=with_service_lines,
+        consumer_buses=resolved_consumer_buses,
+        bus_type_config=active_bus_type_config,
     )
     buildings_per_feeder = _calculate_buildings_per_feeder(
         resolved_consumer_buses,

@@ -385,6 +385,11 @@ class ParameterCalculator:
                 root_idx,
                 service_line_pattern=service_line_pattern if not uses_synthetic_naming else None,
             )
+            graph_for_count = self._remove_terminal_service_attachments(
+                graph_for_count,
+                bus_types,
+                root_idx,
+            )
             graph_for_count = self._collapse_service_connection_leaves(
                 graph_for_count,
                 bus_types,
@@ -568,6 +573,49 @@ class ParameterCalculator:
             ):
                 pruned.remove_edge(from_bus, to_bus)
 
+        return pruned
+
+
+    @staticmethod
+    def _remove_terminal_service_attachments(
+        graph: nx.Graph,
+        bus_types: Dict[int, str],
+        root_idx: int,
+    ) -> nx.Graph:
+        """Remove terminal multi-consumer service attachments from the backbone.
+
+        A terminal service attachment has exactly one non-consumer neighbor and
+        one or more terminal consumer/load neighbors. It is pruned together with
+        those consumer leaves, because it represents the service side of the
+        model rather than a downstream feeder continuation. Explicit KVS nodes
+        and nodes with more than one non-consumer neighbor stay visible as
+        topology-relevant backbone/split nodes.
+        """
+        pruned = graph.copy()
+        removed: set[int] = set()
+
+        for node in list(graph.nodes):
+            if node == root_idx or bus_types.get(node, "backbone") in {"house_connection", "kvs"}:
+                continue
+
+            neighbors = list(graph.neighbors(node))
+            consumer_leaf_neighbors = [
+                neighbor
+                for neighbor in neighbors
+                if bus_types.get(neighbor, "backbone") == "house_connection"
+                and not [other for other in graph.neighbors(neighbor) if other != node]
+            ]
+            non_consumer_neighbors = [
+                neighbor
+                for neighbor in neighbors
+                if bus_types.get(neighbor, "backbone") != "house_connection"
+            ]
+
+            if consumer_leaf_neighbors and len(non_consumer_neighbors) == 1:
+                removed.add(node)
+                removed.update(consumer_leaf_neighbors)
+
+        pruned.remove_nodes_from(removed)
         return pruned
 
 
@@ -789,6 +837,8 @@ class ParameterCalculator:
     def build_service_pruned_graph(
         self,
         pandapower_net: pp.pandapowerNet,
+        additional_house_connection_buses: Optional[List[int]] = None,
+        bus_type_config: Optional[Dict[str, str]] = None,
     ) -> nx.Graph:
         """Return a topology graph with terminal service connections removed."""
         uses_synthetic_naming = self.uses_synthetic_bus_naming(pandapower_net)
@@ -799,8 +849,15 @@ class ParameterCalculator:
             include_trafos=False,
             respect_switches=True,
         )
-        bus_type_config = PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+        bus_type_config = bus_type_config or (
+            PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+        )
         bus_types = classify_bus_types(pandapower_net, bus_type_config)
+        if additional_house_connection_buses:
+            for bus_idx in additional_house_connection_buses:
+                bus_idx = int(bus_idx)
+                if bus_idx != root_bus:
+                    bus_types[bus_idx] = "house_connection"
 
         graph = self._remove_service_line_edges(
             graph,
@@ -809,12 +866,15 @@ class ParameterCalculator:
             root_bus,
             service_line_pattern=bus_type_config.get("service_line_pattern"),
         )
+        graph = self._remove_terminal_service_attachments(graph, bus_types, root_bus)
         return self._collapse_service_connection_leaves(graph, bus_types, root_bus)
 
     def _line_indices_after_service_pruning(
         self,
         pandapower_net: pp.pandapowerNet,
         only_in_service: bool = False,
+        additional_house_connection_buses: Optional[List[int]] = None,
+        bus_type_config: Optional[Dict[str, str]] = None,
     ) -> set[int]:
         """Return line indices after removing terminal consumer service stubs.
 
@@ -827,7 +887,11 @@ class ParameterCalculator:
         if line_df.empty:
             return set()
 
-        graph = self.build_service_pruned_graph(pandapower_net)
+        graph = self.build_service_pruned_graph(
+            pandapower_net,
+            additional_house_connection_buses=additional_house_connection_buses,
+            bus_type_config=bus_type_config,
+        )
 
         kept_indices: set[int] = set()
         for line_idx, line in line_df.iterrows():
@@ -858,6 +922,8 @@ class ParameterCalculator:
         pandapower_net: pp.pandapowerNet,
         only_in_service: bool = False,
         with_service_lines: bool = False,
+        additional_house_connection_buses: Optional[List[int]] = None,
+        bus_type_config: Optional[Dict[str, str]] = None,
     ) -> float:
         """Topology length in km across unique line segments.
 
@@ -873,7 +939,12 @@ class ParameterCalculator:
             line_df = line_df[line_df["in_service"]]
         if with_service_lines:
             return float(line_df["length_km"].fillna(0.0).sum())
-        kept_indices = self._line_indices_after_service_pruning(pandapower_net, only_in_service=only_in_service)
+        kept_indices = self._line_indices_after_service_pruning(
+            pandapower_net,
+            only_in_service=only_in_service,
+            additional_house_connection_buses=additional_house_connection_buses,
+            bus_type_config=bus_type_config,
+        )
         if not kept_indices:
             return 0.0
         line_df = line_df.loc[list(kept_indices)]
@@ -884,6 +955,8 @@ class ParameterCalculator:
         pandapower_net: pp.pandapowerNet,
         only_in_service: bool = False,
         with_service_lines: bool = False,
+        additional_house_connection_buses: Optional[List[int]] = None,
+        bus_type_config: Optional[Dict[str, str]] = None,
     ) -> float:
         """Return the aggregate line-resistance proxy in ohms.
 
@@ -903,6 +976,8 @@ class ParameterCalculator:
             kept_indices = self._line_indices_after_service_pruning(
                 pandapower_net,
                 only_in_service=only_in_service,
+                additional_house_connection_buses=additional_house_connection_buses,
+                bus_type_config=bus_type_config,
             )
             line_table = line_table.loc[line_table.index.intersection(kept_indices)]
         if line_table.empty:

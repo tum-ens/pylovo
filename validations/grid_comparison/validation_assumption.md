@@ -18,6 +18,8 @@ The DSO preprocessing attaches transformer metadata to each LV subnet, but the c
 
 The feeder-count metric is intended to describe LV backbone topology. Terminal service-connection stubs to individual house connections are pruned before counting terminal feeder branches. For the SWF/DSO data, service lines are identified mainly through line names such as `NS_KbAn_*` and `NS_FlAn_*`, guarded by endpoint semantics such as `HaAn`, `Kn(n)_KbAn`, `Kn(n)_FlAn`, explicit load buses, and `ErLast`. For synthetic grids, terminal `Consumer Nodebus` leaves are treated as consumer service endpoints.
 
+Terminal service attachments with several final consumer/load leaves are also removed from the backbone graph when they have exactly one non-consumer neighbour. This represents aggregated house-connection points: `backbone -> service attachment -> one or more final consumers` is service-side modelling and is removed, while `backbone -> node -> downstream backbone` is retained as topology-relevant feeder structure.
+
 ## 5. Use feeder/backbone metrics by default
 
 The six active benchmark metrics are interpreted as feeder/backbone metrics. `feeder_lines` already counts terminal backbone branches after pruning service endpoints. `graph_length` and `graph_resistance` exclude terminal house/consumer service-connection stubs using the same pruning logic. `avg_trafo_distance` and `max_trafo_distance` are measured to terminal feeder/backbone nodes after service pruning, rather than to individual consumer attachment buses. `transformer_mva` is independent of service-line modelling.
