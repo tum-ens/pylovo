@@ -441,6 +441,17 @@ class GridGenerator:
         self.dbc.update_ways_cost()
         unconn = self.dbc.set_vertice_id()
         self.logger.debug(f"vertice id set, {unconn} buildings with no vertice id")
+        if AGGREGATE_NEARBY_CONNECTION_POINTS:
+            aggregated_rows = self.dbc.aggregate_nearby_connection_points(
+                CONNECTION_POINT_AGGREGATION_RADIUS_M,
+                CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
+            )
+            self.logger.info(
+                "Aggregated nearby building connection points "
+                f"for {aggregated_rows} building rows "
+                f"(radius={CONNECTION_POINT_AGGREGATION_RADIUS_M} m, "
+                f"max_buildings={CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS})"
+            )
 
     def apply_kmeans_clustering(self):
         """

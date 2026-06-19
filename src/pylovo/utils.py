@@ -97,8 +97,9 @@ def _get_sim_factor(consumer_cat_df, definition):
 
 
 def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):
-    # Calculates the simultaneous peak load of buildings with given vertice ids
-    subset_df = buildings_df[buildings_df['connection_point'].isin(vertice_ids)]
+    # Calculates the simultaneous peak load of buildings with given street-side planning node ids.
+    planning_column = "agg_connection_point" if "agg_connection_point" in buildings_df.columns else "connection_point"
+    subset_df = buildings_df[buildings_df[planning_column].isin(vertice_ids)]
 
     # Sim loads from each category to dictionary
     category_load_dict = {}

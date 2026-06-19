@@ -288,6 +288,7 @@ CREATE_QUERIES = {
         peak_load_in_kw double precision,
         vertice_id integer,
         connection_point integer,
+        agg_connection_point integer,
         CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid),
         CONSTRAINT fk_buildings_result_grid_result
             FOREIGN KEY (version_id, grid_result_id)
@@ -323,6 +324,7 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS peak_load_in_kw double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS vertice_id integer;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS connection_point integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS agg_connection_point integer;
     DO $$
     BEGIN
         IF NOT EXISTS (
@@ -783,7 +785,8 @@ TEMP_CREATE_QUERIES = {
         vertice_id bigint,
         bcid integer,
         kcid integer,
-        connection_point integer
+        connection_point integer,
+        agg_connection_point integer
     )""",
     "ways_tem": """CREATE TABLE IF NOT EXISTS pylovo.ways_tem
     (

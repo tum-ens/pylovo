@@ -163,11 +163,11 @@ class ClusteringMixin(BaseMixin, ABC):
     def get_kcid_distance_matrix_stats(self, kcid: int) -> dict[str, int]:
         """Return pre-flight sizing stats for the KCID distance matrix query."""
         query = """SELECT COUNT(*) AS building_count,
-                          COUNT(DISTINCT connection_point) AS connection_point_count
+                          COUNT(DISTINCT COALESCE(agg_connection_point, connection_point)) AS connection_point_count
                    FROM buildings_tem
                    WHERE kcid = %(k)s
                      AND bcid ISNULL
-                     AND connection_point IS NOT NULL
+                     AND COALESCE(agg_connection_point, connection_point) IS NOT NULL
                      AND type != 'Transformer';"""
         self.cur.execute(query, {"k": kcid})
         building_count, connection_point_count = self.cur.fetchone()
@@ -202,13 +202,13 @@ class ClusteringMixin(BaseMixin, ABC):
         costmatrix_query = """SELECT * \
                               FROM pgr_dijkstraCostMatrix( \
                                       'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem', \
-                                      (SELECT array_agg(DISTINCT b.connection_point) \
+                                      (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point)) \
                                        FROM (SELECT * \
                                              FROM buildings_tem \
                                              WHERE kcid = %(k)s \
                                                AND bcid ISNULL \
                                                AND peak_load_in_kw != 0 \
-                                             ORDER BY connection_point) AS b), \
+                                             ORDER BY COALESCE(agg_connection_point, connection_point)) AS b), \
                                       false);"""
         params = {"k": kcid}
         localid2vid, dist_mat, _ = self.calculate_cost_arr_dist_matrix(costmatrix_query, params)
@@ -246,8 +246,8 @@ class ClusteringMixin(BaseMixin, ABC):
                    WHERE kcid = %(k)s
                      AND bcid = %(b)s
                      AND peak_load_in_kw != 0
-                   GROUP BY connection_point
-                   ORDER BY connection_point;"""
+                   GROUP BY COALESCE(agg_connection_point, connection_point)
+                   ORDER BY COALESCE(agg_connection_point, connection_point);"""
         self.cur.execute(query, {"k": kcid, "b": bcid})
         load = np.asarray([i[0] for i in self.cur.fetchall()])
 
@@ -389,7 +389,7 @@ class ClusteringMixin(BaseMixin, ABC):
                             WHERE plz = %(pc)s
                               AND kcid = %(kc)s
                               AND bcid ISNULL
-                              AND connection_point IN %(vid)s
+                              AND COALESCE(agg_connection_point, connection_point) IN %(vid)s
                               AND type != 'Transformer'
                               AND peak_load_in_kw != 0; """
 
@@ -404,7 +404,7 @@ class ClusteringMixin(BaseMixin, ABC):
         self.cur.execute(cluster_query, params)
 
     def get_consumer_to_transformer_df(self, kcid: int, transformer_list: list) -> pd.DataFrame:
-        consumer_query = """SELECT DISTINCT connection_point
+        consumer_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                             FROM buildings_tem
                             WHERE kcid = %(k)s
                               AND type != 'Transformer'
@@ -469,7 +469,7 @@ class ClusteringMixin(BaseMixin, ABC):
         """
         buildings_query = """SELECT *
                              FROM buildings_tem
-                             WHERE connection_point IS NOT NULL
+                             WHERE COALESCE(agg_connection_point, connection_point) IS NOT NULL
                                AND kcid = %(k)s
                                AND bcid ISNULL
                                AND peak_load_in_kw != 0;"""
@@ -711,7 +711,7 @@ class ClusteringMixin(BaseMixin, ABC):
 
                 UPDATE buildings_tem
                 SET bcid = %(count)s
-                WHERE connection_point IN %(c)s
+                WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
                   AND type != 'Transformer'
                   AND peak_load_in_kw != 0;
 
@@ -744,7 +744,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                    FROM buildings_tem AS b
                                             LEFT JOIN pylovo.consumer_categories AS c
                                                       ON b.type = c.definition
-                                   WHERE b.connection_point IN %(c)s
+                                   WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
                                      AND b.peak_load_in_kw != 0
                                      AND b.type IN ('SFH', 'MFH', 'AB', 'TH'))
                          SELECT SUM(load), SUM(count), sim_factor
@@ -768,7 +768,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                   FROM buildings_tem AS b
                                            LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
-                                  WHERE b.connection_point IN %(c)s
+                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
                                     AND b.peak_load_in_kw != 0
                                     AND b.type = 'Commercial')
                         SELECT SUM(load), SUM(count), sim_factor
@@ -791,7 +791,7 @@ class ClusteringMixin(BaseMixin, ABC):
                               FROM buildings_tem AS b
                                        LEFT JOIN pylovo.consumer_categories AS c
                                                  ON c.definition = b.type
-                              WHERE b.connection_point IN %(c)s
+                              WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
                                 AND b.peak_load_in_kw != 0
                                 AND b.type = 'Public')
                     SELECT SUM(load), SUM(count), sim_factor
@@ -813,7 +813,7 @@ class ClusteringMixin(BaseMixin, ABC):
                                   FROM buildings_tem AS b
                                            LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
-                                  WHERE b.connection_point IN %(c)s
+                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
                                     AND b.peak_load_in_kw != 0
                                     AND b.type = 'Industrial')
                         SELECT SUM(load), SUM(count), sim_factor
@@ -842,7 +842,7 @@ class ClusteringMixin(BaseMixin, ABC):
             bcid: building cluster ID
         Returns: A dataframe with all building information
         """
-        count_query = """SELECT DISTINCT connection_point
+        count_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                          FROM buildings_tem
                          WHERE vertice_id IS NOT NULL
                            AND bcid = %(b)s
@@ -900,13 +900,13 @@ class ClusteringMixin(BaseMixin, ABC):
         costmatrix_query = """SELECT *
                               FROM pgr_dijkstraCostMatrix(
                                       'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem',
-                                      (SELECT array_agg(DISTINCT b.connection_point)
+                                      (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point))
                                        FROM (SELECT *
                                              FROM buildings_tem
                                              WHERE kcid = %(k)s
                                                AND bcid = %(b)s
                                                AND peak_load_in_kw != 0
-                                             ORDER BY connection_point) AS b),
+                                             ORDER BY COALESCE(agg_connection_point, connection_point)) AS b),
                                       false);"""
         params = {"b": bcid, "k": kcid}
         localid2vid, dist_mat, _ = self.calculate_cost_arr_dist_matrix(costmatrix_query, params)

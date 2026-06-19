@@ -1,8 +1,8 @@
 # =============================================================================
 # Version CONFIGURATION
 # =============================================================================
-VERSION_ID: "107" # Change version if you changed any grid parameters or queries (e.g. transformer query)
-VERSION_COMMENT: clean dso transformer data no open no merge # State here which parameters, queries are used to compute the grids with current VERSION_ID
+VERSION_ID: "115" # Change version if you changed any grid parameters or queries (e.g. transformer query)
+VERSION_COMMENT: greenfield fixed # State here which parameters, queries are used to compute the grids with current VERSION_ID
 
 # =============================================================================
 # EXECUTION CONFIGURATION
@@ -60,7 +60,7 @@ CONSUMER_CONNECTION_CABLES:
 
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
-V_BAND_LOW: 0.95  # Lower voltage band defines a 5% feeder voltage-drop budget.
+V_BAND_LOW: 0.95 # The voltage band mostly influences electrical and not topological attributes
 V_BAND_HIGH: 1.05
 # Voltage drop limit for all consumer service-drop connections (percentage of nominal voltage per km).
 VOLTAGE_DROP_LOAD_PERCENT_PER_KM: 5
@@ -72,11 +72,17 @@ MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 # This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
 # Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
 # handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
-FEEDER_SPLIT_MAX_CURRENT_KA: 0.24
+FEEDER_SPLIT_MAX_CURRENT_KA: 1.071
 
 # Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
 #  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
+
+# Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
+# are merged only when they share the same street identifier/name and form a small local cluster.
+AGGREGATE_NEARBY_CONNECTION_POINTS: True
+CONNECTION_POINT_AGGREGATION_RADIUS_M: 50
+CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 10
 
 
 # =============================================================================
@@ -96,7 +102,7 @@ TRANSFORMER_MAPPING:
 
 ### Clustering
 # Greenfield
-MAX_GREENFIELD_TRAFO_DISTANCE: 1600 # Maximum distance from a greenfield transformer to any cluster connection point
+MAX_GREENFIELD_TRAFO_DISTANCE: 1200 # Maximum distance from a greenfield transformer to any cluster connection point
 MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
 # still fits a single standard transformer and the existing max-distance constraint.
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400, 630]

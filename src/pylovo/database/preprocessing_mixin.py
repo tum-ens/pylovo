@@ -37,6 +37,11 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "voltage_drop_load_percent_per_km": VOLTAGE_DROP_LOAD_PERCENT_PER_KM,
                 "mv_direct_connection_load_threshold_kw": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
             },
+            "connection_point_aggregation": {
+                "enabled": AGGREGATE_NEARBY_CONNECTION_POINTS,
+                "radius_m": CONNECTION_POINT_AGGREGATION_RADIUS_M,
+                "max_buildings": CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
+            },
             "transformer_placement": {
                 "rural_max_households": RURAL_MAX_HOUSEHOLDS,
                 "urban_min_households": URBAN_MIN_HOUSEHOLDS,
@@ -810,6 +815,12 @@ class PreprocessingMixin(BaseMixin, ABC):
                       AND connection_point IS NULL;"""
         self.cur.execute(query2)
 
+        agg_query = """UPDATE buildings_tem
+                       SET agg_connection_point = connection_point
+                       WHERE connection_point IS NOT NULL
+                         AND agg_connection_point IS NULL;"""
+        self.cur.execute(agg_query)
+
         count_query = """ SELECT COUNT(*)
                           FROM buildings_tem
                           WHERE connection_point IS NULL
@@ -824,6 +835,102 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(delete_query)
 
         return count
+
+    def aggregate_nearby_connection_points(
+        self,
+        radius_m: float,
+        max_buildings: int,
+    ) -> int:
+        """Aggregate nearby street-side connection points on the same street.
+
+        This is a conservative open-data proxy for DSO house-connection
+        aggregation. It writes the representative street-side node to
+        ``buildings_tem.agg_connection_point``; the original connection point,
+        building-side vertices, geometries, load values, and building rows remain
+        unchanged. Clustering is partitioned by available street identifiers so
+        nearby points on different parallel streets are not grouped.
+        """
+        query = """
+            WITH building_points AS (
+                SELECT
+                    b.objectid,
+                    b.connection_point,
+                    COALESCE(
+                        NULLIF(b.address_street_id::text, ''),
+                        NULLIF(b.assigned_way_id, ''),
+                        NULLIF(b.street, '')
+                    ) AS street_key,
+                    v.geom AS connection_geom
+                FROM buildings_tem b
+                JOIN ways_tem_vertices_pgr v ON v.id = b.connection_point
+                WHERE b.peak_load_in_kw != 0
+                  AND b.connection_point IS NOT NULL
+            ), clustered AS (
+                SELECT
+                    objectid,
+                    connection_point,
+                    street_key,
+                    connection_geom,
+                    ST_ClusterDBSCAN(
+                        connection_geom,
+                        eps := %(radius_m)s,
+                        minpoints := 1
+                    ) OVER (PARTITION BY street_key) AS cluster_id
+                FROM building_points
+                WHERE street_key IS NOT NULL
+            ), cluster_stats AS (
+                SELECT
+                    street_key,
+                    cluster_id,
+                    COUNT(*) AS building_count,
+                    COUNT(DISTINCT connection_point) AS connection_point_count,
+                    ST_Centroid(ST_Collect(connection_geom)) AS cluster_centroid,
+                    ST_MaxDistance(
+                        ST_Collect(connection_geom),
+                        ST_Collect(connection_geom)
+                    ) AS cluster_diameter_m
+                FROM clustered
+                GROUP BY street_key, cluster_id
+                HAVING COUNT(DISTINCT connection_point) > 1
+                   AND COUNT(*) <= %(max_buildings)s
+                   AND ST_MaxDistance(
+                       ST_Collect(connection_geom),
+                       ST_Collect(connection_geom)
+                   ) <= %(radius_m)s
+            ), representatives AS (
+                SELECT street_key, cluster_id, connection_point AS representative_connection_point
+                FROM (
+                    SELECT
+                        c.street_key,
+                        c.cluster_id,
+                        c.connection_point,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY c.street_key, c.cluster_id
+                            ORDER BY ST_Distance(c.connection_geom, cs.cluster_centroid), c.connection_point
+                        ) AS rn
+                    FROM clustered c
+                    JOIN cluster_stats cs USING (street_key, cluster_id)
+                ) ranked
+                WHERE rn = 1
+            ), mapping AS (
+                SELECT DISTINCT
+                    c.connection_point AS old_connection_point,
+                    r.representative_connection_point
+                FROM clustered c
+                JOIN representatives r USING (street_key, cluster_id)
+                WHERE c.connection_point != r.representative_connection_point
+            ), updated AS (
+                UPDATE buildings_tem b
+                SET agg_connection_point = m.representative_connection_point
+                FROM mapping m
+                WHERE b.connection_point = m.old_connection_point
+                  AND b.peak_load_in_kw != 0
+                RETURNING 1
+            )
+            SELECT COUNT(*) FROM updated;
+        """
+        self.cur.execute(query, {"radius_m": radius_m, "max_buildings": max_buildings})
+        return int(self.cur.fetchone()[0])
 
     def get_ags_log(self) -> pd.DataFrame:
         """Get AGS log: the official municipal keys (Amtlicher Gemeindeschlüssel) of municipalities

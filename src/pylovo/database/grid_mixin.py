@@ -38,7 +38,7 @@ class GridMixin(BaseMixin, ABC):
         self.cur.execute(consumer_query, {"p": plz, "k": kcid, "b": bcid})
         consumer = [t[0] for t in self.cur.fetchall()]
 
-        connection_query = """SELECT DISTINCT connection_point
+        connection_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                               FROM buildings_tem
                               WHERE plz = %(p)s
                                 AND kcid = %(k)s
@@ -47,12 +47,14 @@ class GridMixin(BaseMixin, ABC):
         self.cur.execute(connection_query, {"p": plz, "k": kcid, "b": bcid})
         connection = [t[0] for t in self.cur.fetchall()]
 
+        target_vertices = list(dict.fromkeys(consumer + connection))
+
         vertices_query = """ SELECT DISTINCT node, agg_cost
                              FROM pgr_dijkstra(
                                      'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem'::text,
                                      %(o)s, %(c)s::integer[], false)
                              ORDER BY agg_cost;"""
-        self.cur.execute(vertices_query, {"o": ont, "c": consumer})
+        self.cur.execute(vertices_query, {"o": ont, "c": target_vertices})
         data = self.cur.fetchall()
         vertice_cost_dict = {t[0]: t[1] for t in data if t[0] in consumer or t[0] in connection}
 
@@ -113,7 +115,7 @@ class GridMixin(BaseMixin, ABC):
     def get_vertices_from_connection_points(self, connection: list) -> list:
         query = """SELECT vertice_id
                    FROM buildings_tem
-                   WHERE connection_point IN %(c)s
+                   WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
                      AND type != 'Transformer'
                      AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {"c": tuple(connection)})
@@ -121,9 +123,9 @@ class GridMixin(BaseMixin, ABC):
         return [t[0] for t in data]
 
     def get_consumer_vertices_from_connection_points(self, connection_points: list[int]) -> list[tuple[int, int]]:
-        query = """SELECT connection_point, vertice_id
+        query = """SELECT COALESCE(agg_connection_point, connection_point) AS connection_point, vertice_id
                    FROM buildings_tem
-                   WHERE connection_point IN %(c)s
+                   WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
                      AND type != 'Transformer'
                      AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {'c': tuple(connection_points)})
