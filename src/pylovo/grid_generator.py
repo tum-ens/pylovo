@@ -33,14 +33,15 @@ class GridGenerator:
 
     def __init__(self, plz=999999, **kwargs):
         self.plz = plz
-        self.dbc = dbc.DatabaseClient()        
+        self.log_file = kwargs.get("log_file", "log/log.txt")
+        self.dbc = dbc.DatabaseClient(log_file=self.log_file)
         self.dbc.insert_version_if_not_exists()
         self.logger = utils.create_logger(
-            name="GridGenerator", log_file=kwargs.get("log_file", "log.txt"), log_level=LOG_LEVEL
+            name="GridGenerator", log_file=self.log_file, log_level=LOG_LEVEL
         )
         self.inf_dbc = None
         if USE_INFDB:
-            self.inf_dbc = InfdbClient()
+            self.inf_dbc = InfdbClient(log_file=self.log_file)
 
     def __del__(self):
         self.dbc.__del__()

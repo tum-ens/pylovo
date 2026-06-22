@@ -1,16 +1,16 @@
 # =============================================================================
 # Version CONFIGURATION
 # =============================================================================
-VERSION_ID: "115" # Change version if you changed any grid parameters or queries (e.g. transformer query)
-VERSION_COMMENT: greenfield fixed # State here which parameters, queries are used to compute the grids with current VERSION_ID
+VERSION_ID: "1" # Change version if you changed any grid parameters or queries (e.g. transformer query)
+VERSION_COMMENT: default # State here which parameters, queries are used to compute the grids with current VERSION_ID
 
 # =============================================================================
 # EXECUTION CONFIGURATION
 # =============================================================================
-PARALLEL: True # Toggles whether the grid generation uses multiple workers in parallel
-N_JOBS_PERCENT: 30  # Percentage of CPU cores to use for parallel grid generation
+PARALLEL: False # Toggles whether the grid generation uses multiple workers in parallel
+N_JOBS_PERCENT: 20  # Percentage of CPU cores to use for parallel grid generation
 ANALYZE_GRIDS: True # Toggles analysis after grid generation (basic parameters, trafo analysis, cable counting)
-LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
+LOG_LEVEL: DEBUG #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # Toggles whether the grid json files will be saved in a folder or just in the db
 RESULT_DIR: results # Directory for storing analysis results and outputs
 
@@ -81,9 +81,8 @@ MIN_SHARED_PREFIX_LENGTH_M: 50
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
 AGGREGATE_NEARBY_CONNECTION_POINTS: True
-CONNECTION_POINT_AGGREGATION_RADIUS_M: 50
-CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 10
-
+CONNECTION_POINT_AGGREGATION_RADIUS_M: 30
+CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 8
 
 # =============================================================================
 # TRANSFORMER PLACEMENT PARAMETERS
@@ -102,19 +101,18 @@ TRANSFORMER_MAPPING:
 
 ### Clustering
 # Greenfield
-MAX_GREENFIELD_TRAFO_DISTANCE: 1200 # Maximum distance from a greenfield transformer to any cluster connection point
+MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Maximum distance from a greenfield transformer to any cluster connection point
 MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
 # still fits a single standard transformer and the existing max-distance constraint.
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400, 630]
 
 # Brownfield
-MAX_BROWNFIELD_TRAFO_DISTANCE: 1400 # Maximum assignment distance to an existing brownfield transformer
-USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
+MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
 USE_OPEN_TRANSFORMER_POSITIONS: False # Include non-DSO open/manual transformer positions from pylovo.transformers
+USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
 
 ## KMeans
-# Larger components are divided by k-means clustering in roughly LARGE_COMPONENT_DIVIDER sizes
-LARGE_COMPONENT_LOWER_BOUND: 2500 # Threshold for number of buildings in a component to apply k-means clustering
-LARGE_COMPONENT_DIVIDER: 1250 # Divider to derive the target number of clusters for k-means clustering
+# Maximum number of load buildings per initial k-means cluster before greenfield transformer clustering.
+MAX_BUILDINGS_PER_KCID: 1500
 # Seed for the initialization of the k-means clustering for transformer placement - keeping the same ensures deterministic behavior
 K_MEANS_SEED: 3329829316 # Has to be an integer between 0 and 4294967295

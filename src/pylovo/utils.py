@@ -58,7 +58,8 @@ def reset_log_directory():
     return log_dir
 
 def create_logger(name, log_file, log_level):
-    log_file = log_file
+    log_file = Path(log_file)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger(name=name)
     logger.handlers.clear()  # Clear existing handlers to prevent duplication
 
