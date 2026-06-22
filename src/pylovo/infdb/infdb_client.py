@@ -74,12 +74,27 @@ class InfdbClient:
             FROM basedata.buildings
             WHERE postcode = %(p)s
             AND building_use IN ('Commercial', 'Public', 'Residential')
+            AND COALESCE(building_use_id, '') != '31001_2523'
         """
         self.cur.execute(query, {"p": plz})
         buildings = self.cur.fetchall()
 
         return buildings
     
+    def fetch_transformer_station_buildings_from_infdb(self, plz: int) -> list[tuple]:
+        """Retrieve LoD2 buildings that represent transformer stations."""
+        query = """
+            SELECT
+                objectid,
+                geom,
+                COALESCE(centroid, ST_Centroid(geom)) AS centroid
+            FROM basedata.buildings
+            WHERE postcode = %(p)s
+              AND building_use_id = '31001_2523'
+        """
+        self.cur.execute(query, {"p": plz})
+        return self.cur.fetchall()
+
     def fetch_ways_from_infdb(self, plz) -> list:
         """
         Fetch ways from the remote DB for a given postcode (PLZ) and return them in the

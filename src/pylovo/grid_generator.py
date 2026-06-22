@@ -351,6 +351,12 @@ class GridGenerator:
         INTO: buildings_tem
         """
         if USE_INFDB:
+            transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
+            transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
+            if transformer_candidate_count:
+                self.logger.info(
+                    f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
+                )
             buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
             self.dbc.set_buildings_table(buildings_data, self.plz)
         else:
@@ -358,6 +364,11 @@ class GridGenerator:
             self.dbc.set_other_buildings_table(self.plz)
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
         self.logger.info("Buildings_tem table prepared")
+        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers()
+        if removed_transformer_buildings:
+            self.logger.info(
+                f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
+            )
         self.dbc.remove_duplicate_buildings()
         self.logger.info("Duplicate buildings removed from buildings_tem")
 

@@ -513,6 +513,87 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query, {"p": plz})
 
 
+    def upsert_lod2_transformer_stations(self, transformer_buildings: list[tuple]) -> int:
+        """Add LoD2 transformer-station buildings to the raw transformer candidates."""
+        if not transformer_buildings:
+            return 0
+
+        insert_query = f"""
+            WITH candidate AS (
+                SELECT
+                    %(objectid)s::text AS objectid,
+                    ST_Transform(%(geom)s::geometry, {TARGET_EPSG}) AS building_geom,
+                    ST_Transform(%(centroid)s::geometry, {TARGET_EPSG}) AS centroid_geom
+            ),
+            matched AS (
+                SELECT t.osm_id
+                FROM pylovo.transformers t
+                JOIN candidate c
+                  ON ST_Intersects(t.geom, c.building_geom)
+                  OR ST_DWithin(t.geom, c.centroid_geom, 3.0)
+                ORDER BY t.geom <-> c.centroid_geom
+                LIMIT 1
+            ),
+            updated AS (
+                UPDATE pylovo.transformers t
+                SET lod2 = true,
+                    lod2_objectid = COALESCE(t.lod2_objectid, (SELECT objectid FROM candidate))
+                FROM matched
+                WHERE t.osm_id = matched.osm_id
+                RETURNING t.osm_id
+            )
+            INSERT INTO pylovo.transformers (
+                osm_id,
+                area,
+                type,
+                transformer_rated_power,
+                geom_type,
+                within_shopping,
+                osm,
+                lod2,
+                lod2_objectid,
+                geom
+            )
+            SELECT
+                'lod2/' || objectid,
+                ST_Area(building_geom),
+                'Transformer',
+                NULL,
+                'lod2_building_centroid',
+                false,
+                false,
+                true,
+                objectid,
+                ST_Multi(centroid_geom)
+            FROM candidate
+            WHERE NOT EXISTS (SELECT 1 FROM updated)
+            ON CONFLICT (osm_id) DO UPDATE SET
+                lod2 = true,
+                lod2_objectid = EXCLUDED.lod2_objectid;
+        """
+        rows = [
+            {"objectid": row[0], "geom": row[1], "centroid": row[2]}
+            for row in transformer_buildings
+        ]
+        self.cur.executemany(insert_query, rows)
+        return len(rows)
+
+    def remove_non_residential_buildings_overlapping_transformers(self) -> int:
+        """Remove non-residential consumer buildings that overlap transformer candidates."""
+        query = """
+            DELETE FROM buildings_tem b
+            WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
+              AND COALESCE(b.type, '') != 'Transformer'
+              AND EXISTS (
+                  SELECT 1
+                  FROM pylovo.transformers t
+                  WHERE ST_Intersects(t.geom, b.geom)
+                     OR ST_Within(t.geom, b.geom)
+              );
+        """
+        self.cur.execute(query)
+        return self.cur.rowcount
+
     def insert_transformers(self, plz: int, include_dso: bool = False, include_open: bool = True) -> None:
         """
         Add selected existing transformers from transformers table to buildings_tem.
@@ -1041,13 +1122,15 @@ class PreprocessingMixin(BaseMixin, ABC):
 
         # Insert into transformers table
         transformer_query = f"""
-            INSERT INTO pylovo.transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, geom)
+            INSERT INTO pylovo.transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, osm, lod2, geom)
             VALUES (
                 %(osm_id)s,
                 %(type)s,
                 %(transformer_rated_power)s,
                 %(geom_type)s,
                 %(within_shopping)s,
+                true,
+                false,
                 ST_Multi(ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), {TARGET_EPSG}))
             )
             RETURNING osm_id

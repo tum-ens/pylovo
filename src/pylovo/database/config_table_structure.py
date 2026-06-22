@@ -559,8 +559,16 @@ CREATE_QUERIES = {
         transformer_rated_power integer,
         geom_type varchar,
         within_shopping boolean,
+        osm boolean NOT NULL DEFAULT true,
+        lod2 boolean NOT NULL DEFAULT false,
+        lod2_objectid text,
         geom geometry(MultiPoint, {TARGET_EPSG})
-    )
+    );
+    ALTER TABLE pylovo.transformers ADD COLUMN IF NOT EXISTS osm boolean NOT NULL DEFAULT true;
+    ALTER TABLE pylovo.transformers ADD COLUMN IF NOT EXISTS lod2 boolean NOT NULL DEFAULT false;
+    ALTER TABLE pylovo.transformers ADD COLUMN IF NOT EXISTS lod2_objectid text;
+    CREATE INDEX IF NOT EXISTS idx_transformers_geom
+    ON pylovo.transformers USING gist (geom)
     """,
     "transformer_positions": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_positions (
@@ -569,6 +577,9 @@ CREATE_QUERIES = {
         osm_id varchar,
         version_id varchar(10),
         "comment" varchar,
+        osm boolean NOT NULL DEFAULT false,
+        lod2 boolean NOT NULL DEFAULT false,
+        lod2_objectid text,
         CONSTRAINT uq_tp_osm_v UNIQUE (osm_id, version_id),
         CONSTRAINT fk_tp_version_id
             FOREIGN KEY (version_id)
@@ -582,7 +593,10 @@ CREATE_QUERIES = {
             FOREIGN KEY (osm_id)
             REFERENCES pylovo.transformers (osm_id)
             ON DELETE CASCADE
-    )
+    );
+    ALTER TABLE pylovo.transformer_positions ADD COLUMN IF NOT EXISTS osm boolean NOT NULL DEFAULT false;
+    ALTER TABLE pylovo.transformer_positions ADD COLUMN IF NOT EXISTS lod2 boolean NOT NULL DEFAULT false;
+    ALTER TABLE pylovo.transformer_positions ADD COLUMN IF NOT EXISTS lod2_objectid text
     """,
     "transformer_classified": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_classified (
