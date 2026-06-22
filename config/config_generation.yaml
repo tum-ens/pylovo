@@ -7,10 +7,10 @@ VERSION_COMMENT: default # State here which parameters, queries are used to comp
 # =============================================================================
 # EXECUTION CONFIGURATION
 # =============================================================================
-PARALLEL: False # Toggles whether the grid generation uses multiple workers in parallel
+PARALLEL: True # Toggles whether the grid generation uses multiple workers in parallel
 N_JOBS_PERCENT: 20  # Percentage of CPU cores to use for parallel grid generation
 ANALYZE_GRIDS: True # Toggles analysis after grid generation (basic parameters, trafo analysis, cable counting)
-LOG_LEVEL: DEBUG #DEBUG, INFO, ERROR - Logging configurations
+LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # Toggles whether the grid json files will be saved in a folder or just in the db
 RESULT_DIR: results # Directory for storing analysis results and outputs
 
@@ -97,7 +97,7 @@ URBAN_MAX_BUILDING_DISTANCE: 20 # Maximum average distance between buildings for
 TRANSFORMER_MAPPING:
   1: [250, 400, 630]
   2: [400, 630]
-  3: [400, 630, 800]
+  3: [400, 630]
 
 ### Clustering
 # Greenfield
@@ -113,6 +113,6 @@ USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer position
 
 ## KMeans
 # Maximum number of load buildings per initial k-means cluster before greenfield transformer clustering.
-MAX_BUILDINGS_PER_KCID: 1500
+MAX_BUILDINGS_PER_KCID: 1000
 # Seed for the initialization of the k-means clustering for transformer placement - keeping the same ensures deterministic behavior
 K_MEANS_SEED: 3329829316 # Has to be an integer between 0 and 4294967295
