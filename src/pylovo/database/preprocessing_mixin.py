@@ -50,8 +50,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "transformer_mapping": TRANSFORMER_MAPPING,
                 "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
                 "max_greenfield_trafo_distance": MAX_GREENFIELD_TRAFO_DISTANCE,
-                "large_component_lower_bound": LARGE_COMPONENT_LOWER_BOUND,
-                "large_component_divider": LARGE_COMPONENT_DIVIDER,
+                "max_buildings_per_kcid": MAX_BUILDINGS_PER_KCID,
                 "k_means_seed": K_MEANS_SEED,
             },
         }

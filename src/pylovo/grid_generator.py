@@ -1,3 +1,4 @@
+import math
 import traceback
 import warnings
 from pathlib import Path
@@ -495,14 +496,20 @@ class GridGenerator:
             self.dbc.delete_ways(vertices)
             self.dbc.delete_transformers_from_buildings_tem(vertices)
             self.logger.debug("Empty/isolated component removed. Ways and transformers deleted from temporary tables.")
-        elif conn_building_count >= LARGE_COMPONENT_LOWER_BOUND:
-            # K-means applied to large component to define subgroups with cluster ids
-            cluster_count = int(conn_building_count / LARGE_COMPONENT_DIVIDER)
+        elif conn_building_count > MAX_BUILDINGS_PER_KCID:
+            # K-means applied to large components before the expensive KCID distance matrix is built.
+            cluster_count = math.ceil(conn_building_count / MAX_BUILDINGS_PER_KCID)
             k_means = KMeans(n_clusters=cluster_count, random_state=K_MEANS_SEED, n_init="auto")
             (selected_vertices, coordinates) = self.dbc.get_connected_component_geometries(vertices)
             kcids = k_means.fit_predict(coordinates) + self.dbc.get_kcid_length() + 1
             self.dbc.update_kmeans_cluster_multiple(selected_vertices, kcids)
-            log_msg = f"Large component {component_index} clustered into {cluster_count} groups" if component_index is not None else f"Large component clustered into {cluster_count} groups"
+            log_msg = (
+                f"Large component {component_index} clustered into {cluster_count} groups "
+                f"(buildings={conn_building_count}, max_buildings_per_kcid={MAX_BUILDINGS_PER_KCID})"
+                if component_index is not None
+                else f"Large component clustered into {cluster_count} groups "
+                     f"(buildings={conn_building_count}, max_buildings_per_kcid={MAX_BUILDINGS_PER_KCID})"
+            )
             self.logger.debug(log_msg)
         else:
             # Allocate cluster id for connected component smaller than the building threshold
