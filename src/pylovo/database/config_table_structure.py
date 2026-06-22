@@ -686,8 +686,10 @@ CREATE_QUERIES = {
                                    geom       geometry(MultiPolygon, {TARGET_EPSG})
                                )
     """,
-    "transformer_positions_with_grid": """CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_positions_with_grid AS (
-        SELECT 
+    "transformer_positions_with_grid": """
+    DROP MATERIALIZED VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
+    CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
+        SELECT
             tp.*,
             gr.kcid,
             gr.bcid,
@@ -703,13 +705,9 @@ CREATE_QUERIES = {
             ed.typ AS equipment_type
         FROM pylovo.transformer_positions tp
         JOIN pylovo.grid_result gr ON tp.grid_result_id = gr.grid_result_id
-        LEFT JOIN pylovo.equipment_data ed 
-            ON gr.version_id = ed.version_id 
+        LEFT JOIN pylovo.equipment_data ed
+            ON gr.version_id = ed.version_id
             AND gr.transformer_equipment_name = ed.name
-    );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_transformer_positions_with_grid_uq_grid_result_id
-                ON pylovo.transformer_positions_with_grid (grid_result_id);
-            CREATE INDEX IF NOT EXISTS idx_transformer_positions_with_grid_geom ON pylovo.transformer_positions_with_grid USING gist (geom)
     """,
             "transformer_classified_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid AS (
@@ -802,9 +800,6 @@ TEMP_CREATE_QUERIES = {
 }
 
 REFRESH_QUERIES = {
-    "transformer_positions_with_grid": """
-    REFRESH MATERIALIZED VIEW pylovo.transformer_positions_with_grid
-    """,
     "transformer_classified_with_grid": """
     REFRESH MATERIALIZED VIEW pylovo.transformer_classified_with_grid
     """,
