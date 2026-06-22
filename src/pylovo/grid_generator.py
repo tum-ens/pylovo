@@ -159,9 +159,7 @@ class GridGenerator:
                 total_count = len(plz_list)
                 
                 try:
-                    worker_timeout_minutes = CONFIG_GENERATION.get("WORKER_TIMEOUT_MINUTES", 30)
-                    worker_timeout = worker_timeout_minutes * 60  # Convert to seconds
-                    for future in as_completed(futures, timeout=worker_timeout):
+                    for future in as_completed(futures):
                         plz = futures[future]
                         completed_count += 1
                         
