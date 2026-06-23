@@ -5,6 +5,7 @@ from pathlib import Path
 
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -451,7 +452,12 @@ def plot_metric_kde_diagonal(
     bins: int = 24,
     n_cols: int = 3,
     title: str = "Per-metric KDE View (Synthetic vs. Real)",
+    upper_percentile: float | None = None,
+    clip_nonnegative: bool = True,
 ):
+    if upper_percentile is not None and not 0 < upper_percentile <= 1:
+        raise ValueError("upper_percentile must be in the interval (0, 1].")
+
     plot_data = df[metric_cols + [hue_col]].dropna(subset=[hue_col]).copy()
     if plot_data.empty:
         raise ValueError("No data available for KDE diagonal view.")
@@ -465,10 +471,17 @@ def plot_metric_kde_diagonal(
 
     for i, metric in enumerate(metric_cols):
         ax = axes[i]
-        sub = plot_data[[metric, hue_col]].dropna(subset=[metric])
+        sub = plot_data[[metric, hue_col]].dropna(subset=[metric]).copy()
+        sub[metric] = pd.to_numeric(sub[metric], errors="coerce")
+        sub = sub.dropna(subset=[metric])
+        if upper_percentile is not None and not sub.empty:
+            upper_bound = float(sub[metric].quantile(upper_percentile))
+            sub = sub[sub[metric] <= upper_bound]
         if sub.empty:
             ax.set_visible(False)
             continue
+
+        kde_clip = (0, None) if clip_nonnegative else None
 
         if show_hist_bars:
             sns.histplot(
@@ -483,6 +496,7 @@ def plot_metric_kde_diagonal(
                 element="bars",
                 alpha=0.28,
                 kde=True,
+                kde_kws={"cut": 0, "clip": kde_clip},
                 ax=ax,
                 legend=(i == 0),
             )
@@ -497,13 +511,15 @@ def plot_metric_kde_diagonal(
                 common_norm=False,
                 fill=False,
                 linewidth=1.8,
+                cut=0,
+                clip=kde_clip,
                 ax=ax,
                 legend=(i == 0),
             )
             ax.set_ylabel("Density")
 
         ax.set_title((labels or {}).get(metric, metric), fontsize=10)
-        ax.set_xlabel((labels or {}).get(metric, metric))
+        ax.set_xlabel("")
         ax.grid(alpha=0.15)
 
     for j in range(n_metrics, len(axes)):
@@ -518,6 +534,78 @@ def plot_metric_kde_diagonal(
     fig.suptitle(title, y=1.02, fontsize=13)
     fig.tight_layout()
     plt.show()
+    return fig
+
+
+def plot_scenario_kde_diagonal(
+    scenarios: dict[str, str],
+    metric_cols: list[str],
+    *,
+    metrics_dir: Path | None = None,
+    real_metrics_filename: str | Path | None = None,
+    labels: dict[str, str] | None = None,
+    palette: dict[str, str] | None = None,
+    bins: int = 24,
+    n_cols: int = 3,
+    title: str = "Per-metric KDE View by Scenario",
+    upper_percentile: float | None = None,
+    clip_nonnegative: bool = True,
+):
+    """Plot KDE-only metric distributions for several synthetic scenarios and one real reference."""
+    if not scenarios:
+        raise ValueError("At least one scenario is required.")
+
+    frames: list[pd.DataFrame] = []
+    first_real_filename = real_metrics_filename
+
+    for scenario_label, synthetic_filename in scenarios.items():
+        df_synth, synthetic_path = _load_synthetic_metrics(
+            metrics_dir,
+            metrics_filename=synthetic_filename,
+        )
+        scenario_frame = df_synth.copy()
+        scenario_frame["dataset"] = scenario_label
+        frames.append(scenario_frame)
+
+        if first_real_filename is None:
+            synthetic_name = Path(synthetic_path).name
+            first_real_filename = synthetic_name.replace("synthetic_grid_metrics", "real_grid_metrics", 1)
+
+    if first_real_filename is None:
+        raise ValueError("Could not infer real metrics filename.")
+
+    df_real, _ = _load_real_metrics(metrics_dir, metrics_filename=first_real_filename)
+    real_frame = df_real.copy()
+    real_frame["dataset"] = "Real"
+    frames.append(real_frame)
+
+    plot_df = pd.concat(frames, ignore_index=True, sort=False)
+    dataset_order = list(scenarios.keys()) + ["Real"]
+    active_palette = palette or {
+        dataset_order[0]: "#4C78A8",
+        **{label: color for label, color in zip(dataset_order[1:], ["#F58518", "#54A24B", "#B279A2", "#E45756"])}
+    }
+
+    fig = plot_metric_kde_diagonal(
+        plot_df,
+        metric_cols,
+        labels=labels,
+        hue_col="dataset",
+        palette=active_palette,
+        show_hist_bars=False,
+        bins=bins,
+        n_cols=n_cols,
+        title=title,
+        upper_percentile=upper_percentile,
+        clip_nonnegative=clip_nonnegative,
+    )
+    for legend in list(fig.legends):
+        legend.remove()
+    handles = [
+        Line2D([0], [0], color=active_palette.get(label, "black"), linewidth=2.0, label=label)
+        for label in dataset_order
+    ]
+    fig.legend(handles=handles, title="Dataset", loc="upper right")
     return fig
 
 
@@ -669,16 +757,35 @@ def show_cable_type_comparison(
         ].round(4)
     )
 
+    cable_order = cable_df.sort_values("impedance_ohm_per_km")["std_type"].unique().tolist()
+    source_order = [source for source in ["Synthetic", "Real"] if source in set(cable_df["source"])]
+    complete_index = pd.MultiIndex.from_product(
+        [source_order, cable_order],
+        names=["source", "std_type"],
+    )
+    plot_df = (
+        cable_df.set_index(["source", "std_type"])
+        .reindex(complete_index)
+        .reset_index()
+    )
+    plot_df["segment_count"] = plot_df["segment_count"].fillna(0.0)
+    plot_df["total_length_km"] = plot_df["total_length_km"].fillna(0.0)
+    plot_df["impedance_ohm_per_km"] = plot_df["impedance_ohm_per_km"].fillna(
+        plot_df.groupby("std_type")["impedance_ohm_per_km"].transform("first")
+    )
+
     fig = px.bar(
-        cable_df,
+        plot_df,
         x="std_type",
         y="segment_count",
         color="source",
         barmode="group",
         hover_data=["total_length_km", "impedance_ohm_per_km"],
         category_orders={
-            "std_type": cable_df.sort_values("impedance_ohm_per_km")["std_type"].unique().tolist(),
+            "std_type": cable_order,
+            "source": source_order,
         },
+        color_discrete_map={"Synthetic": "steelblue", "Real": "crimson"},
         title=f"Cable Type Comparison Ordered by Impedance (> {min_segment_count:.0f} weighted line segments)",
         labels={
             "std_type": "Cable Type",
@@ -752,6 +859,7 @@ __all__ = [
     "load_notebook_data",
     "plot_boxplot_overview",
     "plot_metric_kde_diagonal",
+    "plot_scenario_kde_diagonal",
     "render_top_overview",
     "resolve_metrics_path",
     "show_cable_type_comparison",
