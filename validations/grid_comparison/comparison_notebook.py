@@ -21,21 +21,20 @@ from pylovo.plotting.validation.metric_validation import plot_comparison_distrib
 
 
 DEFAULT_METRICS = [
-    "feeder_lines",
-    "graph_length",
+    "transformer_mva",
     "avg_trafo_distance",
     "max_trafo_distance",
-    "transformer_mva",
+    "feeder_lines",
+    "graph_length",
     "graph_resistance",
 ]
 
 DEFAULT_LABELS = {
-    "feeder_lines": "Feeder Lines (count)",
-    "buildings_per_feeder": "Buildings per Feeder",
-    "graph_length": "Graph Length (km)",
+    "transformer_mva": "Transformer Rating (MVA)",
     "avg_trafo_distance": "Avg. Distance to Trafo (km)",
     "max_trafo_distance": "Max. Distance to Trafo (km)",
-    "transformer_mva": "Transformer Rating (MVA)",
+    "feeder_lines": "Feeder Lines (count)",
+    "graph_length": "Graph Length (km)",
     "graph_resistance": "Graph Resistance Proxy (Ohm)",
 }
 
