@@ -482,6 +482,7 @@ def plot_metric_kde_diagonal(
             continue
 
         kde_clip = (0, None) if clip_nonnegative else None
+        kde_cut = 0 if clip_nonnegative else 3
 
         if show_hist_bars:
             sns.histplot(
@@ -496,7 +497,7 @@ def plot_metric_kde_diagonal(
                 element="bars",
                 alpha=0.28,
                 kde=True,
-                kde_kws={"cut": 0, "clip": kde_clip},
+                kde_kws={"cut": kde_cut, "clip": kde_clip},
                 ax=ax,
                 legend=(i == 0),
             )
@@ -511,7 +512,7 @@ def plot_metric_kde_diagonal(
                 common_norm=False,
                 fill=False,
                 linewidth=1.8,
-                cut=0,
+                cut=kde_cut,
                 clip=kde_clip,
                 ax=ax,
                 legend=(i == 0),
@@ -605,7 +606,7 @@ def plot_scenario_kde_diagonal(
         Line2D([0], [0], color=active_palette.get(label, "black"), linewidth=2.0, label=label)
         for label in dataset_order
     ]
-    fig.legend(handles=handles, title="Dataset", loc="upper right")
+    fig.legend(handles=handles, title="", loc="upper right")
     return fig
 
 
