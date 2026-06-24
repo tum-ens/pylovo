@@ -169,3 +169,4 @@ cython_debug/
 *.DS_Store
 validations/metrics/*
 validations/grid_preparation/*
+validations/grid_comparison/output/*
