@@ -2,9 +2,10 @@
 
 import numpy as np
 import pandas as pd
+from pyproj import Transformer
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_LOAD_PERCENT_PER_KM, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR
+from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_LOAD_PERCENT_PER_KM, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -14,6 +15,7 @@ class CableInstaller:
 
     _NOMINAL_VOLTAGE_KV = VN * 1e-3
     _THREE_PHASE_FACTOR = np.sqrt(3)
+    _WGS84_TO_TARGET = Transformer.from_crs(4326, TARGET_EPSG, always_xy=True)
 
     def __init__(self, backend: IElectricalBackend, dbc, logger, cables: list,
                  feeder_cables: pd.DataFrame, consumer_connection_cables: pd.DataFrame):
@@ -90,6 +92,14 @@ class CableInstaller:
             return float(fallback[0]), float(fallback[1])
         coords = self._get_bus_coordinates(bus_name, fallback=fallback)
         return float(coords[0]), float(coords[1])
+
+    def _service_line_length_km(self, line_geodata: list[tuple[float, float]]) -> float:
+        """Return projected straight-line length for a consumer service connection."""
+        if len(line_geodata) < 2:
+            return 0.0
+        start_x, start_y = self._WGS84_TO_TARGET.transform(*line_geodata[0])
+        end_x, end_y = self._WGS84_TO_TARGET.transform(*line_geodata[-1])
+        return float(np.hypot(end_x - start_x, end_y - start_y) * 1e-3)
 
     def _get_transformer_visual_coordinates(
         self,
@@ -239,7 +249,7 @@ class CableInstaller:
             end_node_geodata = self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}")
             line_geodata = [start_node_geodata, end_node_geodata]
 
-            length_km = (vertices_dict[end_vid] - vertices_dict[start_vid]) * 1e-3
+            length_km = self._service_line_length_km(line_geodata)
             count = 1
             sim_load = Pd[end_vid]
             Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
