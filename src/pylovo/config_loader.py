@@ -174,6 +174,7 @@ RESULT_DIR = os.path.join(os.getcwd(), CONFIG_GENERATION.get("RESULT_DIR", "resu
 
 # Electrical backend configuration
 ELECTRICAL_BACKEND = CONFIG_GENERATION.get("ELECTRICAL_BACKEND", "pandapower")
+RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION.get("RESIDENTIAL_ONLY_GENERATION", False)
 
 # =============================================================================
 # GRID GENERATION CONFIGURATION (from CONFIG_GENERATION)
