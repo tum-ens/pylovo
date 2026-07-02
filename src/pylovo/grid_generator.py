@@ -361,7 +361,13 @@ class GridGenerator:
             self.dbc.set_buildings_table(buildings_data, self.plz)
         else:
             self.dbc.set_residential_buildings_table(self.plz)
-            self.dbc.set_other_buildings_table(self.plz)
+            if not RESIDENTIAL_ONLY_GENERATION:
+                self.dbc.set_other_buildings_table(self.plz)
+        if RESIDENTIAL_ONLY_GENERATION:
+            removed_non_residential = self.dbc.remove_non_residential_buildings_from_buildings_tem()
+            self.logger.info(
+                f"Residential-only generation enabled: removed {removed_non_residential} non-residential buildings"
+            )
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
         self.logger.info("Buildings_tem table prepared")
         removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers()

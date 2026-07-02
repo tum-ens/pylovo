@@ -18,6 +18,7 @@ RESULT_DIR: results # Directory for storing analysis results and outputs
 # GRID GENERATION CONFIGURATION
 # =============================================================================
 ELECTRICAL_BACKEND: pandapower # Electrical backend configuration - Options: 'pandapower', 'opendss'
+RESIDENTIAL_ONLY_GENERATION: False # If true, only SFH/MFH/TH/AB buildings are used for clustering, load calculation and dimensioning
 ### Electrical load calculation parameters
 PEAK_LOAD_HOUSEHOLD: 14.5 # default: 14.5kW, around 15% of buildings have 30 kW with electric hot water supply
 SIM_FACTOR: {Residential: 0.07, Public: 0.6, Commercial: 0.5} # Simultaneous load factor - formula: simultaneous_load(n) = peak_load * (sim_factor + (1 - sim_factor) * (n ** (-3 / 4)))

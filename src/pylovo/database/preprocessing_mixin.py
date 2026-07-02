@@ -21,6 +21,7 @@ class PreprocessingMixin(BaseMixin, ABC):
     def _generation_parameters_snapshot(self) -> dict:
         return {
             "electrical_backend": ELECTRICAL_BACKEND,
+            "residential_only_generation": RESIDENTIAL_ONLY_GENERATION,
             "load_calculation": {
                 "peak_load_household": PEAK_LOAD_HOUSEHOLD,
                 "sim_factor": SIM_FACTOR,
@@ -590,6 +591,16 @@ class PreprocessingMixin(BaseMixin, ABC):
                   WHERE ST_Intersects(t.geom, b.geom)
                      OR ST_Within(t.geom, b.geom)
               );
+        """
+        self.cur.execute(query)
+        return self.cur.rowcount
+
+    def remove_non_residential_buildings_from_buildings_tem(self) -> int:
+        """Keep only residential consumer buildings in the temporary generation input."""
+        query = """
+            DELETE FROM buildings_tem
+            WHERE type IS NULL
+               OR type NOT IN ('SFH', 'MFH', 'TH', 'AB');
         """
         self.cur.execute(query)
         return self.cur.rowcount
