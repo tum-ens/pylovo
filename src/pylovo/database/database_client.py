@@ -211,13 +211,33 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         self.conn.commit()
         self.logger.info(f"All data for PLZ {plz} and version {version_id} deleted")
 
-    def delete_version_from_all_tables(self, version_id: str) -> None:
-        """Delete all entries of the given version ID from all tables."""
-        query = "DELETE FROM pylovo.version WHERE version_id = %(v)s;"
-        self.cur.execute(query, {"v": version_id})
+    def delete_versions_from_all_tables(self, version_ids: list[str]) -> int:
+        """Delete all entries of the given version IDs from all tables."""
+        if not version_ids:
+            raise ValueError("At least one version ID must be provided.")
+
+        self.cur.execute(
+            "SELECT version_id FROM pylovo.version WHERE version_id = ANY(%(versions)s);",
+            {"versions": version_ids},
+        )
+        existing_versions = {row[0] for row in self.cur.fetchall()}
+        missing_versions = [version_id for version_id in version_ids if version_id not in existing_versions]
+        if missing_versions:
+            missing = ", ".join(missing_versions)
+            raise ValueError(f"Version(s) not found in database: {missing}")
+
+        query = "DELETE FROM pylovo.version WHERE version_id = ANY(%(versions)s);"
+        self.cur.execute(query, {"versions": version_ids})
+        deleted_count = self.cur.rowcount
         self.refresh_materialized_views()
         self.conn.commit()
-        self.logger.info(f"Version {version_id} deleted from all tables")
+        versions = ", ".join(version_ids)
+        self.logger.info(f"Version(s) {versions} deleted from all tables")
+        return deleted_count
+
+    def delete_version_from_all_tables(self, version_id: str) -> int:
+        """Delete all entries of the given version ID from all tables."""
+        return self.delete_versions_from_all_tables([version_id])
 
     def delete_classification_version_from_related_tables(self, classification_id: str) -> None:
         """

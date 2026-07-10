@@ -2,35 +2,46 @@
 Delete operations for pylovo.
 """
 import argparse
-from pylovo.grid_generator import GridGenerator
+import sys
+
+from pylovo.database.database_client import DatabaseClient
 
 
 def delete_networks(plz: int, version_id: str):
     """Delete networks for a specific PLZ and version."""
-    gg = GridGenerator(plz=plz)
-    gg.dbc.delete_plz_from_all_tables(plz, version_id)
+    with DatabaseClient() as dbc_client:
+        dbc_client.delete_plz_from_all_tables(plz, version_id)
     print(f"✓ Deleted networks for PLZ {plz}, version {version_id}")
+
+
+def delete_versions(version_ids: list[str]):
+    """Delete all networks for one or more versions across all PLZ."""
+    with DatabaseClient() as dbc_client:
+        deleted_count = dbc_client.delete_versions_from_all_tables(version_ids=version_ids)
+
+    if len(version_ids) == 1:
+        print(f"✓ Deleted all networks for version {version_ids[0]}")
+    else:
+        versions = ", ".join(version_ids)
+        print(f"✓ Deleted {deleted_count} versions: {versions}")
 
 
 def delete_version(version_id: str):
     """Delete all networks for a version across all PLZ."""
-    gg = GridGenerator(plz="91301")  # dummy plz for initialization
-    gg.dbc.delete_version_from_all_tables(version_id=version_id)
-    print(f"✓ Deleted all networks for version {version_id}")
+    delete_versions([version_id])
 
 
 def delete_transformers():
-    """Delete transformers for a specific PLZ."""
-    gg = GridGenerator(plz=99999)
-    dbc_client = gg.dbc
-    dbc_client.delete_transformers()
+    """Delete all transformers."""
+    with DatabaseClient() as dbc_client:
+        dbc_client.delete_transformers()
     print("✓ Deleted all transformers")
 
 
 def delete_classification_version(classification_version: str):
     """Delete classification version data."""
-    gg = GridGenerator()  # initialization without specific plz
-    gg.dbc.delete_classification_version_from_related_tables(classification_version)
+    with DatabaseClient() as dbc_client:
+        dbc_client.delete_classification_version_from_related_tables(classification_version)
     print(f"✓ Deleted classification version {classification_version}")
 
 
@@ -40,13 +51,16 @@ def main():
         prog="pylovo-delete",
         description="Delete various pylovo data from database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
+  # Delete all networks for one version across all PLZ
+  pylovo-delete --version 1
+
+  # Delete all networks for multiple versions across all PLZ
+  pylovo-delete --version 1 2 3
+
   # Delete networks for a specific PLZ and version
   pylovo-delete networks --plz 80803 --version 1
-
-  # Delete all networks for a version across all PLZ
-  pylovo-delete version --version 1
 
   # Delete all transformers
   pylovo-delete transformers
@@ -55,7 +69,14 @@ Examples:
   pylovo-delete classification --version 1
 
 For more information, see: https://github.com/tum-ens/pylovo
-        '''
+        """
+    )
+    parser.add_argument(
+        "--version",
+        dest="versions",
+        nargs="+",
+        metavar="VERSION_ID",
+        help="Version ID(s) to delete across all PLZ (e.g., 1 2 3)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Delete operation to perform", required=False)
@@ -77,17 +98,15 @@ For more information, see: https://github.com/tum-ens/pylovo
         help="Delete all networks for a version across all PLZ",
         description="Delete all generated grid networks for a specific version across all postal codes"
     )
-    version_parser.add_argument("--version", type=str, required=True,
-                               help="Version ID to delete (e.g., 1)")
+    version_parser.add_argument("--version", dest="version_ids", type=str, nargs="+", required=True,
+                               help="Version ID(s) to delete (e.g., 1 2 3)")
 
     # Subcommand: transformers
-    trafos_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "transformers",
-        help="Delete transformers for a PLZ",
-        description="Delete transformer data for a specific postal code"
+        help="Delete all transformers",
+        description="Delete all transformer data"
     )
-    trafos_parser.add_argument("--plz", type=str, required=True,
-                              help="Postal code (e.g., 80803)")
 
     # Subcommand: classification
     class_parser = subparsers.add_parser(
@@ -100,26 +119,33 @@ For more information, see: https://github.com/tum-ens/pylovo
 
     args = parser.parse_args()
 
-    if not args.command:
+    if args.versions and args.command:
+        parser.error("--version cannot be combined with a delete subcommand")
+
+    if not args.command and not args.versions:
         parser.print_help()
         return
 
     try:
-        if args.command == "networks":
+        if args.versions:
+            delete_versions(args.versions)
+        elif args.command == "networks":
             delete_networks(args.plz, args.version)
         elif args.command == "version":
-            delete_version(args.version)
+            delete_versions(args.version_ids)
         elif args.command == "transformers":
-            delete_transformers(args.plz)
+            delete_transformers()
         elif args.command == "classification":
             delete_classification_version(args.version)
+    except ValueError as e:
+        print(f"✗ Error: {e}")
+        sys.exit(1)
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback
         traceback.print_exc()
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-
