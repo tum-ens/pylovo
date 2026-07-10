@@ -253,6 +253,25 @@ class ClusteringMixin(BaseMixin, ABC):
 
         return load
 
+    def generate_load_vector_for_connection_points(
+        self, kcid: int, bcid: int, connection_points: list[int]
+    ) -> tuple[np.ndarray, list[int]]:
+        """Return loads aligned to a given connection-point order."""
+        query = """SELECT COALESCE(agg_connection_point, connection_point)::int AS connection_point,
+                          SUM(peak_load_in_kw)::float AS load_kw
+                   FROM buildings_tem
+                   WHERE kcid = %(k)s
+                     AND bcid = %(b)s
+                     AND peak_load_in_kw != 0
+                   GROUP BY COALESCE(agg_connection_point, connection_point);"""
+        self.cur.execute(query, {"k": kcid, "b": bcid})
+        load_by_point = {int(point): float(load) for point, load in self.cur.fetchall()}
+        ordered_points = [int(point) for point in connection_points]
+        loads = np.asarray([load_by_point.get(point, 0.0) for point in ordered_points])
+        missing_points = sorted(set(load_by_point).difference(ordered_points))
+
+        return loads, missing_points
+
     def load_constrained_hierarchical_clustering(self, Z: np.ndarray, cluster_amount: int, localid2vid: dict, buildings: pd.DataFrame,
             consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray, double_trans: np.ndarray,
             dist_mat: np.ndarray | None = None, vid2localid: dict[int, int] | None = None,

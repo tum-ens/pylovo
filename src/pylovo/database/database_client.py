@@ -202,6 +202,12 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         :param plz: Postal code
         :param version_id: Version ID
         """
+        delete_ways_query = """DELETE
+               FROM pylovo.ways_result
+                   WHERE version_id = %(v)s
+                     AND plz = %(p)s;"""
+        self.cur.execute(delete_ways_query, {"v": version_id, "p": int(plz)})
+
         query = f"""DELETE
                FROM pylovo.postcode_result
                    WHERE version_id = %(v)s

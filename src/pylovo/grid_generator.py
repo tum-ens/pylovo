@@ -66,6 +66,12 @@ class GridGenerator:
         interrupted = False
         try:
             self.generate_grid()
+            if not self.dbc.get_list_from_plz(plz):
+                self.logger.warning(
+                    f"No grid_result rows were generated for PLZ {plz}; skipping result-table persistence."
+                )
+                self.dbc.rollback_changes()
+                return
             self.dbc.save_tables(plz=self.plz)  # Save data from temporary tables to result tables
             self.dbc.commit_changes()
             if analyze_grids:
@@ -596,8 +602,28 @@ class GridGenerator:
         dist_vector = squareform(dist_mat)
 
         if len(dist_vector) == 0:
+            planning_points = buildings["connection_point"]
+            fallback_buildings = buildings
+            if "agg_connection_point" in buildings.columns:
+                planning_points = buildings["agg_connection_point"].fillna(buildings["connection_point"])
+                fallback_buildings = buildings.copy()
+                fallback_buildings["agg_connection_point"] = planning_points
+
+            vertices = sorted(planning_points.dropna().astype(int).unique().tolist())
+            if len(vertices) == 1:
+                total_sim_load = utils.simultaneousPeakLoad(fallback_buildings, consumer_cat_df, vertices)
+                feasible_transformers = transformer_capacities[transformer_capacities > total_sim_load]
+                transformer_size = int(feasible_transformers[0]) if len(feasible_transformers) else int(math.ceil(total_sim_load))
+                self.dbc.clear_grid_result_in_kmean_cluster(plz, kcid)
+                self.dbc.upsert_bcid(plz, kcid, 1, vertices=vertices, transformer_rated_power=transformer_size)
+                self.logger.info(
+                    f"BCID dimensioning fallback for PLZ {plz}, KCID {kcid}: "
+                    f"single connection point assigned to BCID 1 with transformer {transformer_size} kVA"
+                )
+                return
             self.logger.warning(
-                f"Skipped BCID dimensioning for PLZ {plz}, KCID {kcid}: empty distance vector"
+                f"Skipped BCID dimensioning for PLZ {plz}, KCID {kcid}: "
+                f"empty distance vector for {len(vertices)} active connection point(s)"
             )
             return
 
@@ -927,8 +953,26 @@ class GridGenerator:
                 "active connection points but no route distance matrix. This indicates an inconsistent routing state."
             )
 
-        # Get load vector for each connection point
-        loads = self.dbc.generate_load_vector(kcid, bcid)
+        # Get load vector aligned to the matrix vertex order. Some pgRouting
+        # matrix calls omit isolated vertices; keep the generated grid going
+        # while logging the dropped load points explicitly.
+        matrix_connection_points = [localid2vid[index] for index in range(len(localid2vid))]
+        loads, missing_load_points = self.dbc.generate_load_vector_for_connection_points(
+            kcid, bcid, matrix_connection_points
+        )
+        if missing_load_points:
+            preview = ", ".join(str(point) for point in missing_load_points[:10])
+            if len(missing_load_points) > 10:
+                preview += ", ..."
+            self.logger.warning(
+                f"Greenfield transformer placement for PLZ {plz}, KCID {kcid}, BCID {bcid} "
+                f"ignored {len(missing_load_points)} unroutable load connection point(s): {preview}"
+            )
+        if len(loads) != dist_mat.shape[1]:
+            raise ValueError(
+                f"Greenfield transformer placement for PLZ {plz}, KCID {kcid}, BCID {bcid} has "
+                f"distance matrix shape {dist_mat.shape} but aligned load vector length {len(loads)}."
+            )
 
         # Calculate weighted distance (distance * load) for each potential location
         total_load_per_vertice = dist_mat.dot(loads)
@@ -1507,22 +1551,40 @@ class GridGenerator:
                 bcid,
             )
             split_visualization_edges = self._get_split_visualization_edges(branch_plans, ont_vertice)
-            self.dbc.rebuild_lines_result_helpers_for_split_topology(
-                self.plz,
-                kcid,
-                bcid,
-                split_visualization_edges,
-            )
-            split_visualization_nodes = sorted(
-                {int(edge["from_bus"]) for edge in split_visualization_edges}
-            )
-            self.dbc.rebuild_split_points_for_split_topology(
-                self.plz,
-                kcid,
-                bcid,
-                split_visualization_nodes,
-            )
-            self.dbc.rebuild_lines_result_view_for_grid(self.plz, kcid, bcid)
+            savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid}"
+            try:
+                self.dbc.cur.execute(f"SAVEPOINT {savepoint_name}")
+                self.dbc.rebuild_lines_result_helpers_for_split_topology(
+                    self.plz,
+                    kcid,
+                    bcid,
+                    split_visualization_edges,
+                )
+                split_visualization_nodes = sorted(
+                    {int(edge["from_bus"]) for edge in split_visualization_edges}
+                )
+                self.dbc.rebuild_split_points_for_split_topology(
+                    self.plz,
+                    kcid,
+                    bcid,
+                    split_visualization_nodes,
+                )
+                self.dbc.rebuild_lines_result_view_for_grid(self.plz, kcid, bcid)
+                self.dbc.cur.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+            except Exception as visualization_error:
+                try:
+                    self.dbc.cur.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                    self.dbc.cur.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                except Exception as rollback_error:
+                    self.logger.warning(
+                        f"Failed to roll back split visualization savepoint for PLZ {self.plz}, "
+                        f"kcid={kcid}, bcid={bcid}: {rollback_error}"
+                    )
+                    raise
+                self.logger.warning(
+                    f"Skipped split visualization rebuild for PLZ {self.plz}, kcid={kcid}, bcid={bcid}: "
+                    f"{visualization_error}"
+                )
 
             branch_index = len(branch_plans)
 

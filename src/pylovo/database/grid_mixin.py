@@ -807,8 +807,25 @@ class GridMixin(BaseMixin, ABC):
                                           %(parallel)s,
                                           %(length_km)s,
                                           %(feeder_section_id)s); """
+        try:
+            line_geom = LineString(geom)
+            if line_geom.is_empty or len(line_geom.coords) < 2:
+                raise ValueError("line geometry has fewer than two coordinates")
+        except Exception as geom_error:
+            fallback_points = [point for point in geom if isinstance(point, (list, tuple)) and len(point) >= 2]
+            if len(fallback_points) < 2:
+                raise ValueError(
+                    f"Cannot build fallback line geometry for plz={plz}, kcid={kcid}, bcid={bcid}, "
+                    f"from_bus={from_bus}, to_bus={to_bus}: {geom_error}"
+                ) from geom_error
+            line_geom = LineString([fallback_points[0], fallback_points[-1]])
+            self.logger.warning(
+                f"Falling back to direct LineString geometry for plz={plz}, kcid={kcid}, bcid={bcid}, "
+                f"from_bus={from_bus}, to_bus={to_bus}: {geom_error}"
+            )
+
         self.cur.execute(line_insertion_query,
-                         {"v": VERSION_ID, "geom": LineString(geom).wkb_hex, "plz": int(plz), "bcid": int(bcid),
+                         {"v": VERSION_ID, "geom": line_geom.wkb_hex, "plz": int(plz), "bcid": int(bcid),
                           "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
                           "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km,
                           "feeder_section_id": None if feeder_section_id is None else int(feeder_section_id)})
