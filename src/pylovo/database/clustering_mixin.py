@@ -1,3 +1,4 @@
+import heapq
 import math
 import warnings
 import time
@@ -37,6 +38,76 @@ class ClusteringMixin(BaseMixin, ABC):
         cluster_dist_mat = dist_mat[np.ix_(local_ids, local_ids)]
         best_max_distance = float(cluster_dist_mat.max(axis=1).min())
         return best_max_distance <= max_distance
+
+    @staticmethod
+    def _cluster_adjacency_from_street_edges(
+        cluster_dict: dict,
+        street_edges: list[tuple[int, int, float]],
+    ) -> set[frozenset[int]]:
+        """Return cluster pairs whose graph-Voronoi territories share an edge."""
+        cluster_ids = list(cluster_dict)
+        cluster_rank = {cluster_id: rank for rank, cluster_id in enumerate(cluster_ids)}
+        graph: dict[int, list[tuple[int, float]]] = {}
+        normalized_edges = []
+        for source, target, cost in street_edges:
+            source = int(source)
+            target = int(target)
+            weight = float(cost)
+            graph.setdefault(source, []).append((target, weight))
+            graph.setdefault(target, []).append((source, weight))
+            normalized_edges.append((source, target))
+
+        distances: dict[int, float] = {}
+        owners: dict[int, int] = {}
+        queue = []
+        for cluster_id, (vertices, _transformer_size) in cluster_dict.items():
+            rank = cluster_rank[cluster_id]
+            for vertex in vertices:
+                vertex = int(vertex)
+                current_owner = owners.get(vertex)
+                if current_owner is None or rank < cluster_rank[current_owner]:
+                    distances[vertex] = 0.0
+                    owners[vertex] = cluster_id
+                    heapq.heappush(queue, (0.0, rank, vertex, cluster_id))
+
+        while queue:
+            distance, rank, node, cluster_id = heapq.heappop(queue)
+            if distance != distances.get(node) or cluster_id != owners.get(node):
+                continue
+            for neighbor, weight in graph.get(node, []):
+                candidate_distance = distance + weight
+                known_distance = distances.get(neighbor)
+                known_owner = owners.get(neighbor)
+                if (
+                    known_distance is None
+                    or candidate_distance < known_distance
+                    or (
+                        candidate_distance == known_distance
+                        and rank < cluster_rank[known_owner]
+                    )
+                ):
+                    distances[neighbor] = candidate_distance
+                    owners[neighbor] = cluster_id
+                    heapq.heappush(queue, (candidate_distance, rank, neighbor, cluster_id))
+
+        neighboring_clusters = set()
+        for source, target in normalized_edges:
+            source_owner = owners.get(source)
+            target_owner = owners.get(target)
+            if source_owner is not None and target_owner is not None and source_owner != target_owner:
+                neighboring_clusters.add(frozenset((source_owner, target_owner)))
+        return neighboring_clusters
+
+    def get_cluster_adjacency_from_street_graph(self, cluster_dict: dict) -> set[frozenset[int]]:
+        """Build graph-Voronoi cluster adjacency in the components containing the clusters."""
+        self.cur.execute(
+            """SELECT source, target, cost
+               FROM ways_tem
+               WHERE source IS NOT NULL
+                 AND target IS NOT NULL
+                 AND cost IS NOT NULL;"""
+        )
+        return self._cluster_adjacency_from_street_edges(cluster_dict, self.cur.fetchall())
 
     def get_connected_component(self) -> tuple[np.ndarray, np.ndarray]:
         """

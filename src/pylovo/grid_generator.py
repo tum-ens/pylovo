@@ -760,6 +760,10 @@ class GridGenerator:
             )
             return cluster_dict
 
+        neighboring_pairs = self.dbc.get_cluster_adjacency_from_street_graph(cluster_dict)
+        if not neighboring_pairs:
+            return cluster_dict
+
         merged_clusters = {
             cluster_id: (list(vertices), transformer_size)
             for cluster_id, (vertices, transformer_size) in cluster_dict.items()
@@ -777,6 +781,9 @@ class GridGenerator:
                     continue
 
                 for right_id, (right_vertices, _right_transformer) in cluster_items[left_index + 1:]:
+                    if frozenset((left_id, right_id)) not in neighboring_pairs:
+                        continue
+
                     right_local_ids = [vid2localid[vid] for vid in right_vertices if vid in vid2localid]
                     if not right_local_ids:
                         continue
@@ -815,6 +822,11 @@ class GridGenerator:
             _nearest_distance, _combined_load, transformer_size, left_id, right_id, combined_vertices = best_candidate
             merged_clusters[left_id] = (combined_vertices, transformer_size)
             del merged_clusters[right_id]
+            neighboring_pairs = {
+                frozenset(left_id if cluster_id == right_id else cluster_id for cluster_id in pair)
+                for pair in neighboring_pairs
+            }
+            neighboring_pairs = {pair for pair in neighboring_pairs if len(pair) == 2}
             merge_count += 1
 
         if merge_count:
