@@ -12,11 +12,15 @@ import plotly.express as px
 import seaborn as sns
 from IPython.display import Markdown, display
 
-from pylovo.analysis.comparison_helpers import (
-    compute_wasserstein_summary,
-    iter_real_grid_files,
+from validations.grid_comparison.common import (
+    metric_filename,
+    metric_output_suffixes,
+    validation_grid_data_path,
+    validation_grid_split_subdir,
 )
-from pylovo.config_loader import GRID_DATA_PATH, VERSION_ID
+from pylovo.validations.grid_comparison.real_swf_metric_export import iter_real_grid_files
+from validations.grid_comparison.scoring import compute_wasserstein_summary
+from pylovo.config_loader import VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.validation.metric_validation import plot_comparison_distribution_plotly
 
@@ -46,12 +50,14 @@ STATUS_ORDER = ["converged", "voltage_violation", "not_converged", "unknown"]
 class ComparisonNotebookData:
     synthetic_path: Path
     real_path: Path
+    swn_path: Path | None
     metrics: list[str]
     requested_metrics: list[str]
     missing_metrics: list[str]
     labels: dict[str, str]
     df_synth_all: pd.DataFrame
     df_real: pd.DataFrame
+    df_swn: pd.DataFrame
     df_all: pd.DataFrame
     status_counts: pd.DataFrame
     status_metric_wasserstein: pd.DataFrame
@@ -61,6 +67,52 @@ class ComparisonNotebookData:
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def default_metric_filenames(metrics_dir: Path | None = None) -> tuple[str, str]:
+    """Return notebook-friendly synthetic and real metrics filenames.
+
+    The primary names follow the CLI convention. If those files have not been
+    generated yet, fall back to the newest available matching CSV so the
+    notebook remains usable after configuration changes.
+    """
+    metrics_root = Path(metrics_dir) if metrics_dir is not None else _project_root() / "validations" / "metrics"
+    split_subdir = validation_grid_split_subdir()
+    synthetic_suffix, real_suffix, _ = metric_output_suffixes(None, split_subdir)
+    expected_synthetic = metric_filename("synthetic_grid_metrics.csv", synthetic_suffix)
+    expected_real = metric_filename("real_grid_metrics.csv", real_suffix)
+
+    return (
+        _existing_or_newest_metric_filename(metrics_root, expected_synthetic, "synthetic_grid_metrics*.csv"),
+        _existing_or_newest_metric_filename(metrics_root, expected_real, "real_grid_metrics*.csv"),
+    )
+
+
+def _existing_or_newest_metric_filename(metrics_dir: Path, expected_filename: str, pattern: str) -> str:
+    expected_path = metrics_dir / expected_filename
+    if expected_path.exists():
+        return expected_filename
+
+    candidates = sorted(
+        metrics_dir.glob(pattern),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if candidates:
+        return candidates[0].name
+    return expected_filename
+
+
+def selected_metric_filenames(
+    synthetic_metrics_file: str | None = None,
+    real_metrics_file: str | None = None,
+    metrics_dir: Path | None = None,
+) -> tuple[str, str]:
+    default_synthetic, default_real = default_metric_filenames(metrics_dir)
+    return (
+        synthetic_metrics_file.strip() if synthetic_metrics_file and synthetic_metrics_file.strip() else default_synthetic,
+        real_metrics_file.strip() if real_metrics_file and real_metrics_file.strip() else default_real,
+    )
 
 
 def resolve_metrics_path(filename: str | Path, metrics_dir: Path | None = None) -> Path | None:
@@ -130,6 +182,40 @@ def _load_real_metrics(
     df_real["Type"] = "Real"
     df_real["source"] = "Real"
     return df_real, real_path
+
+
+def _load_swn_metrics(
+    metrics_filename: str | Path | None = None,
+    *,
+    metrics_dir: Path | None = None,
+    scope: str = "backbone",
+) -> tuple[pd.DataFrame, Path | None]:
+    if metrics_filename is None:
+        default_dir = validation_grid_data_path() / "swn2pandapower"
+        metric_paths = [default_dir / "SWN_metrics.csv"]
+        metric_paths.extend(sorted(default_dir.glob("SWN_*/SWN_metrics.csv")))
+        metric_paths = [path.resolve() for path in metric_paths if path.exists()]
+        if not metric_paths:
+            return pd.DataFrame(), None
+        swn_path = default_dir.resolve()
+    else:
+        swn_path = resolve_metrics_path(metrics_filename, metrics_dir)
+        if swn_path is None:
+            raise FileNotFoundError(
+                f"SWN comparison metrics CSV '{metrics_filename}' was not found. "
+                "Run the SWN converter or adjust SWN_METRICS_FILE."
+            )
+
+        metric_paths = [swn_path]
+
+    df_swn = pd.concat(
+        [pd.read_csv(path) for path in metric_paths], ignore_index=True
+    )
+    if "scope" in df_swn.columns:
+        df_swn = df_swn.loc[df_swn["scope"] == scope].copy()
+    df_swn["Type"] = "SWN"
+    df_swn["source"] = "SWN"
+    return df_swn, swn_path
 
 
 def _status_counts(df_synth_all: pd.DataFrame) -> pd.DataFrame:
@@ -221,6 +307,8 @@ def load_notebook_data(
     labels: dict[str, str] | None = None,
     synthetic_metrics_filename: str | Path = "synthetic_grid_metrics.csv",
     real_metrics_filename: str | Path = "real_grid_metrics.csv",
+    swn_metrics_filename: str | Path | None = None,
+    swn_scope: str = "backbone",
 ) -> ComparisonNotebookData:
     requested_metrics = list(metrics) if metrics is not None else list(DEFAULT_METRICS)
     active_labels = dict(labels) if labels is not None else dict(DEFAULT_LABELS)
@@ -233,7 +321,14 @@ def load_notebook_data(
         metrics_dir,
         metrics_filename=real_metrics_filename,
     )
-    df_all = pd.concat([df_synth_all, df_real], ignore_index=True, sort=False)
+    df_swn, swn_path = _load_swn_metrics(
+        swn_metrics_filename,
+        metrics_dir=metrics_dir,
+        scope=swn_scope,
+    )
+    df_all = pd.concat(
+        [df_synth_all, df_real, df_swn], ignore_index=True, sort=False
+    )
     available_metrics = [metric for metric in requested_metrics if metric in df_all.columns]
     missing_metrics = [metric for metric in requested_metrics if metric not in df_all.columns]
 
@@ -248,12 +343,14 @@ def load_notebook_data(
     return ComparisonNotebookData(
         synthetic_path=synthetic_path,
         real_path=real_path,
+        swn_path=swn_path,
         metrics=available_metrics,
         requested_metrics=requested_metrics,
         missing_metrics=missing_metrics,
         labels=active_labels,
         df_synth_all=df_synth_all,
         df_real=df_real,
+        df_swn=df_swn,
         df_all=df_all,
         status_counts=status_counts,
         status_metric_wasserstein=status_metric_wasserstein,
@@ -264,12 +361,19 @@ def load_notebook_data(
 
 def render_top_overview(data: ComparisonNotebookData) -> ComparisonNotebookData:
     display(Markdown("### Data Inputs"))
+    sources = ["Synthetic", "Real"]
+    paths = [str(data.synthetic_path), str(data.real_path)]
+    row_counts = [len(data.df_synth_all), len(data.df_real)]
+    if data.swn_path is not None:
+        sources.append("SWN")
+        paths.append(str(data.swn_path))
+        row_counts.append(len(data.df_swn))
     display(
         pd.DataFrame(
             {
-                "source": ["Synthetic", "Real"],
-                "path": [str(data.synthetic_path), str(data.real_path)],
-                "rows": [len(data.df_synth_all), len(data.df_real)],
+                "source": sources,
+                "path": paths,
+                "rows": row_counts,
             }
         )
     )
@@ -311,6 +415,8 @@ def load_and_render_overview(
     labels: dict[str, str] | None = None,
     synthetic_metrics_filename: str | Path = "synthetic_grid_metrics.csv",
     real_metrics_filename: str | Path = "real_grid_metrics.csv",
+    swn_metrics_filename: str | Path | None = None,
+    swn_scope: str = "backbone",
 ) -> ComparisonNotebookData:
     data = load_notebook_data(
         metrics_dir=metrics_dir,
@@ -318,6 +424,8 @@ def load_and_render_overview(
         labels=labels,
         synthetic_metrics_filename=synthetic_metrics_filename,
         real_metrics_filename=real_metrics_filename,
+        swn_metrics_filename=swn_metrics_filename,
+        swn_scope=swn_scope,
     )
     return render_top_overview(data)
 
@@ -331,7 +439,10 @@ def show_distribution_selector(
     height: int = 520,
     width: int | None = None,
 ):
-    def _plot(metric: str) -> None:
+    dropdown = widgets.Dropdown(options=metrics, description="Parameter:")
+    output = widgets.Output()
+
+    def _build_figure(metric: str):
         fig = plot_comparison_distribution_plotly(
             df,
             metric_col=metric,
@@ -343,14 +454,22 @@ def show_distribution_selector(
         if width is not None:
             layout_kwargs["width"] = width
         fig.update_layout(**layout_kwargs)
-        fig.show()
+        return fig
 
-    control = widgets.interactive(
-        _plot,
-        metric=widgets.Dropdown(options=metrics, description="Parameter:"),
-    )
+    def _render(metric: str) -> None:
+        with output:
+            output.clear_output(wait=True)
+            display(_build_figure(metric))
+
+    def _on_metric_change(change) -> None:
+        if change["name"] == "value":
+            _render(change["new"])
+
+    dropdown.observe(_on_metric_change, names="value")
+    _render(dropdown.value)
+    control = widgets.VBox([dropdown, output])
     display(control)
-    return None
+    return control
 
 
 def plot_boxplot_overview(
@@ -364,17 +483,24 @@ def plot_boxplot_overview(
     title: str = "Box Plot Overview: All Metrics (Synthetic vs. Real)",
     whis: float = 1.5,
     showfliers: bool = False,
+    save_path: str | Path | None = None,
 ):
     if df.empty:
         raise ValueError("No data available for the boxplot overview.")
 
     n_cols = 3
     n_rows = int(np.ceil(len(metric_cols) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4.5 * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.6 * n_cols, 5.0 * n_rows))
     axes = np.atleast_1d(axes).ravel()
 
-    active_palette = palette or {"Synthetic": "steelblue", "Real": "crimson"}
-    active_hue_order = hue_order or ["Synthetic", "Real"]
+    active_palette = palette or {
+        "Synthetic": "steelblue",
+        "Real": "crimson",
+        "SWN": "darkorange",
+    }
+    active_hue_order = hue_order or [
+        source for source in ("Synthetic", "Real", "SWN") if source in set(df[source_col])
+    ]
 
     for i, metric in enumerate(metric_cols):
         ax = axes[i]
@@ -408,9 +534,10 @@ def plot_boxplot_overview(
             q3 = float(source_values.quantile(0.75))
             iqr_parts.append(f"{source_name[0]}: {q3 - q1:.3g}")
 
-        ax.set_title((labels or {}).get(metric, metric), fontsize=10)
+        ax.set_title((labels or {}).get(metric, metric), fontsize=17)
         ax.set_xlabel("")
-        ax.set_ylabel((labels or {}).get(metric, metric), fontsize=8)
+        ax.set_ylabel((labels or {}).get(metric, metric), fontsize=16)
+        ax.tick_params(axis="both", labelsize=14)
         ax.grid(axis="y", alpha=0.25)
         if iqr_parts:
             ax.text(
@@ -420,23 +547,25 @@ def plot_boxplot_overview(
                 transform=ax.transAxes,
                 ha="left",
                 va="top",
-                fontsize=8,
+                fontsize=11,
                 bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.75, "edgecolor": "none"},
             )
 
     for j in range(len(metric_cols), len(axes)):
         axes[j].set_visible(False)
 
-    fig.suptitle(title, fontsize=13, fontweight="bold", y=0.995)
+    fig.suptitle(title, fontsize=20, fontweight="bold", y=0.995)
     fig.text(
         0.5,
         0.965,
         f"Whiskers span Q1 - {whis}*IQR to Q3 + {whis}*IQR; panel labels show per-source IQR.",
         ha="center",
         va="top",
-        fontsize=9,
+        fontsize=13,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
+    if save_path is not None:
+        fig.savefig(Path(save_path), bbox_inches="tight")
     plt.show()
     return fig
 
@@ -454,6 +583,7 @@ def plot_metric_kde_diagonal(
     title: str = "Per-metric KDE View (Synthetic vs. Real)",
     upper_percentile: float | None = None,
     clip_nonnegative: bool = True,
+    save_path: str | Path | None = None,
 ):
     if upper_percentile is not None and not 0 < upper_percentile <= 1:
         raise ValueError("upper_percentile must be in the interval (0, 1].")
@@ -464,7 +594,7 @@ def plot_metric_kde_diagonal(
 
     n_metrics = len(metric_cols)
     n_rows = int(np.ceil(n_metrics / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.2 * n_cols, 3.6 * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.6 * n_cols, 4.2 * n_rows))
     axes = np.atleast_1d(axes).ravel()
 
     hue_order = list(plot_data[hue_col].dropna().unique())
@@ -501,7 +631,7 @@ def plot_metric_kde_diagonal(
                 ax=ax,
                 legend=(i == 0),
             )
-            ax.set_ylabel("Share of Grids")
+            ax.set_ylabel("Share of Grids", fontsize=16)
         else:
             sns.kdeplot(
                 data=sub,
@@ -517,10 +647,11 @@ def plot_metric_kde_diagonal(
                 ax=ax,
                 legend=(i == 0),
             )
-            ax.set_ylabel("Density")
+            ax.set_ylabel("Density", fontsize=16)
 
-        ax.set_title((labels or {}).get(metric, metric), fontsize=10)
+        ax.set_title((labels or {}).get(metric, metric), fontsize=17)
         ax.set_xlabel("")
+        ax.tick_params(axis="both", labelsize=14)
         ax.grid(alpha=0.15)
 
     for j in range(n_metrics, len(axes)):
@@ -530,10 +661,12 @@ def plot_metric_kde_diagonal(
     if handles:
         if axes[0].legend_ is not None:
             axes[0].legend_.remove()
-        fig.legend(handles, legend_labels, title="Source", loc="upper right")
+        fig.legend(handles, legend_labels, title="Source", loc="upper right", fontsize=15, title_fontsize=15)
 
-    fig.suptitle(title, y=1.02, fontsize=13)
+    fig.suptitle(title, y=1.02, fontsize=20, fontweight="bold")
     fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(Path(save_path), bbox_inches="tight")
     plt.show()
     return fig
 
@@ -663,14 +796,14 @@ def load_cable_type_comparison(
     version_id: str = VERSION_ID,
     min_segment_count: float = 100.0,
 ) -> pd.DataFrame:
-    real_dir = Path(real_grid_dir) if real_grid_dir is not None else Path(GRID_DATA_PATH)
+    real_dir = Path(real_grid_dir) if real_grid_dir is not None else validation_grid_data_path()
     rows: list[dict[str, object]] = []
 
     with DatabaseClient() as dbc:
         dbc.cur.execute(
             """
             SELECT kcid, bcid
-            FROM grid_result
+            FROM pylovo.grid_result
             WHERE plz = %s AND version_id = %s
             ORDER BY kcid, bcid
             """,
@@ -853,6 +986,8 @@ __all__ = [
     "ComparisonNotebookData",
     "DEFAULT_LABELS",
     "DEFAULT_METRICS",
+    "default_metric_filenames",
+    "selected_metric_filenames",
     "build_wasserstein_bar_figure",
     "compute_status_diagnostics",
     "load_and_render_overview",

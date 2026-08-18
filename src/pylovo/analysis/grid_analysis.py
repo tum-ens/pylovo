@@ -20,7 +20,7 @@ def _get_transformer_mva(net: pp.pandapowerNet) -> float:
 
     Both synthetic grids and real LV subnets carry the transformer as an
     out-of-service element (added by
-    :func:`~pylovo.analysis.validation_helpers.extract_lv_grids`), so
+    :func:`~validations.grid_preparation.legacy.real_grid_preparation.extract_lv_grids`), so
     ``sn_mva`` is always readable directly from the network object.
     """
     if not net.trafo.empty and "sn_mva" in net.trafo.columns:

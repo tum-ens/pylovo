@@ -948,7 +948,7 @@ class ParameterCalculator:
         if not kept_indices:
             return 0.0
         line_df = line_df.loc[list(kept_indices)]
-        return float(line_df["length_km"].fillna(0.0).sum())
+        return self._calculate_unique_edge_length(line_df)
 
     def calculate_graph_resistance(
         self,
@@ -982,17 +982,65 @@ class ParameterCalculator:
             line_table = line_table.loc[line_table.index.intersection(kept_indices)]
         if line_table.empty:
             return 0.0
+        return self._calculate_unique_edge_equivalent_resistance(line_table)
+
+    @staticmethod
+    def _add_undirected_bus_pair(line_table: pd.DataFrame) -> pd.DataFrame:
+        """Return a copy with an unordered bus-pair key for parallel line rows."""
+        df = line_table.copy()
+        from_bus = pd.to_numeric(df["from_bus"], errors="coerce").astype("Int64")
+        to_bus = pd.to_numeric(df["to_bus"], errors="coerce").astype("Int64")
+        df["_bus_a"] = np.minimum(from_bus, to_bus)
+        df["_bus_b"] = np.maximum(from_bus, to_bus)
+        return df.dropna(subset=["_bus_a", "_bus_b"])
+
+    def _calculate_unique_edge_length(self, line_table: pd.DataFrame) -> float:
+        """Return topology length after collapsing parallel rows by bus pair."""
+        if line_table.empty:
+            return 0.0
+
+        df = self._add_undirected_bus_pair(line_table)
+        if df.empty:
+            return 0.0
+
+        df["_length_km"] = pd.to_numeric(df["length_km"], errors="coerce").abs().fillna(0.0)
+        edge_lengths = df.groupby(["_bus_a", "_bus_b"], observed=True)["_length_km"].min()
+        return float(edge_lengths.sum())
+
+    def _calculate_unique_edge_equivalent_resistance(self, line_table: pd.DataFrame) -> float:
+        """Return aggregate equivalent resistance after collapsing parallel rows.
+
+        Synthetic parallel cables are represented by one line row with
+        ``parallel > 1``. Real radialized grids may contain several physical line
+        rows between the same two buses. For comparison metrics, both cases are
+        reduced to one equivalent bus-to-bus edge.
+        """
+        if line_table.empty:
+            return 0.0
+
+        df = self._add_undirected_bus_pair(line_table)
+        if df.empty:
+            return 0.0
+
         parallel = (
-            line_table["parallel"].fillna(1.0).replace(0, 1.0)
-            if "parallel" in line_table.columns
+            pd.to_numeric(df["parallel"], errors="coerce").fillna(1.0).replace(0, 1.0)
+            if "parallel" in df.columns
             else 1.0
         )
-        resistance = (
-            line_table["length_km"].fillna(0.0)
-            * line_table["r_ohm_per_km"].fillna(0.0)
-            / parallel
-        )
-        return float(resistance.sum())
+        length_km = pd.to_numeric(df["length_km"], errors="coerce").abs().fillna(0.0)
+        resistance_per_km = pd.to_numeric(df["r_ohm_per_km"], errors="coerce").fillna(0.0)
+        row_resistance = length_km * resistance_per_km / parallel
+        conductance = pd.Series(0.0, index=df.index)
+        positive = row_resistance > 0
+        conductance.loc[positive] = 1.0 / row_resistance.loc[positive]
+        conductance.loc[(row_resistance == 0) & (length_km == 0)] = np.inf
+        df["_conductance"] = conductance
+
+        edge_conductance = df.groupby(["_bus_a", "_bus_b"], observed=True)["_conductance"].sum()
+        edge_resistance = pd.Series(0.0, index=edge_conductance.index)
+        finite = np.isfinite(edge_conductance) & (edge_conductance > 0)
+        edge_resistance.loc[finite] = 1.0 / edge_conductance.loc[finite]
+        return float(edge_resistance.sum())
 
     def calculate_average_house_distance(self, pandapower_net: pp.pandapowerNet) -> float:
         """Calculate a spatial neighborhood distance proxy for consumer locations.
