@@ -82,7 +82,7 @@ MIN_SHARED_PREFIX_LENGTH_M: 100
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
-AGGREGATE_NEARBY_CONNECTION_POINTS: True
+AGGREGATE_NEARBY_CONNECTION_POINTS: False
 CONNECTION_POINT_AGGREGATION_RADIUS_M: 15
 CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 4
 
