@@ -17,11 +17,14 @@ from pylovo.grid_generator import GridGenerator
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-def prepare_data_for_clustering(additional_filtering: bool = False) -> None:
+def prepare_data_for_clustering(
+    additional_filtering: bool = False,
+    sample_from_postcode_result_only: bool = False,
+) -> None:
     # %% 1. create a sample set of PLZ for your classification
     # This takes a few seconds
 
-    create_sample_set()
+    create_sample_set(restrict_to_postcode_result=sample_from_postcode_result_only)
     samples = get_sample_set()
 
     # %% 2. import the buildings for the grid generation from the building database

@@ -15,8 +15,8 @@ from pylovo.database.config_table_structure import CREATE_QUERIES, INFDB_OPTIONA
 
 import pylovo.database.database_client as dbc
 from pylovo.infdb.infdb_client import InfdbClient
-from pylovo.data_import.import_transformers import process_trafos, get_trafos_processed_3035_geojson_path, \
-    fetch_trafos, RELATION_ID, EPSG, get_trafos_processed_geojson_path
+from pylovo.data_import.import_transformers import process_trafos, get_trafos_processed_target_geojson_path, \
+    fetch_trafos, RELATION_ID, EPSG
 from pylovo.utils import get_user_data_dir
 
 
@@ -40,7 +40,7 @@ class DatabaseConstructor:
         """
         try:
             with self.dbc.conn.cursor() as cur:
-                cur.execute(f"CREATE SCHEMA IF NOT EXISTS {TARGET_SCHEMA}")
+                cur.execute(f"CREATE SCHEMA IF NOT EXISTS pylovo")
                 self.dbc.conn.commit()
         except (Exception, psy.DatabaseError) as error:
             print(f"Error creating schema: {error}")
@@ -50,7 +50,7 @@ class DatabaseConstructor:
         with self.dbc.conn.cursor() as cur:
             cur.execute(
                 """SELECT table_name FROM information_schema.tables
-                   WHERE table_schema = %s""", (TARGET_SCHEMA,)
+                   WHERE table_schema = %s""", ("pylovo",)
             )
             table_name_list = [tup[0] for tup in cur.fetchall()]
 
@@ -129,15 +129,15 @@ class DatabaseConstructor:
                     f"PG:dbname={DBNAME} user={DBUSER} password={PASSWORD} host={HOST} port={PORT}",
                     file_path,
                     "-nln",
-                    f"{TARGET_SCHEMA}.{table_name}",  # explicitly tells ogr2ogr where to append (for the case of table already existing)
+                    f"pylovo.{table_name}",  # explicitly tells ogr2ogr where to append (for the case of table already existing)
                     "-nlt",
                     # "MULTIPOLYGON",
                     "PROMOTE_TO_MULTI",
                     "-t_srs",
-                    "EPSG:3035",
+                    f"EPSG:{TARGET_EPSG}",
                     "-lco",
                     "geometry_name=geom",
-                    "-lco", f"SCHEMA={TARGET_SCHEMA}", # ensures creation happens in correct schema
+                    "-lco", f"SCHEMA=pylovo", # ensures creation happens in correct schema
             ]
             if skip_failures:
                 command.append("-skipfailures")
@@ -161,7 +161,7 @@ class DatabaseConstructor:
 
     def transformers_to_db(self, clear_existing: bool = True):
         """Call the overpass api for transformer data and populate the transformers table.
-        Delete data/transformer_data/processed_trafos/*_trafos_processed.geojson to
+        Delete data/transformer_data/processed_trafos/*_trafos_processed_<epsg>.geojson to
         fetch fresh data from OSM.
 
         If clear_existing=True (default), all existing Transformer datasets are deleted before import
@@ -170,39 +170,21 @@ class DatabaseConstructor:
         # clear existing data to avoid duplicate primary keys
         if clear_existing and self.table_exists(table_name="transformers"):
             with self.dbc.conn.cursor() as cur:
-                cur.execute("DELETE FROM transformers;")
+                cur.execute(f"DELETE FROM pylovo.transformers;")
             self.dbc.conn.commit()
 
-        trafos_processed_geojson_path = get_trafos_processed_geojson_path(RELATION_ID)
-        trafos_processed_3035_geojson_path = get_trafos_processed_3035_geojson_path(RELATION_ID)
+        trafos_processed_target_geojson_path = get_trafos_processed_target_geojson_path(RELATION_ID)
 
-        update_trafos = not os.path.isfile(trafos_processed_geojson_path)
+        update_trafos = not os.path.isfile(trafos_processed_target_geojson_path)
 
         if update_trafos:
-            print(f"{trafos_processed_geojson_path} does not exist -> fetch transformer data from API and process it")
+            print(f"{trafos_processed_target_geojson_path} does not exist -> fetch transformer data from API and process it")
             fetch_trafos(RELATION_ID)
             process_trafos(RELATION_ID)
 
-        in_file = trafos_processed_geojson_path
-        out_file = trafos_processed_3035_geojson_path
-
-        if update_trafos or not os.path.isfile(out_file):
-            # Convert the GeoJSON file to EPSG:3035 and write to a new file
-            subprocess.run(
-                [
-                    "ogr2ogr",
-                    "-f", "GeoJSON",
-                    "-s_srs", f"EPSG:{str(EPSG)}",
-                    "-t_srs", "EPSG:3035",
-                    out_file,  # output
-                    in_file  # input
-                ],
-                shell=False
-            )
-
         trafo_dict = [
             {
-                "path": out_file,
+                "path": trafos_processed_target_geojson_path,
                 "table_name": "transformers"
             }
         ]
@@ -257,9 +239,9 @@ class DatabaseConstructor:
                 self.dbc.conn.commit()
 
         # Insert rows into pylovo postcode table using executemany
-        insert_query = """
+        insert_query = f"""
             INSERT INTO pylovo.postcode (plz, note, qkm, population, geom)
-            VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, 3035))
+            VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}))
         """
         with self.dbc.conn.cursor() as cur:
             cur.executemany(insert_query, rows)
@@ -353,13 +335,13 @@ class DatabaseConstructor:
         cur = self.dbc.conn.cursor()
 
         # Transform to ways table
-        query = """INSERT INTO ways
+        query = f"""INSERT INTO pylovo.ways
             SELECT  clazz,
                     source,
                     target,
                     cost,
                     reverse_cost,
-                    ST_Transform(geom_way, 3035) as geom,
+                ST_Transform(geom_way, {TARGET_EPSG}) as geom,
                     id AS way_id
             FROM public_2po_4pgr"""
         cur.execute(query)
@@ -389,7 +371,7 @@ class DatabaseConstructor:
         cur = self.dbc.conn.cursor()
 
         # Print once at the beginning
-        print(f"Loading ways preprocessing functions into schema '{TARGET_SCHEMA}'.")
+        print(f"Loading ways preprocessing functions into schema 'pylovo'.")
 
         # Get the path to the ways_preprocessing_functions directory within the package
         package_dir = Path(__file__).parent.parent  # Go up to pylovo package directory
@@ -425,5 +407,5 @@ class DatabaseConstructor:
         Drops all tables in the database
         """
         cur = self.dbc.conn.cursor()
-        cur.execute(f"DROP SCHEMA {TARGET_SCHEMA} CASCADE")
+        cur.execute(f"DROP SCHEMA pylovo CASCADE")
         self.dbc.conn.commit()

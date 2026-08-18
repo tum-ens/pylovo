@@ -21,7 +21,7 @@ def main():
     # sgc.drop_all_tables() #uncomment for debugging
 
     ### Create schema if it doesn't exist
-    logger.info(f"### CREATING SCHEMA {TARGET_SCHEMA} IF NOT EXISTS ###")
+    logger.info("### CREATING SCHEMA pylovo IF NOT EXISTS ###")
     sgc.create_schema()
 
     ### Create database with predefined table structure

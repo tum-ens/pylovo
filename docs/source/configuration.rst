@@ -43,7 +43,6 @@ For the main Pylovo database:
     HOST="localhost"
     PORT="5432"
     PASSWORD="yourpassword"
-    TARGET_SCHEMA="pylovo"
 
 Optional Environment Variables
 -----------------------------
@@ -85,7 +84,6 @@ Main configuration file for grid generation with the following sections:
 **Regional Configuration:**
 - ``PLZ``: Postal code(s) for grid generation
 - ``AGS``: Official municipality code(s)
-- ``TESTING``: Enable testing mode with reduced data
 
 **Execution Configuration:**
 - ``PARALLEL``: Enable parallel processing

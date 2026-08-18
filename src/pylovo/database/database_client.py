@@ -19,7 +19,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
 
     def __init__(self, dbname=DBNAME, user=DBUSER, pw=PASSWORD, host=HOST, port=PORT, **kwargs):
         self.logger = utils.create_logger(
-            "DatabaseClient", log_file=kwargs.get("log_file", "../log.txt"), log_level=LOG_LEVEL
+            "DatabaseClient", log_file=kwargs.get("log_file", "log/log.txt"), log_level=LOG_LEVEL
         )
         self._connect_kwargs = {
             "database": dbname,
@@ -27,7 +27,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
             "password": pw,
             "host": host,
             "port": port,
-            "options": f"-c search_path={TARGET_SCHEMA},public",
+            "options": "-c search_path=pylovo,public",
         }
         self.db_path = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{dbname}"
         try:
@@ -140,7 +140,8 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
             True if table is empty or doesn't exist, False if it has data
         """
         try:
-            query = f"SELECT COUNT(*) FROM {table_name};"
+            qualified_table_name = table_name if "." in table_name else f"pylovo.{table_name}"
+            query = f"SELECT COUNT(*) FROM {qualified_table_name};"
             self.cur.execute(query)
             count = self.cur.fetchone()[0]
             return count == 0
@@ -158,35 +159,40 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         ways_table = f"ways_tem_{plz}"
 
         # finding duplicates that violate the buildings_result_pkey constraint
-        # the key of building result is (version_id, osm_id, plz)
+        # the key of building result is (version_id, objectid, plz)
         query = f"""
                 DELETE
-                FROM {buildings_table} a USING (SELECT MIN(ctid) as ctid, osm_id, plz
+                FROM {buildings_table} a USING (SELECT MIN(ctid) as ctid, objectid, plz
                                                 FROM {buildings_table}
-                                                GROUP BY (osm_id, plz)
+                                                GROUP BY (objectid, plz)
                                                 HAVING COUNT(*) > 1) b
-                WHERE a.osm_id = b.osm_id
+                WHERE a.objectid = b.objectid
                   AND a.plz = b.plz
                   AND a.ctid <> b.ctid;"""
         self.cur.execute(query)
 
         # Save building results
         query = f"""
-                INSERT INTO buildings_result
-                (version_id, osm_id, grid_result_id, area, type, geom, households_per_building, center,
-                peak_load_in_kw, vertice_id, floors, construction_year, connection_point)
-                SELECT '{VERSION_ID}' as version_id, osm_id, gr.grid_result_id, area, type, geom, households_per_building,
-                center, peak_load_in_kw, vertice_id, floors, bt.construction_year, bt.connection_point
-                FROM {buildings_table} bt
-                JOIN grid_result gr
+            INSERT INTO pylovo.buildings_result
+                (version_id, objectid, grid_result_id, id, feature_id, height, floor_area, floor_number,
+                 building_use, building_use_id, building_type, type, occupants, households, construction_year,
+                 postcode, address_street_id, street, house_number, geom, centroid, gemeindeschluessel,
+                 changelog_id, assigned_way_id, peak_load_in_kw, vertice_id, connection_point, agg_connection_point)
+                SELECT '{VERSION_ID}' as version_id, objectid, gr.grid_result_id, id, feature_id, height,
+                       floor_area, floor_number, building_use, building_use_id, building_type, type, occupants,
+                       households, bt.construction_year, postcode, address_street_id, street, house_number,
+                       geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, peak_load_in_kw,
+                       vertice_id, bt.connection_point, bt.agg_connection_point
+            FROM pylovo.{buildings_table} bt
+            JOIN pylovo.grid_result gr
                 ON bt.plz = gr.plz AND bt.kcid = gr.kcid AND bt.bcid = gr.bcid and gr.version_id = '{VERSION_ID}'
                 WHERE peak_load_in_kw != 0 AND peak_load_in_kw != -1;"""
         self.cur.execute(query)
 
         # Save ways results
-        query = f"""INSERT INTO ways_result
+        query = f"""INSERT INTO pylovo.ways_result
                         SELECT '{VERSION_ID}' as version_id, clazz, source, target, cost, reverse_cost, geom, way_id,
-                        %(p)s as plz FROM {ways_table};"""
+                %(p)s as plz FROM pylovo.{ways_table};"""
 
         self.cur.execute(query, vars={"p": plz})
 
@@ -196,8 +202,14 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         :param plz: Postal code
         :param version_id: Version ID
         """
-        query = """DELETE
-                   FROM postcode_result
+        delete_ways_query = """DELETE
+               FROM pylovo.ways_result
+                   WHERE version_id = %(v)s
+                     AND plz = %(p)s;"""
+        self.cur.execute(delete_ways_query, {"v": version_id, "p": int(plz)})
+
+        query = f"""DELETE
+               FROM pylovo.postcode_result
                    WHERE version_id = %(v)s
                      AND postcode_result_plz = %(p)s;"""
         self.cur.execute(query, {"v": version_id, "p": int(plz)})
@@ -205,13 +217,33 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         self.conn.commit()
         self.logger.info(f"All data for PLZ {plz} and version {version_id} deleted")
 
-    def delete_version_from_all_tables(self, version_id: str) -> None:
-        """Delete all entries of the given version ID from all tables."""
-        query = "DELETE FROM version WHERE version_id = %(v)s;"
-        self.cur.execute(query, {"v": version_id})
+    def delete_versions_from_all_tables(self, version_ids: list[str]) -> int:
+        """Delete all entries of the given version IDs from all tables."""
+        if not version_ids:
+            raise ValueError("At least one version ID must be provided.")
+
+        self.cur.execute(
+            "SELECT version_id FROM pylovo.version WHERE version_id = ANY(%(versions)s);",
+            {"versions": version_ids},
+        )
+        existing_versions = {row[0] for row in self.cur.fetchall()}
+        missing_versions = [version_id for version_id in version_ids if version_id not in existing_versions]
+        if missing_versions:
+            missing = ", ".join(missing_versions)
+            raise ValueError(f"Version(s) not found in database: {missing}")
+
+        query = "DELETE FROM pylovo.version WHERE version_id = ANY(%(versions)s);"
+        self.cur.execute(query, {"versions": version_ids})
+        deleted_count = self.cur.rowcount
         self.refresh_materialized_views()
         self.conn.commit()
-        self.logger.info(f"Version {version_id} deleted from all tables")
+        versions = ", ".join(version_ids)
+        self.logger.info(f"Version(s) {versions} deleted from all tables")
+        return deleted_count
+
+    def delete_version_from_all_tables(self, version_id: str) -> int:
+        """Delete all entries of the given version ID from all tables."""
+        return self.delete_versions_from_all_tables([version_id])
 
     def delete_classification_version_from_related_tables(self, classification_id: str) -> None:
         """
@@ -220,7 +252,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
 
         :param classification_id: ID of the classification version to delete
         """
-        query = "DELETE FROM classification_version WHERE classification_id = %(cid)s;"
+        query = "DELETE FROM pylovo.classification_version WHERE classification_id = %(cid)s;"
         self.cur.execute(query, {"cid": classification_id})
         self.conn.commit()
 
@@ -235,7 +267,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         """
         query = """
                 DELETE
-                FROM sample_set
+            FROM pylovo.sample_set
                 WHERE classification_id = %(cid)s
                   AND plz = %(p)s; \
                 """
@@ -245,7 +277,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
 
     def delete_transformers(self) -> None:
         """all transformers are deleted from table transformers in database"""
-        delete_query = "TRUNCATE TABLE transformers;"
+        delete_query = "TRUNCATE TABLE pylovo.transformers;"
         self.cur.execute(delete_query)
         self.conn.commit()
         self.logger.info('Transformers deleted.')
@@ -256,7 +288,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         :param ags:  ags to be added
         :rtype ags: numpy integer 64
          """
-        query = """INSERT INTO ags_log (ags)
+        query = f"""INSERT INTO pylovo.ags_log (ags)
                    VALUES (%(a)s); """
         self.cur.execute(query, {"a": int(ags), })
         self.conn.commit()

@@ -73,7 +73,6 @@ Create your database
     HOST = "localhost"
     PORT = "5432"
     PASSWORD = "yourpassword"
-    TARGET_SCHEMA = "pylovo" # optional, default is "public"
 
 
 Input data
@@ -112,7 +111,6 @@ well: add the InfDB configuration to your ``.env`` file below the pylovo configu
     HOST = "localhost"
     PORT = "5432"
     PASSWORD = "yourpassword"
-    TARGET_SCHEMA = "pylovo" # optional, default is "public"
 
     # InfDB Database (Input Data)
     INFDB_DBNAME="infdb"               # replace
@@ -124,7 +122,7 @@ well: add the InfDB configuration to your ``.env`` file below the pylovo configu
 
 .. note::
     If you want to keept it simple, you can also add the pylovo database as schema to the InfDB database by setting the same connection parameters and a
-    ``TARGET_SCHEMA`` such as ``pylovo`` in the ``.env`` file.
+    fixed Pylovo schema (``pylovo``).
 
 Load raw data to the database
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

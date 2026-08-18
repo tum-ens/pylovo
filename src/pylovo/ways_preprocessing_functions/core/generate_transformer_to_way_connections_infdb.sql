@@ -29,31 +29,31 @@ BEGIN
     DROP TABLE IF EXISTS temp_transformer_connection_candidates_infdb;
     CREATE TEMP TABLE temp_transformer_connection_candidates_infdb AS
     WITH transformers AS (
-        SELECT osm_id, center
+        SELECT objectid, centroid
         FROM buildings_tem
         WHERE type = 'Transformer'
     ),
     closest_way AS (
         SELECT
-            t.osm_id,
-            t.center,
+            t.objectid,
+            t.centroid,
             w.way_id AS old_way_id,
             w.geom AS old_geom,
-            ST_ShortestLine(t.center, w.geom) AS new_geom
+            ST_ShortestLine(t.centroid, w.geom) AS new_geom
         FROM transformers t
         JOIN LATERAL (
             SELECT way_id, geom
             FROM ways_tem w
             WHERE w.clazz != 110
-              AND ST_DWithin(t.center, w.geom, 2000)
-              AND ST_Distance(t.center, w.geom) > 0.1
-            ORDER BY t.center <-> w.geom
+              AND ST_DWithin(t.centroid, w.geom, 2000)
+              AND ST_Distance(t.centroid, w.geom) > 0.1
+            ORDER BY t.centroid <-> w.geom
             LIMIT 1
         ) w ON TRUE
     )
     SELECT
-        c.osm_id,
-        c.center,
+        c.objectid,
+        c.centroid,
         c.old_way_id,
         c.old_geom,
         c.new_geom,
@@ -69,16 +69,16 @@ BEGIN
     FOR r IN SELECT * FROM temp_transformer_connection_candidates_infdb
     LOOP
         IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
-            final_geom := ST_MakeLine(r.center, ST_StartPoint(r.old_geom));
+            final_geom := ST_MakeLine(r.centroid, ST_StartPoint(r.old_geom));
             PERFORM insert_way_segment(110, final_geom);
             DELETE FROM temp_transformer_connection_candidates_infdb
-            WHERE osm_id = r.osm_id;
+            WHERE objectid = r.objectid;
 
         ELSIF ST_Distance(ST_EndPoint(r.old_geom), r.connection_point) < 0.1 THEN
-            final_geom := ST_MakeLine(r.center, ST_EndPoint(r.old_geom));
+            final_geom := ST_MakeLine(r.centroid, ST_EndPoint(r.old_geom));
             PERFORM insert_way_segment(110, final_geom);
             DELETE FROM temp_transformer_connection_candidates_infdb
-            WHERE osm_id = r.osm_id;
+            WHERE objectid = r.objectid;
 
         ELSE
             final_geom := r.new_geom;

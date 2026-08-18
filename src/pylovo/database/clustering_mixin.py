@@ -1,3 +1,4 @@
+import heapq
 import math
 import warnings
 import time
@@ -38,6 +39,76 @@ class ClusteringMixin(BaseMixin, ABC):
         best_max_distance = float(cluster_dist_mat.max(axis=1).min())
         return best_max_distance <= max_distance
 
+    @staticmethod
+    def _cluster_adjacency_from_street_edges(
+        cluster_dict: dict,
+        street_edges: list[tuple[int, int, float]],
+    ) -> set[frozenset[int]]:
+        """Return cluster pairs whose graph-Voronoi territories share an edge."""
+        cluster_ids = list(cluster_dict)
+        cluster_rank = {cluster_id: rank for rank, cluster_id in enumerate(cluster_ids)}
+        graph: dict[int, list[tuple[int, float]]] = {}
+        normalized_edges = []
+        for source, target, cost in street_edges:
+            source = int(source)
+            target = int(target)
+            weight = float(cost)
+            graph.setdefault(source, []).append((target, weight))
+            graph.setdefault(target, []).append((source, weight))
+            normalized_edges.append((source, target))
+
+        distances: dict[int, float] = {}
+        owners: dict[int, int] = {}
+        queue = []
+        for cluster_id, (vertices, _transformer_size) in cluster_dict.items():
+            rank = cluster_rank[cluster_id]
+            for vertex in vertices:
+                vertex = int(vertex)
+                current_owner = owners.get(vertex)
+                if current_owner is None or rank < cluster_rank[current_owner]:
+                    distances[vertex] = 0.0
+                    owners[vertex] = cluster_id
+                    heapq.heappush(queue, (0.0, rank, vertex, cluster_id))
+
+        while queue:
+            distance, rank, node, cluster_id = heapq.heappop(queue)
+            if distance != distances.get(node) or cluster_id != owners.get(node):
+                continue
+            for neighbor, weight in graph.get(node, []):
+                candidate_distance = distance + weight
+                known_distance = distances.get(neighbor)
+                known_owner = owners.get(neighbor)
+                if (
+                    known_distance is None
+                    or candidate_distance < known_distance
+                    or (
+                        candidate_distance == known_distance
+                        and rank < cluster_rank[known_owner]
+                    )
+                ):
+                    distances[neighbor] = candidate_distance
+                    owners[neighbor] = cluster_id
+                    heapq.heappush(queue, (candidate_distance, rank, neighbor, cluster_id))
+
+        neighboring_clusters = set()
+        for source, target in normalized_edges:
+            source_owner = owners.get(source)
+            target_owner = owners.get(target)
+            if source_owner is not None and target_owner is not None and source_owner != target_owner:
+                neighboring_clusters.add(frozenset((source_owner, target_owner)))
+        return neighboring_clusters
+
+    def get_cluster_adjacency_from_street_graph(self, cluster_dict: dict) -> set[frozenset[int]]:
+        """Build graph-Voronoi cluster adjacency in the components containing the clusters."""
+        self.cur.execute(
+            """SELECT source, target, cost
+               FROM ways_tem
+               WHERE source IS NOT NULL
+                 AND target IS NOT NULL
+                 AND cost IS NOT NULL;"""
+        )
+        return self._cluster_adjacency_from_street_edges(cluster_dict, self.cur.fetchall())
+
     def get_connected_component(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Reads from ways_tem
@@ -76,7 +147,8 @@ class ClusteringMixin(BaseMixin, ABC):
         query = """SELECT COUNT(*)
                    FROM buildings_tem
                    WHERE vertice_id IN %(v)s
-                     AND type != 'Transformer';"""
+                     AND type != 'Transformer'
+                     AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
         count = self.cur.fetchone()[0]
 
@@ -103,9 +175,10 @@ class ClusteringMixin(BaseMixin, ABC):
         :return: (selected_vertices, coordinates) - vertice IDs and coordinates of the buildings within the connected component as tuple of two np.arrays
         """
         query = """
-                SELECT vertice_id, ST_AsText(center) as wkt 
+                SELECT vertice_id, ST_AsText(centroid) as wkt 
                 FROM buildings_tem
                 WHERE vertice_id IN %(v)s
+                  AND peak_load_in_kw != 0
                 """
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
         data = self.cur.fetchall()
@@ -125,7 +198,8 @@ class ClusteringMixin(BaseMixin, ABC):
         query = """
                 UPDATE buildings_tem
                 SET kcid = %(k)s
-                WHERE vertice_id IN %(v)s;
+                WHERE vertice_id IN %(v)s
+                  AND peak_load_in_kw != 0;
                 """
         for kcid in np.unique(kcids):
             self.cur.execute(query, {"k": int(kcid), "v": tuple(map(int, vertices[kcids == kcid]))})
@@ -144,7 +218,8 @@ class ClusteringMixin(BaseMixin, ABC):
                                 ELSE m.max_k + 1
                     END)
                 FROM maxk AS m
-                WHERE vertice_id IN %(v)s;"""
+                WHERE vertice_id IN %(v)s
+                  AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
     @staticmethod
@@ -159,11 +234,11 @@ class ClusteringMixin(BaseMixin, ABC):
     def get_kcid_distance_matrix_stats(self, kcid: int) -> dict[str, int]:
         """Return pre-flight sizing stats for the KCID distance matrix query."""
         query = """SELECT COUNT(*) AS building_count,
-                          COUNT(DISTINCT connection_point) AS connection_point_count
+                          COUNT(DISTINCT COALESCE(agg_connection_point, connection_point)) AS connection_point_count
                    FROM buildings_tem
                    WHERE kcid = %(k)s
                      AND bcid ISNULL
-                     AND connection_point IS NOT NULL
+                     AND COALESCE(agg_connection_point, connection_point) IS NOT NULL
                      AND type != 'Transformer';"""
         self.cur.execute(query, {"k": kcid})
         building_count, connection_point_count = self.cur.fetchone()
@@ -198,12 +273,13 @@ class ClusteringMixin(BaseMixin, ABC):
         costmatrix_query = """SELECT * \
                               FROM pgr_dijkstraCostMatrix( \
                                       'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem', \
-                                      (SELECT array_agg(DISTINCT b.connection_point) \
+                                      (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point)) \
                                        FROM (SELECT * \
                                              FROM buildings_tem \
                                              WHERE kcid = %(k)s \
                                                AND bcid ISNULL \
-                                             ORDER BY connection_point) AS b), \
+                                               AND peak_load_in_kw != 0 \
+                                             ORDER BY COALESCE(agg_connection_point, connection_point)) AS b), \
                                       false);"""
         params = {"k": kcid}
         localid2vid, dist_mat, _ = self.calculate_cost_arr_dist_matrix(costmatrix_query, params)
@@ -240,12 +316,32 @@ class ClusteringMixin(BaseMixin, ABC):
                    FROM buildings_tem
                    WHERE kcid = %(k)s
                      AND bcid = %(b)s
-                   GROUP BY connection_point
-                   ORDER BY connection_point;"""
+                     AND peak_load_in_kw != 0
+                   GROUP BY COALESCE(agg_connection_point, connection_point)
+                   ORDER BY COALESCE(agg_connection_point, connection_point);"""
         self.cur.execute(query, {"k": kcid, "b": bcid})
         load = np.asarray([i[0] for i in self.cur.fetchall()])
 
         return load
+
+    def generate_load_vector_for_connection_points(
+        self, kcid: int, bcid: int, connection_points: list[int]
+    ) -> tuple[np.ndarray, list[int]]:
+        """Return loads aligned to a given connection-point order."""
+        query = """SELECT COALESCE(agg_connection_point, connection_point)::int AS connection_point,
+                          SUM(peak_load_in_kw)::float AS load_kw
+                   FROM buildings_tem
+                   WHERE kcid = %(k)s
+                     AND bcid = %(b)s
+                     AND peak_load_in_kw != 0
+                   GROUP BY COALESCE(agg_connection_point, connection_point);"""
+        self.cur.execute(query, {"k": kcid, "b": bcid})
+        load_by_point = {int(point): float(load) for point, load in self.cur.fetchall()}
+        ordered_points = [int(point) for point in connection_points]
+        loads = np.asarray([load_by_point.get(point, 0.0) for point in ordered_points])
+        missing_points = sorted(set(load_by_point).difference(ordered_points))
+
+        return loads, missing_points
 
     def load_constrained_hierarchical_clustering(self, Z: np.ndarray, cluster_amount: int, localid2vid: dict, buildings: pd.DataFrame,
             consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray, double_trans: np.ndarray,
@@ -330,7 +426,7 @@ class ClusteringMixin(BaseMixin, ABC):
         query = """SELECT kcid
                    FROM buildings_tem
                    WHERE kcid NOT IN (SELECT DISTINCT kcid
-                                      FROM grid_result
+                                      FROM pylovo.grid_result
                                       WHERE version_id = %(v)s
                                         AND grid_result.plz = %(plz)s)
                      AND kcid IS NOT NULL
@@ -357,7 +453,7 @@ class ClusteringMixin(BaseMixin, ABC):
     def clear_grid_result_in_kmean_cluster(self, plz: int, kcid: int):
         # Remove old clustering at same postcode cluster
         clear_query = """DELETE
-                         FROM grid_result
+                         FROM pylovo.grid_result
                          WHERE version_id = %(v)s
                            AND plz = %(pc)s
                            AND kcid = %(kc)s
@@ -383,24 +479,26 @@ class ClusteringMixin(BaseMixin, ABC):
                             WHERE plz = %(pc)s
                               AND kcid = %(kc)s
                               AND bcid ISNULL
-                              AND connection_point IN %(vid)s
-                              AND type != 'Transformer'; """
+                              AND COALESCE(agg_connection_point, connection_point) IN %(vid)s
+                              AND type != 'Transformer'
+                              AND peak_load_in_kw != 0; """
 
         params = {"v": VERSION_ID, "pc": plz, "bc": bcid, "kc": kcid, "vid": tuple(map(int, vertices)), }
         self.cur.execute(building_query, params)
 
         # Insert new clustering
-        cluster_query = """INSERT INTO grid_result (version_id, plz, kcid, bcid, transformer_rated_power)
+        cluster_query = """INSERT INTO pylovo.grid_result (version_id, plz, kcid, bcid, transformer_rated_power)
                            VALUES (%(v)s, %(pc)s, %(kc)s, %(bc)s, %(s)s); """
 
         params = {"v": VERSION_ID, "pc": plz, "bc": bcid, "kc": kcid, "s": int(transformer_rated_power)}
         self.cur.execute(cluster_query, params)
 
     def get_consumer_to_transformer_df(self, kcid: int, transformer_list: list) -> pd.DataFrame:
-        consumer_query = """SELECT DISTINCT connection_point
+        consumer_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                             FROM buildings_tem
                             WHERE kcid = %(k)s
-                              AND type != 'Transformer';"""
+                              AND type != 'Transformer'
+                              AND peak_load_in_kw != 0;"""
         self.cur.execute(consumer_query, {"k": kcid})
         consumer_list = [t[0] for t in self.cur.fetchall()]
 
@@ -419,6 +517,7 @@ class ClusteringMixin(BaseMixin, ABC):
                    FROM buildings_tem
                    WHERE kcid = %(k)s
                      AND type != 'Transformer'
+                     AND peak_load_in_kw != 0
                      AND bcid ISNULL;"""
         self.cur.execute(query, {"k": kcid})
         count = self.cur.fetchone()[0]
@@ -441,7 +540,7 @@ class ClusteringMixin(BaseMixin, ABC):
         Returns: A list of greenfield building clusters for a given plz
         """
         query = """SELECT DISTINCT bcid
-                   FROM grid_result
+                   FROM pylovo.grid_result
                    WHERE version_id = %(v)s
                      AND kcid = %(kc)s
                      AND plz = %(pc)s
@@ -460,9 +559,10 @@ class ClusteringMixin(BaseMixin, ABC):
         """
         buildings_query = """SELECT *
                              FROM buildings_tem
-                             WHERE connection_point IS NOT NULL
+                             WHERE COALESCE(agg_connection_point, connection_point) IS NOT NULL
                                AND kcid = %(k)s
-                               AND bcid ISNULL;"""
+                               AND bcid ISNULL
+                               AND peak_load_in_kw != 0;"""
         params = {"k": kcid}
 
         buildings_df = pd.read_sql_query(buildings_query, con=self.conn, params=params)
@@ -478,6 +578,7 @@ class ClusteringMixin(BaseMixin, ABC):
         buildings_query = """SELECT *
                              FROM buildings_tem
                              WHERE type != 'Transformer'
+                               AND peak_load_in_kw != 0
                                AND plz = %(p)s
                                AND bcid = %(b)s
                                AND kcid = %(k)s;"""
@@ -521,11 +622,11 @@ class ClusteringMixin(BaseMixin, ABC):
         
         # Check if there's a transformer with a specific capacity in this area
         # Use a more robust approach to handle GEOS topology issues
-        transformer_query = """
+        transformer_query = f"""
             SELECT transformer_rated_power
-            FROM transformers t
+            FROM pylovo.transformers t
             WHERE t.transformer_rated_power IS NOT NULL
-            AND ST_Intersects(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, 3035)), 0)))
+            AND ST_Intersects(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)))
             LIMIT 1
         """
         
@@ -538,11 +639,11 @@ class ClusteringMixin(BaseMixin, ABC):
         except Exception as e:
             # If ST_Intersects fails due to topology issues, try with a small buffer
             try:
-                fallback_query = """
+                fallback_query = f"""
                     SELECT transformer_rated_power
-                    FROM transformers t
+                    FROM pylovo.transformers t
                     WHERE t.transformer_rated_power IS NOT NULL
-                    AND ST_DWithin(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, 3035)), 0)), 1.0)
+                    AND ST_DWithin(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)), 1.0)
                     LIMIT 1
                 """
                 self.cur.execute(fallback_query, {"cluster_geom_wkt": cluster_geom_wkt})
@@ -588,7 +689,7 @@ class ClusteringMixin(BaseMixin, ABC):
         if existing_capacity is not None:
             # Use the existing transformer capacity
             existing_capacity = int(existing_capacity)
-            update_query = """UPDATE grid_result
+            update_query = """UPDATE pylovo.grid_result
                               SET transformer_rated_power = %(n)s
                               WHERE version_id = %(v)s
                                 AND plz = %(p)s
@@ -604,7 +705,7 @@ class ClusteringMixin(BaseMixin, ABC):
 
         if note == 0:
             old_query = """SELECT transformer_rated_power
-                           FROM grid_result
+                           FROM pylovo.grid_result
                            WHERE version_id = %(v)s
                              AND plz = %(p)s
                              AND kcid = %(k)s
@@ -615,7 +716,7 @@ class ClusteringMixin(BaseMixin, ABC):
             new_transformer_rated_power = int(
                 transformer_capacities[transformer_capacities > transformer_rated_power][0].item()
             )
-            update_query = """UPDATE grid_result
+            update_query = """UPDATE pylovo.grid_result
                               SET transformer_rated_power = %(n)s
                               WHERE version_id = %(v)s
                                 AND plz = %(p)s
@@ -628,7 +729,7 @@ class ClusteringMixin(BaseMixin, ABC):
             combined = np.concatenate((transformer_capacities, double_trans), axis=None)
             np.sort(combined, axis=None)
             old_query = """SELECT transformer_rated_power
-                           FROM grid_result
+                           FROM pylovo.grid_result
                            WHERE version_id = %(v)s
                              AND plz = %(p)s
                              AND kcid = %(k)s
@@ -638,7 +739,7 @@ class ClusteringMixin(BaseMixin, ABC):
             if transformer_rated_power in combined.tolist():
                 return None
             new_transformer_rated_power = int(np.ceil(transformer_rated_power / 630) * 630)
-            update_query = """UPDATE grid_result
+            update_query = """UPDATE pylovo.grid_result
                               SET transformer_rated_power = %(n)s
                               WHERE version_id = %(v)s
                                 AND plz = %(p)s
@@ -664,7 +765,7 @@ class ClusteringMixin(BaseMixin, ABC):
         allowed_capacities = tuple(TRANSFORMER_MAPPING[settlement_type])
 
         query = """SELECT equipment_data.s_max_kva, cost_eur
-                   FROM equipment_data
+                   FROM pylovo.equipment_data
                    WHERE typ = 'Transformer' \
                      AND s_max_kva IN %(capacities)s
                    ORDER BY s_max_kva;"""
@@ -700,21 +801,45 @@ class ClusteringMixin(BaseMixin, ABC):
 
                 UPDATE buildings_tem
                 SET bcid = %(count)s
-                WHERE connection_point IN %(c)s
-                  AND type != 'Transformer';
+                WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
+                  AND type != 'Transformer'
+                  AND peak_load_in_kw != 0;
 
-                INSERT INTO grid_result (version_id, plz, kcid, bcid, ont_vertice_id, transformer_rated_power)
-                VALUES (%(v)s, %(pc)s, %(k)s, %(count)s, %(t)s, %(l)s);
+WITH inserted_grid AS (
+                    INSERT INTO pylovo.grid_result
+                        (version_id, plz, kcid, bcid, ont_vertice_id, transformer_rated_power)
+                    VALUES (%(v)s, %(pc)s, %(k)s, %(count)s, %(t)s, %(l)s)
+                    RETURNING grid_result_id
+                ), transformer_row AS (
+                    SELECT
+                        b.centroid,
+                        b.objectid,
+                        tr.osm_id,
+                        COALESCE(tr.osm, true) AS osm,
+                        COALESCE(tr.lod2, false) AS lod2,
+                        tr.lod2_objectid
+                    FROM buildings_tem b
+                    LEFT JOIN pylovo.transformers tr
+                        ON tr.osm_id = b.objectid
+                    WHERE b.vertice_id = %(t)s
+                    ORDER BY tr.osm_id IS NULL, b.objectid
+                    LIMIT 1
+                )
+                INSERT INTO pylovo.transformer_positions (
+                    version_id, grid_result_id, geom, osm_id, comment, osm, lod2, lod2_objectid
+                )
+                SELECT
+                    %(v)s,
+                    inserted_grid.grid_result_id,
+                    transformer_row.centroid,
+                    COALESCE(transformer_row.osm_id, transformer_row.objectid),
+                    'Normal',
+                    transformer_row.osm,
+                    transformer_row.lod2,
+                    transformer_row.lod2_objectid
+                FROM inserted_grid
+                CROSS JOIN transformer_row; \
 
-                INSERT INTO transformer_positions (version_id, grid_result_id, geom, osm_id, comment)
-                VALUES (
-                        %(v)s,
-                        (SELECT grid_result_id
-                         FROM grid_result
-                         WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(k)s AND bcid = %(count)s),
-                        (SELECT center FROM buildings_tem WHERE vertice_id = %(t)s),
-                        (SELECT osm_id FROM buildings_tem WHERE vertice_id = %(t)s),
-                        'Normal'); \
                 """
         params = {"v": VERSION_ID, "count": count, "c": tuple(conn_id_list), "t": transformer_id, "k": kcid, "pc": plz,
             "l": transformer_rated_power, }
@@ -722,11 +847,12 @@ class ClusteringMixin(BaseMixin, ABC):
 
     def calculate_sim_load(self, conn_list: Union[tuple, list]) -> Decimal:
         residential = """WITH residential AS
-                                  (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                                  (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                                    FROM buildings_tem AS b
-                                            LEFT JOIN consumer_categories AS c
+                                            LEFT JOIN pylovo.consumer_categories AS c
                                                       ON b.type = c.definition
-                                   WHERE b.connection_point IN %(c)s
+                                   WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
+                                     AND b.peak_load_in_kw != 0
                                      AND b.type IN ('SFH', 'MFH', 'AB', 'TH'))
                          SELECT SUM(load), SUM(count), sim_factor
                          FROM residential
@@ -745,11 +871,12 @@ class ClusteringMixin(BaseMixin, ABC):
             residential_sim_load = 0
         # TODO can the following 4 repetitions simplified with a general function?
         commercial = """WITH commercial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                                   FROM buildings_tem AS b
-                                           LEFT JOIN consumer_categories AS c
+                                           LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
-                                  WHERE b.connection_point IN %(c)s
+                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
+                                    AND b.peak_load_in_kw != 0
                                     AND b.type = 'Commercial')
                         SELECT SUM(load), SUM(count), sim_factor
                         FROM commercial
@@ -767,11 +894,12 @@ class ClusteringMixin(BaseMixin, ABC):
             commercial_sim_load = 0
 
         public = """WITH public AS
-                             (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                             (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                               FROM buildings_tem AS b
-                                       LEFT JOIN consumer_categories AS c
+                                       LEFT JOIN pylovo.consumer_categories AS c
                                                  ON c.definition = b.type
-                              WHERE b.connection_point IN %(c)s
+                              WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
+                                AND b.peak_load_in_kw != 0
                                 AND b.type = 'Public')
                     SELECT SUM(load), SUM(count), sim_factor
                     FROM public
@@ -788,11 +916,12 @@ class ClusteringMixin(BaseMixin, ABC):
             public_sim_load = 0
 
         industrial = """WITH industrial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households_per_building AS count, c.sim_factor
+                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
                                   FROM buildings_tem AS b
-                                           LEFT JOIN consumer_categories AS c
+                                           LEFT JOIN pylovo.consumer_categories AS c
                                                      ON c.definition = b.type
-                                  WHERE b.connection_point IN %(c)s
+                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
+                                    AND b.peak_load_in_kw != 0
                                     AND b.type = 'Industrial')
                         SELECT SUM(load), SUM(count), sim_factor
                         FROM industrial
@@ -820,11 +949,12 @@ class ClusteringMixin(BaseMixin, ABC):
             bcid: building cluster ID
         Returns: A dataframe with all building information
         """
-        count_query = """SELECT DISTINCT connection_point
+        count_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                          FROM buildings_tem
                          WHERE vertice_id IS NOT NULL
                            AND bcid = %(b)s
-                           AND kcid = %(k)s;"""
+                           AND kcid = %(k)s
+                           AND peak_load_in_kw != 0;"""
         params = {"b": bcid, "k": kcid}
         self.cur.execute(count_query, params)
         try:
@@ -837,31 +967,33 @@ class ClusteringMixin(BaseMixin, ABC):
     def upsert_transformer_selection(self, plz: int, kcid: int, bcid: int, connection_id: int):
         """Writes the vertice_id of chosen building as ONT location in the grid_result table"""
 
-        query = """UPDATE grid_result
+        query = """UPDATE pylovo.grid_result
                    SET ont_vertice_id = %(c)s
                    WHERE version_id = %(v)s
                      AND plz = %(p)s
                      AND kcid = %(k)s
                      AND bcid = %(b)s;
 
-        UPDATE grid_result
+        UPDATE pylovo.grid_result
         SET model_status = 1
         WHERE version_id = %(v)s
           AND plz = %(p)s
           AND kcid = %(k)s
           AND bcid = %(b)s;
 
-        INSERT INTO transformer_positions (version_id, grid_result_id, geom, comment)
+        INSERT INTO pylovo.transformer_positions (version_id, grid_result_id, geom, comment, osm, lod2)
         VALUES(
                 %(v)s,
                 (SELECT grid_result_id
-                 FROM grid_result
+                 FROM pylovo.grid_result
                  WHERE version_id = %(v)s \
                    AND plz = %(p)s \
                    AND kcid = %(k)s \
                    AND bcid = %(b)s),
-                (SELECT geom FROM ways_tem_vertices_pgr WHERE id = %(c)s),
-                'on_way');"""
+                                (SELECT geom FROM ways_tem_vertices_pgr WHERE id = %(c)s),
+                                'on_way',
+                                false,
+                                false);"""
         params = {"v": VERSION_ID, "c": connection_id, "b": bcid, "k": kcid, "p": plz}
 
         self.cur.execute(query, params)
@@ -877,12 +1009,13 @@ class ClusteringMixin(BaseMixin, ABC):
         costmatrix_query = """SELECT *
                               FROM pgr_dijkstraCostMatrix(
                                       'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem',
-                                      (SELECT array_agg(DISTINCT b.connection_point)
+                                      (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point))
                                        FROM (SELECT *
                                              FROM buildings_tem
                                              WHERE kcid = %(k)s
                                                AND bcid = %(b)s
-                                             ORDER BY connection_point) AS b),
+                                               AND peak_load_in_kw != 0
+                                             ORDER BY COALESCE(agg_connection_point, connection_point)) AS b),
                                       false);"""
         params = {"b": bcid, "k": kcid}
         localid2vid, dist_mat, _ = self.calculate_cost_arr_dist_matrix(costmatrix_query, params)
@@ -896,7 +1029,7 @@ class ClusteringMixin(BaseMixin, ABC):
         Returns: Settlement type: 1=Rural, 2=Semi-urban, 3=Urban
         """
         settlement_query = """SELECT settlement_type
-                              FROM postcode_result
+                              FROM pylovo.postcode_result
                               WHERE version_id = %(v)s
                                 AND postcode_result_plz = %(p)s
                               LIMIT 1; """

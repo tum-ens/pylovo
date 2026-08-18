@@ -97,6 +97,18 @@ def get_required_env_var(var_name: str, description: str) -> str:
         raise ValueError(f"Missing required environment variable: {var_name}")
     return value
 
+
+def get_int_env_var(var_name: str, default: int) -> int:
+    """Get integer environment variable with a typed fallback."""
+    value = os.getenv(var_name)
+    if value is None or value == "":
+        return default
+
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"Environment variable '{var_name}' must be an integer, got: {value}") from exc
+
 # =============================================================================
 # PROJECT ROOT AND CONFIG LOADING
 # =============================================================================
@@ -121,7 +133,6 @@ DBUSER = get_required_env_var("DBUSER", "Database username")
 HOST = get_required_env_var("HOST", "Database host address")
 PORT = get_required_env_var("PORT", "Database port number")
 PASSWORD = get_required_env_var("PASSWORD", "Database password")
-TARGET_SCHEMA = get_required_env_var("TARGET_SCHEMA", "Target schema name")
 
 # INFDB (external database) connection (recommended)
 USE_INFDB = os.getenv("USE_INFDB", "True").lower() in ("true", "1", "yes")
@@ -143,13 +154,15 @@ else:
 # Validation Data Path
 GRID_DATA_PATH = os.getenv("GRID_DATA_PATH")
 
+# Geospatial CRS configuration
+TARGET_EPSG = get_int_env_var("TARGET_EPSG", 25832)
+
 # =============================================================================
 # EXECUTION CONFIGURATION (from CONFIG_GENERATION)
 # =============================================================================
 ANALYZE_GRIDS = CONFIG_GENERATION["ANALYZE_GRIDS"]
 SAVE_GRID_FOLDER = CONFIG_GENERATION["SAVE_GRID_FOLDER"]
 LOG_LEVEL = CONFIG_GENERATION["LOG_LEVEL"]
-TESTING = CONFIG_GENERATION.get("TESTING", False)
 
 # Parallel execution configuration
 N_JOBS_PERCENT = CONFIG_GENERATION.get("N_JOBS_PERCENT", 50)
@@ -161,6 +174,7 @@ RESULT_DIR = os.path.join(os.getcwd(), CONFIG_GENERATION.get("RESULT_DIR", "resu
 
 # Electrical backend configuration
 ELECTRICAL_BACKEND = CONFIG_GENERATION.get("ELECTRICAL_BACKEND", "pandapower")
+RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION.get("RESIDENTIAL_ONLY_GENERATION", False)
 
 # =============================================================================
 # GRID GENERATION CONFIGURATION (from CONFIG_GENERATION)
@@ -188,8 +202,11 @@ if not CONSUMER_CATEGORIES.empty and "peak_load" in CONSUMER_CATEGORIES.columns:
 
 # Equipment data
 TRANSFORMERS = pd.DataFrame(CONFIG_GENERATION["TRANSFORMERS"])
+TRANSFORMERS["grid_role"] = "transformer"
 FEEDER_CABLES = pd.DataFrame(CONFIG_GENERATION["FEEDER_CABLES"])
+FEEDER_CABLES["grid_role"] = "feeder"
 CONSUMER_CONNECTION_CABLES = pd.DataFrame(CONFIG_GENERATION["CONSUMER_CONNECTION_CABLES"])
+CONSUMER_CONNECTION_CABLES["grid_role"] = "consumer_connection"
 
 # Derived combined equipment table for database storage and shared consumers.
 CONFIG_EQUIPMENT_DATA = pd.concat(
@@ -207,20 +224,15 @@ V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
 # =============================================================================
 # CABLE DIMENSIONING PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
-# Calculate maximum cable current from all configured cable pools (largest available cable)
-# This ensures the current limit is always based on the actual largest configured cable.
-ALL_CABLES = pd.concat([FEEDER_CABLES, CONSUMER_CONNECTION_CABLES], ignore_index=True)
-MAX_CABLE_CURRENT_KA = ALL_CABLES["max_i_a"].max() / 1000  # Convert A to kA
+# Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
+# This is a topology-splitting parameter, not a final cable ampacity limit.
+FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
 
-# Load thresholds for different voltage drop limits
-SMALL_LOAD_THRESHOLD_KW = CONFIG_GENERATION["SMALL_LOAD_THRESHOLD_KW"]
+# Consumer service-drop voltage-drop limit; installer converts percent per km to a total line budget.
+VOLTAGE_DROP_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LOAD_PERCENT_PER_KM"]
 
-# Voltage drop limits for consumer connections (as percentage of nominal voltage per km)
-VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM"]
-VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM"]
-
-# Voltage drop limit for feeder cables (total voltage drop as percentage of nominal voltage)
-VOLTAGE_DROP_DISTRIBUTION_PERCENT = CONFIG_GENERATION["VOLTAGE_DROP_DISTRIBUTION_PERCENT"]
+# Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
+MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
 
 # Consumer connection cables are defined directly by CONSUMER_CONNECTION_CABLES.
 
@@ -243,10 +255,17 @@ TRANSFORMER_MAPPING = CONFIG_GENERATION.get("TRANSFORMER_MAPPING", {
 # GRID GENERATION PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
+USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSITIONS", False)
+USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
 MAX_GREENFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_GREENFIELD_TRAFO_DISTANCE"]
-LARGE_COMPONENT_LOWER_BOUND = CONFIG_GENERATION["LARGE_COMPONENT_LOWER_BOUND"]
+MERGE_GREENFIELD_CLUSTERS = CONFIG_GENERATION.get("MERGE_GREENFIELD_CLUSTERS", False)
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA = CONFIG_GENERATION.get("GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [400, 630])
+MAX_BUILDINGS_PER_KCID = CONFIG_GENERATION["MAX_BUILDINGS_PER_KCID"]
+RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION.get("RESIDENTIAL_ONLY_GENERATION", False)
 MIN_SHARED_PREFIX_LENGTH_M = CONFIG_GENERATION.get("MIN_SHARED_PREFIX_LENGTH_M", 0)
-LARGE_COMPONENT_DIVIDER = CONFIG_GENERATION["LARGE_COMPONENT_DIVIDER"]
+AGGREGATE_NEARBY_CONNECTION_POINTS = CONFIG_GENERATION.get("AGGREGATE_NEARBY_CONNECTION_POINTS", False)
+CONNECTION_POINT_AGGREGATION_RADIUS_M = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_RADIUS_M", 25)
+CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS", 8)
 K_MEANS_SEED = CONFIG_GENERATION["K_MEANS_SEED"]
 
 # =============================================================================

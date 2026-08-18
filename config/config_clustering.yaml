@@ -1,48 +1,40 @@
 LIST_OF_CLUSTERING_PARAMETERS:
-  - avg_trafo_dis
-  - no_house_connections
-  - vsw_per_branch
-  - no_households
-
-# set number of clusters
+- no_house_connections
+- vsw_per_branch
+- avg_trafo_dis
 N_CLUSTERS_KMEDOID: 5
-N_CLUSTERS_KMEANS: 7
-N_CLUSTERS_GMM: 7  # refers to gmm tied
-
-# set threshold values
-THRESHOLD_MAX_TRAFO_DIS: 2.5  # cables between trafo and house connection too long
-THRESHOLD_HOUSEHOLDS_PER_BUILDING: 150  # buildings wrongly attributed as residential
-
-# list_of_clustering_parameters_thresholds
+N_CLUSTERS_KMEANS: 4
+N_CLUSTERS_GMM: 4
+THRESHOLD_MAX_TRAFO_DIS: 2.5
+THRESHOLD_HOUSEHOLDS_PER_BUILDING: 150
 THRESHOLD_AVG_TRAFO_DIS: 0.115
 THRESHOLD_NO_HOUSE_CONNECTIONS: 14.332
 THRESHOLD_VSW_PER_BRANCH: 0.258
 THRESHOLD_NO_HOUSEHOLDS: 35.316
-
 CLUSTERING_PARAMETERS:
-  - version_id
-  - plz
-  - bcid
-  - kcid
-  - no_connection_buses
-  - no_branches
-  - no_house_connections
-  - no_house_connections_per_branch
-  - no_households
-  - no_household_equ
-  - no_households_per_branch
-  - max_no_of_households_of_a_branch
-  - house_distance_km
-  - transformer_mva
-  - osm_trafo
-  - max_trafo_dis
-  - avg_trafo_dis
-  - cable_length_km
-  - cable_len_per_house
-  - max_power_mw
-  - simultaneous_peak_load_mw
-  - resistance
-  - reactance
-  - ratio
-  - vsw_per_branch
-  - max_vsw_of_a_branch
+- version_id
+- plz
+- bcid
+- kcid
+- no_connection_buses
+- no_branches
+- no_house_connections
+- no_house_connections_per_branch
+- no_households
+- no_household_equ
+- no_households_per_branch
+- max_no_of_households_of_a_branch
+- house_distance_km
+- transformer_mva
+- osm_trafo
+- max_trafo_dis
+- avg_trafo_dis
+- cable_length_km
+- cable_len_per_house
+- max_power_mw
+- simultaneous_peak_load_mw
+- resistance
+- reactance
+- ratio
+- vsw_per_branch
+- max_vsw_of_a_branch

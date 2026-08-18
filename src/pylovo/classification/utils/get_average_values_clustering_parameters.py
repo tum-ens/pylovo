@@ -46,10 +46,10 @@ def get_clustering_parameters_for_kmeans_cluster_0() -> pd.DataFrame:
         # Run the query
         query = f"""
             SELECT cp.*
-            FROM clustering_parameters cp
+            FROM pylovo.clustering_parameters cp
             JOIN (
                 SELECT version_id, plz, kcid, bcid
-                FROM transformer_classified
+                FROM pylovo.transformer_classified
                 WHERE kmeans_clusters = 0
                 GROUP BY version_id, plz, kcid, bcid
             ) tc

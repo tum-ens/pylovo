@@ -4,17 +4,15 @@ Import operations for pylovo data.
 import argparse
 import sys
 import time
-import subprocess
 from pathlib import Path
 
 from pylovo.data_import.import_transformers import (
-    get_trafos_processed_geojson_path,
-    get_trafos_processed_3035_geojson_path,
+    get_trafos_processed_target_geojson_path,
     fetch_trafos,
     process_trafos,
-    EPSG,
 )
 import pylovo.database.database_constructor
+from pylovo.data_import.dso_transformers import import_dso_transformers_csv
 
 
 def import_transformers_osm(relation_id: int):
@@ -27,21 +25,7 @@ def import_transformers_osm(relation_id: int):
     print("Processing transformers...")
     process_trafos(relation_id)
 
-    in_file = get_trafos_processed_geojson_path(relation_id)
-    out_file = get_trafos_processed_3035_geojson_path(relation_id)
-
-    # Convert the GeoJSON file to EPSG:3035
-    subprocess.run(
-        [
-            "ogr2ogr",
-            "-f", "GeoJSON",
-            "-s_srs", f"EPSG:{EPSG}",
-            "-t_srs", "EPSG:3035",
-            out_file,
-            in_file
-        ],
-        shell=False
-    )
+    out_file = get_trafos_processed_target_geojson_path(relation_id)
 
     # Load into database
     print("Loading transformers into database...")
@@ -50,6 +34,14 @@ def import_transformers_osm(relation_id: int):
 
     elapsed = time.time() - start_time
     print(f"✓ Completed in {elapsed:.1f}s")
+
+
+def import_transformers_dso_csv(csv_path: str, source: str | None, replace_source: bool):
+    """Import DSO transformer positions from a CSV file."""
+    start_time = time.time()
+    count = import_dso_transformers_csv(csv_path, source=source, replace_source=replace_source)
+    elapsed = time.time() - start_time
+    print(f"✓ Imported {count} DSO transformer positions in {elapsed:.1f}s")
 
 
 def import_transformers_ui():
@@ -70,12 +62,6 @@ def import_transformers_ui_with_options(host: str, port: int, debug: bool, clean
     )
 
 
-def import_test_postcodes():
-    """Import test postcode geometries for testing."""
-    from pylovo.data_import.test_postcodes import main as test_main
-    test_main()
-
-
 def main():
     """Main entry point for import operations."""
     parser = argparse.ArgumentParser(
@@ -86,11 +72,11 @@ Examples:
   # Import transformers from OSM by relation ID
   pylovo-import transformers-osm --relation-id 62464
   
+  # Import DSO transformer positions from CSV
+  pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
+
   # Launch interactive transformer UI
   pylovo-import transformers-ui
-  
-  # Import test postcode geometries
-  pylovo-import test-postcodes
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -107,6 +93,25 @@ Examples:
         type=int,
         required=True,
         help="OSM relation ID of the area"
+    )
+
+    # Subcommand: transformers-dso-csv
+    dso_csv_parser = subparsers.add_parser(
+        "transformers-dso-csv",
+        help="Import DSO transformer positions from CSV"
+    )
+    dso_csv_parser.add_argument(
+        "csv_path",
+        help="Path to CSV with external_id, lon, lat and optional transformer_rated_power/source columns"
+    )
+    dso_csv_parser.add_argument(
+        "--source",
+        help="Source label used in generated ids dso/<source>/<external_id>; overrides a CSV source column"
+    )
+    dso_csv_parser.add_argument(
+        "--replace-source",
+        action="store_true",
+        help="Delete existing dso/<source>/... rows before importing this source"
     )
 
     # Subcommand: transformers-ui
@@ -142,12 +147,6 @@ Examples:
         help="Automatically clean up port conflicts (default: True)"
     )
 
-    # Subcommand: test-postcodes
-    subparsers.add_parser(
-        "test-postcodes",
-        help="Import test postcode geometries"
-    )
-
     args = parser.parse_args()
 
     if not args.command:
@@ -157,6 +156,8 @@ Examples:
     try:
         if args.command == "transformers-osm":
             import_transformers_osm(args.relation_id)
+        elif args.command == "transformers-dso-csv":
+            import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
         elif args.command == "transformers-ui":
             import_transformers_ui_with_options(
                 host=args.host,
@@ -165,8 +166,6 @@ Examples:
                 cleanup=args.cleanup,
                 auto_cleanup=args.auto_cleanup,
             )
-        elif args.command == "test-postcodes":
-            import_test_postcodes()
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback

@@ -1,12 +1,11 @@
 import warnings
 from abc import ABC
 
-from pylovo.database.config_table_structure import REFRESH_QUERIES, TEMP_CREATE_QUERIES
+import pandas as pd
 
 from pylovo.config_loader import *
 from pylovo.database.base_mixin import BaseMixin
-
-import pandas as pd
+from pylovo.database.config_table_structure import REFRESH_QUERIES, TEMP_CREATE_QUERIES
 
 warnings.simplefilter(action='ignore', category=UserWarning)
 
@@ -27,17 +26,17 @@ class UtilsMixin(BaseMixin, ABC):
             # create a dedicated table for each PLZ
             self.cur.execute(query.replace(base_name, table_name))
             # expose a session-local view with the common name
-            self.cur.execute(f"CREATE TEMP VIEW {base_name} AS SELECT * FROM {table_name}")
+            self.cur.execute(f"CREATE TEMP VIEW {base_name} AS SELECT * FROM pylovo.{table_name}")
             # self.cur.execute(f"CREATE OR REPLACE VIEW {base_name} AS SELECT * FROM {table_name}") #only for debugging
 
     def drop_temp_tables(self, plz: int) -> None:
         """Drop PLZ-suffixed tables and their views."""
         for base_name in TEMP_CREATE_QUERIES.keys():
             self.cur.execute(f"DROP VIEW IF EXISTS {base_name} CASCADE")
-            self.cur.execute(f"DROP TABLE IF EXISTS {base_name}_{plz} CASCADE")
+            self.cur.execute(f"DROP TABLE IF EXISTS pylovo.{base_name}_{plz} CASCADE")
         self.cur.execute("DROP VIEW IF EXISTS ways_tem_vertices_pgr CASCADE")
         # Drop the vertices table created by pgr_createTopology (correct naming pattern)
-        self.cur.execute(f"DROP TABLE IF EXISTS ways_tem_{plz}_vertices_pgr CASCADE")
+        self.cur.execute(f"DROP TABLE IF EXISTS pylovo.ways_tem_{plz}_vertices_pgr CASCADE")
 
     def drop_orphaned_plz_temp_tables(self) -> None:
         """Drop all leftover PLZ-suffixed temp tables from previous interrupted runs.
@@ -48,7 +47,7 @@ class UtilsMixin(BaseMixin, ABC):
         query = """
             SELECT tablename
             FROM pg_tables
-            WHERE schemaname = current_schema()
+            WHERE schemaname = %(schema)s
               AND (
                   tablename ~ '^buildings_tem_[0-9]+$'
                   OR tablename ~ '^ways_tem_[0-9]+$'
@@ -56,11 +55,11 @@ class UtilsMixin(BaseMixin, ABC):
               )
             ORDER BY tablename;
         """
-        self.cur.execute(query)
+        self.cur.execute(query, {"schema": "pylovo"})
         table_names = [row[0] for row in self.cur.fetchall()]
 
         for table_name in table_names:
-            self.cur.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+            self.cur.execute(f"DROP TABLE IF EXISTS pylovo.{table_name} CASCADE")
 
         if table_names:
             self.logger.info(
@@ -75,8 +74,8 @@ class UtilsMixin(BaseMixin, ABC):
         self.conn.commit()
 
     def get_list_from_plz(self, plz: int) -> list:
-        query = """SELECT DISTINCT kcid, bcid
-                   FROM grid_result
+        query = f"""SELECT DISTINCT kcid, bcid
+                   FROM pylovo.grid_result
                    WHERE version_id = %(v)s
                      AND plz = %(p)s
                    ORDER BY kcid, bcid;"""
@@ -101,8 +100,8 @@ class UtilsMixin(BaseMixin, ABC):
         """
         Returns: A dataframe with self-defined consumer categories and typical values
         """
-        query = """SELECT *
-                   FROM consumer_categories"""
+        query = f"""SELECT *
+                   FROM pylovo.consumer_categories"""
         cc_df = pd.read_sql_query(query, self.conn)
         cc_df.set_index("definition", drop=False, inplace=True)
         cc_df.sort_index(inplace=True)
@@ -111,16 +110,16 @@ class UtilsMixin(BaseMixin, ABC):
 
     def get_municipal_register(self) -> pd.DataFrame:
         """Return the complete municipal register as a DataFrame."""
-        query = """SELECT *
-                   FROM municipal_register;"""
+        query = f"""SELECT *
+                   FROM pylovo.municipal_register;"""
         self.cur.execute(query)
         register = self.cur.fetchall()
         return pd.DataFrame(register, columns=MUNICIPAL_REGISTER)
 
     def get_municipal_register_for_plz(self, plz: int) -> pd.DataFrame:
         """Return municipal register rows for a single PLZ."""
-        query = """SELECT *
-                   FROM municipal_register
+        query = f"""SELECT *
+                   FROM pylovo.municipal_register
                    WHERE plz = %(p)s;"""
         self.cur.execute(query, {"p": int(plz)})
         register = self.cur.fetchall()

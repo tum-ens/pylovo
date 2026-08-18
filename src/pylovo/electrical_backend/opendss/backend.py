@@ -294,7 +294,7 @@ class OpenDSSBackend(IElectricalBackend):
     def register_cable_types(self, cables: list) -> None:
         """Register cable types from database tuples."""
         for cable_tuple in cables:
-            name, r_ohm, x_ohm, max_i = cable_tuple
+            name, r_ohm, x_ohm, max_i, _cost_eur = cable_tuple
             cable_obj = CableEquipment(
                 name=name,
                 r_ohm_per_km=r_ohm,

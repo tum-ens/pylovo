@@ -10,8 +10,8 @@
 !/data/transformer_data/fetched_trafos/2145268_substations.geojson
 
 /data/transformer_data/processed_trafos/*
-!/data/transformer_data/processed_trafos/2145268_trafos_processed.geojson
 !/data/transformer_data/processed_trafos/2145268_trafos_processed_3035.geojson
+!/data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson
 
 src/classification/results
 tutorials/.ipynb_checkpoints/
@@ -167,5 +167,6 @@ cython_debug/
 
 # for macOS users
 *.DS_Store
-validation/grid_comparison/metrics/real_grid_metrics.csv
-validation/grid_comparison/metrics/synthetic_grid_metrics.csv
+validations/metrics
+validations/grid_preparation
+validations/grid_comparison/output/*

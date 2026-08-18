@@ -120,7 +120,7 @@ class IElectricalBackend(ABC):
         Register cable equipment types from database tuples.
 
         Args:
-            cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka)
+            cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)
         """
 
     @abstractmethod

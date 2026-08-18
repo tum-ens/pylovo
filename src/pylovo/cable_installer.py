@@ -2,8 +2,10 @@
 
 import numpy as np
 import pandas as pd
+from pyproj import Transformer
+
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM, VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM, SMALL_LOAD_THRESHOLD_KW, VOLTAGE_DROP_DISTRIBUTION_PERCENT, DEFAULT_POWER_FACTOR
+from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_LOAD_PERCENT_PER_KM, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -13,6 +15,7 @@ class CableInstaller:
 
     _NOMINAL_VOLTAGE_KV = VN * 1e-3
     _THREE_PHASE_FACTOR = np.sqrt(3)
+    _WGS84_TO_TARGET = Transformer.from_crs(4326, TARGET_EPSG, always_xy=True)
 
     def __init__(self, backend: IElectricalBackend, dbc, logger, cables: list,
                  feeder_cables: pd.DataFrame, consumer_connection_cables: pd.DataFrame):
@@ -22,7 +25,7 @@ class CableInstaller:
             backend: Electrical backend instance (e.g., PandapowerBackend)
             dbc: Database client for accessing grid data
             logger: Logger instance
-            cables: List of cable tuples from database (name, r_ohm_per_km, x_ohm_per_km, max_i_ka)
+            cables: List of cable tuples from database (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)
             feeder_cables: Configured feeder cable definitions
             consumer_connection_cables: Configured consumer connection cable definitions
         """
@@ -50,13 +53,14 @@ class CableInstaller:
         which is compatible with both pandapower and OpenDSS backends.
 
         Args:
-            cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka)
+            cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)
 
         Returns:
             DataFrame indexed by normalized cable name with electrical properties
         """
         cable_data = {}
-        for name, r_ohm, x_ohm, max_i_ka in cables:
+        for cable in cables:
+            name, r_ohm, x_ohm, max_i_ka, cost_eur = cable
             normalized_name = normalize_cable_name(name)
 
             try:
@@ -68,12 +72,45 @@ class CableInstaller:
                 'r_ohm_per_km': float(r_ohm),
                 'x_ohm_per_km': float(x_ohm),
                 'max_i_ka': float(max_i_ka),
+                'cost_eur': float(cost_eur),
                 'q_mm2': q_mm2
             }
 
         return pd.DataFrame.from_dict(cable_data, orient="index")
 
-    def _max_allowable_impedance_per_km(
+    def _get_bus_coordinates(self, bus_name: str, fallback: tuple[float, float] | None = None) -> tuple[float, float] | None:
+        coords = self.backend.get_bus_coordinates(bus_name)
+        if coords:
+            return float(coords[0]), float(coords[1])
+        if fallback is None:
+            return None
+        return float(fallback[0]), float(fallback[1])
+
+    def _get_line_node_coordinates(self, node_id: int, bus_name: str | None = None) -> tuple[float, float]:
+        fallback = self.dbc.get_node_geom(node_id)
+        if bus_name is None:
+            return float(fallback[0]), float(fallback[1])
+        coords = self._get_bus_coordinates(bus_name, fallback=fallback)
+        return float(coords[0]), float(coords[1])
+
+    def _service_line_length_km(self, line_geodata: list[tuple[float, float]]) -> float:
+        """Return projected straight-line length for a consumer service connection."""
+        if len(line_geodata) < 2:
+            return 0.0
+        start_x, start_y = self._WGS84_TO_TARGET.transform(*line_geodata[0])
+        end_x, end_y = self._WGS84_TO_TARGET.transform(*line_geodata[-1])
+        return float(np.hypot(end_x - start_x, end_y - start_y) * 1e-3)
+
+    def _get_transformer_visual_coordinates(
+        self,
+        plz: int,
+        kcid: int,
+        bcid: int,
+    ) -> tuple[float, float]:
+        ont_geodata = self.dbc.get_ont_geom_from_bcid(plz, kcid, bcid)
+        return float(ont_geodata[0]), float(ont_geodata[1])
+
+    def _max_allowable_impedance_for_total_drop(
         self,
         voltage_drop_percent: float,
         line_current_ka: float,
@@ -195,47 +232,41 @@ class CableInstaller:
             self.backend.create_component(load_spec)
 
     def install_consumer_cables(self, plz: int, bcid: int, kcid: int,
-                                branch_deviation: float, branch_node_list: list,
+                                branch_node_list: list,
                                 ont_vertice: int, vertices_dict: dict, Pd: dict,
-                                local_length_dict: dict) -> dict:
+                                material_length_by_cable_km: dict) -> dict:
         """Install consumer connection cables."""
-        consumer_list = self.dbc.get_vertices_from_connection_points(branch_node_list)
-        branch_consumer_list = [n for n in consumer_list if n in vertices_dict.keys()]
+        consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(branch_node_list)
+        branch_consumer_connections = [
+            (connection_point, vertice_id)
+            for connection_point, vertice_id in consumer_connections
+            if connection_point in vertices_dict and vertice_id in vertices_dict
+        ]
 
-        for vertice in branch_consumer_list:
-            path_list = self.dbc.get_path_to_bus(vertice, ont_vertice)
-            start_vid = path_list[1]
-            end_vid = path_list[0]
+        for start_vid, end_vid in branch_consumer_connections:
 
-            geodata = self.dbc.get_node_geom(start_vid)
-            start_node_geodata = (float(geodata[0]) + 5 * 1e-6 * branch_deviation,
-                                  float(geodata[1]) + 5 * 1e-6 * branch_deviation)
-            end_node_geodata = self.dbc.get_node_geom(end_vid)
+            start_node_geodata = self._get_line_node_coordinates(start_vid, f"Connection Nodebus {start_vid}")
+            end_node_geodata = self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}")
             line_geodata = [start_node_geodata, end_node_geodata]
 
-            length_km = (vertices_dict[end_vid] - vertices_dict[start_vid]) * 1e-3
+            length_km = self._service_line_length_km(line_geodata)
             count = 1
             sim_load = Pd[end_vid]
             Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
 
             connection_available_cables = self._consumer_connection_cables
-            # Direct high-load supplies from a dedicated transformer connection point may use feeder cables as well.
-            if start_vid == ont_vertice and sim_load > SMALL_LOAD_THRESHOLD_KW:
+            # Direct transformer connection point may use feeder cables as well.
+            if start_vid == ont_vertice:
                 connection_available_cables = list(dict.fromkeys(
                     self._consumer_connection_cables + self._feeder_available_cables
                 ))
 
             voltage_available_cables_df = None
-            voltage_drop_percent = (
-                VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM
-                if sim_load <= SMALL_LOAD_THRESHOLD_KW
-                else VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM
-            )
             line_df = self._cable_df
             while True:
-                current_available_cables_df = line_df[
+                current_available_cables_df = line_df.loc[
                     (line_df["max_i_ka"] >= Imax / count) & (line_df.index.isin(connection_available_cables))
-                ]
+                ].copy()
 
                 if len(current_available_cables_df) == 0:
                     count += 1
@@ -249,8 +280,9 @@ class CableInstaller:
                 if Imax * length_km == 0:
                     voltage_available_cables_df = current_available_cables_df
                 else:
-                    max_impedance = self._max_allowable_impedance_per_km(
-                        voltage_drop_percent,
+                    total_voltage_drop_percent = VOLTAGE_DROP_LOAD_PERCENT_PER_KM * length_km
+                    max_impedance = self._max_allowable_impedance_for_total_drop(
+                        total_voltage_drop_percent,
                         Imax,
                         length_km,
                         count,
@@ -265,8 +297,8 @@ class CableInstaller:
                 else:
                     break
 
-            cable = voltage_available_cables_df.sort_values(by=["q_mm2"]).index.tolist()[0]
-            local_length_dict[cable] += count * length_km
+            cable = voltage_available_cables_df.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
+            material_length_by_cable_km[cable] += count * length_km
 
             line_spec = LineSpec(
                 name=f"Line to {end_vid}",
@@ -285,10 +317,11 @@ class CableInstaller:
                 std_type=cable,
                 from_bus=start_vid,
                 to_bus=end_vid,
-                length_km=length_km
+                length_km=length_km,
+                parallel=count,
             )
 
-        return local_length_dict
+        return material_length_by_cable_km
 
     def find_minimal_available_cable(self, Imax: float, distance: int = 0) -> tuple[str, int]:
         """Find the smallest feeder cable that meets current and voltage-drop limits.
@@ -304,10 +337,10 @@ class CableInstaller:
         distance_km = distance * 1e-3
 
         while True:
-            current_available_cables = line_df[
+            current_available_cables = line_df.loc[
                 (line_df["max_i_ka"] >= Imax / count) &
                 (line_df.index.isin(self._feeder_available_cables))
-            ]
+            ].copy()
 
             if len(current_available_cables) == 0:
                 count += 1
@@ -319,8 +352,9 @@ class CableInstaller:
                     current_available_cables["x_ohm_per_km"] ** 2
                 )
 
-                max_impedance = self._max_allowable_impedance_per_km(
-                    VOLTAGE_DROP_DISTRIBUTION_PERCENT,
+                feeder_voltage_drop_percent = (1 - V_BAND_LOW) * 100
+                max_impedance = self._max_allowable_impedance_for_total_drop(
+                    feeder_voltage_drop_percent,
                     Imax,
                     distance_km,
                     count,
@@ -345,21 +379,14 @@ class CableInstaller:
         return cable, count
 
     def create_line_ont_to_lv_bus(self, plz: int, bcid: int, kcid: int,
-                                   branch_start_node: int, branch_deviation: float,
+                                   branch_start_node: int,
                                    cable: str, count: int, ont_vertice: int):
         """Create line from transformer to connection node."""
         end_vid = branch_start_node
-        node_geodata = self.dbc.get_node_geom(end_vid)
-        node_geodata = (float(node_geodata[0]) + 5 * 1e-6 * branch_deviation,
-                        float(node_geodata[1]) + 5 * 1e-6 * branch_deviation)
+        node_geodata = self._get_line_node_coordinates(end_vid, f"Connection Nodebus {end_vid}")
 
-        coords = self.backend.get_bus_coordinates("LVbus 1")
-        if coords:
-            lvbus_geodata = (coords[0] + 5 * 1e-6 * branch_deviation, coords[1])
-        else:
-            lv_geodata = self.dbc.get_ont_geom_from_bcid(plz, kcid, bcid)
-            lvbus_geodata = (float(lv_geodata[0]) + 5 * 1e-6 * branch_deviation, float(lv_geodata[1]))
-        line_geodata = [lvbus_geodata, node_geodata]
+        transformer_geodata = self._get_transformer_visual_coordinates(plz, kcid, bcid)
+        line_geodata = [transformer_geodata, node_geodata]
         # When branch starts at transformer, use 1 meter minimum to avoid zero-impedance
         length_km = 0.001
 
@@ -374,40 +401,26 @@ class CableInstaller:
         )
         self.backend.create_component(line_spec)
 
-        line_name = f"L{end_vid}"[:15]
-        self.dbc.insert_lines(
-            geom=line_geodata, plz=plz, bcid=bcid, kcid=kcid, line_name=line_name,
-            std_type=cable,
-            from_bus=ont_vertice,  # Use vertex ID directly (backend-agnostic)
-            to_bus=end_vid,
-            length_km=length_km
-        )
-
     def create_line_start_to_lv_bus(self, plz: int, bcid: int, kcid: int,
-                                     branch_start_node: int, branch_deviation: float,
+                                     branch_start_node: int,
                                      vertices_dict: dict, cable: str, count: int,
-                                     ont_vertice: int) -> int:
+                                     ont_vertice: int, feeder_section_id: int | None = None) -> int:
         """Create line from branch start to LV bus."""
         node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
 
         line_geodata = []
         for p in node_path_list:
-            node_geodata = self.dbc.get_node_geom(p)
-            node_geodata = (float(node_geodata[0]) + 5 * 1e-6 * branch_deviation,
-                            float(node_geodata[1]) + 5 * 1e-6 * branch_deviation)
+            node_geodata = self._get_line_node_coordinates(p, f"Connection Nodebus {p}")
             line_geodata.append(node_geodata)
 
-        coords = self.backend.get_bus_coordinates("LVbus 1")
-        if coords:
-            lvbus_geodata = (coords[0] + 5 * 1e-6 * branch_deviation, coords[1])
-        else:
-            # Fallback to database (for backends without geodata)
-            lv_geodata = self.dbc.get_ont_geom_from_bcid(plz, kcid, bcid)
-            lvbus_geodata = (float(lv_geodata[0]) + 5 * 1e-6 * branch_deviation, float(lv_geodata[1]))
-        line_geodata.append(lvbus_geodata)
+        transformer_geodata = self._get_transformer_visual_coordinates(plz, kcid, bcid)
+        line_geodata.append(transformer_geodata)
         line_geodata.reverse()
+        if len(line_geodata) > 2:
+            del line_geodata[1]
 
         length_km = vertices_dict[branch_start_node] * 1e-3
+
         length = count * length_km
 
         line_spec = LineSpec(
@@ -427,24 +440,18 @@ class CableInstaller:
             std_type=cable,
             from_bus=ont_vertice,  # Use vertex ID directly (backend-agnostic)
             to_bus=branch_start_node,
-            length_km=length_km
+            length_km=length_km,
+            parallel=count,
+            feeder_section_id=feeder_section_id,
         )
 
         return length
 
-    def deviate_bus_geodata(self, branch_node_list: list, branch_deviation: float):
-        """Update bus geodata for visualization (no-op for backends without geodata)."""
-        offset = 5 * 1e-6 * branch_deviation
-        for node in branch_node_list:
-            bus_name = f"Connection Nodebus {node}"
-            coords = self.backend.get_bus_coordinates(bus_name)
-            if coords:
-                self.backend.set_bus_coordinates(bus_name, coords[0] + offset, coords[1] + offset)
-
     def create_line_node_to_node(self, plz: int, kcid: int, bcid: int,
-                                  branch_node_list: list, branch_deviation: float,
-                                  vertices_dict: dict, local_length_dict: dict,
-                                  cable: str, ont_vertice: int, count: float) -> dict:
+                                  branch_node_list: list,
+                                  vertices_dict: dict, material_length_by_cable_km: dict,
+                                  cable: str, ont_vertice: int, count: float,
+                                  feeder_section_id: int | None = None) -> dict:
         """Create lines between connection nodes."""
         for i in range(len(branch_node_list) - 1):
             node_path_list = self.dbc.get_path_to_bus(branch_node_list[i], ont_vertice)
@@ -460,13 +467,14 @@ class CableInstaller:
 
             line_geodata = []
             for p in node_path_list:
-                node_geodata = self.dbc.get_node_geom(p)
-                node_geodata = (float(node_geodata[0]) + 5 * 1e-6 * branch_deviation,
-                                float(node_geodata[1]) + 5 * 1e-6 * branch_deviation)
+                node_geodata = self._get_line_node_coordinates(p, f"Connection Nodebus {p}")
                 line_geodata.append(node_geodata)
 
+            if start_vid == ont_vertice and line_geodata:
+                line_geodata[0] = self._get_transformer_visual_coordinates(plz, kcid, bcid)
+
             length_km = (vertices_dict[end_vid] - vertices_dict[start_vid]) * 1e-3
-            local_length_dict[cable] += count * length_km
+            material_length_by_cable_km[cable] += count * length_km
 
             line_spec = LineSpec(
                 name=f"Line to {end_vid}",
@@ -485,7 +493,9 @@ class CableInstaller:
                 std_type=cable,
                 from_bus=start_vid,  # Use vertex ID directly (backend-agnostic)
                 to_bus=end_vid,
-                length_km=length_km
+                length_km=length_km,
+                parallel=count,
+                feeder_section_id=feeder_section_id,
             )
 
-        return local_length_dict
+        return material_length_by_cable_km

@@ -193,7 +193,7 @@ class PandapowerBackend(IElectricalBackend):
     def register_cable_types(self, cables: list) -> None:
         """Register cable standard types from equipment data."""
         for cable in cables:
-            name, r_ohm_per_km, x_ohm_per_km, max_i_ka = cable
+            name, r_ohm_per_km, x_ohm_per_km, max_i_ka, _cost_eur = cable
             normalized = normalize_cable_name(name)
             q_mm2 = int(name.split("_")[-1])
 

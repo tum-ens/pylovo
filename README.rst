@@ -70,7 +70,7 @@ Without infdb, pylovo requires substantial user-provided geospatial data in the 
 
 * **Street network SQL**: Place the OSM-derived street network SQL file (``ways_public_2po_4pgr.sql``) in ``raw_data/ways/``. This file is generated using the `osm2po <http://osm2po.de/>`_ tool from OpenStreetMap data.
 
-* **Transformer data** (optional): Import from OpenStreetMap with ``pylovo-import transformers-osm --relation-id <99999>`` (or use prebuilt raw_data files for bavaria).
+* **Transformer data** (optional): Import from OpenStreetMap with ``pylovo-import transformers-osm --relation-id <99999>`` or import DSO transformer positions from CSV with ``pylovo-import transformers-dso-csv path/to/transformers.csv --source <region>``. See ``src/pylovo/data_import/README.md`` for the CSV format.
 
 Quick Start
 ------------------------------------------------------------------------
@@ -107,7 +107,7 @@ Quick Start
 
 3. Configure pylovo:
 
-   a) Copy ``.env.example`` to ``.env`` and align credentials with InfDB setup in environment file.
+   a) Copy ``.env.example`` to ``.env`` and align credentials with InfDB setup in environment file. Set ``TARGET_EPSG`` to the projected CRS you want pylovo to store and transform operational data in.
    b) Optionally adjust grid generation parameters in ``config/config_generation.yaml``.
 
 4. Initialize pylovo database:

@@ -8,19 +8,19 @@ VERSION_COMMENT: default # State here which parameters, queries are used to comp
 # EXECUTION CONFIGURATION
 # =============================================================================
 PARALLEL: True # Toggles whether the grid generation uses multiple workers in parallel
-N_JOBS_PERCENT: 30  # Percentage of CPU cores to use for parallel grid generation
+N_JOBS_PERCENT: 20  # Percentage of CPU cores to use for parallel grid generation
 ANALYZE_GRIDS: True # Toggles analysis after grid generation (basic parameters, trafo analysis, cable counting)
 LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # Toggles whether the grid json files will be saved in a folder or just in the db
 RESULT_DIR: results # Directory for storing analysis results and outputs
-TESTING: False # If True, only a small subset of data is used for faster testing
 
 # =============================================================================
 # GRID GENERATION CONFIGURATION
 # =============================================================================
 ELECTRICAL_BACKEND: pandapower # Electrical backend configuration - Options: 'pandapower', 'opendss'
+RESIDENTIAL_ONLY_GENERATION: False # If true, only SFH/MFH/TH/AB buildings are used for clustering, load calculation and dimensioning
 ### Electrical load calculation parameters
-PEAK_LOAD_HOUSEHOLD: 17.425 # default: 14.5kW, around 15% of buildings have 30 kW with electric hot water supply
+PEAK_LOAD_HOUSEHOLD: 14.5 # default: 14.5kW, around 15% of buildings have 30 kW with electric hot water supply
 SIM_FACTOR: {Residential: 0.07, Public: 0.6, Commercial: 0.5} # Simultaneous load factor - formula: simultaneous_load(n) = peak_load * (sim_factor + (1 - sim_factor) * (n ** (-3 / 4)))
 DEFAULT_POWER_FACTOR: 0.95  # cos(phi) for residential loads
 
@@ -44,13 +44,15 @@ FEEDER_CABLES:
   - {name: NAYY_4_120, max_i_a: 242, r_mohm_per_km: 225, x_mohm_per_km: 80, z_mohm_per_km: 239, cost_eur: 19, typ: Cable}
   - {name: NAYY_4_150, max_i_a: 270, r_mohm_per_km: 208, x_mohm_per_km: 80, z_mohm_per_km: 223, cost_eur: 24, typ: Cable}
   - {name: NAYY_4_185, max_i_a: 313, r_mohm_per_km: 164, x_mohm_per_km: 80, z_mohm_per_km: 181, cost_eur: 33, typ: Cable}
-# - {name: NA2XS(F)2Y_1x240RM_12_20kV_ir_240, max_i_a: 456, r_mohm_per_km: 144, x_mohm_per_km: 182, z_mohm_per_km: 236, cost_eur: 45, typ: Cable}
-# - {name: NA2XS(F)2Y_1x150RM_12_20kV_ir_150, max_i_a: 353, r_mohm_per_km: 227, x_mohm_per_km: 195, z_mohm_per_km: 299, cost_eur: 35, typ: Cable}
+  - {name: NAYY_4_240, max_i_a: 357, r_mohm_per_km: 127, x_mohm_per_km: 80, z_mohm_per_km: 150, cost_eur: 45, typ: Cable}
+  - {name: NAYY_4_300, max_i_a: 425, r_mohm_per_km: 100, x_mohm_per_km: 80, z_mohm_per_km: 128, cost_eur: 60, typ: Cable}
 # - {name: NAYY_4_95, max_i_a: 215, r_mohm_per_km: 320, x_mohm_per_km: 82, z_mohm_per_km: 330, cost_eur: 21, typ: Cable}
 # - {name: NYY_4_95, max_i_a: 280, r_mohm_per_km: 193, x_mohm_per_km: 82, z_mohm_per_km: 210, cost_eur: 37, typ: Cable}
 # - {name: NFA2X_4_95, max_i_a: 245, r_mohm_per_km: 320, x_mohm_per_km: 0, z_mohm_per_km: 320, cost_eur: 10, typ: Cable}
 # - {name: NFA2X_4_70, max_i_a: 205, r_mohm_per_km: 443, x_mohm_per_km: 0, z_mohm_per_km: 443, cost_eur: 8, typ: Cable}
 # - {name: NFA2X_4_50, max_i_a: 165, r_mohm_per_km: 641, x_mohm_per_km: 0, z_mohm_per_km: 641, cost_eur: 7, typ: Cable}
+# - {name: NA2XS(F)2Y_1x240RM_12_20kV_ir_240, max_i_a: 456, r_mohm_per_km: 144, x_mohm_per_km: 182, z_mohm_per_km: 236, cost_eur: 45, typ: Cable} # MV level
+# - {name: NA2XS(F)2Y_1x150RM_12_20kV_ir_150, max_i_a: 353, r_mohm_per_km: 227, x_mohm_per_km: 195, z_mohm_per_km: 299, cost_eur: 35, typ: Cable} # MV level
 
 CONSUMER_CONNECTION_CABLES:
   - {name: NYY_4_35, max_i_a: 159, r_mohm_per_km: 524, x_mohm_per_km: 85, z_mohm_per_km: 531, cost_eur: 16, typ: Cable}
@@ -60,19 +62,29 @@ CONSUMER_CONNECTION_CABLES:
 
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
-V_BAND_LOW: 0.9  # Relevant for worst case condition - Only for pandapower - not for dimensioning
-V_BAND_HIGH: 1.1
+V_BAND_LOW: 0.95 # The voltage band mostly influences electrical and not topological attributes
+V_BAND_HIGH: 1.05
+# Voltage drop limit for all consumer service-drop connections (percentage of nominal voltage per km).
+VOLTAGE_DROP_LOAD_PERCENT_PER_KM: 5
+
+# Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
+MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
+
+# Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
+# This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
+# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
+# handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
+FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
+
 # Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
 #  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
-MIN_SHARED_PREFIX_LENGTH_M: 50
-### Load thresholds for different voltage drop limits
-SMALL_LOAD_THRESHOLD_KW: 100  # Threshold below which stricter voltage drop limits apply
-# Voltage drop limits for consumer connections (percentage of nominal voltage per km).
-# With VN=400V this corresponds to a planning budget of ~2V per 100m for smaller loads and ~4V per 100m for larger direct connections.
-VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM: 5.0
-VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM: 10.0
-# Voltage drop limit for feeder cables (total percentage of nominal voltage).
-VOLTAGE_DROP_DISTRIBUTION_PERCENT: 4.0
+MIN_SHARED_PREFIX_LENGTH_M: 100
+
+# Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
+# are merged only when they share the same street identifier/name and form a small local cluster.
+AGGREGATE_NEARBY_CONNECTION_POINTS: False
+CONNECTION_POINT_AGGREGATION_RADIUS_M: 15
+CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 4
 
 # =============================================================================
 # TRANSFORMER PLACEMENT PARAMETERS
@@ -87,14 +99,22 @@ URBAN_MAX_BUILDING_DISTANCE: 20 # Maximum average distance between buildings for
 TRANSFORMER_MAPPING:
   1: [250, 400, 630]
   2: [400, 630]
-  3: [400, 630, 800]
+  3: [400, 630]
 
 ### Clustering
-# Transformer placement parameters
-MAX_BROWNFIELD_TRAFO_DISTANCE: 750 # Maximum assignment distance to an existing brownfield transformer
-MAX_GREENFIELD_TRAFO_DISTANCE: 900 # Maximum distance from a greenfield transformer to any cluster connection point
-# Larger components are divided by k-means clustering in roughly LARGE_COMPONENT_DIVIDER sizes
-LARGE_COMPONENT_LOWER_BOUND: 5000 # Threshold for number of buildings in a component to apply k-means clustering
-LARGE_COMPONENT_DIVIDER: 2500 # Divider to derive the target number of clusters for k-means clustering
+# Greenfield
+MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Maximum distance from a greenfield transformer to any cluster connection point
+MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
+# still fits a single standard transformer and the existing max-distance constraint.
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400, 630]
+
+# Brownfield
+MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
+USE_OPEN_TRANSFORMER_POSITIONS: False # Include non-DSO open/manual transformer positions from pylovo.transformers
+USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
+
+## KMeans
+# Maximum number of load buildings per initial k-means cluster before greenfield transformer clustering.
+MAX_BUILDINGS_PER_KCID: 1000
 # Seed for the initialization of the k-means clustering for transformer placement - keeping the same ensures deterministic behavior
 K_MEANS_SEED: 3329829316 # Has to be an integer between 0 and 4294967295
