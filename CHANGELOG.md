@@ -10,6 +10,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
+
+## [0.8.0] - 2026-08-18
+### Changed
+- Rework feeder routing and cable dimensioning to size uniform sections between hard nodes, support parallel cables, and select connection cables based on cost
+- Improve grid topology generation with optional and configurable feeder splitting, reuse of sufficiently long upstream feeder prefixes, and aggregation of nearby connection points.
+- Refine transformer clustering with deterministic settlement types, configurable cluster sizes, optional residential-only dimensioning, and merging of feasible neighboring greenfield clusters
+- Enable flexible use of open and DSO transformer positions and align building preprocessing with the latest InfDB data structures
+- Introduce configurable projected coordinate reference systems throughout transformer import, database processing, plotting, and electrical backends
+- Restructure grid result storage and views for incremental postcode-level updates, feeder-section visualization, and complete generation configuration metadata
+
+### Fixed
+- Fix routing and geometry edge cases affecting building-to-way and transformer-to-way connections
+- Fix duplicate and null brownfield transformer records when transformer input sources are disabled or combined
+- Fix schema qualification across database queries and errors during parallel result-view creation
+- Fix logging, deletion workflows, and compatibility issues with updated pandas, GeoPandas, pandapower, and scikit-learn dependencies
+- Remove perfectly collinear classification features to avoid singular factor-analysis inputs
+- Fix sqlparse security dependency
+
+### Added
+- Add a CLI workflow for importing DSO transformer positions from CSV with selectable source metadata
+- Add sampling from existing postcodes and revised clustering inputs for classification workflows
+- Add QGIS templates and visualization logic for parallel feeder sections and grid expansion costs
+
 ## [0.7.0] - 2026-05-11
 ### Changed
 - Enable feeder branching with split-point reuse to model cable branching controlled by a minimum shared-prefix distance and a sizing workflow for upstream segments that considers the aggregated downstream load
