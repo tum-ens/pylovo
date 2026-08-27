@@ -62,8 +62,8 @@ CONSUMER_CONNECTION_CABLES:
 
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
-V_BAND_LOW: 0.95 # The voltage band mostly influences electrical and not topological attributes
-V_BAND_HIGH: 1.05
+V_BAND_LOW: 0.9 # The voltage band mostly influences electrical and not topological attributes
+V_BAND_HIGH: 1.1
 # Voltage drop limit for all consumer service-drop connections (percentage of nominal voltage per km).
 VOLTAGE_DROP_LOAD_PERCENT_PER_KM: 5
 
@@ -72,13 +72,12 @@ MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
 # Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
-# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
-# handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
-FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
+# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
+FEEDER_SPLIT_MAX_CURRENT_KA: 1.275
 
 # Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
 #  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
-MIN_SHARED_PREFIX_LENGTH_M: 100
+MIN_SHARED_PREFIX_LENGTH_M: 25
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
@@ -106,7 +105,7 @@ TRANSFORMER_MAPPING:
 MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Maximum distance from a greenfield transformer to any cluster connection point
 MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
 # still fits a single standard transformer and the existing max-distance constraint.
-GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400, 630]
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400]
 
 # Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
