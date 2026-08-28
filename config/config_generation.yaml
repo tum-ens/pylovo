@@ -8,7 +8,7 @@ VERSION_COMMENT: default # State here which parameters, queries are used to comp
 # EXECUTION CONFIGURATION
 # =============================================================================
 PARALLEL: True # Toggles whether the grid generation uses multiple workers in parallel
-N_JOBS_PERCENT: 30  # Percentage of CPU cores to use for parallel grid generation
+N_JOBS_PERCENT: 20  # Percentage of CPU cores to use for parallel grid generation
 ANALYZE_GRIDS: True # Toggles analysis after grid generation (basic parameters, trafo analysis, cable counting)
 LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # Toggles whether the grid json files will be saved in a folder or just in the db
@@ -38,7 +38,7 @@ TRANSFORMERS:
   - {name: Tr_250, s_max_kva: 250, cost_eur: 5000, typ: Transformer}
   - {name: Tr_400, s_max_kva: 400, cost_eur: 8000, typ: Transformer}
   - {name: Tr_630, s_max_kva: 630, cost_eur: 12000, typ: Transformer}
-  - {name: Tr_800, s_max_kva: 800, cost_eur: 16000, typ: Transformer}
+  # - {name: Tr_800, s_max_kva: 800, cost_eur: 16000, typ: Transformer}
 
 FEEDER_CABLES:
   - {name: NAYY_4_120, max_i_a: 242, r_mohm_per_km: 225, x_mohm_per_km: 80, z_mohm_per_km: 239, cost_eur: 19, typ: Cable}
@@ -72,12 +72,13 @@ MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
 # Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
-# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
-FEEDER_SPLIT_MAX_CURRENT_KA: 1.275
+# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
+# handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
+FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
 
 # Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
 #  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
-MIN_SHARED_PREFIX_LENGTH_M: 25
+MIN_SHARED_PREFIX_LENGTH_M: 50
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
@@ -98,11 +99,11 @@ URBAN_MAX_BUILDING_DISTANCE: 20 # Maximum average distance between buildings for
 TRANSFORMER_MAPPING:
   1: [250, 400, 630]
   2: [400, 630]
-  3: [400, 630, 800]
+  3: [400, 630]
 
 ### Clustering
 # Greenfield
-MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Maximum distance from a greenfield transformer to any cluster connection point
+MAX_GREENFIELD_TRAFO_DISTANCE: 2000 # Maximum distance from a greenfield transformer to any cluster connection point
 MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
 # still fits a single standard transformer and the existing max-distance constraint.
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400]
@@ -110,7 +111,7 @@ GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400]
 # Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
 USE_OPEN_TRANSFORMER_POSITIONS: False # Include non-DSO open/manual transformer positions from pylovo.transformers
-USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
+USE_DSO_TRANSFORMER_POSITIONS: True # Include imported DSO transformer positions from pylovo.transformers
 
 ## KMeans
 # Maximum number of load buildings per initial k-means cluster before greenfield transformer clustering.
