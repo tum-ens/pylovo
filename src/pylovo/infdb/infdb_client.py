@@ -55,6 +55,7 @@ class InfdbClient:
                 height,
                 floor_area,
                 floor_number,
+                nonresidential_floor_area,
                 building_use,
                 building_use_id,
                 building_type,
@@ -73,7 +74,7 @@ class InfdbClient:
                 COALESCE(building_type, building_use) AS type
             FROM basedata.buildings
             WHERE postcode = %(p)s
-            AND building_use IN ('Commercial', 'Public', 'Residential')
+            AND building_use IN ('Commercial', 'Public', 'Residential', 'Mixed')
             AND COALESCE(building_use_id, '') != '31001_2523'
         """
         self.cur.execute(query, {"p": plz})

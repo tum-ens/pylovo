@@ -88,6 +88,7 @@ SIMULTANEITY_CATEGORY_GROUPS = (
     ("Commercial", "Commercial", ("Commercial",)),
     ("Public", "Public", ("Public",)),
     ("Industrial", "Industrial", ("Industrial",)),
+    ("Mixed", "Mixed", ("Mixed",)),
 )
 
 

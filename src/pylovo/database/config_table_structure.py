@@ -776,6 +776,7 @@ TEMP_CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
+        nonresidential_floor_area double precision,  -- commercial component of a mixed-use building
         building_use text,
         building_use_id text,
         building_type text,

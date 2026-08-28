@@ -271,10 +271,11 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         insert_query = f"""
             INSERT INTO buildings_tem
-            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
+            (id, feature_id, objectid, height, floor_area, floor_number, nonresidential_floor_area,
+             building_use, building_use_id,
              building_type, occupants, households, construction_year, postcode, address_street_id, street,
              house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
                     %s, %s, %s, %s)
         """
@@ -471,6 +472,16 @@ class PreprocessingMixin(BaseMixin, ABC):
                                                                                                        FROM pylovo.consumer_categories
                                                                                                        WHERE definition = b.type) /
                                                                                                       1000
+                                           -- Mixed-use: households on the residential floors plus the
+                                           -- commercial floor area InfDB split off for this building
+                                           WHEN b.type = 'Mixed' THEN COALESCE(b.households, 0) *
+                                                                          (SELECT peak_load
+                                                                           FROM pylovo.consumer_categories
+                                                                           WHERE definition = 'Mixed')
+                                                                      + COALESCE(b.nonresidential_floor_area, 0) *
+                                                                          (SELECT peak_load_per_m2
+                                                                           FROM pylovo.consumer_categories
+                                                                           WHERE definition = 'Mixed') / 1000
                                            ELSE 0
                     END);"""
         self.cur.execute(query)

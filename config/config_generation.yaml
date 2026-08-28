@@ -32,6 +32,8 @@ CONSUMER_CATEGORIES:
   - {consumer_category_id: 4, definition: MFH, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
   - {consumer_category_id: 5, definition: TH, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
   - {consumer_category_id: 6, definition: AB, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
+  # Mixed-use: household peak load for the residential floors, commercial rate per m2 for the rest.
+  - {consumer_category_id: 7, definition: Mixed, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: 79.00, yearly_consumption_per_m2: 245.70, sim_factor: 0.07}
 
 ### Equipment data
 TRANSFORMERS:
