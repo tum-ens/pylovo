@@ -97,11 +97,18 @@ Main configuration file for grid generation with the following sections:
 - ``VERSION_ID``: Unique identifier for grid version
 - ``VERSION_COMMENT``: Description of grid parameters
 - ``PEAK_LOAD_HOUSEHOLD``: Peak load per household (kW)
-- ``SIM_FACTOR``: Simultaneous load factors by building type
 
 **Consumer Categories:**
-- Defines load calculation parameters for different building types
-- Includes peak loads, consumption rates, and simultaneous factors
+- Defines load parameters for electrical consumer categories, independently of
+  building classes such as ``SFH``, ``MFH``, ``TH``, and ``AB``
+- The default categories are ``Residential``, ``Commercial``, and ``Public``
+- Includes peak loads, consumption rates, and the single authoritative
+  ``sim_factor`` per electrical category
+- Mixed-use buildings reuse the residential and Commercial/Public category
+  parameters for their respective components; no additional mixed-use factor is applied
+- These rows and the derived simultaneity-factor mapping are stored in the
+  generation-parameter snapshot for ``VERSION_ID``. Increment ``VERSION_ID``
+  after changing them.
 
 **Equipment Data:**
 - ``TRANSFORMERS`` defines available transformer types

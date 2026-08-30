@@ -32,13 +32,16 @@ are tables that temporarily store the data for grid generation. For
 the buildings of the zip code the house distance is calculated and the settlement type is
 is derived from it. The settlement type decides which transformer types are installed in the zip code.
 Each building is assigned a maximum load.
-This depends on the building type. For residential buildings, the load is
-scaled to households, for other buildings (commercial, public,
-industrial buildings), the building floor area is taken into account in the calculation of the power.
-of the power. Buildings without load or with load over 100kW
-are not part of the low voltage network and are therefore deleted.
-Finally, the transformers from transformers are also transferred to :code:`buildings_tem`
-are transferred.
+Residential load is scaled by the number of households; commercial and public
+load is scaled by its floor-area component. A mixed-use building therefore has
+two electrical components at one physical connection. The components use their
+existing category factors independently (residential plus commercial or public);
+there is no separate mixed-use simultaneity calculation.
+
+If only the non-residential component exceeds the MV-direct threshold, that
+component is excluded from the low-voltage model while the residential component
+remains connected. Buildings without any remaining LV load are excluded.
+Finally, transformers are transferred to :code:`buildings_tem`.
 
 Step 2
 ------
