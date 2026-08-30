@@ -402,10 +402,10 @@ class DatabaseConstructor:
             self.dbc.conn.rollback()
             raise
 
-    def drop_all_tables(self):
+    def reset_schema(self):
         """
-        Drops all tables in the database
+        Drops the pylovo schema and all objects it contains.
         """
-        cur = self.dbc.conn.cursor()
-        cur.execute(f"DROP SCHEMA pylovo CASCADE")
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("DROP SCHEMA IF EXISTS pylovo CASCADE")
         self.dbc.conn.commit()

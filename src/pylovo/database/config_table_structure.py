@@ -710,7 +710,7 @@ CREATE_QUERIES = {
                                )
     """,
     "transformer_positions_with_grid": """
-    DROP MATERIALIZED VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
+    DROP VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
         SELECT
             tp.*,

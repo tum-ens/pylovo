@@ -17,11 +17,11 @@ def main():
     ### Create constructor class
     logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
     sgc = DatabaseConstructor()
-    logger.info("### DROPPING ALL TABLES ###")
-    # sgc.drop_all_tables() #uncomment for debugging
+    logger.info("### RESETTING PYLOVO SCHEMA ###")
+    sgc.reset_schema()
 
-    ### Create schema if it doesn't exist
-    logger.info("### CREATING SCHEMA pylovo IF NOT EXISTS ###")
+    ### Create a fresh schema
+    logger.info("### CREATING SCHEMA pylovo ###")
     sgc.create_schema()
 
     ### Create database with predefined table structure
