@@ -271,11 +271,13 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         insert_query = f"""
             INSERT INTO buildings_tem
-            (id, feature_id, objectid, height, floor_area, floor_number, nonresidential_floor_area,
+            (id, feature_id, objectid, height, floor_area, floor_number, residential_floor_area,
+             nonresidential_floor_area, nonresidential_use, mix_score, mix_rule, mix_confidence,
              building_use, building_use_id,
              building_type, occupants, households, construction_year, postcode, address_street_id, street,
              house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
                     ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
                     %s, %s, %s, %s)
         """
@@ -371,7 +373,10 @@ class PreprocessingMixin(BaseMixin, ABC):
             SELECT AVG(households)::DOUBLE PRECISION
             FROM buildings_tem
             WHERE households IS NOT NULL
-              AND type IN ('SFH','TH','MFH','AB');"""
+              AND (
+                  COALESCE(residential_floor_area, 0) > 0
+                  OR type IN ('SFH','TH','MFH','AB')
+              );"""
         self.cur.execute(avg_query, {"p": plz})
         avg_val = self.cur.fetchone()[0]
         if avg_val is None:
@@ -595,6 +600,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         query = """
             DELETE FROM buildings_tem b
             WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
+              AND COALESCE(b.residential_floor_area, 0) <= 0
               AND COALESCE(b.type, '') != 'Transformer'
               AND EXISTS (
                   SELECT 1
@@ -610,8 +616,8 @@ class PreprocessingMixin(BaseMixin, ABC):
         """Keep only residential consumer buildings in the temporary generation input."""
         query = """
             DELETE FROM buildings_tem
-            WHERE type IS NULL
-               OR type NOT IN ('SFH', 'MFH', 'TH', 'AB');
+            WHERE COALESCE(residential_floor_area, 0) <= 0
+              AND (type IS NULL OR type NOT IN ('SFH', 'MFH', 'TH', 'AB'));
         """
         self.cur.execute(query)
         return self.cur.rowcount
@@ -678,6 +684,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                       OR t.osm_id = CONCAT('lod2/', b.objectid)
                       OR (
                           b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                          AND COALESCE(b.residential_floor_area, 0) <= 0
                           AND b.geom IS NOT NULL
                           AND ST_Intersects(b.geom, t.geom)
                       )
@@ -691,7 +698,10 @@ class PreprocessingMixin(BaseMixin, ABC):
                   AND (
                       t.osm_id = b.objectid
                       OR t.osm_id = CONCAT('lod2/', b.objectid)
-                      OR b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                      OR (
+                          b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                          AND COALESCE(b.residential_floor_area, 0) <= 0
+                      )
                   )
             ), deleted AS (
                 DELETE FROM buildings_tem b

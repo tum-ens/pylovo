@@ -269,6 +269,12 @@ CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
+        residential_floor_area double precision,
+        nonresidential_floor_area double precision,
+        nonresidential_use varchar(30),
+        mix_score double precision,
+        mix_rule text,
+        mix_confidence text,
         building_use text,
         building_use_id text,
         building_type text,
@@ -305,6 +311,12 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS height double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_area double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_number integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS residential_floor_area double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_floor_area double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_use varchar(30);
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS mix_score double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS mix_rule text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS mix_confidence text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use_id text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_type text;
@@ -776,7 +788,12 @@ TEMP_CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
-        nonresidential_floor_area double precision,  -- commercial component of a mixed-use building
+        residential_floor_area double precision,
+        nonresidential_floor_area double precision,
+        nonresidential_use varchar(30),
+        mix_score double precision,
+        mix_rule text,
+        mix_confidence text,
         building_use text,
         building_use_id text,
         building_type text,

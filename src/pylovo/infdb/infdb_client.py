@@ -55,7 +55,18 @@ class InfdbClient:
                 height,
                 floor_area,
                 floor_number,
+                residential_floor_area,
                 nonresidential_floor_area,
+                CASE
+                    WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
+                    WHEN building_use = 'Residential' THEN 'Commercial'
+                    WHEN building_use = 'Mixed' THEN basedata.classify_building_use(building_use_id)
+                    WHEN building_use IN ('Commercial', 'Public') THEN building_use
+                    ELSE NULL
+                END AS nonresidential_use,
+                mix_score,
+                mix_rule,
+                mix_confidence,
                 building_use,
                 building_use_id,
                 building_type,

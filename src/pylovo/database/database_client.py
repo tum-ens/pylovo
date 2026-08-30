@@ -175,14 +175,17 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         query = f"""
             INSERT INTO pylovo.buildings_result
                 (version_id, objectid, grid_result_id, id, feature_id, height, floor_area, floor_number,
+                 residential_floor_area, nonresidential_floor_area, nonresidential_use, mix_score, mix_rule, mix_confidence,
                  building_use, building_use_id, building_type, type, occupants, households, construction_year,
                  postcode, address_street_id, street, house_number, geom, centroid, gemeindeschluessel,
                  changelog_id, assigned_way_id, peak_load_in_kw, vertice_id, connection_point, agg_connection_point)
                 SELECT '{VERSION_ID}' as version_id, objectid, gr.grid_result_id, id, feature_id, height,
-                       floor_area, floor_number, building_use, building_use_id, building_type, type, occupants,
-                       households, bt.construction_year, postcode, address_street_id, street, house_number,
-                       geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, peak_load_in_kw,
-                       vertice_id, bt.connection_point, bt.agg_connection_point
+                       floor_area, floor_number, residential_floor_area, nonresidential_floor_area,
+                       nonresidential_use, mix_score, mix_rule, mix_confidence, building_use, building_use_id,
+                       building_type, type, occupants, households, bt.construction_year, postcode,
+                       address_street_id, street, house_number, geom, centroid, gemeindeschluessel,
+                       changelog_id, assigned_way_id, peak_load_in_kw, vertice_id, bt.connection_point,
+                       bt.agg_connection_point
             FROM pylovo.{buildings_table} bt
             JOIN pylovo.grid_result gr
                 ON bt.plz = gr.plz AND bt.kcid = gr.kcid AND bt.bcid = gr.bcid and gr.version_id = '{VERSION_ID}'
