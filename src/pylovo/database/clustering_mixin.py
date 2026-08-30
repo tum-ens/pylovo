@@ -3,7 +3,6 @@ import math
 import warnings
 import time
 from abc import ABC
-from decimal import *
 from typing import *
 
 import numpy as np
@@ -844,103 +843,6 @@ WITH inserted_grid AS (
         params = {"v": VERSION_ID, "count": count, "c": tuple(conn_id_list), "t": transformer_id, "k": kcid, "pc": plz,
             "l": transformer_rated_power, }
         self.cur.execute(query, params)
-
-    def calculate_sim_load(self, conn_list: Union[tuple, list]) -> Decimal:
-        residential = """WITH residential AS
-                                  (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                                   FROM buildings_tem AS b
-                                            LEFT JOIN pylovo.consumer_categories AS c
-                                                      ON b.type = c.definition
-                                   WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                     AND b.peak_load_in_kw != 0
-                                     AND b.type IN ('SFH', 'MFH', 'AB', 'TH'))
-                         SELECT SUM(load), SUM(count), sim_factor
-                         FROM residential
-                         GROUP BY sim_factor; \
-                      """
-        self.cur.execute(residential, {"c": tuple(conn_list)})
-
-        data = self.cur.fetchone()
-        if data:
-            residential_load = Decimal(data[0])
-            residential_count = Decimal(data[1])
-            residential_factor = Decimal(data[2])
-            residential_sim_load = residential_load * (
-                    residential_factor + (1 - residential_factor) * (residential_count ** Decimal(-3 / 4)))
-        else:
-            residential_sim_load = 0
-        # TODO can the following 4 repetitions simplified with a general function?
-        commercial = """WITH commercial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                                  FROM buildings_tem AS b
-                                           LEFT JOIN pylovo.consumer_categories AS c
-                                                     ON c.definition = b.type
-                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                    AND b.peak_load_in_kw != 0
-                                    AND b.type = 'Commercial')
-                        SELECT SUM(load), SUM(count), sim_factor
-                        FROM commercial
-                        GROUP BY sim_factor; \
-                     """
-        self.cur.execute(commercial, {"c": tuple(conn_list)})
-        data = self.cur.fetchone()
-        if data:
-            commercial_load = Decimal(data[0])
-            commercial_count = Decimal(data[1])
-            commercial_factor = Decimal(data[2])
-            commercial_sim_load = commercial_load * (
-                    commercial_factor + (1 - commercial_factor) * (commercial_count ** Decimal(-3 / 4)))
-        else:
-            commercial_sim_load = 0
-
-        public = """WITH public AS
-                             (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                              FROM buildings_tem AS b
-                                       LEFT JOIN pylovo.consumer_categories AS c
-                                                 ON c.definition = b.type
-                              WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                AND b.peak_load_in_kw != 0
-                                AND b.type = 'Public')
-                    SELECT SUM(load), SUM(count), sim_factor
-                    FROM public
-                    GROUP BY sim_factor; \
-                 """
-        self.cur.execute(public, {"c": tuple(conn_list)})
-        data = self.cur.fetchone()
-        if data:
-            public_load = Decimal(data[0])
-            public_count = Decimal(data[1])
-            public_factor = Decimal(data[2])
-            public_sim_load = public_load * (public_factor + (1 - public_factor) * (public_count ** Decimal(-3 / 4)))
-        else:
-            public_sim_load = 0
-
-        industrial = """WITH industrial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                                  FROM buildings_tem AS b
-                                           LEFT JOIN pylovo.consumer_categories AS c
-                                                     ON c.definition = b.type
-                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                    AND b.peak_load_in_kw != 0
-                                    AND b.type = 'Industrial')
-                        SELECT SUM(load), SUM(count), sim_factor
-                        FROM industrial
-                        GROUP BY sim_factor; \
-                     """
-        self.cur.execute(industrial, {"c": tuple(conn_list)})
-        data = self.cur.fetchone()
-        if data:
-            industrial_load = Decimal(data[0])
-            industrial_count = Decimal(data[1])
-            industrial_factor = Decimal(data[2])
-            industrial_sim_load = industrial_load * (
-                    industrial_factor + (1 - industrial_factor) * (industrial_count ** Decimal(-3 / 4)))
-        else:
-            industrial_sim_load = 0
-
-        total_sim_load = (residential_sim_load + commercial_sim_load + industrial_sim_load + public_sim_load)
-
-        return total_sim_load
 
     def get_building_connection_points_from_bc(self, kcid: int, bcid: int) -> list:
         """

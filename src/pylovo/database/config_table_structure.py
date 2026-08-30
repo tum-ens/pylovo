@@ -291,6 +291,9 @@ CREATE_QUERIES = {
         gemeindeschluessel text,
         changelog_id bigint,
         assigned_way_id text,
+        residential_peak_load_in_kw double precision,
+        nonresidential_peak_load_in_kw double precision,
+        nonresidential_mv_direct boolean NOT NULL DEFAULT false,
         peak_load_in_kw double precision,
         vertice_id integer,
         connection_point integer,
@@ -299,10 +302,6 @@ CREATE_QUERIES = {
         CONSTRAINT fk_buildings_result_grid_result
             FOREIGN KEY (version_id, grid_result_id)
             REFERENCES pylovo.grid_result (version_id, grid_result_id)
-            ON DELETE CASCADE,
-        CONSTRAINT fk_buildings_result_type
-            FOREIGN KEY (type)
-            REFERENCES pylovo.consumer_categories (definition)
             ON DELETE CASCADE
     );
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS id integer;
@@ -333,6 +332,9 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS gemeindeschluessel text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS changelog_id bigint;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS assigned_way_id text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS residential_peak_load_in_kw double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_peak_load_in_kw double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_mv_direct boolean NOT NULL DEFAULT false;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS peak_load_in_kw double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS vertice_id integer;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS connection_point integer;
@@ -345,17 +347,6 @@ CREATE_QUERIES = {
               AND conrelid = 'pylovo.buildings_result'::regclass
         ) THEN
             ALTER TABLE pylovo.buildings_result ADD CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid);
-        END IF;
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conname = 'fk_buildings_result_type'
-              AND conrelid = 'pylovo.buildings_result'::regclass
-        ) THEN
-            ALTER TABLE pylovo.buildings_result
-                ADD CONSTRAINT fk_buildings_result_type
-                FOREIGN KEY (type)
-                REFERENCES pylovo.consumer_categories (definition)
-                ON DELETE CASCADE;
         END IF;
     END $$;
     CREATE INDEX IF NOT EXISTS idx_buildings_result_grid_result_id
@@ -810,6 +801,9 @@ TEMP_CREATE_QUERIES = {
         changelog_id bigint,
         assigned_way_id text,
         type varchar(80),
+        residential_peak_load_in_kw double precision,
+        nonresidential_peak_load_in_kw double precision,
+        nonresidential_mv_direct boolean NOT NULL DEFAULT false,
         peak_load_in_kw double precision,
         plz integer,
         vertice_id bigint,

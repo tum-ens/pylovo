@@ -195,41 +195,46 @@ class CableInstaller:
             )
             self.backend.create_component(bus_spec)
 
-    def create_consumer_bus_and_load(self, consumer_list: list, sim_load_per_building: dict, buildings_df: pd.DataFrame,
-                                     load_type: dict) -> None:
-        """Create consumer buses and loads with simultaneity-adjusted power.
-
-        Applies Kerber formula per building to calculate simultaneous load.
-        """
+    def create_consumer_bus_and_load(
+        self,
+        consumer_list: list,
+        component_loads: dict,
+    ) -> None:
+        """Create one bus and one electrical load per use component."""
 
         for consumer in consumer_list:
             node_geodata = self.dbc.get_node_geom(consumer)
-            ltype = load_type[consumer]
-            total_installed_kw = buildings_df[buildings_df["vertice_id"] == consumer]["peak_load_in_kw"].sum()
-            simultaneous_load_kw = sim_load_per_building[consumer]
-            # Calculate reactive power from power factor
-            phi = np.arccos(DEFAULT_POWER_FACTOR)
-            kvar = simultaneous_load_kw * np.tan(phi)
+            components = component_loads.get(consumer, [])
+            if not components:
+                raise ValueError(f"Consumer vertex {consumer} has no LV load components.")
+            categories = [component["category"] for component in components]
+            load_type = categories[0] if len(categories) == 1 else "Mixed"
 
             # Create bus
             bus_spec = BusSpec(
                 name=f"Consumer Nodebus {consumer}",
                 voltage_kv=VN * 1e-3,
                 coordinates=node_geodata,
-                zone=ltype
+                zone=load_type
             )
             self.backend.create_component(bus_spec)
-            self.backend.set_bus_zone(bus_spec.name, ltype)
+            self.backend.set_bus_zone(bus_spec.name, load_type)
 
-            # Create one aggregated load per building with simultaneous load
-            load_spec = LoadSpec(
-                name=f"Load {consumer}",
-                bus=f"Consumer Nodebus {consumer}",
-                kw=simultaneous_load_kw,
-                kvar=kvar,
-                max_p_mw=total_installed_kw * 1e-3,
-            )
-            self.backend.create_component(load_spec)
+            for component in components:
+                simultaneous_load_kw = float(component["simultaneous_kw"])
+                phi = np.arccos(DEFAULT_POWER_FACTOR)
+                kvar = simultaneous_load_kw * np.tan(phi)
+                load_spec = LoadSpec(
+                    name=f"Load {consumer} {component['category']}",
+                    bus=f"Consumer Nodebus {consumer}",
+                    kw=simultaneous_load_kw,
+                    kvar=kvar,
+                    max_p_mw=float(component["installed_kw"]) * 1e-3,
+                    category=component["category"],
+                    load_units=float(component["load_units"]),
+                    consumer_vertex=int(consumer),
+                )
+                self.backend.create_component(load_spec)
 
     def install_consumer_cables(self, plz: int, bcid: int, kcid: int,
                                 branch_node_list: list,

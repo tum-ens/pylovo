@@ -114,6 +114,9 @@ class LoadSpec(ComponentSpec):
     kw: float = 0.0  # Active power in kW
     kvar: float = 0.0  # Reactive power in kvar
     max_p_mw: float = 0.0  # Maximum active power in MW
+    category: Optional[str] = None  # Electrical simultaneity category
+    load_units: float = 1.0  # Households for residential, otherwise component count
+    consumer_vertex: Optional[int] = None  # Shared physical connection vertex
 
     def __post_init__(self):
         self.component_type = "load"

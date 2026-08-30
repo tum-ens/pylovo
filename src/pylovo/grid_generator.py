@@ -405,7 +405,7 @@ class GridGenerator:
         )
         too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
         self.logger.debug(
-            f"{too_large_consumers} Commercial/Public consumers assumed MV-direct and excluded from LV modeling"
+            f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
         )
 
 
@@ -858,6 +858,8 @@ class GridGenerator:
             transformer_list: List of transformer IDs
         """
         self.logger.info(f"{len(transformer_list)} Transformers found for kcid {kcid}")
+        buildings = self.dbc.get_buildings_from_kcid(kcid)
+        consumer_cat_df = self.dbc.get_consumer_categories()
 
         # Get cost dataframe between consumers and transformers
         cost_df = self.dbc.get_consumer_to_transformer_df(kcid, transformer_list)
@@ -885,7 +887,9 @@ class GridGenerator:
 
             # Try to assign consumer to transformer
             pre_result_dict[end_transformer_id].append(int(start_consumer_id))
-            sim_load = self.dbc.calculate_sim_load(pre_result_dict[end_transformer_id])
+            sim_load = utils.simultaneousPeakLoad(
+                buildings, consumer_cat_df, pre_result_dict[end_transformer_id]
+            )
 
             if float(sim_load) > max(possible_transformers):
                 # Remove consumer and mark transformer as full
@@ -916,7 +920,9 @@ class GridGenerator:
             building_cluster_count -= 1
 
             # Calculate the simulated load for all loads assigned to this transformer
-            sim_load = self.dbc.calculate_sim_load(pre_result_dict[transformer_id])
+            sim_load = utils.simultaneousPeakLoad(
+                buildings, consumer_cat_df, pre_result_dict[transformer_id]
+            )
 
             # Select the smallest transformer that is larger than the simulated load
             transformer_rated_power = possible_transformers[possible_transformers > float(sim_load)][0].item()
@@ -1026,12 +1032,13 @@ class GridGenerator:
 
         return (vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes,)
 
-    def get_consumer_allocated_loads(self, consumer_list: list, buildings_df: pd.DataFrame) -> tuple[
-        dict, dict, dict]:
+    def get_consumer_allocated_loads(
+        self, consumer_list: list, buildings_df: pd.DataFrame, consumer_cat_df: pd.DataFrame
+    ) -> tuple[dict, dict]:
         return utils.allocate_consumer_simultaneous_loads(
             consumer_list,
             buildings_df,
-            CONSUMER_CATEGORIES,
+            consumer_cat_df,
         )
 
 
@@ -1488,7 +1495,9 @@ class GridGenerator:
             vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes = (
                 self.prepare_vertices_list(self.plz, kcid, bcid)
             )
-            sim_load_per_building, load_units, load_type = self.get_consumer_allocated_loads(consumer_list, buildings_df)
+            sim_load_per_consumer, component_loads = (
+                self.get_consumer_allocated_loads(consumer_list, buildings_df, consumer_df)
+            )
 
             # Initialize backend using configuration
             backend = create_backend(ELECTRICAL_BACKEND, logger=self.logger)
@@ -1518,7 +1527,7 @@ class GridGenerator:
             installer.create_lvmv_bus(self.plz, kcid, bcid)
             installer.create_transformer(self.plz, kcid, bcid)
             installer.create_connection_bus(connection_nodes)
-            installer.create_consumer_bus_and_load(consumer_list, sim_load_per_building, buildings_df, load_type)
+            installer.create_consumer_bus_and_load(consumer_list, component_loads)
 
             trafo_power = self.dbc.get_transformer_rated_power_from_bcid(self.plz, kcid, bcid)
             self.logger.debug(
@@ -1547,7 +1556,7 @@ class GridGenerator:
                     list(plan["branch_nodes"]),
                     ont_vertice,
                     vertices_dict,
-                    sim_load_per_building,
+                    sim_load_per_consumer,
                     material_length_by_cable_km,
                 )
 

@@ -185,7 +185,6 @@ VERSION_COMMENT = CONFIG_GENERATION["VERSION_COMMENT"]
 
 # Load calculation parameters
 PEAK_LOAD_HOUSEHOLD = CONFIG_GENERATION["PEAK_LOAD_HOUSEHOLD"]
-SIM_FACTOR = CONFIG_GENERATION["SIM_FACTOR"]
 DEFAULT_POWER_FACTOR = CONFIG_GENERATION["DEFAULT_POWER_FACTOR"]
 
 # Consumer categories for load calculation
@@ -199,6 +198,23 @@ if not CONSUMER_CATEGORIES.empty and "peak_load" in CONSUMER_CATEGORIES.columns:
     CONSUMER_CATEGORIES["peak_load"] = CONSUMER_CATEGORIES["peak_load"].apply(_resolve_peak_load)
     # enforce numeric (None / null stay as NaN for categories using per m2 metrics)
     CONSUMER_CATEGORIES["peak_load"] = pd.to_numeric(CONSUMER_CATEGORIES["peak_load"], errors="coerce")
+
+required_consumer_category_columns = {"definition", "sim_factor"}
+missing_consumer_category_columns = required_consumer_category_columns.difference(
+    CONSUMER_CATEGORIES.columns
+)
+if missing_consumer_category_columns:
+    raise ValueError(
+        "CONSUMER_CATEGORIES is missing required columns: "
+        f"{sorted(missing_consumer_category_columns)}"
+    )
+if CONSUMER_CATEGORIES["definition"].duplicated().any():
+    duplicate_definitions = CONSUMER_CATEGORIES.loc[
+        CONSUMER_CATEGORIES["definition"].duplicated(keep=False), "definition"
+    ].tolist()
+    raise ValueError(f"Duplicate consumer category definitions: {duplicate_definitions}")
+CONSUMER_CATEGORIES["sim_factor"] = pd.to_numeric(CONSUMER_CATEGORIES["sim_factor"], errors="raise")
+SIM_FACTOR = CONSUMER_CATEGORIES.set_index("definition")["sim_factor"].astype(float).to_dict()
 
 # Equipment data
 TRANSFORMERS = pd.DataFrame(CONFIG_GENERATION["TRANSFORMERS"])

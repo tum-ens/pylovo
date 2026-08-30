@@ -157,8 +157,12 @@ class PandapowerBackend(IElectricalBackend):
             self.net,
             bus=bus,
             p_mw=p_mw,
+            q_mvar=spec.kvar / 1000.0,
             name=spec.name,
-            max_p_mw=spec.max_p_mw
+            max_p_mw=spec.max_p_mw,
+            category=spec.category,
+            load_units=spec.load_units,
+            consumer_vertex=spec.consumer_vertex,
         )
         self.logger.debug(
             f"Created load: {spec.name} (kw={spec.kw:.1f}, kvar={spec.kvar:.1f})"
