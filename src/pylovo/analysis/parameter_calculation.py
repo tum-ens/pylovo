@@ -1471,7 +1471,9 @@ class ParameterCalculator:
 
         loads = effective_load_table.copy()
 
-        if "zone" in net.bus.columns:
+        if "category" in loads.columns:
+            loads["zone"] = loads["category"]
+        elif "zone" in net.bus.columns:
             loads = loads.merge(net.bus[["zone"]], left_on="bus", right_index=True, how="left")
         else:
             loads["zone"] = "Residential"
@@ -1485,11 +1487,13 @@ class ParameterCalculator:
         _known_zones = set(SIM_FACTOR.keys())
         loads.loc[~loads["zone"].isin(_known_zones), "zone"] = "Residential"
 
-        load_name_column = "name" if "name" in loads.columns else "bus"
+        if "load_units" not in loads.columns:
+            loads["load_units"] = 1.0
+        loads["load_units"] = pd.to_numeric(loads["load_units"], errors="coerce").fillna(1.0)
 
         bus_zone_stats = loads.groupby(["bus", "zone"]).agg(
-            count=(load_name_column, "count"),
-            max_p_mw=("max_p_mw", "sum")
+            count=("load_units", "sum"),
+            max_p_mw=("max_p_mw", "sum"),
         ).reset_index()
 
         if bus_zone_stats.empty:
@@ -1651,7 +1655,8 @@ class ParameterCalculator:
                   AND plz = %(p)s
             ),
             load_counts AS (
-                SELECT grid_result_id, COUNT(*)::integer AS load_count
+                SELECT grid_result_id,
+                       COUNT(DISTINCT COALESCE(consumer_vertex, pp_index::bigint))::integer AS load_count
                 FROM pylovo.pandapower_load
                 GROUP BY grid_result_id
             ),
@@ -1780,28 +1785,31 @@ class ParameterCalculator:
             except Exception:
                 continue
 
-            # If zone labels are missing, treat all loads as Residential so the PLZ-
-            # level lookup remains usable for imperfect historic datasets.
-            def get_cat_stats(mask):
-                relevant_buses = net.bus[mask].index
-                load_subset = net.load[net.load["bus"].isin(relevant_buses)]
-                count = len(load_subset)
+            loads = net.load.copy()
+            if "category" in loads.columns:
+                loads["analysis_category"] = loads["category"]
+            elif "zone" in net.bus.columns:
+                loads = loads.merge(net.bus[["zone"]], left_on="bus", right_index=True, how="left")
+                loads["analysis_category"] = loads["zone"]
+            else:
+                loads["analysis_category"] = "Residential"
+            loads["analysis_category"] = loads["analysis_category"].fillna("Residential")
+            loads["analysis_category"] = loads["analysis_category"].replace(
+                ["MFH", "SFH", "AB", "TH", "Mixed"], "Residential"
+            )
+            if "load_units" not in loads.columns:
+                loads["load_units"] = 1.0
+            loads["load_units"] = pd.to_numeric(loads["load_units"], errors="coerce").fillna(1.0)
+
+            def get_cat_stats(category):
+                load_subset = loads[loads["analysis_category"] == category]
+                count = load_subset["load_units"].sum()
                 sum_load_kw = load_subset["max_p_mw"].sum() * 1000.0
                 return count, sum_load_kw
 
-            if "zone" in net.bus.columns:
-                res_mask = ~net.bus["zone"].isin(["Commercial", "Public"])
-                com_mask = net.bus["zone"] == "Commercial"
-                pub_mask = net.bus["zone"] == "Public"
-            else:
-                res_mask = pd.Series(True, index=net.bus.index)
-                com_mask = pd.Series(False, index=net.bus.index)
-                pub_mask = pd.Series(False, index=net.bus.index)
-
             stats = {
-                "Residential": get_cat_stats(res_mask),
-                "Commercial": get_cat_stats(com_mask),
-                "Public": get_cat_stats(pub_mask)
+                category: get_cat_stats(category)
+                for category in ("Residential", "Commercial", "Public")
             }
 
             sim_peak_load = 0.0
