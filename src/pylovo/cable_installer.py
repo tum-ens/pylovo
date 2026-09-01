@@ -198,13 +198,13 @@ class CableInstaller:
     def create_consumer_bus_and_load(
         self,
         consumer_list: list,
-        component_loads: dict,
+        powerflow_snapshot_components: dict,
     ) -> None:
-        """Create one bus and one electrical load per use component."""
+        """Create one bus and one snapshot load per use component."""
 
         for consumer in consumer_list:
             node_geodata = self.dbc.get_node_geom(consumer)
-            components = component_loads.get(consumer, [])
+            components = powerflow_snapshot_components.get(consumer, [])
             if not components:
                 raise ValueError(f"Consumer vertex {consumer} has no LV load components.")
             categories = [component["category"] for component in components]
@@ -230,6 +230,8 @@ class CableInstaller:
                     kw=simultaneous_load_kw,
                     kvar=kvar,
                     max_p_mw=float(component["installed_kw"]) * 1e-3,
+                    service_design_p_mw=float(component["service_design_kw"]) * 1e-3,
+                    operating_point_basis="synthetic_transformer_coincident",
                     category=component["category"],
                     load_units=float(component["load_units"]),
                     consumer_vertex=int(consumer),
@@ -238,9 +240,10 @@ class CableInstaller:
 
     def install_consumer_cables(self, plz: int, bcid: int, kcid: int,
                                 branch_node_list: list,
-                                ont_vertice: int, vertices_dict: dict, Pd: dict,
+                                ont_vertice: int, vertices_dict: dict,
+                                service_design_load_per_consumer: dict,
                                 material_length_by_cable_km: dict) -> dict:
-        """Install consumer connection cables."""
+        """Install consumer connection cables sized for their local coincident load."""
         consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(branch_node_list)
         branch_consumer_connections = [
             (connection_point, vertice_id)
@@ -256,7 +259,7 @@ class CableInstaller:
 
             length_km = self._service_line_length_km(line_geodata)
             count = 1
-            sim_load = Pd[end_vid]
+            sim_load = service_design_load_per_consumer[end_vid]
             Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
 
             connection_available_cables = self._consumer_connection_cables

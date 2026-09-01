@@ -1495,7 +1495,7 @@ class GridGenerator:
             vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes = (
                 self.prepare_vertices_list(self.plz, kcid, bcid)
             )
-            sim_load_per_consumer, component_loads = (
+            service_design_load_per_consumer, powerflow_snapshot_components = (
                 self.get_consumer_allocated_loads(consumer_list, buildings_df, consumer_df)
             )
 
@@ -1527,7 +1527,7 @@ class GridGenerator:
             installer.create_lvmv_bus(self.plz, kcid, bcid)
             installer.create_transformer(self.plz, kcid, bcid)
             installer.create_connection_bus(connection_nodes)
-            installer.create_consumer_bus_and_load(consumer_list, component_loads)
+            installer.create_consumer_bus_and_load(consumer_list, powerflow_snapshot_components)
 
             trafo_power = self.dbc.get_transformer_rated_power_from_bcid(self.plz, kcid, bcid)
             self.logger.debug(
@@ -1556,7 +1556,7 @@ class GridGenerator:
                     list(plan["branch_nodes"]),
                     ont_vertice,
                     vertices_dict,
-                    sim_load_per_consumer,
+                    service_design_load_per_consumer,
                     material_length_by_cable_km,
                 )
 
@@ -1650,11 +1650,15 @@ class GridGenerator:
 
     def save_net(self, backend: IElectricalBackend, kcid, bcid) -> str:
         """
-        Validate and save grid to file and database using backend pattern.
+        Validate the synthetic transformer-coincident operating point and save the grid.
         """
         # Validate grid with power flow before saving
         powerflow_status = "not_converged"
         try:
+            self.logger.debug(
+                "Running synthetic transformer-coincident validation operating point "
+                f"for kcid={kcid}, bcid={bcid}."
+            )
             converged = backend.solve_power_flow()
             if converged:
                 metrics = backend.get_circuit_metrics()
@@ -1670,18 +1674,28 @@ class GridGenerator:
                 if voltage_out_of_band:
                     powerflow_status = "voltage_violation"
                     self.logger.warning(
-                        f"Power flow converged but voltage band was violated for kcid={kcid}, bcid={bcid} "
+                        "Synthetic transformer-coincident validation power flow converged "
+                        f"but violated the voltage band for kcid={kcid}, bcid={bcid} "
                         f"(min_vm_pu={min_voltage_pu}, max_vm_pu={max_voltage_pu}, "
                         f"allowed=[{V_BAND_LOW}, {V_BAND_HIGH}])."
                     )
                 else:
-                    self.logger.info(f"Power flow converged for kcid={kcid}, bcid={bcid}")
+                    self.logger.info(
+                        "Synthetic transformer-coincident validation power flow converged "
+                        f"for kcid={kcid}, bcid={bcid}"
+                    )
                     powerflow_status = "converged"
             else:
-                self.logger.warning(f"Power flow did NOT converge for kcid={kcid}, bcid={bcid}")
+                self.logger.warning(
+                    "Synthetic transformer-coincident validation power flow did NOT converge "
+                    f"for kcid={kcid}, bcid={bcid}"
+                )
                 powerflow_status = "not_converged"
         except Exception as e:
-            self.logger.warning(f"Power flow failed for kcid={kcid}, bcid={bcid}: {e}")
+            self.logger.warning(
+                "Synthetic transformer-coincident validation power flow failed "
+                f"for kcid={kcid}, bcid={bcid}: {e}"
+            )
 
         if powerflow_status != "converged":
             self.logger.warning(
@@ -1748,4 +1762,3 @@ class GridGenerator:
             f"Grid with kcid:{kcid} bcid:{bcid} is stored with status={powerflow_status}."
         )
         return powerflow_status
-

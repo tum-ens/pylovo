@@ -176,13 +176,13 @@ def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):
 
 
 def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_cat_df):
-    """Allocate grouped simultaneity-consistent loads to consumer vertices.
+    """Calculate power-flow snapshot components and service design loads.
 
     Transformer and feeder sizing use grouped simultaneity per main category.
-    Power-flow loads, however, are attached to consumer vertices. This helper
-    distributes the grouped category load back to those consumer vertices while
-    preserving the grouped total and aggregating duplicate building rows per
-    vertex.
+    The power-flow snapshot distributes those grouped category loads back to
+    consumer vertices while preserving each grouped total. Service cables are
+    instead sized from the local coincident load of all consumers physically
+    connected behind that cable.
     """
     components = build_load_components(buildings_df)
     components["simultaneous_kw"] = 0.0
@@ -201,22 +201,32 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
         scale = grouped_sim_kw / individual_total if individual_total > 0 else 0.0
         components.loc[indices, "simultaneous_kw"] = individual_sim * scale
 
-    sim_load_per_consumer = {consumer: 0.0 for consumer in consumer_list}
-    component_loads = {consumer: [] for consumer in consumer_list}
+    service_design_load_per_consumer = {consumer: 0.0 for consumer in consumer_list}
+    powerflow_snapshot_components = {consumer: [] for consumer in consumer_list}
 
     grouped = components.groupby(["consumer_vertex", "category"], as_index=False).agg(
         installed_kw=("installed_kw", "sum"),
         load_units=("load_units", "sum"),
         simultaneous_kw=("simultaneous_kw", "sum"),
     )
+    grouped["service_design_kw"] = [
+        oneSimultaneousLoad(
+            row.installed_kw,
+            row.load_units,
+            _get_sim_factor(consumer_cat_df, row.category),
+        )
+        for row in grouped.itertuples(index=False)
+    ]
     for consumer, rows in grouped.groupby("consumer_vertex"):
-        if consumer not in component_loads:
+        if consumer not in powerflow_snapshot_components:
             continue
-        records = rows[["category", "installed_kw", "load_units", "simultaneous_kw"]].to_dict("records")
-        component_loads[consumer] = records
-        sim_load_per_consumer[consumer] = float(rows["simultaneous_kw"].sum())
+        records = rows[
+            ["category", "installed_kw", "load_units", "simultaneous_kw", "service_design_kw"]
+        ].to_dict("records")
+        powerflow_snapshot_components[consumer] = records
+        service_design_load_per_consumer[consumer] = float(rows["service_design_kw"].sum())
 
-    return sim_load_per_consumer, component_loads
+    return service_design_load_per_consumer, powerflow_snapshot_components
 
 
 def oneSimultaneousLoad(installed_power, load_count, sim_factor):

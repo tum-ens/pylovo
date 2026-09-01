@@ -160,6 +160,8 @@ class PandapowerBackend(IElectricalBackend):
             q_mvar=spec.kvar / 1000.0,
             name=spec.name,
             max_p_mw=spec.max_p_mw,
+            service_design_p_mw=spec.service_design_p_mw,
+            operating_point_basis=spec.operating_point_basis,
             category=spec.category,
             load_units=spec.load_units,
             consumer_vertex=spec.consumer_vertex,

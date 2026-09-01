@@ -533,6 +533,8 @@ CREATE_QUERIES = {
         bus integer,
         p_mw double precision,
         q_mvar double precision,
+        service_design_p_mw double precision,
+        operating_point_basis varchar(64),
         category varchar(30),
         load_units double precision,
         consumer_vertex bigint,
@@ -556,6 +558,8 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS category varchar(30);
     ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS load_units double precision;
     ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS consumer_vertex bigint;
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS service_design_p_mw double precision;
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS operating_point_basis varchar(64);
     CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_id
     ON pylovo.pandapower_load (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_pandapower_load_bus
