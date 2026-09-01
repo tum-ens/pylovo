@@ -5,7 +5,7 @@ import pandas as pd
 from pyproj import Transformer
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, VOLTAGE_DROP_LOAD_PERCENT_PER_KM, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
+from pylovo.config_loader import VN, V_BAND_LOW, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -269,43 +269,18 @@ class CableInstaller:
                     self._consumer_connection_cables + self._feeder_available_cables
                 ))
 
-            voltage_available_cables_df = None
             line_df = self._cable_df
             while True:
                 current_available_cables_df = line_df.loc[
                     (line_df["max_i_ka"] >= Imax / count) & (line_df.index.isin(connection_available_cables))
-                ].copy()
+                ]
 
                 if len(current_available_cables_df) == 0:
                     count += 1
                     continue
+                break
 
-                current_available_cables_df["cable_impedence"] = np.sqrt(
-                    current_available_cables_df["r_ohm_per_km"] ** 2 +
-                    current_available_cables_df["x_ohm_per_km"] ** 2
-                )
-
-                if Imax * length_km == 0:
-                    voltage_available_cables_df = current_available_cables_df
-                else:
-                    total_voltage_drop_percent = VOLTAGE_DROP_LOAD_PERCENT_PER_KM * length_km
-                    max_impedance = self._max_allowable_impedance_for_total_drop(
-                        total_voltage_drop_percent,
-                        Imax,
-                        length_km,
-                        count,
-                    )
-                    voltage_available_cables_df = current_available_cables_df[
-                        current_available_cables_df["cable_impedence"] <= max_impedance
-                    ]
-
-                if len(voltage_available_cables_df) == 0:
-                    count += 1
-                    continue
-                else:
-                    break
-
-            cable = voltage_available_cables_df.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
+            cable = current_available_cables_df.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
             material_length_by_cable_km[cable] += count * length_km
 
             line_spec = LineSpec(

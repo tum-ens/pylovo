@@ -244,9 +244,6 @@ V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
 # This is a topology-splitting parameter, not a final cable ampacity limit.
 FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
 
-# Consumer service-drop voltage-drop limit; installer converts percent per km to a total line budget.
-VOLTAGE_DROP_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LOAD_PERCENT_PER_KM"]
-
 # Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
 
@@ -365,4 +362,3 @@ try:
     sns.set_palette(sns.color_palette(TUMPalette))
 except ImportError:
     pass  # seaborn not installed, skip palette setup
-
