@@ -45,7 +45,7 @@ For the main Pylovo database:
     PASSWORD="yourpassword"
 
 Optional Environment Variables
------------------------------
+------------------------------
 
 For InfDB integration (when ``USE_INFDB: True`` in ``config_database.yaml``):
 
@@ -60,7 +60,7 @@ For InfDB integration (when ``USE_INFDB: True`` in ``config_database.yaml``):
     INFDB_SOURCE_SCHEMA="pylovo_input"
 
 Configuration File Details
-=========================
+==========================
 
 Database Configuration (config_database.yaml)
 ---------------------------------------------
@@ -73,19 +73,22 @@ Controls database connections and InfDB integration:
     USE_INFDB: True
 
 Key settings:
+
 - ``USE_INFDB``: Enable/disable InfDB integration
 - Database connection examples and setup instructions
 
 Grid Generation Configuration (config_generation.yaml)
------------------------------------------------------
+-------------------------------------------------------
 
 Main configuration file for grid generation with the following sections:
 
 **Regional Configuration:**
+
 - ``PLZ``: Postal code(s) for grid generation
 - ``AGS``: Official municipality code(s)
 
 **Execution Configuration:**
+
 - ``PARALLEL``: Enable parallel processing
 - ``N_JOBS_PERCENT``: Percentage of CPU cores to use
 - ``ANALYZE_GRIDS``: Enable grid analysis after generation
@@ -94,11 +97,13 @@ Main configuration file for grid generation with the following sections:
 - ``RESULT_DIR``: Directory for storing results
 
 **Grid Generation Parameters:**
+
 - ``VERSION_ID``: Unique identifier for grid version
 - ``VERSION_COMMENT``: Description of grid parameters
 - ``PEAK_LOAD_HOUSEHOLD``: Peak load per household (kW)
 
 **Consumer Categories:**
+
 - Defines load parameters for electrical consumer categories, independently of
   building classes such as ``SFH``, ``MFH``, ``TH``, and ``AB``
 - The default categories are ``Residential``, ``Commercial``, and ``Public``
@@ -111,15 +116,24 @@ Main configuration file for grid generation with the following sections:
   after changing them.
 
 **Equipment Data:**
+
 - ``TRANSFORMERS`` defines available transformer types
 - ``FEEDER_CABLES`` defines cables allowed for feeder and backbone routing
 - ``CONSUMER_CONNECTION_CABLES`` defines cables available for house connections
 
 **Cable Dimensioning:**
-- Voltage drop limits and thresholds
-- Nominal voltage settings
+
+- ``VN`` and ``DEFAULT_POWER_FACTOR`` convert active design power into
+  three-phase design current at nominal voltage
+- Service connections are selected by their own building-level coincident-load
+  ampacity; no service voltage-drop sizing constraint is applied
+- ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT`` is the approximate planning
+  envelope from the transformer LV bus to each service connection point
+- See :doc:`grid_generation/explanation/grid_dimensioning` for the complete
+  coincidence, ampacity, voltage-drop, and provenance methodology
 
 **Settlement Type Thresholds:**
+
 - Parameters for distinguishing rural vs urban areas
 
 Analysis Configuration (config_analysis.yaml)
@@ -127,14 +141,22 @@ Analysis Configuration (config_analysis.yaml)
 
 Settings for grid analysis and visualization:
 
+**Power-flow Assessment:**
+
+- ``POWER_FLOW_VOLTAGE_LIMITS.MIN_VM_PU`` and ``MAX_VM_PU`` classify the result
+  of a converged power flow; they do not affect topology, cable sizing, or
+  numerical convergence
+
 **Plotting Configuration:**
+
 - ``PLOT_COLOR_DICT``: Color mapping for different transformer sizes
 
 **Municipal Register:**
+
 - ``MUNICIPAL_REGISTER``: Columns to include in regional data analysis
 
 Classification Configuration (config_classification.yaml)
---------------------------------------------------------
+----------------------------------------------------------
 
 Parameters for grid classification:
 
@@ -148,20 +170,23 @@ Parameters for grid classification:
 - ``REGIO7_REGIO5_GEM_DICT``: Regiostar 7 to 5 mapping
 
 Clustering Configuration (config_clustering.yaml)
-------------------------------------------------
+-------------------------------------------------
 
 Settings for clustering algorithms:
 
 **Clustering Parameters:**
+
 - ``LIST_OF_CLUSTERING_PARAMETERS``: Parameters used for clustering
 - ``CLUSTERING_PARAMETERS``: All available clustering parameters
 
 **Algorithm Settings:**
+
 - ``N_CLUSTERS_KMEDOID``: Number of clusters for K-Medoids
 - ``N_CLUSTERS_KMEANS``: Number of clusters for K-Means
 - ``N_CLUSTERS_GMM``: Number of clusters for Gaussian Mixture Model
 
 **Thresholds:**
+
 - Various threshold values for filtering and analysis
 
 Configuration Loading
@@ -189,7 +214,7 @@ Best Practices
 5. **Backup**: Keep backup copies of working configurations
 
 Troubleshooting
-==============
+===============
 
 Common configuration issues:
 

@@ -112,6 +112,11 @@ repertoire of cable types, a suitable cable is selected. The process of
 cable installation is based on the realistic decision making of a technician
 and avoids the use of additional costly network components.
 
+Transformer, feeder, and service-cable sizing use different aggregation levels.
+The complete coincidence equations, ampacity rules, feeder voltage-drop check,
+configuration levers, and stored diagnostics are documented in
+:doc:`grid_dimensioning`.
+
 Step 7
 ------
 

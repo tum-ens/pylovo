@@ -24,5 +24,6 @@ You can read about:
    explanation/building_data_import
    explanation/transformer_map_ui
    explanation/grid_generation_process
+   explanation/grid_dimensioning
    explanation/database
    explanation/infdb_buildings_processor
