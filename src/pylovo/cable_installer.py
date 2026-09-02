@@ -5,7 +5,7 @@ import pandas as pd
 from pyproj import Transformer
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, V_BAND_LOW, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
+from pylovo.config_loader import VN, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
 
@@ -13,8 +13,6 @@ from pylovo.electrical_backend import normalize_cable_name
 class CableInstaller:
     """Handles cable installation for electrical grids using backend abstraction."""
 
-    _NOMINAL_VOLTAGE_KV = VN * 1e-3
-    _THREE_PHASE_FACTOR = np.sqrt(3)
     _WGS84_TO_TARGET = Transformer.from_crs(4326, TARGET_EPSG, always_xy=True)
 
     def __init__(self, backend: IElectricalBackend, dbc, logger, cables: list,
@@ -109,27 +107,6 @@ class CableInstaller:
     ) -> tuple[float, float]:
         ont_geodata = self.dbc.get_ont_geom_from_bcid(plz, kcid, bcid)
         return float(ont_geodata[0]), float(ont_geodata[1])
-
-    def _max_allowable_impedance_for_total_drop(
-        self,
-        voltage_drop_percent: float,
-        line_current_ka: float,
-        distance_km: float,
-        parallel_count: int,
-    ) -> float:
-        """Return the maximum allowable cable impedance magnitude in ohm/km.
-
-        The planning budget uses three-phase line voltage, so the voltage-drop
-        criterion is based on
-
-            delta_u = sqrt(3) * I * Z * L
-
-        with ``I`` in kA, ``Z`` in ohm/km, and ``L`` in km.
-        """
-        voltage_denominator = self._THREE_PHASE_FACTOR * line_current_ka * distance_km / parallel_count
-        if voltage_denominator <= 0 or not np.isfinite(voltage_denominator):
-            return np.inf
-        return self._NOMINAL_VOLTAGE_KV * voltage_drop_percent / 100 / voltage_denominator
 
     def create_lvmv_bus(self, plz: int, kcid: int, bcid: int) -> None:
         """Create LV and MV buses."""
@@ -260,7 +237,7 @@ class CableInstaller:
             length_km = self._service_line_length_km(line_geodata)
             count = 1
             sim_load = service_design_load_per_consumer[end_vid]
-            Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
+            Imax = sim_load / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
 
             connection_available_cables = self._consumer_connection_cables
             # Direct transformer connection point may use feeder cables as well.
@@ -306,18 +283,31 @@ class CableInstaller:
 
         return material_length_by_cable_km
 
-    def find_minimal_available_cable(self, Imax: float, distance: int = 0) -> tuple[str, int]:
-        """Find the smallest feeder cable that meets current and voltage-drop limits.
+    def get_feeder_cable_options(self, Imax: float, max_parallel: int) -> list[dict]:
+        """Return thermally feasible feeder designs up to ``max_parallel`` cables."""
+        feeder_df = self._cable_df.loc[
+            self._cable_df.index.isin(self._feeder_available_cables)
+        ]
+        options = []
+        for parallel in range(1, max_parallel + 1):
+            feasible = feeder_df.loc[feeder_df["max_i_ka"] * parallel >= Imax]
+            for cable, row in feasible.iterrows():
+                options.append(
+                    {
+                        "cable": cable,
+                        "parallel": parallel,
+                        "r_ohm_per_km": float(row["r_ohm_per_km"]),
+                        "x_ohm_per_km": float(row["x_ohm_per_km"]),
+                        "cost_eur_per_m": float(row["cost_eur"]),
+                        "q_mm2": int(row["q_mm2"]),
+                    }
+                )
+        return options
 
-        ``distance`` is the routed feeder length in meters, matching the
-        ``agg_cost`` values returned by the pgRouting queries used throughout
-        grid generation. The voltage-drop check therefore converts it to km
-        before combining it with ``r_ohm_per_km`` / ``x_ohm_per_km`` cable data.
-        """
+    def find_minimal_available_cable(self, Imax: float) -> tuple[str, int]:
+        """Find the smallest feeder design that meets the ampacity requirement."""
         count = 1
-        cable = None
         line_df = self._cable_df
-        distance_km = distance * 1e-3
 
         while True:
             current_available_cables = line_df.loc[
@@ -328,36 +318,8 @@ class CableInstaller:
             if len(current_available_cables) == 0:
                 count += 1
                 continue
-
-            if distance_km != 0:
-                current_available_cables["cable_impedence"] = np.sqrt(
-                    current_available_cables["r_ohm_per_km"] ** 2 +
-                    current_available_cables["x_ohm_per_km"] ** 2
-                )
-
-                feeder_voltage_drop_percent = (1 - V_BAND_LOW) * 100
-                max_impedance = self._max_allowable_impedance_for_total_drop(
-                    feeder_voltage_drop_percent,
-                    Imax,
-                    distance_km,
-                    count,
-                )
-                if not np.isfinite(max_impedance):
-                    voltage_available_cables = current_available_cables
-                else:
-                    voltage_available_cables = current_available_cables[
-                        current_available_cables["cable_impedence"] <= max_impedance
-                    ]
-
-                if len(voltage_available_cables) == 0:
-                    count += 1
-                    continue
-                else:
-                    cable = voltage_available_cables.sort_values(by=["q_mm2"]).index.tolist()[0]
-                    break
-            else:
-                cable = current_available_cables.sort_values(by=["q_mm2"]).index.tolist()[0]
-                break
+            cable = current_available_cables.sort_values(by=["q_mm2"]).index.tolist()[0]
+            break
 
         return cable, count
 
@@ -381,13 +343,19 @@ class CableInstaller:
             length_km=length_km,
             parallel=count,
             coordinates=line_geodata,
+            feeder_sizing_basis="ampacity",
+            ampacity_std_type=cable,
+            ampacity_parallel=count,
         )
         self.backend.create_component(line_spec)
 
     def create_line_start_to_lv_bus(self, plz: int, bcid: int, kcid: int,
                                      branch_start_node: int,
                                      vertices_dict: dict, cable: str, count: int,
-                                     ont_vertice: int, feeder_section_id: int | None = None) -> int:
+                                     ont_vertice: int, feeder_section_id: int | None = None,
+                                     feeder_sizing_basis: str | None = None,
+                                     ampacity_std_type: str | None = None,
+                                     ampacity_parallel: int | None = None) -> int:
         """Create line from branch start to LV bus."""
         node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
 
@@ -414,6 +382,10 @@ class CableInstaller:
             length_km=length_km,
             parallel=count,
             coordinates=line_geodata,
+            feeder_section_id=feeder_section_id,
+            feeder_sizing_basis=feeder_sizing_basis,
+            ampacity_std_type=ampacity_std_type,
+            ampacity_parallel=ampacity_parallel,
         )
         self.backend.create_component(line_spec)
 
@@ -434,7 +406,10 @@ class CableInstaller:
                                   branch_node_list: list,
                                   vertices_dict: dict, material_length_by_cable_km: dict,
                                   cable: str, ont_vertice: int, count: float,
-                                  feeder_section_id: int | None = None) -> dict:
+                                  feeder_section_id: int | None = None,
+                                  feeder_sizing_basis: str | None = None,
+                                  ampacity_std_type: str | None = None,
+                                  ampacity_parallel: int | None = None) -> dict:
         """Create lines between connection nodes."""
         for i in range(len(branch_node_list) - 1):
             node_path_list = self.dbc.get_path_to_bus(branch_node_list[i], ont_vertice)
@@ -467,6 +442,10 @@ class CableInstaller:
                 length_km=length_km,
                 parallel=count,
                 coordinates=line_geodata,
+                feeder_section_id=feeder_section_id,
+                feeder_sizing_basis=feeder_sizing_basis,
+                ampacity_std_type=ampacity_std_type,
+                ampacity_parallel=ampacity_parallel,
             )
             self.backend.create_component(line_spec)
 

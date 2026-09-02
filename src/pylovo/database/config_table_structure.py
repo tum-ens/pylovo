@@ -87,6 +87,12 @@ CREATE_QUERIES = {
         model_status integer,
         ont_vertice_id bigint,
         power_flow_status varchar(32),
+        ampacity_max_feeder_voltage_drop_percent double precision,
+        selected_max_feeder_voltage_drop_percent double precision,
+        feeder_voltage_drop_limit_met boolean,
+        max_feeder_voltage_drop_pu double precision,
+        max_service_voltage_drop_pu double precision,
+        max_total_lv_voltage_drop_pu double precision,
         grid json,
         CONSTRAINT cluster_identifier UNIQUE (version_id, kcid, bcid, plz),
         CONSTRAINT unique_grid_result_id_version_id UNIQUE (version_id, grid_result_id),
@@ -99,6 +105,12 @@ CREATE_QUERIES = {
             REFERENCES pylovo.equipment_data(version_id, name)
             ON DELETE SET NULL
     );
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS ampacity_max_feeder_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS selected_max_feeder_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS feeder_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_feeder_voltage_drop_pu double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_service_voltage_drop_pu double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_total_lv_voltage_drop_pu double precision;
     CREATE INDEX IF NOT EXISTS idx_grid_result_version_id_plz_bcid_kcid
     ON pylovo.grid_result (version_id, plz, bcid, kcid);
     """,
@@ -476,12 +488,20 @@ CREATE_QUERIES = {
         max_i_ka double precision,
         df double precision,
         type varchar(32),
+        feeder_section_id integer,
+        feeder_sizing_basis varchar(32),
+        ampacity_std_type varchar(100),
+        ampacity_parallel integer,
         CONSTRAINT uq_pandapower_line_grid_result_pp_index UNIQUE (grid_result_id, pp_index),
         CONSTRAINT fk_pandapower_line_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)
-            ON DELETE CASCADE
+               ON DELETE CASCADE
     );
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS feeder_section_id integer;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS feeder_sizing_basis varchar(32);
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS ampacity_std_type varchar(100);
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS ampacity_parallel integer;
     CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_id
     ON pylovo.pandapower_line (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_pandapower_line_from_to_bus

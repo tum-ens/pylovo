@@ -26,7 +26,7 @@ from ..core.specs import (
     ExtGridSpec,
     normalize_cable_name,
 )
-from pylovo.config_loader import V_BAND_HIGH, V_BAND_LOW
+from pylovo.config_loader import POWER_FLOW_MAX_VM_PU, POWER_FLOW_MIN_VM_PU
 
 
 class PandapowerBackendError(Exception):
@@ -98,8 +98,8 @@ class PandapowerBackend(IElectricalBackend):
             name=spec.name,
             vn_kv=spec.voltage_kv,
             geodata=spec.coordinates,
-            max_vm_pu=V_BAND_HIGH,
-            min_vm_pu=V_BAND_LOW,
+            max_vm_pu=POWER_FLOW_MAX_VM_PU,
+            min_vm_pu=POWER_FLOW_MIN_VM_PU,
             type="n",
             zone=zone
         )
@@ -141,7 +141,11 @@ class PandapowerBackend(IElectricalBackend):
             std_type=std_type,
             name=spec.name,
             geodata=spec.coordinates,
-            parallel=spec.parallel
+            parallel=spec.parallel,
+            feeder_section_id=spec.feeder_section_id,
+            feeder_sizing_basis=spec.feeder_sizing_basis,
+            ampacity_std_type=spec.ampacity_std_type,
+            ampacity_parallel=spec.ampacity_parallel,
         )
         self.logger.debug(
             f"Created line: {spec.name} (length={spec.length_km:.3f}km, type={std_type})"

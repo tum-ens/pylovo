@@ -59,6 +59,8 @@ class GridGenerator:
         :type refresh_mv: bool
         """
         self.plz = plz
+        self.dbc.ensure_grid_persistence_schema()
+        self.dbc.commit_changes()
         print('-------------------- start', self.plz, '---------------------------')
         self.dbc.create_temp_tables(plz)  # create PLZ-suffixed temp tables
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
@@ -129,6 +131,8 @@ class GridGenerator:
         :param analyze_grids: option to analyse the results after grid generation, defaults to False
         :param parallel: optionally use parallel workers, defaults to True
         """
+        self.dbc.ensure_grid_persistence_schema()
+        self.dbc.commit_changes()
         # One-time cleanup of leftover PLZ-specific temp tables from previously interrupted runs.
         self.dbc.drop_orphaned_plz_temp_tables()
         self.dbc.commit_changes()
@@ -1075,9 +1079,8 @@ class GridGenerator:
             # Calculate simultaneous peak load for all nodes in current branch
             sim_load = utils.simultaneousPeakLoad(buildings_df, consumer_df, branch_node_list)  # sim_peak load in kW
 
-            # Calculate maximum current using worst-case voltage (VN * V_BAND_LOW)
-            # This ensures cables are sized for the lowest expected voltage (95% of nominal)
-            Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))  # current in kA
+            # Convert coincident active power to three-phase current at nominal voltage.
+            Imax = sim_load / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))  # current in kA
 
             # Check if current exceeds the configured topology grouping cap.
             # Cable sizing can still choose larger/parallel cables later.
@@ -1091,7 +1094,7 @@ class GridGenerator:
 
         # Calculate final current for the selected branch
         sim_load = utils.simultaneousPeakLoad(buildings_df, consumer_df, branch_node_list)
-        Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
+        Imax = sim_load / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
 
         return branch_node_list, Imax
 
@@ -1290,11 +1293,24 @@ class GridGenerator:
         downstream_nodes_by_node: dict[int, list[int]],
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
+        powerflow_snapshot_components: dict,
+        children_by_node: dict[int, list[int]],
         vertices_dict: dict[int, float],
         ont_vertice: int,
-    ) -> dict[tuple[int, int], tuple[str, int]]:
-        """Choose one feeder cable/count for every edge in each hard-node section."""
-        cable_by_edge: dict[tuple[int, int], tuple[str, int]] = {}
+    ) -> tuple[
+        dict[tuple[int, int], tuple[str, int]],
+        dict[tuple[int, int], dict],
+        dict[str, float | bool],
+    ]:
+        """Size sections by ampacity, then enforce a conservative path-drop envelope.
+
+        Two cases are checked independently: each edge's downstream coincident
+        design current, and the time-coherent validation snapshot exported to
+        the electrical backend. The former protects local feeder assets; the
+        latter ensures the chosen static validation point is not ignored.
+        """
+        section_designs: dict[int, dict] = {}
+        edge_current_ka: dict[tuple[int, int], float] = {}
 
         def _distance_from_transformer(node: int) -> float:
             if node == ont_vertice:
@@ -1306,7 +1322,7 @@ class GridGenerator:
                     f"Missing routed distance for feeder node {node} while sizing feeder sections."
                 ) from exc
 
-        for section_edges in sections_by_key.values():
+        for section_id, section_edges in sections_by_key.items():
             section_Imax = 0.0
             section_distance = 0.0
 
@@ -1314,20 +1330,282 @@ class GridGenerator:
                 sim_load = utils.simultaneousPeakLoad(
                     buildings_df, consumer_df, downstream_nodes_by_node[child]
                 )
-                edge_Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
+                edge_Imax = sim_load / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
                 edge_distance = _distance_from_transformer(child) - _distance_from_transformer(parent)
                 section_Imax = max(section_Imax, edge_Imax)
                 section_distance += edge_distance
+                edge_current_ka[(parent, child)] = edge_Imax
 
-            cable, count = installer.find_minimal_available_cable(
-                section_Imax,
-                section_distance,
+            cable, count = installer.find_minimal_available_cable(section_Imax)
+            matching_option = next(
+                option
+                for option in installer.get_feeder_cable_options(section_Imax, count)
+                if option["cable"] == cable and option["parallel"] == count
+            )
+            section_designs[int(section_id)] = {
+                "edges": list(section_edges),
+                "length_km": section_distance * 1e-3,
+                "design_current_ka": section_Imax,
+                "ampacity": dict(matching_option),
+                "selected": dict(matching_option),
+            }
+
+        planning_column = (
+            "agg_connection_point"
+            if "agg_connection_point" in buildings_df.columns
+            else "connection_point"
+        )
+        planning_nodes = buildings_df[planning_column]
+        if planning_column == "agg_connection_point" and "connection_point" in buildings_df.columns:
+            planning_nodes = planning_nodes.fillna(buildings_df["connection_point"])
+
+        consumer_to_planning_node = {}
+        for consumer_vertex, planning_node in zip(buildings_df["vertice_id"], planning_nodes):
+            consumer_vertex = int(consumer_vertex)
+            planning_node = int(planning_node)
+            existing_node = consumer_to_planning_node.setdefault(consumer_vertex, planning_node)
+            if existing_node != planning_node:
+                raise ValueError(
+                    f"Consumer vertex {consumer_vertex} maps to multiple planning nodes: "
+                    f"{existing_node} and {planning_node}."
+                )
+
+        missing_consumer_vertices = sorted(
+            int(consumer_vertex)
+            for consumer_vertex in powerflow_snapshot_components
+            if int(consumer_vertex) not in consumer_to_planning_node
+        )
+        if missing_consumer_vertices:
+            raise ValueError(
+                "Missing feeder planning-node mappings for consumer vertices: "
+                f"{missing_consumer_vertices[:10]}"
             )
 
-            for edge in section_edges:
-                cable_by_edge[edge] = (cable, count)
+        snapshot_kw_by_node: dict[int, float] = {}
+        for consumer_vertex, components in powerflow_snapshot_components.items():
+            planning_node = consumer_to_planning_node[int(consumer_vertex)]
+            snapshot_kw = sum(float(component["simultaneous_kw"]) for component in components)
+            snapshot_kw_by_node[planning_node] = snapshot_kw_by_node.get(planning_node, 0.0) + snapshot_kw
 
-        return cable_by_edge
+        downstream_snapshot_kw: dict[int, float] = {}
+
+        def _collect_downstream_snapshot_kw(node: int) -> float:
+            cached_kw = downstream_snapshot_kw.get(node)
+            if cached_kw is not None:
+                return cached_kw
+            total_kw = snapshot_kw_by_node.get(node, 0.0)
+            for child in children_by_node.get(node, []):
+                total_kw += _collect_downstream_snapshot_kw(child)
+            downstream_snapshot_kw[node] = total_kw
+            return total_kw
+
+        _collect_downstream_snapshot_kw(ont_vertice)
+        snapshot_edge_current_ka = {
+            edge: downstream_snapshot_kw[edge[1]]
+            / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
+            for edge in edge_current_ka
+        }
+
+        edge_length_km = {
+            (parent, child): (_distance_from_transformer(child) - _distance_from_transformer(parent))
+            * 1e-3
+            for parent, child in edge_current_ka
+        }
+        section_by_edge = {
+            edge: int(section_id)
+            for section_id, section_edges in sections_by_key.items()
+            for edge in section_edges
+        }
+
+        path_by_node: dict[int, tuple[tuple[int, int], ...]] = {ont_vertice: ()}
+        stack = [ont_vertice]
+        while stack:
+            parent = stack.pop()
+            for child in children_by_node.get(parent, []):
+                edge = (parent, child)
+                path_by_node[child] = path_by_node[parent] + (edge,)
+                stack.append(child)
+
+        load_planning_nodes = {
+            consumer_to_planning_node[int(consumer_vertex)]
+            for consumer_vertex in powerflow_snapshot_components
+        }
+        assessment_nodes = sorted(node for node in load_planning_nodes if node in path_by_node)
+        unreachable_load_nodes = sorted(
+            node for node in load_planning_nodes if node not in path_by_node
+        )
+        if unreachable_load_nodes:
+            raise ValueError(
+                "Load-bearing planning nodes are absent from the finalized feeder tree: "
+                f"{unreachable_load_nodes[:10]}"
+            )
+        sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
+        nominal_voltage_kv = VN * 1e-3
+        current_by_scenario = {
+            "asset_coincidence": edge_current_ka,
+            "validation_snapshot": snapshot_edge_current_ka,
+        }
+        edge_factor_by_scenario = {
+            scenario: {
+                edge: np.sqrt(3) * current_ka * edge_length_km[edge]
+                / nominal_voltage_kv
+                * 100
+                for edge, current_ka in scenario_currents.items()
+            }
+            for scenario, scenario_currents in current_by_scenario.items()
+        }
+
+        def _effective_voltage_impedance(option: dict) -> float:
+            return (
+                option["r_ohm_per_km"] * DEFAULT_POWER_FACTOR
+                + option["x_ohm_per_km"] * sin_phi
+            ) / option["parallel"]
+
+        def _path_drops_percent() -> dict[tuple[str, int], float]:
+            return {
+                (scenario, node): sum(
+                    edge_factors[edge]
+                    * _effective_voltage_impedance(section_designs[section_by_edge[edge]]["selected"])
+                    for edge in path_by_node[node]
+                )
+                for scenario, edge_factors in edge_factor_by_scenario.items()
+                for node in assessment_nodes
+            }
+
+        initial_path_drops = _path_drops_percent()
+        voltage_upgrade_iterations = 0
+        while True:
+            path_drops = _path_drops_percent()
+            violations = {
+                node: voltage_drop - MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT
+                for node, voltage_drop in path_drops.items()
+                if voltage_drop > MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT + 1e-9
+            }
+            if not violations:
+                break
+
+            best_candidate = None
+            for section_id, design in section_designs.items():
+                current_option = design["selected"]
+                current_impedance = _effective_voltage_impedance(current_option)
+                current_cost_per_m = (
+                    current_option["cost_eur_per_m"] * current_option["parallel"]
+                )
+                options = installer.get_feeder_cable_options(
+                    design["design_current_ka"],
+                    design["ampacity"]["parallel"],
+                )
+                for option in options:
+                    if option["parallel"] != design["ampacity"]["parallel"]:
+                        continue
+                    option_impedance = _effective_voltage_impedance(option)
+                    if option_impedance >= current_impedance - 1e-12:
+                        continue
+
+                    aggregate_reduction = 0.0
+                    for (scenario, node), excess_drop in violations.items():
+                        section_edges_on_path = [
+                            edge
+                            for edge in path_by_node[node]
+                            if section_by_edge[edge] == section_id
+                        ]
+                        if not section_edges_on_path:
+                            continue
+                        reduction = sum(
+                            edge_factor_by_scenario[scenario][edge]
+                            for edge in section_edges_on_path
+                        ) * (current_impedance - option_impedance)
+                        aggregate_reduction += min(excess_drop, reduction)
+
+                    if aggregate_reduction <= 0:
+                        continue
+                    incremental_cost = max(
+                        (
+                            option["cost_eur_per_m"] * option["parallel"]
+                            - current_cost_per_m
+                        )
+                        * design["length_km"]
+                        * 1000,
+                        1e-9,
+                    )
+                    score = aggregate_reduction / incremental_cost
+                    candidate_key = (
+                        score,
+                        aggregate_reduction,
+                        -incremental_cost,
+                        -option["parallel"],
+                        -option["q_mm2"],
+                    )
+                    if best_candidate is None or candidate_key > best_candidate[0]:
+                        best_candidate = (candidate_key, section_id, dict(option))
+
+            if best_candidate is None:
+                self.logger.warning(
+                    "Could not satisfy the end-to-end feeder voltage-drop envelope because no "
+                    "lower-impedance feeder design remained."
+                )
+                break
+
+            _, section_id, option = best_candidate
+            section_designs[section_id]["selected"] = option
+            voltage_upgrade_iterations += 1
+            if voltage_upgrade_iterations > 10000:
+                raise RuntimeError("End-to-end feeder voltage sizing exceeded 10000 upgrades.")
+
+        final_path_drops = _path_drops_percent()
+        final_max_drop_percent = float(max(final_path_drops.values(), default=0.0))
+        feeder_voltage_drop_limit_met = bool(
+            final_max_drop_percent <= MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT + 1e-9
+        )
+        voltage_upgraded_sections = sum(
+            design["selected"]["cable"] != design["ampacity"]["cable"]
+            or design["selected"]["parallel"] != design["ampacity"]["parallel"]
+            for design in section_designs.values()
+        )
+        self.logger.info(
+            f"End-to-end feeder voltage sizing finished for plz={self.plz}: "
+            f"assessment_nodes={len(assessment_nodes)}, sections={len(section_designs)}, "
+            f"voltage_upgraded_sections={voltage_upgraded_sections}, "
+            f"initial_max_drop_percent={max(initial_path_drops.values(), default=0.0):.3f}, "
+            f"final_max_drop_percent={final_max_drop_percent:.3f}, "
+            f"limit_percent={MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT:.3f}."
+        )
+        if not feeder_voltage_drop_limit_met:
+            self.logger.warning(
+                f"Feeder planning voltage-drop envelope remains violated for plz={self.plz}: "
+                f"selected_max_drop_percent={final_max_drop_percent:.3f}, "
+                f"limit_percent={MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT:.3f}. "
+                "Every remaining useful section is already at the largest configured conductor "
+                "for its ampacity-required parallel count; topology or transformer placement "
+                "would have to change."
+            )
+
+        cable_by_edge: dict[tuple[int, int], tuple[str, int]] = {}
+        sizing_by_edge: dict[tuple[int, int], dict] = {}
+        for section_id, design in section_designs.items():
+            selected = design["selected"]
+            ampacity = design["ampacity"]
+            voltage_upgraded = (
+                selected["cable"] != ampacity["cable"]
+                or selected["parallel"] != ampacity["parallel"]
+            )
+            for edge in design["edges"]:
+                cable_by_edge[edge] = (selected["cable"], selected["parallel"])
+                sizing_by_edge[edge] = {
+                    "feeder_section_id": section_id,
+                    "feeder_sizing_basis": "end_to_end_voltage" if voltage_upgraded else "ampacity",
+                    "ampacity_std_type": ampacity["cable"],
+                    "ampacity_parallel": ampacity["parallel"],
+                }
+
+        planning_diagnostics = {
+            "ampacity_max_feeder_voltage_drop_percent": float(
+                max(initial_path_drops.values(), default=0.0)
+            ),
+            "selected_max_feeder_voltage_drop_percent": final_max_drop_percent,
+            "feeder_voltage_drop_limit_met": feeder_voltage_drop_limit_met,
+        }
+        return cable_by_edge, sizing_by_edge, planning_diagnostics
 
     def _install_backbone_lines_two_pass(
         self,
@@ -1335,12 +1613,13 @@ class GridGenerator:
         branch_plans: list[dict[str, int | list[int]]],
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
+        powerflow_snapshot_components: dict,
         vertices_dict: dict[int, float],
         ont_vertice: int,
         material_length_by_cable_km: dict,
         kcid: int,
         bcid: int,
-    ) -> dict:
+    ) -> tuple[dict, dict[str, float | bool]]:
         """Install planned backbone lines on the finalized split tree."""
         children_by_node: dict[int, list[int]] = {}
         downstream_nodes_by_node: dict[int, list[int]] = {}
@@ -1366,12 +1645,14 @@ class GridGenerator:
             children_by_node,
             ont_vertice,
         )
-        cable_by_edge = self._select_cables_for_feeder_sections(
+        cable_by_edge, sizing_by_edge, planning_diagnostics = self._select_cables_for_feeder_sections(
             installer,
             sections_by_key,
             downstream_nodes_by_node,
             buildings_df,
             consumer_df,
+            powerflow_snapshot_components,
+            children_by_node,
             vertices_dict,
             ont_vertice,
         )
@@ -1390,6 +1671,7 @@ class GridGenerator:
                 parent = int(branch_nodes[index + 1])
                 child = int(branch_nodes[index])
                 cable, count = cable_by_edge[(parent, child)]
+                sizing = sizing_by_edge[(parent, child)]
                 material_length_by_cable_km = installer.create_line_node_to_node(
                     self.plz,
                     kcid,
@@ -1401,6 +1683,9 @@ class GridGenerator:
                     ont_vertice,
                     count,
                     section_by_edge[(parent, child)],
+                    feeder_sizing_basis=sizing["feeder_sizing_basis"],
+                    ampacity_std_type=sizing["ampacity_std_type"],
+                    ampacity_parallel=sizing["ampacity_parallel"],
                 )
 
             branch_start_node = int(branch_nodes[-1])
@@ -1408,7 +1693,7 @@ class GridGenerator:
                 sim_load = utils.simultaneousPeakLoad(
                     buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
                 )
-                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3)) if sim_load > 0 else 0.0
+                Imax = sim_load / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3)) if sim_load > 0 else 0.0
                 cable, count = installer.find_minimal_available_cable(Imax)
                 installer.create_line_ont_to_lv_bus(
                     self.plz, bcid, kcid, branch_start_node, cable, count, ont_vertice
@@ -1422,6 +1707,7 @@ class GridGenerator:
                     buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
                 )
                 cable, count = cable_by_edge[(attachment_node, branch_start_node)]
+                sizing = sizing_by_edge[(attachment_node, branch_start_node)]
                 material_length_by_cable_km = installer.create_line_node_to_node(
                     self.plz,
                     kcid,
@@ -1433,6 +1719,9 @@ class GridGenerator:
                     ont_vertice,
                     count,
                     section_by_edge[(attachment_node, branch_start_node)],
+                    feeder_sizing_basis=sizing["feeder_sizing_basis"],
+                    ampacity_std_type=sizing["ampacity_std_type"],
+                    ampacity_parallel=sizing["ampacity_parallel"],
                 )
                 self.logger.debug(
                     f"Branch {branch_index} attached to finalized split node {attachment_node} after two-pass sizing "
@@ -1443,6 +1732,7 @@ class GridGenerator:
                     buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
                 )
                 cable, count = cable_by_edge[(ont_vertice, branch_start_node)]
+                sizing = sizing_by_edge[(ont_vertice, branch_start_node)]
                 length = installer.create_line_start_to_lv_bus(
                     self.plz,
                     bcid,
@@ -1453,6 +1743,9 @@ class GridGenerator:
                     count,
                     ont_vertice,
                     section_by_edge[(ont_vertice, branch_start_node)],
+                    feeder_sizing_basis=sizing["feeder_sizing_basis"],
+                    ampacity_std_type=sizing["ampacity_std_type"],
+                    ampacity_parallel=sizing["ampacity_parallel"],
                 )
                 material_length_by_cable_km[cable] += length
                 self.logger.debug(
@@ -1460,7 +1753,7 @@ class GridGenerator:
                     f"(cable={cable}, parallels={count}, length_km={length:.4f}, load_kw={sim_load:.2f})."
                 )
 
-        return material_length_by_cable_km
+        return material_length_by_cable_km, planning_diagnostics
 
     def install_cables(self):
         """
@@ -1560,16 +1853,19 @@ class GridGenerator:
                     material_length_by_cable_km,
                 )
 
-            material_length_by_cable_km = self._install_backbone_lines_two_pass(
-                installer,
-                branch_plans,
-                buildings_df,
-                consumer_df,
-                vertices_dict,
-                ont_vertice,
-                material_length_by_cable_km,
-                kcid,
-                bcid,
+            material_length_by_cable_km, feeder_planning_diagnostics = (
+                self._install_backbone_lines_two_pass(
+                    installer,
+                    branch_plans,
+                    buildings_df,
+                    consumer_df,
+                    powerflow_snapshot_components,
+                    vertices_dict,
+                    ont_vertice,
+                    material_length_by_cable_km,
+                    kcid,
+                    bcid,
+                )
             )
             split_visualization_edges = self._get_split_visualization_edges(branch_plans, ont_vertice)
             savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid}"
@@ -1633,7 +1929,12 @@ class GridGenerator:
                 )
                 next_progress_checkpoint += 10
 
-            powerflow_status = self.save_net(backend, kcid, bcid)
+            powerflow_status = self.save_net(
+                backend,
+                kcid,
+                bcid,
+                feeder_planning_diagnostics=feeder_planning_diagnostics,
+            )
             if powerflow_status == "converged":
                 converged_count += 1
             elif powerflow_status == "voltage_violation":
@@ -1648,12 +1949,29 @@ class GridGenerator:
             f"voltage_band_violations={voltage_violation_count}"
         )
 
-    def save_net(self, backend: IElectricalBackend, kcid, bcid) -> str:
+    def save_net(
+        self,
+        backend: IElectricalBackend,
+        kcid,
+        bcid,
+        feeder_planning_diagnostics: dict[str, float | bool] | None = None,
+    ) -> str:
         """
         Validate the synthetic transformer-coincident operating point and save the grid.
         """
         # Validate grid with power flow before saving
         powerflow_status = "not_converged"
+        voltage_drop_diagnostics = {
+            "max_feeder_voltage_drop_pu": None,
+            "max_service_voltage_drop_pu": None,
+            "max_total_lv_voltage_drop_pu": None,
+        }
+        if feeder_planning_diagnostics is None:
+            feeder_planning_diagnostics = {
+                "ampacity_max_feeder_voltage_drop_percent": None,
+                "selected_max_feeder_voltage_drop_percent": None,
+                "feeder_voltage_drop_limit_met": None,
+            }
         try:
             self.logger.debug(
                 "Running synthetic transformer-coincident validation operating point "
@@ -1665,10 +1983,36 @@ class GridGenerator:
                 min_voltage_pu = metrics.get("min_voltage_pu")
                 max_voltage_pu = metrics.get("max_voltage_pu")
 
+                if ELECTRICAL_BACKEND == "pandapower" and getattr(backend, "net", None) is not None:
+                    net = backend.net
+                    lv_buses = net.bus.index[net.bus.name == "LVbus 1"]
+                    consumer_buses = set(
+                        net.bus.index[
+                            net.bus.name.fillna("").str.startswith("Consumer Nodebus ")
+                        ]
+                    )
+                    service_lines = net.line.loc[net.line.to_bus.isin(consumer_buses)]
+                    if len(lv_buses) == 1 and not service_lines.empty:
+                        lv_voltage_pu = float(net.res_bus.at[int(lv_buses[0]), "vm_pu"])
+                        feeder_drops = []
+                        service_drops = []
+                        total_drops = []
+                        for line in service_lines.itertuples():
+                            connection_voltage_pu = float(net.res_bus.at[line.from_bus, "vm_pu"])
+                            consumer_voltage_pu = float(net.res_bus.at[line.to_bus, "vm_pu"])
+                            feeder_drops.append(lv_voltage_pu - connection_voltage_pu)
+                            service_drops.append(connection_voltage_pu - consumer_voltage_pu)
+                            total_drops.append(lv_voltage_pu - consumer_voltage_pu)
+                        voltage_drop_diagnostics = {
+                            "max_feeder_voltage_drop_pu": max(feeder_drops),
+                            "max_service_voltage_drop_pu": max(service_drops),
+                            "max_total_lv_voltage_drop_pu": max(total_drops),
+                        }
+
                 voltage_out_of_band = False
-                if min_voltage_pu is not None and min_voltage_pu < V_BAND_LOW:
+                if min_voltage_pu is not None and min_voltage_pu < POWER_FLOW_MIN_VM_PU:
                     voltage_out_of_band = True
-                if max_voltage_pu is not None and max_voltage_pu > V_BAND_HIGH:
+                if max_voltage_pu is not None and max_voltage_pu > POWER_FLOW_MAX_VM_PU:
                     voltage_out_of_band = True
 
                 if voltage_out_of_band:
@@ -1677,7 +2021,7 @@ class GridGenerator:
                         "Synthetic transformer-coincident validation power flow converged "
                         f"but violated the voltage band for kcid={kcid}, bcid={bcid} "
                         f"(min_vm_pu={min_voltage_pu}, max_vm_pu={max_voltage_pu}, "
-                        f"allowed=[{V_BAND_LOW}, {V_BAND_HIGH}])."
+                        f"allowed=[{POWER_FLOW_MIN_VM_PU}, {POWER_FLOW_MAX_VM_PU}])."
                     )
                 else:
                     self.logger.info(
@@ -1734,6 +2078,8 @@ class GridGenerator:
             json_string,
             transformer_description,
             powerflow_status,
+            **feeder_planning_diagnostics,
+            **voltage_drop_diagnostics,
         )
 
         if ELECTRICAL_BACKEND == "pandapower":

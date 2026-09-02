@@ -31,11 +31,14 @@ class PreprocessingMixin(BaseMixin, ABC):
             "equipment_data": self._dataframe_records(CONFIG_EQUIPMENT_DATA),
             "cable_dimensioning": {
                 "vn": VN,
-                "v_band_low": V_BAND_LOW,
-                "v_band_high": V_BAND_HIGH,
                 "min_shared_prefix_length_m": MIN_SHARED_PREFIX_LENGTH_M,
                 "feeder_split_max_current_ka": FEEDER_SPLIT_MAX_CURRENT_KA,
+                "max_end_to_end_feeder_voltage_drop_percent": MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
                 "mv_direct_connection_load_threshold_kw": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
+            },
+            "power_flow_assessment": {
+                "min_vm_pu": POWER_FLOW_MIN_VM_PU,
+                "max_vm_pu": POWER_FLOW_MAX_VM_PU,
             },
             "connection_point_aggregation": {
                 "enabled": AGGREGATE_NEARBY_CONNECTION_POINTS,

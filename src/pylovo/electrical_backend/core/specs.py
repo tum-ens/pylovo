@@ -97,6 +97,10 @@ class LineSpec(ComponentSpec):
     length_km: float = 0.0  # Cable length in km
     parallel: int = 1  # Number of parallel cables
     coordinates: Optional[list] = None  # Line geometry for visualization
+    feeder_section_id: Optional[int] = None
+    feeder_sizing_basis: Optional[str] = None
+    ampacity_std_type: Optional[str] = None
+    ampacity_parallel: Optional[int] = None
     
 
     def __post_init__(self):

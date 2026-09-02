@@ -230,12 +230,14 @@ CONFIG_EQUIPMENT_DATA = pd.concat(
     ignore_index=True,
 )
 
-# =============================================================================
-# VOLTAGE PROPERTIES (from CONFIG_GENERATION)
-# =============================================================================
+# Nominal voltage used for grid generation and electrical design.
 VN = CONFIG_GENERATION["VN"]
-V_BAND_LOW = CONFIG_GENERATION["V_BAND_LOW"]
-V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
+
+# Post-solution power-flow assessment thresholds. These values do not affect
+# solver convergence, grid topology, or cable sizing.
+POWER_FLOW_VOLTAGE_LIMITS = CONFIG_ANALYSIS["POWER_FLOW_VOLTAGE_LIMITS"]
+POWER_FLOW_MIN_VM_PU = POWER_FLOW_VOLTAGE_LIMITS["MIN_VM_PU"]
+POWER_FLOW_MAX_VM_PU = POWER_FLOW_VOLTAGE_LIMITS["MAX_VM_PU"]
 
 # =============================================================================
 # CABLE DIMENSIONING PARAMETERS (from CONFIG_GENERATION)
@@ -243,6 +245,11 @@ V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
 # Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-splitting parameter, not a final cable ampacity limit.
 FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
+
+# End-to-end transformer-to-connection-point feeder voltage-drop planning envelope.
+MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
+    "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT"
+]
 
 # Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
