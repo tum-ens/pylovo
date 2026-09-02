@@ -1293,7 +1293,6 @@ class GridGenerator:
         downstream_nodes_by_node: dict[int, list[int]],
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
-        powerflow_snapshot_components: dict,
         children_by_node: dict[int, list[int]],
         vertices_dict: dict[int, float],
         ont_vertice: int,
@@ -1302,13 +1301,7 @@ class GridGenerator:
         dict[tuple[int, int], dict],
         dict[str, float | bool],
     ]:
-        """Size sections by ampacity, then enforce a conservative path-drop envelope.
-
-        Two cases are checked independently: each edge's downstream coincident
-        design current, and the time-coherent validation snapshot exported to
-        the electrical backend. The former protects local feeder assets; the
-        latter ensures the chosen static validation point is not ignored.
-        """
+        """Size sections by ampacity, then enforce an asset-coincidence path-drop envelope."""
         section_designs: dict[int, dict] = {}
         edge_current_ka: dict[tuple[int, int], float] = {}
 
@@ -1370,42 +1363,6 @@ class GridGenerator:
                     f"{existing_node} and {planning_node}."
                 )
 
-        missing_consumer_vertices = sorted(
-            int(consumer_vertex)
-            for consumer_vertex in powerflow_snapshot_components
-            if int(consumer_vertex) not in consumer_to_planning_node
-        )
-        if missing_consumer_vertices:
-            raise ValueError(
-                "Missing feeder planning-node mappings for consumer vertices: "
-                f"{missing_consumer_vertices[:10]}"
-            )
-
-        snapshot_kw_by_node: dict[int, float] = {}
-        for consumer_vertex, components in powerflow_snapshot_components.items():
-            planning_node = consumer_to_planning_node[int(consumer_vertex)]
-            snapshot_kw = sum(float(component["simultaneous_kw"]) for component in components)
-            snapshot_kw_by_node[planning_node] = snapshot_kw_by_node.get(planning_node, 0.0) + snapshot_kw
-
-        downstream_snapshot_kw: dict[int, float] = {}
-
-        def _collect_downstream_snapshot_kw(node: int) -> float:
-            cached_kw = downstream_snapshot_kw.get(node)
-            if cached_kw is not None:
-                return cached_kw
-            total_kw = snapshot_kw_by_node.get(node, 0.0)
-            for child in children_by_node.get(node, []):
-                total_kw += _collect_downstream_snapshot_kw(child)
-            downstream_snapshot_kw[node] = total_kw
-            return total_kw
-
-        _collect_downstream_snapshot_kw(ont_vertice)
-        snapshot_edge_current_ka = {
-            edge: downstream_snapshot_kw[edge[1]]
-            / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
-            for edge in edge_current_ka
-        }
-
         edge_length_km = {
             (parent, child): (_distance_from_transformer(child) - _distance_from_transformer(parent))
             * 1e-3
@@ -1427,8 +1384,7 @@ class GridGenerator:
                 stack.append(child)
 
         load_planning_nodes = {
-            consumer_to_planning_node[int(consumer_vertex)]
-            for consumer_vertex in powerflow_snapshot_components
+            planning_node for planning_node in consumer_to_planning_node.values()
         }
         assessment_nodes = sorted(node for node in load_planning_nodes if node in path_by_node)
         unreachable_load_nodes = sorted(
@@ -1441,18 +1397,11 @@ class GridGenerator:
             )
         sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
         nominal_voltage_kv = VN * 1e-3
-        current_by_scenario = {
-            "asset_coincidence": edge_current_ka,
-            "validation_snapshot": snapshot_edge_current_ka,
-        }
-        edge_factor_by_scenario = {
-            scenario: {
-                edge: np.sqrt(3) * current_ka * edge_length_km[edge]
-                / nominal_voltage_kv
-                * 100
-                for edge, current_ka in scenario_currents.items()
-            }
-            for scenario, scenario_currents in current_by_scenario.items()
+        edge_factor = {
+            edge: np.sqrt(3) * current_ka * edge_length_km[edge]
+            / nominal_voltage_kv
+            * 100
+            for edge, current_ka in edge_current_ka.items()
         }
 
         def _effective_voltage_impedance(option: dict) -> float:
@@ -1461,14 +1410,13 @@ class GridGenerator:
                 + option["x_ohm_per_km"] * sin_phi
             ) / option["parallel"]
 
-        def _path_drops_percent() -> dict[tuple[str, int], float]:
+        def _path_drops_percent() -> dict[int, float]:
             return {
-                (scenario, node): sum(
-                    edge_factors[edge]
+                node: sum(
+                    edge_factor[edge]
                     * _effective_voltage_impedance(section_designs[section_by_edge[edge]]["selected"])
                     for edge in path_by_node[node]
                 )
-                for scenario, edge_factors in edge_factor_by_scenario.items()
                 for node in assessment_nodes
             }
 
@@ -1503,7 +1451,7 @@ class GridGenerator:
                         continue
 
                     aggregate_reduction = 0.0
-                    for (scenario, node), excess_drop in violations.items():
+                    for node, excess_drop in violations.items():
                         section_edges_on_path = [
                             edge
                             for edge in path_by_node[node]
@@ -1512,7 +1460,7 @@ class GridGenerator:
                         if not section_edges_on_path:
                             continue
                         reduction = sum(
-                            edge_factor_by_scenario[scenario][edge]
+                            edge_factor[edge]
                             for edge in section_edges_on_path
                         ) * (current_impedance - option_impedance)
                         aggregate_reduction += min(excess_drop, reduction)
@@ -1613,7 +1561,6 @@ class GridGenerator:
         branch_plans: list[dict[str, int | list[int]]],
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
-        powerflow_snapshot_components: dict,
         vertices_dict: dict[int, float],
         ont_vertice: int,
         material_length_by_cable_km: dict,
@@ -1651,7 +1598,6 @@ class GridGenerator:
             downstream_nodes_by_node,
             buildings_df,
             consumer_df,
-            powerflow_snapshot_components,
             children_by_node,
             vertices_dict,
             ont_vertice,
@@ -1859,7 +1805,6 @@ class GridGenerator:
                     branch_plans,
                     buildings_df,
                     consumer_df,
-                    powerflow_snapshot_components,
                     vertices_dict,
                     ont_vertice,
                     material_length_by_cable_km,

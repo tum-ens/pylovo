@@ -179,10 +179,10 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
     """Calculate power-flow snapshot components and service design loads.
 
     Transformer and feeder sizing use grouped simultaneity per main category.
-    The power-flow snapshot distributes those grouped category loads back to
-    consumer vertices while preserving each grouped total. Service cables are
-    instead sized from the local coincident load of all consumers physically
-    connected behind that cable.
+    The power-flow snapshot distributes each grouped category total in
+    proportion to installed category power. Service cables are instead sized
+    from the local coincident load of all consumers physically connected behind
+    that cable.
     """
     components = build_load_components(buildings_df)
     components["simultaneous_kw"] = 0.0
@@ -190,16 +190,12 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
     for category, indices in components.groupby("category").groups.items():
         rows = components.loc[indices]
         sim_factor = _get_sim_factor(consumer_cat_df, category)
-        individual_sim = rows.apply(
-            lambda row: oneSimultaneousLoad(row["installed_kw"], row["load_units"], sim_factor),
-            axis=1,
-        )
+        installed_total_kw = rows["installed_kw"].sum()
         grouped_sim_kw = oneSimultaneousLoad(
-            rows["installed_kw"].sum(), rows["load_units"].sum(), sim_factor
+            installed_total_kw, rows["load_units"].sum(), sim_factor
         )
-        individual_total = individual_sim.sum()
-        scale = grouped_sim_kw / individual_total if individual_total > 0 else 0.0
-        components.loc[indices, "simultaneous_kw"] = individual_sim * scale
+        utilization = grouped_sim_kw / installed_total_kw if installed_total_kw > 0 else 0.0
+        components.loc[indices, "simultaneous_kw"] = rows["installed_kw"] * utilization
 
     service_design_load_per_consumer = {consumer: 0.0 for consumer in consumer_list}
     powerflow_snapshot_components = {consumer: [] for consumer in consumer_list}

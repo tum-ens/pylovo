@@ -208,7 +208,7 @@ class CableInstaller:
                     kvar=kvar,
                     max_p_mw=float(component["installed_kw"]) * 1e-3,
                     service_design_p_mw=float(component["service_design_kw"]) * 1e-3,
-                    operating_point_basis="synthetic_transformer_coincident",
+                    operating_point_basis="synthetic_transformer_coincident_proportional",
                     category=component["category"],
                     load_units=float(component["load_units"]),
                     consumer_vertex=int(consumer),
