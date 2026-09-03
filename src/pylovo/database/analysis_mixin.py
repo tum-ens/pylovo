@@ -24,6 +24,12 @@ class AnalysisMixin(BaseMixin, ABC):
                 "ampacity_max_feeder_voltage_drop_percent": "double precision",
                 "selected_max_feeder_voltage_drop_percent": "double precision",
                 "feeder_voltage_drop_limit_met": "boolean",
+                "ampacity_max_service_voltage_drop_percent": "double precision",
+                "selected_max_service_voltage_drop_percent": "double precision",
+                "service_voltage_drop_limit_met": "boolean",
+                "service_voltage_upgraded_count": "integer",
+                "long_service_connection_count": "integer",
+                "max_total_design_voltage_drop_percent": "double precision",
                 "max_feeder_voltage_drop_pu": "double precision",
                 "max_service_voltage_drop_pu": "double precision",
                 "max_total_lv_voltage_drop_pu": "double precision",
@@ -33,6 +39,12 @@ class AnalysisMixin(BaseMixin, ABC):
                 "feeder_sizing_basis": "varchar(32)",
                 "ampacity_std_type": "varchar(100)",
                 "ampacity_parallel": "integer",
+                "service_sizing_basis": "varchar(32)",
+                "service_ampacity_voltage_drop_percent": "double precision",
+                "service_selected_voltage_drop_percent": "double precision",
+                "service_voltage_drop_limit_met": "boolean",
+                "service_length_review": "boolean",
+                "total_design_voltage_drop_percent": "double precision",
             },
         }
         self.cur.execute(
@@ -102,6 +114,12 @@ class AnalysisMixin(BaseMixin, ABC):
         ampacity_max_feeder_voltage_drop_percent: float | None = None,
         selected_max_feeder_voltage_drop_percent: float | None = None,
         feeder_voltage_drop_limit_met: bool | None = None,
+        ampacity_max_service_voltage_drop_percent: float | None = None,
+        selected_max_service_voltage_drop_percent: float | None = None,
+        service_voltage_drop_limit_met: bool | None = None,
+        service_voltage_upgraded_count: int | None = None,
+        long_service_connection_count: int | None = None,
+        max_total_design_voltage_drop_percent: float | None = None,
         max_feeder_voltage_drop_pu: float | None = None,
         max_service_voltage_drop_pu: float | None = None,
         max_total_lv_voltage_drop_pu: float | None = None,
@@ -113,6 +131,12 @@ class AnalysisMixin(BaseMixin, ABC):
                                ampacity_max_feeder_voltage_drop_percent = %s,
                                selected_max_feeder_voltage_drop_percent = %s,
                                feeder_voltage_drop_limit_met = %s,
+                               ampacity_max_service_voltage_drop_percent = %s,
+                               selected_max_service_voltage_drop_percent = %s,
+                               service_voltage_drop_limit_met = %s,
+                               service_voltage_upgraded_count = %s,
+                               long_service_connection_count = %s,
+                               max_total_design_voltage_drop_percent = %s,
                                max_feeder_voltage_drop_pu = %s,
                                max_service_voltage_drop_pu = %s,
                                max_total_lv_voltage_drop_pu = %s
@@ -129,6 +153,12 @@ class AnalysisMixin(BaseMixin, ABC):
                 self._normalize_sql_scalar(ampacity_max_feeder_voltage_drop_percent),
                 self._normalize_sql_scalar(selected_max_feeder_voltage_drop_percent),
                 self._normalize_sql_scalar(feeder_voltage_drop_limit_met),
+                self._normalize_sql_scalar(ampacity_max_service_voltage_drop_percent),
+                self._normalize_sql_scalar(selected_max_service_voltage_drop_percent),
+                self._normalize_sql_scalar(service_voltage_drop_limit_met),
+                self._normalize_sql_scalar(service_voltage_upgraded_count),
+                self._normalize_sql_scalar(long_service_connection_count),
+                self._normalize_sql_scalar(max_total_design_voltage_drop_percent),
                 self._normalize_sql_scalar(max_feeder_voltage_drop_pu),
                 self._normalize_sql_scalar(max_service_voltage_drop_pu),
                 self._normalize_sql_scalar(max_total_lv_voltage_drop_pu),
@@ -269,7 +299,13 @@ class AnalysisMixin(BaseMixin, ABC):
                 feeder_section_id,
                 feeder_sizing_basis,
                 ampacity_std_type,
-                ampacity_parallel
+                ampacity_parallel,
+                service_sizing_basis,
+                service_ampacity_voltage_drop_percent,
+                service_selected_voltage_drop_percent,
+                service_voltage_drop_limit_met,
+                service_length_review,
+                total_design_voltage_drop_percent
             ) VALUES (
                 %(grid_result_id)s,
                 %(pp_index)s,
@@ -291,7 +327,13 @@ class AnalysisMixin(BaseMixin, ABC):
                 %(feeder_section_id)s,
                 %(feeder_sizing_basis)s,
                 %(ampacity_std_type)s,
-                %(ampacity_parallel)s
+                %(ampacity_parallel)s,
+                %(service_sizing_basis)s,
+                %(service_ampacity_voltage_drop_percent)s,
+                %(service_selected_voltage_drop_percent)s,
+                %(service_voltage_drop_limit_met)s,
+                %(service_length_review)s,
+                %(total_design_voltage_drop_percent)s
             )
         """
 
@@ -320,6 +362,16 @@ class AnalysisMixin(BaseMixin, ABC):
                     "feeder_sizing_basis": self._series_value(row, "feeder_sizing_basis"),
                     "ampacity_std_type": self._series_value(row, "ampacity_std_type"),
                     "ampacity_parallel": self._series_value(row, "ampacity_parallel"),
+                    "service_sizing_basis": self._series_value(row, "service_sizing_basis"),
+                    "service_ampacity_voltage_drop_percent": self._series_value(
+                        row, "service_ampacity_voltage_drop_percent"
+                    ),
+                    "service_selected_voltage_drop_percent": self._series_value(
+                        row, "service_selected_voltage_drop_percent"
+                    ),
+                    "service_voltage_drop_limit_met": self._series_value(row, "service_voltage_drop_limit_met"),
+                    "service_length_review": self._series_value(row, "service_length_review"),
+                    "total_design_voltage_drop_percent": self._series_value(row, "total_design_voltage_drop_percent"),
                 }
             )
 

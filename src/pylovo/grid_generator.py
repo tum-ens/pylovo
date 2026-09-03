@@ -1300,6 +1300,7 @@ class GridGenerator:
         dict[tuple[int, int], tuple[str, int]],
         dict[tuple[int, int], dict],
         dict[str, float | bool],
+        dict[int, float],
     ]:
         """Size sections by ampacity, then enforce an asset-coincidence path-drop envelope."""
         section_designs: dict[int, dict] = {}
@@ -1553,7 +1554,17 @@ class GridGenerator:
             "selected_max_feeder_voltage_drop_percent": final_max_drop_percent,
             "feeder_voltage_drop_limit_met": feeder_voltage_drop_limit_met,
         }
-        return cable_by_edge, sizing_by_edge, planning_diagnostics
+        selected_path_drop_percent_by_node = {
+            node: float(
+                sum(
+                    edge_factor[edge]
+                    * _effective_voltage_impedance(section_designs[section_by_edge[edge]]["selected"])
+                    for edge in path
+                )
+            )
+            for node, path in path_by_node.items()
+        }
+        return cable_by_edge, sizing_by_edge, planning_diagnostics, selected_path_drop_percent_by_node
 
     def _install_backbone_lines_two_pass(
         self,
@@ -1566,7 +1577,7 @@ class GridGenerator:
         material_length_by_cable_km: dict,
         kcid: int,
         bcid: int,
-    ) -> tuple[dict, dict[str, float | bool]]:
+    ) -> tuple[dict, dict[str, float | bool], dict[int, float]]:
         """Install planned backbone lines on the finalized split tree."""
         children_by_node: dict[int, list[int]] = {}
         downstream_nodes_by_node: dict[int, list[int]] = {}
@@ -1592,7 +1603,12 @@ class GridGenerator:
             children_by_node,
             ont_vertice,
         )
-        cable_by_edge, sizing_by_edge, planning_diagnostics = self._select_cables_for_feeder_sections(
+        (
+            cable_by_edge,
+            sizing_by_edge,
+            planning_diagnostics,
+            path_drop_percent_by_node,
+        ) = self._select_cables_for_feeder_sections(
             installer,
             sections_by_key,
             downstream_nodes_by_node,
@@ -1699,7 +1715,7 @@ class GridGenerator:
                     f"(cable={cable}, parallels={count}, length_km={length:.4f}, load_kw={sim_load:.2f})."
                 )
 
-        return material_length_by_cable_km, planning_diagnostics
+        return material_length_by_cable_km, planning_diagnostics, path_drop_percent_by_node
 
     def install_cables(self):
         """
@@ -1787,19 +1803,11 @@ class GridGenerator:
                 bcid,
             )
 
-            for plan in branch_plans:
-                material_length_by_cable_km = installer.install_consumer_cables(
-                    self.plz,
-                    bcid,
-                    kcid,
-                    list(plan["branch_nodes"]),
-                    ont_vertice,
-                    vertices_dict,
-                    service_design_load_per_consumer,
-                    material_length_by_cable_km,
-                )
-
-            material_length_by_cable_km, feeder_planning_diagnostics = (
+            (
+                material_length_by_cable_km,
+                feeder_planning_diagnostics,
+                feeder_drop_percent_by_node,
+            ) = (
                 self._install_backbone_lines_two_pass(
                     installer,
                     branch_plans,
@@ -1812,6 +1820,47 @@ class GridGenerator:
                     bcid,
                 )
             )
+
+            service_diagnostics = []
+            for plan in branch_plans:
+                material_length_by_cable_km, branch_service_diagnostics = (
+                    installer.install_consumer_cables(
+                        self.plz,
+                        bcid,
+                        kcid,
+                        list(plan["branch_nodes"]),
+                        ont_vertice,
+                        vertices_dict,
+                        service_design_load_per_consumer,
+                        material_length_by_cable_km,
+                        feeder_drop_percent_by_node,
+                    )
+                )
+                service_diagnostics.extend(branch_service_diagnostics)
+
+            total_design_drops = [
+                row["total_design_drop_percent"]
+                for row in service_diagnostics
+                if row["total_design_drop_percent"] is not None
+            ]
+            service_planning_diagnostics = {
+                "ampacity_max_service_voltage_drop_percent": max(
+                    (row["ampacity_drop_percent"] for row in service_diagnostics), default=0.0
+                ),
+                "selected_max_service_voltage_drop_percent": max(
+                    (row["selected_drop_percent"] for row in service_diagnostics), default=0.0
+                ),
+                "service_voltage_drop_limit_met": all(
+                    row["voltage_drop_limit_met"] for row in service_diagnostics
+                ),
+                "service_voltage_upgraded_count": sum(
+                    row["selected_cable"] != row["ampacity_cable"] for row in service_diagnostics
+                ),
+                "long_service_connection_count": sum(
+                    row["length_review"] for row in service_diagnostics
+                ),
+                "max_total_design_voltage_drop_percent": max(total_design_drops, default=None),
+            }
             split_visualization_edges = self._get_split_visualization_edges(branch_plans, ont_vertice)
             savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid}"
             try:
@@ -1861,8 +1910,13 @@ class GridGenerator:
             lines_count = backend.get_component_count('lines')
             self.logger.info(
                 f"Finished cluster kcid={kcid}, bcid={bcid}: branches={branch_index}, lines={lines_count}, "
+                f"service_voltage_upgrades={service_planning_diagnostics['service_voltage_upgraded_count']}, "
+                f"unresolved_service_drops={sum(not row['voltage_drop_limit_met'] for row in service_diagnostics)}, "
+                f"long_services_for_review={service_planning_diagnostics['long_service_connection_count']}, "
                 f"material_length={material_length:.3f} km ({cable_summary})"
             )
+
+            planning_diagnostics = {**feeder_planning_diagnostics, **service_planning_diagnostics}
 
             # Track and report progress using real cluster counts.
             ci_count += 1
@@ -1878,7 +1932,7 @@ class GridGenerator:
                 backend,
                 kcid,
                 bcid,
-                feeder_planning_diagnostics=feeder_planning_diagnostics,
+                planning_diagnostics=planning_diagnostics,
             )
             if powerflow_status == "converged":
                 converged_count += 1
@@ -1899,7 +1953,7 @@ class GridGenerator:
         backend: IElectricalBackend,
         kcid,
         bcid,
-        feeder_planning_diagnostics: dict[str, float | bool] | None = None,
+        planning_diagnostics: dict[str, float | bool | int] | None = None,
     ) -> str:
         """
         Validate the synthetic transformer-coincident operating point and save the grid.
@@ -1911,11 +1965,17 @@ class GridGenerator:
             "max_service_voltage_drop_pu": None,
             "max_total_lv_voltage_drop_pu": None,
         }
-        if feeder_planning_diagnostics is None:
-            feeder_planning_diagnostics = {
+        if planning_diagnostics is None:
+            planning_diagnostics = {
                 "ampacity_max_feeder_voltage_drop_percent": None,
                 "selected_max_feeder_voltage_drop_percent": None,
                 "feeder_voltage_drop_limit_met": None,
+                "ampacity_max_service_voltage_drop_percent": None,
+                "selected_max_service_voltage_drop_percent": None,
+                "service_voltage_drop_limit_met": None,
+                "service_voltage_upgraded_count": None,
+                "long_service_connection_count": None,
+                "max_total_design_voltage_drop_percent": None,
             }
         try:
             self.logger.debug(
@@ -2023,7 +2083,7 @@ class GridGenerator:
             json_string,
             transformer_description,
             powerflow_status,
-            **feeder_planning_diagnostics,
+            **planning_diagnostics,
             **voltage_drop_diagnostics,
         )
 

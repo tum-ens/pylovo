@@ -28,22 +28,24 @@ CONSUMER_CATEGORIES:
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
 
-# Maximum approximate voltage drop from the transformer LV bus to any service connection point.
-# It is checked for both asset-specific downstream coincidence and the exported validation snapshot.
 # Voltage planning may upsize conductors, but parallel counts remain determined by ampacity.
-MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT: 10
+
+# Max. approximate voltage drop from the transformer LV bus to any service connection point.
+MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT: 8 # 80% Leistungsgrenze of 0.10 p.u. DIN EN 50160
+
+# Max. service cable voltage drop at its building-local coincident load.
+MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT: 3 
 
 # Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
-# Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
+# Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
 # Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
 # handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
 FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
 
-# Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
-#  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
+# Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points

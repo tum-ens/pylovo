@@ -90,6 +90,12 @@ CREATE_QUERIES = {
         ampacity_max_feeder_voltage_drop_percent double precision,
         selected_max_feeder_voltage_drop_percent double precision,
         feeder_voltage_drop_limit_met boolean,
+        ampacity_max_service_voltage_drop_percent double precision,
+        selected_max_service_voltage_drop_percent double precision,
+        service_voltage_drop_limit_met boolean,
+        service_voltage_upgraded_count integer,
+        long_service_connection_count integer,
+        max_total_design_voltage_drop_percent double precision,
         max_feeder_voltage_drop_pu double precision,
         max_service_voltage_drop_pu double precision,
         max_total_lv_voltage_drop_pu double precision,
@@ -108,6 +114,12 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS ampacity_max_feeder_voltage_drop_percent double precision;
     ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS selected_max_feeder_voltage_drop_percent double precision;
     ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS feeder_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS ampacity_max_service_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS selected_max_service_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS service_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS service_voltage_upgraded_count integer;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS long_service_connection_count integer;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_total_design_voltage_drop_percent double precision;
     ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_feeder_voltage_drop_pu double precision;
     ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_service_voltage_drop_pu double precision;
     ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_total_lv_voltage_drop_pu double precision;
@@ -492,6 +504,12 @@ CREATE_QUERIES = {
         feeder_sizing_basis varchar(32),
         ampacity_std_type varchar(100),
         ampacity_parallel integer,
+        service_sizing_basis varchar(32),
+        service_ampacity_voltage_drop_percent double precision,
+        service_selected_voltage_drop_percent double precision,
+        service_voltage_drop_limit_met boolean,
+        service_length_review boolean,
+        total_design_voltage_drop_percent double precision,
         CONSTRAINT uq_pandapower_line_grid_result_pp_index UNIQUE (grid_result_id, pp_index),
         CONSTRAINT fk_pandapower_line_grid_result
             FOREIGN KEY (grid_result_id)
@@ -502,6 +520,12 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS feeder_sizing_basis varchar(32);
     ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS ampacity_std_type varchar(100);
     ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS ampacity_parallel integer;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_sizing_basis varchar(32);
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_ampacity_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_selected_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_length_review boolean;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS total_design_voltage_drop_percent double precision;
     CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_id
     ON pylovo.pandapower_line (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_pandapower_line_from_to_bus

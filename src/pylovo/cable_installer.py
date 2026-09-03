@@ -5,9 +5,15 @@ import pandas as pd
 from pyproj import Transformer
 
 from pylovo.electrical_backend import IElectricalBackend, BusSpec, TransformerSpec, LineSpec, LoadSpec, ExtGridSpec
-from pylovo.config_loader import VN, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG
+from pylovo.config_loader import (
+    VN, MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW, DEFAULT_POWER_FACTOR, TARGET_EPSG,
+    MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
+)
 from pylovo.utils import oneSimultaneousLoad
 from pylovo.electrical_backend import normalize_cable_name
+
+
+SERVICE_LENGTH_REVIEW_THRESHOLD_M = 100.0
 
 
 class CableInstaller:
@@ -215,27 +221,115 @@ class CableInstaller:
                 )
                 self.backend.create_component(load_spec)
 
+    def _service_voltage_drop_percent(
+        self,
+        design_current_ka: float,
+        length_km: float,
+        cable: str,
+        parallel: int,
+    ) -> float:
+        """Calculate approximate three-phase service drop at local design load."""
+        row = self._cable_df.loc[cable]
+        sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
+        effective_impedance = (
+            float(row["r_ohm_per_km"]) * DEFAULT_POWER_FACTOR
+            + float(row["x_ohm_per_km"]) * sin_phi
+        ) / parallel
+        nominal_voltage_kv = VN * 1e-3
+        return float(
+            np.sqrt(3)
+            * design_current_ka
+            * length_km
+            * effective_impedance
+            / nominal_voltage_kv
+            * 100
+        )
+
+    def select_service_cable_design(
+        self,
+        design_current_ka: float,
+        length_km: float,
+        available_cables: list[str],
+    ) -> dict:
+        """Select a service cable by ampacity, then by local design voltage drop."""
+        line_df = self._cable_df.loc[self._cable_df.index.isin(available_cables)]
+        if line_df.empty:
+            raise ValueError("No configured service cable is available for selection.")
+
+        parallel = 1
+        while True:
+            ampacity_options = line_df.loc[
+                line_df["max_i_ka"] >= design_current_ka / parallel
+            ]
+            if not ampacity_options.empty:
+                break
+            parallel += 1
+
+        ampacity_cable = ampacity_options.sort_values(by=["cost_eur", "q_mm2"]).index[0]
+        ampacity_drop_percent = self._service_voltage_drop_percent(
+            design_current_ka, length_km, ampacity_cable, parallel
+        )
+        drops_by_cable = {
+            cable: self._service_voltage_drop_percent(
+                design_current_ka, length_km, cable, parallel
+            )
+            for cable in ampacity_options.index
+        }
+        voltage_options = ampacity_options.loc[
+            [
+                cable
+                for cable, drop_percent in drops_by_cable.items()
+                if drop_percent <= MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT + 1e-9
+            ]
+        ]
+        if voltage_options.empty:
+            selected_cable = min(
+                ampacity_options.index,
+                key=lambda cable: (
+                    drops_by_cable[cable],
+                    float(ampacity_options.at[cable, "cost_eur"]),
+                    int(ampacity_options.at[cable, "q_mm2"]),
+                ),
+            )
+        else:
+            selected_cable = voltage_options.sort_values(by=["cost_eur", "q_mm2"]).index[0]
+
+        selected_drop_percent = drops_by_cable[selected_cable]
+        return {
+            "cable": selected_cable,
+            "parallel": parallel,
+            "ampacity_cable": ampacity_cable,
+            "ampacity_parallel": parallel,
+            "ampacity_drop_percent": ampacity_drop_percent,
+            "selected_drop_percent": selected_drop_percent,
+            "voltage_drop_limit_met": bool(
+                selected_drop_percent <= MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT + 1e-9
+            ),
+            "sizing_basis": "service_voltage_drop" if selected_cable != ampacity_cable else "ampacity",
+        }
+
     def install_consumer_cables(self, plz: int, bcid: int, kcid: int,
                                 branch_node_list: list,
                                 ont_vertice: int, vertices_dict: dict,
                                 service_design_load_per_consumer: dict,
-                                material_length_by_cable_km: dict) -> dict:
-        """Install consumer connection cables sized for their local coincident load."""
+                                material_length_by_cable_km: dict,
+                                feeder_voltage_drop_percent_by_node: dict[int, float] | None = None,
+                                ) -> tuple[dict, list[dict]]:
+        """Install service cables using local ampacity and voltage-drop design loads."""
         consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(branch_node_list)
         branch_consumer_connections = [
             (connection_point, vertice_id)
             for connection_point, vertice_id in consumer_connections
             if connection_point in vertices_dict and vertice_id in vertices_dict
         ]
+        service_diagnostics = []
 
         for start_vid, end_vid in branch_consumer_connections:
-
             start_node_geodata = self._get_line_node_coordinates(start_vid, f"Connection Nodebus {start_vid}")
             end_node_geodata = self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}")
             line_geodata = [start_node_geodata, end_node_geodata]
 
             length_km = self._service_line_length_km(line_geodata)
-            count = 1
             sim_load = service_design_load_per_consumer[end_vid]
             Imax = sim_load / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
 
@@ -246,18 +340,53 @@ class CableInstaller:
                     self._consumer_connection_cables + self._feeder_available_cables
                 ))
 
-            line_df = self._cable_df
-            while True:
-                current_available_cables_df = line_df.loc[
-                    (line_df["max_i_ka"] >= Imax / count) & (line_df.index.isin(connection_available_cables))
-                ]
+            design = self.select_service_cable_design(Imax, length_km, connection_available_cables)
+            cable = design["cable"]
+            count = design["parallel"]
+            length_review = bool(length_km * 1000 > SERVICE_LENGTH_REVIEW_THRESHOLD_M)
+            feeder_drop_percent = None
+            if feeder_voltage_drop_percent_by_node is not None:
+                feeder_drop_percent = feeder_voltage_drop_percent_by_node.get(int(start_vid))
+            total_design_drop_percent = (
+                None
+                if feeder_drop_percent is None
+                else float(feeder_drop_percent + design["selected_drop_percent"])
+            )
+            service_diagnostics.append(
+                {
+                    "consumer_vertex": int(end_vid),
+                    "connection_vertex": int(start_vid),
+                    "length_km": float(length_km),
+                    "ampacity_cable": design["ampacity_cable"],
+                    "selected_cable": cable,
+                    "parallel": int(count),
+                    "ampacity_drop_percent": float(design["ampacity_drop_percent"]),
+                    "selected_drop_percent": float(design["selected_drop_percent"]),
+                    "voltage_drop_limit_met": bool(design["voltage_drop_limit_met"]),
+                    "length_review": length_review,
+                    "total_design_drop_percent": total_design_drop_percent,
+                }
+            )
 
-                if len(current_available_cables_df) == 0:
-                    count += 1
-                    continue
-                break
+            if design["sizing_basis"] == "service_voltage_drop":
+                self.logger.info(
+                    f"Upsized service cable to consumer {end_vid} from {design['ampacity_cable']} "
+                    f"to {cable}: local_design_drop={design['ampacity_drop_percent']:.3f}% -> "
+                    f"{design['selected_drop_percent']:.3f}%."
+                )
+            if not design["voltage_drop_limit_met"]:
+                self.logger.warning(
+                    f"Service voltage-drop limit remains violated for consumer {end_vid}: "
+                    f"selected_cable={cable}, selected_drop={design['selected_drop_percent']:.3f}%, "
+                    f"limit={MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT:.3f}%."
+                )
+            if length_review:
+                self.logger.warning(
+                    f"Long service connection flagged for review at consumer {end_vid}: "
+                    f"length={length_km * 1000:.1f} m, "
+                    f"threshold={SERVICE_LENGTH_REVIEW_THRESHOLD_M:.1f} m."
+                )
 
-            cable = current_available_cables_df.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
             material_length_by_cable_km[cable] += count * length_km
 
             line_spec = LineSpec(
@@ -268,6 +397,14 @@ class CableInstaller:
                 length_km=length_km,
                 parallel=count,
                 coordinates=line_geodata,
+                service_sizing_basis=design["sizing_basis"],
+                ampacity_std_type=design["ampacity_cable"],
+                ampacity_parallel=design["ampacity_parallel"],
+                service_ampacity_voltage_drop_percent=design["ampacity_drop_percent"],
+                service_selected_voltage_drop_percent=design["selected_drop_percent"],
+                service_voltage_drop_limit_met=design["voltage_drop_limit_met"],
+                service_length_review=length_review,
+                total_design_voltage_drop_percent=total_design_drop_percent,
             )
             self.backend.create_component(line_spec)
 
@@ -281,7 +418,7 @@ class CableInstaller:
                 parallel=count,
             )
 
-        return material_length_by_cable_km
+        return material_length_by_cable_km, service_diagnostics
 
     def get_feeder_cable_options(self, Imax: float, max_parallel: int) -> list[dict]:
         """Return thermally feasible feeder designs up to ``max_parallel`` cables."""

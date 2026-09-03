@@ -251,6 +251,11 @@ MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
     "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT"
 ]
 
+# Total service-cable voltage-drop limit at the building-local coincident design load.
+MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
+    "MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT"
+]
+
 # Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
 

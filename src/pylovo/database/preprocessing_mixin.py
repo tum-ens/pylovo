@@ -34,6 +34,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "min_shared_prefix_length_m": MIN_SHARED_PREFIX_LENGTH_M,
                 "feeder_split_max_current_ka": FEEDER_SPLIT_MAX_CURRENT_KA,
                 "max_end_to_end_feeder_voltage_drop_percent": MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
+                "max_service_design_voltage_drop_percent": MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
                 "mv_direct_connection_load_threshold_kw": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
             },
             "power_flow_assessment": {

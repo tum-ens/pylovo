@@ -101,6 +101,12 @@ class LineSpec(ComponentSpec):
     feeder_sizing_basis: Optional[str] = None
     ampacity_std_type: Optional[str] = None
     ampacity_parallel: Optional[int] = None
+    service_sizing_basis: Optional[str] = None
+    service_ampacity_voltage_drop_percent: Optional[float] = None
+    service_selected_voltage_drop_percent: Optional[float] = None
+    service_voltage_drop_limit_met: Optional[bool] = None
+    service_length_review: Optional[bool] = None
+    total_design_voltage_drop_percent: Optional[float] = None
     
 
     def __post_init__(self):

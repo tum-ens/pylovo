@@ -146,6 +146,12 @@ class PandapowerBackend(IElectricalBackend):
             feeder_sizing_basis=spec.feeder_sizing_basis,
             ampacity_std_type=spec.ampacity_std_type,
             ampacity_parallel=spec.ampacity_parallel,
+            service_sizing_basis=spec.service_sizing_basis,
+            service_ampacity_voltage_drop_percent=spec.service_ampacity_voltage_drop_percent,
+            service_selected_voltage_drop_percent=spec.service_selected_voltage_drop_percent,
+            service_voltage_drop_limit_met=spec.service_voltage_drop_limit_met,
+            service_length_review=spec.service_length_review,
+            total_design_voltage_drop_percent=spec.total_design_voltage_drop_percent,
         )
         self.logger.debug(
             f"Created line: {spec.name} (length={spec.length_km:.3f}km, type={std_type})"

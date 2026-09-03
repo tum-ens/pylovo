@@ -24,7 +24,9 @@ Method at a glance
 #. Select a transformer that can supply the coincident demand of its complete
    building cluster.
 #. Construct a radial street-routed feeder topology.
-#. Size every service cable for the local coincident demand of its own building.
+#. Size every service cable for the local coincident demand of its own building,
+   then upsize its conductor if needed to meet the service voltage-drop limit.
+#. Flag service connections longer than 100 m for review without changing their size because of length alone.
 #. Size every feeder section for the greatest coincident current on an edge in
    that section.
 #. Apply the configured end-to-end feeder voltage-drop plausibility check and,
@@ -106,14 +108,24 @@ bus. For a residential building with five households, the residential
 calculation therefore uses ``N = 5``. Unrelated buildings elsewhere in the grid
 do not reduce this service design load.
 
-PyLoVo selects the lowest-cost configured service cable with sufficient
+PyLoVo initially selects the lowest-cost configured service cable with sufficient
 ampacity. Additional parallel cables are used only if no single configured
 cable can carry the required current.
 
-Service length and impedance do not change this cable selection. They remain in
-the exported electrical network, however, and can cause a voltage drop in the
-subsequent power flow. Thus, ampacity-only service sizing does not hide service
-voltage problems; it leaves them to the network analysis.
+It then calculates the approximate drop across every complete service cable at
+the same building-local design load and compares it with
+``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``. If necessary, the conductor is
+upsized to the lowest-cost thermally feasible cable that satisfies this local
+limit.
+
+Voltage sizing never increases the ampacity-determined parallel count. If no
+conductor at that parallel count can satisfy the limit, PyLoVo selects the
+lowest-impedance available conductor and records that the limit remains unmet.
+
+Independently, service connections longer than 100 m receive a
+``service_length_review`` flag. This is a fixed data-quality review trigger: it
+does not change cable selection, and a long connection with little load can
+therefore remain on the ampacity-selected conductor.
 
 Feeder ampacity sizing
 ----------------------
@@ -223,7 +235,7 @@ Configuration levers
      - Street topology or cable ratings
    * - ``DEFAULT_POWER_FACTOR``
      - Design current, reactive power in the validation snapshot, and the
-       approximate feeder voltage-drop calculation
+       approximate feeder and service voltage-drop calculations
      - Installed active power
    * - ``FEEDER_CABLES``
      - Available feeder ratings, impedances, sizes, and material costs
@@ -237,6 +249,9 @@ Configuration levers
    * - ``MIN_SHARED_PREFIX_LENGTH_M``
      - Whether later branches reuse an existing feeder prefix
      - Load magnitude or power-flow voltage limits
+   * - ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``
+     - Service conductor upsizing after ampacity selection
+     - Feeder sizing, voltage-driven parallel cables, topology, or power-flow classification
    * - ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``
      - Feeder conductor upsizing after ampacity selection
      - Service sizing, transformer/service drop, or power-flow classification
@@ -264,6 +279,28 @@ solved validation state:
 ``feeder_voltage_drop_limit_met``
    Whether the selected feeder design satisfies the configured planning limit.
 
+``ampacity_max_service_voltage_drop_percent``
+   Maximum local service design drop before voltage-driven conductor upsizing.
+
+``selected_max_service_voltage_drop_percent``
+   Maximum local service design drop after final conductor selection.
+
+``service_voltage_drop_limit_met``
+   Whether every selected service design satisfies the configured local limit.
+
+``service_voltage_upgraded_count``
+   Number of service conductors changed from their ampacity-only selection.
+
+``long_service_connection_count``
+   Number of service connections longer than the fixed 100 m review trigger.
+
+``max_total_design_voltage_drop_percent``
+   Maximum diagnostic sum of the selected asset-coincidence feeder path drop and
+   selected local service design drop. Because the two asset peaks need not be
+   simultaneous, this conservative quantity is reported but does not resize
+   equipment.
+
+
 ``max_feeder_voltage_drop_pu``
    Solved voltage difference from the transformer LV bus to a service
    connection point in the validation snapshot.
@@ -279,6 +316,14 @@ Feeder lines additionally store ``feeder_section_id``,
 fields show which uniform section an edge belongs to, whether voltage planning
 changed it, and what the ampacity-only design would have been.
 
+Service lines store ``service_sizing_basis``, the before/after values
+``service_ampacity_voltage_drop_percent`` and
+``service_selected_voltage_drop_percent``, ``service_voltage_drop_limit_met``,
+``service_length_review``, and ``total_design_voltage_drop_percent``.
+``ampacity_std_type`` and ``ampacity_parallel`` retain the thermal-only service
+selection for comparison.
+
+
 Relationship to the published method
 ------------------------------------
 
@@ -289,8 +334,8 @@ current implementation retains that foundation and additionally makes the
 following distinctions explicit:
 
 * residential and non-residential components can coexist at one connection;
-* service cables use local building coincidence rather than the allocated
-  transformer validation snapshot;
+* service cables use local building coincidence for ampacity and their separate
+  voltage-drop limit rather than the allocated transformer validation snapshot;
 * feeder edges are grouped into uniform sections between hard nodes;
 * the end-to-end feeder plausibility pass is separated from ampacity sizing;
 * the static validation operating point is allocated proportionally by

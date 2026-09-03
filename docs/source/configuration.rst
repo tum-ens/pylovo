@@ -125,8 +125,10 @@ Main configuration file for grid generation with the following sections:
 
 - ``VN`` and ``DEFAULT_POWER_FACTOR`` convert active design power into
   three-phase design current at nominal voltage
-- Service connections are selected by their own building-level coincident-load
-  ampacity; no service voltage-drop sizing constraint is applied
+- Service connections use their own building-level coincident load for ampacity
+  and local voltage-drop sizing
+- ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT`` can upsize a service conductor but
+  cannot increase its ampacity-determined parallel count
 - ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT`` is the approximate planning
   envelope from the transformer LV bus to each service connection point
 - See :doc:`grid_generation/explanation/grid_dimensioning` for the complete
