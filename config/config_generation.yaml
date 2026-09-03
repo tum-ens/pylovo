@@ -4,9 +4,13 @@
 
 VERSION_ID: "1" # Change version if you changed any grid parameters or queries (e.g. transformer query)
 VERSION_COMMENT: default # State here which parameters, queries are used to compute the grids with current VERSION_ID
-PARALLEL: True # Use multiple workers in parallel
-N_JOBS_PERCENT: 20  # Set percentage of CPU cores to be used for parallel grid generation
-ANALYZE_GRIDS: True # Run basic analysis after grid generation
+
+# =============================================================================
+# EXECUTION CONFIGURATION
+# =============================================================================
+PARALLEL: True # Toggles whether the grid generation uses multiple workers in parallel
+N_JOBS_PERCENT: 20  # Percentage of CPU cores to use for parallel grid generation
+ANALYZE_GRIDS: True # Toggles analysis after grid generation (basic parameters, trafo analysis, cable counting)
 LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # save grid json files as json additionally to db storage
 RESULT_DIR: results # Directory for storing analysis results and outputs
@@ -26,8 +30,12 @@ CONSUMER_CATEGORIES:
   - {consumer_category_id: 2, definition: Public, peak_load: null, yearly_consumption: null, peak_load_per_m2: 29.00, yearly_consumption_per_m2: 155.70, sim_factor: 0.60}
   - {consumer_category_id: 3, definition: Residential, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
 
-### CABLE DIMENSIONING PARAMETERS
-VN: 400  # Nominal voltage in the low voltage grid
+### Equipment data
+TRANSFORMERS:
+  - {name: Tr_250, s_max_kva: 250, cost_eur: 5000, typ: Transformer}
+  - {name: Tr_400, s_max_kva: 400, cost_eur: 8000, typ: Transformer}
+  - {name: Tr_630, s_max_kva: 630, cost_eur: 12000, typ: Transformer}
+  # - {name: Tr_800, s_max_kva: 800, cost_eur: 16000, typ: Transformer}
 
 # Voltage planning may upsize conductors, but parallel counts remain determined by ampacity.
 
@@ -40,11 +48,14 @@ MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT: 3
 # Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
-# Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
-# This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 
+# Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
+# This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
+# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
+# handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
 FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
 
-# Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a high value.
+# Minimum routed distance from transformer to an existing upstream split point before a later branch may reuse
+#  that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
@@ -69,18 +80,12 @@ TRANSFORMER_MAPPING:
   2: [400, 630]
   3: [400, 630]
 
-# =============================================================================
-# Clustering PARAMETERS
-# =============================================================================
-
-## KMeans
-MAX_BUILDINGS_PER_KCID: 1000 # Maximum number of load buildings per initial k-means cluster
-K_MEANS_SEED: 3329829316 # k-means integer seed to ensure deterministic behavior
-
-## Greenfield
+### Clustering
+# Greenfield
 MAX_GREENFIELD_TRAFO_DISTANCE: 2000 # Maximum distance from a greenfield transformer to any cluster connection point
-MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters as posprocessing step
-GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities for merging
+MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters after load-constrained splitting if the merged cluster
+# still fits a single standard transformer and the existing max-distance constraint.
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400]
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
