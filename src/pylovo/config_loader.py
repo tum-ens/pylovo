@@ -185,7 +185,6 @@ VERSION_COMMENT = CONFIG_GENERATION["VERSION_COMMENT"]
 
 # Load calculation parameters
 PEAK_LOAD_HOUSEHOLD = CONFIG_GENERATION["PEAK_LOAD_HOUSEHOLD"]
-SIM_FACTOR = CONFIG_GENERATION["SIM_FACTOR"]
 DEFAULT_POWER_FACTOR = CONFIG_GENERATION["DEFAULT_POWER_FACTOR"]
 
 # Consumer categories for load calculation
@@ -199,6 +198,23 @@ if not CONSUMER_CATEGORIES.empty and "peak_load" in CONSUMER_CATEGORIES.columns:
     CONSUMER_CATEGORIES["peak_load"] = CONSUMER_CATEGORIES["peak_load"].apply(_resolve_peak_load)
     # enforce numeric (None / null stay as NaN for categories using per m2 metrics)
     CONSUMER_CATEGORIES["peak_load"] = pd.to_numeric(CONSUMER_CATEGORIES["peak_load"], errors="coerce")
+
+required_consumer_category_columns = {"definition", "sim_factor"}
+missing_consumer_category_columns = required_consumer_category_columns.difference(
+    CONSUMER_CATEGORIES.columns
+)
+if missing_consumer_category_columns:
+    raise ValueError(
+        "CONSUMER_CATEGORIES is missing required columns: "
+        f"{sorted(missing_consumer_category_columns)}"
+    )
+if CONSUMER_CATEGORIES["definition"].duplicated().any():
+    duplicate_definitions = CONSUMER_CATEGORIES.loc[
+        CONSUMER_CATEGORIES["definition"].duplicated(keep=False), "definition"
+    ].tolist()
+    raise ValueError(f"Duplicate consumer category definitions: {duplicate_definitions}")
+CONSUMER_CATEGORIES["sim_factor"] = pd.to_numeric(CONSUMER_CATEGORIES["sim_factor"], errors="raise")
+SIM_FACTOR = CONSUMER_CATEGORIES.set_index("definition")["sim_factor"].astype(float).to_dict()
 
 # Equipment data
 TRANSFORMERS = pd.DataFrame(CONFIG_GENERATION["TRANSFORMERS"])
@@ -214,12 +230,14 @@ CONFIG_EQUIPMENT_DATA = pd.concat(
     ignore_index=True,
 )
 
-# =============================================================================
-# VOLTAGE PROPERTIES (from CONFIG_GENERATION)
-# =============================================================================
+# Nominal voltage used for grid generation and electrical design.
 VN = CONFIG_GENERATION["VN"]
-V_BAND_LOW = CONFIG_GENERATION["V_BAND_LOW"]
-V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
+
+# Post-solution power-flow assessment thresholds. These values do not affect
+# solver convergence, grid topology, or cable sizing.
+POWER_FLOW_VOLTAGE_LIMITS = CONFIG_ANALYSIS["POWER_FLOW_VOLTAGE_LIMITS"]
+POWER_FLOW_MIN_VM_PU = POWER_FLOW_VOLTAGE_LIMITS["MIN_VM_PU"]
+POWER_FLOW_MAX_VM_PU = POWER_FLOW_VOLTAGE_LIMITS["MAX_VM_PU"]
 
 # =============================================================================
 # CABLE DIMENSIONING PARAMETERS (from CONFIG_GENERATION)
@@ -228,8 +246,15 @@ V_BAND_HIGH = CONFIG_GENERATION["V_BAND_HIGH"]
 # This is a topology-splitting parameter, not a final cable ampacity limit.
 FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
 
-# Consumer service-drop voltage-drop limit; installer converts percent per km to a total line budget.
-VOLTAGE_DROP_LOAD_PERCENT_PER_KM = CONFIG_GENERATION["VOLTAGE_DROP_LOAD_PERCENT_PER_KM"]
+# End-to-end transformer-to-connection-point feeder voltage-drop planning envelope.
+MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
+    "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT"
+]
+
+# Total service-cable voltage-drop limit at the building-local coincident design load.
+MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
+    "MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT"
+]
 
 # Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
@@ -349,4 +374,3 @@ try:
     sns.set_palette(sns.color_palette(TUMPalette))
 except ImportError:
     pass  # seaborn not installed, skip palette setup
-

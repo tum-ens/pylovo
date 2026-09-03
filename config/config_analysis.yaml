@@ -4,6 +4,15 @@
 # This file contains settings for grid analysis, plotting, and municipal register
 
 # =============================================================================
+# POWER-FLOW ASSESSMENT
+# =============================================================================
+# Post-solution thresholds used to classify a converged power flow. These limits
+# do not constrain solver convergence and do not influence grid topology or cable sizing.
+POWER_FLOW_VOLTAGE_LIMITS:
+  MIN_VM_PU: 0.9
+  MAX_VM_PU: 1.1
+
+# =============================================================================
 # PLOTTING CONFIGURATION
 # =============================================================================
 # Color mapping for different transformer sizes in plots

@@ -31,12 +31,15 @@ class PreprocessingMixin(BaseMixin, ABC):
             "equipment_data": self._dataframe_records(CONFIG_EQUIPMENT_DATA),
             "cable_dimensioning": {
                 "vn": VN,
-                "v_band_low": V_BAND_LOW,
-                "v_band_high": V_BAND_HIGH,
                 "min_shared_prefix_length_m": MIN_SHARED_PREFIX_LENGTH_M,
                 "feeder_split_max_current_ka": FEEDER_SPLIT_MAX_CURRENT_KA,
-                "voltage_drop_load_percent_per_km": VOLTAGE_DROP_LOAD_PERCENT_PER_KM,
+                "max_end_to_end_feeder_voltage_drop_percent": MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
+                "max_service_design_voltage_drop_percent": MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
                 "mv_direct_connection_load_threshold_kw": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
+            },
+            "power_flow_assessment": {
+                "min_vm_pu": POWER_FLOW_MIN_VM_PU,
+                "max_vm_pu": POWER_FLOW_MAX_VM_PU,
             },
             "connection_point_aggregation": {
                 "enabled": AGGREGATE_NEARBY_CONNECTION_POINTS,
@@ -57,7 +60,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         }
 
     def insert_version_if_not_exists(self):
-        """Insert version if it doesn't exist, with proper handling for concurrent access."""
+        """Insert an immutable generation-parameter snapshot for the active version."""
         try:
             generation_parameters = json.dumps(
                 self._generation_parameters_snapshot(),
@@ -85,12 +88,28 @@ class PreprocessingMixin(BaseMixin, ABC):
                     generation_parameters,
                 ),
             )
+            version_created_or_backfilled = self.cur.rowcount > 0
+
+            self.cur.execute(
+                "SELECT generation_parameters FROM pylovo.version WHERE version_id = %s;",
+                (VERSION_ID,),
+            )
+            stored_parameters = self.cur.fetchone()[0]
+            if isinstance(stored_parameters, str):
+                stored_parameters = json.loads(stored_parameters)
+            expected_parameters = json.loads(generation_parameters)
+            if stored_parameters != expected_parameters:
+                raise ValueError(
+                    f"Generation parameters differ from the stored snapshot for version {VERSION_ID}. "
+                    "Increment VERSION_ID before generating grids with the changed configuration."
+                )
+
             self.conn.commit()
 
-            if self.cur.rowcount > 0:
+            if version_created_or_backfilled:
                 self.logger.info(f"Version: {VERSION_ID} (created or generation parameters backfilled)")
             else:
-                self.logger.debug(f"Version: {VERSION_ID} (already exists)")
+                self.logger.debug(f"Version: {VERSION_ID} (configuration matches stored snapshot)")
 
         except Exception as e:
             self.logger.error(f"Error inserting version {VERSION_ID}: {e}")
@@ -153,9 +172,9 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise
 
     def insert_consumer_categories_from_config(self, consumer_categories: pd.DataFrame):
-        """Insert consumer_categories from config.
-        Replaces pandas.to_sql(replace) with ON CONFLICT upserts for stable parallel execution.
-        Table is global (no version_id). Existing IDs / definitions are updated.
+        """Synchronize the configured electrical load categories.
+
+        Building classifications deliberately do not constrain this table.
         """
         df = consumer_categories.copy()
 
@@ -182,6 +201,8 @@ class PreprocessingMixin(BaseMixin, ABC):
 
         df = df.where(pd.notna(df), None)
 
+        rows = df.to_dict(orient='records')
+        configured_ids = [int(row["consumer_category_id"]) for row in rows]
         upsert_sql = ("""
                       INSERT INTO pylovo.consumer_categories
                       (consumer_category_id, definition, peak_load, yearly_consumption, peak_load_per_m2,
@@ -194,14 +215,18 @@ class PreprocessingMixin(BaseMixin, ABC):
                                                                        peak_load_per_m2          = EXCLUDED.peak_load_per_m2,
                                                                        yearly_consumption_per_m2 = EXCLUDED.yearly_consumption_per_m2,
                                                                        sim_factor                = EXCLUDED.sim_factor;""")
-        rows = df.to_dict(orient='records')
         try:
+            self.cur.execute(
+                "DELETE FROM pylovo.consumer_categories "
+                "WHERE NOT (consumer_category_id = ANY(%s));",
+                (configured_ids,),
+            )
             self.cur.executemany(upsert_sql, rows)
-            self.conn.commit()  # Added commit to persist consumer categories
-            self.logger.info(f"Inserted/updated consumer_categories rows: {len(rows)}")
+            self.conn.commit()
+            self.logger.info(f"Synchronized consumer_categories rows: {len(rows)}")
         except Exception as e:
             self.conn.rollback()
-            self.logger.error(f"Failed inserting/updating consumer_categories: {e}")
+            self.logger.error(f"Failed synchronizing consumer_categories: {e}")
             raise
 
     def postcode_exists_locally(self, plz: int) -> bool:
@@ -271,10 +296,13 @@ class PreprocessingMixin(BaseMixin, ABC):
         """
         insert_query = f"""
             INSERT INTO buildings_tem
-            (id, feature_id, objectid, height, floor_area, floor_number, building_use, building_use_id,
+            (id, feature_id, objectid, height, floor_area, floor_number, residential_floor_area,
+             nonresidential_floor_area, nonresidential_use, mix_score, mix_rule, mix_confidence,
+             building_use, building_use_id,
              building_type, occupants, households, construction_year, postcode, address_street_id, street,
              house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
                     ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
                     %s, %s, %s, %s)
         """
@@ -370,7 +398,10 @@ class PreprocessingMixin(BaseMixin, ABC):
             SELECT AVG(households)::DOUBLE PRECISION
             FROM buildings_tem
             WHERE households IS NOT NULL
-              AND type IN ('SFH','TH','MFH','AB');"""
+              AND (
+                  COALESCE(residential_floor_area, 0) > 0
+                  OR type IN ('SFH','TH','MFH','AB')
+              );"""
         self.cur.execute(avg_query, {"p": plz})
         avg_val = self.cur.fetchone()[0]
         if avg_val is None:
@@ -438,46 +469,138 @@ class PreprocessingMixin(BaseMixin, ABC):
         return settlement_type
 
     def set_building_peak_load(self) -> int:
-        """
-        * Sets floor_area, type and peak_load in the buildings_tem table
-        * Removes buildings with zero load from the buildings_tem table
-        :return: Number of removed unloaded buildings from buildings_tem
-        """
+        """Calculate and validate residential/non-residential load components."""
+        self.cur.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE residential_floor_area < 0 OR nonresidential_floor_area < 0
+                ),
+                COUNT(*) FILTER (
+                    WHERE (residential_floor_area IS NULL)
+                       <> (nonresidential_floor_area IS NULL)
+                ),
+                COUNT(*) FILTER (
+                    WHERE residential_floor_area IS NOT NULL
+                      AND nonresidential_floor_area IS NOT NULL
+                      AND floor_area IS NOT NULL
+                      AND floor_number IS NOT NULL
+                      AND ABS(
+                          residential_floor_area + nonresidential_floor_area
+                          - floor_area * floor_number
+                      ) > 0.01
+                )
+            FROM buildings_tem;
+            """
+        )
+        negative_areas, incomplete_splits, inconsistent_splits = self.cur.fetchone()
+        if any((negative_areas, incomplete_splits, inconsistent_splits)):
+            raise ValueError(
+                "Invalid source building area components: "
+                f"negative={negative_areas}, incomplete={incomplete_splits}, "
+                f"inconsistent with gross floor area={inconsistent_splits}."
+            )
+
         query = """
                 UPDATE buildings_tem
                 SET floor_area = ST_Area(geom)
                 WHERE floor_area IS NULL;
+
                 UPDATE buildings_tem
-                
                 -- Update households only if it has not been set already.
                 -- For InfDB data this is already set.
                 SET households = (
                     CASE
-                    WHEN type IN ('TH', 'Commercial', 'Public', 'Industrial') THEN 1
+                    WHEN type IN ('TH', 'Commercial', 'Public') THEN 1
                     WHEN type = 'SFH' AND floor_area < 160 THEN 1
                     WHEN type = 'SFH' AND floor_area >= 160 THEN 2
-                    WHEN type IN ('MFH', 'AB') THEN floor(floor_area / 50) * floor_number
-                    ELSE 0
+                    WHEN type IN ('MFH', 'AB') THEN floor(floor_area / 50) * COALESCE(floor_number, 1)
+                    ELSE households
                     END
                 )
                 WHERE households IS NULL;
-                
-                UPDATE buildings_tem b
-                SET peak_load_in_kw = (CASE
-                                           WHEN b.type IN ('SFH', 'TH', 'MFH', 'AB') THEN b.households *
-                                                                                          (SELECT peak_load FROM pylovo.consumer_categories WHERE definition = b.type)
-                                           WHEN b.type IN ('Commercial', 'Public', 'Industrial') THEN b.floor_area *
-                                                                                                      (SELECT peak_load_per_m2
-                                                                                                       FROM pylovo.consumer_categories
-                                                                                                       WHERE definition = b.type) /
-                                                                                                      1000
-                                           ELSE 0
-                    END);"""
-        self.cur.execute(query)
 
-        count_query = ("""SELECT COUNT(*)
+                UPDATE buildings_tem
+                SET residential_floor_area = CASE
+                        WHEN residential_floor_area IS NOT NULL THEN residential_floor_area
+                        WHEN type IN ('SFH', 'TH', 'MFH', 'AB')
+                            THEN floor_area * COALESCE(floor_number, 1)
+                        ELSE 0
+                    END,
+                    nonresidential_floor_area = CASE
+                        WHEN nonresidential_floor_area IS NOT NULL THEN nonresidential_floor_area
+                        WHEN type IN ('Commercial', 'Public')
+                            THEN floor_area * COALESCE(floor_number, 1)
+                        ELSE 0
+                    END;
+
+                UPDATE buildings_tem
+                SET nonresidential_use = CASE
+                        WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
+                        WHEN nonresidential_use IN ('Commercial', 'Public') THEN nonresidential_use
+                        WHEN type IN ('Commercial', 'Public') THEN type
+                        WHEN building_use = 'Residential' THEN 'Commercial'
+                        ELSE nonresidential_use
+                    END;
+
+                UPDATE buildings_tem b
+                SET residential_peak_load_in_kw = CASE
+                        WHEN COALESCE(b.residential_floor_area, 0) > 0 THEN b.households * (
+                            SELECT peak_load
+                            FROM pylovo.consumer_categories
+                            WHERE definition = 'Residential'
+                        )
+                        ELSE 0
+                    END,
+                    nonresidential_peak_load_in_kw = CASE
+                        WHEN COALESCE(b.nonresidential_floor_area, 0) > 0 THEN b.nonresidential_floor_area * (
+                            SELECT peak_load_per_m2
+                            FROM pylovo.consumer_categories
+                            WHERE definition = b.nonresidential_use
+                        ) / 1000
+                        ELSE 0
+                    END;
+
+                UPDATE buildings_tem
+                SET peak_load_in_kw = COALESCE(residential_peak_load_in_kw, 0)
+                    + CASE WHEN %(include_nonresidential)s
+                           THEN COALESCE(nonresidential_peak_load_in_kw, 0)
+                           ELSE 0 END;"""
+        self.cur.execute(query, {"include_nonresidential": not RESIDENTIAL_ONLY_GENERATION})
+
+        self.cur.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE residential_floor_area > 0
+                      AND (households IS NULL OR households <= 0)
+                ),
+                COUNT(*) FILTER (
+                    WHERE nonresidential_floor_area > 0
+                      AND (
+                          nonresidential_use IS NULL
+                          OR nonresidential_use NOT IN ('Commercial', 'Public')
+                      )
+                ),
+                COUNT(*) FILTER (
+                    WHERE residential_peak_load_in_kw IS NULL
+                       OR nonresidential_peak_load_in_kw IS NULL
+                )
+            FROM buildings_tem;
+            """
+        )
+        invalid_households, invalid_nonresidential_use, missing_peak = self.cur.fetchone()
+        if any((invalid_households, invalid_nonresidential_use, missing_peak)):
+            raise ValueError(
+                "Invalid calculated building load components: "
+                f"invalid residential households={invalid_households}, "
+                f"invalid non-residential uses={invalid_nonresidential_use}, "
+                f"missing component peaks={missing_peak}."
+            )
+
+        count_query = """SELECT COUNT(*)
                           FROM buildings_tem
-                          WHERE peak_load_in_kw = 0;""")
+                          WHERE peak_load_in_kw = 0;"""
         self.cur.execute(count_query)
         count = self.cur.fetchone()[0]
 
@@ -489,19 +612,30 @@ class PreprocessingMixin(BaseMixin, ABC):
         return count
 
     def update_too_large_consumers_to_zero(self) -> int:
-        """
-        Sets Commercial/Public loads above the LV modeling threshold to zero.
-        :return: number of the large customers
-        """
+        """Exclude only oversized non-residential components from the LV model."""
         query = """
                 UPDATE buildings_tem
-                SET peak_load_in_kw = 0
-                WHERE peak_load_in_kw > %(threshold)s
-                  AND type IN ('Commercial', 'Public');
+                SET nonresidential_mv_direct = (
+                        %(include_nonresidential)s
+                        AND nonresidential_peak_load_in_kw > %(threshold)s
+                    ),
+                    peak_load_in_kw = COALESCE(residential_peak_load_in_kw, 0)
+                        + CASE
+                            WHEN %(include_nonresidential)s
+                             AND nonresidential_peak_load_in_kw <= %(threshold)s
+                                THEN COALESCE(nonresidential_peak_load_in_kw, 0)
+                            ELSE 0
+                          END;
                 SELECT COUNT(*)
                 FROM buildings_tem
-                WHERE peak_load_in_kw = 0;"""
-        self.cur.execute(query, {"threshold": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW})
+                WHERE nonresidential_mv_direct;"""
+        self.cur.execute(
+            query,
+            {
+                "threshold": MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
+                "include_nonresidential": not RESIDENTIAL_ONLY_GENERATION,
+            },
+        )
         too_large = self.cur.fetchone()[0]
 
         return too_large
@@ -584,6 +718,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         query = """
             DELETE FROM buildings_tem b
             WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
+              AND COALESCE(b.residential_floor_area, 0) <= 0
               AND COALESCE(b.type, '') != 'Transformer'
               AND EXISTS (
                   SELECT 1
@@ -599,8 +734,8 @@ class PreprocessingMixin(BaseMixin, ABC):
         """Keep only residential consumer buildings in the temporary generation input."""
         query = """
             DELETE FROM buildings_tem
-            WHERE type IS NULL
-               OR type NOT IN ('SFH', 'MFH', 'TH', 'AB');
+            WHERE COALESCE(residential_floor_area, 0) <= 0
+              AND (type IS NULL OR type NOT IN ('SFH', 'MFH', 'TH', 'AB'));
         """
         self.cur.execute(query)
         return self.cur.rowcount
@@ -667,6 +802,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                       OR t.osm_id = CONCAT('lod2/', b.objectid)
                       OR (
                           b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                          AND COALESCE(b.residential_floor_area, 0) <= 0
                           AND b.geom IS NOT NULL
                           AND ST_Intersects(b.geom, t.geom)
                       )
@@ -680,7 +816,10 @@ class PreprocessingMixin(BaseMixin, ABC):
                   AND (
                       t.osm_id = b.objectid
                       OR t.osm_id = CONCAT('lod2/', b.objectid)
-                      OR b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                      OR (
+                          b.type NOT IN ('SFH', 'MFH', 'AB', 'TH', 'Transformer')
+                          AND COALESCE(b.residential_floor_area, 0) <= 0
+                      )
                   )
             ), deleted AS (
                 DELETE FROM buildings_tem b

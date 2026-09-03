@@ -97,6 +97,16 @@ class LineSpec(ComponentSpec):
     length_km: float = 0.0  # Cable length in km
     parallel: int = 1  # Number of parallel cables
     coordinates: Optional[list] = None  # Line geometry for visualization
+    feeder_section_id: Optional[int] = None
+    feeder_sizing_basis: Optional[str] = None
+    ampacity_std_type: Optional[str] = None
+    ampacity_parallel: Optional[int] = None
+    service_sizing_basis: Optional[str] = None
+    service_ampacity_voltage_drop_percent: Optional[float] = None
+    service_selected_voltage_drop_percent: Optional[float] = None
+    service_voltage_drop_limit_met: Optional[bool] = None
+    service_length_review: Optional[bool] = None
+    total_design_voltage_drop_percent: Optional[float] = None
     
 
     def __post_init__(self):
@@ -114,6 +124,11 @@ class LoadSpec(ComponentSpec):
     kw: float = 0.0  # Active power in kW
     kvar: float = 0.0  # Reactive power in kvar
     max_p_mw: float = 0.0  # Maximum active power in MW
+    service_design_p_mw: float = 0.0  # Local coincident load used to size the service cable
+    operating_point_basis: Optional[str] = None  # Meaning of kw and kvar in the exported network
+    category: Optional[str] = None  # Electrical simultaneity category
+    load_units: float = 1.0  # Households for residential, otherwise component count
+    consumer_vertex: Optional[int] = None  # Shared physical connection vertex
 
     def __post_init__(self):
         self.component_type = "load"

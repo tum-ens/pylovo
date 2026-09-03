@@ -87,6 +87,18 @@ CREATE_QUERIES = {
         model_status integer,
         ont_vertice_id bigint,
         power_flow_status varchar(32),
+        ampacity_max_feeder_voltage_drop_percent double precision,
+        selected_max_feeder_voltage_drop_percent double precision,
+        feeder_voltage_drop_limit_met boolean,
+        ampacity_max_service_voltage_drop_percent double precision,
+        selected_max_service_voltage_drop_percent double precision,
+        service_voltage_drop_limit_met boolean,
+        service_voltage_upgraded_count integer,
+        long_service_connection_count integer,
+        max_total_design_voltage_drop_percent double precision,
+        max_feeder_voltage_drop_pu double precision,
+        max_service_voltage_drop_pu double precision,
+        max_total_lv_voltage_drop_pu double precision,
         grid json,
         CONSTRAINT cluster_identifier UNIQUE (version_id, kcid, bcid, plz),
         CONSTRAINT unique_grid_result_id_version_id UNIQUE (version_id, grid_result_id),
@@ -99,6 +111,18 @@ CREATE_QUERIES = {
             REFERENCES pylovo.equipment_data(version_id, name)
             ON DELETE SET NULL
     );
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS ampacity_max_feeder_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS selected_max_feeder_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS feeder_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS ampacity_max_service_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS selected_max_service_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS service_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS service_voltage_upgraded_count integer;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS long_service_connection_count integer;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_total_design_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_feeder_voltage_drop_pu double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_service_voltage_drop_pu double precision;
+    ALTER TABLE pylovo.grid_result ADD COLUMN IF NOT EXISTS max_total_lv_voltage_drop_pu double precision;
     CREATE INDEX IF NOT EXISTS idx_grid_result_version_id_plz_bcid_kcid
     ON pylovo.grid_result (version_id, plz, bcid, kcid);
     """,
@@ -269,6 +293,12 @@ CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
+        residential_floor_area double precision,
+        nonresidential_floor_area double precision,
+        nonresidential_use varchar(30),
+        mix_score double precision,
+        mix_rule text,
+        mix_confidence text,
         building_use text,
         building_use_id text,
         building_type text,
@@ -285,6 +315,9 @@ CREATE_QUERIES = {
         gemeindeschluessel text,
         changelog_id bigint,
         assigned_way_id text,
+        residential_peak_load_in_kw double precision,
+        nonresidential_peak_load_in_kw double precision,
+        nonresidential_mv_direct boolean NOT NULL DEFAULT false,
         peak_load_in_kw double precision,
         vertice_id integer,
         connection_point integer,
@@ -293,10 +326,6 @@ CREATE_QUERIES = {
         CONSTRAINT fk_buildings_result_grid_result
             FOREIGN KEY (version_id, grid_result_id)
             REFERENCES pylovo.grid_result (version_id, grid_result_id)
-            ON DELETE CASCADE,
-        CONSTRAINT fk_buildings_result_type
-            FOREIGN KEY (type)
-            REFERENCES pylovo.consumer_categories (definition)
             ON DELETE CASCADE
     );
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS id integer;
@@ -305,6 +334,12 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS height double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_area double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_number integer;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS residential_floor_area double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_floor_area double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_use varchar(30);
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS mix_score double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS mix_rule text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS mix_confidence text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use_id text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_type text;
@@ -321,6 +356,9 @@ CREATE_QUERIES = {
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS gemeindeschluessel text;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS changelog_id bigint;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS assigned_way_id text;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS residential_peak_load_in_kw double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_peak_load_in_kw double precision;
+    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS nonresidential_mv_direct boolean NOT NULL DEFAULT false;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS peak_load_in_kw double precision;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS vertice_id integer;
     ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS connection_point integer;
@@ -333,17 +371,6 @@ CREATE_QUERIES = {
               AND conrelid = 'pylovo.buildings_result'::regclass
         ) THEN
             ALTER TABLE pylovo.buildings_result ADD CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid);
-        END IF;
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conname = 'fk_buildings_result_type'
-              AND conrelid = 'pylovo.buildings_result'::regclass
-        ) THEN
-            ALTER TABLE pylovo.buildings_result
-                ADD CONSTRAINT fk_buildings_result_type
-                FOREIGN KEY (type)
-                REFERENCES pylovo.consumer_categories (definition)
-                ON DELETE CASCADE;
         END IF;
     END $$;
     CREATE INDEX IF NOT EXISTS idx_buildings_result_grid_result_id
@@ -473,12 +500,32 @@ CREATE_QUERIES = {
         max_i_ka double precision,
         df double precision,
         type varchar(32),
+        feeder_section_id integer,
+        feeder_sizing_basis varchar(32),
+        ampacity_std_type varchar(100),
+        ampacity_parallel integer,
+        service_sizing_basis varchar(32),
+        service_ampacity_voltage_drop_percent double precision,
+        service_selected_voltage_drop_percent double precision,
+        service_voltage_drop_limit_met boolean,
+        service_length_review boolean,
+        total_design_voltage_drop_percent double precision,
         CONSTRAINT uq_pandapower_line_grid_result_pp_index UNIQUE (grid_result_id, pp_index),
         CONSTRAINT fk_pandapower_line_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)
-            ON DELETE CASCADE
+               ON DELETE CASCADE
     );
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS feeder_section_id integer;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS feeder_sizing_basis varchar(32);
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS ampacity_std_type varchar(100);
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS ampacity_parallel integer;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_sizing_basis varchar(32);
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_ampacity_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_selected_voltage_drop_percent double precision;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_voltage_drop_limit_met boolean;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS service_length_review boolean;
+    ALTER TABLE pylovo.pandapower_line ADD COLUMN IF NOT EXISTS total_design_voltage_drop_percent double precision;
     CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_id
     ON pylovo.pandapower_line (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_pandapower_line_from_to_bus
@@ -530,6 +577,11 @@ CREATE_QUERIES = {
         bus integer,
         p_mw double precision,
         q_mvar double precision,
+        service_design_p_mw double precision,
+        operating_point_basis varchar(64),
+        category varchar(30),
+        load_units double precision,
+        consumer_vertex bigint,
         const_z_percent double precision,
         const_i_percent double precision,
         sn_mva double precision,
@@ -547,6 +599,11 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS category varchar(30);
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS load_units double precision;
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS consumer_vertex bigint;
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS service_design_p_mw double precision;
+    ALTER TABLE pylovo.pandapower_load ADD COLUMN IF NOT EXISTS operating_point_basis varchar(64);
     CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_id
     ON pylovo.pandapower_load (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_pandapower_load_bus
@@ -701,7 +758,7 @@ CREATE_QUERIES = {
                                )
     """,
     "transformer_positions_with_grid": """
-    DROP MATERIALIZED VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
+    DROP VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
         SELECT
             tp.*,
@@ -776,6 +833,12 @@ TEMP_CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
+        residential_floor_area double precision,
+        nonresidential_floor_area double precision,
+        nonresidential_use varchar(30),
+        mix_score double precision,
+        mix_rule text,
+        mix_confidence text,
         building_use text,
         building_use_id text,
         building_type text,
@@ -792,6 +855,9 @@ TEMP_CREATE_QUERIES = {
         changelog_id bigint,
         assigned_way_id text,
         type varchar(80),
+        residential_peak_load_in_kw double precision,
+        nonresidential_peak_load_in_kw double precision,
+        nonresidential_mv_direct boolean NOT NULL DEFAULT false,
         peak_load_in_kw double precision,
         plz integer,
         vertice_id bigint,

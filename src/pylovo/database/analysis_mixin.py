@@ -17,6 +17,62 @@ class AnalysisMixin(BaseMixin, ABC):
     def __init__(self):
         super().__init__()
 
+    def ensure_grid_persistence_schema(self) -> None:
+        """Add non-destructive result columns required by current grid generation."""
+        required_columns = {
+            "grid_result": {
+                "ampacity_max_feeder_voltage_drop_percent": "double precision",
+                "selected_max_feeder_voltage_drop_percent": "double precision",
+                "feeder_voltage_drop_limit_met": "boolean",
+                "ampacity_max_service_voltage_drop_percent": "double precision",
+                "selected_max_service_voltage_drop_percent": "double precision",
+                "service_voltage_drop_limit_met": "boolean",
+                "service_voltage_upgraded_count": "integer",
+                "long_service_connection_count": "integer",
+                "max_total_design_voltage_drop_percent": "double precision",
+                "max_feeder_voltage_drop_pu": "double precision",
+                "max_service_voltage_drop_pu": "double precision",
+                "max_total_lv_voltage_drop_pu": "double precision",
+            },
+            "pandapower_line": {
+                "feeder_section_id": "integer",
+                "feeder_sizing_basis": "varchar(32)",
+                "ampacity_std_type": "varchar(100)",
+                "ampacity_parallel": "integer",
+                "service_sizing_basis": "varchar(32)",
+                "service_ampacity_voltage_drop_percent": "double precision",
+                "service_selected_voltage_drop_percent": "double precision",
+                "service_voltage_drop_limit_met": "boolean",
+                "service_length_review": "boolean",
+                "total_design_voltage_drop_percent": "double precision",
+            },
+        }
+        self.cur.execute(
+            """
+            SELECT table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'pylovo'
+              AND table_name IN ('grid_result', 'pandapower_line')
+            """
+        )
+        existing_columns: dict[str, set[str]] = {}
+        for table_name, column_name in self.cur.fetchall():
+            existing_columns.setdefault(table_name, set()).add(column_name)
+
+        for table_name, columns in required_columns.items():
+            if table_name not in existing_columns:
+                raise RuntimeError(
+                    f"Required table pylovo.{table_name} does not exist; run pylovo-setup first."
+                )
+            for column_name, sql_type in columns.items():
+                if column_name in existing_columns[table_name]:
+                    continue
+                self.cur.execute(
+                    f"ALTER TABLE pylovo.{table_name} "
+                    f"ADD COLUMN IF NOT EXISTS {column_name} {sql_type};"
+                )
+                self.logger.info(f"Added persistence column pylovo.{table_name}.{column_name}.")
+
     def insert_plz_parameters(self, plz: int, trafo_string: str, load_count_string: str, bus_count_string: str):
         update_query = f"""INSERT INTO pylovo.plz_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)
                           VALUES (%s, %s, %s, %s,
@@ -55,18 +111,62 @@ class AnalysisMixin(BaseMixin, ABC):
         json_string: str | None,
         transformer_description: str,
         power_flow_status: str,
+        ampacity_max_feeder_voltage_drop_percent: float | None = None,
+        selected_max_feeder_voltage_drop_percent: float | None = None,
+        feeder_voltage_drop_limit_met: bool | None = None,
+        ampacity_max_service_voltage_drop_percent: float | None = None,
+        selected_max_service_voltage_drop_percent: float | None = None,
+        service_voltage_drop_limit_met: bool | None = None,
+        service_voltage_upgraded_count: int | None = None,
+        long_service_connection_count: int | None = None,
+        max_total_design_voltage_drop_percent: float | None = None,
+        max_feeder_voltage_drop_pu: float | None = None,
+        max_service_voltage_drop_pu: float | None = None,
+        max_total_lv_voltage_drop_pu: float | None = None,
     ) -> None:
         insert_query = (f"""UPDATE pylovo.grid_result
                            SET grid = %s,
                                transformer_description = %s,
-                               power_flow_status = %s
+                               power_flow_status = %s,
+                               ampacity_max_feeder_voltage_drop_percent = %s,
+                               selected_max_feeder_voltage_drop_percent = %s,
+                               feeder_voltage_drop_limit_met = %s,
+                               ampacity_max_service_voltage_drop_percent = %s,
+                               selected_max_service_voltage_drop_percent = %s,
+                               service_voltage_drop_limit_met = %s,
+                               service_voltage_upgraded_count = %s,
+                               long_service_connection_count = %s,
+                               max_total_design_voltage_drop_percent = %s,
+                               max_feeder_voltage_drop_pu = %s,
+                               max_service_voltage_drop_pu = %s,
+                               max_total_lv_voltage_drop_pu = %s
                            WHERE version_id = %s
                              AND plz = %s
                              AND kcid = %s
                              AND bcid = %s;""")
         self.cur.execute(
             insert_query,
-            vars=(json_string, transformer_description, power_flow_status, VERSION_ID, plz, kcid, bcid),
+            vars=(
+                json_string,
+                transformer_description,
+                power_flow_status,
+                self._normalize_sql_scalar(ampacity_max_feeder_voltage_drop_percent),
+                self._normalize_sql_scalar(selected_max_feeder_voltage_drop_percent),
+                self._normalize_sql_scalar(feeder_voltage_drop_limit_met),
+                self._normalize_sql_scalar(ampacity_max_service_voltage_drop_percent),
+                self._normalize_sql_scalar(selected_max_service_voltage_drop_percent),
+                self._normalize_sql_scalar(service_voltage_drop_limit_met),
+                self._normalize_sql_scalar(service_voltage_upgraded_count),
+                self._normalize_sql_scalar(long_service_connection_count),
+                self._normalize_sql_scalar(max_total_design_voltage_drop_percent),
+                self._normalize_sql_scalar(max_feeder_voltage_drop_pu),
+                self._normalize_sql_scalar(max_service_voltage_drop_pu),
+                self._normalize_sql_scalar(max_total_lv_voltage_drop_pu),
+                VERSION_ID,
+                plz,
+                kcid,
+                bcid,
+            ),
         )
 
     @staticmethod
@@ -195,7 +295,17 @@ class AnalysisMixin(BaseMixin, ABC):
                 g_us_per_km,
                 max_i_ka,
                 df,
-                type
+                type,
+                feeder_section_id,
+                feeder_sizing_basis,
+                ampacity_std_type,
+                ampacity_parallel,
+                service_sizing_basis,
+                service_ampacity_voltage_drop_percent,
+                service_selected_voltage_drop_percent,
+                service_voltage_drop_limit_met,
+                service_length_review,
+                total_design_voltage_drop_percent
             ) VALUES (
                 %(grid_result_id)s,
                 %(pp_index)s,
@@ -213,7 +323,17 @@ class AnalysisMixin(BaseMixin, ABC):
                 %(g_us_per_km)s,
                 %(max_i_ka)s,
                 %(df)s,
-                %(type)s
+                %(type)s,
+                %(feeder_section_id)s,
+                %(feeder_sizing_basis)s,
+                %(ampacity_std_type)s,
+                %(ampacity_parallel)s,
+                %(service_sizing_basis)s,
+                %(service_ampacity_voltage_drop_percent)s,
+                %(service_selected_voltage_drop_percent)s,
+                %(service_voltage_drop_limit_met)s,
+                %(service_length_review)s,
+                %(total_design_voltage_drop_percent)s
             )
         """
 
@@ -238,6 +358,20 @@ class AnalysisMixin(BaseMixin, ABC):
                     "max_i_ka": self._series_value(row, "max_i_ka"),
                     "df": self._series_value(row, "df"),
                     "type": self._series_value(row, "type"),
+                    "feeder_section_id": self._series_value(row, "feeder_section_id"),
+                    "feeder_sizing_basis": self._series_value(row, "feeder_sizing_basis"),
+                    "ampacity_std_type": self._series_value(row, "ampacity_std_type"),
+                    "ampacity_parallel": self._series_value(row, "ampacity_parallel"),
+                    "service_sizing_basis": self._series_value(row, "service_sizing_basis"),
+                    "service_ampacity_voltage_drop_percent": self._series_value(
+                        row, "service_ampacity_voltage_drop_percent"
+                    ),
+                    "service_selected_voltage_drop_percent": self._series_value(
+                        row, "service_selected_voltage_drop_percent"
+                    ),
+                    "service_voltage_drop_limit_met": self._series_value(row, "service_voltage_drop_limit_met"),
+                    "service_length_review": self._series_value(row, "service_length_review"),
+                    "total_design_voltage_drop_percent": self._series_value(row, "total_design_voltage_drop_percent"),
                 }
             )
 
@@ -343,6 +477,11 @@ class AnalysisMixin(BaseMixin, ABC):
                 bus,
                 p_mw,
                 q_mvar,
+                service_design_p_mw,
+                operating_point_basis,
+                category,
+                load_units,
+                consumer_vertex,
                 const_z_percent,
                 const_i_percent,
                 sn_mva,
@@ -361,6 +500,11 @@ class AnalysisMixin(BaseMixin, ABC):
                 %(bus)s,
                 %(p_mw)s,
                 %(q_mvar)s,
+                %(service_design_p_mw)s,
+                %(operating_point_basis)s,
+                %(category)s,
+                %(load_units)s,
+                %(consumer_vertex)s,
                 %(const_z_percent)s,
                 %(const_i_percent)s,
                 %(sn_mva)s,
@@ -385,6 +529,11 @@ class AnalysisMixin(BaseMixin, ABC):
                     "bus": self._series_value(row, "bus"),
                     "p_mw": self._series_value(row, "p_mw"),
                     "q_mvar": self._series_value(row, "q_mvar"),
+                    "service_design_p_mw": self._series_value(row, "service_design_p_mw"),
+                    "operating_point_basis": self._series_value(row, "operating_point_basis"),
+                    "category": self._series_value(row, "category"),
+                    "load_units": self._series_value(row, "load_units"),
+                    "consumer_vertex": self._series_value(row, "consumer_vertex"),
                     "const_z_percent": self._series_value(row, "const_z_percent"),
                     "const_i_percent": self._series_value(row, "const_i_percent"),
                     "sn_mva": self._series_value(row, "sn_mva"),

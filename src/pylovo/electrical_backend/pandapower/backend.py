@@ -26,7 +26,7 @@ from ..core.specs import (
     ExtGridSpec,
     normalize_cable_name,
 )
-from pylovo.config_loader import V_BAND_HIGH, V_BAND_LOW
+from pylovo.config_loader import POWER_FLOW_MAX_VM_PU, POWER_FLOW_MIN_VM_PU
 
 
 class PandapowerBackendError(Exception):
@@ -98,8 +98,8 @@ class PandapowerBackend(IElectricalBackend):
             name=spec.name,
             vn_kv=spec.voltage_kv,
             geodata=spec.coordinates,
-            max_vm_pu=V_BAND_HIGH,
-            min_vm_pu=V_BAND_LOW,
+            max_vm_pu=POWER_FLOW_MAX_VM_PU,
+            min_vm_pu=POWER_FLOW_MIN_VM_PU,
             type="n",
             zone=zone
         )
@@ -141,7 +141,17 @@ class PandapowerBackend(IElectricalBackend):
             std_type=std_type,
             name=spec.name,
             geodata=spec.coordinates,
-            parallel=spec.parallel
+            parallel=spec.parallel,
+            feeder_section_id=spec.feeder_section_id,
+            feeder_sizing_basis=spec.feeder_sizing_basis,
+            ampacity_std_type=spec.ampacity_std_type,
+            ampacity_parallel=spec.ampacity_parallel,
+            service_sizing_basis=spec.service_sizing_basis,
+            service_ampacity_voltage_drop_percent=spec.service_ampacity_voltage_drop_percent,
+            service_selected_voltage_drop_percent=spec.service_selected_voltage_drop_percent,
+            service_voltage_drop_limit_met=spec.service_voltage_drop_limit_met,
+            service_length_review=spec.service_length_review,
+            total_design_voltage_drop_percent=spec.total_design_voltage_drop_percent,
         )
         self.logger.debug(
             f"Created line: {spec.name} (length={spec.length_km:.3f}km, type={std_type})"
@@ -157,8 +167,14 @@ class PandapowerBackend(IElectricalBackend):
             self.net,
             bus=bus,
             p_mw=p_mw,
+            q_mvar=spec.kvar / 1000.0,
             name=spec.name,
-            max_p_mw=spec.max_p_mw
+            max_p_mw=spec.max_p_mw,
+            service_design_p_mw=spec.service_design_p_mw,
+            operating_point_basis=spec.operating_point_basis,
+            category=spec.category,
+            load_units=spec.load_units,
+            consumer_vertex=spec.consumer_vertex,
         )
         self.logger.debug(
             f"Created load: {spec.name} (kw={spec.kw:.1f}, kvar={spec.kvar:.1f})"

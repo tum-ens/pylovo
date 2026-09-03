@@ -51,8 +51,8 @@ Data Source Tables
 +---------------------+--------------------------------------------------------------------------------------+
 | transformers        | Transformer infrastructure from OpenStreetMap data.                                  |
 +---------------------+--------------------------------------------------------------------------------------+
-| consumer_categories | Defines different types of electrical consumers with their load characteristics,     |
-|                     | also from a CSV-file.                                                                |
+| consumer_categories | Defines electrical load categories and their configured load characteristics.        |
+|                     | Building classes are not constrained by this table.                                  |
 +---------------------+--------------------------------------------------------------------------------------+
 | ags                 | Logs which ags region buildings have been imported into the database.                |
 +---------------------+--------------------------------------------------------------------------------------+

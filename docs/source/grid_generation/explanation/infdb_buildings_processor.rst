@@ -53,7 +53,7 @@ An overview of the column sources and roles for ``pylovo_input.buildings`` is sh
 | ``building_use_id``          | ``citydb.property.val_*``                                                | Internal ID for building use                               |
 +------------------------------+--------------------------------------------------------------------------+------------------------------------------------------------+
 | ``building_use``             | ``citydb.property.val_*``                                                | One of ``Residential``, ``Industrial``,                    |
-|                              |                                                                          | ``Commercial``, ``Public``                                 |
+|                              |                                                                          | ``Commercial``, ``Public``, or ``Mixed``                   |
 +------------------------------+--------------------------------------------------------------------------+------------------------------------------------------------+
 | ``floor_area``               | ``citydb.property.val_*``                                                | Ground floor area                                          |
 +------------------------------+--------------------------------------------------------------------------+------------------------------------------------------------+
@@ -76,6 +76,24 @@ An overview of the column sources and roles for ``pylovo_input.buildings`` is sh
 +------------------------------+--------------------------------------------------------------------------+------------------------------------------------------------+
 | ``address_street_id``        | Derived from ``pylovo_input.ways`` and ``citydb.address``                | Street ID corresponding to the building's address          |
 +------------------------------+--------------------------------------------------------------------------+------------------------------------------------------------+
+
+Mixed-use component contract
+----------------------------
+
+The InfDB buildings pipeline provides
+``residential_floor_area``, ``nonresidential_floor_area``, ``mix_score``,
+``mix_rule``, and ``mix_confidence``. The two area components must be
+non-negative and add up to ``floor_area * floor_number``. Pylovo consumes these
+columns directly without a separate schema preflight.
+
+In InfDB, ``building_use = 'Mixed'`` describes the overall use. It does not
+create a new electrical consumer category and it does not erase an available
+residential ``building_type`` such as ``SFH`` or ``MFH``. Pylovo uses the area
+split to create a ``Residential`` electrical component and a separate
+Commercial or Public component. ``nonresidential_use`` is recovered from the
+original InfDB function code; a ``ground_floor_shop`` in a residential building
+is treated as Commercial for that component. The classification provenance and
+both calculated component peaks are retained in ``buildings_result``.
 
 Processing Steps
 ----------------
