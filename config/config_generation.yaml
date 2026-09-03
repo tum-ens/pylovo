@@ -1,6 +1,7 @@
 # =============================================================================
 # EXECUTION CONFIGURATION
 # =============================================================================
+
 VERSION_ID: "1" # Change version if you changed any grid parameters or queries (e.g. transformer query)
 VERSION_COMMENT: default # State here which parameters, queries are used to compute the grids with current VERSION_ID
 PARALLEL: True # Use multiple workers in parallel
@@ -13,6 +14,7 @@ RESULT_DIR: results # Directory for storing analysis results and outputs
 # =============================================================================
 # GRID GENERATION CONFIGURATION
 # =============================================================================
+
 ELECTRICAL_BACKEND: pandapower # Electrical backend configuration - Options: 'pandapower', 'opendss'
 RESIDENTIAL_ONLY_GENERATION: False # apply grid generation based on residential buildings only
 PEAK_LOAD_HOUSEHOLD: 16.825 # 14.5kW, ~15% of buildings have 30 kW with electric hot water supply
@@ -23,7 +25,6 @@ CONSUMER_CATEGORIES:
   - {consumer_category_id: 1, definition: Commercial, peak_load: null, yearly_consumption: null, peak_load_per_m2: 79.00, yearly_consumption_per_m2: 245.70, sim_factor: 0.50}
   - {consumer_category_id: 2, definition: Public, peak_load: null, yearly_consumption: null, peak_load_per_m2: 29.00, yearly_consumption_per_m2: 155.70, sim_factor: 0.60}
   - {consumer_category_id: 3, definition: Residential, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
-
 
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
@@ -40,12 +41,10 @@ MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT: 3
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
-# This is a topology-splitting parameter; cable sizing still uses the feeder-cable catalogue afterward.
-# Shared upstream prefixes can carry several planned branches and may exceed this value; those sections are
-# handled by feeder cable dimensioning with larger/parallel cables instead of forcing another topology split.
+# This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 
 FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
 
-# Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a very high value.
+# Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
@@ -57,6 +56,7 @@ CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 4
 # =============================================================================
 # TRANSFORMER PLACEMENT PARAMETERS
 # =============================================================================
+
 # Settlement_types thresholds
 RURAL_MAX_HOUSEHOLDS: 1.3 # Maximum average number of households per building for rural settlements
 URBAN_MIN_HOUSEHOLDS: 3.2 # Minimum average number of households per building for urban settlements
@@ -98,15 +98,14 @@ TRANSFORMERS:
   - {name: Tr_630, s_max_kva: 630, cost_eur: 12000, typ: Transformer}
   # - {name: Tr_800, s_max_kva: 800, cost_eur: 16000, typ: Transformer}
 
+# Cable costs are rounded material costs in EUR/m.
 FEEDER_CABLES:
-  # Cable costs are rounded material costs in EUR/m.
   - {name: NAYY_4_95, max_i_a: 215, r_mohm_per_km: 320, x_mohm_per_km: 82, z_mohm_per_km: 330, cost_eur: 18, typ: Cable}
   - {name: NAYY_4_120, max_i_a: 242, r_mohm_per_km: 225, x_mohm_per_km: 80, z_mohm_per_km: 239, cost_eur: 24, typ: Cable}
   - {name: NAYY_4_150, max_i_a: 270, r_mohm_per_km: 208, x_mohm_per_km: 80, z_mohm_per_km: 223, cost_eur: 25, typ: Cable}
   - {name: NAYY_4_185, max_i_a: 313, r_mohm_per_km: 164, x_mohm_per_km: 80, z_mohm_per_km: 181, cost_eur: 38, typ: Cable}
   - {name: NAYY_4_240, max_i_a: 357, r_mohm_per_km: 127, x_mohm_per_km: 80, z_mohm_per_km: 150, cost_eur: 45, typ: Cable}
   - {name: NAYY_4_300, max_i_a: 425, r_mohm_per_km: 100, x_mohm_per_km: 80, z_mohm_per_km: 128, cost_eur: 58, typ: Cable}
-
 # - {name: NFA2X_4_95, max_i_a: 245, r_mohm_per_km: 320, x_mohm_per_km: 0, z_mohm_per_km: 320, cost_eur: 10, typ: Cable}
 # - {name: NFA2X_4_70, max_i_a: 205, r_mohm_per_km: 443, x_mohm_per_km: 0, z_mohm_per_km: 443, cost_eur: 8, typ: Cable}
 # - {name: NFA2X_4_50, max_i_a: 165, r_mohm_per_km: 641, x_mohm_per_km: 0, z_mohm_per_km: 641, cost_eur: 7, typ: Cable}
@@ -114,7 +113,6 @@ FEEDER_CABLES:
 # - {name: NA2XS(F)2Y_1x150RM_12_20kV_ir_150, max_i_a: 353, r_mohm_per_km: 227, x_mohm_per_km: 195, z_mohm_per_km: 299, cost_eur: 35, typ: Cable} # MV level
 
 CONSUMER_CONNECTION_CABLES:
-# Cable costs are rounded material costs in EUR/m.
 # - {name: NYY_4_16, max_i_a: 103, r_mohm_per_km: 1150, x_mohm_per_km: 90, z_mohm_per_km: 1153, cost_eur: 7, typ: Cable}
 - {name: NAYY_4_50, max_i_a: 142, r_mohm_per_km: 642, x_mohm_per_km: 83, z_mohm_per_km: 647, cost_eur: 11, typ: Cable}
 - {name: NAYY_4_70, max_i_a: 173, r_mohm_per_km: 443, x_mohm_per_km: 82, z_mohm_per_km: 451, cost_eur: 16, typ: Cable}
