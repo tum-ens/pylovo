@@ -2,6 +2,7 @@ import warnings
 from abc import ABC
 
 import pandapower as pp
+from psycopg2.extras import execute_values
 from shapely.geometry import LineString
 
 from pylovo.config_loader import *
@@ -26,7 +27,42 @@ class GridMixin(BaseMixin, ABC):
         self.cur.execute(query)
         return self.cur.fetchall()
 
-    def get_vertices_from_bcid(self, plz: int, kcid: int, bcid: int) -> tuple[dict, int]:
+    def fetch_node_coordinates(self, plz: int) -> dict[int, tuple[float, float]]:
+        """Fetch every pgRouting vertex coordinate for a PLZ in one query."""
+        table_name = f"ways_tem_{int(plz)}_vertices_pgr"
+        query = f"""
+            SELECT id,
+                   ST_X(ST_Transform(geom, 4326)),
+                   ST_Y(ST_Transform(geom, 4326))
+            FROM pylovo.{table_name}
+            WHERE geom IS NOT NULL
+            ORDER BY id
+        """
+        self.cur.execute(query)
+        return {int(node_id): (float(lon), float(lat)) for node_id, lon, lat in self.cur.fetchall()}
+
+    def fetch_consumer_connection_mapping(self, plz: int) -> dict[int, list[int]]:
+        """Fetch all non-transformer consumer connections for a PLZ once."""
+        table_name = f"buildings_tem_{int(plz)}"
+        query = f"""
+            SELECT COALESCE(agg_connection_point, connection_point) AS connection_point,
+                   vertice_id
+            FROM pylovo.{table_name}
+            WHERE type != 'Transformer'
+              AND peak_load_in_kw != 0
+              AND COALESCE(agg_connection_point, connection_point) IS NOT NULL
+              AND vertice_id IS NOT NULL
+            ORDER BY connection_point, vertice_id
+        """
+        self.cur.execute(query)
+        mapping: dict[int, list[int]] = {}
+        for connection_point, vertice_id in self.cur.fetchall():
+            mapping.setdefault(int(connection_point), []).append(int(vertice_id))
+        return mapping
+
+    def get_vertices_from_bcid(
+        self, plz: int, kcid: int, bcid: int
+    ) -> tuple[dict[int, float], int, dict[int, tuple[int, ...]]]:
         ont = self.get_ont_info_from_bc(plz, kcid, bcid)["ont_vertice_id"]
 
         consumer_query = """SELECT vertice_id
@@ -48,17 +84,49 @@ class GridMixin(BaseMixin, ABC):
         connection = [t[0] for t in self.cur.fetchall()]
 
         target_vertices = list(dict.fromkeys(consumer + connection))
+        if not target_vertices:
+            return {}, int(ont), {}
 
-        vertices_query = """ SELECT DISTINCT node, agg_cost
+        vertices_query = """SELECT DISTINCT node, agg_cost
                              FROM pgr_dijkstra(
-                                     'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem'::text,
-                                     %(o)s, %(c)s::integer[], false)
+                                 'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem'::text,
+                                 %(o)s, %(c)s::integer[], false)
                              ORDER BY agg_cost;"""
         self.cur.execute(vertices_query, {"o": ont, "c": target_vertices})
         data = self.cur.fetchall()
-        vertice_cost_dict = {t[0]: t[1] for t in data if t[0] in consumer or t[0] in connection}
+        vertice_cost_dict = {
+            row[0]: row[1]
+            for row in data
+            if row[0] in consumer or row[0] in connection
+        }
 
-        return vertice_cost_dict, ont
+        path_query = """SELECT start_vid, path_seq, node, agg_cost
+                          FROM pgr_dijkstra(
+                              'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem'::text,
+                              %(c)s::bigint[], %(o)s::bigint, false)
+                          ORDER BY start_vid, path_seq;"""
+        self.cur.execute(path_query, {"o": ont, "c": target_vertices})
+        path_data = self.cur.fetchall()
+        _, paths_to_transformer = self._routing_results_from_rows(path_data)
+
+        return vertice_cost_dict, int(ont), paths_to_transformer
+
+    @staticmethod
+    def _routing_results_from_rows(data) -> tuple[dict[int, float], dict[int, tuple[int, ...]]]:
+        costs_by_vertex: dict[int, float] = {}
+        path_nodes: dict[int, list[int]] = {}
+        for start_vid, _path_seq, node, agg_cost in sorted(data, key=lambda row: (row[0], row[1])):
+            start_vid = int(start_vid)
+            path_nodes.setdefault(start_vid, []).append(int(node))
+            costs_by_vertex[start_vid] = float(agg_cost)
+
+        ordered_costs = dict(
+            sorted(costs_by_vertex.items(), key=lambda item: (item[1], item[0]))
+        )
+        paths_to_transformer = {
+            start_vid: tuple(nodes) for start_vid, nodes in path_nodes.items()
+        }
+        return ordered_costs, paths_to_transformer
 
     def get_ont_info_from_bc(self, plz: int, kcid: int, bcid: int) -> dict | None:
 
@@ -87,9 +155,7 @@ class GridMixin(BaseMixin, ABC):
                      AND kcid = %(k)s
                      AND bcid = %(b)s;"""
         self.cur.execute(query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid})
-        geo = self.cur.fetchone()
-
-        return geo
+        return self.cur.fetchone()
 
     def get_transformer_rated_power_from_bcid(self, plz: int, kcid: int, bcid: int) -> int:
         query = f"""SELECT transformer_rated_power
@@ -99,18 +165,14 @@ class GridMixin(BaseMixin, ABC):
                      AND kcid = %(k)s
                      AND bcid = %(b)s;"""
         self.cur.execute(query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid})
-        transformer_rated_power = self.cur.fetchone()[0]
-
-        return transformer_rated_power
+        return self.cur.fetchone()[0]
 
     def get_node_geom(self, vid: int):
         query = """SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
                    FROM ways_tem_vertices_pgr
                    WHERE id = %(id)s;"""
         self.cur.execute(query, {"id": vid})
-        geo = self.cur.fetchone()
-
-        return geo
+        return self.cur.fetchone()
 
     def get_vertices_from_connection_points(self, connection: list) -> list:
         query = """SELECT vertice_id
@@ -129,7 +191,10 @@ class GridMixin(BaseMixin, ABC):
                      AND type != 'Transformer'
                      AND peak_load_in_kw != 0;"""
         self.cur.execute(query, {'c': tuple(connection_points)})
-        return [(int(connection_point), int(vertice_id)) for connection_point, vertice_id in self.cur.fetchall()]
+        return [
+            (int(connection_point), int(vertice_id))
+            for connection_point, vertice_id in self.cur.fetchall()
+        ]
 
     def get_path_to_bus(self, vertice: int, ont: int) -> list:
         """routing problem: find the shortest path from vertice to the ont (ortsnetztrafo)"""
@@ -137,31 +202,8 @@ class GridMixin(BaseMixin, ABC):
                    FROM pgr_Dijkstra(
                            'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem', %(v)s, %(o)s,
                            false);"""
-        """query = WITH
-                    dijkstra AS(
-                        SELECT * FROM pgr_Dijkstra(
-                                        'SELECT way_id, source, target, cost, reverse_cost FROM ways_tem', %(v)s, %(o)s, false)
-                    ),
-                        get_geom AS(
-                            SELECT dijkstra. *,
-                            -- adjusting directionality
-                                CASE
-                                    WHEN dijkstra.node = ways.source THEN geom
-                                    ELSE ST_Reverse(geom)
-                                END AS route_geom
-                            FROM dijkstra JOIN ways ON(edge=way_id)
-                            ORDER BY seq)
-                        SELECT seq, cost,
-                        degrees(ST_azimuth(ST_StartPoint(route_geom), ST_EndPoint(route_geom))) AS azimuth,
-                        ST_AsText(route_geom),
-                        route_geom
-                    FROM get_geom
-                    ORDER BY seq;"""
         self.cur.execute(query, {"o": ont, "v": vertice})
-        data = self.cur.fetchall()
-        way_list = [t[0] for t in data]
-
-        return way_list
+        return [row[0] for row in self.cur.fetchall()]
 
     def _ensure_lines_result_visualization_schema(self) -> None:
         if getattr(self, "_lines_result_visualization_schema_checked", False):
@@ -829,6 +871,88 @@ class GridMixin(BaseMixin, ABC):
                           "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
                           "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km,
                           "feeder_section_id": None if feeder_section_id is None else int(feeder_section_id)})
+
+    @staticmethod
+    def _line_wkb_hex(geom: list, *, plz: int, kcid: int, bcid: int, from_bus: int, to_bus: int) -> str:
+        try:
+            line_geom = LineString(geom)
+            if line_geom.is_empty or len(line_geom.coords) < 2:
+                raise ValueError("line geometry has fewer than two coordinates")
+        except Exception as geom_error:
+            fallback_points = [
+                point for point in geom
+                if isinstance(point, (list, tuple)) and len(point) >= 2
+            ]
+            if len(fallback_points) < 2:
+                raise ValueError(
+                    f"Cannot build fallback line geometry for plz={plz}, kcid={kcid}, bcid={bcid}, "
+                    f"from_bus={from_bus}, to_bus={to_bus}: {geom_error}"
+                ) from geom_error
+            line_geom = LineString([fallback_points[0], fallback_points[-1]])
+        return line_geom.wkb_hex
+
+    def insert_lines_batch(
+        self,
+        records: list[dict],
+        plz: int,
+        kcid: int,
+        bcid: int,
+        page_size: int = 1000,
+    ) -> None:
+        """Insert all queued line records for one grid in bounded pages."""
+        if not records:
+            return
+        if page_size <= 0:
+            raise ValueError("page_size must be positive")
+
+        grid_result_id = self.get_grid_result_id(plz=plz, kcid=kcid, bcid=bcid)
+        if grid_result_id is None:
+            raise ValueError(
+                f"Cannot persist lines: grid_result_id not found for plz={plz}, kcid={kcid}, bcid={bcid}"
+            )
+
+        values = []
+        for record in records:
+            from_bus = int(record["from_bus"])
+            to_bus = int(record["to_bus"])
+            values.append(
+                (
+                    grid_result_id,
+                    self._line_wkb_hex(
+                        record["geom"],
+                        plz=int(plz),
+                        kcid=int(kcid),
+                        bcid=int(bcid),
+                        from_bus=from_bus,
+                        to_bus=to_bus,
+                    ),
+                    record["line_name"],
+                    record["std_type"],
+                    from_bus,
+                    to_bus,
+                    int(record.get("parallel", 1)),
+                    record["length_km"],
+                    None if record.get("feeder_section_id") is None else int(record["feeder_section_id"]),
+                )
+            )
+
+        insert_query = f"""
+            INSERT INTO pylovo.lines_result (
+                grid_result_id, geom, line_name, std_type, from_bus, to_bus,
+                parallel, length_km, feeder_section_id
+            ) VALUES %s
+        """
+        template = (
+            "(%s, ST_Transform(ST_SetSRID(%s::geometry, 4326), "
+            f"{TARGET_EPSG}), %s, %s, %s, %s, %s, %s, %s)"
+        )
+        execute_values(
+            self.cur,
+            insert_query,
+            values,
+            template=template,
+            page_size=page_size,
+        )
 
     def is_grid_generated(self, plz: int):
         """

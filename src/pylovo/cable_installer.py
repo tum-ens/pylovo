@@ -21,8 +21,23 @@ class CableInstaller:
 
     _WGS84_TO_TARGET = Transformer.from_crs(4326, TARGET_EPSG, always_xy=True)
 
-    def __init__(self, backend: IElectricalBackend, dbc, logger, cables: list,
-                 feeder_cables: pd.DataFrame, consumer_connection_cables: pd.DataFrame):
+    def __init__(
+        self,
+        backend: IElectricalBackend,
+        dbc,
+        logger,
+        cables: list,
+        feeder_cables: pd.DataFrame,
+        consumer_connection_cables: pd.DataFrame,
+        *,
+        node_coordinates: dict[int, tuple[float, float]] | None = None,
+        transformer_coordinates: tuple[float, float] | None = None,
+        transformer_rated_power: int | None = None,
+        consumer_connection_mapping: dict[int, list[int]] | None = None,
+        paths_to_transformer: dict[int, tuple[int, ...]] | None = None,
+        line_records: list[dict] | None = None,
+        context: tuple[int, int, int] | None = None,
+    ):
         """Initialize cable installer.
 
         Args:
@@ -38,9 +53,23 @@ class CableInstaller:
         self.logger = logger
         self._feeder_available_cables = self._extract_cable_names(feeder_cables)
         self._consumer_connection_cables = self._extract_cable_names(consumer_connection_cables)
+        self._node_coordinates = node_coordinates
+        self._transformer_coordinates = transformer_coordinates
+        self._transformer_rated_power = transformer_rated_power
+        self._consumer_connection_mapping = consumer_connection_mapping
+        self._paths_to_transformer = paths_to_transformer or {}
+        self._line_records = line_records if line_records is not None else []
+        self._context = context
 
         # Cache cable data from database as DataFrame (single source of truth)
         self._cable_df = self._build_cable_dataframe(cables)
+
+    def _get_path_to_bus(self, start: int, end: int) -> list[int]:
+        cached_path = self._paths_to_transformer.get(int(start))
+        if cached_path is not None and int(end) in cached_path:
+            end_index = cached_path.index(int(end))
+            return list(cached_path[: end_index + 1])
+        return self.dbc.get_path_to_bus(start, end)
 
     @staticmethod
     def _extract_cable_names(cable_df: pd.DataFrame) -> list[str]:
@@ -91,7 +120,16 @@ class CableInstaller:
         return float(fallback[0]), float(fallback[1])
 
     def _get_line_node_coordinates(self, node_id: int, bus_name: str | None = None) -> tuple[float, float]:
-        fallback = self.dbc.get_node_geom(node_id)
+        if self._node_coordinates is not None:
+            fallback = self._node_coordinates.get(int(node_id))
+            if fallback is None:
+                context = self._context or ("?", "?", "?")
+                raise ValueError(
+                    f"Missing bulk routing-node coordinate for node_id={node_id}, "
+                    f"plz={context[0]}, kcid={context[1]}, bcid={context[2]}"
+                )
+        else:
+            fallback = self.dbc.get_node_geom(node_id)
         if bus_name is None:
             return float(fallback[0]), float(fallback[1])
         coords = self._get_bus_coordinates(bus_name, fallback=fallback)
@@ -111,12 +149,14 @@ class CableInstaller:
         kcid: int,
         bcid: int,
     ) -> tuple[float, float]:
+        if self._transformer_coordinates is not None:
+            return (float(self._transformer_coordinates[0]), float(self._transformer_coordinates[1]))
         ont_geodata = self.dbc.get_ont_geom_from_bcid(plz, kcid, bcid)
         return float(ont_geodata[0]), float(ont_geodata[1])
 
     def create_lvmv_bus(self, plz: int, kcid: int, bcid: int) -> None:
         """Create LV and MV buses."""
-        lv_geodata = self.dbc.get_ont_geom_from_bcid(plz, kcid, bcid)
+        lv_geodata = self._get_transformer_visual_coordinates(plz, kcid, bcid)
         lv_bus_spec = BusSpec(
             name="LVbus 1",
             voltage_kv=VN * 1e-3,
@@ -140,7 +180,9 @@ class CableInstaller:
         Maps the required capacity to either a single standard transformer
         or a parallel configuration (2x) for specific larger loads.
         """
-        transformer_rated_power = self.dbc.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
+        transformer_rated_power = self._transformer_rated_power
+        if transformer_rated_power is None:
+            transformer_rated_power = self.dbc.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
 
         if transformer_rated_power in (100, 160, 250, 400, 630):
             trafo_name = f"single {str(transformer_rated_power)} kva transformer"
@@ -170,7 +212,7 @@ class CableInstaller:
     def create_connection_bus(self, connection_nodes: list):
         """Create connection buses."""
         for node in connection_nodes:
-            node_geodata = self.dbc.get_node_geom(node)
+            node_geodata = self._get_line_node_coordinates(node, f"Connection Nodebus {node}")
             bus_spec = BusSpec(
                 name=f"Connection Nodebus {node}",
                 voltage_kv=VN * 1e-3,
@@ -186,7 +228,7 @@ class CableInstaller:
         """Create one bus and one snapshot load per use component."""
 
         for consumer in consumer_list:
-            node_geodata = self.dbc.get_node_geom(consumer)
+            node_geodata = self._get_line_node_coordinates(consumer, f"Consumer Nodebus {consumer}")
             components = powerflow_snapshot_components.get(consumer, [])
             if not components:
                 raise ValueError(f"Consumer vertex {consumer} has no LV load components.")
@@ -316,7 +358,14 @@ class CableInstaller:
                                 feeder_voltage_drop_percent_by_node: dict[int, float] | None = None,
                                 ) -> tuple[dict, list[dict]]:
         """Install service cables using local ampacity and voltage-drop design loads."""
-        consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(branch_node_list)
+        if self._consumer_connection_mapping is None:
+            consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(branch_node_list)
+        else:
+            consumer_connections = [
+                (int(connection_point), int(consumer_vertex))
+                for connection_point in branch_node_list
+                for consumer_vertex in self._consumer_connection_mapping.get(int(connection_point), [])
+            ]
         branch_consumer_connections = [
             (connection_point, vertice_id)
             for connection_point, vertice_id in consumer_connections
@@ -409,7 +458,7 @@ class CableInstaller:
             self.backend.create_component(line_spec)
 
             line_name = f"L{end_vid}"[:15]
-            self.dbc.insert_lines(
+            self._queue_line(
                 geom=line_geodata, plz=plz, bcid=bcid, kcid=kcid, line_name=line_name,
                 std_type=cable,
                 from_bus=start_vid,
@@ -419,6 +468,43 @@ class CableInstaller:
             )
 
         return material_length_by_cable_km, service_diagnostics
+
+    def _queue_line(
+        self,
+        *,
+        geom: list,
+        plz: int,
+        bcid: int,
+        kcid: int,
+        line_name: str,
+        std_type: str,
+        from_bus: int,
+        to_bus: int,
+        length_km: float,
+        parallel: int = 1,
+        feeder_section_id: int | None = None,
+    ) -> None:
+        self._line_records.append(
+            {
+                "geom": geom,
+                "line_name": line_name,
+                "std_type": std_type,
+                "from_bus": int(from_bus),
+                "to_bus": int(to_bus),
+                "parallel": int(parallel),
+                "length_km": length_km,
+                "feeder_section_id": feeder_section_id,
+            }
+        )
+
+    def flush_line_records(self, plz: int, kcid: int, bcid: int) -> int:
+        """Persist queued lines and clear the queue only after a successful flush."""
+        if not self._line_records:
+            return 0
+        self.dbc.insert_lines_batch(self._line_records, plz=plz, kcid=kcid, bcid=bcid)
+        count = len(self._line_records)
+        self._line_records.clear()
+        return count
 
     def get_feeder_cable_options(self, Imax: float, max_parallel: int) -> list[dict]:
         """Return thermally feasible feeder designs up to ``max_parallel`` cables."""
@@ -494,7 +580,7 @@ class CableInstaller:
                                      ampacity_std_type: str | None = None,
                                      ampacity_parallel: int | None = None) -> int:
         """Create line from branch start to LV bus."""
-        node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
+        node_path_list = self._get_path_to_bus(branch_start_node, ont_vertice)
 
         line_geodata = []
         for p in node_path_list:
@@ -527,7 +613,7 @@ class CableInstaller:
         self.backend.create_component(line_spec)
 
         line_name = f"L{branch_start_node}"[:15]
-        self.dbc.insert_lines(
+        self._queue_line(
             geom=line_geodata, plz=plz, bcid=bcid, kcid=kcid, line_name=line_name,
             std_type=cable,
             from_bus=ont_vertice,  # Use vertex ID directly (backend-agnostic)
@@ -549,10 +635,10 @@ class CableInstaller:
                                   ampacity_parallel: int | None = None) -> dict:
         """Create lines between connection nodes."""
         for i in range(len(branch_node_list) - 1):
-            node_path_list = self.dbc.get_path_to_bus(branch_node_list[i], ont_vertice)
+            node_path_list = self._get_path_to_bus(branch_node_list[i], ont_vertice)
 
             if branch_node_list[i + 1] not in node_path_list:
-                node_path_list = self.dbc.get_path_to_bus(branch_node_list[i], branch_node_list[i + 1])
+                node_path_list = self._get_path_to_bus(branch_node_list[i], branch_node_list[i + 1])
 
             node_path_list = node_path_list[: node_path_list.index(branch_node_list[i + 1]) + 1]
             node_path_list.reverse()
@@ -587,7 +673,7 @@ class CableInstaller:
             self.backend.create_component(line_spec)
 
             line_name = f"L{end_vid}"[:15]
-            self.dbc.insert_lines(
+            self._queue_line(
                 geom=line_geodata, plz=plz, bcid=bcid, kcid=kcid, line_name=line_name,
                 std_type=cable,
                 from_bus=start_vid,  # Use vertex ID directly (backend-agnostic)

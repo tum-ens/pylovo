@@ -110,17 +110,40 @@ class ClusteringMixin(BaseMixin, ABC):
 
     def get_connected_component(self) -> tuple[np.ndarray, np.ndarray]:
         """
-        Reads from ways_tem
-        :return:
+        Read connected components from ways_tem in canonical order.
+
+        pgRouting does not promise an ordering for either its result rows or
+        its component labels. Canonicalizing the node lists here prevents
+        component processing (and the resulting KCID numbering) from
+        depending on the physical order of the temporary edge table.
         """
         component_query = """SELECT component, node
                              FROM pgr_connectedComponents(
-                                     'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem');"""
+                                     'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem')
+                             ORDER BY component, node;"""
         self.cur.execute(component_query)
         data = self.cur.fetchall()
-        component = np.asarray([i[0] for i in data])
-        node = np.asarray([i[1] for i in data])
+        return self._canonical_connected_components(data)
 
+    @staticmethod
+    def _canonical_connected_components(data) -> tuple[np.ndarray, np.ndarray]:
+        """Normalize pgRouting component labels and node ordering."""
+        nodes_by_component: dict[int, list[int]] = {}
+        for component_id, node_id in data:
+            nodes_by_component.setdefault(int(component_id), []).append(int(node_id))
+
+        ordered_components = sorted(
+            (sorted(nodes) for nodes in nodes_by_component.values()),
+            key=lambda nodes: (nodes[0], nodes),
+        )
+        if not ordered_components:
+            empty = np.asarray([], dtype=np.int64)
+            return empty, empty.copy()
+
+        component = np.concatenate(
+            [np.full(len(nodes), index + 1, dtype=np.int64) for index, nodes in enumerate(ordered_components)]
+        )
+        node = np.concatenate([np.asarray(nodes, dtype=np.int64) for nodes in ordered_components])
         return component, node
 
     def count_no_kmean_buildings(self):
@@ -178,6 +201,7 @@ class ClusteringMixin(BaseMixin, ABC):
                 FROM buildings_tem
                 WHERE vertice_id IN %(v)s
                   AND peak_load_in_kw != 0
+                ORDER BY vertice_id
                 """
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
         data = self.cur.fetchall()

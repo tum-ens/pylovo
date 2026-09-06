@@ -62,7 +62,7 @@ class GridGenerator:
         self.dbc.ensure_grid_persistence_schema()
         self.dbc.commit_changes()
         print('-------------------- start', self.plz, '---------------------------')
-        self.dbc.create_temp_tables(plz)  # create PLZ-suffixed temp tables
+        self.dbc.create_temp_tables(plz)
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
 
         interrupted = False
@@ -74,7 +74,7 @@ class GridGenerator:
                 )
                 self.dbc.rollback_changes()
                 return
-            self.dbc.save_tables(plz=self.plz)  # Save data from temporary tables to result tables
+            self.dbc.save_tables(plz=self.plz)
             self.dbc.commit_changes()
             if analyze_grids:
                 pc = ParameterCalculator()
@@ -103,7 +103,7 @@ class GridGenerator:
             self.dbc.rollback_changes()
 
             try:
-                self.dbc.drop_temp_tables(plz)  # drop PLZ-suffixed temp tables
+                self.dbc.drop_temp_tables(plz)
                 # Commit cleanup so dropped tables don't reappear after interruption.
                 self.dbc.commit_changes()
             except Exception as cleanup_error:
@@ -1022,19 +1022,36 @@ class GridGenerator:
         )
         return
 
-    def prepare_vertices_list(self, plz: int, kcid: int, bcid: int) -> tuple[
-        dict, int, list, pd.DataFrame, pd.DataFrame, list, list]:
-        vertices_dict, ont_vertice = self.dbc.get_vertices_from_bcid(plz, kcid, bcid)
+    def prepare_vertices_list(
+        self,
+        plz: int,
+        kcid: int,
+        bcid: int,
+        consumer_df: pd.DataFrame | None = None,
+    ) -> tuple:
+        vertices_dict, ont_vertice, paths_to_transformer = (
+            self.dbc.get_vertices_from_bcid(plz, kcid, bcid)
+        )
         vertices_list = list(vertices_dict.keys())
 
         buildings_df = self.dbc.get_buildings_from_bcid(plz, kcid, bcid)
-        consumer_df = self.dbc.get_consumer_categories()
+        if consumer_df is None:
+            consumer_df = self.dbc.get_consumer_categories()
         consumer_list = buildings_df.vertice_id.to_list()
         consumer_list = list(dict.fromkeys(consumer_list))  # removing duplicates
 
         connection_nodes = [i for i in vertices_list if i not in consumer_list]
 
-        return (vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes,)
+        return (
+            vertices_dict,
+            ont_vertice,
+            vertices_list,
+            buildings_df,
+            consumer_df,
+            consumer_list,
+            connection_nodes,
+            paths_to_transformer,
+        )
 
     def get_consumer_allocated_loads(
         self, consumer_list: list, buildings_df: pd.DataFrame, consumer_cat_df: pd.DataFrame
@@ -1046,11 +1063,19 @@ class GridGenerator:
         )
 
 
-    def find_furthest_node_path_list(self, connection_node_list: list, vertices_dict: dict, ont_vertice: int) -> list:
+    def find_furthest_node_path_list(
+        self,
+        connection_node_list: list,
+        vertices_dict: dict,
+        ont_vertice: int,
+        paths_to_transformer: dict[int, tuple[int, ...]],
+    ) -> list:
         connection_node_dict = {n: vertices_dict[n] for n in connection_node_list}
         furthest_node = max(connection_node_dict, key=connection_node_dict.get)
         # all the connection nodes in the path from transformer to furthest node are considered as potential branch loads
-        furthest_node_path_list = self.dbc.get_path_to_bus(furthest_node, ont_vertice)
+        furthest_node_path_list = list(
+            paths_to_transformer.get(furthest_node) or self.dbc.get_path_to_bus(furthest_node, ont_vertice)
+        )
         furthest_node_path = [p for p in furthest_node_path_list if p in connection_node_list]
 
         return furthest_node_path
@@ -1104,6 +1129,7 @@ class GridGenerator:
         ont_vertice: int,
         vertices_dict: dict[int, float],
         installed_connection_nodes: set[int],
+        paths_to_transformer: dict[int, tuple[int, ...]],
     ) -> int:
         """Return the deepest already-installed upstream node for a new branch.
 
@@ -1114,7 +1140,9 @@ class GridGenerator:
         many feeders close to the transformer, only reuse split points whose
         routed distance from the transformer exceeds ``MIN_SHARED_PREFIX_LENGTH_M``.
         """
-        node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
+        node_path_list = list(
+            paths_to_transformer.get(branch_start_node) or self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
+        )
         for node in node_path_list[1:]:
             if node in installed_connection_nodes:
                 if vertices_dict.get(node, 0.0) < MIN_SHARED_PREFIX_LENGTH_M:
@@ -1127,6 +1155,7 @@ class GridGenerator:
         connection_nodes: list[int],
         vertices_dict: dict[int, float],
         ont_vertice: int,
+        paths_to_transformer: dict[int, tuple[int, ...]],
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
         installer: CableInstaller,
@@ -1159,7 +1188,7 @@ class GridGenerator:
                 attachment_node = ont_vertice
             else:
                 furthest_node_path_list = self.find_furthest_node_path_list(
-                    connection_node_list, vertices_dict, ont_vertice
+                    connection_node_list, vertices_dict, ont_vertice, paths_to_transformer
                 )
                 branch_node_list, Imax = self.determine_maximum_load_branch(
                     furthest_node_path_list, buildings_df, consumer_df
@@ -1173,6 +1202,7 @@ class GridGenerator:
                     ont_vertice,
                     vertices_dict,
                     installed_connection_nodes,
+                    paths_to_transformer,
                 )
 
             branch_plans.append(
@@ -1742,26 +1772,49 @@ class GridGenerator:
         not_converged_count = 0
         voltage_violation_count = 0
 
+        # These inputs are invariant for every grid in a PLZ. Fetch them once after
+        # pgRouting topology creation and pass immutable snapshots into each installer.
+        consumer_df = self.dbc.get_consumer_categories()
+        node_coordinates = self.dbc.fetch_node_coordinates(self.plz)
+        consumer_connection_mapping = self.dbc.fetch_consumer_connection_mapping(
+            self.plz,
+        )
+        cables = self.dbc.fetch_cables()
+
         for id in cluster_list:
             kcid, bcid = id
             self.logger.debug(f"Start cable installation for PLZ {self.plz} kcid {kcid} bcid {bcid}")
 
             # Get data for this cluster
-            vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes = (
-                self.prepare_vertices_list(self.plz, kcid, bcid)
-            )
+            (
+                vertices_dict,
+                ont_vertice,
+                vertices_list,
+                buildings_df,
+                consumer_df,
+                consumer_list,
+                connection_nodes,
+                paths_to_transformer,
+            ) = self.prepare_vertices_list(self.plz, kcid, bcid, consumer_df)
             service_design_load_per_consumer, powerflow_snapshot_components = (
-                self.get_consumer_allocated_loads(consumer_list, buildings_df, consumer_df)
+                self.get_consumer_allocated_loads(
+                    consumer_list,
+                    buildings_df,
+                    consumer_df,
+                )
             )
 
-            # Initialize backend using configuration
+            transformer_coordinates = self.dbc.get_ont_geom_from_bcid(self.plz, kcid, bcid)
+            transformer_rated_power = self.dbc.get_transformer_rated_power_from_bcid(
+                self.plz, kcid, bcid
+            )
+
+            # Initialize backend and register the already-fetched cable catalog.
             backend = create_backend(ELECTRICAL_BACKEND, logger=self.logger)
             circuit_name = f"PLZ{self.plz}_kcid{kcid}_bcid{bcid}"
-            backend.initialize_circuit(name=circuit_name, source_bus="MVbus 1", primary_kv=20.0)
-            # Fetch cables once from database (single source of truth)
-            cables = self.dbc.fetch_cables()
-
-            # Register cable types from equipment data
+            backend.initialize_circuit(
+                name=circuit_name, source_bus="MVbus 1", primary_kv=20.0
+            )
             backend.register_cable_types(cables)
 
             # Get available cable
@@ -1774,17 +1827,29 @@ class GridGenerator:
 
             # Create cable installer
             installer = CableInstaller(
-                backend, self.dbc, self.logger, cables,
-                FEEDER_CABLES, CONSUMER_CONNECTION_CABLES
+                backend,
+                self.dbc,
+                self.logger,
+                cables,
+                FEEDER_CABLES,
+                CONSUMER_CONNECTION_CABLES,
+                node_coordinates=node_coordinates,
+                transformer_coordinates=transformer_coordinates,
+                transformer_rated_power=transformer_rated_power,
+                consumer_connection_mapping=consumer_connection_mapping,
+                paths_to_transformer=paths_to_transformer,
+                context=(self.plz, kcid, bcid),
             )
             
             # Create network components
             installer.create_lvmv_bus(self.plz, kcid, bcid)
             installer.create_transformer(self.plz, kcid, bcid)
             installer.create_connection_bus(connection_nodes)
-            installer.create_consumer_bus_and_load(consumer_list, powerflow_snapshot_components)
+            installer.create_consumer_bus_and_load(
+                consumer_list, powerflow_snapshot_components
+            )
 
-            trafo_power = self.dbc.get_transformer_rated_power_from_bcid(self.plz, kcid, bcid)
+            trafo_power = transformer_rated_power
             self.logger.debug(
                 f"Backend network initialized (buses={backend.get_component_count('buses')}, "
                 f"loads={backend.get_component_count('loads')}, transformer_rated_power={trafo_power} kVA)"
@@ -1796,6 +1861,7 @@ class GridGenerator:
                 connection_nodes,
                 vertices_dict,
                 ont_vertice,
+                paths_to_transformer,
                 buildings_df,
                 consumer_df,
                 installer,
@@ -1807,8 +1873,7 @@ class GridGenerator:
                 material_length_by_cable_km,
                 feeder_planning_diagnostics,
                 feeder_drop_percent_by_node,
-            ) = (
-                self._install_backbone_lines_two_pass(
+            ) = self._install_backbone_lines_two_pass(
                     installer,
                     branch_plans,
                     buildings_df,
@@ -1819,7 +1884,6 @@ class GridGenerator:
                     kcid,
                     bcid,
                 )
-            )
 
             service_diagnostics = []
             for plan in branch_plans:
@@ -1861,7 +1925,13 @@ class GridGenerator:
                 ),
                 "max_total_design_voltage_drop_percent": max(total_design_drops, default=None),
             }
-            split_visualization_edges = self._get_split_visualization_edges(branch_plans, ont_vertice)
+            # GIS helper SQL must see every persisted feeder/service line in the same
+            # transaction, so flush exactly once before constructing visualization rows.
+            installer.flush_line_records(self.plz, kcid, bcid)
+
+            split_visualization_edges = self._get_split_visualization_edges(
+                branch_plans, ont_vertice
+            )
             savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid}"
             try:
                 self.dbc.cur.execute(f"SAVEPOINT {savepoint_name}")
