@@ -26,6 +26,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "peak_load_household": PEAK_LOAD_HOUSEHOLD,
                 "sim_factor": SIM_FACTOR,
                 "default_power_factor": DEFAULT_POWER_FACTOR,
+                "household_fallback": self._household_fallback_parameters(),
                 "consumer_categories": self._dataframe_records(CONSUMER_CATEGORIES),
             },
             "equipment_data": self._dataframe_records(CONFIG_EQUIPMENT_DATA),
@@ -468,6 +469,16 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(update_query, {"stype": settlement_type, "v": VERSION_ID, "p": plz})
         return settlement_type
 
+    @staticmethod
+    def _household_fallback_parameters() -> dict:
+        """Return assumptions used only for missing InfDB household counts."""
+        return {
+            "SFH": {"fixed_households": 1},
+            "TH": {"fixed_households": 1},
+            "MFH": {"minimum_households": 2, "residential_area_per_household_m2": 181},
+            "AB": {"minimum_households": 5, "residential_area_per_household_m2": 146},
+        }
+
     def set_building_peak_load(self) -> int:
         """Calculate and validate residential/non-residential load components."""
         self.cur.execute(
@@ -501,20 +512,33 @@ class PreprocessingMixin(BaseMixin, ABC):
                 f"inconsistent with gross floor area={inconsistent_splits}."
             )
 
+        household_fallback = self._household_fallback_parameters()
         query = """
                 UPDATE buildings_tem
                 SET floor_area = ST_Area(geom)
                 WHERE floor_area IS NULL;
 
                 UPDATE buildings_tem
-                -- Update households only if it has not been set already.
-                -- For InfDB data this is already set.
+                -- Preserve InfDB household counts and fill only missing values.
                 SET households = (
                     CASE
-                    WHEN type IN ('TH', 'Commercial', 'Public') THEN 1
-                    WHEN type = 'SFH' AND floor_area < 160 THEN 1
-                    WHEN type = 'SFH' AND floor_area >= 160 THEN 2
-                    WHEN type IN ('MFH', 'AB') THEN floor(floor_area / 50) * COALESCE(floor_number, 1)
+                    WHEN type = 'SFH' THEN %(sfh_households)s
+                    WHEN type = 'TH' THEN %(th_households)s
+                    WHEN type = 'MFH' THEN GREATEST(
+                        %(mfh_minimum_households)s,
+                        ROUND(
+                            COALESCE(residential_floor_area, floor_area * COALESCE(floor_number, 1))
+                            / %(mfh_area_per_household_m2)s
+                        )::integer
+                    )
+                    WHEN type = 'AB' THEN GREATEST(
+                        %(ab_minimum_households)s,
+                        ROUND(
+                            COALESCE(residential_floor_area, floor_area * COALESCE(floor_number, 1))
+                            / %(ab_area_per_household_m2)s
+                        )::integer
+                    )
+                    WHEN type IN ('Commercial', 'Public') THEN 1
                     ELSE households
                     END
                 )
@@ -566,7 +590,22 @@ class PreprocessingMixin(BaseMixin, ABC):
                     + CASE WHEN %(include_nonresidential)s
                            THEN COALESCE(nonresidential_peak_load_in_kw, 0)
                            ELSE 0 END;"""
-        self.cur.execute(query, {"include_nonresidential": not RESIDENTIAL_ONLY_GENERATION})
+        self.cur.execute(
+            query,
+            {
+                "include_nonresidential": not RESIDENTIAL_ONLY_GENERATION,
+                "sfh_households": household_fallback["SFH"]["fixed_households"],
+                "th_households": household_fallback["TH"]["fixed_households"],
+                "mfh_minimum_households": household_fallback["MFH"]["minimum_households"],
+                "mfh_area_per_household_m2": household_fallback["MFH"][
+                    "residential_area_per_household_m2"
+                ],
+                "ab_minimum_households": household_fallback["AB"]["minimum_households"],
+                "ab_area_per_household_m2": household_fallback["AB"][
+                    "residential_area_per_household_m2"
+                ],
+            },
+        )
 
         self.cur.execute(
             """
