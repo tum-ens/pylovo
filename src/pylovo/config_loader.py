@@ -143,6 +143,7 @@ if USE_INFDB:
     INFDB_PORT = PORT
     INFDB_PASSWORD = PASSWORD
     INFDB_SOURCE_SCHEMA = os.getenv("INFDB_SOURCE_SCHEMA", "pylovo_input")
+    INFDB_OPENDATA_SCHEMA = os.getenv("INFDB_OPENDATA_SCHEMA", "opendata")
 else:
     INFDB_DBNAME = None
     INFDB_USER = None
@@ -150,6 +151,7 @@ else:
     INFDB_PORT = None
     INFDB_PASSWORD = None
     INFDB_SOURCE_SCHEMA = None
+    INFDB_OPENDATA_SCHEMA = None
 
 # Validation Data Path
 GRID_DATA_PATH = os.getenv("GRID_DATA_PATH")

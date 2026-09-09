@@ -251,12 +251,13 @@ class InfdbClient:
     
     def fetch_postcode_from_infdb(self, plz: int) -> tuple | None:
         """
-        Fetch the postcode geometry row for a single PLZ from opendata schema.
+        Fetch the postcode geometry row for a single PLZ from the configured
+        open-data schema (``INFDB_OPENDATA_SCHEMA``).
         Returns a tuple of (plz, note, qkm, population, geom) or None if not found.
         """
-        query = """
+        query = f"""
             SELECT plz, note, qkm, einwohner, geom
-            FROM opendata.postcodes_germany
+            FROM {INFDB_OPENDATA_SCHEMA}.postcodes_germany
             WHERE plz = %(plz)s::varchar
             LIMIT 1;
         """
@@ -265,12 +266,13 @@ class InfdbClient:
 
     def fetch_all_postcodes_from_infdb(self) -> list[tuple]:
         """
-        Bulk-fetch all postcode rows from opendata schema for use during pylovo-setup.
+        Bulk-fetch all postcode rows from the configured open-data schema
+        (``INFDB_OPENDATA_SCHEMA``) for use during pylovo-setup.
         Returns tuples of (plz, note, qkm, population, geom).
         """
-        query = """
+        query = f"""
             SELECT plz, note, qkm, einwohner, geom
-            FROM opendata.postcodes_germany
+            FROM {INFDB_OPENDATA_SCHEMA}.postcodes_germany
             ORDER BY plz;
         """
         self.cur.execute(query)
