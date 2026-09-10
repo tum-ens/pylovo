@@ -14,6 +14,8 @@ Additional technical rules:
 - Find database connection details in the `.env` file.
 - Always use `uv run` and the `pyproject.toml` environment to test changes.
 - Use `<package> --help` to get further information on dependencies if required.
+- Save all AI generated plans and summaries to be used by other AI agents in the respective directory within ../AI. This way I want to avoid adding those files to the git of the repositories.
+- If required, define agentic workflows in the AI directory that can be followed by other agents. Either directly by orchestrating low ressource agents from the session or if that is not possible you may also define a file-structure for distributing and communication between different agents.
 
 ## Core Requirements
 1. Ask, don't assume. If something is unclear, ask before writing a single line. Never make silent assumptions about intent, architecture, or requirements.
