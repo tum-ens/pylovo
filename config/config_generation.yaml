@@ -42,10 +42,10 @@ MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 
-FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
+FEEDER_SPLIT_MAX_CURRENT_KA: 0.425
 
 # Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a high value.
-MIN_SHARED_PREFIX_LENGTH_M: 50
+MIN_SHARED_PREFIX_LENGTH_M: 20
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
@@ -67,7 +67,7 @@ URBAN_MAX_BUILDING_DISTANCE: 20 # Maximum average distance between buildings for
 TRANSFORMER_MAPPING:
   1: [250, 400, 630]
   2: [400, 630]
-  3: [400, 630]
+  3: [400, 630, 800]
 
 # =============================================================================
 # Clustering PARAMETERS
@@ -80,12 +80,12 @@ K_MEANS_SEED: 3329829316 # k-means integer seed to ensure deterministic behavior
 ## Greenfield
 MAX_GREENFIELD_TRAFO_DISTANCE: 2000 # Maximum distance from a greenfield transformer to any cluster connection point
 MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters as posprocessing step
-GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities for merging
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400, 630] # Select transformer capacities for merging
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
 USE_OPEN_TRANSFORMER_POSITIONS: False # Include non-DSO open/manual transformer positions from pylovo.transformers
-USE_DSO_TRANSFORMER_POSITIONS: True # Include imported DSO transformer positions from pylovo.transformers
+USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
 
 
 # =============================================================================
@@ -100,7 +100,6 @@ TRANSFORMERS:
 
 # Cable costs are rounded material costs in EUR/m.
 FEEDER_CABLES:
-  - {name: NAYY_4_95, max_i_a: 215, r_mohm_per_km: 320, x_mohm_per_km: 82, z_mohm_per_km: 330, cost_eur: 18, typ: Cable}
   - {name: NAYY_4_120, max_i_a: 242, r_mohm_per_km: 225, x_mohm_per_km: 80, z_mohm_per_km: 239, cost_eur: 24, typ: Cable}
   - {name: NAYY_4_150, max_i_a: 270, r_mohm_per_km: 208, x_mohm_per_km: 80, z_mohm_per_km: 223, cost_eur: 25, typ: Cable}
   - {name: NAYY_4_185, max_i_a: 313, r_mohm_per_km: 164, x_mohm_per_km: 80, z_mohm_per_km: 181, cost_eur: 38, typ: Cable}
