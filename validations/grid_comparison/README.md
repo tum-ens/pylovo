@@ -20,11 +20,10 @@ The methodological assumptions behind the benchmark metrics are documented in `v
 Real-grid metric generation reads the project-root `.env`:
 
 ```text
-GRID_DATA_PATH="/home/breveron/data"
-GRID_SPLIT_SUBDIR="swf_split_hybrid"
+GRID_DATA_PATH="/home/breveron/data/swf_split_hybrid"
 ```
 
-Synthetic metric filenames use `VERSION_COMMENT` from `config/config_generation.yaml`; whitespace is replaced by `_`. Real metric filenames use `GRID_SPLIT_SUBDIR`. An explicit `--output-suffix` overrides both.
+Synthetic metric filenames use `VERSION_COMMENT` from `config/config_generation.yaml`; whitespace is replaced by `_`. Real metric filenames use the final directory name of `GRID_DATA_PATH`. An explicit `--output-suffix` overrides both.
 
 ## Usage
 

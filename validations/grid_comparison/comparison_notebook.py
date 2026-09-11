@@ -17,7 +17,6 @@ from validations.grid_comparison.common import (
     metric_filename,
     metric_output_suffixes,
     validation_grid_data_path,
-    validation_grid_split_subdir,
 )
 from validations.grid_comparison.scoring import (
     compute_wasserstein_summary,
@@ -81,8 +80,7 @@ def default_metric_filenames(metrics_dir: Path | None = None) -> tuple[str, str]
     notebook remains usable after configuration changes.
     """
     metrics_root = Path(metrics_dir) if metrics_dir is not None else _project_root() / "validations" / "metrics"
-    split_subdir = validation_grid_split_subdir()
-    synthetic_suffix, real_suffix, _ = metric_output_suffixes(None, split_subdir)
+    synthetic_suffix, real_suffix, _ = metric_output_suffixes(None)
     expected_synthetic = metric_filename("synthetic_grid_metrics.csv", synthetic_suffix)
     expected_real = metric_filename("real_grid_metrics.csv", real_suffix)
 

@@ -1,5 +1,4 @@
 """Shared settings and small helpers for grid-comparison validation."""
-import os
 from pathlib import Path
 
 from pylovo.config_loader import GRID_DATA_PATH, VERSION_COMMENT
@@ -16,7 +15,6 @@ COMPARISON_METRIC_COLUMNS = [
     "graph_resistance",
 ]
 
-DEFAULT_REAL_GRID_SPLIT_SUBDIR = "swf_split_hybrid"
 COMPARISON_SCOPES = {"both", "synthetic", "real"}
 
 def validation_grid_data_path(data_path: str | Path | None = None) -> Path:
@@ -25,10 +23,9 @@ def validation_grid_data_path(data_path: str | Path | None = None) -> Path:
     return Path(GRID_DATA_PATH).expanduser()
 
 
-def validation_grid_split_subdir(split_subdir: str | None = None) -> str:
-    if split_subdir:
-        return split_subdir.strip().strip("/")
-    return os.getenv("GRID_SPLIT_SUBDIR", DEFAULT_REAL_GRID_SPLIT_SUBDIR).strip().strip("/")
+def validation_grid_data_name(data_path: str | Path | None = None) -> str:
+    """Short label for the configured real-grid directory, used in output filenames."""
+    return clean_suffix(validation_grid_data_path(data_path).name)
 
 
 def clean_suffix(value: str | None) -> str:
@@ -47,13 +44,16 @@ def metric_filename(filename: str, output_suffix: str = "") -> str:
     return f"{path.stem}_{clean}{path.suffix}"
 
 
-def metric_output_suffixes(output_suffix: str | None, split_subdir: str) -> tuple[str, str, str]:
+def metric_output_suffixes(
+    output_suffix: str | None,
+    data_path: str | Path | None = None,
+) -> tuple[str, str, str]:
     if output_suffix is not None and output_suffix.strip():
         suffix = clean_suffix(output_suffix)
         return suffix, suffix, suffix
 
     synthetic_suffix = clean_suffix(VERSION_COMMENT)
-    real_suffix = clean_suffix(split_subdir.replace("/", "_"))
+    real_suffix = validation_grid_data_name(data_path)
     audit_suffix = (
         synthetic_suffix
         if synthetic_suffix == real_suffix
@@ -69,6 +69,6 @@ __all__ = [
     "clean_suffix",
     "metric_filename",
     "metric_output_suffixes",
+    "validation_grid_data_name",
     "validation_grid_data_path",
-    "validation_grid_split_subdir",
 ]

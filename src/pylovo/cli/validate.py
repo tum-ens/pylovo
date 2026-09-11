@@ -18,12 +18,8 @@ from validations.grid_comparison.common import (
     COMPARISON_SCOPES,
     metric_output_suffixes,
     validation_grid_data_path,
-    validation_grid_split_subdir,
 )
-from validations.grid_comparison.real_swf_metric_export import (
-    process_real_grids,
-    resolve_real_grid_data_path,
-)
+from validations.grid_comparison.real_swf_metric_export import process_real_grids
 
 
 def run_comparison(
@@ -32,7 +28,7 @@ def run_comparison(
     output_suffix: str | None = None,
     with_service_lines: bool = False,
     scope: str = "both",
-    split_subdir: str | None = None,
+    grid_data_path: str | None = None,
 ) -> None:
     """Run the grid comparison workflow directly from the validation CLI."""
     if scope not in COMPARISON_SCOPES:
@@ -40,10 +36,10 @@ def run_comparison(
 
     effective_plz = plz if plz is not None else 91301
     effective_output_dir = Path(output_dir) if output_dir is not None else Path("validations/metrics")
-    effective_split_subdir = validation_grid_split_subdir(split_subdir)
+    effective_grid_data_path = validation_grid_data_path(grid_data_path)
     synthetic_output_suffix, real_output_suffix, audit_output_suffix = metric_output_suffixes(
         output_suffix,
-        effective_split_subdir,
+        effective_grid_data_path,
     )
 
     synthetic_df = pd.DataFrame()
@@ -60,23 +56,17 @@ def run_comparison(
             )
 
         if scope in {"both", "real"}:
-            configured_grid_data_path = validation_grid_data_path()
-            grid_data_path = resolve_real_grid_data_path(
-                configured_grid_data_path,
-                split_subdir=effective_split_subdir,
-            )
-            if grid_data_path.exists():
+            if effective_grid_data_path.exists():
                 real_df = process_real_grids(
                     dbc,
-                    grid_data_path,
+                    effective_grid_data_path,
                     effective_plz,
                     effective_output_dir,
                     output_suffix=real_output_suffix,
                     with_service_lines=with_service_lines,
-                    split_subdir=effective_split_subdir,
                 )
             else:
-                print(f"GRID_DATA_PATH not found or invalid: {configured_grid_data_path} (resolved to {grid_data_path})")
+                print(f"GRID_DATA_PATH not found or invalid: {effective_grid_data_path}")
 
         if scope == "both":
             write_input_audit(synthetic_df, real_df, effective_output_dir, output_suffix=audit_output_suffix)
@@ -110,7 +100,7 @@ def main():
     compare_parser.add_argument(
         "--output-suffix",
         default=None,
-        help="Optional suffix inserted before each output CSV extension. Defaults to VERSION_COMMENT for synthetic metrics and GRID_SPLIT_SUBDIR for real metrics.",
+        help="Optional suffix inserted before each output CSV extension. Defaults to VERSION_COMMENT for synthetic metrics and the GRID_DATA_PATH directory name for real metrics.",
     )
     compare_parser.add_argument(
         "--which",
@@ -119,9 +109,9 @@ def main():
         help="Select which metrics to create. Defaults to both.",
     )
     compare_parser.add_argument(
-        "--grid-split-subdir",
+        "--grid-data-path",
         default=None,
-        help="Override GRID_SPLIT_SUBDIR from the project .env for real-grid metrics.",
+        help="Override GRID_DATA_PATH from the project .env for real-grid metrics.",
     )
     compare_parser.add_argument(
         "--with-service-lines",
@@ -143,7 +133,7 @@ def main():
                 output_suffix=args.output_suffix,
                 with_service_lines=args.with_service_lines,
                 scope=args.which,
-                split_subdir=args.grid_split_subdir,
+                grid_data_path=args.grid_data_path,
             )
         else:
              parser.print_help()
