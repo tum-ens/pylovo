@@ -9,6 +9,7 @@ from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import seaborn as sns
 from IPython.display import Markdown, display
 
@@ -18,9 +19,12 @@ from validations.grid_comparison.common import (
     validation_grid_data_path,
     validation_grid_split_subdir,
 )
-from pylovo.validations.grid_comparison.real_swf_metric_export import iter_real_grid_files
-from validations.grid_comparison.scoring import compute_wasserstein_summary
-from pylovo.config_loader import VERSION_ID
+from validations.grid_comparison.scoring import (
+    compute_wasserstein_summary,
+    get_wasserstein_thresholds,
+    iter_real_grid_files,
+)
+from pylovo.config_loader import GRID_DATA_PATH, VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.validation.metric_validation import plot_comparison_distribution_plotly
 
@@ -679,41 +683,25 @@ def plot_scenario_kde_diagonal(
     real_metrics_filename: str | Path | None = None,
     labels: dict[str, str] | None = None,
     palette: dict[str, str] | None = None,
+    show_hist_bars: bool = False,
     bins: int = 24,
     n_cols: int = 3,
     title: str = "Per-metric KDE View by Scenario",
     upper_percentile: float | None = None,
     clip_nonnegative: bool = True,
 ):
-    """Plot KDE-only metric distributions for several synthetic scenarios and one real reference."""
-    if not scenarios:
-        raise ValueError("At least one scenario is required.")
+    """Plot metric distributions for several synthetic scenarios and one real reference.
 
-    frames: list[pd.DataFrame] = []
-    first_real_filename = real_metrics_filename
-
-    for scenario_label, synthetic_filename in scenarios.items():
-        df_synth, synthetic_path = _load_synthetic_metrics(
-            metrics_dir,
-            metrics_filename=synthetic_filename,
-        )
-        scenario_frame = df_synth.copy()
-        scenario_frame["dataset"] = scenario_label
-        frames.append(scenario_frame)
-
-        if first_real_filename is None:
-            synthetic_name = Path(synthetic_path).name
-            first_real_filename = synthetic_name.replace("synthetic_grid_metrics", "real_grid_metrics", 1)
-
-    if first_real_filename is None:
-        raise ValueError("Could not infer real metrics filename.")
-
-    df_real, _ = _load_real_metrics(metrics_dir, metrics_filename=first_real_filename)
-    real_frame = df_real.copy()
-    real_frame["dataset"] = "Real"
-    frames.append(real_frame)
-
-    plot_df = pd.concat(frames, ignore_index=True, sort=False)
+    ``show_hist_bars=True`` overlays the same semi-transparent probability histogram +
+    KDE combination used in the 2-group view instead of KDE-only lines - useful to see
+    per-scenario sample density, not just the smoothed curve shape.
+    """
+    plot_df = load_scenario_metrics(
+        scenarios,
+        metrics_dir=metrics_dir,
+        real_metrics_filename=real_metrics_filename,
+        dataset_col="dataset",
+    )
     dataset_order = list(scenarios.keys()) + ["Real"]
     active_palette = palette or {
         dataset_order[0]: "#4C78A8",
@@ -726,7 +714,7 @@ def plot_scenario_kde_diagonal(
         labels=labels,
         hue_col="dataset",
         palette=active_palette,
-        show_hist_bars=False,
+        show_hist_bars=show_hist_bars,
         bins=bins,
         n_cols=n_cols,
         title=title,
@@ -767,9 +755,16 @@ def _collect_cable_type_rows(net, source: str) -> list[dict[str, object]]:
     if line_df.empty:
         return rows
 
-    grouped = line_df.groupby("std_type", dropna=True)
-    for std_type, group in grouped:
-        parallel = pd.to_numeric(group.get("parallel", 1), errors="coerce").fillna(1.0)
+    line_df["parallel"] = pd.to_numeric(line_df.get("parallel", 1), errors="coerce").fillna(1.0)
+    # Group by the exact parallel count (not just a parallel>1 boolean): this preserves how many
+    # physical cables a given segment represents (2, 3, ...), needed for the parallel-cable
+    # breakdown table below. "is_parallel" (parallel>1) marks capacity-limit runs, a signal
+    # independent of cross-section.
+    line_df["is_parallel"] = line_df["parallel"] > 1
+
+    grouped = line_df.groupby(["std_type", "parallel"], dropna=True)
+    for (std_type, parallel_value), group in grouped:
+        parallel = group["parallel"]
         length = pd.to_numeric(group.get("length_km", 0.0), errors="coerce").fillna(0.0)
         r_ohm = pd.to_numeric(group.get("r_ohm_per_km", np.nan), errors="coerce")
         x_ohm = pd.to_numeric(group.get("x_ohm_per_km", np.nan), errors="coerce")
@@ -781,6 +776,9 @@ def _collect_cable_type_rows(net, source: str) -> list[dict[str, object]]:
             {
                 "source": source,
                 "std_type": str(std_type),
+                "parallel": int(parallel_value),
+                "is_parallel": bool(parallel_value > 1),
+                "occurrence_count": int(len(group)),
                 "segment_count": float(parallel.sum()),
                 "total_length_km": float((length * parallel).sum()),
                 "impedance_ohm_per_km": impedance_value,
@@ -796,29 +794,7 @@ def load_cable_type_comparison(
     version_id: str = VERSION_ID,
     min_segment_count: float = 100.0,
 ) -> pd.DataFrame:
-    real_dir = Path(real_grid_dir) if real_grid_dir is not None else validation_grid_data_path()
-    rows: list[dict[str, object]] = []
-
-    with DatabaseClient() as dbc:
-        dbc.cur.execute(
-            """
-            SELECT kcid, bcid
-            FROM pylovo.grid_result
-            WHERE plz = %s AND version_id = %s
-            ORDER BY kcid, bcid
-            """,
-            (plz, str(version_id)),
-        )
-        for kcid, bcid in dbc.cur.fetchall():
-            net = dbc.read_net_db(plz, kcid, bcid, version_id=version_id)
-            rows.extend(_collect_cable_type_rows(net, "Synthetic"))
-
-    for file_path in iter_real_grid_files(str(real_dir)):
-        try:
-            net = _load_real_net(file_path)
-        except Exception:
-            continue
-        rows.extend(_collect_cable_type_rows(net, "Real"))
+    rows = _collect_all_cable_type_rows(plz, real_grid_dir=real_grid_dir, version_id=version_id)
 
     if not rows:
         return pd.DataFrame(
@@ -875,7 +851,19 @@ def show_cable_type_comparison(
     display(
         Markdown(
             f"Showing cable types with more than {min_segment_count:.0f} weighted line segments across real and synthetic grids. "
-            "`segment_count` counts every in-service `net.line` segment between modeled nodes; parallel circuits contribute via their `parallel` multiplier, so this is not a whole-feeder count."
+            )    
+    )
+
+    total_length_by_source = cable_df.groupby("source")["total_length_km"].sum()
+    total_length_lines = [
+        f"- **{source}:** {total_length_by_source.get(source, 0.0):.2f} km"
+        for source in ["Synthetic", "Real"]
+        if source in set(cable_df["source"])
+    ]
+    display(
+        Markdown(
+            "**Total length of the displayed cable types** (Basis for the percentage values in the histogram below):\n\n"
+            + "\n".join(total_length_lines)
         )
     )
 
@@ -888,53 +876,81 @@ def show_cable_type_comparison(
                 "total_length_km",
                 "impedance_ohm_per_km",
             ]
-        ].round(4)
+        ]
+        .rename(columns={"std_type": "Cable Type"})
+        .round(4)
     )
 
-    cable_order = cable_df.sort_values("impedance_ohm_per_km")["std_type"].unique().tolist()
     source_order = [source for source in ["Synthetic", "Real"] if source in set(cable_df["source"])]
-    complete_index = pd.MultiIndex.from_product(
-        [source_order, cable_order],
-        names=["source", "std_type"],
-    )
-    plot_df = (
-        cable_df.set_index(["source", "std_type"])
-        .reindex(complete_index)
-        .reset_index()
-    )
-    plot_df["segment_count"] = plot_df["segment_count"].fillna(0.0)
-    plot_df["total_length_km"] = plot_df["total_length_km"].fillna(0.0)
-    plot_df["impedance_ohm_per_km"] = plot_df["impedance_ohm_per_km"].fillna(
-        plot_df.groupby("std_type")["impedance_ohm_per_km"].transform("first")
-    )
 
-    fig = px.bar(
-        plot_df,
-        x="std_type",
-        y="segment_count",
+    fig = px.histogram(
+        cable_df,
+        x="impedance_ohm_per_km",
+        y="total_length_km",
+        histfunc="sum",
+        histnorm="percent",
         color="source",
-        barmode="group",
-        hover_data=["total_length_km", "impedance_ohm_per_km"],
-        category_orders={
-            "std_type": cable_order,
-            "source": source_order,
-        },
+        barmode="overlay",
+        opacity=0.6,
+        nbins=30,
+        category_orders={"source": source_order},
         color_discrete_map={"Synthetic": "steelblue", "Real": "crimson"},
-        title=f"Cable Type Comparison Ordered by Impedance (> {min_segment_count:.0f} weighted line segments)",
+        title=f"Cable Impedance Distribution — Share of Installed Length (> {min_segment_count:.0f} weighted line segments)",
         labels={
-            "std_type": "Cable Type",
-            "segment_count": "Weighted Line Segments",
+            "impedance_ohm_per_km": "Impedance (Ohm/km)",
             "source": "Source",
         },
     )
-    fig.update_layout(template="plotly_white", height=500)
+    # histnorm="percent" normalizes each source's own bars to its own 100% (one trace per
+    # color/source), so Synthetic and Real are compared by shape/share, not by raw volume --
+    # the absolute total_length_km per source is shown separately above instead.
+    fig.update_yaxes(title_text="Share of Installed Length (%)", ticksuffix="%")
+    fig.update_layout(template="plotly_white", width=900, height=500, bargap=0.05)
     fig.show()
+
+    parallel_share_df = compute_parallel_cable_share(
+        plz, real_grid_dir=real_grid_dir, version_id=version_id
+    )
+    parallel_lines = []
+    for source in ["Synthetic", "Real"]:
+        row = parallel_share_df[parallel_share_df["source"] == source]
+        if row.empty or pd.isna(row["parallel_share_pct"].iloc[0]):
+            parallel_lines.append(f"- **{source}:** no data")
+        else:
+            parallel_lines.append(
+                f"- **{source}:** {row['parallel_share_pct'].iloc[0]:.2f}% of material length "
+                f"({row['parallel_length_km'].iloc[0]:.3f} km)"
+            )
+
+    display(
+        Markdown(
+            "\n\n" + "\n".join(parallel_lines)
+        )
+    )
+
+    parallel_breakdown_df = compute_parallel_cable_breakdown(
+        plz, real_grid_dir=real_grid_dir, version_id=version_id
+    )
+    if parallel_breakdown_df.empty:
+        display(Markdown("No parallel-laid cables found."))
+    else:
+        display(
+            parallel_breakdown_df.rename(
+                columns={
+                    "std_type": "Cable Type",
+                    "parallel": "parallel (count)",
+                    "occurrence_count": "Occurrences",
+                    "total_length_km": "Material Length (km)",
+                }
+            ).round(4)
+        )
     return fig
 
 
 def build_wasserstein_bar_figure(wasserstein_table: pd.DataFrame) -> px.bar:
+    ordered = wasserstein_table.sort_values("normalized_wasserstein", ascending=False)
     fig = px.bar(
-        wasserstein_table.sort_values("normalized_wasserstein", ascending=False),
+        ordered,
         x="metric",
         y="normalized_wasserstein",
         color="quality",
@@ -948,8 +964,7 @@ def build_wasserstein_bar_figure(wasserstein_table: pd.DataFrame) -> px.bar:
             "quality": ["excellent", "good", "acceptable", "poor", "insufficient_data"],
         },
     )
-    fig.add_hline(y=0.10, line_dash="dot", line_color="green", annotation_text="excellent")
-    fig.add_hline(y=0.25, line_dash="dot", line_color="royalblue", annotation_text="good")
+    _add_per_metric_threshold_markers(fig, ordered["metric"].tolist())
     fig.update_layout(template="plotly_white", height=500)
     return fig
 
@@ -982,12 +997,335 @@ def show_wasserstein_summary(
     return fig
 
 
+def load_scenario_metrics(
+    scenarios: dict[str, str],
+    *,
+    metrics_dir: Path | None = None,
+    real_metrics_filename: str | Path | None = None,
+    dataset_col: str = "dataset",
+    include_real: bool = True,
+) -> pd.DataFrame:
+    """Load several synthetic metric CSVs (e.g. one per generator parameter variant), tagged by `dataset_col`.
+
+    Each key in `scenarios` becomes a value in `dataset_col`; the real reference (if
+    `include_real`) is tagged as "Real". Filenames are resolved the same way as the
+    single-scenario loaders, so relative names are looked up under `metrics_dir`.
+    """
+    if not scenarios:
+        raise ValueError("At least one scenario is required.")
+
+    frames: list[pd.DataFrame] = []
+    first_real_filename = real_metrics_filename
+
+    for scenario_label, synthetic_filename in scenarios.items():
+        df_synth, synthetic_path = _load_synthetic_metrics(
+            metrics_dir,
+            metrics_filename=synthetic_filename,
+        )
+        scenario_frame = df_synth.copy()
+        scenario_frame[dataset_col] = scenario_label
+        frames.append(scenario_frame)
+
+        if include_real and first_real_filename is None:
+            synthetic_name = Path(synthetic_path).name
+            first_real_filename = synthetic_name.replace("synthetic_grid_metrics", "real_grid_metrics", 1)
+
+    if include_real:
+        if first_real_filename is None:
+            raise ValueError("Could not infer real metrics filename.")
+        df_real, _ = _load_real_metrics(metrics_dir, metrics_filename=first_real_filename)
+        real_frame = df_real.copy()
+        real_frame[dataset_col] = "Real"
+        frames.append(real_frame)
+
+    return pd.concat(frames, ignore_index=True, sort=False)
+
+
+def compare_scenarios_to_real(
+    scenarios: dict[str, str],
+    metrics: list[str],
+    *,
+    metrics_dir: Path | None = None,
+    real_metrics_filename: str | Path | None = None,
+    dataset_col: str = "dataset",
+) -> pd.DataFrame:
+    """Per-scenario Wasserstein distance against the real reference, one row per (scenario, metric).
+
+    Useful to rank several generator parameter variants by how close each one gets
+    to the real grid population, metric by metric.
+    """
+    rows: list[pd.DataFrame] = []
+    for scenario_label, synthetic_filename in scenarios.items():
+        combined = load_scenario_metrics(
+            {scenario_label: synthetic_filename},
+            metrics_dir=metrics_dir,
+            real_metrics_filename=real_metrics_filename,
+            dataset_col=dataset_col,
+        )
+        table = compute_wasserstein_summary(
+            combined,
+            metrics,
+            source_col=dataset_col,
+            synthetic_label=scenario_label,
+            real_label="Real",
+        )
+        if table.empty:
+            continue
+        table.insert(0, dataset_col, scenario_label)
+        rows.append(table)
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                dataset_col,
+                "metric",
+                "synthetic_n",
+                "real_n",
+                "wasserstein_distance",
+                "pooled_iqr",
+                "normalized_wasserstein",
+                "quality",
+            ]
+        )
+    return pd.concat(rows, ignore_index=True)
+
+
+def _add_per_metric_threshold_markers(fig, metrics: list[str]) -> None:
+    """Overlay excellent/good/acceptable threshold ticks at each metric's x position, instead
+    of a single flat horizontal line across the whole chart. Thresholds are calibrated per
+    metric (see CALIBRATED_WASSERSTEIN_THRESHOLDS in validations/grid_comparison/scoring.py) -- a global
+    reference line would only be correct for whichever metric happens to match it and
+    misleading for the rest."""
+    for label, level_index, color in [
+        ("excellent", 0, "seagreen"),
+        ("good", 1, "royalblue"),
+        ("acceptable", 2, "darkorange"),
+    ]:
+        y_values = [get_wasserstein_thresholds(metric)[level_index] for metric in metrics]
+        fig.add_trace(
+            go.Scatter(
+                x=metrics,
+                y=y_values,
+                mode="markers",
+                marker=dict(symbol="line-ew", size=28, line=dict(color=color, width=3)),
+                name=f"{label} threshold",
+                hovertemplate=f"{label}: " + "%{y:.4f}<extra></extra>",
+            )
+        )
+
+
+def build_scenario_wasserstein_bar_figure(
+    scenario_wasserstein_table: pd.DataFrame,
+    *,
+    dataset_col: str = "dataset",
+) -> px.bar:
+    fig = px.bar(
+        scenario_wasserstein_table,
+        x="metric",
+        y="normalized_wasserstein",
+        color=dataset_col,
+        barmode="group",
+        title="Normalized Wasserstein Distance vs. Real, by Scenario",
+        labels={
+            "metric": "Metric",
+            "normalized_wasserstein": "Normalized Wasserstein Distance",
+            dataset_col: "Scenario",
+        },
+    )
+    metrics = list(dict.fromkeys(scenario_wasserstein_table["metric"]))
+    _add_per_metric_threshold_markers(fig, metrics)
+    fig.update_layout(template="plotly_white", height=500)
+    return fig
+
+
+def _collect_all_cable_type_rows(
+    plz: int,
+    *,
+    real_grid_dir: Path | str | None = None,
+    version_id: str = VERSION_ID,
+) -> list[dict[str, object]]:
+    real_dir = Path(real_grid_dir) if real_grid_dir is not None else Path(GRID_DATA_PATH)
+    rows: list[dict[str, object]] = []
+
+    with DatabaseClient() as dbc:
+        dbc.cur.execute(
+            """
+            SELECT kcid, bcid
+            FROM grid_result
+            WHERE plz = %s AND version_id = %s
+            ORDER BY kcid, bcid
+            """,
+            (plz, str(version_id)),
+        )
+        for kcid, bcid in dbc.cur.fetchall():
+            net = dbc.read_net_db(plz, kcid, bcid, version_id=version_id)
+            rows.extend(_collect_cable_type_rows(net, "Synthetic"))
+
+    for file_path in iter_real_grid_files(str(real_dir)):
+        try:
+            net = _load_real_net(file_path)
+        except Exception:
+            continue
+        rows.extend(_collect_cable_type_rows(net, "Real"))
+
+    return rows
+
+
+def compute_parallel_cable_share(
+    plz: int,
+    *,
+    real_grid_dir: Path | str | None = None,
+    version_id: str = VERSION_ID,
+) -> pd.DataFrame:
+    """Share of installed cable length that needed a parallel run (capacity limit), per source.
+
+    Computed from the full, unfiltered cable inventory rather than the
+    ``min_segment_count``-filtered table: parallel runs are rare by construction, and that
+    same threshold (tuned to drop noisy one-off cable types from the per-type comparison)
+    would otherwise wipe out the very signal this metric is meant to show.
+    """
+    rows = _collect_all_cable_type_rows(plz, real_grid_dir=real_grid_dir, version_id=version_id)
+    if not rows:
+        return pd.DataFrame(columns=["source", "total_length_km", "parallel_length_km", "parallel_share_pct"])
+
+    df = pd.DataFrame(rows)
+    summary = df.groupby("source", as_index=True).agg(total_length_km=("total_length_km", "sum"))
+    parallel_length = df[df["is_parallel"]].groupby("source")["total_length_km"].sum()
+    summary["parallel_length_km"] = parallel_length.reindex(summary.index).fillna(0.0)
+    summary["parallel_share_pct"] = np.where(
+        summary["total_length_km"] > 0,
+        100.0 * summary["parallel_length_km"] / summary["total_length_km"],
+        np.nan,
+    )
+    return summary.reset_index()
+
+
+def compute_parallel_cable_breakdown(
+    plz: int,
+    *,
+    real_grid_dir: Path | str | None = None,
+    version_id: str = VERSION_ID,
+) -> pd.DataFrame:
+    """Which cable types are laid in parallel, at what parallel count, and how often.
+
+    Unfiltered (no ``min_segment_count``) for the same reason as ``compute_parallel_cable_share``:
+    parallel runs are rare by construction and would otherwise be dropped by a threshold tuned
+    for the main per-cable-type comparison.
+    """
+    rows = _collect_all_cable_type_rows(plz, real_grid_dir=real_grid_dir, version_id=version_id)
+    if not rows:
+        return pd.DataFrame(
+            columns=["source", "std_type", "parallel", "occurrence_count", "total_length_km"]
+        )
+
+    df = pd.DataFrame(rows)
+    df = df[df["is_parallel"]]
+    if df.empty:
+        return pd.DataFrame(
+            columns=["source", "std_type", "parallel", "occurrence_count", "total_length_km"]
+        )
+
+    breakdown = (
+        df.groupby(["source", "std_type", "parallel"], as_index=False)
+        .agg(
+            occurrence_count=("occurrence_count", "sum"),
+            total_length_km=("total_length_km", "sum"),
+        )
+        .sort_values("occurrence_count", ascending=False)
+        .reset_index(drop=True)
+    )
+    return breakdown
+
+
+def plot_correlation_matrix_comparison(
+    df: pd.DataFrame,
+    metric_cols: list[str],
+    *,
+    labels: dict[str, str] | None = None,
+    source_col: str = "source",
+    synthetic_label: str = "Synthetic",
+    real_label: str = "Real",
+    method: str = "spearman",
+    show_diff: bool = True,
+    title: str = "Correlation Matrix Comparison: Synthetic vs. Real",
+    figsize: tuple[float, float] | None = None,
+    annot_fontsize: int = 8,
+) -> plt.Figure:
+    active_labels = labels or {}
+    short_names = [active_labels.get(m, m).split("(")[0].strip() for m in metric_cols]
+
+    def _corr(source_name: str) -> pd.DataFrame:
+        sub = df[df[source_col] == source_name][metric_cols].copy()
+        for col in metric_cols:
+            sub[col] = pd.to_numeric(sub[col], errors="coerce")
+        sub = sub.dropna()
+        if len(sub) < 3:
+            return pd.DataFrame(np.nan, index=short_names, columns=short_names)
+        corr = sub.corr(method=method)
+        corr.index = short_names
+        corr.columns = short_names
+        return corr
+
+    corr_synth = _corr(synthetic_label)
+    corr_real = _corr(real_label)
+    corr_diff = corr_synth - corr_real
+
+    # vertical layout: 2 main panels side-by-side on top, diff below full-width
+    if show_diff:
+        fig = plt.figure(figsize=figsize or (11, 10))
+        ax0 = fig.add_subplot(2, 2, 1)
+        ax1 = fig.add_subplot(2, 2, 2)
+        ax2 = fig.add_subplot(2, 1, 2)
+        panel_axes = [ax0, ax1, ax2]
+    else:
+        fig, panel_axes = plt.subplots(1, 2, figsize=figsize or (11, 4.5))
+
+    common_kws = dict(
+        annot=True,
+        fmt=".2f",
+        linewidths=0.5,
+        annot_kws={"size": annot_fontsize},
+        square=False,
+        cbar_kws={"shrink": 0.8},
+    )
+
+    mask = np.triu(np.ones_like(corr_synth, dtype=bool), k=1)
+
+    sns.heatmap(corr_synth, ax=panel_axes[0], vmin=-1, vmax=1,
+                cmap="RdBu_r", mask=mask, **common_kws)
+    panel_axes[0].set_title(f"{synthetic_label}  ({method.title()} r)", fontsize=10, fontweight="bold")
+
+    sns.heatmap(corr_real, ax=panel_axes[1], vmin=-1, vmax=1,
+                cmap="RdBu_r", mask=mask, **common_kws)
+    panel_axes[1].set_title(f"{real_label}  ({method.title()} r)", fontsize=10, fontweight="bold")
+
+    if show_diff:
+        diff_abs_max = max(float(corr_diff.abs().max().max()), 0.01)
+        sns.heatmap(corr_diff, ax=panel_axes[2], vmin=-diff_abs_max, vmax=diff_abs_max,
+                    cmap="PuOr", mask=mask, **common_kws)
+        panel_axes[2].set_title(
+            f"Difference  ({synthetic_label} − {real_label})  ·  purple = synth higher  |  orange = real higher",
+            fontsize=9, fontweight="bold",
+        )
+
+    fig.suptitle(title, fontsize=12, fontweight="bold", y=1.01)
+    fig.tight_layout()
+    plt.show()
+    return fig
+
+
 __all__ = [
     "ComparisonNotebookData",
     "DEFAULT_LABELS",
     "DEFAULT_METRICS",
     "default_metric_filenames",
     "selected_metric_filenames",
+    "load_scenario_metrics",
+    "compare_scenarios_to_real",
+    "build_scenario_wasserstein_bar_figure",
+    "compute_parallel_cable_share",
+    "compute_parallel_cable_breakdown",
+    "plot_correlation_matrix_comparison",
     "build_wasserstein_bar_figure",
     "compute_status_diagnostics",
     "load_and_render_overview",
