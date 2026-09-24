@@ -380,7 +380,8 @@ class GridGenerator:
             )
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
         self.logger.info("Buildings_tem table prepared")
-        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers()
+        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers(
+            include_dso=USE_DSO_TRANSFORMER_POSITIONS)
         if removed_transformer_buildings:
             self.logger.info(
                 f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
@@ -877,6 +878,9 @@ class GridGenerator:
         # Get available transformer capacities from database
         settlement_type = self.dbc.get_settlement_type_from_plz(plz)
         possible_transformers, _ = self.dbc.get_transformer_data(settlement_type)
+        # A transformer imported with its real rating is filled only up to that
+        # rating and keeps it; any other keeps the catalogue limit and choice.
+        known_capacities = self.dbc.get_brownfield_transformer_capacity_map(transformer_list)
 
         # Initialize tracking variables
         pre_result_dict = {transformer_id: [] for transformer_id in transformer_list}
@@ -898,7 +902,9 @@ class GridGenerator:
                 buildings, consumer_cat_df, pre_result_dict[end_transformer_id]
             )
 
-            if float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION > max(possible_transformers):
+            known = known_capacities.get(int(end_transformer_id))
+            if (float(sim_load) > known) if known is not None else (
+                    float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION > max(possible_transformers)):
                 # Remove consumer and mark transformer as full
                 pre_result_dict[end_transformer_id].pop()
                 full_transformer_list.append(end_transformer_id)
@@ -931,9 +937,12 @@ class GridGenerator:
                 buildings, consumer_cat_df, pre_result_dict[transformer_id]
             )
 
-            # Select the smallest transformer that is larger than the simulated load
-            transformer_rated_power = possible_transformers[
-                possible_transformers > float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION][0].item()
+            if int(transformer_id) in known_capacities:
+                transformer_rated_power = known_capacities[int(transformer_id)]
+            else:
+                # Select the smallest transformer that is larger than the simulated load
+                transformer_rated_power = possible_transformers[
+                    possible_transformers > float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION][0].item()
 
             # Update database with new building cluster
             self.dbc.update_building_cluster(transformer_id, pre_result_dict[transformer_id], building_cluster_count, kcid,
@@ -1945,7 +1954,8 @@ class GridGenerator:
             split_visualization_edges = self._get_split_visualization_edges(
                 branch_plans, ont_vertice
             )
-            savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid}"
+            bcid_token = f"neg_{abs(int(bcid))}" if int(bcid) < 0 else str(int(bcid))
+            savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid_token}"
             try:
                 self.dbc.cur.execute(f"SAVEPOINT {savepoint_name}")
                 self.dbc.rebuild_lines_result_helpers_for_split_topology(

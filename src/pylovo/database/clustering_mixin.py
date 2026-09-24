@@ -553,6 +553,26 @@ class ClusteringMixin(BaseMixin, ABC):
 
         return cost_df
 
+    def get_brownfield_transformer_capacity_map(self, transformer_list: list) -> dict[int, int]:
+        """Known ratings (kVA) of existing transformers, keyed by their temporary vertex ID.
+
+        Only transformers imported with a rating, such as imported DSO
+        stations, appear; the others keep the catalogue choice.
+        """
+        if not transformer_list:
+            return {}
+        query = """
+            SELECT b.vertice_id, t.transformer_rated_power
+            FROM buildings_tem b
+            JOIN pylovo.transformers t
+              ON t.osm_id = b.objectid
+            WHERE b.vertice_id IN %(transformers)s
+              AND b.type = 'Transformer'
+              AND t.transformer_rated_power IS NOT NULL;
+        """
+        self.cur.execute(query, {"transformers": tuple(map(int, transformer_list))})
+        return {int(vertice_id): int(capacity) for vertice_id, capacity in self.cur.fetchall()}
+
     def count_kmean_cluster_consumers(self, kcid: int) -> int:
         query = """SELECT COUNT(DISTINCT vertice_id)
                    FROM buildings_tem

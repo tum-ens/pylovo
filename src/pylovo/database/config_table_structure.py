@@ -235,7 +235,11 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_grid_section_id
     ON pylovo.lines_result_view (grid_result_id, feeder_section_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_geom
-    ON pylovo.lines_result_view USING gist (geom)
+    ON pylovo.lines_result_view USING gist (geom);
+    -- Backs the ON DELETE CASCADE from lines_result: without it, deleting a
+    -- version scans this table once per deleted line.
+    CREATE INDEX IF NOT EXISTS idx_lines_result_view_source_line
+    ON pylovo.lines_result_view (source_lines_result_id)
     """,
     "consumer_categories": """
     CREATE TABLE IF NOT EXISTS pylovo.consumer_categories (
@@ -709,7 +713,10 @@ CREATE_QUERIES = {
             FOREIGN KEY (version_id, plz)
             REFERENCES pylovo.postcode_result (version_id, postcode_result_plz)
             ON DELETE CASCADE
-    )
+    );
+    -- Backs the ON DELETE CASCADE from postcode_result.
+    CREATE INDEX IF NOT EXISTS idx_ways_result_version_plz
+    ON pylovo.ways_result (version_id, plz)
     """,
     "plz_parameters": """
     CREATE TABLE IF NOT EXISTS pylovo.plz_parameters (

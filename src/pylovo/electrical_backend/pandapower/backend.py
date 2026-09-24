@@ -114,6 +114,8 @@ class PandapowerBackend(IElectricalBackend):
 
         sn_mva = spec.kva / 1000.0
         std_type = f"{sn_mva} MVA 20/0.4 kV"
+        if not pp.std_type_exists(self.net, std_type, element="trafo"):
+            self._register_small_transformer(sn_mva, std_type)
 
         trafo_idx = pp.create_transformer(
             self.net,
@@ -201,6 +203,21 @@ class PandapowerBackend(IElectricalBackend):
         bus_idx = buses.index[0]
         self._bus_cache[bus_name] = bus_idx
         return bus_idx
+
+    #: pandapower ships 20/0.4 kV types from 0.25 MVA up only.  The smaller
+    #: catalogue sizes (100 and 160 kVA) take its 0.25 MVA type with the rating
+    #: changed: same short-circuit voltage, winding losses, no-load current and
+    #: vector group, no-load losses scaled with the rating.  An approximation
+    #: of a small distribution transformer, not a manufacturer's data sheet.
+    SMALL_TRANSFORMER_BASE = "0.25 MVA 20/0.4 kV"
+
+    def _register_small_transformer(self, sn_mva: float, std_type: str) -> None:
+        base = pp.load_std_type(self.net, self.SMALL_TRANSFORMER_BASE, element="trafo")
+        if sn_mva >= base["sn_mva"]:
+            raise PandapowerBackendError(f"Unknown standard trafo type {std_type}")
+        data = dict(base, sn_mva=sn_mva, pfe_kw=base["pfe_kw"] * sn_mva / base["sn_mva"])
+        pp.create_std_type(self.net, data, name=std_type, element="trafo")
+        self.logger.debug(f"Registered transformer type {std_type} from {self.SMALL_TRANSFORMER_BASE}")
 
     # =========================================================================
     # Cable Registration

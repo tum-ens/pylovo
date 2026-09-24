@@ -55,6 +55,8 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "urban_max_building_distance": URBAN_MAX_BUILDING_DISTANCE,
                 "transformer_mapping": TRANSFORMER_MAPPING,
                 "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
+                "use_dso_transformer_positions": USE_DSO_TRANSFORMER_POSITIONS,
+                "use_open_transformer_positions": USE_OPEN_TRANSFORMER_POSITIONS,
                 "max_greenfield_trafo_distance": MAX_GREENFIELD_TRAFO_DISTANCE,
                 "max_greenfield_trafo_distance_std": MAX_GREENFIELD_TRAFO_DISTANCE_STD,
                 "greenfield_trafo_position_tolerance": GREENFIELD_TRAFO_POSITION_TOLERANCE,
@@ -468,6 +470,7 @@ class PreprocessingMixin(BaseMixin, ABC):
             "SFH": {"fixed_households": 1},
             "TH": {"fixed_households": 1},
             "MFH": {"minimum_households": 2, "residential_area_per_household_m2": 181},
+            "untyped_residential": {"minimum_households": 1, "residential_area_per_household_m2": 181},
             "AB": {"minimum_households": 5, "residential_area_per_household_m2": 146},
         }
 
@@ -521,6 +524,14 @@ class PreprocessingMixin(BaseMixin, ABC):
                         ROUND(
                             COALESCE(residential_floor_area, floor_area * COALESCE(floor_number, 1))
                             / %(mfh_area_per_household_m2)s
+                        )::integer
+                    )
+                    WHEN type IN ('Residential', 'Mixed')
+                         AND COALESCE(residential_floor_area, 0) > 0 THEN GREATEST(
+                        %(untyped_residential_minimum_households)s,
+                        ROUND(
+                            residential_floor_area
+                            / %(untyped_residential_area_per_household_m2)s
                         )::integer
                     )
                     WHEN type = 'AB' THEN GREATEST(
@@ -592,6 +603,8 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "mfh_area_per_household_m2": household_fallback["MFH"][
                     "residential_area_per_household_m2"
                 ],
+                "untyped_residential_minimum_households": household_fallback["untyped_residential"]["minimum_households"],
+                "untyped_residential_area_per_household_m2": household_fallback["untyped_residential"]["residential_area_per_household_m2"],
                 "ab_minimum_households": household_fallback["AB"]["minimum_households"],
                 "ab_area_per_household_m2": household_fallback["AB"][
                     "residential_area_per_household_m2"
@@ -744,8 +757,13 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.executemany(insert_query, rows)
         return len(rows)
 
-    def remove_non_residential_buildings_overlapping_transformers(self) -> int:
-        """Remove non-residential consumer buildings that overlap transformer candidates."""
+    def remove_non_residential_buildings_overlapping_transformers(self, include_dso: bool = False) -> int:
+        """Remove non-residential consumer buildings that overlap transformer candidates.
+
+        Imported DSO stations count only when they are in use
+        (`include_dso`): they stay in `pylovo.transformers` after the run that
+        imported them, and must not remove buildings from a run that ignores them.
+        """
         query = """
             DELETE FROM buildings_tem b
             WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
@@ -754,11 +772,12 @@ class PreprocessingMixin(BaseMixin, ABC):
               AND EXISTS (
                   SELECT 1
                   FROM pylovo.transformers t
-                  WHERE ST_Intersects(t.geom, b.geom)
-                     OR ST_Within(t.geom, b.geom)
+                  WHERE (ST_Intersects(t.geom, b.geom) OR ST_Within(t.geom, b.geom))
+                    AND (%(include_dso)s OR NOT (t.type IN ('dso', 'dso_validation')
+                         OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
               );
         """
-        self.cur.execute(query)
+        self.cur.execute(query, {"include_dso": include_dso})
         return self.cur.rowcount
 
     def remove_non_residential_buildings_from_buildings_tem(self) -> int:
