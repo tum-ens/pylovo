@@ -1,3 +1,4 @@
+import hashlib
 import heapq
 import math
 import warnings
@@ -18,6 +19,23 @@ warnings.simplefilter(action='ignore', category=UserWarning)
 class ClusteringMixin(BaseMixin, ABC):
     def __init__(self):
         super().__init__()
+
+    @staticmethod
+    def greenfield_distance_limit(connection_points, mean_limit: float) -> float:
+        """Greenfield distance limit of one cluster, identified by its connection points.
+
+        With MAX_GREENFIELD_TRAFO_DISTANCE_STD > 0 the limit is drawn from a normal
+        distribution around ``mean_limit``, clipped to +/- 2 standard deviations. The
+        draw is seeded by the cluster's own members, so every check of the same cluster
+        (splitting, then station placement) sees the same limit.
+        """
+        if MAX_GREENFIELD_TRAFO_DISTANCE_STD <= 0 or mean_limit is None:
+            return mean_limit
+        members = np.asarray(sorted(int(p) for p in connection_points), dtype=np.int64)
+        key = int.from_bytes(hashlib.sha256(members.tobytes()).digest()[:8], 'little')
+        draw = np.random.default_rng([K_MEANS_SEED, key]).normal(mean_limit, MAX_GREENFIELD_TRAFO_DISTANCE_STD)
+        spread = 2 * MAX_GREENFIELD_TRAFO_DISTANCE_STD
+        return float(np.clip(draw, mean_limit - spread, mean_limit + spread))
 
     @staticmethod
     def cluster_has_feasible_transformer_position(
@@ -408,14 +426,14 @@ class ClusteringMixin(BaseMixin, ABC):
         invalid_cluster_dict = {}
         for cluster_id in range(cluster_count):
             vid_list = [localid2vid[lid[0]] for lid in np.argwhere(flat_groups == cluster_id)]
-            total_sim_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, vid_list)
+            total_sim_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, vid_list) / TRANSFORMER_PLANNING_UTILIZATION
             distance_feasible = True
             if dist_mat is not None and vid2localid is not None:
                 distance_feasible = self.cluster_has_feasible_transformer_position(
                     vid_list,
                     dist_mat,
                     vid2localid,
-                    max_transformer_distance,
+                    self.greenfield_distance_limit(vid_list, max_transformer_distance),
                 )
             if (total_sim_load >= max(transformer_capacities) and len(vid_list) >= 5):  # the cluster is too big
                 invalid_cluster_dict[cluster_id] = vid_list
