@@ -388,6 +388,14 @@ class GridGenerator:
         self.dbc.remove_duplicate_buildings()
         self.logger.info("Duplicate buildings removed from buildings_tem")
 
+        # Fill missing household counts before they contribute to the postcode's
+        # settlement classification, then calculate residential demand.
+        unloadcount = self.dbc.set_building_peak_load()
+        self.logger.info(
+            f"Building peakload calculated in buildings_tem, {unloadcount} unloaded buildings are removed from "
+            f"buildings_tem"
+        )
+
         try:
             avg_hh = self.dbc.calculate_avg_households_per_building(self.plz)
             house_dist = self.dbc.calculate_house_distance_metric(self.plz)
@@ -402,11 +410,6 @@ class GridGenerator:
         except Exception as e:
             self.logger.warning(f"Settlement type classification failed: {e}")
 
-        unloadcount = self.dbc.set_building_peak_load()
-        self.logger.info(
-            f"Building peakload calculated in buildings_tem, {unloadcount} unloaded buildings are removed from "
-            f"buildings_tem"
-        )
         too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
         self.logger.debug(
             f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
@@ -615,7 +618,7 @@ class GridGenerator:
 
             vertices = sorted(planning_points.dropna().astype(int).unique().tolist())
             if len(vertices) == 1:
-                total_sim_load = utils.simultaneousPeakLoad(fallback_buildings, consumer_cat_df, vertices)
+                total_sim_load = utils.simultaneousPeakLoad(fallback_buildings, consumer_cat_df, vertices) / TRANSFORMER_PLANNING_UTILIZATION
                 feasible_transformers = transformer_capacities[transformer_capacities > total_sim_load]
                 transformer_size = int(feasible_transformers[0]) if len(feasible_transformers) else int(math.ceil(total_sim_load))
                 self.dbc.clear_grid_result_in_kmean_cluster(plz, kcid)
@@ -793,7 +796,7 @@ class GridGenerator:
                         continue
 
                     combined_vertices = list(dict.fromkeys(left_vertices + right_vertices))
-                    combined_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, combined_vertices)
+                    combined_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, combined_vertices) / TRANSFORMER_PLANNING_UTILIZATION
                     feasible_capacities = merge_capacities[merge_capacities > combined_load]
                     if len(feasible_capacities) == 0:
                         continue
@@ -895,7 +898,7 @@ class GridGenerator:
                 buildings, consumer_cat_df, pre_result_dict[end_transformer_id]
             )
 
-            if float(sim_load) > max(possible_transformers):
+            if float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION > max(possible_transformers):
                 # Remove consumer and mark transformer as full
                 pre_result_dict[end_transformer_id].pop()
                 full_transformer_list.append(end_transformer_id)
@@ -929,7 +932,8 @@ class GridGenerator:
             )
 
             # Select the smallest transformer that is larger than the simulated load
-            transformer_rated_power = possible_transformers[possible_transformers > float(sim_load)][0].item()
+            transformer_rated_power = possible_transformers[
+                possible_transformers > float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION][0].item()
 
             # Update database with new building cluster
             self.dbc.update_building_cluster(transformer_id, pre_result_dict[transformer_id], building_cluster_count, kcid,
@@ -999,15 +1003,24 @@ class GridGenerator:
         # Calculate weighted distance (distance * load) for each potential location
         total_load_per_vertice = dist_mat.dot(loads)
 
-        # Prefer candidates that also satisfy the max-distance limit.
-        feasible_candidate_ids = np.flatnonzero(dist_mat.max(axis=1) <= MAX_GREENFIELD_TRAFO_DISTANCE)
+        # Prefer candidates that also satisfy the max-distance limit (the same per-cluster
+        # limit the building clustering used for this cluster).
+        distance_limit = self.dbc.greenfield_distance_limit(matrix_connection_points, MAX_GREENFIELD_TRAFO_DISTANCE)
+        feasible_candidate_ids = np.flatnonzero(dist_mat.max(axis=1) <= distance_limit)
         if len(feasible_candidate_ids) > 0:
             min_localid = feasible_candidate_ids[np.argmin(total_load_per_vertice[feasible_candidate_ids])]
+            if GREENFIELD_TRAFO_POSITION_TOLERANCE > 0:
+                costs = total_load_per_vertice[feasible_candidate_ids]
+                eligible = sorted(feasible_candidate_ids[costs <= (1 + GREENFIELD_TRAFO_POSITION_TOLERANCE) * costs.min()],
+                                  key=lambda localid: localid2vid[localid])
+                # Seeded per cluster, so a rerun of the same configuration places the same stations.
+                rng = np.random.default_rng([K_MEANS_SEED, int(plz), int(kcid), int(bcid)])
+                min_localid = eligible[int(rng.integers(len(eligible)))]
         else:
             min_localid = int(np.argmin(total_load_per_vertice))
             self.logger.warning(
                 f"Greenfield transformer placement for PLZ {plz}, KCID {kcid}, BCID {bcid} has no candidate within "
-                f"MAX_GREENFIELD_TRAFO_DISTANCE={MAX_GREENFIELD_TRAFO_DISTANCE} m; falling back to weighted minimum."
+                f"the greenfield distance limit of {distance_limit:.0f} m; falling back to weighted minimum."
             )
 
         # Select the point with minimum weighted distance as transformer location
