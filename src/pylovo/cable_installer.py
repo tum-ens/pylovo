@@ -207,7 +207,7 @@ class CableInstaller:
         )
 
         self.backend.create_component(trafo_spec)
-        self.backend.set_transformer_rating(trafo_spec.name, transformer_rated_power * 1e-3)
+        self.backend.set_transformer_rating(trafo_spec.name, transformer_rated_power * 1e-3 / parallel)
 
     def create_connection_bus(self, connection_nodes: list):
         """Create connection buses."""
