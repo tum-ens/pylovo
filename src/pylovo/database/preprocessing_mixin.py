@@ -1,6 +1,7 @@
 import json
 import warnings
 from abc import ABC
+import numpy as np
 import pandas as pd
 import time
 
@@ -55,6 +56,9 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "transformer_mapping": TRANSFORMER_MAPPING,
                 "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
                 "max_greenfield_trafo_distance": MAX_GREENFIELD_TRAFO_DISTANCE,
+                "max_greenfield_trafo_distance_std": MAX_GREENFIELD_TRAFO_DISTANCE_STD,
+                "greenfield_trafo_position_tolerance": GREENFIELD_TRAFO_POSITION_TOLERANCE,
+                "transformer_planning_utilization": TRANSFORMER_PLANNING_UTILIZATION,
                 "max_buildings_per_kcid": MAX_BUILDINGS_PER_KCID,
                 "k_means_seed": K_MEANS_SEED,
             },
@@ -358,31 +362,19 @@ class PreprocessingMixin(BaseMixin, ABC):
                      AND objectid LIKE '%copy%';"""
         self.cur.execute(query)
 
-    def calculate_house_distance_metric(self, plz: int, sample_size: int = 50, k_nearest: int = 4) -> float:
-        """Computes the average inter-building distance (meters) from a deterministic sample
-        and writes house_distance into postcode_result. Returns the computed value.
+    def calculate_house_distance_metric(self, plz: int, k_nearest: int = 4) -> float:
+        """Computes the average distance (meters) from every building to its k nearest
+        neighbours and writes house_distance into postcode_result. Returns the computed value.
         """
-        distance_query = f"""WITH some_buildings AS (SELECT objectid, centroid
-                                                    FROM buildings_tem
-                                                    ORDER BY md5(objectid::text)
-                                                    LIMIT {sample_size})
-                            SELECT b.objectid, d.dist
-                            FROM some_buildings AS b
-                                     LEFT JOIN LATERAL (
-                                SELECT ST_Distance(b.centroid, b2.centroid) AS dist
-                                FROM buildings_tem AS b2
-                                WHERE b.objectid <> b2.objectid
-                                ORDER BY b.centroid <-> b2.centroid
-                                LIMIT {k_nearest}) AS d
-                                               ON TRUE;"""
-        self.cur.execute(distance_query)
-        data = self.cur.fetchall()
-        if not data:
-            raise ValueError("No buildings in buildings_tem for house distance calculation.")
-        distance_vals = [t[1] for t in data if t[1] is not None]
-        if not distance_vals:
-            raise ValueError("House distance calculation returned no distances.")
-        avg_dis = float(sum(distance_vals) / len(distance_vals))
+        from scipy.spatial import cKDTree
+        self.cur.execute("SELECT ST_X(centroid), ST_Y(centroid) FROM buildings_tem WHERE centroid IS NOT NULL")
+        points = np.asarray(self.cur.fetchall(), dtype=float)
+        if len(points) < 2:
+            raise ValueError("House distance calculation needs at least two buildings in buildings_tem.")
+        k = min(k_nearest, len(points) - 1)
+        # The first neighbour of every point is the point itself at distance zero.
+        distances, _ = cKDTree(points).query(points, k=k + 1)
+        avg_dis = float(distances[:, 1:].mean())
         update_query = """
             UPDATE pylovo.postcode_result
             SET house_distance = %(avg)s
