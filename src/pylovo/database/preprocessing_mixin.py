@@ -23,6 +23,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         return {
             "electrical_backend": ELECTRICAL_BACKEND,
             "residential_only_generation": RESIDENTIAL_ONLY_GENERATION,
+            "exclude_buildings_without_address": EXCLUDE_BUILDINGS_WITHOUT_ADDRESS,
             "load_calculation": {
                 "peak_load_household": PEAK_LOAD_HOUSEHOLD,
                 "sim_factor": SIM_FACTOR,

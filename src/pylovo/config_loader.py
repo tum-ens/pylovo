@@ -177,6 +177,8 @@ RESULT_DIR = os.path.join(os.getcwd(), CONFIG_GENERATION.get("RESULT_DIR", "resu
 # Electrical backend configuration
 ELECTRICAL_BACKEND = CONFIG_GENERATION.get("ELECTRICAL_BACKEND", "pandapower")
 RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION.get("RESIDENTIAL_ONLY_GENERATION", False)
+# Leave out buildings without street and house number (outbuildings such as sheds, garages, barns).
+EXCLUDE_BUILDINGS_WITHOUT_ADDRESS = CONFIG_GENERATION.get("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", False)
 
 # =============================================================================
 # GRID GENERATION CONFIGURATION (from CONFIG_GENERATION)

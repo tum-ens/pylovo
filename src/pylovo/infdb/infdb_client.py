@@ -88,6 +88,11 @@ class InfdbClient:
             AND building_use IN ('Commercial', 'Public', 'Residential', 'Mixed')
             AND COALESCE(building_use_id, '') != '31001_2523'
         """
+        if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
+            # Outbuildings (sheds, garages, barns) carry no address of their own and are
+            # almost never separate grid customers. An import restricted to a reviewed
+            # building allowlist must not apply this filter.
+            query += " AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''"
         self.cur.execute(query, {"p": plz})
         buildings = self.cur.fetchall()
 
