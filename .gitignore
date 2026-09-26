@@ -219,3 +219,6 @@ validations_new/metrics/v198/cable-rows.json
 validations_new/metrics/v198/comparison.json
 validations_new/metrics/v199/cable-rows.json
 validations_new/metrics/v199/comparison.json
+
+# pylovo-api working files: config backups, uploads, job logs, exports
+/.pylovo-api/

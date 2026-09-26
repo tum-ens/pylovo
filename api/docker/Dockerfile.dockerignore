@@ -1,0 +1,16 @@
+# Never bake credentials or local state into the image.
+.env
+.env.*
+!.env.example
+.git
+.venv
+**/__pycache__
+.pylovo-api
+log/*.txt
+results
+docs/build
+validations_new
+validations/metrics
+.idea
+.ruff_cache
+.pytest_cache

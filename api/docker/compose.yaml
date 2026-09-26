@@ -1,0 +1,19 @@
+# Run pylovo-api in a container next to an existing database (e.g. InfDB):
+#   docker compose -f api/docker/compose.yaml up --build
+# Then check http://127.0.0.1:18765/api/health. The API uses the .env, config/ and data/ of this
+# checkout; the browser UI is GridPlanner's.
+services:
+  pylovo-api:
+    build:
+      context: ../..
+      dockerfile: api/docker/Dockerfile
+    image: pylovo
+    # Host networking: the API keeps listening on 127.0.0.1 only, and a database on the host
+    # (HOST=localhost or the host's address in .env) is reachable as it is for the CLI.
+    network_mode: host
+    volumes:
+      - ../../.env:/app/.env:ro
+      - ../../config:/app/config
+      - ../../data:/app/data
+      - ../../log:/app/log
+      - ../../.pylovo-api:/app/.pylovo-api

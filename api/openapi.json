@@ -1,0 +1,4203 @@
+{
+  "components": {
+    "schemas": {
+      "ApplyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge": {
+            "items": {
+              "const": "non_convergence",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Acknowledge",
+            "type": "array"
+          },
+          "changes": {
+            "$ref": "#/components/schemas/Changes"
+          },
+          "first_version_edit_confirm": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Version Edit Confirm"
+          },
+          "if_match": {
+            "maxLength": 80,
+            "title": "If Match",
+            "type": "string"
+          },
+          "objectid": {
+            "maxLength": 200,
+            "title": "Objectid",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "objectid",
+          "changes",
+          "if_match"
+        ],
+        "title": "ApplyBody",
+        "type": "object"
+      },
+      "Body_dso_preview_api_transformers_dso_csv_preview_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_dso_preview_api_transformers_dso_csv_preview_post",
+        "type": "object"
+      },
+      "BulkUpdate": {
+        "properties": {
+          "capacity_distribution": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity Distribution"
+          },
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "method": {
+            "pattern": "^(uniform|percentage)$",
+            "title": "Method",
+            "type": "string"
+          },
+          "plz": {
+            "title": "Plz",
+            "type": "integer"
+          },
+          "transformer_rated_power": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transformer Rated Power"
+          }
+        },
+        "required": [
+          "plz",
+          "method"
+        ],
+        "title": "BulkUpdate",
+        "type": "object"
+      },
+      "CapacityUpdate": {
+        "properties": {
+          "transformer_rated_power": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Transformer Rated Power",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "transformer_rated_power"
+        ],
+        "title": "CapacityUpdate",
+        "type": "object"
+      },
+      "Changes": {
+        "additionalProperties": false,
+        "description": "New input values of one building (only the fields that change).",
+        "properties": {
+          "households": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Households"
+          },
+          "nonresidential_floor_area": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonresidential Floor Area"
+          },
+          "nonresidential_use": {
+            "anyOf": [
+              {
+                "enum": [
+                  "Commercial",
+                  "Public"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nonresidential Use"
+          },
+          "residential_floor_area": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residential Floor Area"
+          }
+        },
+        "title": "Changes",
+        "type": "object"
+      },
+      "ClearCapacities": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "plz": {
+            "title": "Plz",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plz"
+        ],
+        "title": "ClearCapacities",
+        "type": "object"
+      },
+      "DeleteNetworksBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "plz": {
+            "title": "Plz",
+            "type": "integer"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plz",
+          "version_id"
+        ],
+        "title": "DeleteNetworksBody",
+        "type": "object"
+      },
+      "DeleteVersionsBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "version_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Version Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "version_ids"
+        ],
+        "title": "DeleteVersionsBody",
+        "type": "object"
+      },
+      "DsoImportBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "replace_source": {
+            "default": false,
+            "title": "Replace Source",
+            "type": "boolean"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "upload_id": {
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id"
+        ],
+        "title": "DsoImportBody",
+        "type": "object"
+      },
+      "ExportBody": {
+        "properties": {
+          "bcid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bcid"
+          },
+          "kcid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kcid"
+          },
+          "plz": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Plz",
+            "type": "array"
+          }
+        },
+        "required": [
+          "plz"
+        ],
+        "title": "ExportBody",
+        "type": "object"
+      },
+      "GenerateBody": {
+        "properties": {
+          "ags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ags"
+          },
+          "allow_unverified": {
+            "default": false,
+            "title": "Allow Unverified",
+            "type": "boolean"
+          },
+          "include_blocked": {
+            "default": false,
+            "title": "Include Blocked",
+            "type": "boolean"
+          },
+          "parallel": {
+            "default": true,
+            "title": "Parallel",
+            "type": "boolean"
+          },
+          "plz": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plz"
+          },
+          "skip_blocked": {
+            "default": false,
+            "title": "Skip Blocked",
+            "type": "boolean"
+          }
+        },
+        "title": "GenerateBody",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "description": "Answer of ``GET /api/health``.",
+        "properties": {
+          "api": {
+            "title": "Api",
+            "type": "integer"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "service",
+          "api",
+          "version",
+          "revision"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "IfMatchBody": {
+        "additionalProperties": false,
+        "properties": {
+          "if_match": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Match"
+          }
+        },
+        "title": "IfMatchBody",
+        "type": "object"
+      },
+      "NewTransformer": {
+        "properties": {
+          "lat": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "type": "number"
+          },
+          "plz": {
+            "title": "Plz",
+            "type": "integer"
+          },
+          "transformer_rated_power": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transformer Rated Power"
+          }
+        },
+        "required": [
+          "plz",
+          "lon",
+          "lat"
+        ],
+        "title": "NewTransformer",
+        "type": "object"
+      },
+      "OsmImportBody": {
+        "properties": {
+          "relation_id": {
+            "minimum": 1.0,
+            "title": "Relation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "relation_id"
+        ],
+        "title": "OsmImportBody",
+        "type": "object"
+      },
+      "PlzBody": {
+        "properties": {
+          "plz": {
+            "title": "Plz",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plz"
+        ],
+        "title": "PlzBody",
+        "type": "object"
+      },
+      "PreflightBody": {
+        "properties": {
+          "base_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version Id"
+          },
+          "changes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changes"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "title": "PreflightBody",
+        "type": "object"
+      },
+      "PreviewBody": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "$ref": "#/components/schemas/Changes"
+          },
+          "objectid": {
+            "maxLength": 200,
+            "title": "Objectid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectid",
+          "changes"
+        ],
+        "title": "PreviewBody",
+        "type": "object"
+      },
+      "RefreshBody": {
+        "properties": {
+          "scope": {
+            "default": "changes",
+            "enum": [
+              "changes",
+              "all"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "title": "RefreshBody",
+        "type": "object"
+      },
+      "RegionBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "plz": {
+            "title": "Plz",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plz"
+        ],
+        "title": "RegionBody",
+        "type": "object"
+      },
+      "RestoreBody": {
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RestoreBody",
+        "type": "object"
+      },
+      "RevertBody": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge": {
+            "items": {
+              "const": "non_convergence",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Acknowledge",
+            "type": "array"
+          },
+          "first_version_edit_confirm": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Version Edit Confirm"
+          },
+          "if_match": {
+            "maxLength": 80,
+            "title": "If Match",
+            "type": "string"
+          },
+          "objectid": {
+            "maxLength": 200,
+            "title": "Objectid",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "objectid",
+          "if_match"
+        ],
+        "title": "RevertBody",
+        "type": "object"
+      },
+      "SetupBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          }
+        },
+        "title": "SetupBody",
+        "type": "object"
+      },
+      "TextBody": {
+        "properties": {
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "deep": {
+            "default": true,
+            "title": "Deep",
+            "type": "boolean"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "TextBody",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValuesBody": {
+        "properties": {
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "changes": {
+            "additionalProperties": true,
+            "title": "Changes",
+            "type": "object"
+          },
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "title": "ValuesBody",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "HTTP API of the pylovo workflow (database, regions, data, generation, results) for the GridPlanner UI.",
+    "title": "pylovo-api",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/config": {
+      "get": {
+        "description": "Current file text, its hash, the form values with help texts and recent backups.",
+        "operationId": "get_config_api_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Config Api Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "config"
+        ]
+      },
+      "put": {
+        "description": "Overwrite the file with a validated text; the old file is kept as a backup.",
+        "operationId": "save_api_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Api Config Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/backups/{name}": {
+      "get": {
+        "description": "Text of one backup.",
+        "operationId": "backup_api_config_backups__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Backup",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/restore": {
+      "post": {
+        "description": "Restore a backup (the current file is backed up first).",
+        "operationId": "restore_api_config_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Restore Api Config Restore Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/validate": {
+      "post": {
+        "description": "Validate a candidate text (YAML syntax, field types, ``pylovo.config_loader`` import).",
+        "operationId": "validate_api_config_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Validate Api Config Validate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/values": {
+      "post": {
+        "description": "Apply form edits to single keys (comments stay intact). ``dry_run`` returns the diff only.",
+        "operationId": "set_values_api_config_values_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Values Api Config Values Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Values",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/diagnostics/rules": {
+      "get": {
+        "description": "The rule catalogue and the heuristic thresholds in effect.",
+        "operationId": "rules_api_diagnostics_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Rules Api Diagnostics Rules Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rules",
+        "tags": [
+          "diagnostics"
+        ]
+      }
+    },
+    "/api/flow/analyse-all": {
+      "post": {
+        "description": "``pylovo-analyze --plz P --all`` for every PLZ of the config version without analysis.",
+        "operationId": "analyse_all_api_flow_analyse_all_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Analyse All Api Flow Analyse All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Analyse All",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/flow/config-preflight": {
+      "post": {
+        "description": "Pre-flight of a candidate config (``text``, and/or form ``changes`` applied to it or to the saved file).\n\nUsed by the config dialogs: when the candidate changes generation parameters of an existing\nVERSION_ID, the dialog offers to switch to the next free version id in the same save.",
+        "operationId": "config_preflight_api_flow_config_preflight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreflightBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Config Preflight Api Flow Config Preflight Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Config Preflight",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/flow/generate-state": {
+      "get": {
+        "description": "Pre-flight of the saved config against the stored snapshot of its VERSION_ID, plus the\ngenerated / analysed state of the given PLZ in that version.",
+        "operationId": "generate_state_api_flow_generate_state_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generate State Api Flow Generate State Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate State",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/flow/reanalyse": {
+      "post": {
+        "description": "Clear the analysis of one PLZ in the config version and run ``pylovo-analyze --all`` again.",
+        "operationId": "reanalyse_api_flow_reanalyse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reanalyse Api Flow Reanalyse Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reanalyse",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/flow/regenerate": {
+      "post": {
+        "description": "Delete the grids of one PLZ in the config version and generate them again (one job).",
+        "operationId": "regenerate_api_flow_regenerate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Regenerate Api Flow Regenerate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Regenerate",
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}": {
+      "get": {
+        "description": "One grid with KPIs, feeders and GeoJSON layers.",
+        "operationId": "grid_api_grids__grid_result_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offsets",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Offsets",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Grid Api Grids  Grid Result Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grid",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/diagnostics": {
+      "get": {
+        "description": "Findings of one grid. Reuses a cached on-demand power flow at ``load_scaling`` if there is one.\n\nBefore the power flow the symptoms come from the stored generation check and the design data,\nand the attribution is a linearised estimate. ``cached=false`` ignores a cached power flow (the\ninspector asks for this while it shows no power-flow result). Nothing is written to the database.",
+        "operationId": "grid_diagnostics_api_grids__grid_result_id__diagnostics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "load_scaling",
+            "required": false,
+            "schema": {
+              "default": 1.0,
+              "exclusiveMinimum": 0,
+              "maximum": 5,
+              "title": "Load Scaling",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cached",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Cached",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Grid Diagnostics Api Grids  Grid Result Id  Diagnostics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grid Diagnostics",
+        "tags": [
+          "diagnostics"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/load-edit/building": {
+      "get": {
+        "description": "The building, its generated inputs, the version parameters, the guard results and its history.",
+        "operationId": "building_context_api_grids__grid_result_id__load_edit_building_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "objectid",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Objectid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Building Context Api Grids  Grid Result Id  Load Edit Building Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Building Context",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/load-edit/check": {
+      "get": {
+        "description": "Storage, reproduction and power-flow baseline checks of one grid (read-only).",
+        "operationId": "check_api_grids__grid_result_id__load_edit_check_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Check Api Grids  Grid Result Id  Load Edit Check Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/load-edit/preview": {
+      "post": {
+        "description": "Before/after numbers of a change; nothing is written.",
+        "operationId": "preview_api_grids__grid_result_id__load_edit_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Preview Api Grids  Grid Result Id  Load Edit Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/load-edit/revert": {
+      "post": {
+        "description": "Apply the generated inputs of a building again (new audit row, action ``revert``).",
+        "operationId": "revert_api_grids__grid_result_id__load_edit_revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevertBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revert Api Grids  Grid Result Id  Load Edit Revert Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revert",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/load-edits": {
+      "get": {
+        "description": "Audit rows of a grid, newest first.",
+        "operationId": "grid_history_api_grids__grid_result_id__load_edits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "objectid",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Objectid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Grid History Api Grids  Grid Result Id  Load Edits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grid History",
+        "tags": [
+          "load edits"
+        ]
+      },
+      "post": {
+        "description": "Write the edit (building, pandapower loads, network JSON, validation columns, audit row).",
+        "operationId": "apply_api_grids__grid_result_id__load_edits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Apply Api Grids  Grid Result Id  Load Edits Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/load-edits/undo-all": {
+      "post": {
+        "description": "Undo every active edit of a grid (newest first, one transaction, exact).",
+        "operationId": "undo_all_api_grids__grid_result_id__load_edits_undo_all_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IfMatchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undo All Api Grids  Grid Result Id  Load Edits Undo All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo All",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/lod2": {
+      "get": {
+        "description": "LoD2 models of the grid's buildings from ``citydb`` as a binary mesh (format: :func:`pylovo_api.lod2.encode`).\n\nBuildings without LoD2, or a database without ``citydb``, give an empty mesh and never an error:\nthe map then shows those buildings in 2D.",
+        "operationId": "grid_lod2_api_grids__grid_result_id__lod2_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grid Lod2",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/pandapower.json": {
+      "get": {
+        "description": "The stored pandapower network (load it with ``pandapower.from_json``).",
+        "operationId": "grid_download_api_grids__grid_result_id__pandapower_json_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grid Download",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/grids/{grid_result_id}/powerflow": {
+      "post": {
+        "description": "Run a pandapower power flow now (nothing is stored).",
+        "operationId": "grid_powerflow_api_grids__grid_result_id__powerflow_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grid_result_id",
+            "required": true,
+            "schema": {
+              "title": "Grid Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "load_scaling",
+            "required": false,
+            "schema": {
+              "default": 1.0,
+              "exclusiveMinimum": 0,
+              "maximum": 5,
+              "title": "Load Scaling",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Grid Powerflow Api Grids  Grid Result Id  Powerflow Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grid Powerflow",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Liveness and contract version, without database access (container health checks, UI version check).\n\n``api`` is the contract version (bumped only for breaking changes), ``version`` the pylovo\npackage version, ``revision`` the git commit of the running code (``null`` if unknown).",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "description": "All jobs of this server session (and recent history), newest first.",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Jobs Api Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/analyze": {
+      "post": {
+        "description": "``pylovo-analyze --plz <plz> --all`` for the config ``VERSION_ID``.",
+        "operationId": "analyze_api_jobs_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlzBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Analyze Api Jobs Analyze Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/delete-networks": {
+      "post": {
+        "description": "``pylovo-delete networks --plz <plz> --version <id>``",
+        "operationId": "delete_networks_api_jobs_delete_networks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteNetworksBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Networks Api Jobs Delete Networks Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Networks",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/delete-versions": {
+      "post": {
+        "description": "``pylovo-delete --version <ids>``: removes all results of these versions.",
+        "operationId": "delete_versions_api_jobs_delete_versions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteVersionsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Versions Api Jobs Delete Versions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Versions",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/export": {
+      "post": {
+        "description": "``pylovo-export`` into a private directory; the CSVs are offered for download afterwards.",
+        "operationId": "export_api_jobs_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Export Api Jobs Export Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/generate": {
+      "post": {
+        "description": "``pylovo-generate --plz ... | --ags ... --parallel|--no-parallel``, gated by the region gate.\n\nPLZ without input data are refused (409) unless ``skip_blocked`` drops them or\n``include_blocked`` keeps them; PLZ whose check has not finished need ``allow_unverified``.\n``--ags`` is passed on only when every PLZ of the municipality passes the gate.",
+        "operationId": "generate_api_jobs_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generate Api Jobs Generate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/generate/check": {
+      "get": {
+        "description": "What ``pylovo-generate`` will do for these regions with the current config.",
+        "operationId": "generate_check_api_jobs_generate_check_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ags",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ags"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generate Check Api Jobs Generate Check Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Check",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/import-dso": {
+      "post": {
+        "description": "``pylovo-import transformers-dso-csv <file> [--source S] [--replace-source]``",
+        "operationId": "import_dso_api_jobs_import_dso_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DsoImportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Import Dso Api Jobs Import Dso Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Dso",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/import-osm": {
+      "post": {
+        "description": "``pylovo-import transformers-osm --relation-id <id>`` (queries the Overpass API).",
+        "operationId": "import_osm_api_jobs_import_osm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OsmImportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Import Osm Api Jobs Import Osm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Osm",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/setup": {
+      "post": {
+        "description": "``pylovo-setup --yes``: drops and recreates the ``pylovo`` schema. Type the database name.",
+        "operationId": "setup_api_jobs_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Setup Api Jobs Setup Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "description": "One job (optionally with the last ``tail`` log lines).",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tail",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 5000,
+              "minimum": 0,
+              "title": "Tail",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Job Api Jobs  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Stop a running job (SIGINT to its process group, then SIGTERM/SIGKILL).",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Job Api Jobs  Job Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/events": {
+      "get": {
+        "description": "Server-Sent Events: ``log`` events with new lines, ``status`` updates and a final ``end``.",
+        "operationId": "job_events_api_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Events",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/files": {
+      "get": {
+        "description": "Files written by an export job.",
+        "operationId": "job_files_api_jobs__job_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Job Files Api Jobs  Job Id  Files Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Files",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/files/{name}": {
+      "get": {
+        "description": "Download one file written by an export job.",
+        "operationId": "job_file_api_jobs__job_id__files__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job File",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/log": {
+      "get": {
+        "description": "Log lines after a sequence number (``format=text`` downloads the whole log).",
+        "operationId": "job_log_api_jobs__job_id__log_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Log",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/load-edits/{load_edit_id}/undo": {
+      "post": {
+        "description": "Undo the latest active edit of a grid exactly.",
+        "operationId": "undo_api_load_edits__load_edit_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "load_edit_id",
+            "required": true,
+            "schema": {
+              "title": "Load Edit Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IfMatchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undo Api Load Edits  Load Edit Id  Undo Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/maintenance/refresh-views": {
+      "post": {
+        "description": "Refresh the GIS view ``buildings_result_with_grid`` in the background (edits leave it outdated).",
+        "operationId": "refresh_views_api_maintenance_refresh_views_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Refresh Views Api Maintenance Refresh Views Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Views",
+        "tags": [
+          "load edits"
+        ]
+      }
+    },
+    "/api/regions/ags/{ags}": {
+      "get": {
+        "description": "All PLZ of a municipality key (AGS).",
+        "operationId": "ags_api_regions_ags__ags__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ags",
+            "required": true,
+            "schema": {
+              "title": "Ags",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Ags Api Regions Ags  Ags  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ags",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/available": {
+      "get": {
+        "description": "The postcodes that have input data (checked and selectable), for the list under an empty search.\n\nRows have the shape of ``/search`` rows. ``pending`` counts the postcodes whose check has not\nfinished yet; they are selectable (*not verified*) but not listed here.",
+        "operationId": "available_api_regions_available_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Available Api Regions Available Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Available",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/coverage": {
+      "get": {
+        "description": "State of the input check: strategy per table, progress, counts, suggested indexes.",
+        "operationId": "get_coverage_api_regions_coverage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Coverage Api Regions Coverage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Coverage",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/coverage/refresh": {
+      "post": {
+        "description": "Run change detection now (``changes``) or recount every municipality (``all``).",
+        "operationId": "refresh_coverage_api_regions_coverage_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RefreshBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Refresh Coverage Api Regions Coverage Refresh Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Coverage",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/input": {
+      "get": {
+        "description": "InputStatus of up to 500 PLZ; ``ensure=1`` counts their municipalities first (waits ``wait_s``).",
+        "operationId": "region_input_api_regions_input_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "plz",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Plz",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ensure",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Ensure",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait_s",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 15,
+              "minimum": 0,
+              "title": "Wait S",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Region Input Api Regions Input Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Region Input",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/overview": {
+      "get": {
+        "description": "Extent of all postcode polygons, the PLZ with generated grids and the extent of the selectable PLZ.",
+        "operationId": "overview_api_regions_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Overview Api Regions Overview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/postcodes": {
+      "get": {
+        "description": "Postcode polygons (GeoJSON, EPSG:4326) in a bounding box ``minLon,minLat,maxLon,maxLat``.",
+        "operationId": "postcodes_api_regions_postcodes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox"
+            }
+          },
+          {
+            "in": "query",
+            "name": "zoom",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Zoom"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_selectable",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Selectable",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Postcodes Api Regions Postcodes Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Postcodes",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/search": {
+      "get": {
+        "description": "Search the municipal register and ``pylovo.postcode`` by PLZ, AGS or name.",
+        "operationId": "search_api_regions_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_selectable",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Selectable",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Search Api Regions Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/regions/{plz}": {
+      "get": {
+        "description": "Postcode details: municipality, transformers by source, generated versions, input data (region gate).",
+        "operationId": "region_api_regions__plz__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plz",
+            "required": true,
+            "schema": {
+              "title": "Plz",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Region Api Regions  Plz  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Region",
+        "tags": [
+          "regions"
+        ]
+      }
+    },
+    "/api/results/{version_id}/diagnostics": {
+      "get": {
+        "description": "Per-grid finding counts of a version from the rules that need no power flow (Statistics).",
+        "operationId": "version_diagnostics_api_results__version_id__diagnostics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Version Diagnostics Api Results  Version Id  Diagnostics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Diagnostics",
+        "tags": [
+          "diagnostics"
+        ]
+      }
+    },
+    "/api/results/{version_id}/summary": {
+      "get": {
+        "description": "KPIs and chart data of a version (all PLZ, or the given ones).",
+        "operationId": "summary_api_results__version_id__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Summary Api Results  Version Id  Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/results/{version_id}/{plz}/map": {
+      "get": {
+        "description": "All grids of one PLZ as GeoJSON layers (cables, stations, buildings).",
+        "operationId": "overview_api_results__version_id___plz__map_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plz",
+            "required": true,
+            "schema": {
+              "title": "Plz",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offsets",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Offsets",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Overview Api Results  Version Id   Plz  Map Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/status": {
+      "get": {
+        "description": "Database connection, schema state, table counts, config version and the running job.",
+        "operationId": "get_status_api_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Status Api Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "status"
+        ]
+      }
+    },
+    "/api/transformers": {
+      "get": {
+        "description": "Transformers of a PLZ (spatial intersection with its polygon) or of a map bounding box.",
+        "operationId": "list_transformers_api_transformers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Transformers Api Transformers Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Transformers",
+        "tags": [
+          "transformers"
+        ]
+      },
+      "post": {
+        "description": "Add a manual transformer position (``osm_id = manual/<epoch-ms>``).",
+        "operationId": "add_transformer_api_transformers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewTransformer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Transformer Api Transformers Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Transformer",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/transformers/bulk": {
+      "post": {
+        "description": "Set all capacities of a PLZ to one size, or distribute sizes randomly by percentage.",
+        "operationId": "bulk_update_api_transformers_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Bulk Update Api Transformers Bulk Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Update",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/transformers/capacities": {
+      "get": {
+        "description": "Transformer sizes offered by the editor (from ``TRANSFORMERS`` in the config).",
+        "operationId": "capacities_api_transformers_capacities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Capacities Api Transformers Capacities Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capacities",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/transformers/clear-capacities": {
+      "post": {
+        "description": "Remove the rated power of every transformer in a PLZ.",
+        "operationId": "clear_capacities_api_transformers_clear_capacities_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearCapacities"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Capacities Api Transformers Clear Capacities Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Capacities",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/transformers/dso-csv/preview": {
+      "post": {
+        "description": "Store an uploaded DSO CSV and return a validation preview (nothing is imported yet).",
+        "operationId": "dso_preview_api_transformers_dso_csv_preview_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_dso_preview_api_transformers_dso_csv_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dso Preview Api Transformers Dso Csv Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dso Preview",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/transformers/osm-relations": {
+      "get": {
+        "description": "Find OSM boundary relations by name (Nominatim) to fill in ``--relation-id``.",
+        "operationId": "osm_relations_api_transformers_osm_relations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Osm Relations Api Transformers Osm Relations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Osm Relations",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/transformers/{osm_id}": {
+      "delete": {
+        "description": "Delete one transformer. Positions of generated grids that use it are removed as well.",
+        "operationId": "delete_transformer_api_transformers__osm_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "osm_id",
+            "required": true,
+            "schema": {
+              "title": "Osm Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Transformer Api Transformers  Osm Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Transformer",
+        "tags": [
+          "transformers"
+        ]
+      },
+      "patch": {
+        "description": "Set the rated power of one transformer.",
+        "operationId": "update_capacity_api_transformers__osm_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "osm_id",
+            "required": true,
+            "schema": {
+              "title": "Osm Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapacityUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Capacity Api Transformers  Osm Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Capacity",
+        "tags": [
+          "transformers"
+        ]
+      }
+    },
+    "/api/versions": {
+      "get": {
+        "description": "All versions with PLZ, grid and analysis counts.",
+        "operationId": "versions_api_versions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Versions Api Versions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Versions",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/versions/compare": {
+      "get": {
+        "description": "Generation parameters of two versions side by side.",
+        "operationId": "compare_api_versions_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "title": "B",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Api Versions Compare Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/versions/{version_id}": {
+      "get": {
+        "description": "One version including its stored generation parameters.",
+        "operationId": "version_api_versions__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Version Api Versions  Version Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version",
+        "tags": [
+          "results"
+        ]
+      }
+    },
+    "/api/versions/{version_id}/load-edits": {
+      "get": {
+        "description": "All audit rows of a version (JSON or CSV with formula-injection escaping).",
+        "operationId": "version_history_api_versions__version_id__load_edits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plz",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plz"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version History",
+        "tags": [
+          "load edits"
+        ]
+      }
+    }
+  }
+}

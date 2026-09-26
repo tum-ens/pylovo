@@ -1,0 +1,77 @@
+# HTTP API contract of pylovo-api (api/openapi.json, see api/README.md), on pull requests:
+#   1. the committed snapshot equals the app's schema (api/tests/test_openapi.py);
+#   2. oasdiff breaking: the snapshot of the pull request against the snapshot of the base branch.
+#      Breaking changes fail unless API_VERSION (= info.version of the snapshot) was increased.
+name: API contract
+
+on:
+  pull_request:
+    paths:
+      - "api/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/api-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Importing pylovo needs database settings; nothing connects to a database here.
+      DBNAME: ci
+      DBUSER: ci
+      PASSWORD: ci
+      HOST: 127.0.0.1
+      PORT: "5432"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Snapshot equals the app
+        run: uv run --locked --extra api pytest -q api/tests/test_openapi.py
+
+      - name: Snapshot of the base branch
+        id: base
+        if: github.event_name == 'pull_request'
+        run: |
+          if git show "origin/${GITHUB_BASE_REF}:api/openapi.json" > "$RUNNER_TEMP/base-openapi.json" 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::${GITHUB_BASE_REF} has no api/openapi.json yet: nothing to compare."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Breaking changes (oasdiff)
+        if: steps.base.outputs.exists == 'true'
+        run: |
+          cp api/openapi.json "$RUNNER_TEMP/head-openapi.json"
+          status=0
+          docker run --rm -v "$RUNNER_TEMP:/specs:ro" tufin/oasdiff:v1.32.1 breaking \
+            /specs/base-openapi.json /specs/head-openapi.json --fail-on ERR --format githubactions || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "No breaking changes."
+            exit 0
+          elif [ "$status" -ne 1 ]; then
+            echo "::error::oasdiff failed with exit code $status."
+            exit "$status"
+          fi
+          base_api=$(jq -r .info.version "$RUNNER_TEMP/base-openapi.json")
+          head_api=$(jq -r .info.version api/openapi.json)
+          if [[ "$base_api" =~ ^[0-9]+$ && "$head_api" =~ ^[0-9]+$ ]] && [ "$head_api" -gt "$base_api" ]; then
+            echo "::warning::Breaking API changes with API_VERSION $base_api -> $head_api: the GridPlanner UI must support the new version."
+          else
+            echo "::error::Breaking API changes (above) without increasing API_VERSION in api/pylovo_api/__init__.py (now $head_api). Keep the old routes and fields, or bump the version and update the UI."
+            exit 1
+          fi

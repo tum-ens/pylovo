@@ -91,6 +91,14 @@ legacy-ui = [
     # Deprecated Flask transformer map (pylovo-import transformers-ui); use the GridPlanner UI instead
     "flask>=3.1.2,<4.0.0",
 ]
+api = [
+    # Headless HTTP API (pylovo-api) for the GridPlanner UI: web server, job runner with live logs, CSV upload
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "python-multipart>=0.0.9",
+    # Only needed by the FastAPI TestClient in api/tests
+    "httpx>=0.27.0",
+]
 
 [dependency-groups]
 # Installed by `uv sync` / `uv run` (not by `pip install pylovo`, not in the image: `uv sync --no-dev`)
@@ -106,13 +114,16 @@ pylovo-analyze = "pylovo.cli.analyze:main"
 pylovo-delete = "pylovo.cli.delete:main"
 pylovo-export = "pylovo.cli.export:main"
 pylovo-import = "pylovo.cli.import_data:main"
+pylovo-api = "pylovo_api.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pylovo"]
+packages = ["src/pylovo", "api/pylovo_api"]
 
 [tool.hatch.build]
 include = [
     "src/pylovo/**/*.py",
+    # HTTP API package (pylovo-api)
+    "api/pylovo_api/**/*.py",
 ]
 
 [project.urls]
