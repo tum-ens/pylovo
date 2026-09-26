@@ -9,7 +9,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 
 ## [Unreleased]
-- Add new changes here before merging into the next official version.
+### Added
+- HTTP API `pylovo-api` (`api/`, extra `api`, image `ghcr.io/tum-ens/pylovo`) for the GridPlanner browser UI: database setup, region input check, transformer editing and imports, configuration editing with backups, generation, analysis and export jobs with live logs, statistics, grid details, an on-demand power flow, diagnostics and load editing
+- `pylovo.load_editing` and the audit table `pylovo.load_edit`: edit the building loads of stored grids
+- `pylovo.feeder_planning`: feeder branch planning and feeder cable sizing as a separate module
+- Optional extras `notebooks`, `api` and `legacy-ui`; `igraph` in `plots`
+- `USE_MANUAL_TRANSFORMER_POSITIONS`: use manually placed transformer positions (GridPlanner UI) without the OSM and LoD2 candidates
+- `pylovo-generate --parallel`; `PARALLEL` in `config_generation.yaml` is now the default for several regions
+- `GET /api/health` of `pylovo-api` (no database access: contract version `api`, pylovo version, git revision) and the OpenAPI contract snapshot `api/openapi.json` (`api/scripts/export_openapi.py`), checked by a test and on pull requests by `oasdiff breaking` against the base branch
+
+### Changed
+- `pylovo-setup` has `--help`, asks to type the database name before dropping the schema (`--yes` for scripts), creates extensions in `public` and refuses to drop the schema while PostGIS lives in it
+- `DatabaseClient` is composed of dedicated mixins (`ResultsMixin`, `TransformerUiMixin` added); SQL values are parameterised
+- `utils.simultaneousPeakLoad` / `oneSimultaneousLoad` renamed to `simultaneous_peak_load` / `category_simultaneous_load`
+- Documentation rewritten (furo, autoapi, reproducible figures); CI builds the docs and publishes them to GitHub Pages
+- Tutorial notebooks rewired to the current package and executed on an OSM demo region
+- `pylovo-generate` requires exactly one of `--plz`/`--ags`; the Flask transformer map binds `127.0.0.1` and kills port owners only with `--auto-cleanup`
+- Analysis counts transformer stations with their full rating: `plz_parameters` keys, `clustering_parameters.transformer_mva` and the comparison metric use `sn_mva x parallel` (an 800 kVA station of two 400 kVA units was counted as 400)
+- The version snapshot records `MERGE_GREENFIELD_CLUSTERS`, `GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA` and `USE_MANUAL_TRANSFORMER_POSITIONS`; older snapshots without them stay usable
+- A transformer rating only sizes a station when the candidate's source is enabled; among several candidates the cluster's own station wins
+- The transformer's street vertex is the station busbar `LVbus 1`: cables starting there leave the busbar directly, without the 1 m link line (one bus and one line fewer per grid; voltage drops change by less than 0.03 percentage points)
+
+### Deprecated
+- `pylovo-import transformers-ui` (Flask transformer map): use the transformer editor of the GridPlanner UI (on `pylovo-api`); Flask moved to the extra `legacy-ui`
+
+### Removed
+- `pylovo-validate` (`compare-grids`), `pylovo.analysis.synthetic_metric_export` and `validations/grid_comparison`, superseded by `validations_new`
+- The double-transformer comparison in the greenfield clustering (it could never win), `pylovo.analysis.powerflow_calculation` and `ParameterCalculator.count_consumers` (no callers)
+
+### Fixed
+- Overpass and OSM tile requests send an identifying User-Agent (Overpass answered HTTP 406)
+- `pylovo-import transformers-osm` (called a non-existent method; failed for small areas), `pylovo-delete transformers` (TRUNCATE rejected by a foreign key), `pylovo-export` with kcid/bcid 0 or negative ids, `pylovo-validate --help`, `pylovo-classify --help`
+- int16 overflow of vertex ids in brownfield assignment; aborted transactions in several database helpers
+- On-map plots (pandapower lon/lat check), several network plots, radar plot for 7 clusters
+- `pylovo-classify` used the clustering settings of the previous run
+- Transformer candidates with an empty `type` (e.g. manual positions without a comment) were never used as positions
 ## [0.7.0] - 2026-05-11
 ### Changed
 - Enable feeder branching with split-point reuse to model cable branching controlled by a minimum shared-prefix distance and a sizing workflow for upstream segments that considers the aggregated downstream load

@@ -1,63 +1,144 @@
-.. pylovo gui documentation master file, created by sphinx-quickstart on Wed Jul 12 12:49:48 2023
+pylovo
+======
 
-Introduction
-******************************************************************
-Overview pylovo (PYthon tool for LOw-VOltage distribution grid generation)
-===========================================================
-This tool provides a comprehensive public-data-based module to generate synthetic low-voltage distribution grids for a
-freely-selected research area. The main data input is the buildings, roads and transformers geographic data that are obtained
-from OpenStreetMap, with additional auxiliary datasets including postal code area polygons (to identify and select
-research areas), consumer categories (to estimate loading performances of different types of buildings and households)
-and infrastructure parameters, etc. The result outputs a feasible solution of aggregated distribution grid networks
-within the research scope and can automatically analyse the important grid statistics to enable the user to evaluate the
-general grid properties for the generated synthetic grids.
+Detailed low-voltage grid data are often unavailable for regional energy studies. **pylovo**
+(PYthon tool for LOw-VOltage distribution grid generation) turns open building, street and
+transformer data into geographically located synthetic grids for German postcode areas. These
+models make it possible to explore local network constraints, future demand and grid planning
+questions across many places. Results can be inspected in the browser (GridPlanner, through the
+:doc:`user_guide/http_api`) and used as `pandapower <https://www.pandapower.org/>`_ networks or GIS
+data.
 
-At the current state of the project the data is prepared for Bavaria, but will be extended to Germany.
-Due to the large amount of data, external users need to setup a local PosgreSQL database for the grid generation process.
-A step by step tutorial to understand the product of this tool can be found in the notebook_tutorials directory.
+.. figure:: /images/generation/step5_grids_by_grid.png
+   :alt: Four generated LV grids of PLZ 85653, one colour per grid, with transformer ratings
+   :width: 90%
 
+   Generated grids of the demo region 85653 (Aying), one colour per grid. Demo extract derived
+   from OpenStreetMap, © OpenStreetMap contributors, ODbL.
 
-.. note::
+.. rubric:: Key features
 
-    | **Citation**: In case you use pylovo in a scientific publication, we kindly request you to cite our publication listed in the :doc:`further_reading` section.
-    | **Collaboration**: pylovo is open-source available on GitHub and open for collaboration.
+* **Regional open-data inputs** -- `InfDB <https://github.com/tum-ens/InfDB>`_ harmonises LoD2
+  buildings, Zensus 2022 information, official street data and postcode areas; transformer
+  positions can also come from OpenStreetMap or network operators (:doc:`user_guide/input_data`).
+* **Brownfield and greenfield generation** -- incorporate known transformer locations where
+  available and place synthetic transformers for the remaining consumers.
+* **Geographic and electrical detail** -- connect buildings along streets, route radial feeders,
+  size equipment for coincident loads and voltage limits, and check the grids with a power flow
+  (:doc:`concepts/grid_dimensioning`).
+* **Reproducible versions** -- every run belongs to a ``VERSION_ID`` whose generation parameters
+  are frozen in the database; generation is deterministic for a given configuration.
+* **Scales from one postcode to many** -- ``pylovo-generate`` accepts postcodes (PLZ) or
+  municipalities (AGS) and runs postcodes in parallel.
+* **Analysis and visualisation** -- key figures per postcode and per grid, QGIS templates,
+  CSV export, plotting helpers and an HTTP API for the GridPlanner browser UI.
 
-Contents
-===========================================================
-In this documentation you can find instructions and information on:
+.. rubric:: Where to start
 
-* How to install pylovo in :doc:`installation/installation`.
-* How to configure pylovo in :doc:`configuration`.
-* How to generate grids in :doc:`grid_generation/index`.
+.. grid:: 1 2 2 3
+   :gutter: 3
 
-.. image:: images/grid_generation/grid_generation_part_forchheim.png
-    :width: 300
-    :alt: Default view
+   .. grid-item-card:: Installation
+      :link: getting_started/installation
+      :link-type: doc
 
-* How the grids are generated in :doc:`grid_generation/explanation/grid_generation_process`.
-* How to create grid classes and representative grids in :doc:`classification/index`.
-* How to visualise your results in :doc:`visualisation/index`.
+      Python environment, PostgreSQL with PostGIS and pgRouting, InfDB.
 
-Legal Notice
-==========================
-`MIT License <https://opensource.org/license/MIT>`_ , Copyright (C) 2023-2025 Beneharo Reveron Baecker
+   .. grid-item-card:: Quickstart
+      :link: getting_started/quickstart
+      :link-type: doc
 
-Acknowledgement
-==========================
-The development of this software has been supported by contributions of the following persons: Soner Candas, Deniz Tepe,
-Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
+      ``.env``, ``pylovo-setup`` and your first ``pylovo-generate`` run.
 
-Structure
-===========================================================
+   .. grid-item-card:: Configuration
+      :link: user_guide/configuration
+      :link-type: doc
+
+      Every key of ``config_generation.yaml``, ``config_analysis.yaml`` and ``.env``.
+
+   .. grid-item-card:: Command-line reference
+      :link: user_guide/cli
+      :link-type: doc
+
+      ``pylovo-setup``, ``-generate``, ``-analyze``, ``-import``, ``-export``, ``-delete``.
+
+   .. grid-item-card:: How grids are generated
+      :link: concepts/pipeline
+      :link-type: doc
+
+      The pipeline step by step on the demo region PLZ 85653.
+
+   .. grid-item-card:: API reference
+      :link: api_reference
+      :link-type: doc
+
+      Modules, classes and functions of the ``pylovo`` package.
+
+.. rubric:: Citation
+
+If you use pylovo in a scientific publication, please cite:
+
+   Reveron Baecker et al. (2025): *Generation of low-voltage synthetic grid data for energy
+   system modeling with the pylovo tool*. https://doi.org/10.1016/j.segan.2024.101617
+
+Further publications are listed in :doc:`further_reading`.
+
+.. rubric:: Licence
+
+pylovo is open source under the `MIT License <https://opensource.org/license/MIT>`_,
+copyright © TUM ENS (see ``LICENSE.txt``). The source code is on
+`GitHub <https://github.com/tum-ens/pylovo>`_ and open for collaboration.
+
+.. rubric:: Acknowledgement
+
+The development of this software has been supported by contributions of the following persons:
+Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
 
 .. toctree::
-    :maxdepth: 2
+   :hidden:
+   :caption: Getting started
 
-    self
-    installation/installation
-    configuration
-    grid_generation/index
-    classification/index
-    visualisation/index
-    further_reading
-    docs_sphinx/index
+   getting_started/installation
+   getting_started/quickstart
+   getting_started/tutorials
+
+.. toctree::
+   :hidden:
+   :caption: User guide
+
+   user_guide/configuration
+   user_guide/database_setup
+   user_guide/input_data
+   user_guide/transformer_data
+   user_guide/region_selection
+   user_guide/generating_grids
+   user_guide/analysing_grids
+   user_guide/applications
+   user_guide/exporting_visualising
+   user_guide/http_api
+   user_guide/cli
+   user_guide/troubleshooting
+
+.. toctree::
+   :hidden:
+   :caption: Concepts
+
+   concepts/architecture
+   concepts/pipeline
+   concepts/grid_dimensioning
+   concepts/database_schema
+   concepts/database_tables
+   concepts/electrical_backends
+
+.. toctree::
+   :hidden:
+   :caption: Reference
+
+   api_reference
+
+.. toctree::
+   :hidden:
+   :caption: Project
+
+   development/index
+   further_reading
