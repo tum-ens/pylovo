@@ -23,6 +23,20 @@ def _normalize_source(source: str) -> str:
 
 
 def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataFrame:
+    """Read and validate a DSO transformer CSV and add the generated ``osm_id``.
+
+    Args:
+        csv_path: CSV file with ``external_id``, ``lon``, ``lat`` and optional
+            ``transformer_rated_power`` and ``source`` columns.
+        source: Normalised source label that overrides the ``source`` column.
+
+    Returns:
+        DataFrame with ``external_id``, ``lon``, ``lat``, ``transformer_rated_power``, ``source``
+        and ``osm_id`` (``dso/<source>/<external_id>``).
+
+    Raises:
+        ValueError: If required columns are missing or rows have an empty id or invalid coordinates.
+    """
     df = pd.read_csv(csv_path)
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
@@ -62,11 +76,22 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
 def import_dso_transformers_csv(csv_path: str | Path, source: str | None = None, replace_source: bool = False) -> int:
     """Import DSO transformer positions into ``pylovo.transformers``.
 
-    The CSV must contain ``external_id``, ``lon`` and ``lat`` in EPSG:4326.
-    Optional columns are ``transformer_rated_power`` in kVA and ``source``.
-    Passing ``source`` overrides the optional CSV source column. Imported rows
-    use ``type='dso'`` and generated ids of the form
-    ``dso/<source>/<external_id>``.
+    Imported rows use ``type='dso'`` and ids of the form ``dso/<source>/<external_id>``; existing
+    rows with the same id are updated.
+
+    Args:
+        csv_path: CSV with ``external_id``, ``lon`` and ``lat`` (EPSG:4326) and the optional
+            columns ``transformer_rated_power`` (kVA) and ``source``.
+        source: Source label; overrides the CSV ``source`` column (default label: ``csv``).
+        replace_source: Delete all existing ``dso/<source>/...`` rows before the import.
+
+    Returns:
+        Number of imported rows.
+
+    Raises:
+        FileNotFoundError: If ``csv_path`` does not exist.
+        ValueError: If the CSV is invalid, or ``replace_source`` is set without ``source`` for a
+            CSV with several sources.
     """
     csv_path = Path(csv_path)
     if not csv_path.exists():

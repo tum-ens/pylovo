@@ -1,58 +1,81 @@
-#!/usr/bin/env python3
+"""Browser UI for editing transformer positions (``pylovo-import transformers-ui``).
+
+**Deprecated**: the GridPlanner UI (backed by ``pylovo-api``, ``uv sync --extra api``) covers all of
+its features in its transformer editor. This Flask map is kept for now; it needs the optional
+extra ``legacy-ui`` (``uv sync --extra legacy-ui``) and will be removed in a later release.
+
+A small Flask app with a Leaflet map: select a PLZ, add or delete transformer positions and set
+their rated power one by one or in bulk. All database access goes through the ``*_trafo_ui``
+methods of :class:`~pylovo.database.database_client.DatabaseClient`; every request opens and
+closes its own connection.
+
+The HTML/JavaScript page is kept inline in :meth:`TransformerMapUI._get_html_template` because
+the wheel only packages ``*.py`` files.
+
+Usage::
+
+    pylovo-import transformers-ui [--host HOST] [--port PORT] [--debug] [--auto-cleanup]
+    python -m pylovo.data_import.transformers_ui [--host HOST] [--port PORT]
+
+The server binds to ``127.0.0.1`` by default. Binding to ``0.0.0.0`` exposes write access to the
+``transformers`` table to everyone who can reach the port.
 """
-Minimal Transformer Map UI
 
-A cross-platform map interface for managing transformer positions.
-Integrates with the existing pylovo framework while avoiding heavy dependencies.
-
-Usage:
-    python transformer_map_ui.py [--host HOST] [--port PORT]
-"""
-
-import json
-import os
-import sys
 import argparse
-from pathlib import Path
-from typing import List, Dict, Optional, Tuple
-import time
-import threading
-import weakref
+import logging
 import socket
 import subprocess
+import sys
+import time
+import warnings
 from contextlib import contextmanager
 
-try:
-    from flask import Flask, render_template, request, jsonify
-    from flask_cors import CORS
-except ImportError:
-    print("Installing required dependencies...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "flask", "flask-cors"])
-    from flask import Flask, render_template, request, jsonify
-    from flask_cors import CORS
+try:  # optional since the deprecation: pylovo-import works without Flask
+    from flask import Flask, Response, jsonify, request
+except ImportError:  # pragma: no cover - depends on the installed extras
+    Flask = Response = jsonify = request = None
 
-# Import pylovo modules
-from pylovo.database.database_client import DatabaseClient
-from pylovo.config_loader import *
+DEPRECATION_MESSAGE = (
+    "pylovo-import transformers-ui is deprecated and will be removed in a later release: "
+    "use the transformer editor of the GridPlanner UI (backed by pylovo-api: uv sync --extra api)."
+)
+
+from pylovo.config_loader import DBNAME, DBUSER, HOST, PASSWORD, PORT
 from pylovo.data_import.transformer_capacity_utils import get_transformer_capacity_options
+from pylovo.database.database_client import DatabaseClient
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8080
+
+
+def _ok(**payload) -> Response:
+    """Return a successful JSON API response."""
+    return jsonify({"success": True, **payload})
+
+
+def _fail(error) -> Response:
+    """Return a failed JSON API response with an error message."""
+    return jsonify({"success": False, "error": str(error)})
 
 
 class TransformerMapUI:
+    """Flask app that serves the transformer map page and its JSON API.
+
+    Args:
+        host: Interface the server binds to. ``127.0.0.1`` keeps the UI local.
+        port: TCP port of the server.
+
+    Raises:
+        ConnectionError: If the database configured in ``.env`` cannot be reached at start-up.
     """
-    Minimal transformer map UI that integrates with the existing pylovo framework.
-    
-    Uses per-request database connections for thread safety and proper cleanup.
-    """
-    
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080):
-        """Initialize the transformer map UI."""
+
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
         self.host = host
         self.port = port
         self.app = Flask(__name__)
-        CORS(self.app)
-        
-        # Store database connection parameters instead of creating persistent connection
+        # Connection parameters; a new DatabaseClient is created per request (thread safety).
         self.db_params = {
             'dbname': DBNAME,
             'user': DBUSER,
@@ -60,187 +83,137 @@ class TransformerMapUI:
             'host': HOST,
             'port': PORT
         }
-        
-        # Test database connectivity on startup
+
         if not self._test_database_connection():
-            print("✗ Database connection test failed")
-            sys.exit(1)
-        
+            raise ConnectionError(f"Database connection test failed for {DBNAME} on {HOST}:{PORT}")
         print("✓ Database connection test successful")
-        
-        # Set up graceful shutdown
-        self._setup_graceful_shutdown()
+
         self._setup_routes()
-    
+
     def _test_database_connection(self) -> bool:
-        """Test database connectivity without creating persistent connections."""
+        """Return whether a database connection can be opened and answers ``SELECT 1``."""
         try:
-            with self._get_db_client() as dbc:
-                # Test with a simple query
-                dbc.cur.execute("SELECT 1")
+            with self._get_db_client():
                 return True
         except Exception as e:
-            print(f"Database connection test failed: {e}")
+            logger.error("Database connection test failed: %s", e)
             return False
-    
+
     @contextmanager
     def _get_db_client(self, max_retries: int = 3):
-        """Context manager for getting a database client with automatic cleanup and retry logic."""
+        """Yield a healthy :class:`DatabaseClient` and close it afterwards.
+
+        Args:
+            max_retries: Number of connection attempts (one second apart) before giving up.
+
+        Raises:
+            Exception: The last connection error if no healthy connection could be opened.
+        """
         dbc = None
         last_exception = None
-        
-        # Try to establish a healthy connection first
+
         for attempt in range(max_retries):
             try:
                 dbc = DatabaseClient(**self.db_params)
-                
-                # Test connection health
                 if self._is_connection_healthy(dbc):
-                    break  # Success, exit the loop
-                else:
-                    print(f"Connection health check failed (attempt {attempt + 1}/{max_retries})")
-                    if dbc:
-                        dbc.close()
-                        dbc = None
-                    
+                    break
+                logger.warning("Connection health check failed (attempt %d/%d)", attempt + 1, max_retries)
             except Exception as e:
                 last_exception = e
-                print(f"Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
-                if dbc:
-                    try:
-                        dbc.close()
-                    except:
-                        pass
-                    dbc = None
-                
-                if attempt < max_retries - 1:
-                    time.sleep(1)  # Wait before retry
-        
-        # Check if we successfully established a connection
-        if dbc is None or not self._is_connection_healthy(dbc):
+                logger.warning("Database connection attempt %d/%d failed: %s", attempt + 1, max_retries, e)
+            if dbc is not None:
+                self._close_quietly(dbc)
+                dbc = None
+            if attempt < max_retries - 1:
+                time.sleep(1)
+
+        if dbc is None:
             if last_exception:
                 raise last_exception
-            else:
-                raise Exception("Failed to establish healthy database connection after all retries")
-        
-        # Now yield the healthy connection exactly once
+            raise ConnectionError("Failed to establish a healthy database connection after all retries")
+
         try:
             yield dbc
         finally:
-            # Clean up the connection
-            if dbc:
-                try:
-                    dbc.close()
-                except:
-                    pass
-    
-    def _is_connection_healthy(self, dbc) -> bool:
-        """Check if a database connection is healthy."""
+            self._close_quietly(dbc)
+
+    @staticmethod
+    def _close_quietly(dbc) -> None:
+        """Close a database client and ignore errors while doing so."""
         try:
-            if not dbc or not hasattr(dbc, 'cur') or not dbc.cur:
+            dbc.close()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _is_connection_healthy(dbc) -> bool:
+        """Return whether ``dbc`` has an open cursor that answers ``SELECT 1``."""
+        try:
+            if not dbc or not getattr(dbc, 'cur', None):
                 return False
-            
-            # Test with a simple query
             dbc.cur.execute("SELECT 1")
             result = dbc.cur.fetchone()
             return result is not None and result[0] == 1
         except Exception as e:
-            print(f"Connection health check failed: {e}")
+            logger.warning("Connection health check failed: %s", e)
             return False
-    
-    def _setup_graceful_shutdown(self):
-        """Set up graceful shutdown handlers."""
-        import signal
-        import atexit
-        
-        # Use weak reference to avoid circular references
-        self_ref = weakref.ref(self)
-        
-        def cleanup():
-            """Clean up any remaining resources."""
-            self = self_ref()
-            if self:
-                print("🧹 Cleaning up resources...")
-                # No persistent connections to clean up
-                print("✓ Cleanup completed")
-        
-        def signal_handler(signum, frame):
-            """Handle shutdown signals."""
-            print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
-            cleanup()
-            exit(0)
-        
-        # Register cleanup functions
-        atexit.register(cleanup)
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGHUP, signal_handler)
-    
+
     def _setup_routes(self):
-        """Set up Flask routes."""
-        
+        """Register the page route and the JSON API routes."""
+
         @self.app.route('/')
         def index():
             """Main page with the map interface."""
             return self._get_html_template()
-        
+
         @self.app.route('/api/plz-list')
         def get_plz_list():
-            """Get list of available PLZ codes from database (for reference)."""
+            """List the PLZ codes available in the database."""
             try:
                 with self._get_db_client() as dbc:
-                    plz_list = dbc.get_available_plz_list_trafo_ui()
-                    return jsonify({"success": True, "plz_list": plz_list})
+                    return _ok(plz_list=dbc.get_available_plz_list_trafo_ui())
             except Exception as e:
-                return jsonify({"success": False, "error": str(e)})
-        
+                return _fail(e)
+
         @self.app.route('/api/transformer-capacities')
         def get_transformer_capacities():
-            """Get available transformer capacities from config."""
+            """List the transformer ratings defined in config_generation.yaml."""
             try:
-                capacities = get_transformer_capacity_options()
-                return jsonify({"success": True, "capacities": capacities})
+                return _ok(capacities=get_transformer_capacity_options())
             except Exception as e:
-                return jsonify({"success": False, "error": str(e)})
-        
+                return _fail(e)
+
         @self.app.route('/api/transformer-positions/<int:plz>')
         def get_transformer_positions(plz):
-            """Get transformers for a specific PLZ using spatial intersection."""
+            """List the transformers that lie inside the PLZ area."""
             try:
                 with self._get_db_client() as dbc:
-                    positions = dbc.get_transformer_positions_for_plz_trafo_ui(plz)
-                    return jsonify({"success": True, "positions": positions})
+                    return _ok(positions=dbc.get_transformer_positions_for_plz_trafo_ui(plz))
             except Exception as e:
-                return jsonify({"success": False, "error": str(e)})
-        
-        
+                return _fail(e)
+
         @self.app.route('/api/plz-bounds/<int:plz>')
         def get_plz_bounds(plz):
-            """Get bounding box for a specific PLZ."""
+            """Return the bounding box of the PLZ area."""
             try:
                 with self._get_db_client() as dbc:
                     bounds = dbc.get_plz_bounds_trafo_ui(plz)
-                    if bounds:
-                        return jsonify({"success": True, "bounds": bounds})
-                    else:
-                        return jsonify({"success": False, "error": "PLZ not found"})
+                if bounds:
+                    return _ok(bounds=bounds)
+                return _fail("PLZ not found")
             except Exception as e:
-                return jsonify({"success": False, "error": str(e)})
-        
+                return _fail(e)
+
         @self.app.route('/api/add-transformer', methods=['POST'])
         def add_transformer():
-            """Add a new transformer."""
+            """Add a transformer; without ``osm_id`` a ``manual/<unix time in ms>`` id is generated."""
             try:
                 data = request.get_json()
                 plz = int(data['plz'])
                 geom_wkt = data['geom_wkt']
-                osm_id = data.get('osm_id')
+                osm_id = data.get('osm_id') or f"manual/{time.time_ns() // 1_000_000}"
                 transformer_rated_power = data.get('transformer_rated_power')
-                
-                # Generate a unique OSM ID if not provided
-                if not osm_id:
-                    osm_id = f"manual/{int(time.time())}"
-                
+
                 with self._get_db_client() as dbc:
                     result_osm_id = dbc.add_transformer_position_trafo_ui(
                         plz=plz,
@@ -248,107 +221,80 @@ class TransformerMapUI:
                         osm_id=osm_id,
                         transformer_rated_power=transformer_rated_power
                     )
-                
-                return jsonify({"success": True, "osm_id": result_osm_id})
+                return _ok(osm_id=result_osm_id)
             except Exception as e:
-                return jsonify({"success": False, "error": str(e)})
-        
+                return _fail(e)
+
         @self.app.route('/api/delete-transformer', methods=['POST'])
         def delete_transformer():
-            """Delete a transformer."""
+            """Delete a transformer by its ``osm_id``."""
             try:
-                data = request.get_json()
-                osm_id = data['osm_id']
-                print(f"DEBUG: API received deletion request for OSM ID: {osm_id}")
-                
+                osm_id = request.get_json()['osm_id']
+                logger.debug("Deletion request for OSM ID %s", osm_id)
                 with self._get_db_client() as dbc:
                     success = dbc.delete_transformer_by_osm_id_trafo_ui(osm_id)
-                
-                print(f"DEBUG: Deletion result: {success}")
-                if success:
-                    return jsonify({"success": True})
-                else:
-                    return jsonify({"success": False, "error": "Transformer not found"})
+                logger.debug("Deletion result for %s: %s", osm_id, success)
+                return _ok() if success else _fail("Transformer not found")
             except Exception as e:
-                print(f"DEBUG: Deletion error: {e}")
-                return jsonify({"success": False, "error": str(e)})
-        
+                logger.warning("Deleting a transformer failed: %s", e)
+                return _fail(e)
+
         @self.app.route('/api/update-transformer-capacity', methods=['POST'])
         def update_transformer_capacity():
-            """Update transformer capacity."""
+            """Set the rated power (kVA) of one transformer."""
             try:
                 data = request.get_json()
                 osm_id = data['osm_id']
                 transformer_rated_power = data['transformer_rated_power']
-                
                 with self._get_db_client() as dbc:
                     success = dbc.update_transformer_capacity_trafo_ui(osm_id, transformer_rated_power)
-                
-                if success:
-                    return jsonify({"success": True})
-                else:
-                    return jsonify({"success": False, "error": "Transformer not found"})
+                return _ok() if success else _fail("Transformer not found")
             except Exception as e:
-                return jsonify({"success": False, "error": str(e)})
-        
+                return _fail(e)
+
         @self.app.route('/api/bulk-update-capacities', methods=['POST'])
         def bulk_update_capacities():
-            """Bulk update transformer capacities for a PLZ area."""
+            """Set the rated power of all transformers in a PLZ (``uniform`` or ``percentage``)."""
             try:
                 data = request.get_json()
-                print(f"Bulk update request data: {data}")
-                
+                logger.debug("Bulk update request: %s", data)
                 plz = int(data['plz'])
                 distribution_method = data['distribution_method']
-                
+
                 with self._get_db_client() as dbc:
                     if distribution_method == 'uniform':
-                        # Set all transformers to the same capacity
+                        # Same rating for every transformer in the PLZ.
                         transformer_rated_power = int(data['transformer_rated_power'])
-                        print(f"Uniform update: PLZ={plz}, capacity={transformer_rated_power}")
                         success = dbc.bulk_update_capacities_uniform_trafo_ui(plz, transformer_rated_power)
-                        
                     elif distribution_method == 'percentage':
-                        # Apply percentage-based distribution
+                        # Ratings drawn according to the given percentage shares.
                         capacity_distribution = data['capacity_distribution']
-                        print(f"Percentage update: PLZ={plz}, distribution={capacity_distribution}")
                         success = dbc.bulk_update_capacities_percentage_trafo_ui(plz, capacity_distribution)
-                        
                     else:
-                        return jsonify({"success": False, "error": "Invalid distribution method"})
-                
-                print(f"Update result: {success}")
-                if success:
-                    return jsonify({"success": True})
-                else:
-                    return jsonify({"success": False, "error": "Failed to update capacities"})
+                        return _fail("Invalid distribution method")
+
+                logger.debug("Bulk update result for PLZ %s: %s", plz, success)
+                return _ok() if success else _fail("Failed to update capacities")
             except Exception as e:
-                print(f"Bulk update error: {str(e)}")
-                return jsonify({"success": False, "error": str(e)})
-        
+                logger.warning("Bulk capacity update failed: %s", e)
+                return _fail(e)
+
         @self.app.route('/api/clear-capacities', methods=['POST'])
         def clear_capacities():
-            """Clear all capacity information for transformers in a PLZ area."""
+            """Remove the rated power of all transformers in a PLZ."""
             try:
-                data = request.get_json()
-                plz = int(data['plz'])
-                print(f"Clear capacities request for PLZ: {plz}")
-                
+                plz = int(request.get_json()['plz'])
+                logger.debug("Clear capacities request for PLZ %s", plz)
                 with self._get_db_client() as dbc:
                     success = dbc.clear_capacities_trafo_ui(plz)
-                
-                print(f"Clear capacities result: {success}")
-                
-                if success:
-                    return jsonify({"success": True})
-                else:
-                    return jsonify({"success": False, "error": "Failed to clear capacities"})
+                logger.debug("Clear capacities result for PLZ %s: %s", plz, success)
+                return _ok() if success else _fail("Failed to clear capacities")
             except Exception as e:
-                print(f"Clear capacities error: {str(e)}")
-                return jsonify({"success": False, "error": str(e)})
-    
-    def _get_html_template(self):
-        """Return the HTML template as a string."""
+                logger.warning("Clearing capacities failed: %s", e)
+                return _fail(e)
+
+    def _get_html_template(self) -> str:
+        """Return the single-page HTML/JavaScript UI (Leaflet map, PLZ search, bulk tools)."""
         return r'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1325,13 +1271,11 @@ class TransformerMapUI:
 
         // Delete transformer
         async function deleteTransformer(osmId) {
-            console.log('DEBUG: Attempting to delete transformer with OSM ID:', osmId);
             if (!confirm('Are you sure you want to delete this transformer?')) {
                 return;
             }
             
             try {
-                console.log('DEBUG: Sending deletion request for OSM ID:', osmId);
                 const response = await fetch('/api/delete-transformer', {
                     method: 'POST',
                     headers: {
@@ -1341,7 +1285,6 @@ class TransformerMapUI:
                 });
                 
                 const data = await response.json();
-                console.log('DEBUG: Deletion response:', data);
                 
                 if (data.success) {
                     // Remove the specific marker from the map
@@ -1355,7 +1298,7 @@ class TransformerMapUI:
                     showStatus('Error deleting transformer: ' + data.error, 'error');
                 }
             } catch (error) {
-                console.error('DEBUG: Deletion error:', error);
+                console.error('Error deleting transformer:', error);
                 showStatus('Error deleting transformer: ' + error.message, 'error');
             }
         }
@@ -1425,28 +1368,6 @@ class TransformerMapUI:
         }
 
         // Test regex patterns
-        function testRegexPatterns() {
-            console.log('=== TESTING REGEX PATTERNS ===');
-            const testWKT = 'MULTIPOINT ((11.04272614542871 49.70848183138922))';
-            console.log('Test WKT:', testWKT);
-            
-            // Test all patterns
-            const patterns = [
-                { name: 'POINT (single)', regex: /POINT\(([^)]+)\)/ },
-                { name: 'POINT (double)', regex: /POINT\(\(([^)]+)\)\)/ },
-                { name: 'MULTIPOINT (single, no space)', regex: /MULTIPOINT\(([^)]+)\)/ },
-                { name: 'MULTIPOINT (double, no space)', regex: /MULTIPOINT\(\(([^)]+)\)\)/ },
-                { name: 'MULTIPOINT (single, with space)', regex: /MULTIPOINT\s+\(([^)]+)\)/ },
-                { name: 'MULTIPOINT (double, with space)', regex: /MULTIPOINT\s+\(\(([^)]+)\)\)/ }
-            ];
-            
-            patterns.forEach(pattern => {
-                const match = testWKT.match(pattern.regex);
-                console.log(`${pattern.name}:`, match ? 'MATCH' : 'NO MATCH', match);
-            });
-            console.log('=== END TEST ===');
-        }
-
         // Bulk Management Functions
         let availableCapacities = [];
         let transformerCount = 0;
@@ -1804,7 +1725,6 @@ class TransformerMapUI:
         
         // Initialize map when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            testRegexPatterns();
             initMap();
             loadPLZList();
             loadTransformerCapacities();
@@ -1818,29 +1738,34 @@ class TransformerMapUI:
     </script>
 </body>
 </html>'''
-    
+
     def run(self, debug: bool = False):
-        """Run the web server."""
-        print(f"Starting Transformer Map UI...")
+        """Start the Flask development server (blocks until it is stopped)."""
+        print("Starting Transformer Map UI...")
         print(f"Open your browser and go to: http://{self.host}:{self.port}")
         print("Press Ctrl+C to stop the server")
-        
+
         try:
             self.app.run(host=self.host, port=self.port, debug=debug)
         except KeyboardInterrupt:
             print("\n🛑 Server stopped by user")
-        except Exception as e:
-            print(f"❌ Server error: {e}")
-        finally:
-            print("🧹 Server cleanup completed")
 
 
-def find_available_port(start_port: int = 8080, max_attempts: int = 10) -> int:
-    """Find an available port starting from start_port."""
+def find_available_port(start_port: int = DEFAULT_PORT, max_attempts: int = 10, host: str = DEFAULT_HOST) -> int:
+    """Return the first port from ``start_port`` on that can be bound on ``host``.
+
+    Args:
+        start_port: First port to try.
+        max_attempts: Number of consecutive ports to try.
+        host: Interface to test the ports on.
+
+    Raises:
+        RuntimeError: If none of the ports is free.
+    """
     for port in range(start_port, start_port + max_attempts):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('0.0.0.0', port))
+                s.bind((host, port))
                 return port
         except OSError:
             continue
@@ -1848,112 +1773,126 @@ def find_available_port(start_port: int = 8080, max_attempts: int = 10) -> int:
 
 
 def cleanup_port_processes(port: int) -> bool:
-    """Clean up any processes using the specified port."""
+    """Terminate every process that listens on TCP ``port`` (found with ``lsof``, stopped with ``kill``).
+
+    Only listening sockets are matched, so clients that are connected to ``port`` elsewhere are left
+    alone. Called only with ``--auto-cleanup``.
+
+    Args:
+        port: TCP port to free.
+
+    Returns:
+        True if the port was free or the listeners were signalled, False if ``lsof`` failed or is missing.
+    """
     try:
-        # Find processes using the port
-        result = subprocess.run(['lsof', '-ti', f':{port}'], 
-                              capture_output=True, text=True, timeout=5)
-        
-        if result.returncode == 0 and result.stdout.strip():
-            pids = result.stdout.strip().split('\n')
-            print(f"🧹 Found {len(pids)} process(es) using port {port}, cleaning up...")
-            
-            for pid in pids:
-                try:
-                    subprocess.run(['kill', pid], check=True, timeout=5)
-                    print(f"✓ Killed process {pid}")
-                except subprocess.CalledProcessError:
-                    print(f"⚠ Could not kill process {pid}")
-                except subprocess.TimeoutExpired:
-                    print(f"⚠ Timeout killing process {pid}")
-            
-            # Wait a moment for cleanup
-            time.sleep(1)
-            return True
-        else:
-            print(f"✓ Port {port} is available")
-            return True
-            
+        result = subprocess.run(['lsof', '-t', f'-iTCP:{port}', '-sTCP:LISTEN'],
+                                capture_output=True, text=True, timeout=5, check=False)
     except subprocess.TimeoutExpired:
         print(f"⚠ Timeout checking port {port}")
         return False
     except FileNotFoundError:
         print(f"⚠ lsof command not found, cannot check port {port}")
         return False
-    except Exception as e:
-        print(f"⚠ Error checking port {port}: {e}")
-        return False
+
+    pids = result.stdout.split()
+    if not pids:
+        print(f"✓ Port {port} is available")
+        return True
+
+    print(f"🧹 Found {len(pids)} process(es) listening on port {port}, terminating them...")
+    for pid in pids:
+        try:
+            subprocess.run(['kill', pid], check=True, timeout=5)
+            print(f"✓ Terminated process {pid}")
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            print(f"⚠ Could not terminate process {pid}")
+    time.sleep(1)  # give the processes a moment to release the port
+    return True
 
 
 def cleanup_lingering_connections():
-    """Clean up any lingering database connections from previous runs."""
+    """Open and close one database connection before the server starts (``--cleanup``).
+
+    This checks that the database is reachable; it cannot close connections held by other processes.
+    """
     try:
-        print("🧹 Checking for lingering database connections...")
-        # Try to connect and immediately close to reset any lingering connections
-        temp_dbc = DatabaseClient()
-        temp_dbc.close()
-        print("✓ Database connection reset completed")
-        time.sleep(0.5)  # Give it a moment to clean up
+        print("🧹 Checking the database connection...")
+        DatabaseClient().close()
+        print("✓ Database connection check completed")
+        time.sleep(0.5)
     except Exception as e:
-        print(f"⚠ Warning: Could not reset database connections: {e}")
+        print(f"⚠ Warning: Could not connect to the database: {e}")
 
 
 def run_transformers_ui(
-    host: str = '0.0.0.0',
-    port: int = 8080,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
     debug: bool = False,
     cleanup: bool = False,
-    auto_cleanup: bool = True,
+    auto_cleanup: bool = False,
 ):
-    """Run the transformer map UI with explicit options."""
-    # Clean up lingering connections if requested
+    """Start the transformer map UI.
+
+    Args:
+        host: Interface to bind to (default ``127.0.0.1``, local only).
+        port: TCP port; ``0`` picks the first free port from 8080 on.
+        debug: Run Flask in debug mode and log API requests.
+        cleanup: Check the database connection before starting.
+        auto_cleanup: Terminate processes that already listen on ``port`` (opt-in).
+    """
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
+                        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+    logging.getLogger(__name__).warning(DEPRECATION_MESSAGE)
+    if Flask is None:
+        print("❌ The deprecated transformer map needs Flask: uv sync --extra legacy-ui "
+              "(or use the GridPlanner UI with pylovo-api: uv sync --extra api).")
+        sys.exit(1)
     if cleanup:
         cleanup_lingering_connections()
-    
-    # Determine port to use
+
     if port == 0:
-        # Auto-detect available port
         try:
-            port = find_available_port(8080)
+            port = find_available_port(DEFAULT_PORT, host=host)
             print(f"🔍 Auto-detected available port: {port}")
         except RuntimeError as e:
             print(f"❌ {e}")
             return
-    else:
-        # Check if port is available, clean up if needed
-        if auto_cleanup:
-            cleanup_port_processes(port)
-    
+    elif auto_cleanup:
+        cleanup_port_processes(port)
+
     try:
-        # Initialize and run the UI
         ui = TransformerMapUI(host=host, port=port)
         ui.run(debug=debug)
-        
-    except OSError as e:
-        if "Address already in use" in str(e):
-            print(f"❌ Port {port} is still in use after cleanup attempt.")
-            print("💡 Try running with --port 0 for automatic port detection")
-            print("💡 Or manually kill the process: lsof -i :{port} && kill <PID>")
-        else:
-            print(f"❌ Network error: {e}")
     except Exception as e:
         print(f"❌ Error starting Transformer Map UI: {e}")
         print("💡 Make sure the database is running and accessible.")
-        print("💡 Try running with --cleanup flag to reset connections.")
+        print(f"💡 If port {port} is in use, try --port 0 (first free port) or stop the process that uses it.")
         sys.exit(1)
 
 
+def _add_ui_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the transformer UI options to ``parser`` (shared with ``pylovo-import transformers-ui``)."""
+    parser.add_argument('--host', default=DEFAULT_HOST,
+                        help=f'Interface to bind to (default: {DEFAULT_HOST}, local only; '
+                             '0.0.0.0 exposes the UI and its write access to the network)')
+    parser.add_argument('--port', type=int, default=DEFAULT_PORT,
+                        help=f'Port number (default: {DEFAULT_PORT}, 0 for the first free port)')
+    parser.add_argument('--debug', action='store_true', help='Enable Flask debug mode and debug logging')
+    parser.add_argument('--cleanup', action='store_true',
+                        help='Check the database connection before starting')
+    parser.add_argument('--auto-cleanup', action='store_true',
+                        help='Terminate (kill) any process that already listens on --port before starting '
+                             '(uses lsof; off by default)')
+
+
 def main(argv=None):
-    """CLI entry point for the transformer map UI."""
-    parser = argparse.ArgumentParser(description='Transformer Map UI')
-    # Compatibility for accidental passthrough invocation:
-    # `python -m pylovo.data_import.transformers_ui transformers-ui`
+    """Entry point for ``python -m pylovo.data_import.transformers_ui``."""
+    parser = argparse.ArgumentParser(description='Transformer Map UI (deprecated: use the GridPlanner UI)')
+    # Accept the accidental passthrough form
+    # `python -m pylovo.data_import.transformers_ui transformers-ui`.
     parser.add_argument('compat_command', nargs='?', choices=['transformers-ui'], help=argparse.SUPPRESS)
-    parser.add_argument('--host', default='0.0.0.0', help='Host address (default: 0.0.0.0)')
-    parser.add_argument('--port', type=int, default=8080, help='Port number (default: 8080, 0 for auto-detect)')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--cleanup', action='store_true', help='Clean up lingering connections before starting')
-    parser.add_argument('--auto-cleanup', action='store_true', default=True, help='Automatically clean up port conflicts (default: True)')
+    _add_ui_arguments(parser)
 
     args = parser.parse_args(argv)
     run_transformers_ui(

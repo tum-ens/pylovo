@@ -1,17 +1,20 @@
-"""
-Network plotting functions.
+"""Plots of single generated grids.
 
-This module contains functions for visualizing power distribution networks,
-including geographic visualizations with contextily basemaps and generic
-network layouts.
+- :func:`plot_contextily`: lines, buildings (peak load) and transformer on an OSM basemap (matplotlib).
+- :func:`plot_simple_grid`, :func:`plot_grid_on_map`, :func:`plot_with_generic_coordinates`:
+  interactive pandapower/plotly plots.
+- :func:`draw_tree_network`, :func:`draw_tree_network_spacing`, :func:`draw_radial_network`:
+  networkx tree layouts of the grid topology (root: bus 1, the MV bus of pylovo grids).
+
+Grids are read for the ``VERSION_ID`` of ``config_generation.yaml``. Needs the ``plots`` extra;
+:func:`plot_with_generic_coordinates` additionally needs ``python-igraph``.
 """
 
 import math
 import random
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import contextily as cx
-import geopandas as gpd
 import networkx as nx
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -20,23 +23,19 @@ from pandapower.plotting import create_generic_coordinates
 from pandapower.plotting.plotly import simple_plotly
 from pandapower.topology import create_nxgraph
 
-from pylovo.config_loader import (NODE_COLOR_TRAFO, NODE_COLOR_CONSUMER, NODE_COLOR_CONNECTION_BUS, TARGET_EPSG)
-from pylovo.grid_generator import GridGenerator
+from pylovo.config_loader import NODE_COLOR_CONNECTION_BUS, NODE_COLOR_CONSUMER, NODE_COLOR_TRAFO, TARGET_EPSG
+from pylovo.database.database_client import DatabaseClient
+from pylovo.plotting.utils import OSM_TILE_HEADERS, pandapower_on_map
 
 
-def get_network_info_for_plotting(df_network_info: pd.DataFrame) -> Tuple[str, int, int]:
-    """
-    Extract network metadata (plz, kcid, bcid) from a pandas DataFrame.
+def get_network_info_for_plotting(df_network_info: pd.Series) -> Tuple[int, int, int]:
+    """Return ``(plz, kcid, bcid)`` of a grid from a row with these columns.
 
-    Parameters
-    ----------
-    df_network_info : pd.DataFrame
-        DataFrame containing network information with columns 'plz', 'kcid', 'bcid'.
+    Args:
+        df_network_info: Row (e.g. of a representative-grid table) with ``plz``, ``kcid``, ``bcid``.
 
-    Returns
-    -------
-    tuple
-        (plz, kcid, bcid) - Postal code, kmeans cluster ID, and building cluster ID.
+    Returns:
+        Tuple ``(plz, kcid, bcid)``; ``kcid`` and ``bcid`` as int, ``plz`` unchanged.
     """
     plz = df_network_info['plz']
     kcid = int(df_network_info['kcid'])
@@ -45,47 +44,35 @@ def get_network_info_for_plotting(df_network_info: pd.DataFrame) -> Tuple[str, i
 
 
 def read_net_with_grid_generator(plz: int, kcid: int, bcid: int):
-    """
-    Read a pandapower network from the database using GridGenerator.
+    """Read a pandapower network from the database.
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    kcid : int
-        Kmeans cluster ID.
-    bcid : int
-        Buildings cluster ID.
+    The name is historic: the grid is read with a plain :class:`DatabaseClient`, so no version row
+    is written and a changed configuration does not block plotting.
 
-    Returns
-    -------
-    pandapowerNet
-        The loaded pandapower network.
+    Args:
+        plz: Postal code.
+        kcid: K-means cluster id.
+        bcid: Building cluster id.
+
+    Returns:
+        The pandapower network.
     """
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-    net = dbc_client.read_net_db(plz=plz, kcid=kcid, bcid=bcid)
-    return net
+    with DatabaseClient() as dbc_client:
+        return dbc_client.read_net_db(plz=plz, kcid=kcid, bcid=bcid)
 
 
 def get_colormap_for_treegraph(networkx_graph: nx.Graph) -> list:
-    """
-    Create a colormap for tree graph visualization.
+    """Return one colour per node for the tree plots.
 
-    Assigns colors to different bus types:
-    - Transformer buses (node 0, 1): Ivory color
-    - Consumer buses (degree 1): Blue color
-    - Connection buses: Green color
+    Buses 0 and 1 (LV and MV bus of the transformer) get ``NODE_COLOR_TRAFO``, leaves (degree 1,
+    consumers) ``NODE_COLOR_CONSUMER`` and all other nodes ``NODE_COLOR_CONNECTION_BUS``
+    (``NETWORK_COLORS`` in ``config_analysis.yaml``).
 
-    Parameters
-    ----------
-    networkx_graph : networkx.Graph
-        NetworkX graph representation of the power network.
+    Args:
+        networkx_graph: Graph of the grid, e.g. from :func:`pandapower.topology.create_nxgraph`.
 
-    Returns
-    -------
-    list
-        List of colors corresponding to each node in the graph.
+    Returns:
+        Colours in the order of ``networkx_graph.nodes()``.
     """
     color_map = []
     for node in networkx_graph.nodes():
@@ -100,32 +87,21 @@ def get_colormap_for_treegraph(networkx_graph: nx.Graph) -> list:
 
 def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Optional[plt.Axes] = None,
         figsize: Tuple[int, int] = (8, 8)) -> Figure:
+    """Plot the lines, buildings and transformer of one grid on an OpenStreetMap basemap.
+
+    The basemap tiles are downloaded by contextily (internet access needed).
+
+    Args:
+        plz: Postal code of the grid.
+        kcid: K-means cluster id of the grid.
+        bcid: Building cluster id of the grid.
+        zoomfactor: Zoom level of the basemap tiles.
+        ax: Axes to draw into; a new figure is created if None.
+        figsize: Figure size in inches if a new figure is created.
+
+    Returns:
+        The figure that contains the plot.
     """
-    Plot a network with all features (cables, buildings, loads, trafo) on a contextily basemap.
-
-    Parameters
-    ----------
-    plz : int
-        Postal code of the grid.
-    kcid : int
-        Kmeans cluster ID of the grid.
-    bcid : int
-        Buildings cluster ID of the grid.
-    zoomfactor : int, optional
-        Zoom factor for the basemap (default: 19).
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration. If None, creates a new figure.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (8, 8).
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the plot.
-    """
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     else:
@@ -134,139 +110,119 @@ def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Op
     ax.set_xticks([])
     ax.set_yticks([])
 
-    # Buildings
-    buildings_gdf = dbc_client.get_geo_df_join(["gr.version_id", "plz", "kcid", "bcid", "br.*"], "buildings_result br",
-        "grid_result gr", ("br.grid_result_id", "gr.grid_result_id"), plz=int(plz))
-    buildings_8_gdf = buildings_gdf[buildings_gdf.bcid == bcid]
-    buildings_8_gdf = buildings_8_gdf[buildings_8_gdf.kcid == kcid]
-
-    line_gdf = dbc_client.get_geo_df_join(
-        [
-            "pl.*",
-            "gr.kcid",
-            "gr.bcid",
-            "gr.plz",
-            f"ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), {TARGET_EPSG}) AS geom",
-        ],
-        "pandapower_line pl",
-        "grid_result gr",
-        ("pl.grid_result_id", "gr.grid_result_id"),
-        plz=int(plz),
-    )
-    line_gdf = line_gdf[(line_gdf.bcid == bcid) & (line_gdf.kcid == kcid)]
+    grid_filter = {"plz": int(plz), "kcid": int(kcid), "bcid": int(bcid)}
+    with DatabaseClient() as dbc_client:
+        buildings_gdf = dbc_client.get_geo_df_join(
+            ["gr.version_id", "plz", "kcid", "bcid", "br.*"], "buildings_result br", "grid_result gr",
+            ("br.grid_result_id", "gr.grid_result_id"), **grid_filter)
+        line_gdf = dbc_client.get_geo_df_join(
+            [
+                "pl.*",
+                "gr.kcid",
+                "gr.bcid",
+                "gr.plz",
+                f"ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), {TARGET_EPSG}) AS geom",
+            ],
+            "pandapower_line pl",
+            "grid_result gr",
+            ("pl.grid_result_id", "gr.grid_result_id"),
+            **grid_filter,
+        )
+        trafo_gdf = dbc_client.get_geo_df_join(
+            ["geom"], "transformer_positions tp", "grid_result gr",
+            ("tp.grid_result_id", "gr.grid_result_id"), **grid_filter)
 
     ax = line_gdf.plot(ax=ax, edgecolor="black", linewidth=1, label="Lines")
-    ax = buildings_8_gdf.plot(ax=ax, column="peak_load_in_kw", cmap="YlOrBr", legend=True,
+    ax = buildings_gdf.plot(ax=ax, column="peak_load_in_kw", cmap="YlOrBr", legend=True,
         legend_kwds={'label': "Peak load in kW"})
+    trafo_point = trafo_gdf.geom.iloc[0]
+    ax.scatter(trafo_point.x, trafo_point.y, marker=(5, 0), s=80, color="blue", label="Transformer")
 
-    # Transformer
-    trafo_gdf = dbc_client.get_geo_df_join(["geom"], "transformer_positions tp", "grid_result gr",
-        ("tp.grid_result_id", "gr.grid_result_id"), plz=int(plz), bcid=bcid)
-    ax.scatter(trafo_gdf.loc[0].geom.x, trafo_gdf.loc[0].geom.y, marker=(5, 0), s=80, color="blue", label="Transformer")
-
-    # Basemap
-    cx.add_basemap(ax, crs=buildings_8_gdf.crs.to_string(), zoom=zoomfactor, source=cx.providers.OpenStreetMap.Mapnik)
+    cx.add_basemap(ax, crs=buildings_gdf.crs.to_string(), zoom=zoomfactor,
+                   source=cx.providers.OpenStreetMap.Mapnik, headers=OSM_TILE_HEADERS)
     ax.legend()
 
     return fig
 
 
 def plot_with_generic_coordinates(plz: int, kcid: int, bcid: int) -> None:
-    """
-    Plot network using generic coordinates layout.
+    """Plot one grid with generic (topology-based) coordinates instead of its geodata (plotly).
 
-    Creates a network visualization using igraph-based automatic layout.
+    Needs the optional package ``python-igraph`` (pandapower raises an ImportError without it).
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    kcid : int
-        Kmeans cluster ID.
-    bcid : int
-        Buildings cluster ID.
+    Args:
+        plz: Postal code.
+        kcid: K-means cluster id.
+        bcid: Building cluster id.
     """
     net = read_net_with_grid_generator(plz, kcid, bcid)
 
-    # Clear geodata
+    # Clear the geodata so that the generic layout is used for buses and lines.
     if "geo" in net.bus.columns:
         net.bus["geo"] = None
     if "geo" in net.line.columns:
         net.line["geo"] = None
 
+    # pandapower >= 3 keeps the bus coordinates in net.bus["geo"] (geodata_table="bus").
     generic_net = create_generic_coordinates(net, library='igraph', respect_switches=False, overwrite=True,
-        geodata_table='bus_geodata')
+        geodata_table='bus')
     simple_plotly(generic_net, aspectratio=(1, 1))
 
 
 def plot_simple_grid(plz: int, kcid: int, bcid: int) -> None:
-    """
-    Plot network on a blank base.
+    """Plot one grid with its geodata on a blank background (plotly).
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    kcid : int
-        Kmeans cluster ID.
-    bcid : int
-        Buildings cluster ID.
+    Args:
+        plz: Postal code.
+        kcid: K-means cluster id.
+        bcid: Building cluster id.
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid)
     simple_plotly(net)
 
 
-def plot_grid_on_map(plz: int, kcid: int, bcid: int) -> None:
-    """
-    Plot network on a basemap provided by plotly.
+def plot_grid_on_map(plz: int, kcid: int, bcid: int):
+    """Plot one grid on an OpenStreetMap background (plotly map).
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    kcid : int
-        Kmeans cluster ID.
-    bcid : int
-        Buildings cluster ID.
+    pandapower checks ``on_map`` plots by reverse-geocoding the first bus with Nominatim, but passes
+    the coordinates as "lon, lat" where Nominatim expects "lat, lon". For grids in Germany the
+    lookup then lands in the Gulf of Aden, returns nothing and pandapower fails with
+    ``AttributeError``. pylovo geodata is always WGS84 lon/lat, so the check is skipped.
+
+    Args:
+        plz: Postal code.
+        kcid: K-means cluster id.
+        bcid: Building cluster id.
+
+    Returns:
+        The plotly figure.
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid)
-    fig = simple_plotly(net, on_map=True, map_style="open-street-map")
+    with pandapower_on_map():
+        fig = simple_plotly(net, on_map=True, map_style="open-street-map")
     return fig
 
 
 def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5):
-    """
-    Calculate hierarchical layout positions for a tree graph.
+    """Return hierarchical (top-down) layout positions of a tree.
 
-    From Joel's answer at https://stackoverflow.com/a/29597209/2966723.
-    Licensed under Creative Commons Attribution-Share Alike
+    From Joel's answer at https://stackoverflow.com/a/29597209/2966723
+    (CC BY-SA).
 
-    If the graph is a tree this will return the positions to plot this in a
-    hierarchical layout.
+    Args:
+        G: The graph; must be a tree.
+        root: Root node. For a directed tree it defaults to the topological root (if given, only
+            its descendants are placed); for an undirected tree to a random node.
+        width: Horizontal space of the whole tree (siblings split their parent's width).
+        vert_gap: Vertical gap between levels.
+        vert_loc: Vertical position of the root.
+        xcenter: Horizontal position of the root.
 
-    Parameters
-    ----------
-    G : networkx.Graph
-        The graph (must be a tree).
-    root : node, optional
-        The root node of current branch.
-        - if the tree is directed and this is not given, the root will be found and used
-        - if the tree is directed and this is given, then the positions will be just
-          for the descendants of this node.
-        - if the tree is undirected and not given, then a random choice will be used.
-    width : float, optional
-        Horizontal space allocated for this branch - avoids overlap with other branches.
-    vert_gap : float, optional
-        Gap between levels of hierarchy.
-    vert_loc : float, optional
-        Vertical location of root.
-    xcenter : float, optional
-        Horizontal location of root.
+    Returns:
+        Dictionary ``{node: (x, y)}``.
 
-    Returns
-    -------
-    dict
-        Dictionary mapping nodes to (x, y) positions.
+    Raises:
+        TypeError: If ``G`` is not a tree.
     """
     if not nx.is_tree(G):
         raise TypeError('cannot use hierarchy_pos on a graph that is not a tree')
@@ -278,16 +234,7 @@ def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5)
             root = random.choice(list(G.nodes))
 
     def _hierarchy_pos(G, root, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5, pos=None, parent=None):
-        """
-        Recursive helper for hierarchy_pos.
-
-        Parameters
-        ----------
-        pos : dict, optional
-            A dict saying where all nodes go if they have been assigned.
-        parent : node, optional
-            Parent of this branch - only affects it if non-directed.
-        """
+        """Place ``root`` and recurse into its children (``parent`` is skipped in undirected trees)."""
         if pos is None:
             pos = {root: (xcenter, vert_loc)}
         else:
@@ -308,30 +255,19 @@ def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5)
 
 
 def hierarchy_pos2(G, root, levels=None, width=1., height=1.):
-    """
-    Calculate hierarchical layout with spacing for large networks.
+    """Return hierarchical layout positions with the nodes of each level evenly spaced.
 
-    If there is a cycle that is reachable from root, then this will see infinite recursion.
+    Recurses without a visited set, so a cycle reachable from ``root`` recurses forever.
 
-    Parameters
-    ----------
-    G : networkx.Graph
-        The graph.
-    root : node
-        The root node.
-    levels : dict, optional
-        A dictionary with:
-        - key: level number (starting from 0)
-        - value: number of nodes in this level
-    width : float, optional
-        Horizontal space allocated for drawing.
-    height : float, optional
-        Vertical space allocated for drawing.
+    Args:
+        G: The graph (a tree).
+        root: Root node.
+        levels: Optional ``{level: number of nodes}``; computed from ``G`` if None.
+        width: Horizontal space of the drawing.
+        height: Vertical space of the drawing.
 
-    Returns
-    -------
-    dict
-        Dictionary mapping nodes to (x, y) positions.
+    Returns:
+        Dictionary ``{node: (x, y)}``.
     """
     TOTAL = "total"
     CURRENT = "current"
@@ -367,43 +303,32 @@ def hierarchy_pos2(G, root, levels=None, width=1., height=1.):
     return make_pos({})
 
 
-def draw_tree_network(G, width=1.):
-    """
-    Draw a tree graph of a networkx graph with specific node colors.
-
-    Node colors:
-    - Orange: transformers
-    - Blue: connection nodes
-    - Green: consumers
-
-    Parameters
-    ----------
-    G : networkx.Graph
-        The network graph.
-    width : float, optional
-        Width parameter for hierarchy layout.
-    """
-    pos = hierarchy_pos(G, root=1, width=width)
-    labels = nx.get_edge_attributes(G, 'weight')
-    plt.figure(figsize=(9, 6))
-    color_map = get_colormap_for_treegraph(networkx_graph=G)
+def _draw_colored_graph(G: nx.Graph, pos: dict) -> None:
+    """Draw ``G`` with node labels and the tree colours in a new 20x10 inch figure."""
     plt.figure(figsize=(20, 10))
-    ax = nx.draw_networkx(G, node_color=color_map, pos=pos, with_labels=True)
-    return ax
+    nx.draw_networkx(G, node_color=get_colormap_for_treegraph(networkx_graph=G), pos=pos, with_labels=True)
+
+
+def draw_tree_network(G, width=1.):
+    """Draw the grid graph as a tree with bus 1 (MV bus) as root.
+
+    Colours: see :func:`get_colormap_for_treegraph` (transformer ivory, connection nodes green,
+    consumers blue).
+
+    Args:
+        G: Tree graph of the grid, e.g. ``pandapower.topology.create_nxgraph(net)``.
+        width: Horizontal space of the layout.
+    """
+    _draw_colored_graph(G, hierarchy_pos(G, root=1, width=width))
 
 
 def draw_tree_network_with_spacing_from_grid_id(plz: int, kcid: int, bcid: int):
-    """
-    Draw a tree graph with improved spacing for large networks from grid ID.
+    """Read one grid and draw it with :func:`draw_tree_network_spacing`.
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    kcid : int
-        Kmeans cluster ID.
-    bcid : int
-        Buildings cluster ID.
+    Args:
+        plz: Postal code.
+        kcid: K-means cluster id.
+        bcid: Building cluster id.
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid)
     G = create_nxgraph(net)
@@ -411,46 +336,27 @@ def draw_tree_network_with_spacing_from_grid_id(plz: int, kcid: int, bcid: int):
 
 
 def draw_tree_network_spacing(G):
-    """
-    Draw a tree graph with improved spacing for large networks.
+    """Draw the grid graph as a tree with evenly spaced nodes per level (better for large grids).
 
-    Node colors:
-    - Orange: transformers
-    - Blue: connection nodes
-    - Green: consumers
+    Colours: see :func:`get_colormap_for_treegraph`.
 
-    Parameters
-    ----------
-    G : networkx.Graph
-        The network graph.
+    Args:
+        G: Tree graph of the grid with bus 1 (MV bus) as root.
     """
-    pos = hierarchy_pos2(G, root=1)
-    labels = nx.get_edge_attributes(G, 'weight')
-    plt.figure(figsize=(9, 6))
-    color_map = get_colormap_for_treegraph(networkx_graph=G)
-    plt.figure(figsize=(20, 10))
-    ax = nx.draw_networkx(G, node_color=color_map, pos=pos, with_labels=True)
+    _draw_colored_graph(G, hierarchy_pos2(G, root=1))
     plt.show()
 
 
 def draw_radial_network(G):
-    """
-    Draw a radial graph of a networkx graph with specific node colors.
+    """Draw the grid graph in a radial tree layout around bus 1 (MV bus).
 
-    Node colors:
-    - Orange: transformers
-    - Blue: connection nodes
-    - Green: consumers
+    Colours: see :func:`get_colormap_for_treegraph`.
 
-    Parameters
-    ----------
-    G : networkx.Graph
-        The network graph.
+    Args:
+        G: Tree graph of the grid.
     """
     pos = hierarchy_pos(G, 1, width=2 * math.pi, xcenter=0)
-    plt.figure(figsize=(20, 10))
     new_pos = {u: (r * math.cos(theta), r * math.sin(theta)) for u, (theta, r) in pos.items()}
-    color_map = get_colormap_for_treegraph(networkx_graph=G)
-    # ax = nx.draw(G, pos=new_pos, node_size=50)
-    ax = nx.draw_networkx_nodes(G, pos=new_pos, node_color=color_map, node_size=200)
+    plt.figure(figsize=(20, 10))
+    nx.draw(G, pos=new_pos, node_color=get_colormap_for_treegraph(networkx_graph=G), node_size=200)
     plt.show()

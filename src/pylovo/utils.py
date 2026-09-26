@@ -1,33 +1,52 @@
-import osm2geojson
-import requests
-import shutil
-import os
-from pathlib import Path
+"""Shared helpers of pylovo.
+
+- directories and logging: :func:`get_user_data_dir`, :func:`reset_log_directory`,
+  :func:`create_logger`,
+- electrical load aggregation used for transformer and cable sizing:
+  :func:`build_load_components`, :func:`simultaneous_peak_load`,
+  :func:`category_simultaneous_load`, :func:`allocate_consumer_simultaneous_loads`,
+  :func:`planning_nodes`, :func:`design_current_ka`,
+- OpenStreetMap downloads through the Overpass API: :func:`query_overpass_for_geojson`.
+"""
+
 import logging
-import pandas as pd
+import os
+import shutil
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import numpy as np
+import osm2geojson
+import pandas as pd
+import requests
 
-UTC_PLUS_1 = ZoneInfo("Europe/Berlin")
+from pylovo.config_loader import DEFAULT_POWER_FACTOR, VN
+
+# Log timestamps are written in German local time (CET/CEST).
+LOG_TIMEZONE = ZoneInfo("Europe/Berlin")
+
+# OpenStreetMap services require an identifying User-Agent: overpass-api.de answers the default
+# python-requests agent with HTTP 406, the OSM tile servers send "Access blocked" tiles.
+PYLOVO_USER_AGENT = "pylovo (https://github.com/tum-ens/pylovo)"
+# (connect, read) timeout in seconds. The read timeout is longer than the
+# server-side [timeout:500] of the queries in data/transformer_data/overpass_queries.
+OVERPASS_TIMEOUT_S = (30, 600)
 
 
 def get_user_data_dir() -> Path:
-    """
-    Get the user data directory for pylovo.
+    """Return the directory with user-provided input data.
 
-    This directory contains user-provided data like building shapefiles,
-    street network SQL files, and processed transformer GeoJSON files.
+    The directory holds building shapefiles, street network SQL files and the
+    processed transformer GeoJSON files of the file-based (``USE_INFDB=False``)
+    data path. The first match wins:
 
-    Priority order:
-    1. PYLOVO_DATA_DIR environment variable (explicit data directory)
-    2. PYLOVO_ROOT environment variable + /data (Docker-friendly)
-    3. Current working directory / data (development)
+    1. ``PYLOVO_DATA_DIR`` environment variable (explicit data directory),
+    2. ``PYLOVO_ROOT`` environment variable + ``/data`` (Docker-friendly),
+    3. ``<current working directory>/data`` (development checkout).
 
-    Returns
-    -------
-    Path
-        Path to the user data directory
+    Returns:
+        Path of the user data directory (it is not checked for existence).
     """
     # Explicit data directory
     data_dir = os.getenv("PYLOVO_DATA_DIR")
@@ -43,29 +62,49 @@ def get_user_data_dir() -> Path:
     return Path.cwd() / "data"
 
 
-def reset_log_directory():
-    # Delete and recreate the log directory (preserving .gitkeep)
+def reset_log_directory() -> Path:
+    """Empty ``./log`` (keeping ``.gitkeep``) and make sure it exists.
+
+    Returns:
+        Path of the log directory, relative to the current working directory.
+    """
     log_dir = Path("log")
     if log_dir.exists():
-        # Remove all files except .gitkeep
         for item in log_dir.iterdir():
             if item.name != ".gitkeep":
                 if item.is_file():
                     item.unlink()
                 elif item.is_dir():
                     shutil.rmtree(item)
-        # Ensure the directory exists
-        log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
-def create_logger(name, log_file, log_level):
+
+def create_logger(name: str, log_file, log_level) -> logging.Logger:
+    """Configure the named logger to write to ``log_file`` and to the console.
+
+    Handlers from a previous call with the same ``name`` are closed and replaced,
+    so every object that creates its logger this way (``GridGenerator``,
+    ``DatabaseClient``, ...) logs each message exactly once. The logger does not
+    propagate to the root logger.
+
+    Args:
+        name: Logger name (shown in every message).
+        log_file: Path of the log file; missing parent directories are created.
+        log_level: Logging level, e.g. ``"INFO"`` or ``logging.DEBUG``.
+
+    Returns:
+        The configured logger.
+    """
     log_file = Path(log_file)
     log_file.parent.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger(name=name)
+    for handler in logger.handlers:
+        handler.close()
     logger.handlers.clear()  # Clear existing handlers to prevent duplication
 
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    formatter.converter = lambda timestamp: datetime.fromtimestamp(timestamp, tz=UTC_PLUS_1).timetuple()
+    formatter.converter = lambda timestamp: datetime.fromtimestamp(timestamp, tz=LOG_TIMEZONE).timetuple()
 
     # to print log messages to a file
     file_handler = logging.FileHandler(log_file)
@@ -75,7 +114,6 @@ def create_logger(name, log_file, log_level):
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
 
-    
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
     logger.setLevel(log_level)
@@ -84,6 +122,9 @@ def create_logger(name, log_file, log_level):
     return logger
 
 
+# =============================================================================
+# Electrical load aggregation
+# =============================================================================
 NONRESIDENTIAL_CATEGORIES = frozenset({"Commercial", "Public"})
 LOAD_COMPONENT_COLUMNS = (
     "consumer_vertex",
@@ -94,6 +135,11 @@ LOAD_COMPONENT_COLUMNS = (
 
 
 def _get_sim_factor(consumer_cat_df, definition):
+    """Return the simultaneity factor of consumer category ``definition``.
+
+    ``consumer_cat_df`` is either the consumer category table (with a
+    ``definition`` column) or the same table indexed by ``definition``.
+    """
     if "definition" in consumer_cat_df.columns:
         matches = consumer_cat_df.loc[consumer_cat_df["definition"] == definition, "sim_factor"]
         if len(matches) != 1:
@@ -112,6 +158,19 @@ def build_load_components(buildings_df):
     one residential record and one record for its original non-residential use.
     Non-residential components classified as MV-direct are deliberately omitted
     from the LV model.
+
+    Args:
+        buildings_df: Building rows with ``vertice_id``, ``households``,
+            ``residential_peak_load_in_kw``, ``nonresidential_peak_load_in_kw``,
+            ``nonresidential_use`` and ``nonresidential_mv_direct``.
+
+    Returns:
+        DataFrame with the columns :data:`LOAD_COMPONENT_COLUMNS`; ``load_units`` is
+        the number of households for residential components and 1 otherwise.
+
+    Raises:
+        ValueError: If a non-residential load has a use other than
+            ``Commercial`` or ``Public``.
     """
     components = []
 
@@ -156,18 +215,48 @@ def build_load_components(buildings_df):
     return pd.DataFrame.from_records(components, columns=LOAD_COMPONENT_COLUMNS)
 
 
-def simultaneousPeakLoad(buildings_df, consumer_cat_df, vertice_ids):
-    # Calculates the simultaneous peak load of buildings with given street-side planning node ids.
+def planning_nodes(buildings_df: pd.DataFrame) -> pd.Series:
+    """Return the street-side node at which each building is planned.
+
+    That is ``agg_connection_point`` where connection-point aggregation
+    (``AGGREGATE_NEARBY_CONNECTION_POINTS``) assigned one, otherwise the building's
+    own ``connection_point``.
+
+    Args:
+        buildings_df: Building rows with ``connection_point`` and optionally
+            ``agg_connection_point``.
+
+    Returns:
+        Series aligned with ``buildings_df``.
+    """
     planning_column = "agg_connection_point" if "agg_connection_point" in buildings_df.columns else "connection_point"
-    planning_nodes = buildings_df[planning_column]
+    nodes = buildings_df[planning_column]
     if planning_column == "agg_connection_point" and "connection_point" in buildings_df.columns:
-        planning_nodes = planning_nodes.fillna(buildings_df["connection_point"])
-    subset_df = buildings_df[planning_nodes.isin(vertice_ids)]
+        nodes = nodes.fillna(buildings_df["connection_point"])
+    return nodes
+
+
+def simultaneous_peak_load(buildings_df, consumer_cat_df, vertice_ids):
+    """Return the coincident peak load (kW) of the buildings planned at the given nodes.
+
+    Buildings are selected by :func:`planning_nodes`. Their load components are
+    grouped by consumer category, :func:`category_simultaneous_load` is applied per
+    category, and the category results are added.
+
+    Args:
+        buildings_df: Building rows (see :func:`build_load_components`).
+        consumer_cat_df: Consumer categories with their ``sim_factor``.
+        vertice_ids: Street-side planning node ids.
+
+    Returns:
+        Coincident peak load in kW (0.0 if no building matches).
+    """
+    subset_df = buildings_df[planning_nodes(buildings_df).isin(vertice_ids)]
     components = build_load_components(subset_df)
 
     total_sim_load = 0.0
     for category, rows in components.groupby("category"):
-        total_sim_load += oneSimultaneousLoad(
+        total_sim_load += category_simultaneous_load(
             rows["installed_kw"].sum(),
             rows["load_units"].sum(),
             _get_sim_factor(consumer_cat_df, category),
@@ -183,6 +272,17 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
     proportion to installed category power. Service cables are instead sized
     from the local coincident load of all consumers physically connected behind
     that cable.
+
+    Args:
+        consumer_list: Consumer vertices of the grid.
+        buildings_df: Building rows of the grid (see :func:`build_load_components`).
+        consumer_cat_df: Consumer categories with their ``sim_factor``.
+
+    Returns:
+        Tuple ``(service_design_load_per_consumer, powerflow_snapshot_components)``:
+        the service design load in kW per consumer vertex, and per consumer vertex
+        a list of records with ``category``, ``installed_kw``, ``load_units``,
+        ``simultaneous_kw`` (power-flow snapshot) and ``service_design_kw``.
     """
     components = build_load_components(buildings_df)
     components["simultaneous_kw"] = 0.0
@@ -191,7 +291,7 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
         rows = components.loc[indices]
         sim_factor = _get_sim_factor(consumer_cat_df, category)
         installed_total_kw = rows["installed_kw"].sum()
-        grouped_sim_kw = oneSimultaneousLoad(
+        grouped_sim_kw = category_simultaneous_load(
             installed_total_kw, rows["load_units"].sum(), sim_factor
         )
         utilization = grouped_sim_kw / installed_total_kw if installed_total_kw > 0 else 0.0
@@ -206,7 +306,7 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
         simultaneous_kw=("simultaneous_kw", "sum"),
     )
     grouped["service_design_kw"] = [
-        oneSimultaneousLoad(
+        category_simultaneous_load(
             row.installed_kw,
             row.load_units,
             _get_sim_factor(consumer_cat_df, row.category),
@@ -225,9 +325,21 @@ def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_c
     return service_design_load_per_consumer, powerflow_snapshot_components
 
 
-def oneSimultaneousLoad(installed_power, load_count, sim_factor):
-    # calculation of the simultaneaous load of multiple consumers of the same kind (public, commercial or residential)
-    # Safe guards: zero/negative loads or counts yield 0
+def category_simultaneous_load(installed_power, load_count, sim_factor):
+    """Return the coincident load of ``load_count`` consumers of one category.
+
+    ``P_sim = P_installed * (g + (1 - g) * n ** (-3/4))`` with the category's
+    simultaneity factor ``g`` and ``n = load_count``.
+
+    Args:
+        installed_power: Sum of the individual peak loads (any power unit).
+        load_count: Number of consumers (households for residential loads).
+        sim_factor: Simultaneity factor ``g`` of the category (0..1).
+
+    Returns:
+        Coincident load in the unit of ``installed_power``; 0 for missing,
+        zero or negative power or count.
+    """
     if installed_power is None or load_count is None:
         return 0
     if float(installed_power) <= 0 or float(load_count) <= 0:
@@ -238,15 +350,34 @@ def oneSimultaneousLoad(installed_power, load_count, sim_factor):
     return sim_load
 
 
-def osmjson_to_geojson(osmjson: dict[str, str]) -> dict[str, str]:
+def design_current_ka(load_kw: float) -> float:
+    """Return the three-phase line current in kA of an active power at nominal voltage.
+
+    ``I = P / (sqrt(3) * VN * cos(phi))`` with ``VN`` in V and ``cos(phi) =
+    DEFAULT_POWER_FACTOR``, so kW / V gives kA.
+
+    Args:
+        load_kw: Active power in kW, e.g. a coincident peak load.
+
+    Returns:
+        Current in kA.
+    """
+    return load_kw / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
+
+
+# =============================================================================
+# OpenStreetMap / Overpass API
+# =============================================================================
+def osmjson_to_geojson(osmjson: dict) -> dict:
     """Convert JSON dict received from overpass api to GeoJSON dictionary.
+
+    The OSM ``tags`` of each feature are moved directly into its ``properties``.
 
     Args:
         osmjson: JSON dictionary received from overpass api
 
     Returns:
-        dict: GeoJSON representation of osmjson
-
+        GeoJSON representation of osmjson
     """
     geojson = osm2geojson.json2geojson(osmjson)
 
@@ -258,19 +389,32 @@ def osmjson_to_geojson(osmjson: dict[str, str]) -> dict[str, str]:
     return geojson
 
 
-def query_overpass_for_geojson(overpass_url: str, query: str) -> dict[str, str]:
-    """Execute an overpass turbo query and convert results to GeoJSON.
+def query_overpass_for_geojson(overpass_url: str, query: str) -> dict:
+    """Execute an Overpass API query and convert the result to GeoJSON.
+
+    The query is sent as a form-encoded POST (long queries do not fit into a URL)
+    with a descriptive User-Agent, which the public Overpass instances require.
 
     Args:
-        overpass_url: Overpass API URL
-        query: Query string
+        overpass_url: Overpass API interpreter URL,
+            e.g. ``https://overpass-api.de/api/interpreter``.
+        query: Overpass QL query that requests ``[out:json]``.
 
     Returns:
-        dict: GeoJSON representation of overpass results
+        GeoJSON representation of overpass results
 
+    Raises:
+        requests.HTTPError: If the server answers with an error status
+            (for example 429 or 504 when it is overloaded).
+        requests.Timeout: If the server does not answer within
+            :data:`OVERPASS_TIMEOUT_S`.
     """
-    # call api for data
-    response = requests.get(overpass_url, params={'data': query})
+    response = requests.post(
+        overpass_url,
+        data={"data": query},
+        headers={"User-Agent": PYLOVO_USER_AGENT},
+        timeout=OVERPASS_TIMEOUT_S,
+    )
     response.raise_for_status()
 
     # convert JSON data to GeoJSON format

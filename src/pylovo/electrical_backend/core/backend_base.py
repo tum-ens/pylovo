@@ -1,55 +1,35 @@
-"""
-Abstract base class for electrical simulation backends.
+"""Abstract interface for electrical simulation backends.
 
-This module defines the interface that all electrical simulation backends
-must implement. It serves as a contract between pylovo's grid generation algorithms
-and the underlying electrical simulation software.
+Grid generation (``GridGenerator`` and ``CableInstaller``) describes every network
+element with a backend-agnostic spec from :mod:`.specs` (``BusSpec``, ``LineSpec``,
+...). A backend translates these specs into calls of its simulation engine, so the
+engine can be switched with ``ELECTRICAL_BACKEND`` in ``config_generation.yaml``
+without touching the generation algorithm.
 
-Purpose
--------
-Enables pylovo to support multiple electrical simulation engines
-(pandapower, OpenDSS, etc.) without modifying the core grid generation logic.
-Grid construction algorithms work with high-level component specifications
-(BusSpec, LineSpec, etc.) rather than backend-specific API calls.
+A backend must:
 
-Architecture
-------------
-- Grid generation algorithms create ComponentSpec objects (see specs.py)
-- Backend implementations translate these specs to their native API calls
-- This decoupling allows easy switching between simulation engines via config
-
-Contract Requirements
----------------------
-Any backend implementation MUST:
-1. Implement all @abstractmethod functions defined below
-2. Accept ComponentSpec objects and translate to native API calls
-3. Handle pylovo grid conventions (400V LV, 20kV MV for German grids)
-4. Support cable types registered from the configured feeder and consumer cable pools
-5. Return consistent circuit metrics for analysis
+1. implement every ``@abstractmethod`` below,
+2. translate each spec passed to :meth:`IElectricalBackend.create_component`,
+3. follow pylovo's grid conventions (0.4 kV LV, 20 kV MV, bus names such as
+   ``"LVbus 1"``, ``"MVbus 1"``, ``"Connection Nodebus <vertex>"``),
+4. accept the cable catalogue passed to :meth:`IElectricalBackend.register_cable_types`,
+5. report ``min_voltage_pu`` and ``max_voltage_pu`` in
+   :meth:`IElectricalBackend.get_circuit_metrics` (used for the voltage-band check).
 """
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
+from .specs import ComponentSpec
+
 
 class IElectricalBackend(ABC):
-    """
-    Abstract backend interface for electrical simulation engines.
+    """Interface that every electrical simulation backend implements.
 
-    This class defines the required interface that all electrical backends must implement
-    to be compatible with pylovo's grid generation system.
-
-    Implementation Guide
-    --------------------
-    1. Inherit from this class
-    2. Implement all @abstractmethod functions
-    3. Store backend-specific network object (e.g., pandapower.net, dss.circuit)
-    4. Translate ComponentSpec objects to native API calls in create_component()
-    5. Configure backend in config_generation.yaml under ELECTRICAL_BACKEND
-
-    Example
-    -------
-    See src/electrical_backend/pandapower/backend.py for reference implementation.
+    An implementation keeps one engine-specific network object (for example the
+    pandapower ``net``) per circuit. ``pylovo.electrical_backend.pandapower.backend``
+    is the reference implementation; register new backends with
+    :func:`pylovo.electrical_backend.factory.register_backend`.
     """
 
     @abstractmethod
@@ -65,7 +45,7 @@ class IElectricalBackend(ABC):
         """
 
     @abstractmethod
-    def create_component(self, spec: "ComponentSpec") -> Any:
+    def create_component(self, spec: ComponentSpec) -> Any:
         """
         Create electrical component from specification.
 

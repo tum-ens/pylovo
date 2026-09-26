@@ -3,8 +3,8 @@ Clustering analysis plotting functions.
 This module contains functions for visualizing clustering results and quality metrics,
 including CH/DB indices, cluster distributions, and 3D visualizations.
 """
-from math import pi
-from typing import Tuple
+from math import ceil, pi
+from typing import Sequence, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -15,9 +15,9 @@ from sklearn import preprocessing
 from sklearn.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 from sklearn.mixture import GaussianMixture
-# from sklearn_extra.cluster import KMedoids
 
-from pylovo.config_loader import TUMPalette, TUMPalette1, LIST_OF_CLUSTERING_PARAMETERS, REGIO7_REGIO5_GEM_DICT
+from pylovo.config_loader import TUMPalette, LIST_OF_CLUSTERING_PARAMETERS, REGIO7_REGIO5_GEM_DICT
+
 
 def plot_radar_graph(
     representative_networks: pd.DataFrame,
@@ -27,19 +27,17 @@ def plot_radar_graph(
     """
     Plot representative networks as radar graphs.
 
-    Parameters
-    ----------
-    representative_networks : pd.DataFrame
-        Table of parameters of representative networks.
-    list_of_parameters : list
-        Parameters to plot in radar graph.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (10, 10).
+    One polar panel per representative grid (three per row); each parameter is
+    normalized by its maximum over all representative grids.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the radar plots.
+    Args:
+        representative_networks: Table of parameters of representative networks
+            with a ``clusters`` column.
+        list_of_parameters: Parameters to plot in radar graph.
+        figsize: Figure size in inches (width, height). Default: (10, 10).
+
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the radar plots.
     """
     # Prepare data
     representative_networks = representative_networks.reset_index()
@@ -66,48 +64,56 @@ def plot_radar_graph(
 
         ax.set_theta_offset(pi / 2)
         ax.set_theta_direction(-1)
-        plt.xticks(angles[:-1], categories, color='grey', size=8)
+        ax.set_xticks(angles[:-1], categories, color='grey', size=8)
 
         ax.set_rlabel_position(0)
-        plt.yticks([0.33, 0.66, 1.0], ["33%", "66%", "100%"], color="grey", size=7)
-        plt.ylim(0, 1.1)
+        ax.set_yticks([0.33, 0.66, 1.0], ["33%", "66%", "100%"], color="grey", size=7)
+        ax.set_ylim(0, 1.1)
 
         values = representative_networks_normalized.loc[row].drop('clusters').values.flatten().tolist()
         values += values[:1]
         ax.plot(angles, values, color=color, linewidth=2, linestyle='solid')
         ax.fill(angles, values, color=color, alpha=0.4)
-        plt.title(title, size=11, color=color, y=1.1)
+        ax.set_title(title, size=11, color=color, y=1.1)
 
-    # Create figure and subplots
-    my_dpi = 96
-    fig = plt.figure(figsize=(1000 / my_dpi, 1000 / my_dpi), dpi=my_dpi)
+    # Create figure and subplots: three panels per row, at least two rows (the
+    # former fixed 2 x 3 grid failed for 7 clusters, see NO_OF_CLUSTERS_ALLOWED)
+    n_plots = len(representative_networks.index)
+    n_rows = max(2, ceil(n_plots / 3))
+    fig = plt.figure(figsize=figsize, dpi=96)
 
-    for row in range(0, len(representative_networks.index)):
-        ax = plt.subplot(2, 3, row + 1, polar=True)
-        make_spider(row=row, title=row, color=TUMPalette[row], ax=ax)
+    for row in range(0, n_plots):
+        ax = plt.subplot(n_rows, 3, row + 1, polar=True)
+        make_spider(row=row, title=row, color=TUMPalette[row % len(TUMPalette)], ax=ax)
 
     return fig
 
+
+def _clustering_columns(list_of_clustering_parameters: Sequence[str] | None) -> list[str]:
+    """Return the given clustering columns or, if ``None``, the configured ones."""
+    if list_of_clustering_parameters is None:
+        return list(LIST_OF_CLUSTERING_PARAMETERS)
+    return list(list_of_clustering_parameters)
+
+
 def plot_ch_index_for_clustering_algos(
     df_plz_parameters: pd.DataFrame,
-    no_of_clusters_allowed: range = range(3, 8)
+    no_of_clusters_allowed: Sequence[int] = range(3, 8),
+    list_of_clustering_parameters: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """
     Plot Calinski-Harabasz index for different clustering algorithms.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for grids.
-    no_of_clusters_allowed : range, optional
-        Range of cluster numbers to test. Default: range(3, 8).
+    Args:
+        df_plz_parameters: Set of parameters for grids.
+        no_of_clusters_allowed: Cluster numbers to test. Default: range(3, 8).
+        list_of_clustering_parameters: Columns used for clustering. Defaults to
+            ``LIST_OF_CLUSTERING_PARAMETERS`` from ``config_clustering.yaml``.
 
-    Returns
-    -------
-    pd.DataFrame
-        Comparison table of optimal cluster numbers for each algorithm.
+    Returns:
+        pd.DataFrame: Comparison table of optimal cluster numbers for each algorithm.
     """
-    X = df_plz_parameters[LIST_OF_CLUSTERING_PARAMETERS]
+    X = df_plz_parameters[_clustering_columns(list_of_clustering_parameters)]
     X = preprocessing.scale(X)
 
     df_ch_comparison = pd.DataFrame(columns=['algorithm', 'no_clusters', 'ch_index'])
@@ -116,7 +122,6 @@ def plot_ch_index_for_clustering_algos(
     # Test different algorithms
     algorithms = [
         ('kmeans', lambda n: KMeans(n_clusters=n, random_state=0)),
-        # ('kmedoids', lambda n: KMedoids(n_clusters=n)),
         ('gmm_full', lambda n: GaussianMixture(n_components=n, covariance_type='full', random_state=1)),
         ('gmm_diag', lambda n: GaussianMixture(n_components=n, covariance_type='diag', random_state=1)),
         ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied', random_state=1)),
@@ -151,36 +156,34 @@ def plot_ch_index_for_clustering_algos(
 
 def plot_db_index_for_clustering_algos(
     df_plz_parameters: pd.DataFrame,
-    no_of_clusters_allowed: range = range(3, 8)
+    no_of_clusters_allowed: Sequence[int] = range(3, 8),
+    list_of_clustering_parameters: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """
     Plot Davies-Bouldin index for different clustering algorithms.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for grids.
-    no_of_clusters_allowed : range, optional
-        Range of cluster numbers to test. Default: range(3, 8).
+    Args:
+        df_plz_parameters: Set of parameters for grids.
+        no_of_clusters_allowed: Cluster numbers to test. Default: range(3, 8).
+        list_of_clustering_parameters: Columns used for clustering. Defaults to
+            ``LIST_OF_CLUSTERING_PARAMETERS`` from ``config_clustering.yaml``.
 
-    Returns
-    -------
-    pd.DataFrame
-        Comparison table of optimal cluster numbers for each algorithm.
+    Returns:
+        pd.DataFrame: Comparison table of optimal cluster numbers for each algorithm.
     """
-    X = df_plz_parameters[LIST_OF_CLUSTERING_PARAMETERS]
+    X = df_plz_parameters[_clustering_columns(list_of_clustering_parameters)]
     X = preprocessing.scale(X)
 
     df_db_comparison = pd.DataFrame(columns=['algorithm', 'no_clusters', 'db_index'])
     df_db_index = pd.DataFrame({'no_clusters': list(no_of_clusters_allowed)})
 
+    # same seeds as plot_ch_index_for_clustering_algos, so the results are reproducible
     algorithms = [
         ('kmeans', lambda n: KMeans(n_clusters=n, random_state=0)),
-        # ('kmedoids', lambda n: KMedoids(n_clusters=n)),
-        ('gmm_full', lambda n: GaussianMixture(n_components=n, covariance_type='full')),
-        ('gmm_diag', lambda n: GaussianMixture(n_components=n, covariance_type='diag')),
-        ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied')),
-        ('gmm_sph', lambda n: GaussianMixture(n_components=n, covariance_type='spherical'))
+        ('gmm_full', lambda n: GaussianMixture(n_components=n, covariance_type='full', random_state=1)),
+        ('gmm_diag', lambda n: GaussianMixture(n_components=n, covariance_type='diag', random_state=1)),
+        ('gmm_tied', lambda n: GaussianMixture(n_components=n, covariance_type='tied', random_state=1)),
+        ('gmm_sph', lambda n: GaussianMixture(n_components=n, covariance_type='spherical', random_state=1))
     ]
 
     for algo_name, algo_func in algorithms:
@@ -213,15 +216,11 @@ def plot_percentage_of_clusters(df_plz_parameters: pd.DataFrame) -> Figure:
     """
     Plot distribution of clusters as a bar chart.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for clustered grids with 'clusters' column.
+    Args:
+        df_plz_parameters: Set of parameters for clustered grids with 'clusters' column.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the cluster distribution plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the cluster distribution plot.
     """
     len_grids = len(df_plz_parameters)
     clusters_perc = df_plz_parameters['clusters'].value_counts() / len_grids
@@ -243,15 +242,11 @@ def plot_stacked_distribution_of_clusters_per_regio_5(
     """
     Plot stacked bar chart of cluster distribution for each regio 5 class.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for clustered grids with 'clusters' and 'regio7' columns.
+    Args:
+        df_plz_parameters: Set of parameters for clustered grids with 'clusters' and 'regio7' columns.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the stacked distribution plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the stacked distribution plot.
     """
     df_plz_parameters = df_plz_parameters.copy()
     df_plz_parameters['regio7'] = df_plz_parameters['regio7'].map(REGIO7_REGIO5_GEM_DICT)
@@ -271,10 +266,8 @@ def plot_bar_distribution_of_clusters_per_regio_5(df_plz_parameters: pd.DataFram
     """
     Plot bar chart of cluster distribution for each regio 5 class.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for clustered grids with 'clusters' and 'regio7' columns.
+    Args:
+        df_plz_parameters: Set of parameters for clustered grids with 'clusters' and 'regio7' columns.
     """
     x, y = 'regio7', 'clusters'
     (df_plz_parameters
@@ -290,17 +283,13 @@ def get_min_max_data_for_clusters(n_clusters: int, df_networks: pd.DataFrame) ->
     """
     Get minimum and maximum values for each cluster and parameter.
 
-    Parameters
-    ----------
-    n_clusters : int
-        Number of clusters.
-    df_networks : pd.DataFrame
-        Network parameters with 'clusters' column.
+    Args:
+        n_clusters: Number of clusters.
+        df_networks: Network parameters with 'clusters' column.
 
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame containing min/max values for each cluster.
+    Returns:
+        pd.DataFrame: Min/max per cluster of attribute 1 ``no_house_connections``,
+        attribute 2 ``cable_len_per_house`` and attribute 3 ``transformer_mva``.
     """
     df_min_max = pd.DataFrame(
         columns=['attribute1_min', 'attribute1_max', 'attribute2_min', 'attribute2_max',
@@ -322,17 +311,14 @@ def plot_clusters_3D(df_min_max: pd.DataFrame, df_centroids: pd.DataFrame) -> Fi
     """
     Plot clusters as 3D boxes with centroids.
 
-    Parameters
-    ----------
-    df_min_max : pd.DataFrame
-        DataFrame with min/max values for each cluster.
-    df_centroids : pd.DataFrame
-        DataFrame containing cluster centroids.
+    Args:
+        df_min_max: Min/max values per cluster from :func:`get_min_max_data_for_clusters`.
+        df_centroids: Cluster centroids with columns ``0``, ``1``, ``2`` in the attribute
+            order of ``df_min_max``; an optional ``color`` column in ``df_min_max`` sets
+            the box colors.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the 3D cluster plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the 3D cluster plot.
     """
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')

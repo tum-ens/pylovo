@@ -1,15 +1,52 @@
-import yaml
-import os
+"""Command-line entry point ``pylovo-classify``: interactive grid classification pipeline."""
+import argparse
 
+import yaml
+
+from pylovo.config_loader import get_config_search_paths
 from pylovo.classification.clustering.apply_clustering_for_visualisation import apply_clustering_for_visualisation
 from pylovo.classification.clustering.get_no_clusters_for_clustering import get_no_clusters_for_clustering
 from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
 from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
 
-# Define paths to YAML config files
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-CONFIG_CLASSIFICATION_PATH = os.path.join(BASE_DIR, "config", "config_classification.yaml")
-CONFIG_CLUSTERING_PATH = os.path.join(BASE_DIR, "config", "config_clustering.yaml")
+
+def _config_file(filename: str) -> str:
+    """Return the path of the config file that ``pylovo.config_loader`` reads.
+
+    It is the first match in the config search paths (``./config`` first), so the
+    values written here are the ones pylovo uses in later runs.
+    """
+    for search_path in get_config_search_paths():
+        candidate = search_path / filename
+        if candidate.exists():
+            return str(candidate)
+    raise FileNotFoundError(f"Config file '{filename}' not found in {get_config_search_paths()}")
+
+
+# Paths to the YAML config files that the pipeline reads and updates
+CONFIG_CLASSIFICATION_PATH = _config_file("config_classification.yaml")
+CONFIG_CLUSTERING_PATH = _config_file("config_clustering.yaml")
+
+
+def _parse_args() -> argparse.Namespace:
+    """Parse the command line; the pipeline itself takes no options."""
+    parser = argparse.ArgumentParser(
+        prog="pylovo-classify",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Interactive classification of the generated grids into representative grid types.",
+        epilog=(
+            "The pipeline asks questions on the terminal and then:\n"
+            "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml),\n"
+            "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
+            "  3. filters the grids by the thresholds of config/config_clustering.yaml,\n"
+            "  4. selects the clustering parameters and numbers of clusters (asked or computed)\n"
+            "     and writes them to config/config_clustering.yaml,\n"
+            "  5. clusters the grids and writes pylovo.transformer_classified.\n"
+            "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected."
+        ),
+    )
+    return parser.parse_args()
+
 
 def load_yaml(filepath):
     """Load a YAML file."""
@@ -68,7 +105,7 @@ def get_custom_cluster_numbers():
 
             # Check if exactly 3 values are provided
             if len(values) != 3:
-                print(f"Invalid input. Please enter exactly 3 integer values separated by commas.")
+                print("Invalid input. Please enter exactly 3 integer values separated by commas.")
                 continue
 
             # Check if all values are within the allowed range
@@ -81,10 +118,12 @@ def get_custom_cluster_numbers():
             print("Invalid input. Please enter numeric values only.")
 
 
+def update_list_of_clustering_parameters() -> list:
+    """Runs get_parameters_for_clustering and updates LIST_OF_CLUSTERING_PARAMETERS in config_clustering.yaml.
 
-
-def update_list_of_clustering_parameters():
-    """Runs get_parameters_for_clustering and updates LIST_OF_CLUSTERING_PARAMETERS in config_clustering.yaml."""
+    Returns:
+        list: The selected clustering parameters.
+    """
     params = get_parameters_for_clustering()
 
     # Update YAML file
@@ -92,11 +131,17 @@ def update_list_of_clustering_parameters():
     config["LIST_OF_CLUSTERING_PARAMETERS"] = params
     save_yaml(CONFIG_CLUSTERING_PATH, config)
     print("LIST_OF_CLUSTERING_PARAMETERS updated in config_clustering.yaml")
+    return params
 
 
-def update_number_of_clusters():
-    """Runs get_no_clusters_for_clustering and updates cluster numbers in config_clustering.yaml."""
-    df_no_clusters = get_no_clusters_for_clustering()
+def update_number_of_clusters(list_of_clustering_parameters: list | None = None):
+    """Runs get_no_clusters_for_clustering and updates cluster numbers in config_clustering.yaml.
+
+    Args:
+        list_of_clustering_parameters: Parameters to evaluate the CH index on;
+            ``None`` uses LIST_OF_CLUSTERING_PARAMETERS loaded at start-up.
+    """
+    df_no_clusters = get_no_clusters_for_clustering(list_of_clustering_parameters)
     config = load_yaml(CONFIG_CLUSTERING_PATH)
 
     def get_no_clusters_from_df(algo_names: list[str], fallback_key: str) -> int:
@@ -128,7 +173,8 @@ def update_number_of_clusters():
 
 
 def main():
-    """Main function to execute the classification pipeline."""
+    """Run the interactive classification pipeline (see ``pylovo-classify --help``)."""
+    _parse_args()
     print("Running classification pipeline...")
 
     # Step 1: Ensure user has configured `config_classification.yaml`
@@ -166,15 +212,20 @@ def main():
     else:
         # Step 4: Automatically update clustering parameters and cluster numbers
         print("\nGetting parameters for clustering...")
-        update_list_of_clustering_parameters()
+        clustering_parameters = update_list_of_clustering_parameters()
 
         print("\nGetting number of clusters for clustering...")
-        update_number_of_clusters()
+        update_number_of_clusters(clustering_parameters)
 
-    # Step 5: Run apply_clustering_for_QGIS_visualisation.py
-    print("\nRunning apply_clustering_for_QGIS_visualisation.py...")
-    apply_clustering_for_visualisation()
-
+    # Step 5: Run apply_clustering_for_visualisation.py with the values just written;
+    # pylovo.config_loader still holds the values loaded at start-up.
+    print("\nRunning apply_clustering_for_visualisation.py...")
+    config = load_yaml(CONFIG_CLUSTERING_PATH)
+    apply_clustering_for_visualisation(
+        list_of_clustering_parameters=config["LIST_OF_CLUSTERING_PARAMETERS"],
+        n_clusters_kmeans=config["N_CLUSTERS_KMEANS"],
+        n_clusters_gmm=config["N_CLUSTERS_GMM"],
+    )
 
     print("\nClassification process completed successfully!")
 

@@ -1,60 +1,37 @@
 """
-Spatial/geographic plotting functions.
+Plots of grid statistics per postcode area (PLZ) and of synthetic/real metric comparisons.
 
-This module contains functions for visualizing geographic data related to
-postal codes (PLZ), including transformer distributions, cable types, and
-grid statistics.
+The PLZ plots read the results of ``VERSION_ID`` from the database: transformer
+sizes, cable types and the per-transformer parameters of ``plz_parameters``.
+The Plotly comparison plots take a metrics table with a ``source`` column.
 """
 
-import json
-from pathlib import Path
 from typing import Tuple, Optional, List
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-import numpy as np
 import pandas as pd
-import pandapower as pp
-import plotly
 import plotly.express as px
 import plotly.graph_objects as go
-from pandapower.plotting.plotly import vlevel_plotly
-from pandapower.plotting.plotly.mapbox_plot import set_mapbox_token
-from scipy import stats
 
-
-from pylovo.config_loader import RESULT_DIR, VERSION_ID
+from pylovo.config_loader import VERSION_ID
+from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.utils import get_color_map
-
-# Try to import config, but don't fail if it doesn't exist
-try:
-    from pylovo.plotting import ACCESS_TOKEN_PLOTLY, PLOT_COLOR_DICT
-    px.set_mapbox_access_token(ACCESS_TOKEN_PLOTLY)
-except ImportError:
-    ACCESS_TOKEN_PLOTLY = None
-    PLOT_COLOR_DICT = {}
 
 
 def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
-    """
-    Plot pie charts showing transformer size and cable type distributions for a postal code.
+    """Plot pie charts of the transformer sizes and installed cable types of a PLZ.
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (16, 4).
+    Args:
+        plz: Postal code.
+        figsize: Figure size in inches (width, height).
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the pie charts.
+    Returns:
+        The figure with the two pie charts.
     """
-    from pylovo.grid_generator import GridGenerator
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-    data_list, data_labels, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
+    with DatabaseClient() as dbc_client:
+        _, _, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
+        cable_dict = dbc_client.read_cable_dict(plz)
 
     fig, axs = plt.subplots(nrows=1, ncols=2, figsize=figsize)
 
@@ -64,7 +41,6 @@ def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Fi
     axs[0].set_title('Transformer Size Distribution', fontsize=14)
 
     # Plot cable length distribution
-    cable_dict = dbc_client.read_cable_dict(plz)
     axs[1].pie(cable_dict.values(), labels=cable_dict.keys(), autopct="%.1f%%")
     axs[1].set_title("Installed Cable Length", fontsize=14)
     plt.show()
@@ -73,25 +49,17 @@ def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Fi
 
 
 def plot_hist_trafos(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
-    """
-    Plot histogram of transformer sizes in a postal code.
+    """Plot a bar chart of the number of transformers per size in a PLZ.
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (10, 6).
+    Args:
+        plz: Postal code.
+        figsize: Figure size in inches (width, height).
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the histogram.
+    Returns:
+        The figure with the bar chart.
     """
-    from pylovo.grid_generator import GridGenerator
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-    data_list, data_labels, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
+    with DatabaseClient() as dbc_client:
+        _, _, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.bar(trafo_dict.keys(), height=trafo_dict.values(), width=0.3)
@@ -104,28 +72,20 @@ def plot_hist_trafos(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
 
 
 def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
+    """Create boxplots of grid parameters grouped by transformer size.
+
+    Shows the distribution of load numbers, bus numbers, simultaneous peak load and
+    maximum/average transformer distance for each transformer size of the PLZ.
+
+    Args:
+        plz: Postal code.
+        figsize: Figure size in inches (width, height).
+
+    Returns:
+        The figure with one boxplot panel per parameter.
     """
-    Create boxplots of grid parameters grouped by transformer size.
-
-    Shows distribution of load numbers, bus numbers, simultaneous load peak,
-    max/avg transformer distance for each transformer size category.
-
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (16, 4).
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the boxplots.
-    """
-    from pylovo.grid_generator import GridGenerator
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-    data_list, data_labels, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
+    with DatabaseClient() as dbc_client:
+        data_list, data_labels, _ = dbc_client.read_per_trafo_dict(plz=plz)
     trafo_sizes = list(data_list[0].keys())
     values = [list(d.values()) for d in data_list]
 
@@ -133,7 +93,7 @@ def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
     fig, axs = plt.subplots(nrows=1, ncols=len(data_list), figsize=figsize, sharey=True)
 
     for i, data_label in enumerate(data_labels):
-        axs[i].boxplot(values[i], labels=trafo_sizes, vert=False,
+        axs[i].boxplot(values[i], tick_labels=trafo_sizes, orientation='horizontal',
                        showfliers=False, patch_artist=True, notch=False)
         axs[i].set_title(data_label, fontsize=12)
 
@@ -146,24 +106,17 @@ def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
 
 
 def plot_cable_length_of_types(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
-    """
-    Plot distribution of cable length by cable type.
+    """Plot the installed cable length per cable type in a PLZ.
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (10, 6).
+    Parallel cables count with their multiplicity; lines out of service are ignored.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the cable type distribution plot.
+    Args:
+        plz: Postal code.
+        figsize: Figure size in inches (width, height).
+
+    Returns:
+        The figure with the bar chart (lengths in km).
     """
-    from pylovo.grid_generator import GridGenerator
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
     query = """
         SELECT
             pl.std_type,
@@ -178,37 +131,32 @@ def plot_cable_length_of_types(plz: int, figsize: Tuple[int, int] = (10, 6)) -> 
         GROUP BY pl.std_type
         ORDER BY pl.std_type
     """
-    dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
-    cable_length_dict = {std_type: float(length) for std_type, length in dbc_client.cur.fetchall()}
+    with DatabaseClient() as dbc_client:
+        dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        cable_length_dict = {std_type: float(length) for std_type, length in dbc_client.cur.fetchall()}
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.bar(cable_length_dict.keys(), height=cable_length_dict.values(), width=0.3)
     ax.set_title('Cable Type Distribution', fontsize=14)
     ax.set_xlabel("Cable type")
-    ax.set_ylabel("Length in m")
+    ax.set_ylabel("Length in km")
     plt.show()
 
     return fig
 
 
 def get_trafo_dicts(plz: int) -> Tuple[dict, dict, dict, dict]:
+    """Retrieve load count, bus count and cable length per transformer size for a PLZ.
+
+    Args:
+        plz: Postal code.
+
+    Returns:
+        Tuple ``(load_count_dict, bus_count_dict, cable_length_dict, trafo_dict)``. The
+        keys are transformer sizes in kVA; the first three map to one value per grid
+        (loads, buses with loads, cable length in km) and ``trafo_dict`` to the
+        number of transformers.
     """
-    Retrieve load count, bus count, and cable length per transformer type for a postal code.
-
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-
-    Returns
-    -------
-    tuple of dict
-        (load_count_dict, bus_count_dict, cable_length_dict, trafo_dict)
-    """
-    from pylovo.grid_generator import GridGenerator
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-
     load_count_dict = {}
     bus_count_dict = {}
     cable_length_dict = {}
@@ -238,7 +186,7 @@ def get_trafo_dicts(plz: int) -> Tuple[dict, dict, dict, dict]:
             GROUP BY grid_result_id
         )
         SELECT
-            ROUND(pt.sn_mva * 1000.0)::integer AS capacity,
+            ROUND(pt.sn_mva * COALESCE(pt.parallel, 1) * 1000.0)::integer AS capacity,  -- station, not unit
             COALESCE(lc.load_count, 0) AS load_count,
             COALESCE(lbc.bus_count, 0) AS bus_count,
             COALESCE(ll.cable_length, 0.0) AS cable_length
@@ -254,9 +202,11 @@ def get_trafo_dicts(plz: int) -> Tuple[dict, dict, dict, dict]:
         WHERE pt.sn_mva IS NOT NULL
         ORDER BY capacity
     """
-    dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
+    with DatabaseClient() as dbc_client:
+        dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        rows = dbc_client.cur.fetchall()
 
-    for capacity, load_count, bus_count, cable_length in dbc_client.cur.fetchall():
+    for capacity, load_count, bus_count, cable_length in rows:
         if capacity in trafo_dict:
             trafo_dict[capacity] += 1
             load_count_dict[capacity].append(load_count)
@@ -275,32 +225,27 @@ def get_trafo_dicts(plz: int) -> Tuple[dict, dict, dict, dict]:
 # -----------------------------------------------------------------------------
 
 def plot_comparison_distribution_plotly(
-    df: pd.DataFrame, 
-    metric_col: str, 
+    df: pd.DataFrame,
+    metric_col: str,
     title: Optional[str] = None,
     hover_data: Optional[List[str]] = None,
     plot_type: str = "box"
 ) -> go.Figure:
-    """
-    Generate a distribution plot (Box, Violin, or Strip) for a given metric.
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing metrics. Must have 'source' column.
-    metric_col : str
-        Column name of the metric to plot.
-    title : str, optional
-        Chart title. Defaults to metric name.
-    hover_data : List[str], optional
-        Additional columns to show on hover (e.g. ['kcid', 'bcid']).
-    plot_type : str, optional
-        'box', 'violin', or 'strip'. Default: 'box'.
-        
-    Returns
-    -------
-    plotly.graph_objects.Figure
-        The Plotly Figure object.
+    """Generate a distribution plot (box, violin or strip) of a metric per source.
+
+    Args:
+        df: Metrics table with a ``source`` column.
+        metric_col: Column of the metric to plot.
+        title: Chart title. Defaults to the metric name.
+        hover_data: Columns shown on hover. Defaults to those of
+            ``grid_result_id``, ``kcid`` and ``bcid`` that exist.
+        plot_type: ``"box"``, ``"violin"`` or ``"strip"``.
+
+    Returns:
+        The Plotly figure (a "No Data Available" annotation if ``df`` is empty).
+
+    Raises:
+        ValueError: If ``plot_type`` is unknown.
     """
     if df.empty:
         return go.Figure().add_annotation(text="No Data Available", showarrow=False)
@@ -343,35 +288,27 @@ def plot_comparison_distribution_plotly(
         font=dict(family="Arial", size=14),
         hovermode="closest"
     )
-    
+
     return fig
 
 
 def plot_comparison_histogram_plotly(
-    df: pd.DataFrame, 
-    metric_col: str, 
+    df: pd.DataFrame,
+    metric_col: str,
     title: Optional[str] = None,
     histnorm: str = "probability",
 ) -> go.Figure:
-    """
-    Generate an overlaid histogram/KDE using Plotly.
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing metrics.
-    metric_col : str
-        Column name to plot.
-    title : str, optional
-        Plot title.
-    histnorm : str, optional
-        Plotly histogram normalization. Defaults to ``"probability"`` so each source
-        distribution is shown as share of grids rather than raw grid count.
-        
-    Returns
-    -------
-    plotly.graph_objects.Figure
-        The Plotly Figure object.
+    """Generate overlaid histograms of a metric per source, with marginal boxplots.
+
+    Args:
+        df: Metrics table with a ``source`` column.
+        metric_col: Column of the metric to plot.
+        title: Plot title. Defaults to the metric name.
+        histnorm: Plotly histogram normalization. The default ``"probability"``
+            shows each source as share of grids rather than raw grid count.
+
+    Returns:
+        The Plotly figure (a "No Data Available" annotation if ``df`` is empty).
     """
     if df.empty:
         return go.Figure().add_annotation(text="No Data Available", showarrow=False)
@@ -380,10 +317,10 @@ def plot_comparison_histogram_plotly(
     color_discrete_map = get_color_map(sources)
 
     fig = px.histogram(
-        df, 
-        x=metric_col, 
-        color="source", 
-        barmode="overlay", 
+        df,
+        x=metric_col,
+        color="source",
+        barmode="overlay",
         marginal="box", # Adds small boxplot on top
         color_discrete_map=color_discrete_map,
         title=title or f"Histogram of {metric_col}",
@@ -410,32 +347,24 @@ def plot_comparison_scatter_plotly(
     size_col: Optional[str] = None,
     title: Optional[str] = None
 ) -> go.Figure:
-    """
-    Generate a scatter plot for exploring correlations.
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing data.
-    x_col : str
-        X-axis column.
-    y_col : str
-        Y-axis column.
-    size_col : str, optional
-        Column determining marker size.
-    title : str, optional
-        Plot title.
-        
-    Returns
-    -------
-    plotly.graph_objects.Figure
+    """Generate a scatter plot of two metrics, colored by source.
+
+    Args:
+        df: Metrics table with a ``source`` column.
+        x_col: Column on the x axis.
+        y_col: Column on the y axis.
+        size_col: Column that sets the marker size.
+        title: Plot title. Defaults to ``"<y_col> vs <x_col>"``.
+
+    Returns:
+        The Plotly figure (a "No Data Available" annotation if ``df`` is empty).
     """
     if df.empty:
         return go.Figure().add_annotation(text="No Data Available", showarrow=False)
 
     sources = df["source"].unique()
     color_discrete_map = get_color_map(sources)
-    
+
     hover_data = [c for c in ["grid_result_id", "kcid", "bcid"] if c in df.columns]
 
     fig = px.scatter(
@@ -452,77 +381,3 @@ def plot_comparison_scatter_plotly(
     )
 
     return fig
-
-
-def plot_comparison_pdf_plotly(
-    df: pd.DataFrame, 
-    metric_col: str, 
-    title: Optional[str] = None
-) -> go.Figure:
-    """
-    Generate a Probability Density Function (PDF) plot using KDE.
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing metrics.
-    metric_col : str
-        Column name to plot.
-    title : str, optional
-        Plot title.
-        
-    Returns
-    -------
-    plotly.graph_objects.Figure
-    """
-    if df.empty:
-        return go.Figure().add_annotation(text="No Data Available", showarrow=False)
-
-    sources = df["source"].unique()
-    color_discrete_map = get_color_map(sources)
-
-    fig = go.Figure()
-
-    for source in sources:
-        subset = df[df["source"] == source]
-        data = subset[metric_col].dropna()
-        
-        if len(data) > 1:
-            try:
-                # Calculate KDE
-                kde = stats.gaussian_kde(data)
-                
-                # Create x range for plotting
-                min_val = data.min()
-                max_val = data.max()
-                pad = (max_val - min_val) * 0.2
-                x_grid = np.linspace(min_val - pad, max_val + pad, 200)
-                y_grid = kde(x_grid)
-                
-                color = color_discrete_map.get(source, "black")
-                
-                fig.add_trace(go.Scatter(
-                    x=x_grid, 
-                    y=y_grid,
-                    mode='lines',
-                    name=source,
-                    line=dict(color=color, width=2),
-                    fill='tozeroy', # Optional: fill area under curve
-                    fillcolor=f"rgba{tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + (0.1,)}" if color.startswith('#') else None
-                ))
-            except Exception as e:
-                print(f"Could not calculate KDE for {source}: {e}")
-                pass
-
-    fig.update_layout(
-        title=title or f"PDF Comparison of {metric_col}",
-        xaxis_title=metric_col.replace("_", " ").title(),
-        yaxis_title="Density",
-        legend_title="Source",
-        font=dict(family="Arial", size=14),
-        template="plotly_white",
-        hovermode="x unified"
-    )
-
-    return fig
-

@@ -1,16 +1,33 @@
-"""
-Shared utilities for plotting functions.
+"""Shared helpers for the plotting modules: source colours, axis setup, text boxes, limit lines,
+map tile headers and the pandapower on-map workaround."""
 
-This module contains common utilities used across different plotting modules,
-including axis setup, color management, and legend formatting.
-"""
+from contextlib import contextmanager
+from typing import Dict, Iterator, List, Optional
+from unittest import mock
 
-import matplotlib.pyplot as plt
-from typing import Optional, Tuple, Any, List, Dict
 import matplotlib.axes as mpl_axes
+import pandapower.plotting.plotly.traces as pp_plotly_traces
 import plotly.colors
 
-# Standard Color Palette for Grid Comparison
+from pylovo.utils import PYLOVO_USER_AGENT
+
+# Request headers for OpenStreetMap tiles (contextily); the tile usage policy requires a User-Agent.
+OSM_TILE_HEADERS = {"User-Agent": PYLOVO_USER_AGENT}
+
+
+@contextmanager
+def pandapower_on_map() -> Iterator[None]:
+    """Let pandapower's plotly functions draw ``on_map=True`` without their geodata check.
+
+    pandapower 3.4 checks whether the geodata are WGS84 by reverse-geocoding one bus, but it passes
+    "lon, lat" where the geocoder expects "lat, lon" (and the lookup needs internet access), so the
+    check fails for pylovo grids. pylovo stores bus and line geodata in WGS84 (EPSG:4326), so the
+    check is skipped inside this context.
+    """
+    with mock.patch.object(pp_plotly_traces, "_on_map_test", return_value=True):
+        yield
+
+# Colours of the data sources in real-vs-synthetic comparison plots
 COLOR_MAP = {
     "Real": "#2c3e50", # Dark Slate Blue/Grey for Real
     "Real (SWF)": "#2c3e50",
@@ -21,18 +38,16 @@ COLOR_MAP = {
 FALLBACK_COLORS = plotly.colors.qualitative.Plotly
 
 def get_color_map(sources: List[str]) -> Dict[str, str]:
-    """
-    Dynamically build a color map for Plotly based on present sources.
-    
-    Parameters
-    ----------
-    sources : List[str]
-        List of source names (e.g. ['Real', 'Synthetic v1']).
-        
-    Returns
-    -------
-    Dict[str, str]
-        Dictionary mapping source names to hex color codes.
+    """Build a plotly colour map for the given source names.
+
+    A source gets the ``COLOR_MAP`` colour of its exact name, else of the first ``COLOR_MAP`` key
+    contained in its name, else the next plotly default colour.
+
+    Args:
+        sources: Source names, e.g. ``['Real', 'Synthetic v1']``.
+
+    Returns:
+        Dictionary ``{source: hex colour}``.
     """
     cmap = {}
     fallback_idx = 0
@@ -64,28 +79,18 @@ def setup_axes(
     grid: bool = True,
     grid_alpha: float = 0.3
 ) -> mpl_axes.Axes:
-    """
-    Configure matplotlib axes with common settings.
+    """Set axis labels (size 12), a bold title (size 14) and grid lines.
 
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-        The axes object to configure.
-    xlabel : str, optional
-        Label for the x-axis.
-    ylabel : str, optional
-        Label for the y-axis.
-    title : str, optional
-        Title for the plot.
-    grid : bool, optional
-        Whether to show grid lines (default: True).
-    grid_alpha : float, optional
-        Transparency of grid lines (default: 0.3).
+    Args:
+        ax: Axes to configure.
+        xlabel: Label of the x-axis.
+        ylabel: Label of the y-axis.
+        title: Plot title.
+        grid: Show grid lines.
+        grid_alpha: Transparency of the grid lines.
 
-    Returns
-    -------
-    matplotlib.axes.Axes
-        The configured axes object.
+    Returns:
+        The same axes.
     """
     if xlabel:
         ax.set_xlabel(xlabel, fontsize=12)
@@ -99,35 +104,6 @@ def setup_axes(
     return ax
 
 
-def create_figure(
-    figsize: Tuple[int, int] = (12, 6),
-    nrows: int = 1,
-    ncols: int = 1,
-    **kwargs
-) -> Tuple[plt.Figure, Any]:
-    """
-    Create a matplotlib figure with subplots.
-
-    Parameters
-    ----------
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (12, 6).
-    nrows : int, optional
-        Number of subplot rows. Default: 1.
-    ncols : int, optional
-        Number of subplot columns. Default: 1.
-    **kwargs
-        Additional keyword arguments passed to plt.subplots().
-
-    Returns
-    -------
-    tuple
-        (Figure, Axes) or (Figure, array of Axes) depending on nrows and ncols.
-    """
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize, **kwargs)
-    return fig, axes
-
-
 def add_statistics_box(
     ax: mpl_axes.Axes,
     stats_text: str,
@@ -135,22 +111,15 @@ def add_statistics_box(
     fontsize: int = 10,
     **kwargs
 ) -> None:
-    """
-    Add a statistics text box to a plot.
+    """Add a monospace text box (e.g. summary statistics) in a corner of the axes.
 
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-        The axes object to add the text box to.
-    stats_text : str
-        The statistics text to display.
-    position : str, optional
-        Position of the text box. Options: 'upper right', 'upper left',
-        'lower right', 'lower left'. Default: 'upper right'.
-    fontsize : int, optional
-        Font size for the text. Default: 10.
-    **kwargs
-        Additional keyword arguments for the text box styling.
+    Args:
+        ax: Axes to draw into.
+        stats_text: Text to display.
+        position: ``'upper right'`` (default, also used for unknown values), ``'upper left'``,
+            ``'lower right'`` or ``'lower left'``.
+        fontsize: Font size.
+        **kwargs: Passed to ``ax.text``; ``bbox`` replaces the default white rounded box.
     """
     position_map = {
         'upper right': (0.98, 0.98, 'top', 'right'),
@@ -181,18 +150,14 @@ def add_limit_lines(
     limits: dict,
     orientation: str = 'horizontal'
 ) -> None:
-    """
-    Add limit lines to a plot (e.g., voltage limits, loading thresholds).
+    """Draw horizontal or vertical limit lines (e.g. voltage limits, loading thresholds).
 
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-        The axes object to add limit lines to.
-    limits : dict
-        Dictionary mapping limit values to their labels and colors.
-        Example: {0.95: {'label': 'Min limit', 'color': 'red', 'linestyle': '--'}}
-    orientation : str, optional
-        Orientation of limit lines: 'horizontal' or 'vertical'. Default: 'horizontal'.
+    Args:
+        ax: Axes to draw into.
+        limits: ``{value: properties}`` with optional ``label``, ``color`` (default red),
+            ``linestyle`` (default ``--``) and ``linewidth`` (default 1.5), e.g.
+            ``{0.95: {'label': 'Min limit', 'color': 'red'}}``.
+        orientation: ``'horizontal'`` (axhline) or ``'vertical'`` (axvline).
     """
     line_func = ax.axhline if orientation == 'horizontal' else ax.axvline
 

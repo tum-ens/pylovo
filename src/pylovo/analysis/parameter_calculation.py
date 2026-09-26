@@ -4,13 +4,15 @@ This module contains the `ParameterCalculator` class, which groups the shared
 algorithms used across clustering, PLZ-level analysis, and comparison-oriented
 parameter calculations for synthetic PyLoVo grids.
 
-Core ideas
+Core ideas:
+
 - Treat the LV transformer bus as the root of a predominantly radial LV graph.
-- Respect the operational topology by building graphs with `respect_switches=True`.
+- Respect the operational topology by building graphs with ``respect_switches=True``.
 - Reuse the same topology, distance, simultaneity, and impedance routines across
-    multiple higher-level parameter compositions.
+  multiple higher-level parameter compositions.
 
 The toolbox exposes:
+
 - PLZ-level aggregation workflows
 - per-grid analysis workflows
 - shared counting, lookup, topology, distance, and impedance routines
@@ -20,6 +22,7 @@ projected coordinates are auto-detected where spatial distance calculations need
 """
 
 from collections import deque
+from itertools import pairwise
 import json
 import re
 from typing import Tuple, Dict, Any, List, Optional
@@ -34,7 +37,7 @@ from sklearn.metrics.pairwise import haversine_distances
 import pylovo.database.database_client as dbc
 from pylovo.analysis.grid_analysis import compute_clustering_metrics
 from pylovo import utils
-from pylovo.config_loader import *
+from pylovo.config_loader import CLASSIFICATION_VERSION, PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +63,17 @@ PYLOVO_BUS_TYPE_CONFIG: Dict[str, str] = {
 }
 
 
+def station_mva(net: pp.pandapowerNet) -> float:
+    """Rating in MVA of the (first) transformer station of a net: ``sn_mva x parallel``.
+
+    pandapower's ``sn_mva`` is the rating of one unit; pylovo builds some stations from two
+    parallel units (800 kVA as 2 x 400 kVA), so the station size is the product.
+    """
+    row = net.trafo.iloc[0]
+    parallel = row["parallel"] if "parallel" in net.trafo.columns and pd.notna(row["parallel"]) else 1
+    return float(row["sn_mva"]) * max(1, int(parallel))
+
+
 def classify_bus_types(
     net: pp.pandapowerNet,
     config: Dict[str, str],
@@ -67,19 +81,19 @@ def classify_bus_types(
     """Build a mapping ``{bus_index: bus_type}`` from naming patterns.
 
     Recognised bus types:
-    - ``"house_connection"`` – service/attachment buses that only count when
-      topology shows they continue or split the backbone.
-    - ``"kvs"`` – cable distribution stations treated as transparent splitters.
-    - ``"backbone"`` – everything else (cable nodes, connection buses, …).
 
-    Parameters
-    ----------
-    net : pp.pandapowerNet
-        Pandapower network whose ``bus`` table is inspected.
-    config : dict
-        Must contain ``name_column``, ``house_connection_pattern``, and
-        ``kvs_pattern`` keys.  Patterns are compiled as case-insensitive
-        regexes and matched with ``re.search``.
+    - ``"house_connection"``: service/attachment buses that only count when
+      topology shows they continue or split the backbone.
+    - ``"kvs"``: cable distribution stations treated as transparent splitters.
+    - ``"backbone"``: everything else (cable nodes, connection buses, ...).
+
+    Args:
+        net: Network whose ``bus`` table is inspected.
+        config: Needs the keys ``name_column``, ``house_connection_pattern`` and
+            ``kvs_pattern``. Patterns are case-insensitive regexes matched with ``re.search``.
+
+    Returns:
+        Bus type per bus index; empty if the name column is missing.
     """
     col = config["name_column"]
     if col not in net.bus.columns:
@@ -100,10 +114,37 @@ def classify_bus_types(
     return bus_types
 
 
+def _classify_bus_types_with_consumers(
+    net: pp.pandapowerNet,
+    config: Dict[str, str],
+    root_idx: int,
+    additional_house_connection_buses: Optional[List[int]] = None,
+) -> Dict[int, str]:
+    """Classify buses by name and mark the given consumer buses (except the root) as house connections."""
+    bus_types = classify_bus_types(net, config)
+    for bus in additional_house_connection_buses or []:
+        bus_idx = int(bus)
+        if bus_idx != root_idx:
+            bus_types[bus_idx] = "house_connection"
+    return bus_types
+
+
+def _empty_impedance_summary() -> Dict[str, float]:
+    """Return the all-zero result of the path impedance aggregation."""
+    return {
+        "max_branch_weight": 0.0,
+        "total_resistance": 0.0,
+        "total_reactance": 0.0,
+        "max_branch_resistance": 0.0,
+        "total_weight": 0.0,
+    }
+
+
 class ParameterCalculator:
     """Provide workflows and shared calculation routines for LV grid parameters.
 
-    Scope
+    Scope:
+
     1) PLZ level: aggregate statistics across all local grids inside a PLZ.
     2) Grid level: detailed parameters per local grid for clustering and related analyses.
     3) Shared toolbox: reusable helpers for topology traversal, consumer counting,
@@ -111,7 +152,7 @@ class ParameterCalculator:
 
     Attributes:
         plz (int): Postcode area ID
-        bcid (int): Building cluster ID (negative bcid implies an OSM-only transformer)
+        bcid (int): Building cluster ID (negative for brownfield grids around an existing transformer)
         kcid (int): K-means cluster ID of the grid
         version_id (str): Analysis version taken from configuration
         dbc (DatabaseClient): Database client used for I/O of pandapower nets and parameters
@@ -204,7 +245,7 @@ class ParameterCalculator:
             self.dbc.logger.error(f"Error during analysis for PLZ {self.plz}: {e}")
             self.dbc.logger.info(f"Skipped PLZ {self.plz} due to analysis error.")
             self.dbc.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), self.plz)
-            raise e
+            raise
 
     def analyze_grid_parameters_for_plz(self, plz: int = None):
         """Compute and store per-grid parameters for all grids of an analyzed PLZ.
@@ -239,7 +280,7 @@ class ParameterCalculator:
                     skipped += 1
                     continue
 
-                print(f"Calculating parameters for grid {bcid}, {kcid}")
+                print(f"Calculating parameters for grid kcid={kcid}, bcid={bcid}")
                 self.analyze_single_grid(bcid, kcid)
                 calculated += 1
 
@@ -273,10 +314,6 @@ class ParameterCalculator:
             return []
         return net.load["bus"].unique().tolist()
 
-    def count_consumers(self, consumer_buses: List[int]) -> int:
-        """Count unique consumer connection points from the resolved consumer buses."""
-        return len(consumer_buses)
-
     def count_feeders(
         self,
         net: pp.pandapowerNet,
@@ -300,48 +337,34 @@ class ParameterCalculator:
           are house connections the KVS itself counts as **one** feeder.
         * **backbone / anything else**: counted as one feeder.
 
-        Parameters
-        ----------
-        net : pp.pandapowerNet
-            The grid model (used for bus names and trafo table).
-        graph : nx.Graph
-            Switch-aware topology graph.
-        root_idx : int
-            LV root bus index (transformer LV side or LVbus).
-        uses_synthetic_naming : bool
-            Legacy flag – only used when *bus_type_config* is ``None`` so
-            that ``PYLOVO_BUS_TYPE_CONFIG`` is chosen automatically.
-        bus_type_config : dict, optional
-            Naming-pattern dictionary (see :data:`SWF_BUS_TYPE_CONFIG`).
-            When ``None``, the config is inferred from *uses_synthetic_naming*.
-        expand_kvs : bool, default True
-            When ``True``, explicit KVS neighbors at the first branching point
-            are expanded into multiple feeders. When ``False``, every first-hop
-            downstream backbone neighbor counts as one feeder, regardless of
-            whether it is an explicit KVS bus.
-        recursive_expansion : bool, default False
-            When ``True``, count terminal feeder branches recursively in the
-            downstream backbone tree. This treats implicit synthetic split
-            points and explicit real KVS split points symmetrically.
-        additional_house_connection_buses : list[int], optional
-            Consumer bus indices that should be treated as terminal house
-            connections even if their labels do not match the configured pattern.
-        collapse_service_connection_leaves : bool, default False
-            When counting recursively, collapse terminal non-KVS service stubs
-            that only became leaves after house/consumer endpoints were pruned.
-            This prevents individual house-connection attachment nodes from
-            being counted as feeder terminals.
+        Args:
+            net: The grid model (used for bus names and the trafo table).
+            graph: Switch-aware topology graph.
+            root_idx: LV root bus index (transformer LV side or LVbus).
+            uses_synthetic_naming: Selects ``PYLOVO_BUS_TYPE_CONFIG`` (True) or
+                ``SWF_BUS_TYPE_CONFIG`` when ``bus_type_config`` is None; also passed on to the
+                recursive counter.
+            bus_type_config: Naming-pattern dictionary (see :data:`SWF_BUS_TYPE_CONFIG`).
+            expand_kvs: Expand explicit KVS neighbours at the first branching point into several
+                feeders. If False, every first-hop downstream backbone neighbour is one feeder.
+            recursive_expansion: Count terminal feeder branches recursively in the downstream
+                backbone tree, treating implicit synthetic and explicit KVS split points alike.
+            additional_house_connection_buses: Consumer buses that count as terminal house
+                connections even if their names do not match the configured pattern.
+            collapse_service_connection_leaves: When counting recursively, also collapse terminal
+                non-KVS service stubs that only became leaves after the consumer endpoints were
+                pruned, so that house-connection attachment nodes are not counted as feeders.
+
+        Returns:
+            Number of feeders; at least 1 if the root has downstream buses.
         """
         if bus_type_config is None:
             bus_type_config = (
                 PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
             )
-        bus_types = classify_bus_types(net, bus_type_config)
-        if additional_house_connection_buses:
-            for bus_idx in additional_house_connection_buses:
-                bus_idx = int(bus_idx)
-                if bus_idx != root_idx:
-                    bus_types[bus_idx] = "house_connection"
+        bus_types = _classify_bus_types_with_consumers(
+            net, bus_type_config, root_idx, additional_house_connection_buses
+        )
 
         return self._count_feeders_unified(
             net,
@@ -759,11 +782,6 @@ class ParameterCalculator:
     # Shared Lookups And Single-Grid Accessors
     # -------------------------------------------------------------------------
 
-    def get_parameters_as_dataframe(self, net: pp.pandapowerNet) -> pd.DataFrame:
-        """Return clustering parameters as a one-row DataFrame."""
-        params = compute_clustering_metrics(self, net)
-        return pd.DataFrame([params], columns=CLUSTERING_PARAMETERS)
-
     def lookup_simultaneous_peak_load(self, transformer_mva: float, max_trafo_dis: float) -> float:
         """Lookup coincident peak load for a transformer size and max path distance.
 
@@ -782,7 +800,7 @@ class ParameterCalculator:
             return 0.0
 
         data_list, _, _ = self.dbc.read_per_trafo_dict(self.plz)
-        transformer_type_str = str(int(transformer_mva * 1000))
+        transformer_type_str = str(int(round(transformer_mva * 1000)))
         max_trafo_distance_list = data_list[3].get(transformer_type_str, [])
 
         if not max_trafo_distance_list:
@@ -808,10 +826,14 @@ class ParameterCalculator:
         return 0.0
 
     def get_transformer_power(self, pandapower_net: pp.pandapowerNet) -> float:
-        """Return the transformer rating in MVA for a grid with exactly one LV transformer."""
+        """Return the station rating in MVA for a grid with exactly one LV transformer element.
+
+        pandapower's ``sn_mva`` is the rating of one unit; a station of two parallel units
+        (``parallel = 2``, e.g. 800 kVA as 2 x 400 kVA) is rated ``sn_mva x parallel``.
+        """
         if pandapower_net.trafo.empty or "sn_mva" not in pandapower_net.trafo.columns:
             raise ValueError(f"No transformer found for PLZ {self.plz}, kcid {self.kcid}, bcid {self.bcid}.")
-        return pandapower_net.trafo["sn_mva"].iloc[0]
+        return station_mva(pandapower_net)
 
     def has_osm_trafo(self) -> bool:
         """True if the grid's transformer originates from OSM data (bcid < 0)."""
@@ -852,12 +874,9 @@ class ParameterCalculator:
         bus_type_config = bus_type_config or (
             PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
         )
-        bus_types = classify_bus_types(pandapower_net, bus_type_config)
-        if additional_house_connection_buses:
-            for bus_idx in additional_house_connection_buses:
-                bus_idx = int(bus_idx)
-                if bus_idx != root_bus:
-                    bus_types[bus_idx] = "house_connection"
+        bus_types = _classify_bus_types_with_consumers(
+            pandapower_net, bus_type_config, root_bus, additional_house_connection_buses
+        )
 
         graph = self._remove_service_line_edges(
             graph,
@@ -1267,24 +1286,12 @@ class ParameterCalculator:
         decides whether cumulated simultaneity should affect line resistance.
         """
         if bus_weights.empty or line_table.empty:
-            return {
-                "max_branch_weight": 0.0,
-                "total_resistance": 0.0,
-                "total_reactance": 0.0,
-                "max_branch_resistance": 0.0,
-                "total_weight": 0.0,
-            }
+            return _empty_impedance_summary()
 
         try:
             root_bus = self._resolve_impedance_root_bus(pandapower_net, networkx_graph)
         except ValueError:
-            return {
-                "max_branch_weight": 0.0,
-                "total_resistance": 0.0,
-                "total_reactance": 0.0,
-                "max_branch_resistance": 0.0,
-                "total_weight": 0.0,
-            }
+            return _empty_impedance_summary()
 
         line_lookup = self._build_line_lookup(line_table)
         records = []
@@ -1305,7 +1312,7 @@ class ParameterCalculator:
             path_resistance = 0.0
             path_reactance = 0.0
 
-            for from_bus, to_bus in zip(path, path[1:]):
+            for from_bus, to_bus in pairwise(path):
                 line_data = line_lookup.get(tuple(sorted((from_bus, to_bus))))
                 if line_data is None:
                     missing_line_edges += 1
@@ -1335,13 +1342,7 @@ class ParameterCalculator:
             )
 
         if not records:
-            return {
-                "max_branch_weight": 0.0,
-                "total_resistance": 0.0,
-                "total_reactance": 0.0,
-                "max_branch_resistance": 0.0,
-                "total_weight": 0.0,
-            }
+            return _empty_impedance_summary()
 
         df_records = pd.DataFrame(records)
         branch_weights = df_records.groupby("branch", dropna=False)["path_weight"].sum()
@@ -1503,12 +1504,12 @@ class ParameterCalculator:
         bus_zone_stats["sim_factor"] = bus_zone_stats["sim_factor"].fillna(1.0)
 
         bus_zone_stats["sim_load"] = bus_zone_stats.apply(
-            lambda row: utils.oneSimultaneousLoad(1, row["count"], row["sim_factor"]) * row["max_p_mw"],
+            lambda row: utils.category_simultaneous_load(1, row["count"], row["sim_factor"]) * row["max_p_mw"],
             axis=1,
         )
 
         bus_zone_stats["sim_factor_level1"] = bus_zone_stats.apply(
-            lambda row: utils.oneSimultaneousLoad(1, row["count"], row["sim_factor"]),
+            lambda row: utils.category_simultaneous_load(1, row["count"], row["sim_factor"]),
             axis=1,
         )
 
@@ -1625,7 +1626,7 @@ class ParameterCalculator:
                 sim_factor = SIM_FACTOR.get(category_name, 1.0)
 
                 if category_count > 0 and category_peak_load > 0:
-                    total_sim_load += utils.oneSimultaneousLoad(category_peak_load, category_count, sim_factor)
+                    total_sim_load += utils.category_simultaneous_load(category_peak_load, category_count, sim_factor)
                 total_peak_load += category_peak_load
 
             df_line.at[upstream_line_idx, "sim_load"] = total_sim_load
@@ -1671,7 +1672,7 @@ class ParameterCalculator:
                 GROUP BY grid_result_id
             )
             SELECT
-                ROUND(pt.sn_mva * 1000.0)::integer AS capacity,
+                ROUND(pt.sn_mva * COALESCE(pt.parallel, 1) * 1000.0)::integer AS capacity,  -- station, not unit
                 COALESCE(lc.load_count, 0) AS load_count,
                 COALESCE(bc.bus_count, 0) AS bus_count,
                 COALESCE(ll.cable_length, 0.0) AS cable_length
@@ -1690,7 +1691,7 @@ class ParameterCalculator:
         self.dbc.cur.execute(query, {"v": VERSION_ID, "p": plz})
         rows = self.dbc.cur.fetchall()
         count = len(rows)
-        time = 0
+        processed = 0
         percent = 0
 
         for capacity, load_count, bus_count, cable_length in rows:
@@ -1705,11 +1706,11 @@ class ParameterCalculator:
             bus_count_dict[capacity].append(bus_count)
             cable_length_dict[capacity].append(cable_length)
 
-            time += 1
-            if count > 0 and time / count >= 0.1:
+            processed += 1
+            if count > 0 and processed / count >= 0.1:
                 percent += 10
                 self.dbc.logger.info(f"{percent} percent finished")
-                time = 0
+                processed = 0
 
         self.dbc.insert_plz_parameters(
             plz,
@@ -1749,7 +1750,7 @@ class ParameterCalculator:
         """
         cluster_list = self.dbc.get_list_from_plz(plz)
         total_grids = len(cluster_list)
-        time = 0
+        processed = 0
         percent = 0
 
         trafo_load_dict = {}
@@ -1779,8 +1780,8 @@ class ParameterCalculator:
             try:
                 # Distances are derived from the active topology rather than Euclidean
                 # bus geometry so the lookup table reflects actual feeder paths.
-                g = top.create_nxgraph(net, respect_switches=True)
-                dists = top.calc_distance_to_bus(net, lv_bus, weight="weight", respect_switches=True)
+                graph = top.create_nxgraph(net, respect_switches=True)
+                dists = top.calc_distance_to_bus(net, lv_bus, weight="weight", respect_switches=True, g=graph)
                 trafo_distance_to_buses_km = dists.loc[load_bus].tolist()
             except Exception:
                 continue
@@ -1801,21 +1802,14 @@ class ParameterCalculator:
                 loads["load_units"] = 1.0
             loads["load_units"] = pd.to_numeric(loads["load_units"], errors="coerce").fillna(1.0)
 
-            def get_cat_stats(category):
-                load_subset = loads[loads["analysis_category"] == category]
-                count = load_subset["load_units"].sum()
-                sum_load_kw = load_subset["max_p_mw"].sum() * 1000.0
-                return count, sum_load_kw
-
-            stats = {
-                category: get_cat_stats(category)
-                for category in ("Residential", "Commercial", "Public")
-            }
-
+            # Coincident peak load: simultaneity per category, then summed.
             sim_peak_load = 0.0
-            for cat, (category_count, sum_load) in stats.items():
+            for cat in ("Residential", "Commercial", "Public"):
+                load_subset = loads[loads["analysis_category"] == cat]
+                category_count = load_subset["load_units"].sum()
+                sum_load = load_subset["max_p_mw"].sum() * 1000.0
                 if category_count > 0:
-                    sim_peak_load += utils.oneSimultaneousLoad(
+                    sim_peak_load += utils.category_simultaneous_load(
                         installed_power=sum_load,
                         load_count=category_count,
                         sim_factor=SIM_FACTOR.get(cat, 1.0)
@@ -1828,7 +1822,7 @@ class ParameterCalculator:
                 avg_distance_m = 0.0
                 max_distance_m = 0.0
 
-            trafo_size_kva = round(net.trafo["sn_mva"].iloc[0] * 1000.0)
+            trafo_size_kva = round(station_mva(net) * 1000.0)
 
             if trafo_size_kva not in trafo_load_dict:
                 trafo_load_dict[trafo_size_kva] = []
@@ -1839,11 +1833,11 @@ class ParameterCalculator:
             trafo_max_distance_dict[trafo_size_kva].append(max_distance_m)
             trafo_avg_distance_dict[trafo_size_kva].append(avg_distance_m)
 
-            time += 1
-            if total_grids > 0 and time / total_grids >= 0.1:
+            processed += 1
+            if total_grids > 0 and processed / total_grids >= 0.1:
                 percent += 10
                 self.dbc.logger.info(f"{percent} % processed")
-                time = 0
+                processed = 0
 
         self.dbc.logger.info("Transformer-parameter aggregation finished.")
 

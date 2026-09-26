@@ -13,9 +13,12 @@ Quick start:
 
 Package structure:
     - core/: Shared interfaces and data classes
-    - pandapower/: Pandapower backend implementation
-    - opendss/: OpenDSS backend implementation
+    - pandapower/: Pandapower backend implementation (default)
+    - opendss/: OpenDSS backend implementation (needs the optional ``altdss`` package)
     - factory.py: Backend registration and creation
+
+The backend classes are imported lazily, so importing this package does not
+import pandapower or altdss.
 """
 
 from .core.backend_base import IElectricalBackend
@@ -55,7 +58,7 @@ def __getattr__(name: str):
             "OpenDSSBackendError": OpenDSSBackendError,
         }[name]
 
-    raise AttributeError(f"module 'electrical_backend' has no attribute {name!r}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [

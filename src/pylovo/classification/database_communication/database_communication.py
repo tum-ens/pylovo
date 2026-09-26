@@ -1,16 +1,38 @@
+"""Database access for the grid classification (sample set, clustering parameters, results)."""
 import geopandas as gpd
 import pandas as pd
 from geoalchemy2 import Geometry, WKTElement
 import pylovo.database.database_client as dbc
 
-from pylovo.config_loader import *
-from pylovo.classification.clustering.clustering_algorithms import gmm_tied_clustering, kmeans_clustering#, kmedoids_clustering
+from pylovo.config_loader import (
+    CLASSIFICATION_VERSION,
+    CLUSTERING_PARAMETERS,
+    LIST_OF_CLUSTERING_PARAMETERS,
+    N_CLUSTERS_GMM,
+    N_CLUSTERS_KMEANS,
+    TARGET_EPSG,
+    THRESHOLD_AVG_TRAFO_DIS,
+    THRESHOLD_HOUSEHOLDS_PER_BUILDING,
+    THRESHOLD_MAX_TRAFO_DIS,
+    THRESHOLD_NO_HOUSE_CONNECTIONS,
+    THRESHOLD_NO_HOUSEHOLDS,
+    THRESHOLD_VSW_PER_BRANCH,
+    VERSION_ID,
+)
+from pylovo.classification.clustering.clustering_algorithms import gmm_tied_clustering, kmeans_clustering
 
 
 class DatabaseCommunication:
-    """
-    This class is the interface with the database. Functions communicating with the database
-    are listed under this class.
+    """Database interface of the classification workflow.
+
+    Wraps its own :class:`~pylovo.database.database_client.DatabaseClient`. Queries
+    use ``VERSION_ID`` (grid generation) and ``CLASSIFICATION_VERSION`` from the
+    configuration files.
+
+    Note:
+        The ``apply_*_threshold*`` methods and :meth:`set_remaining_filter_values_false`
+        update ``pylovo.clustering_parameters`` for all grid versions, and a grid once
+        marked as ``filtered`` stays filtered when thresholds change later.
     """
 
     def __init__(self, **kwargs):
@@ -24,10 +46,13 @@ class DatabaseCommunication:
         print("Database connection closed.")
 
     def get_clustering_parameters_for_classification_version(self) -> pd.DataFrame:
-        """get clustering parameter for a specific classification version indicated in config classification
+        """Return the unfiltered clustering parameters of all grids in the sample set.
 
-        :return: a table with all grid parameters for all grids for PLZ included in the classification version
-        :rtype: pd.DataFrame
+        Only grids of ``VERSION_ID`` whose PLZ belong to the sample set of
+        ``CLASSIFICATION_VERSION`` and with ``filtered = false`` are returned.
+
+        Returns:
+            pd.DataFrame: One row per grid with the ``CLUSTERING_PARAMETERS`` columns.
         """
         query = """
                 WITH plz_table(plz) AS (
@@ -52,15 +77,13 @@ class DatabaseCommunication:
         return df_parameter
 
     def municipal_register_with_clustering_parameters_for_classification_version(self) -> pd.DataFrame:
-        """get full information about a samples set indicated by a classification version
-        Information about:
-        - clustering parameter
-        - regiostar data
-        - population, area, population density
+        """Return the clustering parameters of the sample set joined with municipal register data.
 
-        ...
-        :return: a table with all grid parameters for all grids for PLZ included in the classification version
-        :rtype: pd.DataFrame
+        Same grid selection as :meth:`get_clustering_parameters_for_classification_version`,
+        plus population, area, coordinates, AGS, city name and RegioStaR classes of the PLZ.
+
+        Returns:
+            pd.DataFrame: One row per grid.
         """
         query = """
                 WITH plz_table(plz) AS (
@@ -84,12 +107,35 @@ class DatabaseCommunication:
         return df_query
 
     def create_wkt_element(self, geom):
-        """transform geometry entry so that it can be imported to database"""
+        """Wrap a shapely geometry as ``WKTElement`` in ``TARGET_EPSG`` for writing with SQLAlchemy."""
         return WKTElement(geom.wkt, srid=TARGET_EPSG)
 
-    def save_transformers_with_classification_info(self) -> None:
-        """write clusters of algorithms kmedoid, kmeans, gmm tied to database table transformer classified,
-        set clustering parameters in config_clustering"""
+    def save_transformers_with_classification_info(
+        self,
+        list_of_clustering_parameters: list | None = None,
+        n_clusters_kmeans: int | None = None,
+        n_clusters_gmm: int | None = None,
+    ) -> None:
+        """Cluster the sample grids and append the result to ``pylovo.transformer_classified``.
+
+        Runs k-means and tied GMM and stores, per grid, the transformer position,
+        the cluster of each algorithm and whether the grid is the representative
+        of its cluster. The KMedoids columns stay empty. The defaults below are the
+        values of ``config_clustering.yaml`` at import time.
+
+        Args:
+            list_of_clustering_parameters: Columns used for clustering. Defaults to
+                ``LIST_OF_CLUSTERING_PARAMETERS``.
+            n_clusters_kmeans: Number of k-means clusters. Defaults to ``N_CLUSTERS_KMEANS``.
+            n_clusters_gmm: Number of GMM components. Defaults to ``N_CLUSTERS_GMM``.
+        """
+        if list_of_clustering_parameters is None:
+            list_of_clustering_parameters = LIST_OF_CLUSTERING_PARAMETERS
+        if n_clusters_kmeans is None:
+            n_clusters_kmeans = N_CLUSTERS_KMEANS
+        if n_clusters_gmm is None:
+            n_clusters_gmm = N_CLUSTERS_GMM
+
         # retrieve clustering parameters
         df_parameters_of_grids = self.get_clustering_parameters_for_classification_version()
 
@@ -104,24 +150,12 @@ class DatabaseCommunication:
         df_transformer_positions = gpd.read_postgis(query, con=self.dbc.sqla_engine, params=params, )
         df_transformer_positions['geom'] = df_transformer_positions['geom'].apply(self.create_wkt_element)
 
-        # calculate the clusters
-        # # KMEDOIDS
-        # df_parameters_of_grids, representative_networks_kmedoid = kmedoids_clustering(
-        #     df_parameters_of_grids=df_parameters_of_grids,
-        #     list_of_clustering_parameters=LIST_OF_CLUSTERING_PARAMETERS,
-        #     n_clusters=N_CLUSTERS_KMEDOID)
-        # df_parameters_of_grids.rename(mapper={'clusters': 'kmedoid_clusters'}, axis=1, inplace=True)
-        # df_parameters_of_grids['kmedoid_representative_grid'] = False
-        # for i in list(representative_networks_kmedoid['index']):
-        #     df_parameters_of_grids.at[i, 'kmedoid_representative_grid'] = True
-        # df_parameters_of_grids['kmedoid_clusters'] = df_parameters_of_grids[
-        #     'kmedoid_clusters'].astype('int')
-
+        # calculate the clusters (KMedoids is disabled, see clustering_algorithms)
         # KMEANS
         df_parameters_of_grids, representative_networks_kmeans = kmeans_clustering(
             df_parameters_of_grids=df_parameters_of_grids,
-            list_of_clustering_parameters=LIST_OF_CLUSTERING_PARAMETERS,
-            n_clusters=N_CLUSTERS_KMEANS)
+            list_of_clustering_parameters=list_of_clustering_parameters,
+            n_clusters=n_clusters_kmeans)
         df_parameters_of_grids.rename(mapper={'clusters': 'kmeans_clusters'}, axis=1, inplace=True)
         df_parameters_of_grids['kmeans_representative_grid'] = False
         for i in list(representative_networks_kmeans['index']):
@@ -132,8 +166,8 @@ class DatabaseCommunication:
         # GMM TIED
         df_parameters_of_grids, representative_networks_gmm = gmm_tied_clustering(
             df_parameters_of_grids=df_parameters_of_grids,
-            list_of_clustering_parameters=LIST_OF_CLUSTERING_PARAMETERS,
-            n_clusters=N_CLUSTERS_GMM)
+            list_of_clustering_parameters=list_of_clustering_parameters,
+            n_clusters=n_clusters_gmm)
         df_parameters_of_grids.rename(mapper={'clusters': 'gmm_clusters'}, axis=1, inplace=True)
         df_parameters_of_grids['gmm_representative_grid'] = False
         for i in list(representative_networks_gmm['index']):
@@ -141,10 +175,9 @@ class DatabaseCommunication:
         df_parameters_of_grids['gmm_clusters'] = df_parameters_of_grids[
             'gmm_clusters'].astype('int')
 
-        if 'kmedoid_clusters' not in df_parameters_of_grids.columns:
-            df_parameters_of_grids['kmedoid_clusters'] = pd.NA
-        if 'kmedoid_representative_grid' not in df_parameters_of_grids.columns:
-            df_parameters_of_grids['kmedoid_representative_grid'] = False
+        # KMedoids is disabled: keep the table columns, but leave them empty
+        df_parameters_of_grids['kmedoid_clusters'] = pd.NA
+        df_parameters_of_grids['kmedoid_representative_grid'] = False
 
         # reduce columns and convert datatypes
         df_parameters_of_grids = df_parameters_of_grids[['version_id', 'plz', 'kcid', 'bcid',
@@ -183,9 +216,7 @@ class DatabaseCommunication:
         self.dbc.conn.commit()
 
     def apply_max_trafo_dis_threshold(self) -> None:
-        """apply maximum transformer distance threshold on clustering parameter table
-        by indicating if the threshold is surpassed in the filtered column
-        """
+        """Mark grids with ``max_trafo_dis > THRESHOLD_MAX_TRAFO_DIS`` as filtered."""
         query = """UPDATE pylovo.clustering_parameters
                 SET filtered = true
                 WHERE max_trafo_dis > %(t)s;"""
@@ -194,9 +225,7 @@ class DatabaseCommunication:
         self.dbc.conn.commit()
 
     def apply_households_per_building_threshold(self) -> None:
-        """apply maximum households per building threshold on clustering parameter table
-        by indicating if the threshold is surpassed in the filtered column
-        """
+        """Mark grids with a building of more than ``THRESHOLD_HOUSEHOLDS_PER_BUILDING`` households as filtered."""
         query = """WITH buildings(grid_result_id) AS (
                        SELECT DISTINCT grid_result_id
                        FROM pylovo.buildings_result
@@ -212,9 +241,13 @@ class DatabaseCommunication:
         self.dbc.conn.commit()
     
     def apply_list_of_clustering_parameters_thresholds(self) -> None:
-        """
-        Apply thresholds on selected clustering parameters.
-        If a parameter less than its threshold, set filtered = true.
+        """Mark grids as filtered if any of the four parameters is below its threshold.
+
+        Parameters and thresholds: ``avg_trafo_dis`` (``THRESHOLD_AVG_TRAFO_DIS``),
+        ``no_house_connections`` (``THRESHOLD_NO_HOUSE_CONNECTIONS``), ``vsw_per_branch``
+        (``THRESHOLD_VSW_PER_BRANCH``) and ``no_households`` (``THRESHOLD_NO_HOUSEHOLDS``).
+        This removes the small "filling" grids of k-means cluster 0, see
+        ``classification/utils/get_average_values_clustering_parameters.py``.
         """
 
         query = """
@@ -238,20 +271,10 @@ class DatabaseCommunication:
         self.dbc.conn.commit()
 
     def set_remaining_filter_values_false(self) -> None:
-        """setting filtered value to false for grids that should not be filtered according to their parameters
-        """
+        """Set ``filtered = false`` for all grids that no threshold has marked yet."""
         query = """UPDATE pylovo.clustering_parameters 
             SET filtered = false
             WHERE filtered IS NULL;"""
         self.dbc.cur.execute(query)
         print(self.dbc.cur.statusmessage)
         self.dbc.conn.commit()
-
-    def get_ags_for_plz(df_plz: pd.DataFrame) -> pd.DataFrame:
-        """get the AGS for the PLZ in a dataframe
-
-        :param df_plz: table with plz column,
-        :type df_plz: pd.DataFrame
-
-        :return: table with plz and ags column
-        :rtype: pd.DataFrame"""

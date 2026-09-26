@@ -1,8 +1,8 @@
-"""
-GIS gis_preparation functionality for grid data.
+"""Export grid geometries to GIS-friendly tables (used by ``pylovo-export`` and QGIS).
 
-This module contains functions for exporting grid data to GIS-compatible formats
-for visualization in QGIS and other geographic information systems.
+The pandapower ``bus`` and ``line`` tables are turned into GeoDataFrames: the GeoJSON in their
+``geo`` columns becomes a shapely geometry (``None`` if missing or invalid), all other columns
+are kept.
 """
 
 import json
@@ -12,7 +12,17 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import LineString, Point
 
-from pylovo.grid_generator import GridGenerator
+from pylovo.database.database_client import DatabaseClient
+
+
+def _geometry_from_geojson(geo, geometry_type):
+    """Return ``geometry_type(coordinates)`` of a GeoJSON string, or None if it is missing or invalid."""
+    if pd.isna(geo):
+        return None
+    try:
+        return geometry_type(json.loads(geo)["coordinates"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
 
 
 def get_bus_line_geo_for_network(
@@ -20,107 +30,58 @@ def get_bus_line_geo_for_network(
     plz: int,
     net_index: int = 0
 ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """Return the lines and buses of one pandapower network as GeoDataFrames.
+
+    Args:
+        pandapower_net: Network whose ``bus.geo`` / ``line.geo`` columns hold GeoJSON.
+        plz: Postal code written to the ``plz`` column.
+        net_index: Running number written to the ``net`` column (to tell grids apart).
+
+    Returns:
+        Tuple ``(line_geo, bus_geo)``. Both have the columns of the pandapower table plus
+        ``net``, ``plz`` and a shapely ``geometry``; ``bus_geo`` also has ``consumer_bus``
+        (True for buses named ``Consumer Nodebus``).
     """
-    Get bus and line geometric data for a single pandapower network.
-
-    Exports lines (cables) and buses (trafo position, consumers, connections)
-    as geometric elements suitable for GIS visualization.
-
-    Parameters
-    ----------
-    pandapower_net : pandapowerNet
-        The pandapower network to gis_preparation.
-    plz : int
-        Postal code.
-    net_index : int, optional
-        Network index for identification. Default: 0.
-
-    Returns
-    -------
-    tuple of GeoDataFrame
-        (line_geo, bus_geo) - GeoDataFrames containing line and bus geometries.
-    """
-    # Bus data - parse GeoJSON from geo column
-    bus_geometries = []
-    for idx, row in pandapower_net.bus.iterrows():
-        if pd.notna(row.get("geo")):
-            try:
-                geo_dict = json.loads(row["geo"])
-                coords = geo_dict["coordinates"]
-                bus_geometries.append(Point(coords))
-            except (json.JSONDecodeError, KeyError, TypeError):
-                bus_geometries.append(None)
-        else:
-            bus_geometries.append(None)
-
-    bus_geo = gpd.GeoDataFrame(pandapower_net.bus.copy(), geometry=bus_geometries)
+    bus_table = pandapower_net.bus
+    bus_geometries = [_geometry_from_geojson(row.get("geo"), Point) for _, row in bus_table.iterrows()]
+    bus_geo = gpd.GeoDataFrame(bus_table.copy(), geometry=bus_geometries, crs="EPSG:4326")
     bus_geo['net'] = net_index
     bus_geo['consumer_bus'] = bus_geo['name'].str.contains("Consumer Nodebus")
     bus_geo['plz'] = plz
 
-    bus_point_lookup = bus_geo.geometry.to_dict()
-
-    # Line data - parse GeoJSON from geo column, or build a straight segment from bus points.
-    line_geometries = []
-    for _, row in pandapower_net.line.iterrows():
-        geometry = None
-        if pd.notna(row.get("geo")):
-            try:
-                geo_dict = json.loads(row["geo"])
-                coords = geo_dict["coordinates"]
-                geometry = LineString(coords)
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                geometry = None
-
-        line_geometries.append(geometry)
-
-    line_geo = gpd.GeoDataFrame(pandapower_net.line.copy(), geometry=line_geometries)
+    line_table = pandapower_net.line
+    line_geometries = [_geometry_from_geojson(row.get("geo"), LineString) for _, row in line_table.iterrows()]
+    line_geo = gpd.GeoDataFrame(line_table.copy(), geometry=line_geometries, crs="EPSG:4326")
     line_geo['net'] = net_index
     line_geo['plz'] = plz
 
     return line_geo, bus_geo
 
 
+def _concat(frames: list) -> gpd.GeoDataFrame:
+    """Concatenate GeoDataFrames; an empty list gives an empty GeoDataFrame."""
+    return pd.concat(frames) if frames else gpd.GeoDataFrame()
+
+
 def get_bus_line_geo_for_plz(plz: int) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """Return the lines and buses of all grids of a PLZ (``VERSION_ID`` of the config).
+
+    Args:
+        plz: Postal code.
+
+    Returns:
+        Tuple ``(gdf_line, gdf_bus)`` as in :func:`get_bus_line_geo_for_network`, with ``net``
+        numbering the grids 0, 1, ... in the order of ``get_list_from_plz``.
     """
-    Get bus and line geometric data for all networks in a postal code.
+    line_frames, bus_frames = [], []
+    with DatabaseClient() as dbc_client:
+        for net_index, (kcid, bcid) in enumerate(dbc_client.get_list_from_plz(plz)):
+            net = dbc_client.read_net_db(plz, kcid, bcid)
+            line_geo, bus_geo = get_bus_line_geo_for_network(pandapower_net=net, net_index=net_index, plz=plz)
+            line_frames.append(line_geo)
+            bus_frames.append(bus_geo)
 
-    Parameters
-    ----------
-    plz : int
-        Postal code.
-
-    Returns
-    -------
-    tuple of GeoDataFrame
-        (gdf_line, gdf_bus) - Combined GeoDataFrames for all networks in the PLZ.
-    """
-    # Connect to database
-    gg = GridGenerator(plz=plz)
-    dbc_client = gg.dbc
-
-    # Find all networks
-    cluster_list = dbc_client.get_list_from_plz(plz)
-
-    # Initialize geo dataframes
-    gdf_line = gpd.GeoDataFrame()
-    gdf_bus = gpd.GeoDataFrame()
-
-    # Index all networks
-    net_index = 0
-
-    # Loop over all networks and extract line and bus data
-    for kcid, bcid in cluster_list:
-        net = dbc_client.read_net_db(plz, kcid, bcid)
-        line_geo, bus_geo = get_bus_line_geo_for_network(
-            pandapower_net=net, net_index=net_index, plz=plz
-        )
-
-        gdf_line = pd.concat([gdf_line, line_geo])
-        gdf_bus = pd.concat([gdf_bus, bus_geo])
-        net_index += 1
-
-    return gdf_line, gdf_bus
+    return _concat(line_frames), _concat(bus_frames)
 
 
 def save_geodata_as_csv(
@@ -128,27 +89,19 @@ def save_geodata_as_csv(
     data_path_lines: str,
     data_path_bus: str
 ) -> None:
-    """
-    Save geodata to CSV files for multiple postal codes.
+    """Write the lines and buses of all grids of several PLZ to two CSV files.
 
-    Parameters
-    ----------
-    df_plz : pd.DataFrame
-        DataFrame containing 'plz' column with postal codes to gis_preparation.
-    data_path_lines : str
-        Path to save the lines CSV file.
-    data_path_bus : str
-        Path to save the bus CSV file.
+    Args:
+        df_plz: DataFrame with a ``plz`` column.
+        data_path_lines: Output path of the line CSV.
+        data_path_bus: Output path of the bus CSV.
     """
-    gdf_line = gpd.GeoDataFrame()
-    gdf_bus = gpd.GeoDataFrame()
-
+    line_frames, bus_frames = [], []
     for plz in df_plz['plz']:
         print(f"Saving geodata of plz: {plz} to csv.")
-        gdf_line_tmp, gdf_bus_tmp = get_bus_line_geo_for_plz(plz)
-        gdf_line = pd.concat([gdf_line, gdf_line_tmp])
-        gdf_bus = pd.concat([gdf_bus, gdf_bus_tmp])
+        gdf_line, gdf_bus = get_bus_line_geo_for_plz(plz)
+        line_frames.append(gdf_line)
+        bus_frames.append(gdf_bus)
 
-    gdf_line.to_csv(data_path_lines)
-    gdf_bus.to_csv(data_path_bus)
-
+    _concat(line_frames).to_csv(data_path_lines)
+    _concat(bus_frames).to_csv(data_path_bus)

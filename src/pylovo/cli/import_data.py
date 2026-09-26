@@ -1,22 +1,30 @@
-"""
-Import operations for pylovo data.
+"""Import data into the pylovo database (``pylovo-import``).
+
+Subcommands:
+    transformers-osm: fetch transformers of an OSM relation from the Overpass API and add them.
+    transformers-dso-csv: add DSO transformer positions from a CSV file.
+    transformers-ui: deprecated Flask map for editing transformer positions (use the GridPlanner UI).
 """
 import argparse
 import sys
 import time
-from pathlib import Path
 
+from pylovo.data_import.dso_transformers import import_dso_transformers_csv
 from pylovo.data_import.import_transformers import (
-    get_trafos_processed_target_geojson_path,
     fetch_trafos,
+    get_trafos_processed_target_geojson_path,
     process_trafos,
 )
-import pylovo.database.database_constructor
-from pylovo.data_import.dso_transformers import import_dso_transformers_csv
+from pylovo.data_import.transformers_ui import _add_ui_arguments, run_transformers_ui
+from pylovo.database.database_constructor import DatabaseConstructor
 
 
 def import_transformers_osm(relation_id: int):
-    """Fetch transformers from Overpass API and import to database."""
+    """Fetch, filter and import the transformers of an OSM relation (existing rows are kept).
+
+    Args:
+        relation_id: OSM relation id of the area, e.g. 62464.
+    """
     start_time = time.time()
 
     print("Fetching transformers...")
@@ -27,43 +35,32 @@ def import_transformers_osm(relation_id: int):
 
     out_file = get_trafos_processed_target_geojson_path(relation_id)
 
-    # Load into database
+    # Append to the transformers table; rows that already exist (same osm_id) are skipped.
     print("Loading transformers into database...")
-    constructor = pylovo.database.database_constructor.DatabaseConstructor()
-    constructor.transformers_to_db_from_geojson(out_file, clear_existing=False)
+    constructor = DatabaseConstructor()
+    constructor.ogr_to_db([{"path": out_file, "table_name": "transformers"}], skip_failures=True)
 
     elapsed = time.time() - start_time
     print(f"✓ Completed in {elapsed:.1f}s")
 
 
 def import_transformers_dso_csv(csv_path: str, source: str | None, replace_source: bool):
-    """Import DSO transformer positions from a CSV file."""
+    """Import DSO transformer positions from a CSV file.
+
+    Args:
+        csv_path: CSV with ``external_id``, ``lon``, ``lat`` (EPSG:4326) and optional
+            ``transformer_rated_power`` and ``source`` columns.
+        source: Source label for the generated ids ``dso/<source>/<external_id>``.
+        replace_source: Delete existing rows of this source before importing.
+    """
     start_time = time.time()
     count = import_dso_transformers_csv(csv_path, source=source, replace_source=replace_source)
     elapsed = time.time() - start_time
     print(f"✓ Imported {count} DSO transformer positions in {elapsed:.1f}s")
 
 
-def import_transformers_ui():
-    """Launch interactive UI for transformer management."""
-    from pylovo.data_import.transformers_ui import run_transformers_ui
-    run_transformers_ui()
-
-
-def import_transformers_ui_with_options(host: str, port: int, debug: bool, cleanup: bool, auto_cleanup: bool):
-    """Launch interactive UI for transformer management with explicit options."""
-    from pylovo.data_import.transformers_ui import run_transformers_ui
-    run_transformers_ui(
-        host=host,
-        port=port,
-        debug=debug,
-        cleanup=cleanup,
-        auto_cleanup=auto_cleanup,
-    )
-
-
 def main():
-    """Main entry point for import operations."""
+    """Entry point of ``pylovo-import``."""
     parser = argparse.ArgumentParser(
         prog="pylovo-import",
         description="Import various data into pylovo database",
@@ -71,11 +68,11 @@ def main():
 Examples:
   # Import transformers from OSM by relation ID
   pylovo-import transformers-osm --relation-id 62464
-  
+
   # Import DSO transformer positions from CSV
   pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
 
-  # Launch interactive transformer UI
+  # Deprecated: the old transformer map (use the GridPlanner UI; needs uv sync --extra legacy-ui)
   pylovo-import transformers-ui
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -83,7 +80,6 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", help="Import operation to perform")
 
-    # Subcommand: transformers-osm
     osm_parser = subparsers.add_parser(
         "transformers-osm",
         help="Fetch and import transformers from OpenStreetMap"
@@ -95,7 +91,6 @@ Examples:
         help="OSM relation ID of the area"
     )
 
-    # Subcommand: transformers-dso-csv
     dso_csv_parser = subparsers.add_parser(
         "transformers-dso-csv",
         help="Import DSO transformer positions from CSV"
@@ -114,38 +109,11 @@ Examples:
         help="Delete existing dso/<source>/... rows before importing this source"
     )
 
-    # Subcommand: transformers-ui
     ui_parser = subparsers.add_parser(
         "transformers-ui",
-        help="Launch interactive UI for transformer management"
+        help="Deprecated: the old transformer map (use the GridPlanner UI; needs the extra legacy-ui)"
     )
-    ui_parser.add_argument(
-        "--host",
-        default="0.0.0.0",
-        help="Host address (default: 0.0.0.0)"
-    )
-    ui_parser.add_argument(
-        "--port",
-        type=int,
-        default=8080,
-        help="Port number (default: 8080, 0 for auto-detect)"
-    )
-    ui_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug mode"
-    )
-    ui_parser.add_argument(
-        "--cleanup",
-        action="store_true",
-        help="Clean up lingering connections before starting"
-    )
-    ui_parser.add_argument(
-        "--auto-cleanup",
-        action="store_true",
-        default=True,
-        help="Automatically clean up port conflicts (default: True)"
-    )
+    _add_ui_arguments(ui_parser)
 
     args = parser.parse_args()
 
@@ -159,7 +127,7 @@ Examples:
         elif args.command == "transformers-dso-csv":
             import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
         elif args.command == "transformers-ui":
-            import_transformers_ui_with_options(
+            run_transformers_ui(
                 host=args.host,
                 port=args.port,
                 debug=args.debug,
@@ -170,9 +138,8 @@ Examples:
         print(f"✗ Error: {e}")
         import traceback
         traceback.print_exc()
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-

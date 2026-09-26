@@ -3,6 +3,10 @@ pylovo - Python tool for Low-Voltage distribution grid generation
 
 A comprehensive tool for generating synthetic low-voltage distribution grids
 based on open data sources. Designed for energy system modeling research.
+
+Importing the package (or any submodule) imports :mod:`pylovo.config_loader`,
+which reads ``.env`` and the YAML files in ``./config`` at import time; see that
+module for the lookup rules.
 """
 
 from importlib.metadata import version, PackageNotFoundError

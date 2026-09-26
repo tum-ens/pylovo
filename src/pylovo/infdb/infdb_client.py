@@ -1,14 +1,42 @@
-from typing import Any
+"""Read-only client for the InfDB source data (buildings, ways, postcodes)."""
 
 import psycopg2 as psy
+from psycopg2 import sql
 
 from pylovo import utils
-from pylovo.config_loader import *
-from pylovo.database.database_client import DatabaseClient
+from pylovo.config_loader import (
+    EXCLUDE_BUILDINGS_WITHOUT_ADDRESS,
+    INFDB_DBNAME,
+    INFDB_HOST,
+    INFDB_OPENDATA_SCHEMA,
+    INFDB_PASSWORD,
+    INFDB_PORT,
+    INFDB_SOURCE_SCHEMA,
+    INFDB_USER,
+    LOG_LEVEL,
+)
 
 
 class InfdbClient:
-    """Responsible for connecting to InfDB database."""
+    """Connection to InfDB, the source of buildings, ways and postcodes when ``USE_INFDB=True``.
+
+    The connection defaults to the pylovo database itself (``config_loader`` sets the
+    ``INFDB_*`` settings to the ``.env`` connection); ``search_path`` is
+    ``INFDB_SOURCE_SCHEMA, public``. Buildings come from ``basedata.buildings``, ways from
+    ``ways_per_connection`` and ``connection_lines`` in ``INFDB_SOURCE_SCHEMA``, postcodes from
+    ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.
+
+    Args:
+        dbname: Database name; defaults to ``INFDB_DBNAME``.
+        user: Database user; defaults to ``INFDB_USER``.
+        pw: Password; defaults to ``INFDB_PASSWORD``.
+        host: Host; defaults to ``INFDB_HOST``.
+        port: Port; defaults to ``INFDB_PORT``.
+        **kwargs: ``log_file``: log file path (default ``log/log.txt``).
+
+    Raises:
+        psycopg2.OperationalError: If the database cannot be reached.
+    """
 
     def __init__(self, dbname=INFDB_DBNAME, user=INFDB_USER, pw=INFDB_PASSWORD, host=INFDB_HOST, port=INFDB_PORT, **kwargs):
         self.logger = utils.create_logger(
@@ -33,8 +61,13 @@ class InfdbClient:
         self.logger.debug(f"InfDB DatabaseClient is constructed and connected to {self.db_path}.")
 
     def __del__(self):
-        self.cur.close()
-        self.conn.close()
+        """Close cursor and connection; safe if the constructor failed before opening them."""
+        cur = getattr(self, "cur", None)
+        if cur is not None:
+            cur.close()
+        conn = getattr(self, "conn", None)
+        if conn is not None:
+            conn.close()
 
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """
@@ -99,7 +132,11 @@ class InfdbClient:
         return buildings
     
     def fetch_transformer_station_buildings_from_infdb(self, plz: int) -> list[tuple]:
-        """Retrieve LoD2 buildings that represent transformer stations."""
+        """Return the LoD2 transformer-station buildings of a PLZ (``building_use_id`` 31001_2523).
+
+        Returns:
+            ``(objectid, geom, centroid)`` rows in the source SRID.
+        """
         query = """
             SELECT
                 objectid,
@@ -113,63 +150,42 @@ class InfdbClient:
         return self.cur.fetchall()
 
     def fetch_ways_from_infdb(self, plz) -> list:
-        """
-        Fetch ways from the remote DB for a given postcode (PLZ) and return them in the
-        exact tuple layout expected by the pylovo import/insert pipeline.
+        """Return the ways of a PLZ in the tuple layout of ``PreprocessingMixin.set_ways_tem_table_infdb``.
 
-        What this function does (and why):
+        Rows are ``(clazz, source, target, cost, reverse_cost, geom, way_id)``; ``source`` and
+        ``target`` are NULL (pgRouting topology is built later), ``geom`` is in the source SRID.
+        Cycle and footpaths (``Rad- und Fußweg``, clazz 72) are left out.
 
-        1) klasse_to_clazz (string -> int mapping)
-        - In the source schema, the road type is stored as a string column `klasse`
-            (e.g., "Bundesstraße", "Fußweg", "connection_line").
-        - In pylovo, the downstream tables/operators expect an integer road class
-            (`clazz`).
-        - Therefore, we define `klasse_to_clazz` once in Python and generate a SQL
-            CASE expression from it. We also use `btrim(klasse)` so trailing/leading
-            spaces in the raw strings do not break the mapping.
+        How the rows are built:
 
-        2) Column mapping from source tables -> pylovo.ways tuple layout
-        The insert into the local temp/result tables expects rows shaped like:
-            (clazz, source, target, cost, reverse_cost, geom, way_id)
+        1. **Road class.** The InfDB stores the road type as text in ``klasse`` (for example
+           ``"Bundesstraße"``, ``"Fußweg"``, ``"connection_line"``); pylovo expects an integer
+           ``clazz``. ``klasse_to_clazz`` is turned into an SQL ``CASE`` on ``btrim(klasse)``
+           (unknown values become 99).
+        2. **Column mapping.** ``klasse`` -> ``clazz``; ``source`` and ``target`` -> ``NULL``
+           (they only keep the column positions); ``length_geo`` -> ``cost`` and
+           ``reverse_cost`` (symmetric routing cost); ``geom`` unchanged (transformed locally
+           later); the text ``id`` -> a generated integer ``way_id``.
+        3. **Two source tables.** The street segments (``ways_per_connection``, split at the
+           building connections) and the building connection lines (``connection_lines``) are
+           combined with ``UNION ALL``.
+        4. **Unique way ids across runs.** A plain ``row_number()`` would restart at 1 for every
+           PLZ and collide with ids of earlier runs. The ids are therefore
+           ``COALESCE(MAX(way_id), 0) FROM pylovo.ways_result`` plus
+           ``row_number() OVER (ORDER BY remote_id)``, where ``remote_id`` is a stable key derived
+           from the source id. Sequential runs keep ``way_id`` unique; parallel runs can still
+           assign the same ids, because ``pylovo.ways_result`` only grows when a run commits.
+           ``pylovo.ways_result`` is read through this InfDB connection, which therefore has to
+           point to the pylovo database (the default).
 
-        We construct that shape from the source columns as follows:
-        - klasse (string)      -> clazz (int)
-            via CASE mapping using `klasse_to_clazz` (defaulting to 99 if unknown).
-        - source (missing/unused in source) -> NULL
-            we return `NULL::bigint AS source` to preserve the expected column position/type.
-        - target (missing/unused in source) -> NULL
-            we return `NULL::bigint AS target` for the same reason.
-        - length_geo -> cost
-            we use the geometric length as the routing cost.
-        - length_geo -> reverse_cost
-            we set reverse_cost equal to cost (symmetric) because direction-specific
-            costs are not available/needed here.
-        - geom -> geom
-            geometry is passed through unchanged and later transformed locally.
-        - id (source is md5 text) -> way_id (generated int)
-            pylovo expects an integer id, so we generate numeric ids during fetch.
+        Args:
+            plz: Postcode.
 
-        3) Combining ways_segmented + connection_lines (UNION ALL)
-        - Previously, all relevant ways lived in a single table.
-        - Now the road network is split across:
-            * ways_segmented      (regular road segments)
-            * connection_lines    (synthetic connection segments, e.g., building-to-road)
-        - To ensure pylovo inserts a complete network, we combine both tables in a
-            single result set using `UNION ALL` so we keep all rows.
+        Returns:
+            The ways of the PLZ.
 
-        4) Ensuring unique integer way_id across multiple runs
-        - The source `id` is an md5 string (created for parallel-safe uniqueness), but
-            pylovo target expects an integer way_id.
-        - A plain `row_number()` would restart at 1 on every run/PLZ, causing collisions
-            if you generate 80803 first and later generate 80802 in a separate run.
-        - To avoid collisions, we:
-            a) read the current maximum used id from `pylovo.ways_result`:
-                    base_id = COALESCE(MAX(way_id), 0)
-            b) assign ids as:
-                    way_id = base_id + row_number() OVER (ORDER BY remote_id)
-            where remote_id is a stable ordering key derived from the source id.
-        - Result: each run continues numbering from the last used id, so way_id remains
-            globally unique across sequential executions.
+        Raises:
+            ValueError: If the PLZ has no ways.
         """
 
         klasse_to_clazz = {
@@ -255,31 +271,34 @@ class InfdbClient:
         return ways
     
     def fetch_postcode_from_infdb(self, plz: int) -> tuple | None:
+        """Return ``(plz, note, qkm, population, geom)`` of one PLZ from ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.
+
+        Returns:
+            The row, or ``None`` if the PLZ is unknown.
         """
-        Fetch the postcode geometry row for a single PLZ from the configured
-        open-data schema (``INFDB_OPENDATA_SCHEMA``).
-        Returns a tuple of (plz, note, qkm, population, geom) or None if not found.
-        """
-        query = f"""
+        query = sql.SQL("""
             SELECT plz, note, qkm, einwohner, geom
-            FROM {INFDB_OPENDATA_SCHEMA}.postcodes_germany
+            FROM {postcodes}
             WHERE plz = %(plz)s::varchar
             LIMIT 1;
-        """
+        """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
         self.cur.execute(query, {"plz": plz})
         return self.cur.fetchone()
 
     def fetch_all_postcodes_from_infdb(self) -> list[tuple]:
+        """Return all postcodes of ``INFDB_OPENDATA_SCHEMA.postcodes_germany`` for ``pylovo-setup``.
+
+        Returns:
+            ``(plz, note, qkm, population, geom)`` rows ordered by PLZ.
+
+        Raises:
+            ValueError: If the table is empty.
         """
-        Bulk-fetch all postcode rows from the configured open-data schema
-        (``INFDB_OPENDATA_SCHEMA``) for use during pylovo-setup.
-        Returns tuples of (plz, note, qkm, population, geom).
-        """
-        query = f"""
+        query = sql.SQL("""
             SELECT plz, note, qkm, einwohner, geom
-            FROM {INFDB_OPENDATA_SCHEMA}.postcodes_germany
+            FROM {postcodes}
             ORDER BY plz;
-        """
+        """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
         self.cur.execute(query)
         rows = self.cur.fetchall()
         if not rows:

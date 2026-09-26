@@ -1,9 +1,9 @@
 """
-Power flow validation_swf plotting functions.
+Power flow validation plotting functions.
 
-This module contains plotting functions for visualizing power flow validation_swf results,
+This module contains plotting functions for visualizing power flow results,
 including voltage distributions, line loading, and grid performance metrics.
-Used primarily with src/analysis/powerflow_calculation.py.
+The networks need power flow results (``pandapower.runpp``).
 """
 
 from typing import Tuple, Optional
@@ -26,28 +26,18 @@ def plot_load_and_voltage_distribution(
     """
     Plot histograms of load (p_mw) and bus voltage (vm_pu) distributions.
 
-    Parameters
-    ----------
-    net : pandapowerNet
-        The pandapower network from which to extract load and voltage data.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (12, 6).
-    bins : int, optional
-        Number of histogram bins. Default: 20.
-    show_stats : bool, optional
-        Whether to display statistics on the plots. Default: True.
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration. If None, creates a new figure.
+    Args:
+        net: The pandapower network from which to extract load and voltage data.
+        figsize: Figure size in inches (width, height). Default: (12, 6).
+        bins: Number of histogram bins. Default: 20.
+        show_stats: Whether to display statistics on the plots. Default: True.
+        ax: Axes object for subplot integration. If None, creates a new figure.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the subplots.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the subplots.
 
-    Raises
-    ------
-    ValueError
-        If power flow has not been run on the network.
+    Raises:
+        ValueError: If power flow has not been run on the network.
     """
     if net.res_load.empty or net.res_bus.empty:
         raise ValueError("No power flow results found. Run pp.runpp(net) first.")
@@ -101,28 +91,18 @@ def plot_all_voltages_for_plz(
     """
     Plot histogram of bus voltage distributions for all networks in a postal code area.
 
-    Parameters
-    ----------
-    voltage_df : pd.DataFrame
-        DataFrame containing 'vm_pu' column with voltage magnitudes.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (12, 6).
-    bins : int, optional
-        Number of histogram bins. Default: 100.
-    show_violations : bool, optional
-        Whether to highlight voltage violations. Default: True.
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration. If None, creates a new figure.
+    Args:
+        voltage_df: DataFrame containing 'vm_pu' column with voltage magnitudes.
+        figsize: Figure size in inches (width, height). Default: (12, 6).
+        bins: Number of histogram bins. Default: 100.
+        show_violations: Whether to highlight voltage violations. Default: True.
+        ax: Axes object for subplot integration. If None, creates a new figure.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the plot.
 
-    Raises
-    ------
-    ValueError
-        If voltage_df is empty or doesn't contain 'vm_pu' column.
+    Raises:
+        ValueError: If voltage_df is empty or doesn't contain 'vm_pu' column.
     """
     if voltage_df.empty:
         raise ValueError("voltage_df is empty")
@@ -186,26 +166,17 @@ def plot_voltage_profile(
     """
     Plot voltage profile across all buses.
 
-    Parameters
-    ----------
-    net : pandapowerNet
-        Pandapower network with completed power flow results.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (12, 6).
-    show_limits : bool, optional
-        Whether to show voltage limit lines. Default: True.
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration. If None, creates a new figure.
+    Args:
+        net: Pandapower network with completed power flow results.
+        figsize: Figure size in inches (width, height). Default: (12, 6).
+        show_limits: Whether to show voltage limit lines. Default: True.
+        ax: Axes object for subplot integration. If None, creates a new figure.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the voltage profile plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the voltage profile plot.
 
-    Raises
-    ------
-    ValueError
-        If power flow has not been run on the network.
+    Raises:
+        ValueError: If power flow has not been run on the network.
     """
     if net.res_bus.empty:
         raise ValueError("No power flow results found. Run pp.runpp(net) first.")
@@ -246,26 +217,17 @@ def plot_line_loading_distribution(
     """
     Plot distribution of line loading percentages.
 
-    Parameters
-    ----------
-    net : pandapowerNet
-        Pandapower network with completed power flow results.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (12, 6).
-    bins : int, optional
-        Number of histogram bins. Default: 30.
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration. If None, creates a new figure.
+    Args:
+        net: Pandapower network with completed power flow results.
+        figsize: Figure size in inches (width, height). Default: (12, 6).
+        bins: Number of histogram bins. Default: 30.
+        ax: Axes object for subplot integration. If None, creates a new figure.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the line loading distribution plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the line loading distribution plot.
 
-    Raises
-    ------
-    ValueError
-        If power flow has not been run on the network.
+    Raises:
+        ValueError: If power flow has not been run on the network.
     """
     if net.res_line.empty:
         raise ValueError("No line results found. Run pp.runpp(net) first.")

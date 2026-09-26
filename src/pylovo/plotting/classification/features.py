@@ -16,7 +16,7 @@ from matplotlib.figure import Figure
 from sklearn.decomposition import FactorAnalysis, PCA
 from sklearn.preprocessing import StandardScaler
 
-from pylovo.config_loader import TUMPalette1
+from pylovo.config_loader import ACCESS_TOKEN_PLOTLY, TUMPalette1
 
 
 def plot_correlation_matrix(corr: pd.DataFrame, ax: Optional[plt.Axes] = None, figsize: Tuple[int, int] = (9, 9),
@@ -24,21 +24,14 @@ def plot_correlation_matrix(corr: pd.DataFrame, ax: Optional[plt.Axes] = None, f
     """
     Plot correlation matrix as a heatmap.
 
-    Parameters
-    ----------
-    corr : pd.DataFrame
-        Correlation matrix to visualize.
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration. If None, creates a new figure.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (9, 9).
-    save_path : str, optional
-        Path to save the figure. If None, displays the plot.
+    Args:
+        corr: Correlation matrix to visualize.
+        ax: Axes object for subplot integration. If None, creates a new figure.
+        figsize: Figure size in inches (width, height). Default: (9, 9).
+        save_path: Path to save the figure (600 dpi). If None, the figure is not saved.
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the correlation matrix plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the correlation matrix plot.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -59,19 +52,13 @@ def plot_samples_per_regiostarclass(df_samples: pd.DataFrame, ax: Optional[plt.A
     """
     Plot bar chart showing number of samples per regiostar 7 class.
 
-    Parameters
-    ----------
-    df_samples : pd.DataFrame
-        DataFrame containing sample data with 'regio7' column.
-    ax : matplotlib.axes.Axes, optional
-        Axes object for subplot integration.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (9, 6).
+    Args:
+        df_samples: DataFrame containing sample data with 'regio7' column.
+        ax: Axes object for subplot integration.
+        figsize: Figure size in inches (width, height). Default: (9, 6).
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the bar chart.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the bar chart.
     """
     if ax is None:
         fig = plt.figure(figsize=figsize)
@@ -92,11 +79,14 @@ def plot_samples_on_map(df_samples: pd.DataFrame) -> None:
     """
     Plot PLZ samples on an interactive plotly map.
 
-    Parameters
-    ----------
-    df_samples : pd.DataFrame
-        DataFrame containing sample data with 'lat', 'lon', and 'regio7' columns.
+    The Mapbox style ``light`` needs ``ACCESS_TOKEN_PLOTLY`` in the ``.env`` file;
+    without a token the map background stays empty.
+
+    Args:
+        df_samples: DataFrame containing sample data with 'lat', 'lon', and 'regio7' columns.
     """
+    if ACCESS_TOKEN_PLOTLY:
+        px.set_mapbox_access_token(ACCESS_TOKEN_PLOTLY)
     df_samples = df_samples.copy()
     df_samples['regio7_str'] = df_samples['regio7'].astype("str")
     fig = px.scatter_mapbox(df_samples, lat="lat", lon="lon", color="regio7_str", size="regio7", size_max=10, zoom=7)
@@ -109,19 +99,13 @@ def plot_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int, figsize:
     """
     Plot factor analysis comparison for different methods.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for grids.
-    n_comps : int
-        Number of components for factor analysis.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (10, 8).
+    Args:
+        df_plz_parameters: Set of parameters for grids.
+        n_comps: Number of components for factor analysis.
+        figsize: Figure size in inches (width, height). Default: (10, 8).
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the factor analysis plots.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the factor analysis plots.
     """
     # Scale data
     data = df_plz_parameters
@@ -155,17 +139,12 @@ def get_parameters_for_clustering(df_plz_parameters: pd.DataFrame, n_comps: int)
     """
     Calculate mathematically ideal set of parameters using varimax rotated factor analysis.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for grids.
-    n_comps : int
-        Number of components for factor analysis.
+    Args:
+        df_plz_parameters: Set of parameters for grids.
+        n_comps: Number of components for factor analysis.
 
-    Returns
-    -------
-    list
-        List of selected parameters for clustering.
+    Returns:
+        list: List of selected parameters for clustering.
     """
     data = df_plz_parameters
     X = StandardScaler().fit_transform(data)
@@ -188,17 +167,12 @@ def plot_eigendecomposition(df_plz_parameters: pd.DataFrame, figsize: Tuple[int,
     """
     Plot explained variance of principal components.
 
-    Parameters
-    ----------
-    df_plz_parameters : pd.DataFrame
-        Set of parameters for grids.
-    figsize : tuple of int, optional
-        Figure size in inches (width, height). Default: (10, 6).
+    Args:
+        df_plz_parameters: Set of parameters for grids.
+        figsize: Figure size in inches (width, height). Default: (10, 6).
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The Figure object containing the eigendecomposition plot.
+    Returns:
+        matplotlib.figure.Figure: The Figure object containing the eigendecomposition plot.
     """
     X_train = df_plz_parameters
     sc = StandardScaler()
@@ -206,7 +180,7 @@ def plot_eigendecomposition(df_plz_parameters: pd.DataFrame, figsize: Tuple[int,
     X_train_std = sc.transform(X_train)
 
     pca = PCA()
-    X_train_pca = pca.fit_transform(X_train_std)
+    pca.fit(X_train_std)
     exp_var_pca = pca.explained_variance_ratio_
     cum_sum_eigenvalues = np.cumsum(exp_var_pca)
 

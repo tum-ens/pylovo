@@ -1,10 +1,17 @@
+"""Mark grids that are excluded from clustering (column ``filtered`` of ``clustering_parameters``)."""
 from pylovo.classification.database_communication.database_communication import DatabaseCommunication
 
 
 def apply_filter_to_grids(additional_filtering: bool = False) -> None:
-    """apply thresholds set in config_clustering to clustering parameters.
-    according to those thresholds the value in column 'filtered' of 'clustering_parameters'
-    is set true or false
+    """Apply the thresholds of ``config_clustering.yaml`` to the clustering parameters.
+
+    Grids above the maximum transformer distance or with too many households per
+    building are always filtered; all remaining grids get ``filtered = false``.
+
+    Args:
+        additional_filtering: Also filter grids below the thresholds of
+            ``avg_trafo_dis``, ``no_house_connections``, ``vsw_per_branch`` and
+            ``no_households`` (removes small "filling" grids).
     """
     dc = DatabaseCommunication()
     dc.apply_max_trafo_dis_threshold()

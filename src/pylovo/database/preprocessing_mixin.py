@@ -1,19 +1,71 @@
+"""Queries that prepare the input of one PLZ: version snapshot, configuration tables,
+buildings, transformers and ways in the working tables ``buildings_tem`` and ``ways_tem``."""
+
 import json
 import warnings
-from abc import ABC
+
 import numpy as np
 import pandas as pd
-import time
+from psycopg2 import sql
 
-from pylovo.config_loader import *
-from pylovo.database.base_mixin import BaseMixin
+from pylovo.config_loader import (
+    AGGREGATE_NEARBY_CONNECTION_POINTS,
+    CONFIG_EQUIPMENT_DATA,
+    CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
+    CONNECTION_POINT_AGGREGATION_RADIUS_M,
+    CONSUMER_CATEGORIES,
+    DEFAULT_POWER_FACTOR,
+    ELECTRICAL_BACKEND,
+    EXCLUDE_BUILDINGS_WITHOUT_ADDRESS,
+    FEEDER_SPLIT_MAX_CURRENT_KA,
+    GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
+    GREENFIELD_TRAFO_POSITION_TOLERANCE,
+    K_MEANS_SEED,
+    MAX_BROWNFIELD_TRAFO_DISTANCE,
+    MAX_BUILDINGS_PER_KCID,
+    MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
+    MAX_GREENFIELD_TRAFO_DISTANCE,
+    MAX_GREENFIELD_TRAFO_DISTANCE_STD,
+    MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
+    MERGE_GREENFIELD_CLUSTERS,
+    MIN_SHARED_PREFIX_LENGTH_M,
+    MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
+    PEAK_LOAD_HOUSEHOLD,
+    POWER_FLOW_MAX_VM_PU,
+    POWER_FLOW_MIN_VM_PU,
+    RESIDENTIAL_ONLY_GENERATION,
+    RURAL_MAX_HOUSEHOLDS,
+    RURAL_MIN_BUILDING_DISTANCE,
+    SIM_FACTOR,
+    TARGET_EPSG,
+    TRANSFORMER_MAPPING,
+    TRANSFORMER_PLANNING_UTILIZATION,
+    URBAN_MAX_BUILDING_DISTANCE,
+    URBAN_MIN_HOUSEHOLDS,
+    USE_DSO_TRANSFORMER_POSITIONS,
+    USE_INFDB,
+    USE_MANUAL_TRANSFORMER_POSITIONS,
+    USE_OPEN_TRANSFORMER_POSITIONS,
+    VERSION_COMMENT,
+    VERSION_ID,
+    VN,
+)
+from pylovo.database.base_mixin import BaseMixin, plz_table_name
+from pylovo.database.transformer_sources import IS_DSO_TRANSFORMER_SQL as _IS_DSO_TRANSFORMER_SQL
+from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
+from pylovo.version_snapshot import compare_snapshots
 
 warnings.simplefilter(action='ignore', category=UserWarning)
 
 
-class PreprocessingMixin(BaseMixin, ABC):
-    def __init__(self):
-        super().__init__()
+class PreprocessingMixin(BaseMixin):
+    """Fill the PLZ working tables and the configuration tables of the active version.
+
+    Two input paths exist. With ``USE_INFDB=True`` (default) buildings and ways come from InfDB
+    through :class:`~pylovo.infdb.infdb_client.InfdbClient`; with ``USE_INFDB=False`` they are
+    read from the local tables ``res``, ``oth`` and ``ways`` that ``pylovo-setup`` and the
+    building import fill from files.
+    """
 
     @staticmethod
     def _dataframe_records(df: pd.DataFrame) -> list[dict]:
@@ -58,6 +110,9 @@ class PreprocessingMixin(BaseMixin, ABC):
                 "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
                 "use_dso_transformer_positions": USE_DSO_TRANSFORMER_POSITIONS,
                 "use_open_transformer_positions": USE_OPEN_TRANSFORMER_POSITIONS,
+                "use_manual_transformer_positions": USE_MANUAL_TRANSFORMER_POSITIONS,
+                "merge_greenfield_clusters": MERGE_GREENFIELD_CLUSTERS,
+                "greenfield_cluster_merge_transformer_kva": GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
                 "max_greenfield_trafo_distance": MAX_GREENFIELD_TRAFO_DISTANCE,
                 "max_greenfield_trafo_distance_std": MAX_GREENFIELD_TRAFO_DISTANCE_STD,
                 "greenfield_trafo_position_tolerance": GREENFIELD_TRAFO_POSITION_TOLERANCE,
@@ -106,10 +161,17 @@ class PreprocessingMixin(BaseMixin, ABC):
             if isinstance(stored_parameters, str):
                 stored_parameters = json.loads(stored_parameters)
             expected_parameters = json.loads(generation_parameters)
-            if stored_parameters != expected_parameters:
+            differences, not_recorded = compare_snapshots(stored_parameters, expected_parameters)
+            if differences:
                 raise ValueError(
-                    f"Generation parameters differ from the stored snapshot for version {VERSION_ID}. "
+                    f"Generation parameters differ from the stored snapshot for version {VERSION_ID} "
+                    f"({', '.join(differences[:5])}{' …' if len(differences) > 5 else ''}). "
                     "Increment VERSION_ID before generating grids with the changed configuration."
+                )
+            if not_recorded:
+                self.logger.warning(
+                    f"The stored snapshot of version {VERSION_ID} predates the parameters "
+                    f"{', '.join(not_recorded)}; their values used for its existing grids are unknown."
                 )
 
             self.conn.commit()
@@ -125,14 +187,17 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise
 
     def insert_equipment_data_from_config(self, equipment_data: pd.DataFrame):
-        """Populate equipment_data table from the combined config equipment DataFrame.
-        Replaces former pandas.to_sql variant (replace) with conflict-safe inserts.
-        Reasons:
-        Strategy:
-        - Map columns to expected structure
-        - Fill missing columns with None
-        - Cast values (numeric fields to Int, missing -> None)
-        - ON CONFLICT (version_id, name) DO UPDATE for idempotency / update
+        """Upsert the configured equipment (transformers and cables) into ``equipment_data`` and commit.
+
+        Missing columns are filled with NULL, numeric columns are cast to integers, and rows
+        without ``version_id`` get the configured ``VERSION_ID``. Existing rows with the same
+        ``(version_id, name)`` are updated.
+
+        Args:
+            equipment_data: Equipment table, normally ``CONFIG_EQUIPMENT_DATA``.
+
+        Raises:
+            psycopg2.Error: If the upsert fails; the transaction is rolled back first.
         """
         df = equipment_data.copy()
         expected_cols = ["version_id", "name", "s_max_kva", "max_i_a", "r_mohm_per_km", "x_mohm_per_km",
@@ -180,9 +245,17 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise
 
     def insert_consumer_categories_from_config(self, consumer_categories: pd.DataFrame):
-        """Synchronize the configured electrical load categories.
+        """Make ``consumer_categories`` equal to the configured load categories and commit.
 
-        Building classifications deliberately do not constrain this table.
+        Categories that are no longer configured are deleted, the others are upserted. The
+        placeholder ``'PEAK_LOAD_HOUSEHOLD'`` in the ``peak_load`` column is replaced by the
+        configured value. Building classifications deliberately do not constrain this table.
+
+        Args:
+            consumer_categories: Category table, normally ``CONSUMER_CATEGORIES``.
+
+        Raises:
+            psycopg2.Error: If the synchronisation fails; the transaction is rolled back first.
         """
         df = consumer_categories.copy()
 
@@ -238,14 +311,19 @@ class PreprocessingMixin(BaseMixin, ABC):
             raise
 
     def postcode_exists_locally(self, plz: int) -> bool:
-        """Returns True if the given PLZ already exists in the local postcode table."""
+        """Return whether the PLZ exists in the local ``postcode`` table."""
         self.cur.execute(
             "SELECT 1 FROM pylovo.postcode WHERE plz = %(p)s LIMIT 1;", {"p": plz}
         )
         return self.cur.fetchone() is not None
 
     def insert_postcode(self, postcode_row: tuple) -> None:
-        """Insert a single postcode row (plz, note, qkm, population, geom) into the postcode table."""
+        """Insert one postcode into the local ``postcode`` table unless it exists.
+
+        Args:
+            postcode_row: ``(plz, note, qkm, population, geom)`` as returned by
+                ``InfdbClient.fetch_postcode_from_infdb``; ``geom`` is transformed to ``TARGET_EPSG``.
+        """
         query = f"""
             INSERT INTO pylovo.postcode (plz, note, qkm, population, geom)
             VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}))
@@ -253,10 +331,12 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query, postcode_row)
 
     def copy_postcode_result_table(self, plz: int) -> None:
-        """
-        Copies the given plz entry from postcode to the postcode_result table
-        :param plz:
-        :return:
+        """Copy the PLZ polygon from ``postcode`` into ``postcode_result`` for the active version.
+
+        Does nothing if the row already exists.
+
+        Args:
+            plz: Postcode to copy.
         """
         query = """INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz, geom)
                    SELECT %(v)s as version_id, plz, geom
@@ -268,13 +348,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
 
     def set_residential_buildings_table(self, plz: int):
-        """
-        * Fills buildings_tem with residential buildings that lie inside the postal code geometry
-        :param plz:
-        :return:
-        """
+        """Fill ``buildings_tem`` with the residential buildings of the PLZ (file-based input).
 
-        # Fill table
+        Used when ``USE_INFDB=False``: reads the imported shapefile table ``res`` and keeps the
+        buildings whose centroid lies inside the PLZ polygon of ``postcode_result``.
+
+        Args:
+            plz: Postcode to fill.
+        """
         query = """INSERT INTO buildings_tem (objectid, floor_area, building_use, type, geom, centroid, floor_number)
                    SELECT osm_id, area, building_t, building_t, geom, ST_Centroid(geom), floors::int
                    FROM res
@@ -289,18 +370,13 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
 
     def set_buildings_table(self, buildings_data: list[tuple], plz: int = None) -> None:
-        """
-        Insert buildings data associated with a specific postal code into the database.
-
-        This function takes building data and inserts it into a temporary buildings table, associating each
-        building with the given postal code. The temporary tables are then used when generating grids.
+        """Insert InfDB buildings into ``buildings_tem`` (``USE_INFDB=True``).
 
         Args:
-            buildings_data (list[tuple[int, float, str, str, str, int, int]]): List of building tuples
-                containing (id, floor_area, building_type, geom, center_geom, floor_number, households, address_street_id, construction_year).
-
-        Returns:
-            None
+            buildings_data: Rows in the column order of ``InfdbClient.fetch_buildings_from_infdb``
+                (``id``, ``feature_id``, ``objectid``, ..., ``geom``, ``centroid``, ...,
+                ``assigned_way_id``, ``type``); both geometries are transformed to ``TARGET_EPSG``.
+            plz: Unused; ``plz`` is set later by ``set_buildings_tem_plz``.
         """
         insert_query = f"""
             INSERT INTO buildings_tem
@@ -318,14 +394,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         # self.conn.commit() only for debugging
 
     def set_other_buildings_table(self, plz: int):
-        """
-        * Fills buildings_tem with other (non-residential) buildings inside the plz area
-        * Sets all floors to 1 if missing
-        :param plz:
-        :return:
-        """
+        """Add the commercial and public buildings of the PLZ to ``buildings_tem`` (file-based input).
 
-        # Fill table
+        Used when ``USE_INFDB=False``: reads the imported shapefile table ``oth``. Buildings
+        without a floor count get one floor.
+
+        Args:
+            plz: Postcode to fill.
+        """
         query = """INSERT INTO buildings_tem(objectid, floor_area, building_use, type, geom, centroid)
                    SELECT osm_id, area, use, use, geom, ST_Centroid(geom)
                    FROM oth AS o
@@ -343,11 +419,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
 
     def remove_duplicate_buildings(self):
-        """
-        * Remove buildings without geometry or objectid
-        * Remove buildings that are duplicates (copy id) of others
-        :return:
-        """
+        """Delete buildings without geometry or objectid, and ``*copy*`` duplicates of identical geometries."""
         remove_query = """DELETE
                           FROM buildings_tem
                           WHERE geom ISNULL;"""
@@ -366,8 +438,20 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query)
 
     def calculate_house_distance_metric(self, plz: int, k_nearest: int = 4) -> float:
-        """Computes the average distance (meters) from every building to its k nearest
-        neighbours and writes house_distance into postcode_result. Returns the computed value.
+        """Store the mean distance between buildings in ``postcode_result.house_distance``.
+
+        The metric is the mean centroid distance of every building in ``buildings_tem`` to its
+        ``k_nearest`` nearest neighbours (fewer if the PLZ has fewer buildings).
+
+        Args:
+            plz: Postcode of the working tables.
+            k_nearest: Number of neighbours per building.
+
+        Returns:
+            The mean distance in metres.
+
+        Raises:
+            ValueError: If ``buildings_tem`` holds fewer than two buildings.
         """
         from scipy.spatial import cKDTree
         self.cur.execute("SELECT ST_X(centroid), ST_Y(centroid) FROM buildings_tem WHERE centroid IS NOT NULL")
@@ -387,8 +471,16 @@ class PreprocessingMixin(BaseMixin, ABC):
         return avg_dis
 
     def calculate_avg_households_per_building(self, plz: int) -> float:
-        """Computes the average number of households per (residential) building from buildings_tem
-        and writes avg_households_per_building into postcode_result. Returns the value.
+        """Store the mean household count of residential buildings in ``postcode_result``.
+
+        Args:
+            plz: Postcode of the working tables.
+
+        Returns:
+            The mean number of households per residential building.
+
+        Raises:
+            ValueError: If no residential building has a household count.
         """
         avg_query = """
             SELECT AVG(households)::DOUBLE PRECISION
@@ -398,7 +490,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                   COALESCE(residential_floor_area, 0) > 0
                   OR type IN ('SFH','TH','MFH','AB')
               );"""
-        self.cur.execute(avg_query, {"p": plz})
+        self.cur.execute(avg_query)
         avg_val = self.cur.fetchone()[0]
         if avg_val is None:
             raise ValueError(f"No residential buildings with household data for ZIP {plz}.")
@@ -415,21 +507,37 @@ class PreprocessingMixin(BaseMixin, ABC):
         plz: int,
         settlement_type_thresholds: dict | None = None,
     ) -> int:
-        """Determines settlement_type (1=rural, 2=semi-urban, 3=urban) using a weighted (continuous) combination
-        of two metrics:
-          - avg_households_per_building (higher => more urban)
-          - house_distance (smaller => more urban)
+        """Classify the PLZ as rural (1), semi-urban (2) or urban (3) and store it in ``postcode_result``.
 
-        Method (weighted only):
-          1. Normalize household metric to [0,1]:
-               0 when avg <= rural_max_households -> rural, 1 when avg >= urban_min_households -> urban, linear in between
-          2. Normalize distance to [0,1] (inverted):
-               0 when distance >= rural_min_distance -> rural, 1 when distance <= urban_max_distance -> urban, linear in between
-          3. Score = 0.5 * hh_norm + 0.5 * dist_norm
-          4. Discretize: Score < 1/3 -> 1, < 2/3 -> 2, else 3
+        Both metrics of ``postcode_result`` are normalised to [0, 1], where 1 means urban:
 
-        Parameters can be calibrated; defaults come from configuration.
+        1. ``avg_households_per_building``: 0 at or below ``rural_max_households``, 1 at or above
+           ``urban_min_households``, linear in between.
+        2. ``house_distance`` (inverted): 0 at or above ``rural_min_distance``, 1 at or below
+           ``urban_max_distance``, linear in between.
+
+        The score ``0.5 * households + 0.5 * distance`` is binned: below 1/3 -> 1, below 2/3 -> 2,
+        otherwise 3.
+
+        Args:
+            plz: Postcode to classify.
+            settlement_type_thresholds: Dict with ``rural_max_households``, ``urban_min_households``,
+                ``rural_min_distance`` and ``urban_max_distance``. Defaults to ``RURAL_MAX_HOUSEHOLDS``,
+                ``URBAN_MIN_HOUSEHOLDS``, ``RURAL_MIN_BUILDING_DISTANCE`` and ``URBAN_MAX_BUILDING_DISTANCE``.
+
+        Returns:
+            The settlement type.
+
+        Raises:
+            ValueError: If one of the two metrics is not set yet.
         """
+        if settlement_type_thresholds is None:
+            settlement_type_thresholds = {
+                "rural_max_households": RURAL_MAX_HOUSEHOLDS,
+                "urban_min_households": URBAN_MIN_HOUSEHOLDS,
+                "rural_min_distance": RURAL_MIN_BUILDING_DISTANCE,
+                "urban_max_distance": URBAN_MAX_BUILDING_DISTANCE,
+            }
         fetch_query = """
             SELECT avg_households_per_building, house_distance
             FROM pylovo.postcode_result
@@ -476,7 +584,19 @@ class PreprocessingMixin(BaseMixin, ABC):
         }
 
     def set_building_peak_load(self) -> int:
-        """Calculate and validate residential/non-residential load components."""
+        """Calculate the peak load of every building in ``buildings_tem`` and drop unloaded ones.
+
+        Validates the source floor-area split, fills missing household counts from the
+        ``_household_fallback_parameters`` assumptions, derives residential and non-residential
+        floor areas and peak loads from ``consumer_categories``, and sums them into
+        ``peak_load_in_kw`` (residential only if ``RESIDENTIAL_ONLY_GENERATION``).
+
+        Returns:
+            Number of buildings deleted because their peak load is zero.
+
+        Raises:
+            ValueError: If the source areas or the calculated load components are inconsistent.
+        """
         self.cur.execute(
             """
             SELECT
@@ -657,7 +777,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         return count
 
     def update_too_large_consumers_to_zero(self) -> int:
-        """Exclude only oversized non-residential components from the LV model."""
+        """Exclude non-residential loads above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` from the LV model.
+
+        Such components are flagged ``nonresidential_mv_direct`` (assumed to be supplied from the
+        MV grid) and removed from ``peak_load_in_kw``; the residential part of the building stays.
+
+        Returns:
+            Number of buildings with an MV-direct component.
+        """
         query = """
                 UPDATE buildings_tem
                 SET nonresidential_mv_direct = (
@@ -686,7 +813,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         return too_large
 
     def set_buildings_tem_plz(self, plz: int) -> None:
-        """Set the postcode on temporary building rows independently of transformer insertion."""
+        """Set ``plz`` on all rows of ``buildings_tem`` that do not have one yet."""
         query = """UPDATE buildings_tem
                    SET plz = %(p)s
                    WHERE plz ISNULL;"""
@@ -694,7 +821,18 @@ class PreprocessingMixin(BaseMixin, ABC):
 
 
     def upsert_lod2_transformer_stations(self, transformer_buildings: list[tuple]) -> int:
-        """Add LoD2 transformer-station buildings to the raw transformer candidates."""
+        """Add LoD2 transformer-station buildings to the raw transformer candidates.
+
+        A building within 3 m of an existing candidate (or intersecting it) marks the nearest
+        candidate as LoD2-confirmed; otherwise its centroid is inserted as ``lod2/<objectid>``.
+
+        Args:
+            transformer_buildings: ``(objectid, geom, centroid)`` rows of
+                ``InfdbClient.fetch_transformer_station_buildings_from_infdb``.
+
+        Returns:
+            Number of processed buildings.
+        """
         if not transformer_buildings:
             return 0
 
@@ -764,8 +902,14 @@ class PreprocessingMixin(BaseMixin, ABC):
         Imported DSO stations count only when they are in use
         (`include_dso`): they stay in `pylovo.transformers` after the run that
         imported them, and must not remove buildings from a run that ignores them.
+
+        Args:
+            include_dso: Whether imported DSO stations are used in this run.
+
+        Returns:
+            Number of deleted buildings.
         """
-        query = """
+        query = f"""
             DELETE FROM buildings_tem b
             WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
               AND COALESCE(b.residential_floor_area, 0) <= 0
@@ -774,15 +918,18 @@ class PreprocessingMixin(BaseMixin, ABC):
                   SELECT 1
                   FROM pylovo.transformers t
                   WHERE (ST_Intersects(t.geom, b.geom) OR ST_Within(t.geom, b.geom))
-                    AND (%(include_dso)s OR NOT (t.type IN ('dso', 'dso_validation')
-                         OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
+                    AND (%(include_dso)s OR NOT {_IS_DSO_TRANSFORMER_SQL})
               );
         """
         self.cur.execute(query, {"include_dso": include_dso})
         return self.cur.rowcount
 
     def remove_non_residential_buildings_from_buildings_tem(self) -> int:
-        """Keep only residential consumer buildings in the temporary generation input."""
+        """Delete buildings without residential use from ``buildings_tem`` (``RESIDENTIAL_ONLY_GENERATION``).
+
+        Returns:
+            Number of deleted buildings.
+        """
         query = """
             DELETE FROM buildings_tem
             WHERE COALESCE(residential_floor_area, 0) <= 0
@@ -791,29 +938,29 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query)
         return self.cur.rowcount
 
-    def insert_transformers(self, plz: int, include_dso: bool = False, include_open: bool = True) -> None:
+    def insert_transformers(self, plz: int, include_dso: bool = False, include_open: bool = True,
+                            include_manual: bool = False) -> None:
+        """Add the existing transformers inside the PLZ to ``buildings_tem`` as ``Transformer`` rows.
+
+        The new rows get ``peak_load_in_kw = -1``, which marks transformer rows throughout the
+        generation. They are recognised by their still-empty columns (``plz``, ``centroid``,
+        ``type``, ``peak_load_in_kw``), so this must run after the buildings are complete.
+
+        Args:
+            plz: Postcode.
+            include_dso: Include imported DSO transformer positions.
+            include_open: Include all other (OSM, LoD2 and manual) transformer positions.
+            include_manual: Include the manual (UI) positions, also without ``include_open``.
         """
-        Add selected existing transformers from transformers table to buildings_tem.
-        :param plz: postcode area
-        :param include_dso: include imported DSO transformer positions
-        :param include_open: include non-DSO open/manual transformer positions
-        :return:
-        """
-        insert_query = """
-                       --UPDATE pylovo.transformers SET geom = ST_Centroid(geom) WHERE ST_GeometryType(geom) =  'ST_Polygon';
-                       INSERT INTO buildings_tem (objectid, geom)--(objectid,centroid)
+        insert_query = f"""
+                       INSERT INTO buildings_tem (objectid, geom)
                        SELECT osm_id, geom
-                       --FROM pylovo.transformers WHERE ST_Within(geom, (SELECT geom FROM pylovo.postcode_result LIMIT 1)) IS FALSE;
                        FROM pylovo.transformers as t
                        WHERE ST_Within(t.geom, (SELECT geom
                                                 FROM pylovo.postcode_result
                                                 WHERE postcode_result_plz = %(p)s
                                                   AND version_id = %(v)s))
-                         AND (
-                             (%(include_dso)s AND (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
-                             OR
-                             (%(include_open)s AND NOT (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
-                         ); --IS FALSE;
+                         AND {SOURCE_ENABLED_SQL};
                        UPDATE buildings_tem
                        SET plz = %(p)s
                        WHERE plz ISNULL;
@@ -826,16 +973,30 @@ class PreprocessingMixin(BaseMixin, ABC):
                        UPDATE buildings_tem
                        SET peak_load_in_kw = -1
                        WHERE peak_load_in_kw ISNULL;"""
-        self.cur.execute(insert_query, {"p": plz, "v": VERSION_ID, "include_dso": include_dso, "include_open": include_open})
+        self.cur.execute(insert_query, {"p": plz, "v": VERSION_ID,
+                                        **source_params(include_dso, include_open, include_manual)})
 
-    def remove_transformer_evidence_buildings_from_buildings_tem(self, include_dso: bool = False, include_open: bool = True) -> int:
+    def remove_transformer_evidence_buildings_from_buildings_tem(self, include_dso: bool = False, include_open: bool = True,
+                                                                 include_manual: bool = False) -> int:
         """Remove load-building rows that are used as transformer evidence.
 
         LoD2 transformer-station buildings can otherwise remain as Public or
         Commercial consumers at the same vertex as the transformer.  That creates
         artificial service cables routed back into the transformer node.
+
+        A building counts as evidence if it is a LoD2 station (``building_use_id`` 31001_2523,
+        only with ``include_open``), if a used transformer carries its objectid, or if it is a
+        non-residential building that intersects a used transformer.
+
+        Args:
+            include_dso: Whether imported DSO stations are used in this run.
+            include_open: Whether all other transformer positions are used in this run.
+            include_manual: Whether the manual (UI) positions are used in this run.
+
+        Returns:
+            Number of deleted buildings.
         """
-        query = """
+        query = f"""
             WITH transformer_buildings AS (
                 SELECT DISTINCT b.objectid, b.plz
                 FROM buildings_tem b
@@ -859,11 +1020,7 @@ class PreprocessingMixin(BaseMixin, ABC):
                       )
                   )
                 WHERE b.type != 'Transformer'
-                  AND (
-                      (%(include_dso)s AND (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
-                      OR
-                      (%(include_open)s AND NOT (t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%'))
-                  )
+                  AND {SOURCE_ENABLED_SQL}
                   AND (
                       t.osm_id = b.objectid
                       OR t.osm_id = CONCAT('lod2/', b.objectid)
@@ -881,12 +1038,12 @@ class PreprocessingMixin(BaseMixin, ABC):
             )
             SELECT COUNT(*) FROM deleted;
         """
-        self.cur.execute(query, {"include_dso": include_dso, "include_open": include_open})
+        self.cur.execute(query, source_params(include_dso, include_open, include_manual))
         return int(self.cur.fetchone()[0])
 
 
     def count_indoor_transformers(self) -> None:
-        """Counts indoor transformers before deleting them"""
+        """Log (debug level) how many transformer rows ``drop_indoor_transformers`` will delete."""
         query = """WITH union_table (ungeom) AS
                                 (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
                    SELECT COUNT(*)
@@ -898,9 +1055,11 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.logger.debug(f"{count} indoor transformers will be deleted")
 
     def drop_indoor_transformers(self) -> None:
-        """
-        Drop transformer if it is inside a building with zero load
-        :return:
+        """Delete transformer rows whose centroid lies inside a zero-load building.
+
+        Buildings without load were deleted by ``set_building_peak_load``; the zero-load rows
+        left at this point are buildings whose whole load was moved to the MV grid by
+        ``update_too_large_consumers_to_zero``.
         """
         query = """WITH union_table (ungeom) AS
                                 (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
@@ -911,21 +1070,22 @@ class PreprocessingMixin(BaseMixin, ABC):
         self.cur.execute(query)   
 
     def set_ways_tem_table_infdb(self, ways_data: list[tuple], plz: int = None) -> int:
-        """
-        Insert remote ways into the local ways_tem table.
+        """Insert the InfDB ways into ``ways_tem`` (``USE_INFDB=True``).
 
         Args:
-            ways_data (list[tuple]): Each tuple should contain
-                (clazz, source, target, cost, reverse_cost, geom, way_id)
-            plz (int): PLZ for filtering the ways
+            ways_data: ``(clazz, source, target, cost, reverse_cost, geom, way_id)`` rows of
+                ``InfdbClient.fetch_ways_from_infdb``; ``geom`` is transformed to ``TARGET_EPSG``.
+            plz: Unused.
 
         Returns:
-            int: Number of inserted ways
+            Number of rows in ``ways_tem`` afterwards.
+
+        Raises:
+            ValueError: If ``ways_data`` is empty.
         """
         if not ways_data:
             raise ValueError("No rows to insert into ways_tem")
 
-        # Normal mode - insert all ways
         insert_query = f"""
             INSERT INTO ways_tem
             (clazz, source, target, cost, reverse_cost, geom, way_id)
@@ -936,10 +1096,18 @@ class PreprocessingMixin(BaseMixin, ABC):
         return self.cur.fetchone()[0]
 
     def set_ways_tem_table(self, plz: int) -> int:
-        """
-        * Inserts ways inside the plz area to the ways_tem table
-        :param plz:
-        :return: number of ways in ways_tem
+        """Copy the ways that intersect the PLZ polygon from ``ways`` into ``ways_tem`` (file-based input).
+
+        Used when ``USE_INFDB=False``; ``pylovo-setup`` fills ``ways`` from the osm2po SQL file.
+
+        Args:
+            plz: Postcode.
+
+        Returns:
+            Number of rows in ``ways_tem``.
+
+        Raises:
+            ValueError: If no way intersects the PLZ.
         """
         query = """INSERT INTO ways_tem
                    SELECT *
@@ -959,31 +1127,25 @@ class PreprocessingMixin(BaseMixin, ABC):
         return count
 
     def preprocess_ways(self) -> None:
-        """
-        Runs the geometric preprocessing steps for the ways_tem table using two core functions:
+        """Connect buildings and transformers to the street network in ``ways_tem``.
 
-        1. segment_intersecting_ways():
-        - Detects where roads intersect geometrically.
-        - Splits intersecting road segments into new segments at the intersection point.
-        - Inserts the resulting segments into the working table `ways_tem`.
-        - Internally uses: 
-            - insert_way_segment() for adding new segments
+        Calls the SQL functions of ``ways_preprocessing_functions`` (loaded by ``pylovo-setup``).
 
-        2. generate_building_to_way_connections():
-        - Connects each building to the closest road segment.
-        - For each building, generates a connection line to the corresponding way.
-        - Splits the road segment at the connection point and updates `ways_tem`.
-        - Uses:
-            - generate_building_way_connection_candidates() for finding potential connections
-            - insert_way_segment() for adding new segments
-            - split_way_at_connection_points() for splitting ways at connection points
+        With ``USE_INFDB=True``, InfDB already delivers segmented ways and the building
+        connection lines, so only ``generate_transformer_to_way_connections_infdb()`` runs: it
+        connects the transformer rows of ``buildings_tem`` to their nearest way.
 
-        These two functions are executed in sequence to ensure that:
-        - All intersecting ways are properly split.
-        - All buildings are connected to the network via dedicated segments.
+        With ``USE_INFDB=False`` two functions run in sequence:
 
-        When the flag USE_INFDB is set to "True", the function generate_transformer_to_way_connections_infdb() 
-        is used instead.
+        1. ``segment_intersecting_ways()`` splits crossing ways at their intersection point
+           (via ``insert_way_segment()``).
+        2. ``generate_building_to_way_connections()`` adds a connection line from every loaded
+           building to its nearest way and splits that way at the connection point (via
+           ``generate_building_way_connection_candidates()``, ``insert_way_segment()`` and
+           ``split_way_at_connection_points()``).
+
+        Running them in this order ensures that all intersecting ways are split before every
+        building gets its own connection segment.
         """
         if USE_INFDB:
             self.cur.execute("SELECT generate_transformer_to_way_connections_infdb();")
@@ -992,85 +1154,83 @@ class PreprocessingMixin(BaseMixin, ABC):
             self.cur.execute("SELECT generate_building_to_way_connections();")
 
     def build_pgr_network_topology(self, plz: int) -> None:
-        """Builds the pgRouting-compatible network topology from the updated `ways_tem` table.
+        """Build the pgRouting topology of ``ways_tem_<plz>``.
 
-        This method uses the pgRouting 3.8+ workflow:
-        1. pgr_extractVertices(): Extracts unique vertices from edge geometries
-        2. UPDATE source: Links start points of edges to vertex IDs
-        3. UPDATE target: Links end points of edges to vertex IDs
+        Uses the pgRouting 3.8+ workflow that replaces the deprecated ``pgr_createTopology()``:
 
-        This replaces the deprecated pgr_createTopology() function.
+        1. ``pgr_extractVertices()`` writes the distinct edge end points to
+           ``ways_tem_<plz>_vertices_pgr``.
+        2. ``source`` and ``target`` of every edge are set to the vertex at its start and end point.
+
+        The vertices table is exposed to the session as the temporary view ``ways_tem_vertices_pgr``.
+
+        Args:
+            plz: Postcode of the working tables.
         """
-        edge_table = f"ways_tem_{plz}"
-        vertices_table = f"{edge_table}_vertices_pgr"
+        edge_name = plz_table_name("ways_tem", plz)
+        vertices_name = f"{edge_name}_vertices_pgr"
+        edges = sql.Identifier("pylovo", edge_name)
+        vertices = sql.Identifier("pylovo", vertices_name)
 
         # Align endpoints before extracting vertices so pgRouting does not split components on
         # floating-point noise introduced by geometric preprocessing.
-        self.cur.execute(f"""
-            UPDATE {edge_table}
+        self.cur.execute(sql.SQL("""
+            UPDATE {edges}
             SET geom = ST_SnapToGrid(geom, 0.000001)
             WHERE geom IS NOT NULL;
-        """)
+        """).format(edges=edges))
 
         # Ensure source and target columns exist on the edge table
         # (required before pgr_extractVertices can work)
-        self.cur.execute(f"""
-            ALTER TABLE {edge_table} ADD COLUMN IF NOT EXISTS source integer;
-            ALTER TABLE {edge_table} ADD COLUMN IF NOT EXISTS target integer;
-        """)
+        self.cur.execute(sql.SQL("""
+            ALTER TABLE {edges} ADD COLUMN IF NOT EXISTS source integer;
+            ALTER TABLE {edges} ADD COLUMN IF NOT EXISTS target integer;
+        """).format(edges=edges))
 
-        # Drop existing vertices table if it exists
-        self.cur.execute(f"DROP TABLE IF EXISTS {vertices_table} CASCADE;")
+        self.cur.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE;").format(vertices))
 
-        # Step 1: Create the vertices table using pgr_extractVertices
-        self.cur.execute(f"""
-            CREATE TABLE {vertices_table} AS
+        # Step 1: pgr_extractVertices() takes the edge query as a text argument.
+        edge_query = sql.SQL("SELECT way_id AS id, geom FROM {} ORDER BY way_id").format(edges)
+        self.cur.execute(sql.SQL("""
+            CREATE TABLE {vertices} AS
             SELECT id, geom
-            FROM pgr_extractVertices('SELECT way_id AS id, geom FROM {edge_table} ORDER BY way_id');
-        """)
+            FROM pgr_extractVertices({edge_query});
+        """).format(vertices=vertices, edge_query=sql.Literal(edge_query.as_string(self.cur))))
 
-        # Add primary key for performance
-        self.cur.execute(f"""
-            ALTER TABLE {vertices_table} ADD PRIMARY KEY (id);
-        """)
+        self.cur.execute(sql.SQL("ALTER TABLE {} ADD PRIMARY KEY (id);").format(vertices))
+        self.cur.execute(sql.SQL("CREATE INDEX {} ON {} USING GIST (geom);").format(
+            sql.Identifier(f"{vertices_name}_geom_idx"), vertices
+        ))
 
-        # Create spatial index on vertices for faster lookups
-        self.cur.execute(f"""
-            CREATE INDEX {vertices_table}_geom_idx ON {vertices_table} USING GIST (geom);
-        """)
-
-        # Step 2: Update source nodes - link start of each edge to matching vertex
-        self.cur.execute(f"""
-            UPDATE {edge_table} AS e
+        # Step 2: link the start and end point of every edge to its vertex ID.
+        self.cur.execute(sql.SQL("""
+            UPDATE {edges} AS e
             SET source = v.id
-            FROM {vertices_table} AS v
+            FROM {vertices} AS v
             WHERE ST_StartPoint(e.geom) = v.geom;
-        """)
-
-        # Step 3: Update target nodes - link end of each edge to matching vertex
-        self.cur.execute(f"""
-            UPDATE {edge_table} AS e
+        """).format(edges=edges, vertices=vertices))
+        self.cur.execute(sql.SQL("""
+            UPDATE {edges} AS e
             SET target = v.id
-            FROM {vertices_table} AS v
+            FROM {vertices} AS v
             WHERE ST_EndPoint(e.geom) = v.geom;
-        """)
+        """).format(edges=edges, vertices=vertices))
 
-        # Create indexes on source and target for routing performance
-        self.cur.execute(f"""
-            CREATE INDEX IF NOT EXISTS {edge_table}_source_idx ON {edge_table} (source);
-            CREATE INDEX IF NOT EXISTS {edge_table}_target_idx ON {edge_table} (target);
-        """)
+        self.cur.execute(sql.SQL("""
+            CREATE INDEX IF NOT EXISTS {source_idx} ON {edges} (source);
+            CREATE INDEX IF NOT EXISTS {target_idx} ON {edges} (target);
+        """).format(
+            source_idx=sql.Identifier(f"{edge_name}_source_idx"),
+            target_idx=sql.Identifier(f"{edge_name}_target_idx"),
+            edges=edges,
+        ))
 
-        # Expose vertices table through a session-local view for easier downstream queries
         self.cur.execute(
-            f"CREATE TEMP VIEW ways_tem_vertices_pgr AS SELECT * FROM {vertices_table}"
+            sql.SQL("CREATE TEMP VIEW ways_tem_vertices_pgr AS SELECT * FROM {}").format(vertices)
         )
 
-
     def update_ways_cost(self) -> None:
-        """
-        Calculates the length of each way and stores in ways_tem.cost as meter
-        """
+        """Set ``cost`` and ``reverse_cost`` of every way in ``ways_tem`` to its length in metres."""
         query = """UPDATE ways_tem
                    SET cost = ST_Length(geom);
         UPDATE ways_tem
@@ -1122,7 +1282,7 @@ class PreprocessingMixin(BaseMixin, ABC):
         radius_m: float,
         max_buildings: int,
     ) -> int:
-        """Aggregate nearby street-side connection points.
+        """Aggregate nearby street-side connection points into ``agg_connection_point``.
 
         This is a conservative open-data proxy for DSO house-connection
         aggregation. It writes the representative street-side node to
@@ -1131,6 +1291,17 @@ class PreprocessingMixin(BaseMixin, ABC):
         unchanged. Clustering is partitioned by stable street identifiers when
         available. If no street information exists, nearby points are grouped
         geometrically without falling back to fragmented split-way IDs.
+
+        A group is merged only if it has more than one connection point, at most
+        ``max_buildings`` buildings and a diameter of at most ``radius_m``; its representative is
+        the point closest to the group centroid.
+
+        Args:
+            radius_m: DBSCAN radius and maximum group diameter in metres.
+            max_buildings: Maximum number of buildings of a merged group.
+
+        Returns:
+            Number of buildings whose ``agg_connection_point`` was changed.
         """
         query = """
             WITH building_points AS (
@@ -1214,413 +1385,26 @@ class PreprocessingMixin(BaseMixin, ABC):
         return int(self.cur.fetchone()[0])
 
     def get_ags_log(self) -> pd.DataFrame:
-        """Get AGS log: the official municipal keys (Amtlicher Gemeindeschlüssel) of municipalities
-        whose buildings have already been imported into the database.
-        :return: table with column ags
+        """Return the AGS log of the file-based building import.
+
+        The log lists the official municipal keys (Amtlicher Gemeindeschlüssel) of the
+        municipalities whose building shapefiles were already imported (``USE_INFDB=False``).
+
+        Returns:
+            DataFrame with the column ``ags``.
         """
         query = """SELECT *
                    FROM pylovo.ags_log;"""
         df_query = pd.read_sql_query(query, con=self.conn, )
         return df_query
 
-    def insert_equipment_data(self, equipment_df: pd.DataFrame):
-        """Insert equipment_data rows for current VERSION_ID if not already present for this version."""
-        self.cur.execute("SELECT 1 FROM pylovo.equipment_data WHERE version_id = %s LIMIT 1", (VERSION_ID,))
-        if self.cur.fetchone():
-            return
-
-        required_cols = ['name', 'typ']
-        for rc in required_cols:
-            if rc not in equipment_df.columns:
-                raise ValueError(f"Missing required equipment column: {rc}")
-
-        # Ensure numeric coercion for optional integer fields
-        int_cols = ['s_max_kva', 'max_i_a', 'r_mohm_per_km', 'x_mohm_per_km',
-                    'z_mohm_per_km', 'cost_eur']
-        for col in int_cols:
-            if col in equipment_df.columns:
-                equipment_df[col] = pd.to_numeric(equipment_df[col], errors='coerce').astype('Int64')
-
-        equipment_df = equipment_df.where(~equipment_df.isna(), None)
-
-        insert_sql = """
-            INSERT INTO pylovo.equipment_data
-            (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km,
-             z_mohm_per_km, cost_eur, typ, grid_role)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """
-        rows = []
-        for _, r in equipment_df.iterrows():
-            rows.append((
-                VERSION_ID,
-                r.get('name'),
-                r.get('s_max_kva'),
-                r.get('max_i_a'),
-                r.get('r_mohm_per_km'),
-                r.get('x_mohm_per_km'),
-                r.get('z_mohm_per_km'),
-                r.get('cost_eur'),
-                r.get('typ'),
-                r.get('grid_role')
-            ))
-        self.cur.executemany(insert_sql, rows)
-        self.logger.debug("Inserted equipment_data for version %s", VERSION_ID)
-
-    def get_transformer_positions_for_plz_trafo_ui(self, plz: int) -> list[dict]:
-        """
-        Get all transformer positions for a given PLZ from the transformers table.
+    def write_ags_log(self, ags: int) -> None:
+        """Record that the buildings of a municipality were imported, and commit.
 
         Args:
-            plz (int): The postal code to get transformer positions for
-
-        Returns:
-            list[dict]: List of transformer position dictionaries with keys:
-                - osm_id: OSM identifier
-                - transformer_rated_power: Transformer power rating
-                - type: Transformer type
-                - geom_type: Geometry type
-                - within_shopping: Within shopping area flag
-                - geom_wkt: Geometry as WKT (Well-Known Text)
+            ags: Official municipal key (Amtlicher Gemeindeschlüssel).
         """
-        query = """
-            SELECT
-                t.osm_id,
-                t.transformer_rated_power,
-                t.type,
-                t.geom_type,
-                t.within_shopping,
-                ST_AsText(ST_Transform(t.geom, 4326)) as geom_wkt
-            FROM pylovo.transformers t
-            JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
-            WHERE p.plz = %(plz)s
-            LIMIT 1000
-        """
-        self.cur.execute(query, {"plz": plz})
-        columns = [desc[0] for desc in self.cur.description]
-        return [dict(zip(columns, row)) for row in self.cur.fetchall()]
-
-    def add_transformer_position_trafo_ui(self, plz: int, geom_wkt: str, osm_id: str = None,
-                                comment: str = "Manual", kcid: int = None, bcid: int = None,
-                                transformer_rated_power: int = None) -> str:
-        """
-        Add a new transformer to the transformers table.
-
-        Args:
-            plz (int): The postal code (for reference, not stored)
-            geom_wkt (str): Geometry as Well-Known Text (Point format)
-            osm_id (str, optional): OSM identifier
-            comment (str): Comment for the transformer (stored in type field)
-            kcid (int, optional): K-means cluster ID (not used)
-            bcid (int, optional): Building cluster ID (not used)
-            transformer_rated_power (int, optional): Transformer power rating
-
-        Returns:
-            str: The osm_id of the created transformer
-        """
-        # Generate a unique OSM ID if not provided
-        if not osm_id:
-            osm_id = f"manual/{int(time.time())}"
-
-        # Insert into transformers table
-        transformer_query = f"""
-            INSERT INTO pylovo.transformers (osm_id, type, transformer_rated_power, geom_type, within_shopping, osm, lod2, geom)
-            VALUES (
-                %(osm_id)s,
-                %(type)s,
-                %(transformer_rated_power)s,
-                %(geom_type)s,
-                %(within_shopping)s,
-                true,
-                false,
-                ST_Multi(ST_Transform(ST_GeomFromText(%(geom_wkt)s, 4326), {TARGET_EPSG}))
-            )
-            RETURNING osm_id
-        """
-        self.cur.execute(transformer_query, {
-            "osm_id": osm_id,
-            "type": comment,  # store comment in type field
-            "transformer_rated_power": transformer_rated_power,
-            "geom_type": "manual",
-            "within_shopping": False,
-            "geom_wkt": geom_wkt
-        })
-
-        # Commit the transaction
+        query = """INSERT INTO pylovo.ags_log (ags)
+                   VALUES (%(a)s); """
+        self.cur.execute(query, {"a": int(ags), })
         self.conn.commit()
-
-        return osm_id
-
-    def delete_transformer_position_trafo_ui(self, grid_result_id: int) -> bool:
-        """
-        Delete a transformer position by grid_result_id.
-
-        Args:
-            grid_result_id (int): The grid_result_id to delete
-
-        Returns:
-            bool: True if deletion was successful, False otherwise
-        """
-        # Check if the transformer position exists
-        check_query = "SELECT 1 FROM pylovo.transformer_positions WHERE grid_result_id = %(grid_result_id)s"
-        self.cur.execute(check_query, {"grid_result_id": grid_result_id})
-        if not self.cur.fetchone():
-            return False
-
-        # Delete the transformer position (grid_result will be deleted via CASCADE)
-        delete_query = "DELETE FROM pylovo.transformer_positions WHERE grid_result_id = %(grid_result_id)s"
-        self.cur.execute(delete_query, {"grid_result_id": grid_result_id})
-
-        # Commit the transaction to persist the deletion
-        self.conn.commit()
-
-        return True
-
-    def delete_transformer_by_osm_id_trafo_ui(self, osm_id: str) -> bool:
-        """
-        Delete a transformer by osm_id from the transformers table.
-
-        Args:
-            osm_id (str): The osm_id to delete
-
-        Returns:
-            bool: True if deletion was successful, False otherwise
-        """
-        # Debug: Check if transformer exists before deletion
-        check_query = "SELECT osm_id, type FROM pylovo.transformers WHERE osm_id = %(osm_id)s"
-        self.cur.execute(check_query, {"osm_id": osm_id})
-        existing = self.cur.fetchone()
-
-        if existing:
-            print(f"DEBUG: Found transformer to delete: {existing}")
-        else:
-            print(f"DEBUG: No transformer found with osm_id: {osm_id}")
-            # Let's also check for similar OSM IDs
-            similar_query = "SELECT osm_id, type FROM pylovo.transformers WHERE osm_id LIKE %(pattern)s"
-            self.cur.execute(similar_query, {"pattern": f"%{osm_id.split('/')[-1]}%"})
-            similar = self.cur.fetchall()
-            if similar:
-                print(f"DEBUG: Found similar OSM IDs: {similar}")
-
-        delete_query = "DELETE FROM pylovo.transformers WHERE osm_id = %(osm_id)s"
-        self.cur.execute(delete_query, {"osm_id": osm_id})
-
-        rows_affected = self.cur.rowcount
-        print(f"DEBUG: Deletion query affected {rows_affected} rows")
-
-        # Commit the transaction to persist the deletion
-        if rows_affected > 0:
-            self.conn.commit()
-            print(f"DEBUG: Transaction committed successfully")
-
-        return rows_affected > 0
-
-    def clear_capacities_trafo_ui(self, plz: int) -> bool:
-        """
-        Clear all capacity information for transformers in a PLZ area.
-
-        Args:
-            plz (int): The PLZ code
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            query = """
-                UPDATE pylovo.transformers
-                SET transformer_rated_power = NULL
-                WHERE osm_id IN (
-                    SELECT t.osm_id
-                    FROM pylovo.transformers t
-                    JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
-                    WHERE p.plz = %(plz)s
-                )
-            """
-            self.cur.execute(query, {"plz": plz})
-            rows_updated = self.cur.rowcount
-            print(f"Cleared capacities for {rows_updated} transformers")
-            self.conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error in clear_capacities_trafo_ui: {str(e)}")
-            return False
-
-    def get_plz_bounds_trafo_ui(self, plz: int) -> dict:
-        """
-        Get the bounding box for a given PLZ.
-
-        Args:
-            plz (int): The postal code
-
-        Returns:
-            dict: Bounding box with keys: minx, miny, maxx, maxy
-        """
-        query = """
-            SELECT ST_XMin(ST_Transform(geom, 4326)) as minx, ST_YMin(ST_Transform(geom, 4326)) as miny,
-                   ST_XMax(ST_Transform(geom, 4326)) as maxx, ST_YMax(ST_Transform(geom, 4326)) as maxy
-            FROM pylovo.postcode
-            WHERE plz = %(plz)s
-        """
-        self.cur.execute(query, {"plz": plz})
-        row = self.cur.fetchone()
-        if row:
-            return {
-                "minx": float(row[0]),
-                "miny": float(row[1]),
-                "maxx": float(row[2]),
-                "maxy": float(row[3])
-            }
-        return None
-
-    def get_available_plz_list_trafo_ui(self) -> list[int]:
-        """
-        Get list of available PLZ codes that have been processed.
-
-        Returns:
-            list[int]: List of PLZ codes
-        """
-        query = """
-            SELECT DISTINCT plz
-            FROM pylovo.postcode
-            ORDER BY plz
-        """
-        self.cur.execute(query)
-        return [row[0] for row in self.cur.fetchall()]
-
-    def update_transformer_capacity_trafo_ui(self, osm_id: str, transformer_rated_power: int) -> bool:
-        """
-        Update transformer capacity.
-
-        Args:
-            osm_id (str): The OSM ID of the transformer
-            transformer_rated_power (int): The new rated power in kVA
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        query = """
-            UPDATE pylovo.transformers
-            SET transformer_rated_power = %(transformer_rated_power)s
-            WHERE osm_id = %(osm_id)s
-        """
-        self.cur.execute(query, {"osm_id": osm_id, "transformer_rated_power": transformer_rated_power})
-        self.conn.commit()
-        return self.cur.rowcount > 0
-
-    def bulk_update_capacities_uniform_trafo_ui(self, plz: int, transformer_rated_power: int) -> bool:
-        """
-        Set all transformers in a PLZ area to the same capacity.
-
-        Args:
-            plz (int): The PLZ code
-            transformer_rated_power (int): The rated power in kVA to set for all transformers
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            # First, check if there are any transformers in this PLZ
-            check_query = """
-                SELECT COUNT(DISTINCT t.osm_id)
-                FROM pylovo.transformers t
-                JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
-                WHERE p.plz = %(plz)s
-            """
-            self.cur.execute(check_query, {"plz": plz})
-            count = self.cur.fetchone()[0]
-            print(f"Found {count} transformers in PLZ {plz}")
-
-            if count == 0:
-                print("No transformers found in PLZ area")
-                return False
-
-            query = """
-                UPDATE pylovo.transformers
-                SET transformer_rated_power = %(transformer_rated_power)s
-                WHERE osm_id IN (
-                    SELECT DISTINCT t.osm_id
-                    FROM pylovo.transformers t
-                    JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
-                    WHERE p.plz = %(plz)s
-                )
-            """
-            self.cur.execute(query, {"plz": plz, "transformer_rated_power": transformer_rated_power})
-            rows_updated = self.cur.rowcount
-            print(f"Updated {rows_updated} transformers")
-            self.conn.commit()
-            return rows_updated > 0
-        except Exception as e:
-            print(f"Error in bulk_update_capacities_uniform_trafo_ui: {str(e)}")
-            return False
-
-    def bulk_update_capacities_percentage_trafo_ui(self, plz: int, capacity_distribution: dict) -> bool:
-        """
-        Apply percentage-based distribution of transformer capacities.
-
-        Args:
-            plz (int): The PLZ code
-            capacity_distribution (dict): Dictionary with capacity values as keys and percentages as values
-            Example: {400: 30, 630: 50, 1000: 20} means 30% 400kVA, 50% 630kVA, 20% 1000kVA
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        import random
-
-        try:
-            # Get all transformer OSM IDs in the PLZ area
-            query = """
-                SELECT DISTINCT t.osm_id
-                FROM pylovo.transformers t
-                JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
-                WHERE p.plz = %(plz)s
-            """
-            self.cur.execute(query, {"plz": plz})
-            transformer_ids = [row[0] for row in self.cur.fetchall()]
-            print(f"Found {len(transformer_ids)} transformers for percentage distribution")
-
-            if not transformer_ids:
-                print("No transformers found in PLZ area for percentage distribution")
-                return False
-
-            # Create capacity list based on percentages
-            capacity_list = []
-            for capacity, percentage in capacity_distribution.items():
-                if percentage > 0:
-                    count = int(len(transformer_ids) * percentage / 100)
-                    capacity_list.extend([capacity] * count)
-                    print(f"Added {count} transformers with {capacity}kVA capacity ({percentage}%)")
-
-            # Fill remaining with the most common capacity if we have fewer than expected
-            if len(capacity_list) < len(transformer_ids):
-                most_common_capacity = max(capacity_distribution.keys(), key=lambda k: capacity_distribution[k])
-                remaining = len(transformer_ids) - len(capacity_list)
-                capacity_list.extend([most_common_capacity] * remaining)
-                print(f"Added {remaining} more transformers with {most_common_capacity}kVA capacity")
-
-            print(f"Total capacity list length: {len(capacity_list)}, transformer count: {len(transformer_ids)}")
-
-            # Shuffle to randomize distribution
-            random.shuffle(capacity_list)
-
-            # Update each transformer
-            update_query = """
-                UPDATE pylovo.transformers
-                SET transformer_rated_power = %(transformer_rated_power)s
-                WHERE osm_id = %(osm_id)s
-            """
-
-            updated_count = 0
-            for i, osm_id in enumerate(transformer_ids):
-                if i < len(capacity_list):
-                    self.cur.execute(update_query, {
-                        "osm_id": osm_id,
-                        "transformer_rated_power": capacity_list[i]
-                    })
-                    updated_count += 1
-
-            print(f"Updated {updated_count} transformers with new capacities")
-            self.conn.commit()
-            return True
-        except Exception as e:
-            print(f"Error in bulk_update_capacities_percentage_trafo_ui: {str(e)}")
-            return False

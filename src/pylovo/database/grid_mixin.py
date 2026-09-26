@@ -1,59 +1,119 @@
-import warnings
-from abc import ABC
+"""Routing queries for cable installation and the line tables of generated grids."""
 
-import pandapower as pp
+import warnings
+
+from psycopg2 import sql
 from psycopg2.extras import execute_values
 from shapely.geometry import LineString
 
-from pylovo.config_loader import *
-from pylovo.database.base_mixin import BaseMixin
+from pylovo.config_loader import FEEDER_CABLES, TARGET_EPSG, VERSION_ID
+from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin, plz_table_name
 
 warnings.simplefilter(action='ignore', category=UserWarning)
 
+# Visualisation helper geometry of a line ``lr``: its offset curve (subquery ``offset_geom`` of
+# _offset_line_lateral_sql), oriented like the line and extended to the line's own end points so
+# that the helper still meets both buses. Falls back to the unshifted line.
+_OFFSET_HELPER_GEOM_SQL = """CASE
+                        WHEN offset_geom.offset_line IS NULL OR ST_IsEmpty(offset_geom.offset_line) THEN lr.geom
+                        WHEN ST_Distance(ST_StartPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
+                             <= ST_Distance(ST_EndPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
+                        THEN ST_AddPoint(
+                            ST_AddPoint(
+                                offset_geom.offset_line,
+                                ST_StartPoint(lr.geom),
+                                0
+                            ),
+                            ST_EndPoint(lr.geom)
+                        )
+                        ELSE ST_AddPoint(
+                            ST_AddPoint(
+                                ST_Reverse(offset_geom.offset_line),
+                                ST_StartPoint(lr.geom),
+                                0
+                            ),
+                            ST_EndPoint(lr.geom)
+                        )
+                    END"""
 
-class GridMixin(BaseMixin, ABC):
-    def __init__(self):
-        super().__init__()
+
+def _offset_line_lateral_sql(offset_expression: str) -> str:
+    """Return a ``LEFT JOIN LATERAL`` subquery ``offset_geom`` for the line ``lr``.
+
+    ``offset_geom.offset_line`` is the longest linestring of ``ST_OffsetCurve(lr.geom, offset)``;
+    ``offset_expression`` is the SQL expression of the offset in metres (sign = side).
+    """
+    return f"""LEFT JOIN LATERAL (
+                    SELECT dumped.geom AS offset_line
+                    FROM ST_Dump(
+                        ST_LineMerge(
+                            ST_CollectionExtract(
+                                ST_OffsetCurve(lr.geom, {offset_expression}),
+                                2
+                            )
+                        )
+                    ) AS dumped
+                    WHERE GeometryType(dumped.geom) = 'LINESTRING'
+                    ORDER BY ST_Length(dumped.geom) DESC
+                    LIMIT 1
+                ) AS offset_geom ON TRUE"""
+
+
+class GridMixin(BaseMixin):
+    """Routing queries on ``ways_tem`` and the line tables of generated grids.
+
+    ``lines_result`` holds the installed cables. ``lines_result_helper``, ``split_points`` and
+    ``lines_result_view`` are visualisation rows derived from it (shifted duplicates of
+    overlapping lines, feeder split nodes, merged feeder sections) for GIS inspection.
+    """
 
     def fetch_cables(self) -> list:
-        query = f"""SELECT name,
+        """Return all cables of ``equipment_data`` as ``(name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)``.
+
+        Rows of every version are returned.
+        """
+        query = """SELECT name,
                        r_mohm_per_km / 1000.0 as r_ohm_per_km,
                        x_mohm_per_km / 1000.0 as x_ohm_per_km,
                        max_i_a / 1000.0       as max_i_ka,
                        cost_eur
             FROM pylovo.equipment_data
-                WHERE typ = 'Cable' \
+                WHERE typ = 'Cable'
                 """
         self.cur.execute(query)
         return self.cur.fetchall()
 
     def fetch_node_coordinates(self, plz: int) -> dict[int, tuple[float, float]]:
-        """Fetch every pgRouting vertex coordinate for a PLZ in one query."""
-        table_name = f"ways_tem_{int(plz)}_vertices_pgr"
-        query = f"""
+        """Return the WGS84 ``(lon, lat)`` of every pgRouting vertex of a PLZ, keyed by vertex ID."""
+        vertices = sql.Identifier("pylovo", plz_table_name("ways_tem", plz) + "_vertices_pgr")
+        query = sql.SQL("""
             SELECT id,
                    ST_X(ST_Transform(geom, 4326)),
                    ST_Y(ST_Transform(geom, 4326))
-            FROM pylovo.{table_name}
+            FROM {vertices}
             WHERE geom IS NOT NULL
             ORDER BY id
-        """
+        """).format(vertices=vertices)
         self.cur.execute(query)
         return {int(node_id): (float(lon), float(lat)) for node_id, lon, lat in self.cur.fetchall()}
 
     def fetch_consumer_connection_mapping(self, plz: int) -> dict[int, list[int]]:
-        """Fetch all non-transformer consumer connections for a PLZ once."""
-        table_name = f"buildings_tem_{int(plz)}"
-        query = f"""
+        """Return the building vertices of every consumer connection point of a PLZ.
+
+        Returns:
+            ``{connection_point: [vertice_id, ...]}`` over all loaded consumer buildings.
+        """
+        buildings = sql.Identifier("pylovo", plz_table_name("buildings_tem", plz))
+        query = sql.SQL("""
             SELECT COALESCE(agg_connection_point, connection_point) AS connection_point,
                    vertice_id
-            FROM pylovo.{table_name}
+            FROM {buildings}
             WHERE type != 'Transformer'
               AND peak_load_in_kw != 0
               AND COALESCE(agg_connection_point, connection_point) IS NOT NULL
               AND vertice_id IS NOT NULL
             ORDER BY connection_point, vertice_id
-        """
+        """).format(buildings=buildings)
         self.cur.execute(query)
         mapping: dict[int, list[int]] = {}
         for connection_point, vertice_id in self.cur.fetchall():
@@ -63,6 +123,19 @@ class GridMixin(BaseMixin, ABC):
     def get_vertices_from_bcid(
         self, plz: int, kcid: int, bcid: int
     ) -> tuple[dict[int, float], int, dict[int, tuple[int, ...]]]:
+        """Return the street distances and paths from the consumers of a building cluster to its transformer.
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+
+        Returns:
+            ``(vertice_cost_dict, ont, paths_to_transformer)``: distance in metres from the
+            transformer vertex to every building vertex and connection point of the cluster
+            (ascending), the transformer vertex, and the node path from each of these vertices
+            to the transformer.
+        """
         ont = self.get_ont_info_from_bc(plz, kcid, bcid)["ont_vertice_id"]
 
         consumer_query = """SELECT vertice_id
@@ -87,9 +160,9 @@ class GridMixin(BaseMixin, ABC):
         if not target_vertices:
             return {}, int(ont), {}
 
-        vertices_query = """SELECT DISTINCT node, agg_cost
+        vertices_query = f"""SELECT DISTINCT node, agg_cost
                              FROM pgr_dijkstra(
-                                 'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem'::text,
+                                 {WAYS_TEM_EDGES_SQL}::text,
                                  %(o)s, %(c)s::integer[], false)
                              ORDER BY agg_cost;"""
         self.cur.execute(vertices_query, {"o": ont, "c": target_vertices})
@@ -100,9 +173,9 @@ class GridMixin(BaseMixin, ABC):
             if row[0] in consumer or row[0] in connection
         }
 
-        path_query = """SELECT start_vid, path_seq, node, agg_cost
+        path_query = f"""SELECT start_vid, path_seq, node, agg_cost
                           FROM pgr_dijkstra(
-                              'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem'::text,
+                              {WAYS_TEM_EDGES_SQL}::text,
                               %(c)s::bigint[], %(o)s::bigint, false)
                           ORDER BY start_vid, path_seq;"""
         self.cur.execute(path_query, {"o": ont, "c": target_vertices})
@@ -113,6 +186,7 @@ class GridMixin(BaseMixin, ABC):
 
     @staticmethod
     def _routing_results_from_rows(data) -> tuple[dict[int, float], dict[int, tuple[int, ...]]]:
+        """Turn many-to-one ``pgr_dijkstra`` rows into total costs and node paths per start vertex."""
         costs_by_vertex: dict[int, float] = {}
         path_nodes: dict[int, list[int]] = {}
         for start_vid, _path_seq, node, agg_cost in sorted(data, key=lambda row: (row[0], row[1])):
@@ -129,8 +203,8 @@ class GridMixin(BaseMixin, ABC):
         return ordered_costs, paths_to_transformer
 
     def get_ont_info_from_bc(self, plz: int, kcid: int, bcid: int) -> dict | None:
-
-        query = f"""SELECT ont_vertice_id, transformer_rated_power
+        """Return ``ont_vertice_id`` and ``transformer_rated_power`` of a grid, or ``None`` if it does not exist."""
+        query = """SELECT ont_vertice_id, transformer_rated_power
                                      FROM pylovo.grid_result
                    WHERE version_id = %(v)s
                      AND kcid = %(k)s
@@ -146,7 +220,8 @@ class GridMixin(BaseMixin, ABC):
         return {"ont_vertice_id": info[0][0], "transformer_rated_power": info[0][1]}
 
     def get_ont_geom_from_bcid(self, plz: int, kcid: int, bcid: int):
-        query = f"""SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
+        """Return the WGS84 ``(lon, lat)`` of a grid's transformer position, or ``None``."""
+        query = """SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
                                      FROM pylovo.transformer_positions tp
                                                         JOIN pylovo.grid_result gr
                                  ON tp.grid_result_id = gr.grid_result_id
@@ -158,7 +233,8 @@ class GridMixin(BaseMixin, ABC):
         return self.cur.fetchone()
 
     def get_transformer_rated_power_from_bcid(self, plz: int, kcid: int, bcid: int) -> int:
-        query = f"""SELECT transformer_rated_power
+        """Return ``grid_result.transformer_rated_power`` (kVA) of a grid."""
+        query = """SELECT transformer_rated_power
                                      FROM pylovo.grid_result
                    WHERE version_id = %(v)s
                      AND plz = %(p)s
@@ -168,23 +244,15 @@ class GridMixin(BaseMixin, ABC):
         return self.cur.fetchone()[0]
 
     def get_node_geom(self, vid: int):
+        """Return the WGS84 ``(lon, lat)`` of a vertex of ``ways_tem_vertices_pgr``, or ``None``."""
         query = """SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
                    FROM ways_tem_vertices_pgr
                    WHERE id = %(id)s;"""
         self.cur.execute(query, {"id": vid})
         return self.cur.fetchone()
 
-    def get_vertices_from_connection_points(self, connection: list) -> list:
-        query = """SELECT vertice_id
-                   FROM buildings_tem
-                   WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
-                     AND type != 'Transformer'
-                     AND peak_load_in_kw != 0;"""
-        self.cur.execute(query, {"c": tuple(connection)})
-        data = self.cur.fetchall()
-        return [t[0] for t in data]
-
     def get_consumer_vertices_from_connection_points(self, connection_points: list[int]) -> list[tuple[int, int]]:
+        """Return ``(connection_point, vertice_id)`` of the loaded consumer buildings at the given connection points."""
         query = """SELECT COALESCE(agg_connection_point, connection_point) AS connection_point, vertice_id
                    FROM buildings_tem
                    WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
@@ -197,21 +265,13 @@ class GridMixin(BaseMixin, ABC):
         ]
 
     def get_path_to_bus(self, vertice: int, ont: int) -> list:
-        """routing problem: find the shortest path from vertice to the ont (ortsnetztrafo)"""
-        query = """SELECT node
+        """Return the nodes of the shortest street path from ``vertice`` to the transformer vertex ``ont``."""
+        query = f"""SELECT node
                    FROM pgr_Dijkstra(
-                           'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem', %(v)s, %(o)s,
+                           {WAYS_TEM_EDGES_SQL}, %(v)s, %(o)s,
                            false);"""
         self.cur.execute(query, {"o": ont, "v": vertice})
         return [row[0] for row in self.cur.fetchall()]
-
-    def _ensure_lines_result_visualization_schema(self) -> None:
-        if getattr(self, "_lines_result_visualization_schema_checked", False):
-            return
-
-        # Visualization schema and materialized views are global database setup.
-        # Running DDL here is unsafe during process-based parallel generation.
-        self._lines_result_visualization_schema_checked = True
 
     def rebuild_lines_result_helpers_for_split_topology(
         self,
@@ -221,32 +281,30 @@ class GridMixin(BaseMixin, ABC):
         split_edges: list[dict[str, int]],
         offset_m: float = 0.5,
     ) -> None:
-        """Create shifted helper rows for real lines that leave split nodes."""
-        self._ensure_lines_result_visualization_schema()
+        """Rebuild the ``lines_result_helper`` rows of one grid.
 
-        selected_grid_query = """
-            SELECT grid_result_id
-            FROM pylovo.grid_result
-            WHERE version_id = %(v)s
-              AND plz = %(plz)s
-              AND kcid = %(kcid)s
-              AND bcid = %(bcid)s
-            LIMIT 1
+        Lines leaving a feeder split node run on top of each other; each ``split_edges`` entry
+        gets a copy shifted sideways by ``offset_m * offset_rank``. Afterwards the remaining
+        overlapping feeder lines are shifted as well (``_insert_lines_result_overlap_helpers``).
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            split_edges: Dicts with ``from_bus``, ``to_bus`` and ``offset_rank``.
+            offset_m: Offset per rank in metres.
         """
-        params = {"v": VERSION_ID, "plz": int(plz), "kcid": int(kcid), "bcid": int(bcid)}
-        self.cur.execute(selected_grid_query, params)
-        selected_grid = self.cur.fetchone()
-        if selected_grid is None:
+        grid_result_id = self.get_grid_result_id(int(plz), int(kcid), int(bcid))
+        if grid_result_id is None:
             return
 
-        grid_result_id = int(selected_grid[0])
         self.cur.execute(
             "DELETE FROM pylovo.lines_result_helper WHERE grid_result_id = %(grid_result_id)s;",
             {"grid_result_id": grid_result_id},
         )
 
         if split_edges:
-            insert_query = """
+            insert_query = f"""
                 INSERT INTO pylovo.lines_result_helper (
                     source_lines_result_id,
                     grid_result_id,
@@ -262,27 +320,7 @@ class GridMixin(BaseMixin, ABC):
                 SELECT
                     lr.lines_result_id,
                     lr.grid_result_id,
-                    CASE
-                        WHEN offset_geom.offset_line IS NULL OR ST_IsEmpty(offset_geom.offset_line) THEN lr.geom
-                        WHEN ST_Distance(ST_StartPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
-                             <= ST_Distance(ST_EndPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
-                        THEN ST_AddPoint(
-                            ST_AddPoint(
-                                offset_geom.offset_line,
-                                ST_StartPoint(lr.geom),
-                                0
-                            ),
-                            ST_EndPoint(lr.geom)
-                        )
-                        ELSE ST_AddPoint(
-                            ST_AddPoint(
-                                ST_Reverse(offset_geom.offset_line),
-                                ST_StartPoint(lr.geom),
-                                0
-                            ),
-                            ST_EndPoint(lr.geom)
-                        )
-                    END,
+                    {_OFFSET_HELPER_GEOM_SQL},
                     lr.line_name,
                     lr.std_type,
                     lr.from_bus,
@@ -291,20 +329,7 @@ class GridMixin(BaseMixin, ABC):
                     lr.length_km,
                     'split_topology_offset'
                 FROM pylovo.lines_result lr
-                LEFT JOIN LATERAL (
-                    SELECT dumped.geom AS offset_line
-                    FROM ST_Dump(
-                        ST_LineMerge(
-                            ST_CollectionExtract(
-                                ST_OffsetCurve(lr.geom, %(offset_m)s * %(offset_rank)s),
-                                2
-                            )
-                        )
-                    ) AS dumped
-                    WHERE GeometryType(dumped.geom) = 'LINESTRING'
-                    ORDER BY ST_Length(dumped.geom) DESC
-                    LIMIT 1
-                ) AS offset_geom ON TRUE
+                {_offset_line_lateral_sql("%(offset_m)s * %(offset_rank)s")}
                 WHERE lr.grid_result_id = %(grid_result_id)s
                   AND lr.from_bus = %(from_bus)s
                   AND lr.to_bus = %(to_bus)s;
@@ -342,7 +367,12 @@ class GridMixin(BaseMixin, ABC):
         min_collision_overlap_m: float = 0.01,
         max_offset_rank: int = 10,
     ) -> None:
-        """Create helper rows for remaining feeder lines that share route geometry."""
+        """Add shifted helper rows for feeder lines that still share their route with another feeder line.
+
+        Of every pair of feeder lines overlapping by at least ``min_overlap_m``, the shorter line
+        gets a helper at the smallest offset rank (up to ``max_offset_rank``, both sides) where it
+        no longer overlaps any visible line by ``min_collision_overlap_m`` or more.
+        """
         feeder_cable_names = [str(name) for name in FEEDER_CABLES["name"].dropna().tolist()]
         if not feeder_cable_names:
             return
@@ -406,7 +436,7 @@ class GridMixin(BaseMixin, ABC):
         )
         source_rows = self.cur.fetchall()
 
-        insert_query = """
+        insert_query = f"""
             WITH source_line AS (
                 SELECT *
                 FROM pylovo.lines_result
@@ -421,43 +451,10 @@ class GridMixin(BaseMixin, ABC):
                 SELECT
                     lr.*,
                     candidate_ranks.offset_rank,
-                    CASE
-                        WHEN offset_geom.offset_line IS NULL OR ST_IsEmpty(offset_geom.offset_line) THEN lr.geom
-                        WHEN ST_Distance(ST_StartPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
-                             <= ST_Distance(ST_EndPoint(offset_geom.offset_line), ST_StartPoint(lr.geom))
-                        THEN ST_AddPoint(
-                            ST_AddPoint(
-                                offset_geom.offset_line,
-                                ST_StartPoint(lr.geom),
-                                0
-                            ),
-                            ST_EndPoint(lr.geom)
-                        )
-                        ELSE ST_AddPoint(
-                            ST_AddPoint(
-                                ST_Reverse(offset_geom.offset_line),
-                                ST_StartPoint(lr.geom),
-                                0
-                            ),
-                            ST_EndPoint(lr.geom)
-                        )
-                    END AS helper_geom
+                    {_OFFSET_HELPER_GEOM_SQL} AS helper_geom
                 FROM source_line lr
                 CROSS JOIN candidate_ranks
-                LEFT JOIN LATERAL (
-                    SELECT dumped.geom AS offset_line
-                    FROM ST_Dump(
-                        ST_LineMerge(
-                            ST_CollectionExtract(
-                                ST_OffsetCurve(lr.geom, %(offset_m)s * candidate_ranks.offset_rank),
-                                2
-                            )
-                        )
-                    ) AS dumped
-                    WHERE GeometryType(dumped.geom) = 'LINESTRING'
-                    ORDER BY ST_Length(dumped.geom) DESC
-                    LIMIT 1
-                ) AS offset_geom ON TRUE
+                {_offset_line_lateral_sql("%(offset_m)s * candidate_ranks.offset_rank")}
             ),
             visible_geoms AS (
                 SELECT lr.lines_result_id::bigint AS source_id, lr.geom
@@ -534,9 +531,14 @@ class GridMixin(BaseMixin, ABC):
         bcid: int,
         split_nodes: list[int],
     ) -> None:
-        """Store feeder split nodes (excluding transformer node) for GIS inspection."""
-        self._ensure_lines_result_visualization_schema()
+        """Rebuild the ``split_points`` rows of one grid: its feeder split nodes except the transformer node.
 
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            split_nodes: Bus IDs where a feeder splits.
+        """
         selected_grid_query = """
             SELECT grid_result_id, ont_vertice_id
             FROM pylovo.grid_result
@@ -625,24 +627,21 @@ class GridMixin(BaseMixin, ABC):
             )
 
     def rebuild_lines_result_view_for_grid(self, plz: int, kcid: int, bcid: int) -> None:
-        """Rebuild visualization rows for one generated grid."""
-        self._ensure_lines_result_visualization_schema()
-        selected_grid_query = """
-            SELECT grid_result_id
-            FROM pylovo.grid_result
-            WHERE version_id = %(v)s
-              AND plz = %(plz)s
-              AND kcid = %(kcid)s
-              AND bcid = %(bcid)s
-            LIMIT 1
+        """Rebuild the ``lines_result_view`` rows of one grid for GIS inspection.
+
+        Feeder lines of the same feeder section are merged into one row
+        (``helper_type = 'merged_feeder_section'``); all other lines, and helpers in place of
+        their source lines, are copied as they are.
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
         """
-        params = {"v": VERSION_ID, "plz": int(plz), "kcid": int(kcid), "bcid": int(bcid)}
-        self.cur.execute(selected_grid_query, params)
-        selected_grid = self.cur.fetchone()
-        if selected_grid is None:
+        grid_result_id = self.get_grid_result_id(int(plz), int(kcid), int(bcid))
+        if grid_result_id is None:
             return
 
-        grid_result_id = int(selected_grid[0])
         self.cur.execute(
             "DELETE FROM pylovo.lines_result_view WHERE grid_result_id = %(grid_result_id)s;",
             {"grid_result_id": grid_result_id},
@@ -821,59 +820,13 @@ class GridMixin(BaseMixin, ABC):
         """
         self.cur.execute(insert_query, {"grid_result_id": grid_result_id})
 
-    def insert_lines(self, geom: list, plz: int, bcid: int, kcid: int, line_name: str, std_type: str, from_bus: int,
-            to_bus: int, length_km: float, parallel: int = 1, feeder_section_id: int | None = None) -> None:
-        """writes lines / cables that belong to a network into the database"""
-        self._ensure_lines_result_visualization_schema()
-
-        line_insertion_query = f"""INSERT INTO pylovo.lines_result (grid_result_id,
-                                                            geom,
-                                                            line_name,
-                                                            std_type,
-                                                            from_bus,
-                                                            to_bus,
-                                                            parallel,
-                                                            length_km,
-                                                            feeder_section_id)
-                                  VALUES ((SELECT grid_result_id
-                           FROM pylovo.grid_result
-                                           WHERE version_id = %(v)s
-                                             AND plz = %(plz)s
-                                             AND kcid = %(kcid)s
-                                             AND bcid = %(bcid)s),
-                                          ST_Transform(ST_SetSRID(%(geom)s::geometry, 4326), {TARGET_EPSG}),
-                                          %(line_name)s,
-                                          %(std_type)s,
-                                          %(from_bus)s,
-                                          %(to_bus)s,
-                                          %(parallel)s,
-                                          %(length_km)s,
-                                          %(feeder_section_id)s); """
-        try:
-            line_geom = LineString(geom)
-            if line_geom.is_empty or len(line_geom.coords) < 2:
-                raise ValueError("line geometry has fewer than two coordinates")
-        except Exception as geom_error:
-            fallback_points = [point for point in geom if isinstance(point, (list, tuple)) and len(point) >= 2]
-            if len(fallback_points) < 2:
-                raise ValueError(
-                    f"Cannot build fallback line geometry for plz={plz}, kcid={kcid}, bcid={bcid}, "
-                    f"from_bus={from_bus}, to_bus={to_bus}: {geom_error}"
-                ) from geom_error
-            line_geom = LineString([fallback_points[0], fallback_points[-1]])
-            self.logger.warning(
-                f"Falling back to direct LineString geometry for plz={plz}, kcid={kcid}, bcid={bcid}, "
-                f"from_bus={from_bus}, to_bus={to_bus}: {geom_error}"
-            )
-
-        self.cur.execute(line_insertion_query,
-                         {"v": VERSION_ID, "geom": line_geom.wkb_hex, "plz": int(plz), "bcid": int(bcid),
-                          "kcid": int(kcid), "line_name": line_name, "std_type": std_type, "from_bus": int(from_bus),
-                          "to_bus": int(to_bus), "parallel": int(parallel), "length_km": length_km,
-                          "feeder_section_id": None if feeder_section_id is None else int(feeder_section_id)})
-
     @staticmethod
     def _line_wkb_hex(geom: list, *, plz: int, kcid: int, bcid: int, from_bus: int, to_bus: int) -> str:
+        """Return the WKB hex of a line from ``geom``; falls back to a straight line between its end points.
+
+        Raises:
+            ValueError: If ``geom`` does not contain two usable points.
+        """
         try:
             line_geom = LineString(geom)
             if line_geom.is_empty or len(line_geom.coords) < 2:
@@ -899,7 +852,20 @@ class GridMixin(BaseMixin, ABC):
         bcid: int,
         page_size: int = 1000,
     ) -> None:
-        """Insert all queued line records for one grid in bounded pages."""
+        """Insert the cables of one grid into ``lines_result``.
+
+        Args:
+            records: Dicts with ``geom`` (WGS84 coordinates), ``line_name``, ``std_type``,
+                ``from_bus``, ``to_bus``, ``length_km`` and optionally ``parallel`` and
+                ``feeder_section_id``.
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            page_size: Rows per ``INSERT`` statement.
+
+        Raises:
+            ValueError: If the grid does not exist or ``page_size`` is not positive.
+        """
         if not records:
             return
         if page_size <= 0:
@@ -936,7 +902,7 @@ class GridMixin(BaseMixin, ABC):
                 )
             )
 
-        insert_query = f"""
+        insert_query = """
             INSERT INTO pylovo.lines_result (
                 grid_result_id, geom, line_name, std_type, from_bus, to_bus,
                 parallel, length_km, feeder_section_id
@@ -955,16 +921,8 @@ class GridMixin(BaseMixin, ABC):
         )
 
     def is_grid_generated(self, plz: int):
-        """
-        Check if grid exists.
-
-        Args:
-            plz: Postal code to be checked
-
-        Returns:
-            bool: True if record exists, False otherwise
-        """
-        query = f"""
+        """Return whether the PLZ already has results (a ``postcode_result`` row) in the active version."""
+        query = """
             SELECT 1
             FROM pylovo.postcode_result
             WHERE version_id = %(version_id)s AND postcode_result_plz = %(plz)s

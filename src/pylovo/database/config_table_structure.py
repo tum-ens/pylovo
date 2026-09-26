@@ -1,9 +1,21 @@
-# Database schema - table structure
-from pylovo.config_loader import TARGET_EPSG, FEEDER_CABLES
+"""SQL definitions of the ``pylovo`` schema.
 
+* ``CREATE_QUERIES``: tables and views, run by ``DatabaseConstructor.create_table("all")`` in
+  dict order, so every table comes after the tables its foreign keys reference. Most queries
+  are idempotent (``IF NOT EXISTS``) and carry ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS``
+  statements that migrate databases created by older versions.
+* ``INFDB_OPTIONAL_TABLES``: file-based input tables that are only created with ``USE_INFDB=False``.
+* ``TEMP_CREATE_QUERIES``: templates of the per-PLZ working tables; ``UtilsMixin.create_temp_tables``
+  replaces the base name by ``<name>_<plz>``.
+* ``REFRESH_QUERIES``: refresh of the materialized views after results changed.
 
+All queries are passed through ``str.format(TARGET_EPSG=...)`` at import time, so they must not
+contain other literal curly braces.
+"""
+from pylovo.config_loader import TARGET_EPSG
+
+# Raw input tables of the file-based data path (shapefile buildings and osm2po ways).
 INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
-
 
 
 CREATE_QUERIES = {
@@ -198,6 +210,8 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_split_points_geom
     ON pylovo.split_points USING gist (geom)
     """,
+    # Visualisation copy of lines_result per grid, rebuilt by GridMixin.rebuild_lines_result_view_for_grid.
+    # The DROP removes its predecessor, a materialized view, from older databases.
     "lines_result_view": """
     DROP MATERIALIZED VIEW IF EXISTS pylovo.lines_result_with_grid CASCADE;
     CREATE TABLE IF NOT EXISTS pylovo.lines_result_view (
@@ -252,6 +266,8 @@ CREATE_QUERIES = {
         sim_factor double precision NOT NULL
     )
     """,
+    # The DO block migrates buildings_result tables of older versions (renamed columns, old
+    # primary key); the materialized view on it is recreated further below.
     "buildings_result": """
     DROP MATERIALIZED VIEW IF EXISTS pylovo.buildings_result_with_grid CASCADE;
     DO $$
@@ -446,7 +462,7 @@ CREATE_QUERIES = {
             ON DELETE CASCADE
     )
     """,
-        "grid_parameters": """CREATE TABLE IF NOT EXISTS pylovo.grid_parameters (
+    "grid_parameters": """CREATE TABLE IF NOT EXISTS pylovo.grid_parameters (
         grid_result_id bigint PRIMARY KEY,
         power_flow_status varchar(32),
         feeder_lines integer,
@@ -613,6 +629,49 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_pandapower_load_bus
     ON pylovo.pandapower_load (bus);
     """,
+    # Audit rows of manual load edits (pylovo.load_editing, pylovo-api). Append-only: an undo only
+    # stamps undone_at. before_net keeps the previous grid_result.grid verbatim for the exact undo.
+    # Deleting a grid (PLZ or version) cascades to its audit rows.
+    "load_edit": """
+    CREATE TABLE IF NOT EXISTS pylovo.load_edit (
+        load_edit_id      bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        version_id        varchar(10) NOT NULL,
+        grid_result_id    bigint      NOT NULL,
+        plz               integer     NOT NULL,
+        objectid          text        NOT NULL,
+        action            varchar(16) NOT NULL CHECK (action IN ('edit', 'revert')),
+        changes           jsonb       NOT NULL,
+        reason            text CHECK (reason IS NULL OR length(reason) <= 500),
+        before_building   jsonb       NOT NULL,
+        after_building    jsonb       NOT NULL,
+        before_grid       jsonb       NOT NULL,
+        after_grid        jsonb       NOT NULL,
+        before_loads      jsonb       NOT NULL,
+        before_bus_zones  jsonb       NOT NULL,
+        before_net        json        NOT NULL,
+        before_net_md5    char(32)    NOT NULL,
+        after_net_md5     char(32)    NOT NULL,
+        removed_analysis  jsonb       NOT NULL,
+        impact            jsonb       NOT NULL,
+        parameters        jsonb       NOT NULL,
+        reproduction      jsonb       NOT NULL,
+        db_user           text        NOT NULL DEFAULT current_user,
+        client            text,
+        created_at        timestamptz NOT NULL DEFAULT clock_timestamp(),
+        undone_at         timestamptz,
+        undone_by         text,
+        CONSTRAINT fk_load_edit_grid_result
+            FOREIGN KEY (version_id, grid_result_id)
+            REFERENCES pylovo.grid_result (version_id, grid_result_id)
+            ON DELETE CASCADE,
+        CONSTRAINT chk_load_edit_undone CHECK ((undone_at IS NULL) = (undone_by IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS idx_load_edit_grid ON pylovo.load_edit (grid_result_id, load_edit_id);
+    CREATE INDEX IF NOT EXISTS idx_load_edit_version_plz ON pylovo.load_edit (version_id, plz);
+    CREATE INDEX IF NOT EXISTS idx_load_edit_building ON pylovo.load_edit (version_id, objectid, load_edit_id);
+    """,
+    # Raw transformer candidates: OSM stations from pylovo-setup, LoD2 station buildings,
+    # imported DSO stations and manual UI entries (see the osm_id prefixes and type values).
     "transformers": """CREATE TABLE IF NOT EXISTS pylovo.transformers (
         osm_id varchar PRIMARY KEY,
         area double precision,
@@ -631,6 +690,8 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_transformers_geom
     ON pylovo.transformers USING gist (geom)
     """,
+    # One transformer position per generated grid. fk_tp_osm_id cascades: deleting a raw
+    # transformer also deletes the positions of grids that used it.
     "transformer_positions": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_positions (
         grid_result_id bigint PRIMARY KEY,
@@ -764,6 +825,9 @@ CREATE_QUERIES = {
                                    geom       geometry(MultiPolygon, {TARGET_EPSG})
                                )
     """,
+    # Views for GIS inspection. transformer_positions_with_grid is a plain view; the two
+    # materialized views must be refreshed (REFRESH_QUERIES) after results change.
+    # The equipment_data columns stay NULL while grid_result.transformer_equipment_name is unset.
     "transformer_positions_with_grid": """
     DROP VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
@@ -787,7 +851,7 @@ CREATE_QUERIES = {
             ON gr.version_id = ed.version_id
             AND gr.transformer_equipment_name = ed.name
     """,
-            "transformer_classified_with_grid": """
+    "transformer_classified_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid AS (
         SELECT 
             tc.*,
@@ -814,7 +878,7 @@ CREATE_QUERIES = {
                 ON pylovo.transformer_classified_with_grid (grid_result_id, classification_id);
             CREATE INDEX IF NOT EXISTS idx_transformer_classified_with_grid_geom ON pylovo.transformer_classified_with_grid USING gist (geom)
     """,
-            "buildings_result_with_grid": """
+    "buildings_result_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.buildings_result_with_grid AS (
         SELECT
             (br.version_id || '_' || br.objectid) AS result_uid,
@@ -827,10 +891,10 @@ CREATE_QUERIES = {
     ON pylovo.buildings_result_with_grid (result_uid);
     CREATE INDEX IF NOT EXISTS idx_buildings_result_with_grid_geom ON pylovo.buildings_result_with_grid USING gist (geom)
     """,
-
-
 }
 
+# Working tables of one PLZ during generation (see UtilsMixin.create_temp_tables).
+# peak_load_in_kw = -1 marks transformer rows in buildings_tem.
 TEMP_CREATE_QUERIES = {
     "buildings_tem": """CREATE TABLE IF NOT EXISTS pylovo.buildings_tem
     (

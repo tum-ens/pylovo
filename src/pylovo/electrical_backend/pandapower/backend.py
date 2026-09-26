@@ -34,11 +34,16 @@ class PandapowerBackendError(Exception):
 
 
 class PandapowerBackend(IElectricalBackend):
-    """
-    Pandapower implementation of IElectricalBackend.
+    """Pandapower implementation of :class:`IElectricalBackend`.
 
-    Manages pandapower network lifecycle and component creation.
-    Designed to be a drop-in replacement for direct pp.create_*() calls.
+    Holds one pandapower network (``self.net``) per circuit. Besides the standard
+    pandapower columns, lines and loads get pylovo's planning attributes from the
+    specs (for example ``feeder_section_id``, ``feeder_sizing_basis``,
+    ``service_design_p_mw``) as extra table columns, so they are exported with the
+    network JSON and the SQL network tables.
+
+    Bus limits ``min_vm_pu``/``max_vm_pu`` are set from ``POWER_FLOW_VOLTAGE_LIMITS``
+    in ``config_analysis.yaml``.
     """
 
     def __init__(self, logger: Optional[logging.Logger] = None):
@@ -192,7 +197,11 @@ class PandapowerBackend(IElectricalBackend):
         return ext_grid_idx
 
     def _get_bus_index(self, bus_name: str) -> int:
-        """Get bus index from name using cache."""
+        """Return the pandapower index of the bus called ``bus_name``.
+
+        Raises:
+            ValueError: If no bus of that name exists.
+        """
         if bus_name in self._bus_cache:
             return self._bus_cache[bus_name]
 
@@ -224,7 +233,14 @@ class PandapowerBackend(IElectricalBackend):
     # =========================================================================
 
     def register_cable_types(self, cables: list) -> None:
-        """Register cable standard types from equipment data."""
+        """Register cable standard types from equipment data.
+
+        Args:
+            cables: Tuples ``(name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)``
+                as returned by ``DatabaseClient.fetch_cables``. The cross-section
+                ``q_mm2`` is parsed from the last ``_``-separated part of the name
+                (for example ``NAYY_4_150``).
+        """
         for cable in cables:
             name, r_ohm_per_km, x_ohm_per_km, max_i_ka, _cost_eur = cable
             normalized = normalize_cable_name(name)

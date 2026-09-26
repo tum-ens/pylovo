@@ -8,7 +8,7 @@ This directory contains two QGIS project files that can be used as templates whe
 dbname pylovo_db_local). It works out-of-the-box, but changing connection details of the database is cumbersome
 because every single layer has to be edited.
 
-*template_remote_db.qgz* on the other hand relies on the .pq_service.conf file for connection details, which makes it
+*template_remote_db.qgz* on the other hand relies on the .pg_service.conf file for connection details, which makes it
 easy to change the connection to any local or remote database but needs some additional configuration.
 
 Apart from that, the two templates are identical.
@@ -18,7 +18,7 @@ Add the Service Configuration:
 ------------------------------
 
 **On Linux:**
-Copy the .pg_service.conf file to ~/.pq_service.conf
+Copy the .pg_service.conf file to ~/.pg_service.conf
 
 **On Windows:**
 Add the environment variable PGSERVICEFILE over the Windows control panel and enter your preferred file path as value

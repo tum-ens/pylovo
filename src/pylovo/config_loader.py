@@ -1,13 +1,52 @@
-import yaml
+"""Configuration of pylovo, loaded once at import time.
+
+Importing this module (which every pylovo module does, directly or through
+``import pylovo``) reads
+
+* the database connection and path settings from a ``.env`` file, and
+* the four YAML files ``config_generation.yaml``, ``config_analysis.yaml``,
+  ``config_classification.yaml`` and ``config_clustering.yaml``,
+
+and exposes their entries as module-level constants (``VERSION_ID``, ``VN``,
+``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process.
+
+``.env`` lookup:
+    ``load_dotenv(find_dotenv(), override=True)``. ``find_dotenv`` walks up from the
+    directory of this file (for an editable install: ``src/pylovo`` -> ``src`` ->
+    repository root) and takes the first ``.env`` it finds; in an interactive session,
+    a notebook or under a debugger it walks up from the current working directory
+    instead. Because of ``override=True`` the values in that ``.env`` **replace**
+    environment variables of the same name that are already set in the shell.
+
+YAML lookup:
+    See :func:`get_config_search_paths`. The first location is ``./config`` of the
+    current working directory, so pylovo commands are normally run from the
+    repository root (or from a directory with its own ``config/``).
+
+``PROJECT_ROOT`` is the current working directory at import time, not the location
+of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``, the
+``CSV_FILE_LIST`` entries) are resolved against it as well.
+"""
+
 import os
-import pandas as pd
 from pathlib import Path
-from dotenv import load_dotenv, find_dotenv
+
+import pandas as pd
+import yaml
+from dotenv import find_dotenv, load_dotenv
 
 
 def get_config_search_paths():
-    """
-    Get list of paths to search for configuration files, in priority order.
+    """Return the directories searched for the YAML files, in priority order.
+
+    1. ``<cwd>/config``
+    2. ``$PYLOVO_ROOT/config`` if ``PYLOVO_ROOT`` is set (Docker / pip install)
+    3. ``$PYLOVO_CONFIG_DIR`` if it is set; otherwise ``~/.config/pylovo`` (Linux/macOS)
+       and ``<cwd>/.pylovo``
+    4. ``config/`` of the source checkout this module was imported from, if it exists
+
+    The environment variables may also be set in the ``.env`` file, which is loaded
+    before the YAML files.
 
     Returns:
         List of Path objects to search for config files
@@ -32,32 +71,26 @@ def get_config_search_paths():
             search_paths.append(Path.home() / ".config" / "pylovo")
         search_paths.append(Path.cwd() / ".pylovo")  # Project-local config
 
-    # 4. Legacy location (for backward compatibility during migration)
-    try:
-        # Check if we're in development mode (src layout exists)
-        legacy_path = Path(__file__).parent.parent.parent / "config"
-        if legacy_path.exists():
-            search_paths.append(legacy_path)
-    except:
-        pass
+    # 4. Source checkout (src layout: src/pylovo/config_loader.py -> <repo>/config)
+    checkout_config = Path(__file__).parent.parent.parent / "config"
+    if checkout_config.exists():
+        search_paths.append(checkout_config)
 
     return search_paths
 
 
 def load_yaml_config(filename: str):
-    """
-    Loads a YAML configuration file from user directories.
-
-    Search order:
-    1. Current working directory config/
-    2. User config directory (~/.config/pylovo/ or PYLOVO_CONFIG_DIR)
-    3. Project-local .pylovo/ directory
+    """Load a YAML configuration file from the first search path that contains it.
 
     Args:
-        filename: Name of the config file (e.g., "config_database.yaml")
+        filename: Name of the config file (e.g., "config_generation.yaml")
 
     Returns:
         Loaded configuration dictionary
+
+    Raises:
+        FileNotFoundError: If no search path (see :func:`get_config_search_paths`)
+            contains the file.
     """
     # Try user-defined locations
     for search_path in get_config_search_paths():
@@ -80,7 +113,11 @@ def load_yaml_config(filename: str):
 
 
 def get_required_env_var(var_name: str, description: str) -> str:
-    """Get required environment variable with clear error message if missing."""
+    """Return a required environment variable (usually set in ``.env``).
+
+    Raises:
+        ValueError: If the variable is not set; a setup hint is printed first.
+    """
     value = os.getenv(var_name)
     if value is None:
         print("=" * 80)
@@ -99,7 +136,11 @@ def get_required_env_var(var_name: str, description: str) -> str:
 
 
 def get_int_env_var(var_name: str, default: int) -> int:
-    """Get integer environment variable with a typed fallback."""
+    """Return an integer environment variable, or ``default`` if it is unset or empty.
+
+    Raises:
+        ValueError: If the variable is set but not an integer.
+    """
     value = os.getenv(var_name)
     if value is None or value == "":
         return default
@@ -109,13 +150,50 @@ def get_int_env_var(var_name: str, default: int) -> int:
     except ValueError as exc:
         raise ValueError(f"Environment variable '{var_name}' must be an integer, got: {value}") from exc
 
-# =============================================================================
-# PROJECT ROOT AND CONFIG LOADING
-# =============================================================================
-# Load Project Root (for backward compatibility and development)
-PROJECT_ROOT = Path.cwd()  # Use current working directory as project root
+def _consumer_categories_from_config(config_generation: dict, peak_load_household) -> pd.DataFrame:
+    """Build and validate the consumer category table of ``config_generation.yaml``.
 
-# Load all configurations with new hybrid system
+    A ``peak_load`` given as the string ``PEAK_LOAD_HOUSEHOLD`` is replaced by that
+    value; ``null`` peak loads (categories sized per m2) become NaN.
+
+    Raises:
+        ValueError: If ``definition`` or ``sim_factor`` is missing or a definition
+            occurs twice.
+    """
+    categories = pd.DataFrame(config_generation["CONSUMER_CATEGORIES"])
+    if not categories.empty and "peak_load" in categories.columns:
+        def _resolve_peak_load(val):
+            if isinstance(val, str) and val.strip() == "PEAK_LOAD_HOUSEHOLD":
+                return peak_load_household
+            return val
+        categories["peak_load"] = categories["peak_load"].apply(_resolve_peak_load)
+        categories["peak_load"] = pd.to_numeric(categories["peak_load"], errors="coerce")
+
+    missing_columns = {"definition", "sim_factor"}.difference(categories.columns)
+    if missing_columns:
+        raise ValueError(
+            "CONSUMER_CATEGORIES is missing required columns: "
+            f"{sorted(missing_columns)}"
+        )
+    if categories["definition"].duplicated().any():
+        duplicate_definitions = categories.loc[
+            categories["definition"].duplicated(keep=False), "definition"
+        ].tolist()
+        raise ValueError(f"Duplicate consumer category definitions: {duplicate_definitions}")
+    categories["sim_factor"] = pd.to_numeric(categories["sim_factor"], errors="raise")
+    return categories
+
+
+# =============================================================================
+# .ENV AND CONFIG LOADING
+# =============================================================================
+# Load .env first, so PYLOVO_ROOT / PYLOVO_CONFIG_DIR set there also apply to the
+# YAML search below. override=True: the .env wins over variables of the shell.
+load_dotenv(find_dotenv(), override=True)
+
+# Current working directory at import time (not the package location).
+PROJECT_ROOT = Path.cwd()
+
 CONFIG_GENERATION = load_yaml_config("config_generation.yaml")
 CONFIG_ANALYSIS = load_yaml_config("config_analysis.yaml")
 CONFIG_CLASSIFICATION = load_yaml_config("config_classification.yaml")
@@ -124,9 +202,6 @@ CONFIG_CLUSTERING = load_yaml_config("config_clustering.yaml")
 # =============================================================================
 # DATABASE CONFIGURATION (from .env file)
 # =============================================================================
-# Load database connection configuration from .env file
-load_dotenv(find_dotenv(), override=True)
-
 # Primary database connection (required)
 DBNAME = get_required_env_var("DBNAME", "Database name for Pylovo")
 DBUSER = get_required_env_var("DBUSER", "Database username")
@@ -166,7 +241,9 @@ ANALYZE_GRIDS = CONFIG_GENERATION["ANALYZE_GRIDS"]
 SAVE_GRID_FOLDER = CONFIG_GENERATION["SAVE_GRID_FOLDER"]
 LOG_LEVEL = CONFIG_GENERATION["LOG_LEVEL"]
 
-# Parallel execution configuration
+# Parallel execution configuration: PARALLEL is the default of ``pylovo-generate`` for several
+# PLZ (``--parallel`` / ``--no-parallel`` override it), N_JOBS_PERCENT the share of cores used.
+PARALLEL = bool(CONFIG_GENERATION.get("PARALLEL", True))
 N_JOBS_PERCENT = CONFIG_GENERATION.get("N_JOBS_PERCENT", 50)
 AVAILABLE_CORES = os.cpu_count() or 1
 N_JOBS = max(1, round(AVAILABLE_CORES * N_JOBS_PERCENT / 100))
@@ -191,36 +268,11 @@ VERSION_COMMENT = CONFIG_GENERATION["VERSION_COMMENT"]
 PEAK_LOAD_HOUSEHOLD = CONFIG_GENERATION["PEAK_LOAD_HOUSEHOLD"]
 DEFAULT_POWER_FACTOR = CONFIG_GENERATION["DEFAULT_POWER_FACTOR"]
 
-# Consumer categories for load calculation
-CONSUMER_CATEGORIES = pd.DataFrame(CONFIG_GENERATION["CONSUMER_CATEGORIES"])
-# Patch: replace string placeholder references (e.g. 'PEAK_LOAD_HOUSEHOLD') with actual numeric value
-if not CONSUMER_CATEGORIES.empty and "peak_load" in CONSUMER_CATEGORIES.columns:
-    def _resolve_peak_load(val):
-        if isinstance(val, str) and val.strip() == "PEAK_LOAD_HOUSEHOLD":
-            return PEAK_LOAD_HOUSEHOLD
-        return val
-    CONSUMER_CATEGORIES["peak_load"] = CONSUMER_CATEGORIES["peak_load"].apply(_resolve_peak_load)
-    # enforce numeric (None / null stay as NaN for categories using per m2 metrics)
-    CONSUMER_CATEGORIES["peak_load"] = pd.to_numeric(CONSUMER_CATEGORIES["peak_load"], errors="coerce")
-
-required_consumer_category_columns = {"definition", "sim_factor"}
-missing_consumer_category_columns = required_consumer_category_columns.difference(
-    CONSUMER_CATEGORIES.columns
-)
-if missing_consumer_category_columns:
-    raise ValueError(
-        "CONSUMER_CATEGORIES is missing required columns: "
-        f"{sorted(missing_consumer_category_columns)}"
-    )
-if CONSUMER_CATEGORIES["definition"].duplicated().any():
-    duplicate_definitions = CONSUMER_CATEGORIES.loc[
-        CONSUMER_CATEGORIES["definition"].duplicated(keep=False), "definition"
-    ].tolist()
-    raise ValueError(f"Duplicate consumer category definitions: {duplicate_definitions}")
-CONSUMER_CATEGORIES["sim_factor"] = pd.to_numeric(CONSUMER_CATEGORIES["sim_factor"], errors="raise")
+# Consumer categories for load calculation (validated table and category -> simultaneity factor)
+CONSUMER_CATEGORIES = _consumer_categories_from_config(CONFIG_GENERATION, PEAK_LOAD_HOUSEHOLD)
 SIM_FACTOR = CONSUMER_CATEGORIES.set_index("definition")["sim_factor"].astype(float).to_dict()
 
-# Equipment data
+# Equipment catalogues; grid_role tells the three pools apart in CONFIG_EQUIPMENT_DATA.
 TRANSFORMERS = pd.DataFrame(CONFIG_GENERATION["TRANSFORMERS"])
 TRANSFORMERS["grid_role"] = "transformer"
 FEEDER_CABLES = pd.DataFrame(CONFIG_GENERATION["FEEDER_CABLES"])
@@ -292,6 +344,8 @@ GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION.get("GREENFIELD_TR
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
 USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSITIONS", False)
 USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
+# Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
+USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_MANUAL_TRANSFORMER_POSITIONS", False)
 MAX_GREENFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_GREENFIELD_TRAFO_DISTANCE"]
 # CALIBRATION (temp): standard deviation (m) of a per-cluster greenfield distance limit drawn around
 # MAX_GREENFIELD_TRAFO_DISTANCE and clipped to +/- 2 standard deviations. 0 keeps one fixed limit.
@@ -299,7 +353,6 @@ MAX_GREENFIELD_TRAFO_DISTANCE_STD = float(CONFIG_GENERATION.get("MAX_GREENFIELD_
 MERGE_GREENFIELD_CLUSTERS = CONFIG_GENERATION.get("MERGE_GREENFIELD_CLUSTERS", False)
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA = CONFIG_GENERATION.get("GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [400, 630])
 MAX_BUILDINGS_PER_KCID = CONFIG_GENERATION["MAX_BUILDINGS_PER_KCID"]
-RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION.get("RESIDENTIAL_ONLY_GENERATION", False)
 MIN_SHARED_PREFIX_LENGTH_M = CONFIG_GENERATION.get("MIN_SHARED_PREFIX_LENGTH_M", 0)
 AGGREGATE_NEARBY_CONNECTION_POINTS = CONFIG_GENERATION.get("AGGREGATE_NEARBY_CONNECTION_POINTS", False)
 CONNECTION_POINT_AGGREGATION_RADIUS_M = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_RADIUS_M", 25)
@@ -344,6 +397,7 @@ THRESHOLD_NO_HOUSEHOLDS = CONFIG_CLUSTERING["THRESHOLD_NO_HOUSEHOLDS"]
 # =============================================================================
 # DATA IMPORT CONFIGURATION (only relevant without InfDB)
 # =============================================================================
+# Paths are relative to the current working directory.
 CSV_FILE_LIST = [
     {"path": os.path.join("data", "postcode.csv"), "table_name": "postcode"},
 ]
@@ -381,7 +435,7 @@ DEFAULT_FONT_SIZE = CONFIG_ANALYSIS["PLOT_DEFAULTS"]["FONT_SIZE"]
 DEFAULT_TITLE_FONT_SIZE = CONFIG_ANALYSIS["PLOT_DEFAULTS"]["TITLE_FONT_SIZE"]
 DEFAULT_GRID_ALPHA = CONFIG_ANALYSIS["PLOT_DEFAULTS"]["GRID_ALPHA"]
 
-# Setup seaborn palette
+# Setup seaborn palette (optional "plots" extra)
 try:
     import seaborn as sns
     sns.set_palette(sns.color_palette(TUMPalette))

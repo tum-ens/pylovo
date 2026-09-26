@@ -15,7 +15,7 @@
  * are represented by shared endpoints between line segments.
  *
  * ALGORITHM OVERVIEW:
- * 1. Iterate through each way in the temp_ways table
+ * 1. Iterate through each way in the ways_tem table
  * 2. Find another way that intersects with the current way
  * 3. Calculate the precise intersection point between the two ways
  * 4. Split both intersecting ways at the intersection point

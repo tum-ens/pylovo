@@ -1,4 +1,9 @@
-"""Compose named LV grid parameter sets from the ParameterCalculator toolbox."""
+"""Compose named LV grid parameter sets from the :class:`ParameterCalculator` toolbox.
+
+- :func:`compute_clustering_metrics`: parameters stored per synthetic grid by ``pylovo-analyze``.
+- :func:`compute_comparison_parameters`: structural metrics for real-vs-synthetic comparisons
+  (used by ``docs/scripts/plot_synthetic_metrics.py``).
+"""
 
 import copy
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -16,17 +21,18 @@ REAL_HOUSEHOLD_LOAD_TYPES = {"HH"}
 
 
 def _get_transformer_mva(net: pp.pandapowerNet) -> float:
-    """Return the transformer rating in MVA from ``net.trafo["sn_mva"]``.
+    """Return the station rating in MVA of the first transformer in ``net.trafo``, or NaN if there is none.
 
-    Both synthetic grids and real LV subnets carry the transformer as an
-    out-of-service element (added by
-    :func:`~validations.grid_preparation.legacy.real_grid_preparation.extract_lv_grids`), so
-    ``sn_mva`` is always readable directly from the network object.
+    The station rating is ``sn_mva x parallel``: pandapower's ``sn_mva`` is the rating of one unit,
+    and pylovo builds some stations from two parallel units (800 kVA as 2 x 400 kVA). Real LV
+    subnets prepared for the comparison keep their transformer as an out-of-service element, so
+    the rating can be read from the network for real and synthetic grids alike.
     """
     if not net.trafo.empty and "sn_mva" in net.trafo.columns:
         val = net.trafo["sn_mva"].iloc[0]
         if pd.notna(val):
-            return float(val)
+            parallel = net.trafo["parallel"].iloc[0] if "parallel" in net.trafo.columns else 1
+            return float(val) * (max(1, int(parallel)) if pd.notna(parallel) else 1)
     return float("nan")
 
 
@@ -95,16 +101,20 @@ def compute_comparison_parameters(
     met.  Callers are responsible for recording failed rows; this function does
     not replace failures with zero-valued metrics.
 
-    Parameters
-    ----------
-    bus_type_config : dict, optional
-        Naming-pattern dictionary forwarded to the unified feeder counter.
-        When ``None`` the config is auto-detected from the bus naming
-        convention (see :data:`~pylovo.analysis.parameter_calculation.SWF_BUS_TYPE_CONFIG`).
-    with_service_lines : bool, default False
-        Include terminal house/consumer service connections in length,
-        resistance, and transformer-distance metrics. The default benchmark
-        excludes them and measures feeder/backbone structure.
+    Args:
+        calculator: Calculator that provides the topology and distance routines.
+        net: Real or synthetic LV grid.
+        consumer_buses: Consumer connection buses; resolved from the bus naming if None.
+        bus_type_config: Naming-pattern dictionary forwarded to the unified feeder counter.
+            When None the config is auto-detected from the bus naming convention (see
+            :data:`~pylovo.analysis.parameter_calculation.SWF_BUS_TYPE_CONFIG`).
+        with_service_lines: Include terminal house/consumer service connections in length,
+            resistance, and transformer-distance metrics. The default benchmark excludes them
+            and measures feeder/backbone structure.
+
+    Returns:
+        Flat dictionary of metrics (``feeder_lines``, ``graph_length``, ``avg_trafo_distance``,
+        ...) plus diagnostic counts and the alternative feeder counts.
     """
     from pylovo.analysis.parameter_calculation import PYLOVO_BUS_TYPE_CONFIG, SWF_BUS_TYPE_CONFIG
 
@@ -251,7 +261,18 @@ def compute_comparison_parameters(
 
 
 def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandapowerNet) -> Dict[str, Any]:
-    """Compute the full clustering-oriented parameter set for one synthetic LV grid."""
+    """Compute the clustering parameter set of one synthetic LV grid.
+
+    ``simultaneous_peak_load_mw`` is looked up in the PLZ-level transformer statistics of
+    ``calculator.plz``; it is 0.0 if the PLZ analysis has not run or has no matching entry.
+
+    Args:
+        calculator: Calculator with the PLZ context of the grid.
+        net: Synthetic pylovo grid.
+
+    Returns:
+        Dictionary with the columns of the ``clustering_parameters`` table (without ids).
+    """
     no_house_connections = calculator.count_buses_by_keyword(net, calculator.consumer_bus_keyword)
     no_connection_buses = calculator.count_buses_by_keyword(net, calculator.connection_bus_keyword)
     no_households = calculator.count_households(net)

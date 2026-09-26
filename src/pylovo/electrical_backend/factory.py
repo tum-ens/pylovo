@@ -122,7 +122,7 @@ def create_backend(
         raise ValueError(
             f"Unknown backend: {backend_name}. "
             f"Available: {', '.join(available_backends())}"
-        )
+        ) from None
     return factory(logger)
 
 

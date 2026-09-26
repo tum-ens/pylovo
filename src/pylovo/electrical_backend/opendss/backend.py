@@ -12,14 +12,22 @@ Key features:
 Note:
     Unlike pandapower's DataFrame-based model, OpenDSS requires line codes
     to be created before lines. This is handled internally via _create_line_code().
+
+Optional dependency:
+    The engine bindings come from the ``altdss`` package, which is *not* a pylovo
+    dependency (it is commented out in ``pyproject.toml``). This module always
+    imports; without ``altdss`` the name ``altdss`` is ``None`` and constructing
+    :class:`OpenDSSBackend` (``ELECTRICAL_BACKEND: opendss``) raises
+    :class:`OpenDSSBackendError`; install ``altdss`` separately to use it.
+    The backend is not covered by the regression runs; parts of ``GridGenerator``
+    (voltage-drop diagnostics, SQL network tables) only work with pandapower.
 """
 
-import json
 import logging
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from ..core.backend_base import IElectricalBackend
@@ -34,11 +42,22 @@ from ..core.specs import (
 )
 from ..core.equipment import CableEquipment, TransformerEquipment
 
-# Import Altdss with fallback
 try:
     import altdss
-except ImportError:
+except ImportError:  # optional dependency, see the module docstring
     altdss = None
+
+
+def _empty_component_registry() -> Dict[str, list]:
+    """Return the per-type lists that track the components of one circuit."""
+    return {
+        "buses": [],
+        "transformers": [],
+        "lines": [],
+        "loads": [],
+        "sources": [],
+        "linecodes": [],
+    }
 
 
 class OpenDSSBackendError(Exception):
@@ -59,17 +78,9 @@ class OpenDSSBackend(IElectricalBackend):
         self.dss = None
         self._circuit_name = None
         self.cable_registry: Dict[str, CableEquipment] = {}
-        # Line code cache (merged from component factory)
+        # Line codes by name, so each cable type is defined only once per circuit
         self._line_codes: Dict[str, Any] = {}
-        # Component tracking
-        self._components_created: Dict[str, list] = {
-            "buses": [],
-            "transformers": [],
-            "lines": [],
-            "loads": [],
-            "sources": [],
-            "linecodes": [],
-        }
+        self._components_created: Dict[str, list] = _empty_component_registry()
 
         if altdss is None:
             raise OpenDSSBackendError(
@@ -98,14 +109,7 @@ class OpenDSSBackend(IElectricalBackend):
 
             # Reset component tracking
             self._line_codes = {}
-            self._components_created = {
-                "buses": [],
-                "transformers": [],
-                "lines": [],
-                "loads": [],
-                "sources": [],
-                "linecodes": [],
-            }
+            self._components_created = _empty_component_registry()
 
             # Configure voltage source
             self.dss(
@@ -133,7 +137,8 @@ class OpenDSSBackend(IElectricalBackend):
             elif isinstance(spec, LoadSpec):
                 return self._create_load(spec)
             elif isinstance(spec, BusSpec):
-                # OpenDSS creates buses implicitly
+                # OpenDSS creates buses implicitly; only track them for get_component_count()
+                self._components_created["buses"].append(spec.name)
                 return spec.name
             elif isinstance(spec, ExtGridSpec):
                 # External grid is created in initialize_circuit
@@ -177,10 +182,16 @@ class OpenDSSBackend(IElectricalBackend):
         return line_code
 
     def _create_transformer(self, spec: TransformerSpec) -> Any:
-        """Create transformer from specification."""
+        """Create the station transformer from its specification.
+
+        ``spec.kva`` is the rating of one unit. A station of ``spec.parallel``
+        identical units is modelled as one equivalent transformer with the summed
+        rating (same per-unit impedance), because ``set_transformer_rating`` is a
+        no-op for this backend.
+        """
         equipment = TransformerEquipment(
             name=spec.name,
-            s_max_kva=spec.kva,
+            s_max_kva=spec.kva * spec.parallel,
             primary_voltage_kv=20.0,  # German MV
             secondary_voltage_kv=0.4,  # German LV
         )
@@ -200,7 +211,9 @@ class OpenDSSBackend(IElectricalBackend):
         )
 
         self._components_created["transformers"].append(transformer)
-        self.logger.debug(f"Created transformer: {spec.name} (kva={spec.kva})")
+        self.logger.debug(
+            f"Created transformer: {spec.name} (kva={spec.kva}, parallel={spec.parallel})"
+        )
         return transformer
 
     def _create_line(self, spec: LineSpec) -> Any:
@@ -282,10 +295,6 @@ class OpenDSSBackend(IElectricalBackend):
 
         same_type_cables.sort(key=lambda x: x[1].max_i_a, reverse=True)
         return same_type_cables[0][1]
-
-    def _get_bus_index(self, bus_name: str) -> str:
-        """Return bus identifier (OpenDSS uses string names, not indices)."""
-        return bus_name
 
     # =========================================================================
     # Cable Registration
@@ -414,14 +423,7 @@ class OpenDSSBackend(IElectricalBackend):
                 self.dss = None
 
         self._line_codes = {}
-        self._components_created = {
-            "buses": [],
-            "transformers": [],
-            "lines": [],
-            "loads": [],
-            "sources": [],
-            "linecodes": [],
-        }
+        self._components_created = _empty_component_registry()
         self._circuit_name = None
         self.logger.debug("OpenDSS cleanup completed")
 
@@ -480,12 +482,6 @@ class OpenDSSBackend(IElectricalBackend):
         total_losses = self.dss.Losses()
 
         try:
-            raw_bus_names = self.dss.BusNames()
-            bus_names = list(raw_bus_names) if raw_bus_names else []
-        except Exception:
-            bus_names = []
-
-        try:
             raw_bus_vmags = self.dss.BusVMagPU()
             bus_vmags = list(raw_bus_vmags) if raw_bus_vmags else []
         except Exception:
@@ -528,7 +524,7 @@ class OpenDSSBackend(IElectricalBackend):
             f.write("=" * 80 + "\n")
             f.write("Electrical Statistics Report\n")
             f.write("=" * 80 + "\n\n")
-            f.write(f"Timestamp: {datetime.utcnow().isoformat()}Z\n")
+            f.write(f"Timestamp: {datetime.now(timezone.utc).replace(tzinfo=None).isoformat()}Z\n")
             f.write(f"Circuit: {self._circuit_name or 'unknown'}\n")
             f.write(f"Converged: {converged}\n")
 

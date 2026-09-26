@@ -1,18 +1,16 @@
-import os
-import sys
+"""Average clustering parameters of k-means cluster 0 (the source of the lower filter thresholds).
+
+Run as a script after a classification: ``python -m
+pylovo.classification.utils.get_average_values_clustering_parameters``.
+"""
 import pandas as pd
-import psycopg2 as psy
 
-# Determine the project's root directory and add to Python's module search path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.getcwd(), "../../.."))
-sys.path.append(PROJECT_ROOT)
-
-from pylovo.config_loader import *
+from pylovo.config_loader import LIST_OF_CLUSTERING_PARAMETERS
+from pylovo.database.database_client import DatabaseClient
 
 
 def get_clustering_parameters_for_kmeans_cluster_0() -> pd.DataFrame:
-    """
-    Get clustering parameters for entries assigned to cluster 0 in transformer_classified.
+    """Get clustering parameters for entries assigned to cluster 0 in transformer_classified.
 
     Allocation of buildings to a transformer within predefined system boundaries (postcodes)
     can lead to isolated building clusters, depending on the greenfield or brownfield placement
@@ -24,56 +22,47 @@ def get_clustering_parameters_for_kmeans_cluster_0() -> pd.DataFrame:
 
     The current clustering algorithm is applied to grids within 100 postcodes. The selected
     clustering parameters are:
-        - avg_trafo_dis 
-        - no_house_connections 
-        - vsw_per_branch
-        - no_households
 
-    The average values of these parameters for entries in Cluster 0 are:
-        - avg_trafo_dis: 0.115
-        - no_house_connections: 14.332
-        - vsw_per_branch: 0.258
-        - no_households: 35.316
+    - avg_trafo_dis
+    - no_house_connections
+    - vsw_per_branch
+    - no_households
 
-    :return: A DataFrame with clustering parameters for cluster 0 entries.
+    The average values of these parameters for entries in Cluster 0 are the
+    ``THRESHOLD_*`` values in ``config_clustering.yaml``:
+
+    - avg_trafo_dis: 0.115
+    - no_house_connections: 14.332
+    - vsw_per_branch: 0.258
+    - no_households: 35.316
+
+    Returns:
+        pd.DataFrame: Clustering parameters of all grids in k-means cluster 0 (all versions
+        and classification ids).
     """
-    # Connect to the database
-    conn = psy.connect(
-        database=DBNAME, user=DBUSER, password=PASSWORD, host=HOST, port=PORT
-    )
+    query = """
+        SELECT cp.*
+        FROM pylovo.clustering_parameters cp
+        JOIN (
+            SELECT DISTINCT grid_result_id
+            FROM pylovo.transformer_classified
+            WHERE kmeans_clusters = 0
+        ) tc
+        ON cp.grid_result_id = tc.grid_result_id;
+    """
+    with DatabaseClient() as dbc:
+        return pd.read_sql_query(query, con=dbc.sqla_engine)
 
-    try:
-        # Run the query
-        query = f"""
-            SELECT cp.*
-            FROM pylovo.clustering_parameters cp
-            JOIN (
-                SELECT version_id, plz, kcid, bcid
-                FROM pylovo.transformer_classified
-                WHERE kmeans_clusters = 0
-                GROUP BY version_id, plz, kcid, bcid
-            ) tc
-            ON cp.version_id = tc.version_id
-            AND cp.plz = tc.plz
-            AND cp.kcid = tc.kcid
-            AND cp.bcid = tc.bcid;
-        """
-
-        df = pd.read_sql_query(query, con=conn)
-
-    finally:
-        # Close the connection
-        conn.close()
-
-    return df
 
 def calculate_average_clustering_parameters(df: pd.DataFrame, parameters: list) -> dict:
-    """
-    Calculate the average values for the given clustering parameters.
+    """Calculate the average values for the given clustering parameters.
 
-    :param df: DataFrame with clustering parameters.
-    :param parameters: List of parameter names to calculate averages for.
-    :return: Dictionary with average values.
+    Args:
+        df: DataFrame with clustering parameters.
+        parameters: Parameter names to average.
+
+    Returns:
+        dict: Average value per parameter, rounded to 3 decimals.
     """
     avg_values = {}
 

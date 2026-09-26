@@ -4,7 +4,7 @@
 
 VERSION_ID: "1" # Change version if you changed any grid parameters or queries (e.g. transformer query)
 VERSION_COMMENT: default # State here which parameters, queries are used to compute the grids with current VERSION_ID
-PARALLEL: True # Use multiple workers in parallel
+PARALLEL: True # Generate several PLZ in parallel worker processes (pylovo-generate --parallel / --no-parallel override it)
 N_JOBS_PERCENT: 20  # Set percentage of CPU cores to be used for parallel grid generation
 ANALYZE_GRIDS: True # Run basic analysis after grid generation
 LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
@@ -88,8 +88,9 @@ GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities 
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
-USE_OPEN_TRANSFORMER_POSITIONS: False # Include non-DSO open/manual transformer positions from pylovo.transformers
+USE_OPEN_TRANSFORMER_POSITIONS: False # Include all non-DSO positions from pylovo.transformers (OSM, LoD2 and manual)
 USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
+USE_MANUAL_TRANSFORMER_POSITIONS: False # Include the positions placed in the UI (manual/...) even when USE_OPEN_TRANSFORMER_POSITIONS is False
 
 
 # =============================================================================

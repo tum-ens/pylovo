@@ -1,21 +1,20 @@
-"""
-Delete operations for pylovo.
-"""
+"""Delete generated grids, transformers or classification data (``pylovo-delete``)."""
 import argparse
 import sys
+import traceback
 
 from pylovo.database.database_client import DatabaseClient
 
 
 def delete_networks(plz: int, version_id: str):
-    """Delete networks for a specific PLZ and version."""
+    """Delete the grids and results of one PLZ for one version."""
     with DatabaseClient() as dbc_client:
         dbc_client.delete_plz_from_all_tables(plz, version_id)
     print(f"✓ Deleted networks for PLZ {plz}, version {version_id}")
 
 
 def delete_versions(version_ids: list[str]):
-    """Delete all networks for one or more versions across all PLZ."""
+    """Delete the grids and results of one or more versions across all PLZ."""
     with DatabaseClient() as dbc_client:
         deleted_count = dbc_client.delete_versions_from_all_tables(version_ids=version_ids)
 
@@ -26,27 +25,22 @@ def delete_versions(version_ids: list[str]):
         print(f"✓ Deleted {deleted_count} versions: {versions}")
 
 
-def delete_version(version_id: str):
-    """Delete all networks for a version across all PLZ."""
-    delete_versions([version_id])
-
-
 def delete_transformers():
-    """Delete all transformers."""
+    """Delete all rows of ``pylovo.transformers``."""
     with DatabaseClient() as dbc_client:
         dbc_client.delete_transformers()
     print("✓ Deleted all transformers")
 
 
 def delete_classification_version(classification_version: str):
-    """Delete classification version data."""
+    """Delete a classification version and its rows in the related classification tables."""
     with DatabaseClient() as dbc_client:
         dbc_client.delete_classification_version_from_related_tables(classification_version)
     print(f"✓ Deleted classification version {classification_version}")
 
 
 def main():
-    """Main entry point with subcommands for different delete operations."""
+    """Entry point of ``pylovo-delete``."""
     parser = argparse.ArgumentParser(
         prog="pylovo-delete",
         description="Delete various pylovo data from database",
@@ -142,7 +136,6 @@ For more information, see: https://github.com/tum-ens/pylovo
         sys.exit(1)
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
         traceback.print_exc()
         sys.exit(1)
 

@@ -1,3 +1,5 @@
+"""Persistence of pandapower networks, analysis parameters and GeoDataFrame readers."""
+
 import json
 import warnings
 from typing import Any
@@ -5,17 +7,15 @@ from typing import Any
 import geopandas as gpd
 import pandapower as pp
 import pandas as pd
-from abc import ABC
 
-from pylovo.config_loader import *
+from pylovo.config_loader import VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 
 
-class AnalysisMixin(BaseMixin, ABC):
-    def __init__(self):
-        super().__init__()
+class AnalysisMixin(BaseMixin):
+    """Store generated networks and analysis results, and read result tables for plotting."""
 
     def ensure_grid_persistence_schema(self) -> None:
         """Add non-destructive result columns required by current grid generation."""
@@ -81,7 +81,8 @@ class AnalysisMixin(BaseMixin, ABC):
         self.logger.debug("basic parameter count finished")
 
     def insert_cable_length(self, plz: int, cable_length_string: str):
-        update_query = f"""UPDATE pylovo.plz_parameters
+        """Store the cable length per cable type (JSON) of a PLZ in ``plz_parameters``."""
+        update_query = """UPDATE pylovo.plz_parameters
                           SET cable_length = %(c)s
                           WHERE version_id = %(v)s
                             AND plz = %(p)s;"""
@@ -91,12 +92,13 @@ class AnalysisMixin(BaseMixin, ABC):
 
     def insert_trafo_parameters(self, plz: int, trafo_load_string: str, trafo_max_distance_string: str,
             trafo_avg_distance_string: str):
-        update_query = f"""UPDATE pylovo.plz_parameters
+        """Store the per-transformer load and distance statistics (JSON) of a PLZ in ``plz_parameters``."""
+        update_query = """UPDATE pylovo.plz_parameters
                           SET sim_peak_load_per_trafo = %(l)s,
                               max_distance_per_trafo  = %(m)s,
                               avg_distance_per_trafo  = %(a)s
                           WHERE version_id = %(v)s
-                            AND plz = %(p)s; \
+                            AND plz = %(p)s;
                        """
         self.cur.execute(update_query,
                          {"v": VERSION_ID, "p": plz, "l": trafo_load_string, "m": trafo_max_distance_string,
@@ -124,7 +126,21 @@ class AnalysisMixin(BaseMixin, ABC):
         max_service_voltage_drop_pu: float | None = None,
         max_total_lv_voltage_drop_pu: float | None = None,
     ) -> None:
-        insert_query = (f"""UPDATE pylovo.grid_result
+        """Store the pandapower JSON and the design results of one grid in ``grid_result``.
+
+        The keyword arguments after ``power_flow_status`` are design results of the cable
+        dimensioning and go to the ``grid_result`` columns of the same name (``None`` and NaN
+        become NULL).
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            json_string: pandapower network as JSON (``pandapower.to_json``), or ``None``.
+            transformer_description: Description of the installed transformer.
+            power_flow_status: Outcome of the power-flow check.
+        """
+        insert_query = ("""UPDATE pylovo.grid_result
                            SET grid = %s,
                                transformer_description = %s,
                                power_flow_status = %s,
@@ -171,6 +187,7 @@ class AnalysisMixin(BaseMixin, ABC):
 
     @staticmethod
     def _normalize_sql_scalar(value: Any) -> Any:
+        """Convert numpy scalars to Python values and NaN/NA to ``None`` so psycopg2 can adapt them."""
         if value is None:
             return None
 
@@ -186,11 +203,13 @@ class AnalysisMixin(BaseMixin, ABC):
         return value
 
     def _series_value(self, row: pd.Series, column: str) -> Any:
+        """Return ``row[column]`` normalised for SQL, or ``None`` if the column is missing."""
         if column not in row.index:
             return None
         return self._normalize_sql_scalar(row[column])
 
     def _normalize_geojson(self, value: Any) -> str | None:
+        """Return a GeoJSON value (string, dict or list) as a JSON string, anything else as ``None``."""
         normalized = self._normalize_sql_scalar(value)
         if normalized is None:
             return None
@@ -203,28 +222,13 @@ class AnalysisMixin(BaseMixin, ABC):
 
         return None
 
-    def get_grid_result_id(self, plz: int, kcid: int, bcid: int, version_id: str | None = None) -> int | None:
-        effective_version_id = VERSION_ID if version_id is None else str(version_id)
-        query = """
-            SELECT grid_result_id
-            FROM pylovo.grid_result
-            WHERE version_id = %s
-              AND plz = %s
-              AND kcid = %s
-              AND bcid = %s
-            LIMIT 1
-        """
-        self.cur.execute(query, vars=(effective_version_id, plz, kcid, bcid))
-        result = self.cur.fetchone()
-        if result is None:
-            return None
-        return int(result[0])
-
     def _delete_pandapower_element_rows(self, grid_result_id: int) -> None:
+        """Delete the ``pandapower_*`` element rows of one grid."""
         for table_name in ("pandapower_bus", "pandapower_line", "pandapower_trafo", "pandapower_load"):
             self.cur.execute(f"DELETE FROM pylovo.{table_name} WHERE grid_result_id = %(g)s", {"g": grid_result_id})
 
     def _insert_pandapower_bus_rows(self, grid_result_id: int, bus_df: pd.DataFrame | None) -> None:
+        """Insert the rows of ``net.bus`` into ``pylovo.pandapower_bus``."""
         if bus_df is None or bus_df.empty:
             return
 
@@ -274,6 +278,7 @@ class AnalysisMixin(BaseMixin, ABC):
         self.cur.executemany(insert_query, rows)
 
     def _insert_pandapower_line_rows(self, grid_result_id: int, line_df: pd.DataFrame | None) -> None:
+        """Insert the rows of ``net.line`` into ``pylovo.pandapower_line``."""
         if line_df is None or line_df.empty:
             return
 
@@ -378,6 +383,7 @@ class AnalysisMixin(BaseMixin, ABC):
         self.cur.executemany(insert_query, rows)
 
     def _insert_pandapower_trafo_rows(self, grid_result_id: int, trafo_df: pd.DataFrame | None) -> None:
+        """Insert the rows of ``net.trafo`` into ``pylovo.pandapower_trafo``."""
         if trafo_df is None or trafo_df.empty:
             return
 
@@ -466,6 +472,7 @@ class AnalysisMixin(BaseMixin, ABC):
         self.cur.executemany(insert_query, rows)
 
     def _insert_pandapower_load_rows(self, grid_result_id: int, load_df: pd.DataFrame | None) -> None:
+        """Insert the rows of ``net.load`` into ``pylovo.pandapower_load``."""
         if load_df is None or load_df.empty:
             return
 
@@ -558,6 +565,18 @@ class AnalysisMixin(BaseMixin, ABC):
         net: pp.pandapowerNet,
         version_id: str | None = None,
     ) -> None:
+        """Store the element tables of a pandapower network in the ``pandapower_*`` tables.
+
+        Existing rows of the grid are replaced. Logs a warning and does nothing if ``net`` is
+        ``None`` or the grid does not exist.
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            net: pandapower network.
+            version_id: Version of the grid; defaults to the configured ``VERSION_ID``.
+        """
         if net is None:
             self.logger.warning(
                 "Skipping pandapower SQL persistence because no pandapower network instance was provided."
@@ -579,18 +598,8 @@ class AnalysisMixin(BaseMixin, ABC):
         self._insert_pandapower_load_rows(grid_result_id, getattr(net, "load", None))
 
     def has_clustering_parameters(self, plz: int, kcid: int, bcid: int) -> bool:
-        """
-        Check if parameters already exist for a specific grid.
-        
-        Args:
-            plz: Postal code
-            kcid: Grid cluster ID
-            bcid: Building cluster ID
-            
-        Returns:
-            bool: True if parameters exist, False otherwise
-        """
-        query = f"""
+        """Return whether ``clustering_parameters`` already has a row for the grid in the active version."""
+        query = """
             SELECT 1 
             FROM pylovo.clustering_parameters cp
             JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
@@ -599,30 +608,19 @@ class AnalysisMixin(BaseMixin, ABC):
         self.cur.execute(query, (plz, kcid, bcid, VERSION_ID))
         return bool(self.cur.fetchone())
 
-    def count_clustering_parameters(self, plz: int) -> int:
-        """
-        :param plz:
-        :return:
-        """
-        query = f"""SELECT COUNT(cp.grid_result_id)
-                                     FROM pylovo.clustering_parameters cp
-                                                        JOIN pylovo.grid_result gr ON gr.grid_result_id = cp.grid_result_id
-                   WHERE version_id = %(v)s
-                     AND plz = %(p)s"""
-        self.cur.execute(query, {"v": VERSION_ID, "p": plz})
-        return int(self.cur.fetchone()[0])
-
     def read_per_trafo_dict(self, plz: int) -> tuple[list[dict], list[str], dict]:
-        read_query = """SELECT load_count_per_trafo,
-                               bus_count_per_trafo,
-                               sim_peak_load_per_trafo,
-                               max_distance_per_trafo,
-                               avg_distance_per_trafo
-                                                FROM pylovo.plz_parameters
-                        WHERE version_id = %(v)s
-                          AND plz = %(p)s;"""
-        self.cur.execute(read_query, {"v": VERSION_ID, "p": plz})
-        result = self.cur.fetchall()
+        """Read the per-transformer statistics of a PLZ from ``plz_parameters`` for plotting.
+
+        Returns:
+            ``(data_list, data_labels, trafo_dict)``: the load count, bus count, simultaneous peak
+            load, maximum and average transformer distance dicts (each keyed by transformer size,
+            ascending), their axis labels, and the transformer count per size (descending).
+        """
+        result = [self._fetch_plz_parameters(
+            plz,
+            "load_count_per_trafo, bus_count_per_trafo, sim_peak_load_per_trafo, "
+            "max_distance_per_trafo, avg_distance_per_trafo",
+        )]
 
         # Sort all parameters according to transformer size
         load_dict = dict(sorted(result[0][0].items(), key=lambda x: int(x[0])))
@@ -640,22 +638,22 @@ class AnalysisMixin(BaseMixin, ABC):
         return data_list, data_labels, trafo_dict
 
     def read_net_db(self, plz: int, kcid: int, bcid: int, version_id: str | None = None) -> pp.pandapowerNet:
-        """
-        Reads a pandapower network from the database for the specified grid.
+        """Read the pandapower network of a grid from ``grid_result.grid``.
 
         Args:
-            plz: Postal code ID
-            kcid: Kmeans cluster ID
-            bcid: Building cluster ID
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            version_id: Version of the grid; defaults to the configured ``VERSION_ID``.
 
         Returns:
-            A pandapower network object
+            The pandapower network.
 
         Raises:
-            ValueError: If the requested grid does not exist in the database
+            ValueError: If the grid does not exist.
         """
         effective_version_id = VERSION_ID if version_id is None else str(version_id)
-        read_query = f"SELECT grid FROM pylovo.grid_result WHERE version_id = %s AND plz = %s AND kcid = %s AND bcid = %s LIMIT 1"
+        read_query = "SELECT grid FROM pylovo.grid_result WHERE version_id = %s AND plz = %s AND kcid = %s AND bcid = %s LIMIT 1"
         self.cur.execute(read_query, vars=(effective_version_id, plz, kcid, bcid))
 
         result = self.cur.fetchall()
@@ -673,9 +671,12 @@ class AnalysisMixin(BaseMixin, ABC):
         return net
 
     def insert_clustering_parameters(self, params: dict) -> None:
-        """Insert calculated grid parameters into clustering_parameters table."""
+        """Insert the calculated parameters of one grid into ``clustering_parameters`` and commit.
 
-        insert_query = f"""INSERT INTO pylovo.clustering_parameters (
+        Args:
+            params: Column values plus ``version_id``, ``plz``, ``kcid`` and ``bcid`` of the grid.
+        """
+        insert_query = """INSERT INTO pylovo.clustering_parameters (
                    grid_result_id,
                    no_connection_buses,
                    no_branches,
@@ -728,26 +729,36 @@ class AnalysisMixin(BaseMixin, ABC):
         self.cur.execute(insert_query, params)
         self.conn.commit()
 
+    def _equality_filters(self, filters: dict) -> tuple[str, dict]:
+        """Return ``" AND column = %(fN)s ..."`` and its parameters for ``get_geo_df*`` keyword filters.
+
+        Column names are inserted as given (they come from code); values are passed as query
+        parameters.
+        """
+        clauses = ""
+        params = {}
+        for index, (column, value) in enumerate(filters.items()):
+            clauses += f" AND {column} = %(f{index})s"
+            params[f"f{index}"] = self._normalize_sql_scalar(value)
+        return clauses, params
+
     def get_geo_df(self, table: str, **kwargs, ) -> gpd.GeoDataFrame:
-        """
+        """Read the rows of a table with a ``geom`` column as a GeoDataFrame.
+
         Args:
-            **kwargs: equality filters matching with the table column names
-        Returns: A geodataframe with all building information
-        :param table: table name
+            table: Table name; unqualified names refer to the ``pylovo`` schema.
+            **kwargs: Equality filters ``column=value``. ``version_id`` selects the version
+                (default: the configured ``VERSION_ID``).
+
+        Returns:
+            The matching rows of the version.
         """
-        if kwargs:
-            filters = " AND " + " AND ".join(
-                [f"{key} = {value}" for key, value in kwargs.items() if key != 'version_id'])
-        else:
-            filters = ""
+        version = kwargs.pop("version_id", VERSION_ID)
+        filters, params = self._equality_filters(kwargs)
         table_name = table if "." in table or table.startswith("(") else f"pylovo.{table}"
         query = (f"""SELECT * FROM {table_name}
                         WHERE version_id = %(v)s """ + filters)
-        version = VERSION_ID
-        if 'version_id' in kwargs:
-            version = kwargs.get('version_id')
-
-        params = {"v": version}
+        params["v"] = version
         with self.sqla_engine.begin() as connection:
             gdf = gpd.read_postgis(query, con=connection, params=params)
 
@@ -755,20 +766,22 @@ class AnalysisMixin(BaseMixin, ABC):
 
     def get_geo_df_join(self, select: list[str], from_table: str, join_table: str, on: tuple[str, str],
             **kwargs, ) -> gpd.GeoDataFrame:
-        """
+        """Read a join of two tables as a GeoDataFrame.
+
         Args:
-            **kwargs: equality filters matching with the table column names
-        Returns: A geodataframe with all building information
-        :param select: list of column names
-        :param from_table: table name
-        :param join_table: table name
-        :param on: join on on[0] = on[1]
+            select: Column expressions of the result (must include a ``geom`` column).
+            from_table: First table, optionally with an alias (``"buildings_result br"``);
+                unqualified names refer to the ``pylovo`` schema.
+            join_table: Second table, optionally with an alias; its ``version_id`` selects the version.
+            on: Join condition as ``(left column, right column)``.
+            **kwargs: Equality filters ``column=value``. ``version_id`` selects the version
+                (default: the configured ``VERSION_ID``).
+
+        Returns:
+            The matching rows of the version.
         """
-        if kwargs:
-            filters = " AND " + " AND ".join(
-                [f"{key} = {value}" for key, value in kwargs.items() if key != 'version_id'])
-        else:
-            filters = ""
+        version = kwargs.pop("version_id", VERSION_ID)
+        filters, params = self._equality_filters(kwargs)
 
         column_names = ", ".join(select)
 
@@ -792,11 +805,7 @@ class AnalysisMixin(BaseMixin, ABC):
                         JOIN {join_table}
                           ON {on[0]} = {on[1]}
                         WHERE {jt_prefix}.version_id = %(v)s """ + filters)
-        version = VERSION_ID
-        if 'version_id' in kwargs:
-            version = kwargs.get('version_id')
-
-        params = {"v": version}
+        params["v"] = version
         with self.sqla_engine.begin() as connection:
             gdf = gpd.read_postgis(query, con=connection, params=params)
 
@@ -804,36 +813,34 @@ class AnalysisMixin(BaseMixin, ABC):
 
 
     def read_trafo_dict(self, plz: int) -> dict:
-        read_query = """SELECT trafo_num
-                                                FROM pylovo.plz_parameters
-                        WHERE version_id = %(v)s
-                          AND plz = %(p)s;"""
-        self.cur.execute(read_query, {"v": VERSION_ID, "p": plz})
-        trafo_num_dict = self.cur.fetchall()[0][0]
-
-        return trafo_num_dict
+        """Return the transformer count per transformer size of a PLZ from ``plz_parameters``."""
+        return self._fetch_plz_parameters(plz, "trafo_num")[0]
 
     def read_cable_dict(self, plz: int) -> dict:
-        read_query = """SELECT cable_length
-                                                FROM pylovo.plz_parameters
-                        WHERE version_id = %(v)s
-                          AND plz = %(p)s;"""
-        self.cur.execute(read_query, {"v": VERSION_ID, "p": plz})
-        cable_length = self.cur.fetchall()[0][0]
+        """Return the cable length per cable type of a PLZ from ``plz_parameters``."""
+        return self._fetch_plz_parameters(plz, "cable_length")[0]
 
-        return cable_length
+    def _fetch_plz_parameters(self, plz: int, columns: str) -> tuple:
+        """Return the given ``plz_parameters`` columns of a PLZ in the active version.
+
+        Raises:
+            LookupError: If the PLZ has not been analysed for ``VERSION_ID`` yet.
+        """
+        self.cur.execute(
+            f"SELECT {columns} FROM pylovo.plz_parameters WHERE version_id = %(v)s AND plz = %(p)s;",
+            {"v": VERSION_ID, "p": plz},
+        )
+        row = self.cur.fetchone()
+        if row is None:
+            raise LookupError(
+                f"PLZ {plz} has no plz_parameters for version {VERSION_ID}; "
+                f"run `pylovo-analyze --plz {plz}` first."
+            )
+        return row
 
     def is_grid_analyzed(self, plz: int):
-        """
-        Check if grid has been analyzed.
-
-        Args:
-            plz: Postal code to be checked
-
-        Returns:
-            bool: True if record exists, False otherwise
-        """
-        query = f"""
+        """Return whether the PLZ has a ``plz_parameters`` row in the active version."""
+        query = """
             SELECT 1
             FROM pylovo.plz_parameters
             WHERE version_id = %(version_id)s AND plz = %(plz)s
@@ -843,12 +850,3 @@ class AnalysisMixin(BaseMixin, ABC):
         self.cur.execute(query, {"version_id": VERSION_ID, "plz": plz})
         result = self.cur.fetchone()
         return result is not None
-
-    def get_grids_from_plz(self, plz : int) -> pd.DataFrame:
-        grids_query = f"""SELECT * FROM pylovo.grid_result
-                        WHERE plz = %(p)s"""
-        params = {"p": plz}
-        grids_df = pd.read_sql_query(grids_query, con=self.conn, params=params)
-        self.logger.debug(f"{len(grids_df)} grid data fetched.")
-
-        return grids_df

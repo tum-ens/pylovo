@@ -1,21 +1,63 @@
+"""Connection to the pylovo database, composed of the query mixins of this package."""
+
 import warnings
+
 import psycopg2 as psy
 from sqlalchemy import create_engine
-from typing import override
 
 from pylovo import utils
-from pylovo.config_loader import *
-from pylovo.database.preprocessing_mixin import PreprocessingMixin
+from pylovo.config_loader import DBNAME, DBUSER, HOST, LOG_LEVEL, PASSWORD, PORT
+from pylovo.database.analysis_mixin import AnalysisMixin
 from pylovo.database.clustering_mixin import ClusteringMixin
 from pylovo.database.grid_mixin import GridMixin
-from pylovo.database.analysis_mixin import AnalysisMixin
+from pylovo.database.load_edit_mixin import LoadEditMixin
+from pylovo.database.preprocessing_mixin import PreprocessingMixin
+from pylovo.database.results_mixin import ResultsMixin
+from pylovo.database.transformer_ui_mixin import TransformerUiMixin
 from pylovo.database.utils_mixin import UtilsMixin
 
 warnings.simplefilter(action='ignore', category=UserWarning)
 
 
-class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMixin, UtilsMixin):
-    """Main database client handling connections."""
+class DatabaseClient(
+    PreprocessingMixin,
+    ClusteringMixin,
+    GridMixin,
+    AnalysisMixin,
+    ResultsMixin,
+    TransformerUiMixin,
+    UtilsMixin,
+    LoadEditMixin,
+):
+    """Connection to the pylovo database with all query methods.
+
+    The query methods come from the mixins:
+
+    * ``PreprocessingMixin``: version snapshot, configuration tables, and loading buildings,
+      transformers and ways into the PLZ working tables.
+    * ``ClusteringMixin``: connected components, k-means and building clusters, transformer sizing.
+    * ``GridMixin``: routing and line queries for cable installation and visualisation rows.
+    * ``AnalysisMixin``: pandapower persistence, analysis parameters and GeoDataFrame readers.
+    * ``ResultsMixin``: saving working tables as results and deleting results.
+    * ``TransformerUiMixin``: queries of the transformer map UI.
+    * ``UtilsMixin``: PLZ working tables, transactions and shared lookups.
+    * ``LoadEditMixin``: manual load edits of stored grids and their audit table (:mod:`pylovo.load_editing`).
+
+    All queries share one psycopg2 connection (``search_path`` ``pylovo, public``) and cursor.
+    Most methods do not commit; call ``commit_changes()`` or ``rollback_changes()``. Use the
+    client as a context manager or call ``close()`` when done.
+
+    Args:
+        dbname: Database name; defaults to ``DBNAME`` from the ``.env`` file.
+        user: Database user; defaults to ``DBUSER``.
+        pw: Password; defaults to ``PASSWORD``.
+        host: Host; defaults to ``HOST``.
+        port: Port; defaults to ``PORT``.
+        **kwargs: ``log_file``: log file path (default ``log/log.txt``).
+
+    Raises:
+        psycopg2.OperationalError: If the database cannot be reached.
+    """
 
     def __init__(self, dbname=DBNAME, user=DBUSER, pw=PASSWORD, host=HOST, port=PORT, **kwargs):
         self.logger = utils.create_logger(
@@ -38,12 +80,10 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
             )
             raise err
 
-        # init supers after everything is set up
-        super().__init__()
-
         self.logger.debug(f"DatabaseClient is constructed and connected to {self.db_path}.")
 
     def _connect(self) -> None:
+        """Open the psycopg2 connection, its shared cursor and the SQLAlchemy engine."""
         self.conn = psy.connect(**self._connect_kwargs)
         self.cur = self.conn.cursor()
         self.sqla_engine = create_engine(
@@ -52,6 +92,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         )
 
     def _close_handles(self) -> None:
+        """Close cursor, connection and engine; safe on a partly constructed or closed client."""
         try:
             if hasattr(self, 'cur') and self.cur:
                 self.cur.close()
@@ -71,6 +112,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
             print(f"Warning: Error disposing SQLAlchemy engine: {e}")
 
     def _is_connection_usable(self) -> bool:
+        """Return whether the connection is open and answers a trivial query."""
         if not hasattr(self, 'conn') or self.conn is None or self.conn.closed != 0:
             return False
 
@@ -83,6 +125,13 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
             return False
 
     def ensure_connection(self, force: bool = False) -> None:
+        """Reconnect if the connection is closed or broken.
+
+        Uncommitted work of the old connection is lost.
+
+        Args:
+            force: Reconnect even if the current connection still works.
+        """
         if not force and self._is_connection_usable():
             return
 
@@ -91,6 +140,7 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
         self.logger.info("Re-established database connection.")
 
     def rollback_changes(self) -> None:
+        """Roll back the current transaction; does nothing if the connection is already gone."""
         try:
             if hasattr(self, 'conn') and self.conn and self.conn.closed == 0:
                 self.conn.rollback()
@@ -100,199 +150,15 @@ class DatabaseClient(PreprocessingMixin, ClusteringMixin, GridMixin, AnalysisMix
     def __enter__(self):
         """Context manager entry."""
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - ensures proper cleanup."""
+        """Context manager exit: close the connection without committing."""
         self.close()
-    
+
     def close(self):
-        """Explicitly close all database connections."""
+        """Close cursor, connection and engine. Uncommitted changes are discarded."""
         self._close_handles()
-    
+
     def __del__(self):
-        """Clean up database connections."""
+        """Close the connection when the client is garbage collected."""
         self.close()
-
-    @override
-    def get_connection(self):
-        return self.conn
-
-    @override
-    def get_logger(self):
-        return self.logger
-
-    @override
-    def get_sqla_engine(self):
-        return self.sqla_engine
-
-    def is_table_empty(self, table_name: str) -> bool:
-        """
-        Check if a table is empty (has no rows).
-
-        Parameters
-        ----------
-        table_name : str
-            Name of the table to check
-
-        Returns
-        -------
-        bool
-            True if table is empty or doesn't exist, False if it has data
-        """
-        try:
-            qualified_table_name = table_name if "." in table_name else f"pylovo.{table_name}"
-            query = f"SELECT COUNT(*) FROM {qualified_table_name};"
-            self.cur.execute(query)
-            count = self.cur.fetchone()[0]
-            return count == 0
-        except Exception as e:
-            self.logger.warning(f"Could not check if table {table_name} is empty: {e}")
-            return True  # Assume empty if we can't check
-
-    def save_tables(self, plz: int):
-
-        """Saves building and ways results from ZIP code-specific temporary tables to the permanent results tables.
-           Removes duplicates from the temporary building table to avoid violating the unique constraint."""
-
-        # suffixed table names for the current PLZ
-        buildings_table = f"buildings_tem_{plz}"
-        ways_table = f"ways_tem_{plz}"
-
-        # finding duplicates that violate the buildings_result_pkey constraint
-        # the key of building result is (version_id, objectid, plz)
-        query = f"""
-                DELETE
-                FROM {buildings_table} a USING (SELECT MIN(ctid) as ctid, objectid, plz
-                                                FROM {buildings_table}
-                                                GROUP BY (objectid, plz)
-                                                HAVING COUNT(*) > 1) b
-                WHERE a.objectid = b.objectid
-                  AND a.plz = b.plz
-                  AND a.ctid <> b.ctid;"""
-        self.cur.execute(query)
-
-        # Save building results
-        query = f"""
-            INSERT INTO pylovo.buildings_result
-                (version_id, objectid, grid_result_id, id, feature_id, height, floor_area, floor_number,
-                 residential_floor_area, nonresidential_floor_area, nonresidential_use, mix_score, mix_rule, mix_confidence,
-                 building_use, building_use_id, building_type, type, occupants, households, construction_year,
-                 postcode, address_street_id, street, house_number, geom, centroid, gemeindeschluessel,
-                 changelog_id, assigned_way_id, residential_peak_load_in_kw, nonresidential_peak_load_in_kw,
-                 nonresidential_mv_direct, peak_load_in_kw, vertice_id, connection_point, agg_connection_point)
-                SELECT '{VERSION_ID}' as version_id, objectid, gr.grid_result_id, id, feature_id, height,
-                       floor_area, floor_number, residential_floor_area, nonresidential_floor_area,
-                       nonresidential_use, mix_score, mix_rule, mix_confidence, building_use, building_use_id, building_type,
-                       type, occupants, households, bt.construction_year, postcode, address_street_id, street,
-                       house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id,
-                       residential_peak_load_in_kw, nonresidential_peak_load_in_kw, nonresidential_mv_direct,
-                       peak_load_in_kw, vertice_id, bt.connection_point, bt.agg_connection_point
-            FROM pylovo.{buildings_table} bt
-            JOIN pylovo.grid_result gr
-                ON bt.plz = gr.plz AND bt.kcid = gr.kcid AND bt.bcid = gr.bcid and gr.version_id = '{VERSION_ID}'
-                WHERE peak_load_in_kw != 0 AND peak_load_in_kw != -1;"""
-        self.cur.execute(query)
-
-        # Save ways results
-        query = f"""INSERT INTO pylovo.ways_result
-                        SELECT '{VERSION_ID}' as version_id, clazz, source, target, cost, reverse_cost, geom, way_id,
-                %(p)s as plz FROM pylovo.{ways_table};"""
-
-        self.cur.execute(query, vars={"p": plz})
-
-    def delete_plz_from_all_tables(self, plz: int, version_id: str) -> None:
-        """
-        Deletes all entries of corresponding networks in all tables for the given Version ID and plz.
-        :param plz: Postal code
-        :param version_id: Version ID
-        """
-        delete_ways_query = """DELETE
-               FROM pylovo.ways_result
-                   WHERE version_id = %(v)s
-                     AND plz = %(p)s;"""
-        self.cur.execute(delete_ways_query, {"v": version_id, "p": int(plz)})
-
-        query = f"""DELETE
-               FROM pylovo.postcode_result
-                   WHERE version_id = %(v)s
-                     AND postcode_result_plz = %(p)s;"""
-        self.cur.execute(query, {"v": version_id, "p": int(plz)})
-        self.refresh_materialized_views()
-        self.conn.commit()
-        self.logger.info(f"All data for PLZ {plz} and version {version_id} deleted")
-
-    def delete_versions_from_all_tables(self, version_ids: list[str]) -> int:
-        """Delete all entries of the given version IDs from all tables."""
-        if not version_ids:
-            raise ValueError("At least one version ID must be provided.")
-
-        self.cur.execute(
-            "SELECT version_id FROM pylovo.version WHERE version_id = ANY(%(versions)s);",
-            {"versions": version_ids},
-        )
-        existing_versions = {row[0] for row in self.cur.fetchall()}
-        missing_versions = [version_id for version_id in version_ids if version_id not in existing_versions]
-        if missing_versions:
-            missing = ", ".join(missing_versions)
-            raise ValueError(f"Version(s) not found in database: {missing}")
-
-        query = "DELETE FROM pylovo.version WHERE version_id = ANY(%(versions)s);"
-        self.cur.execute(query, {"versions": version_ids})
-        deleted_count = self.cur.rowcount
-        self.refresh_materialized_views()
-        self.conn.commit()
-        versions = ", ".join(version_ids)
-        self.logger.info(f"Version(s) {versions} deleted from all tables")
-        return deleted_count
-
-    def delete_version_from_all_tables(self, version_id: str) -> int:
-        """Delete all entries of the given version ID from all tables."""
-        return self.delete_versions_from_all_tables([version_id])
-
-    def delete_classification_version_from_related_tables(self, classification_id: str) -> None:
-        """
-        Deletes all rows with the given classification_id from related tables:
-        transformer_classified, sample_set, and classification_version.
-
-        :param classification_id: ID of the classification version to delete
-        """
-        query = "DELETE FROM pylovo.classification_version WHERE classification_id = %(cid)s;"
-        self.cur.execute(query, {"cid": classification_id})
-        self.conn.commit()
-
-        self.logger.info(f"Deleted classification ID {classification_id}.")
-
-    def delete_plz_from_sample_set_table(self, classification_id: str, plz: int) -> None:
-        """
-        Deletes the row corresponding to the given classification ID and PLZ from the sample_set table.
-
-        :param classification_id: ID of the classification version
-        :param plz: Postal code to be removed
-        """
-        query = """
-                DELETE
-            FROM pylovo.sample_set
-                WHERE classification_id = %(cid)s
-                  AND plz = %(p)s; \
-                """
-        self.cur.execute(query, {"cid": classification_id, "p": plz})
-        self.conn.commit()
-        self.logger.info(f"Deleted PLZ {plz} for classification ID {classification_id} from sample_set table.")
-
-    def delete_transformers(self) -> None:
-        """all transformers are deleted from table transformers in database"""
-        delete_query = "TRUNCATE TABLE pylovo.transformers;"
-        self.cur.execute(delete_query)
-        self.conn.commit()
-        self.logger.info('Transformers deleted.')
-
-    def write_ags_log(self, ags: int) -> None:
-        """write ags log to database: the amtliche gemeindeschluessel of the municipalities of which the buildings
-        have already been imported to the database
-        :param ags:  ags to be added
-        :rtype ags: numpy integer 64
-         """
-        query = f"""INSERT INTO pylovo.ags_log (ags)
-                   VALUES (%(a)s); """
-        self.cur.execute(query, {"a": int(ags), })
-        self.conn.commit()

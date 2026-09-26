@@ -1,10 +1,13 @@
-"""
-Plotting module for the pylovo project.
+"""Plotting functions of pylovo (needs the ``plots`` extra: ``uv sync --extra plots``).
 
-Organized by workflow:
-- generation: Grid generation plots
-- classification: Classification and clustering plots
-- validation_swf: Power flow validation_swf plots
-- gis_preparation: GIS data gis_preparation
-"""
+Subpackages by workflow:
 
+- ``generation``: plots of single generated grids (maps, plotly, tree layouts).
+- ``classification``: classification and clustering plots.
+- ``validation``: metric, geographic and power-flow plots for grid comparisons.
+- ``gis_preparation``: export of grid geometries for QGIS (used by ``pylovo-export``).
+- ``utils``: shared axis, colour and legend helpers.
+
+Import the functions from their submodules, e.g.
+``from pylovo.plotting.generation.networks import plot_simple_grid``.
+"""
