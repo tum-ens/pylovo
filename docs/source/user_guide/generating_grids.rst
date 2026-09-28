@@ -105,8 +105,8 @@ transformers have negative ``bcid`` values, greenfield grids positive ones.
      - Transformer location (and ``osm_id`` for brownfield positions).
    * - ``buildings_result``
      - Supplied buildings with loads, households and routing vertices.
-   * - ``lines_result``, ``lines_result_view``
-     - Feeder and service lines as geometries (the view adds offsets for parallel feeders).
+   * - ``lines_result``, ``lines_result_cache``
+     - Feeder and service lines as geometries (the cache adds offsets for parallel feeders; lines_result_view remains a compatibility SQL view).
    * - ``pandapower_bus``, ``pandapower_line``, ``pandapower_trafo``, ``pandapower_load``
      - The pandapower tables as SQL rows, for queries without JSON parsing.
 

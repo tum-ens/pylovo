@@ -63,9 +63,9 @@ Result tables in short
        ``comment`` is ``Normal`` (brownfield) or ``on_way`` (greenfield).
    * - ``lines_result``
      - Line geometries with type, buses, parallel count, length and ``feeder_section_id``.
-   * - ``lines_result_helper``, ``lines_result_view``
+   * - ``lines_result_helper``, ``lines_result_cache``
      - Offset geometries for parallel and split feeders, and the union of real and helper lines
-       with grid identifiers for GIS layers.
+       with grid identifiers for GIS layers. The old lines_result_view name remains a compatibility view.
    * - ``split_points``
      - Branching nodes of the feeders.
    * - ``pandapower_bus``, ``pandapower_line``, ``pandapower_trafo``, ``pandapower_load``

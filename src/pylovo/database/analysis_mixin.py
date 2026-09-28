@@ -26,7 +26,7 @@ class AnalysisMixin(BaseMixin):
             raise RuntimeError("PyLovo schema is not migrated; run pylovo-setup first")
         self.cur.execute(
             "SELECT 1 FROM pylovo.schema_migrations WHERE name = %s",
-            ("0002_legacy_columns",),
+            ("0007_line_cache_compatibility_view",),
         )
         if self.cur.fetchone() is None:
             raise RuntimeError("PyLovo schema is not current; run pylovo-setup first")

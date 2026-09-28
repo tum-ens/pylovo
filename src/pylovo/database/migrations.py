@@ -67,6 +67,23 @@ def legacy_buildings(cur: cursor) -> None:
     """)
 
 
+def rename_line_cache(cur: cursor) -> None:
+    """Keep all stored line rows while giving the physical cache an accurate name."""
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF to_regclass('pylovo.lines_result_cache') IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM pg_class
+                   WHERE oid = to_regclass('pylovo.lines_result_view')
+                     AND relkind IN ('r', 'p')
+               ) THEN
+                ALTER TABLE pylovo.lines_result_view RENAME TO lines_result_cache;
+            END IF;
+        END $$;
+    """)
+
+
 # The legacy create-table definitions used ADD COLUMN IF NOT EXISTS as an informal
 # migration. Keep the explicit list here so the baseline DDL describes only new tables.
 LEGACY_COLUMNS = {
@@ -86,7 +103,7 @@ LEGACY_COLUMNS = {
         "max_total_lv_voltage_drop_pu": "double precision",
     },
     "lines_result": {"feeder_section_id": "integer"},
-    "lines_result_view": {"feeder_section_id": "integer"},
+    "lines_result_cache": {"feeder_section_id": "integer"},
     "buildings_result": {
         "id": "integer", "feature_id": "integer", "objectid": "text",
         "height": "double precision", "floor_area": "double precision",
@@ -157,8 +174,18 @@ def legacy_columns(cur: cursor, epsg: int) -> None:
     """)
 
 
+def line_cache_compatibility_view(cur: cursor) -> None:
+    """Retain the established read name for QGIS and API consumers."""
+    cur.execute("""
+        CREATE OR REPLACE VIEW pylovo.lines_result_view AS
+        SELECT * FROM pylovo.lines_result_cache
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
+    ("0001a_line_cache_rename", rename_line_cache),
 )
 POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
+    ("0007_line_cache_compatibility_view", line_cache_compatibility_view),
 )

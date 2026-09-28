@@ -53,7 +53,8 @@ DESCRIPTIONS = {
                              "``transformers``.",
     "lines_result": "Feeder and service lines of each grid as projected line geometries.",
     "lines_result_helper": "Offset helper geometries that make parallel and split feeders visible in GIS.",
-    "lines_result_view": "Lines plus helper geometries with grid identifiers, prepared for QGIS layers.",
+    "lines_result_cache": "Physical per-grid cache of lines plus helper geometries for QGIS layers.",
+    "lines_result_view": "Compatibility SQL view over lines_result_cache for existing QGIS and API readers.",
     "split_points": "Street nodes at which a feeder branches.",
     "pandapower_bus": "Buses of the pandapower net with GeoJSON coordinates (``geo``).",
     "pandapower_line": "Lines of the pandapower net with sizing provenance (feeder section, sizing basis, "
@@ -202,7 +203,7 @@ ZONES = [
     ]),
     ("Per-grid results: every table references grid_result.grid_result_id (ON DELETE CASCADE)", 0.2, [
         ["buildings_result", "clustering_parameters", "transformer_positions"],
-        ["lines_result_helper", "lines_result", "lines_result_view"],
+        ["lines_result_helper", "lines_result", "lines_result_cache"],
         ["split_points", "pandapower_bus", "pandapower_line"],
         ["pandapower_trafo", "pandapower_load", "load_edit"],
     ]),
@@ -332,7 +333,7 @@ def draw_diagram(tables: dict[str, Table]) -> None:
     per_grid_top = zone_tops[ZONES[1][0]]
     _edge(ax, (gx + gw / 2, per_grid_top), (gx + gw / 2, gy), color=st.CATEGORICAL[0], lw=1.8)
     _edge(ax, side("lines_result_helper", "right"), side("lines_result", "left"))
-    _edge(ax, side("lines_result_view", "left"), side("lines_result", "right"))
+    _edge(ax, side("lines_result_cache", "left"), side("lines_result", "right"))
     # transformer_positions -> transformers along the right margin
     tx, ty, tw, th = boxes["transformer_positions"]
     rx, ry, rw, rh = boxes["transformers"]
@@ -380,7 +381,7 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
         ("Reference and input tables", ["version", "equipment_data", "consumer_categories", "postcode",
                                         "municipal_register", "transformers", "ags_log", "res", "oth", "ways"]),
         ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "buildings_result",
-                           "transformer_positions", "lines_result", "lines_result_helper", "lines_result_view",
+                           "transformer_positions", "lines_result", "lines_result_helper", "lines_result_cache",
                            "split_points", "pandapower_bus", "pandapower_line", "pandapower_trafo",
                            "pandapower_load", "clustering_parameters", "load_edit"]),
         ("Temporary tables", ["buildings_tem", "ways_tem"]),

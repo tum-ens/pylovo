@@ -64,3 +64,5 @@ before manual cleanup.
 
 The integer ``plz`` and ``ags`` database keys remain unchanged. Pad postcodes
 to five digits and AGS codes to eight digits when displaying or exporting them.
+The ``lines_result_cache`` table is a per-grid spatial cache, rebuilt after line
+changes; ``lines_result_view`` is a compatibility SQL view over it.

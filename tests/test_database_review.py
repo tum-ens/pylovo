@@ -30,7 +30,19 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
         db.cur.execute("SELECT name FROM pylovo.schema_migrations ORDER BY name")
         assert [row[0] for row in db.cur.fetchall()] == [
             "0001_legacy_buildings",
+            "0001a_line_cache_rename",
             "0002_legacy_columns",
+            "0007_line_cache_compatibility_view",
+        ]
+        db.cur.execute("""
+            SELECT relname, relkind FROM pg_class
+            WHERE oid IN (
+                'pylovo.lines_result_cache'::regclass,
+                'pylovo.lines_result_view'::regclass
+            ) ORDER BY relname
+        """)
+        assert db.cur.fetchall() == [
+            ("lines_result_cache", "r"), ("lines_result_view", "v")
         ]
         db.conn.rollback()
 

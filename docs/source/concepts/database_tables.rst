@@ -871,10 +871,10 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - ``varchar(50)``
      - 
 
-``lines_result_view``
-~~~~~~~~~~~~~~~~~~~~~
+``lines_result_cache``
+~~~~~~~~~~~~~~~~~~~~~~
 
-Lines plus helper geometries with grid identifiers, prepared for QGIS layers.
+Physical per-grid cache of lines plus helper geometries for QGIS layers.
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
@@ -1659,6 +1659,9 @@ Temporary street table of one postcode, created as ``ways_tem_<plz>``; pgRouting
 
 Views
 -----
+
+``lines_result_view``
+   Compatibility SQL view over lines_result_cache for existing QGIS and API readers.
 
 ``transformer_positions_with_grid``
    View: transformer positions joined with grid identifiers and equipment data.

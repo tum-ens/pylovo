@@ -63,7 +63,7 @@ class GridMixin(BaseMixin):
     """Routing queries on ``ways_tem`` and the line tables of generated grids.
 
     ``lines_result`` holds the installed cables. ``lines_result_helper``, ``split_points`` and
-    ``lines_result_view`` are visualisation rows derived from it (shifted duplicates of
+    ``lines_result_cache`` holds visualisation rows derived from it (shifted duplicates of
     overlapping lines, feeder split nodes, merged feeder sections) for GIS inspection.
     """
 
@@ -627,7 +627,7 @@ class GridMixin(BaseMixin):
             )
 
     def rebuild_lines_result_view_for_grid(self, plz: int, kcid: int, bcid: int) -> None:
-        """Rebuild the ``lines_result_view`` rows of one grid for GIS inspection.
+        """Rebuild the ``lines_result_cache`` rows of one grid for GIS inspection.
 
         Feeder lines of the same feeder section are merged into one row
         (``helper_type = 'merged_feeder_section'``); all other lines, and helpers in place of
@@ -643,11 +643,11 @@ class GridMixin(BaseMixin):
             return
 
         self.cur.execute(
-            "DELETE FROM pylovo.lines_result_view WHERE grid_result_id = %(grid_result_id)s;",
+            "DELETE FROM pylovo.lines_result_cache WHERE grid_result_id = %(grid_result_id)s;",
             {"grid_result_id": grid_result_id},
         )
         insert_query = """
-            INSERT INTO pylovo.lines_result_view (
+            INSERT INTO pylovo.lines_result_cache (
                 is_helper,
                 source_lines_result_id,
                 helper_type,
