@@ -3920,7 +3920,7 @@
     },
     "/api/transformers/{osm_id}": {
       "delete": {
-        "description": "Delete one transformer. Positions of generated grids that use it are removed as well.",
+        "description": "Delete one transformer. Positions of generated grids that use it stay; their osm_id is cleared.",
         "operationId": "delete_transformer_api_transformers__osm_id__delete",
         "parameters": [
           {

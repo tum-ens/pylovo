@@ -100,14 +100,14 @@ def update_capacity(osm_id: str, body: CapacityUpdate, request: Request) -> dict
 
 @router.delete("/{osm_id:path}")
 def delete_transformer(osm_id: str, request: Request, force: bool = False) -> dict:
-    """Delete one transformer. Positions of generated grids that use it are removed as well."""
+    """Delete one transformer. Positions of generated grids that use it stay; their osm_id is cleared."""
     ensure_no_writer(request)
     usage = queries.transformer_usage(osm_id)
     if not usage:
         raise HTTPException(404, f"Transformer {osm_id} not found")
     if usage["used_by_grids"] and not force:
         raise HTTPException(409, f"{osm_id} is the station of {usage['used_by_grids']} generated grid(s); "
-                                 "deleting it also deletes their transformer_positions rows. Pass force=true.")
+                                 "deleting it keeps their transformer positions but clears their osm_id. Pass force=true.")
     with db.database_client() as dbc:
         ok = dbc.delete_transformer_by_osm_id_trafo_ui(osm_id)
     if not ok:

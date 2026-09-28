@@ -122,8 +122,8 @@ class TransformerUiMixin(BaseMixin):
     def delete_transformer_by_osm_id_trafo_ui(self, osm_id: str) -> bool:
         """Delete a raw transformer and commit.
 
-        ``ON DELETE CASCADE`` also removes the ``transformer_positions`` rows of generated grids
-        that used this transformer.
+        Generated grids that used this transformer keep their ``transformer_positions`` rows;
+        ``ON DELETE SET NULL`` only clears their ``osm_id``.
 
         Args:
             osm_id: Identifier of the transformer.
