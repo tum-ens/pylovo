@@ -16,6 +16,15 @@ pylovo and its data foundation
   Software* 11(122), 10458. The input data framework used in the recommended pylovo setup.
 * `IEEE Xplore publication 11443094 <https://ieeexplore.ieee.org/document/11443094>`_.
 
+Planning assumptions
+--------------------
+
+* S. Niederle, D. J. Storch, C. J. Steinhart, C. Gutzmann, M. Kreißl, M. Günther, R. Tonkoski,
+  R. Witzmann and M. Finkel (2026), *Ermittlung des Netzausbaubedarfes im urbanen Verteilnetz durch
+  Sektorenkopplung mittels vereinfachter Netzberechnung*, 19. Symposium Energieinnovation, Graz.
+  Source of the voltage-band split (LV busbar 0.96 p.u., LV minimum 0.90 p.u.) and of the off-load
+  tap of at most ±5 % used by the validation power flow.
+
 Surrogate modelling
 -------------------
 

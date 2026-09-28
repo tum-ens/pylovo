@@ -391,6 +391,41 @@ disabled source never sizes a station.
    with a warning (the values used for the existing grids are unknown) and requires
    ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, the behaviour before the switch existed.
 
+Station voltage
+~~~~~~~~~~~~~~~
+
+The ±10 % voltage band of DIN EN 50160 is shared between the MV and the LV grid. pylovo follows
+the split of Niederle et al. (2026, :doc:`../further_reading`): the LV busbar of the station is at
+0.96 p.u. at the validation operating point, and the LV grid may drop to ``MIN_VM_PU`` of
+``POWER_FLOW_VOLTAGE_LIMITS`` (0.90 p.u.). Where that is not enough, the off-load tap of the station
+transformer lifts the LV side (:ref:`validation-snapshot`).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 16 42 14
+   :class: fixed-table
+
+   * - Key
+     - Shipped value
+     - Meaning
+     - Snapshot
+   * - ``LV_REFERENCE_VOLTAGE_PU``
+     - ``0.96``
+     - LV busbar voltage at the operating point; pylovo sets the MV-side voltage of the external
+       grid to reach it. ``null`` keeps the MV side at 1.0 p.u.
+     - ✓
+   * - ``MAX_TAP_STEPS``
+     - ``2``
+     - Off-load tap steps (2.5 % each for the pandapower standard types) pylovo may use to lift the
+       LV side when a bus is below ``MIN_VM_PU``; the smallest sufficient number is used, never
+       beyond ``MAX_VM_PU``. ``0`` never changes the tap.
+     - ✓
+
+Both affect only the validation power flow and its status, not the topology or the cable sizing.
+Versions whose snapshot predates them were generated with the MV side at 1.0 p.u. and a neutral
+tap; adding postcodes to such a version requires ``LV_REFERENCE_VOLTAGE_PU: null`` and
+``MAX_TAP_STEPS: 0``.
+
 Equipment
 ~~~~~~~~~
 

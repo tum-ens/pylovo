@@ -220,7 +220,9 @@ lines where several feeders share a street (``lines_result_helper``, ``lines_res
 9 -- Power-flow check
 ~~~~~~~~~~~~~~~~~~~~~
 
-The grid is solved for its validation snapshot (:ref:`validation-snapshot`) with Newton-Raphson.
+The grid is solved for its validation snapshot (:ref:`validation-snapshot`) with Newton-Raphson,
+with the LV busbar at ``LV_REFERENCE_VOLTAGE_PU`` and, where needed, the transformer tap moved by
+up to ``MAX_TAP_STEPS`` steps.
 A converged result inside ``POWER_FLOW_VOLTAGE_LIMITS`` is stored as ``converged``, a converged
 result outside the band as ``voltage_violation``, otherwise ``not_converged``. The solved feeder,
 service and total voltage drops are stored in ``grid_result``. Grids are kept in every case.

@@ -34,12 +34,16 @@ pandapower (default)
        vertices, ``Consumer Nodebus <vertex>`` for buildings; ``zone`` of a consumer bus is its load
        category (``Mixed`` for several). Coordinates are WGS84 in the ``geo`` column.
    * - External grid
-     - At ``MVbus 1`` with ``vm_pu = 1.0``.
+     - At ``MVbus 1``; ``vm_pu`` is set so that ``LVbus 1`` is at ``LV_REFERENCE_VOLTAGE_PU`` at the
+       validation operating point (1.0 without a reference).
    * - Transformer
      - 20/0.4 kV pandapower standard types. 100, 160, 250, 400 and 630 kVA are single units;
        500, 800 and 1260 kVA are two parallel units of half the rating; other ratings become
        parallel 630 kVA units. pandapower has no standard types below 0.25 MVA, so 100 and 160 kVA
-       reuse the 0.25 MVA data with the rating and no-load losses scaled.
+       reuse the 0.25 MVA data with the rating and no-load losses scaled. The off-load tap (HV side,
+       ±2 steps of 2.5 %) is neutral unless the validation power flow needs it
+       (``MAX_TAP_STEPS``). The OpenDSS backend supports neither the reference nor the tap and keeps
+       the MV side at 1.0 p.u.
    * - Lines
      - Standard types registered from the cable catalogue (``r``, ``x``, ``max_i_ka``; capacitance
        0). Feeder lines follow the street routes; service lines are straight connections. Extra
