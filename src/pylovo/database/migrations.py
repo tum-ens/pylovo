@@ -462,3 +462,24 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),
     ("0008_percentage_checks", percentage_checks),
 )
+LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
+MIGRATION_NAMES: tuple[str, ...] = (
+    *(name for name, _ in PRE_SCHEMA_MIGRATIONS),
+    LEGACY_COLUMNS_MIGRATION,
+    *(name for name, _ in POST_SCHEMA_MIGRATIONS),
+)
+
+
+def pending_migrations(cur: cursor) -> list[str] | None:
+    """Return the migrations not yet recorded in pylovo.schema_migrations, in order.
+
+    None means the schema has no ledger: it is missing or predates the migrations.
+    Works with tuple and dict cursors.
+    """
+    cur.execute("SELECT to_regclass('pylovo.schema_migrations') IS NOT NULL AS ledger")
+    row = cur.fetchone()
+    if not (row["ledger"] if isinstance(row, dict) else row[0]):
+        return None
+    cur.execute("SELECT name FROM pylovo.schema_migrations")
+    applied = {row["name"] if isinstance(row, dict) else row[0] for row in cur.fetchall()}
+    return [name for name in MIGRATION_NAMES if name not in applied]

@@ -30,7 +30,12 @@ from pylovo.data_import.import_transformers import (
 
 # Import table structure from packaged module (reliable for installed/editable usage)
 from pylovo.database.config_table_structure import CREATE_QUERIES, INFDB_OPTIONAL_TABLES
-from pylovo.database.migrations import PRE_SCHEMA_MIGRATIONS, POST_SCHEMA_MIGRATIONS, legacy_columns
+from pylovo.database.migrations import (
+    LEGACY_COLUMNS_MIGRATION,
+    POST_SCHEMA_MIGRATIONS,
+    PRE_SCHEMA_MIGRATIONS,
+    legacy_columns,
+)
 from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.utils import get_user_data_dir
 
@@ -184,7 +189,7 @@ class DatabaseConstructor:
 
             for name, action in PRE_SCHEMA_MIGRATIONS:
                 apply(name, action)
-            apply("0002_legacy_columns", lambda cur: legacy_columns(cur, TARGET_EPSG))
+            apply(LEGACY_COLUMNS_MIGRATION, lambda cur: legacy_columns(cur, TARGET_EPSG))
             try:
                 self.create_table("all")
             except psy.errors.DependentObjectsStillExist as exc:

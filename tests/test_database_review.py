@@ -77,6 +77,18 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
         db.conn.rollback()
 
 
+def test_pending_migrations_block_grid_writes():
+    from pylovo.database.migrations import MIGRATION_NAMES, pending_migrations
+
+    with client() as db:
+        assert pending_migrations(db.cur) == []
+        db.cur.execute("DELETE FROM pylovo.schema_migrations WHERE name = %s", (MIGRATION_NAMES[-1],))
+        assert pending_migrations(db.cur) == [MIGRATION_NAMES[-1]]
+        with pytest.raises(RuntimeError, match=MIGRATION_NAMES[-1]):
+            db.ensure_grid_persistence_schema()
+        db.conn.rollback()
+
+
 def test_session_staging_is_isolated_and_postcode_lock_serializes():
     with client() as left, client() as right:
         left.create_temp_tables(12345)

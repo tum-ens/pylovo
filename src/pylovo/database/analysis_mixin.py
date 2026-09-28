@@ -12,6 +12,7 @@ from psycopg2 import sql
 
 from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
+from pylovo.database.migrations import pending_migrations
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 
@@ -20,16 +21,15 @@ class AnalysisMixin(BaseMixin):
     """Store generated networks and analysis results, and read result tables for plotting."""
 
     def ensure_grid_persistence_schema(self) -> None:
-        """Require the tracked schema migration before writing grid results."""
-        self.cur.execute("SELECT to_regclass('pylovo.schema_migrations')")
-        if self.cur.fetchone()[0] is None:
-            raise RuntimeError("PyLovo schema is not migrated; run pylovo-setup first")
-        self.cur.execute(
-            "SELECT 1 FROM pylovo.schema_migrations WHERE name = %s",
-            ("0008_percentage_checks",),
-        )
-        if self.cur.fetchone() is None:
-            raise RuntimeError("PyLovo schema is not current; run pylovo-setup first")
+        """Require every schema migration before writing grid results."""
+        pending = pending_migrations(self.cur)
+        if pending is None:
+            raise RuntimeError("PyLovo schema is not migrated; run pylovo-setup first (it keeps existing grids)")
+        if pending:
+            raise RuntimeError(
+                f"PyLovo schema has pending migrations ({', '.join(pending)}); "
+                "run pylovo-setup first (it keeps existing grids)"
+            )
 
     def insert_plz_parameters(self, plz: int, trafo_string: str, load_count_string: str, bus_count_string: str):
         update_query = f"""INSERT INTO pylovo.plz_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)
