@@ -163,22 +163,9 @@ class ResultsMixin(BaseMixin):
     def delete_transformers(self) -> None:
         """Delete all rows of the raw transformer table ``pylovo.transformers`` and commit.
 
-        ``transformer_positions`` of generated grids reference these rows. Deleting them would
-        cascade into the stored results, so the method refuses while such rows exist.
-        (``TRUNCATE`` is never possible: PostgreSQL rejects it for any table referenced by a
-        foreign key, even when the referencing table is empty.)
-
-        Raises:
-            ValueError: If generated grids still reference transformers; delete those versions
-                first (``pylovo-delete --version ...``).
+        Stored positions retain their geometry; their raw osm_id becomes NULL.
+        DELETE runs in one transaction, unlike TRUNCATE with a referencing foreign key.
         """
-        self.cur.execute("SELECT COUNT(*) FROM pylovo.transformer_positions;")
-        referenced = self.cur.fetchone()[0]
-        if referenced:
-            raise ValueError(
-                f"{referenced} transformer positions of generated grids reference pylovo.transformers. "
-                "Delete those versions first (pylovo-delete --version <id>), then retry."
-            )
         self.cur.execute("DELETE FROM pylovo.transformers;")
         self.conn.commit()
         self.logger.info('Transformers deleted.')

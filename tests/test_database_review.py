@@ -33,8 +33,31 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0001a_line_cache_rename",
             "0001b_buildings_regular_view",
             "0002_legacy_columns",
+            "0003_integrity",
+            "0005_indexes_checks",
+            "0006_legacy_building_fk",
             "0007_line_cache_compatibility_view",
+            "0008_percentage_checks",
         ]
+        db.cur.execute("""
+            SELECT conname, convalidated
+            FROM pg_constraint
+            WHERE connamespace = 'pylovo'::regnamespace
+              AND conname IN (
+                'fk_grid_result_transformer_equipment',
+                'fk_tp_grid_version',
+                'fk_tp_osm_id',
+                'fk_pp_line_from_bus',
+                'fk_pp_line_to_bus',
+                'fk_pp_load_bus',
+                'fk_pp_trafo_hv_bus',
+                'fk_pp_trafo_lv_bus',
+                'fk_lines_result_helper_source_line',
+                'fk_lines_result_view_source_line',
+                'fk_buildings_result_grid_result'
+              )
+        """)
+        assert len(db.cur.fetchall()) == 11
         db.cur.execute("""
             SELECT relname, relkind FROM pg_class
             WHERE oid IN (

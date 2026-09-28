@@ -30,10 +30,12 @@ The schema is organised around three keys:
    GIS helpers, ``split_points``, the ``pandapower_*`` tables, ``clustering_parameters`` and the
    audit table ``load_edit``.
 
-All foreign keys of result tables use ``ON DELETE CASCADE``. Deleting a ``version`` row therefore
-removes all of its postcodes, grids and key figures; deleting a ``postcode_result`` row removes the
-grids of that postcode (this is what ``pylovo-delete`` does). The only exception is the link from
-``grid_result`` to ``equipment_data`` (``ON DELETE SET NULL``).
+Deleting a ``version`` row removes its postcodes, grids and key figures through
+cascading foreign keys. Deleting a ``postcode_result`` row removes the grids of
+that postcode (this is what ``pylovo-delete`` does). Deleting equipment clears only
+``grid_result.transformer_equipment_name``, and deleting a raw transformer clears
+only ``transformer_positions.osm_id``. Pandapower bus references are constrained
+within their grid; dependent elements are deleted before buses.
 
 Reference and input tables are not versioned: ``postcode``, ``transformers``,
 ``consumer_categories`` (synchronised with the configuration at every run), ``municipal_register``

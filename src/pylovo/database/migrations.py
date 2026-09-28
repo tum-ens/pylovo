@@ -174,6 +174,162 @@ def legacy_columns(cur: cursor, epsg: int) -> None:
     """)
 
 
+def integrity(cur: cursor) -> None:
+    """Fix deletion semantics and bind every network reference to its own grid."""
+    cur.execute("""
+        ALTER TABLE pylovo.grid_result
+            DROP CONSTRAINT IF EXISTS fk_grid_result_transformer_equipment;
+        ALTER TABLE pylovo.grid_result
+            ADD CONSTRAINT fk_grid_result_transformer_equipment
+            FOREIGN KEY (version_id, transformer_equipment_name)
+            REFERENCES pylovo.equipment_data(version_id, name)
+            ON DELETE SET NULL (transformer_equipment_name) NOT VALID;
+        ALTER TABLE pylovo.grid_result
+            VALIDATE CONSTRAINT fk_grid_result_transformer_equipment;
+
+        UPDATE pylovo.transformer_positions tp
+        SET version_id = gr.version_id
+        FROM pylovo.grid_result gr
+        WHERE tp.grid_result_id = gr.grid_result_id AND tp.version_id IS NULL;
+        ALTER TABLE pylovo.transformer_positions ALTER COLUMN version_id SET NOT NULL;
+        ALTER TABLE pylovo.transformer_positions
+            DROP CONSTRAINT IF EXISTS fk_tp_version_id;
+        ALTER TABLE pylovo.transformer_positions
+            DROP CONSTRAINT IF EXISTS fk_tp_grid_result_id;
+        ALTER TABLE pylovo.transformer_positions
+            DROP CONSTRAINT IF EXISTS fk_tp_osm_id;
+        ALTER TABLE pylovo.transformer_positions
+            ADD CONSTRAINT fk_tp_grid_version
+            FOREIGN KEY (version_id, grid_result_id)
+            REFERENCES pylovo.grid_result(version_id, grid_result_id)
+            ON DELETE CASCADE NOT VALID;
+        ALTER TABLE pylovo.transformer_positions
+            VALIDATE CONSTRAINT fk_tp_grid_version;
+        ALTER TABLE pylovo.transformer_positions
+            ADD CONSTRAINT fk_tp_osm_id FOREIGN KEY (osm_id)
+            REFERENCES pylovo.transformers(osm_id)
+            ON DELETE SET NULL NOT VALID;
+        ALTER TABLE pylovo.transformer_positions
+            VALIDATE CONSTRAINT fk_tp_osm_id;
+
+        ALTER TABLE pylovo.lines_result
+            ADD CONSTRAINT uq_lines_result_grid_id UNIQUE (grid_result_id, lines_result_id);
+        ALTER TABLE pylovo.lines_result_helper
+            DROP CONSTRAINT IF EXISTS fk_lines_result_helper_source_line;
+        ALTER TABLE pylovo.lines_result_helper
+            ADD CONSTRAINT fk_lines_result_helper_source_line
+            FOREIGN KEY (grid_result_id, source_lines_result_id)
+            REFERENCES pylovo.lines_result(grid_result_id, lines_result_id)
+            ON DELETE CASCADE NOT VALID;
+        ALTER TABLE pylovo.lines_result_helper
+            VALIDATE CONSTRAINT fk_lines_result_helper_source_line;
+        ALTER TABLE pylovo.lines_result_cache
+            DROP CONSTRAINT IF EXISTS fk_lines_result_view_source_line;
+        ALTER TABLE pylovo.lines_result_cache
+            ADD CONSTRAINT fk_lines_result_view_source_line
+            FOREIGN KEY (grid_result_id, source_lines_result_id)
+            REFERENCES pylovo.lines_result(grid_result_id, lines_result_id)
+            ON DELETE CASCADE NOT VALID;
+        ALTER TABLE pylovo.lines_result_cache
+            VALIDATE CONSTRAINT fk_lines_result_view_source_line;
+
+        ALTER TABLE pylovo.pandapower_line
+            ADD CONSTRAINT fk_pp_line_from_bus FOREIGN KEY (grid_result_id, from_bus)
+            REFERENCES pylovo.pandapower_bus(grid_result_id, pp_index)
+            DEFERRABLE INITIALLY DEFERRED NOT VALID;
+        ALTER TABLE pylovo.pandapower_line VALIDATE CONSTRAINT fk_pp_line_from_bus;
+        ALTER TABLE pylovo.pandapower_line
+            ADD CONSTRAINT fk_pp_line_to_bus FOREIGN KEY (grid_result_id, to_bus)
+            REFERENCES pylovo.pandapower_bus(grid_result_id, pp_index)
+            DEFERRABLE INITIALLY DEFERRED NOT VALID;
+        ALTER TABLE pylovo.pandapower_line VALIDATE CONSTRAINT fk_pp_line_to_bus;
+        ALTER TABLE pylovo.pandapower_load
+            ADD CONSTRAINT fk_pp_load_bus FOREIGN KEY (grid_result_id, bus)
+            REFERENCES pylovo.pandapower_bus(grid_result_id, pp_index)
+            DEFERRABLE INITIALLY DEFERRED NOT VALID;
+        ALTER TABLE pylovo.pandapower_load VALIDATE CONSTRAINT fk_pp_load_bus;
+        ALTER TABLE pylovo.pandapower_trafo
+            ADD CONSTRAINT fk_pp_trafo_hv_bus FOREIGN KEY (grid_result_id, hv_bus)
+            REFERENCES pylovo.pandapower_bus(grid_result_id, pp_index)
+            DEFERRABLE INITIALLY DEFERRED NOT VALID;
+        ALTER TABLE pylovo.pandapower_trafo VALIDATE CONSTRAINT fk_pp_trafo_hv_bus;
+        ALTER TABLE pylovo.pandapower_trafo
+            ADD CONSTRAINT fk_pp_trafo_lv_bus FOREIGN KEY (grid_result_id, lv_bus)
+            REFERENCES pylovo.pandapower_bus(grid_result_id, pp_index)
+            DEFERRABLE INITIALLY DEFERRED NOT VALID;
+        ALTER TABLE pylovo.pandapower_trafo VALIDATE CONSTRAINT fk_pp_trafo_lv_bus;
+
+        ALTER TABLE pylovo.sample_set ALTER COLUMN ags SET NOT NULL;
+    """)
+
+
+def indexes_and_checks(cur: cursor) -> None:
+    """Add measured search support and checks whose semantics are unambiguous."""
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_postcode_geom
+            ON pylovo.postcode USING gist (geom);
+        CREATE INDEX IF NOT EXISTS idx_buildings_result_geom
+            ON pylovo.buildings_result USING gist (geom);
+        CREATE INDEX IF NOT EXISTS idx_transformer_positions_geom
+            ON pylovo.transformer_positions USING gist (geom);
+        ALTER TABLE pylovo.equipment_data
+            ADD CONSTRAINT chk_equipment_positive_rating CHECK (s_max_kva IS NULL OR s_max_kva > 0) NOT VALID;
+        ALTER TABLE pylovo.equipment_data VALIDATE CONSTRAINT chk_equipment_positive_rating;
+        ALTER TABLE pylovo.equipment_data
+            ADD CONSTRAINT chk_equipment_positive_ampacity CHECK (max_i_a IS NULL OR max_i_a > 0) NOT VALID;
+        ALTER TABLE pylovo.equipment_data VALIDATE CONSTRAINT chk_equipment_positive_ampacity;
+        ALTER TABLE pylovo.lines_result
+            ADD CONSTRAINT chk_lines_result_length CHECK (length_km IS NULL OR length_km >= 0) NOT VALID;
+        ALTER TABLE pylovo.lines_result VALIDATE CONSTRAINT chk_lines_result_length;
+        ALTER TABLE pylovo.lines_result
+            ADD CONSTRAINT chk_lines_result_parallel CHECK (parallel IS NULL OR parallel > 0) NOT VALID;
+        ALTER TABLE pylovo.lines_result VALIDATE CONSTRAINT chk_lines_result_parallel;
+        ALTER TABLE pylovo.pandapower_line
+            ADD CONSTRAINT chk_pp_line_length CHECK (length_km IS NULL OR length_km >= 0) NOT VALID;
+        ALTER TABLE pylovo.pandapower_line VALIDATE CONSTRAINT chk_pp_line_length;
+        ALTER TABLE pylovo.pandapower_line
+            ADD CONSTRAINT chk_pp_line_parallel CHECK (parallel IS NULL OR parallel > 0) NOT VALID;
+        ALTER TABLE pylovo.pandapower_line VALIDATE CONSTRAINT chk_pp_line_parallel;
+        ALTER TABLE pylovo.buildings_result
+            ADD CONSTRAINT chk_building_peak_load CHECK (peak_load_in_kw IS NULL OR peak_load_in_kw >= 0) NOT VALID;
+        ALTER TABLE pylovo.buildings_result VALIDATE CONSTRAINT chk_building_peak_load;
+        ALTER TABLE pylovo.postcode
+            ADD CONSTRAINT chk_postcode_geom CHECK (geom IS NOT NULL) NOT VALID;
+        ALTER TABLE pylovo.postcode VALIDATE CONSTRAINT chk_postcode_geom;
+        ALTER TABLE pylovo.buildings_result
+            ADD CONSTRAINT chk_buildings_result_geom CHECK (geom IS NOT NULL) NOT VALID;
+        ALTER TABLE pylovo.buildings_result VALIDATE CONSTRAINT chk_buildings_result_geom;
+        ALTER TABLE pylovo.ways_result
+            ADD CONSTRAINT chk_ways_result_geom CHECK (geom IS NOT NULL) NOT VALID;
+        ALTER TABLE pylovo.ways_result VALIDATE CONSTRAINT chk_ways_result_geom;
+        ALTER TABLE pylovo.transformer_positions
+            ADD CONSTRAINT chk_transformer_positions_geom CHECK (geom IS NOT NULL) NOT VALID;
+        ALTER TABLE pylovo.transformer_positions VALIDATE CONSTRAINT chk_transformer_positions_geom;
+    """)
+
+
+def legacy_building_fk(cur: cursor) -> None:
+    """Restore the composite building-to-grid FK on pre-baseline tables."""
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conrelid = 'pylovo.buildings_result'::regclass
+                  AND conname = 'fk_buildings_result_grid_result'
+            ) THEN
+                ALTER TABLE pylovo.buildings_result
+                    ADD CONSTRAINT fk_buildings_result_grid_result
+                    FOREIGN KEY (version_id, grid_result_id)
+                    REFERENCES pylovo.grid_result(version_id, grid_result_id)
+                    ON DELETE CASCADE NOT VALID;
+                ALTER TABLE pylovo.buildings_result
+                    VALIDATE CONSTRAINT fk_buildings_result_grid_result;
+            END IF;
+        END $$;
+    """)
+
+
 def convert_buildings_view(cur: cursor) -> None:
     """Replace the refresh-heavy building copy with a live join view.
 
@@ -201,11 +357,56 @@ def line_cache_compatibility_view(cur: cursor) -> None:
     """)
 
 
+def percentage_checks(cur: cursor) -> None:
+    """Validate fractions and percentages using their documented units."""
+    cur.execute("""
+        ALTER TABLE pylovo.consumer_categories
+            ADD CONSTRAINT chk_consumer_sim_factor
+            CHECK (sim_factor BETWEEN 0 AND 1) NOT VALID;
+        ALTER TABLE pylovo.consumer_categories
+            VALIDATE CONSTRAINT chk_consumer_sim_factor;
+        ALTER TABLE pylovo.pandapower_load
+            ADD CONSTRAINT chk_pp_load_const_z_percent
+            CHECK (const_z_percent IS NULL OR const_z_percent BETWEEN 0 AND 100) NOT VALID;
+        ALTER TABLE pylovo.pandapower_load
+            VALIDATE CONSTRAINT chk_pp_load_const_z_percent;
+        ALTER TABLE pylovo.pandapower_load
+            ADD CONSTRAINT chk_pp_load_const_i_percent
+            CHECK (const_i_percent IS NULL OR const_i_percent BETWEEN 0 AND 100) NOT VALID;
+        ALTER TABLE pylovo.pandapower_load
+            VALIDATE CONSTRAINT chk_pp_load_const_i_percent;
+        ALTER TABLE pylovo.pandapower_trafo
+            ADD CONSTRAINT chk_pp_trafo_vk_percent
+            CHECK (vk_percent IS NULL OR vk_percent BETWEEN 0 AND 100) NOT VALID;
+        ALTER TABLE pylovo.pandapower_trafo
+            VALIDATE CONSTRAINT chk_pp_trafo_vk_percent;
+        ALTER TABLE pylovo.pandapower_trafo
+            ADD CONSTRAINT chk_pp_trafo_vkr_percent
+            CHECK (vkr_percent IS NULL OR vkr_percent BETWEEN 0 AND 100) NOT VALID;
+        ALTER TABLE pylovo.pandapower_trafo
+            VALIDATE CONSTRAINT chk_pp_trafo_vkr_percent;
+        ALTER TABLE pylovo.pandapower_trafo
+            ADD CONSTRAINT chk_pp_trafo_i0_percent
+            CHECK (i0_percent IS NULL OR i0_percent BETWEEN 0 AND 100) NOT VALID;
+        ALTER TABLE pylovo.pandapower_trafo
+            VALIDATE CONSTRAINT chk_pp_trafo_i0_percent;
+        ALTER TABLE pylovo.pandapower_trafo
+            ADD CONSTRAINT chk_pp_trafo_parallel
+            CHECK (parallel IS NULL OR parallel > 0) NOT VALID;
+        ALTER TABLE pylovo.pandapower_trafo
+            VALIDATE CONSTRAINT chk_pp_trafo_parallel;
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
     ("0001b_buildings_regular_view", convert_buildings_view),
 )
 POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
+    ("0003_integrity", integrity),
+    ("0005_indexes_checks", indexes_and_checks),
+    ("0006_legacy_building_fk", legacy_building_fk),
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),
+    ("0008_percentage_checks", percentage_checks),
 )

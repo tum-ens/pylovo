@@ -118,7 +118,7 @@ CREATE_QUERIES = {
         CONSTRAINT fk_grid_result_transformer_equipment
             FOREIGN KEY (version_id, transformer_equipment_name)
             REFERENCES pylovo.equipment_data(version_id, name)
-            ON DELETE SET NULL
+            ON DELETE SET NULL (transformer_equipment_name)
     );
     CREATE INDEX IF NOT EXISTS idx_grid_result_version_id_plz_bcid_kcid
     ON pylovo.grid_result (version_id, plz, bcid, kcid);
@@ -318,7 +318,7 @@ CREATE_QUERIES = {
     "sample_set": """CREATE TABLE IF NOT EXISTS pylovo.sample_set (
         classification_id integer NOT NULL,
         plz integer NOT NULL,
-        ags bigint,
+        ags bigint NOT NULL,
         bin_no integer,
         bins double precision,
         perc_bin double precision,
@@ -576,8 +576,8 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_transformers_geom
     ON pylovo.transformers USING gist (geom)
     """,
-    # One transformer position per generated grid. fk_tp_osm_id cascades: deleting a raw
-    # transformer also deletes the positions of grids that used it.
+    # One transformer position per generated grid. The migration changes raw-source
+    # deletion to preserve positions and clear only osm_id.
     "transformer_positions": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_positions (
         grid_result_id bigint PRIMARY KEY,

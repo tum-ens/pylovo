@@ -26,7 +26,7 @@ class AnalysisMixin(BaseMixin):
             raise RuntimeError("PyLovo schema is not migrated; run pylovo-setup first")
         self.cur.execute(
             "SELECT 1 FROM pylovo.schema_migrations WHERE name = %s",
-            ("0007_line_cache_compatibility_view",),
+            ("0008_percentage_checks",),
         )
         if self.cur.fetchone() is None:
             raise RuntimeError("PyLovo schema is not current; run pylovo-setup first")
@@ -182,7 +182,7 @@ class AnalysisMixin(BaseMixin):
 
     def _delete_pandapower_element_rows(self, grid_result_id: int) -> None:
         """Delete the ``pandapower_*`` element rows of one grid."""
-        for table_name in ("pandapower_bus", "pandapower_line", "pandapower_trafo", "pandapower_load"):
+        for table_name in ("pandapower_line", "pandapower_trafo", "pandapower_load", "pandapower_bus"):
             self.cur.execute(f"DELETE FROM pylovo.{table_name} WHERE grid_result_id = %(g)s", {"g": grid_result_id})
 
     def _insert_pandapower_bus_rows(self, grid_result_id: int, bus_df: pd.DataFrame | None) -> None:

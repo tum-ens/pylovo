@@ -180,6 +180,7 @@ class DatabaseConstructor:
                 apply(name, action)
             if applied:
                 self.dbc.refresh_materialized_views()
+            self.assert_schema()
             self.dbc.conn.commit()
         except Exception:
             self.dbc.conn.rollback()
@@ -188,6 +189,57 @@ class DatabaseConstructor:
             with self.dbc.conn.cursor() as cur:
                 cur.execute("SELECT pg_advisory_unlock(%s, %s)", (907360, 0))
             self.dbc.conn.commit()
+
+    def assert_schema(self) -> None:
+        """Detect missing or unvalidated key constraints after migration."""
+        required = {
+            "fk_grid_result_transformer_equipment",
+            "fk_tp_grid_version",
+            "fk_tp_osm_id",
+            "fk_pp_line_from_bus",
+            "fk_pp_line_to_bus",
+            "fk_pp_load_bus",
+            "fk_pp_trafo_hv_bus",
+            "fk_pp_trafo_lv_bus",
+            "fk_lines_result_helper_source_line",
+            "fk_lines_result_view_source_line",
+            "uq_lines_result_grid_id",
+            "fk_buildings_result_grid_result",
+        }
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("""
+                SELECT conname, convalidated, pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE connamespace = 'pylovo'::regnamespace
+                  AND conname = ANY(%s)
+            """, (list(required),))
+            found = {name: (validated, definition) for name, validated, definition in cur.fetchall()}
+            missing = required - found.keys()
+            invalid = {name for name, (validated, _) in found.items() if not validated}
+            if missing or invalid:
+                raise RuntimeError(
+                    f"PyLovo schema is incomplete: missing={sorted(missing)}, "
+                    f"not_validated={sorted(invalid)}"
+                )
+            if "SET NULL (transformer_equipment_name)" not in found[
+                "fk_grid_result_transformer_equipment"
+            ][1]:
+                raise RuntimeError("PyLovo schema has unsafe equipment delete action")
+            if "SET NULL" not in found["fk_tp_osm_id"][1]:
+                raise RuntimeError("PyLovo schema has unsafe raw transformer delete action")
+            cur.execute("SELECT to_regclass('pylovo.buildings_result_with_grid')")
+            if cur.fetchone()[0] is None:
+                raise RuntimeError("PyLovo schema is missing buildings_result_with_grid")
+            cur.execute("""
+                SELECT relkind FROM pg_class
+                WHERE oid = 'pylovo.buildings_result_with_grid'::regclass
+            """)
+            if cur.fetchone()[0] != "v":
+                raise RuntimeError("PyLovo building layer must be a regular view")
+            cur.execute("SELECT to_regclass('pylovo.lines_result_cache'), "
+                        "to_regclass('pylovo.lines_result_view')")
+            if any(item is None for item in cur.fetchone()):
+                raise RuntimeError("PyLovo line cache or compatibility view is missing")
 
     def ogr_to_db(self, ogr_file_list, skip_failures: bool = False):
         """Import geodata files into ``pylovo`` tables with ``ogr2ogr`` (GDAL).
@@ -264,14 +316,13 @@ class DatabaseConstructor:
         (can take more than 30 minutes). Delete the GeoJSON to force a fresh download.
 
         Args:
-            clear_existing: Delete all rows of ``pylovo.transformers`` first to avoid duplicate
-                primary keys. ``ON DELETE CASCADE`` also deletes the ``transformer_positions``
-                rows that reference them.
+            clear_existing: Replace OSM source rows only. Stored transformer positions
+                retain their geometry and lose only their raw osm_id reference.
         """
         if clear_existing and self.table_exists(table_name="transformers"):
             warnings.warn("transformers table is overwritten!")
             with self.dbc.conn.cursor() as cur:
-                cur.execute("DELETE FROM pylovo.transformers;")
+                cur.execute("DELETE FROM pylovo.transformers WHERE osm IS TRUE;")
             self.dbc.conn.commit()
 
         trafos_processed_target_geojson_path = get_trafos_processed_target_geojson_path(RELATION_ID)

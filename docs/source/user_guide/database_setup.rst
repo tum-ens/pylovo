@@ -4,7 +4,8 @@ Database setup
 PyLovo stores tables in the ``pylovo`` schema of the database configured in
 ``.env``. Run ``uv run pylovo-setup`` to create a new schema or apply pending
 migrations to an existing one. Existing grids and source data are retained.
-Migrations are recorded in ``pylovo.schema_migrations``.
+Migrations are recorded in ``pylovo.schema_migrations`` and validate existing
+rows before committing new foreign keys and checks.
 
 .. danger::
 
@@ -49,7 +50,9 @@ transformer import may fetch and process data if the processed GeoJSON is
 missing. On an existing schema, setup applies pending migrations and updates
 the SQL functions without reimporting raw data.
 
-No migration marker is written for a failed step. Run database-backed tests and performance comparisons on
+A migration stops if existing rows violate a new constraint. Correct those
+rows in a reviewed data repair and rerun setup. No migration marker is written
+for a failed step. Run database-backed tests and performance comparisons on
 an isolated database, never the active InfDB.
 
 Temporary tables and concurrency
@@ -69,3 +72,7 @@ changes; ``lines_result_view`` is a compatibility SQL view over it. The
 ``buildings_result_with_grid`` layer is now a live SQL view. Its ``result_uid``
 has a collision-safe format, so external projects that saved the old
 ``version_id_objectid`` value as a feature identifier must reload those identifiers.
+``grid_result.grid`` remains the complete pandapower network document used for
+network reconstruction; the typed pandapower tables serve SQL queries and reports.
+The existing ``postcode_result_plz``, ``vertice_id`` and ``ont_vertice_id``
+column names remain available to callers.
