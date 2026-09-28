@@ -33,7 +33,7 @@ The container image ``pylovo`` (``api/docker/Dockerfile``, published as
 
 .. warning::
 
-   The API can drop the schema ``pylovo`` (setup), delete versions and overwrite the
+   The API can explicitly reset the schema ``pylovo`` (confirmed database setup), delete versions and overwrite the
    configuration. It binds to ``127.0.0.1`` by default, rejects requests with a foreign ``Host``
    header and requires the header ``X-Pylovo-UI: 1`` for every state-changing call. Destructive
    actions need a typed confirmation (database name, version id, PLZ or DSO source) that the

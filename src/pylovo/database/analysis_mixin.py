@@ -20,60 +20,16 @@ class AnalysisMixin(BaseMixin):
     """Store generated networks and analysis results, and read result tables for plotting."""
 
     def ensure_grid_persistence_schema(self) -> None:
-        """Add non-destructive result columns required by current grid generation."""
-        required_columns = {
-            "grid_result": {
-                "ampacity_max_feeder_voltage_drop_percent": "double precision",
-                "selected_max_feeder_voltage_drop_percent": "double precision",
-                "feeder_voltage_drop_limit_met": "boolean",
-                "ampacity_max_service_voltage_drop_percent": "double precision",
-                "selected_max_service_voltage_drop_percent": "double precision",
-                "service_voltage_drop_limit_met": "boolean",
-                "service_voltage_upgraded_count": "integer",
-                "long_service_connection_count": "integer",
-                "max_total_design_voltage_drop_percent": "double precision",
-                "max_feeder_voltage_drop_pu": "double precision",
-                "max_service_voltage_drop_pu": "double precision",
-                "max_total_lv_voltage_drop_pu": "double precision",
-            },
-            "pandapower_line": {
-                "feeder_section_id": "integer",
-                "feeder_sizing_basis": "varchar(32)",
-                "ampacity_std_type": "varchar(100)",
-                "ampacity_parallel": "integer",
-                "service_sizing_basis": "varchar(32)",
-                "service_ampacity_voltage_drop_percent": "double precision",
-                "service_selected_voltage_drop_percent": "double precision",
-                "service_voltage_drop_limit_met": "boolean",
-                "service_length_review": "boolean",
-                "total_design_voltage_drop_percent": "double precision",
-            },
-        }
+        """Require the tracked schema migration before writing grid results."""
+        self.cur.execute("SELECT to_regclass('pylovo.schema_migrations')")
+        if self.cur.fetchone()[0] is None:
+            raise RuntimeError("PyLovo schema is not migrated; run pylovo-setup first")
         self.cur.execute(
-            """
-            SELECT table_name, column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'pylovo'
-              AND table_name IN ('grid_result', 'pandapower_line')
-            """
+            "SELECT 1 FROM pylovo.schema_migrations WHERE name = %s",
+            ("0002_legacy_columns",),
         )
-        existing_columns: dict[str, set[str]] = {}
-        for table_name, column_name in self.cur.fetchall():
-            existing_columns.setdefault(table_name, set()).add(column_name)
-
-        for table_name, columns in required_columns.items():
-            if table_name not in existing_columns:
-                raise RuntimeError(
-                    f"Required table pylovo.{table_name} does not exist; run pylovo-setup first."
-                )
-            for column_name, sql_type in columns.items():
-                if column_name in existing_columns[table_name]:
-                    continue
-                self.cur.execute(
-                    f"ALTER TABLE pylovo.{table_name} "
-                    f"ADD COLUMN IF NOT EXISTS {column_name} {sql_type};"
-                )
-                self.logger.info(f"Added persistence column pylovo.{table_name}.{column_name}.")
+        if self.cur.fetchone() is None:
+            raise RuntimeError("PyLovo schema is not current; run pylovo-setup first")
 
     def insert_plz_parameters(self, plz: int, trafo_string: str, load_count_string: str, bus_count_string: str):
         update_query = f"""INSERT INTO pylovo.plz_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)

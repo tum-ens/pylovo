@@ -66,7 +66,7 @@ Logs
    * - console
      - Progress of all steps, warnings and errors (level ``LOG_LEVEL``).
    * - ``log/log.txt``
-     - Log of the main process (appended; ``pylovo-setup`` clears ``log/``).
+     - Log of the main process (appended; setup keeps previous log files).
    * - ``log/log_<plz>.txt``
      - Log of one postcode in a parallel run (overwritten when the postcode runs again).
 

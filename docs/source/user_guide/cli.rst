@@ -31,20 +31,13 @@ pylovo-setup
 
 .. code-block:: text
 
-   pylovo-setup [-h] [--yes]
+   pylovo-setup [-h] [{setup,reset}] [--database DATABASE] [--yes]
 
-Drops the schema ``pylovo`` of the database in ``.env`` and sets it up again: tables, transformer
-candidates, postcode polygons, SQL functions and the municipal register
-(:doc:`database_setup`). Before anything is changed, the command prints host, port and database
-and asks you to type the database name; a wrong name or a non-interactive input aborts with exit
-code 1. ``--help`` only prints the steps.
-
-``--yes``
-   Skip the confirmation prompt (for scripts and the browser UI).
-
-.. danger::
-
-   All grids and analysis results in the schema are deleted. There is no undo.
+With no command, creates a new schema or migrates an existing one in place.
+Only ``reset --database NAME`` deletes the PyLovo schema; the name must match
+``DBNAME`` in ``.env``. Reset asks you to type the database name unless
+``--yes`` is supplied. The browser API uses this explicit reset command after
+its own typed confirmation. See :doc:`database_setup`.
 
 pylovo-generate
 ---------------

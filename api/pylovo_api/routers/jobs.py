@@ -161,10 +161,10 @@ def analyze(body: PlzBody, request: Request) -> dict:
 
 @router.post("/setup", status_code=202)
 def setup(body: SetupBody, request: Request) -> dict:
-    """``pylovo-setup --yes``: drops and recreates the ``pylovo`` schema. Type the database name."""
+    """Explicit schema reset from the browser; require the typed database name."""
     dbname = db.settings()["dbname"]
     require_confirm(body.confirm, dbname, "drop and rebuild the pylovo schema")
-    return _start(request, "setup", f"Database setup · {dbname}", pylovo_command("pylovo-setup", "--yes"),
+    return _start(request, "setup", f"Database setup · {dbname}", pylovo_command("pylovo-setup", "reset", "--database", dbname, "--yes"),
                   params={"dbname": dbname})
 
 

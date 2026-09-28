@@ -57,15 +57,15 @@ Code conventions
 Testing with a sandbox database
 -------------------------------
 
-Never develop against a database with results you need: ``pylovo-setup`` drops the schema
-``pylovo``. Use a disposable PostgreSQL server with PostGIS and pgRouting, for example a local
+Use a disposable database for schema and generation tests. The explicit
+``pylovo-setup reset --database NAME`` command drops the PyLovo schema. Use a disposable PostgreSQL server with PostGIS and pgRouting, for example a local
 container, and a separate ``.env``:
 
 #. Start the sandbox database and create PostGIS and pgRouting in ``public``.
 #. Load InfDB-shaped test data (schemas ``basedata`` and ``opendata``) for a small postcode, or use
    the file-based mode.
 #. Point ``.env`` to the sandbox (check with ``grep -E '^(HOST|PORT|DBNAME)' .env``), run
-   ``pylovo-setup --yes`` and ``pylovo-generate --plz <plz>``.
+   ``pylovo-setup`` and ``pylovo-generate --plz <plz>``.
 #. For behaviour-preserving changes, generate the same postcode before and after the change and
    compare ``grid_result``, ``buildings_result``, ``lines_result`` and the ``pandapower_*`` tables;
    generation is deterministic for a fixed configuration.

@@ -27,17 +27,14 @@ number whenever you change generation parameters (:ref:`versions`).
 3. Set up the pylovo schema
 ---------------------------
 
-.. danger::
-
-   ``pylovo-setup`` **drops the schema** ``pylovo`` **with all generated grids** and creates it
-   again. Run it once for a new database, never against a database whose results you still need.
+Run setup to create or migrate the schema without deleting existing grids:
 
 .. code-block:: bash
 
    uv run pylovo-setup
 
-The command asks you to confirm the target database name. See :doc:`../user_guide/database_setup`
-for prerequisites and what the setup loads.
+Only the explicit ``pylovo-setup reset --database NAME`` command deletes the
+schema. See :doc:`../user_guide/database_setup` for prerequisites.
 
 4. Generate grids
 -----------------

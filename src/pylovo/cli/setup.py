@@ -1,34 +1,19 @@
-"""Set up the pylovo database (``pylovo-setup``).
-
-The setup is destructive: it drops the ``pylovo`` schema with ``CASCADE`` (all generated grids,
-analysis results and imported transformers are lost) and rebuilds it from scratch. Without
-``--yes`` it asks the user to type the database name before anything is changed.
-"""
+"""Create or migrate the PyLovo schema; reset requires an explicit command and target."""
 
 import argparse
 import sys
+from pathlib import Path
 
 from pylovo import utils
 from pylovo.config_loader import CSV_FILE_LIST, DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
 from pylovo.data_import.municipal_register import create_municipal_register
 from pylovo.database.database_constructor import DatabaseConstructor
 
-DESCRIPTION = """\
-Create or reset the pylovo database schema.
+DESCRIPTION = """Create new PyLovo tables or migrate an existing schema.
 
-WARNING: this drops the schema 'pylovo' with CASCADE in the database configured in .env
-and deletes every generated grid, analysis result and imported transformer in it.
-
-Steps, in this order:
-  1. drop the schema 'pylovo' (CASCADE) and create it again
-  2. create all pylovo tables and apply the migrations recorded in pylovo.schema_migrations
-  3. import the transformer positions from the processed OSM geojson in
-     data/transformer_data/processed_trafos (if the file is missing, the transformers are
-     fetched from the Overpass API and processed first, which can take more than 30 min)
-  4. with USE_INFDB=True: copy the postcode data from the InfDB;
-     with USE_INFDB=False: import data/postcode.csv and build the ways table from OSM (~30 min)
-  5. load the PostGIS SQL functions used for ways preprocessing
-  6. fill the municipal register (data/municipal_register)
+With no command, setup is non-destructive. It creates missing tables, runs pending
+migrations, and imports source data only for a new schema. Use the explicit reset
+command to delete all data in the PyLovo schema.
 """
 
 
@@ -37,13 +22,10 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="pylovo-setup",
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Without --yes you are asked to type the database name before anything is dropped.",
     )
-    parser.add_argument(
-        "--yes",
-        action="store_true",
-        help="skip the confirmation prompt and drop the schema 'pylovo' right away (for scripts)",
-    )
+    parser.add_argument("command", nargs="?", choices=("setup", "reset"), default="setup")
+    parser.add_argument("--database", help="required for reset; must match DBNAME in .env")
+    parser.add_argument("--yes", action="store_true", help="skip interactive reset confirmation")
     return parser
 
 
@@ -65,7 +47,7 @@ def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
     print(f"  database: {dbname}")
     print("All grids, results and transformers stored in this schema will be deleted.")
     if sys.stdin is None or not sys.stdin.isatty():
-        print("stdin is not interactive: aborting. Use --yes to run the setup non-interactively.")
+        print("stdin is not interactive: aborting. Use reset --database NAME --yes for a non-interactive reset.")
         return False
     try:
         answer = input(f"Type the database name '{dbname}' to continue: ")
@@ -75,18 +57,27 @@ def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
     return answer.strip() == dbname
 
 
-def run_setup() -> None:
-    """Run all setup steps in their fixed order (drops and rebuilds the ``pylovo`` schema)."""
-    log_dir = utils.reset_log_directory()
-    logger = utils.create_logger(name="setup", log_file=log_dir / "log.txt", log_level=LOG_LEVEL)
+def run_setup(reset: bool = False) -> None:
+    """Migrate in place; import raw data only for a new or explicitly reset schema."""
+    logger = utils.create_logger(name="setup", log_file=Path("log/log.txt"), log_level=LOG_LEVEL)
 
     logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
     sgc = DatabaseConstructor()
-    logger.info("### RESETTING PYLOVO SCHEMA ###")
-    sgc.reset_schema()
+    with sgc.dbc.conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('pylovo.version')")
+        fresh = cur.fetchone()[0] is None
+    sgc.dbc.conn.commit()
+    if reset:
+        logger.info("### RESETTING PYLOVO SCHEMA ###")
+        sgc.reset_schema()
+        fresh = True
 
     logger.info("### CREATING OR MIGRATING PYLOVO SCHEMA ###")
     sgc.migrate_schema()
+    if not fresh:
+        sgc.load_ways_preprocessing_functions()
+        logger.info("### DONE: EXISTING DATABASE MIGRATED ###")
+        return
 
     logger.info("### DELETE EXISTING TRANSFORMERS AND INSERT NEW ONES INTO DB (without geojson in data/transformer_data this can take more than 30 min) ###")
     sgc.transformers_to_db(clear_existing=True)
@@ -117,16 +108,23 @@ def run_setup() -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Entry point of ``pylovo-setup``: parse arguments, confirm, then run the setup."""
-    args = _build_parser().parse_args(argv)
-    if args.yes:
-        print(f"--yes given: dropping schema 'pylovo' in database '{DBNAME}' on {HOST}:{PORT}.")
-    elif not confirm_schema_reset(DBNAME, HOST, PORT):
-        print("Setup aborted. Nothing was changed.")
-        sys.exit(1)
+    """Entry point: setup is safe by default, reset requires an explicit target."""
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "setup":
+        if args.yes or args.database:
+            parser.error("--yes and --database are only valid with reset")
+    else:
+        if not args.database:
+            parser.error("reset requires --database matching DBNAME in .env")
+        if args.database != DBNAME:
+            parser.error(f"reset target {args.database!r} does not match configured database {DBNAME!r}")
+        if not args.yes and not confirm_schema_reset(DBNAME, HOST, PORT):
+            print("Reset aborted. Nothing was changed.")
+            sys.exit(1)
     try:
-        run_setup()
-    except RuntimeError as exc:  # e.g. the PostGIS check of reset_schema, which runs before any drop
+        run_setup(reset=args.command == "reset")
+    except RuntimeError as exc:
         print(f"✗ Setup stopped: {exc}")
         sys.exit(1)
 

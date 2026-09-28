@@ -2408,7 +2408,7 @@
     },
     "/api/jobs/setup": {
       "post": {
-        "description": "``pylovo-setup --yes``: drops and recreates the ``pylovo`` schema. Type the database name.",
+        "description": "Explicit schema reset from the browser; require the typed database name.",
         "operationId": "setup_api_jobs_setup_post",
         "requestBody": {
           "content": {

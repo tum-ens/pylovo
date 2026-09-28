@@ -53,12 +53,12 @@ Set up the schema ``pylovo`` and generate grids (run the commands from the repos
 
 .. code-block:: bash
 
-   uv run pylovo-setup                       # DROPS the schema pylovo; asks for the database name
+   uv run pylovo-setup                       # creates or migrates the schema without deleting grids
    uv run pylovo-generate --plz 80803        # one postcode
    uv run pylovo-generate --ags 09162000     # all postcodes of a municipality
    uv run pylovo-analyze --plz 80803 --all   # key figures
 
-``pylovo-setup`` deletes all results in the schema ``pylovo``; run it once for a new database. The
+``pylovo-setup reset --database NAME`` explicitly deletes all PyLovo results; normal setup migrates in place. The
 grid parameters are in ``config/config_generation.yaml``; use a new ``VERSION_ID`` when you change
 them. All commands and options are described in the
 `command-line reference <https://pylovo.readthedocs.io/en/latest/user_guide/cli.html>`_.
