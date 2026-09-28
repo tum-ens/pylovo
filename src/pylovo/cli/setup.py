@@ -1,7 +1,10 @@
 """Create or migrate the PyLovo schema; reset requires an explicit command and target."""
 
 import argparse
+import logging
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from pylovo import utils
@@ -12,8 +15,9 @@ from pylovo.database.database_constructor import DatabaseConstructor
 DESCRIPTION = """Create new PyLovo tables or migrate an existing schema.
 
 With no command, setup is non-destructive. It creates missing tables, runs pending
-migrations, and imports source data only for a new schema. Use the explicit reset
-command to delete all data in the PyLovo schema.
+migrations and imports each reference table (transformers, postcodes, municipal
+register) while it is empty, so a rerun completes an interrupted setup. Use the
+explicit reset command to delete all data in the PyLovo schema.
 """
 
 
@@ -57,53 +61,64 @@ def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
     return answer.strip() == dbname
 
 
+@dataclass
+class ImportStep:
+    """A reference table that setup fills while it is empty."""
+
+    title: str
+    table: str
+    run: Callable[[], None]
+
+
+def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
+    """Return the reference tables of a complete schema in import order."""
+
+    def ways() -> None:
+        sgc.create_public_2po_table()
+        sgc.ways_to_db()
+
+    steps = [ImportStep("IMPORT OSM TRANSFORMERS (without the processed GeoJSON in data/transformer_data "
+                        "this can take more than 30 min)", "transformers",
+                        lambda: sgc.transformers_to_db(clear_existing=False))]
+    if USE_INFDB:
+        # Copy the postcode polygons from the InfDB into the local 'postcode' table.
+        steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb))
+    else:
+        # File-based data path: postcode CSV plus the OSM ways table.
+        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode", lambda: sgc.csv_to_db(CSV_FILE_LIST)))
+        steps.append(ImportStep("POPULATE public_2po_4pgr AND THE ways TABLE (~30 min)", "ways", ways))
+    # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
+    steps.append(ImportStep("FILL municipal_register TABLE", "municipal_register", create_municipal_register))
+    return steps
+
+
+def build_schema(sgc: DatabaseConstructor, steps: list[ImportStep], logger: logging.Logger) -> None:
+    """Create or migrate the tables, fill the empty reference tables and load the SQL functions."""
+    logger.info("### CREATING OR MIGRATING PYLOVO SCHEMA ###")
+    sgc.migrate_schema()
+    for step in steps:
+        if sgc.table_is_empty_or_missing(step.table):
+            logger.info(f"### {step.title} ###")
+            step.run()
+        else:
+            logger.info(f"### SKIPPED: pylovo.{step.table} already has rows ###")
+    logger.info("### LOAD POSTGIS FUNCTIONS FOR WAYS PREPROCESSING ###")
+    sgc.load_ways_preprocessing_functions()
+
+
 def run_setup(reset: bool = False) -> None:
-    """Migrate in place; import raw data only for a new or explicitly reset schema."""
+    """Create or migrate the schema, then import every reference table that is still empty.
+
+    A rerun therefore completes an interrupted setup; tables with rows are kept.
+    """
     logger = utils.create_logger(name="setup", log_file=Path("log/log.txt"), log_level=LOG_LEVEL)
 
     logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
     sgc = DatabaseConstructor()
-    with sgc.dbc.conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('pylovo.version')")
-        fresh = cur.fetchone()[0] is None
-    sgc.dbc.conn.commit()
     if reset:
         logger.info("### RESETTING PYLOVO SCHEMA ###")
         sgc.reset_schema()
-        fresh = True
-
-    logger.info("### CREATING OR MIGRATING PYLOVO SCHEMA ###")
-    sgc.migrate_schema()
-    if not fresh:
-        sgc.load_ways_preprocessing_functions()
-        logger.info("### DONE: EXISTING DATABASE MIGRATED ###")
-        return
-
-    logger.info("### DELETE EXISTING TRANSFORMERS AND INSERT NEW ONES INTO DB (without geojson in data/transformer_data this can take more than 30 min) ###")
-    sgc.transformers_to_db(clear_existing=True)
-
-    if USE_INFDB:
-        # Copy the postcode polygons from the InfDB into the local 'postcode' table.
-        logger.info("### FETCH AND POPULATE POSTCODE DATA FROM INFDB ###")
-        sgc.load_postcode_from_infdb()
-    else:
-        # File-based data path: postcode CSV plus the OSM ways table.
-        logger.info("### POPULATE DB WITH CSV RAW DATA ###")
-        sgc.csv_to_db(CSV_FILE_LIST)
-
-        logger.info("### POPULATE public_2po_4pgr TABLE (~30 min) ###")
-        sgc.create_public_2po_table()
-
-        logger.info("### PROCESS WAYS AND INSERTING THEM INTO ways TABLE ###")
-        sgc.ways_to_db()
-
-    logger.info("### LOAD POSTGIS FUNCTIONS FOR WAYS PREPROCESSING ###")
-    sgc.load_ways_preprocessing_functions()
-
-    # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
-    logger.info("### FILL municipal_register TABLE ###")
-    create_municipal_register()
-
+    build_schema(sgc, import_steps(sgc), logger)
     logger.info("### DONE ###")
 
 

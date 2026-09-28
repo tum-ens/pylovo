@@ -44,12 +44,13 @@ Running setup
    uv run pylovo-setup reset --database NAME
    uv run pylovo-setup reset --database NAME --yes  # explicit scripted reset
 
-On a new schema, setup creates PostGIS and pgRouting in ``public`` if needed,
-creates tables, imports transformer candidates and postcode data, installs
-street preprocessing functions and fills the municipal register. OSM
-transformer import may fetch and process data if the processed GeoJSON is
-missing. On an existing schema, setup applies pending migrations and updates
-the SQL functions without reimporting raw data.
+Setup creates PostGIS and pgRouting in ``public`` if needed, creates missing
+tables and applies pending migrations. It then imports every reference table
+that is still empty: transformer candidates, postcode data (and the street
+network with ``USE_INFDB=False``) and the municipal register. Tables that have
+rows are kept, so running setup again completes an interrupted setup. Finally
+it installs or updates the street preprocessing functions. OSM transformer
+import may fetch and process data if the processed GeoJSON is missing.
 
 A migration stops if existing rows violate a new constraint. Correct those
 rows in a reviewed data repair and rerun setup. A migration also stops, and

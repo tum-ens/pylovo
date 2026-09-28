@@ -96,6 +96,10 @@ class DatabaseConstructor:
         """Return whether a table or view of this name exists in the ``pylovo`` schema."""
         return table_name in self.get_table_name_list()
 
+    def table_is_empty_or_missing(self, table_name: str) -> bool:
+        """Return whether ``pylovo.<table_name>`` does not exist yet or has no rows."""
+        return not self.table_exists(table_name) or self.dbc.is_table_empty(table_name)
+
     def create_table(self, table_name):
         """Create one table of ``CREATE_QUERIES``, or all of them, and commit.
 
