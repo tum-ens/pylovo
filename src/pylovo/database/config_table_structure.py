@@ -709,7 +709,7 @@ CREATE_QUERIES = {
                                )
     """,
     # GIS views. Only transformer_classified_with_grid is materialized and refreshed.
-    # The equipment_data columns stay NULL while grid_result.transformer_equipment_name is unset.
+    # Equipment columns are present when the selected unit has a unique catalog match.
     "transformer_positions_with_grid": """
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
         SELECT

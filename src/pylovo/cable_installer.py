@@ -268,6 +268,7 @@ class CableInstaller:
 
         self.backend.create_component(trafo_spec)
         self.backend.set_transformer_rating(trafo_spec.name, transformer_rated_power * 1e-3 / parallel)
+        self.dbc.set_transformer_equipment_name(plz, kcid, bcid, transformer_rated_power / parallel)
 
     def _node_bus(self, vertex: int) -> str:
         """Bus name of a street vertex: ``LVbus 1`` for the station's own vertex, else its connection node."""

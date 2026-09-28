@@ -83,6 +83,30 @@ class GridMixin(BaseMixin):
         self.cur.execute(query)
         return self.cur.fetchall()
 
+    def set_transformer_equipment_name(
+        self, plz: int, kcid: int, bcid: int, unit_rating_kva: float
+    ) -> None:
+        """Persist a catalog transformer only when the unit rating maps uniquely."""
+        if not float(unit_rating_kva).is_integer():
+            return
+        self.cur.execute(
+            """SELECT name FROM pylovo.equipment_data
+               WHERE version_id = %s AND typ = 'Transformer' AND s_max_kva = %s""",
+            (VERSION_ID, int(unit_rating_kva)),
+        )
+        matches = self.cur.fetchall()
+        if len(matches) != 1:
+            self.logger.warning(
+                "No unique transformer equipment for version=%s, unit_rating=%s kVA",
+                VERSION_ID, unit_rating_kva,
+            )
+            return
+        self.cur.execute(
+            """UPDATE pylovo.grid_result SET transformer_equipment_name = %s
+               WHERE version_id = %s AND plz = %s AND kcid = %s AND bcid = %s""",
+            (matches[0][0], VERSION_ID, plz, kcid, bcid),
+        )
+
     def fetch_node_coordinates(self, plz: int) -> dict[int, tuple[float, float]]:
         """Return the WGS84 ``(lon, lat)`` of every pgRouting vertex of a PLZ, keyed by vertex ID."""
         vertices = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz) + "_vertices_pgr")

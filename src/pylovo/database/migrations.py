@@ -263,6 +263,28 @@ def integrity(cur: cursor) -> None:
     """)
 
 
+def backfill_equipment(cur: cursor) -> None:
+    """Map only known standard station configurations to a unique catalog row."""
+    cur.execute("""
+        WITH candidates AS (
+            SELECT gr.grid_result_id, MIN(ed.name) AS name, COUNT(*) AS matches
+            FROM pylovo.grid_result gr
+            JOIN pylovo.equipment_data ed ON ed.version_id = gr.version_id
+                AND ed.typ = 'Transformer'
+                AND ed.s_max_kva = CASE
+                    WHEN gr.transformer_rated_power IN (500, 800, 1260)
+                        THEN gr.transformer_rated_power / 2
+                    ELSE gr.transformer_rated_power
+                END
+            WHERE gr.transformer_equipment_name IS NULL
+              AND gr.transformer_rated_power IN (100, 160, 250, 400, 500, 630, 800, 1260)
+            GROUP BY gr.grid_result_id
+        )
+        UPDATE pylovo.grid_result gr SET transformer_equipment_name = c.name
+        FROM candidates c WHERE gr.grid_result_id = c.grid_result_id AND c.matches = 1;
+    """)
+
+
 def indexes_and_checks(cur: cursor) -> None:
     """Add measured search support and checks whose semantics are unambiguous."""
     cur.execute("""
@@ -405,6 +427,7 @@ PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
 )
 POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0003_integrity", integrity),
+    ("0004_equipment_backfill", backfill_equipment),
     ("0005_indexes_checks", indexes_and_checks),
     ("0006_legacy_building_fk", legacy_building_fk),
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),

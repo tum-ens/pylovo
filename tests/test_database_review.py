@@ -34,6 +34,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0001b_buildings_regular_view",
             "0002_legacy_columns",
             "0003_integrity",
+            "0004_equipment_backfill",
             "0005_indexes_checks",
             "0006_legacy_building_fk",
             "0007_line_cache_compatibility_view",
@@ -119,6 +120,112 @@ def test_session_staging_is_isolated_and_postcode_lock_serializes():
         right.conn.rollback()
         left.cur.execute("SELECT to_regclass('pylovo.ways_tem_12345')")
         assert left.cur.fetchone() == (None,)
+
+
+def test_cross_grid_references_and_raw_transformer_delete(monkeypatch):
+    with client() as db:
+        cur = db.cur
+        version = "t" + uuid.uuid4().hex[:8]
+        polygon = "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+        cur.execute("INSERT INTO pylovo.version (version_id) VALUES (%s)", (version,))
+        cur.execute(
+            """INSERT INTO pylovo.postcode (plz, geom)
+               VALUES (12345, ST_Multi(ST_GeomFromText(%s, %s)))""",
+            (polygon, TARGET_EPSG),
+        )
+        cur.execute(
+            """INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz, geom)
+               VALUES (%s, 12345, ST_Multi(ST_GeomFromText(%s, %s)))""",
+            (version, polygon, TARGET_EPSG),
+        )
+        cur.execute(
+            """INSERT INTO pylovo.grid_result (version_id, plz, kcid, bcid)
+               VALUES (%s, 12345, 1, 1), (%s, 12345, 2, 1)
+               RETURNING grid_result_id""",
+            (version, version),
+        )
+        grid1, grid2 = [row[0] for row in cur.fetchall()]
+        cur.execute(
+            """INSERT INTO pylovo.equipment_data
+               (version_id, name, s_max_kva, typ)
+               VALUES (%s, 'Tr_100', 100, 'Transformer')""",
+            (version,),
+        )
+        import pylovo.database.grid_mixin as grid_mixin
+
+        monkeypatch.setattr(grid_mixin, "VERSION_ID", version)
+        db.set_transformer_equipment_name(12345, 1, 1, 100)
+        cur.execute(
+            "SELECT transformer_equipment_name FROM pylovo.grid_result WHERE grid_result_id=%s",
+            (grid1,),
+        )
+        assert cur.fetchone() == ("Tr_100",)
+        cur.execute("DELETE FROM pylovo.equipment_data WHERE version_id=%s", (version,))
+        cur.execute(
+            """SELECT version_id, transformer_equipment_name FROM pylovo.grid_result
+               WHERE grid_result_id=%s""",
+            (grid1,),
+        )
+        assert cur.fetchone() == (version, None)
+
+        cur.execute("INSERT INTO pylovo.transformers (osm_id) VALUES ('test/raw')")
+        cur.execute(
+            """INSERT INTO pylovo.transformer_positions
+               (grid_result_id, version_id, osm_id, geom)
+               VALUES (%s, %s, 'test/raw', ST_SetSRID(ST_MakePoint(0, 0), %s))""",
+            (grid1, version, TARGET_EPSG),
+        )
+        cur.execute("DELETE FROM pylovo.transformers WHERE osm_id='test/raw'")
+        cur.execute(
+            """SELECT osm_id, geom IS NOT NULL FROM pylovo.transformer_positions
+               WHERE grid_result_id=%s""",
+            (grid1,),
+        )
+        assert cur.fetchone() == (None, True)
+
+        cur.execute(
+            """INSERT INTO pylovo.pandapower_bus (grid_result_id, pp_index)
+               VALUES (%s, 1), (%s, 2)""",
+            (grid1, grid2),
+        )
+        cur.execute("SAVEPOINT invalid_pp")
+        cur.execute(
+            """INSERT INTO pylovo.pandapower_line
+               (grid_result_id, pp_index, from_bus, to_bus)
+               VALUES (%s, 1, 1, 2)""",
+            (grid1,),
+        )
+        with pytest.raises(psycopg2.errors.ForeignKeyViolation):
+            cur.execute("SET CONSTRAINTS fk_pp_line_to_bus IMMEDIATE")
+        cur.execute("ROLLBACK TO SAVEPOINT invalid_pp")
+
+        cur.execute(
+            """INSERT INTO pylovo.lines_result (grid_result_id)
+               VALUES (%s) RETURNING lines_result_id""",
+            (grid1,),
+        )
+        line_id = cur.fetchone()[0]
+        cur.execute(
+            """INSERT INTO pylovo.lines_result_cache
+               (is_helper, grid_result_id, version_id, plz, kcid, bcid)
+               VALUES (false, %s, %s, 12345, 1, 1)""",
+            (grid1, version),
+        )
+        cur.execute(
+            "SELECT COUNT(*) FROM pylovo.lines_result_view WHERE grid_result_id=%s",
+            (grid1,),
+        )
+        assert cur.fetchone() == (1,)
+        cur.execute("SAVEPOINT invalid_helper")
+        with pytest.raises(psycopg2.errors.ForeignKeyViolation):
+            cur.execute(
+                """INSERT INTO pylovo.lines_result_helper
+                   (grid_result_id, source_lines_result_id)
+                   VALUES (%s, %s)""",
+                (grid2, line_id),
+            )
+        cur.execute("ROLLBACK TO SAVEPOINT invalid_helper")
+        db.conn.rollback()
 
 
 def test_reset_refuses_to_drop_external_dependents():
