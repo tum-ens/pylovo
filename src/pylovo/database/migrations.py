@@ -10,12 +10,41 @@ from collections.abc import Callable
 from psycopg2.extensions import cursor
 
 
+def drop_rebuilt_views(cur: cursor) -> None:
+    """Drop, without CASCADE, only the views that the baseline must rebuild.
+
+    These are the old materialized views, and transformer_positions_with_grid while
+    transformer_positions still lacks columns that change ``tp.*``. Otherwise CREATE OR
+    REPLACE VIEW keeps views of other schemas (e.g. GridExpand's QGIS views) that depend on it.
+    """
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_class
+                       WHERE oid = to_regclass('pylovo.lines_result_with_grid') AND relkind = 'm') THEN
+                DROP MATERIALIZED VIEW pylovo.lines_result_with_grid;
+            END IF;
+            IF EXISTS (SELECT 1 FROM pg_class
+                       WHERE oid = to_regclass('pylovo.buildings_result_with_grid') AND relkind = 'm') THEN
+                DROP MATERIALIZED VIEW pylovo.buildings_result_with_grid;
+            END IF;
+            IF to_regclass('pylovo.transformer_positions_with_grid') IS NOT NULL
+               AND EXISTS (
+                   SELECT 1 FROM unnest(ARRAY['osm', 'lod2', 'lod2_objectid']) AS required(name)
+                   WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                     WHERE table_schema='pylovo' AND table_name='transformer_positions'
+                                       AND column_name = required.name)
+               ) THEN
+                DROP VIEW pylovo.transformer_positions_with_grid;
+            END IF;
+        END $$;
+    """)
+
+
 def legacy_buildings(cur: cursor) -> None:
     """Move the old building column renames out of the create-table definitions."""
+    drop_rebuilt_views(cur)
     cur.execute("""
-        DROP MATERIALIZED VIEW IF EXISTS pylovo.lines_result_with_grid;
-        DROP MATERIALIZED VIEW IF EXISTS pylovo.buildings_result_with_grid;
-        DROP VIEW IF EXISTS pylovo.transformer_positions_with_grid;
         DO $$
         BEGIN
             IF to_regclass('pylovo.buildings_result') IS NOT NULL THEN

@@ -249,6 +249,25 @@ def test_reset_refuses_to_drop_external_dependents():
             db.conn.commit()
 
 
+def test_transformer_view_is_replaced_in_place_for_external_dependents():
+    """GridExpand's QGIS views depend on transformer_positions_with_grid; migrations keep them."""
+    from pylovo.database.migrations import drop_rebuilt_views
+
+    with client() as db:
+        db.cur.execute("CREATE SCHEMA pylovo_review_gridexpand")
+        db.cur.execute("""CREATE MATERIALIZED VIEW pylovo_review_gridexpand.transformer_mv AS
+                          SELECT grid_result_id, s_max_kva, geom FROM pylovo.transformer_positions_with_grid""")
+        try:
+            drop_rebuilt_views(db.cur)
+            DatabaseConstructor(db).create_table("transformer_positions_with_grid")
+            db.cur.execute("SELECT to_regclass('pylovo_review_gridexpand.transformer_mv')")
+            assert db.cur.fetchone()[0] is not None
+        finally:
+            db.conn.rollback()
+            db.cur.execute("DROP SCHEMA IF EXISTS pylovo_review_gridexpand CASCADE")
+            db.conn.commit()
+
+
 def test_legacy_building_columns_and_key_migrate_without_reset():
     """Exercise the pre-baseline path in a separate disposable database."""
     from psycopg2 import sql
