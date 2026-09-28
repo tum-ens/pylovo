@@ -85,7 +85,7 @@ class GridMixin(BaseMixin):
 
     def fetch_node_coordinates(self, plz: int) -> dict[int, tuple[float, float]]:
         """Return the WGS84 ``(lon, lat)`` of every pgRouting vertex of a PLZ, keyed by vertex ID."""
-        vertices = sql.Identifier("pylovo", plz_table_name("ways_tem", plz) + "_vertices_pgr")
+        vertices = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz) + "_vertices_pgr")
         query = sql.SQL("""
             SELECT id,
                    ST_X(ST_Transform(geom, 4326)),
@@ -103,7 +103,7 @@ class GridMixin(BaseMixin):
         Returns:
             ``{connection_point: [vertice_id, ...]}`` over all loaded consumer buildings.
         """
-        buildings = sql.Identifier("pylovo", plz_table_name("buildings_tem", plz))
+        buildings = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
         query = sql.SQL("""
             SELECT COALESCE(agg_connection_point, connection_point) AS connection_point,
                    vertice_id

@@ -122,11 +122,10 @@ class GridGenerator:
         self.dbc.ensure_grid_persistence_schema()
         self.dbc.commit_changes()
         print('-------------------- start', self.plz, '---------------------------')
-        self.dbc.create_temp_tables(plz)
-        # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
-
+        self.dbc.acquire_plz_lock(plz)
         interrupted = False
         try:
+            self.dbc.create_temp_tables(plz)
             self.generate_grid()
             if not self.dbc.get_list_from_plz(plz):
                 self.logger.warning(
@@ -170,6 +169,10 @@ class GridGenerator:
                 self.logger.error(
                     f"Failed to clean up PLZ-specific temporary tables for PLZ {plz}: {cleanup_error}"
                 )
+                self.dbc.rollback_changes()
+            finally:
+                self.dbc.release_plz_lock(plz)
+                self.dbc.commit_changes()
 
         if interrupted:
             raise KeyboardInterrupt("Grid generation interrupted by user")
@@ -203,10 +206,6 @@ class GridGenerator:
         """
         self.dbc.ensure_grid_persistence_schema()
         self.dbc.commit_changes()
-        # One-time cleanup of leftover PLZ-specific temp tables from previously interrupted runs.
-        self.dbc.drop_orphaned_plz_temp_tables()
-        self.dbc.commit_changes()
-
         plz_list = [int(plz) for plz in df_plz["plz"]]
 
         # Parallel workers only help with several PLZ and more than one allowed core.
@@ -480,6 +479,9 @@ class GridGenerator:
         else:
             ways_count = self.dbc.set_ways_tem_table(self.plz)
         self.logger.info(f"The ways_tem table filled with {ways_count} ways")
+
+        # Index loaded roads before nearest-road searches.
+        self.dbc.index_and_analyze_staging(self.plz)
 
         # Run preprocessing functions that segment roads and connect buildings
         self.dbc.preprocess_ways()

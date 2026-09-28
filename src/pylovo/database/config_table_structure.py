@@ -773,7 +773,7 @@ CREATE_QUERIES = {
 # Working tables of one PLZ during generation (see UtilsMixin.create_temp_tables).
 # peak_load_in_kw = -1 marks transformer rows in buildings_tem.
 TEMP_CREATE_QUERIES = {
-    "buildings_tem": """CREATE TABLE IF NOT EXISTS pylovo.buildings_tem
+    "buildings_tem": """CREATE TEMP TABLE IF NOT EXISTS buildings_tem
     (
         id integer,
         feature_id integer,
@@ -814,7 +814,7 @@ TEMP_CREATE_QUERIES = {
         connection_point integer,
         agg_connection_point integer
     )""",
-    "ways_tem": """CREATE TABLE IF NOT EXISTS pylovo.ways_tem
+    "ways_tem": """CREATE TEMP TABLE IF NOT EXISTS ways_tem
     (
         clazz integer,
         source integer,

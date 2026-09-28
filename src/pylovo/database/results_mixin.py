@@ -24,8 +24,8 @@ class ResultsMixin(BaseMixin):
         Args:
             plz: Postcode whose working tables ``buildings_tem_<plz>`` and ``ways_tem_<plz>`` are saved.
         """
-        buildings_table = sql.Identifier("pylovo", plz_table_name("buildings_tem", plz))
-        ways_table = sql.Identifier("pylovo", plz_table_name("ways_tem", plz))
+        buildings_table = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
+        ways_table = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz))
 
         # buildings_result is keyed by (version_id, objectid): keep one row per objectid
         # (the working table holds a single PLZ) and delete the duplicates.

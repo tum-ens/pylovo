@@ -55,14 +55,12 @@ an isolated database, never the active InfDB.
 Temporary tables and concurrency
 --------------------------------
 
-During a run, every postcode gets its own tables ``pylovo.buildings_tem_<plz>``,
-``pylovo.ways_tem_<plz>`` and ``pylovo.ways_tem_<plz>_vertices_pgr``; each database session
-accesses them through temporary views ``buildings_tem``, ``ways_tem`` and
-``ways_tem_vertices_pgr``. They are dropped when the postcode is finished, also after errors.
-
-At its start, ``pylovo-generate`` drops all leftover ``*_tem_<plz>`` tables of interrupted runs.
-Do not start two ``pylovo-generate`` commands against the same database at the same time; use
-one command with several postcodes, which runs them in parallel worker processes.
+Road and building working tables are local to each database session. PostgreSQL
+removes them when the session ends, even after a crash. Generation takes a
+session advisory lock per postcode so two runs cannot write results for the
+same postcode concurrently. Old persistent staging tables left by earlier
+versions are not removed automatically; inspect their owners and activity
+before manual cleanup.
 
 The integer ``plz`` and ``ags`` database keys remain unchanged. Pad postcodes
 to five digits and AGS codes to eight digits when displaying or exporting them.

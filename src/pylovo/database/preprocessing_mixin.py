@@ -1126,6 +1126,15 @@ class PreprocessingMixin(BaseMixin):
 
         return count
 
+    def index_and_analyze_staging(self, plz: int) -> None:
+        """Index loaded session-local roads before nearest-road searches."""
+        roads = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz))
+        buildings = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
+        self.cur.execute(sql.SQL("CREATE INDEX ON {} USING gist (geom)").format(roads))
+        self.cur.execute(sql.SQL("CREATE INDEX ON {} (way_id)").format(roads))
+        self.cur.execute(sql.SQL("ANALYZE {}").format(roads))
+        self.cur.execute(sql.SQL("ANALYZE {}").format(buildings))
+
     def preprocess_ways(self) -> None:
         """Connect buildings and transformers to the street network in ``ways_tem``.
 
@@ -1169,8 +1178,8 @@ class PreprocessingMixin(BaseMixin):
         """
         edge_name = plz_table_name("ways_tem", plz)
         vertices_name = f"{edge_name}_vertices_pgr"
-        edges = sql.Identifier("pylovo", edge_name)
-        vertices = sql.Identifier("pylovo", vertices_name)
+        edges = sql.Identifier("pg_temp", edge_name)
+        vertices = sql.Identifier("pg_temp", vertices_name)
 
         # Align endpoints before extracting vertices so pgRouting does not split components on
         # floating-point noise introduced by geometric preprocessing.
@@ -1187,7 +1196,7 @@ class PreprocessingMixin(BaseMixin):
             ALTER TABLE {edges} ADD COLUMN IF NOT EXISTS target integer;
         """).format(edges=edges))
 
-        self.cur.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE;").format(vertices))
+        self.cur.execute(sql.SQL("DROP TABLE IF EXISTS {};").format(vertices))
 
         # Step 1: pgr_extractVertices() takes the edge query as a text argument.
         edge_query = sql.SQL("SELECT way_id AS id, geom FROM {} ORDER BY way_id").format(edges)

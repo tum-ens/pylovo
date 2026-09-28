@@ -21,10 +21,10 @@ class UtilsMixin(BaseMixin):
     def create_temp_tables(self, plz: int) -> None:
         """Create the working tables of one PLZ and session-local views on them.
 
-        Every table of ``TEMP_CREATE_QUERIES`` is created as ``pylovo.<name>_<plz>`` so that
-        parallel workers on different PLZ do not collide. A ``TEMP VIEW <name>`` exposes the table
-        under its base name for the rest of the session; that is why most queries simply use
-        ``buildings_tem`` and ``ways_tem``. Existing working tables of the PLZ are dropped first.
+        The working tables are session-local and disappear if the connection ends.
+        A temporary view exposes each table under its base name to existing queries.
+        Different sessions can use the same postcode without touching each other's
+        staging data; the generation caller serializes result writes with an advisory lock.
 
         Args:
             plz: Postcode whose working tables are created.
@@ -33,11 +33,10 @@ class UtilsMixin(BaseMixin):
         for base_name, query in TEMP_CREATE_QUERIES.items():
             table_name = plz_table_name(base_name, plz)
             self.cur.execute(query.replace(base_name, table_name))
-            # For debugging, a regular view (CREATE OR REPLACE VIEW) makes the table visible
-            # under its base name in other sessions as well.
+            # The view keeps existing unqualified SQL working on this session's table.
             self.cur.execute(
                 sql.SQL("CREATE TEMP VIEW {} AS SELECT * FROM {}").format(
-                    sql.Identifier(base_name), sql.Identifier("pylovo", table_name)
+                    sql.Identifier(base_name), sql.Identifier("pg_temp", table_name)
                 )
             )
 
@@ -48,50 +47,34 @@ class UtilsMixin(BaseMixin):
             plz: Postcode whose working tables are dropped.
         """
         for base_name in TEMP_CREATE_QUERIES:
-            self.cur.execute(sql.SQL("DROP VIEW IF EXISTS {} CASCADE").format(sql.Identifier(base_name)))
+            self.cur.execute(sql.SQL("DROP VIEW IF EXISTS {}").format(sql.Identifier("pg_temp", base_name)))
             self.cur.execute(
-                sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
-                    sql.Identifier("pylovo", plz_table_name(base_name, plz))
+                sql.SQL("DROP TABLE IF EXISTS {}").format(
+                    sql.Identifier("pg_temp", plz_table_name(base_name, plz))
                 )
             )
-        self.cur.execute("DROP VIEW IF EXISTS ways_tem_vertices_pgr CASCADE")
+        self.cur.execute("DROP VIEW IF EXISTS pg_temp.ways_tem_vertices_pgr")
         # Vertices table written by build_pgr_network_topology()
         self.cur.execute(
-            sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
-                sql.Identifier("pylovo", plz_table_name("ways_tem", plz) + "_vertices_pgr")
+            sql.SQL("DROP TABLE IF EXISTS {}").format(
+                sql.Identifier("pg_temp", plz_table_name("ways_tem", plz) + "_vertices_pgr")
             )
         )
 
+    def acquire_plz_lock(self, plz: int) -> None:
+        """Serialize generation of one postcode across database sessions."""
+        self.cur.execute("SELECT pg_advisory_lock(%s, %s)", (907361, int(plz)))
+
+    def release_plz_lock(self, plz: int) -> None:
+        """Release the session lock even after a failed generation transaction."""
+        self.cur.execute("SELECT pg_advisory_unlock(%s, %s)", (907361, int(plz)))
+
     def drop_orphaned_plz_temp_tables(self) -> None:
-        """Drop PLZ working tables left behind by interrupted runs.
+        """Legacy entry point: session-local tables are reclaimed by PostgreSQL.
 
-        Only PLZ-suffixed tables are removed (for example ``buildings_tem_80805``,
-        ``ways_tem_80805`` and ``ways_tem_80805_vertices_pgr``). Call it only while no other
-        generation process works on the same database: their working tables look the same.
+        Persistent staging tables from older versions require a separate, reviewed cleanup.
         """
-        query = """
-            SELECT tablename
-            FROM pg_tables
-            WHERE schemaname = %(schema)s
-              AND (
-                  tablename ~ '^buildings_tem_[0-9]+$'
-                  OR tablename ~ '^ways_tem_[0-9]+$'
-                  OR tablename ~ '^ways_tem_[0-9]+_vertices_pgr$'
-              )
-            ORDER BY tablename;
-        """
-        self.cur.execute(query, {"schema": "pylovo"})
-        table_names = [row[0] for row in self.cur.fetchall()]
-
-        for table_name in table_names:
-            self.cur.execute(
-                sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier("pylovo", table_name))
-            )
-
-        if table_names:
-            self.logger.info(
-                f"Dropped {len(table_names)} orphaned PLZ temp tables from previous runs."
-            )
+        self.logger.info("Session-local staging requires no global orphan cleanup.")
 
     def refresh_materialized_views(self) -> None:
         """Refresh the materialized views of ``REFRESH_QUERIES`` so they reflect the result tables."""

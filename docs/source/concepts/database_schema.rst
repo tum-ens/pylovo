@@ -88,7 +88,7 @@ Views and temporary tables
    Materialised view of ``buildings_result`` with ``kcid``, ``bcid`` and ``plz``; refreshed after
    generation and deletion.
 ``buildings_tem_<plz>``, ``ways_tem_<plz>``, ``ways_tem_<plz>_vertices_pgr``
-   Working tables of one run (:doc:`../user_guide/database_setup`).
+   Session-local working tables of one run (:doc:`../user_guide/database_setup`).
 
 Coordinates
 -----------

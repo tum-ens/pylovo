@@ -129,7 +129,7 @@ def _columns(text: str) -> list[str]:
 
 def _parse_table(name: str, sql: str, temporary: bool = False) -> Table | None:
     sql = re.sub(r"--[^\n]*", "", sql)
-    match = re.search(r"CREATE TABLE IF NOT EXISTS (?:pylovo\.)?(\w+)\s*\(", sql)
+    match = re.search(r"CREATE (?:TEMP )?TABLE IF NOT EXISTS (?:pylovo\.)?(\w+)\s*\(", sql)
     if not match:
         return None
     start = match.end()

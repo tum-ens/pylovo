@@ -35,6 +35,51 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
         db.conn.rollback()
 
 
+def test_session_staging_is_isolated_and_postcode_lock_serializes():
+    with client() as left, client() as right:
+        left.create_temp_tables(12345)
+        right.create_temp_tables(12345)
+        left.commit_changes()
+        right.commit_changes()
+        left.cur.execute(
+            "INSERT INTO ways_tem (way_id, geom) "
+            "VALUES (1, ST_SetSRID(ST_MakeLine(ST_MakePoint(0, 0), ST_MakePoint(1, 0)), %s))",
+            (TARGET_EPSG,),
+        )
+        right.cur.execute(
+            "INSERT INTO ways_tem (way_id, geom) "
+            "VALUES (2, ST_SetSRID(ST_MakeLine(ST_MakePoint(0, 0), ST_MakePoint(0, 1)), %s))",
+            (TARGET_EPSG,),
+        )
+        DatabaseConstructor(left).load_ways_preprocessing_functions()
+        left.cur.execute(
+            "SELECT insert_way_segment(103, "
+            "ST_SetSRID(ST_MakeLine(ST_MakePoint(1, 0), ST_MakePoint(2, 0)), %s))",
+            (TARGET_EPSG,),
+        )
+        left.cur.execute("SELECT way_id FROM ways_tem ORDER BY way_id")
+        assert left.cur.fetchall() == [(1,), (2,)]
+        right.cur.execute("SELECT way_id FROM ways_tem")
+        assert right.cur.fetchall() == [(2,)]
+        left.index_and_analyze_staging(12345)
+        left.build_pgr_network_topology(12345)
+        left.cur.execute("SELECT count(*) FROM ways_tem_vertices_pgr")
+        assert left.cur.fetchone() == (3,)
+        left.acquire_plz_lock(12345)
+        right.cur.execute("SELECT pg_try_advisory_lock(%s, %s)", (907361, 12345))
+        assert right.cur.fetchone() == (False,)
+        left.release_plz_lock(12345)
+        right.cur.execute("SELECT pg_try_advisory_lock(%s, %s)", (907361, 12345))
+        assert right.cur.fetchone() == (True,)
+        right.release_plz_lock(12345)
+        left.drop_temp_tables(12345)
+        right.drop_temp_tables(12345)
+        left.conn.rollback()
+        right.conn.rollback()
+        left.cur.execute("SELECT to_regclass('pylovo.ways_tem_12345')")
+        assert left.cur.fetchone() == (None,)
+
+
 def test_reset_refuses_to_drop_external_dependents():
     with client() as db:
         db.cur.execute("CREATE SCHEMA IF NOT EXISTS pylovo_review_external")
