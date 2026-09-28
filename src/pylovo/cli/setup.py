@@ -9,8 +9,9 @@ from pathlib import Path
 
 from pylovo import utils
 from pylovo.config_loader import CSV_FILE_LIST, DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
-from pylovo.data_import.municipal_register import create_municipal_register
+from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
 from pylovo.database.database_constructor import DatabaseConstructor
+from pylovo.utils import get_user_data_dir
 
 DESCRIPTION = """Create new PyLovo tables or migrate an existing schema.
 
@@ -68,6 +69,11 @@ class ImportStep:
     title: str
     table: str
     run: Callable[[], None]
+    check: Callable[[], list[str]] = list  # problems with the input data; checked before any change
+
+
+def _missing(paths: list[Path]) -> list[str]:
+    return [f"missing input file {path}" for path in paths if not path.exists()]
 
 
 def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
@@ -82,13 +88,17 @@ def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
                         lambda: sgc.transformers_to_db(clear_existing=False))]
     if USE_INFDB:
         # Copy the postcode polygons from the InfDB into the local 'postcode' table.
-        steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb))
+        steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb,
+                                lambda: [problem] if (problem := sgc.infdb_postcodes_problem()) else []))
     else:
         # File-based data path: postcode CSV plus the OSM ways table.
-        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode", lambda: sgc.csv_to_db(CSV_FILE_LIST)))
-        steps.append(ImportStep("POPULATE public_2po_4pgr AND THE ways TABLE (~30 min)", "ways", ways))
+        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode", lambda: sgc.csv_to_db(CSV_FILE_LIST),
+                                lambda: _missing([Path(f["path"]) for f in CSV_FILE_LIST])))
+        steps.append(ImportStep("POPULATE public_2po_4pgr AND THE ways TABLE (~30 min)", "ways", ways,
+                                lambda: _missing([get_user_data_dir() / "ways" / "ways_public_2po_4pgr.sql"])))
     # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
-    steps.append(ImportStep("FILL municipal_register TABLE", "municipal_register", create_municipal_register))
+    steps.append(ImportStep("FILL municipal_register TABLE", "municipal_register", create_municipal_register,
+                            lambda: [f"missing input file {path}" for path in missing_input_files()]))
     return steps
 
 
@@ -115,10 +125,16 @@ def run_setup(reset: bool = False) -> None:
 
     logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
     sgc = DatabaseConstructor()
+    steps = import_steps(sgc)
+    logger.info("### CHECKING THE INPUT DATA ###")
+    todo = [step for step in steps if reset or sgc.table_is_empty_or_missing(step.table)]
+    problems = [problem for step in todo for problem in step.check()]
+    if problems:
+        raise RuntimeError("nothing was changed, the input data is incomplete: " + "; ".join(problems))
     if reset:
         logger.info("### RESETTING PYLOVO SCHEMA ###")
         sgc.reset_schema()
-    build_schema(sgc, import_steps(sgc), logger)
+    build_schema(sgc, steps, logger)
     logger.info("### DONE ###")
 
 

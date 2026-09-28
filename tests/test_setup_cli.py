@@ -39,8 +39,8 @@ def test_help_and_old_yes_flag_cannot_reset(monkeypatch, capsys):
 class FakeConstructor:
     """Records the setup steps instead of touching a database."""
 
-    def __init__(self, empty=(), fail_on=None):
-        self.calls, self.empty, self.fail_on = [], set(empty), fail_on
+    def __init__(self, empty=(), fail_on=None, infdb_problem=None):
+        self.calls, self.empty, self.fail_on, self.infdb_problem = [], set(empty), fail_on, infdb_problem
 
     def _record(self, name):
         self.calls.append(name)
@@ -49,6 +49,9 @@ class FakeConstructor:
 
     def table_is_empty_or_missing(self, table):
         return table in self.empty
+
+    def infdb_postcodes_problem(self):
+        return self.infdb_problem
 
     def migrate_schema(self):
         self._record("migrate")
@@ -71,6 +74,7 @@ def _fake_setup(monkeypatch, tmp_path, fake):
     monkeypatch.setattr(setup, "DatabaseConstructor", lambda: fake)
     monkeypatch.setattr(setup, "USE_INFDB", True)
     monkeypatch.setattr(setup, "create_municipal_register", lambda: fake._record("register"))
+    monkeypatch.setattr(setup, "missing_input_files", lambda: [])
 
 
 def test_setup_imports_every_empty_reference_table(monkeypatch, tmp_path):
@@ -86,6 +90,20 @@ def test_rerun_completes_an_interrupted_setup_and_keeps_filled_tables(monkeypatc
     setup.run_setup()
     assert fake.calls == ["migrate", "postcode", "register", "functions"]
     fake = FakeConstructor()
+    _fake_setup(monkeypatch, tmp_path, fake)
+    setup.run_setup()
+    assert fake.calls == ["migrate", "functions"]
+
+
+def test_missing_inputs_stop_setup_and_reset_before_any_change(monkeypatch, tmp_path):
+    fake = FakeConstructor(empty={"postcode"}, infdb_problem="the InfDB table opendata.postcodes_germany does not exist")
+    _fake_setup(monkeypatch, tmp_path, fake)
+    with pytest.raises(RuntimeError, match="nothing was changed.*postcodes_germany does not exist"):
+        setup.run_setup()
+    with pytest.raises(RuntimeError, match="postcodes_germany"):
+        setup.run_setup(reset=True)  # a reset imports every table, so every input is checked
+    assert fake.calls == []
+    fake = FakeConstructor(infdb_problem="unreachable")  # nothing to import: inputs are not needed
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup()
     assert fake.calls == ["migrate", "functions"]

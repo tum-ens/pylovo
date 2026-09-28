@@ -48,7 +48,10 @@ Setup creates PostGIS and pgRouting in ``public`` if needed, creates missing
 tables and applies pending migrations. It then imports every reference table
 that is still empty: transformer candidates, postcode data (and the street
 network with ``USE_INFDB=False``) and the municipal register. Tables that have
-rows are kept, so running setup again completes an interrupted setup. Finally
+rows are kept, so running setup again completes an interrupted setup. Before
+it changes anything, setup checks the input data of the tables it will import
+(the InfDB table ``postcodes_germany``, the CSV and street files, the municipal
+register files) and stops with a list of what is missing. Finally
 it installs or updates the street preprocessing functions. OSM transformer
 import may fetch and process data if the processed GeoJSON is missing.
 

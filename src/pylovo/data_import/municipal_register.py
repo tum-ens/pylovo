@@ -37,6 +37,19 @@ def _get_repo_root() -> Path:
     return Path.cwd()
 
 
+REGISTER_FILES = (
+    "regiostar/regiostar.xlsx",
+    "gemeindeverzeichnis/plz_einwohner.xlsx",
+    "gemeindeverzeichnis/zuordnung_plz_ort.xlsx",
+)
+
+
+def missing_input_files() -> list[str]:
+    """Return the paths of the register source files that do not exist."""
+    root = _get_repo_root() / "data" / "municipal_register"
+    return [str(root / name) for name in REGISTER_FILES if not (root / name).exists()]
+
+
 def _get_data_file_path(relative_path: str) -> str:
     """Return the path of a file in ``data/municipal_register``.
 

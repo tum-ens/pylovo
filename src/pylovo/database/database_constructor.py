@@ -16,6 +16,10 @@ from pylovo.config_loader import (
     DBNAME,
     DBUSER,
     HOST,
+    INFDB_DBNAME,
+    INFDB_HOST,
+    INFDB_OPENDATA_SCHEMA,
+    INFDB_PORT,
     PASSWORD,
     PORT,
     TARGET_EPSG,
@@ -402,6 +406,27 @@ class DatabaseConstructor:
 
             et = time.time()
             print(f"{file_name} is successfully imported to db in {int(et - st)} s")
+
+    def infdb_postcodes_problem(self) -> str | None:
+        """Explain why ``load_postcode_from_infdb`` would fail, or return None if it can run."""
+        table = sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany")
+        where = f"{INFDB_HOST}:{INFDB_PORT}/{INFDB_DBNAME}"
+        try:
+            infdb_client = InfdbClient()
+        except psy.OperationalError as exc:
+            return f"cannot connect to the InfDB at {where}: {str(exc).strip().splitlines()[0]}"
+        try:
+            cur = infdb_client.cur
+            cur.execute("SELECT to_regclass(%s) IS NOT NULL", (table.as_string(cur),))
+            if not cur.fetchone()[0]:
+                return (f"the InfDB table {INFDB_OPENDATA_SCHEMA}.postcodes_germany does not exist in {where} "
+                        "(check INFDB_OPENDATA_SCHEMA)")
+            cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(table))
+            if not cur.fetchone()[0]:
+                return f"the InfDB table {INFDB_OPENDATA_SCHEMA}.postcodes_germany in {where} is empty"
+        finally:
+            infdb_client.conn.close()
+        return None
 
     def load_postcode_from_infdb(self):
         """Replace the local ``postcode`` table with all postcodes of InfDB and commit.
