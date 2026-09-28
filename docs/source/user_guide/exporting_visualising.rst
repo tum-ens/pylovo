@@ -50,8 +50,8 @@ Tips:
 
 * Transformer labels show ``kcid.bcid``; negative ``bcid`` values are brownfield transformers.
 * Filter single grids with an expression such as ``"version_id" = '1' AND "kcid" = 1 AND "bcid" = 3``.
-* ``buildings_result_with_grid`` is a materialised view; pylovo refreshes it after generation and
-  deletion.
+* ``buildings_result_with_grid`` is a regular view over the current building rows; the
+  base geometry has a GiST index for spatial filters.
 
 CSV export
 ----------

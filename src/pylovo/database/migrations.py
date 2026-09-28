@@ -174,6 +174,25 @@ def legacy_columns(cur: cursor, epsg: int) -> None:
     """)
 
 
+def convert_buildings_view(cur: cursor) -> None:
+    """Replace the refresh-heavy building copy with a live join view.
+
+    RESTRICT is intentional: an external SQL dependency must be reviewed first.
+    """
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_class
+                WHERE oid = to_regclass('pylovo.buildings_result_with_grid')
+                  AND relkind = 'm'
+            ) THEN
+                DROP MATERIALIZED VIEW pylovo.buildings_result_with_grid;
+            END IF;
+        END $$;
+    """)
+
+
 def line_cache_compatibility_view(cur: cursor) -> None:
     """Retain the established read name for QGIS and API consumers."""
     cur.execute("""
@@ -185,6 +204,7 @@ def line_cache_compatibility_view(cur: cursor) -> None:
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
+    ("0001b_buildings_regular_view", convert_buildings_view),
 )
 POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),

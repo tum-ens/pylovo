@@ -220,16 +220,9 @@ async def undo_all(grid_result_id: int, body: IfMatchBody, request: Request) -> 
 
 @router.post("/maintenance/refresh-views", status_code=202)
 def refresh_views(request: Request) -> dict:
-    """Refresh the GIS view ``buildings_result_with_grid`` in the background (edits leave it outdated)."""
-    manager = jobs(request)
-    busy = manager.conflicting_writer()
-    if busy:
-        raise HTTPException(409, {"code": "writer_job", "message": f"'{busy.title}' is running."})
-    try:
-        svc.refresh_views_async(manager.db_edit_lease())
-    except RuntimeError as exc:
-        raise HTTPException(409, {"code": "already_running", "message": str(exc)}) from exc
-    return {"started": True}
+    """Compatibility endpoint: the regular building view is already current."""
+    return {"started": False, "current": True}
+
 
 
 def _exported_file(grid_result_id: int) -> str | None:

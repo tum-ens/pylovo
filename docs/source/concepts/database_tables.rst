@@ -1667,4 +1667,4 @@ Views
    View: transformer positions joined with grid identifiers and equipment data.
 
 ``buildings_result_with_grid``
-   Materialised view: buildings with kcid, bcid and plz, refreshed after generation and deletion.
+   Regular view: live buildings with kcid, bcid and plz; base geometry is indexed.

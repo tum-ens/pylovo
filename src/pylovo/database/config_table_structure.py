@@ -708,8 +708,7 @@ CREATE_QUERIES = {
                                    geom       geometry(MultiPolygon, {TARGET_EPSG})
                                )
     """,
-    # Views for GIS inspection. transformer_positions_with_grid is a plain view; the two
-    # materialized views must be refreshed (REFRESH_QUERIES) after results change.
+    # GIS views. Only transformer_classified_with_grid is materialized and refreshed.
     # The equipment_data columns stay NULL while grid_result.transformer_equipment_name is unset.
     "transformer_positions_with_grid": """
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
@@ -761,17 +760,13 @@ CREATE_QUERIES = {
             CREATE INDEX IF NOT EXISTS idx_transformer_classified_with_grid_geom ON pylovo.transformer_classified_with_grid USING gist (geom)
     """,
     "buildings_result_with_grid": """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.buildings_result_with_grid AS (
+    CREATE OR REPLACE VIEW pylovo.buildings_result_with_grid AS
         SELECT
-            (br.version_id || '_' || br.objectid) AS result_uid,
+            (length(br.version_id)::text || ':' || br.version_id || ':' || br.objectid) AS result_uid,
             br.*,
             gr.kcid, gr.bcid, gr.plz
         FROM pylovo.buildings_result br
-        JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_buildings_result_with_grid_uq_id
-    ON pylovo.buildings_result_with_grid (result_uid);
-    CREATE INDEX IF NOT EXISTS idx_buildings_result_with_grid_geom ON pylovo.buildings_result_with_grid USING gist (geom)
+        JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id;
     """,
 }
 
@@ -835,9 +830,6 @@ TEMP_CREATE_QUERIES = {
 REFRESH_QUERIES = {
     "transformer_classified_with_grid": """
     REFRESH MATERIALIZED VIEW pylovo.transformer_classified_with_grid
-    """,
-    "buildings_result_with_grid": """
-    REFRESH MATERIALIZED VIEW pylovo.buildings_result_with_grid
     """,
 }
 

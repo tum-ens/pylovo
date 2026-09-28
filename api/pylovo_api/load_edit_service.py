@@ -1,4 +1,4 @@
-"""Load editing in the UI: database adapter, shared caches, read annotations and view refresh.
+"""Load editing in the UI: database adapter, shared caches and read annotations.
 
 The edit logic itself is :class:`pylovo.load_editing.LoadEditor`; its queries are
 :class:`pylovo.database.load_edit_mixin.LoadEditMixin`. The UI does not construct a
@@ -17,7 +17,6 @@ import io
 import logging
 import socket
 import threading
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -30,7 +29,6 @@ from pylovo_api import __version__, db
 log = logging.getLogger("pylovo_api.load_edits")
 _CACHE = None
 _CACHE_LOCK = threading.Lock()
-_refresh = {"running": False, "started_at": None, "finished_at": None, "error": None}
 
 
 def _classes():
@@ -227,68 +225,23 @@ def annotate_overview(data: dict, version_id: str, plz: int) -> dict:
 
 # --------------------------------------------------------------------------- status and GIS view
 def status_info() -> dict[str, Any]:
-    """``load_edit_schema`` (ok | missing), ``views_stale`` and ``refreshing_views`` for /api/status."""
-    info: dict[str, Any] = {"schema": "missing", "views_stale": 0, "refreshing_views": _refresh["running"],
-                            "refresh_error": _refresh["error"]}
+    """Report load-edit schema status; the building view reads current base rows."""
+    info: dict[str, Any] = {
+        "schema": "missing", "views_stale": 0,
+        "refreshing_views": False, "refresh_error": None,
+    }
     try:
         with db.cursor(timeout_s=3) as cur:
-            if not _table_exists(cur):
-                return info
-            info["schema"] = "ok"
-            info["views_stale"] = views_stale(cur)
+            if _table_exists(cur):
+                info["schema"] = "ok"
     except Exception as exc:  # noqa: BLE001 - status must never fail
         info["error"] = f"{type(exc).__name__}: {exc}"
     return info
 
 
 def views_stale(cur) -> int:
-    """Number of edited buildings whose row in ``buildings_result_with_grid`` is outdated."""
-    cur.execute("SELECT to_regclass('pylovo.buildings_result_with_grid') IS NOT NULL AS ok")
-    if not cur.fetchone()["ok"]:
-        return 0
-    cols = ", ".join(("households", *_EXTRA_BUILDING_COLUMNS))
-    cur.execute(
-        f"""SELECT count(*) AS n
-            FROM (SELECT DISTINCT version_id, objectid FROM pylovo.load_edit) e
-            JOIN pylovo.buildings_result br USING (version_id, objectid)
-            LEFT JOIN pylovo.buildings_result_with_grid m ON m.result_uid = br.version_id || '_' || br.objectid
-            WHERE m.result_uid IS NULL
-               OR ({', '.join('m.' + c for c in cols.split(', '))}) IS DISTINCT FROM
-                  ({', '.join('br.' + c for c in cols.split(', '))})""")
-    return int(cur.fetchone()["n"])
-
-
-def refresh_views_async(lease) -> None:
-    """``REFRESH MATERIALIZED VIEW CONCURRENTLY pylovo.buildings_result_with_grid`` in a thread.
-
-    Args:
-        lease: Context manager held while the refresh runs (the job manager's edit lease).
-
-    Raises:
-        RuntimeError: If a refresh is already running.
-    """
-    if _refresh["running"]:
-        raise RuntimeError("The GIS view is already being refreshed.")
-    _refresh.update(running=True, started_at=time.time(), finished_at=None, error=None)
-
-    def run():
-        try:
-            with lease:
-                conn = db._connect(False, statement_timeout_ms=0)
-                try:
-                    conn.autocommit = True
-                    with conn.cursor() as cur:
-                        cur.execute("SET lock_timeout = '5s'")
-                        cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY pylovo.buildings_result_with_grid")
-                finally:
-                    conn.close()
-        except Exception as exc:  # noqa: BLE001 - reported through /api/status
-            _refresh["error"] = f"{type(exc).__name__}: {str(exc).strip().splitlines()[0]}"
-            log.warning("Refreshing buildings_result_with_grid failed: %s", exc)
-        finally:
-            _refresh.update(running=False, finished_at=time.time())
-
-    threading.Thread(target=run, name="refresh-views", daemon=True).start()
+    """The regular building view cannot lag behind its source rows."""
+    return 0
 
 
 # --------------------------------------------------------------------------- export

@@ -2819,7 +2819,7 @@
     },
     "/api/maintenance/refresh-views": {
       "post": {
-        "description": "Refresh the GIS view ``buildings_result_with_grid`` in the background (edits leave it outdated).",
+        "description": "Compatibility endpoint: the regular building view is already current.",
         "operationId": "refresh_views_api_maintenance_refresh_views_post",
         "responses": {
           "202": {

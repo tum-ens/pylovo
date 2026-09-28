@@ -182,7 +182,7 @@ def test_apply_and_undo_round_trip(client, conn):
                          WHERE l.grid_result_id=%s AND l.p_mw <> b.p_mw""", (out["load_edit_id"], gid))[0][0]
     assert changed == 159
     status = client.get("/api/status").json()["load_edit"]
-    assert status["schema"] == "ok" and status["views_stale"] >= 1
+    assert status["schema"] == "ok" and status["views_stale"] == 0
     csv = client.get("/api/versions/1/load-edits", params={"format": "csv"}).text
     assert "'=cmd audit test" in csv
     undo = client.post(f"/api/load-edits/{out['load_edit_id']}/undo", json={"if_match": out["etag"]})
@@ -323,25 +323,17 @@ def test_non_convergence_needs_acknowledgement(client, conn):
     assert fingerprint(conn, gid) == before
 
 
-def test_refresh_views(client, conn):
+def test_building_view_is_current_without_refresh(client, conn):
     undo_everything(client, conn)
     gid = grid_id(conn)
     edit = apply(client, gid, BUILDING, {"households": 8}).json()
-    assert client.get("/api/status").json()["load_edit"]["views_stale"] >= 1
-    assert client.post("/api/maintenance/refresh-views", json={}).status_code == 202
-    for _ in range(100):
-        info = client.get("/api/status").json()["load_edit"]
-        if not info["refreshing_views"]:
-            break
-        time.sleep(0.2)
-    assert info["views_stale"] == 0 and not info["refresh_error"]
-    assert q(conn, "SELECT households FROM pylovo.buildings_result_with_grid WHERE result_uid = %s", ("1_" + BUILDING,))[0][0] == 8
+    info = client.get("/api/status").json()["load_edit"]
+    assert info["views_stale"] == 0 and not info["refreshing_views"]
+    assert q(conn, "SELECT households FROM pylovo.buildings_result_with_grid "
+                   "WHERE version_id=%s AND objectid=%s", ("1", BUILDING))[0][0] == 8
+    response = client.post("/api/maintenance/refresh-views", json={})
+    assert response.status_code == 202 and response.json() == {"started": False, "current": True}
     client.post(f"/api/load-edits/{edit['load_edit_id']}/undo", json={})
-    client.post("/api/maintenance/refresh-views", json={})
-    for _ in range(100):
-        if not client.get("/api/status").json()["load_edit"]["refreshing_views"]:
-            break
-        time.sleep(0.2)
 
 
 def test_schema_creation_is_idempotent(conn):

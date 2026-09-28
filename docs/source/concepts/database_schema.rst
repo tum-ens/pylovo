@@ -85,8 +85,7 @@ Views and temporary tables
 ``transformer_positions_with_grid``
    View of ``transformer_positions`` with ``kcid``, ``bcid``, ``plz`` and the equipment data.
 ``buildings_result_with_grid``
-   Materialised view of ``buildings_result`` with ``kcid``, ``bcid`` and ``plz``; refreshed after
-   generation and deletion.
+   Regular view of current ``buildings_result`` rows with ``kcid``, ``bcid`` and ``plz``.
 ``buildings_tem_<plz>``, ``ways_tem_<plz>``, ``ways_tem_<plz>_vertices_pgr``
    Session-local working tables of one run (:doc:`../user_guide/database_setup`).
 

@@ -235,8 +235,8 @@ Each grid is stored in ``grid_result`` (with the pandapower JSON) and in the ``p
 tables. When all grids of the postcode are done, the supplied buildings go to
 ``buildings_result`` and the street graph to ``ways_result``, and the transaction is committed.
 With ``ANALYZE_GRIDS`` the postcode key figures follow (:doc:`../user_guide/analysing_grids`).
-The session-local working tables are dropped and the materialised view ``buildings_result_with_grid`` is
-refreshed.
+The session-local working tables are dropped. The regular view ``buildings_result_with_grid``
+reads the committed buildings immediately.
 
 .. figure:: /images/generation/step5_grids_by_grid.png
    :alt: The four generated grids of the demo region, one colour per grid, with transformer ratings

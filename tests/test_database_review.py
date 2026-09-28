@@ -31,6 +31,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
         assert [row[0] for row in db.cur.fetchall()] == [
             "0001_legacy_buildings",
             "0001a_line_cache_rename",
+            "0001b_buildings_regular_view",
             "0002_legacy_columns",
             "0007_line_cache_compatibility_view",
         ]
@@ -44,6 +45,11 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
         assert db.cur.fetchall() == [
             ("lines_result_cache", "r"), ("lines_result_view", "v")
         ]
+        db.cur.execute("""
+            SELECT relkind FROM pg_class
+            WHERE oid = 'pylovo.buildings_result_with_grid'::regclass
+        """)
+        assert db.cur.fetchone() == ("v",)
         db.conn.rollback()
 
 
