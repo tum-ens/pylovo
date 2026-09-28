@@ -36,8 +36,8 @@ pylovo-setup
 With no command, creates a new schema or migrates an existing one in place.
 Only ``reset --database NAME`` deletes the PyLovo schema; the name must match
 ``DBNAME`` in ``.env``. Reset asks you to type the database name unless
-``--yes`` is supplied. The browser API uses this explicit reset command after
-its own typed confirmation. See :doc:`database_setup`.
+``--yes`` is supplied. The HTTP API's reset job runs this command after its
+own typed confirmation; its setup job runs the non-destructive ``pylovo-setup``. See :doc:`database_setup`.
 
 pylovo-generate
 ---------------

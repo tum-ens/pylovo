@@ -175,7 +175,7 @@ class JobManager:
     # ------------------------------------------------------------------ load-edit lease
     # Kinds of database-writing jobs a load edit must not overlap with. ``generate`` is not one of
     # them: it refuses to write a (version, PLZ) that already has results (ResultExistsError).
-    EDIT_CONFLICT_KINDS = ("setup", "import", "delete")
+    EDIT_CONFLICT_KINDS = ("setup", "reset", "import", "delete")
 
     def conflicting_writer(self, version_id: str | None = None, plz: int | None = None) -> Job | None:
         """The active job a load edit of ``(version_id, plz)`` must wait for, if any."""

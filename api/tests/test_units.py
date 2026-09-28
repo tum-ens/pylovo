@@ -109,13 +109,30 @@ def test_classify_line():
     assert classify_line("Elapsed Time: 0 minutes") == "info"
 
 
+def test_setup_job_keeps_grids_and_only_reset_drops_the_schema(client, monkeypatch):
+    from pylovo_api import db
+    from pylovo_api.routers import jobs as jobs_router
+
+    started = []
+    monkeypatch.setattr(jobs_router, "_start", lambda request, kind, title, argv, **kw: started.append((kind, argv)) or {})
+    monkeypatch.setattr(db, "settings", lambda: {"dbname": "sandbox"})
+    assert client.post("/api/jobs/setup", json={"confirm": "sandbox"}).status_code == 202  # UI of API 1 sends a body
+    assert client.post("/api/jobs/reset", json={"confirm": "other"}).status_code == 400
+    assert client.post("/api/jobs/reset", json={"confirm": "sandbox"}).status_code == 202
+    (setup_kind, setup_argv), (reset_kind, reset_argv) = started
+    assert (setup_kind, reset_kind) == ("setup", "reset")
+    assert "reset" not in setup_argv and "--yes" not in setup_argv
+    assert reset_argv[-4:] == ["reset", "--database", "sandbox", "--yes"]
+
+
 def test_guards(client):
     from fastapi.testclient import TestClient
 
     bare = TestClient(client.app)
-    assert bare.post("/api/jobs/setup", json={"confirm": "x"}).status_code == 403  # no X-Pylovo-UI header
+    assert bare.post("/api/jobs/reset", json={"confirm": "x"}).status_code == 403  # no X-Pylovo-UI header
+    assert bare.post("/api/jobs/setup").status_code == 403
     assert bare.get("/api/config", headers={"host": "evil.example"}).status_code == 421
-    assert client.post("/api/jobs/setup", json={"confirm": "wrong"}).status_code == 400
+    assert client.post("/api/jobs/reset", json={"confirm": "wrong"}).status_code == 400
     assert client.post("/api/jobs/delete-versions", json={"version_ids": ["1"], "confirm": "2"}).status_code == 400
     # headless: the browser UI (page, static files, plugin list) lives in GridPlanner
     for path in ("/", "/static/js/main.js", "/popout.html", "/api/plugins"):

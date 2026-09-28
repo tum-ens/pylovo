@@ -14,7 +14,8 @@ rows before committing new foreign keys and checks.
    ``DBNAME`` in ``.env`` first. Without ``--yes`` you must type the configured
    database name. Reset refuses to remove extensions in ``pylovo`` and rolls
    back if PostgreSQL's cascade would remove an object in another schema.
-   The browser API's confirmed database setup action invokes this reset.
+   The HTTP API's reset job (typed confirmation) invokes this reset; its setup
+   job runs the non-destructive setup.
 
 Set up InfDB first (USE_INFDB=True)
 -----------------------------------

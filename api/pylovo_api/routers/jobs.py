@@ -35,7 +35,7 @@ class PlzBody(BaseModel):
     plz: int
 
 
-class SetupBody(BaseModel):
+class ResetBody(BaseModel):
     confirm: str | None = None
 
 
@@ -160,12 +160,20 @@ def analyze(body: PlzBody, request: Request) -> dict:
 
 
 @router.post("/setup", status_code=202)
-def setup(body: SetupBody, request: Request) -> dict:
-    """Explicit schema reset from the browser; require the typed database name."""
+def setup(request: Request) -> dict:
+    """``pylovo-setup``: create a missing schema or apply pending migrations; keeps all grids."""
+    dbname = db.settings()["dbname"]
+    return _start(request, "setup", f"Database setup · {dbname}", pylovo_command("pylovo-setup"),
+                  params={"dbname": dbname})
+
+
+@router.post("/reset", status_code=202)
+def reset(body: ResetBody, request: Request) -> dict:
+    """``pylovo-setup reset``: drops and rebuilds the ``pylovo`` schema. Type the database name."""
     dbname = db.settings()["dbname"]
     require_confirm(body.confirm, dbname, "drop and rebuild the pylovo schema")
-    return _start(request, "setup", f"Database setup · {dbname}", pylovo_command("pylovo-setup", "reset", "--database", dbname, "--yes"),
-                  params={"dbname": dbname})
+    return _start(request, "reset", f"Database reset · {dbname}",
+                  pylovo_command("pylovo-setup", "reset", "--database", dbname, "--yes"), params={"dbname": dbname})
 
 
 @router.post("/delete-versions", status_code=202)

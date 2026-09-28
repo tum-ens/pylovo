@@ -69,7 +69,7 @@ def num(value: Any, digits: int | None = None) -> float | None:
 
 # --------------------------------------------------------------------------- status
 def status() -> dict[str, Any]:
-    """Database reachability, schema state and table counts."""
+    """Database reachability, schema state (incl. pending migrations) and table counts."""
     info: dict[str, Any] = {"settings": None, "connected": False}
     try:
         info["settings"] = db.settings()
@@ -106,7 +106,12 @@ def status() -> dict[str, Any]:
                         "WHERE n.nspname = 'pylovo' AND p.proname = 'segment_intersecting_ways'")
             functions_loaded = cur.fetchone()["n"] > 0
             info["functions_loaded"] = functions_loaded
+            from pylovo.database.migrations import pending_migrations
+
+            # None: no migration ledger (no schema, or one from before the migrations)
+            info["pending_migrations"] = pending_migrations(cur) if info["schema_exists"] else None
             info["setup_complete"] = bool(info["schema_exists"] and not info["missing_tables"] and functions_loaded
+                                          and info["pending_migrations"] == []
                                           and counts.get("transformers") and counts.get("postcode")
                                           and counts.get("municipal_register"))
             s = info["settings"]

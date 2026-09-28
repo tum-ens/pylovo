@@ -427,8 +427,8 @@ class InputCoverage:
         self._wake.set()
 
     def on_job_finished(self, job: Any) -> None:
-        """Setup and generate change pylovo.postcode (and the register): re-read those sources."""
-        if getattr(job, "kind", None) in ("setup", "generate"):
+        """Setup, reset and generate change pylovo.postcode (and the register): re-read those sources."""
+        if getattr(job, "kind", None) in ("setup", "reset", "generate"):
             with self._lock:
                 self.tokens = {}
                 self._check_requested = True

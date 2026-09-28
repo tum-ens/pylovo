@@ -648,6 +648,23 @@
         "title": "RegionBody",
         "type": "object"
       },
+      "ResetBody": {
+        "properties": {
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          }
+        },
+        "title": "ResetBody",
+        "type": "object"
+      },
       "RestoreBody": {
         "properties": {
           "confirm": {
@@ -718,23 +735,6 @@
           "if_match"
         ],
         "title": "RevertBody",
-        "type": "object"
-      },
-      "SetupBody": {
-        "properties": {
-          "confirm": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirm"
-          }
-        },
-        "title": "SetupBody",
         "type": "object"
       },
       "TextBody": {
@@ -851,7 +851,7 @@
   "info": {
     "description": "HTTP API of the pylovo workflow (database, regions, data, generation, results) for the GridPlanner UI.",
     "title": "pylovo-api",
-    "version": "1"
+    "version": "2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2406,15 +2406,15 @@
         ]
       }
     },
-    "/api/jobs/setup": {
+    "/api/jobs/reset": {
       "post": {
-        "description": "Explicit schema reset from the browser; require the typed database name.",
-        "operationId": "setup_api_jobs_setup_post",
+        "description": "``pylovo-setup reset``: drops and rebuilds the ``pylovo`` schema. Type the database name.",
+        "operationId": "reset_api_jobs_reset_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetupBody"
+                "$ref": "#/components/schemas/ResetBody"
               }
             }
           },
@@ -2426,7 +2426,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Setup Api Jobs Setup Post",
+                  "title": "Response Reset Api Jobs Reset Post",
                   "type": "object"
                 }
               }
@@ -2442,6 +2442,30 @@
               }
             },
             "description": "Validation Error"
+          }
+        },
+        "summary": "Reset",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/setup": {
+      "post": {
+        "description": "``pylovo-setup``: create a missing schema or apply pending migrations; keeps all grids.",
+        "operationId": "setup_api_jobs_setup_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Setup Api Jobs Setup Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
           }
         },
         "summary": "Setup",
