@@ -77,8 +77,8 @@ def test_no_geometry_mirrors_the_library_match():
     cov.infdb_polygons = {"85653"}                       # fetch_postcode_from_infdb: plz = '85653'
     st = status(cov)
     assert st["status"] == "ready" and any(w["code"] == "geometry_infdb" for w in st["warnings"])
-    cov.infdb_polygons = {"01067"}                       # the library does not zero-pad (plz::varchar)
-    assert status(cov, 1067)["status"] == "no_geometry"
+    cov.infdb_polygons = {"01067"}                       # integer key resolves padded InfDB postcode
+    assert status(cov, 1067)["status"] == "no_buildings"
 
 
 def test_no_buildings_exact_and_preliminary():

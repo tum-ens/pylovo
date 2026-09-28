@@ -63,3 +63,6 @@ accesses them through temporary views ``buildings_tem``, ``ways_tem`` and
 At its start, ``pylovo-generate`` drops all leftover ``*_tem_<plz>`` tables of interrupted runs.
 Do not start two ``pylovo-generate`` commands against the same database at the same time; use
 one command with several postcodes, which runs them in parallel worker processes.
+
+The integer ``plz`` and ``ags`` database keys remain unchanged. Pad postcodes
+to five digits and AGS codes to eight digits when displaying or exporting them.

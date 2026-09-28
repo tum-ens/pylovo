@@ -582,7 +582,7 @@ class InputCoverage:
                           reasons={m: self.tables[m].reason for m in missing}, source_schema=self.settings.get(
                               "infdb_source_schema"))
         local = plz in self.local_bbox
-        infdb_polygon = str(plz) in self.infdb_polygons
+        infdb_polygon = str(plz) in self.infdb_polygons or str(plz).zfill(5) in self.infdb_polygons
         if not local and not infdb_polygon:
             return result("no_geometry", opendata_schema=self.settings.get("infdb_opendata_schema"))
         if not local:

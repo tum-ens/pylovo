@@ -279,7 +279,7 @@ class InfdbClient:
         query = sql.SQL("""
             SELECT plz, note, qkm, einwohner, geom
             FROM {postcodes}
-            WHERE plz = %(plz)s::varchar
+            WHERE plz IN (%(plz)s::varchar, lpad(%(plz)s::varchar, 5, '0'))
             LIMIT 1;
         """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
         self.cur.execute(query, {"plz": plz})
