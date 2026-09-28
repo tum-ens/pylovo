@@ -1,6 +1,9 @@
 """PLZ working tables, transaction helpers and small lookups shared by the other mixins."""
 
 import warnings
+import re
+
+import psycopg2 as psy
 
 import pandas as pd
 from psycopg2 import sql
@@ -100,23 +103,22 @@ class UtilsMixin(BaseMixin):
         self.conn.commit()
 
     def is_table_empty(self, table_name: str) -> bool:
-        """Return whether a table has no rows.
-
-        Args:
-            table_name: Table name, optionally schema-qualified; unqualified names refer to ``pylovo``.
-
-        Returns:
-            True if the table is empty or does not exist.
-        """
-        schema, _, table = table_name.rpartition(".")
-        identifier = sql.Identifier(schema or "pylovo", table)
-        # to_regclass() returns NULL for a missing table instead of raising, so the
-        # transaction stays usable.
-        self.cur.execute("SELECT to_regclass(%s);", (identifier.as_string(self.cur),))
-        if self.cur.fetchone()[0] is None:
-            return True
-        self.cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {});").format(identifier))
-        return not self.cur.fetchone()[0]
+        """Check an allowlisted PyLovo table with EXISTS; propagate database errors."""
+        schema, sep, table = table_name.rpartition(".")
+        if not sep:
+            schema, table = "pylovo", table_name
+        if schema != "pylovo" or not re.fullmatch(r"[a-z][a-z0-9_]*", table):
+            raise ValueError("Only simple pylovo table names are accepted")
+        identifier = sql.Identifier("pylovo", table)
+        try:
+            self.cur.execute("SELECT to_regclass(%s)", (identifier.as_string(self.cur),))
+            if self.cur.fetchone()[0] is None:
+                raise ValueError(f"Table pylovo.{table} does not exist")
+            self.cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(identifier))
+            return not self.cur.fetchone()[0]
+        except psy.Error:
+            self.conn.rollback()
+            raise
 
     def get_grid_result_id(self, plz: int, kcid: int, bcid: int, version_id: str | None = None) -> int | None:
         """Return the ``grid_result_id`` of one grid.

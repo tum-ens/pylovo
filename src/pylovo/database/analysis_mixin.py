@@ -1,14 +1,16 @@
 """Persistence of pandapower networks, analysis parameters and GeoDataFrame readers."""
 
 import json
+import re
 import warnings
 from typing import Any
 
 import geopandas as gpd
 import pandapower as pp
 import pandas as pd
+from psycopg2 import sql
 
-from pylovo.config_loader import VERSION_ID
+from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
 
 warnings.simplefilter(action="ignore", category=UserWarning)
@@ -729,88 +731,87 @@ class AnalysisMixin(BaseMixin):
         self.cur.execute(insert_query, params)
         self.conn.commit()
 
-    def _equality_filters(self, filters: dict) -> tuple[str, dict]:
-        """Return ``" AND column = %(fN)s ..."`` and its parameters for ``get_geo_df*`` keyword filters.
+    @staticmethod
+    def _geo_identifier(value: str) -> bool:
+        """Accept a plain SQL identifier, optionally qualified once."""
+        return bool(re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)?", value))
 
-        Column names are inserted as given (they come from code); values are passed as query
-        parameters.
-        """
+    def _geo_relation(self, value: str) -> tuple[str, str]:
+        """Quote a PyLovo relation and its optional alias for plotting queries."""
+        parts = value.split()
+        if len(parts) not in (1, 2):
+            raise ValueError("Expected a PyLovo table and optional alias")
+        name = parts[0]
+        if "." in name:
+            schema, table = name.split(".", 1)
+            if schema != "pylovo":
+                raise ValueError("Plotting queries only accept PyLovo tables")
+        else:
+            table = name
+        if not self._geo_identifier(table):
+            raise ValueError("Invalid table name")
+        qualified = sql.Identifier("pylovo", table).as_string(self.cur)
+        if len(parts) == 1:
+            return qualified, qualified
+        alias = parts[1]
+        if not self._geo_identifier(alias) or "." in alias:
+            raise ValueError("Invalid table alias")
+        quoted_alias = sql.Identifier(alias).as_string(self.cur)
+        return f"{qualified} AS {quoted_alias}", quoted_alias
+
+    def _equality_filters(self, filters: dict) -> tuple[str, dict]:
+        """Return equality predicates with validated column names and bound values."""
         clauses = ""
         params = {}
         for index, (column, value) in enumerate(filters.items()):
-            clauses += f" AND {column} = %(f{index})s"
+            if not self._geo_identifier(column):
+                raise ValueError(f"Invalid filter column: {column!r}")
+            identifier = sql.Identifier(*column.split(".")).as_string(self.cur)
+            clauses += f" AND {identifier} = %(f{index})s"
             params[f"f{index}"] = self._normalize_sql_scalar(value)
         return clauses, params
 
-    def get_geo_df(self, table: str, **kwargs, ) -> gpd.GeoDataFrame:
-        """Read the rows of a table with a ``geom`` column as a GeoDataFrame.
-
-        Args:
-            table: Table name; unqualified names refer to the ``pylovo`` schema.
-            **kwargs: Equality filters ``column=value``. ``version_id`` selects the version
-                (default: the configured ``VERSION_ID``).
-
-        Returns:
-            The matching rows of the version.
-        """
+    def get_geo_df(self, table: str, **kwargs) -> gpd.GeoDataFrame:
+        """Read a PyLovo geometry table with version and equality filters."""
         version = kwargs.pop("version_id", VERSION_ID)
         filters, params = self._equality_filters(kwargs)
-        table_name = table if "." in table or table.startswith("(") else f"pylovo.{table}"
-        query = (f"""SELECT * FROM {table_name}
-                        WHERE version_id = %(v)s """ + filters)
+        relation, _ = self._geo_relation(table)
+        query = f"SELECT * FROM {relation} WHERE version_id = %(v)s " + filters
         params["v"] = version
         with self.sqla_engine.begin() as connection:
-            gdf = gpd.read_postgis(query, con=connection, params=params)
+            return gpd.read_postgis(query, con=connection, params=params)
 
-        return gdf
-
-    def get_geo_df_join(self, select: list[str], from_table: str, join_table: str, on: tuple[str, str],
-            **kwargs, ) -> gpd.GeoDataFrame:
-        """Read a join of two tables as a GeoDataFrame.
-
-        Args:
-            select: Column expressions of the result (must include a ``geom`` column).
-            from_table: First table, optionally with an alias (``"buildings_result br"``);
-                unqualified names refer to the ``pylovo`` schema.
-            join_table: Second table, optionally with an alias; its ``version_id`` selects the version.
-            on: Join condition as ``(left column, right column)``.
-            **kwargs: Equality filters ``column=value``. ``version_id`` selects the version
-                (default: the configured ``VERSION_ID``).
-
-        Returns:
-            The matching rows of the version.
-        """
+    def get_geo_df_join(
+        self, select: list[str], from_table: str, join_table: str,
+        on: tuple[str, str], **kwargs
+    ) -> gpd.GeoDataFrame:
+        """Read the supported plotting join with quoted relations and safe columns."""
         version = kwargs.pop("version_id", VERSION_ID)
         filters, params = self._equality_filters(kwargs)
-
-        column_names = ", ".join(select)
-
-        from_parts = from_table.split(" ", 1)
-        from_name = from_parts[0]
-        if "." not in from_name and not from_name.startswith("("):
-            from_table = f"pylovo.{from_name}" + (f" {from_parts[1]}" if len(from_parts) == 2 else "")
-
-        join_parts = join_table.split(" ", 1)
-        join_name = join_parts[0]
-        if "." not in join_name and not join_name.startswith("("):
-            join_table = f"pylovo.{join_name}" + (f" {join_parts[1]}" if len(join_parts) == 2 else "")
-
-        jt_prefix = join_table
-        parts = join_table.split(" ")
-        if len(parts) == 2:
-            jt_prefix = parts[1]
-
-        query = (f"""SELECT {column_names}
-                        FROM {from_table}
-                        JOIN {join_table}
-                          ON {on[0]} = {on[1]}
-                        WHERE {jt_prefix}.version_id = %(v)s """ + filters)
+        from_relation, _ = self._geo_relation(from_table)
+        join_relation, join_prefix = self._geo_relation(join_table)
+        if any(not self._geo_identifier(column) for column in on):
+            raise ValueError("Invalid join column")
+        on_sql = [sql.Identifier(*column.split(".")).as_string(self.cur) for column in on]
+        geo_expression = (
+            "ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), "
+            f"{TARGET_EPSG}) AS geom"
+        )
+        for column in select:
+            if not (
+                column == "*"
+                or re.fullmatch(r"[a-z][a-z0-9_]*(?:\.(?:[a-z][a-z0-9_]*|\*))?", column)
+                or column == geo_expression
+            ):
+                raise ValueError(f"Unsupported plotting select expression: {column!r}")
+        query = (
+            f"SELECT {', '.join(select)} FROM {from_relation} "
+            f"JOIN {join_relation} ON {on_sql[0]} = {on_sql[1]} "
+            f"WHERE {join_prefix}.version_id = %(v)s " + filters
+        )
         params["v"] = version
         with self.sqla_engine.begin() as connection:
-            gdf = gpd.read_postgis(query, con=connection, params=params)
-
-        return gdf
-
+            return gpd.read_postgis(query, con=connection, params=params)
 
     def read_trafo_dict(self, plz: int) -> dict:
         """Return the transformer count per transformer size of a PLZ from ``plz_parameters``."""
