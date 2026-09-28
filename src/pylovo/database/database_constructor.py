@@ -35,6 +35,13 @@ from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.utils import get_user_data_dir
 
 
+def _blocked_message(step: str, exc: psy.errors.DependentObjectsStillExist) -> str:
+    """Name the database objects that keep a migration step from dropping or changing a view."""
+    detail = "; ".join(line.strip() for line in (exc.diag.message_detail or "").splitlines() if line.strip())
+    return (f"{step} stopped, nothing was changed: {exc.diag.message_primary}. {detail}. "
+            "Drop or adapt these objects, then run pylovo-setup again.")
+
+
 class DatabaseConstructor:
     """Create the ``pylovo`` schema, its tables and SQL functions, and import the raw data.
 
@@ -167,7 +174,10 @@ class DatabaseConstructor:
                     if cur.fetchone():
                         self.dbc.conn.commit()
                         return
-                    action(cur)
+                    try:
+                        action(cur)
+                    except psy.errors.DependentObjectsStillExist as exc:
+                        raise RuntimeError(_blocked_message(f"Migration {name}", exc)) from exc
                     cur.execute("INSERT INTO pylovo.schema_migrations (name) VALUES (%s)", (name,))
                     applied.append(name)
                 self.dbc.conn.commit()
@@ -175,7 +185,10 @@ class DatabaseConstructor:
             for name, action in PRE_SCHEMA_MIGRATIONS:
                 apply(name, action)
             apply("0002_legacy_columns", lambda cur: legacy_columns(cur, TARGET_EPSG))
-            self.create_table("all")
+            try:
+                self.create_table("all")
+            except psy.errors.DependentObjectsStillExist as exc:
+                raise RuntimeError(_blocked_message("Creating the baseline tables and views", exc)) from exc
             for name, action in POST_SCHEMA_MIGRATIONS:
                 apply(name, action)
             if applied:
@@ -562,37 +575,41 @@ class DatabaseConstructor:
         back if any disappears. Extensions housed in PyLovo are never reset.
         """
         inventory = """
-            SELECT 'relation', c.oid::text FROM pg_class c
+            SELECT 'relation', c.oid::text, c.oid::regclass::text FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
               AND n.nspname <> 'information_schema'
             UNION ALL
-            SELECT 'procedure', p.oid::text FROM pg_proc p
+            SELECT 'procedure', p.oid::text, p.oid::regprocedure::text FROM pg_proc p
             JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
               AND n.nspname <> 'information_schema'
             UNION ALL
-            SELECT 'type', t.oid::text FROM pg_type t
+            SELECT 'type', t.oid::text, NULL FROM pg_type t
             JOIN pg_namespace n ON n.oid = t.typnamespace
             WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
               AND n.nspname <> 'information_schema'
             UNION ALL
-            SELECT 'constraint', c.oid::text FROM pg_constraint c
+            SELECT 'constraint', c.oid::text,
+                   c.conname || ' on ' || COALESCE(NULLIF(c.conrelid, 0)::regclass::text, c.contypid::regtype::text)
+            FROM pg_constraint c
             JOIN pg_namespace n ON n.oid = c.connamespace
             WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
               AND n.nspname <> 'information_schema'
             UNION ALL
-            SELECT 'trigger', t.oid::text FROM pg_trigger t
+            SELECT 'trigger', t.oid::text,
+                   CASE WHEN NOT t.tgisinternal THEN t.tgname || ' on ' || t.tgrelid::regclass::text END
+            FROM pg_trigger t
             JOIN pg_class c ON c.oid = t.tgrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
               AND n.nspname <> 'information_schema'
             UNION ALL
-            SELECT 'schema', n.oid::text FROM pg_namespace n
+            SELECT 'schema', n.oid::text, 'schema ' || n.nspname FROM pg_namespace n
             WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
               AND n.nspname <> 'information_schema'
             UNION ALL
-            SELECT 'extension', e.oid::text FROM pg_extension e
+            SELECT 'extension', e.oid::text, 'extension ' || e.extname FROM pg_extension e
         """
         try:
             with self.dbc.conn.cursor() as cur:
@@ -608,14 +625,16 @@ class DatabaseConstructor:
                         + ". Move them to another schema before resetting."
                     )
                 cur.execute(inventory)
-                before = set(cur.fetchall())
+                before = {(kind, oid): label for kind, oid, label in cur.fetchall()}
                 cur.execute("DROP SCHEMA IF EXISTS pylovo CASCADE")
                 cur.execute(inventory)
-                lost = before - set(cur.fetchall())
+                lost = before.keys() - {(kind, oid) for kind, oid, _ in cur.fetchall()}
                 if lost:
+                    names = sorted(before[key] for key in lost if before[key])  # types follow their objects
+                    shown = ", ".join(names[:10]) + (f" and {len(names) - 10} more" if len(names) > 10 else "")
                     raise RuntimeError(
                         f"Reset refused: CASCADE would remove {len(lost)} object(s) "
-                        "outside pylovo. The transaction was rolled back."
+                        f"outside pylovo ({shown}). The transaction was rolled back."
                     )
             self.dbc.conn.commit()
         except Exception:

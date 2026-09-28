@@ -51,8 +51,9 @@ missing. On an existing schema, setup applies pending migrations and updates
 the SQL functions without reimporting raw data.
 
 A migration stops if existing rows violate a new constraint. Correct those
-rows in a reviewed data repair and rerun setup. No migration marker is written
-for a failed step. Run database-backed tests and performance comparisons on
+rows in a reviewed data repair and rerun setup. A migration also stops, and
+names them, if views of other schemas depend on a view it has to rebuild.
+No migration marker is written for a failed step. Run database-backed tests and performance comparisons on
 an isolated database, never the active InfDB.
 
 Temporary tables and concurrency

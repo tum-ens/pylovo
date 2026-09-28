@@ -237,7 +237,7 @@ def test_reset_refuses_to_drop_external_dependents():
         )
         db.conn.commit()
         try:
-            with pytest.raises(RuntimeError, match="outside pylovo"):
+            with pytest.raises(RuntimeError, match=r"outside pylovo \(.*pylovo_review_external\.version_view"):
                 DatabaseConstructor(db).reset_schema()
             db.cur.execute("SELECT to_regclass('pylovo.version')")
             assert db.cur.fetchone()[0] is not None
@@ -266,6 +266,41 @@ def test_transformer_view_is_replaced_in_place_for_external_dependents():
             db.conn.rollback()
             db.cur.execute("DROP SCHEMA IF EXISTS pylovo_review_gridexpand CASCADE")
             db.conn.commit()
+
+
+def test_blocked_migration_names_the_dependent_and_changes_nothing():
+    from psycopg2 import sql
+
+    name = "pylovo_review_" + uuid.uuid4().hex[:8]
+    admin = psycopg2.connect(dbname="postgres", user="postgres", host="127.0.0.1", port=int(TEST_PORT))
+    admin.autocommit = True
+    try:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        with DatabaseClient(dbname=name, user="postgres", pw="", host="127.0.0.1", port=int(TEST_PORT)) as db:
+            db.cur.execute("CREATE SCHEMA pylovo")
+            db.cur.execute("""CREATE TABLE pylovo.buildings_result (
+                                  version_id varchar(10) NOT NULL, osm_id text NOT NULL,
+                                  grid_result_id bigint NOT NULL, area double precision)""")
+            db.cur.execute("""CREATE MATERIALIZED VIEW pylovo.buildings_result_with_grid AS
+                              SELECT version_id, osm_id, area FROM pylovo.buildings_result""")
+            db.cur.execute("CREATE SCHEMA pylovo_review_external")
+            db.cur.execute("""CREATE VIEW pylovo_review_external.building_layer AS
+                              SELECT * FROM pylovo.buildings_result_with_grid""")
+            db.conn.commit()
+            with pytest.raises(RuntimeError, match="0001_legacy_buildings.*pylovo_review_external.building_layer"):
+                DatabaseConstructor(db).migrate_schema()
+            db.cur.execute("SELECT count(*) FROM pylovo.schema_migrations")
+            assert db.cur.fetchone() == (0,)
+            db.cur.execute("""SELECT column_name FROM information_schema.columns
+                              WHERE table_schema='pylovo' AND table_name='buildings_result'
+                                AND column_name IN ('osm_id', 'objectid')""")
+            assert db.cur.fetchall() == [("osm_id",)]
+            db.conn.rollback()
+    finally:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+        admin.close()
 
 
 def test_legacy_building_columns_and_key_migrate_without_reset():
