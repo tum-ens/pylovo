@@ -106,10 +106,8 @@ its own schema next to them, using the same connection settings.
       CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public;
       CREATE EXTENSION IF NOT EXISTS pgrouting SCHEMA public;
 
-   Never install extensions in the schema ``pylovo``: the setup drops that schema with
-   ``CASCADE``. Older pylovo versions created pgRouting there; the setup now drops it with the
-   schema and recreates it in ``public``. If PostGIS itself lives in ``pylovo``, the setup
-   refuses to run, because dropping it would delete every geometry column in the database.
+   Keep extensions outside ``pylovo``. The explicit reset command refuses to
+   drop a schema that owns an extension, including PostGIS or pgRouting.
 
 #. Write the connection settings into ``.env`` (next section).
 

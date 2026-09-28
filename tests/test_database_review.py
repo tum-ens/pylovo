@@ -35,6 +35,27 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
         db.conn.rollback()
 
 
+def test_reset_refuses_to_drop_external_dependents():
+    with client() as db:
+        db.cur.execute("CREATE SCHEMA IF NOT EXISTS pylovo_review_external")
+        db.cur.execute(
+            """CREATE VIEW pylovo_review_external.version_view AS
+               SELECT version_id FROM pylovo.version"""
+        )
+        db.conn.commit()
+        try:
+            with pytest.raises(RuntimeError, match="outside pylovo"):
+                DatabaseConstructor(db).reset_schema()
+            db.cur.execute("SELECT to_regclass('pylovo.version')")
+            assert db.cur.fetchone()[0] is not None
+            db.cur.execute("SELECT to_regclass('pylovo_review_external.version_view')")
+            assert db.cur.fetchone()[0] is not None
+        finally:
+            db.conn.rollback()
+            db.cur.execute("DROP SCHEMA pylovo_review_external CASCADE")
+            db.conn.commit()
+
+
 def test_legacy_building_columns_and_key_migrate_without_reset():
     """Exercise the pre-baseline path in a separate disposable database."""
     from psycopg2 import sql
@@ -81,6 +102,13 @@ def test_legacy_building_columns_and_key_migrate_without_reset():
             """)
             assert "(version_id, objectid)" in db.cur.fetchone()[0]
             constructor.migrate_schema()
+            constructor.reset_schema()
+            db.cur.execute("SELECT to_regnamespace('pylovo')")
+            assert db.cur.fetchone() == (None,)
+            db.cur.execute(
+                "SELECT extname FROM pg_extension WHERE extname IN ('postgis', 'pgrouting')"
+            )
+            assert {row[0] for row in db.cur.fetchall()} == {"postgis", "pgrouting"}
             db.conn.rollback()
     finally:
         with admin.cursor() as cur:

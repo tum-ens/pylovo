@@ -11,7 +11,8 @@ Migrations are recorded in ``pylovo.schema_migrations``.
    To delete all PyLovo data, use the explicit command
    ``uv run pylovo-setup reset --database NAME``. Check ``HOST``, ``PORT`` and
    ``DBNAME`` in ``.env`` first. Without ``--yes`` you must type the configured
-   database name.
+   database name. Reset refuses to remove extensions in ``pylovo`` and rolls
+   back if PostgreSQL's cascade would remove an object in another schema.
    The browser API's confirmed database setup action invokes this reset.
 
 Set up InfDB first (USE_INFDB=True)

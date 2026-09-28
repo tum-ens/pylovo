@@ -504,38 +504,69 @@ class DatabaseConstructor:
             raise
 
     def reset_schema(self):
-        """Drop the ``pylovo`` schema with ALL its tables, views, functions and data, and commit.
+        """Drop only the PyLovo schema, aborting if another schema would lose objects.
 
-        Warning:
-            Irreversible. This deletes every generated grid, every result and analysis table,
-            the imported transformers, postcodes and ways, and the classification data of the
-            database the client is connected to (``DBNAME`` in ``.env``). Only ``pylovo-setup``
-            should call it, before it rebuilds the schema from scratch. Check the connection
-            settings before running it.
-
-            ``CASCADE`` also drops every extension installed in schema ``pylovo`` and all objects in
-            other schemas that depend on it. Older pylovo versions created pgRouting there; it is
-            dropped here and recreated in ``public`` by :meth:`create_table`.
-
-        Raises:
-            RuntimeError: If PostGIS is installed in schema ``pylovo``. Dropping the schema would
-                then delete every geometry column of the whole database, so nothing is dropped.
+        PostgreSQL CASCADE can remove views, functions, types or foreign keys in
+        other schemas. Snapshot those catalog objects and roll the whole transaction
+        back if any disappears. Extensions housed in PyLovo are never reset.
         """
-        with self.dbc.conn.cursor() as cur:
-            cur.execute(
-                "SELECT extname FROM pg_extension WHERE extnamespace = to_regnamespace('pylovo') ORDER BY 1;"
-            )
-            extensions_in_schema = [row[0] for row in cur.fetchall()]
-            if "postgis" in extensions_in_schema:
-                raise RuntimeError(
-                    "PostGIS is installed in schema 'pylovo'. Dropping the schema would delete every "
-                    "geometry column in this database, so pylovo-setup stops without changes. Move "
-                    "PostGIS to another schema (or use a fresh database) before running the setup."
+        inventory = """
+            SELECT 'relation', c.oid::text FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT 'procedure', p.oid::text FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT 'type', t.oid::text FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT 'constraint', c.oid::text FROM pg_constraint c
+            JOIN pg_namespace n ON n.oid = c.connamespace
+            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT 'trigger', t.oid::text FROM pg_trigger t
+            JOIN pg_class c ON c.oid = t.tgrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT 'schema', n.oid::text FROM pg_namespace n
+            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+              AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT 'extension', e.oid::text FROM pg_extension e
+        """
+        try:
+            with self.dbc.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT extname FROM pg_extension "
+                    "WHERE extnamespace = to_regnamespace('pylovo') ORDER BY 1"
                 )
-            if extensions_in_schema:
-                self.dbc.logger.warning(
-                    f"Dropping extensions installed in schema pylovo: {', '.join(extensions_in_schema)} "
-                    "(recreated in schema public)."
-                )
-            cur.execute("DROP SCHEMA IF EXISTS pylovo CASCADE")
-        self.dbc.conn.commit()
+                extensions = [row[0] for row in cur.fetchall()]
+                if extensions:
+                    raise RuntimeError(
+                        "Reset refused: extensions are installed in pylovo: "
+                        + ", ".join(extensions)
+                        + ". Move them to another schema before resetting."
+                    )
+                cur.execute(inventory)
+                before = set(cur.fetchall())
+                cur.execute("DROP SCHEMA IF EXISTS pylovo CASCADE")
+                cur.execute(inventory)
+                lost = before - set(cur.fetchall())
+                if lost:
+                    raise RuntimeError(
+                        f"Reset refused: CASCADE would remove {len(lost)} object(s) "
+                        "outside pylovo. The transaction was rolled back."
+                    )
+            self.dbc.conn.commit()
+        except Exception:
+            self.dbc.conn.rollback()
+            raise
