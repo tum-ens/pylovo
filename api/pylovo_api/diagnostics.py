@@ -182,6 +182,23 @@ _FALLBACK = {"vn": 400.0, "cos_phi": 0.95, "peak_load_household": 16.825, "min_v
 
 
 # =========================================================================== helpers
+def _tap_lift(tr: dict) -> tuple[float, int]:
+    """LV voltage lift of the stored off-load tap: ``(pp, steps towards a higher LV voltage)``.
+
+    pylovo's validation power flow may set the tap (``pylovo.station_voltage``). With the tap on
+    the HV side the ratio becomes ``1 + n·step`` and the LV voltage scales with its inverse; with
+    it on the LV side the LV voltage scales with ``1 + n·step``.
+    """
+    pos, neutral = _f(tr.get("tap_pos")), _f(tr.get("tap_neutral"))
+    if pos is None or neutral is None:
+        return 0.0, 0
+    step = (_f(tr.get("tap_step_percent"), 2.5) or 0.0) / 100
+    n = pos - neutral
+    if str(tr.get("tap_side") or "hv").lower() == "lv":
+        return 100 * n * step, round(n)
+    return (100 * (1 / (1 + n * step) - 1) if 1 + n * step > 0 else 0.0), round(-n)
+
+
 def _f(value: Any, default: float | None = None) -> float | None:
     try:
         value = float(value)
@@ -668,12 +685,14 @@ class GridModel:
             self.u_S = math.hypot(self.down.get(self.root, {}).get("p", 0.0), self.down.get(self.root, {}).get("q", 0.0)) / self.sr_kva
         self.vk = _f(tr.get("vk_percent"), 6.0)
         self.vkr = _f(tr.get("vkr_percent"), 1.2)
+        self.tap_lift_pp, self.tap_steps = _tap_lift(tr)
+        self.vm_lv_noload = self.vm_ext * (1 + self.tap_lift_pp / 100)   # LV busbar without load
         # Loading estimate for the transformer drop before the power flow: the coincident kVA plus
         # the line losses of the linear replay, at the reduced LV voltage (current rises as 1/vm).
         p_load = self.down.get(self.root, {}).get("p", 0.0) if self.root is not None else 0.0
         loss_kw = sum(3 * line["I_s"] ** 2 * line["R"] for line in self.lines.values()) / 1000
         u_s = self.u_S or 0.0
-        vm_lv0 = 1 - self.trafo_drop(u_s, self.vk) / 100
+        vm_lv0 = self.vm_lv_noload - self.trafo_drop(u_s, self.vk) / 100
         self.u_T_est = u_s * (1 + (loss_kw / p_load if p_load > 0 else 0.0)) / (vm_lv0 or 1.0)
         self.dU_T_est = self.trafo_drop(self.u_T_est, self.vk)
         stored = _f(self.g.get("max_total_drop_pct"))
@@ -688,7 +707,7 @@ class GridModel:
             self.trafo_loading = max((_f(t.get("loading_percent"), 0.0) for t in self.pf.get("trafo", [])), default=0.0) / 100
         else:
             self.vm_hv = self.vm_ext
-            self.dU_T = self.dU_T_est
+            self.dU_T = self.dU_T_est - self.tap_lift_pp * self.vm_ext   # the transformer including its tap
             self.trafo_loading = None
         self.dU_MV = 100 * (1 - self.vm_hv)
         self.estimated = self.pf is None
@@ -705,7 +724,7 @@ class GridModel:
             return self.vm_pf.get(bus)
         if bus not in self.lin:
             return None
-        return self.vm_ext - (self.dU_T_est + self.kappa * self.lin[bus]) / 100
+        return self.vm_lv_noload - (self.dU_T_est + self.kappa * self.lin[bus]) / 100
 
     def line_drop(self, lid: int) -> float:
         """Drop along one line in pp (power flow, or the anchored linear replay)."""
@@ -949,7 +968,8 @@ def _budget(m: GridModel, k: int) -> dict:
             other_feeder += drop
     ranked = sorted(per_section.items(), key=lambda kv: -kv[1])
     bars = [{"key": "mv", "label": "MV setpoint", "pp": round(m.dU_MV, 3)},
-            {"key": "trafo", "label": f"Transformer ({m.g.get('size_label') or ''})".replace(" ()", ""),
+            {"key": "trafo", "label": (f"Transformer ({m.g.get('size_label') or ''})".replace(" ()", "")
+                                       + (f", tap {m.tap_steps:+d}" if m.tap_steps else "")),
              "pp": round(m.dU_T, 3), "targets": {"trafo": True}}]
     if link:
         bars.append({"key": "link", "label": "Busbar link", "pp": round(link, 3)})
@@ -1208,7 +1228,7 @@ def _rule_de03(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
     for lid, line in m.lines.items():
         if line["role"] != "service" or _f(line.get("design_drop_pct")) is None:
             continue
-        budget = dU_MV + dU_T + float(line["design_drop_pct"])
+        budget = dU_MV + dU_T - m.tap_lift_pp * m.vm_ext + float(line["design_drop_pct"])
         per_feeder[m.line_feeder.get(lid)].append((budget, m.child_of.get(lid), lid))
     agrees = g.get("power_flow_status") == "voltage_violation"
     for f, rows in per_feeder.items():

@@ -285,3 +285,25 @@ def test_sandbox_grid3_matches_the_design(client):
     result = client.get(f"/api/grids/{grid['grid_result_id']}/diagnostics").json()
     rules = {f["rule"] for f in result["findings"] if f["severity"] != "info"}
     assert {"VT-01", "VT-04", "TR-02", "LD-04", "LD-06", "TP-02", "TP-03", "TP-01", "DE-01", "DE-02", "DE-05"} <= rules
+
+
+def test_tap_lift_matches_pandapower():
+    """The estimate before a power flow adds the stored off-load tap (pylovo.station_voltage sets it)."""
+    import pandapower as pp
+    from pylovo_api.diagnostics import _tap_lift
+
+    assert _tap_lift({}) == (0.0, 0)
+    assert _tap_lift({"tap_pos": 0, "tap_neutral": 0, "tap_step_percent": 2.5, "tap_side": "hv"}) == (0.0, 0)
+    for side, pos in (("hv", -1), ("hv", -2), ("lv", 1)):
+        net = pp.create_empty_network()
+        mv, lv = pp.create_bus(net, 20.0), pp.create_bus(net, 0.4)
+        pp.create_ext_grid(net, mv, vm_pu=1.0)
+        t = pp.create_transformer(net, mv, lv, std_type="0.4 MVA 20/0.4 kV")
+        net.trafo.at[t, "tap_side"] = side
+        pp.runpp(net)
+        neutral = float(net.res_bus.vm_pu[lv])
+        net.trafo.at[t, "tap_pos"] = pos
+        pp.runpp(net)
+        lift, steps = _tap_lift(dict(net.trafo.loc[t]))
+        assert steps == abs(pos)
+        assert float(net.res_bus.vm_pu[lv]) / neutral == pytest.approx(1 + lift / 100, abs=2e-4)
