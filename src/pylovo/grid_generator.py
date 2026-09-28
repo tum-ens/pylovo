@@ -46,9 +46,11 @@ from pylovo.config_loader import (
     GREENFIELD_TRAFO_POSITION_TOLERANCE,
     K_MEANS_SEED,
     LOG_LEVEL,
+    LV_REFERENCE_VOLTAGE_PU,
     MAX_BROWNFIELD_TRAFO_DISTANCE,
     MAX_BUILDINGS_PER_KCID,
     MAX_GREENFIELD_TRAFO_DISTANCE,
+    MAX_TAP_STEPS,
     MERGE_GREENFIELD_CLUSTERS,
     N_JOBS,
     POWER_FLOW_MAX_VM_PU,
@@ -72,6 +74,7 @@ from pylovo.config_loader import (
 from pylovo.electrical_backend import IElectricalBackend, create_backend
 from pylovo.cable_installer import CableInstaller
 from pylovo import feeder_planning
+from pylovo.station_voltage import solve_validation_power_flow
 
 class ResultExistsError(Exception):
     """Raised when the grids of a PLZ already exist for the current ``VERSION_ID``."""
@@ -1531,7 +1534,9 @@ class GridGenerator:
         """
         Validate the synthetic transformer-coincident operating point and save the grid.
 
-        Runs the power flow of the snapshot loads, classifies it as ``converged``,
+        Runs the power flow of the snapshot loads with the station voltage of
+        :mod:`pylovo.station_voltage` (LV busbar at ``LV_REFERENCE_VOLTAGE_PU``, off-load tap up
+        to ``MAX_TAP_STEPS``), classifies it as ``converged``,
         ``voltage_violation`` (outside ``POWER_FLOW_VOLTAGE_LIMITS``) or
         ``not_converged``, and stores the network JSON with the planning and
         voltage-drop diagnostics in ``grid_result`` (plus the SQL network tables for
@@ -1571,7 +1576,13 @@ class GridGenerator:
                 "Running synthetic transformer-coincident validation operating point "
                 f"for kcid={kcid}, bcid={bcid}."
             )
-            converged = backend.solve_power_flow()
+            station = solve_validation_power_flow(
+                backend, LV_REFERENCE_VOLTAGE_PU, MAX_TAP_STEPS, POWER_FLOW_MIN_VM_PU, POWER_FLOW_MAX_VM_PU,
+                logger=self.logger,
+            )
+            converged = station.converged
+            if station.applied:
+                self.logger.debug(f"Station voltage for kcid={kcid}, bcid={bcid}: {station.describe()}")
             if converged:
                 metrics = backend.get_circuit_metrics()
                 min_voltage_pu = metrics.get("min_voltage_pu")

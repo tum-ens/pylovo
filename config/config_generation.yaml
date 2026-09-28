@@ -92,6 +92,12 @@ USE_OPEN_TRANSFORMER_POSITIONS: False # Include all non-DSO positions from pylov
 USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
 USE_MANUAL_TRANSFORMER_POSITIONS: False # Include the positions placed in the UI (manual/...) even when USE_OPEN_TRANSFORMER_POSITIONS is False
 
+## Station voltage of the validation power flow
+# Voltage band of DIN EN 50160 split between MV and LV as in Niederle et al. (2026): the LV busbar of the
+# station is at 0.96 p.u. at the operating point, the LV grid may drop to MIN_VM_PU (config_analysis.yaml).
+LV_REFERENCE_VOLTAGE_PU: 0.96 # LV busbar voltage at the operating point (null: MV side at 1.0 p.u. as built)
+MAX_TAP_STEPS: 2 # Off-load tap steps of 2.5 % pylovo may use to lift the LV side when a bus is below MIN_VM_PU (0: never)
+
 
 # =============================================================================
 # Equipment data configuration

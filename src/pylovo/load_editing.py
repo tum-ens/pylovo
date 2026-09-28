@@ -139,6 +139,8 @@ class LoadParameters:
         max_service_drop_percent: Service design voltage-drop limit (warnings only).
         min_vm_pu: Lower voltage limit of the validation power flow (``None``: from the net).
         max_vm_pu: Upper voltage limit (``None``: from the net).
+        lv_reference_voltage_pu: LV busbar voltage of the validation power flow (``None``: MV side as stored).
+        max_tap_steps: Off-load tap steps the validation power flow may use.
         planning_utilization: ``TRANSFORMER_PLANNING_UTILIZATION``.
         notes: Remarks about how the values were derived.
     """
@@ -156,6 +158,8 @@ class LoadParameters:
     min_vm_pu: float | None
     max_vm_pu: float | None
     planning_utilization: float
+    lv_reference_voltage_pu: float | None = None
+    max_tap_steps: int = 0
     notes: tuple[str, ...] = ()
 
     @classmethod
@@ -235,6 +239,8 @@ class LoadParameters:
             min_vm_pu=pfa.get("min_vm_pu"),
             max_vm_pu=pfa.get("max_vm_pu"),
             planning_utilization=float(placement.get("transformer_planning_utilization") or 1.0),
+            lv_reference_voltage_pu=pfa.get("lv_reference_voltage_pu"),
+            max_tap_steps=int(pfa.get("max_tap_steps") or 0),
             notes=tuple(notes),
         )
 
@@ -757,7 +763,8 @@ class Validation:
                 "max_total_lv_voltage_drop_pu": self.max_total_lv_voltage_drop_pu}
 
 
-def validate_operating_point(backend, min_vm_pu: float, max_vm_pu: float) -> Validation:
+def validate_operating_point(backend, min_vm_pu: float, max_vm_pu: float,
+                             lv_reference_voltage_pu: float | None = None, max_tap_steps: int = 0) -> Validation:
     """Run and classify the validation power flow, as ``GridGenerator.save_net``.
 
     Status ``converged``, ``voltage_violation`` (a bus outside ``[min_vm_pu, max_vm_pu]``) or
@@ -768,10 +775,15 @@ def validate_operating_point(backend, min_vm_pu: float, max_vm_pu: float) -> Val
         backend: :class:`~pylovo.electrical_backend.pandapower.backend.PandapowerBackend` holding the net.
         min_vm_pu: Lower voltage limit (``POWER_FLOW_MIN_VM_PU`` of the version).
         max_vm_pu: Upper voltage limit.
+        lv_reference_voltage_pu: Station voltage of :mod:`pylovo.station_voltage` (version snapshot).
+        max_tap_steps: Off-load tap steps it may use.
     """
+    from pylovo.station_voltage import solve_validation_power_flow
+
     result = Validation("not_converged")
     try:
-        converged = backend.solve_power_flow()
+        converged = solve_validation_power_flow(backend, lv_reference_voltage_pu, max_tap_steps,
+                                                min_vm_pu, max_vm_pu, logger=_QUIET).converged
         if converged:
             metrics = backend.get_circuit_metrics()
             min_voltage_pu = metrics.get("min_voltage_pu")
@@ -860,7 +872,8 @@ def run_validation(net, params: LoadParameters) -> Validation:
     """:func:`validate_operating_point` with the version's voltage band (fallback: the bus limits)."""
     min_vm = params.min_vm_pu if params.min_vm_pu is not None else float(net.bus.min_vm_pu.min())
     max_vm = params.max_vm_pu if params.max_vm_pu is not None else float(net.bus.max_vm_pu.max())
-    return validate_operating_point(_backend_for(net), min_vm, max_vm)
+    return validate_operating_point(_backend_for(net), min_vm, max_vm,
+                                    params.lv_reference_voltage_pu, params.max_tap_steps)
 
 
 def power_flow_summary(net, validation: Validation) -> dict[str, Any]:

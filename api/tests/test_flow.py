@@ -5,6 +5,7 @@ without the typed confirmation; they never start a job that writes.
 """
 from __future__ import annotations
 
+import re
 import sys
 import time
 from types import SimpleNamespace
@@ -89,8 +90,16 @@ def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
 
 
 # --------------------------------------------------------------------------- sandbox database
+def _as_generated_before_the_station_voltage(project):
+    """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU / MAX_TAP_STEPS: use the values they had."""
+    path = project / "config" / "config_generation.yaml"
+    text = re.sub(r"^LV_REFERENCE_VOLTAGE_PU:.*$", "LV_REFERENCE_VOLTAGE_PU: null", path.read_text(), flags=re.MULTILINE)
+    path.write_text(re.sub(r"^MAX_TAP_STEPS:.*$", "MAX_TAP_STEPS: 0", text, flags=re.MULTILINE))
+
+
 @requires_db
-def test_preflight_matches_the_stored_snapshot(client):
+def test_preflight_matches_the_stored_snapshot(client, project):
+    _as_generated_before_the_station_voltage(project)
     state = client.get("/api/flow/generate-state", params={"plz": 85653}).json()
     assert state["error"] is None and state["version_id"] == "1"
     assert state["comparison"]["exists"] and state["comparison"]["matches"] is True
@@ -109,7 +118,8 @@ def test_preflight_matches_the_stored_snapshot(client):
 
 
 @requires_db
-def test_destructive_flow_endpoints_need_the_typed_confirmation(client):
+def test_destructive_flow_endpoints_need_the_typed_confirmation(client, project):
+    _as_generated_before_the_station_voltage(project)
     assert client.post("/api/flow/regenerate", json={"plz": 85653, "confirm": "1/1"}).status_code == 400
     assert client.post("/api/flow/reanalyse", json={"plz": 85653, "confirm": "85653"}).status_code == 400
 

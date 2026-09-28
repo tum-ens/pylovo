@@ -24,6 +24,9 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     # These config keys existed before they were recorded: the value used is not known.
     ("transformer_placement", "merge_greenfield_clusters"): UNKNOWN,
     ("transformer_placement", "greenfield_cluster_merge_transformer_kva"): UNKNOWN,
+    # Before the station voltage existed the MV side was at 1.0 p.u. and the tap neutral.
+    ("power_flow_assessment", "lv_reference_voltage_pu"): None,
+    ("power_flow_assessment", "max_tap_steps"): 0,
 }
 
 

@@ -346,6 +346,17 @@ USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSIT
 USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
 USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_MANUAL_TRANSFORMER_POSITIONS", False)
+
+# Station voltage of the validation power flow (pylovo.station_voltage). Missing keys keep the
+# behaviour from before they existed: MV side at 1.0 p.u., neutral tap.
+LV_REFERENCE_VOLTAGE_PU = CONFIG_GENERATION.get("LV_REFERENCE_VOLTAGE_PU")
+if LV_REFERENCE_VOLTAGE_PU is not None:
+    LV_REFERENCE_VOLTAGE_PU = float(LV_REFERENCE_VOLTAGE_PU)
+    if not 0.8 <= LV_REFERENCE_VOLTAGE_PU <= 1.2:
+        raise ValueError(f"LV_REFERENCE_VOLTAGE_PU must be between 0.8 and 1.2 p.u., got {LV_REFERENCE_VOLTAGE_PU}")
+MAX_TAP_STEPS = int(CONFIG_GENERATION.get("MAX_TAP_STEPS", 0) or 0)
+if MAX_TAP_STEPS < 0:
+    raise ValueError(f"MAX_TAP_STEPS must not be negative, got {MAX_TAP_STEPS}")
 MAX_GREENFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_GREENFIELD_TRAFO_DISTANCE"]
 # CALIBRATION (temp): standard deviation (m) of a per-cluster greenfield distance limit drawn around
 # MAX_GREENFIELD_TRAFO_DISTANCE and clipped to +/- 2 standard deviations. 0 keeps one fixed limit.
