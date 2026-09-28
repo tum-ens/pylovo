@@ -85,7 +85,9 @@ Views and temporary tables
 --------------------------
 
 ``transformer_positions_with_grid``
-   View of ``transformer_positions`` with ``kcid``, ``bcid``, ``plz`` and the equipment data.
+   View of ``transformer_positions`` with ``kcid``, ``bcid``, ``plz``, the station rating
+   ``transformer_rated_power`` and the equipment data of one unit (``s_max_kva``, ``cost_eur``, ...);
+   ``transformer_units`` is the number of units of the station.
 ``buildings_result_with_grid``
    Regular view of current ``buildings_result`` rows with ``kcid``, ``bcid`` and ``plz``.
 ``buildings_tem_<plz>``, ``ways_tem_<plz>``, ``ways_tem_<plz>_vertices_pgr``

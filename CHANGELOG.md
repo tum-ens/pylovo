@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Analysis counts transformer stations with their full rating: `plz_parameters` keys, `clustering_parameters.transformer_mva` and the comparison metric use `sn_mva x parallel` (an 800 kVA station of two 400 kVA units was counted as 400)
 - The version snapshot records `MERGE_GREENFIELD_CLUSTERS`, `GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA` and `USE_MANUAL_TRANSFORMER_POSITIONS`; older snapshots without them stay usable
 - A transformer rating only sizes a station when the candidate's source is enabled; among several candidates the cluster's own station wins
+- `grid_result.transformer_equipment_name` is filled during generation, and `pylovo-setup` backfills it for existing versions where the station rating maps to one catalog unit (standard 100 to 1260 kVA stations). The equipment columns of `transformer_positions_with_grid` (`s_max_kva`, `cost_eur`, ...) describe one unit; the new column `transformer_units` gives the units per station and `transformer_rated_power` stays the station rating (an 800 kVA station shows `s_max_kva` 400 and `transformer_units` 2)
 - The transformer's street vertex is the station busbar `LVbus 1`: cables starting there leave the busbar directly, without the 1 m link line (one bus and one line fewer per grid; voltage drops change by less than 0.03 percentage points)
 
 ### Deprecated

@@ -74,7 +74,9 @@ DESCRIPTIONS = {
                      "dropped after the run.",
     "ways_tem": "Temporary street table of one postcode, created as ``ways_tem_<plz>``; pgRouting adds "
                 "``ways_tem_<plz>_vertices_pgr``.",
-    "transformer_positions_with_grid": "View: transformer positions joined with grid identifiers and equipment data.",
+    "transformer_positions_with_grid": "View: transformer positions with grid identifiers, the station rating "
+                                       "(``transformer_rated_power``) and the equipment data of one unit "
+                                       "(``transformer_units`` per station).",
     "buildings_result_with_grid": "Regular view: live buildings with kcid, bcid and plz; base geometry is indexed.",
 }
 

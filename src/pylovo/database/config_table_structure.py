@@ -709,7 +709,9 @@ CREATE_QUERIES = {
                                )
     """,
     # GIS views. Only transformer_classified_with_grid is materialized and refreshed.
-    # Equipment columns are present when the selected unit has a unique catalog match.
+    # Equipment columns are present when the selected unit has a unique catalog match. They
+    # describe one transformer unit: the station has transformer_units of them and its
+    # rating is transformer_rated_power.
     "transformer_positions_with_grid": """
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
         SELECT
@@ -725,7 +727,8 @@ CREATE_QUERIES = {
             ed.x_mohm_per_km,
             ed.z_mohm_per_km,
             ed.cost_eur,
-            ed.typ AS equipment_type
+            ed.typ AS equipment_type,
+            round(gr.transformer_rated_power / NULLIF(ed.s_max_kva, 0))::integer AS transformer_units
         FROM pylovo.transformer_positions tp
         JOIN pylovo.grid_result gr ON tp.grid_result_id = gr.grid_result_id
         LEFT JOIN pylovo.equipment_data ed

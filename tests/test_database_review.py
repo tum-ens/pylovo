@@ -240,6 +240,31 @@ def test_cross_grid_references_and_raw_transformer_delete(monkeypatch):
         db.conn.rollback()
 
 
+def test_transformer_view_reports_unit_and_station_rating():
+    """An 800 kVA double station maps to the 400 kVA unit; consumers need the station rating."""
+    with client() as db:
+        cur = db.cur
+        version = "t" + uuid.uuid4().hex[:8]
+        polygon = "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+        cur.execute("INSERT INTO pylovo.version (version_id) VALUES (%s)", (version,))
+        cur.execute("INSERT INTO pylovo.postcode (plz, geom) VALUES (12345, ST_Multi(ST_GeomFromText(%s, %s)))",
+                    (polygon, TARGET_EPSG))
+        cur.execute("""INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz, geom)
+                       VALUES (%s, 12345, ST_Multi(ST_GeomFromText(%s, %s)))""", (version, polygon, TARGET_EPSG))
+        cur.execute("""INSERT INTO pylovo.equipment_data (version_id, name, s_max_kva, typ)
+                       VALUES (%s, 'Tr_400', 400, 'Transformer')""", (version,))
+        cur.execute("""INSERT INTO pylovo.grid_result
+                           (version_id, plz, kcid, bcid, transformer_rated_power, transformer_equipment_name)
+                       VALUES (%s, 12345, 1, 1, 800, 'Tr_400') RETURNING grid_result_id""", (version,))
+        grid = cur.fetchone()[0]
+        cur.execute("""INSERT INTO pylovo.transformer_positions (grid_result_id, version_id, geom)
+                       VALUES (%s, %s, ST_SetSRID(ST_MakePoint(0, 0), %s))""", (grid, version, TARGET_EPSG))
+        cur.execute("""SELECT transformer_rated_power, s_max_kva, transformer_units
+                       FROM pylovo.transformer_positions_with_grid WHERE grid_result_id = %s""", (grid,))
+        assert cur.fetchone() == (800, 400, 2)
+        db.conn.rollback()
+
+
 def test_reset_refuses_to_drop_external_dependents():
     with client() as db:
         db.cur.execute("CREATE SCHEMA IF NOT EXISTS pylovo_review_external")

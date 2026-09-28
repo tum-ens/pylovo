@@ -1664,7 +1664,7 @@ Views
    Compatibility SQL view over lines_result_cache for existing QGIS and API readers.
 
 ``transformer_positions_with_grid``
-   View: transformer positions joined with grid identifiers and equipment data.
+   View: transformer positions with grid identifiers, the station rating (``transformer_rated_power``) and the equipment data of one unit (``transformer_units`` per station).
 
 ``buildings_result_with_grid``
    Regular view: live buildings with kcid, bcid and plz; base geometry is indexed.
