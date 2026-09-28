@@ -4,6 +4,7 @@ import os
 import subprocess
 import time
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -43,6 +44,9 @@ from pylovo.database.migrations import (
 from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.utils import get_user_data_dir
 
+
+# Session advisory lock held by setup, migrations and resets (pg_advisory_lock key pair).
+SETUP_LOCK = (907360, 0)
 
 def _blocked_message(step: str, exc: psy.errors.DependentObjectsStillExist) -> str:
     """Name the database objects that keep a migration step from dropping or changing a view."""
@@ -162,7 +166,7 @@ class DatabaseConstructor:
         and its ledger row commit together; failure leaves that step unapplied.
         """
         with self.dbc.conn.cursor() as cur:
-            cur.execute("SELECT pg_advisory_lock(%s, %s)", (907360, 0))
+            cur.execute("SELECT pg_advisory_lock(%s, %s)", SETUP_LOCK)
         self.dbc.conn.commit()
         try:
             self.create_schema()
@@ -213,7 +217,7 @@ class DatabaseConstructor:
             raise
         finally:
             with self.dbc.conn.cursor() as cur:
-                cur.execute("SELECT pg_advisory_unlock(%s, %s)", (907360, 0))
+                cur.execute("SELECT pg_advisory_unlock(%s, %s)", SETUP_LOCK)
             self.dbc.conn.commit()
 
     def assert_schema(self) -> None:
@@ -602,33 +606,38 @@ class DatabaseConstructor:
             raise
 
     def reset_schema(self):
-        """Drop only the PyLovo schema, aborting if another schema would lose objects.
+        """Drop only the PyLovo schema, aborting if another schema would lose objects."""
+        self._drop_schema_guarded("pylovo")
+
+    def _drop_schema_guarded(self, schema: str, dry_run: bool = False) -> None:
+        """Drop ``schema`` with CASCADE, aborting if another schema would lose objects.
 
         PostgreSQL CASCADE can remove views, functions, types or foreign keys in
         other schemas. Snapshot those catalog objects and roll the whole transaction
-        back if any disappears. Extensions housed in PyLovo are never reset.
+        back if any disappears. A schema that houses extensions is never dropped.
+        ``dry_run`` rolls the drop back in any case (a check without changes).
         """
         inventory = """
             SELECT 'relation', c.oid::text, c.oid::regclass::text FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+            WHERE n.nspname <> %(schema)s AND n.nspname NOT LIKE 'pg_%%'
               AND n.nspname <> 'information_schema'
             UNION ALL
             SELECT 'procedure', p.oid::text, p.oid::regprocedure::text FROM pg_proc p
             JOIN pg_namespace n ON n.oid = p.pronamespace
-            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+            WHERE n.nspname <> %(schema)s AND n.nspname NOT LIKE 'pg_%%'
               AND n.nspname <> 'information_schema'
             UNION ALL
             SELECT 'type', t.oid::text, NULL FROM pg_type t
             JOIN pg_namespace n ON n.oid = t.typnamespace
-            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+            WHERE n.nspname <> %(schema)s AND n.nspname NOT LIKE 'pg_%%'
               AND n.nspname <> 'information_schema'
             UNION ALL
             SELECT 'constraint', c.oid::text,
                    c.conname || ' on ' || COALESCE(NULLIF(c.conrelid, 0)::regclass::text, c.contypid::regtype::text)
             FROM pg_constraint c
             JOIN pg_namespace n ON n.oid = c.connamespace
-            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+            WHERE n.nspname <> %(schema)s AND n.nspname NOT LIKE 'pg_%%'
               AND n.nspname <> 'information_schema'
             UNION ALL
             SELECT 'trigger', t.oid::text,
@@ -636,41 +645,109 @@ class DatabaseConstructor:
             FROM pg_trigger t
             JOIN pg_class c ON c.oid = t.tgrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+            WHERE n.nspname <> %(schema)s AND n.nspname NOT LIKE 'pg_%%'
               AND n.nspname <> 'information_schema'
             UNION ALL
             SELECT 'schema', n.oid::text, 'schema ' || n.nspname FROM pg_namespace n
-            WHERE n.nspname <> 'pylovo' AND n.nspname NOT LIKE 'pg_%'
+            WHERE n.nspname <> %(schema)s AND n.nspname NOT LIKE 'pg_%%'
               AND n.nspname <> 'information_schema'
             UNION ALL
             SELECT 'extension', e.oid::text, 'extension ' || e.extname FROM pg_extension e
         """
         try:
             with self.dbc.conn.cursor() as cur:
+                cur.execute("SET LOCAL lock_timeout = '10s'")
                 cur.execute(
                     "SELECT extname FROM pg_extension "
-                    "WHERE extnamespace = to_regnamespace('pylovo') ORDER BY 1"
+                    "WHERE extnamespace = to_regnamespace(%s) ORDER BY 1", (schema,)
                 )
                 extensions = [row[0] for row in cur.fetchall()]
                 if extensions:
                     raise RuntimeError(
-                        "Reset refused: extensions are installed in pylovo: "
+                        f"Reset refused: extensions are installed in {schema}: "
                         + ", ".join(extensions)
                         + ". Move them to another schema before resetting."
                     )
-                cur.execute(inventory)
+                cur.execute(inventory, {"schema": schema})
                 before = {(kind, oid): label for kind, oid, label in cur.fetchall()}
-                cur.execute("DROP SCHEMA IF EXISTS pylovo CASCADE")
-                cur.execute(inventory)
+                cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
+                cur.execute(inventory, {"schema": schema})
                 lost = before.keys() - {(kind, oid) for kind, oid, _ in cur.fetchall()}
                 if lost:
                     names = sorted(before[key] for key in lost if before[key])  # types follow their objects
                     shown = ", ".join(names[:10]) + (f" and {len(names) - 10} more" if len(names) > 10 else "")
                     raise RuntimeError(
                         f"Reset refused: CASCADE would remove {len(lost)} object(s) "
-                        f"outside pylovo ({shown}). The transaction was rolled back."
+                        f"outside {schema} ({shown}). The transaction was rolled back."
                     )
-            self.dbc.conn.commit()
+            if dry_run:
+                self.dbc.conn.rollback()
+            else:
+                self.dbc.conn.commit()
+        except psy.errors.LockNotAvailable as exc:
+            self.dbc.conn.rollback()
+            raise RuntimeError(f"Reset refused: another session keeps using the schema {schema} (lock timeout).") from exc
         except Exception:
             self.dbc.conn.rollback()
             raise
+
+    def backup_schemas(self) -> list[str]:
+        """Return the ``pylovo_backup_*`` schemas left by interrupted resets."""
+        with self.dbc.conn.cursor() as cur:
+            cur.execute(r"SELECT nspname FROM pg_namespace WHERE nspname LIKE 'pylovo\_backup\_%' ORDER BY 1")
+            names = [row[0] for row in cur.fetchall()]
+        self.dbc.conn.commit()
+        return names
+
+    def move_schema_to_backup(self) -> str | None:
+        """Rename ``pylovo`` to ``pylovo_backup_<UTC time>`` and return that name (None without a schema).
+
+        A rolled-back trial drop first checks that no object of another schema depends on
+        ``pylovo``: such objects would follow the backup and be lost when it is dropped.
+        """
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("SELECT to_regnamespace('pylovo') IS NOT NULL")
+            exists = cur.fetchone()[0]
+        self.dbc.conn.commit()
+        if not exists:
+            return None
+        self._drop_schema_guarded("pylovo", dry_run=True)
+        backup = f"pylovo_backup_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}"
+        with self.dbc.conn.cursor() as cur:
+            cur.execute(sql.SQL("ALTER SCHEMA pylovo RENAME TO {}").format(sql.Identifier(backup)))
+        self.dbc.conn.commit()
+        return backup
+
+    def restore_backup(self, backup: str | None) -> None:
+        """Drop the partly rebuilt ``pylovo`` schema and rename ``backup`` back to ``pylovo``."""
+        try:
+            try:
+                self.dbc.conn.rollback()
+            except psy.Error:  # the failed rebuild may have lost the connection
+                self.dbc._connect()
+            self._drop_schema_guarded("pylovo")
+            if backup:
+                with self.dbc.conn.cursor() as cur:
+                    cur.execute(sql.SQL("ALTER SCHEMA {} RENAME TO pylovo").format(sql.Identifier(backup)))
+                self.dbc.conn.commit()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Restoring the previous schema failed: {exc}. Its data is in the schema {backup}: "
+                f"drop the schema pylovo and rename {backup} to pylovo."
+            ) from exc
+
+    def drop_backup(self, backup: str) -> None:
+        """Drop a backup schema of a reset once the rebuild succeeded."""
+        self._drop_schema_guarded(backup)
+
+    def acquire_setup_lock(self) -> None:
+        """Serialize setups, migrations and resets across sessions (session advisory lock)."""
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s, %s)", SETUP_LOCK)
+        self.dbc.conn.commit()
+
+    def release_setup_lock(self) -> None:
+        """Release the lock of :meth:`acquire_setup_lock`."""
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_unlock(%s, %s)", SETUP_LOCK)
+        self.dbc.conn.commit()

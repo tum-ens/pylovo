@@ -41,6 +41,7 @@ class FakeConstructor:
 
     def __init__(self, empty=(), fail_on=None, infdb_problem=None):
         self.calls, self.empty, self.fail_on, self.infdb_problem = [], set(empty), fail_on, infdb_problem
+        self.backup = "pylovo_backup_x"
 
     def _record(self, name):
         self.calls.append(name)
@@ -65,8 +66,24 @@ class FakeConstructor:
     def load_ways_preprocessing_functions(self):
         self._record("functions")
 
-    def reset_schema(self):
-        self._record("reset")
+    def backup_schemas(self):
+        return []
+
+    def acquire_setup_lock(self):
+        self._record("lock")
+
+    def release_setup_lock(self):
+        self._record("unlock")
+
+    def move_schema_to_backup(self):
+        self._record("backup")
+        return self.backup
+
+    def restore_backup(self, backup):
+        self._record(f"restore {backup}")
+
+    def drop_backup(self, backup):
+        self._record(f"drop {backup}")
 
 
 def _fake_setup(monkeypatch, tmp_path, fake):
@@ -81,18 +98,18 @@ def test_setup_imports_every_empty_reference_table(monkeypatch, tmp_path):
     fake = FakeConstructor(empty={"transformers", "postcode", "municipal_register"})
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup()
-    assert fake.calls == ["migrate", "transformers", "postcode", "register", "functions"]
+    assert fake.calls == ["lock", "migrate", "transformers", "postcode", "register", "functions", "unlock"]
 
 
 def test_rerun_completes_an_interrupted_setup_and_keeps_filled_tables(monkeypatch, tmp_path):
     fake = FakeConstructor(empty={"postcode", "municipal_register"})
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup()
-    assert fake.calls == ["migrate", "postcode", "register", "functions"]
+    assert fake.calls == ["lock", "migrate", "postcode", "register", "functions", "unlock"]
     fake = FakeConstructor()
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup()
-    assert fake.calls == ["migrate", "functions"]
+    assert fake.calls == ["lock", "migrate", "functions", "unlock"]
 
 
 def test_missing_inputs_stop_setup_and_reset_before_any_change(monkeypatch, tmp_path):
@@ -106,4 +123,31 @@ def test_missing_inputs_stop_setup_and_reset_before_any_change(monkeypatch, tmp_
     fake = FakeConstructor(infdb_problem="unreachable")  # nothing to import: inputs are not needed
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup()
-    assert fake.calls == ["migrate", "functions"]
+    assert fake.calls == ["lock", "migrate", "functions", "unlock"]
+
+
+ALL = {"transformers", "postcode", "municipal_register"}
+
+
+def test_reset_drops_the_backup_after_a_complete_rebuild(monkeypatch, tmp_path):
+    fake = FakeConstructor(empty=ALL)
+    _fake_setup(monkeypatch, tmp_path, fake)
+    setup.run_setup(reset=True)
+    assert fake.calls == ["lock", "backup", "migrate", "transformers", "postcode", "register", "functions",
+                          "drop pylovo_backup_x", "unlock"]
+
+
+def test_failed_reset_restores_the_previous_schema(monkeypatch, tmp_path):
+    fake = FakeConstructor(empty=ALL, fail_on="postcode")
+    _fake_setup(monkeypatch, tmp_path, fake)
+    with pytest.raises(RuntimeError, match="postcode failed"):
+        setup.run_setup(reset=True)
+    assert fake.calls == ["lock", "backup", "migrate", "transformers", "postcode", "restore pylovo_backup_x", "unlock"]
+
+
+def test_reset_of_a_database_without_schema_has_no_backup(monkeypatch, tmp_path):
+    fake = FakeConstructor(empty=ALL)
+    fake.backup = None
+    _fake_setup(monkeypatch, tmp_path, fake)
+    setup.run_setup(reset=True)
+    assert "drop None" not in fake.calls and fake.calls[-2:] == ["functions", "unlock"]

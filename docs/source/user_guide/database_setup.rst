@@ -12,8 +12,13 @@ rows before committing new foreign keys and checks.
    To delete all PyLovo data, use the explicit command
    ``uv run pylovo-setup reset --database NAME``. Check ``HOST``, ``PORT`` and
    ``DBNAME`` in ``.env`` first. Without ``--yes`` you must type the configured
-   database name. Reset refuses to remove extensions in ``pylovo`` and rolls
-   back if PostgreSQL's cascade would remove an object in another schema.
+   database name. Reset refuses to remove extensions in ``pylovo`` and refuses
+   while objects of other schemas depend on it (for example GridExpand views or
+   its foreign key to ``grid_result``). It renames the schema to
+   ``pylovo_backup_<UTC time>``, builds a new one and drops the backup once the
+   rebuild is complete. If the rebuild fails or is cancelled, it drops the new
+   schema and renames the backup back, so the previous data is kept. A backup
+   schema left by a killed process is reported by the next setup run.
    The HTTP API's reset job (typed confirmation) invokes this reset; its setup
    job runs the non-destructive setup.
 

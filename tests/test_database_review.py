@@ -400,3 +400,46 @@ def test_legacy_building_columns_and_key_migrate_without_reset():
                 sql.Identifier(name)
             ))
         admin.close()
+
+
+def test_reset_backup_is_restored_on_failure_and_dropped_after_success():
+    from psycopg2 import sql
+
+    name = "pylovo_review_" + uuid.uuid4().hex[:8]
+    admin = psycopg2.connect(dbname="postgres", user="postgres", host="127.0.0.1", port=int(TEST_PORT))
+    admin.autocommit = True
+    try:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        with DatabaseClient(dbname=name, user="postgres", pw="", host="127.0.0.1", port=int(TEST_PORT)) as db:
+            constructor = DatabaseConstructor(db)
+            constructor.migrate_schema()
+            db.cur.execute("INSERT INTO pylovo.version (version_id) VALUES ('keep')")
+            db.conn.commit()
+
+            backup = constructor.move_schema_to_backup()
+            assert backup.startswith("pylovo_backup_") and constructor.backup_schemas() == [backup]
+            constructor.migrate_schema()  # a rebuild that fails later
+            constructor.restore_backup(backup)
+            db.cur.execute("SELECT version_id FROM pylovo.version")
+            assert db.cur.fetchall() == [("keep",)] and constructor.backup_schemas() == []
+
+            backup = constructor.move_schema_to_backup()
+            constructor.migrate_schema()  # a rebuild that succeeds
+            constructor.drop_backup(backup)
+            db.cur.execute("SELECT count(*) FROM pylovo.version")
+            assert db.cur.fetchone() == (0,) and constructor.backup_schemas() == []
+
+            db.cur.execute("CREATE SCHEMA pylovo_review_external")
+            db.cur.execute("CREATE VIEW pylovo_review_external.versions AS SELECT version_id FROM pylovo.version")
+            db.conn.commit()
+            with pytest.raises(RuntimeError, match="outside pylovo"):
+                constructor.move_schema_to_backup()
+            assert constructor.backup_schemas() == []
+            db.cur.execute("SELECT to_regclass('pylovo_review_external.versions') IS NOT NULL")
+            assert db.cur.fetchone() == (True,)
+            db.conn.rollback()
+    finally:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+        admin.close()

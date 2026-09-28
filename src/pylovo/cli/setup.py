@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import signal
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,7 +19,8 @@ DESCRIPTION = """Create new PyLovo tables or migrate an existing schema.
 With no command, setup is non-destructive. It creates missing tables, runs pending
 migrations and imports each reference table (transformers, postcodes, municipal
 register) while it is empty, so a rerun completes an interrupted setup. Use the
-explicit reset command to delete all data in the PyLovo schema.
+explicit reset command to delete all data in the PyLovo schema: it moves the schema to
+a backup, rebuilds it, restores the backup if the rebuild fails and drops it otherwise.
 """
 
 
@@ -116,25 +118,62 @@ def build_schema(sgc: DatabaseConstructor, steps: list[ImportStep], logger: logg
     sgc.load_ways_preprocessing_functions()
 
 
+def _interrupt(signum, frame) -> None:
+    raise KeyboardInterrupt(f"signal {signum}")
+
+
+def reset_schema(sgc: DatabaseConstructor, steps: list[ImportStep], logger: logging.Logger) -> None:
+    """Rebuild the schema from scratch; the previous one is kept as a backup until the rebuild succeeded."""
+    logger.info("### MOVING SCHEMA pylovo TO A BACKUP ###")
+    backup = sgc.move_schema_to_backup()
+    originals = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    signal.signal(signal.SIGTERM, _interrupt)  # a cancelled API job (SIGINT, then SIGTERM) restores too
+    try:
+        build_schema(sgc, steps, logger)
+    except BaseException:
+        for sig in originals:  # nothing may interrupt the restore
+            signal.signal(sig, signal.SIG_IGN)
+        logger.error(f"### REBUILD FAILED: RESTORING THE PREVIOUS SCHEMA{' FROM ' + backup if backup else ''} ###")
+        sgc.restore_backup(backup)
+        raise
+    finally:
+        for sig, handler in originals.items():
+            signal.signal(sig, handler)
+    if backup:
+        logger.info(f"### DROPPING THE BACKUP SCHEMA {backup} ###")
+        try:
+            sgc.drop_backup(backup)
+        except RuntimeError as exc:
+            logger.warning(f"The backup schema {backup} was kept: {exc}")
+
+
 def run_setup(reset: bool = False) -> None:
     """Create or migrate the schema, then import every reference table that is still empty.
 
-    A rerun therefore completes an interrupted setup; tables with rows are kept.
+    A rerun therefore completes an interrupted setup; tables with rows are kept. ``reset``
+    rebuilds the schema from scratch (see :func:`reset_schema`).
     """
     logger = utils.create_logger(name="setup", log_file=Path("log/log.txt"), log_level=LOG_LEVEL)
 
     logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
     sgc = DatabaseConstructor()
+    for backup in sgc.backup_schemas():
+        logger.warning(f"The schema {backup} holds the data of an interrupted reset. Drop it, or drop the "
+                       f"schema pylovo and rename {backup} to pylovo to go back to that data.")
     steps = import_steps(sgc)
     logger.info("### CHECKING THE INPUT DATA ###")
     todo = [step for step in steps if reset or sgc.table_is_empty_or_missing(step.table)]
     problems = [problem for step in todo for problem in step.check()]
     if problems:
         raise RuntimeError("nothing was changed, the input data is incomplete: " + "; ".join(problems))
-    if reset:
-        logger.info("### RESETTING PYLOVO SCHEMA ###")
-        sgc.reset_schema()
-    build_schema(sgc, steps, logger)
+    sgc.acquire_setup_lock()
+    try:
+        if reset:
+            reset_schema(sgc, steps, logger)
+        else:
+            build_schema(sgc, steps, logger)
+    finally:
+        sgc.release_setup_lock()
     logger.info("### DONE ###")
 
 
