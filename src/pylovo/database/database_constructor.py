@@ -165,8 +165,7 @@ class DatabaseConstructor:
                     "-progress",
                     "-f",
                     "PostgreSQL",
-                    # The password appears in the ogr2ogr command line (visible in the process list).
-                    f"PG:dbname={DBNAME} user={DBUSER} password={PASSWORD} host={HOST} port={PORT}",
+                    f"PG:dbname={DBNAME} user={DBUSER} host={HOST} port={PORT}",
                     file_path,
                     "-nln",
                     f"pylovo.{table_name}",  # explicitly tells ogr2ogr where to append (for the case of table already existing)
@@ -181,7 +180,11 @@ class DatabaseConstructor:
             if skip_failures:
                 command.append("-skipfailures")
 
-            result = subprocess.run(command, check=True, shell=False, stderr=subprocess.PIPE if skip_failures else None)
+            result = subprocess.run(
+                command, check=True, shell=False,
+                stderr=subprocess.PIPE if skip_failures else None,
+                env={**os.environ, "PGPASSWORD": PASSWORD},
+            )
             if skip_failures:
                 error_list = result.stderr.decode().replace("\r", "").split("\n")
                 error_list = [e[e.find("ERROR: "):e.find("DETAIL: ")] for e in error_list]

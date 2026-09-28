@@ -4,6 +4,7 @@ import warnings
 
 import psycopg2 as psy
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 
 from pylovo import utils
 from pylovo.config_loader import DBNAME, DBUSER, HOST, LOG_LEVEL, PASSWORD, PORT
@@ -71,7 +72,10 @@ class DatabaseClient(
             "port": port,
             "options": "-c search_path=pylovo,public",
         }
-        self.db_path = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{dbname}"
+        self.db_path = URL.create(
+            "postgresql+psycopg2", username=user, password=pw,
+            host=host, port=int(port), database=dbname,
+        )
         try:
             self._connect()
         except psy.OperationalError as err:
@@ -80,7 +84,7 @@ class DatabaseClient(
             )
             raise err
 
-        self.logger.debug(f"DatabaseClient is constructed and connected to {self.db_path}.")
+        self.logger.debug("DatabaseClient connected to %s.", self.db_path.render_as_string(hide_password=True))
 
     def _connect(self) -> None:
         """Open the psycopg2 connection, its shared cursor and the SQLAlchemy engine."""

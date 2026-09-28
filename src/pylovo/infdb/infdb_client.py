@@ -52,7 +52,7 @@ class InfdbClient:
                 options=f"-c search_path={INFDB_SOURCE_SCHEMA},public",
             )
             self.cur = self.conn.cursor()
-            self.db_path = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{dbname}"
+            self.db_path = f"{host}:{port}/{dbname}"
         except psy.OperationalError as err:
             self.logger.warning(f"Connecting to {dbname} was not successful."
                                 f"Make sure, that you have established the SSH connection with correct port mapping.")
