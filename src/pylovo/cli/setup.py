@@ -21,7 +21,7 @@ and deletes every generated grid, analysis result and imported transformer in it
 
 Steps, in this order:
   1. drop the schema 'pylovo' (CASCADE) and create it again
-  2. create all pylovo tables
+  2. create all pylovo tables and apply the migrations recorded in pylovo.schema_migrations
   3. import the transformer positions from the processed OSM geojson in
      data/transformer_data/processed_trafos (if the file is missing, the transformers are
      fetched from the Overpass API and processed first, which can take more than 30 min)
@@ -85,11 +85,8 @@ def run_setup() -> None:
     logger.info("### RESETTING PYLOVO SCHEMA ###")
     sgc.reset_schema()
 
-    logger.info("### CREATING SCHEMA pylovo ###")
-    sgc.create_schema()
-
-    logger.info("### CREATE ALL TABLES ###")
-    sgc.create_table(table_name="all")
+    logger.info("### CREATING OR MIGRATING PYLOVO SCHEMA ###")
+    sgc.migrate_schema()
 
     logger.info("### DELETE EXISTING TRANSFORMERS AND INSERT NEW ONES INTO DB (without geojson in data/transformer_data this can take more than 30 min) ###")
     sgc.transformers_to_db(clear_existing=True)

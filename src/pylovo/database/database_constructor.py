@@ -30,6 +30,7 @@ from pylovo.data_import.import_transformers import (
 
 # Import table structure from packaged module (reliable for installed/editable usage)
 from pylovo.database.config_table_structure import CREATE_QUERIES, INFDB_OPTIONAL_TABLES
+from pylovo.database.migrations import PRE_SCHEMA_MIGRATIONS, POST_SCHEMA_MIGRATIONS, legacy_columns
 from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.utils import get_user_data_dir
 
@@ -133,6 +134,60 @@ class DatabaseConstructor:
                 f"Table name {table_name} is not a valid parameter value for the function create_table. "
                 "See config_table_structure.py"
             )
+
+    def migrate_schema(self) -> None:
+        """Install the baseline and apply each outstanding migration exactly once.
+
+        A session advisory lock serializes concurrent setup processes. A migration
+        and its ledger row commit together; failure leaves that step unapplied.
+        """
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s, %s)", (907360, 0))
+        self.dbc.conn.commit()
+        try:
+            self.create_schema()
+            # Legacy geometry columns are added before baseline tables and views.
+            with self.dbc.conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public")
+                cur.execute("CREATE EXTENSION IF NOT EXISTS pgrouting SCHEMA public")
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS pylovo.schema_migrations (
+                        name text PRIMARY KEY,
+                        applied_at timestamptz NOT NULL DEFAULT now()
+                    )
+                """)
+            self.dbc.conn.commit()
+            self.extensions_added = True
+
+            applied = []
+
+            def apply(name, action):
+                with self.dbc.conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM pylovo.schema_migrations WHERE name = %s", (name,))
+                    if cur.fetchone():
+                        self.dbc.conn.commit()
+                        return
+                    action(cur)
+                    cur.execute("INSERT INTO pylovo.schema_migrations (name) VALUES (%s)", (name,))
+                    applied.append(name)
+                self.dbc.conn.commit()
+
+            for name, action in PRE_SCHEMA_MIGRATIONS:
+                apply(name, action)
+            apply("0002_legacy_columns", lambda cur: legacy_columns(cur, TARGET_EPSG))
+            self.create_table("all")
+            for name, action in POST_SCHEMA_MIGRATIONS:
+                apply(name, action)
+            if applied:
+                self.dbc.refresh_materialized_views()
+            self.dbc.conn.commit()
+        except Exception:
+            self.dbc.conn.rollback()
+            raise
+        finally:
+            with self.dbc.conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s, %s)", (907360, 0))
+            self.dbc.conn.commit()
 
     def ogr_to_db(self, ogr_file_list, skip_failures: bool = False):
         """Import geodata files into ``pylovo`` tables with ``ogr2ogr`` (GDAL).
