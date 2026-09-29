@@ -209,13 +209,16 @@ Loads and general grid settings
      - Nominal LV voltage in V.
      - ✓
    * - ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``
-     - ``8``
+     - ``5``
      - Planning limit of the approximate voltage drop from the transformer LV bus to any
-       service connection point; feeder conductors are upsized to meet it.
+       service connection point; feeder conductors are upsized to meet it. With the service
+       limit it shares the 6 % between the LV busbar at ``LV_REFERENCE_VOLTAGE_PU`` (0.96 p.u.)
+       and ``MIN_VM_PU`` (0.90 p.u.).
      - ✓
    * - ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``
-     - ``3``
-     - Limit of the voltage drop along a service cable at its building-local design load.
+     - ``1``
+     - Limit of the voltage drop along a service cable at its building-local design load (the
+       rest of the 6 %).
      - ✓
    * - ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``
      - ``100``

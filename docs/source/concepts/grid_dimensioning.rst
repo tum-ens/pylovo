@@ -199,29 +199,33 @@ the network is retained and the unresolved planning violation is recorded.
 Changing topology or transformer placement would then be required to satisfy
 the envelope, but those alternatives are not part of this cable-selection step.
 
-The configured percentage should be interpreted as a modeling and plausibility
-assumption, not automatically as a complete supply-voltage allowance. For
-example, a 10 percent feeder threshold leaves no guaranteed margin for
-transformer and service-cable voltage drop.
+The shipped limits follow the band split of the validation power flow
+(:ref:`validation-snapshot`): the LV busbar is at ``LV_REFERENCE_VOLTAGE_PU``
+(0.96 p.u.) and a customer may drop to ``MIN_VM_PU`` (0.90 p.u.), so the feeder
+(5 %) and the service cable (1 %) share these 6 %. Service cables are short, so
+their limit binds only for long connections. Both drops are linear estimates at
+nominal voltage and cable-level coincidence, so the solved snapshot can differ
+slightly. A feeder that misses its limit with the largest configured cable needs
+more outlets or another station, which cable sizing does not add.
 
 .. figure:: /images/generation/grid_detail_sizing_basis.png
    :alt: One grid with feeder sections sized by ampacity in blue and sections upsized for the voltage-drop limit in orange
    :width: 85%
 
-   Feeder sections of grid kcid 1 / bcid 2 of the demo region: most sections keep their
-   ampacity-based cable, the orange ones were upsized to meet the 8 % end-to-end limit
-   (``pandapower_line.feeder_sizing_basis``). Demo data derived from OpenStreetMap,
+   Feeder sections of grid kcid 1 / bcid 2 of the demo region: the blue sections keep their
+   ampacity-based cable, the orange ones were upsized for the 5 % end-to-end limit
+   (``pandapower_line.feeder_sizing_basis``). Even so the grid stays above the limit (7.35 %). Demo data derived from OpenStreetMap,
    © OpenStreetMap contributors, ODbL; figure made with ``docs/scripts/plot_generation_steps.py``.
 
 .. figure:: /images/analysis/feeder_voltage_drop_per_grid.png
-   :alt: Dot plot per grid of the maximum feeder voltage drop before and after voltage-driven upsizing, with the 8 percent limit
+   :alt: Dot plot per grid of the maximum feeder voltage drop before and after voltage-driven upsizing, with the 5 percent limit
    :width: 85%
 
    Maximum end-to-end feeder voltage drop of every demo grid for the ampacity-only design (hollow)
-   and after voltage-driven upsizing (filled). Grid 1 / 3 of version ``1`` cannot reach the limit
-   with the largest configured cable. Grid 4 / 1 of ``docs_km`` meets the planning limit but its
-   solved snapshot leaves the voltage band: the planning quantity covers the feeder only, while the
-   power flow adds the transformer and service-cable drops. Figure made with ``docs/scripts/plot_analysis.py``.
+   and after voltage-driven upsizing (filled). Five grids cannot reach the 5 % limit with the
+   largest configured cable. Three of them (1 / 2 and 1 / 3 of version ``1``, 4 / 1 of ``docs_km``)
+   also leave the voltage band in the solved snapshot; the other two stay inside it because the
+   snapshot load is below the cable-level design load. Figure made with ``docs/scripts/plot_analysis.py``.
 
 .. _validation-snapshot:
 
