@@ -90,16 +90,19 @@ def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
 
 
 # --------------------------------------------------------------------------- sandbox database
-def _as_generated_before_the_station_voltage(project):
-    """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU: use the value they had."""
+def _as_the_sandbox_was_generated(project):
+    """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU and the 5 % / 1 % design limits: use the values they had."""
     path = project / "config" / "config_generation.yaml"
-    path.write_text(re.sub(r"^LV_REFERENCE_VOLTAGE_PU:.*$", "LV_REFERENCE_VOLTAGE_PU: null", path.read_text(),
-                           flags=re.MULTILINE))
+    text = path.read_text()
+    for key, value in (("LV_REFERENCE_VOLTAGE_PU", "null"), ("MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT", "8"),
+                       ("MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", "3")):
+        text = re.sub(rf"^{key}:.*$", f"{key}: {value}", text, flags=re.MULTILINE)
+    path.write_text(text)
 
 
 @requires_db
 def test_preflight_matches_the_stored_snapshot(client, project):
-    _as_generated_before_the_station_voltage(project)
+    _as_the_sandbox_was_generated(project)
     state = client.get("/api/flow/generate-state", params={"plz": 85653}).json()
     assert state["error"] is None and state["version_id"] == "1"
     assert state["comparison"]["exists"] and state["comparison"]["matches"] is True
@@ -119,7 +122,7 @@ def test_preflight_matches_the_stored_snapshot(client, project):
 
 @requires_db
 def test_destructive_flow_endpoints_need_the_typed_confirmation(client, project):
-    _as_generated_before_the_station_voltage(project)
+    _as_the_sandbox_was_generated(project)
     assert client.post("/api/flow/regenerate", json={"plz": 85653, "confirm": "1/1"}).status_code == 400
     assert client.post("/api/flow/reanalyse", json={"plz": 85653, "confirm": "85653"}).status_code == 400
 

@@ -176,7 +176,7 @@ def _x(scaling: float) -> str:
 
 # Fallbacks for versions without stored generation parameters (pylovo's defaults).
 _FALLBACK = {"vn": 400.0, "cos_phi": 0.95, "peak_load_household": 16.825, "min_vm_pu": 0.9, "max_vm_pu": 1.1,
-             "planning_utilisation": 0.8, "feeder_drop_limit": 8.0, "service_drop_limit": 3.0,
+             "planning_utilisation": 0.8, "feeder_drop_limit": 5.0, "service_drop_limit": 1.0,
              "lv_reference_voltage_pu": 0.96,
              "split_max_ka": 0.85, "mv_threshold_kw": 100.0,
              "sim_factor": {"Residential": 0.07, "Commercial": 0.5, "Public": 0.6}}
@@ -1193,10 +1193,11 @@ def _rule_de01(m: GridModel, F: Findings, th: dict, vt: dict[int, dict]) -> dict
                             "station (see VT-04, LD-04, TP-02, TP-03) and regenerate as a new version. Alternatively "
                             "extend FEEDER_CABLES or allow voltage-driven parallel cables in pylovo." if exhausted else
                             "Split the feeder, add or move a station, or extend FEEDER_CABLES, then regenerate."),
-                    why=("MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT is pylovo's own planning limit (80 % of the "
-                         "0.10 p.u. band). It covers the feeder only, at cable-level coincidence and nominal voltage. "
-                         "pylovo upsizes conductors greedily but never adds parallel cables for voltage, so the limit "
-                         "can stay unmet."),
+                    why=(f"MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT is pylovo's own planning limit. Together with "
+                         f"MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT it shares the {100 * (p.lv_ref - p.min_vm):.0f} % "
+                         f"between the LV busbar at {p.lv_ref:g} p.u. and {p.min_vm:g} p.u. (band split). It covers the "
+                         "feeder only, at cable-level coincidence and nominal voltage. pylovo upsizes conductors "
+                         "greedily but never adds parallel cables for voltage, so the limit can stay unmet."),
                     related=[linked["id"]] if linked else [],
                     headline=f"Design drop {_n(selected, 2)} % > {p.feeder_limit:g} % limit")["id"]
         out[f] = {"id": fid, "severity": severity, "bus": worst}
