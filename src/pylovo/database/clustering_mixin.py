@@ -11,7 +11,9 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import psycopg2
+import scipy.sparse
 from scipy.cluster.hierarchy import cut_tree
+from scipy.sparse.csgraph import dijkstra
 
 from pylovo import utils
 from pylovo.config_loader import (
@@ -31,7 +33,7 @@ from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_param
 warnings.simplefilter(action='ignore', category=UserWarning)
 
 # Street distances between the distinct connection points of the loaded buildings of one kcid;
-# {bcid_filter} selects the unclustered buildings or one building cluster.
+# {bcid_filter} selects one building cluster (the kcid matrix itself: street_distance_matrix).
 _CONNECTION_POINT_COST_MATRIX_SQL = f"""
     SELECT *
     FROM pgr_dijkstraCostMatrix(
@@ -346,7 +348,7 @@ class ClusteringMixin(BaseMixin):
             kcid: K-means cluster ID.
 
         Returns:
-            ``(localid2vid, dist_mat, vid2localid)`` as returned by ``calculate_cost_arr_dist_matrix``.
+            ``(localid2vid, dist_mat, vid2localid)`` as returned by ``street_distance_matrix``.
         """
         stats = self.get_kcid_distance_matrix_stats(kcid)
         self.logger.debug(
@@ -359,8 +361,68 @@ class ClusteringMixin(BaseMixin):
             self._format_bytes(stats["estimated_dense_matrix_bytes"]),
         )
 
-        costmatrix_query = _CONNECTION_POINT_COST_MATRIX_SQL.format(bcid_filter="bcid ISNULL")
-        return self.calculate_cost_arr_dist_matrix(costmatrix_query, {"k": kcid})
+        self.cur.execute(
+            """SELECT DISTINCT COALESCE(agg_connection_point, connection_point)
+               FROM buildings_tem
+               WHERE kcid = %(k)s
+                 AND bcid ISNULL
+                 AND peak_load_in_kw != 0
+                 AND COALESCE(agg_connection_point, connection_point) IS NOT NULL;""",
+            {"k": kcid},
+        )
+        return self.street_distance_matrix([row[0] for row in self.cur.fetchall()])
+
+    def street_distance_matrix(self, points: list[int], chunk_size: int = 256) -> tuple[dict, np.ndarray, dict]:
+        """Return the street-distance matrix between vertices of ``ways_tem``, computed in memory.
+
+        Gives the result of ``calculate_cost_arr_dist_matrix`` for ``pgr_dijkstraCostMatrix`` over
+        ``points`` (undirected): vertices ordered by id, without the points that reach no other
+        point, costs truncated to whole metres, 0 for pairs without a path. Dijkstra's distances do
+        not depend on the order of relaxation (non-negative weights, rounding is monotonic), so they
+        are the same as pgRouting's; transferring the n x n rows of pgRouting took longer than the
+        search itself for kcids of a thousand points.
+
+        Args:
+            points: Vertex IDs.
+            chunk_size: Number of source vertices per Dijkstra call (memory: chunk x vertices floats).
+
+        Returns:
+            ``(localid2vid, dist_matrix, vid2localid)``.
+        """
+        self.cur.execute("""SELECT source, target, cost, reverse_cost
+                            FROM ways_tem
+                            WHERE source IS NOT NULL AND target IS NOT NULL;""")
+        edges = np.asarray(self.cur.fetchall(), dtype=float).reshape(-1, 4)
+        vertices = np.unique(edges[:, :2])
+        source = np.searchsorted(vertices, edges[:, 0])
+        target = np.searchsorted(vertices, edges[:, 1])
+        # Undirected: an edge is usable with the smaller of its non-negative costs (as in pgRouting);
+        # parallel edges keep their minimum instead of being summed by the sparse matrix.
+        weight = np.fmin(np.where(edges[:, 2] >= 0, edges[:, 2], np.inf),
+                         np.where(edges[:, 3] >= 0, edges[:, 3], np.inf))
+        keep = (source != target) & np.isfinite(weight)
+        pairs = pd.DataFrame({"a": np.minimum(source, target)[keep], "b": np.maximum(source, target)[keep],
+                              "w": weight[keep]}).groupby(["a", "b"], sort=True)["w"].min()
+        graph = scipy.sparse.csr_matrix(
+            (pairs.to_numpy(), (pairs.index.get_level_values("a"), pairs.index.get_level_values("b"))),
+            shape=(len(vertices), len(vertices)),
+        )
+
+        points = np.asarray(sorted(int(p) for p in points), dtype=np.int64)
+        points = points[np.isin(points, vertices)]
+        point_index = np.searchsorted(vertices, points)
+        distances = np.vstack(
+            [dijkstra(graph, directed=False, indices=point_index[i:i + chunk_size])[:, point_index]
+             for i in range(0, len(point_index), chunk_size)]
+        ) if len(point_index) else np.zeros((0, 0))
+        np.fill_diagonal(distances, np.inf)
+        connected = np.isfinite(distances).any(axis=1)
+        distances = distances[np.ix_(connected, connected)]
+        dist_matrix = np.where(np.isfinite(distances), distances, 0).astype(np.int32).astype(float)
+
+        localid2vid = dict(enumerate(points[connected].astype(np.int32)))
+        vid2localid = {y: x for x, y in localid2vid.items()}
+        return localid2vid, dist_matrix, vid2localid
 
     def calculate_cost_arr_dist_matrix(self, costmatrix_query: str, params: dict) -> tuple[dict, np.ndarray, dict]:
         """Run a ``pgr_dijkstraCostMatrix`` query and return it as a dense matrix.
