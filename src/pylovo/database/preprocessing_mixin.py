@@ -1215,6 +1215,17 @@ class PreprocessingMixin(BaseMixin):
             sql.Identifier(f"{vertices_name}_geom_idx"), vertices
         ))
 
+        # Index source/target before filling them: an index built after these updates in the same
+        # transaction (indcheckxmin) is unusable until commit, and generation runs in one transaction.
+        self.cur.execute(sql.SQL("""
+            CREATE INDEX IF NOT EXISTS {source_idx} ON {edges} (source);
+            CREATE INDEX IF NOT EXISTS {target_idx} ON {edges} (target);
+        """).format(
+            source_idx=sql.Identifier(f"{edge_name}_source_idx"),
+            target_idx=sql.Identifier(f"{edge_name}_target_idx"),
+            edges=edges,
+        ))
+
         # Step 2: link the start and end point of every edge to its vertex ID.
         self.cur.execute(sql.SQL("""
             UPDATE {edges} AS e
@@ -1229,14 +1240,8 @@ class PreprocessingMixin(BaseMixin):
             WHERE ST_EndPoint(e.geom) = v.geom;
         """).format(edges=edges, vertices=vertices))
 
-        self.cur.execute(sql.SQL("""
-            CREATE INDEX IF NOT EXISTS {source_idx} ON {edges} (source);
-            CREATE INDEX IF NOT EXISTS {target_idx} ON {edges} (target);
-        """).format(
-            source_idx=sql.Identifier(f"{edge_name}_source_idx"),
-            target_idx=sql.Identifier(f"{edge_name}_target_idx"),
-            edges=edges,
-        ))
+        # Temporary tables get no autovacuum; refresh the statistics taken before source/target existed.
+        self.cur.execute(sql.SQL("ANALYZE {}; ANALYZE {};").format(edges, vertices))
 
         self.cur.execute(
             sql.SQL("CREATE TEMP VIEW ways_tem_vertices_pgr AS SELECT * FROM {}").format(vertices)
