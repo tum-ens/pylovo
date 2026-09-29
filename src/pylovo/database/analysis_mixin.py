@@ -13,6 +13,7 @@ from psycopg2 import sql
 from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
 from pylovo.database.migrations import pending_migrations
+from pylovo.electrical_backend.pandapower.backend import empty_network
 
 warnings.simplefilter(action="ignore", category=UserWarning)
 
@@ -624,7 +625,7 @@ class AnalysisMixin(BaseMixin):
         grid_tuple = result[0]
         grid_dict = grid_tuple[0]
         grid_json_string = json.dumps(grid_dict)
-        net = pp.from_json_string(grid_json_string)
+        net = pp.from_json_string(grid_json_string, empty_dict_like_object=empty_network())
 
         return net
 

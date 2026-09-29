@@ -10,6 +10,8 @@ Key features:
     - Built-in power flow solvers (Newton-Raphson, etc.)
 """
 
+import copy
+import functools
 import json
 import logging
 from typing import Any, Dict, Optional
@@ -31,6 +33,22 @@ from pylovo.config_loader import POWER_FLOW_MAX_VM_PU, POWER_FLOW_MIN_VM_PU
 
 class PandapowerBackendError(Exception):
     """Exception raised by Pandapower backend operations."""
+
+
+@functools.cache
+def _empty_network_template() -> pp.pandapowerNet:
+    return pp.create_empty_network()
+
+
+def empty_network(name: str = "") -> pp.pandapowerNet:
+    """Return the content of ``pp.create_empty_network(name=name)``, copied from a cached template.
+
+    ``create_empty_network`` takes about 50 ms, a copy about 4 ms; generation builds and the
+    analysis reads one network per grid.
+    """
+    net = copy.deepcopy(_empty_network_template())
+    net["name"] = name
+    return net
 
 
 class PandapowerBackend(IElectricalBackend):
@@ -58,7 +76,7 @@ class PandapowerBackend(IElectricalBackend):
     ) -> None:
         """Initialize pandapower network."""
         try:
-            self.net = pp.create_empty_network(name=name)
+            self.net = empty_network(name=name)
             self._circuit_name = name
             self._bus_cache = {}
         except Exception as e:
