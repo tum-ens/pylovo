@@ -1368,7 +1368,9 @@ class PreprocessingMixin(BaseMixin):
                        ST_Collect(connection_geom),
                        ST_Collect(connection_geom)
                    ) <= %(radius_m)s
-            ), representatives AS (
+            ), representatives AS MATERIALIZED (
+                -- Materialized: with the statistics of buildings_tem taken before connection points
+                -- existed, the planner re-ran this subquery for every clustered row (minutes per PLZ).
                 SELECT street_key, cluster_id, connection_point AS representative_connection_point
                 FROM (
                     SELECT
