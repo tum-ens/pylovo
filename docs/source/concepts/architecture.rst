@@ -40,8 +40,9 @@ Modules
        of one grid in the electrical backend and selects feeder and service cables.
    * - :mod:`pylovo.utils`
      - Load model (:func:`~pylovo.utils.build_load_components`,
-       :func:`~pylovo.utils.simultaneous_peak_load`, :func:`~pylovo.utils.category_simultaneous_load`,
-       :func:`~pylovo.utils.design_current_ka`), logging and small helpers.
+       :func:`~pylovo.utils.simultaneous_peak_load` and :class:`~pylovo.utils.CoincidentLoads`,
+       :func:`~pylovo.utils.category_simultaneous_load`, :func:`~pylovo.utils.design_current_ka`),
+       logging and small helpers.
    * - :mod:`pylovo.electrical_backend`
      - Backend interface :class:`~pylovo.electrical_backend.core.backend_base.IElectricalBackend`,
        component specifications (``BusSpec``, ``LineSpec``, ...) and the pandapower and OpenDSS

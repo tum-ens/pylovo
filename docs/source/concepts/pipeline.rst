@@ -137,7 +137,8 @@ Connection points that no transformer could take are clustered greenfield; a sin
 consumer is dropped.
 
 **Greenfield** (all remaining connection points). A routed distance matrix between the connection
-points (``pgr_dijkstraCostMatrix``) feeds an average-linkage hierarchical clustering. pylovo splits
+points (Dijkstra on the ``ways_tem`` street graph with SciPy, the same distances as
+``pgr_dijkstraCostMatrix``) feeds an average-linkage hierarchical clustering. pylovo splits
 the tree into two clusters and checks each:
 
 * too large -- the planned load needs more than the largest allowed rating and the cluster has at
