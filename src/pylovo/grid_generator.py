@@ -907,6 +907,7 @@ class GridGenerator:
         self.logger.info(f"{len(transformer_list)} Transformers found for kcid {kcid}")
         buildings = self.dbc.get_buildings_from_kcid(kcid)
         consumer_cat_df = self.dbc.get_consumer_categories()
+        loads = utils.CoincidentLoads(buildings, consumer_cat_df)
 
         # Get cost dataframe between consumers and transformers
         cost_df = self.dbc.get_consumer_to_transformer_df(kcid, transformer_list)
@@ -937,9 +938,7 @@ class GridGenerator:
 
             # Try to assign consumer to transformer
             pre_result_dict[end_transformer_id].append(int(start_consumer_id))
-            sim_load = utils.simultaneous_peak_load(
-                buildings, consumer_cat_df, pre_result_dict[end_transformer_id]
-            )
+            sim_load = loads.simultaneous_peak_load(pre_result_dict[end_transformer_id])
 
             known = known_capacities.get(int(end_transformer_id))
             if (float(sim_load) > known) if known is not None else (
@@ -972,9 +971,7 @@ class GridGenerator:
             building_cluster_count -= 1
 
             # Calculate the simulated load for all loads assigned to this transformer
-            sim_load = utils.simultaneous_peak_load(
-                buildings, consumer_cat_df, pre_result_dict[transformer_id]
-            )
+            sim_load = loads.simultaneous_peak_load(pre_result_dict[transformer_id])
 
             if int(transformer_id) in known_capacities:
                 transformer_rated_power = known_capacities[int(transformer_id)]
@@ -1161,6 +1158,7 @@ class GridGenerator:
         Returns:
             ``material_length_by_cable_km``, updated.
         """
+        loads = utils.CoincidentLoads(buildings_df, consumer_df)
         for branch in branches:
             branch_nodes = list(branch.nodes)
             branch_index = int(branch.index)
@@ -1173,9 +1171,7 @@ class GridGenerator:
                 )
 
             branch_start_node = int(branch_nodes[-1])
-            sim_load = utils.simultaneous_peak_load(
-                buildings_df, consumer_df, design.downstream_nodes_by_node[branch_start_node]
-            )
+            sim_load = loads.simultaneous_peak_load(design.downstream_nodes_by_node[branch_start_node])
             if branch_start_node == ont_vertice:
                 # its first lines already leave the station busbar (the transformer vertex is LVbus 1)
                 self.logger.debug(

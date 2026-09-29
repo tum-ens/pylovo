@@ -3,8 +3,9 @@
 - directories and logging: :func:`get_user_data_dir`, :func:`reset_log_directory`,
   :func:`create_logger`,
 - electrical load aggregation used for transformer and cable sizing:
-  :func:`build_load_components`, :func:`simultaneous_peak_load`,
-  :func:`category_simultaneous_load`, :func:`allocate_consumer_simultaneous_loads`,
+  :func:`build_load_components`, :func:`simultaneous_peak_load` (:class:`CoincidentLoads` for
+  many node sets of the same buildings), :func:`category_simultaneous_load`,
+  :func:`allocate_consumer_simultaneous_loads`,
   :func:`planning_nodes`, :func:`design_current_ka`,
 - OpenStreetMap downloads through the Overpass API: :func:`query_overpass_for_geojson`.
 """
@@ -172,47 +173,50 @@ def build_load_components(buildings_df):
         ValueError: If a non-residential load has a use other than
             ``Commercial`` or ``Public``.
     """
-    components = []
-
-    for row in buildings_df.itertuples(index=False):
-        consumer_vertex = row.vertice_id
-        residential_kw = (
-            0.0 if pd.isna(row.residential_peak_load_in_kw) else float(row.residential_peak_load_in_kw)
-        )
-        households = 0.0 if pd.isna(row.households) else float(row.households)
-        if residential_kw > 0 and households > 0:
-            components.append(
-                {
-                    "consumer_vertex": consumer_vertex,
-                    "category": "Residential",
-                    "installed_kw": residential_kw,
-                    "load_units": households,
-                }
-            )
-
-        nonresidential_kw = (
-            0.0
-            if pd.isna(row.nonresidential_peak_load_in_kw)
-            else float(row.nonresidential_peak_load_in_kw)
-        )
-        mv_direct = False if pd.isna(row.nonresidential_mv_direct) else bool(row.nonresidential_mv_direct)
-        if nonresidential_kw > 0 and not mv_direct:
-            category = row.nonresidential_use
-            if category not in NONRESIDENTIAL_CATEGORIES:
-                raise ValueError(
-                    f"Building at vertex {consumer_vertex} has a non-residential load "
-                    f"but invalid nonresidential_use={category!r}."
-                )
-            components.append(
-                {
-                    "consumer_vertex": consumer_vertex,
-                    "category": category,
-                    "installed_kw": nonresidential_kw,
-                    "load_units": 1.0,
-                }
-            )
-
+    components = [
+        {
+            "consumer_vertex": row.vertice_id,
+            "category": category,
+            "installed_kw": installed_kw,
+            "load_units": load_units,
+        }
+        for row in buildings_df.itertuples(index=False)
+        for category, installed_kw, load_units in _building_load_components(row)
+    ]
     return pd.DataFrame.from_records(components, columns=LOAD_COMPONENT_COLUMNS)
+
+
+def _building_load_components(row) -> list[tuple[str, float, float]]:
+    """Return ``(category, installed_kw, load_units)`` of each load component of one building row.
+
+    See :func:`build_load_components` for the rules.
+
+    Raises:
+        ValueError: If a non-residential load has a use other than ``Commercial`` or ``Public``.
+    """
+    components = []
+    residential_kw = (
+        0.0 if pd.isna(row.residential_peak_load_in_kw) else float(row.residential_peak_load_in_kw)
+    )
+    households = 0.0 if pd.isna(row.households) else float(row.households)
+    if residential_kw > 0 and households > 0:
+        components.append(("Residential", residential_kw, households))
+
+    nonresidential_kw = (
+        0.0
+        if pd.isna(row.nonresidential_peak_load_in_kw)
+        else float(row.nonresidential_peak_load_in_kw)
+    )
+    mv_direct = False if pd.isna(row.nonresidential_mv_direct) else bool(row.nonresidential_mv_direct)
+    if nonresidential_kw > 0 and not mv_direct:
+        category = row.nonresidential_use
+        if category not in NONRESIDENTIAL_CATEGORIES:
+            raise ValueError(
+                f"Building at vertex {row.vertice_id} has a non-residential load "
+                f"but invalid nonresidential_use={category!r}."
+            )
+        components.append((category, nonresidential_kw, 1.0))
+    return components
 
 
 def planning_nodes(buildings_df: pd.DataFrame) -> pd.Series:
@@ -262,6 +266,66 @@ def simultaneous_peak_load(buildings_df, consumer_cat_df, vertice_ids):
             _get_sim_factor(consumer_cat_df, category),
         )
     return total_sim_load
+
+
+class CoincidentLoads:
+    """The load components of a set of buildings, built once for many coincident-load queries.
+
+    ``CoincidentLoads(buildings_df, consumer_cat_df).simultaneous_peak_load(vertice_ids)`` returns
+    exactly :func:`simultaneous_peak_load` ``(buildings_df, consumer_cat_df, vertice_ids)``
+    (same components, category order and summation order) without rebuilding the components
+    for every node set; feeder planning and transformer assignment query thousands of node
+    sets of the same buildings. ``buildings_df`` must not change afterwards.
+    """
+
+    def __init__(self, buildings_df, consumer_cat_df):
+        self._consumer_cat_df = consumer_cat_df
+        self._sim_factors = {}
+        nodes, categories, installed_kw, load_units = [], [], [], []
+        invalid_nodes, self._invalid_errors = [], []
+        for node, row in zip(planning_nodes(buildings_df).tolist(), buildings_df.itertuples(index=False)):
+            try:
+                row_components = _building_load_components(row)
+            except ValueError as error:  # raised like simultaneous_peak_load once the row is selected
+                invalid_nodes.append(node)
+                self._invalid_errors.append(error)
+                continue
+            for category, component_kw, component_units in row_components:
+                nodes.append(node)
+                categories.append(category)
+                installed_kw.append(component_kw)
+                load_units.append(component_units)
+        self._categories = sorted(set(categories))  # groupby("category") order
+        code_by_category = {category: code for code, category in enumerate(self._categories)}
+        self._nodes = np.asarray(nodes, dtype=float)
+        self._codes = np.asarray([code_by_category[c] for c in categories], dtype=np.int64)
+        self._installed_kw = np.asarray(installed_kw, dtype=float)
+        self._load_units = np.asarray(load_units, dtype=float)
+        self._invalid_nodes = np.asarray(invalid_nodes, dtype=float)
+
+    def simultaneous_peak_load(self, vertice_ids):
+        """Return the coincident peak load (kW) of the buildings planned at the given nodes."""
+        wanted = np.asarray(list(vertice_ids), dtype=float)
+        if len(self._invalid_nodes):
+            invalid = np.flatnonzero(np.isin(self._invalid_nodes, wanted))
+            if len(invalid):
+                raise self._invalid_errors[invalid[0]]
+        selected = np.isin(self._nodes, wanted)
+        codes = self._codes[selected]
+        installed_kw = self._installed_kw[selected]
+        load_units = self._load_units[selected]
+        total_sim_load = 0.0
+        for code in np.unique(codes):
+            in_category = codes == code
+            category = self._categories[code]
+            if category not in self._sim_factors:
+                self._sim_factors[category] = _get_sim_factor(self._consumer_cat_df, category)
+            total_sim_load += category_simultaneous_load(
+                installed_kw[in_category].sum(),
+                load_units[in_category].sum(),
+                self._sim_factors[category],
+            )
+        return total_sim_load
 
 
 def allocate_consumer_simultaneous_loads(consumer_list, buildings_df, consumer_cat_df):

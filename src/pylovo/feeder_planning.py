@@ -134,6 +134,7 @@ def plan_feeder_branches(
     branches: list[FeederBranch] = []
     remaining = list(connection_nodes)
     planned_nodes: set[int] = set()
+    loads = utils.CoincidentLoads(buildings_df, consumer_df)
 
     while remaining:
         if len(remaining) == 1:
@@ -142,7 +143,7 @@ def plan_feeder_branches(
             logger.debug(f"Final remaining connection node {remaining[0]}; preserving direct branch.")
         else:
             path = _path_of_furthest_node(remaining, distance_m_by_node, path_to_transformer)
-            branch_nodes, current_ka = _cut_branch_at_current_limit(path, buildings_df, consumer_df)
+            branch_nodes, current_ka = _cut_branch_at_current_limit(path, loads)
             logger.debug(
                 f"Selected branch {len(branches)} (nodes={len(branch_nodes)}, first={branch_nodes[0]}, "
                 f"last={branch_nodes[-1]}, Imax={current_ka:.3f} kA)"
@@ -172,9 +173,7 @@ def _path_of_furthest_node(
     return [node for node in path_to_transformer(furthest_node) if node in remaining_set]
 
 
-def _cut_branch_at_current_limit(
-    path: list[int], buildings_df: pd.DataFrame, consumer_df: pd.DataFrame
-) -> tuple[list[int], float]:
+def _cut_branch_at_current_limit(path: list[int], loads: utils.CoincidentLoads) -> tuple[list[int], float]:
     """Take nodes from the far end of ``path`` while the branch stays below the current limit.
 
     A single node that alone reaches ``FEEDER_SPLIT_MAX_CURRENT_KA`` still forms a
@@ -187,9 +186,7 @@ def _cut_branch_at_current_limit(
     current_ka = 0.0
     for node in path:
         branch.append(node)
-        node_current_ka = utils.design_current_ka(
-            utils.simultaneous_peak_load(buildings_df, consumer_df, branch)
-        )
+        node_current_ka = utils.design_current_ka(loads.simultaneous_peak_load(branch))
         if node_current_ka >= FEEDER_SPLIT_MAX_CURRENT_KA:
             if len(branch) > 1:
                 branch.pop()  # this node starts a later branch
@@ -576,15 +573,14 @@ def _ampacity_designs(
     """
     section_designs: dict[int, dict] = {}
     edge_current_ka: dict[Edge, float] = {}
+    loads = utils.CoincidentLoads(buildings_df, consumer_df)
 
     for section_id, section_edges in sections_by_key.items():
         section_Imax = 0.0
         section_distance = 0.0
 
         for parent, child in section_edges:
-            sim_load = utils.simultaneous_peak_load(
-                buildings_df, consumer_df, downstream_nodes_by_node[child]
-            )
+            sim_load = loads.simultaneous_peak_load(downstream_nodes_by_node[child])
             edge_Imax = utils.design_current_ka(sim_load)
             edge_distance = distance_from_transformer(child) - distance_from_transformer(parent)
             section_Imax = max(section_Imax, edge_Imax)
