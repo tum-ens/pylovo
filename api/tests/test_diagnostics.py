@@ -142,8 +142,8 @@ def test_grid3_with_the_power_flow(sandbox):
     assert "LD-02:s8" in ld01["causes"] and "LD-03:s8" in ld01["causes"]
     assert "VT-01:f1" in ld01["related"]  # the current rise comes from the low voltage
     tr02 = f["TR-02:grid"]
-    assert tr02["severity"] == "warning" and tr02["metrics"]["tap_steps"] == 1
-    assert tr02["metrics"]["vm_after_tap"] == pytest.approx(0.908, abs=0.002)
+    assert tr02["severity"] == "warning"
+    assert "tap_steps" not in tr02["metrics"] and "tap" not in budget  # no tap what-if: the tap stays neutral
     assert result["counts"]["critical"] >= 4
 
 

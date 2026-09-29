@@ -917,8 +917,8 @@ def _rule_vt01(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
                           _threshold("max_vm_pu", p.max_vm, p.source["max_vm_pu"]),
                           _heur("warning margin (p.u.)", "voltage_margin_estimate_pu" if m.estimated else "voltage_margin_pu", th)],
               remedy="Work through the linked causes in order of contribution (see the voltage budget). Typical "
-                     "measures: split the feeder at a cabinet into a second outlet, move or add a station, correct "
-                     "implausible loads, or raise the transformer tap as a scenario.",
+                     "measures: split the feeder at a cabinet into a second outlet, move or add a station, or "
+                     "correct implausible loads.",
               why=(f"DIN EN 50160 allows ±10 % Un at the customer; pylovo classifies its validation power flow with "
                    f"POWER_FLOW_VOLTAGE_LIMITS {p.min_vm:g}/{p.max_vm:g} p.u. Critical: a bus leaves the band"
                    f"{' (stored generation check status = voltage_violation)' if m.estimated else ''}; warning: the "
@@ -1238,8 +1238,7 @@ def _rule_de03(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
                     thresholds=[_threshold("band (%)", band, p.source["min_vm_pu"]),
                                 _heur("info band (pp)", "design_band_info_pp", th)],
                     remedy=("For new versions set MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT to about band − transformer "
-                            f"− service drop (about {band - dU_T - 1:.0f} %), or model the tap and MV setpoint as a "
-                            "scenario. See also DE-01 and TR-02."),
+                            f"− service drop (about {band - dU_T - 1:.0f} %). See also DE-01 and TR-02."),
                     why=("pylovo's feeder (8 %) and service (3 %) design limits are measured from the LV busbar and leave "
                          "out the transformer, which takes 1.6–2.6 pp at these loadings (vk 6 %). A design that meets "
                          "both limits can still leave the DIN EN 50160 band. The design drop uses cable-level "
@@ -1548,7 +1547,6 @@ def _expected_households(p: Params, b: dict) -> tuple[int | None, bool]:
 def _rule_tr02(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) -> None:
     if not targets:
         return
-    p = m.p
     f, t = min(targets.items(), key=lambda kv: m.vm(kv[1]["bus"]) or 9.9)
     k = t["bus"]
     vm_k = m.vm(k)
@@ -1565,23 +1563,6 @@ def _rule_tr02(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) ->
     if m.vk > 4 and kva <= 630:
         notes.append(f"A 4 % unit (EN 50588-1 reference up to 630 kVA) would take about {m.trafo_drop(loading, 4.0):.1f} pp.")
     tr = m.trafo
-    tap_k = None
-    vm_new = vm_max_new = None
-    if tr.get("tap_pos") is not None and tr.get("tap_neutral") is not None and tr.get("tap_pos") == tr.get("tap_neutral"):
-        step = _f(tr.get("tap_step_percent"), 2.5) or 2.5
-        side = tr.get("tap_side") or "hv"
-        room = abs(int(tr.get("tap_min") if side == "hv" else tr.get("tap_max") or 0) - int(tr.get("tap_neutral") or 0))
-        lv_vms = [m.vm(b) for b in m.lv_buses() if m.vm(b) is not None]
-        vm_min, vm_max = min(lv_vms), max(lv_vms)
-        for kk in range(1, room + 1):
-            if vm_min + kk * step / 100 >= p.min_vm + 0.005 and vm_max + kk * step / 100 <= p.max_vm:
-                tap_k, vm_new, vm_max_new = kk, vm_min + kk * step / 100, vm_max + kk * step / 100
-                break
-        if tap_k and vm_min < p.min_vm + th["voltage_margin_pu"]:
-            notes.append(f"{tap_k} tap step(s) (+{tap_k * step:g} %) would lift the weakest consumer to about "
-                         f"{vm_new:.3f} p.u. (highest bus {vm_max_new:.3f} p.u.).")
-        else:
-            tap_k = None
     tilde = "≈" if m.estimated else ""
     message = (f"The station takes {tilde}{m.dU_T:.1f} pp ({share:.0%} including the MV setpoint) of the "
                f"{total:.1f} % drop to {m.address(k)}: vk {m.vk:g} %, loading {loading:.0%}, MV {m.vm_hv:.3f} p.u., "
@@ -1593,15 +1574,14 @@ def _rule_tr02(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) ->
                    f"share_T = (dU_MV + dU_T) / (100 · (1 − vm)) = ({m.dU_MV:.2f} + {m.dU_T:.2f}) / {total:.2f} = {share:.0%}; "
                    f"dU_T = 100 · (vm_hv − vm_lv) from the power flow"),
           metrics={"dU_T": _r(m.dU_T), "dU_MV": _r(m.dU_MV), "share": _r(share, 3), "vk_percent": m.vk,
-                   "vkr_percent": m.vkr, "loading": _r(loading, 3), "tap_pos": tr.get("tap_pos"), "tap_steps": tap_k,
-                   "vm_after_tap": _r(vm_new, 4), "vm_max_after_tap": _r(vm_max_new, 4),
+                   "vkr_percent": m.vkr, "loading": _r(loading, 3), "tap_pos": tr.get("tap_pos"),
                    "dU_T_4pct": _r(m.trafo_drop(loading, 4.0)) if m.vk > 4 and kva <= 630 else None},
           targets={"trafo": True, "pin": k}, explains=[x for tt in targets.values() for x in tt["explains"]],
           share=share, contribution_pp=m.dU_MV + m.dU_T, impact=m.dU_MV + m.dU_T, estimated=m.estimated,
           thresholds=[_heur("transformer drop (pp)", "trafo_drop_pp", th), _heur("share", "cause_share_warning", th)],
-          remedy=("Treat this as a modelling assumption first: run a what-if with real transformer data (vk, tap, "
+          remedy=("Treat this as a modelling assumption first: run a what-if with real transformer data (vk, "
                   "secondary voltage) as a separate scenario. Otherwise reduce the station loading (TR-01, TP-03) or "
-                  "split the heavy feeder. Do not use the tap to hide a DE-01 design miss."),
+                  "split the heavy feeder."),
           why=("DSOs split the ±10 % band between the MV setpoint (typically 1.02–1.05 p.u.), the off-load tap of the "
                "MV/LV transformer (±2 × 2.5 %) and the LV network. pylovo's stored net uses vm_pu 1.0, tap 0 and the "
                "pandapower standard types with vk 6 %, so the whole transformer drop comes out of the LV budget."
@@ -2587,10 +2567,6 @@ def diagnose(inputs: dict, gp: dict | None, pf: dict | None = None, context: dic
     findings = _finalise(F, th)
     budget = [dict(info["budget"], symptom=info["id"], severity=info["severity"]) for info in
               sorted(vt.values(), key=lambda x: x["vm"])]
-    for entry in budget:
-        tr02 = F.get("TR-02:grid")
-        if tr02 and tr02["metrics"].get("tap_steps"):
-            entry["tap"] = {"steps": tr02["metrics"]["tap_steps"], "vm_after": tr02["metrics"]["vm_after_tap"]}
     counts = {s: sum(1 for f in findings if f["severity"] == s) for s in SEVERITIES}
     if model.pf:
         source = {"basis": "power_flow", "scaling": model.scaling,
