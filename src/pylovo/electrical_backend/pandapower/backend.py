@@ -222,6 +222,9 @@ class PandapowerBackend(IElectricalBackend):
         """
         if bus_name in self._bus_cache:
             return self._bus_cache[bus_name]
+        if len(self._bus_cache) == len(self.net.bus):
+            # Every bus of the net is cached, so none has this name; skip the table scan.
+            raise ValueError(f"Bus not found: {bus_name}")
 
         buses = self.net.bus[self.net.bus.name == bus_name]
         if buses.empty:
