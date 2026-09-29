@@ -387,10 +387,12 @@ class ClusteringMixin(BaseMixin):
         # Square distance matrix
         dist_matrix = np.zeros([len(localid2vid), len(localid2vid)])
         st = time.time()
-        for i in range(len(cost_df)):
-            start_id = vid2localid[cost_arr[i, 0]]
-            end_id = vid2localid[cost_arr[i, 1]]
-            dist_matrix[start_id][end_id] = cost_arr[i, 2]
+        local_ids = pd.Index(list(localid2vid.values()))
+        start_ids = local_ids.get_indexer(cost_arr[:, 0])
+        end_ids = local_ids.get_indexer(cost_arr[:, 1])
+        if (end_ids < 0).any():  # every end vertex is also a start vertex (undirected costs)
+            raise KeyError(cost_arr[np.flatnonzero(end_ids < 0)[0], 1])
+        dist_matrix[start_ids, end_ids] = cost_arr[:, 2]
         et = time.time()
         self.logger.debug(f"Elapsed time for dist_matrix creation: {et - st}")
         return localid2vid, dist_matrix, vid2localid
