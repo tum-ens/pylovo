@@ -1362,13 +1362,14 @@ class GridGenerator:
                 context=(self.plz, kcid, bcid),
             )
 
-            # Create network components
-            installer.create_lvmv_bus(self.plz, kcid, bcid)
-            installer.create_transformer(self.plz, kcid, bcid)
-            installer.create_connection_bus(connection_nodes, station_vertex=ont_vertice)
-            installer.create_consumer_bus_and_load(
-                consumer_list, powerflow_snapshot_components
-            )
+            # Create network components (the backend creates them in batches)
+            with backend.batch():
+                installer.create_lvmv_bus(self.plz, kcid, bcid)
+                installer.create_transformer(self.plz, kcid, bcid)
+                installer.create_connection_bus(connection_nodes, station_vertex=ont_vertice)
+                installer.create_consumer_bus_and_load(
+                    consumer_list, powerflow_snapshot_components
+                )
 
             self.logger.debug(
                 f"Backend network initialized (buses={backend.get_component_count('buses')}, "
@@ -1397,35 +1398,36 @@ class GridGenerator:
                 self.logger,
                 self.plz,
             )
-            material_length_by_cable_km = self._install_feeder_lines(
-                installer,
-                branches,
-                feeder_design,
-                buildings_df,
-                consumer_df,
-                vertices_dict,
-                ont_vertice,
-                material_length_by_cable_km,
-                kcid,
-                bcid,
-            )
-
-            service_diagnostics = []
-            for branch in branches:
-                material_length_by_cable_km, branch_service_diagnostics = (
-                    installer.install_consumer_cables(
-                        self.plz,
-                        bcid,
-                        kcid,
-                        list(branch.nodes),
-                        ont_vertice,
-                        vertices_dict,
-                        service_design_load_per_consumer,
-                        material_length_by_cable_km,
-                        feeder_design.drop_percent_by_node,
-                    )
+            with backend.batch():
+                material_length_by_cable_km = self._install_feeder_lines(
+                    installer,
+                    branches,
+                    feeder_design,
+                    buildings_df,
+                    consumer_df,
+                    vertices_dict,
+                    ont_vertice,
+                    material_length_by_cable_km,
+                    kcid,
+                    bcid,
                 )
-                service_diagnostics.extend(branch_service_diagnostics)
+
+                service_diagnostics = []
+                for branch in branches:
+                    material_length_by_cable_km, branch_service_diagnostics = (
+                        installer.install_consumer_cables(
+                            self.plz,
+                            bcid,
+                            kcid,
+                            list(branch.nodes),
+                            ont_vertice,
+                            vertices_dict,
+                            service_design_load_per_consumer,
+                            material_length_by_cable_km,
+                            feeder_design.drop_percent_by_node,
+                        )
+                    )
+                    service_diagnostics.extend(branch_service_diagnostics)
             service_planning_diagnostics = self._summarize_service_diagnostics(service_diagnostics)
 
             # GIS helper SQL must see every persisted feeder/service line in the same

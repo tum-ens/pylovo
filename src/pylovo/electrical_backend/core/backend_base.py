@@ -18,6 +18,7 @@ A backend must:
 """
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from .specs import ComponentSpec
@@ -43,6 +44,14 @@ class IElectricalBackend(ABC):
             source_bus: Name of the source bus
             primary_kv: Primary voltage level
         """
+
+    @contextmanager
+    def batch(self):
+        """Group the component creation of a block; a backend may create the components when it ends.
+
+        The default creates every component at once.
+        """
+        yield self
 
     @abstractmethod
     def create_component(self, spec: ComponentSpec) -> Any:

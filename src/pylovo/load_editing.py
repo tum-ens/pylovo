@@ -853,8 +853,9 @@ def replace_net_loads(net, table: LoadTable) -> list[tuple[int, str | None, str]
         _EMPTY_LOAD = pp.create_empty_network().load
     backend = _backend_for(net)
     net.load = _EMPTY_LOAD.copy()
-    for spec in table.specs:
-        backend.create_component(spec)
+    with backend.batch():
+        for spec in table.specs:
+            backend.create_component(spec)
     changes = []
     names = net.bus["name"]
     for vertex, zone in table.zones.items():
