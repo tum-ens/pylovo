@@ -561,25 +561,6 @@ class PandapowerBackend(IElectricalBackend):
         """Solved voltage magnitude of the bus called ``bus_name``."""
         return float(self.net.res_bus.at[self._get_bus_index(bus_name), "vm_pu"])
 
-    def set_transformer_tap_steps(self, steps: int) -> int:
-        """Move the tap of the station transformer ``steps`` steps towards a higher LV voltage.
-
-        The pandapower standard types have the tap on the HV side (lower position = fewer HV
-        turns = higher LV voltage), ±2 steps of 2.5 %. The position is clipped to the type's
-        range; returns the steps applied.
-        """
-        if self.net is None or self.net.trafo.empty:
-            return 0
-        idx = self.net.trafo.index[0]
-        row = self.net.trafo.loc[idx]
-        neutral = int(row.tap_neutral) if row.tap_neutral == row.tap_neutral else 0
-        lo = int(row.tap_min) if row.tap_min == row.tap_min else neutral
-        hi = int(row.tap_max) if row.tap_max == row.tap_max else neutral
-        direction = 1 if str(row.tap_side).lower() == "lv" else -1
-        position = min(hi, max(lo, neutral + direction * int(steps)))
-        self.net.trafo.at[idx, "tap_pos"] = position
-        return abs(position - neutral)
-
     def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
         """Set transformer rated power."""
         if self.net is None:

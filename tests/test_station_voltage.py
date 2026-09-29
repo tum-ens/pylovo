@@ -25,57 +25,40 @@ def backend_with_feeder(load_mw: float, length_km: float = 0.3) -> PandapowerBac
     return backend
 
 
-def solve(backend, reference=0.96, steps=2, low=0.90, high=1.10):
-    return solve_validation_power_flow(backend, reference, steps, low, high)
-
-
 def lv(backend) -> float:
     return float(backend.net.res_bus.vm_pu[1])
 
 
-def test_without_reference_and_tap_the_net_is_solved_as_built():
+def test_without_reference_the_net_is_solved_as_built():
     b = backend_with_feeder(0.12)
-    result = solve(b, reference=None, steps=0)
+    result = solve_validation_power_flow(b, None)
     assert result.converged and not result.applied
-    assert b.net.ext_grid.vm_pu.iloc[0] == 1.0 and b.net.trafo.tap_pos.iloc[0] == 0
+    assert b.net.ext_grid.vm_pu.iloc[0] == 1.0
 
 
 def test_the_lv_busbar_is_set_to_the_reference():
     b = backend_with_feeder(0.12)
-    result = solve(b, steps=0)
-    assert result.converged and result.applied and result.tap_steps == 0
+    result = solve_validation_power_flow(b, 0.96)
+    assert result.converged and result.applied
     assert lv(b) == pytest.approx(0.96, abs=2e-5) and result.lv_busbar_vm_pu == pytest.approx(lv(b))
     assert 0.96 < b.net.ext_grid.vm_pu.iloc[0] < 1.0                   # the MV side covers the transformer drop
     assert result.source_vm_pu == pytest.approx(b.net.ext_grid.vm_pu.iloc[0])
 
 
-def test_the_smallest_tap_that_restores_the_band_is_used():
+def test_the_tap_stays_neutral_below_the_band():
     b = backend_with_feeder(0.15)
-    assert solve(backend_with_feeder(0.15), steps=0).converged
-    no_tap = backend_with_feeder(0.15)
-    solve(no_tap, steps=0)
-    assert no_tap.net.res_bus.vm_pu.min() < 0.90                       # at 0.96 the end of the cable is too low
-    result = solve(b)
-    assert result.tap_steps == 1 and b.net.res_bus.vm_pu.min() >= 0.90
-    assert b.net.trafo.tap_pos.iloc[0] == b.net.trafo.tap_neutral.iloc[0] - 1   # HV-side tap: fewer HV turns
-    assert lv(b) > 0.975                                                 # one step lifts the busbar by about 2.5 %
-
-
-def test_the_tap_stops_at_the_maximum_and_at_the_upper_limit():
-    heavy = backend_with_feeder(0.30)
-    result = solve(heavy)
-    assert result.tap_steps == 2 and heavy.net.res_bus.vm_pu.min() < 0.90   # still low: reported, not hidden
-    capped = backend_with_feeder(0.15)
-    assert solve(capped, steps=1, high=0.975).tap_steps == 0               # a step above the upper limit is undone
-    assert capped.net.trafo.tap_pos.iloc[0] == capped.net.trafo.tap_neutral.iloc[0]
+    assert solve_validation_power_flow(b, 0.96).converged
+    assert b.net.res_bus.vm_pu.min() < 0.90                            # reported, not lifted by the tap
+    assert b.net.trafo.tap_pos.iloc[0] == b.net.trafo.tap_neutral.iloc[0]
+    assert lv(b) == pytest.approx(0.96, abs=2e-5)
 
 
 def test_a_second_run_on_the_stored_state_reproduces_the_result():
     b = backend_with_feeder(0.15)
-    first = solve(b)
+    first = solve_validation_power_flow(b, 0.96)
     vm_first = b.net.res_bus.vm_pu.copy()
-    again = solve(b)
-    assert (again.tap_steps, again.source_vm_pu) == (first.tap_steps, pytest.approx(first.source_vm_pu, abs=1e-9))
+    again = solve_validation_power_flow(b, 0.96)
+    assert again.source_vm_pu == pytest.approx(first.source_vm_pu, abs=1e-9)
     assert (b.net.res_bus.vm_pu - vm_first).abs().max() < 1e-9
 
 
@@ -89,9 +72,6 @@ class _PlainBackend:
         self.solved += 1
         return True
 
-    def set_transformer_tap_steps(self, steps):
-        raise NotImplementedError
-
     def get_source_voltage(self):
         raise NotImplementedError
 
@@ -99,6 +79,6 @@ class _PlainBackend:
 def test_backends_without_support_solve_once_and_warn(caplog):
     plain = _PlainBackend()
     with caplog.at_level(logging.WARNING):
-        result = solve_validation_power_flow(plain, 0.96, 2, 0.9, 1.1)
+        result = solve_validation_power_flow(plain, 0.96)
     assert result.converged and not result.applied and plain.solved == 1
     assert "does not support" in caplog.text

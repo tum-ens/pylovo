@@ -98,10 +98,7 @@ def test_transformer_source_predicate():
 
 def test_station_voltage_keys_of_older_snapshots():
     stored = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1}}
-    legacy = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1,
-                                        "lv_reference_voltage_pu": None, "max_tap_steps": 0}}
+    legacy = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1, "lv_reference_voltage_pu": None}}
     assert compare_snapshots(stored, legacy) == ([], [])
-    new = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1,
-                                     "lv_reference_voltage_pu": 0.96, "max_tap_steps": 2}}
-    assert compare_snapshots(stored, new)[0] == ["power_flow_assessment.lv_reference_voltage_pu",
-                                                 "power_flow_assessment.max_tap_steps"]
+    new = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1, "lv_reference_voltage_pu": 0.96}}
+    assert compare_snapshots(stored, new)[0] == ["power_flow_assessment.lv_reference_voltage_pu"]

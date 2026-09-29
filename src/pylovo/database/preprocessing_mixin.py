@@ -29,7 +29,6 @@ from pylovo.config_loader import (
     MAX_GREENFIELD_TRAFO_DISTANCE,
     MAX_GREENFIELD_TRAFO_DISTANCE_STD,
     MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
-    MAX_TAP_STEPS,
     MERGE_GREENFIELD_CLUSTERS,
     MIN_SHARED_PREFIX_LENGTH_M,
     MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
@@ -99,7 +98,6 @@ class PreprocessingMixin(BaseMixin):
                 "min_vm_pu": POWER_FLOW_MIN_VM_PU,
                 "max_vm_pu": POWER_FLOW_MAX_VM_PU,
                 "lv_reference_voltage_pu": LV_REFERENCE_VOLTAGE_PU,
-                "max_tap_steps": MAX_TAP_STEPS,
             },
             "connection_point_aggregation": {
                 "enabled": AGGREGATE_NEARBY_CONNECTION_POINTS,

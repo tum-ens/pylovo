@@ -91,10 +91,10 @@ def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
 
 # --------------------------------------------------------------------------- sandbox database
 def _as_generated_before_the_station_voltage(project):
-    """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU / MAX_TAP_STEPS: use the values they had."""
+    """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU: use the value they had."""
     path = project / "config" / "config_generation.yaml"
-    text = re.sub(r"^LV_REFERENCE_VOLTAGE_PU:.*$", "LV_REFERENCE_VOLTAGE_PU: null", path.read_text(), flags=re.MULTILINE)
-    path.write_text(re.sub(r"^MAX_TAP_STEPS:.*$", "MAX_TAP_STEPS: 0", text, flags=re.MULTILINE))
+    path.write_text(re.sub(r"^LV_REFERENCE_VOLTAGE_PU:.*$", "LV_REFERENCE_VOLTAGE_PU: null", path.read_text(),
+                           flags=re.MULTILINE))
 
 
 @requires_db

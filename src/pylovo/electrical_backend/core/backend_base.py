@@ -192,13 +192,6 @@ class IElectricalBackend(ABC):
         """Solved voltage magnitude of a bus in p.u."""
         raise NotImplementedError(f"{type(self).__name__} does not support the station voltage")
 
-    def set_transformer_tap_steps(self, steps: int) -> int:
-        """Set the station transformer's off-load tap ``steps`` steps towards a higher LV voltage.
-
-        ``0`` is the neutral position. Returns the steps applied within the transformer's tap range.
-        """
-        raise NotImplementedError(f"{type(self).__name__} does not support the station voltage")
-
     @abstractmethod
     def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
         """
