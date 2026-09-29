@@ -597,7 +597,8 @@ class AnalysisMixin(BaseMixin):
 
         return data_list, data_labels, trafo_dict
 
-    def read_net_db(self, plz: int, kcid: int, bcid: int, version_id: str | None = None) -> pp.pandapowerNet:
+    def read_net_db(self, plz: int, kcid: int, bcid: int, version_id: str | None = None,
+                    tables: frozenset[str] | None = None) -> pp.pandapowerNet:
         """Read the pandapower network of a grid from ``grid_result.grid``.
 
         Args:
@@ -605,6 +606,8 @@ class AnalysisMixin(BaseMixin):
             kcid: K-means cluster ID.
             bcid: Building cluster ID.
             version_id: Version of the grid; defaults to the configured ``VERSION_ID``.
+            tables: Deserialize only these tables (the others stay empty); pandapower rebuilds
+                every one of the ~90 tables of a net otherwise, about 1 ms each.
 
         Returns:
             The pandapower network.
@@ -625,6 +628,11 @@ class AnalysisMixin(BaseMixin):
 
         grid_tuple = result[0]
         grid_dict = grid_tuple[0]
+        if tables is not None:
+            grid_dict = {**grid_dict, "_object": {
+                key: value for key, value in grid_dict["_object"].items()
+                if key in tables or not (isinstance(value, dict) and value.get("_class") == "DataFrame")
+            }}
         grid_json_string = json.dumps(grid_dict)
         net = pp.from_json_string(grid_json_string, empty_dict_like_object=empty_network())
 

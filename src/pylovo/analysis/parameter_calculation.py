@@ -63,6 +63,13 @@ PYLOVO_BUS_TYPE_CONFIG: Dict[str, str] = {
 }
 
 
+# Tables of a stored net that the per-transformer analysis reads: the loads and transformer, and
+# every element pandapower.topology.create_nxgraph turns into graph edges.
+TRANSFORMER_ANALYSIS_TABLES = frozenset({
+    "bus", "bus_dc", "load", "trafo", "trafo3w", "line", "line_dc", "impedance", "tcsc", "dcline", "vsc", "switch",
+})
+
+
 def station_mva(net: pp.pandapowerNet) -> float:
     """Rating in MVA of the (first) transformer station of a net: ``sn_mva x parallel``.
 
@@ -1759,7 +1766,7 @@ class ParameterCalculator:
 
         for kcid, bcid in cluster_list:
             try:
-                net = self.dbc.read_net_db(plz, kcid, bcid)
+                net = self.dbc.read_net_db(plz, kcid, bcid, tables=TRANSFORMER_ANALYSIS_TABLES)
             except Exception as e:
                 self.dbc.logger.warning(f"Skipping local network {kcid},{bcid} in PLZ {plz}: {e}")
                 continue
