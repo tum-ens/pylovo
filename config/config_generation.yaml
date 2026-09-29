@@ -5,7 +5,7 @@
 VERSION_ID: "1" # Change version if you changed any grid parameters or queries (e.g. transformer query)
 VERSION_COMMENT: default # State here which parameters, queries are used to compute the grids with current VERSION_ID
 PARALLEL: True # Generate several PLZ in parallel worker processes (pylovo-generate --parallel / --no-parallel override it)
-N_JOBS_PERCENT: 20  # Set percentage of CPU cores to be used for parallel grid generation
+N_JOBS_PERCENT: 50  # Set percentage of CPU cores to be used for parallel grid generation (about 0.4 GB RAM per worker)
 ANALYZE_GRIDS: True # Run basic analysis after grid generation
 LOG_LEVEL: INFO #DEBUG, INFO, ERROR - Logging configurations
 SAVE_GRID_FOLDER: False # save grid json files as json additionally to db storage

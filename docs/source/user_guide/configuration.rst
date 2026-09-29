@@ -139,9 +139,9 @@ Execution
        ``pylovo-generate``, overridden by ``--parallel`` or ``--no-parallel``. Does not change results.
      -
    * - ``N_JOBS_PERCENT``
-     - ``20``
+     - ``50``
      - Share of CPU cores used as worker processes for multi-postcode runs
-       (at least one worker).
+       (at least one worker; about 0.4 GB of memory per worker).
      -
    * - ``ANALYZE_GRIDS``
      - ``True``
