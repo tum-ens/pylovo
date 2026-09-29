@@ -262,14 +262,14 @@ limits do not control numerical convergence and do not resize cables. Failed or
 voltage-violating networks are retained with the corresponding status.
 
 **Station voltage.** The power flow shares the ±10 % band of DIN EN 50160 between the MV and the
-LV grid as Niederle et al. (2026) do: it first sets the MV-side voltage of the external grid so that
-the LV busbar is at ``LV_REFERENCE_VOLTAGE_PU`` (0.96 p.u.) at the operating point, which also covers
-the transformer's own voltage drop. If a bus is then still below ``MIN_VM_PU``, it moves the
-off-load tap of the station transformer towards a higher LV voltage, one step (2.5 %) at a time and
-at most ``MAX_TAP_STEPS`` steps, and keeps the smallest number of steps that restores the band
-without exceeding ``MAX_VM_PU``. A distribution grid operator sets this tap once per station in the
-same way. The MV-side voltage and the tap position stay in the stored net (and the tap in
-``pandapower_trafo.tap_pos``), so a later power flow of the stored net reproduces the check.
+LV grid as Niederle et al. (2026) do: it sets the MV-side voltage of the external grid so that the
+LV busbar is at ``LV_REFERENCE_VOLTAGE_PU`` (0.96 p.u.) at the operating point, which also covers
+the transformer's own voltage drop. The off-load tap of the station transformer stays neutral.
+pylovo reads the reference as the busbar of a station whose tap is already set once for its place
+in the MV grid, as the dena-Verteilnetzstudie (2012) folds this static tapping into its reference
+voltages; further tap steps would count that setting twice. Re-tapping is a measure of expansion
+planning, not part of the grid as built. The MV-side voltage stays in the stored net, so a later
+power flow of the stored net reproduces the check.
 
 Configuration levers
 --------------------

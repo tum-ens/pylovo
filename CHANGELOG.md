@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Optional extras `notebooks`, `api` and `legacy-ui`; `igraph` in `plots`
 - `USE_MANUAL_TRANSFORMER_POSITIONS`: use manually placed transformer positions (GridPlanner UI) without the OSM and LoD2 candidates
 - `pylovo-generate --parallel`; `PARALLEL` in `config_generation.yaml` is now the default for several regions
-- Station voltage of the validation power flow after Niederle et al. (2026): the LV busbar is at `LV_REFERENCE_VOLTAGE_PU` (0.96 p.u.) at the operating point, and the off-load tap lifts the LV side by up to `MAX_TAP_STEPS` steps of 2.5 % where a bus is below the band; both are in the version snapshot (older versions need `null` and `0`)
+- Station voltage of the validation power flow after Niederle et al. (2026): the LV busbar is at `LV_REFERENCE_VOLTAGE_PU` (0.96 p.u.) at the operating point, with a neutral transformer tap; the key is in the version snapshot (older versions need `null`)
 - `GET /api/health` of `pylovo-api` (no database access: contract version `api`, pylovo version, git revision) and the OpenAPI contract snapshot `api/openapi.json` (`api/scripts/export_openapi.py`), checked by a test and on pull requests by `oasdiff breaking` against the base branch
 
 ### Changed

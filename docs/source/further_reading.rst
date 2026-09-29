@@ -22,8 +22,12 @@ Planning assumptions
 * S. Niederle, D. J. Storch, C. J. Steinhart, C. Gutzmann, M. Kreißl, M. Günther, R. Tonkoski,
   R. Witzmann and M. Finkel (2026), *Ermittlung des Netzausbaubedarfes im urbanen Verteilnetz durch
   Sektorenkopplung mittels vereinfachter Netzberechnung*, 19. Symposium Energieinnovation, Graz.
-  Source of the voltage-band split (LV busbar 0.96 p.u., LV minimum 0.90 p.u.) and of the off-load
-  tap of at most ±5 % used by the validation power flow.
+  Source of the voltage-band split (LV busbar 0.96 p.u., LV minimum 0.90 p.u.) used by the
+  validation power flow.
+* Deutsche Energie-Agentur (dena) (2012), *Ausbau- und Innovationsbedarf der Stromverteilnetze in
+  Deutschland bis 2030* (dena-Verteilnetzstudie), final report, Berlin. Its voltage-band split
+  represents the static tapping of the MV/LV transformers implicitly in the reference voltages
+  (p. 92), the reason the validation power flow keeps the tap neutral.
 
 Surrogate modelling
 -------------------

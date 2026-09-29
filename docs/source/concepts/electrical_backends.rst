@@ -41,9 +41,8 @@ pandapower (default)
        500, 800 and 1260 kVA are two parallel units of half the rating; other ratings become
        parallel 630 kVA units. pandapower has no standard types below 0.25 MVA, so 100 and 160 kVA
        reuse the 0.25 MVA data with the rating and no-load losses scaled. The off-load tap (HV side,
-       ±2 steps of 2.5 %) is neutral unless the validation power flow needs it
-       (``MAX_TAP_STEPS``). The OpenDSS backend supports neither the reference nor the tap and keeps
-       the MV side at 1.0 p.u.
+       ±2 steps of 2.5 %) stays neutral. The OpenDSS backend does not support the reference voltage
+       and keeps the MV side at 1.0 p.u.
    * - Lines
      - Standard types registered from the cable catalogue (``r``, ``x``, ``max_i_ka``; capacitance
        0). Feeder lines follow the street routes; service lines are straight connections. Extra
