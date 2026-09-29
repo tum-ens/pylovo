@@ -69,7 +69,8 @@ Optional dependency groups (extras):
      - Building this documentation
    * - ``api``
      - FastAPI, uvicorn, python-multipart, httpx
-     - ``pylovo-api`` (:doc:`../user_guide/http_api`)
+     - ``pylovo-api`` (:doc:`../user_guide/http_api`) for the GridPlanner
+       :doc:`../user_guide/browser_ui`
 
 .. code-block:: bash
 

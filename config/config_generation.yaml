@@ -38,6 +38,15 @@ MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT: 5 # With the service limit the 6 % L
 # Max. service cable voltage drop at its building-local coincident load.
 MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT: 1 # The rest of the 6 % LV share
 
+## Station voltage of the validation power flow
+# DIN EN 50160 allows 0.90–1.10 p.u. at the customer. Following Niederle et al. (2026) this band is split between MV and LV:
+# at the load of the validation power flow the LV busbar of the station is at 0.96 p.u. (the MV grid and the transformer have used their share),
+# which leaves the LV cables 6 % down to MIN_VM_PU = 0.90 (config_analysis.yaml).
+LV_REFERENCE_VOLTAGE_PU: 0.96 # LV busbar voltage at the load of the validation power flow; pylovo sets the MV side to reach it (null: MV side at 1.0 p.u., the old check)
+
+# Planned coincident load / transformer rating for sizing and cluster splitting
+TRANSFORMER_PLANNING_UTILIZATION: 0.8
+
 # Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
@@ -82,7 +91,6 @@ K_MEANS_SEED: 3329829316 # k-means integer seed to ensure deterministic behavior
 MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Mean maximum distance from a greenfield transformer to any cluster connection point
 MAX_GREENFIELD_TRAFO_DISTANCE_STD: 250 # Per-cluster spread of that limit (normal, clipped to +/- 2 std); 0 = fixed limit
 GREENFIELD_TRAFO_POSITION_TOLERANCE: 1.0 # Random station among positions costing at most (1 + tolerance) x the optimum; 0 = optimal
-TRANSFORMER_PLANNING_UTILIZATION: 0.8 # Planned coincident load / transformer rating for sizing and cluster splitting
 MERGE_GREENFIELD_CLUSTERS: False # Merge neighboring greenfield clusters as posprocessing step
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities for merging
 
@@ -91,12 +99,6 @@ MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing
 USE_OPEN_TRANSFORMER_POSITIONS: False # Include all non-DSO positions from pylovo.transformers (OSM, LoD2 and manual)
 USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
 USE_MANUAL_TRANSFORMER_POSITIONS: False # Include the positions placed in the UI (manual/...) even when USE_OPEN_TRANSFORMER_POSITIONS is False
-
-## Station voltage of the validation power flow
-# Voltage band of DIN EN 50160 split between MV and LV as in Niederle et al. (2026): the LV busbar of the
-# station is at 0.96 p.u. at the operating point, the LV grid may drop to MIN_VM_PU (config_analysis.yaml).
-LV_REFERENCE_VOLTAGE_PU: 0.96 # LV busbar voltage at the operating point (null: MV side at 1.0 p.u. as built)
-
 
 # =============================================================================
 # Equipment data configuration

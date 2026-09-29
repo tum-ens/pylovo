@@ -29,7 +29,7 @@ Sources of transformer candidates
      - ``pylovo-import transformers-dso-csv <file.csv>``.
    * - Manual edits
      - ``manual/<unix-time>``
-     - Transformer editor of the GridPlanner UI (:doc:`http_api`).
+     - Transformer editor of the GridPlanner UI (:doc:`browser_ui`).
 
 Which candidates are used
 -------------------------
@@ -175,11 +175,11 @@ Manual editing
 
 Transformer candidates can be viewed and edited on a map:
 
-The GridPlanner browser UI contains a transformer editor on top of the :doc:`http_api`
-(``/api/transformers``). It works on ``pylovo.transformers``: load a PLZ, add transformers by
-clicking on the map (ids ``manual/<unix-time>``), delete transformers, set the rating of one
-transformer or of all transformers in the postcode (uniformly or by a percentage distribution of
-ratings), or clear the ratings. Manual positions are used with
+The GridPlanner browser UI (:doc:`browser_ui`, step 3 *Data*) contains a transformer editor on
+top of the :doc:`http_api` (``/api/transformers``). It works on ``pylovo.transformers``: load a
+PLZ, add transformers by clicking on the map (ids ``manual/<unix-time>``), delete transformers,
+set the rating of one transformer or of all transformers in the postcode (uniformly or by a
+percentage distribution of ratings), or clear the ratings. Manual positions are used with
 ``USE_OPEN_TRANSFORMER_POSITIONS`` (together with all OSM and LoD2 candidates) or alone with
 ``USE_MANUAL_TRANSFORMER_POSITIONS``. A rating set on a candidate sizes the station of the grid
 built around it; ratings of candidates whose source is switched off are ignored.

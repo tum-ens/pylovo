@@ -54,7 +54,7 @@ Open the :download:`basic-grid notebook
 at the stored grids and one pandapower network. For maps and statistics, open the
 :download:`statistics notebook
 <../../../notebook_tutorials/grid_generation/4_basic_plotting.ipynb>` or use the GridPlanner
-browser UI on the :doc:`../user_guide/http_api`. The notebooks use the
+:doc:`../user_guide/browser_ui`. The notebooks use the
 database configured in ``.env``; change their ``plz`` parameter to ``80803``. Install the
 notebook environment with ``uv sync --extra notebooks`` if needed (:doc:`tutorials`).
 

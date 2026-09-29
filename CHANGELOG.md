@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `pylovo-generate --parallel`; `PARALLEL` in `config_generation.yaml` is now the default for several regions
 - Station voltage of the validation power flow after Niederle et al. (2026): the LV busbar is at `LV_REFERENCE_VOLTAGE_PU` (0.96 p.u.) at the operating point, with a neutral transformer tap; the key is in the version snapshot (older versions need `null`)
 - `GET /api/health` of `pylovo-api` (no database access: contract version `api`, pylovo version, git revision) and the OpenAPI contract snapshot `api/openapi.json` (`api/scripts/export_openapi.py`), checked by a test and on pull requests by `oasdiff breaking` against the base branch
+- Documentation page on the GridPlanner browser UI (`user_guide/browser_ui`) with screenshots of the pylovo steps; the README and the documentation start page show a grid in the UI's 3D view
 
 ### Changed
 - `pylovo-setup` creates or migrates the schema in place (migrations recorded in `pylovo.schema_migrations`) and imports every empty reference table after checking its input data; `pylovo-setup reset --database NAME` rebuilds the schema: it refuses while other schemas depend on it, keeps the previous schema as `pylovo_backup_<time>` until the rebuild is complete and restores it if the rebuild fails or is cancelled. Extensions are created in `public`

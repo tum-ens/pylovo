@@ -8,9 +8,9 @@ Long-running and database-writing steps run the existing ``pylovo-*`` commands o
 background jobs whose logs can be followed live, so the API does exactly what the command line
 does.
 
-The browser UI that uses this API lives in the GridPlanner repository. GridPlanner serves the UI
-and puts the API behind a reverse proxy (``/pylovo/api/*`` to ``/api/*`` of ``pylovo-api``);
-pylovo itself serves no web page.
+The browser UI that uses this API lives in the GridPlanner repository (:doc:`browser_ui`).
+GridPlanner serves the UI and puts the API behind a reverse proxy (``/pylovo/api/*`` to ``/api/*``
+of ``pylovo-api``); pylovo itself serves no web page.
 
 Starting the API
 ----------------
@@ -68,6 +68,8 @@ Server-Sent Events. Only one database-writing job runs at a time, and direct edi
 or loads are refused while one runs. Job logs survive a restart of the API
 (``.pylovo-api/jobs/`` in the project).
 
+.. _http-api-region-check:
+
 Region input check
 ------------------
 
@@ -109,6 +111,8 @@ of two versions including the generation parameters that differ. The grids of a 
 detail of one grid (cables, buses, feeders, consumers, cabinets) come as GeoJSON; the pandapower
 network can be downloaded.
 
+.. _http-api-generation-check:
+
 **Generation check and on-demand power flow.** pylovo runs a validation power flow when it saves
 each grid, at the transformer-coincident operating point, and stores the solved network with the
 grid. The API reads this *generation check* for four criteria: solver converged, voltage band
@@ -121,9 +125,13 @@ of outgoing cables, never at the station busbar. They are named K1 … Kn by cab
 station, the same names the diagnostics use. Service connections directly at the station busbar
 are direct connections, not feeders.
 
+.. _http-api-lod2:
+
 **3D buildings.** The LoD2 models of a grid's buildings are read from the InfDB schema ``citydb``
 (3DCityDB v5), linked by the building ``objectid``, and sent as a small binary mesh. Buildings
 without an LoD2 model, or a database without ``citydb``, give an empty mesh and never an error.
+
+.. _http-api-diagnostics:
 
 Diagnostics
 -----------

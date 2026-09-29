@@ -5,16 +5,18 @@ Detailed low-voltage grid data are often unavailable for regional energy studies
 (PYthon tool for LOw-VOltage distribution grid generation) turns open building, street and
 transformer data into geographically located synthetic grids for German postcode areas. These
 models make it possible to explore local network constraints, future demand and grid planning
-questions across many places. Results can be inspected in the browser (GridPlanner, through the
-:doc:`user_guide/http_api`) and used as `pandapower <https://www.pandapower.org/>`_ networks or GIS
-data.
+questions across many places. Results can be explored in the browser with GridPlanner
+(:doc:`user_guide/browser_ui`) and used as `pandapower <https://www.pandapower.org/>`_ networks or
+GIS data.
 
-.. figure:: /images/generation/step5_grids_by_grid.png
-   :alt: Four generated LV grids of PLZ 85653, one colour per grid, with transformer ratings
-   :width: 90%
+.. figure:: /images/ui/gridplanner-3d-feeders.png
+   :alt: One generated grid in the GridPlanner UI in 3D, cables and buildings coloured by feeder
+   :width: 100%
 
-   Generated grids of the demo region 85653 (Aying), one colour per grid. Demo extract derived
-   from OpenStreetMap, © OpenStreetMap contributors, ODbL.
+   Explore generated grids in the :doc:`user_guide/browser_ui`: one grid of the demo region 85653
+   (Aying) with its feeders and 3D buildings. Demo extract derived from OpenStreetMap with
+   synthetic LoD2 models; map data © OpenStreetMap contributors (ODbL), basemap OpenFreeMap /
+   OpenMapTiles.
 
 .. rubric:: Key features
 
@@ -31,7 +33,8 @@ data.
 * **Scales from one postcode to many** -- ``pylovo-generate`` accepts postcodes (PLZ) or
   municipalities (AGS) and runs postcodes in parallel.
 * **Analysis and visualisation** -- key figures per postcode and per grid, QGIS templates,
-  CSV export, plotting helpers and an HTTP API for the GridPlanner browser UI.
+  CSV export, plotting helpers, and the GridPlanner browser UI on top of pylovo's HTTP API
+  (:doc:`user_guide/browser_ui`).
 
 .. rubric:: Where to start
 
@@ -115,6 +118,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    user_guide/analysing_grids
    user_guide/applications
    user_guide/exporting_visualising
+   user_guide/browser_ui
    user_guide/http_api
    user_guide/cli
    user_guide/troubleshooting

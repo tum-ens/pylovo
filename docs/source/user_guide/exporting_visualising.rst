@@ -100,7 +100,7 @@ pandapower:
            pp.to_json(net, f"grid_85653_{kcid}_{bcid}.json")
 
 Alternatively, ``SAVE_GRID_FOLDER: True`` writes the JSON files during generation
-(:doc:`generating_grids`). The browser UI offers a download button per grid.
+(:doc:`generating_grids`). The :doc:`browser_ui` offers a download button per grid.
 
 Plotting helpers
 ----------------

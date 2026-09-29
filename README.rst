@@ -15,6 +15,12 @@ all equipment with coincidence factors and voltage-drop limits, and checks every
 power flow. The grids are stored as `pandapower <https://www.pandapower.org/>`_ networks and as
 GIS tables in PostgreSQL/PostGIS.
 
+.. figure:: docs/source/images/ui/gridplanner-3d-feeders.png
+    :alt: A generated grid in the GridPlanner browser UI in 3D, cables and buildings coloured by feeder
+
+    A generated grid in the GridPlanner browser UI: cables and 3D buildings coloured by feeder
+    (demo region 85653 from OpenStreetMap data with synthetic LoD2 models).
+
 Key features
 ------------
 
@@ -29,7 +35,7 @@ Key features
   the database.
 * **From one postcode to many** -- regions by postcode (PLZ) or municipality (AGS), parallel runs.
 * **Analysis and visualisation** -- key figures per postcode and grid, QGIS templates, CSV and
-  pandapower JSON export, plotting helpers and an HTTP API for the GridPlanner browser UI.
+  pandapower JSON export, plotting helpers, and the GridPlanner browser UI on top of an HTTP API.
 
 The shipped data cover Bavaria; other regions need the corresponding InfDB data and transformer
 download.
@@ -63,13 +69,28 @@ grid parameters are in ``config/config_generation.yaml``; use a new ``VERSION_ID
 them. All commands and options are described in the
 `command-line reference <https://pylovo.readthedocs.io/en/latest/user_guide/cli.html>`_.
 
+Browser UI (GridPlanner)
+------------------------
+
+GridPlanner is the browser UI for pylovo: database setup, region selection, transformer editing
+and imports, configuration, generation jobs with live logs, statistics, a grid inspector with
+diagnostics and an on-demand power flow, 3D buildings and load editing. It lives in its own
+repository and runs pylovo as a container image with the HTTP API below; GridExpand can add grid
+expansion steps on the same grids. See the
+`browser UI guide <https://pylovo.readthedocs.io/en/latest/user_guide/browser_ui.html>`_.
+
+.. code-block:: bash
+
+   ./gridplanner init --without-gridexpand   # in a GridPlanner checkout: asks for the database
+   ./gridplanner up                          # http://127.0.0.1:18780/
+
 HTTP API
 --------
 
 ``pylovo-api`` offers the same steps as a headless HTTP API: database setup, region selection,
 transformer editing and imports, configuration, generation jobs with live logs, statistics, grid
-details, diagnostics and an on-demand power flow. The browser UI that uses it lives in GridPlanner
-(see ``api/README.md``).
+details, diagnostics and an on-demand power flow. GridPlanner uses it; ``api/README.md`` lists the
+endpoints.
 
 .. code-block:: bash
 
