@@ -104,6 +104,8 @@ class CableInstaller:
 
         # Cache cable data from database as DataFrame (single source of truth)
         self._cable_df = self._build_cable_dataframe(cables)
+        # The same rows as plain dicts, in catalogue order, for the per-consumer service sizing.
+        self._cable_rows = self._cable_df.to_dict("index")
 
     def _get_path_to_bus(self, start: int, end: int) -> list[int]:
         """Return the routed node path from ``start`` to ``end`` (both included).
@@ -352,7 +354,7 @@ class CableInstaller:
         parallel: int,
     ) -> float:
         """Calculate approximate three-phase service drop at local design load."""
-        row = self._cable_df.loc[cable]
+        row = self._cable_rows[cable]
         sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
         effective_impedance = (
             float(row["r_ohm_per_km"]) * DEFAULT_POWER_FACTOR
@@ -396,20 +398,26 @@ class CableInstaller:
         Raises:
             ValueError: If none of ``available_cables`` is in the catalogue.
         """
-        line_df = self._cable_df.loc[self._cable_df.index.isin(available_cables)]
-        if line_df.empty:
+        available = set(available_cables)
+        line_options = [cable for cable in self._cable_rows if cable in available]
+        if not line_options:
             raise ValueError("No configured service cable is available for selection.")
 
         parallel = 1
         while True:
-            ampacity_options = line_df.loc[
-                line_df["max_i_ka"] >= design_current_ka / parallel
+            ampacity_options = [
+                cable for cable in line_options
+                if self._cable_rows[cable]["max_i_ka"] >= design_current_ka / parallel
             ]
-            if not ampacity_options.empty:
+            if ampacity_options:
                 break
             parallel += 1
 
-        ampacity_cable = ampacity_options.sort_values(by=["cost_eur", "q_mm2"]).index[0]
+        def cost_order(cable: str) -> tuple:
+            return self._cable_rows[cable]["cost_eur"], self._cable_rows[cable]["q_mm2"]
+
+        # min() keeps the first of equal keys, like the stable sort it replaces.
+        ampacity_cable = min(ampacity_options, key=cost_order)
         ampacity_drop_percent = self._service_voltage_drop_percent(
             design_current_ka, length_km, ampacity_cable, parallel
         )
@@ -417,26 +425,20 @@ class CableInstaller:
             cable: self._service_voltage_drop_percent(
                 design_current_ka, length_km, cable, parallel
             )
-            for cable in ampacity_options.index
+            for cable in ampacity_options
         }
-        voltage_options = ampacity_options.loc[
-            [
-                cable
-                for cable, drop_percent in drops_by_cable.items()
-                if drop_percent <= MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT + 1e-9
-            ]
+        voltage_options = [
+            cable
+            for cable, drop_percent in drops_by_cable.items()
+            if drop_percent <= MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT + 1e-9
         ]
-        if voltage_options.empty:
+        if not voltage_options:
             selected_cable = min(
-                ampacity_options.index,
-                key=lambda cable: (
-                    drops_by_cable[cable],
-                    float(ampacity_options.at[cable, "cost_eur"]),
-                    int(ampacity_options.at[cable, "q_mm2"]),
-                ),
+                ampacity_options,
+                key=lambda cable: (drops_by_cable[cable], *cost_order(cable)),
             )
         else:
-            selected_cable = voltage_options.sort_values(by=["cost_eur", "q_mm2"]).index[0]
+            selected_cable = min(voltage_options, key=cost_order)
 
         selected_drop_percent = drops_by_cable[selected_cable]
         return {
