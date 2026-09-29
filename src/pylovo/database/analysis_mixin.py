@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandapower as pp
 import pandas as pd
 from psycopg2 import sql
+from psycopg2.extras import execute_batch
 
 from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
@@ -234,7 +235,7 @@ class AnalysisMixin(BaseMixin):
                 }
             )
 
-        self.cur.executemany(insert_query, rows)
+        execute_batch(self.cur, insert_query, rows, page_size=500)
 
     def _insert_pandapower_line_rows(self, grid_result_id: int, line_df: pd.DataFrame | None) -> None:
         """Insert the rows of ``net.line`` into ``pylovo.pandapower_line``."""
@@ -339,7 +340,7 @@ class AnalysisMixin(BaseMixin):
                 }
             )
 
-        self.cur.executemany(insert_query, rows)
+        execute_batch(self.cur, insert_query, rows, page_size=500)
 
     def _insert_pandapower_trafo_rows(self, grid_result_id: int, trafo_df: pd.DataFrame | None) -> None:
         """Insert the rows of ``net.trafo`` into ``pylovo.pandapower_trafo``."""
@@ -428,7 +429,7 @@ class AnalysisMixin(BaseMixin):
                 }
             )
 
-        self.cur.executemany(insert_query, rows)
+        execute_batch(self.cur, insert_query, rows, page_size=500)
 
     def _insert_pandapower_load_rows(self, grid_result_id: int, load_df: pd.DataFrame | None) -> None:
         """Insert the rows of ``net.load`` into ``pylovo.pandapower_load``."""
@@ -514,7 +515,7 @@ class AnalysisMixin(BaseMixin):
                 }
             )
 
-        self.cur.executemany(insert_query, rows)
+        execute_batch(self.cur, insert_query, rows, page_size=500)
 
     def save_pandapower_net_with_sql(
         self,

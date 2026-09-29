@@ -7,6 +7,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from psycopg2 import sql
+from psycopg2.extras import execute_batch
 
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
@@ -394,7 +395,7 @@ class PreprocessingMixin(BaseMixin):
                     ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
                     %s, %s, %s, %s)
         """
-        self.cur.executemany(insert_query, buildings_data)
+        execute_batch(self.cur, insert_query, buildings_data, page_size=500)
         # self.conn.commit() only for debugging
 
     def set_other_buildings_table(self, plz: int):
@@ -1095,7 +1096,7 @@ class PreprocessingMixin(BaseMixin):
             (clazz, source, target, cost, reverse_cost, geom, way_id)
             VALUES (%s, %s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}), %s)
         """
-        self.cur.executemany(insert_query, ways_data)
+        execute_batch(self.cur, insert_query, ways_data, page_size=500)
         self.cur.execute("SELECT COUNT(*) FROM ways_tem")
         return self.cur.fetchone()[0]
 
