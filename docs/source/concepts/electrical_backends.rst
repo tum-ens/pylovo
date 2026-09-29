@@ -57,6 +57,15 @@ pandapower (default)
 The power flow is ``pandapower.runpp(net, algorithm="nr", init="auto")``. The net is stored as
 pandapower JSON in ``grid_result.grid`` and element by element in the ``pandapower_*`` tables.
 
+Buses, loads and lines are created with pandapower's batch functions, one call per table and grid
+(:meth:`~pylovo.electrical_backend.pandapower.backend.PandapowerBackend.batch`). pylovo's extra
+columns of ``line`` and ``load`` have the same dtype in every stored net
+(``LINE_ATTRIBUTE_DTYPES``, ``LOAD_ATTRIBUTE_DTYPES`` in
+:mod:`pylovo.electrical_backend.pandapower.backend`): numbers are ``float64`` with NaN where they do
+not apply, text and flags are objects with ``None``. Before, the first line of a grid decided the
+dtype, so in grids generated earlier whose first line was a service line
+``feeder_section_id`` is an object column and the ``service_*`` percentages are ``float64``.
+
 OpenDSS (work in progress)
 --------------------------
 
