@@ -10,7 +10,7 @@ The status only checks the voltage band ``POWER_FLOW_VOLTAGE_LIMITS`` (``config_
 ``converged`` means "the solver converged and every bus is inside the band", not "cables and
 transformer are within their ratings". This module reads the stored result tables to show the
 criteria separately (solver, voltage band, cable ampacity, transformer planning utilisation),
-the voltage budget from nominal voltage (transformer + feeder + service) and per-feeder figures
+the voltage budget from nominal voltage (station + feeder + service) and per-feeder figures
 for the Inspector. The on-demand power flow of :mod:`pylovo_api.powerflow` reruns the same stored
 operating point, so at load scaling 1 it reproduces these numbers.
 """
@@ -134,7 +134,7 @@ def _evaluate(res_bus: dict, res_line: dict, res_trafo: dict, buses: list[dict],
         v_cons = vm[weakest]
         budget = {
             "bus": weakest,
-            "trafo_pct": _num((1 - vb) * 100, 2),
+            "trafo_pct": _num((1 - vb) * 100, 2),     # station: 1.0 p.u. down to the LV busbar (MV side, transformer)
             "feeder_pct": _num((vb - v_conn) * 100, 2) if v_conn is not None else None,
             "service_pct": _num((v_conn - v_cons) * 100, 2) if v_conn is not None else None,
             "total_pct": _num((1 - v_cons) * 100, 2),
