@@ -141,9 +141,10 @@ and fall into three kinds:
 
 Without a power flow the rules use the design data and the generation check (estimates are
 marked); with the on-demand power flow they use its exact results, and a load scaling other than
-×1 shows which findings are new. A voltage budget per feeder shows how the drop builds up from the
-transformer through the largest sections to the consumer. Thresholds that pylovo defines come from
-the version's stored parameters. The heuristic ones can be overridden in an optional
+×1 shows which findings are new. A voltage budget per feeder shows how the drop builds up from 1.0
+p.u. through the station (down to the LV busbar, which the validation power flow puts at
+``LV_REFERENCE_VOLTAGE_PU``) and the largest sections to the consumer. Thresholds that pylovo
+defines come from the version's stored parameters. The heuristic ones can be overridden in an optional
 ``GRID_DIAGNOSTICS`` block of ``config_analysis.yaml``; the keys are those of ``DEFAULT_THRESHOLDS``
 in ``api/pylovo_api/diagnostics.py``, and tables such as ``grouping_factors`` can be changed
 entry by entry:

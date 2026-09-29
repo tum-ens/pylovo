@@ -107,7 +107,8 @@ def test_grid3_before_the_power_flow(sandbox):
     assert f["TP-03:grid"]["metrics"]["eccentricity"] == pytest.approx(1.25, abs=0.02)
     assert f["TP-02:grid"]["metrics"]["share"] == pytest.approx(0.91, abs=0.01)
     assert f["DE-02:f1"]["severity"] == "warning" and len(f["DE-02:f1"]["metrics"]["sections"]) == 25
-    assert f["DE-03:f1"]["metrics"]["budget_pct"] == pytest.approx(12.3, abs=0.2)
+    de03 = f["DE-03:f1"]["metrics"]  # the station share of the band split (4 pp) plus the design drop
+    assert de03["dU_station"] == pytest.approx(4.0) and de03["budget_pct"] == pytest.approx(13.94, abs=0.02)
     assert f["DE-05:f1"]["metrics"]["no_single_outlet"] and f["DE-05:f1"]["metrics"]["ik1_min_a"] == pytest.approx(880, abs=30)
     ld01 = f["LD-01:s8"]
     assert ld01["estimated"] and ld01["severity"] == "warning"  # at most a warning before the power flow
@@ -141,8 +142,9 @@ def test_grid3_with_the_power_flow(sandbox):
     assert m["u_d"] * m["coincidence"] * m["voltage_loss"] == pytest.approx(m["loading"], abs=0.003)
     assert "LD-02:s8" in ld01["causes"] and "LD-03:s8" in ld01["causes"]
     assert "VT-01:f1" in ld01["related"]  # the current rise comes from the low voltage
-    tr02 = f["TR-02:grid"]
-    assert tr02["severity"] == "warning"
+    tr02 = f["TR-02:grid"]  # generated with the MV side at 1.0 p.u.: the busbar sits above the 0.96 p.u. reference
+    assert tr02["severity"] == "info" and tr02["metrics"]["vm_busbar"] == pytest.approx(0.9724, abs=0.0005)
+    assert tr02["metrics"]["shortfall_pp"] == pytest.approx(-1.24, abs=0.05) and tr02["contribution_pp"] == 0
     assert "tap_steps" not in tr02["metrics"] and "tap" not in budget  # no tap what-if: the tap stays neutral
     assert result["counts"]["critical"] >= 4
 
@@ -158,6 +160,39 @@ def test_what_if_scaling_reports_new_findings(sandbox):
     assert not diff["resolved"]
 
 
+
+# --------------------------------------------------------------------------- station voltage
+def _at_reference(sandbox: dict, gid: int, offset_pu: float = 0.0) -> tuple[dict, dict, dict]:
+    """Inputs of a sandbox grid with the MV side as the validation power flow sets it (LV busbar at 0.96 p.u.)."""
+    grid = sandbox["grids"][str(gid)]
+    version = sandbox["versions"][grid["inputs"]["grid"]["version_id"]]
+    model = D.GridModel(grid["inputs"], D.Params(version["gp"]))
+    inputs = dict(grid["inputs"], vm_ext=0.96 + model.dU_T_est / 100 + offset_pu)
+    return inputs, version["gp"], version["context"]
+
+
+def test_station_at_the_reference_takes_the_mv_share_of_the_band(sandbox):
+    inputs, gp, context = _at_reference(sandbox, 3)
+    result = D.diagnose(inputs, gp, pf=None, context=context)
+    f = by_id(result)
+    tr02 = f["TR-02:grid"]
+    assert tr02["severity"] == "info" and tr02["metrics"]["vm_busbar"] == pytest.approx(0.96, abs=1e-6)
+    assert tr02["metrics"]["shortfall_pp"] == pytest.approx(0.0, abs=0.01)
+    assert "at the 0.96 p.u. reference" in tr02["message"]
+    station = next(bar for bar in result["budget"][0]["bars"] if bar["key"] == "trafo")
+    assert station["pp"] == pytest.approx(4.0, abs=1e-3)
+    de03 = f["DE-03:f1"]
+    assert de03["metrics"]["budget_pct"] == pytest.approx(13.94, abs=0.02) and "about 5 %" in de03["remedy"]
+
+
+def test_station_below_the_reference_is_a_cause(sandbox):
+    inputs, gp, context = _at_reference(sandbox, 3, offset_pu=-0.03)  # as at a higher load than the stored ×1
+    f = by_id(D.diagnose(inputs, gp, pf=None, context=context))
+    tr02 = f["TR-02:grid"]
+    assert tr02["severity"] == "warning" and tr02["metrics"]["shortfall_pp"] == pytest.approx(3.0, abs=0.01)
+    assert tr02["contribution_pp"] == pytest.approx(3.0, abs=0.01) and "TR-02:grid" in f["VT-01:f1"]["causes"]
+
+
 # --------------------------------------------------------------------------- grid 1 and 25
 def test_grid1_dominant_load_at_the_feeder_end(sandbox):
     f = by_id(run(sandbox, 1, with_pf=True))
@@ -169,7 +204,7 @@ def test_grid1_dominant_load_at_the_feeder_end(sandbox):
     assert data["severity"] == "warning" and data["metrics"]["hall"] and data["metrics"]["estimated"]
     assert "VT-01:f1" in data["explains"]  # raised because the building drives the symptom
     assert f["VT-02:s13:f1"]["metrics"]["share"] == pytest.approx(0.37, abs=0.04)
-    assert f["TR-02:grid"]["severity"] == "warning"
+    assert f["TR-02:grid"]["severity"] == "info"  # busbar above the reference (MV side at 1.0 p.u.)
 
 
 def test_grid_without_problems_is_calm(sandbox):
@@ -284,4 +319,6 @@ def test_sandbox_grid3_matches_the_design(client):
         pytest.skip("sandbox grid 1/3 of version 1 not found")
     result = client.get(f"/api/grids/{grid['grid_result_id']}/diagnostics").json()
     rules = {f["rule"] for f in result["findings"] if f["severity"] != "info"}
-    assert {"VT-01", "VT-04", "TR-02", "LD-04", "LD-06", "TP-02", "TP-03", "TP-01", "DE-01", "DE-02", "DE-05"} <= rules
+    assert {"VT-01", "VT-04", "LD-04", "LD-06", "TP-02", "TP-03", "TP-01", "DE-01", "DE-02", "DE-05"} <= rules
+    tr02 = next(f for f in result["findings"] if f["rule"] == "TR-02")
+    assert tr02["severity"] == "info"  # generated with the MV side at 1.0 p.u.: the busbar is above the reference

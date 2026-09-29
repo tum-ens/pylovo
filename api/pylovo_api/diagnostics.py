@@ -51,7 +51,7 @@ RULES: dict[str, dict[str, Any]] = {
     "TR-01": {"title": "Transformer loading and headroom", "category": "transformer", "kind": "symptom", "scope": "grid"},
     "DE-01": {"title": "Feeder design voltage limit missed", "category": "design", "kind": "symptom", "scope": "feeder"},
     "DA-03": {"title": "Generation check status", "category": "data", "kind": "symptom", "scope": "grid"},
-    "TR-02": {"title": "Transformer share of the voltage band", "category": "transformer", "kind": "cause", "scope": "grid"},
+    "TR-02": {"title": "LV busbar against the reference", "category": "transformer", "kind": "cause", "scope": "grid"},
     "VT-02": {"title": "Section drop hotspot", "category": "voltage", "kind": "cause", "scope": "section"},
     "VT-03": {"title": "Dominant load", "category": "voltage", "kind": "cause", "scope": "building"},
     "VT-04": {"title": "Drop spread over many loads", "category": "voltage", "kind": "cause", "scope": "feeder"},
@@ -84,7 +84,7 @@ DEFAULT_THRESHOLDS: dict[str, Any] = {
     "trafo_planning_tolerance": 0.02,      # TR-01 tolerance on TRANSFORMER_PLANNING_UTILIZATION
     "trafo_pf_warning": 0.90,              # TR-01 power-flow loading warning
     "trafo_oversized": 0.30,               # TR-01 oversizing floor
-    "trafo_drop_pp": 2.5,                  # TR-02 transformer drop that is worth a warning
+    "trafo_drop_pp": 2.5,                  # TR-02 LV busbar shortfall below the reference worth a warning
     "cause_share_critical": 0.40,          # cause inherits the symptom severity from this share
     "cause_share_warning": 0.25,           # cause is a warning from this share
     "section_share": 0.15,                 # VT-02 minimum share of the drop
@@ -177,6 +177,7 @@ def _x(scaling: float) -> str:
 # Fallbacks for versions without stored generation parameters (pylovo's defaults).
 _FALLBACK = {"vn": 400.0, "cos_phi": 0.95, "peak_load_household": 16.825, "min_vm_pu": 0.9, "max_vm_pu": 1.1,
              "planning_utilisation": 0.8, "feeder_drop_limit": 8.0, "service_drop_limit": 3.0,
+             "lv_reference_voltage_pu": 0.96,
              "split_max_ka": 0.85, "mv_threshold_kw": 100.0,
              "sim_factor": {"Residential": 0.07, "Commercial": 0.5, "Public": 0.6}}
 
@@ -294,6 +295,8 @@ class Params:
                                  "power_flow_voltage_limits.min_vm_pu"))
         self.max_vm = float(pick("max_vm_pu", pfa.get("max_vm_pu"), _FALLBACK["max_vm_pu"],
                                  "power_flow_voltage_limits.max_vm_pu"))
+        self.lv_ref = float(pick("lv_reference_voltage_pu", pfa.get("lv_reference_voltage_pu"),
+                                 _FALLBACK["lv_reference_voltage_pu"], "lv_reference_voltage_pu"))
         self.u_plan = float(pick("planning_utilisation", tp.get("transformer_planning_utilization"),
                                  _FALLBACK["planning_utilisation"], "transformer_placement.transformer_planning_utilization"))
         self.mapping = {str(k): sorted(v) for k, v in (tp.get("transformer_mapping") or {}).items()}
@@ -691,6 +694,8 @@ class GridModel:
             self.dU_T = self.dU_T_est
             self.trafo_loading = None
         self.dU_MV = 100 * (1 - self.vm_hv)
+        self.dU_station = self.dU_MV + self.dU_T       # 1.0 p.u. down to the LV busbar
+        self.vm_busbar = 1 - self.dU_station / 100
         self.estimated = self.pf is None
 
     def trafo_drop(self, loading: float, vk: float) -> float:
@@ -900,14 +905,14 @@ def _rule_vt01(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
                     f"{address} ({m.dist.get(k, 0):.0f} m) at {tilde}{vm_k:.3f} p.u.")
             title = f"Voltage close to the limit on feeder {f}"
         top_text = f" (largest S{top['section']}: {top['pp']:.1f})" if top else ""
-        message = (f"{head}{'' if head.endswith('.') else '.'} Budget: MV {m.dU_MV:.1f} + transformer {m.dU_T:.1f} + feeder {feeder_pp + link_pp:.1f}"
+        message = (f"{head}{'' if head.endswith('.') else '.'} Budget: station {m.dU_station:.1f} (LV busbar {tilde}{m.vm_busbar:.3f} p.u.) + feeder {feeder_pp + link_pp:.1f}"
                    f"{top_text} + service {service_pp:.1f} pp = {100 * (1 - vm_k):.1f} % below 1.0 p.u. "
                    f"Basis: {basis_text}.")
         impact = 100 * (p.min_vm - vm_k)
         F.add("VT-01", f"f{f}", severity, title, message,
               metrics={"feeder": f, "vm_pu": _r(vm_k, 4), "bus": k, "address": address,
                        "distance_m": _r(m.dist.get(k), 0), "buses_below": len(low), "connections_below": n_cons,
-                       "buses_above": len(high), "dU_MV": _r(m.dU_MV), "dU_T": _r(m.dU_T), "dU_feeder": _r(feeder_pp + link_pp),
+                       "buses_above": len(high), "dU_station": _r(m.dU_station), "dU_feeder": _r(feeder_pp + link_pp),
                        "dU_service": _r(service_pp), "min_vm_pu": p.min_vm, "margin_pp": _r(100 * (vm_k - p.min_vm)),
                        "stored_status": status},
               targets={"buses": sorted(set(low) | {k}) if len(low) < 400 else [k], "feeder": f, "pin": k,
@@ -922,8 +927,9 @@ def _rule_vt01(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
               why=(f"DIN EN 50160 allows ±10 % Un at the customer; pylovo classifies its validation power flow with "
                    f"POWER_FLOW_VOLTAGE_LIMITS {p.min_vm:g}/{p.max_vm:g} p.u. Critical: a bus leaves the band"
                    f"{' (stored generation check status = voltage_violation)' if m.estimated else ''}; warning: the "
-                   f"weakest consumer is within {margin * 100:.1f} pp of it. The budget adds up the drop from the "
-                   f"1.0 p.u. MV setpoint to {address}."),
+                   f"weakest consumer is within {margin * 100:.1f} pp of it. The budget adds up the drop from 1.0 p.u. "
+                   f"to {address}: the station down to the LV busbar (the band split puts it at {p.lv_ref:g} p.u.), then "
+                   f"the feeder and the service cable."),
               estimated=m.estimated,
               headline=f"Voltage {tilde}{vm_k:.3f} p.u. at {address}, feeder {f}")
         targets[f] = {"bus": k, "severity": severity, "id": fid, "vm": vm_k, "budget": budget}
@@ -931,7 +937,7 @@ def _rule_vt01(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
 
 
 def _budget(m: GridModel, k: int) -> dict:
-    """Voltage budget from the MV setpoint to bus ``k`` (bars in pp)."""
+    """Voltage budget from 1.0 p.u. to bus ``k``: station (down to the LV busbar), feeder, service (bars in pp)."""
     per_section: dict[int, float] = defaultdict(float)
     link = service = other_feeder = 0.0
     lengths: dict[int, float] = defaultdict(float)
@@ -948,9 +954,8 @@ def _budget(m: GridModel, k: int) -> dict:
         else:
             other_feeder += drop
     ranked = sorted(per_section.items(), key=lambda kv: -kv[1])
-    bars = [{"key": "mv", "label": "MV setpoint", "pp": round(m.dU_MV, 3)},
-            {"key": "trafo", "label": f"Transformer ({m.g.get('size_label') or ''})".replace(" ()", ""),
-             "pp": round(m.dU_T, 3), "targets": {"trafo": True}}]
+    bars = [{"key": "trafo", "label": f"Station ({m.g.get('size_label') or ''})".replace(" ()", ""),
+             "pp": round(m.dU_station, 3), "targets": {"trafo": True}}]
     if link:
         bars.append({"key": "link", "label": "Busbar link", "pp": round(link, 3)})
     for sid, drop in ranked[:3]:
@@ -1202,13 +1207,13 @@ def _rule_de03(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
     p, g = m.p, m.g
     out: dict[int, dict] = {}
     band = 100 * (1 - p.min_vm)
-    dU_T = m.trafo_drop(_f(g.get("utilisation"), m.u_S or 0.0) or 0.0, m.vk)
-    dU_MV = 100 * (1 - m.vm_ext)
+    station = 100 * (1 - p.lv_ref)                 # the band split puts the LV busbar at the reference
+    lv_band = band - station
     per_feeder: dict[int, list[tuple[float, int, int]]] = defaultdict(list)
     for lid, line in m.lines.items():
         if line["role"] != "service" or _f(line.get("design_drop_pct")) is None:
             continue
-        budget = dU_MV + dU_T + float(line["design_drop_pct"])
+        budget = station + float(line["design_drop_pct"])
         per_feeder[m.line_feeder.get(lid)].append((budget, m.child_of.get(lid), lid))
     agrees = g.get("power_flow_status") == "voltage_violation"
     for f, rows in per_feeder.items():
@@ -1221,28 +1226,35 @@ def _rule_de03(m: GridModel, F: Findings, th: dict) -> dict[int, dict]:
         line = m.lines[lid]
         service = _f(line.get("service_drop_pct"), 0.0) or 0.0
         feeder_drop = float(line["design_drop_pct"]) - service
-        message = (f"Design budget to {m.address(k)}: transformer about {dU_T:.1f} + feeder {feeder_drop:.1f} + "
-                   f"service {service:.1f} = {best:.1f} %, {'above' if best > band else 'close to'} the {band:.0f} % band"
+        message = (f"Design budget to {m.address(k)}: station {station:.1f} (LV busbar at {p.lv_ref:g} p.u.) + feeder "
+                   f"{feeder_drop:.1f} + service {service:.1f} = {best:.1f} %, {'above' if best > band else 'close to'} the {band:.0f} % band"
                    f"{f' ({len(over)} connections above it)' if len(over) > 1 else ''}. "
                    + ("The generation check confirms a violation." if agrees else
                       "The generation check stayed in the band because the snapshot load is below the cable-level "
                       "design load."))
         fid = F.add("DE-03", f"f{f}", severity, f"Design voltage budget {best:.1f} % on feeder {f}", message,
-                    formula=(f"B = dU_MV + dU_T,est + total design drop = {dU_MV:.2f} + {dU_T:.2f} + "
+                    formula=(f"B = 100 · (1 − U_ref) + total design drop = {station:.2f} + "
                              f"{float(line['design_drop_pct']):.2f} = {best:.2f} % against {band:.0f} %"),
-                    metrics={"budget_pct": _r(best), "band_pct": band, "dU_T": _r(dU_T), "feeder_pct": _r(feeder_drop),
+                    metrics={"budget_pct": _r(best), "band_pct": band, "dU_station": _r(station),
+                             "lv_reference_pu": p.lv_ref, "feeder_pct": _r(feeder_drop),
                              "service_pct": _r(service), "connections_over": len(over), "feeder": f, "agrees": agrees},
                     targets={"buses": [r[1] for r in over[:200] if r[1] is not None] or [k], "feeder": f, "pin": k,
                              "lines": m.path_lines(k), "trafo": True},
                     impact=best - band, basis="design",
                     thresholds=[_threshold("band (%)", band, p.source["min_vm_pu"]),
+                                _threshold("lv_reference_voltage_pu", p.lv_ref, p.source["lv_reference_voltage_pu"]),
                                 _heur("info band (pp)", "design_band_info_pp", th)],
-                    remedy=("For new versions set MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT to about band − transformer "
-                            f"− service drop (about {band - dU_T - 1:.0f} %). See also DE-01 and TR-02."),
-                    why=("pylovo's feeder (8 %) and service (3 %) design limits are measured from the LV busbar and leave "
-                         "out the transformer, which takes 1.6–2.6 pp at these loadings (vk 6 %). A design that meets "
-                         "both limits can still leave the DIN EN 50160 band. The design drop uses cable-level "
-                         "coincidence, which is more conservative than the snapshot, so this is a warning."))["id"]
+                    remedy=("For new versions set MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT to about the LV part of the "
+                            f"band minus the service drop (about {lv_band - 1:.0f} %: {p.lv_ref:g} down to {p.min_vm:g} "
+                            f"p.u. is {lv_band:.0f} %). See also DE-01 and TR-02."),
+                    why=(f"pylovo's feeder ({p.feeder_limit:g} %) and service ({p.service_limit:g} %) design limits are "
+                         f"measured from the LV busbar. The band split of Niederle et al. (2026) puts the busbar at "
+                         f"{p.lv_ref:g} p.u., so the LV cables have {lv_band:.0f} % down to {p.min_vm:g} p.u."
+                         + (f", less than the two limits allow together ({p.feeder_limit + p.service_limit:g} %). A design "
+                            "that meets both limits can still leave the DIN EN 50160 band."
+                            if p.feeder_limit + p.service_limit > lv_band else ".")
+                         + " The design drop uses cable-level coincidence, which is more conservative than the "
+                           "snapshot, so this is a warning."))["id"]
         out[f] = {"id": fid, "severity": severity, "bus": k}
     return out
 
@@ -1547,47 +1559,66 @@ def _expected_households(p: Params, b: dict) -> tuple[int | None, bool]:
 def _rule_tr02(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) -> None:
     if not targets:
         return
+    p = m.p
     f, t = min(targets.items(), key=lambda kv: m.vm(kv[1]["bus"]) or 9.9)
     k = t["bus"]
     vm_k = m.vm(k)
     if vm_k is None:
         return
-    total = 100 * (1 - vm_k)
-    share = (m.dU_MV + m.dU_T) / total if total > 0 else 0.0
+    busbar = m.vm_busbar
+    shortfall = 100 * (p.lv_ref - busbar)          # pp below the LV reference (negative: above it)
+    below_ref = 100 * (p.lv_ref - vm_k)            # drop below the reference to the weakest consumer
+    share = max(shortfall, 0.0) / below_ref if below_ref > 0 else 0.0
     severity_all = _worst(*(x["severity"] for x in targets.values()))
-    triggered = m.dU_T >= th["trafo_drop_pp"] or share >= th["cause_share_warning"]
+    triggered = shortfall >= th["trafo_drop_pp"] or share >= th["cause_share_warning"]
     severity = _cap("warning", severity_all) if triggered else "info"
     loading = m.trafo_loading if m.trafo_loading is not None else m.u_T_est
-    notes = []
     kva = _f(m.g.get("kva"), 0.0) or 0.0
-    if m.vk > 4 and kva <= 630:
-        notes.append(f"A 4 % unit (EN 50588-1 reference up to 630 kVA) would take about {m.trafo_drop(loading, 4.0):.1f} pp.")
-    tr = m.trafo
+    unit_4pct = shortfall > 0 and m.vk > 4 and kva <= 630
     tilde = "≈" if m.estimated else ""
-    message = (f"The station takes {tilde}{m.dU_T:.1f} pp ({share:.0%} including the MV setpoint) of the "
-               f"{total:.1f} % drop to {m.address(k)}: vk {m.vk:g} %, loading {loading:.0%}, MV {m.vm_hv:.3f} p.u., "
-               f"tap {tr.get('tap_pos')}." + ("" if not notes else " " + " ".join(notes)))
-    F.add("TR-02", "grid", severity, f"Transformer takes {share:.0%} of the voltage band", message,
-          formula=(f"share_T = (dU_MV + dU_T) / (100 · (1 − vm)) = ({m.dU_MV:.2f} + {m.dU_T:.2f}) / {total:.2f} = {share:.0%}; "
-                   f"dU_T ≈ u · (vkr cos φ + vkx sin φ) + (u · (vkx cos φ − vkr sin φ))² / 200 with u = {loading:.3f}"
-                   if m.estimated else
-                   f"share_T = (dU_MV + dU_T) / (100 · (1 − vm)) = ({m.dU_MV:.2f} + {m.dU_T:.2f}) / {total:.2f} = {share:.0%}; "
-                   f"dU_T = 100 · (vm_hv − vm_lv) from the power flow"),
-          metrics={"dU_T": _r(m.dU_T), "dU_MV": _r(m.dU_MV), "share": _r(share, 3), "vk_percent": m.vk,
-                   "vkr_percent": m.vkr, "loading": _r(loading, 3), "tap_pos": tr.get("tap_pos"),
-                   "dU_T_4pct": _r(m.trafo_drop(loading, 4.0)) if m.vk > 4 and kva <= 630 else None},
+    tolerance = 0.3 if m.estimated else 0.05       # pp; the estimate reads the transformer drop about 0.2 pp low
+    if shortfall > tolerance:
+        title = f"LV busbar {tilde}{shortfall:.1f} pp below the {p.lv_ref:g} p.u. reference"
+        message = (f"The LV busbar is at {tilde}{busbar:.3f} p.u., {shortfall:.1f} pp below the {p.lv_ref:g} p.u. "
+                   f"reference ({share:.0%} of the drop below it to {m.address(k)}): the transformer takes "
+                   f"{tilde}{m.dU_T:.1f} pp (vk {m.vk:g} %, loading {loading:.0%}), more than the MV side at "
+                   f"{m.vm_hv:.3f} p.u. covers."
+                   + (f" A 4 % unit (EN 50588-1 reference up to 630 kVA) would take about "
+                      f"{m.trafo_drop(loading, 4.0):.1f} pp." if unit_4pct else ""))
+    else:
+        title = f"LV busbar at {tilde}{busbar:.3f} p.u. (reference {p.lv_ref:g} p.u.)"
+        position = "above" if shortfall < -tolerance else "at"
+        message = (f"The LV busbar is at {tilde}{busbar:.3f} p.u., {position} the {p.lv_ref:g} p.u. reference: the MV "
+                   f"side at {m.vm_hv:.3f} p.u. covers the transformer's {tilde}{m.dU_T:.1f} pp (vk {m.vk:g} %, "
+                   f"loading {loading:.0%}), so the LV cables have {100 * (busbar - p.min_vm):.1f} pp down to "
+                   f"{p.min_vm:g} p.u.")
+    basis = (f"vm_busbar = vm_MV − dU_T,est / 100 with dU_T,est ≈ u · (vkr cos φ + vkx sin φ) + "
+             f"(u · (vkx cos φ − vkr sin φ))² / 200, u = {loading:.3f}" if m.estimated else
+             "vm_busbar from the power flow")
+    F.add("TR-02", "grid", severity, title, message,
+          formula=(f"shortfall = 100 · (U_ref − vm_busbar) = 100 · ({p.lv_ref:g} − {busbar:.4f}) = {shortfall:.2f} pp; "
+                   f"share = max(shortfall, 0) / (100 · (U_ref − vm)) = {max(shortfall, 0.0):.2f} / {below_ref:.2f} = "
+                   f"{share:.0%}; {basis}"),
+          metrics={"vm_busbar": _r(busbar, 4), "lv_reference_pu": p.lv_ref, "shortfall_pp": _r(shortfall),
+                   "share": _r(share, 3), "dU_T": _r(m.dU_T), "dU_MV": _r(m.dU_MV), "vk_percent": m.vk,
+                   "vkr_percent": m.vkr, "loading": _r(loading, 3),
+                   "dU_T_4pct": _r(m.trafo_drop(loading, 4.0)) if unit_4pct else None},
           targets={"trafo": True, "pin": k}, explains=[x for tt in targets.values() for x in tt["explains"]],
-          share=share, contribution_pp=m.dU_MV + m.dU_T, impact=m.dU_MV + m.dU_T, estimated=m.estimated,
-          thresholds=[_heur("transformer drop (pp)", "trafo_drop_pp", th), _heur("share", "cause_share_warning", th)],
-          remedy=("Treat this as a modelling assumption first: run a what-if with real transformer data (vk, "
-                  "secondary voltage) as a separate scenario. Otherwise reduce the station loading (TR-01, TP-03) or "
-                  "split the heavy feeder."),
-          why=("DSOs split the ±10 % band between the MV setpoint (typically 1.02–1.05 p.u.), the off-load tap of the "
-               "MV/LV transformer (±2 × 2.5 %) and the LV network. pylovo's stored net uses vm_pu 1.0, tap 0 and the "
-               "pandapower standard types with vk 6 %, so the whole transformer drop comes out of the LV budget."
-               + (" Before the power flow the drop is estimated from the coincident load plus the estimated line "
-                  "losses at the reduced LV voltage; it reads about 0.1–0.2 pp low (magnetising current)."
-                  if m.estimated else "")))
+          share=share, contribution_pp=max(shortfall, 0.0), impact=max(shortfall, 0.0), estimated=m.estimated,
+          thresholds=[_threshold("lv_reference_voltage_pu", p.lv_ref, p.source["lv_reference_voltage_pu"]),
+                      _heur("below the reference (pp)", "trafo_drop_pp", th), _heur("share", "cause_share_warning", th)],
+          remedy=("A measure is needed only when the busbar is below the reference. That happens at a higher load than "
+                  "the stored operating point (what-if scaling), where the transformer's drop grows while the MV side "
+                  "stays: reduce the station loading (TR-01, TP-03), split the heavy feeder or use a 4 % unit. At ×1 "
+                  "pylovo sets the MV side so that the busbar is at the reference."),
+          why=(f"pylovo splits the ±10 % band of DIN EN 50160 between MV and LV as Niederle et al. (2026): the "
+               f"validation power flow sets the MV side so that the LV busbar is at LV_REFERENCE_VOLTAGE_PU "
+               f"({p.lv_ref:g} p.u.) at the stored operating point, with a neutral transformer tap, so the "
+               f"transformer's own drop does not reduce the LV budget. The busbar leaves the reference at another "
+               f"load (what-if scaling) and in versions generated with the MV side at 1.0 p.u."
+               + (" Before the power flow the transformer drop is estimated from the coincident load plus the "
+                  "estimated line losses at the reduced LV voltage; it reads about 0.1–0.2 pp low (magnetising "
+                  "current)." if m.estimated else "")))
 
 
 # =========================================================================== loading and design
