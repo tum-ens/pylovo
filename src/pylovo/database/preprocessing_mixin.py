@@ -384,11 +384,11 @@ class PreprocessingMixin(BaseMixin):
         insert_query = f"""
             INSERT INTO buildings_tem
             (id, feature_id, objectid, height, floor_area, floor_number, residential_floor_area,
-             nonresidential_floor_area, nonresidential_use, mix_score, mix_rule, mix_confidence,
+             nonresidential_floor_area, nonresidential_use, mix_rule,
              building_use, building_use_id,
              building_type, occupants, households, construction_year, postcode, address_street_id, street,
              house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
                     %s, %s, %s, %s)
@@ -665,7 +665,7 @@ class PreprocessingMixin(BaseMixin):
                             / %(ab_area_per_household_m2)s
                         )::integer
                     )
-                    WHEN type IN ('Commercial', 'Public') THEN 1
+                    WHEN type IN ('Commercial', 'Public', 'Unknown') THEN 1
                     ELSE households
                     END
                 )
@@ -680,7 +680,7 @@ class PreprocessingMixin(BaseMixin):
                     END,
                     nonresidential_floor_area = CASE
                         WHEN nonresidential_floor_area IS NOT NULL THEN nonresidential_floor_area
-                        WHEN type IN ('Commercial', 'Public')
+                        WHEN type IN ('Commercial', 'Public', 'Unknown')
                             THEN floor_area * COALESCE(floor_number, 1)
                         ELSE 0
                     END;
@@ -688,8 +688,8 @@ class PreprocessingMixin(BaseMixin):
                 UPDATE buildings_tem
                 SET nonresidential_use = CASE
                         WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
-                        WHEN nonresidential_use IN ('Commercial', 'Public') THEN nonresidential_use
-                        WHEN type IN ('Commercial', 'Public') THEN type
+                        WHEN nonresidential_use IN ('Commercial', 'Public', 'Unknown') THEN nonresidential_use
+                        WHEN type IN ('Commercial', 'Public', 'Unknown') THEN type
                         WHEN building_use = 'Residential' THEN 'Commercial'
                         ELSE nonresidential_use
                     END;
@@ -747,7 +747,7 @@ class PreprocessingMixin(BaseMixin):
                     WHERE nonresidential_floor_area > 0
                       AND (
                           nonresidential_use IS NULL
-                          OR nonresidential_use NOT IN ('Commercial', 'Public')
+                          OR nonresidential_use NOT IN ('Commercial', 'Public', 'Unknown')
                       )
                 ),
                 COUNT(*) FILTER (
