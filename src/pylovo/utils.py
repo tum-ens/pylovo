@@ -126,7 +126,7 @@ def create_logger(name: str, log_file, log_level) -> logging.Logger:
 # =============================================================================
 # Electrical load aggregation
 # =============================================================================
-NONRESIDENTIAL_CATEGORIES = frozenset({"Commercial", "Public"})
+NONRESIDENTIAL_CATEGORIES = frozenset({"Commercial", "Public", "Unknown"})
 LOAD_COMPONENT_COLUMNS = (
     "consumer_vertex",
     "category",

@@ -93,13 +93,18 @@ class InfdbClient:
                 CASE
                     WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
                     WHEN building_use = 'Residential' THEN 'Commercial'
-                    WHEN building_use = 'Mixed' THEN basedata.classify_building_use(building_use_id)
-                    WHEN building_use IN ('Commercial', 'Public') THEN building_use
+                    WHEN building_use = 'Mixed' THEN
+                        CASE basedata.classify_building_use(building_use_id)
+                            -- a cell-quota promotion keeps the original Residential
+                            -- function code, so its non-residential share is reclassified
+                            -- the same way a plain Residential building's is above
+                            WHEN 'Residential' THEN 'Commercial'
+                            ELSE basedata.classify_building_use(building_use_id)
+                        END
+                    WHEN building_use IN ('Commercial', 'Public', 'Unknown') THEN building_use
                     ELSE NULL
                 END AS nonresidential_use,
-                mix_score,
                 mix_rule,
-                mix_confidence,
                 building_use,
                 building_use_id,
                 building_type,
@@ -118,7 +123,7 @@ class InfdbClient:
                 COALESCE(building_type, building_use) AS type
             FROM basedata.buildings
             WHERE postcode = %(p)s
-            AND building_use IN ('Commercial', 'Public', 'Residential', 'Mixed')
+            AND building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown')
             AND COALESCE(building_use_id, '') != '31001_2523'
         """
         if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
