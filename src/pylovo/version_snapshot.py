@@ -26,6 +26,8 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("transformer_placement", "greenfield_cluster_merge_transformer_kva"): UNKNOWN,
     # Before the size limit existed, merged clusters could have any size.
     ("transformer_placement", "greenfield_cluster_merge_max_buildings"): None,
+    # Before the feeder utilization existed, feeder cables were sized at their full ampacity.
+    ("cable_dimensioning", "feeder_planning_utilization"): 1.0,
     # Before the station voltage existed the MV side was at 1.0 p.u.
     ("power_flow_assessment", "lv_reference_voltage_pu"): None,
 }

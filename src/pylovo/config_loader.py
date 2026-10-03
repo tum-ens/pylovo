@@ -301,6 +301,10 @@ POWER_FLOW_MAX_VM_PU = POWER_FLOW_VOLTAGE_LIMITS["MAX_VM_PU"]
 # Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-splitting parameter, not a final cable ampacity limit.
 FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
+# Planned coincident current / ampacity of a feeder cable design; 1.0 sizes at the full ampacity (previous behaviour).
+FEEDER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("FEEDER_PLANNING_UTILIZATION", 1.0))
+if not FEEDER_PLANNING_UTILIZATION > 0:
+    raise ValueError(f"FEEDER_PLANNING_UTILIZATION must be positive, got {FEEDER_PLANNING_UTILIZATION}")
 
 # End-to-end transformer-to-connection-point feeder voltage-drop planning envelope.
 MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[

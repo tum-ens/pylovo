@@ -108,3 +108,11 @@ def test_station_voltage_keys_of_older_snapshots():
     assert compare_snapshots(stored, legacy) == ([], [])
     new = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1, "lv_reference_voltage_pu": 0.96}}
     assert compare_snapshots(stored, new)[0] == ["power_flow_assessment.lv_reference_voltage_pu"]
+
+
+def test_feeder_utilization_of_older_snapshots():
+    stored = {"cable_dimensioning": {"vn": 400}}
+    legacy = {"cable_dimensioning": {"vn": 400, "feeder_planning_utilization": 1.0}}
+    assert compare_snapshots(stored, legacy) == ([], [])
+    reserve = {"cable_dimensioning": {"vn": 400, "feeder_planning_utilization": 0.8}}
+    assert compare_snapshots(stored, reserve)[0] == ["cable_dimensioning.feeder_planning_utilization"]

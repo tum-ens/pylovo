@@ -225,6 +225,13 @@ Loads and general grid settings
      - Commercial or public load components above this peak (kW) are assumed to have their own
        MV connection and are left out of the LV grid.
      - ✓
+   * - ``FEEDER_PLANNING_UTILIZATION``
+     - ``1.0``
+     - Planned coincident current per feeder cable ampacity: a section current *I* needs a cable
+       design rated above *I* / utilisation, the feeder counterpart of
+       ``TRANSFORMER_PLANNING_UTILIZATION``. Below 1 it gives the feeders a capacity reserve;
+       voltage drops are still computed at *I*.
+     - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - ``0.850``
      - Topology parameter: maximum coincident current (kA) while connection points are grouped

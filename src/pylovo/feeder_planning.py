@@ -20,9 +20,12 @@ is connected behind them:
    every node with more than one child) and each section gets one conductor:
 
    a. *ampacity*: the smallest design (fewest parallel cables, then the smallest
-      cross-section) that carries the largest coincident current of the section;
-   b. *voltage drop*: while the approximate drop from the transformer to some load
-      node exceeds ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, apply the
+      cross-section) that carries the largest coincident current of the section
+      divided by ``FEEDER_PLANNING_UTILIZATION`` (the planned share of the cable
+      ampacity, as ``TRANSFORMER_PLANNING_UTILIZATION`` is for stations);
+   b. *voltage drop*: while the approximate drop (at the coincident current itself)
+      from the transformer to some load node exceeds
+      ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, apply the
       conductor upgrade (same parallel count) with the largest reduction of the
       excess drops per euro of extra cable cost.
 
@@ -43,6 +46,7 @@ from pylovo import utils
 from pylovo.cable_installer import CableInstaller
 from pylovo.config_loader import (
     DEFAULT_POWER_FACTOR,
+    FEEDER_PLANNING_UTILIZATION,
     FEEDER_SPLIT_MAX_CURRENT_KA,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
     MIN_SHARED_PREFIX_LENGTH_M,
@@ -385,7 +389,7 @@ def size_feeder_tree(
         section_id: [
             option
             for option in installer.get_feeder_cable_options(
-                design["design_current_ka"], design["ampacity"]["parallel"]
+                design["design_current_ka"] / FEEDER_PLANNING_UTILIZATION, design["ampacity"]["parallel"]
             )
             if option["parallel"] == design["ampacity"]["parallel"]
         ]
@@ -565,6 +569,8 @@ def _ampacity_designs(
 ) -> tuple[dict[int, dict], dict[Edge, float]]:
     """Size every section for the largest coincident current of its edges.
 
+    The cable design must carry that current divided by ``FEEDER_PLANNING_UTILIZATION``.
+
     Returns:
         ``(section_designs, edge_current_ka)``. A section design holds ``edges``,
         ``length_km``, ``design_current_ka``, the ampacity choice ``ampacity`` and
@@ -587,10 +593,11 @@ def _ampacity_designs(
             section_distance += edge_distance
             edge_current_ka[(parent, child)] = edge_Imax
 
-        cable, count = installer.find_minimal_available_cable(section_Imax)
+        planned_Imax = section_Imax / FEEDER_PLANNING_UTILIZATION
+        cable, count = installer.find_minimal_available_cable(planned_Imax)
         matching_option = next(
             option
-            for option in installer.get_feeder_cable_options(section_Imax, count)
+            for option in installer.get_feeder_cable_options(planned_Imax, count)
             if option["cable"] == cable and option["parallel"] == count
         )
         section_designs[int(section_id)] = {

@@ -161,8 +161,11 @@ same cable type and parallel count, based initially on the greatest design
 current occurring in that section.
 
 The initial feeder cable is the smallest configured conductor that satisfies
-ampacity. The parallel count increases only when no single configured feeder
-cable has sufficient ampacity.
+ampacity for the design current divided by ``FEEDER_PLANNING_UTILIZATION`` (1.0
+in the shipped configuration: the full ampacity; below 1 the feeders keep a
+capacity reserve, as stations do with ``TRANSFORMER_PLANNING_UTILIZATION``). The
+parallel count increases only when no single configured feeder cable has
+sufficient ampacity. The voltage-drop check below uses the design current itself.
 
 End-to-end feeder voltage-drop check
 ------------------------------------
@@ -302,6 +305,9 @@ Configuration levers
    * - ``CONSUMER_CONNECTION_CABLES``
      - Available service-cable ratings, impedances, sizes, and costs
      - Feeder-cable choices
+   * - ``FEEDER_PLANNING_UTILIZATION``
+     - Ampacity reserve of the initial feeder cable design (and of its voltage upgrades)
+     - Topology, design currents or the voltage-drop calculation
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - Branch construction and topology splitting
      - Final cable ampacity limit

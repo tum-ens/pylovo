@@ -49,6 +49,7 @@ FORM_SECTIONS: list[dict[str, Any]] = [
     {"id": "cables", "title": "Cable dimensioning", "fields": [
         {"key": "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT", "type": "float", "min": 0, "max": 20, "unit": "%", "label": "Max. feeder voltage drop"},
         {"key": "MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", "type": "float", "min": 0, "max": 20, "unit": "%", "label": "Max. service voltage drop"},
+        {"key": "FEEDER_PLANNING_UTILIZATION", "type": "float", "min": 0.1, "max": 1.5, "label": "Feeder planning utilisation"},
         {"key": "FEEDER_SPLIT_MAX_CURRENT_KA", "type": "float", "min": 0, "unit": "kA", "label": "Feeder split current"},
         {"key": "MIN_SHARED_PREFIX_LENGTH_M", "type": "float", "min": 0, "unit": "m", "label": "Min. shared prefix length"},
         {"key": "AGGREGATE_NEARBY_CONNECTION_POINTS", "type": "bool", "label": "Aggregate nearby connection points"},
