@@ -226,11 +226,12 @@ Loads and general grid settings
        MV connection and are left out of the LV grid.
      - ✓
    * - ``FEEDER_PLANNING_UTILIZATION``
-     - ``1.0``
+     - ``0.8``
      - Planned coincident current per feeder cable ampacity: a section current *I* needs a cable
-       design rated above *I* / utilisation, the feeder counterpart of
-       ``TRANSFORMER_PLANNING_UTILIZATION``. Below 1 it gives the feeders a capacity reserve;
-       voltage drops are still computed at *I*.
+       design rated above *I* / 0.8, the feeder counterpart of
+       ``TRANSFORMER_PLANNING_UTILIZATION``. It keeps the capacity reserve that LV planning
+       leaves on cables (a maximum planned line utilisation of 80 %); voltage drops are still
+       computed at *I*. ``1.0`` sizes at the full ampacity (the behaviour before the key existed).
      - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - ``0.850``

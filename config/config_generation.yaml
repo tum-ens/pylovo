@@ -51,8 +51,8 @@ TRANSFORMER_PLANNING_UTILIZATION: 0.8
 # Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
-# Planned coincident current / ampacity of the feeder cable design (cable sizing only; voltage drops use the current itself)
-FEEDER_PLANNING_UTILIZATION: 1.0
+# Planned coincident current / ampacity of the feeder cable design, as for the transformers (cable sizing only; voltage drops use the current itself)
+FEEDER_PLANNING_UTILIZATION: 0.8
 
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 
