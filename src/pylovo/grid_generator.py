@@ -42,6 +42,7 @@ from pylovo.config_loader import (
     CONSUMER_CONNECTION_CABLES,
     ELECTRICAL_BACKEND,
     FEEDER_CABLES,
+    GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
     GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
     GREENFIELD_TRAFO_POSITION_TOLERANCE,
     K_MEANS_SEED,
@@ -622,7 +623,8 @@ class GridGenerator:
         transformer (after ``TRANSFORMER_PLANNING_UTILIZATION``) or has no station
         position within the greenfield distance limit is split again, until all
         clusters are feasible. Optionally neighbouring clusters are merged again
-        (``MERGE_GREENFIELD_CLUSTERS``). The bcids are numbered from 1 by their
+        (``MERGE_GREENFIELD_CLUSTERS``, limited to small clusters with
+        ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``). The bcids are numbered from 1 by their
         smallest vertex id and written to ``grid_result`` with their rating.
 
         Args:
@@ -778,7 +780,10 @@ class GridGenerator:
         The load-constrained hierarchical split prevents oversized transformer
         areas. This conservative pass only recombines already valid neighboring
         clusters when the merged area still fits a configured single transformer
-        and satisfies the existing greenfield distance limit.
+        and satisfies the existing greenfield distance limit. With
+        ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` a pair is only merged if its
+        smaller cluster has at most that many loaded buildings, so small
+        fragments join a neighbour while larger clusters stay as split.
         """
         if not MERGE_GREENFIELD_CLUSTERS or len(cluster_dict) <= 1:
             return cluster_dict
@@ -803,10 +808,15 @@ class GridGenerator:
             for cluster_id, (vertices, transformer_size) in cluster_dict.items()
         }
         merge_count = 0
+        planning_points = utils.planning_nodes(buildings)
 
         while True:
             best_candidate = None
             cluster_items = list(merged_clusters.items())
+            building_counts = {
+                cluster_id: int(planning_points.isin(vertices).sum())
+                for cluster_id, (vertices, _transformer_size) in cluster_items
+            }
 
             for left_index in range(len(cluster_items)):
                 left_id, (left_vertices, _left_transformer) = cluster_items[left_index]
@@ -816,6 +826,12 @@ class GridGenerator:
 
                 for right_id, (right_vertices, _right_transformer) in cluster_items[left_index + 1:]:
                     if frozenset((left_id, right_id)) not in neighboring_pairs:
+                        continue
+                    if (
+                        GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS is not None
+                        and min(building_counts[left_id], building_counts[right_id])
+                        > GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS
+                    ):
                         continue
 
                     right_local_ids = [vid2localid[vid] for vid in right_vertices if vid in vid2localid]
@@ -866,7 +882,8 @@ class GridGenerator:
         if merge_count:
             self.logger.info(
                 f"Greenfield cluster merge complete for PLZ {plz}, KCID {kcid}: "
-                f"merged {merge_count} neighboring cluster pairs, final_clusters={len(merged_clusters)}"
+                f"merged {merge_count} neighboring cluster pairs, final_clusters={len(merged_clusters)}, "
+                f"max_buildings_of_smaller_cluster={GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS}"
             )
 
         return dict(enumerate(merged_clusters.values()))

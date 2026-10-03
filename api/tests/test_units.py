@@ -33,6 +33,13 @@ def test_validation_reports_yaml_and_pylovo_errors():
     assert any(i.get("key") == "VERSION_ID" for i in issues)
 
 
+def test_nullable_fields_accept_null_only():
+    assert config_io._field_issues({"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS": None}) == []
+    assert config_io._field_issues({"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS": 4}) == []
+    assert config_io._field_issues({"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS": 0})[0]["level"] == "error"
+    assert config_io._field_issues({"MAX_BUILDINGS_PER_KCID": None})[0]["level"] == "error"
+
+
 def test_config_save_requires_confirm_and_makes_a_backup(client, project):
     state = client.get("/api/config").json()
     body = {"changes": {"VERSION_COMMENT": "ui test"}, "base_sha": state["sha"]}

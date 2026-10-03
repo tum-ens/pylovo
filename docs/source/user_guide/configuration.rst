@@ -363,6 +363,12 @@ Clustering
      - ``[400]``
      - Ratings (kVA) allowed for merged clusters.
      - ✓
+   * - ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``
+     - ``null``
+     - Merge a pair only if its smaller cluster has at most this many loaded buildings: small
+       fragments of the split join their nearest feasible neighbour, larger clusters stay as
+       split. ``null`` merges clusters of any size.
+     - ✓
    * - ``MAX_BROWNFIELD_TRAFO_DISTANCE``
      - ``1000``
      - Maximum routed distance (m) between an existing transformer and a building assigned to it.
@@ -388,11 +394,12 @@ disabled source never sizes a station.
 
 .. note::
 
-   ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and
-   ``USE_MANUAL_TRANSFORMER_POSITIONS`` were added to the version snapshot later. Snapshots of
-   older versions do not contain them: pylovo then accepts the current values of the first two
-   with a warning (the values used for the existing grids are unknown) and requires
-   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, the behaviour before the switch existed.
+   ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``,
+   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` and ``USE_MANUAL_TRANSFORMER_POSITIONS`` were added
+   to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
+   accepts the current values of the first two with a warning (the values used for the existing
+   grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null`` and
+   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, the behaviour before these keys existed.
 
 Station voltage
 ~~~~~~~~~~~~~~~

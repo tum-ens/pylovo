@@ -94,6 +94,7 @@ MAX_GREENFIELD_TRAFO_DISTANCE_STD: 250 # Per-cluster spread of that limit (norma
 GREENFIELD_TRAFO_POSITION_TOLERANCE: 1.0 # Random station among positions costing at most (1 + tolerance) x the optimum; 0 = optimal
 MERGE_GREENFIELD_CLUSTERS: False # Merge neighboring greenfield clusters as posprocessing step
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities for merging
+GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null # Merge a pair only if its smaller cluster has at most this many buildings; null = any size
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer

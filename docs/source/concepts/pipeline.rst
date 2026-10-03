@@ -151,7 +151,9 @@ Invalid clusters are split again until every cluster is valid. A valid cluster g
 allowed rating above its planned load; a small cluster (fewer than five connection points) above
 the largest rating is rated in multiples of 630 kVA (parallel units). With
 ``MERGE_GREENFIELD_CLUSTERS``, neighbouring clusters are merged afterwards if the merged cluster
-still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and the distance limit. The
+still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and the distance limit; with
+``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` only pairs whose smaller cluster has at most that many
+buildings, so small fragments join a neighbour while larger clusters stay as split. The
 clusters are numbered 1, 2, ... in the order of their smallest vertex id, so equal partitions get
 equal ids.
 

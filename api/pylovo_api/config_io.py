@@ -71,6 +71,8 @@ FORM_SECTIONS: list[dict[str, Any]] = [
         {"key": "TRANSFORMER_PLANNING_UTILIZATION", "type": "float", "min": 0.1, "max": 1.5, "label": "Planning utilisation"},
         {"key": "MERGE_GREENFIELD_CLUSTERS", "type": "bool", "label": "Merge greenfield clusters"},
         {"key": "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", "type": "kva_list", "unit": "kVA", "label": "Merge transformer sizes"},
+        {"key": "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", "type": "int", "min": 1, "nullable": True, "unit": "buildings",
+         "label": "Merge: max. buildings of the smaller cluster"},
         {"key": "MAX_BROWNFIELD_TRAFO_DISTANCE", "type": "float", "min": 0, "unit": "m", "label": "Brownfield: max. distance"},
         {"key": "USE_OPEN_TRANSFORMER_POSITIONS", "type": "bool", "label": "Use OSM / LoD2 / manual transformer positions"},
         {"key": "USE_DSO_TRANSFORMER_POSITIONS", "type": "bool", "label": "Use DSO transformer positions"},
@@ -254,6 +256,8 @@ def _field_issues(values: dict[str, Any]) -> list[dict]:
         if key not in values:
             continue
         value = values[key]
+        if value is None and field.get("nullable"):
+            continue
         kind = field["type"]
         bad = False
         if kind == "bool":

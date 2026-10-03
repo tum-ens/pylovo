@@ -22,7 +22,7 @@ def snapshot(**placement) -> dict:
 
 
 NEW_KEYS = {"use_manual_transformer_positions": False, "merge_greenfield_clusters": False,
-            "greenfield_cluster_merge_transformer_kva": [400]}
+            "greenfield_cluster_merge_transformer_kva": [400], "greenfield_cluster_merge_max_buildings": None}
 
 
 def test_identical_snapshots_match():
@@ -42,6 +42,12 @@ def test_new_key_with_a_non_legacy_value_blocks_an_old_snapshot():
     expected = snapshot(**{**NEW_KEYS, "use_manual_transformer_positions": True})
     differences, _ = compare_snapshots(snapshot(), expected)
     assert differences == ["transformer_placement.use_manual_transformer_positions"]
+
+
+def test_merge_size_limit_blocks_an_old_snapshot():
+    expected = snapshot(**{**NEW_KEYS, "greenfield_cluster_merge_max_buildings": 4})
+    differences, _ = compare_snapshots(snapshot(), expected)
+    assert differences == ["transformer_placement.greenfield_cluster_merge_max_buildings"]
 
 
 def test_recorded_keys_are_compared_normally():
