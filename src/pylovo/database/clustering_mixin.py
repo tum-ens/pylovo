@@ -653,6 +653,10 @@ class ClusteringMixin(BaseMixin):
                               AND peak_load_in_kw != 0;"""
         self.cur.execute(consumer_query, {"k": kcid})
         consumer_list = [t[0] for t in self.cur.fetchall()]
+        if not consumer_list or not transformer_list:
+            # A kcid can hold existing stations but no consumers; pgr_dijkstraCost rejects empty arrays.
+            return pd.DataFrame({"start_vid": pd.Series(dtype=np.int64), "end_vid": pd.Series(dtype=np.int64),
+                                 "agg_cost": pd.Series(dtype=np.int32)})
 
         cost_query = f"""SELECT *
                         FROM pgr_dijkstraCost(
