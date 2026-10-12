@@ -599,11 +599,12 @@ class GridGenerator:
                 # Create brownfield building clusters with existing transformers
                 self.position_brownfield_transformers(self.plz, kcid, transformers)
 
-                # Check buildings and manage clusters
-                if self.dbc.count_kmean_cluster_consumers(kcid) > 1:
+                # Buildings no existing station takes get greenfield stations; a single
+                # remaining connection point becomes its own grid instead of being dropped
+                if self.dbc.count_kmean_cluster_consumers(kcid) > 0:
                     self.dimension_bcid_for_kcid(self.plz, kcid)
                 else:
-                    self.dbc.delete_isolated_building(self.plz, kcid) #TODO: check approach with isolated buildings
+                    self.dbc.delete_isolated_building(self.plz, kcid)
                 self.logger.debug("Remaining building clustering finished")
 
             # Process unfinished clusters
