@@ -115,7 +115,7 @@ K_MEANS_SEED: 3329829316 # k-means integer seed to ensure deterministic behavior
 MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Mean maximum distance from a greenfield transformer to any cluster connection point
 MAX_GREENFIELD_TRAFO_DISTANCE_STD: 250 # Per-cluster spread of that limit (normal, clipped to +/- 2 std); 0 = fixed limit
 GREENFIELD_TRAFO_POSITION_TOLERANCE: 1.0 # Random station among positions costing at most (1 + tolerance) x the optimum; 0 = optimal
-MERGE_GREENFIELD_CLUSTERS: False # Merge neighboring greenfield clusters as posprocessing step
+MERGE_GREENFIELD_CLUSTERS: False # Merge neighboring greenfield clusters as posprocessing step; with existing stations, clusters still small afterwards join the nearest station within MAX_BROWNFIELD_TRAFO_DISTANCE
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities for merging
 GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null # Merge a pair only if its smaller cluster has at most this many buildings; null = any size
 

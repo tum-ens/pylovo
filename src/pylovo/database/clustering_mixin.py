@@ -669,6 +669,38 @@ class ClusteringMixin(BaseMixin):
 
         return cost_df
 
+    def get_connection_point_to_transformer_costs(self, connection_points: list, transformer_list: list) -> pd.DataFrame:
+        """Return the street distance from the given connection points to the given transformers.
+
+        Returns:
+            DataFrame with ``start_vid`` (connection point), ``end_vid`` (transformer) and
+            ``agg_cost`` (distance truncated to whole metres).
+        """
+        cost_query = f"""SELECT *
+                        FROM pgr_dijkstraCost(
+                                {WAYS_TEM_EDGES_SQL},
+                                %(cl)s::bigint[], %(tl)s::bigint[],
+                                false);"""
+        return pd.read_sql_query(cost_query, con=self.conn,
+                                 params={"cl": [int(c) for c in connection_points],
+                                         "tl": [int(t) for t in transformer_list]},
+                                 dtype={"start_vid": np.int64, "end_vid": np.int64, "agg_cost": np.int32})
+
+    def get_brownfield_stations(self, plz: int, kcid: int) -> dict[int, int]:
+        """Return ``{bcid: transformer vertex}`` of the brownfield clusters (``bcid < 0``) of a kcid."""
+        query = """SELECT bcid, ont_vertice_id
+                   FROM pylovo.grid_result
+                   WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(kc)s AND bcid < 0;"""
+        self.cur.execute(query, {"v": VERSION_ID, "pc": plz, "kc": kcid})
+        return {int(bcid): int(vertex) for bcid, vertex in self.cur.fetchall()}
+
+    def move_building_cluster(self, plz: int, kcid: int, bcid: int, target_bcid: int) -> None:
+        """Move the buildings of a not yet positioned greenfield cluster into another cluster and drop its row."""
+        query = """UPDATE buildings_tem SET bcid = %(t)s WHERE kcid = %(kc)s AND bcid = %(b)s;
+                   DELETE FROM pylovo.grid_result
+                   WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(kc)s AND bcid = %(b)s;"""
+        self.cur.execute(query, {"v": VERSION_ID, "pc": plz, "kc": kcid, "b": bcid, "t": target_bcid})
+
     def get_brownfield_transformer_capacity_map(self, transformer_list: list) -> dict[int, int]:
         """Known ratings (kVA) of existing transformers, keyed by their temporary vertex ID.
 

@@ -605,6 +605,8 @@ class GridGenerator:
                 # remaining connection point becomes its own grid instead of being dropped
                 if self.dbc.count_kmean_cluster_consumers(kcid) > 0:
                     self.dimension_bcid_for_kcid(self.plz, kcid)
+                    if MERGE_GREENFIELD_CLUSTERS and GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS is not None:
+                        self.merge_small_greenfield_into_brownfield(self.plz, kcid)
                 else:
                     self.dbc.delete_isolated_building(self.plz, kcid)
                 self.logger.debug("Remaining building clustering finished")
@@ -1005,6 +1007,59 @@ class GridGenerator:
 
         self.logger.info("Brownfield clusters completed")
 
+
+    def merge_small_greenfield_into_brownfield(self, plz: int, kcid: int) -> int:
+        """Let the small greenfield clusters beside existing stations join the nearest one.
+
+        Part of ``MERGE_GREENFIELD_CLUSTERS``: after the greenfield merge, a greenfield cluster
+        that still has at most ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` loaded buildings joins
+        the existing station with the shortest routed distance from one of its connection
+        points, if that distance is below ``MAX_BROWNFIELD_TRAFO_DISTANCE`` (the distance within
+        which existing stations take buildings anyway). The station's rating is not checked
+        again: the brownfield step fills stations nearest first, so a station can be full
+        before the last few buildings at the edge of its area come, and real stations run well
+        below their rating. An imported rating is kept; a station without one gets the smallest
+        catalogue rating above its new load (after ``TRANSFORMER_PLANNING_UTILIZATION``), or
+        keeps the largest.
+
+        Returns:
+            The number of clusters that joined a station.
+        """
+        stations = self.dbc.get_brownfield_stations(plz, kcid)
+        if not stations:
+            return 0
+        bcid_by_vertex = {vertex: bcid for bcid, vertex in stations.items()}
+        known_capacities = self.dbc.get_brownfield_transformer_capacity_map(list(stations.values()))
+        capacities, _ = self.dbc.get_transformer_data(self.dbc.get_settlement_type_from_plz(plz))
+        consumer_cat_df = self.dbc.get_consumer_categories()
+        merged = 0
+        # get_greenfield_bcids lists every unfinished grid, the brownfield ones (bcid < 0) too
+        for bcid in [b for b in self.dbc.get_greenfield_bcids(plz, kcid) if b >= 0]:
+            buildings = self.dbc.get_buildings_from_bcid(plz, kcid, bcid)
+            if buildings.empty or len(buildings) > GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS:
+                continue
+            points = sorted(utils.planning_nodes(buildings).dropna().astype(int).unique().tolist())
+            costs = self.dbc.get_connection_point_to_transformer_costs(points, list(stations.values()))
+            costs = costs[costs["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE]
+            if costs.empty:
+                continue
+            vertex = int(costs.sort_values(by=["agg_cost", "end_vid"]).iloc[0]["end_vid"])
+            target = bcid_by_vertex[vertex]
+            self.dbc.move_building_cluster(plz, kcid, bcid, target)
+            if vertex not in known_capacities:
+                station_buildings = self.dbc.get_buildings_from_bcid(plz, kcid, target)
+                load = utils.simultaneous_peak_load(
+                    station_buildings, consumer_cat_df,
+                    utils.planning_nodes(station_buildings).dropna().astype(int).unique().tolist(),
+                ) / TRANSFORMER_PLANNING_UTILIZATION
+                feasible = capacities[capacities > load]
+                self.dbc._set_transformer_rated_power(
+                    plz, kcid, target, int(feasible[0] if len(feasible) else capacities.max()))
+            merged += 1
+        if merged:
+            self.logger.info(f"Greenfield merge for PLZ {plz}, KCID {kcid}: {merged} small clusters joined their "
+                             f"nearest existing station (max_buildings={GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS})")
+        return merged
 
     def position_greenfield_transformers(self, plz, kcid, bcid):
         """
