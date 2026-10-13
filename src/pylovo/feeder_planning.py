@@ -13,8 +13,7 @@ is connected behind them:
    branch). The branch is then attached to the nearest node of an earlier branch
    on its path to the transformer (a split point) if that node is at least
    ``MIN_SHARED_PREFIX_LENGTH_M`` from the transformer, otherwise directly to the
-   transformer. The last remaining node always gets its own feeder from the
-   transformer.
+   transformer. A single remaining node is planned the same way.
 2. **Sizing** (:func:`size_feeder_tree`). The branches form a tree rooted at the
    transformer. It is cut into sections between hard nodes (the transformer and
    every node with more than one child) and each section gets one conductor:
@@ -142,20 +141,15 @@ def plan_feeder_branches(
     loads = utils.CoincidentLoads(buildings_df, consumer_df)
 
     while remaining:
-        if len(remaining) == 1:
-            branch_nodes = [remaining[0]]
-            attachment_node = transformer_node
-            logger.debug(f"Final remaining connection node {remaining[0]}; preserving direct branch.")
-        else:
-            path = _path_of_furthest_node(remaining, distance_m_by_node, path_to_transformer)
-            branch_nodes, current_ka = _cut_branch_at_current_limit(path, loads)
-            logger.debug(
-                f"Selected branch {len(branches)} (nodes={len(branch_nodes)}, first={branch_nodes[0]}, "
-                f"last={branch_nodes[-1]}, Imax={current_ka:.3f} kA)"
-            )
-            attachment_node = _attachment_node(
-                branch_nodes[-1], transformer_node, distance_m_by_node, planned_nodes, path_to_transformer
-            )
+        path = _path_of_furthest_node(remaining, distance_m_by_node, path_to_transformer)
+        branch_nodes, current_ka = _cut_branch_at_current_limit(path, loads)
+        logger.debug(
+            f"Selected branch {len(branches)} (nodes={len(branch_nodes)}, first={branch_nodes[0]}, "
+            f"last={branch_nodes[-1]}, Imax={current_ka:.3f} kA)"
+        )
+        attachment_node = _attachment_node(
+            branch_nodes[-1], transformer_node, distance_m_by_node, planned_nodes, path_to_transformer
+        )
 
         branches.append(
             FeederBranch(index=len(branches), nodes=list(branch_nodes), attachment_node=attachment_node)
@@ -172,10 +166,13 @@ def _path_of_furthest_node(
     distance_m_by_node: dict[int, float],
     path_to_transformer: PathLookup,
 ) -> list[int]:
-    """Return the remaining nodes on the path from the furthest remaining node to the transformer."""
+    """Return the remaining nodes on the path from the furthest remaining node to the transformer.
+
+    A node without a routed path (the transformer's own vertex) is a path of its own.
+    """
     furthest_node = max(remaining, key=distance_m_by_node.__getitem__)  # first one on ties
     remaining_set = set(remaining)
-    return [node for node in path_to_transformer(furthest_node) if node in remaining_set]
+    return [node for node in path_to_transformer(furthest_node) if node in remaining_set] or [furthest_node]
 
 
 def _cut_branch_at_current_limit(path: list[int], loads: utils.CoincidentLoads) -> tuple[list[int], float]:
