@@ -144,8 +144,13 @@ practice of each network (``HOUSE_CONNECTION``):
   gets its own cable from the nearer of the cabinet (or station) before and the
   cabinet after its connection point; it follows the street alongside the feeder
   and is sized like any service cable below, so long connections can get a larger
-  cross-section. The cabinets are stored in ``split_points`` with ``split_type``
-  ``feeder_split_topology``, ``end_cabinet`` or ``added_cabinet``.
+  cross-section. Buildings planned at one connection point that is not a cabinet
+  (with ``AGGREGATE_NEARBY_CONNECTION_POINTS``, neighbours on the same street)
+  share one house-connection cable from the cabinet to a joint at that point, sized
+  for their coincident design load, and each gets its own cable from the joint; the
+  service limit covers both together. The cabinets are stored in ``split_points``
+  with ``split_type`` ``feeder_split_topology``, ``end_cabinet`` or
+  ``added_cabinet``.
 
 The feeder voltage-drop limit then applies up to the cabinets, the service limit
 to the house-connection cables.

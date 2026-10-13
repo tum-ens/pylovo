@@ -376,6 +376,7 @@ class CableInstaller:
         design_current_ka: float,
         length_km: float,
         available_cables: list[str],
+        limit_percent: float | None = None,
     ) -> dict:
         """Select a service cable by ampacity, then by local design voltage drop.
 
@@ -390,6 +391,8 @@ class CableInstaller:
             design_current_ka: Service design current in kA.
             length_km: Service length in km.
             available_cables: Names of the cables that may be used.
+            limit_percent: Drop limit for this cable; ``None`` is
+                ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``.
 
         Returns:
             Dict with ``cable``, ``parallel``, ``ampacity_cable``,
@@ -400,6 +403,7 @@ class CableInstaller:
         Raises:
             ValueError: If none of ``available_cables`` is in the catalogue.
         """
+        limit = MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT if limit_percent is None else limit_percent
         available = set(available_cables)
         line_options = [cable for cable in self._cable_rows if cable in available]
         if not line_options:
@@ -433,7 +437,7 @@ class CableInstaller:
         voltage_options = [
             cable
             for cable, drop_percent in drops_by_cable.items()
-            if drop_percent <= MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT + 1e-9
+            if drop_percent <= limit + 1e-9
         ]
         if not voltage_options:
             selected_cable = min(
@@ -452,7 +456,7 @@ class CableInstaller:
             "ampacity_drop_percent": ampacity_drop_percent,
             "selected_drop_percent": selected_drop_percent,
             "voltage_drop_limit_met": bool(
-                selected_drop_percent <= MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT + 1e-9
+                selected_drop_percent <= limit + 1e-9
             ),
             "sizing_basis": "service_voltage_drop" if selected_cable != ampacity_cable else "ampacity",
         }
@@ -525,15 +529,21 @@ class CableInstaller:
         service_design_load_per_consumer: dict,
         material_length_by_cable_km: dict,
         feeder_voltage_drop_percent_by_node: dict[int, float] | None,
+        shared_cable: dict | None = None,
     ) -> dict:
         """Size and create the service cable from ``start_vid`` to consumer ``end_vid``; returns its diagnostics.
 
         Sized by :meth:`select_service_cable_design` for the consumer's local design load
         over ``length_km``. From the transformer's own vertex the feeder cables are allowed
         as well. ``material_length_by_cable_km`` is updated in place.
+
+        ``shared_cable`` (from :meth:`_install_shared_house_cable`) is the house-connection
+        cable this one continues: its drop counts against the service limit and is included
+        in the diagnostics, and the feeder drop is taken at its cabinet.
         """
         sim_load = service_design_load_per_consumer[end_vid]
         Imax = design_current_ka(sim_load)
+        upstream_drop_percent = 0.0 if shared_cable is None else shared_cable["drop_percent"]
 
         connection_available_cables = self._consumer_connection_cables
         # Direct transformer connection point may use feeder cables as well.
@@ -542,13 +552,22 @@ class CableInstaller:
                 self._consumer_connection_cables + self._feeder_available_cables
             ))
 
-        design = self.select_service_cable_design(Imax, length_km, connection_available_cables)
+        design = self.select_service_cable_design(
+            Imax, length_km, connection_available_cables,
+            limit_percent=MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT - upstream_drop_percent,
+        )
+        if shared_cable is not None:    # report the whole house connection, shared cable included
+            design = design | {
+                "ampacity_drop_percent": design["ampacity_drop_percent"] + upstream_drop_percent,
+                "selected_drop_percent": design["selected_drop_percent"] + upstream_drop_percent,
+            }
         cable = design["cable"]
         count = design["parallel"]
         length_review = bool(length_km * 1000 > SERVICE_LENGTH_REVIEW_THRESHOLD_M)
         feeder_drop_percent = None
+        feeder_vertex = start_vid if shared_cable is None else shared_cable["cabinet"]
         if feeder_voltage_drop_percent_by_node is not None:
-            feeder_drop_percent = feeder_voltage_drop_percent_by_node.get(int(start_vid))
+            feeder_drop_percent = feeder_voltage_drop_percent_by_node.get(int(feeder_vertex))
         total_design_drop_percent = (
             None
             if feeder_drop_percent is None
@@ -628,6 +647,7 @@ class CableInstaller:
                                        service_design_load_per_consumer: dict,
                                        material_length_by_cable_km: dict,
                                        feeder_voltage_drop_percent_by_node: dict[int, float] | None = None,
+                                       shared_design_load_by_node: dict[int, float] | None = None,
                                        ) -> tuple[dict, list[dict]]:
         """Install the house-connection cables of a cabinet network (``HOUSE_CONNECTION: cabinet``).
 
@@ -637,6 +657,11 @@ class CableInstaller:
         feeder, and then runs to the building; its length is the routed distance between the
         cabinet and the node plus the straight connection to the building. Sizing as in
         :meth:`install_consumer_cables`.
+
+        Several buildings planned at one connection node (``AGGREGATE_NEARBY_CONNECTION_POINTS``)
+        that is not a cabinet share one cable from the cabinet to a joint at that node, sized for
+        their coincident design load (``shared_design_load_by_node``, kW), and each gets its own
+        straight cable from the joint (:meth:`_install_shared_house_cable`).
 
         Returns:
             ``(material_length_by_cable_km, service_diagnostics)``.
@@ -650,24 +675,91 @@ class CableInstaller:
                 for node in nodes
                 for consumer_vertex in self._consumer_connection_mapping.get(int(node), [])
             ]
-        service_diagnostics = []
+        consumers_by_node: dict[int, list[int]] = {}
         for node, end_vid in consumer_connections:
-            node = int(node)
-            if node not in vertices_dict or end_vid not in vertices_dict:
-                continue
+            if int(node) in vertices_dict and end_vid in vertices_dict:
+                consumers_by_node.setdefault(int(node), []).append(end_vid)
+        service_diagnostics = []
+        for node, consumers in consumers_by_node.items():
             cabinet = int(cabinet_by_node[node])
             path = self._cabinet_path(cabinet, node)
             line_geodata = [self._get_line_node_coordinates(vertex, f"Connection Nodebus {vertex}") for vertex in path]
             if cabinet == ont_vertice:
                 line_geodata[0] = self._get_transformer_visual_coordinates(plz, kcid, bcid)
-            end_node_geodata = self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}")
             street_km = abs(vertices_dict.get(node, 0.0) - (0.0 if cabinet == ont_vertice else vertices_dict[cabinet])) * 1e-3
-            house_km = self._service_line_length_km([line_geodata[-1], end_node_geodata])
-            service_diagnostics.append(self._install_service_line(
-                cabinet, end_vid, line_geodata + [end_node_geodata], street_km + house_km, ont_vertice,
-                service_design_load_per_consumer, material_length_by_cable_km, feeder_voltage_drop_percent_by_node,
-            ))
+            end_geodata = {
+                end_vid: self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}") for end_vid in consumers
+            }
+            house_km = {
+                end_vid: self._service_line_length_km([line_geodata[-1], end_geodata[end_vid]]) for end_vid in consumers
+            }
+            shared = None
+            if len(consumers) > 1 and cabinet != node and node in (shared_design_load_by_node or {}):
+                shared = self._install_shared_house_cable(
+                    cabinet, node, line_geodata, street_km, shared_design_load_by_node[node],
+                    max(house_km.values()), ont_vertice, material_length_by_cable_km,
+                )
+            for end_vid in consumers:
+                if shared is None:
+                    start, geodata, length_km = cabinet, line_geodata + [end_geodata[end_vid]], street_km + house_km[end_vid]
+                else:
+                    start, geodata, length_km = node, [line_geodata[-1], end_geodata[end_vid]], house_km[end_vid]
+                service_diagnostics.append(self._install_service_line(
+                    start, end_vid, geodata, length_km, ont_vertice, service_design_load_per_consumer,
+                    material_length_by_cable_km, feeder_voltage_drop_percent_by_node, shared_cable=shared,
+                ))
         return material_length_by_cable_km, service_diagnostics
+
+    def _install_shared_house_cable(
+        self,
+        cabinet: int,
+        node: int,
+        line_geodata: list,
+        length_km: float,
+        design_load_kw: float,
+        longest_house_km: float,
+        ont_vertice: int,
+        material_length_by_cable_km: dict,
+    ) -> dict:
+        """Create the house-connection cable that several buildings share, from ``cabinet`` to a joint at ``node``.
+
+        The joint gets the bus ``Connection Nodebus <node>``. The cable is sized like a service
+        cable (:meth:`select_service_cable_design`) for the buildings' coincident design load,
+        within the share of ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT`` that its length has of
+        the path to the farthest of the buildings; their own cables get the rest. The line
+        carries no service annotations, which mark the cable of one building; its drop is
+        part of the diagnostics of every building behind it.
+
+        Returns:
+            ``{"cabinet": cabinet, "drop_percent": drop}`` for :meth:`_install_service_line`.
+        """
+        available = self._consumer_connection_cables
+        if cabinet == ont_vertice:
+            available = list(dict.fromkeys(self._consumer_connection_cables + self._feeder_available_cables))
+        path_km = length_km + longest_house_km
+        limit = MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT * (length_km / path_km if path_km > 0 else 1.0)
+        design = self.select_service_cable_design(design_current_ka(design_load_kw), length_km, available, limit)
+        cable, count = design["cable"], design["parallel"]
+        self.backend.create_component(
+            BusSpec(name=f"Connection Nodebus {node}", voltage_kv=VN * 1e-3, coordinates=line_geodata[-1])
+        )
+        material_length_by_cable_km[cable] += count * length_km
+        self.backend.create_component(LineSpec(
+            name=f"Line to joint {node}",
+            bus1=self._node_bus(cabinet),
+            bus2=f"Connection Nodebus {node}",
+            cable_name=cable,
+            length_km=length_km,
+            parallel=count,
+            coordinates=line_geodata,
+            ampacity_std_type=design["ampacity_cable"],
+            ampacity_parallel=design["ampacity_parallel"],
+        ))
+        self._queue_line(
+            geom=line_geodata, line_name=f"J{node}"[:15], std_type=cable,
+            from_bus=cabinet, to_bus=node, length_km=length_km, parallel=count,
+        )
+        return {"cabinet": int(cabinet), "drop_percent": float(design["selected_drop_percent"])}
 
     def _cabinet_path(self, cabinet: int, node: int) -> list[int]:
         """Routed vertices from ``cabinet`` to the connection ``node`` it serves (both included)."""

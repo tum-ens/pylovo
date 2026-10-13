@@ -83,6 +83,8 @@ MIN_SHARED_PREFIX_LENGTH_M: 50
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
+# With HOUSE_CONNECTION: cabinet the merged buildings share one house-connection cable from their cabinet
+# (gemeinsame Hausanschlussleitung with a joint near the houses).
 AGGREGATE_NEARBY_CONNECTION_POINTS: False
 CONNECTION_POINT_AGGREGATION_RADIUS_M: 15
 CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 4

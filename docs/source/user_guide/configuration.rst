@@ -281,7 +281,8 @@ Loads and general grid settings
    * - ``AGGREGATE_NEARBY_CONNECTION_POINTS``
      - ``False``
      - Merge nearby street-side connection points of buildings on the same street into one
-       (a proxy for shared house connections).
+       (a proxy for shared house connections). With ``HOUSE_CONNECTION: cabinet`` the merged
+       buildings share one house-connection cable from their cabinet.
      - ✓
    * - ``CONNECTION_POINT_AGGREGATION_RADIUS_M``
      - ``15``

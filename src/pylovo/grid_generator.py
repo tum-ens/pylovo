@@ -1504,6 +1504,12 @@ class GridGenerator:
 
                 service_diagnostics = []
                 if cabinet_plan is not None:
+                    # Buildings planned at one node share the house-connection cable from their cabinet.
+                    shared_design_load_by_node = {
+                        node: utils.simultaneous_peak_load(buildings_df, consumer_df, [node])
+                        for node, count in buildings_by_node.items()
+                        if count > 1 and cabinet_plan.cabinet_by_node.get(node, node) != node
+                    }
                     material_length_by_cable_km, service_diagnostics = installer.install_cabinet_service_cables(
                         self.plz,
                         bcid,
@@ -1514,6 +1520,7 @@ class GridGenerator:
                         service_design_load_per_consumer,
                         material_length_by_cable_km,
                         feeder_design.drop_percent_by_node,
+                        shared_design_load_by_node,
                     )
                 for branch in branches if cabinet_plan is None else []:
                     material_length_by_cable_km, branch_service_diagnostics = (
