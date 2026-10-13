@@ -6,7 +6,7 @@ from psycopg2 import sql
 from psycopg2.extras import execute_values
 from shapely.geometry import LineString
 
-from pylovo.config_loader import FEEDER_CABLES, TARGET_EPSG, VERSION_ID
+from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin, plz_table_name
 
 warnings.simplefilter(action='ignore', category=UserWarning)
@@ -433,10 +433,6 @@ class GridMixin(BaseMixin):
         gets a helper at the smallest offset rank (up to ``max_offset_rank``, both sides) where it
         no longer overlaps any visible line by ``min_collision_overlap_m`` or more.
         """
-        feeder_cable_names = [str(name) for name in FEEDER_CABLES["name"].dropna().tolist()]
-        if not feeder_cable_names:
-            return
-
         source_query = """
             WITH candidate_pairs AS (
                 SELECT
@@ -453,8 +449,8 @@ class GridMixin(BaseMixin):
                  AND a.lines_result_id < b.lines_result_id
                  AND a.geom && b.geom
                 WHERE a.grid_result_id = %(grid_result_id)s
-                  AND a.std_type = ANY(%(feeder_cables)s)
-                  AND b.std_type = ANY(%(feeder_cables)s)
+                  AND a.feeder_section_id IS NOT NULL
+                  AND b.feeder_section_id IS NOT NULL
                   AND NOT EXISTS (
                       SELECT 1
                       FROM pylovo.lines_result_helper helper_a
@@ -490,7 +486,6 @@ class GridMixin(BaseMixin):
             source_query,
             {
                 "grid_result_id": int(grid_result_id),
-                "feeder_cables": feeder_cable_names,
                 "min_overlap_m": float(min_overlap_m),
             },
         )
@@ -631,10 +626,6 @@ class GridMixin(BaseMixin):
         if not unique_nodes:
             return
 
-        feeder_cable_names = [str(name) for name in FEEDER_CABLES["name"].dropna().tolist()]
-        if not feeder_cable_names:
-            return
-
         insert_query = """
             INSERT INTO pylovo.split_points (
                 grid_result_id,
@@ -651,7 +642,7 @@ class GridMixin(BaseMixin):
                     FROM pylovo.lines_result lr_count
                     WHERE lr_count.grid_result_id = %(grid_result_id)s
                       AND lr_count.from_bus = %(split_bus)s
-                                            AND lr_count.std_type = ANY(%(feeder_cables)s)
+                      AND lr_count.feeder_section_id IS NOT NULL
                 ),
                 %(split_type)s,
                 COALESCE(
@@ -660,7 +651,7 @@ class GridMixin(BaseMixin):
                         FROM pylovo.lines_result lr_start
                         WHERE lr_start.grid_result_id = %(grid_result_id)s
                           AND lr_start.from_bus = %(split_bus)s
-                                                    AND lr_start.std_type = ANY(%(feeder_cables)s)
+                          AND lr_start.feeder_section_id IS NOT NULL
                         ORDER BY lr_start.lines_result_id
                         LIMIT 1
                     ),
@@ -669,7 +660,7 @@ class GridMixin(BaseMixin):
                         FROM pylovo.lines_result lr_end
                         WHERE lr_end.grid_result_id = %(grid_result_id)s
                           AND lr_end.to_bus = %(split_bus)s
-                                                    AND lr_end.std_type = ANY(%(feeder_cables)s)
+                          AND lr_end.feeder_section_id IS NOT NULL
                         ORDER BY lr_end.lines_result_id
                         LIMIT 1
                     )
@@ -683,7 +674,6 @@ class GridMixin(BaseMixin):
                     "grid_result_id": grid_result_id,
                     "split_bus": split_bus,
                     "split_type": split_types[split_bus],
-                    "feeder_cables": feeder_cable_names,
                 },
             )
 

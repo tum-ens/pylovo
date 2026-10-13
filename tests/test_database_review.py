@@ -268,6 +268,45 @@ def test_equipment_catalogue_is_read_for_the_current_version_only(monkeypatch):
         db.conn.rollback()
 
 
+
+def test_split_points_count_feeder_lines_by_section_not_by_cable_name(monkeypatch):
+    """A service cable of a feeder cable type leaving a split node is not an outgoing feeder."""
+    import pylovo.database.grid_mixin as grid_mixin
+
+    with client() as db:
+        cur = db.cur
+        version = "t" + uuid.uuid4().hex[:8]
+        polygon = "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+        cur.execute("INSERT INTO pylovo.version (version_id) VALUES (%s)", (version,))
+        cur.execute(
+            """INSERT INTO pylovo.postcode (plz, geom)
+               VALUES (12345, ST_Multi(ST_GeomFromText(%s, %s)))""",
+            (polygon, TARGET_EPSG),
+        )
+        cur.execute(
+            """INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz, geom)
+               VALUES (%s, 12345, ST_Multi(ST_GeomFromText(%s, %s)))""",
+            (version, polygon, TARGET_EPSG),
+        )
+        cur.execute(
+            """INSERT INTO pylovo.grid_result (version_id, plz, kcid, bcid, ont_vertice_id)
+               VALUES (%s, 12345, 1, 1, 1) RETURNING grid_result_id""",
+            (version,),
+        )
+        grid = cur.fetchone()[0]
+        for to_bus, x, section in ((11, 20, 1), (12, 30, 2), (99, 10, None)):
+            cur.execute(
+                """INSERT INTO pylovo.lines_result (grid_result_id, geom, std_type, from_bus, to_bus, feeder_section_id)
+                   VALUES (%s, ST_SetSRID(ST_MakeLine(ST_MakePoint(10, 0), ST_MakePoint(%s, 5)), %s),
+                           'NAYY_4_150', 10, %s, %s)""",
+                (grid, x, TARGET_EPSG, to_bus, section),
+            )
+        monkeypatch.setattr(grid_mixin, "VERSION_ID", version)
+        db.rebuild_split_points_for_split_topology(12345, 1, 1, [10])
+        cur.execute("SELECT split_bus, outgoing_count FROM pylovo.split_points WHERE grid_result_id = %s", (grid,))
+        assert cur.fetchall() == [(10, 2)]
+        db.conn.rollback()
+
 def test_transformer_view_reports_unit_and_station_rating():
     """An 800 kVA double station maps to the 400 kVA unit; consumers need the station rating."""
     with client() as db:
