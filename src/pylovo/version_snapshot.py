@@ -30,6 +30,12 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("cable_dimensioning", "feeder_planning_utilization"): 1.0,
     # Before the station voltage existed the MV side was at 1.0 p.u.
     ("power_flow_assessment", "lv_reference_voltage_pu"): None,
+    # Before these existed: no standard feeder cable and tee-joint house connections. The parallel
+    # limit and the cabinet spacing only act with a standard cable or cabinets, so they have no legacy value.
+    ("cable_dimensioning", "feeder_standard_cable"): None,
+    ("cable_dimensioning", "max_parallel_feeder_cables"): UNKNOWN,
+    ("cable_dimensioning", "house_connection"): "joint",
+    ("cable_dimensioning", "cabinet_spacing_m"): UNKNOWN,
 }
 
 
