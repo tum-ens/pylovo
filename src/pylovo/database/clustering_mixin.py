@@ -981,8 +981,8 @@ class ClusteringMixin(BaseMixin):
             plz: int, transformer_rated_power: int) -> None:
         """Store a brownfield building cluster around an existing transformer.
 
-        Sets the bcid on the transformer row and on the loaded buildings at the given connection
-        points, inserts the ``grid_result`` row and a ``transformer_positions`` row at the
+        Sets the bcid on the transformer row and on the loaded buildings of the kcid at the given
+        connection points (buildings of another kcid can share a connection point), inserts the ``grid_result`` row and a ``transformer_positions`` row at the
         transformer (linked to its ``pylovo.transformers`` row when there is one).
 
         Args:
@@ -1000,7 +1000,8 @@ class ClusteringMixin(BaseMixin):
 
                 UPDATE buildings_tem
                 SET bcid = %(count)s
-                WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
+                WHERE kcid = %(k)s
+                  AND COALESCE(agg_connection_point, connection_point) IN %(c)s
                   AND type != 'Transformer'
                   AND peak_load_in_kw != 0;
 
