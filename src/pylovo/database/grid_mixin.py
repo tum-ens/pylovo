@@ -63,8 +63,8 @@ class GridMixin(BaseMixin):
     """Routing queries on ``ways_tem`` and the line tables of generated grids.
 
     ``lines_result`` holds the installed cables. ``lines_result_helper``, ``split_points`` and
-    ``lines_result_cache`` holds visualisation rows derived from it (shifted duplicates of
-    overlapping lines, feeder split nodes, merged feeder sections) for GIS inspection.
+    ``lines_result_cache`` hold visualisation rows derived from it for GIS inspection: shifted
+    duplicates of overlapping lines, feeder split nodes and one row per line.
     """
 
     def fetch_cables(self) -> list:
@@ -680,9 +680,8 @@ class GridMixin(BaseMixin):
     def rebuild_lines_result_view_for_grid(self, plz: int, kcid: int, bcid: int) -> None:
         """Rebuild the ``lines_result_cache`` rows of one grid for GIS inspection.
 
-        Feeder lines of the same feeder section are merged into one row
-        (``helper_type = 'merged_feeder_section'``); all other lines, and helpers in place of
-        their source lines, are copied as they are.
+        Every line is copied as it is, or its helper (the shifted duplicate) in its place, so
+        each row keeps the line name that GridExpand and the API use to find it.
 
         Args:
             plz: Postcode.
@@ -720,12 +719,6 @@ class GridMixin(BaseMixin):
                 SELECT grid_result_id, version_id, kcid, bcid, plz
                 FROM pylovo.grid_result
                 WHERE grid_result_id = %(grid_result_id)s
-            ),
-            feeder_equipment AS (
-                SELECT ed.name
-                FROM pylovo.equipment_data ed
-                JOIN selected_grid sg ON sg.version_id = ed.version_id
-                WHERE ed.grid_role = 'feeder'
             ),
             visible_lines AS (
                 SELECT
@@ -768,106 +761,26 @@ class GridMixin(BaseMixin):
                 JOIN selected_grid sg ON sg.grid_result_id = lrh.grid_result_id
                 JOIN pylovo.lines_result source_lr
                   ON source_lr.lines_result_id = lrh.source_lines_result_id
-            ),
-            feeder_section_lines AS (
-                SELECT *
-                FROM visible_lines
-                WHERE feeder_section_id IS NOT NULL
-                  AND std_type IN (SELECT name FROM feeder_equipment)
-            ),
-            passthrough_lines AS (
-                SELECT *
-                FROM visible_lines
-                WHERE feeder_section_id IS NULL
-                   OR std_type NOT IN (SELECT name FROM feeder_equipment)
-                   OR std_type IS NULL
-            ),
-            section_start AS (
-                SELECT fsl.grid_result_id, fsl.feeder_section_id, fsl.from_bus
-                FROM feeder_section_lines fsl
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM feeder_section_lines incoming
-                    WHERE incoming.grid_result_id = fsl.grid_result_id
-                      AND incoming.feeder_section_id = fsl.feeder_section_id
-                      AND incoming.to_bus = fsl.from_bus
-                )
-                GROUP BY fsl.grid_result_id, fsl.feeder_section_id, fsl.from_bus
-            ),
-            section_end AS (
-                SELECT fsl.grid_result_id, fsl.feeder_section_id, fsl.to_bus
-                FROM feeder_section_lines fsl
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM feeder_section_lines outgoing
-                    WHERE outgoing.grid_result_id = fsl.grid_result_id
-                      AND outgoing.feeder_section_id = fsl.feeder_section_id
-                      AND outgoing.from_bus = fsl.to_bus
-                )
-                GROUP BY fsl.grid_result_id, fsl.feeder_section_id, fsl.to_bus
-            ),
-            merged_feeder_lines AS (
-                SELECT
-                    true AS is_helper,
-                    NULL::bigint AS source_lines_result_id,
-                    'merged_feeder_section'::varchar(50) AS helper_type,
-                    fsl.grid_result_id,
-                    ST_LineMerge(ST_Collect(fsl.geom)) AS geom,
-                    CONCAT('M', fsl.grid_result_id, '_', fsl.feeder_section_id) AS line_name,
-                    STRING_AGG(DISTINCT fsl.std_type, '+') AS std_type,
-                    MIN(ss.from_bus) AS from_bus,
-                    MIN(se.to_bus) AS to_bus,
-                    MAX(fsl.parallel) AS parallel,
-                    SUM(fsl.length_km) AS length_km,
-                    fsl.feeder_section_id
-                FROM feeder_section_lines fsl
-                LEFT JOIN section_start ss
-                  ON ss.grid_result_id = fsl.grid_result_id
-                 AND ss.feeder_section_id = fsl.feeder_section_id
-                LEFT JOIN section_end se
-                  ON se.grid_result_id = fsl.grid_result_id
-                 AND se.feeder_section_id = fsl.feeder_section_id
-                GROUP BY fsl.grid_result_id, fsl.feeder_section_id
             )
             SELECT
-                mfl.is_helper,
-                mfl.source_lines_result_id,
-                mfl.helper_type,
-                mfl.grid_result_id,
-                mfl.geom,
-                mfl.line_name,
-                mfl.std_type,
-                mfl.from_bus,
-                mfl.to_bus,
-                mfl.parallel,
-                mfl.length_km,
-                mfl.feeder_section_id,
+                vl.is_helper,
+                vl.source_lines_result_id,
+                vl.helper_type,
+                vl.grid_result_id,
+                vl.geom,
+                vl.line_name,
+                vl.std_type,
+                vl.from_bus,
+                vl.to_bus,
+                vl.parallel,
+                vl.length_km,
+                vl.feeder_section_id,
                 sg.version_id,
                 sg.kcid,
                 sg.bcid,
                 sg.plz
-            FROM merged_feeder_lines mfl
-            JOIN selected_grid sg ON sg.grid_result_id = mfl.grid_result_id
-            UNION ALL
-            SELECT
-                pl.is_helper,
-                pl.source_lines_result_id,
-                pl.helper_type,
-                pl.grid_result_id,
-                pl.geom,
-                pl.line_name,
-                pl.std_type,
-                pl.from_bus,
-                pl.to_bus,
-                pl.parallel,
-                pl.length_km,
-                pl.feeder_section_id,
-                sg.version_id,
-                sg.kcid,
-                sg.bcid,
-                sg.plz
-            FROM passthrough_lines pl
-            JOIN selected_grid sg ON sg.grid_result_id = pl.grid_result_id;
+            FROM visible_lines vl
+            JOIN selected_grid sg ON sg.grid_result_id = vl.grid_result_id;
         """
         self.cur.execute(insert_query, {"grid_result_id": grid_result_id})
 

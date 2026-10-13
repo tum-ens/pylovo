@@ -307,6 +307,52 @@ def test_split_points_count_feeder_lines_by_section_not_by_cable_name(monkeypatc
         assert cur.fetchall() == [(10, 2)]
         db.conn.rollback()
 
+
+def test_line_cache_keeps_one_named_row_per_line(monkeypatch):
+    """Feeder lines of one section stay separate rows, so GridExpand can find them by line name."""
+    import pylovo.database.utils_mixin as utils_mixin
+
+    with client() as db:
+        cur = db.cur
+        version = "t" + uuid.uuid4().hex[:8]
+        polygon = "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+        cur.execute("INSERT INTO pylovo.version (version_id) VALUES (%s)", (version,))
+        cur.execute(
+            """INSERT INTO pylovo.postcode (plz, geom)
+               VALUES (12345, ST_Multi(ST_GeomFromText(%s, %s)))""",
+            (polygon, TARGET_EPSG),
+        )
+        cur.execute(
+            """INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz, geom)
+               VALUES (%s, 12345, ST_Multi(ST_GeomFromText(%s, %s)))""",
+            (version, polygon, TARGET_EPSG),
+        )
+        cur.execute(
+            """INSERT INTO pylovo.grid_result (version_id, plz, kcid, bcid, ont_vertice_id)
+               VALUES (%s, 12345, 1, 1, 1) RETURNING grid_result_id""",
+            (version,),
+        )
+        grid = cur.fetchone()[0]
+        for name, std_type, from_bus, to_bus, section in (
+            ("L2", "NAYY_4_150", 1, 2, 1), ("L3", "NAYY_4_150", 2, 3, 1), ("S9", "NAYY_4_50", 3, 9, None),
+        ):
+            cur.execute(
+                """INSERT INTO pylovo.lines_result
+                   (grid_result_id, geom, line_name, std_type, from_bus, to_bus, feeder_section_id)
+                   VALUES (%s, ST_SetSRID(ST_MakeLine(ST_MakePoint(%s, 0), ST_MakePoint(%s, 0)), %s),
+                           %s, %s, %s, %s, %s)""",
+                (grid, 10 * from_bus, 10 * to_bus, TARGET_EPSG, name, std_type, from_bus, to_bus, section),
+            )
+        monkeypatch.setattr(utils_mixin, "VERSION_ID", version)
+        db.rebuild_lines_result_view_for_grid(12345, 1, 1)
+        cur.execute(
+            """SELECT line_name, is_helper, feeder_section_id FROM pylovo.lines_result_cache
+               WHERE grid_result_id = %s ORDER BY line_name""",
+            (grid,),
+        )
+        assert cur.fetchall() == [("L2", False, 1), ("L3", False, 1), ("S9", False, None)]
+        db.conn.rollback()
+
 def test_transformer_view_reports_unit_and_station_rating():
     """An 800 kVA double station maps to the 400 kVA unit; consumers need the station rating."""
     with client() as db:
