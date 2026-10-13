@@ -83,7 +83,9 @@ pgRouting then builds the routing graph (``pgr_extractVertices``; endpoints snap
 grid) with the segment length in metres as cost. Every building gets two vertices:
 
 ``vertice_id``
-   the vertex at the building centroid; it becomes the consumer bus.
+   the vertex at the building centroid; it becomes the consumer bus. The bus is drawn at the house
+   connection on the facade, where the connection line crosses the footprint outline, and the
+   house cable ends there.
 ``connection_point``
    the street-side end of its connection line; it becomes a connection bus of the feeder.
 
@@ -207,8 +209,8 @@ The feeder topology is planned before any cable is chosen
 
 Then the feeder edges between hard nodes (transformer and branching points) are grouped into
 uniform sections, sized for ampacity and upsized where the end-to-end voltage-drop limit requires
-it (:func:`~pylovo.feeder_planning.size_feeder_tree`). Service cables run in a straight line from the connection bus to the consumer bus and are
-sized for the building's own load. The complete method is described in :doc:`grid_dimensioning`.
+it (:func:`~pylovo.feeder_planning.size_feeder_tree`). Service cables run in a straight line from the connection bus to the house connection on the
+facade and are sized for the building's own load. The complete method is described in :doc:`grid_dimensioning`.
 
 pylovo also writes GIS helper geometries: ``split_points`` at branching nodes and offset copies of
 lines where several feeders share a street (``lines_result_helper``, ``lines_result_view``).

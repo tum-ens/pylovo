@@ -1372,6 +1372,8 @@ class GridGenerator:
         # pgRouting topology creation and pass immutable snapshots into each installer.
         consumer_df = self.dbc.get_consumer_categories()
         node_coordinates = self.dbc.fetch_node_coordinates(self.plz)
+        # House cables end at the house connection box on the facade, not at the building centroid.
+        node_coordinates.update(self.dbc.fetch_house_connection_points(self.plz))
         consumer_connection_mapping = self.dbc.fetch_consumer_connection_mapping(
             self.plz,
         )

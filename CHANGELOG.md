@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - The last remaining connection node of a grid is planned like any other branch (it joins an existing feeder beyond `MIN_SHARED_PREFIX_LENGTH_M`) instead of always getting its own feeder from the transformer; this changes generated grids, so regenerate with a new `VERSION_ID`
+- House cables end at the house connection on the facade (where the building's connection line crosses the footprint outline) instead of the building centroid, about 6.5 m shorter on average; the consumer bus is drawn there. This changes generated grids, so regenerate with a new `VERSION_ID`
 - With `MERGE_GREENFIELD_CLUSTERS` and existing stations, a greenfield cluster that is still at most `GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS` buildings after the merge joins the nearest existing station within `MAX_BROWNFIELD_TRAFO_DISTANCE`
 - A single building left over after the brownfield step gets its own grid instead of being dropped; a k-means cluster with existing stations but no consumers no longer fails the brownfield cost query
 - `pylovo-setup` creates or migrates the schema in place (migrations recorded in `pylovo.schema_migrations`) and imports every empty reference table after checking its input data; `pylovo-setup reset --database NAME` rebuilds the schema: it refuses while other schemas depend on it, keeps the previous schema as `pylovo_backup_<time>` until the rebuild is complete and restores it if the rebuild fails or is cancelled. Extensions are created in `public`

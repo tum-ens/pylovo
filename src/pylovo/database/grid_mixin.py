@@ -124,6 +124,39 @@ class GridMixin(BaseMixin):
         self.cur.execute(query)
         return {int(node_id): (float(lon), float(lat)) for node_id, lon, lat in self.cur.fetchall()}
 
+    def fetch_house_connection_points(self, plz: int) -> dict[int, tuple[float, float]]:
+        """Return the WGS84 ``(lon, lat)`` of every loaded building's house connection, keyed by its vertex ID.
+
+        The routing vertex of a building is its centroid. The house connection box sits on
+        the facade, so the house cable ends where the building's connection line (``clazz``
+        110, centroid to street) crosses the footprint outline, the crossing nearest to the
+        street. Buildings whose connection line does not cross the outline are left out (their
+        cable keeps ending at the vertex).
+        """
+        buildings = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
+        ways = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz))
+        query = sql.SQL("""
+            SELECT b.vertice_id,
+                   ST_X(ST_Transform(x.point, 4326)),
+                   ST_Y(ST_Transform(x.point, 4326))
+            FROM {buildings} b
+            JOIN {ways} w
+              ON w.clazz = 110 AND b.vertice_id IN (w.source, w.target)
+            CROSS JOIN LATERAL (
+                SELECT ST_Intersection(w.geom, ST_Boundary(b.geom)) AS crossing,
+                       CASE WHEN w.source = b.vertice_id THEN ST_EndPoint(w.geom)
+                            ELSE ST_StartPoint(w.geom) END AS street
+            ) c
+            CROSS JOIN LATERAL (SELECT ST_ClosestPoint(c.crossing, c.street) AS point) x
+            WHERE b.type != 'Transformer'
+              AND b.peak_load_in_kw != 0
+              AND b.geom IS NOT NULL
+              AND NOT ST_IsEmpty(c.crossing)
+            ORDER BY b.vertice_id
+        """).format(buildings=buildings, ways=ways)
+        self.cur.execute(query)
+        return {int(node_id): (float(lon), float(lat)) for node_id, lon, lat in self.cur.fetchall()}
+
     def fetch_consumer_connection_mapping(self, plz: int) -> dict[int, list[int]]:
         """Return the building vertices of every consumer connection point of a PLZ.
 

@@ -13,7 +13,8 @@ The network elements discussed here are:
 
 ``Feeder`` refers to the street-side network between the transformer and a
 connection point. ``Service cable`` refers to the final connection from that
-point to one building bus.
+point to one building bus. It ends at the house connection on the facade (where the
+building's connection line crosses the footprint outline), not at the building centroid.
 
 Method at a glance
 ------------------
