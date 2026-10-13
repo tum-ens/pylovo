@@ -499,7 +499,8 @@ Cable rows have the fields ``name``, ``max_i_a`` (ampacity in A), ``r_mohm_per_k
   breaks cost ties when cables are selected.
 * Numeric values are stored as integers; use whole numbers.
 * A cable may be listed in both pools (for example ``NAYY_4_150``). The database keeps one row
-  per name, so both entries must have identical values.
+  per name with both roles (``grid_role`` ``feeder,consumer_connection``), so both entries must
+  have identical values. Different values stop the generation.
 
 ``config_analysis.yaml``
 ------------------------

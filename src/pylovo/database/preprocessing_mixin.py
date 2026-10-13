@@ -206,12 +206,14 @@ class PreprocessingMixin(BaseMixin):
 
         Missing columns are filled with NULL, numeric columns are cast to integers, and rows
         without ``version_id`` get the configured ``VERSION_ID``. Existing rows with the same
-        ``(version_id, name)`` are updated.
+        ``(version_id, name)`` are updated. A cable listed in both cable pools becomes one row
+        with both roles (``grid_role = 'feeder,consumer_connection'``).
 
         Args:
             equipment_data: Equipment table, normally ``CONFIG_EQUIPMENT_DATA``.
 
         Raises:
+            ValueError: If one name is listed twice with different values.
             psycopg2.Error: If the upsert fails; the transaction is rolled back first.
         """
         df = equipment_data.copy()
@@ -232,6 +234,18 @@ class PreprocessingMixin(BaseMixin):
         int_cols = ["s_max_kva", "max_i_a", "r_mohm_per_km", "x_mohm_per_km", "z_mohm_per_km", "cost_eur"]
         for c in int_cols:
             df[c] = pd.to_numeric(df[c], errors='coerce').astype('Int64')
+
+        # One row per (version_id, name): the key cannot hold a cable twice, so its roles are joined.
+        keys = ["version_id", "name"]
+        value_cols = [c for c in expected_cols if c not in keys + ["grid_role"]]
+        conflicting = df.groupby(keys)[value_cols].nunique(dropna=False).gt(1).any(axis=1)
+        if conflicting.any():
+            names = sorted(name for _, name in conflicting[conflicting].index)
+            raise ValueError(f"Equipment listed twice with different values: {names}")
+        df = df.groupby(keys, sort=False, as_index=False).agg(
+            {**{c: "first" for c in value_cols},
+             "grid_role": lambda roles: ",".join(dict.fromkeys(role for role in roles if role))}
+        )[expected_cols]
 
         # Replace NaNs with None
         df = df.where(~df.isna(), None)
