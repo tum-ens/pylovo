@@ -68,9 +68,10 @@ class GridMixin(BaseMixin):
     """
 
     def fetch_cables(self) -> list:
-        """Return all cables of ``equipment_data`` as ``(name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)``.
+        """Return the cables of the current version as ``(name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)``.
 
-        Rows of every version are returned.
+        Only rows of ``VERSION_ID`` are read, so another version's catalogue cannot
+        overwrite a cable of the same name.
         """
         query = """SELECT name,
                        r_mohm_per_km / 1000.0 as r_ohm_per_km,
@@ -79,8 +80,10 @@ class GridMixin(BaseMixin):
                        cost_eur
             FROM pylovo.equipment_data
                 WHERE typ = 'Cable'
+                  AND version_id = %s
+            ORDER BY max_i_a, name
                 """
-        self.cur.execute(query)
+        self.cur.execute(query, (VERSION_ID,))
         return self.cur.fetchall()
 
     def set_transformer_equipment_name(

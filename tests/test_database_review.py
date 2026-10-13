@@ -240,6 +240,34 @@ def test_cross_grid_references_and_raw_transformer_delete(monkeypatch):
         db.conn.rollback()
 
 
+def test_equipment_catalogue_is_read_for_the_current_version_only(monkeypatch):
+    """Another version's rows neither overwrite a cable of the same name nor repeat capacities."""
+    import pylovo.database.clustering_mixin as clustering_mixin
+    import pylovo.database.grid_mixin as grid_mixin
+
+    with client() as db:
+        cur = db.cur
+        current, other = ("t" + uuid.uuid4().hex[:8] for _ in range(2))
+        for version, cable_a, transformer_kva in ((current, 270, 250), (other, 999, 160)):
+            cur.execute("INSERT INTO pylovo.version (version_id) VALUES (%s)", (version,))
+            cur.execute(
+                """INSERT INTO pylovo.equipment_data
+                   (version_id, name, s_max_kva, max_i_a, r_mohm_per_km, x_mohm_per_km, cost_eur, typ)
+                   VALUES (%s, 'NAYY_4_150', NULL, %s, 208, 80, 25, 'Cable'),
+                          (%s, 'Tr_100', 100, NULL, NULL, NULL, 1, 'Transformer'),
+                          (%s, %s, %s, NULL, NULL, NULL, 1, 'Transformer')""",
+                (version, cable_a, version, version, f"Tr_{transformer_kva}", transformer_kva),
+            )
+        monkeypatch.setattr(grid_mixin, "VERSION_ID", current)
+        monkeypatch.setattr(clustering_mixin, "VERSION_ID", current)
+
+        cables = db.fetch_cables()
+        assert [(name, float(max_i_ka)) for name, _, _, max_i_ka, _ in cables] == [("NAYY_4_150", 0.27)]
+        capacities, _ = db.get_transformer_data(1)
+        assert capacities.tolist() == [100, 250]
+        db.conn.rollback()
+
+
 def test_transformer_view_reports_unit_and_station_rating():
     """An 800 kVA double station maps to the 400 kVA unit; consumers need the station rating."""
     with client() as db:

@@ -917,8 +917,8 @@ class ClusteringMixin(BaseMixin):
 
         Returns:
             ``(capacities, cost_by_capacity)``: capacities in kVA ascending, as found in
-            ``equipment_data``, and a dict capacity -> cost in EUR. ``None`` (after an info log)
-            for an unknown settlement type.
+            the ``equipment_data`` rows of ``VERSION_ID``, and a dict capacity -> cost in EUR.
+            ``None`` (after an info log) for an unknown settlement type.
         """
         if settlement_type not in TRANSFORMER_MAPPING:
             self.logger.info("Incorrect settlement type number specified.")
@@ -929,10 +929,11 @@ class ClusteringMixin(BaseMixin):
         query = """SELECT equipment_data.s_max_kva, cost_eur
                    FROM pylovo.equipment_data
                    WHERE typ = 'Transformer' \
+                     AND version_id = %(v)s \
                      AND s_max_kva IN %(capacities)s
                    ORDER BY s_max_kva;"""
 
-        self.cur.execute(query, {"capacities": allowed_capacities})
+        self.cur.execute(query, {"v": VERSION_ID, "capacities": allowed_capacities})
         data = self.cur.fetchall()
         capacities = [i[0] for i in data]
         transformer2cost = {i[0]: i[1] for i in data}
