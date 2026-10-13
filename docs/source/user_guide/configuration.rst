@@ -258,6 +258,25 @@ Loads and general grid settings
        existing branch instead of starting a new feeder at the transformer. A large value
        switches branch sharing off.
      - ✓
+   * - ``HOUSE_CONNECTION``
+     - ``joint``
+     - How houses are connected to the feeders (Hausanschlusstechnik). ``joint``
+       (Muffentechnik): each house is connected with a tee joint (Abzweigmuffe) on the street
+       cable, and cable distribution cabinets (Kabelverteilerschränke, KVS) only sit at the
+       feeder split points. ``cabinet`` (Kabelverteilertechnik): houses are connected from
+       cabinets placed along the feeders, each with its own house-connection cable from the
+       nearest cabinet, and the feeder cable runs from cabinet to cabinet. Which technique
+       applies is a DSO practice that varies by network ("Kabelverteiler- oder
+       Muffenanschluss"); cabinet connections are common in rural Bavaria. See
+       :ref:`house-connection-technique`.
+     - ✓
+   * - ``CABINET_SPACING_M``
+     - ``100``
+     - Only with ``HOUSE_CONNECTION: cabinet``: longest feeder cable (m) without a cabinet
+       (Abstand der Kabelverteiler). The default comes from one rural reference network (first
+       cabinet a median 105 m from the station, cabinets 74 m apart); check it against the
+       practice of the DSO.
+     - ✓
    * - ``AGGREGATE_NEARBY_CONNECTION_POINTS``
      - ``False``
      - Merge nearby street-side connection points of buildings on the same street into one

@@ -557,6 +557,7 @@ class GridMixin(BaseMixin):
         kcid: int,
         bcid: int,
         split_nodes: list[int],
+        cabinet_kinds: dict[int, str] | None = None,
     ) -> None:
         """Rebuild the ``split_points`` rows of one grid: its feeder split nodes except the transformer node.
 
@@ -564,7 +565,10 @@ class GridMixin(BaseMixin):
             plz: Postcode.
             kcid: K-means cluster ID.
             bcid: Building cluster ID.
-            split_nodes: Bus IDs where a feeder splits.
+            split_nodes: Bus IDs where a feeder splits (``split_type = 'feeder_split_topology'``).
+            cabinet_kinds: The cabinets of a cabinet network (``HOUSE_CONNECTION: cabinet``) with
+                their kind as ``split_type`` (``feeder_split_topology``, ``end_cabinet`` or
+                ``added_cabinet``); see :func:`pylovo.feeder_planning.plan_cabinets`.
         """
         selected_grid_query = """
             SELECT grid_result_id, ont_vertice_id
@@ -588,13 +592,9 @@ class GridMixin(BaseMixin):
             {"grid_result_id": grid_result_id},
         )
 
-        unique_nodes = sorted(
-            {
-                int(node)
-                for node in split_nodes
-                if node is not None and (ont_vertice_id is None or int(node) != ont_vertice_id)
-            }
-        )
+        split_types = {int(node): kind for node, kind in (cabinet_kinds or {}).items()}
+        split_types.update({int(node): 'feeder_split_topology' for node in split_nodes if node is not None})
+        unique_nodes = sorted(node for node in split_types if ont_vertice_id is None or node != ont_vertice_id)
         if not unique_nodes:
             return
 
@@ -620,7 +620,7 @@ class GridMixin(BaseMixin):
                       AND lr_count.from_bus = %(split_bus)s
                                             AND lr_count.std_type = ANY(%(feeder_cables)s)
                 ),
-                                'feeder_split_topology',
+                %(split_type)s,
                 COALESCE(
                     (
                         SELECT ST_StartPoint(lr_start.geom)
@@ -649,6 +649,7 @@ class GridMixin(BaseMixin):
                 {
                     "grid_result_id": grid_result_id,
                     "split_bus": split_bus,
+                    "split_type": split_types[split_bus],
                     "feeder_cables": feeder_cable_names,
                 },
             )

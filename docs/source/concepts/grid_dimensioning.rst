@@ -120,6 +120,35 @@ Active design power is converted into balanced three-phase current using
 power divided by voltage gives current, while the power factor converts active
 power into the corresponding apparent-power requirement.
 
+.. _house-connection-technique:
+
+House connections: joints or cabinets
+-------------------------------------
+
+DSOs connect houses to the LV feeders in one of two ways, and the choice is a
+practice of each network (``HOUSE_CONNECTION``):
+
+* ``joint`` (Muffentechnik, default): every house is connected by its own service
+  cable from a tee joint (Abzweigmuffe) on the street cable, at the house's
+  street-side connection point. Cable distribution cabinets (KVS) only stand where
+  a feeder splits.
+* ``cabinet`` (Kabelverteilertechnik): the houses are connected from cable
+  distribution cabinets along the feeders. A branch end that supplies a single
+  building at most ``CABINET_SPACING_M`` beyond the connection point before it gets
+  no feeder: that building is connected from the cabinet before it. The remaining
+  feeder tree gets a cabinet at every split point, at every branch end and wherever
+  a feeder has run ``CABINET_SPACING_M`` without one (at the next connection
+  point). The feeder
+  cable runs from cabinet to cabinet and may change at every cabinet. Each house
+  gets its own cable from the nearer of the cabinet (or station) before and the
+  cabinet after its connection point; it follows the street alongside the feeder
+  and is sized like any service cable below, so long connections can get a larger
+  cross-section. The cabinets are stored in ``split_points`` with ``split_type``
+  ``feeder_split_topology``, ``end_cabinet`` or ``added_cabinet``.
+
+The feeder voltage-drop limit then applies up to the cabinets, the service limit
+to the house-connection cables.
+
 Service-cable sizing
 --------------------
 

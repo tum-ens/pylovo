@@ -36,6 +36,12 @@ is connected behind them:
       ``MAX_PARALLEL_FEEDER_CABLES``), and only when no such upgrade helps any
       more, larger conductors from ``FEEDER_CABLES``.
 
+With ``HOUSE_CONNECTION: cabinet`` (Kabelverteilertechnik), :func:`plan_cabinets` turns the planned
+tree into a tree of cable distribution cabinets before sizing: cabinets at the split points, at
+the branch ends and wherever a feeder has run ``CABINET_SPACING_M`` without one. The feeder cable
+then runs from cabinet to cabinet, every cabinet may change the cable, and each building is
+connected by its own cable from the nearest cabinet (or the station) along the feeder.
+
 Coincident loads come from :func:`pylovo.utils.simultaneous_peak_load` over all
 planning nodes downstream of an edge. Nothing here creates backend components or
 database rows; the only database access is the optional path lookup passed in
@@ -283,6 +289,134 @@ def split_visualization_edges(branches: list[FeederBranch], transformer_node: in
     return split_edges
 
 
+#: ``split_type`` of the cabinets in ``pylovo.split_points``.
+CABINET_KINDS = ("feeder_split_topology", "end_cabinet", "added_cabinet")
+
+
+@dataclass
+class CabinetPlan:
+    """The cable distribution cabinets of one grid (``HOUSE_CONNECTION: cabinet``, result of :func:`plan_cabinets`).
+
+    Attributes:
+        branches: One branch per cabinet, attached to the next cabinet towards the
+            transformer (or to the transformer); the tree that is sized and built.
+        cabinet_by_node: For every planned connection node, the cabinet (or the
+            transformer vertex) its buildings are connected from.
+        kind_by_cabinet: ``feeder_split_topology`` (the feeder splits), ``end_cabinet``
+            (end of a branch) or ``added_cabinet`` (``CABINET_SPACING_M``).
+    """
+
+    branches: list[FeederBranch]
+    cabinet_by_node: dict[int, int]
+    kind_by_cabinet: dict[int, str]
+
+
+def plan_cabinets(
+    branches: list[FeederBranch],
+    transformer_node: int,
+    distance_m_by_node: dict[int, float],
+    spacing_m: float,
+    buildings_by_node: dict[int, int],
+) -> CabinetPlan:
+    """Place the cabinets of a cabinet network on the planned feeder tree.
+
+    A branch end that supplies a single building at most ``spacing_m`` beyond the node
+    before it gets no feeder and no cabinet: that building is connected from the cabinet
+    (or station) before it. On the remaining tree, cabinets stand at every split point,
+    at every branch end and, walking outwards, at the first connection node at least
+    ``spacing_m`` of cable beyond the last cabinet (or the station). Every other
+    connection node is served from the nearer of the cabinet (or station) before it and
+    the cabinet after it along the feeder; equal distances go to the one before.
+
+    Args:
+        branches: Result of :func:`plan_feeder_branches`.
+        transformer_node: Transformer vertex.
+        distance_m_by_node: Routed distance from the transformer in m.
+        spacing_m: Longest feeder cable without a cabinet.
+        buildings_by_node: Buildings planned at each connection node.
+    """
+    def distance(node: int) -> float:
+        return 0.0 if node == transformer_node else float(distance_m_by_node[node])
+
+    children_by_node: dict[int, list[int]] = {}
+    parent_by_node: dict[int, int] = {}
+    for parent, child in feeder_tree_edges(branches, transformer_node):
+        children_by_node.setdefault(parent, []).append(child)
+        parent_by_node[child] = parent
+
+    # Single-building branch ends hang on the cabinet before them instead of getting a feeder
+    # (unless that would leave no feeder at all).
+    house_cable_ends = [
+        node for node, parent in parent_by_node.items()
+        if not children_by_node.get(node) and buildings_by_node.get(node, 0) <= 1
+        and distance(node) - distance(parent) <= spacing_m
+    ]
+    if len(house_cable_ends) == len(parent_by_node):
+        house_cable_ends = []
+    for node in house_cable_ends:
+        children_by_node[parent_by_node[node]].remove(node)
+
+    kind_by_cabinet: dict[int, str] = {}
+    for node in parent_by_node.keys() - set(house_cable_ends):
+        children = children_by_node.get(node, [])
+        if len(children) > 1:
+            kind_by_cabinet[node] = "feeder_split_topology"
+        elif not children:
+            kind_by_cabinet[node] = "end_cabinet"
+
+    # Walk outwards from the station: anchor = distance of the last cabinet at or before a node.
+    anchor = {transformer_node: 0.0}
+    stack = [transformer_node]
+    while stack:
+        parent = stack.pop()
+        for child in children_by_node.get(parent, []):
+            if child not in kind_by_cabinet and distance(child) - anchor[parent] >= spacing_m:
+                kind_by_cabinet[child] = "added_cabinet"
+            anchor[child] = distance(child) if child in kind_by_cabinet else anchor[parent]
+            stack.append(child)
+
+    def upstream_cabinet(node: int) -> int:
+        parent = parent_by_node[node]
+        while parent != transformer_node and parent not in kind_by_cabinet:
+            parent = parent_by_node[parent]
+        return parent
+
+    cabinet_by_node: dict[int, int] = {node: node for node in kind_by_cabinet}
+    cabinet_by_node.update({node: upstream_cabinet(node) for node in house_cable_ends})
+    for branch in branches:
+        for node in map(int, branch.nodes):
+            if node == transformer_node:
+                cabinet_by_node[node] = transformer_node
+            elif node not in cabinet_by_node:
+                before = upstream_cabinet(node)
+                after = node
+                while after not in kind_by_cabinet:
+                    after = children_by_node[after][0]   # not a cabinet: exactly one child
+                closer_after = distance(after) - distance(node) < distance(node) - distance(before)
+                cabinet_by_node[node] = after if closer_after else before
+
+    cabinets = sorted(kind_by_cabinet, key=lambda node: (distance(node), node))
+    cabinet_branches = [
+        FeederBranch(index=index, nodes=[cabinet], attachment_node=upstream_cabinet(cabinet))
+        for index, cabinet in enumerate(cabinets)
+    ]
+    return CabinetPlan(branches=cabinet_branches, cabinet_by_node=cabinet_by_node, kind_by_cabinet=kind_by_cabinet)
+
+
+def cabinet_buildings(buildings_df: pd.DataFrame, cabinet_by_node: dict[int, int]) -> pd.DataFrame:
+    """A copy of ``buildings_df`` planned at the cabinet that serves each building.
+
+    The feeder tree of a cabinet network ends at the cabinets, so its coincident
+    loads and voltage-drop nodes are the cabinets: every building's planning node
+    (``agg_connection_point``) becomes its cabinet.
+    """
+    planned = buildings_df.copy()
+    planned["agg_connection_point"] = [
+        cabinet_by_node.get(int(node), int(node)) for node in utils.planning_nodes(buildings_df)
+    ]
+    return planned
+
+
 # =============================================================================
 # 2. Sizing
 # =============================================================================
@@ -295,6 +429,7 @@ def size_feeder_tree(
     consumer_df: pd.DataFrame,
     logger: logging.Logger,
     plz: int,
+    hard_nodes: Sequence[int] = (),
 ) -> FeederDesign:
     """Choose the feeder cable of every edge of the planned feeder tree.
 
@@ -311,6 +446,8 @@ def size_feeder_tree(
         consumer_df: Consumer categories with simultaneity factors.
         logger: Logger for the sizing summary and warnings.
         plz: Postcode, only used in log messages.
+        hard_nodes: Further nodes where a section ends, so the cable may change there
+            (the cabinets of :func:`plan_cabinets`).
 
     Returns:
         The feeder design.
@@ -326,7 +463,7 @@ def size_feeder_tree(
         children_by_node.setdefault(parent, []).append(child)
 
     downstream_nodes_by_node = _downstream_nodes(children_by_node, transformer_node)
-    sections_by_key = group_edges_into_sections(children_by_node, transformer_node)
+    sections_by_key = group_edges_into_sections(children_by_node, transformer_node, hard_nodes)
     section_by_edge = {
         edge: int(section_id)
         for section_id, section_edges in sections_by_key.items()
@@ -493,17 +630,19 @@ def size_feeder_tree(
 def group_edges_into_sections(
     children_by_node: dict[int, list[int]],
     transformer_node: int,
+    extra_hard_nodes: Sequence[int] = (),
 ) -> dict[int, list[Edge]]:
     """Group the directed feeder edges into sections between hard nodes.
 
-    Hard nodes are the transformer and every node with more than one child. A
-    section starts at a hard node and follows single-child nodes until it reaches
-    a hard node or a leaf. Sections are numbered by ascending hard node id.
+    Hard nodes are the transformer, every node with more than one child and the
+    ``extra_hard_nodes``. A section starts at a hard node and follows single-child
+    nodes until it reaches a hard node or a leaf. Sections are numbered by ascending
+    hard node id.
 
     Returns:
         ``{section id: edges from the hard node outwards}``.
     """
-    hard_nodes = {transformer_node}
+    hard_nodes = {transformer_node, *(int(node) for node in extra_hard_nodes)}
     hard_nodes.update(
         parent for parent, children in children_by_node.items() if len(children) > 1
     )

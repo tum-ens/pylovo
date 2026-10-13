@@ -505,97 +505,175 @@ class CableInstaller:
             start_node_geodata = self._get_line_node_coordinates(start_vid, f"Connection Nodebus {start_vid}")
             end_node_geodata = self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}")
             line_geodata = [start_node_geodata, end_node_geodata]
-
-            length_km = self._service_line_length_km(line_geodata)
-            sim_load = service_design_load_per_consumer[end_vid]
-            Imax = design_current_ka(sim_load)
-
-            connection_available_cables = self._consumer_connection_cables
-            # Direct transformer connection point may use feeder cables as well.
-            if start_vid == ont_vertice:
-                connection_available_cables = list(dict.fromkeys(
-                    self._consumer_connection_cables + self._feeder_available_cables
-                ))
-
-            design = self.select_service_cable_design(Imax, length_km, connection_available_cables)
-            cable = design["cable"]
-            count = design["parallel"]
-            length_review = bool(length_km * 1000 > SERVICE_LENGTH_REVIEW_THRESHOLD_M)
-            feeder_drop_percent = None
-            if feeder_voltage_drop_percent_by_node is not None:
-                feeder_drop_percent = feeder_voltage_drop_percent_by_node.get(int(start_vid))
-            total_design_drop_percent = (
-                None
-                if feeder_drop_percent is None
-                else float(feeder_drop_percent + design["selected_drop_percent"])
-            )
-            service_diagnostics.append(
-                {
-                    "consumer_vertex": int(end_vid),
-                    "connection_vertex": int(start_vid),
-                    "length_km": float(length_km),
-                    "ampacity_cable": design["ampacity_cable"],
-                    "selected_cable": cable,
-                    "parallel": int(count),
-                    "ampacity_drop_percent": float(design["ampacity_drop_percent"]),
-                    "selected_drop_percent": float(design["selected_drop_percent"]),
-                    "voltage_drop_limit_met": bool(design["voltage_drop_limit_met"]),
-                    "length_review": length_review,
-                    "total_design_drop_percent": total_design_drop_percent,
-                }
-            )
-
-            if design["sizing_basis"] == "service_voltage_drop":
-                self.logger.info(
-                    f"Upsized service cable to consumer {end_vid} from {design['ampacity_cable']} "
-                    f"to {cable}: local_design_drop={design['ampacity_drop_percent']:.3f}% -> "
-                    f"{design['selected_drop_percent']:.3f}%."
-                )
-            if not design["voltage_drop_limit_met"]:
-                self.logger.warning(
-                    f"Service voltage-drop limit remains violated for consumer {end_vid}: "
-                    f"selected_cable={cable}, selected_drop={design['selected_drop_percent']:.3f}%, "
-                    f"limit={MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT:.3f}%."
-                )
-            if length_review:
-                self.logger.warning(
-                    f"Long service connection flagged for review at consumer {end_vid}: "
-                    f"length={length_km * 1000:.1f} m, "
-                    f"threshold={SERVICE_LENGTH_REVIEW_THRESHOLD_M:.1f} m."
-                )
-
-            material_length_by_cable_km[cable] += count * length_km
-
-            line_spec = LineSpec(
-                name=f"Line to {end_vid}",
-                bus1=self._node_bus(start_vid),
-                bus2=f"Consumer Nodebus {end_vid}",
-                cable_name=cable,
-                length_km=length_km,
-                parallel=count,
-                coordinates=line_geodata,
-                service_sizing_basis=design["sizing_basis"],
-                ampacity_std_type=design["ampacity_cable"],
-                ampacity_parallel=design["ampacity_parallel"],
-                service_ampacity_voltage_drop_percent=design["ampacity_drop_percent"],
-                service_selected_voltage_drop_percent=design["selected_drop_percent"],
-                service_voltage_drop_limit_met=design["voltage_drop_limit_met"],
-                service_length_review=length_review,
-                total_design_voltage_drop_percent=total_design_drop_percent,
-            )
-            self.backend.create_component(line_spec)
-
-            line_name = f"L{end_vid}"[:15]
-            self._queue_line(
-                geom=line_geodata, line_name=line_name,
-                std_type=cable,
-                from_bus=start_vid,
-                to_bus=end_vid,
-                length_km=length_km,
-                parallel=count,
-            )
+            service_diagnostics.append(self._install_service_line(
+                start_vid, end_vid, line_geodata, self._service_line_length_km(line_geodata), ont_vertice,
+                service_design_load_per_consumer, material_length_by_cable_km, feeder_voltage_drop_percent_by_node,
+            ))
 
         return material_length_by_cable_km, service_diagnostics
+
+    def _install_service_line(
+        self,
+        start_vid: int,
+        end_vid: int,
+        line_geodata: list,
+        length_km: float,
+        ont_vertice: int,
+        service_design_load_per_consumer: dict,
+        material_length_by_cable_km: dict,
+        feeder_voltage_drop_percent_by_node: dict[int, float] | None,
+    ) -> dict:
+        """Size and create the service cable from ``start_vid`` to consumer ``end_vid``; returns its diagnostics.
+
+        Sized by :meth:`select_service_cable_design` for the consumer's local design load
+        over ``length_km``. From the transformer's own vertex the feeder cables are allowed
+        as well. ``material_length_by_cable_km`` is updated in place.
+        """
+        sim_load = service_design_load_per_consumer[end_vid]
+        Imax = design_current_ka(sim_load)
+
+        connection_available_cables = self._consumer_connection_cables
+        # Direct transformer connection point may use feeder cables as well.
+        if start_vid == ont_vertice:
+            connection_available_cables = list(dict.fromkeys(
+                self._consumer_connection_cables + self._feeder_available_cables
+            ))
+
+        design = self.select_service_cable_design(Imax, length_km, connection_available_cables)
+        cable = design["cable"]
+        count = design["parallel"]
+        length_review = bool(length_km * 1000 > SERVICE_LENGTH_REVIEW_THRESHOLD_M)
+        feeder_drop_percent = None
+        if feeder_voltage_drop_percent_by_node is not None:
+            feeder_drop_percent = feeder_voltage_drop_percent_by_node.get(int(start_vid))
+        total_design_drop_percent = (
+            None
+            if feeder_drop_percent is None
+            else float(feeder_drop_percent + design["selected_drop_percent"])
+        )
+        diagnostics = (
+            {
+                "consumer_vertex": int(end_vid),
+                "connection_vertex": int(start_vid),
+                "length_km": float(length_km),
+                "ampacity_cable": design["ampacity_cable"],
+                "selected_cable": cable,
+                "parallel": int(count),
+                "ampacity_drop_percent": float(design["ampacity_drop_percent"]),
+                "selected_drop_percent": float(design["selected_drop_percent"]),
+                "voltage_drop_limit_met": bool(design["voltage_drop_limit_met"]),
+                "length_review": length_review,
+                "total_design_drop_percent": total_design_drop_percent,
+            }
+        )
+
+        if design["sizing_basis"] == "service_voltage_drop":
+            self.logger.info(
+                f"Upsized service cable to consumer {end_vid} from {design['ampacity_cable']} "
+                f"to {cable}: local_design_drop={design['ampacity_drop_percent']:.3f}% -> "
+                f"{design['selected_drop_percent']:.3f}%."
+            )
+        if not design["voltage_drop_limit_met"]:
+            self.logger.warning(
+                f"Service voltage-drop limit remains violated for consumer {end_vid}: "
+                f"selected_cable={cable}, selected_drop={design['selected_drop_percent']:.3f}%, "
+                f"limit={MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT:.3f}%."
+            )
+        if length_review:
+            self.logger.warning(
+                f"Long service connection flagged for review at consumer {end_vid}: "
+                f"length={length_km * 1000:.1f} m, "
+                f"threshold={SERVICE_LENGTH_REVIEW_THRESHOLD_M:.1f} m."
+            )
+
+        material_length_by_cable_km[cable] += count * length_km
+
+        line_spec = LineSpec(
+            name=f"Line to {end_vid}",
+            bus1=self._node_bus(start_vid),
+            bus2=f"Consumer Nodebus {end_vid}",
+            cable_name=cable,
+            length_km=length_km,
+            parallel=count,
+            coordinates=line_geodata,
+            service_sizing_basis=design["sizing_basis"],
+            ampacity_std_type=design["ampacity_cable"],
+            ampacity_parallel=design["ampacity_parallel"],
+            service_ampacity_voltage_drop_percent=design["ampacity_drop_percent"],
+            service_selected_voltage_drop_percent=design["selected_drop_percent"],
+            service_voltage_drop_limit_met=design["voltage_drop_limit_met"],
+            service_length_review=length_review,
+            total_design_voltage_drop_percent=total_design_drop_percent,
+        )
+        self.backend.create_component(line_spec)
+
+        line_name = f"L{end_vid}"[:15]
+        self._queue_line(
+            geom=line_geodata, line_name=line_name,
+            std_type=cable,
+            from_bus=start_vid,
+            to_bus=end_vid,
+            length_km=length_km,
+            parallel=count,
+        )
+
+        return diagnostics
+
+    def install_cabinet_service_cables(self, plz: int, bcid: int, kcid: int,
+                                       cabinet_by_node: dict[int, int],
+                                       ont_vertice: int, vertices_dict: dict,
+                                       service_design_load_per_consumer: dict,
+                                       material_length_by_cable_km: dict,
+                                       feeder_voltage_drop_percent_by_node: dict[int, float] | None = None,
+                                       ) -> tuple[dict, list[dict]]:
+        """Install the house-connection cables of a cabinet network (``HOUSE_CONNECTION: cabinet``).
+
+        Every consumer gets its own cable from the cabinet (or the station) that serves its
+        connection node (``cabinet_by_node``, see :func:`pylovo.feeder_planning.plan_cabinets`).
+        The cable follows the street from the cabinet to the connection node, alongside the
+        feeder, and then runs to the building; its length is the routed distance between the
+        cabinet and the node plus the straight connection to the building. Sizing as in
+        :meth:`install_consumer_cables`.
+
+        Returns:
+            ``(material_length_by_cable_km, service_diagnostics)``.
+        """
+        nodes = sorted(cabinet_by_node)
+        if self._consumer_connection_mapping is None:
+            consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(nodes)
+        else:
+            consumer_connections = [
+                (node, int(consumer_vertex))
+                for node in nodes
+                for consumer_vertex in self._consumer_connection_mapping.get(int(node), [])
+            ]
+        service_diagnostics = []
+        for node, end_vid in consumer_connections:
+            node = int(node)
+            if node not in vertices_dict or end_vid not in vertices_dict:
+                continue
+            cabinet = int(cabinet_by_node[node])
+            path = self._cabinet_path(cabinet, node)
+            line_geodata = [self._get_line_node_coordinates(vertex, f"Connection Nodebus {vertex}") for vertex in path]
+            if cabinet == ont_vertice:
+                line_geodata[0] = self._get_transformer_visual_coordinates(plz, kcid, bcid)
+            end_node_geodata = self._get_line_node_coordinates(end_vid, f"Consumer Nodebus {end_vid}")
+            street_km = abs(vertices_dict.get(node, 0.0) - (0.0 if cabinet == ont_vertice else vertices_dict[cabinet])) * 1e-3
+            house_km = self._service_line_length_km([line_geodata[-1], end_node_geodata])
+            service_diagnostics.append(self._install_service_line(
+                cabinet, end_vid, line_geodata + [end_node_geodata], street_km + house_km, ont_vertice,
+                service_design_load_per_consumer, material_length_by_cable_km, feeder_voltage_drop_percent_by_node,
+            ))
+        return material_length_by_cable_km, service_diagnostics
+
+    def _cabinet_path(self, cabinet: int, node: int) -> list[int]:
+        """Routed vertices from ``cabinet`` to the connection ``node`` it serves (both included)."""
+        if cabinet == node:
+            return [node]
+        cached = self._paths_to_transformer.get(int(cabinet))
+        if cached is not None and int(node) in cached:      # the cabinet lies behind the node
+            return self._get_path_to_bus(cabinet, node)
+        return list(reversed(self._get_path_to_bus(node, cabinet)))   # the cabinet lies before the node
 
     def _queue_line(
         self,

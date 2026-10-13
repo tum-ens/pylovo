@@ -305,6 +305,14 @@ FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
 FEEDER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("FEEDER_PLANNING_UTILIZATION", 1.0))
 if not FEEDER_PLANNING_UTILIZATION > 0:
     raise ValueError(f"FEEDER_PLANNING_UTILIZATION must be positive, got {FEEDER_PLANNING_UTILIZATION}")
+# House-connection technique: "joint" (tee joints on the street cable, cabinets only at split points) or
+# "cabinet" (houses connected from cable distribution cabinets along the feeders, CABINET_SPACING_M apart at most).
+HOUSE_CONNECTION = str(CONFIG_GENERATION.get("HOUSE_CONNECTION", "joint"))
+if HOUSE_CONNECTION not in ("joint", "cabinet"):
+    raise ValueError(f"HOUSE_CONNECTION must be 'joint' or 'cabinet', got {HOUSE_CONNECTION!r}")
+CABINET_SPACING_M = float(CONFIG_GENERATION.get("CABINET_SPACING_M", 100))
+if not CABINET_SPACING_M > 0:
+    raise ValueError(f"CABINET_SPACING_M must be positive, got {CABINET_SPACING_M}")
 # Standard feeder cable, laid in parallel for load and voltage before larger cables are used; None = smallest sufficient design (previous behaviour).
 FEEDER_STANDARD_CABLE = CONFIG_GENERATION.get("FEEDER_STANDARD_CABLE")
 if FEEDER_STANDARD_CABLE is not None and FEEDER_STANDARD_CABLE not in set(FEEDER_CABLES["name"]):

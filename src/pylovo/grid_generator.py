@@ -33,6 +33,7 @@ from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo import utils
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
+    CABINET_SPACING_M,
     CLASSIFICATION_VERSION,
     CONFIG_EQUIPMENT_DATA,
     CONFIG_GENERATION,
@@ -45,6 +46,7 @@ from pylovo.config_loader import (
     GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
     GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
     GREENFIELD_TRAFO_POSITION_TOLERANCE,
+    HOUSE_CONNECTION,
     K_MEANS_SEED,
     LOG_LEVEL,
     LV_REFERENCE_VOLTAGE_PU,
@@ -1379,11 +1381,33 @@ class GridGenerator:
                 context=(self.plz, kcid, bcid),
             )
 
+            # First finalize the split topology. In a cabinet network the feeders then run
+            # from cabinet to cabinet and every building gets its own cable from its cabinet.
+            branches = feeder_planning.plan_feeder_branches(
+                connection_nodes,
+                vertices_dict,
+                ont_vertice,
+                self._path_to_transformer_lookup(paths_to_transformer, ont_vertice),
+                buildings_df,
+                consumer_df,
+                self.logger,
+            )
+            cabinet_plan = None
+            feeder_branches, feeder_buildings, feeder_nodes = branches, buildings_df, connection_nodes
+            if HOUSE_CONNECTION == "cabinet":
+                buildings_by_node = utils.planning_nodes(buildings_df).dropna().astype(int).value_counts().to_dict()
+                cabinet_plan = feeder_planning.plan_cabinets(
+                    branches, ont_vertice, vertices_dict, CABINET_SPACING_M, buildings_by_node
+                )
+                feeder_branches = cabinet_plan.branches
+                feeder_buildings = feeder_planning.cabinet_buildings(buildings_df, cabinet_plan.cabinet_by_node)
+                feeder_nodes = sorted(cabinet_plan.kind_by_cabinet)
+
             # Create network components (the backend creates them in batches)
             with backend.batch():
                 installer.create_lvmv_bus(self.plz, kcid, bcid)
                 installer.create_transformer(self.plz, kcid, bcid)
-                installer.create_connection_bus(connection_nodes, station_vertex=ont_vertice)
+                installer.create_connection_bus(feeder_nodes, station_vertex=ont_vertice)
                 installer.create_consumer_bus_and_load(
                     consumer_list, powerflow_snapshot_components
                 )
@@ -1394,33 +1418,25 @@ class GridGenerator:
                 f"transformer_rated_power={transformer_rated_power} kVA)"
             )
 
-            # First finalize the split topology, then size every feeder segment on
-            # the resulting tree so shared prefixes carry the full downstream load.
-            branches = feeder_planning.plan_feeder_branches(
-                connection_nodes,
-                vertices_dict,
-                ont_vertice,
-                self._path_to_transformer_lookup(paths_to_transformer, ont_vertice),
-                buildings_df,
-                consumer_df,
-                self.logger,
-            )
+            # Size every feeder segment on the finalized tree so shared prefixes carry
+            # the full downstream load; in a cabinet network the cable may change at every cabinet.
             feeder_design = feeder_planning.size_feeder_tree(
                 installer,
-                branches,
+                feeder_branches,
                 ont_vertice,
                 vertices_dict,
-                buildings_df,
+                feeder_buildings,
                 consumer_df,
                 self.logger,
                 self.plz,
+                hard_nodes=list(cabinet_plan.kind_by_cabinet) if cabinet_plan else (),
             )
             with backend.batch():
                 material_length_by_cable_km = self._install_feeder_lines(
                     installer,
-                    branches,
+                    feeder_branches,
                     feeder_design,
-                    buildings_df,
+                    feeder_buildings,
                     consumer_df,
                     vertices_dict,
                     ont_vertice,
@@ -1430,7 +1446,19 @@ class GridGenerator:
                 )
 
                 service_diagnostics = []
-                for branch in branches:
+                if cabinet_plan is not None:
+                    material_length_by_cable_km, service_diagnostics = installer.install_cabinet_service_cables(
+                        self.plz,
+                        bcid,
+                        kcid,
+                        cabinet_plan.cabinet_by_node,
+                        ont_vertice,
+                        vertices_dict,
+                        service_design_load_per_consumer,
+                        material_length_by_cable_km,
+                        feeder_design.drop_percent_by_node,
+                    )
+                for branch in branches if cabinet_plan is None else []:
                     material_length_by_cable_km, branch_service_diagnostics = (
                         installer.install_consumer_cables(
                             self.plz,
@@ -1452,7 +1480,7 @@ class GridGenerator:
             installer.flush_line_records(self.plz, kcid, bcid)
 
             split_visualization_edges = feeder_planning.split_visualization_edges(
-                branches, ont_vertice
+                feeder_branches, ont_vertice
             )
             bcid_token = f"neg_{abs(int(bcid))}" if int(bcid) < 0 else str(int(bcid))
             savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid_token}"
@@ -1472,6 +1500,7 @@ class GridGenerator:
                     kcid,
                     bcid,
                     split_visualization_nodes,
+                    cabinet_plan.kind_by_cabinet if cabinet_plan is not None else None,
                 )
                 self.dbc.rebuild_lines_result_view_for_grid(self.plz, kcid, bcid)
                 self.dbc.cur.execute(f"RELEASE SAVEPOINT {savepoint_name}")
