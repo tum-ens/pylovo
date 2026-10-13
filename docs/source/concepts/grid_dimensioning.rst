@@ -168,6 +168,14 @@ stations: the feeders keep a capacity reserve; 1.0 uses the full ampacity). The
 parallel count increases only when no single configured feeder cable has
 sufficient ampacity. The voltage-drop check below uses the design current itself.
 
+Many DSOs instead lay one standard cross-section throughout their LV network
+(Regelquerschnitt, typically NAYY 4x150) and add parallel cables of the same
+type where it is not enough. ``FEEDER_STANDARD_CABLE`` models this practice:
+every feeder section gets that cable, laid in parallel up to
+``MAX_PARALLEL_FEEDER_CABLES`` times (default 4). Only a section that needs
+more gets the cheapest larger cable from ``FEEDER_CABLES``, with as few parallel
+cables as possible and at most that many.
+
 End-to-end feeder voltage-drop check
 ------------------------------------
 
@@ -194,8 +202,11 @@ selection. It is a diagnostic operating point, while the asset-specific
 coincidence calculation is the planning basis.
 
 If a path exceeds the configured limit, pylovo can increase conductor size
-within the ampacity-required parallel count. It does not add voltage-driven
-parallel circuits. Upgrades are chosen greedily: in each iteration the section
+within the ampacity-required parallel count. Without a standard cable it does
+not add voltage-driven parallel circuits. With ``FEEDER_STANDARD_CABLE`` it
+first adds parallel standard cables, up to ``MAX_PARALLEL_FEEDER_CABLES``, and
+uses larger conductors from ``FEEDER_CABLES`` only when no such upgrade helps
+any more. Upgrades are chosen greedily: in each iteration the section
 upgrade with the largest reduction of the remaining limit violations per
 additional cable cost is applied, until every path meets the limit or no
 lower-impedance option is left. If the largest available conductor cannot satisfy the limit,

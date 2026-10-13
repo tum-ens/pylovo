@@ -31,7 +31,7 @@ CONSUMER_CATEGORIES:
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
 
-# Voltage planning may upsize conductors, but parallel counts remain determined by ampacity.
+# Voltage planning may upsize conductors at the ampacity's parallel count; with FEEDER_STANDARD_CABLE it adds parallel standard cables first.
 
 # Max. approximate voltage drop from the transformer LV bus to any service connection point.
 MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT: 5 # With the service limit the 6 % LV share of the band split (LV busbar at LV_REFERENCE_VOLTAGE_PU 0.96 p.u. down to MIN_VM_PU 0.90 p.u.)
@@ -53,6 +53,13 @@ MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
 # Planned coincident current / ampacity of the feeder cable design, as for the transformers (cable sizing only; voltage drops use the current itself)
 FEEDER_PLANNING_UTILIZATION: 0.8
+
+# Standard feeder cable (Standardkabel, Regelquerschnitt), e.g. NAYY_4_150: every feeder section uses it, laid in parallel
+# (Parallelkabel) when one is not enough, for the load and for the voltage drop. Only beyond MAX_PARALLEL_FEEDER_CABLES are
+# larger cables from FEEDER_CABLES used. null = the cheapest sufficient cable from FEEDER_CABLES (larger cross-sections before parallel cables).
+FEEDER_STANDARD_CABLE: null
+# Most parallel standard cables per feeder section (only with FEEDER_STANDARD_CABLE)
+MAX_PARALLEL_FEEDER_CABLES: 4
 
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 

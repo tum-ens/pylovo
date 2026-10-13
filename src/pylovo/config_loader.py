@@ -305,6 +305,14 @@ FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
 FEEDER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("FEEDER_PLANNING_UTILIZATION", 1.0))
 if not FEEDER_PLANNING_UTILIZATION > 0:
     raise ValueError(f"FEEDER_PLANNING_UTILIZATION must be positive, got {FEEDER_PLANNING_UTILIZATION}")
+# Standard feeder cable, laid in parallel for load and voltage before larger cables are used; None = smallest sufficient design (previous behaviour).
+FEEDER_STANDARD_CABLE = CONFIG_GENERATION.get("FEEDER_STANDARD_CABLE")
+if FEEDER_STANDARD_CABLE is not None and FEEDER_STANDARD_CABLE not in set(FEEDER_CABLES["name"]):
+    raise ValueError(f"FEEDER_STANDARD_CABLE must name a FEEDER_CABLES entry, got {FEEDER_STANDARD_CABLE!r}")
+# Most parallel standard cables per feeder section (only used with FEEDER_STANDARD_CABLE).
+MAX_PARALLEL_FEEDER_CABLES = int(CONFIG_GENERATION.get("MAX_PARALLEL_FEEDER_CABLES", 4))
+if MAX_PARALLEL_FEEDER_CABLES < 1:
+    raise ValueError(f"MAX_PARALLEL_FEEDER_CABLES must be at least 1, got {MAX_PARALLEL_FEEDER_CABLES}")
 
 # End-to-end transformer-to-connection-point feeder voltage-drop planning envelope.
 MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[

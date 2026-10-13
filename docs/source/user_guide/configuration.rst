@@ -233,6 +233,20 @@ Loads and general grid settings
        leaves on cables (a maximum planned line utilisation of 80 %); voltage drops are still
        computed at *I*. ``1.0`` sizes at the full ampacity (the behaviour before the key existed).
      - ✓
+   * - ``FEEDER_STANDARD_CABLE``
+     - ``null``
+     - Standard feeder cable (Standardkabel, Regelquerschnitt), a name from ``FEEDER_CABLES``
+       such as ``NAYY_4_150``. Every feeder section uses it, laid in parallel (Parallelkabel)
+       when one is not enough, for the load and for the voltage drop; larger cables from
+       ``FEEDER_CABLES`` only beyond ``MAX_PARALLEL_FEEDER_CABLES``. Many DSOs plan their LV
+       networks this way. ``null`` picks the cheapest sufficient cable from ``FEEDER_CABLES``
+       (larger cross-sections before parallel cables).
+     - ✓
+   * - ``MAX_PARALLEL_FEEDER_CABLES``
+     - ``4``
+     - Most parallel standard cables per feeder section, only used with
+       ``FEEDER_STANDARD_CABLE``.
+     - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - ``0.850``
      - Topology parameter: maximum coincident current (kA) while connection points are grouped

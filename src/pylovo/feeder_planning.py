@@ -18,16 +18,23 @@ is connected behind them:
    transformer. It is cut into sections between hard nodes (the transformer and
    every node with more than one child) and each section gets one conductor:
 
-   a. *ampacity*: the smallest design (fewest parallel cables, then the cheapest
-      cable, then the smallest cross-section) that carries the largest coincident
-      current of the section divided by ``FEEDER_PLANNING_UTILIZATION`` (the
-      planned share of the cable ampacity, as ``TRANSFORMER_PLANNING_UTILIZATION``
-      is for stations);
+   a. *ampacity*: the design that carries the largest coincident current of the
+      section divided by ``FEEDER_PLANNING_UTILIZATION`` (the planned share of the
+      cable ampacity, as ``TRANSFORMER_PLANNING_UTILIZATION`` is for stations).
+      Without a standard cable it is the smallest design: fewest parallel cables,
+      then the cheapest cable, then the smallest cross-section. With
+      ``FEEDER_STANDARD_CABLE`` it is that cable, laid up to
+      ``MAX_PARALLEL_FEEDER_CABLES`` times in parallel; only if that is not enough,
+      the cheapest larger cable from ``FEEDER_CABLES`` (fewest parallel cables, at
+      most that many);
    b. *voltage drop*: while the approximate drop (at the coincident current itself)
       from the transformer to some load node exceeds
-      ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, apply the
-      conductor upgrade (same parallel count) with the largest reduction of the
-      excess drops per euro of extra cable cost.
+      ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, apply the upgrade with the
+      largest reduction of the excess drops per euro of extra cable cost. Without a
+      standard cable an upgrade is a larger conductor at the same parallel count.
+      With one, it first adds parallel standard cables (up to
+      ``MAX_PARALLEL_FEEDER_CABLES``), and only when no such upgrade helps any
+      more, larger conductors from ``FEEDER_CABLES``.
 
 Coincident loads come from :func:`pylovo.utils.simultaneous_peak_load` over all
 planning nodes downstream of an edge. Nothing here creates backend components or
@@ -48,7 +55,9 @@ from pylovo.config_loader import (
     DEFAULT_POWER_FACTOR,
     FEEDER_PLANNING_UTILIZATION,
     FEEDER_SPLIT_MAX_CURRENT_KA,
+    FEEDER_STANDARD_CABLE,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
+    MAX_PARALLEL_FEEDER_CABLES,
     MIN_SHARED_PREFIX_LENGTH_M,
     VN,
 )
@@ -383,16 +392,11 @@ def size_feeder_tree(
         node: _section_factors(path_by_node[node], section_by_edge, edge_factor)
         for node in assessment_nodes
     }
-    upgrade_options_by_section = {
-        section_id: [
-            option
-            for option in installer.get_feeder_cable_options(
-                design["design_current_ka"] / FEEDER_PLANNING_UTILIZATION, design["ampacity"]["parallel"]
-            )
-            if option["parallel"] == design["ampacity"]["parallel"]
-        ]
-        for section_id, design in section_designs.items()
-    }
+    # Two stages of upgrade options per section (see _voltage_upgrade_options).
+    upgrade_stages = [{}, {}]
+    for section_id, design in section_designs.items():
+        for stage, options in zip(upgrade_stages, _voltage_upgrade_options(installer, design)):
+            stage[section_id] = options
 
     initial_path_drops = _path_drops_percent()
     voltage_upgrade_iterations = 0
@@ -406,9 +410,13 @@ def size_feeder_tree(
         if not violations:
             break
 
-        upgrade = _best_voltage_upgrade(
-            section_designs, upgrade_options_by_section, violations, section_factors_by_node
-        )
+        upgrade = None
+        for upgrade_options_by_section in upgrade_stages:
+            upgrade = _best_voltage_upgrade(
+                section_designs, upgrade_options_by_section, violations, section_factors_by_node
+            )
+            if upgrade is not None:
+                break
         if upgrade is None:
             logger.warning(
                 "Could not satisfy the end-to-end feeder voltage-drop envelope because no "
@@ -446,9 +454,10 @@ def size_feeder_tree(
             f"Feeder planning voltage-drop envelope remains violated for plz={plz}: "
             f"selected_max_drop_percent={final_max_drop_percent:.3f}, "
             f"limit_percent={MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT:.3f}. "
-            "Every remaining useful section is already at the largest configured conductor "
-            "for its ampacity-required parallel count; topology or transformer placement "
-            "would have to change."
+            "Every remaining useful section is already at the lowest-impedance design allowed "
+            "(the largest configured conductor at its ampacity-required parallel count, or "
+            "MAX_PARALLEL_FEEDER_CABLES with a standard cable); topology or transformer "
+            "placement would have to change."
         )
 
     cable_by_edge: dict[Edge, tuple[str, int]] = {}
@@ -592,12 +601,7 @@ def _ampacity_designs(
             edge_current_ka[(parent, child)] = edge_Imax
 
         planned_Imax = section_Imax / FEEDER_PLANNING_UTILIZATION
-        cable, count = installer.find_minimal_available_cable(planned_Imax)
-        matching_option = next(
-            option
-            for option in installer.get_feeder_cable_options(planned_Imax, count)
-            if option["cable"] == cable and option["parallel"] == count
-        )
+        matching_option = _ampacity_option(installer, planned_Imax)
         section_designs[int(section_id)] = {
             "edges": list(section_edges),
             "length_km": section_distance * 1e-3,
@@ -607,6 +611,55 @@ def _ampacity_designs(
         }
 
     return section_designs, edge_current_ka
+
+
+def _ampacity_option(installer: CableInstaller, planned_current_ka: float) -> dict:
+    """The ampacity design of a section for its planned current (see module docstring, step 2a).
+
+    With ``FEEDER_STANDARD_CABLE`` it is the fewest parallel standard cables up to
+    ``MAX_PARALLEL_FEEDER_CABLES``; if they are not enough, the design with the fewest
+    parallel cables (at most that many), then the cheapest cable, then the smallest
+    cross-section; if even that fails, the unbounded rule without a standard cable.
+    """
+    if FEEDER_STANDARD_CABLE is not None:
+        options = installer.get_feeder_cable_options(planned_current_ka, MAX_PARALLEL_FEEDER_CABLES)
+        standard = [option for option in options if option["cable"] == FEEDER_STANDARD_CABLE]
+        if standard:
+            return min(standard, key=lambda option: option["parallel"])
+        if options:
+            return min(options, key=lambda option: (option["parallel"], option["cost_eur_per_m"], option["q_mm2"]))
+    cable, count = installer.find_minimal_available_cable(planned_current_ka)
+    return next(
+        option
+        for option in installer.get_feeder_cable_options(planned_current_ka, count)
+        if option["cable"] == cable and option["parallel"] == count
+    )
+
+
+def _voltage_upgrade_options(installer: CableInstaller, design: dict) -> tuple[list[dict], list[dict]]:
+    """The voltage upgrade options of a section in two stages, the second used only when the first cannot help.
+
+    Without ``FEEDER_STANDARD_CABLE``: larger conductors at the ampacity's parallel count, no second stage.
+    With it: (1) more parallel standard cables, up to ``MAX_PARALLEL_FEEDER_CABLES``, if the section is a
+    standard-cable section; (2) the other cables of ``FEEDER_CABLES`` with at most that many in parallel.
+    Every option carries the planned current; ``_best_voltage_upgrade`` keeps the lower-impedance ones.
+    """
+    planned_current_ka = design["design_current_ka"] / FEEDER_PLANNING_UTILIZATION
+    parallel = design["ampacity"]["parallel"]
+    if FEEDER_STANDARD_CABLE is None:
+        same_count = [
+            option for option in installer.get_feeder_cable_options(planned_current_ka, parallel)
+            if option["parallel"] == parallel
+        ]
+        return same_count, []
+    options = installer.get_feeder_cable_options(planned_current_ka, MAX_PARALLEL_FEEDER_CABLES)
+    standard = [
+        option for option in options
+        if option["cable"] == FEEDER_STANDARD_CABLE and design["ampacity"]["cable"] == FEEDER_STANDARD_CABLE
+        and option["parallel"] > parallel
+    ]
+    larger = [option for option in options if option["cable"] != FEEDER_STANDARD_CABLE]
+    return standard, larger
 
 
 def _load_planning_nodes(buildings_df: pd.DataFrame) -> set[int]:
