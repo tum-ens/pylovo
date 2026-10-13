@@ -160,7 +160,8 @@ is the transformer or a branching point. Every edge in one section receives the
 same cable type and parallel count, based initially on the greatest design
 current occurring in that section.
 
-The initial feeder cable is the smallest configured conductor that satisfies
+The initial feeder cable is the lowest-cost configured conductor (the smaller
+cross-section on equal cost, as for service cables) that satisfies
 ampacity for the design current divided by ``FEEDER_PLANNING_UTILIZATION`` (0.8
 in the shipped configuration, as ``TRANSFORMER_PLANNING_UTILIZATION`` for the
 stations: the feeders keep a capacity reserve; 1.0 uses the full ampacity). The

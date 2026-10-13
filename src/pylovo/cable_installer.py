@@ -668,7 +668,8 @@ class CableInstaller:
         """Find the smallest feeder design that meets the ampacity requirement.
 
         The parallel count is increased until some feeder cable carries
-        ``Imax / count``; among those the smallest cross-section is taken.
+        ``Imax / count``; among those the cheapest cable (then the smallest
+        cross-section) is taken, as for service cables.
 
         Args:
             Imax: Design current in kA.
@@ -690,7 +691,7 @@ class CableInstaller:
             if len(current_available_cables) == 0:
                 count += 1
                 continue
-            cable = current_available_cables.sort_values(by=["q_mm2"]).index.tolist()[0]
+            cable = current_available_cables.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
             return cable, count
 
     def create_line_start_to_lv_bus(self, plz: int, bcid: int, kcid: int,

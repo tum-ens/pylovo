@@ -458,8 +458,8 @@ Cable rows have the fields ``name``, ``max_i_a`` (ampacity in A), ``r_mohm_per_k
 ``x_mohm_per_km``, ``z_mohm_per_km`` (mΩ/km), ``cost_eur`` (material cost in EUR/m) and
 ``typ: Cable``. Rules:
 
-* The last ``_``-separated part of the name is the cross-section in mm² (``NAYY_4_150``); it is
-  used to order cables.
+* The last ``_``-separated part of the name is the cross-section in mm² (``NAYY_4_150``); it
+  breaks cost ties when cables are selected.
 * Numeric values are stored as integers; use whole numbers.
 * A cable may be listed in both pools (for example ``NAYY_4_150``). The database keeps one row
   per name, so both entries must have identical values.

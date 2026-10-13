@@ -47,3 +47,17 @@ def test_section_is_sized_for_the_current_over_the_utilization(monkeypatch, util
     assert (design["ampacity"]["cable"], design["ampacity"]["parallel"]) == expected
     assert design["selected"] == design["ampacity"]
     assert design["design_current_ka"] == current_ka == edge_current[(0, 1)]   # voltage drops use the current itself
+
+
+@pytest.mark.parametrize("cost_185, expected", [
+    (20.0, "NAYY_4_185"),   # cheaper than NAYY_4_150
+    (25.0, "NAYY_4_150"),   # equal cost: the smaller cross-section
+])
+def test_the_cheapest_cable_that_carries_the_current_is_taken(cost_185, expected):
+    cables = [(name, r, x, i, cost_185 if name == "NAYY_4_185" else cost) for name, r, x, i, cost in CABLES]
+    installer = CableInstaller(None, None, logging.getLogger("feeder-cost-test"), cables,
+                               pd.DataFrame({"name": [name for name, *_ in cables]}), pd.DataFrame())
+
+    assert installer.find_minimal_available_cable(0.25) == (expected, 1)
+    assert installer.find_minimal_available_cable(0.30) == ("NAYY_4_185", 1)
+    assert installer.find_minimal_available_cable(0.50) == (expected, 2)   # fewest parallel cables first

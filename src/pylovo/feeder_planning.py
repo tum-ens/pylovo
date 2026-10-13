@@ -19,10 +19,11 @@ is connected behind them:
    transformer. It is cut into sections between hard nodes (the transformer and
    every node with more than one child) and each section gets one conductor:
 
-   a. *ampacity*: the smallest design (fewest parallel cables, then the smallest
-      cross-section) that carries the largest coincident current of the section
-      divided by ``FEEDER_PLANNING_UTILIZATION`` (the planned share of the cable
-      ampacity, as ``TRANSFORMER_PLANNING_UTILIZATION`` is for stations);
+   a. *ampacity*: the smallest design (fewest parallel cables, then the cheapest
+      cable, then the smallest cross-section) that carries the largest coincident
+      current of the section divided by ``FEEDER_PLANNING_UTILIZATION`` (the
+      planned share of the cable ampacity, as ``TRANSFORMER_PLANNING_UTILIZATION``
+      is for stations);
    b. *voltage drop*: while the approximate drop (at the coincident current itself)
       from the transformer to some load node exceeds
       ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, apply the
