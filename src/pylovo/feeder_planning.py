@@ -19,7 +19,7 @@ is connected behind them:
    every node with more than one child) and each section gets one conductor:
 
    a. *ampacity*: the design that carries the largest coincident current of the
-      section divided by ``FEEDER_PLANNING_UTILIZATION`` (the planned share of the
+      section divided by ``CABLE_PLANNING_UTILIZATION`` (the planned share of the
       cable ampacity, as ``TRANSFORMER_PLANNING_UTILIZATION`` is for stations).
       Without a standard cable it is the smallest design: fewest parallel cables,
       then the cheapest cable, then the smallest cross-section. With
@@ -58,8 +58,8 @@ import pandas as pd
 from pylovo import utils
 from pylovo.cable_installer import CableInstaller
 from pylovo.config_loader import (
+    CABLE_PLANNING_UTILIZATION,
     DEFAULT_POWER_FACTOR,
-    FEEDER_PLANNING_UTILIZATION,
     FEEDER_SPLIT_MAX_CURRENT_KA,
     FEEDER_STANDARD_CABLE,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
@@ -715,7 +715,7 @@ def _ampacity_designs(
 ) -> tuple[dict[int, dict], dict[Edge, float]]:
     """Size every section for the largest coincident current of its edges.
 
-    The cable design must carry that current divided by ``FEEDER_PLANNING_UTILIZATION``.
+    The cable design must carry that current divided by ``CABLE_PLANNING_UTILIZATION``.
 
     Returns:
         ``(section_designs, edge_current_ka)``. A section design holds ``edges``,
@@ -739,7 +739,7 @@ def _ampacity_designs(
             section_distance += edge_distance
             edge_current_ka[(parent, child)] = edge_Imax
 
-        planned_Imax = section_Imax / FEEDER_PLANNING_UTILIZATION
+        planned_Imax = section_Imax / CABLE_PLANNING_UTILIZATION
         matching_option = _ampacity_option(installer, planned_Imax)
         section_designs[int(section_id)] = {
             "edges": list(section_edges),
@@ -783,7 +783,7 @@ def _voltage_upgrade_options(installer: CableInstaller, design: dict) -> tuple[l
     standard-cable section; (2) the other cables of ``FEEDER_CABLES`` with at most that many in parallel.
     Every option carries the planned current; ``_best_voltage_upgrade`` keeps the lower-impedance ones.
     """
-    planned_current_ka = design["design_current_ka"] / FEEDER_PLANNING_UTILIZATION
+    planned_current_ka = design["design_current_ka"] / CABLE_PLANNING_UTILIZATION
     parallel = design["ampacity"]["parallel"]
     if FEEDER_STANDARD_CABLE is None:
         same_count = [

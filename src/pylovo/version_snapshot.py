@@ -28,6 +28,8 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("transformer_placement", "greenfield_cluster_merge_max_buildings"): None,
     # Before the feeder utilization existed, feeder cables were sized at their full ampacity.
     ("cable_dimensioning", "feeder_planning_utilization"): 1.0,
+    # Before CABLE_PLANNING_UTILIZATION, service cables were always sized at their full ampacity.
+    ("cable_dimensioning", "service_planning_utilization"): 1.0,
     # Before the station voltage existed the MV side was at 1.0 p.u.
     ("power_flow_assessment", "lv_reference_voltage_pu"): None,
     # Before these existed: no standard feeder cable and tee-joint house connections. The parallel

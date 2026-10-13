@@ -51,8 +51,8 @@ TRANSFORMER_PLANNING_UTILIZATION: 0.8
 # Commercial/Public buildings above this peak load are assumed to use a dedicated MV-side connection
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 100
 
-# Planned coincident current / ampacity of the feeder cable design, as for the transformers (cable sizing only; voltage drops use the current itself)
-FEEDER_PLANNING_UTILIZATION: 0.8
+# Planned coincident current / ampacity of the feeder and service cable designs, as for the transformers (cable sizing only; voltage drops use the current itself)
+CABLE_PLANNING_UTILIZATION: 0.8
 
 # How houses are connected to the feeders (Hausanschlusstechnik; "Kabelverteiler- oder Muffenanschluss"):
 #   joint   - Muffentechnik: each house is connected with a tee joint (Abzweigmuffe, T-Muffe) on the street cable;

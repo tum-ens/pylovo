@@ -1,4 +1,4 @@
-"""Feeder cable ampacity sizing with FEEDER_PLANNING_UTILIZATION (``feeder_planning._ampacity_designs``)."""
+"""Feeder cable ampacity sizing with CABLE_PLANNING_UTILIZATION (``feeder_planning._ampacity_designs``)."""
 
 import logging
 
@@ -34,7 +34,7 @@ class CurrentPerNode:
     (0.5, 0.25, ("NAYY_4_150", 2)),   # 0.5 kA: no single cable, two in parallel
 ])
 def test_section_is_sized_for_the_current_over_the_utilization(monkeypatch, utilization, current_ka, expected):
-    monkeypatch.setattr(feeder_planning, "FEEDER_PLANNING_UTILIZATION", utilization)
+    monkeypatch.setattr(feeder_planning, "CABLE_PLANNING_UTILIZATION", utilization)
     monkeypatch.setattr(utils, "CoincidentLoads", lambda buildings, consumers: CurrentPerNode({1: current_ka}))
     monkeypatch.setattr(utils, "design_current_ka", lambda load: load)
     installer = CableInstaller(None, None, logging.getLogger("feeder-utilization-test"), CABLES,

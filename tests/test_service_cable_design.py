@@ -5,6 +5,9 @@ import logging
 import numpy as np
 import pandas as pd
 
+import pytest
+
+from pylovo import cable_installer
 from pylovo.cable_installer import CableInstaller
 from pylovo.config_loader import MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT
 
@@ -22,7 +25,8 @@ def _reference_design(installer: CableInstaller, design_current_ka, length_km, a
     line_df = cable_df.loc[cable_df.index.isin(available_cables)]
     parallel = 1
     while True:
-        ampacity_options = line_df.loc[line_df["max_i_ka"] >= design_current_ka / parallel]
+        ampacity_options = line_df.loc[
+            line_df["max_i_ka"] >= design_current_ka / cable_installer.CABLE_PLANNING_UTILIZATION / parallel]
         if not ampacity_options.empty:
             break
         parallel += 1
@@ -40,7 +44,9 @@ def _reference_design(installer: CableInstaller, design_current_ka, length_km, a
     return selected, parallel, ampacity_cable, drops[ampacity_cable], drops[selected]
 
 
-def test_service_cable_design_matches_the_pandas_implementation():
+@pytest.mark.parametrize("utilization", [1.0, 0.8])
+def test_service_cable_design_matches_the_pandas_implementation(monkeypatch, utilization):
+    monkeypatch.setattr(cable_installer, "CABLE_PLANNING_UTILIZATION", utilization)
     installer = CableInstaller(None, None, logging.getLogger("service-cable-test"), CABLES,
                                pd.DataFrame(), pd.DataFrame())
     names = [name for name, *_ in CABLES]
@@ -55,3 +61,14 @@ def test_service_cable_design_matches_the_pandas_implementation():
         assert (design["cable"], design["parallel"], design["ampacity_cable"]) == (selected, parallel, ampacity_cable)
         assert design["ampacity_drop_percent"] == ampacity_drop
         assert design["selected_drop_percent"] == selected_drop
+
+
+@pytest.mark.parametrize("utilization, expected", [(1.0, "NAYY_4_50"), (0.8, "NAYY_4_70")])
+def test_service_cable_keeps_the_planned_reserve(monkeypatch, utilization, expected):
+    """0.12 kA fits a 142 A cable, but not at 80 %; the drop stays computed at 0.12 kA."""
+    monkeypatch.setattr(cable_installer, "CABLE_PLANNING_UTILIZATION", utilization)
+    installer = CableInstaller(None, None, logging.getLogger("service-reserve-test"), CABLES,
+                               pd.DataFrame(), pd.DataFrame())
+    design = installer.select_service_cable_design(0.12, 0.01, ["NAYY_4_50", "NAYY_4_70"])
+    assert (design["cable"], design["parallel"], design["sizing_basis"]) == (expected, 1, "ampacity")
+    assert design["selected_drop_percent"] == installer._service_voltage_drop_percent(0.12, 0.01, expected, 1)

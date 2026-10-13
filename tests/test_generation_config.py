@@ -6,6 +6,10 @@ configuration of this checkout, but none of them opens a database connection.
 from __future__ import annotations
 
 import copy
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pandapower as pp
 import pytest
@@ -116,3 +120,29 @@ def test_feeder_utilization_of_older_snapshots():
     assert compare_snapshots(stored, legacy) == ([], [])
     reserve = {"cable_dimensioning": {"vn": 400, "feeder_planning_utilization": 0.8}}
     assert compare_snapshots(stored, reserve)[0] == ["cable_dimensioning.feeder_planning_utilization"]
+
+
+def test_service_utilization_of_older_snapshots():
+    """A version stored before CABLE_PLANNING_UTILIZATION sized its service cables at full ampacity."""
+    stored = {"cable_dimensioning": {"vn": 400, "feeder_planning_utilization": 0.8}}
+    same = {"cable_dimensioning": {"vn": 400, "feeder_planning_utilization": 0.8, "service_planning_utilization": 1.0}}
+    assert compare_snapshots(stored, same) == ([], [])
+    reserve = {"cable_dimensioning": {"vn": 400, "feeder_planning_utilization": 0.8, "service_planning_utilization": 0.8}}
+    assert compare_snapshots(stored, reserve)[0] == ["cable_dimensioning.service_planning_utilization"]
+
+
+@pytest.mark.parametrize("keys, expected", [
+    ("CABLE_PLANNING_UTILIZATION: 0.7\n", "0.7"),
+    ("FEEDER_PLANNING_UTILIZATION: 0.6\n", "0.6"),                                  # the former name
+    ("CABLE_PLANNING_UTILIZATION: 0.7\nFEEDER_PLANNING_UTILIZATION: 0.7\n", "0.7"),
+    ("CABLE_PLANNING_UTILIZATION: 0.7\nFEEDER_PLANNING_UTILIZATION: 0.6\n", "former name"),
+])
+def test_cable_utilization_key_and_its_former_name(tmp_path, keys, expected):
+    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
+    config = tmp_path / "config" / "config_generation.yaml"
+    text = "".join(line for line in config.read_text().splitlines(keepends=True)
+                   if not line.startswith(("CABLE_PLANNING_UTILIZATION:", "FEEDER_PLANNING_UTILIZATION:")))
+    config.write_text(text.rstrip("\n") + "\n" + keys)
+    proc = subprocess.run([sys.executable, "-c", "import pylovo.config_loader as c; print(c.CABLE_PLANNING_UTILIZATION)"],
+                          cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert expected in (proc.stdout if proc.returncode == 0 else proc.stderr)

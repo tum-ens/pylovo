@@ -225,13 +225,14 @@ Loads and general grid settings
      - Commercial or public load components above this peak (kW) are assumed to have their own
        MV connection and are left out of the LV grid.
      - ✓
-   * - ``FEEDER_PLANNING_UTILIZATION``
+   * - ``CABLE_PLANNING_UTILIZATION``
      - ``0.8``
-     - Planned coincident current per feeder cable ampacity: a section current *I* needs a cable
-       design rated above *I* / 0.8, the feeder counterpart of
+     - Planned coincident current per cable ampacity, for feeder and service cables: a design
+       current *I* needs a cable design rated above *I* / 0.8, the cable counterpart of
        ``TRANSFORMER_PLANNING_UTILIZATION``. It keeps the capacity reserve that LV planning
        leaves on cables (a maximum planned line utilisation of 80 %); voltage drops are still
-       computed at *I*. ``1.0`` sizes at the full ampacity (the behaviour before the key existed).
+       computed at *I*. ``1.0`` sizes at the full ampacity. The former name
+       ``FEEDER_PLANNING_UTILIZATION`` (feeders only) is still read.
      - ✓
    * - ``FEEDER_STANDARD_CABLE``
      - ``null``

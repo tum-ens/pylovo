@@ -24,7 +24,7 @@ def installer():
 def use(monkeypatch, standard, maximum=4):
     monkeypatch.setattr(feeder_planning, "FEEDER_STANDARD_CABLE", standard)
     monkeypatch.setattr(feeder_planning, "MAX_PARALLEL_FEEDER_CABLES", maximum)
-    monkeypatch.setattr(feeder_planning, "FEEDER_PLANNING_UTILIZATION", 1.0)
+    monkeypatch.setattr(feeder_planning, "CABLE_PLANNING_UTILIZATION", 1.0)
 
 
 def choice(installer, current_ka):

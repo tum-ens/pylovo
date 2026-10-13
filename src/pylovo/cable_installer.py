@@ -22,6 +22,7 @@ import pandas as pd
 from pyproj import Transformer
 
 from pylovo.config_loader import (
+    CABLE_PLANNING_UTILIZATION,
     DEFAULT_POWER_FACTOR,
     MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
     TARGET_EPSG,
@@ -379,8 +380,9 @@ class CableInstaller:
         """Select a service cable by ampacity, then by local design voltage drop.
 
         The parallel count is the smallest one for which any available cable carries
-        ``design_current_ka``. Among those cables the cheapest one (then the smallest
-        cross-section) is the ampacity choice; if its drop exceeds
+        ``design_current_ka`` divided by ``CABLE_PLANNING_UTILIZATION``, as for the feeders.
+        Among those cables the cheapest one (then the smallest
+        cross-section) is the ampacity choice; if its drop (at ``design_current_ka``) exceeds
         ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``, the cheapest cable within the
         limit is taken, or the one with the lowest drop if none meets it.
 
@@ -403,11 +405,12 @@ class CableInstaller:
         if not line_options:
             raise ValueError("No configured service cable is available for selection.")
 
+        planned_current_ka = design_current_ka / CABLE_PLANNING_UTILIZATION
         parallel = 1
         while True:
             ampacity_options = [
                 cable for cable in line_options
-                if self._cable_rows[cable]["max_i_ka"] >= design_current_ka / parallel
+                if self._cable_rows[cable]["max_i_ka"] >= planned_current_ka / parallel
             ]
             if ampacity_options:
                 break

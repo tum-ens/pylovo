@@ -301,10 +301,18 @@ POWER_FLOW_MAX_VM_PU = POWER_FLOW_VOLTAGE_LIMITS["MAX_VM_PU"]
 # Maximum simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-splitting parameter, not a final cable ampacity limit.
 FEEDER_SPLIT_MAX_CURRENT_KA = CONFIG_GENERATION["FEEDER_SPLIT_MAX_CURRENT_KA"]
-# Planned coincident current / ampacity of a feeder cable design; 1.0 sizes at the full ampacity (previous behaviour).
-FEEDER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("FEEDER_PLANNING_UTILIZATION", 1.0))
-if not FEEDER_PLANNING_UTILIZATION > 0:
-    raise ValueError(f"FEEDER_PLANNING_UTILIZATION must be positive, got {FEEDER_PLANNING_UTILIZATION}")
+# Planned coincident current / ampacity of the feeder and service cable designs; 1.0 sizes at the full ampacity.
+# FEEDER_PLANNING_UTILIZATION is its former name (it then applied to the feeders only) and is still read.
+if (
+    "CABLE_PLANNING_UTILIZATION" in CONFIG_GENERATION and "FEEDER_PLANNING_UTILIZATION" in CONFIG_GENERATION
+    and CONFIG_GENERATION["CABLE_PLANNING_UTILIZATION"] != CONFIG_GENERATION["FEEDER_PLANNING_UTILIZATION"]
+):
+    raise ValueError("Set CABLE_PLANNING_UTILIZATION only; FEEDER_PLANNING_UTILIZATION is its former name")
+CABLE_PLANNING_UTILIZATION = float(
+    CONFIG_GENERATION.get("CABLE_PLANNING_UTILIZATION", CONFIG_GENERATION.get("FEEDER_PLANNING_UTILIZATION", 1.0))
+)
+if not CABLE_PLANNING_UTILIZATION > 0:
+    raise ValueError(f"CABLE_PLANNING_UTILIZATION must be positive, got {CABLE_PLANNING_UTILIZATION}")
 # House-connection technique: "joint" (tee joints on the street cable, cabinets only at split points) or
 # "cabinet" (houses connected from cable distribution cabinets along the feeders, CABINET_SPACING_M apart at most).
 HOUSE_CONNECTION = str(CONFIG_GENERATION.get("HOUSE_CONNECTION", "joint"))

@@ -1662,10 +1662,11 @@ def _rule_ld02(m: GridModel, F: Findings, th: dict) -> dict[int, str]:
               basis="design",
               thresholds=[_heur("warning from", "reserve_warning", th), _heur("info from", "reserve_info", th)],
               remedy=("Use the next conductor size, or split the feeder. For new versions lower "
-                      "FEEDER_SPLIT_MAX_CURRENT_KA. pylovo has no planning reserve factor for cables yet."),
-              why=("pylovo takes the cheapest cable whose ampacity covers the design current at nominal voltage, so it "
-                   "builds in no reserve. DSOs keep roughly 20–30 % for growth (heat pumps, EV), back-feeding through "
-                   "cabinets and derating where cables share a trench (DIN VDE 0276-1000 reduction factors)."))
+                      "CABLE_PLANNING_UTILIZATION or FEEDER_SPLIT_MAX_CURRENT_KA."),
+              why=("pylovo takes the cheapest cable whose ampacity covers the design current divided by "
+                   "CABLE_PLANNING_UTILIZATION; at 1.0 it builds in no reserve. DSOs keep roughly 20–30 % for growth "
+                   "(heat pumps, EV), back-feeding through cabinets and derating where cables share a trench "
+                   "(DIN VDE 0276-1000 reduction factors)."))
     for f, sids in info_rows.items():
         sids.sort(key=lambda s: -m.sections[s]["u_d"])
         top = sids[0]

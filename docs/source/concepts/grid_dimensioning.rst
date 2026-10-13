@@ -158,9 +158,10 @@ bus. For a residential building with five households, the residential
 calculation therefore uses ``N = 5``. Unrelated buildings elsewhere in the grid
 do not reduce this service design load.
 
-pylovo initially selects the lowest-cost configured service cable with sufficient
-ampacity. Additional parallel cables are used only if no single configured
-cable can carry the required current.
+pylovo initially selects the lowest-cost configured service cable whose ampacity
+covers the service design current divided by ``CABLE_PLANNING_UTILIZATION``, the
+same reserve as for the feeders. Additional parallel cables are used only if no
+single configured cable can carry the required current.
 
 It then calculates the approximate drop across every complete service cable at
 the same building-local design load and compares it with
@@ -192,9 +193,9 @@ current occurring in that section.
 
 The initial feeder cable is the lowest-cost configured conductor (the smaller
 cross-section on equal cost, as for service cables) that satisfies
-ampacity for the design current divided by ``FEEDER_PLANNING_UTILIZATION`` (0.8
+ampacity for the design current divided by ``CABLE_PLANNING_UTILIZATION`` (0.8
 in the shipped configuration, as ``TRANSFORMER_PLANNING_UTILIZATION`` for the
-stations: the feeders keep a capacity reserve; 1.0 uses the full ampacity). The
+stations: the cables keep a capacity reserve; 1.0 uses the full ampacity). The
 parallel count increases only when no single configured feeder cable has
 sufficient ampacity. The voltage-drop check below uses the design current itself.
 
@@ -347,8 +348,8 @@ Configuration levers
    * - ``CONSUMER_CONNECTION_CABLES``
      - Available service-cable ratings, impedances, sizes, and costs
      - Feeder-cable choices
-   * - ``FEEDER_PLANNING_UTILIZATION``
-     - Ampacity reserve of the initial feeder cable design (and of its voltage upgrades)
+   * - ``CABLE_PLANNING_UTILIZATION``
+     - Ampacity reserve of the initial feeder and service cable designs (and of the feeder voltage upgrades)
      - Topology, design currents or the voltage-drop calculation
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - Branch construction and topology splitting
