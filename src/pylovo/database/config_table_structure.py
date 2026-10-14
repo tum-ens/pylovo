@@ -329,6 +329,32 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_mv_customers_centroid
     ON pylovo.mv_customers USING gist (centroid);
     """,
+    "mastr_units": """
+    CREATE TABLE IF NOT EXISTS pylovo.mastr_units (
+        mastr_id text PRIMARY KEY,
+        location_id text,
+        technology varchar(20) NOT NULL,
+        solar_kind varchar(20),
+        status varchar(20),
+        net_power_kw double precision,
+        gross_power_kw double precision,
+        voltage_level text,
+        commissioning_date date,
+        gemeindeschluessel text,
+        postcode text,
+        geom geometry(Point,{TARGET_EPSG}) NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mastr_units_geom ON pylovo.mastr_units USING gist (geom);
+    """,
+    "mastr_postcode_aggregates": """
+    CREATE TABLE IF NOT EXISTS pylovo.mastr_postcode_aggregates (
+        postcode text NOT NULL,
+        technology varchar(20) NOT NULL,
+        n_units integer NOT NULL,
+        net_power_kw double precision NOT NULL,
+        CONSTRAINT mastr_postcode_aggregates_pkey PRIMARY KEY (postcode, technology)
+    );
+    """,
     "municipal_register": """CREATE TABLE IF NOT EXISTS pylovo.municipal_register (
         plz integer,
         pop bigint,

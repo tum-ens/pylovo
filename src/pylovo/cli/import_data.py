@@ -4,12 +4,14 @@ Subcommands:
     transformers-osm: fetch transformers of an OSM relation from the Overpass API and add them.
     transformers-dso-csv: add DSO transformer positions from a CSV file.
     transformers-ui: deprecated Flask map for editing transformer positions (use the GridPlanner UI).
+    mastr: import MaStR generating units (open-mastr SQLite) for the MV stage.
 """
 import argparse
 import sys
 import time
 
 from pylovo.data_import.dso_transformers import import_dso_transformers_csv
+from pylovo.data_import.import_mastr import DEFAULT_SQLITE_PATH, import_mastr_units
 from pylovo.data_import.import_transformers import (
     fetch_trafos,
     get_trafos_processed_target_geojson_path,
@@ -74,6 +76,9 @@ Examples:
 
   # Deprecated: the old transformer map (use the GridPlanner UI; needs uv sync --extra legacy-ui)
   pylovo-import transformers-ui
+
+  # Import MaStR generating units from an open-mastr SQLite database (MV stage)
+  pylovo-import mastr --sqlite ~/.open-MaStR/data/sqlite/open-mastr.db
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -115,6 +120,22 @@ Examples:
     )
     _add_ui_arguments(ui_parser)
 
+    mastr_parser = subparsers.add_parser(
+        "mastr",
+        help="Import MaStR generating units from an open-mastr SQLite database (for the MV stage)"
+    )
+    mastr_parser.add_argument(
+        "--sqlite",
+        default=str(DEFAULT_SQLITE_PATH),
+        help=f"open-mastr SQLite database (default: {DEFAULT_SQLITE_PATH})"
+    )
+    mastr_parser.add_argument(
+        "--margin-m",
+        type=float,
+        default=5000.0,
+        help="margin around the extent of pylovo.postcode for units with coordinates (default: 5000 m)"
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -126,6 +147,10 @@ Examples:
             import_transformers_osm(args.relation_id)
         elif args.command == "transformers-dso-csv":
             import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
+        elif args.command == "mastr":
+            start_time = time.time()
+            n_units, n_agg = import_mastr_units(args.sqlite, margin_m=args.margin_m)
+            print(f"✓ Imported {n_units} MaStR units and {n_agg} postcode aggregates in {time.time() - start_time:.1f}s")
         elif args.command == "transformers-ui":
             run_transformers_ui(
                 host=args.host,
