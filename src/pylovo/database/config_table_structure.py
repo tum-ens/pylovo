@@ -300,6 +300,35 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_buildings_result_grid_result_id
     ON pylovo.buildings_result (grid_result_id);
     """,
+    "mv_customers": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_customers (
+        version_id varchar(10) NOT NULL,
+        objectid text NOT NULL,
+        plz integer NOT NULL,
+        id integer,
+        building_use text,
+        building_use_id text,
+        building_type text,
+        type varchar(30),
+        nonresidential_use varchar(30),
+        nonresidential_floor_area double precision,
+        nonresidential_peak_load_in_kw double precision NOT NULL,
+        residential_peak_load_in_kw double precision,
+        households integer,
+        gemeindeschluessel text,
+        geom geometry(MultiPolygon,{TARGET_EPSG}),
+        centroid geometry(Point,{TARGET_EPSG}),
+        CONSTRAINT mv_customers_pkey PRIMARY KEY (version_id, objectid),
+        CONSTRAINT fk_mv_customers_version
+            FOREIGN KEY (version_id)
+            REFERENCES pylovo.version (version_id)
+            ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_customers_version_plz
+    ON pylovo.mv_customers (version_id, plz);
+    CREATE INDEX IF NOT EXISTS idx_mv_customers_centroid
+    ON pylovo.mv_customers USING gist (centroid);
+    """,
     "municipal_register": """CREATE TABLE IF NOT EXISTS pylovo.municipal_register (
         plz integer,
         pop bigint,

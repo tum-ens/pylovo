@@ -82,6 +82,8 @@ class ResultsMixin(BaseMixin):
                    WHERE version_id = %(v)s
                      AND plz = %(p)s;"""
         self.cur.execute(delete_ways_query, {"v": version_id, "p": int(plz)})
+        self.cur.execute("DELETE FROM pylovo.mv_customers WHERE version_id = %(v)s AND plz = %(p)s;",
+                         {"v": version_id, "p": int(plz)})
 
         query = """DELETE
                FROM pylovo.postcode_result

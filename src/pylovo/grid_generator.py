@@ -444,6 +444,9 @@ class GridGenerator:
         self.logger.debug(
             f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
         )
+        if too_large_consumers:
+            saved = self.dbc.save_mv_customers(self.plz)
+            self.logger.info(f"{saved} MV customers stored in pylovo.mv_customers")
 
 
     def prepare_transformers(self):

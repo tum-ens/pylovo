@@ -842,6 +842,39 @@ class PreprocessingMixin(BaseMixin):
 
         return too_large
 
+    def save_mv_customers(self, plz: int) -> int:
+        """Store the buildings with an MV-direct non-residential component in ``pylovo.mv_customers``.
+
+        :meth:`update_too_large_consumers_to_zero` removes these components from the LV model; the
+        MV stage connects them as MV customers. The residential part of a mixed building stays in
+        the LV grid and is only recorded here. Rerunning a PLZ replaces its rows.
+
+        Args:
+            plz: Postcode whose working table ``buildings_tem`` is read.
+
+        Returns:
+            Number of stored MV customers.
+        """
+        params = {"v": VERSION_ID, "p": int(plz)}
+        self.cur.execute("DELETE FROM pylovo.mv_customers WHERE version_id = %(v)s AND plz = %(p)s;", params)
+        self.cur.execute(
+            """
+            INSERT INTO pylovo.mv_customers
+                (version_id, objectid, plz, id, building_use, building_use_id, building_type, type,
+                 nonresidential_use, nonresidential_floor_area, nonresidential_peak_load_in_kw,
+                 residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid)
+            SELECT DISTINCT ON (objectid)
+                   %(v)s, objectid, %(p)s, id, building_use, building_use_id, building_type, type,
+                   nonresidential_use, nonresidential_floor_area, nonresidential_peak_load_in_kw,
+                   residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid
+            FROM buildings_tem
+            WHERE nonresidential_mv_direct AND COALESCE(nonresidential_peak_load_in_kw, 0) > 0
+            ORDER BY objectid
+            ON CONFLICT (version_id, objectid) DO NOTHING;""",
+            params,
+        )
+        return self.cur.rowcount
+
     def set_buildings_tem_plz(self, plz: int) -> None:
         """Set ``plz`` on all rows of ``buildings_tem`` that do not have one yet."""
         query = """UPDATE buildings_tem
