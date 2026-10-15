@@ -7,6 +7,11 @@
 With ``USE_INFDB=False`` the building shapefiles are imported first (see
 :mod:`pylovo.data_import.import_buildings`). ``ANALYZE_GRIDS`` in ``config_generation.yaml``
 controls whether the basic analysis runs after generation.
+
+With ``MV_GRID_GENERATION: True`` (or ``--mv``) the MV stage (:func:`pylovo.mv_grid.stage.run_mv_stage`)
+runs once after all PLZ of the call, for the configured MV variant of ``VERSION_ID``. The LV grids are
+committed per PLZ first, so an MV failure never undoes them; an MV stage that does not end ``done`` exits
+with code 1. The MV modules are imported only when the stage runs.
 """
 import argparse
 import time
@@ -14,17 +19,20 @@ import time
 import pandas as pd
 
 import pylovo.database.database_client as dbc
-from pylovo.config_loader import ANALYZE_GRIDS, PARALLEL, USE_INFDB
+from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, USE_INFDB, VERSION_ID
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
 from pylovo.data_import.region_resolver import resolve_regions
 from pylovo.grid_generator import GridGenerator
 
 
-def create_grid_single_plz(plz: int):
+def create_grid_single_plz(plz: int) -> list[int]:
     """Generate the grids of one PLZ.
 
     Args:
         plz: Postal code to generate grids for.
+
+    Returns:
+        ``[plz]`` (the PLZ of the call, for the MV stage).
     """
     print(f"Creating grid for single PLZ: {plz}")
     gg = GridGenerator(plz=plz)
@@ -33,6 +41,7 @@ def create_grid_single_plz(plz: int):
         import_buildings_for_single_plz(gg)
 
     gg.generate_grid_for_single_plz(plz=plz, analyze_grids=ANALYZE_GRIDS)
+    return [int(plz)]
 
 
 def _generate_plz_list(plz_list: list[int], parallel: bool) -> None:
@@ -42,12 +51,15 @@ def _generate_plz_list(plz_list: list[int], parallel: bool) -> None:
     gg.generate_grid_for_multiple_plz(df_plz=df_plz, analyze_grids=ANALYZE_GRIDS, parallel=parallel)
 
 
-def create_grid_multiple_plz(plz_list: list, parallel: bool = True):
+def create_grid_multiple_plz(plz_list: list, parallel: bool = True) -> list[int]:
     """Generate the grids of several PLZ.
 
     Args:
         plz_list: Postal codes to generate grids for.
         parallel: Generate the PLZ in parallel worker processes.
+
+    Returns:
+        The PLZ of the call (for the MV stage).
     """
     print(f"Creating grids for multiple PLZ: {plz_list}")
     plz_list = [int(p) for p in plz_list]
@@ -58,14 +70,18 @@ def create_grid_multiple_plz(plz_list: list, parallel: bool = True):
             import_buildings_for_multiple_plz(df_plz_ags, dbc_client=dbc_client)
 
     _generate_plz_list(plz_list, parallel)
+    return plz_list
 
 
-def create_grids_for_ags(ags_list: list, parallel: bool = True):
+def create_grids_for_ags(ags_list: list, parallel: bool = True) -> list[int]:
     """Generate the grids of all PLZ that belong to the given municipalities.
 
     Args:
         ags_list: Municipality codes (Amtlicher Gemeindeschlüssel, AGS).
         parallel: Generate the PLZ in parallel worker processes.
+
+    Returns:
+        The PLZ of the municipalities (for the MV stage).
 
     Raises:
         ValueError: If an AGS is not in the municipal register.
@@ -77,10 +93,38 @@ def create_grids_for_ags(ags_list: list, parallel: bool = True):
             import_buildings_for_multiple_plz(df_plz_ags, dbc_client=dbc_client)
 
     _generate_plz_list(plz_list, parallel)
+    return plz_list
 
 
-def main():
-    """Entry point of ``pylovo-generate``."""
+def run_mv_stage_after_lv(plz_list: list[int], parallel: bool) -> None:
+    """Run the MV stage for the configured MV variant of ``VERSION_ID`` on the PLZ of this call.
+
+    Raises:
+        SystemExit: With code 1 if the MV stage does not end ``done`` (the LV grids stay committed).
+        Exception: Any error of the MV stage, after printing it.
+    """
+    try:
+        from pylovo.mv_grid.parameters import MvParameters   # lazy: no MV import cost for LV-only runs
+        from pylovo.mv_grid.stage import run_mv_stage
+
+        summary = run_mv_stage(VERSION_ID, plz_list, MvParameters.from_config(), parallel=parallel,
+                               jobs=min(4, N_JOBS))
+        print(summary.describe())
+        if summary.status != "done":
+            raise SystemExit(1)                           # LV is committed; an incomplete MV stage is an error
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"MV stage failed: {exc}")
+        raise
+
+
+def main(argv: list[str] | None = None):
+    """Entry point of ``pylovo-generate``.
+
+    Args:
+        argv: Command-line arguments (default ``sys.argv[1:]``).
+    """
     parser = argparse.ArgumentParser(
         prog='pylovo-generate',
         description='Generate synthetic LV distribution grids for specified regions',
@@ -101,6 +145,9 @@ Examples:
 
   # Disable parallel processing (useful for debugging); PARALLEL in the config sets the default
   pylovo-generate --plz 80803 80802 --no-parallel
+
+  # Generate the LV grids, then the MV grids of the configured MV variant (MV_GRID_GENERATION sets the default)
+  pylovo-generate --plz 80803 80802 --mv
 
 Regional Identifiers:
   PLZ: German postal codes (Postleitzahl) - 5-digit codes
@@ -123,10 +170,16 @@ For more information, see the README: https://github.com/tum-ens/pylovo
                              help='Generate several regions in parallel worker processes')
     parallelism.add_argument('--no-parallel', dest='parallel', action='store_false',
                              help='Generate several regions one after the other')
+    mv_stage = parser.add_mutually_exclusive_group()
+    mv_stage.add_argument('--mv', dest='mv', action='store_true', default=None,
+                          help='Run the MV stage after the LV grids (default MV_GRID_GENERATION)')
+    mv_stage.add_argument('--no-mv', dest='mv', action='store_false',
+                          help='Do not run the MV stage')
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     # PARALLEL in config_generation.yaml is the default; the flags override it
     parallel = PARALLEL if args.parallel is None else args.parallel
+    run_mv = MV_GRID_GENERATION if args.mv is None else args.mv
 
     print("Pylovo Grid Creation Script")
     print("=" * 60)
@@ -135,11 +188,11 @@ For more information, see the README: https://github.com/tum-ens/pylovo
     try:
         if args.plz:
             if len(args.plz) == 1:
-                create_grid_single_plz(args.plz[0])
+                plz_list = create_grid_single_plz(args.plz[0])
             else:
-                create_grid_multiple_plz(args.plz, parallel=parallel)
+                plz_list = create_grid_multiple_plz(args.plz, parallel=parallel)
         else:
-            create_grids_for_ags(args.ags, parallel=parallel)
+            plz_list = create_grids_for_ags(args.ags, parallel=parallel)
     except Exception as e:
         print("=" * 60)
         print(f"Error occurred during grid creation: {str(e)}")
@@ -147,6 +200,9 @@ For more information, see the README: https://github.com/tum-ens/pylovo
     finally:
         minutes, seconds = divmod(time.time() - start_time, 60)
         print(f"Elapsed Time: {int(minutes)} minutes and {seconds:.2f} seconds")
+
+    if run_mv:
+        run_mv_stage_after_lv(plz_list, parallel)
 
 
 if __name__ == "__main__":

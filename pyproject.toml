@@ -114,6 +114,7 @@ pylovo-analyze = "pylovo.cli.analyze:main"
 pylovo-delete = "pylovo.cli.delete:main"
 pylovo-export = "pylovo.cli.export:main"
 pylovo-import = "pylovo.cli.import_data:main"
+pylovo-mv = "pylovo.cli.mv:main"
 pylovo-api = "pylovo_api.cli:main"
 
 [tool.hatch.build.targets.wheel]
