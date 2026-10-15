@@ -169,7 +169,8 @@ def station_table(stations: pd.DataFrame, stats: pd.DataFrame, lv: "LvVersionPar
     ``p_own_kw`` is pylovo's station design load: the category law on the summed statistics of the grid's buildings
     with the sim factors of the LV version (equal to the pooled ``utils.simultaneous_peak_load`` of the grid).
     ``households`` is the residential load units (never ``buildings_result.households``, which is 1 for
-    non-residential buildings). Stations whose LV power flow did not converge get the flag ``lv_not_converged``.
+    non-residential buildings). Stations whose LV power flow did not converge get the flag ``lv_not_converged``,
+    those with another LV status than ``converged`` the flag ``lv_<status>`` (e.g. ``lv_voltage_violation``).
 
     Args:
         stations: Rows of :meth:`MvInputMixin.station_nodes` (``grid_result_id``, ``plz``, ``sn_kva``, ``x``,
@@ -227,7 +228,7 @@ def station_table(stations: pd.DataFrame, stats: pd.DataFrame, lv: "LvVersionPar
     status = out["power_flow_status"]
     for i, value in enumerate(status):
         if isinstance(value, str) and value and value != "converged":
-            flags[i].append("lv_not_converged")
+            flags[i].append(value if value.startswith("lv_") else f"lv_{value}")
     out["flags"] = flags
     return out[list(STATION_COLUMNS)]
 

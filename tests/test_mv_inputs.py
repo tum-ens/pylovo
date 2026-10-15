@@ -97,7 +97,7 @@ def test_station_peak_equals_pooled_pylovo_law(seed):
 
 
 def test_station_table_columns_flags_and_missing_stats():
-    stations = _stations([7, 5, 6], power_flow_status=["converged", "voltage_violation", None])
+    stations = _stations([7, 5, 6], power_flow_status=["converged", "not_converged", None])
     stations.loc[2, "x"] = np.nan                      # grid 6 has no position: not an MV node
     stats = pd.DataFrame({"grid_result_id": [5, 5], "category": ["Residential", "Mixed"],
                           "installed_kw": [100.0, 50.0], "units": [10.0, 1.0], "grid_n_buildings": [4, 4]})
@@ -113,6 +113,9 @@ def test_station_table_columns_flags_and_missing_stats():
     assert five["n_buildings"] == 4
     assert seven["p_own_kw"] == 0.0 and seven["installed_kw"] == 0.0 and seven["load_stats"] == {}
     assert (table[list(inputs.GENERATION_COLUMNS)] == 0.0).all().all()
+    # a converged LV grid with violations is flagged by its status, not as not converged
+    other = inputs.station_table(_stations([5], power_flow_status=["voltage_violation"]), stats, _lv())
+    assert other.iloc[0]["flags"] == ["lv_voltage_violation"]
     assert table["p_fixed_kw"].eq(0.0).all()
 
 
