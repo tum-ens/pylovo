@@ -465,6 +465,52 @@ def test_scaled_lv_loads_equal_the_design_feeder_loads(small):
     assert np.abs(scaled.sort_index().to_numpy() - design_p.sort_index().to_numpy()).max() < 1e-9
 
 
+def test_busbar_customers_are_fixed_loads_at_the_lv_busbar(small):
+    lv_nets, inp, plan, design, cases, budgets, stored = small
+    taps = {gid: budgets[gid + 100].tap_pos for gid in lv_nets}
+    record = {"busbar_customers": {"n": 2, "kw": 210.0, "categories": {
+        "Commercial": {"n": 1, "installed_kw": 300.0, "kw": 150.0},
+        "Public": {"n": 1, "installed_kw": 100.0, "kw": 60.0}}}}
+    stations = pd.DataFrame({"grid_result_id": [2.0, 4.0, 99.0, 3.0], "load_stats": [
+        record, json.dumps({"busbar_customers": {"categories": {"Unknown": {"n": 1, "kw": 30.0}}}}),
+        {"busbar_customers": {"categories": {"Commercial": {"n": 1, "kw": 80.0}}}}, {"Residential": [5.0, 1.0]}]})
+    loads = coupling.busbar_customer_loads(stations)
+    assert loads == {2: {"Commercial": 150.0, "Public": 60.0}, 4: {"Unknown": 30.0}, 99: {"Commercial": 80.0}}
+    assert coupling.busbar_customer_loads(stations.drop(columns="load_stats")) == {}
+    plain = coupling.build_coupled_net(stored, frames_for(stored, lv_nets), taps, inp.lv, inp.vn_kv)
+    net = coupling.build_coupled_net(stored, frames_for(stored, lv_nets), taps, inp.lv, inp.vn_kv,
+                                     busbar_loads=loads)
+    mask = net.load[coupling.BUSBAR_CUSTOMER_COLUMN].eq(True)
+    busbar = net.load[mask]
+    assert len(busbar) == 3                                             # grid 99 is not coupled into this net
+    trafo = net.trafo[net.trafo["grid_result_id"].notna()]
+    lv_bus = dict(zip(trafo["grid_result_id"].astype(int), trafo["lv_bus"]))
+    assert busbar["bus"].tolist() == [lv_bus[2], lv_bus[2], lv_bus[4]]
+    assert busbar["category"].tolist() == ["Commercial", "Public", "Unknown"]
+    assert busbar["p_mw"].tolist() == pytest.approx([0.15, 0.06, 0.03])
+    assert busbar["q_mvar"].tolist() == pytest.approx([p * math.tan(math.acos(0.95)) for p in (0.15, 0.06, 0.03)])
+    assert (busbar["scaling"] == 1.0).all()                             # fixed loads, never scaled
+    # the LV loads keep the feeder scaling of the net without them
+    assert net.load.loc[~mask, "scaling"].to_numpy() == pytest.approx(plain.load["scaling"].to_numpy())
+    # the merged load case carries them: the slack rises by their load (plus losses)
+    with_busbar = coupling.run_coupled_cases(net, inp.params).attrs["slack_p_mw"]["load"]
+    without = coupling.run_coupled_cases(plain, inp.params).attrs["slack_p_mw"]["load"]
+    assert with_busbar - without == pytest.approx(0.24, rel=0.05)
+    assert coupling.add_busbar_customers(copy.deepcopy(plain), {99: {"Commercial": 1.0}}, 0.95) == 0.0
+
+
+def test_couple_district_adds_the_busbar_customers(small):
+    lv_nets, inp, plan, design, cases, budgets, stored = small
+    stations = station_rows(inp, cases, budgets)
+    stations["load_stats"] = [{"busbar_customers": {"categories": {"Commercial": {"n": 1, "kw": 120.0}}}}
+                              if gid == 3 else {} for gid in stations["grid_result_id"]]
+    result = coupling.couple_district(stored, stations, iter(lv_nets.items()), inp.params, inp.lv, vn_kv=inp.vn_kv,
+                                      keep_net=True)
+    assert result.metrics["operating_point"]["busbar_customer_mw"] == pytest.approx(0.12)
+    names = result.net.load["name"].astype(str)
+    assert (names == "Busbar customers 3 Commercial").sum() == 1
+
+
 def test_mv_feeders_follow_the_open_points(small):
     *_, design, cases, budgets, stored = small
     normal = coupling.mv_feeders(stored)

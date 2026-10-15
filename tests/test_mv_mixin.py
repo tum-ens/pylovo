@@ -299,6 +299,19 @@ def test_load_district_nodes_maps_to_node_columns():
     assert "n.kind <> 'joint'" in sql and params == {"g": 6}
 
 
+def test_station_busbar_customers_are_the_fixed_load_of_the_station():
+    frame = pd.DataFrame(node_rows(), columns=NODE_ROW_COLUMNS)
+    record = {"n": 2, "kw": 175.0, "installed_kw": 350.0, "categories": {"Commercial": {"n": 2, "kw": 175.0}}}
+    stats = {"Residential": [100.0, 20], "busbar_customers": record}
+    for value in (stats, json.dumps(stats)):                            # as written and as read from jsonb text
+        frame["load_stats"] = [{}, value, None, {}]
+        nodes = mixin.node_columns_frame(frame)
+        assert nodes.loc[11, "p_fixed_kw"] == 175.0 and nodes.loc[11, ["inst_res", "units_res"]].tolist() == [
+            100.0, 20.0]
+        assert nodes.loc[12, "p_fixed_kw"] == 300.0                     # customers keep their own fixed load
+        assert nodes.loc[[10, 13], "p_fixed_kw"].tolist() == [0.0, 0.0]
+
+
 def test_plot_readers_never_read_the_net(monkeypatch):
     client = make_client()
     queries = []
@@ -311,6 +324,8 @@ def test_plot_readers_never_read_the_net(monkeypatch):
         assert "%(v)s" in sql and "%(var)s" in sql
     grids_sql = next(s for s, _ in queries if "FROM pylovo.mv_grid " in s)
     assert "metrics" in grids_sql and "SELECT *" not in grids_sql
+    nodes_sql = next(s for s, _ in queries if "FROM pylovo.mv_node " in s and "mv_node_id" in s.split("FROM")[0])
+    assert "load_stats" in nodes_sql                                    # the busbar customers for pylovo-mv couple
 
 
 def test_list_variants_flags_stale_fingerprints():

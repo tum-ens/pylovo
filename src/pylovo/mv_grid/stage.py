@@ -38,7 +38,7 @@ from typing import Any, Sequence
 import numpy as np
 import pandas as pd
 
-from pylovo.mv_grid.model import CASES, DistrictInput, GridOutcome, MvRunSummary
+from pylovo.mv_grid.model import CASES, DistrictInput, GridOutcome, MvRunSummary, demand_line
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
 
 #: Memory of one district worker after its imports plus a large district (GB), measured ~0.3 + district data.
@@ -400,6 +400,8 @@ def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes,
         stations[column] = pd.to_numeric(stations[column], errors="coerce").fillna(0.0) \
             if column in stations.columns else 0.0
     customers = inputs.customer_table(dbc.mv_customer_rows(version_id, plz, lv), lv, params)
+    stations, customers = inputs.busbar_customers(stations, customers, params)
+    logger.info(inputs.describe_customers(customers.attrs, params))
     generators = locations[node_mask].reset_index(drop=True)
     rows = inputs.node_rows(stations, customers, generators, sites, params).reset_index(drop=True)
     if not rows["kind"].eq("busbar").any():          # the busbar rows are part of node_rows; never go without them
@@ -681,6 +683,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
             ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
+        demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
     except Exception as exc:
         dbc.rollback_changes()
         summary = _summary(version_id, variant_id, "failed", requested, used, missing, None,
@@ -690,7 +693,8 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         except Exception as finish_exc:
             logger.error(f"Could not store the failed status of MV variant {variant_id}: {_one_line(finish_exc)}")
         raise
-    summary = _summary(version_id, variant_id, _status(totals), requested, used, missing, totals, warnings, start)
+    summary = _summary(version_id, variant_id, _status(totals), requested, used, missing, totals, warnings, start,
+                       demand)
     if ties is None:
         dbc.finish_variant(version_id, variant_id, summary)
     else:
@@ -721,8 +725,26 @@ def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params
     return summary
 
 
+def _demand_anchor(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int], lv: LvVersionParameters,
+                   logger: logging.Logger) -> dict:
+    """The regional demand anchor of a variant for its summary (``inputs.demand_anchor``), logged.
+
+    A report only: an error is logged, the read is rolled back and the anchor stays empty.
+    """
+    try:
+        anchor = _module("inputs").demand_anchor(dbc.variant_node_table(version_id, variant_id),
+                                                 dbc.plz_population(plz), lv)
+    except Exception as exc:
+        logger.warning(f"Demand anchor skipped: {_one_line(exc)}")
+        dbc.rollback_changes()
+        return {}
+    logger.info(demand_line(anchor)[2:])
+    return anchor
+
+
 def _summary(version_id: str, variant_id: str, status: str, requested: list[int] | None, used: list[int],
-             missing: list[int], totals: dict | None, warnings: list[str], start: float) -> MvRunSummary:
+             missing: list[int], totals: dict | None, warnings: list[str], start: float,
+             demand: dict | None = None) -> MvRunSummary:
     totals = totals or {}
     return MvRunSummary(
         version_id=version_id, variant_id=variant_id, status=status,
@@ -734,7 +756,7 @@ def _summary(version_id: str, variant_id: str, status: str, requested: list[int]
         circuit_km=float(totals.get("circuit_km", 0.0)), cable_share=float(totals.get("cable_share", 0.0)),
         n_violation_grids=int(totals.get("n_violation_grids", 0)),
         n_band_conflicts=int(totals.get("n_band_conflicts", 0)), warnings=list(warnings),
-        elapsed_s=time.time() - start)
+        elapsed_s=time.time() - start, demand=dict(demand or {}))
 
 
 # ---------------------------------------------------------------------------------------------- export

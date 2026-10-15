@@ -322,11 +322,32 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def demand_line(anchor: Mapping[str, Any]) -> str:
+    """The summary line of a regional demand anchor (``pylovo.mv_grid.inputs.demand_anchor``): a check mark, or a
+    cross when the anchor is approximate."""
+    per = anchor.get("kw_per_inhabitant")
+    text = f"{per:.2f} kW per inhabitant" if per is not None else "no population"
+    text = (f"{'✗' if anchor.get('approximate') else '✓'} Demand anchor: {text} "
+            f"({anchor.get('coincident_mw', 0.0):,.1f} MW coincident, {anchor.get('population', 0):,} inhabitants of "
+            f"{anchor.get('n_plz', 0)} PLZ; MV customers {anchor.get('customer_mw', 0.0):,.1f} MW at "
+            f"{anchor.get('n_customer_nodes', 0)} nodes and {anchor.get('busbar_customer_mw', 0.0):,.1f} MW at station "
+            "busbars")
+    if anchor.get("excluded_mw"):
+        text += f", HV customers {anchor['excluded_mw']:,.1f} MW not modelled"
+    text += ")"
+    if anchor.get("approximate"):
+        notes = [f"{plz} ({100 * share:.0f} % of its area)" for plz, share in (anchor.get("partial_plz") or {}).items()]
+        notes += [f"{plz} (no population)" for plz in anchor.get("plz_without_population") or []]
+        text += "; approximate, PLZ only partly in the region or without population: " + ", ".join(notes)
+    return text
+
+
 @dataclass
 class MvRunSummary:
     """Summary of one run of the MV stage for one MV variant of an LV version.
 
-    ``cable_share`` is the cable share of the circuit length as a fraction (0 to 1).
+    ``cable_share`` is the cable share of the circuit length as a fraction (0 to 1); ``demand`` is the regional
+    demand anchor (``pylovo.mv_grid.inputs.demand_anchor``), empty when it was not computed.
     """
 
     version_id: str
@@ -348,6 +369,7 @@ class MvRunSummary:
     n_band_conflicts: int
     warnings: list[str]
     elapsed_s: float
+    demand: dict = field(default_factory=dict)
 
     def describe(self) -> str:
         """The summary lines printed by the CLI; each starts with a check mark (variant done) or a cross."""
@@ -367,6 +389,8 @@ class MvRunSummary:
         if self.plz_missing:
             lines.append(f"✗ {len(self.plz_missing)} requested PLZ have no LV grids in version {self.version_id}: "
                          + ", ".join(str(plz) for plz in self.plz_missing))
+        if self.demand:
+            lines.append(demand_line(self.demand))
         lines.extend(f"✗ {warning}" for warning in self.warnings)
         return "\n".join(lines)
 

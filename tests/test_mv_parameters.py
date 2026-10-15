@@ -88,7 +88,7 @@ def record(item) -> dict:
 
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 1,
+    "schema": 1, "mv_stage_version": 2,
     "voltage": {"vn_kv": 20.0, "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
@@ -110,7 +110,8 @@ EXPECTED_SNAPSHOT = {
                   "overhead": record(LINE_TYPES["48-AL1/8-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
                   "hv_mv_types": [record(fake_hv_mv_type(s, 20.0)) for s in (25.0, 31.5, 40.0, 63.0)]},
-    "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0},
+    "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0,
+              "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0},
     "generation": {"lv_side_kw": 200.0, "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
                    "mv_gen_cos_phi": 0.95, "lv_pv_cos_phi": 1.0, "include_storage": False},
     "cases": {"feed_in_wind": {"load_p": 0.1, "load_q": 0.123, "wind": 1.0, "solar": 0.8, "other": 1.0},
@@ -223,6 +224,8 @@ def test_parse_assignment():
     assert parse_assignment("hv_mv_sizes_mva=[40, 25]") == ("hv_mv_sizes_mva", (25.0, 40.0))
     assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=10") == ("MV_NOMINAL_VOLTAGE_KV", 10.0)
     assert parse_assignment("generator_fallback_kw={lv: 1, mvlv: 2, mv: 3, hvmv: 4}")[1]["hvmv"] == 4.0
+    assert parse_assignment("customer_min_mv_kw=300") == ("customer_min_mv_kw", 300.0)
+    assert parse_assignment("customer_hall_min_footprint_m2=1500") == ("customer_hall_min_footprint_m2", 1500.0)
 
 
 @pytest.mark.parametrize("text, message", [
@@ -371,8 +374,11 @@ def test_snapshot_round_trip(equipment):
         "MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "122-AL1/20-ST1A 20.0",
         "MV_STUBS": "none", "MV_INTERCONNECTION": "ties", "local_search_rounds": 0, "hv_mv_sizes_mva": [40, 25],
         "generator_fallback_kw": {"lv": 50, "mvlv": 150, "mv": 5000, "hvmv": 15000}, "lv_pv_cos_phi": 0.95,
-        "graph_excluded_klasse": ["Bundesautobahn", "Bundesstraße"]})
+        "graph_excluded_klasse": ["Bundesautobahn", "Bundesstraße"], "customer_min_mv_kw": 300,
+        "customer_hall_min_footprint_m2": 1500})
     stored = json_round_trip(params.to_snapshot())
+    assert (stored["loads"]["customer_min_mv_kw"], stored["loads"]["customer_hall_min_footprint_m2"]) == (300.0,
+                                                                                                        1500.0)
     rebuilt = MvParameters.from_snapshot("hv", "heavier conductors", stored)
     assert rebuilt == params
     assert rebuilt.to_snapshot() == stored
@@ -511,10 +517,15 @@ def test_lv_parameters_from_the_snapshot_of_this_code(lv_snapshot):
                                                         config_loader.USE_OPEN_TRANSFORMER_POSITIONS,
                                                         config_loader.USE_MANUAL_TRANSFORMER_POSITIONS)
     assert lv.electrical_backend == "pandapower" and lv.residential_only is False
+    categories = lv_snapshot["load_calculation"]["consumer_categories"]
+    per_m2 = {str(c["definition"]): c["peak_load_per_m2"] for c in categories}
+    assert lv.peak_load_per_m2 == {c: per_m2[c] for c in ("Commercial", "Public", "Unknown")}
     data = json_round_trip(lv.as_json())
     assert data == lv.as_json()
     assert LvVersionParameters(**data) == lv and LvVersionParameters.from_json(data) == lv
     assert LvVersionParameters.from_generation_parameters("mv1", json.dumps(lv_snapshot)) == lv   # text column
+    legacy = {key: value for key, value in data.items() if key != "peak_load_per_m2"}       # stored before it existed
+    assert LvVersionParameters.from_json(legacy).peak_load_per_m2 == {}
 
 
 def test_lv_parameters_fallbacks(lv_snapshot, caplog):
@@ -539,6 +550,10 @@ def test_lv_parameters_fallbacks(lv_snapshot, caplog):
     (lambda s: s["load_calculation"].pop("default_power_factor"), "default power factor"),
     (lambda s: s["load_calculation"].update(default_power_factor=0), "default power factor"),
     (lambda s: s["cable_dimensioning"].pop("mv_direct_connection_load_threshold_kw"), "MV-direct connection"),
+    (lambda s: [c.update(peak_load_per_m2=None) for c in s["load_calculation"]["consumer_categories"]
+                if c["definition"] == "Commercial"], "no peak load per m² for Commercial"),
+    (lambda s: [c.update(peak_load_per_m2=0.0) for c in s["load_calculation"]["consumer_categories"]
+                if c["definition"] == "Public"], "peak load per m² of Public"),
     (lambda s: s.update(electrical_backend="opendss"), "pandapower backend"),
     (lambda s: s["power_flow_assessment"].update(lv_reference_voltage_pu="0.96"), "LV reference voltage"),
 ])

@@ -22,7 +22,8 @@ from typing import Any, Mapping
 import yaml
 
 #: Version of the MV stage code; bumped whenever results change. Stored in every MV variant snapshot.
-MV_STAGE_VERSION: int = 1
+#: 2: MV customer halls count one storey, customers below ``customer_min_mv_kw`` hang on the nearest station.
+MV_STAGE_VERSION: int = 2
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping")
@@ -155,6 +156,13 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="eGon-data MV customers up to 5.5 MW; 20 kV connection rules 0.2 to 5.5 MW"),
     _constant("hv_customer_kw", 20000.0, "float", "loads", bounds=_POSITIVE,
               source="eGon-data HV/MV level up to 20 MW; larger customers are HV customers (excluded)"),
+    _constant("customer_hall_min_footprint_m2", 2000.0, "float", "loads", bounds=_POSITIVE,
+              source="MV customer buildings with at least this footprint are halls: their non-residential floor area "
+                     "for the MV load is one storey, min(footprint, floor area); the building data count large "
+                     "single-storey halls with storeys derived from their height [assumption]"),
+    _constant("customer_min_mv_kw", 200.0, "float", "loads", bounds=_POSITIVE,
+              source="eGon-data: MV level above 200 kW building peak (the own peak: installed load after the hall "
+                     "rule, factor 1); smaller MV customers are station-busbar customers of the nearest MV/LV station"),
     # generation
     _constant("generator_lv_side_kw", 200.0, "float", "generation", key="lv_side_kw", bounds=_POSITIVE,
               source="eGon-data MV/LV threshold: MaStR units at MV/LV level above it are own MV nodes"),

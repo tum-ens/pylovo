@@ -2,10 +2,10 @@
 
 Reads, for an explicit ``version_id``, the generated PLZ and the planning region, the LV version
 snapshot, the stations of the LV grids with their load statistics, the MV customers of
-``pylovo.mv_customers``, the LV-side generation targets, the stored LV voltage requirement and the
-stored LV pandapower nets. Read-only (no temporary tables, so the methods also run in a read-only
-transaction); the methods never commit. The planning rules that turn these rows into MV nodes live
-in :mod:`pylovo.mv_grid.inputs` (DESIGN §3.1, §3.4–§3.6).
+``pylovo.mv_customers``, the LV-side generation targets, the stored LV voltage requirement, the
+stored LV pandapower nets and the population of the PLZ. Read-only (no temporary tables, so the
+methods also run in a read-only transaction); the methods never commit. The planning rules that turn
+these rows into MV nodes live in :mod:`pylovo.mv_grid.inputs` (DESIGN §3.1, §3.4–§3.6).
 """
 from __future__ import annotations
 
@@ -41,8 +41,11 @@ STATION_STATS_COLUMNS: tuple[str, ...] = (
 )
 #: Columns of :meth:`MvInputMixin.mv_customer_rows`.
 CUSTOMER_ROW_COLUMNS: tuple[str, ...] = (
-    "objectid", "plz", "nonresidential_use", "installed_kw", "x", "y", "mapped_station", "source",
+    "objectid", "plz", "nonresidential_use", "installed_kw", "x", "y", "mapped_station", "source", "footprint_m2",
+    "nonresidential_floor_area",
 )
+#: Columns of :meth:`MvInputMixin.plz_population`.
+POPULATION_COLUMNS: tuple[str, ...] = ("plz", "pop", "area_km2", "polygon_km2")
 
 _STATION_NODES_SQL = sql.SQL("""
 SELECT gr.grid_result_id, gr.plz, gr.kcid, gr.bcid,
@@ -109,7 +112,8 @@ ORDER BY pl.grid_result_id
 _CUSTOMERS_SQL = sql.SQL("""
 SELECT mc.objectid, mc.plz, mc.nonresidential_use, mc.nonresidential_peak_load_in_kw AS installed_kw,
        ST_X(COALESCE(st.geom, mc.centroid)) AS x, ST_Y(COALESCE(st.geom, mc.centroid)) AS y,
-       (st.geom IS NOT NULL) AS mapped_station, 'mv_customers' AS source
+       (st.geom IS NOT NULL) AS mapped_station, 'mv_customers' AS source, ST_Area(mc.geom) AS footprint_m2,
+       mc.nonresidential_floor_area
 FROM pylovo.mv_customers mc
 LEFT JOIN LATERAL (
     SELECT ST_GeometryN(t.geom, 1) AS geom FROM pylovo.transformers t
@@ -125,7 +129,8 @@ _CUSTOMERS_FALLBACK_SQL = """
 SELECT br.objectid, br.postcode AS plz, br.nonresidential_use, br.nonresidential_peak_load_in_kw AS installed_kw,
        ST_X(COALESCE(br.centroid, ST_PointOnSurface(br.geom))) AS x,
        ST_Y(COALESCE(br.centroid, ST_PointOnSurface(br.geom))) AS y,
-       false AS mapped_station, 'buildings_result' AS source
+       false AS mapped_station, 'buildings_result' AS source, ST_Area(br.geom) AS footprint_m2,
+       br.nonresidential_floor_area
 FROM pylovo.buildings_result br
 WHERE br.version_id = %(v)s AND br.postcode = ANY(%(plz)s) AND br.nonresidential_mv_direct
   AND br.nonresidential_peak_load_in_kw > 0
@@ -165,6 +170,17 @@ CROSS JOIN LATERAL json_array_elements_text((gr.grid->'_object'->'ext_grid'->>'_
      WITH ORDINALITY ce(name, ord)
 WHERE gr.version_id = %(v)s AND gr.grid_result_id = ANY(%(ids)s) AND ce.name = 'vm_pu'
 ORDER BY gr.grid_result_id
+"""
+
+# Population per PLZ (municipal_register has one row per PLZ and municipality, all with the PLZ population) and
+# the PLZ area of the register next to the area of the PLZ polygon that the planning region is made of.
+_POPULATION_SQL = """
+SELECT q.plz, r.pop, r.area_km2, ST_Area(p.geom) / 1e6 AS polygon_km2
+FROM unnest(%(plz)s::integer[]) AS q(plz)
+LEFT JOIN (SELECT plz, max(pop) AS pop, max(area) AS area_km2 FROM pylovo.municipal_register
+           WHERE plz = ANY(%(plz)s) GROUP BY plz) r ON r.plz = q.plz
+LEFT JOIN pylovo.postcode p ON p.plz = q.plz
+ORDER BY q.plz
 """
 
 _LOST_OVERLAP_SQL = sql.SQL("""
@@ -418,8 +434,10 @@ class MvInputMixin(BaseMixin):
 
         Position: the station candidate inside the building if the LV version used that source
         (``USE_*_TRANSFORMER_POSITIONS`` of its snapshot, so DSO points only for DSO versions; ``mapped_station``),
-        else the building centroid. Versions without ``pylovo.mv_customers`` rows fall back to the mixed MV-direct
-        buildings of ``buildings_result`` (warning; ``source = 'buildings_result'``).
+        else the building centroid. ``footprint_m2`` (area of the building polygon) and
+        ``nonresidential_floor_area`` feed the hall rule of :func:`~pylovo.mv_grid.inputs.customer_table`.
+        Versions without ``pylovo.mv_customers`` rows fall back to the mixed MV-direct buildings of
+        ``buildings_result`` (warning; ``source = 'buildings_result'``).
 
         Returns:
             :data:`CUSTOMER_ROW_COLUMNS`, sorted by ``objectid``.
@@ -437,7 +455,27 @@ class MvInputMixin(BaseMixin):
                                 "MV customers")
             self.cur.execute(_CUSTOMERS_FALLBACK_SQL, {"v": version_id, "plz": plz})
         frame = _frame(self.cur.fetchall(), CUSTOMER_ROW_COLUMNS)
-        for column in ("installed_kw", "x", "y"):
+        for column in ("installed_kw", "x", "y", "footprint_m2", "nonresidential_floor_area"):
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").astype(float)
+        return frame
+
+    def plz_population(self, plz_list: Sequence[int]) -> pd.DataFrame:
+        """Population and area of the PLZ for the demand anchor (:func:`~pylovo.mv_grid.inputs.demand_anchor`).
+
+        ``pop`` is ``pylovo.municipal_register.pop`` (the population of the PLZ, repeated on each of its
+        municipality rows), ``area_km2`` the PLZ area of the register and ``polygon_km2`` the area of the
+        ``pylovo.postcode`` polygon; a polygon smaller than the register area is cut by the data extent. NaN where a
+        PLZ has no register row or no polygon.
+
+        Returns:
+            :data:`POPULATION_COLUMNS`, one row per requested PLZ, sorted by ``plz``.
+        """
+        plz = _ints(plz_list)
+        if not plz:
+            return _frame([], POPULATION_COLUMNS)
+        self.cur.execute(_POPULATION_SQL, {"plz": plz})
+        frame = _frame(self.cur.fetchall(), POPULATION_COLUMNS)
+        for column in ("pop", "area_km2", "polygon_km2"):
             frame[column] = pd.to_numeric(frame[column], errors="coerce").astype(float)
         return frame
 

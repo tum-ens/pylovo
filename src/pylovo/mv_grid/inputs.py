@@ -5,7 +5,11 @@ The region step of the MV stage turns the rows read by :class:`~pylovo.database.
 
 * :func:`station_table`: one MV node per LV grid (station) with its per-category load statistics and its own
   coincident peak ``p_own_kw`` (pylovo's station design law, :func:`~pylovo.mv_grid.coincidence.coincident_kw`).
-* :func:`customer_table`: the MV customers with their fixed load ``g_c x installed`` and connection class.
+* :func:`customer_table`: the MV customers with their MV load (halls count one storey), fixed load
+  ``g_c x installed`` and connection class.
+* :func:`busbar_customers`: customers below ``customer_min_mv_kw`` get no MV node; they hang on the busbar of the
+  nearest station.
+* :func:`demand_anchor`: the regional coincident MV load per inhabitant.
 * :func:`classify_level`, :func:`aggregate_locations`: MaStR units grouped per grid connection point
   (``LokationMastrNummer``) with the voltage class of the point (DSO-entered ``Spannungsebene``, else by power).
 * :func:`distribute_lv_generation`: generation connected on the LV side (located units and the postcode
@@ -19,6 +23,7 @@ that :data:`~pylovo.mv_grid.model.NODE_COLUMNS` (``inst_*``/``units_*`` from ``l
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Any, Mapping
@@ -26,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 import numpy as np
 import pandas as pd
 
-from pylovo.mv_grid.coincidence import INSTALLED_COLUMNS, UNITS_COLUMNS, coincident_kw
+from pylovo.mv_grid.coincidence import INSTALLED_COLUMNS, UNITS_COLUMNS, coincident_kw, node_stats, pooled_kw
 from pylovo.mv_grid.model import CATEGORIES
 
 if TYPE_CHECKING:
@@ -72,8 +77,14 @@ STATION_COLUMNS: tuple[str, ...] = (
 #: Columns of :func:`customer_table`.
 CUSTOMER_COLUMNS: tuple[str, ...] = (
     "kind", "connection_hint", "customer_objectid", "objectid", "plz", "category", "x", "y", "mapped_station",
-    "installed_kw", "p_own_kw", "p_fixed_kw", "load_stats", "households", *GENERATION_COLUMNS, "flags",
+    "lv_installed_kw", "installed_kw", "p_own_kw", "p_fixed_kw", "load_stats", "households", *GENERATION_COLUMNS,
+    "flags",
 )
+#: Key of the station-busbar customers in ``load_stats`` of a station node (:func:`busbar_customers`).
+BUSBAR_CUSTOMERS: str = "busbar_customers"
+#: A PLZ polygon with less than this share of the PLZ area of the municipal register lies only partly in the
+#: planning region (the data extent cuts it): its population counts pro rata and the demand anchor is approximate.
+PLZ_FULL_AREA_SHARE: float = 0.95
 #: Columns of :func:`aggregate_locations`.
 LOCATION_COLUMNS: tuple[str, ...] = (
     "mastr_connection_id", "location_id", "n_units", "x", "y", *GENERATION_COLUMNS, "kw", "voltage_level",
@@ -235,25 +246,38 @@ def station_table(stations: pd.DataFrame, stats: pd.DataFrame, lv: "LvVersionPar
 
 # ---------------------------------------------------------------------------------------------- customers
 def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvParameters") -> pd.DataFrame:
-    """The MV customers as node rows with their fixed load and connection class (DESIGN §3.5).
+    """The MV customers as node rows with their MV load, fixed load and connection class (DESIGN §3.5).
+
+    **MV load (hall rule).** The LV stage gives a customer ``nonresidential_floor_area x W/m²`` of its category on
+    the gross floor area, whose storeys the building data derive from the height, so large single-storey halls
+    count several storeys. A building with a footprint of at least ``customer_hall_min_footprint_m2`` is a hall:
+    its floor area for the MV load is one storey, ``min(footprint, nonresidential_floor_area)`` (flag
+    ``hall_one_storey`` where this lowers it). ``installed_kw`` = that area x the W/m² of the category in the
+    LV snapshot (``lv.peak_load_per_m2``); the stored LV value is kept as ``lv_installed_kw``. A row without a
+    floor area takes the area of its LV load (``lv_installed_kw / W/m²``).
 
     ``p_own_kw = p_fixed_kw = g_c x installed_kw`` with the LV-version sim factor of the customer's
-    non-residential use (the asymptote of pylovo's law). Class (``connection_hint``): above ``hv_customer_kw`` ->
-    ``excluded`` with flag ``hv_customer`` (listed, not modelled); above ``dedicated_feeder_kw`` -> ``dedicated``;
-    else ``ring``. ``load_stats`` stays empty (a fixed load is never pooled again).
+    non-residential use (the asymptote of pylovo's law). Class (``connection_hint``, on these corrected values):
+    above ``hv_customer_kw`` -> ``excluded`` with flag ``hv_customer`` (listed, not modelled); above
+    ``dedicated_feeder_kw`` -> ``dedicated``; else ``ring``. ``load_stats`` stays empty (a fixed load is never pooled
+    again). Customers below ``customer_min_mv_kw`` are split off afterwards (:func:`busbar_customers`).
 
     Args:
         rows: Rows of :meth:`MvInputMixin.mv_customer_rows`: ``objectid``, ``plz``, ``nonresidential_use``,
-            ``installed_kw``, ``x``, ``y``, ``mapped_station`` and optionally ``source`` (``mv_customers`` or
-            ``buildings_result`` for versions without ``pylovo.mv_customers`` rows; those get no
+            ``installed_kw``, ``x``, ``y``, ``mapped_station``, optionally ``footprint_m2`` and
+            ``nonresidential_floor_area`` (without a footprint the hall rule does not apply) and ``source``
+            (``mv_customers`` or ``buildings_result`` for versions without ``pylovo.mv_customers`` rows; those get no
             ``customer_objectid``, which references ``pylovo.mv_customers``, and the flag ``not_in_mv_customers``).
             A use outside Commercial, Public, Unknown counts as Unknown (flag ``use_unknown``).
-        lv: Parameters of the LV version (sim factors).
-        params: MV parameters (``dedicated_feeder_kw``, ``hv_customer_kw``).
+        lv: Parameters of the LV version (sim factors, ``peak_load_per_m2``).
+        params: MV parameters (``customer_hall_min_footprint_m2``, ``dedicated_feeder_kw``, ``hv_customer_kw``).
 
     Returns:
         :data:`CUSTOMER_COLUMNS`, sorted by ``objectid``; rows without a positive installed load or without a
         position are dropped (logged).
+
+    Raises:
+        ValueError: If ``lv`` has no positive peak load per m² for a category of the customers.
     """
     frame = pd.DataFrame(rows).copy()
     if not len(frame):
@@ -274,8 +298,22 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
     for i in np.flatnonzero(category.isna().to_numpy()):
         flags[i].append("use_unknown")
     category = category.fillna("Unknown")
+    w_per_m2 = category.map(lambda c: lv.peak_load_per_m2.get(c, np.nan)).astype(float)
+    unknown_w = sorted(set(category[~(w_per_m2 > 0)]))
+    if unknown_w:
+        raise ValueError(f"LV version {lv.version_id} has no peak load per m² for {', '.join(unknown_w)} "
+                         "(LvVersionParameters.peak_load_per_m2)")
+    lv_installed = frame["installed_kw"].astype(float)
+    area = _num(frame, "nonresidential_floor_area")
+    area = area.where(area > 0, lv_installed * 1000.0 / w_per_m2)
+    footprint = _num(frame, "footprint_m2")
+    hall = (footprint >= params.customer_hall_min_footprint_m2) & (footprint < area)
+    area = area.where(~hall, footprint)
+    for i in np.flatnonzero(hall.to_numpy()):
+        flags[i].append("hall_one_storey")
+    installed = area * w_per_m2 / 1000.0
     g = category.map(lambda c: float(lv.sim_factor[c])).astype(float)
-    p_kw = g * frame["installed_kw"]
+    p_kw = g * installed
     hint = np.where(p_kw > params.hv_customer_kw, "excluded",
                     np.where(p_kw > params.dedicated_feeder_kw, "dedicated", "ring"))
     source = frame["source"].astype(object) if "source" in frame.columns \
@@ -298,7 +336,8 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
     out["x"] = frame["x"].astype(float)
     out["y"] = frame["y"].astype(float)
     out["mapped_station"] = mapped.astype(bool).to_numpy()
-    out["installed_kw"] = frame["installed_kw"].astype(float)
+    out["lv_installed_kw"] = lv_installed
+    out["installed_kw"] = installed.astype(float)
     out["p_own_kw"] = p_kw.astype(float)
     out["p_fixed_kw"] = p_kw.astype(float)
     out["load_stats"] = None
@@ -307,6 +346,161 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
         out[column] = 0.0
     out["flags"] = flags
     return out[list(CUSTOMER_COLUMNS)]
+
+
+def busbar_record(load_stats: Any) -> dict:
+    """The station-busbar customer record (:func:`busbar_customers`) in a station's ``load_stats`` (a dict or its
+    JSON text), or an empty dict."""
+    if isinstance(load_stats, str):
+        load_stats = json.loads(load_stats)
+    record = load_stats.get(BUSBAR_CUSTOMERS) if isinstance(load_stats, Mapping) else None
+    return dict(record) if isinstance(record, Mapping) else {}
+
+
+def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
+                     params: "MvParameters") -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Hang the MV customers below ``customer_min_mv_kw`` on the busbar of their nearest station (DESIGN §3.5).
+
+    A customer whose own peak is below ``customer_min_mv_kw`` gets no MV node (eGon-data: MV level above 200 kW
+    building peak); the own peak of one building is its ``installed_kw`` after the hall rule (pylovo's law gives
+    factor 1 for one unit). It becomes a station-busbar customer of the nearest station node by straight-line
+    distance (k-d tree), so it lies in that station's district. Its MV-level load stays its fixed load
+    ``p_fixed_kw = g_c x installed_kw``; the station gets the sum as ``p_fixed_kw`` and the record
+    ``load_stats["busbar_customers"]``: ``n``, ``kw`` (fixed load), ``installed_kw``, ``categories``
+    (``{category: {"n", "installed_kw", "kw"}}``), ``objectids`` and ``max_distance_m``, plus the flag
+    ``busbar_customers``. Without a station node every customer keeps its own node (logged).
+
+    Args:
+        stations: :func:`station_table` rows (``x``, ``y``, ``load_stats``, ``p_fixed_kw``, ``flags``).
+        customers: :func:`customer_table` rows.
+        params: MV parameters (``customer_min_mv_kw``).
+
+    Returns:
+        ``(stations, customers)``: new frames; ``customers`` keeps the customers with an own MV node. ``attrs`` of
+        the customers (for :func:`describe_customers`): ``n_customers``, ``n_halls``, ``lv_kw`` (fixed load of the
+        LV installed loads), ``kw`` (after the hall rule), ``n_busbar``, ``busbar_kw``, ``busbar_installed_kw``,
+        ``n_busbar_stations`` and ``max_busbar_distance_m``.
+    """
+    st = pd.DataFrame(stations).copy()
+    cu = pd.DataFrame(customers).copy()
+    fixed = _num(cu, "p_fixed_kw").fillna(0.0)
+    installed = _num(cu, "installed_kw")
+    lv_installed = _num(cu, "lv_installed_kw").fillna(installed)
+    attrs = {"n_customers": int(len(cu)),
+             "n_halls": int(sum("hall_one_storey" in f for f in _flag_lists(cu))),
+             "lv_kw": float((fixed * lv_installed / installed.where(installed > 0)).fillna(0.0).sum()),
+             "kw": float(fixed.sum()), "n_busbar": 0, "busbar_kw": 0.0, "busbar_installed_kw": 0.0,
+             "n_busbar_stations": 0, "max_busbar_distance_m": 0.0}
+    if not len(cu):
+        cu.attrs.update(attrs)
+        return st, cu
+    small = (_num(cu, "installed_kw").fillna(0.0) < params.customer_min_mv_kw).to_numpy()
+    xy = st[["x", "y"]].to_numpy(dtype=float) if len(st) else np.zeros((0, 2))
+    located = np.isfinite(xy).all(axis=1)
+    if not small.any() or not located.any():
+        if small.any():
+            logger.warning(f"{int(small.sum())} MV customers below {params.customer_min_mv_kw:g} kW keep their own "
+                           "MV node: there is no station node")
+        cu.attrs.update(attrs)
+        return st, cu
+    from scipy.spatial import cKDTree
+
+    candidates = np.flatnonzero(located)
+    part = cu[small]
+    distance, nearest = cKDTree(xy[located]).query(part[["x", "y"]].to_numpy(dtype=float))
+    row_of = candidates[np.asarray(nearest, dtype=np.int64)]
+    st["load_stats"] = [dict(s) if isinstance(s, Mapping) else {} for s in st.get("load_stats", [None] * len(st))]
+    st["p_fixed_kw"] = _num(st, "p_fixed_kw").fillna(0.0)
+    st["flags"] = _flag_lists(st)
+    for row in np.unique(row_of):
+        mine = row_of == row
+        group = part[mine]
+        categories: dict[str, dict] = {}
+        for category, sub in group.groupby("category", sort=True):
+            categories[str(category)] = {"n": int(len(sub)), "installed_kw": float(sub["installed_kw"].sum()),
+                                         "kw": float(sub["p_fixed_kw"].sum())}
+        kw = float(group["p_fixed_kw"].sum())
+        st.at[st.index[row], "load_stats"] = {**st["load_stats"].iloc[row], BUSBAR_CUSTOMERS: {
+            "n": int(len(group)), "kw": kw, "installed_kw": float(group["installed_kw"].sum()),
+            "categories": categories, "objectids": [str(o) for o in group["objectid"]],
+            "max_distance_m": float(np.max(distance[mine]))}}
+        st.at[st.index[row], "p_fixed_kw"] = float(st["p_fixed_kw"].iloc[row]) + kw
+        if BUSBAR_CUSTOMERS not in st["flags"].iloc[row]:
+            st["flags"].iloc[row].append(BUSBAR_CUSTOMERS)
+    kept = cu[~small].reset_index(drop=True)
+    attrs.update(n_busbar=int(small.sum()), busbar_kw=float(part["p_fixed_kw"].sum()),
+                 busbar_installed_kw=float(part["installed_kw"].sum()), n_busbar_stations=int(len(np.unique(row_of))),
+                 max_busbar_distance_m=float(np.max(distance)))
+    kept.attrs.update(attrs)
+    return st, kept
+
+
+def describe_customers(attrs: Mapping[str, Any], params: "MvParameters") -> str:
+    """One log line of the MV customers from the ``attrs`` of :func:`busbar_customers`."""
+    own = attrs.get("n_customers", 0) - attrs.get("n_busbar", 0)
+    return (f"MV customers: {attrs.get('n_customers', 0)} ({attrs.get('lv_kw', 0.0) / 1000:.1f} MW coincident with "
+            f"the LV loads, {attrs.get('kw', 0.0) / 1000:.1f} MW with {attrs.get('n_halls', 0)} halls counted one "
+            f"storey); {own} own MV nodes ({(attrs.get('kw', 0.0) - attrs.get('busbar_kw', 0.0)) / 1000:.1f} MW), "
+            f"{attrs.get('n_busbar', 0)} below {params.customer_min_mv_kw:g} kW at "
+            f"{attrs.get('n_busbar_stations', 0)} station busbars ({attrs.get('busbar_kw', 0.0) / 1000:.1f} MW, at "
+            f"most {attrs.get('max_busbar_distance_m', 0.0):,.0f} m away)")
+
+
+def demand_anchor(nodes: pd.DataFrame, population: pd.DataFrame, lv: "LvVersionParameters") -> dict:
+    """The regional demand anchor: the coincident MV load per inhabitant (DESIGN §7.2, judge method 4).
+
+    **Load:** pylovo's category law on the summed statistics of all modelled stations plus the fixed loads of the MV
+    customer nodes and of the station-busbar customers (the regional coincident peak, not the sum of the district
+    peaks). HV customers (``connection_hint`` excluded) are left out and reported as ``excluded_mw``.
+
+    **Population:** ``municipal_register.pop`` per PLZ. The planning region is the union of the PLZ polygons; a PLZ
+    whose polygon covers less than :data:`PLZ_FULL_AREA_SHARE` of its register area lies only partly in the region
+    (the data extent cuts it): its population counts pro rata to the area share and the anchor is approximate, as
+    it is with PLZ without a register row (no population).
+
+    Args:
+        nodes: The node table of the variant in NODE_COLUMNS form (``MvResultMixin.variant_node_table``).
+        population: Rows of :meth:`MvInputMixin.plz_population`: ``plz``, ``pop``, ``area_km2`` (register) and
+            ``polygon_km2``.
+        lv: LV version parameters (sim factors).
+
+    Returns:
+        JSON-native: ``kw_per_inhabitant`` (None without population), ``coincident_mw``, ``population`` (counted),
+        ``n_plz``, ``customer_mw`` and ``n_customer_nodes`` (own MV nodes), ``busbar_customer_mw``,
+        ``excluded_mw``, ``approximate``, ``partial_plz`` (``{plz: area share}``) and ``plz_without_population``.
+    """
+    frame = pd.DataFrame(nodes)
+    kind = frame["kind"].astype(object) if len(frame) else pd.Series(dtype=object)
+    hint = frame["connection_hint"].astype(object) if len(frame) else pd.Series(dtype=object)
+    load = kind.isin(("station", "customer"))
+    modelled = frame[load & hint.ne("excluded")]
+    installed, units, fixed = node_stats(modelled) if len(modelled) else (np.zeros((0, 4)), np.zeros((0, 4)),
+                                                                          np.zeros(0))
+    coincident_kw_total = pooled_kw(installed, units, fixed, lv.g()) if len(modelled) else 0.0
+    fixed_of = pd.Series(fixed, index=modelled.index)
+    customer = modelled["kind"].eq("customer") if len(modelled) else pd.Series(dtype=bool)
+    excluded = frame[load & hint.eq("excluded")]
+    pop = pd.DataFrame(population)
+    people, register, polygon = _num(pop, "pop"), _num(pop, "area_km2"), _num(pop, "polygon_km2")
+    share = (polygon / register).where((register > 0) & polygon.notna(), 1.0).clip(upper=1.0)
+    cut = people.notna() & (share < PLZ_FULL_AREA_SHARE)
+    counted = float((people * share.where(cut, 1.0)).sum(skipna=True)) if len(pop) else 0.0
+    partial = {str(int(p)): round(float(s), 4) for p, s in zip(pop.loc[cut, "plz"], share[cut])} if len(pop) else {}
+    missing = [int(p) for p in pop.loc[people.isna(), "plz"]] if len(pop) else []
+    return {
+        "kw_per_inhabitant": coincident_kw_total / counted if counted > 0 else None,
+        "coincident_mw": coincident_kw_total / 1000.0,
+        "population": round(counted),
+        "n_plz": int(len(pop)),
+        "customer_mw": float(fixed_of[customer.to_numpy()].sum()) / 1000.0 if len(modelled) else 0.0,
+        "n_customer_nodes": int(customer.sum()) if len(modelled) else 0,
+        "busbar_customer_mw": float(fixed_of[~customer.to_numpy()].sum()) / 1000.0 if len(modelled) else 0.0,
+        "excluded_mw": float(pd.to_numeric(excluded["p_fixed_kw"], errors="coerce").fillna(0.0).sum()) / 1000.0
+        if len(excluded) else 0.0,
+        "approximate": bool(partial or missing),
+        "partial_plz": partial,
+        "plz_without_population": missing,
+    }
 
 
 # ---------------------------------------------------------------------------------------------- MaStR

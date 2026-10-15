@@ -81,13 +81,14 @@ _FEED_IN_CASES = ("feed_in_wind", "feed_in_pv")
 _N1_CASES = ("n1a", "n1b")
 _VIOLATION_STATUSES = ("voltage_violation", "loading_violation", "not_converged")
 
-#: Columns of the node layer of :meth:`MvResultMixin.read_mv_layers` (every column but the internal ones).
+#: Columns of the node layer of :meth:`MvResultMixin.read_mv_layers` (every column but the internal ones;
+#: ``load_stats`` holds the station-busbar customers that ``pylovo-mv couple`` adds at the LV busbar).
 _NODE_LAYER_COLUMNS = (
     "mv_node_id", "version_id", "mv_variant_id", "mv_grid_id", "kind", "connection_hint", "connection",
     "substation_id", "grid_result_id", "customer_objectid", "mastr_connection_id", "voltage_class", "technology",
     "plz", "plz_settlement_type", "settlement_id", "area_class", "station_source", "households", "n_buildings",
-    "installed_kw", "p_own_kw", "gen_solar_kw", "gen_wind_kw", "gen_other_kw", "sn_kva", "feeder_id", "ring_id",
-    "ring_position", "stub_parent", "attach_offset_m", "bridged", "vm_load_pu", "vm_n1_pu", "vm_feed_in_pu",
+    "load_stats", "installed_kw", "p_own_kw", "gen_solar_kw", "gen_wind_kw", "gen_other_kw", "sn_kva", "feeder_id",
+    "ring_id", "ring_position", "stub_parent", "attach_offset_m", "bridged", "vm_load_pu", "vm_n1_pu", "vm_feed_in_pu",
     "lv_design_source_vm_pu", "lv_max_drop_pu", "mv_lv_tap_pos", "lv_busbar_vm_pu", "lv_min_vm_pu",
     "lv_busbar_vm_feed_in_pu", "band_conflict", "coupled_lv_busbar_vm_pu", "coupled_lv_min_vm_pu",
     "coupled_lv_busbar_vm_feed_in_pu", "coupled_lv_max_vm_pu", "coupled_op_lv_busbar_vm_pu", "flags", "geom",
@@ -173,9 +174,10 @@ def node_columns_frame(rows: pd.DataFrame) -> pd.DataFrame:
     """Map ``mv_node`` rows (as read by the MV readers) to :data:`~pylovo.mv_grid.model.NODE_COLUMNS`.
 
     ``inst_*``/``units_*`` come from ``load_stats`` (0 when a category is absent); ``p_fixed_kw = p_own_kw`` for
-    customers, else 0; ``urban = (area_class == 'urban')``; ``gen_level`` is ``'mv'`` for generators, ``'lv'`` for
-    stations with LV-side generation and ``''`` otherwise. The busbar rows come first, then ascending
-    ``mv_node_id``; the index is ``mv_node_id``.
+    customers, the fixed load of the station-busbar customers (``load_stats['busbar_customers']['kw']``,
+    :func:`pylovo.mv_grid.inputs.busbar_customers`) for stations, else 0; ``urban = (area_class == 'urban')``;
+    ``gen_level`` is ``'mv'`` for generators, ``'lv'`` for stations with LV-side generation and ``''`` otherwise.
+    The busbar rows come first, then ascending ``mv_node_id``; the index is ``mv_node_id``.
 
     Args:
         rows: Columns ``mv_node_id``, ``kind``, ``connection_hint``, ``x``, ``y``, ``attach_edge_id``,
@@ -186,6 +188,7 @@ def node_columns_frame(rows: pd.DataFrame) -> pd.DataFrame:
     Returns:
         A frame with exactly the NODE_COLUMNS (plus nothing else), index ``mv_node_id``.
     """
+    from pylovo.mv_grid.inputs import busbar_record
     from pylovo.mv_grid.model import NODE_COLUMNS
 
     df = pd.DataFrame(rows).copy()
@@ -199,7 +202,8 @@ def node_columns_frame(rows: pd.DataFrame) -> pd.DataFrame:
         df[f"units_{suffix}"] = pair.map(lambda p: float(p[1] or 0.0) if p else 0.0).astype(float)
     kind = df["kind"].astype(str)
     p_own = pd.to_numeric(df["p_own_kw"], errors="coerce").fillna(0.0) if "p_own_kw" in df.columns else 0.0
-    df["p_fixed_kw"] = np.where(kind == "customer", p_own, 0.0)
+    busbar_kw = stats.map(lambda s: float(busbar_record(s).get("kw") or 0.0))
+    df["p_fixed_kw"] = np.where(kind == "customer", p_own, np.where(kind == "station", busbar_kw, 0.0))
     df["urban"] = df["area_class"].astype(object).eq("urban") if "area_class" in df.columns else False
     for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
         df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0).astype(float) if column in df.columns \

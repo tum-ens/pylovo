@@ -16,6 +16,9 @@ from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStage
 
 LV_SNAPSHOT = {
     "load_calculation": {"sim_factor": {"Residential": 0.07, "Commercial": 0.5, "Public": 0.6, "Unknown": 0.6},
+                         "consumer_categories": [{"definition": "Commercial", "peak_load_per_m2": 79.0},
+                                                 {"definition": "Public", "peak_load_per_m2": 29.0},
+                                                 {"definition": "Unknown", "peak_load_per_m2": 29.0}],
                          "default_power_factor": 0.95},
     "cable_dimensioning": {"mv_direct_connection_load_threshold_kw": 300},
     "power_flow_assessment": {"lv_reference_voltage_pu": 0.96},
@@ -158,6 +161,15 @@ class FakeDb:
     def variant_totals(self, version_id, variant_id):
         return dict(self.totals)
 
+    def variant_node_table(self, version_id, variant_id):
+        rows = {c: [0.0, 0.0, 0.0] for c in NODE_COLUMNS}
+        rows.update(kind=["station", "station", "customer"], connection_hint="ring",
+                    inst_res=[900.0, 600.0, 0.0], units_res=[60.0, 40.0, 0.0], p_fixed_kw=[150.0, 0.0, 400.0])
+        return pd.DataFrame(rows, index=pd.Index([4, 5, 6], name="mv_node_id"))
+
+    def plz_population(self, plz):
+        return pd.DataFrame({"plz": list(plz), "pop": 1000.0, "area_km2": 10.0, "polygon_km2": 10.0})
+
     def finish_variant(self, version_id, variant_id, summary):
         self._call("finish_variant", summary.status)
         self.finished = summary
@@ -199,6 +211,17 @@ def test_a_new_variant_runs_every_step(run, capsys):
     assert summary.n_band_conflicts == 3 and db.finished is summary
     assert ("unlock_variant", ("mv1", "d0")) in db.calls and db.closed
     assert capsys.readouterr().out.startswith("✓ MV stage on ")
+
+
+def test_the_summary_carries_the_demand_anchor(run, capsys):
+    summary = run(FakeDb(generated=(1, 2)), plz=(1, 2))
+    demand = summary.demand
+    expected_kw = 1500.0 * (0.07 + 0.93 * 100 ** -0.75) + 150.0 + 400.0     # category law + fixed loads
+    assert demand["kw_per_inhabitant"] == pytest.approx(expected_kw / 2000.0)
+    assert (demand["customer_mw"], demand["busbar_customer_mw"]) == pytest.approx((0.4, 0.15))
+    assert demand["population"] == 2000 and demand["approximate"] is False
+    assert summary.to_dict()["demand"] == demand
+    assert "✓ Demand anchor: " in summary.describe()
 
 
 def test_a_busy_plz_stops_before_any_write(run):
@@ -480,6 +503,13 @@ def region_modules(monkeypatch):
         "p_own_kw": [10.0, 20.0], "gen_solar_kw": 0.0})
     inputs.customer_table = lambda rows, lv, params: pd.DataFrame({
         "kind": ["customer"], "connection_hint": ["ring"], "x": [30.0], "y": [40.0], "mapped_station": [False]})
+
+    def busbar_customers(stations, customers, params):
+        recorded["split"] = len(customers)
+        return stations, customers
+
+    inputs.busbar_customers = busbar_customers
+    inputs.describe_customers = lambda attrs, params: "MV customers"
     inputs.aggregate_locations = lambda units, params: pd.DataFrame({
         "mastr_connection_id": ["SEL1", "SEL2", "SEL3"], "x": [50.0, 60.0, 70.0], "y": 0.0,
         "gen_solar_kw": [800.0, 30.0, 50000.0], "treatment": ["node", "lv_side", "excluded"]})
@@ -525,6 +555,7 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert db.calls["lv_side_targets"][0][0]["mastr_connection_id"].tolist() == ["SEL2"]
     assert region_modules["generators"]["mastr_connection_id"].tolist() == ["SEL1"]
     assert region_modules["stations"]["gen_solar_kw"].tolist() == [30.0, 0.0]
+    assert region_modules["split"] == 1                                   # the small customers are split off
     nodes = db.inserted_nodes
     assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer", "generator"]
     # the customer moves to its street transfer point

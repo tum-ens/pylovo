@@ -16,9 +16,10 @@ or LV grids.
    HV side and with an ideal slack at the busbar band edge (``busbar_vm_pu - busbar_band_pu`` in the load case,
    ``+ busbar_band_pu`` in the feed-in cases), every LV net fused at its MV node by a bulk concat with index
    offsets (the LV ``MVbus 1`` and ext_grid are dropped and the station transformer hangs on the MV node bus), the
-   station equivalents of the MV net removed, the LV-side generation moved to ``LVbus 1``, the LV loads scaled per
-   MV feeder and consumer category by pylovo's coincidence law (:func:`coupled_scaling`), so the feeder heads
-   carry the loads of the MV design net, and the MV/LV taps ``t*``. A 10 kV variant re-types the LV transformers
+   station equivalents of the MV net removed, the LV-side generation moved to ``LVbus 1``, the station-busbar
+   customers added as fixed loads at ``LVbus 1`` (:func:`add_busbar_customers`), the LV loads scaled per MV feeder
+   and consumer category by pylovo's coincidence law (:func:`coupled_scaling`), so the feeder heads carry the loads
+   of the MV design net, and the MV/LV taps ``t*``. A 10 kV variant re-types the LV transformers
    (``vn_hv_kv``). Result per station: ``coupled_op_lv_busbar_vm_pu``; the difference of the MV node voltages to
    the MV-only net at the same busbar voltage is a consistency diagnostic in ``mv_grid.metrics``.
 
@@ -52,6 +53,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from pylovo.mv_grid import coincidence, electrical
+from pylovo.mv_grid.inputs import busbar_record
 from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
 
@@ -92,6 +94,8 @@ OPERATING_COLUMNS: tuple[str, ...] = (
 )
 #: Agreement of the analytic and the coupled LV busbar voltage that the metrics count (p.u.).
 AGREEMENT_PU: float = 0.005
+#: ``load`` column that marks the station-busbar customers of the merged net (fixed loads, never scaled).
+BUSBAR_CUSTOMER_COLUMN: str = "busbar_customer"
 
 
 # ---------------------------------------------------------------------------------------------- small helpers
@@ -524,16 +528,81 @@ def coupled_feeders(net: pp.pandapowerNet, *, include_open: bool = False) -> dic
 
 
 def scale_lv_loads(net: pp.pandapowerNet, g: Mapping[str, float], *, include_open: bool = False) -> None:
-    """Set ``net.load.scaling`` of the coupled LV loads by :func:`coupled_scaling` over the MV feeders."""
+    """Set ``net.load.scaling`` of the coupled LV loads by :func:`coupled_scaling` over the MV feeders.
+
+    The station-busbar customers (:data:`BUSBAR_CUSTOMER_COLUMN`) are fixed loads like the MV customers: they keep
+    their scaling and do not enter the feeder sums.
+    """
     load = net.load
     if not len(load) or "grid_result_id" not in load.columns:
         return
     feeder_of_grid = coupled_feeders(net, include_open=include_open)
-    lv_rows = pd.to_numeric(load["grid_result_id"], errors="coerce").isin(list(map(float, feeder_of_grid)))
+    busbar = load[BUSBAR_CUSTOMER_COLUMN].eq(True).to_numpy() if BUSBAR_CUSTOMER_COLUMN in load.columns \
+        else np.zeros(len(load), dtype=bool)
+    lv_rows = pd.to_numeric(load["grid_result_id"], errors="coerce").isin(list(map(float, feeder_of_grid))) \
+        & ~busbar
     if "category" in load.columns:
         lv_rows &= load["category"].notna()
-    scaling = coupled_scaling(load, feeder_of_grid, g)
+    scaling = np.ones(len(load))
+    scaling[~busbar] = coupled_scaling(load[~busbar], feeder_of_grid, g)
     net.load["scaling"] = np.where(lv_rows.to_numpy(), scaling, load["scaling"].to_numpy(dtype=float))
+
+
+def busbar_customer_loads(stations: pd.DataFrame) -> dict[int, dict[str, float]]:
+    """The fixed load per category of the station-busbar customers of each station (DESIGN §3.5).
+
+    Args:
+        stations: Station rows with ``grid_result_id`` and ``load_stats`` (a dict or its JSON text, as stored in
+            ``mv_node``); a frame without ``load_stats`` has none.
+
+    Returns:
+        ``{grid_result_id: {category: kW}}`` of the stations with station-busbar customers.
+    """
+    if "load_stats" not in stations.columns or "grid_result_id" not in stations.columns:
+        return {}
+    out: dict[int, dict[str, float]] = {}
+    for gid, stats in zip(pd.to_numeric(stations["grid_result_id"], errors="coerce"), stations["load_stats"]):
+        categories = busbar_record(stats).get("categories") or {}
+        kw = {str(c): float(v.get("kw") or 0.0) for c, v in categories.items() if isinstance(v, Mapping)}
+        kw = {c: value for c, value in kw.items() if value > 0}
+        if kw and pd.notna(gid):
+            out[int(gid)] = kw
+    return out
+
+
+def add_busbar_customers(net: pp.pandapowerNet, loads: Mapping[int, Mapping[str, float]],
+                         power_factor: float) -> float:
+    """Add the station-busbar customers as fixed loads at the LV busbar of their coupled station (DESIGN §3.5, §5.7).
+
+    One load per station and category at the LV side of the station transformer (the ``trafo`` rows with the
+    station's ``grid_result_id``): ``p_mw = kW / 1000``, ``q_mvar = p_mw * tan(arccos(power_factor))``, named
+    ``Busbar customers <grid_result_id> <category>``, with ``grid_result_id``, ``category`` and
+    :data:`BUSBAR_CUSTOMER_COLUMN` True. Their MV-level load is fixed (``g_c x installed``), so
+    :func:`scale_lv_loads` leaves them unscaled. Stations that are not coupled into ``net`` are skipped: their MV
+    station equivalent carries these loads.
+
+    Returns:
+        The added load in kW.
+    """
+    trafo = net.trafo
+    if not loads or not len(trafo) or "grid_result_id" not in trafo.columns:
+        return 0.0
+    gid = pd.to_numeric(trafo["grid_result_id"], errors="coerce")
+    lv_bus = {int(g): int(b) for g, b in zip(gid[gid.notna()], trafo.loc[gid.notna(), "lv_bus"])}
+    rows = [(lv_bus[int(g)], int(g), str(c), float(kw)) for g, by_category in sorted(loads.items())
+            if int(g) in lv_bus for c, kw in sorted(by_category.items()) if float(kw) > 0]
+    if not rows:
+        return 0.0
+    p_mw = np.array([kw for *_, kw in rows]) / 1000.0
+    start = int(net.load.index.max()) + 1 if len(net.load) else 0
+    index = list(range(start, start + len(rows)))
+    pp.create_loads(net, buses=[bus for bus, *_ in rows], p_mw=p_mw,
+                    q_mvar=p_mw * coincidence.tan_phi(float(power_factor)),
+                    name=[f"Busbar customers {g} {c}" for _, g, c, _ in rows], index=index)
+    net.load.loc[index, "grid_result_id"] = [float(g) for _, g, _, _ in rows]
+    net.load.loc[index, "category"] = [c for _, _, c, _ in rows]
+    net.load.loc[index, BUSBAR_CUSTOMER_COLUMN] = True
+    return float(p_mw.sum() * 1000.0)
 
 
 def set_lv_taps(net: pp.pandapowerNet, taps: Mapping[int, int]) -> None:
@@ -550,10 +619,14 @@ def set_lv_taps(net: pp.pandapowerNet, taps: Mapping[int, int]) -> None:
 
 def build_coupled_net(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dict[str, pd.DataFrame]]],
                       taps: Mapping[int, int], lv: LvVersionParameters, mv_vn_kv: float, *,
-                      include_open: bool = False) -> pp.pandapowerNet:
-    """:func:`couple_lv_nets`, the taps ``t*`` (:func:`set_lv_taps`) and the feeder scaling (:func:`scale_lv_loads`
-    over the normal feeders, or the (n-1) feeder sets with ``include_open``)."""
+                      include_open: bool = False,
+                      busbar_loads: Mapping[int, Mapping[str, float]] | None = None) -> pp.pandapowerNet:
+    """:func:`couple_lv_nets`, the station-busbar customers (:func:`add_busbar_customers`, ``busbar_loads`` of
+    :func:`busbar_customer_loads`), the taps ``t*`` (:func:`set_lv_taps`) and the feeder scaling
+    (:func:`scale_lv_loads` over the normal feeders, or the (n-1) feeder sets with ``include_open``)."""
     net = couple_lv_nets(mv_net, frames, mv_vn_kv)
+    if busbar_loads:
+        add_busbar_customers(net, busbar_loads, lv.power_factor)
     set_lv_taps(net, taps)
     scale_lv_loads(net, lv.sim_factor, include_open=include_open)
     return net
@@ -775,7 +848,8 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         taps = {int(g): int(_number(table.at[node_of_grid[int(g)], "mv_lv_tap_pos"], 0.0))
                 for g, _ in frames.values()}
         t0 = time.time()
-        net = build_coupled_net(stored_net, frames, taps, lv, vn_kv)
+        busbar = {g: kw for g, kw in busbar_customer_loads(table).items() if g in taps}
+        net = build_coupled_net(stored_net, frames, taps, lv, vn_kv, busbar_loads=busbar)
         frames = {}                                       # the merged net holds the LV rows now
         op = run_coupled_cases(net, params)
         reference = mv_part(stored_net)
@@ -804,6 +878,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             "busbar_vs_design_point": _diff_stats(rows["coupled_op_lv_busbar_vm_pu"],
                                                   rows["coupled_lv_busbar_vm_pu"]),
             "n_buses": int(len(net.bus)), "n_lines": int(len(net.line)),
+            "busbar_customer_mw": sum(sum(kw.values()) for kw in busbar.values()) / 1000.0,
             "runtime_s": round(time.time() - t0, 3),
         }
         if not all(converged.values()):
@@ -1140,7 +1215,8 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
         dbc.rollback_changes()
     lv = LvVersionParameters.from_json(lv_json)
     taps = {int(g): int(_number(table.at[k, "mv_lv_tap_pos"], 0.0)) for g, k in node_of_grid.items()}
-    net = build_coupled_net(stored, frames, taps, lv, vn_kv, include_open=case in electrical.N1_CASES)
+    net = build_coupled_net(stored, frames, taps, lv, vn_kv, include_open=case in electrical.N1_CASES,
+                            busbar_loads=busbar_customer_loads(table))
     net = electrical.case_net(net, case, params, busbar_vm_pu=operating_busbar_vm(case, params))
     if not _runpp(net):
         logger.warning(f"Case {case} of the coupled MV grid {mv_grid_id} did not converge: written without results")

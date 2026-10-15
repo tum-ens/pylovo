@@ -57,6 +57,8 @@ FIXED_RULES: dict[tuple[str, ...], Any] = {
 RESOLVED_FIELDS: tuple[str, ...] = ("cable_type", "overhead_type", "hv_mv_sizes_mva")
 #: Fields the resolved types depend on (a change drops the cached types).
 _TYPE_FIELDS = frozenset({"vn_kv", *RESOLVED_FIELDS})
+#: The non-residential consumer categories (the MV customers): their specific peak load per m² is read.
+NONRESIDENTIAL_CATEGORIES: tuple[str, ...] = tuple(c for c in CATEGORIES if c != "Residential")
 
 
 class MvStageError(RuntimeError):
@@ -123,6 +125,8 @@ class MvParameters:
     # loads
     dedicated_feeder_kw: float = _y("dedicated_feeder_kw")
     hv_customer_kw: float = _y("hv_customer_kw")
+    customer_hall_min_footprint_m2: float = _y("customer_hall_min_footprint_m2")
+    customer_min_mv_kw: float = _y("customer_min_mv_kw")
     # generation
     generator_lv_side_kw: float = _y("generator_lv_side_kw")
     generator_fallback_kw: dict[str, float] = _c("generator_fallback_kw")
@@ -407,6 +411,9 @@ class LvVersionParameters:
     use_open: bool
     use_manual: bool
     electrical_backend: str
+    # W/m² of the gross floor area per non-residential category (consumer_categories.peak_load_per_m2); empty in
+    # the lv_parameters of variants stored before it was read
+    peak_load_per_m2: dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def from_generation_parameters(cls, version_id: str, gp: dict | str | None) -> "LvVersionParameters":
@@ -414,7 +421,8 @@ class LvVersionParameters:
 
         Raises:
             MvStageError: If the snapshot is missing, has no sim factor for one of the four consumer categories,
-                no valid power factor or MV-direct threshold, or another electrical backend than pandapower.
+                no positive peak load per m² for one of the non-residential categories, no valid power factor or
+                MV-direct threshold, or another electrical backend than pandapower.
         """
         if gp is None:
             raise MvStageError(f"LV version {version_id} has no generation parameter snapshot "
@@ -431,6 +439,14 @@ class LvVersionParameters:
             raise MvStageError(f"the snapshot of LV version {version_id} has no sim factor for "
                                f"{', '.join(missing)} (load_calculation.sim_factor)")
         sim_factor = {c: _number(sim[c], f"sim factor of {c}", version_id, low=0.0, high=1.0) for c in CATEGORIES}
+        per_m2 = {str(rec.get("definition")): rec.get("peak_load_per_m2")
+                  for rec in load.get("consumer_categories") or [] if isinstance(rec, Mapping)}
+        missing = [c for c in NONRESIDENTIAL_CATEGORIES if per_m2.get(c) is None]
+        if missing:
+            raise MvStageError(f"the snapshot of LV version {version_id} has no peak load per m² for "
+                               f"{', '.join(missing)} (load_calculation.consumer_categories)")
+        peak_load_per_m2 = {c: _number(per_m2[c], f"peak load per m² of {c}", version_id, low=0.0, low_open=True)
+                            for c in NONRESIDENTIAL_CATEGORIES}
         power_factor = _number(load.get("default_power_factor"), "default power factor", version_id,
                                low=0.0, high=1.0, low_open=True)
         threshold = _number((gp.get("cable_dimensioning") or {}).get("mv_direct_connection_load_threshold_kw"),
@@ -458,6 +474,7 @@ class LvVersionParameters:
             use_open=bool(placement.get("use_open_transformer_positions", False)),
             use_manual=bool(placement.get("use_manual_transformer_positions", False)),
             electrical_backend=str(backend),
+            peak_load_per_m2=peak_load_per_m2,
         )
 
     @classmethod
@@ -465,6 +482,7 @@ class LvVersionParameters:
         """The parameters of :meth:`as_json` (as passed to the district workers)."""
         values = dict(data)
         values["sim_factor"] = dict(values["sim_factor"])
+        values["peak_load_per_m2"] = dict(values.get("peak_load_per_m2") or {})
         return cls(**values)
 
     def g(self) -> np.ndarray:
@@ -475,4 +493,5 @@ class LvVersionParameters:
         """JSON-native dictionary of all fields (stored informationally in ``pylovo.mv_variant.lv_parameters``)."""
         values = dataclasses.asdict(self)
         values["sim_factor"] = {c: float(self.sim_factor[c]) for c in CATEGORIES}
+        values["peak_load_per_m2"] = {str(c): float(v) for c, v in self.peak_load_per_m2.items()}
         return values
