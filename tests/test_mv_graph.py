@@ -544,7 +544,9 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
     assert summary["seams"] == 3 and summary["seconds"] >= 0
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
     assert insert["ags"] == ["09000001", "09000002"] and insert["excluded"] == ["Bundesautobahn"]
-    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9"
+    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse none"
+    # without the OSM land-use table the settlement flags use address buildings only (empty mvg_lu)
+    assert any(t.startswith("CREATE TEMP TABLE mvg_lu (geom geometry)") for t in texts)
     # seam repair before the final endpoint clustering, recorded in the build parameters
     cut = next(i for i, t in enumerate(texts) if "CREATE TEMP TABLE mvg_cut" in t)
     clusters = [i for i, t in enumerate(texts) if "ST_ClusterDBSCAN" in t]
@@ -552,6 +554,32 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
                                                                         if "CREATE TEMP TABLE mvg_vert" in t)
     assert client.cur.statements[cut][1] == {"split": 0.5}
     assert '"seam_split_m": 0.5' in insert["params"]
+
+
+def test_settlement_flags_use_built_up_osm_landuse_when_present():
+    answers = BASE_ANSWERS + [
+        (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
+        (r"information_schema\.tables", [(True,)]),
+        (r'FROM "osm"\."landuse_polygon" l WHERE l\.osm_type', [(4107,)]),
+        (r"WITH lone AS", [(3,)]),
+        (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
+    ]
+    client = _client(answers)
+    graph_id = client.ensure_graph(b"\x01", MvParameters())
+    texts = [t for t, _ in client.cur.statements]
+    insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
+    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107"
+    assert '"settlement_landuse": ["commercial", "industrial", "residential", "retail"]' in insert["params"]
+    landuse, params = next((t, p) for t, p in client.cur.statements if "CREATE TEMP TABLE mvg_lu ON COMMIT DROP" in t)
+    assert '"osm"."landuse_polygon"' in landuse and params["types"] == ["commercial", "industrial", "residential",
+                                                                      "retail"]
+    # the land-use table is filled before the settlement flags, which test the edge midpoints against it
+    flags = next(i for i, t in enumerate(texts) if "SET in_settlement" in t)
+    assert texts.index(landuse) < flags
+    assert "ST_LineInterpolatePoint(e.geom, 0.5)" in texts[flags] and "OR EXISTS" in texts[flags]
+    # the land-use count is part of the fingerprint and so of the graph id
+    without = _client(BASE_ANSWERS + [(r"SELECT 1 FROM pylovo\.mv_graph WHERE", [(1,)])])
+    assert without.ensure_graph(b"\x01", MvParameters()) != graph_id
 
 
 def test_seam_split_switch_changes_the_build_and_the_graph_id(monkeypatch):

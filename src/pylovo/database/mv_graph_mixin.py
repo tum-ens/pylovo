@@ -16,8 +16,9 @@ Build (:meth:`MvGraphMixin.ensure_graph`), one transaction under an advisory loc
    another edge; the InfDB splits ways per AGS only) are repaired by splitting the touched edge there;
 3. degrees, connected components (``pgr_connectedComponents``, label = smallest vertex id);
 4. settlement flags: an edge is in a settlement if at least ``max(settlement_min_buildings, length /
-   settlement_spacing_m)`` address buildings lie within ``settlement_buffer_m``; settlements are the connected
-   components of the settlement edges, urban with at least ``urban_min_buildings`` buildings;
+   settlement_spacing_m)`` address buildings lie within ``settlement_buffer_m``, or if its midpoint lies in built-up
+   OSM land use (:data:`SETTLEMENT_LANDUSE_TYPES`, when ``INFDB_OSM_SCHEMA`` has ``landuse_polygon``); settlements
+   are the connected components of the settlement edges, urban with at least ``urban_min_buildings`` buildings;
 5. summary columns of ``pylovo.mv_graph`` (counts, largest component share, settlement share, seam diagnostic).
 
 A changed source or build parameter gives another ``graph_id``, so a stored graph is never rebuilt in place.
@@ -35,7 +36,7 @@ import pandas as pd
 from psycopg2 import sql
 from psycopg2.extras import execute_values
 
-from pylovo.config_loader import INFDB_SOURCE_SCHEMA, TARGET_EPSG
+from pylovo.config_loader import INFDB_OSM_SCHEMA, INFDB_SOURCE_SCHEMA, TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
 from pylovo.mv_grid.model import EdgeSet
 from pylovo.mv_grid.parameters import MvStageError
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
 #: Advisory lock key of graph builds (next to 907360 setup, 907361 PLZ, 907362 MV variant).
 GRAPH_LOCK_KEY: int = 907363
 #: Version of the build procedure; part of the graph id, bumped whenever the build changes its result.
-GRAPH_BUILD_VERSION: int = 1
+GRAPH_BUILD_VERSION: int = 2
 #: Seam diagnostic: a lone edge end this close to the interior of another edge (m).
 SEAM_TOLERANCE_M: float = 0.5
 #: Seam repair: edges are split where an edge end lies this close to their interior (m), so T-junctions at
@@ -55,6 +56,11 @@ SEAM_TOLERANCE_M: float = 0.5
 SEAM_SPLIT_M: float | None = 0.5
 #: Building classes of the settlement flags (the classes of the LV building fetch, ``infdb_client.py``).
 SETTLEMENT_BUILDING_USES: tuple[str, ...] = ("Commercial", "Public", "Residential", "Mixed", "Unknown")
+#: Built-up OSM land use (``osm_type`` of ``INFDB_OSM_SCHEMA.landuse_polygon``): a street edge whose midpoint lies in
+#: such a polygon is in a settlement whatever its address-building count. Industrial and commercial zones have large
+#: plots (about one address building per 200 m of street), so the building rule alone leaves them as open field and
+#: their MV customers would be linked by overhead lines. Part of the build parameters (and so of the graph id).
+SETTLEMENT_LANDUSE_TYPES: tuple[str, ...] = ("commercial", "industrial", "residential", "retail")
 #: Graph ids are 'g' + 16 hex digits of an md5 (safe to inline as SQL literals).
 GRAPH_ID_PATTERN = re.compile(r"^g[0-9a-f]{16}$")
 
@@ -90,7 +96,7 @@ GRAPH_EXISTS_SQL = "SELECT 1 FROM pylovo.mv_graph WHERE graph_id = %(g)s"
 LOCK_SQL = "SELECT pg_advisory_xact_lock(%(key)s, hashtext(%(g)s))"
 
 DROP_BUILD_TEMP_SQL = ("DROP TABLE IF EXISTS pg_temp.mvg_src, pg_temp.mvg_end, pg_temp.mvg_vert, pg_temp.mvg_bld, "
-                       "pg_temp.mvg_cut, pg_temp.mvg_split")
+                       "pg_temp.mvg_cut, pg_temp.mvg_split, pg_temp.mvg_lu")
 
 SOURCE_EDGES_SQL = sql.SQL("""
     CREATE TEMP TABLE mvg_src ON COMMIT DROP AS
@@ -240,9 +246,29 @@ EDGE_BUILDINGS_SQL = """
     WHERE e.graph_id = %(g)s AND e.edge_id = c.edge_id
 """
 
+LANDUSE_EXISTS_SQL = """
+    SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = %(schema)s
+                                                              AND table_name = 'landuse_polygon')
+"""
+
+LANDUSE_FINGERPRINT_SQL = sql.SQL("SELECT count(*) FROM {landuse} l WHERE l.osm_type = ANY(%(types)s)")
+
+# {landuse}: sql.Identifier(INFDB_OSM_SCHEMA, 'landuse_polygon'); empty table without land use
+LANDUSE_TEMP_SQL = sql.SQL("""
+    CREATE TEMP TABLE mvg_lu ON COMMIT DROP AS
+    SELECT ST_Transform(l.geom, {epsg}) AS geom
+    FROM {landuse} l
+    WHERE l.osm_type = ANY(%(types)s)
+      AND l.geom && ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, {epsg}), %(lu_srid)s)
+""")
+NO_LANDUSE_TEMP_SQL = "CREATE TEMP TABLE mvg_lu (geom geometry) ON COMMIT DROP"
+
 IN_SETTLEMENT_SQL = """
-    UPDATE pylovo.mv_graph_edge SET in_settlement = n_buildings >= GREATEST(%(smin)s, length_m / %(sspacing)s)
-    WHERE graph_id = %(g)s
+    UPDATE pylovo.mv_graph_edge e
+    SET in_settlement = e.n_buildings >= GREATEST(%(smin)s, e.length_m / %(sspacing)s)
+                        OR EXISTS (SELECT 1 FROM mvg_lu l
+                                   WHERE ST_Intersects(l.geom, ST_LineInterpolatePoint(e.geom, 0.5)))
+    WHERE e.graph_id = %(g)s
 """
 
 SETTLEMENT_ID_SQL = """
@@ -381,6 +407,7 @@ def build_parameters(params: "MvParameters") -> dict[str, Any]:
         "settlement_min_buildings": int(params.settlement_min_buildings),
         "urban_min_buildings": int(params.urban_min_buildings),
         "settlement_polygon_buffer_m": float(params.settlement_polygon_buffer_m),
+        "settlement_landuse": sorted(SETTLEMENT_LANDUSE_TYPES),
         "seam_split_m": SEAM_SPLIT_M,
         "epsg": int(TARGET_EPSG),
         "build_version": GRAPH_BUILD_VERSION,
@@ -435,16 +462,32 @@ class MvGraphMixin(BaseMixin):
         row = self.cur.fetchone()
         return [str(a) for a in (row[0] if row and row[0] else [])]
 
+    def _landuse_table(self) -> sql.Identifier | None:
+        """``INFDB_OSM_SCHEMA.landuse_polygon`` if it exists, else None (settlements from address buildings only)."""
+        if not INFDB_OSM_SCHEMA:
+            return None
+        self.cur.execute(LANDUSE_EXISTS_SQL, {"schema": INFDB_OSM_SCHEMA})
+        row = self.cur.fetchone()
+        return sql.Identifier(INFDB_OSM_SCHEMA, "landuse_polygon") if row and row[0] else None
+
     def graph_fingerprint(self, ags: Sequence[str]) -> str:
         """Fingerprint of the source rows of the AGS: ways ``count:length:max changelog``, buildings
-        ``count:max changelog``."""
+        ``count:max changelog``, and the number of built-up OSM land-use polygons (``none`` without the table)."""
         params = {"ags": list(ags)}
         self.cur.execute(WAYS_FINGERPRINT_SQL.format(ways=_source("ways_per_junction")), params)
         n_ways, length, ways_changelog = self.cur.fetchone()
         self.cur.execute(BUILDINGS_FINGERPRINT_SQL.format(buildings=_source("buildings")), params)
         n_buildings, buildings_changelog = self.cur.fetchone()
+        landuse = self._landuse_table()
+        n_landuse = "none"
+        if landuse is not None:
+            self.cur.execute(LANDUSE_FINGERPRINT_SQL.format(landuse=landuse),
+                             {"types": list(SETTLEMENT_LANDUSE_TYPES)})
+            row = self.cur.fetchone()
+            n_landuse = str(int(row[0])) if row and row[0] is not None else "none"
         return (f"ways {int(n_ways)}:{int(length)}:{'' if ways_changelog is None else ways_changelog}"
-                f"|buildings {int(n_buildings)}:{'' if buildings_changelog is None else buildings_changelog}")
+                f"|buildings {int(n_buildings)}:{'' if buildings_changelog is None else buildings_changelog}"
+                f"|landuse {n_landuse}")
 
     def ensure_graph(self, region_wkb: bytes, params: "MvParameters") -> str:
         """Return the id of the routing graph of a planning region, building and committing it if it is missing.
@@ -543,6 +586,20 @@ class MvGraphMixin(BaseMixin):
                           "bld_srid": bld_srid, "uses": list(SETTLEMENT_BUILDING_USES)})
         self.cur.execute("CREATE INDEX ON mvg_bld USING gist (pt)")
         self.cur.execute("ANALYZE mvg_bld")
+        landuse = self._landuse_table()
+        if landuse is not None:
+            self.cur.execute(SRID_SQL.format(table=landuse))
+            row = self.cur.fetchone()
+            lu_srid = int(row[0]) if row and row[0] else int(TARGET_EPSG)
+            self.cur.execute(LANDUSE_TEMP_SQL.format(landuse=landuse, epsg=epsg),
+                             {"x0": x0 - 100.0, "y0": y0 - 100.0, "x1": x1 + 100.0, "y1": y1 + 100.0,
+                              "lu_srid": lu_srid, "types": list(SETTLEMENT_LANDUSE_TYPES)})
+        else:
+            self.logger.warning("no %s.landuse_polygon: MV settlements from address buildings only",
+                                INFDB_OSM_SCHEMA or "OSM schema")
+            self.cur.execute(NO_LANDUSE_TEMP_SQL)
+        self.cur.execute("CREATE INDEX ON mvg_lu USING gist (geom)")
+        self.cur.execute("ANALYZE mvg_lu")
         sbuf = parameters["settlement_buffer_m"]
         self.cur.execute(EDGE_BUILDINGS_SQL, {**g, "sbuf": sbuf})
         self.cur.execute(IN_SETTLEMENT_SQL, {**g, "smin": parameters["settlement_min_buildings"],
