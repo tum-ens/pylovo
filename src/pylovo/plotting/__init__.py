@@ -6,6 +6,8 @@ Subpackages by workflow:
 - ``classification``: classification and clustering plots.
 - ``validation``: metric, geographic and power-flow plots for grid comparisons.
 - ``gis_preparation``: export of grid geometries for QGIS (used by ``pylovo-export``).
+- ``mv_grid``: maps and statistics of the MV grids of the MV stage (districts, rings, voltages, taps,
+  variant comparisons and plausibility against literature ranges).
 - ``utils``: shared axis, colour and legend helpers.
 
 Import the functions from their submodules, e.g.
