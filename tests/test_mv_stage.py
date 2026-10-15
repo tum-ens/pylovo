@@ -192,7 +192,8 @@ def run(monkeypatch, tmp_path):
         monkeypatch.setattr(stage, "_region_step", region)
         monkeypatch.setattr(stage, "_run_districts",
                             lambda dbc, v, var, pending, *a, **k: db.calls.append(("districts", list(pending))))
-        return stage.run_mv_stage("mv1", None if plz is None else list(plz), MvParameters(variant_id="d0"),
+        params = kwargs.pop("params", MvParameters(variant_id="d0", interconnection="none"))
+        return stage.run_mv_stage("mv1", None if plz is None else list(plz), params,
                                   log_file=str(tmp_path / "log.txt"), **kwargs)
     return runner
 
@@ -276,6 +277,17 @@ def test_partial_and_failed_runs(run):
     totals = {"grids_total": 3, "grids_done": 2, "grids_failed": 1, "grids_pending": 0}
     assert run(FakeDb(totals=totals)).status == "partial"
     assert run(FakeDb(totals={"grids_total": 0, "grids_done": 0})).status == "failed"
+
+
+def test_ties_are_planned_by_default(run, monkeypatch):
+    seen = []
+    monkeypatch.setattr(stage, "_plan_ties", lambda dbc, v, var, graph_id, params, logger, warnings: seen.append(
+        (v, var, graph_id, params.interconnection)))
+    assert MvParameters().interconnection == "ties"
+    run(FakeDb(), plz=(1,), params=MvParameters(variant_id="d0"))
+    assert seen == [("mv1", "d0", "g123", "ties")]
+    run(FakeDb(), plz=(1,))                                               # MV_INTERCONNECTION none: no tie step
+    assert len(seen) == 1
 
 
 def test_ties_are_skipped_without_the_module(run, monkeypatch):

@@ -101,7 +101,7 @@ EXPECTED_SNAPSHOT = {
     "settlements": {"buffer_m": 50.0, "spacing_m": 100.0, "min_buildings": 2, "urban_min_buildings": 1000,
                     "polygon_buffer_m": 75.0},
     "topology": {"solver": "savings", "max_stations_per_ring": 20, "stubs": "rural", "overhead_lines": "rural",
-                 "interconnection": YAML_KEYS["MV_INTERCONNECTION"].default,   # WP14 may ship 'ties'
+                 "interconnection": "ties",
                  "max_half_ring_length_m": 28000.0, "stub_max_kva": 1000.0,
                  "stub_max_length_m": 2000.0, "stub_min_offset_m": 100.0, "loop_in_max_offset_m": 100.0,
                  "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0, "local_search_rounds": 50,
@@ -273,7 +273,7 @@ def test_one_field_per_spec_and_defaults_equal_the_options():
             params.cable_type, params.overhead_type, params.line_utilization,
             params.max_drop_percent) == ("1", "default", 20.0, "osm", "routed", "street", "savings", 20, "rural",
                                          "rural", None, None, 0.6, 5.0)
-    assert params.interconnection in ("none", "ties")      # 'none' until WP14 ships 'ties'
+    assert params.interconnection == "ties"                # normally-open ties between districts by default
 
 
 def test_construction_coerces_and_the_object_is_frozen():

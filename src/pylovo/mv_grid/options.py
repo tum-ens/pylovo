@@ -90,8 +90,9 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="Harnisch 2016 p. 103; Amme et al. 2018 p. 10"),
     Spec("MV_OVERHEAD_LINES", "overhead_lines", "rural", "choice", choices=("rural", "none"), group="topology",
          source="Meinecke 2019; cable shares of rural DSOs (§ 23c EnWG structural data) 57 to 70 %"),
-    Spec("MV_INTERCONNECTION", "interconnection", "none", "choice", choices=("none", "ties"), group="topology",
-         source="Weisenstein 2021; Dubielzig 2022"),
+    Spec("MV_INTERCONNECTION", "interconnection", "ties", "choice", choices=("none", "ties"), group="topology",
+         source="normally-open ties to the rings of neighbouring substations, the reserve of real MV grids "
+                "(Weisenstein 2021; Dubielzig 2022)"),
     Spec("MV_STANDARD_CABLE", "cable_type", None, "nullable_str", group="equipment", key="cable",
          source="null = NA2XS2Y 1x150 RM/25, the most used MV cable in Germany (SimBench statistics of 74 real MV "
                 "grids: the cable length peaks at 150 mm²; Almomani & Witzmann 2024: over 60 % of the cables in "

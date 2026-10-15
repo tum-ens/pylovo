@@ -199,7 +199,7 @@ MV_STUBS: rural
 # Overhead lines: rural (links between rural settlements are overhead lines) or none (cables only)
 MV_OVERHEAD_LINES: rural
 # Ties between neighbouring HV/MV substations: ties (one normally-open tie per ring where a neighbour ring is within 2 km) or none
-MV_INTERCONNECTION: none
+MV_INTERCONNECTION: ties
 # Standard MV cable, a pandapower line type (null: NA2XS2Y 1x150 RM/25 for the nominal voltage, the most used MV cable in German grids; heavier: "NA2XS2Y 1x240 RM/25 12/20 kV")
 MV_STANDARD_CABLE: null
 # Overhead line type for MV_OVERHEAD_LINES rural (null: 48-AL1/8-ST1A for the nominal voltage, the most used MV overhead line in German grids; heavier: "122-AL1/20-ST1A 20.0")
