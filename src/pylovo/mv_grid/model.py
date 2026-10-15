@@ -351,7 +351,7 @@ def ties_line(ties: Mapping[str, Any]) -> str:
     n = int(ties.get("n_ties") or 0)
     if not n:
         limit = float(ties.get("tie_max_length_m") or 0.0) / 1000.0
-        return f"✓ Ties: none (no rings of different districts within {limit:g} km)"
+        return f"✓ Ties: none (no rings of different districts of the same voltage within {limit:g} km)"
     text = f"✓ Ties: {n:,} normally-open ties, {float(ties.get('tie_km') or 0.0):,.1f} km"
     if ties.get("n_rings"):
         share = ties.get("ring_share_with_tie")

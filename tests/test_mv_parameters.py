@@ -695,7 +695,8 @@ def test_run_summary_prints_voltages_ties_and_the_demand_anchor():
     assert line.endswith("PLZ only partly in the region or without population: 91000 (40 % of its area)")
     none = summary(ties={"n_ties": 0, "tie_max_length_m": 2000.0}, voltages={"rule": "fixed", "grids": {"20": 4}})
     assert none.describe().splitlines()[1:] == ["✓ Nominal voltage: 4 at 20 kV",
-                                                "✓ Ties: none (no rings of different districts within 2 km)"]
+                                                "✓ Ties: none (no rings of different districts of the same "
+                                                "voltage within 2 km)"]
     assert json_round_trip(summary(ties=ties, voltages=voltages).to_dict())["voltages"]["grids"] == {"20": 3, "10": 1}
 
 
