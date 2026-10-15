@@ -62,6 +62,16 @@ def district_peak_kw(inp: DistrictInput) -> float:
     return float(np.sum(coincidence.coincident_kw(installed.sum(axis=0), units.sum(axis=0), g)) + fixed.sum())
 
 
+def merged_node_flags(*sources: dict | None) -> dict[int, list[str]]:
+    """Flags per node key from several sources (topology, electrical), each flag once, in order of appearance."""
+    merged: dict[int, list[str]] = {}
+    for source in sources:
+        for key, flags in (source or {}).items():
+            found = merged.setdefault(int(key), [])
+            found.extend(str(f) for f in flags if str(f) not in found)
+    return {key: flags for key, flags in merged.items() if flags}
+
+
 def _peak_feed_in_mw(cases: dict) -> float:
     """Largest reverse flow (MW from MV to HV) of the converged feed-in cases (0 without reverse flow)."""
     values = [-float(case.slack_p_mw) for name, case in cases.items()
@@ -77,6 +87,9 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     pandapower cases, criteria and up to ``repair_rounds`` repair rounds, always re-evaluated after a repair
     (§5.1–§5.4) → HV/MV sizing on the district statistics (§4.6) → stored net with the OLTC tap (§5.5) → station
     voltage budgets (§5.6) → metrics.
+
+    The flags of the topology (``plan.topology.diagnostics['node_flags']``) and the electrical flags of
+    :func:`electrical.node_flags` are merged there per node key (for ``mv_node.flags``).
 
     The returned :class:`~pylovo.mv_grid.model.DistrictPlan` carries in ``metrics``: the topology metrics of the
     generic format, the case extremes of :func:`electrical.case_metrics`, the solver diagnostics,
@@ -125,6 +138,8 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     stored, tap = electrical.build_stored_net(net, units, unit_mva, inp)                # §5.5
     budgets = electrical.station_budgets(inp, plan, cases)                               # §5.6
     status = electrical.power_flow_status(cases, violations)
+    plan.diagnostics["node_flags"] = merged_node_flags(plan.diagnostics.get("node_flags"),
+                                                       electrical.node_flags(inp, plan, cases, budgets))
 
     peak_load_mw = district_peak_kw(inp) / 1000.0
     s_load_mva = peak_load_mw / inp.lv.power_factor if inp.lv.power_factor > 0 else peak_load_mw

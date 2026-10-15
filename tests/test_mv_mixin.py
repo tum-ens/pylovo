@@ -341,7 +341,8 @@ def district_plan(extra_line=None) -> DistrictPlan:
         rings=[RingPlan(1, "ring", [11, -1, 12], 12, check, feeder_a=1, feeder_b=2)], lines=lines,
         joints={-1: (5.0, 6.0)}, node_role={10: "busbar", 11: "ring", 12: "ring", 13: "stub", -1: "joint"},
         node_feeder={11: 1, 12: 2, 13: 1, -1: 1}, node_ring={11: 1, 12: 1, 13: 1, -1: 1},
-        node_position={11: 1, 12: 2}, stub_parent={13: -1}, diagnostics={})
+        node_position={11: 1, 12: 2}, stub_parent={13: -1},
+        diagnostics={"node_flags": {12: ["band_conflict", "tap_limit"], 13: ["not_n1_secure"]}})
     keys = [10, 11, 12, 13, -1]
     vm = {"load": [1.02, 1.0, 0.99, 0.985, 0.995], "n1a": [1.02, 0.97, 0.96, 0.95, 0.965],
           "n1b": [1.02, 0.98, 0.95, 0.96, 0.97], "feed_in_wind": [1.02, 1.03, 1.025, 1.02, 1.02],
@@ -394,6 +395,8 @@ def test_save_district_writes_one_transaction(recorded):
     assert node_values[13][1] == "stub" and node_values[13][5] == 500 and node_values[13][14] is True
     assert node_values[12][9:14] == (1, 0.95, 0.93, 1.08, True) and node_values[11][15] == 0.98
     assert node_values[12][6:9] == (0.99, 0.95, 1.035)
+    assert node_values[12][16] == ["band_conflict", "tap_limit"] and node_values[13][16] == ["not_n1_secure"]
+    assert node_values[11][16] == [] and "unnest(n.flags || v.flags)" in node_sql     # region flags are kept
     grid_sql, grid_params = client.cur.sql("UPDATE pylovo.mv_grid SET status = 'done'")[0]
     assert "metrics = %(metrics)s::jsonb" in grid_sql and grid_params["net"] is None
     assert grid_params["n_stations"] == 3 and grid_params["n_joints"] == 1 and grid_params["n_rings"] == 1

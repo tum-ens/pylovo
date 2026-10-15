@@ -121,6 +121,7 @@ def fakes(monkeypatch):
     e.size_substation = lambda inp, plan, cases: (calls.append("size") or (2, 25.0, "sized"))
     e.build_stored_net = lambda net, units, mva, inp: (calls.append(f"stored:{net}:{units}:{mva:g}") or ("stored", -2))
     e.station_budgets = lambda inp, plan, cases: (calls.append("budgets") or {})
+    e.node_flags = lambda inp, plan, cases, budgets: {12: ["band_conflict"], 11: []}
     e.case_metrics = lambda cases: {"min_vm_load_pu": 1.01}
     e.power_flow_status = lambda cases, violations: "voltage_violation" if violations else "converged"
     c.coincident_kw = lambda installed, units, gf: float(np.sum(np.asarray(installed) * np.asarray(gf)))
@@ -153,6 +154,13 @@ def test_plan_district_composes_the_steps(fakes):
     assert m["trench_km"] == 0.25 and m["max_circuits_per_piece"] == 2
     assert m["hv_mv_loading_n0_percent"] == pytest.approx(100 * plan.peak_load_mw / 0.95 / 50.0)
     assert m["hv_mv_loading_n1_percent"] == pytest.approx(100 * plan.peak_load_mw / 0.95 / 25.0)
+    assert plan.topology.diagnostics["node_flags"] == {12: ["band_conflict"]}     # electrical flags for mv_node
+
+
+def test_node_flags_of_topology_and_electrical_are_merged():
+    merged = planner.merged_node_flags({3: ["stub_limit"], 4: []}, {3: ["not_n1_secure", "stub_limit"]},
+                                       None, {"5": ("tap_limit",)})
+    assert merged == {3: ["stub_limit", "not_n1_secure"], 5: ["tap_limit"]}
 
 
 def test_repairs_are_re_evaluated_until_clean(fakes):

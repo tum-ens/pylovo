@@ -653,7 +653,8 @@ class MvResultMixin(BaseMixin):
 
         Deletes the grid's lines (role other than tie), rings and joints, resets the result columns of its
         nodes, pre-allocates ids for the joints and lines, inserts the joints, updates the node results (role,
-        feeder, ring, position, voltages, budgets, bridged), inserts the lines and rings, writes the
+        feeder, ring, position, voltages, budgets, bridged, and the plan's node flags of
+        ``plan.topology.diagnostics['node_flags']`` added to the region flags), inserts the lines and rings, writes the
         ``mv_node_id``/``mv_line_id`` columns into the stored net and sets the grid row (``status = 'done'``,
         counts, extremes, metrics, repairs, net) and the sizing columns of its substation.
 
@@ -733,6 +734,7 @@ class MvResultMixin(BaseMixin):
             return min(values) if how == "min" else max(values)
 
         bridged = {int(k) for k in (plan.metrics or {}).get("bridged_nodes", []) or []}
+        plan_flags = {int(k): v for k, v in ((topo.diagnostics or {}).get("node_flags") or {}).items()}
         node_values = []
         for key in sorted(stored):
             budget = plan.budgets.get(key) if plan.budgets else None
@@ -751,14 +753,16 @@ class MvResultMixin(BaseMixin):
                 None if budget is None else _py_float(budget.lv_min_vm_pu),
                 None if budget is None else _py_float(budget.lv_busbar_vm_feed_in_pu),
                 None if budget is None else bool(budget.band_conflict),
-                key in bridged, requirement,
+                key in bridged, requirement, _flags(plan_flags.get(key)),
             ))
         columns = ["mv_node_id", "connection", "feeder_id", "ring_id", "ring_position", "stub_parent", "vm_load_pu",
                    "vm_n1_pu", "vm_feed_in_pu", "mv_lv_tap_pos", "lv_busbar_vm_pu", "lv_min_vm_pu",
-                   "lv_busbar_vm_feed_in_pu", "band_conflict", "bridged", "lv_design_source_vm_pu"]
-        sets = [f"{c} = v.{c}" for c in columns[1:-2]]
+                   "lv_busbar_vm_feed_in_pu", "band_conflict", "bridged", "lv_design_source_vm_pu", "flags"]
+        sets = [f"{c} = v.{c}" for c in columns[1:-3]]
         sets.append("bridged = n.bridged OR v.bridged")
         sets.append("lv_design_source_vm_pu = COALESCE(v.lv_design_source_vm_pu, n.lv_design_source_vm_pu)")
+        # the region flags stay; the plan's flags (topology and electrical, planner.merged_node_flags) are added
+        sets.append("flags = ARRAY(SELECT DISTINCT f FROM unnest(n.flags || v.flags) f ORDER BY f)")
         if node_values:
             execute_values(
                 self.cur,
