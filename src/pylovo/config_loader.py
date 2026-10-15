@@ -8,7 +8,8 @@ Importing this module (which every pylovo module does, directly or through
   ``config_classification.yaml`` and ``config_clustering.yaml``,
 
 and exposes their entries as module-level constants (``VERSION_ID``, ``VN``,
-``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process.
+``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process. The ``MV_*``
+keys of the MV stage are checked with the rules of :mod:`pylovo.mv_grid.options`.
 
 ``.env`` lookup:
     ``load_dotenv(find_dotenv(), override=True)``. ``find_dotenv`` walks up from the
@@ -34,6 +35,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 from dotenv import find_dotenv, load_dotenv
+
+from pylovo.mv_grid import options as _mv_options
 
 
 def get_config_search_paths():
@@ -219,6 +222,8 @@ if USE_INFDB:
     INFDB_PASSWORD = PASSWORD
     INFDB_SOURCE_SCHEMA = os.getenv("INFDB_SOURCE_SCHEMA", "pylovo_input")
     INFDB_OPENDATA_SCHEMA = os.getenv("INFDB_OPENDATA_SCHEMA", "opendata")
+    # OSM layers of the InfDB OSM importer (pgosm-flex): HV/MV substations for the MV stage
+    INFDB_OSM_SCHEMA = os.getenv("INFDB_OSM_SCHEMA", "osm")
 else:
     INFDB_DBNAME = None
     INFDB_USER = None
@@ -227,6 +232,7 @@ else:
     INFDB_PASSWORD = None
     INFDB_SOURCE_SCHEMA = None
     INFDB_OPENDATA_SCHEMA = None
+    INFDB_OSM_SCHEMA = None
 
 # Validation Data Path
 GRID_DATA_PATH = os.getenv("GRID_DATA_PATH")
@@ -402,6 +408,37 @@ AGGREGATE_NEARBY_CONNECTION_POINTS = CONFIG_GENERATION.get("AGGREGATE_NEARBY_CON
 CONNECTION_POINT_AGGREGATION_RADIUS_M = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_RADIUS_M", 25)
 CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS", 8)
 K_MEANS_SEED = CONFIG_GENERATION["K_MEANS_SEED"]
+
+# =============================================================================
+# MEDIUM-VOLTAGE (MV) GRID CONFIGURATION (from CONFIG_GENERATION)
+# =============================================================================
+# Not in the snapshot of VERSION_ID: the MV stage stores them per MV variant (pylovo.mv_variant), and only
+# pylovo.mv_grid.parameters.MvParameters.from_config reads them. Rules and defaults: pylovo.mv_grid.options;
+# a missing key takes the shipped value, so configurations without these keys keep importing.
+
+
+def _mv_value(key: str):
+    return _mv_options.coerce_mv_value(key, CONFIG_GENERATION.get(key, _mv_options.YAML_KEYS[key].default))
+
+
+# Execution flag (in no snapshot): run the MV stage after the LV grids in pylovo-generate (--mv / --no-mv)
+MV_GRID_GENERATION = _mv_value("MV_GRID_GENERATION")
+MV_VARIANT_ID = _mv_value("MV_VARIANT_ID")
+MV_VARIANT_COMMENT = _mv_value("MV_VARIANT_COMMENT")
+MV_NOMINAL_VOLTAGE_KV = _mv_value("MV_NOMINAL_VOLTAGE_KV")
+MV_SUBSTATIONS = _mv_value("MV_SUBSTATIONS")
+MV_SUPPLY_AREAS = _mv_value("MV_SUPPLY_AREAS")
+MV_ROUTING = _mv_value("MV_ROUTING")
+MV_RING_SOLVER = _mv_value("MV_RING_SOLVER")
+MV_MAX_STATIONS_PER_RING = _mv_value("MV_MAX_STATIONS_PER_RING")
+MV_STUBS = _mv_value("MV_STUBS")
+MV_OVERHEAD_LINES = _mv_value("MV_OVERHEAD_LINES")
+MV_INTERCONNECTION = _mv_value("MV_INTERCONNECTION")
+MV_STANDARD_CABLE = _mv_value("MV_STANDARD_CABLE")
+MV_OVERHEAD_LINE = _mv_value("MV_OVERHEAD_LINE")
+MV_LINE_PLANNING_UTILIZATION = _mv_value("MV_LINE_PLANNING_UTILIZATION")
+MV_MAX_VOLTAGE_DROP_PERCENT = _mv_value("MV_MAX_VOLTAGE_DROP_PERCENT")
+_mv_options.check_mv_combination({"MV_SUBSTATIONS": MV_SUBSTATIONS, "MV_SUPPLY_AREAS": MV_SUPPLY_AREAS})
 
 # =============================================================================
 # ANALYSIS CONFIGURATION (from CONFIG_ANALYSIS)

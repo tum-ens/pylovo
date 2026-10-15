@@ -166,3 +166,43 @@ CONSUMER_CONNECTION_CABLES:
 - {name: NAYY_4_185, max_i_a: 313, r_mohm_per_km: 164, x_mohm_per_km: 80, z_mohm_per_km: 181, cost_eur: 38, typ: Cable}
 - {name: NAYY_4_240, max_i_a: 357, r_mohm_per_km: 127, x_mohm_per_km: 80, z_mohm_per_km: 150, cost_eur: 45, typ: Cable}
 - {name: NAYY_4_300, max_i_a: 425, r_mohm_per_km: 100, x_mohm_per_km: 80, z_mohm_per_km: 128, cost_eur: 58, typ: Cable}
+
+# =============================================================================
+# MEDIUM-VOLTAGE (MV) GRIDS
+# =============================================================================
+# The MV stage connects the LV stations of a version (one MV node per LV grid), the MV customers and the MV
+# generators to HV/MV substations with open rings. It never changes the LV grids. Its parameters are stored per
+# MV variant (pylovo.mv_variant), not in the snapshot of VERSION_ID. Which loads are MV customers is decided by
+# MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW above, an LV-version parameter.
+
+# Run the MV stage after the LV grids in pylovo-generate (pylovo-generate --mv / --no-mv override it)
+MV_GRID_GENERATION: False
+# MV variant of the LV version (1 to 10 characters); a changed MV parameter needs a new MV_VARIANT_ID
+MV_VARIANT_ID: "1"
+MV_VARIANT_COMMENT: default # Stored with a new MV variant
+# MV nominal voltage in kV: 20 or 10 (the stored LV station transformers are 20/0.4 kV)
+MV_NOMINAL_VOLTAGE_KV: 20
+# HV/MV substations: osm (power=substation with 110 kV in current OSM) or egon (eGon-data HV/MV substations)
+MV_SUBSTATIONS: osm
+# Supply areas: routed (nearest substation along the streets, capacity-aware) or egon (eGon MV grid districts, needs MV_SUBSTATIONS egon)
+MV_SUPPLY_AREAS: routed
+# Line routes: street (along streets and field paths) or crowfly (straight line x 1.3, as Ding0 2017)
+MV_ROUTING: street
+# Ring solver: savings (Clarke-Wright savings with local search), sweep, or ortools (needs the mv extra)
+MV_RING_SOLVER: savings
+# Most ring members (stations, MV customers, looped generators) in one open ring; stub stations do not count
+MV_MAX_STATIONS_PER_RING: 20
+# Stubs: rural (small rural loads off the ring hang on a T-off, at most 1 MVA and 2 km) or none (every station looped in)
+MV_STUBS: rural
+# Overhead lines: rural (links between rural settlements are overhead lines) or none (cables only)
+MV_OVERHEAD_LINES: rural
+# Ties between neighbouring HV/MV substations: ties (one normally-open tie per ring where a neighbour ring is within 2 km) or none
+MV_INTERCONNECTION: none
+# Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 for the nominal voltage)
+MV_STANDARD_CABLE: null
+# Overhead line type for MV_OVERHEAD_LINES rural (null: 122-AL1/20-ST1A for the nominal voltage)
+MV_OVERHEAD_LINE: null
+# Planned current per ampacity of MV lines in normal operation; the (n-1) case may use 1.0
+MV_LINE_PLANNING_UTILIZATION: 0.6
+# MV share of the voltage band in normal operation, from the HV/MV busbar (1.02 p.u.) to every station
+MV_MAX_VOLTAGE_DROP_PERCENT: 5

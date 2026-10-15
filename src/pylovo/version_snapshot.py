@@ -9,6 +9,9 @@ when that behaviour depended on a setting that was not stored. A missing paramet
 block the version: with a known legacy value the current value must equal it, otherwise it is
 only reported as *not recorded*.
 
+The MV stage stores the parameters of each MV variant the same way (``pylovo.mv_variant.mv_parameters``) and
+compares them with ``compare_snapshots(stored, expected, added_later=MV_ADDED_LATER)``.
+
 Pure functions without configuration or database access (also used by ``pylovo-api``).
 """
 from __future__ import annotations
@@ -40,6 +43,10 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("cable_dimensioning", "cabinet_spacing_m"): UNKNOWN,
 }
 
+#: The same for the MV variant snapshots (``MvParameters.to_snapshot``): a path added to that snapshot later, with
+#: the value that reproduces the results of the variants stored before it.
+MV_ADDED_LATER: dict[tuple[str, ...], Any] = {}
+
 
 def _flatten(value: Any, prefix: tuple[str, ...] = ()) -> dict[tuple[str, ...], Any]:
     if isinstance(value, dict) and value:
@@ -59,18 +66,26 @@ def _missing(stored: dict, path: tuple[str, ...]) -> bool:
     return False
 
 
-def compare_snapshots(stored: dict, expected: dict) -> tuple[list[str], list[str]]:
+def compare_snapshots(stored: dict, expected: dict,
+                      added_later: dict[tuple[str, ...], Any] | None = None) -> tuple[list[str], list[str]]:
     """Differences between a stored and an expected snapshot (both JSON round-tripped).
+
+    Args:
+        stored: The stored snapshot.
+        expected: The snapshot of the current configuration.
+        added_later: Paths added to the snapshot later with their legacy values; ``None`` means
+            :data:`ADDED_LATER` (LV versions). The MV stage passes :data:`MV_ADDED_LATER`.
 
     Returns:
         ``(differences, not_recorded)``: dotted paths whose values differ (these block the version),
-        and paths of :data:`ADDED_LATER` that the stored snapshot does not contain and whose legacy
+        and paths of ``added_later`` that the stored snapshot does not contain and whose legacy
         value is unknown (these are only reported).
     """
+    added_later = ADDED_LATER if added_later is None else added_later
     skipped: set[tuple[str, ...]] = set()
     not_recorded: list[str] = []
     differences: list[str] = []
-    for path, legacy in ADDED_LATER.items():
+    for path, legacy in added_later.items():
         if not _missing(stored, path) or _missing(expected, path):
             continue
         skipped.add(path)
