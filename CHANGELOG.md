@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `pylovo-analyze --coverage` (every source building generated, excluded with a reason, or missing; exit 3 when buildings are missing) and `--border-diagnostics` (import-scope share and street context per PLZ, distances of every grid to generated, open and outer PLZ borders and to the scope edge); `--plz` takes several PLZ
 
 ### Changed
+- The shipped `MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW` is `200` kW, the eGon-data boundary between the MV/LV station level and the MV level (a5 used `100`): fewer commercial and public loads are left out of the LV grids
 - The shipped `config_generation.yaml` uses the settings of the paper's vanilla candidate a5: station sizes `1: [250, 400]`, `2: [400, 630]`, `3: [400, 630]` kVA, `FEEDER_SPLIT_MAX_CURRENT_KA` `0.4`, `GREENFIELD_TRAFO_POSITION_TOLERANCE` `0.3`, `MERGE_GREENFIELD_CLUSTERS` with `[250, 400, 630]` kVA and at most `4` buildings, and buildings of unknown use without load (`Unknown` at 0 W/m²); versions generated with the former defaults need a new `VERSION_ID`
 - `GridGenerator.generate_grid_for_single_plz` returns the outcome of the PLZ (`generated`, `exists`, `empty`, `failed`) and `generate_grid_for_multiple_plz` returns the outcomes of all PLZ (a failing PLZ is still logged and skipped; the log lines are unchanged)
 - The OSM transformer download also fetches pole-mounted stations (`power=pole` with a `transformer` tag)

@@ -231,9 +231,10 @@ Loads and general grid settings
        rest of the 6 %).
      - ✓
    * - ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``
-     - ``100``
+     - ``200``
      - Commercial or public load components above this peak (kW) are assumed to have their own
-       MV connection and are left out of the LV grid.
+       MV connection and are left out of the LV grid (eGon-data: 200 kW boundary between the
+       MV/LV station level and the MV level).
      - ✓
    * - ``CABLE_PLANNING_UTILIZATION``
      - ``0.8``
