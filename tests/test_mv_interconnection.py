@@ -539,12 +539,13 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
     summary = stage.run_mv_stage("mv1", [1], PARAMS, log_file=str(tmp_path / "log.txt"))
     assert seen == [("mv1", "y0", "g1", "ties")] and summary.status == "done"
     finish = [c for c in db.calls if c[0] == "finish_variant"]
-    assert len(finish) == 1 and finish[0][2] == {"extra": {"ties": {"n_ties": 3, "tie_km": 2.5,
-                                                                     "tie_max_length_m": 2000.0}}}
+    assert len(finish) == 1 and finish[0][1][2] is summary                      # mv_variant.summary['ties']
+    assert summary.to_dict()["ties"] == {"n_ties": 3, "tie_km": 2.5, "tie_max_length_m": 2000.0}
+    assert "✓ Ties: 3 normally-open ties, 2.5 km" in summary.describe()
     db = StageDb()
     monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
-    stage.run_mv_stage("mv1", [1], PARAMS.replace(interconnection="none"), log_file=str(tmp_path / "log.txt"))
-    assert [c[2] for c in db.calls if c[0] == "finish_variant"] == [{}]          # no ties without the switch
+    plain = stage.run_mv_stage("mv1", [1], PARAMS.replace(interconnection="none"), log_file=str(tmp_path / "log.txt"))
+    assert plain.ties == {} and "Ties" not in plain.describe()                   # no ties without the switch
 
 
 # ---------------------------------------------------------------------------------------------- metrics

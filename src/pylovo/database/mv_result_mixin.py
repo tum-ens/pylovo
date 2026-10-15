@@ -902,7 +902,8 @@ class MvResultMixin(BaseMixin):
             raise
 
     def variant_totals(self, version_id: str, variant_id: str) -> dict:
-        """Grid counts by status and the summed results of a variant (for :class:`MvRunSummary`)."""
+        """Grid counts by status and the summed results of a variant (for :class:`MvRunSummary`); ``grids_by_kv``
+        counts the grids per nominal voltage (``{"20": n, "10": m}``)."""
         self.cur.execute(
             """SELECT count(*), count(*) FILTER (WHERE status = 'done'), count(*) FILTER (WHERE status = 'failed'),
                        count(*) FILTER (WHERE status = 'pending'),
@@ -916,6 +917,10 @@ class MvResultMixin(BaseMixin):
                 "n_generators", "circuit_km", "cable_km", "n_violation_grids", "n_band_conflicts")
         out = {k: (float(v) if k in ("circuit_km", "cable_km") else int(v)) for k, v in zip(keys, row)}
         out["cable_share"] = out["cable_km"] / out["circuit_km"] if out["circuit_km"] > 0 else 0.0
+        self.cur.execute(
+            """SELECT g.vn_kv, count(*) FROM pylovo.mv_grid g WHERE g.version_id = %s AND g.mv_variant_id = %s
+               GROUP BY g.vn_kv ORDER BY g.vn_kv DESC""", (version_id, variant_id))
+        out["grids_by_kv"] = {f"{float(vn):g}": int(n) for vn, n in self.cur.fetchall() if vn is not None}
         return out
 
     def finish_variant(self, version_id: str, variant_id: str, summary: "MvRunSummary",

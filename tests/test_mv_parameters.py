@@ -678,6 +678,27 @@ def test_run_summary_lines():
     assert partial[1:] == ["✗ 1 requested PLZ have no LV grids in version mv1: 3", "✗ ties not implemented"]
 
 
+def test_run_summary_prints_voltages_ties_and_the_demand_anchor():
+    ties = {"n_ties": 12, "tie_km": 15.31, "n_rings": 30, "n_rings_with_tie": 12, "ring_share_with_tie": 0.4,
+            "takeover_checked": 24, "takeover_ok": 20, "tie_max_length_m": 2000.0}
+    demand = {"kw_per_inhabitant": 1.234, "coincident_mw": 98.7, "population": 80000, "n_plz": 6,
+              "customer_mw": 20.0, "n_customer_nodes": 40, "busbar_customer_mw": 3.0, "approximate": False}
+    voltages = {"rule": "auto", "threshold_mva_km2": 8.0, "grids": {"20": 3, "10": 1}}
+    lines = summary(ties=ties, demand=demand, voltages=voltages).describe().splitlines()
+    assert lines[1] == "✓ Nominal voltage auto (10 kV from 8 MVA/km² installed): 3 at 20 kV, 1 at 10 kV"
+    assert lines[2] == ("✓ Ties: 12 normally-open ties, 15.3 km, 12 of 30 rings with a tie (40 %), takeover within "
+                        "the (n-1) limits at 20 of 24 tie ends")
+    assert lines[3].startswith("✓ Demand anchor: 1.23 kW per inhabitant (98.7 MW coincident, 80,000 inhabitants")
+    approximate = {**demand, "approximate": True, "partial_plz": {"91000": 0.4}}
+    line = summary(demand=approximate).describe().splitlines()[1]
+    assert line.startswith("✗ Demand anchor: 1.23 kW per inhabitant, approximate (98.7 MW")
+    assert line.endswith("PLZ only partly in the region or without population: 91000 (40 % of its area)")
+    none = summary(ties={"n_ties": 0, "tie_max_length_m": 2000.0}, voltages={"rule": "fixed", "grids": {"20": 4}})
+    assert none.describe().splitlines()[1:] == ["✓ Nominal voltage: 4 at 20 kV",
+                                                "✓ Ties: none (no rings of different districts within 2 km)"]
+    assert json_round_trip(summary(ties=ties, voltages=voltages).to_dict())["voltages"]["grids"] == {"20": 3, "10": 1}
+
+
 def test_run_summary_dict_is_json_native():
     data = summary(n_stations=np.int64(5), circuit_km=np.float64(1.5), plz_used=np.array([1, 2])).to_dict()
     assert json_round_trip(data) == data

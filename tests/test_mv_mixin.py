@@ -485,8 +485,10 @@ def test_failed_grid_and_finished_variant_commit():
 def test_variant_totals_and_pending_grids():
     totals = (3, 2, 1, 0, 40, 2, 1, 50.0, 30.0, 1, 4)
     client = make_client([("FROM pylovo.mv_grid WHERE version_id", (["c"] * 11, [totals], 1)),
+                          ("GROUP BY g.vn_kv", (["vn_kv", "n"], [(20.0, 2), (10.0, 1)], 2)),
                           ("GROUP BY g.mv_grid_id", (["g", "n"], [(7, 30), (6, 10)], 2))])
     out = client.variant_totals("mv1", "d0")
     assert out["grids_total"] == 3 and out["cable_share"] == pytest.approx(0.6) and out["n_band_conflicts"] == 4
+    assert out["grids_by_kv"] == {"20": 2, "10": 1}
     assert client.pending_grids("mv1", "d0") == [(7, 30), (6, 10)]
-    assert "status IN ('pending', 'failed')" in client.cur.statements[1][0]
+    assert "status IN ('pending', 'failed')" in client.cur.statements[-1][0]

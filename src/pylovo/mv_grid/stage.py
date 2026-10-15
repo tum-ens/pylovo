@@ -731,11 +731,8 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
             logger.error(f"Could not store the failed status of MV variant {variant_id}: {_one_line(finish_exc)}")
         raise
     summary = _summary(version_id, variant_id, _status(totals), requested, used, missing, totals, warnings, start,
-                       demand)
-    if ties is None:
-        dbc.finish_variant(version_id, variant_id, summary)
-    else:
-        dbc.finish_variant(version_id, variant_id, summary, extra={"ties": ties})
+                       demand, ties=ties, params=params)
+    dbc.finish_variant(version_id, variant_id, summary)                 # summary['ties'] holds the tie summary
     logger.info(summary.describe().splitlines()[0])
     return summary
 
@@ -781,8 +778,14 @@ def _demand_anchor(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int
 
 def _summary(version_id: str, variant_id: str, status: str, requested: list[int] | None, used: list[int],
              missing: list[int], totals: dict | None, warnings: list[str], start: float,
-             demand: dict | None = None) -> MvRunSummary:
+             demand: dict | None = None, *, ties: dict | None = None,
+             params: MvParameters | None = None) -> MvRunSummary:
     totals = totals or {}
+    voltages = {}
+    if params is not None:
+        voltages = {"rule": "auto" if params.auto_voltage else "fixed",
+                    "threshold_mva_km2": float(params.mv_10kv_min_density_mva_km2),
+                    "grids": dict(totals.get("grids_by_kv") or {})}
     return MvRunSummary(
         version_id=version_id, variant_id=variant_id, status=status,
         plz_requested=list(requested if requested is not None else used), plz_used=list(used),
@@ -793,7 +796,7 @@ def _summary(version_id: str, variant_id: str, status: str, requested: list[int]
         circuit_km=float(totals.get("circuit_km", 0.0)), cable_share=float(totals.get("cable_share", 0.0)),
         n_violation_grids=int(totals.get("n_violation_grids", 0)),
         n_band_conflicts=int(totals.get("n_band_conflicts", 0)), warnings=list(warnings),
-        elapsed_s=time.time() - start, demand=dict(demand or {}))
+        elapsed_s=time.time() - start, demand=dict(demand or {}), ties=dict(ties or {}), voltages=voltages)
 
 
 # ---------------------------------------------------------------------------------------------- export

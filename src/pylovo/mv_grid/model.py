@@ -325,9 +325,11 @@ def _plain(value: Any) -> Any:
 
 def demand_line(anchor: Mapping[str, Any]) -> str:
     """The summary line of a regional demand anchor (``pylovo.mv_grid.inputs.demand_anchor``): a check mark, or a
-    cross when the anchor is approximate."""
+    cross and ``approximate`` right after the kW per inhabitant when the population is only partly known."""
     per = anchor.get("kw_per_inhabitant")
     text = f"{per:.2f} kW per inhabitant" if per is not None else "no population"
+    if anchor.get("approximate"):
+        text += ", approximate"
     text = (f"{'✗' if anchor.get('approximate') else '✓'} Demand anchor: {text} "
             f"({anchor.get('coincident_mw', 0.0):,.1f} MW coincident, {anchor.get('population', 0):,} inhabitants of "
             f"{anchor.get('n_plz', 0)} PLZ; MV customers {anchor.get('customer_mw', 0.0):,.1f} MW at "
@@ -339,8 +341,36 @@ def demand_line(anchor: Mapping[str, Any]) -> str:
     if anchor.get("approximate"):
         notes = [f"{plz} ({100 * share:.0f} % of its area)" for plz, share in (anchor.get("partial_plz") or {}).items()]
         notes += [f"{plz} (no population)" for plz in anchor.get("plz_without_population") or []]
-        text += "; approximate, PLZ only partly in the region or without population: " + ", ".join(notes)
+        text += "; PLZ only partly in the region or without population: " + ", ".join(notes)
     return text
+
+
+def ties_line(ties: Mapping[str, Any]) -> str:
+    """The summary line of the normally-open ties (``pylovo.mv_grid.interconnection.tie_summary``): count, km, the
+    share of rings with a tie and the tie ends whose (n-1) takeover stays within the limits."""
+    n = int(ties.get("n_ties") or 0)
+    if not n:
+        limit = float(ties.get("tie_max_length_m") or 0.0) / 1000.0
+        return f"✓ Ties: none (no rings of different districts within {limit:g} km)"
+    text = f"✓ Ties: {n:,} normally-open ties, {float(ties.get('tie_km') or 0.0):,.1f} km"
+    if ties.get("n_rings"):
+        share = ties.get("ring_share_with_tie")
+        text += (f", {ties.get('n_rings_with_tie', 0):,} of {ties['n_rings']:,} rings with a tie"
+                 + (f" ({100 * share:.0f} %)" if share is not None else ""))
+    if ties.get("takeover_checked"):
+        text += (f", takeover within the (n-1) limits at {ties.get('takeover_ok', 0):,} of "
+                 f"{ties['takeover_checked']:,} tie ends")
+    return text
+
+
+def voltage_line(voltages: Mapping[str, Any]) -> str:
+    """The summary line of the nominal voltages of the districts (``MV_NOMINAL_VOLTAGE_KV``)."""
+    grids = {float(k): int(v) for k, v in (voltages.get("grids") or {}).items()}
+    counts = ", ".join(f"{n:,} at {vn:g} kV" for vn, n in sorted(grids.items(), reverse=True)) or "no districts"
+    if voltages.get("rule") == "auto":
+        return (f"✓ Nominal voltage auto (10 kV from {float(voltages.get('threshold_mva_km2') or 0.0):g} MVA/km² "
+                f"installed): {counts}")
+    return f"✓ Nominal voltage: {counts}"
 
 
 @dataclass
@@ -348,7 +378,10 @@ class MvRunSummary:
     """Summary of one run of the MV stage for one MV variant of an LV version.
 
     ``cable_share`` is the cable share of the circuit length as a fraction (0 to 1); ``demand`` is the regional
-    demand anchor (``pylovo.mv_grid.inputs.demand_anchor``), empty when it was not computed.
+    demand anchor (``pylovo.mv_grid.inputs.demand_anchor``), empty when it was not computed; ``ties`` the summary of
+    the normally-open ties (``pylovo.mv_grid.interconnection.tie_summary``), empty without the tie step;
+    ``voltages`` the nominal voltage rule (``rule`` auto or fixed, ``threshold_mva_km2``) and the districts per
+    voltage (``grids``: ``{"20": n, "10": m}``).
     """
 
     version_id: str
@@ -371,6 +404,8 @@ class MvRunSummary:
     warnings: list[str]
     elapsed_s: float
     demand: dict = field(default_factory=dict)
+    ties: dict = field(default_factory=dict)
+    voltages: dict = field(default_factory=dict)
 
     def describe(self) -> str:
         """The summary lines printed by the CLI; each starts with a check mark (variant done) or a cross."""
@@ -390,6 +425,10 @@ class MvRunSummary:
         if self.plz_missing:
             lines.append(f"✗ {len(self.plz_missing)} requested PLZ have no LV grids in version {self.version_id}: "
                          + ", ".join(str(plz) for plz in self.plz_missing))
+        if self.voltages:
+            lines.append(voltage_line(self.voltages))
+        if self.ties:
+            lines.append(ties_line(self.ties))
         if self.demand:
             lines.append(demand_line(self.demand))
         lines.extend(f"✗ {warning}" for warning in self.warnings)
