@@ -689,10 +689,10 @@ def test_run_summary_prints_voltages_ties_and_the_demand_anchor():
     assert lines[2] == ("✓ Ties: 12 normally-open ties, 15.3 km, 12 of 30 rings with a tie (40 %), takeover within "
                         "the (n-1) limits at 20 of 24 tie ends")
     assert lines[3].startswith("✓ Demand anchor: 1.23 kW per inhabitant (98.7 MW coincident, 80,000 inhabitants")
-    approximate = {**demand, "approximate": True, "partial_plz": {"91000": 0.4}}
+    approximate = {**demand, "approximate": True, "partial_plz": {"12345": 0.4}}
     line = summary(demand=approximate).describe().splitlines()[1]
     assert line.startswith("✗ Demand anchor: 1.23 kW per inhabitant, approximate (98.7 MW")
-    assert line.endswith("PLZ only partly in the region or without population: 91000 (40 % of its area)")
+    assert line.endswith("PLZ only partly in the region or without population: 12345 (40 % of its area)")
     none = summary(ties={"n_ties": 0, "tie_max_length_m": 2000.0}, voltages={"rule": "fixed", "grids": {"20": 4}})
     assert none.describe().splitlines()[1:] == ["✓ Nominal voltage: 4 at 20 kV",
                                                 "✓ Ties: none (no rings of different districts of the same "
