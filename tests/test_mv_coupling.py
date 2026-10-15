@@ -540,6 +540,25 @@ def test_couple_district_survives_a_broken_lv_net_and_unknown_grids(small):
     assert result.rows["coupled_op_lv_busbar_vm_pu"].isna().all()
 
 
+def test_couple_district_leaves_a_non_converging_lv_net_out_of_the_merged_flow(small):
+    lv_nets, inp, plan, design, cases, budgets, stored = small
+    stations = station_rows(inp, cases, budgets)
+    diverging = copy.deepcopy(lv_nets[4])
+    diverging.load["p_mw"] = diverging.load["p_mw"] * 1000.0          # no power-flow solution on its own
+    nets = [(gid, diverging if gid == 4 else net) for gid, net in lv_nets.items()]
+    result = coupling.couple_district(stored, stations, iter(nets), inp.params, inp.lv, vn_kv=inp.vn_kv,
+                                      keep_net=True)
+    assert result.metrics["design_not_converged"] == [104] and result.metrics["not_merged"] == [104]
+    assert result.status == "partial"
+    op = result.metrics["operating_point"]
+    assert all(op["converged"].values())                               # the other LV nets are merged and solved
+    rows = result.rows.set_index("mv_node_id")
+    assert np.isnan(rows.at[104, "coupled_op_lv_busbar_vm_pu"])
+    assert rows.drop(index=104)["coupled_op_lv_busbar_vm_pu"].notna().all()
+    names = result.net.load["name"].astype(str)
+    assert (names == "Station 4").sum() == 1                           # the station keeps its MV-level load
+
+
 def test_couple_district_needs_the_station_columns():
     with pytest.raises(ValueError, match="no column"):
         coupling.couple_district(None, pd.DataFrame({"mv_node_id": [1]}), [], MvParameters(), _lv(), vn_kv=20.0)

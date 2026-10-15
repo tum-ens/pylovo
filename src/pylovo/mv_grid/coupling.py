@@ -695,8 +695,10 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
 
     Returns:
         :class:`CoupledDistrict`: ``rows`` (``mv_node_id`` and :data:`COUPLED_COLUMNS` per station), ``status``
-        (``done``, or ``partial`` when a station with an LV grid could not be coupled or the merged flow did not
-        converge) and JSON-native ``metrics``.
+        (``done``, or ``partial`` when a station with an LV grid could not be coupled, its LV net was left out of
+        the merged net or the merged flow did not converge) and JSON-native ``metrics``. An LV net whose design-point
+        or feed-in check does not converge on its own is left out of the merged net (``not_merged``; its station
+        keeps the MV-level load): one such net would stop the merged flow of the whole district.
     """
     log = log or logger
     start = time.time()
@@ -708,7 +710,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     frames: dict[int, tuple[int, dict[str, pd.DataFrame]]] = {}
     lists: dict[str, list[int]] = {"unknown_lv_grid": [], "lv_error": [], "no_mv_bus": [],
                                    "lv_stored_not_converged": [], "design_not_converged": [],
-                                   "feed_in_not_converged": [], "no_budget": []}
+                                   "feed_in_not_converged": [], "no_budget": [], "not_merged": []}
     for gid, lv_net in lv_nets:
         key = node_of_grid.get(int(gid))
         if key is None:
@@ -739,6 +741,8 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             bus = bus_of_node.get(key)
             if bus is None:
                 lists["no_mv_bus"].append(key)
+            elif check["design_converged"] == 0.0 or check["feed_in_converged"] == 0.0:
+                lists["not_merged"].append(key)
             else:
                 frames[bus] = (int(gid), part)
     with_grid = set(node_of_grid.values())
@@ -765,7 +769,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         },
         "agreement_pu": AGREEMENT_PU,
     }
-    status = "partial" if not_coupled else "done"
+    status = "partial" if not_coupled or lists["not_merged"] else "done"
     net = None
     if merged and frames:
         taps = {int(g): int(_number(table.at[node_of_grid[int(g)], "mv_lv_tap_pos"], 0.0))
