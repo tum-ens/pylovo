@@ -275,7 +275,8 @@ def district_nodes() -> pd.DataFrame:
                                             ("customer", np.nan, 30.0)]):
         row = {c: 0.0 for c in NODE_COLUMNS}
         row.update(kind=kind, connection_hint="busbar" if kind == "busbar" else "ring", x=100.0 * i, y=0.0,
-                   attach_edge_id=10 + i, attach_offset_m=offset, grid_result_id=gr, lv_design_source_vm_pu=np.nan)
+                   attach_edge_id=10 + i, attach_fraction=0.25, attach_offset_m=offset, grid_result_id=gr,
+                   lv_design_source_vm_pu=np.nan)
         rows.append(row)
     return pd.DataFrame(rows, index=pd.Index([1, 2, 3, 4], name="mv_node_id"))[list(NODE_COLUMNS)]
 
@@ -329,7 +330,10 @@ def test_district_input_reads_the_district(monkeypatch):
     assert graph_id == "g123" and buffer_m == 2600.0 and must == [10, 11, 12, 13]
     assert inp.known_units_mva == (40.0, 40.0) and inp.substation_id == 5 and inp.vn_kv == 20.0
     assert set(inp.edge_geometry([3, 4])) == {3, 4} and set(inp.edge_geometry([4, 5])) == {4, 5}
-    assert [c[1] for c in db.calls if c[0] == "geometries"] == [[3, 4], [5]]      # read once per edge
+    assert set(inp.edge_geometry([10, 13])) == {10, 13}
+    assert [c[1] for c in db.calls if c[0] == "geometries"] == [[10, 11, 12, 13], [3, 4], [5]]   # once per edge
+    # the street point of each node on its attach edge (LineString (0, 0)-(edge, 1) at attach_fraction 0.25)
+    assert inp.nodes["ax"].tolist() == [2.5, 2.75, 3.0, 3.25] and inp.nodes["ay"].tolist() == [0.25] * 4
     with pytest.raises(ValueError, match="belongs to variant d0 of version mv1"):
         stage.district_input(db, "mv1", "d9", 6, "g123", params, LV)
 

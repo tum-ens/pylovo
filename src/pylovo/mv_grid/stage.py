@@ -119,6 +119,25 @@ def worker_count(jobs: int | None, n_pending: int, per_worker_gb: float = WORKER
     return n
 
 
+def attachment_points(nodes: pd.DataFrame, geometries: dict[int, Any]) -> tuple[np.ndarray, np.ndarray]:
+    """The street point of every node: its attach edge's geometry at ``attach_fraction`` (NaN without one).
+
+    ``graph.build_run_graph`` places the split vertex of an attach edge there; without these coordinates it falls
+    back to the straight chord between the edge ends, which lies off a curved street, and the line geometries then
+    zigzag between the chord point and the street.
+    """
+    edge = pd.to_numeric(nodes["attach_edge_id"], errors="coerce").to_numpy(dtype=float)
+    fraction = pd.to_numeric(nodes["attach_fraction"], errors="coerce").to_numpy(dtype=float)
+    ax = np.full(len(nodes), np.nan)
+    ay = np.full(len(nodes), np.nan)
+    for i, (e, f) in enumerate(zip(edge, fraction)):
+        geom = geometries.get(int(e)) if np.isfinite(e) and np.isfinite(f) else None
+        if geom is not None and not geom.is_empty:
+            point = geom.interpolate(min(max(float(f), 0.0), 1.0), normalized=True)
+            ax[i], ay[i] = point.x, point.y
+    return ax, ay
+
+
 def district_input(dbc: Any, version_id: str, variant_id: str, mv_grid_id: int, graph_id: str,
                    params: MvParameters, lv: LvVersionParameters) -> tuple[DistrictInput, dict[int, float]]:
     """Read one district for the planner (worker side).
@@ -126,7 +145,8 @@ def district_input(dbc: Any, version_id: str, variant_id: str, mv_grid_id: int, 
     The nodes come from :meth:`MvResultMixin.load_district_nodes`; the stored LV requirement (``ext_grid.vm_pu``
     of each station's LV net) is read for the district's stations only; the subgraph is the part of the routing
     graph within ``max(subgraph_buffer_m, largest attach offset + 100 m)`` of the convex hull of the node points,
-    plus every attach edge. Edge geometries are read lazily (once per edge) through ``edge_geometry``.
+    plus every attach edge. Edge geometries are read lazily (once per edge) through ``edge_geometry``; the attach
+    edges are read at once for the street points ``ax``, ``ay`` of the nodes (:func:`attachment_points`).
 
     Returns:
         ``(district input, {grid_result_id: requirement})``.
@@ -163,6 +183,7 @@ def district_input(dbc: Any, version_id: str, variant_id: str, mv_grid_id: int, 
             cache.update({int(k): v for k, v in dbc.edge_geometries(graph_id, missing).items()})
         return {e: cache[e] for e in wanted if e in cache}
 
+    nodes["ax"], nodes["ay"] = attachment_points(nodes, edge_geometry(must) if must else {})
     inp = DistrictInput(mv_grid_id=int(mv_grid_id), substation_id=int(grid["substation_id"]),
                         vn_kv=float(grid["vn_kv"]), nodes=nodes, edges=edges, params=params, lv=lv,
                         known_units_mva=known_units, edge_geometry=edge_geometry, settlement_geoms={})
