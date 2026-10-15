@@ -32,6 +32,9 @@ GIS data.
   are frozen in the database; generation is deterministic for a given configuration.
 * **Scales from one postcode to many** -- ``pylovo-generate`` accepts postcodes (PLZ) or
   municipalities (AGS) and runs postcodes in parallel.
+* **Medium-voltage grids** -- an optional MV stage connects the stations of an LV version, the MV
+  customers and the MaStR generators to the HV/MV substations of the region with open rings along
+  the streets and checks them with pandapower (:doc:`concepts/mv_grids`).
 * **Analysis and visualisation** -- key figures per postcode and per grid, QGIS templates,
   CSV export, plotting helpers, and the GridPlanner browser UI on top of pylovo's HTTP API
   (:doc:`user_guide/browser_ui`).
@@ -63,7 +66,7 @@ GIS data.
       :link: user_guide/cli
       :link-type: doc
 
-      ``pylovo-setup``, ``-generate``, ``-analyze``, ``-import``, ``-export``, ``-delete``.
+      ``pylovo-setup``, ``-generate``, ``-mv``, ``-analyze``, ``-import``, ``-export``, ``-delete``.
 
    .. grid-item-card:: How grids are generated
       :link: concepts/pipeline
@@ -115,6 +118,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    user_guide/transformer_data
    user_guide/region_selection
    user_guide/generating_grids
+   user_guide/mv_grids
    user_guide/analysing_grids
    user_guide/applications
    user_guide/exporting_visualising
@@ -130,6 +134,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    concepts/architecture
    concepts/pipeline
    concepts/grid_dimensioning
+   concepts/mv_grids
    concepts/database_schema
    concepts/database_tables
    concepts/electrical_backends

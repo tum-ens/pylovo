@@ -59,6 +59,11 @@ Building selection currently uses ``basedata.buildings`` and
 move those two dependencies. All source geometries need a defined SRID; pylovo transforms them
 to ``TARGET_EPSG``.
 
+The MV stage reads further inputs: the regional street graph
+``<INFDB_SOURCE_SCHEMA>.ways_per_junction``, the OSM power and land-use layers of
+``INFDB_OSM_SCHEMA``, the MaStR units of ``pylovo-import mastr`` and, optionally, eGon-data tables
+(:ref:`mv-prerequisites`).
+
 Buildings
 ---------
 
@@ -99,6 +104,8 @@ Every building contributes up to two electrical load components at the same conn
 
 A non-residential component above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` is assumed to be
 supplied from the MV grid and is excluded; the residential component of the same building stays.
+Such buildings are stored in ``pylovo.mv_customers``, where the MV stage takes them up as MV
+customers (:ref:`mv-customers`).
 How the components are combined into design loads is explained in
 :doc:`../concepts/grid_dimensioning`.
 

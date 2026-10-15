@@ -34,3 +34,31 @@ outputs show the OSM-derived demo region 85653 (Aying; map data © OpenStreetMap
    * - ``4_basic_plotting.ipynb``
      - Statistics of all grids of a postcode area (transformer sizes, cable types, distances);
        needs the PLZ analysis (``pylovo-analyze --plz <plz>``).
+
+The directory ``notebook_tutorials/mv_grids`` contains notebooks on the MV grids of the MV stage
+(:doc:`../user_guide/mv_grids`). They read the MV variants of an LV version (built with
+``pylovo-mv generate``) and carry no stored outputs. Their parameter cell selects the LV version
+and the variants; ``notebook_tutorials/mv_grids/README.md`` describes all parameters.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 36 64
+   :class: fixed-table
+
+   * - Notebook
+     - Content
+   * - ``0_mv_generation.ipynb``
+     - How to run the MV stage, the MV variants of a version with their parameter differences and
+       run summaries, and the quality tables of the routing graph.
+   * - ``1_mv_results_overview.ipynb``
+     - Tables per variant, area class and supply area; maps of the supply areas and rings;
+       distributions of ring sizes, lengths, loadings, voltages and MV/LV taps.
+   * - ``2_mv_variant_comparison.ipynb``
+     - Variants against a reference variant (solver, routing, sources, equipment) and the same
+       variant on two LV versions.
+   * - ``3_mv_plausibility.ipynb``
+     - Metrics against literature ranges, eGon-data districts, Ding0 grids, the demand anchor and
+       earth-fault currents.
+   * - ``4_mv_lv_coupling.ipynb``
+     - Results of ``pylovo-mv couple``: LV busbar voltages, band conflicts, taps and the merged
+       operating point.

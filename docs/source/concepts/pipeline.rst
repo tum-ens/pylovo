@@ -53,7 +53,8 @@ distance inverted) and averaged. A score below 1/3 gives type 1 (rural), below 2
 which gives type 3.
 
 Finally, non-residential components above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` are marked as
-supplied from the MV grid and removed from the LV load.
+supplied from the MV grid and removed from the LV load. The buildings are stored in
+``mv_customers``, the input of the MV stage (:ref:`mv-customers`).
 
 3 -- Transformer candidates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -250,3 +251,10 @@ reads the committed buildings immediately.
 
    The generated grids of version ``1``. Buildings without a grid have no address
    (``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``) or are large commercial loads supplied from the MV grid.
+
+After the pipeline: the MV stage
+--------------------------------
+
+With ``MV_GRID_GENERATION: True`` or ``pylovo-generate --mv``, the MV stage runs once after all
+postcodes of a call. It connects the stations of the stored grids to the HV/MV substations of the
+region with open MV rings (:doc:`mv_grids`) and leaves the LV grids unchanged.

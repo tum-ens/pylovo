@@ -100,7 +100,9 @@ pandapower:
            pp.to_json(net, f"grid_85653_{kcid}_{bcid}.json")
 
 Alternatively, ``SAVE_GRID_FOLDER: True`` writes the JSON files during generation
-(:doc:`generating_grids`). The :doc:`browser_ui` offers a download button per grid.
+(:doc:`generating_grids`). The :doc:`browser_ui` offers a download button per grid. The MV grids
+of the MV stage are stored in ``pylovo.mv_grid.net`` and written with ``pylovo-mv export``
+(:doc:`mv_grids`).
 
 Plotting helpers
 ----------------
@@ -168,3 +170,6 @@ lines of all grids as GeoDataFrames
 (:func:`~pylovo.plotting.gis_preparation.io_geodata.get_bus_line_geo_for_plz`); ``pylovo-export`` uses
 the same functions. The maps in :doc:`../concepts/pipeline` are made from the result tables with
 ``docs/scripts/plot_generation_steps.py``, which can serve as an example for custom maps.
+
+The MV grids have their own maps and statistics plots in :mod:`pylovo.plotting.mv_grid`, which
+draw the layers of ``DatabaseClient.read_mv_layers`` (:doc:`mv_grids`).

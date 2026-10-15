@@ -57,12 +57,18 @@ Modules
    * - :mod:`pylovo.data_import`
      - Transformer download and processing (OSM), DSO CSV import, municipal register, building
        shapefiles (file-based mode) and region resolution.
+   * - :mod:`pylovo.mv_grid`
+     - The MV stage (:doc:`mv_grids`): parameters (:mod:`~pylovo.mv_grid.options`,
+       :mod:`~pylovo.mv_grid.parameters`), the stage driver :func:`~pylovo.mv_grid.stage.run_mv_stage`
+       and the pure planning modules (substations, supply areas, routing graph, rings, solvers,
+       topology, electrical checks, ties, coupling, metrics). The planner
+       :func:`~pylovo.mv_grid.planner.plan_district` runs without a database.
    * - :mod:`pylovo.analysis`
      - :class:`~pylovo.analysis.parameter_calculation.ParameterCalculator` for postcode and
        per-grid key figures, power-flow helpers.
    * - :mod:`pylovo.plotting`
-     - Grid plots (:mod:`pylovo.plotting.generation`) and GIS export helpers
-       (:mod:`pylovo.plotting.gis_preparation`).
+     - Grid plots (:mod:`pylovo.plotting.generation`), GIS export helpers
+       (:mod:`pylovo.plotting.gis_preparation`) and MV grid plots (:mod:`pylovo.plotting.mv_grid`).
    * - ``ways_preprocessing_functions/``
      - SQL functions installed by the setup: segmenting intersecting streets and creating
        building and transformer connection lines.
@@ -99,6 +105,15 @@ SQLAlchemy engine with the search path ``pylovo, public``. Its methods are group
      - The ``*_trafo_ui`` methods of the transformer editors (view, add, delete, set ratings).
    * - :class:`~pylovo.database.utils_mixin.UtilsMixin`
      - Temporary tables, materialised views, consumer categories and the municipal register.
+   * - :class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`
+     - MV stage: build of the routing graph with settlement flags, attachment of points, district
+       subgraphs and quality tables.
+   * - :class:`~pylovo.database.mv_source_mixin.MvSourceMixin`
+     - MV stage: OSM substations, eGon-data tables and MaStR units.
+   * - :class:`~pylovo.database.mv_input_mixin.MvInputMixin`
+     - MV stage: LV results of a version (stations, load statistics, MV customers, stored LV nets).
+   * - :class:`~pylovo.database.mv_result_mixin.MvResultMixin`
+     - MV stage: variants, locks, region and district results, readers, listing and deletion.
 
 Control flow of ``pylovo-generate``
 -----------------------------------
@@ -117,6 +132,9 @@ Control flow of ``pylovo-generate``
    power-flow check and writes the grid rows.
 #. ``save_tables`` copies buildings and streets to the result tables, the transaction is committed,
    the optional analysis runs and the temporary tables are dropped.
+#. With ``--mv`` (or ``MV_GRID_GENERATION``), :mod:`pylovo.cli.generate` finally calls
+   :func:`~pylovo.mv_grid.stage.run_mv_stage` for the postcodes of the call. The stage plans every
+   supply area in its own worker process with its own database connection (:doc:`mv_grids`).
 
 Conventions
 -----------

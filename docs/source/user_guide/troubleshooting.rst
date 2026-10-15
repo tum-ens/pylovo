@@ -81,6 +81,12 @@ Grids with ``voltage_violation`` or ``not_converged``
    at the diagnostics in ``grid_result`` (:doc:`../concepts/grid_dimensioning`). Larger cables in
    ``FEEDER_CABLES`` or different clustering limits change the result (in a new version).
 
+MV stage
+--------
+
+The messages of ``pylovo-mv`` and of ``pylovo-generate --mv`` are explained in
+:ref:`mv-troubleshooting`.
+
 Deleting and plotting
 ---------------------
 

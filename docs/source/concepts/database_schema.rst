@@ -16,7 +16,7 @@ All pylovo tables are in the schema ``pylovo``. They are defined in
 Structure
 ---------
 
-The schema is organised around three keys:
+The schema is organised around four keys:
 
 ``version_id``
    Every result belongs to a version. ``version`` holds the parameter snapshot; ``equipment_data``
@@ -29,6 +29,9 @@ The schema is organised around three keys:
    tables reference it: ``buildings_result``, ``transformer_positions``, ``lines_result`` and its
    GIS helpers, ``split_points``, the ``pandapower_*`` tables, ``clustering_parameters`` and the
    audit table ``load_edit``.
+``(version_id, mv_variant_id)``
+   ``mv_variant`` holds one MV variant of a version with its MV parameter snapshot. All MV result
+   tables reference it (:ref:`mv-tables`).
 
 Deleting a ``version`` row removes its postcodes, grids and key figures through
 cascading foreign keys. Deleting a ``postcode_result`` row removes the grids of
@@ -38,8 +41,9 @@ only ``transformer_positions.osm_id``. Pandapower bus references are constrained
 within their grid; dependent elements are deleted before buses.
 
 Reference and input tables are not versioned: ``postcode``, ``transformers``,
-``consumer_categories`` (synchronised with the configuration at every run), ``municipal_register``
-and, in the file-based mode, ``res``, ``oth``, ``ways`` and ``ags_log``.
+``consumer_categories`` (synchronised with the configuration at every run), ``municipal_register``,
+the MaStR import ``mastr_units`` and ``mastr_postcode_aggregates``, the MV routing graphs
+``mv_graph*`` and, in the file-based mode, ``res``, ``oth``, ``ways`` and ``ags_log``.
 
 Result tables in short
 ----------------------
@@ -80,6 +84,49 @@ Result tables in short
    * - ``load_edit``
      - Audit rows of load edits made through the HTTP API (:ref:`http-api-load-editing`), with the
        state before each edit for the exact undo. Deleting the grid removes them.
+   * - ``mv_customers``
+     - Buildings whose non-residential load the LV stage leaves to the MV grid
+       (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), per version and postcode; input of the MV stage.
+
+.. _mv-tables:
+
+MV stage tables in short
+------------------------
+
+The MV stage (:doc:`mv_grids`) writes its results per MV variant. Every result table carries
+``version_id`` and ``mv_variant_id`` and references ``mv_variant`` with ``ON DELETE CASCADE``, so
+deleting a variant (``pylovo-mv delete``) or its version removes all its rows. Deleting a postcode
+with ``pylovo-delete networks`` deletes the MV variants that contain it. Migration
+``0009_mv_grids`` creates the tables on schemas set up before.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+   :class: fixed-table
+
+   * - Table
+     - Content
+   * - ``mv_variant``
+     - One row per MV variant: parameter snapshot, postcodes, routing graph, status, LV fingerprint
+       (staleness) and run summary.
+   * - ``mv_substation``
+     - HV/MV substations of the variant with busbar point, footprint, eGon match, transformer sizing
+       and flags.
+   * - ``mv_grid``
+     - One MV grid per supply area: status, nominal voltage, polygon, counts, lengths, voltage and
+       loading extremes, metrics, repairs and the stored pandapower net (``net``).
+   * - ``mv_node``
+     - Busbars, stations (``grid_result_id``), MV customers, MV generators and joints with loads,
+       connection, MV voltages, voltage budget, MV/LV tap and coupling results.
+   * - ``mv_line``
+     - Ring, stub, dedicated, generator and tie lines with kind, type, lengths and loadings.
+   * - ``mv_ring``
+     - One row per ring or feeder with members, lengths, loads, open point and extremes.
+   * - ``mv_graph``, ``mv_graph_vertex``, ``mv_graph_edge``, ``mv_graph_settlement``
+     - Routing graphs with settlement flags. They are not versioned and are shared by all variants
+       with the same inputs (content-addressed ``graph_id``).
+
+The view ``mv_variant_stats`` sums the grids of every variant for comparisons.
 
 Views and temporary tables
 --------------------------

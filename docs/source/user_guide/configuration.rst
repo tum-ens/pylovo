@@ -56,6 +56,11 @@ same name.
    * - ``INFDB_OPENDATA_SCHEMA``
      - ``opendata``
      - InfDB schema with ``postcodes_germany``.
+   * - ``INFDB_OSM_SCHEMA``
+     - ``osm``
+     - Schema of the InfDB OSM layers (``infrastructure_point``, ``infrastructure_polygon``,
+       ``tags``, ``landuse_polygon``), read by the MV stage for the HV/MV substations and the
+       built-up land use (:doc:`mv_grids`).
    * - ``TARGET_EPSG``
      - ``25832``
      - Projected CRS (metres) of all geometries stored by pylovo. Choose it before the first
@@ -109,6 +114,10 @@ the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``, so use at most 10 cha
 A postcode that already has grids in the active version is skipped
 (``Grid for the postcode area ... has already been generated``). Delete the old grids first
 (:doc:`cli`, ``pylovo-delete``) or use a new version.
+
+The ``MV_*`` keys of the MV stage are not part of this snapshot. The MV stage stores them, with its
+constants, once per MV variant of a version in ``pylovo.mv_variant.mv_parameters``, and a changed
+MV parameter needs a new ``MV_VARIANT_ID`` instead of a new ``VERSION_ID`` (:ref:`mv-variants`).
 
 ``config_generation.yaml``
 --------------------------
@@ -224,7 +233,8 @@ Loads and general grid settings
      - ``200``
      - Commercial or public load components above this peak (kW) are assumed to have their own
        MV connection and are left out of the LV grid (eGon-data: 200 kW boundary between the
-       MV/LV station level and the MV level).
+       MV/LV station level and the MV level). The buildings are stored in ``pylovo.mv_customers``
+       for the MV stage. The default was 100 kW before the MV stage.
      - ✓
    * - ``CABLE_PLANNING_UTILIZATION``
      - ``0.8``
@@ -504,6 +514,91 @@ Cable rows have the fields ``name``, ``max_i_a`` (ampacity in A), ``r_mohm_per_k
 * A cable may be listed in both pools (for example ``NAYY_4_150``). The database keeps one row
   per name with both roles (``grid_role`` ``feeder,consumer_connection``), so both entries must
   have identical values. Different values stop the generation.
+
+.. _mv-configuration:
+
+MV grids
+~~~~~~~~
+
+The last section of ``config_generation.yaml`` configures the MV stage (:doc:`mv_grids`). Its keys
+are stored per MV variant (**MV variant** in the column Snapshot), not in the snapshot of
+``VERSION_ID``, and ``pylovo-mv generate --set`` changes them for one variant. A missing key takes
+its shipped value. :ref:`mv-parameters` gives their sources and the constants of the stage.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 33 12 41 14
+   :class: fixed-table
+
+   * - Key
+     - Shipped value
+     - Meaning
+     - Snapshot
+   * - ``MV_GRID_GENERATION``
+     - ``False``
+     - Run the MV stage after the LV grids in ``pylovo-generate`` (``--mv``, ``--no-mv``).
+     -
+   * - ``MV_VARIANT_ID``
+     - ``"1"``
+     - MV variant of the LV version (at most 10 characters).
+     - key
+   * - ``MV_VARIANT_COMMENT``
+     - ``default``
+     - Description stored with a new MV variant.
+     -
+   * - ``MV_NOMINAL_VOLTAGE_KV``
+     - ``auto``
+     - ``auto`` (10 kV from 8 MVA/km² installed MV/LV capacity, else 20 kV), ``20`` or ``10``.
+     - MV variant
+   * - ``MV_SUBSTATIONS``
+     - ``osm``
+     - HV/MV substations from OpenStreetMap (``osm``) or eGon-data (``egon``).
+     - MV variant
+   * - ``MV_SUPPLY_AREAS``
+     - ``routed``
+     - Supply areas by street distance with capacity rebalancing (``routed``) or the eGon-data MV
+       grid districts (``egon``, needs ``MV_SUBSTATIONS: egon``).
+     - MV variant
+   * - ``MV_ROUTING``
+     - ``street``
+     - Lines along streets (``street``) or straight lines × 1.3 (``crowfly``).
+     - MV variant
+   * - ``MV_RING_SOLVER``
+     - ``savings``
+     - Clarke-Wright savings with local search (``savings``) or ``sweep``.
+     - MV variant
+   * - ``MV_MAX_STATIONS_PER_RING``
+     - ``20``
+     - Most ring members of one open ring.
+     - MV variant
+   * - ``MV_STUBS``
+     - ``rural``
+     - Small rural loads on stubs (``rural``) or every node looped in (``none``).
+     - MV variant
+   * - ``MV_OVERHEAD_LINES``
+     - ``rural``
+     - Overhead lines between rural settlements (``rural``) or cables only (``none``).
+     - MV variant
+   * - ``MV_INTERCONNECTION``
+     - ``ties``
+     - Normally-open ties between neighbouring supply areas (``ties``) or none (``none``).
+     - MV variant
+   * - ``MV_STANDARD_CABLE``
+     - ``null``
+     - pandapower cable type; ``null`` is NA2XS2Y 1x150 RM/25 for the nominal voltage.
+     - MV variant
+   * - ``MV_OVERHEAD_LINE``
+     - ``null``
+     - pandapower overhead line type; ``null`` is 48-AL1/8-ST1A for the nominal voltage.
+     - MV variant
+   * - ``MV_LINE_PLANNING_UTILIZATION``
+     - ``0.6``
+     - Planned current per ampacity of MV lines in normal operation.
+     - MV variant
+   * - ``MV_MAX_VOLTAGE_DROP_PERCENT``
+     - ``5``
+     - MV share of the voltage band in normal operation, from the HV/MV busbar (1.02 p.u.).
+     - MV variant
 
 ``config_analysis.yaml``
 ------------------------

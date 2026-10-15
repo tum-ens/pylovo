@@ -17,10 +17,12 @@ on errors.
      - Create the schema ``pylovo`` with reference data (**drops existing results**).
    * - ``pylovo-generate``
      - Generate grids for postcodes or municipalities.
+   * - ``pylovo-mv``
+     - Generate and manage the MV grids of a stored LV version (:doc:`mv_grids`).
    * - ``pylovo-analyze``
      - Compute postcode and per-grid key figures.
    * - ``pylovo-import``
-     - Import transformer candidates (OSM, DSO CSV).
+     - Import transformer candidates (OSM, DSO CSV) and MaStR generating units.
    * - ``pylovo-export``
      - Export grid buses and lines as CSV.
    * - ``pylovo-delete``
@@ -47,6 +49,7 @@ pylovo-generate
 .. code-block:: text
 
    pylovo-generate [-h] [--plz PLZ [PLZ ...]] [--ags AGS [AGS ...]] [--parallel | --no-parallel]
+                   [--mv | --no-mv]
 
 Generates the grids of the given regions under the ``VERSION_ID`` of the configuration
 (:doc:`generating_grids`). Exactly one of ``--plz`` and ``--ags`` is required; they cannot be
@@ -61,12 +64,51 @@ combined. Several postcodes run in parallel when ``PARALLEL`` in the configurati
 ``--parallel`` / ``--no-parallel``
    Process several postcodes (also those of ``--ags``) in worker processes, or one after the
    other in the main process, whatever ``PARALLEL`` says.
+``--mv`` / ``--no-mv``
+   Run the MV stage after the LV grids of all postcodes, for the configured MV variant, or skip it,
+   whatever ``MV_GRID_GENERATION`` says (:doc:`mv_grids`). The command exits with code 1 if the MV
+   stage does not end ``done``; the LV grids stay stored.
 
 .. code-block:: bash
 
    pylovo-generate --plz 80803
    pylovo-generate --plz 80803 80802 80801 --no-parallel
    pylovo-generate --ags 09162000
+   pylovo-generate --plz 80803 80802 --mv
+
+pylovo-mv
+---------
+
+.. code-block:: text
+
+   pylovo-mv [-h] {generate,couple,delete,list,graph,export} ...
+
+Generates and manages the MV grids of stored LV versions (:doc:`mv_grids`). Every subcommand takes
+the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuration is not used.
+
+``pylovo-mv generate --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [OPTIONS]``
+   Run the MV stage for one MV variant of the version. The options are ``--variant``,
+   ``--comment``, ``--set KEY=VALUE ...`` (``MV_*`` keys and constants of this variant,
+   :ref:`mv-variants`), ``--parallel`` or ``--no-parallel``, ``--jobs`` and ``--replace``.
+``pylovo-mv couple --version VERSION --variant VARIANT [--grid GRIDS ...] [--jobs JOBS] [--no-merged]``
+   Check the done MV grids with the stored LV grids and solve the merged MV and LV operating point.
+``pylovo-mv list [--version VERSION]``
+   List the MV variants with status, postcodes, grids, length and stale flag.
+``pylovo-mv delete --version VERSION [--variant VARIANTS ...]``
+   Delete MV variants with all their results (all variants of the version without ``--variant``).
+``pylovo-mv export --version VERSION --variant VARIANT --grid GRID --output OUTPUT [--case CASE] [--coupled]``
+   Write the pandapower net of one MV grid to a JSON file.
+``pylovo-mv graph --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [--qa]``
+   Build or reuse the MV routing graph of the postcodes and print its quality tables.
+
+Every output line starts with ✓ or ✗. The exit code is 0 when the command, the variant or the
+coupling is done, and 1 otherwise.
+
+.. code-block:: bash
+
+   pylovo-mv generate --version 1 --all --variant d0 --set MV_STUBS=none MV_OVERHEAD_LINES=none
+   pylovo-mv couple --version 1 --variant d0
+   pylovo-mv list --version 1
 
 pylovo-analyze
 --------------
@@ -92,9 +134,10 @@ pylovo-import
 
 .. code-block:: text
 
-   pylovo-import [-h] {transformers-osm,transformers-dso-csv} ...
+   pylovo-import [-h] {transformers-osm,transformers-dso-csv,mastr} ...
 
-Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
+Imports data into the database (:doc:`transformer_data`, :doc:`mv_grids`). Without a subcommand the
+help is shown.
 
 ``pylovo-import transformers-osm --relation-id RELATION_ID``
    Download the transformers inside the OSM relation from the Overpass API, process them and
@@ -108,6 +151,15 @@ Imports data into the database (:doc:`transformer_data`). Without a subcommand t
       Source label for the ids ``dso/<source>/<external_id>``; overrides a ``source`` column.
    ``--replace-source``
       Delete the existing rows ``dso/<source>/...`` before the import.
+
+``pylovo-import mastr [--sqlite SQLITE] [--margin-m MARGIN_M]``
+   Replace ``pylovo.mastr_units`` and ``pylovo.mastr_postcode_aggregates`` with the generating
+   units in operation of an open-mastr SQLite file (default
+   ``~/.open-MaStR/data/sqlite/open-mastr.db``), for the MV stage (:ref:`mv-mastr-import`).
+
+   ``--margin-m MARGIN_M``
+      Margin in m around the extent of ``pylovo.postcode`` for units with coordinates (default
+      5000).
 
 pylovo-export
 -------------
@@ -146,7 +198,9 @@ postcodes cascades to all dependent result tables and refreshes the materialised
    The same as a subcommand.
 
 ``pylovo-delete networks --plz PLZ --version VERSION``
-   Delete the grids of one postcode in one version (the version itself is kept).
+   Delete the grids of one postcode in one version (the version itself is kept). The MV variants
+   of the version that contain the postcode are deleted as well, because an MV grid spans several
+   postcodes.
 
 ``pylovo-delete transformers``
    Empty ``pylovo.transformers``. Refuses while generated grids still reference transformers

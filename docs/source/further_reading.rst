@@ -29,6 +29,14 @@ Planning assumptions
   represents the static tapping of the MV/LV transformers implicitly in the reference voltages
   (p. 92), the reason the validation power flow keeps the tap neutral.
 
+Medium-voltage grids
+--------------------
+
+The method of the MV stage builds on the open-ring model of Ding0 (Amme et al. 2018), the HV/MV
+substation filter of Hülk et al. (2017), the SimBench benchmark grids (Meinecke et al. 2020) and
+the German planning principles for rural and urban distribution grids (Harnisch et al. 2016,
+Wintzek et al. 2021). :ref:`mv-references` lists all sources.
+
 Surrogate modelling
 -------------------
 
