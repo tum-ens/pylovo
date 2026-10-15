@@ -528,6 +528,10 @@ class MvGraphMixin(BaseMixin):
         self.cur.execute(INSERT_EDGES_SQL, g)
         self.cur.execute(DEGREE_SQL, g)
         self.cur.execute(DROP_ISOLATED_SQL, g)
+        # Fresh statistics for the new rows: with the statistics of an earlier graph the planner estimates one edge
+        # for this graph_id and the building count below ran for many minutes instead of seconds.
+        for statement in ANALYZE_SQL[:2]:
+            self.cur.execute(statement)
         self.cur.execute(VERTEX_COMPONENT_SQL, {**g, "edges_sql": edges_sql(graph_id)})
         self.cur.execute(EDGE_COMPONENT_SQL, g)
         # settlement flags from address buildings near the edges
