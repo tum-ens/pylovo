@@ -1078,7 +1078,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
 # ---------------------------------------------------------------------------------------------- HV/MV sizing
 def substation_loads(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, CaseResult]
                      ) -> tuple[float, float]:
-    """``(S_load, S_feed)`` in MVA: the district load by the category law over cos φ, and the largest slack |S| of
+    """``(S_load, S_feed)`` in MVA: the district load by the category law over cos φ, and the largest slack ``|S|`` of
     the converged feed-in cases (0 if none converged)."""
     s_load = district_load_kw(inp, plan) / 1000.0 / float(inp.lv.power_factor)
     feeds = [math.hypot(cases[c].slack_p_mw, cases[c].slack_q_mvar) for c in FEED_IN_CASES
@@ -1091,7 +1091,7 @@ def size_substation(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
     """``(units, unit_mva, sizing)`` of the HV/MV transformers (DESIGN §4.6, ``equipment.size_hv_mv``).
 
     ``S_load`` is the coincident load of all district nodes (never the sum of feeder heads), ``S_feed`` the largest
-    |S| at the busbar in the feed-in cases; OSM ratings of the substation (``inp.known_units_mva``) win when two or
+    ``|S|`` at the busbar in the feed-in cases; OSM ratings of the substation (``inp.known_units_mva``) win when two or
     more are known.
     """
     params = inp.params
