@@ -433,6 +433,23 @@ def test_save_district_writes_one_transaction(recorded):
     assert sub_params["n"] == 2 and sub_params["mva"] == 25.0 and sub_params["n0"] == 10.0
 
 
+def test_district_voltages_are_set_and_kept_by_the_district_result(recorded):
+    client = make_client([("SELECT mv_grid_id, area_km2 FROM pylovo.mv_grid", (["g", "a"], [(6, 0.25), (7, None)], 2))])
+    areas = client.grid_areas("mv1", "d0")
+    assert areas[6] == 0.25 and np.isnan(areas[7])
+    voltages = pd.DataFrame({"vn_kv": [10.0, 20.0]}, index=pd.Index([6, 7], name="mv_grid_id"))
+    client.set_grid_voltages("mv1", "d0", voltages, {6: {"rule": "auto", "density_mva_km2": 8.12}})
+    sql, values, template = recorded[-1]
+    assert "SET vn_kv = v.vn_kv" in sql and "jsonb_build_object('voltage_level', v.record)" in sql
+    assert values == [(6, 10.0, '{"density_mva_km2": 8.12, "rule": "auto"}', "mv1", "d0"),
+                      (7, 20.0, "{}", "mv1", "d0")]
+    assert "g.version_id = v.version_id" in sql and template.count("%s") == 5
+    district = district_client()
+    district.save_district("mv1", "d0", 6, district_plan(), 1.0)
+    grid_sql, _ = district.cur.sql("UPDATE pylovo.mv_grid SET status = 'done'")[0]
+    assert "metrics ? 'voltage_level'" in grid_sql and "metrics -> 'voltage_level'" in grid_sql
+
+
 def test_save_district_rolls_back_on_an_unknown_node_key(recorded):
     client = district_client()
     plan = district_plan(extra_line=line(5, 10, 99))

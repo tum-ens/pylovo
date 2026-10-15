@@ -291,3 +291,29 @@ def test_plan_district_end_to_end_on_a_synthetic_district():
     assert plan.metrics["bridged_nodes"] == [100]   # the island station
     again = planner.plan_district(synthetic_district())
     assert [r.members for r in again.topology.rings] == [r.members for r in topo.rings]   # deterministic
+
+
+@pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),
+                    reason="needs every planning module (WP3-WP10)")
+def test_a_ten_kv_district_of_an_auto_variant_uses_its_own_types():
+    """MV_NOMINAL_VOLTAGE_KV auto: the district voltage decides the cables, the nets and the HV/MV transformers."""
+    import dataclasses
+
+    base = synthetic_district()
+    assert base.params.auto_voltage
+    plans = {vn: planner.plan_district(dataclasses.replace(synthetic_district(), vn_kv=vn)) for vn in (20.0, 10.0)}
+    for vn, plan in plans.items():
+        cable = base.params.cable_at(vn)
+        names = {ln.std_type for ln in plan.topology.lines}
+        assert names == {cable.name}, vn                                   # cables only (overhead lines off)
+        net = plan.net
+        mv = net.bus[net.bus["kind"].astype(str) != "hv_busbar"]
+        assert set(mv["vn_kv"].astype(float)) == {vn}
+        assert set(net.line["max_i_ka"].astype(float)) == {cable.max_i_ka}
+        assert set(net.trafo["vn_lv_kv"].astype(float)) == {vn} and set(net.trafo["vn_hv_kv"]) == {110.0}
+        assert net.trafo["std_type"].str.endswith(f"110/{vn:g} kV").all()
+        assert plan.power_flow_status in ("converged", "voltage_violation", "loading_violation")
+    assert "6/10 kV" in plans[10.0].topology.lines[0].std_type and "12/20 kV" in plans[20.0].topology.lines[0].std_type
+    # half the voltage, about four times the drop per kW and half the ampacity: at least as many rings
+    rings_of = {vn: sum(r.kind == "ring" for r in plan.topology.rings) for vn, plan in plans.items()}
+    assert rings_of[10.0] >= rings_of[20.0]

@@ -542,3 +542,10 @@ def test_from_model_uses_the_variant_line_types_and_limits():
                                 [t.max_i_ka for t in sections], np.ones(3, bool), np.ones(3, bool), G, 0.95, 20.0,
                                 ev.limits)
     _assert_same(check, expected)
+    # a 10 kV district of the same (auto) variant: the 10 kV types and the voltage of the district
+    ten = rings.RingEvaluator.from_model(dataclasses.replace(inp, vn_kv=10.0), model)
+    assert ten.vn_kv == 10.0 and ten.imax_ka[0, 1] == params.cable_at(10.0).max_i_ka == 0.315
+    assert ten.x_ohm_km[0, 1] == params.cable_at(10.0).x_ohm_per_km and ten.imax_ka[1, 2] == params.overhead_at(
+        10.0).max_i_ka
+    check_10 = ten.evaluate([1, 2, 3])
+    assert check_10.drop_a > 3.5 * check.drop_a                         # (20/10)² with nearly the same impedances

@@ -45,7 +45,10 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
 
 #: The same for the MV variant snapshots (``MvParameters.to_snapshot``): a path added to that snapshot later, with
 #: the value that reproduces the results of the variants stored before it.
-MV_ADDED_LATER: dict[tuple[str, ...], Any] = {}
+MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
+    # Before MV_NOMINAL_VOLTAGE_KV auto every variant had one fixed nominal voltage, which no threshold changes.
+    ("voltage", "mv_10kv_min_density_mva_km2"): 8.0,
+}
 
 
 def _flatten(value: Any, prefix: tuple[str, ...] = ()) -> dict[tuple[str, ...], Any]:

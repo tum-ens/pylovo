@@ -71,7 +71,19 @@ def equipment(monkeypatch):
         module.calls.append(tuple(sizes_mva))
         return tuple(fake_hv_mv_type(s, vn_lv_kv) for s in sizes_mva)
 
+    def line_type_name_at(name, vn_kv):
+        if name in LINE_TYPES and LINE_TYPES[name].vn_kv == float(vn_kv):
+            return name
+        pairs = (("12/20 kV", "6/10 kV"), (" 20.0", " 10.0"))
+        other = name
+        for twenty, ten in pairs:
+            other = other.replace(twenty, ten) if float(vn_kv) == 10.0 else other.replace(ten, twenty)
+        if other not in LINE_TYPES:
+            raise ValueError(f"pandapower has no {vn_kv:g} kV type of the conductor of {name!r}")
+        return other
+
     module.line_type = line_type
+    module.line_type_name_at = line_type_name_at
     module.check_line_type = check_line_type
     module.default_line_types = lambda vn_kv: DEFAULT_TYPES[float(vn_kv)]
     module.hv_mv_types = hv_mv_types
@@ -86,11 +98,12 @@ def record(item) -> dict:
     return dataclasses.asdict(item)
 
 
-#: The snapshot of the default parameters (DESIGN §6.5) with the fake types.
+#: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
+#: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
     "schema": 1, "mv_stage_version": 2,
-    "voltage": {"vn_kv": 20.0, "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
-                "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0},
+    "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
+                "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
     "sources": {"substations": "osm", "supply_areas": "routed", "region_buffer_m": 5000.0, "substation_merge_m": 75.0,
                 "substation_drop_m": 150.0, "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0,
@@ -109,7 +122,10 @@ EXPECTED_SNAPSHOT = {
     "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x150 RM/25 12/20 kV"]),
                   "overhead": record(LINE_TYPES["48-AL1/8-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
-                  "hv_mv_types": [record(fake_hv_mv_type(s, 20.0)) for s in (25.0, 31.5, 40.0, 63.0)]},
+                  "hv_mv_types": [record(fake_hv_mv_type(s, 20.0)) for s in (25.0, 31.5, 40.0, 63.0)],
+                  "cable_10kv": record(LINE_TYPES["NA2XS2Y 1x150 RM/25 6/10 kV"]),
+                  "overhead_10kv": record(LINE_TYPES["48-AL1/8-ST1A 10.0"]),
+                  "hv_mv_types_10kv": [record(fake_hv_mv_type(s, 10.0)) for s in (25.0, 31.5, 40.0, 63.0)]},
     "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0,
               "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0},
     "generation": {"lv_side_kw": 200.0, "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
@@ -154,6 +170,9 @@ def test_snapshot_paths_are_unique():
     ("MV_VARIANT_ID", 7, "7"),
     ("MV_VARIANT_ID", "d1.b-2_x", "d1.b-2_x"),
     ("MV_NOMINAL_VOLTAGE_KV", 10, 10.0),
+    ("MV_NOMINAL_VOLTAGE_KV", "auto", "auto"),
+    ("MV_NOMINAL_VOLTAGE_KV", " Auto", "auto"),
+    ("mv_10kv_min_density_mva_km2", 0.1, 0.1),
     ("MV_MAX_STATIONS_PER_RING", 15.0, 15),
     ("MV_STANDARD_CABLE", None, None),
     ("MV_STANDARD_CABLE", "NA2XS2Y 1x150 RM/25 12/20 kV", "NA2XS2Y 1x150 RM/25 12/20 kV"),
@@ -177,7 +196,10 @@ def test_coerce_accepts_and_canonicalises(name, value, expected):
     ("MV_VARIANT_ID", "", "1 to 10 characters"),
     ("MV_VARIANT_ID", "a b", "letters, digits"),
     ("MV_VARIANT_ID", 1.5, "a text"),
-    ("MV_NOMINAL_VOLTAGE_KV", 15, "one of 20, 10"),
+    ("MV_NOMINAL_VOLTAGE_KV", 15, "one of auto, 20, 10"),
+    ("MV_NOMINAL_VOLTAGE_KV", "20 kV", "one of auto, 20, 10"),
+    ("MV_NOMINAL_VOLTAGE_KV", True, "one of auto, 20, 10"),
+    ("mv_10kv_min_density_mva_km2", -1, "at least 0"),
     ("MV_SUBSTATIONS", "OSM", "one of osm, egon"),
     ("MV_STUBS", False, "one of rural, none"),           # YAML 'no' is False
     ("MV_MAX_STATIONS_PER_RING", 0, "between 1 and 100"),
@@ -223,6 +245,8 @@ def test_parse_assignment():
     assert parse_assignment(" local_search_rounds = 0") == ("local_search_rounds", 0)
     assert parse_assignment("hv_mv_sizes_mva=[40, 25]") == ("hv_mv_sizes_mva", (25.0, 40.0))
     assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=10") == ("MV_NOMINAL_VOLTAGE_KV", 10.0)
+    assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=auto") == ("MV_NOMINAL_VOLTAGE_KV", "auto")
+    assert parse_assignment("mv_10kv_min_density_mva_km2=0.1") == ("mv_10kv_min_density_mva_km2", 0.1)
     assert parse_assignment("generator_fallback_kw={lv: 1, mvlv: 2, mv: 3, hvmv: 4}")[1]["hvmv"] == 4.0
     assert parse_assignment("customer_min_mv_kw=300") == ("customer_min_mv_kw", 300.0)
     assert parse_assignment("customer_hall_min_footprint_m2=1500") == ("customer_hall_min_footprint_m2", 1500.0)
@@ -271,7 +295,7 @@ def test_one_field_per_spec_and_defaults_equal_the_options():
     assert (params.variant_id, params.comment, params.vn_kv, params.substations, params.supply_areas,
             params.routing, params.solver, params.max_stations_per_ring, params.stubs, params.overhead_lines,
             params.cable_type, params.overhead_type, params.line_utilization,
-            params.max_drop_percent) == ("1", "default", 20.0, "osm", "routed", "street", "savings", 20, "rural",
+            params.max_drop_percent) == ("1", "default", "auto", "osm", "routed", "street", "savings", 20, "rural",
                                          "rural", None, None, 0.6, 5.0)
     assert params.interconnection == "ties"                # normally-open ties between districts by default
 
@@ -330,6 +354,8 @@ def test_types_are_resolved_lazily_and_cached(equipment):
     assert params.overhead == LINE_TYPES["48-AL1/8-ST1A 20.0"]
     assert [t.sn_mva for t in params.hv_mv_types] == [25.0, 31.5, 40.0, 63.0]
     assert [t.interpolated for t in params.hv_mv_types] == [False, True, False, False]
+    params.check_types()                                               # auto: the 10 kV types too
+    assert params.cable_at(10.0) == LINE_TYPES["NA2XS2Y 1x150 RM/25 6/10 kV"]
     calls = len(equipment.calls)
     params.check_types()
     assert len(equipment.calls) == calls                               # cached
@@ -343,7 +369,9 @@ def test_types_are_resolved_lazily_and_cached(equipment):
 
 def test_a_type_of_the_wrong_voltage_or_kind_names_the_key(equipment):
     with pytest.raises(ValueError, match="MV_STANDARD_CABLE must name a pandapower cable line type for 20 kV"):
-        _ = MvParameters(cable_type="NA2XS2Y 1x240 RM/25 6/10 kV").cable
+        _ = MvParameters(vn_kv=20, cable_type="NA2XS2Y 1x240 RM/25 6/10 kV").cable
+    with pytest.raises(ValueError, match="MV_OVERHEAD_LINE must name a pandapower overhead line type for 10 kV"):
+        MvParameters(overhead_type="70-AL1/11-ST1A 20.0").check_types()        # auto: no 10 kV type of it
     with pytest.raises(ValueError, match="MV_OVERHEAD_LINE must name a pandapower overhead line type"):
         MvParameters(overhead_type="NA2XS2Y 1x240 RM/25 12/20 kV").check_types()
     with pytest.raises(ValueError, match="MV_STANDARD_CABLE .* got 'no such cable'"):
@@ -397,6 +425,11 @@ def test_from_snapshot_keeps_the_stored_types(equipment):
     assert len(equipment.calls) == calls                               # nothing resolved again
     assert rebuilt.replace(stubs="none").cable.r_ohm_per_km == 0.5
     assert rebuilt.replace(vn_kv=10).cable.name == "NA2XS2Y 1x150 RM/25 6/10 kV"
+    stored["equipment"]["cable_10kv"]["r_ohm_per_km"] = 0.7          # the 10 kV types are stored as well
+    assert MvParameters.from_snapshot("1", "default", stored).cable_at(10.0).r_ohm_per_km == 0.7
+    del stored["equipment"]["hv_mv_types_10kv"]
+    with pytest.raises(MvStageError, match="resolved equipment"):
+        MvParameters.from_snapshot("1", "default", stored)
 
 
 def test_from_snapshot_fills_values_of_older_snapshots(equipment, monkeypatch):
@@ -407,6 +440,21 @@ def test_from_snapshot_fills_values_of_older_snapshots(equipment, monkeypatch):
     rebuilt = MvParameters.from_snapshot("1", "default", stored)
     assert rebuilt.repair_rounds == 1                                  # legacy value
     assert rebuilt.ehv_partner_m == CONSTANTS["ehv_partner_m"].default   # unknown legacy: current default
+
+
+def test_older_fixed_voltage_snapshots_take_the_legacy_threshold(equipment):
+    """Snapshots from before MV_NOMINAL_VOLTAGE_KV auto have one fixed voltage and no density threshold."""
+    assert MV_ADDED_LATER[("voltage", "mv_10kv_min_density_mva_km2")] == 8.0
+    older = json_round_trip(MvParameters(vn_kv=20).to_snapshot())
+    del older["voltage"]["mv_10kv_min_density_mva_km2"]
+    assert "cable_10kv" not in older["equipment"]
+    rebuilt = MvParameters.from_snapshot("d1", "old", older)
+    assert rebuilt.vn_kv == 20.0 and rebuilt.mv_10kv_min_density_mva_km2 == 8.0 and rebuilt.voltages == (20.0,)
+    assert compare_snapshots(older, json_round_trip(MvParameters(vn_kv=20).to_snapshot()),
+                             added_later=MV_ADDED_LATER) == ([], [])
+    differences, _ = compare_snapshots(older, json_round_trip(MvParameters().to_snapshot()),
+                                       added_later=MV_ADDED_LATER)
+    assert "voltage.vn_kv" in differences and "equipment.cable_10kv.name" in differences
 
 
 def test_from_snapshot_rejects_other_layouts(equipment):
@@ -422,8 +470,8 @@ def test_from_config_reads_the_shipped_defaults(equipment, monkeypatch):
     from pylovo import config_loader
 
     assert MvParameters.from_config() == MvParameters()                # shipped values = defaults
-    assert len(equipment.calls) == 3                                   # types resolved at once
-    monkeypatch.setattr(config_loader, "MV_STANDARD_CABLE", "NA2XS2Y 1x240 RM/25 6/10 kV")
+    assert len(equipment.calls) == 6                                   # types of both voltages resolved at once
+    monkeypatch.setattr(config_loader, "MV_STANDARD_CABLE", "70-AL1/11-ST1A 20.0")
     with pytest.raises(ValueError, match="MV_STANDARD_CABLE"):
         MvParameters.from_config()
     monkeypatch.setattr(config_loader, "MV_STANDARD_CABLE", None)
@@ -471,7 +519,7 @@ def test_compare_snapshots_with_the_mv_legacy_values(equipment):
     assert compare_snapshots(stored, copy.deepcopy(stored), added_later=MV_ADDED_LATER) == ([], [])
     changed = json_round_trip(MvParameters(stubs="none", hv_mv_sizes_mva=[40, 63]).to_snapshot())
     differences, _ = compare_snapshots(stored, changed, added_later=MV_ADDED_LATER)
-    assert differences == ["equipment.hv_mv_types", "topology.stubs"]
+    assert differences == ["equipment.hv_mv_types", "equipment.hv_mv_types_10kv", "topology.stubs"]
     # a path added later: its legacy value matches, an unknown legacy value is only reported
     newer = copy.deepcopy(stored)
     newer["topology"]["new_rule"] = 3

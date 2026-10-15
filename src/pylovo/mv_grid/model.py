@@ -91,7 +91,7 @@ class DistrictInput:
 
     mv_grid_id: int
     substation_id: int
-    vn_kv: float
+    vn_kv: float                           # nominal voltage of the district (mv_grid.vn_kv): its line and HV/MV types
     nodes: pd.DataFrame                    # NODE_COLUMNS, index mv_node_id, busbar first
     edges: EdgeSet
     params: "MvParameters"

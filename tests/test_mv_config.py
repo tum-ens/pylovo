@@ -74,7 +74,7 @@ def run_probe(tmp_path: Path, replace: dict[str, str | None]) -> subprocess.Comp
 def test_a_config_without_mv_keys_imports_with_the_defaults(tmp_path):
     proc = run_probe(tmp_path, {name: None for name in YAML_KEYS})
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.split() == ["False", "1", "20.0", "savings", "rural", "None", "True"]
+    assert proc.stdout.split() == ["False", "1", "auto", "savings", "rural", "None", "True"]
 
 
 def test_valid_values_are_coerced(tmp_path):
@@ -86,7 +86,7 @@ def test_valid_values_are_coerced(tmp_path):
 
 @pytest.mark.parametrize("key, value, message", [
     ("MV_RING_SOLVER", "genetic", "MV_RING_SOLVER must be one of savings, sweep, ortools"),
-    ("MV_NOMINAL_VOLTAGE_KV", "15", "MV_NOMINAL_VOLTAGE_KV must be one of 20, 10"),
+    ("MV_NOMINAL_VOLTAGE_KV", "15", "MV_NOMINAL_VOLTAGE_KV must be one of auto, 20, 10"),
     ("MV_MAX_STATIONS_PER_RING", "0", "MV_MAX_STATIONS_PER_RING must be between 1 and 100"),
     ("MV_GRID_GENERATION", '"False"', "MV_GRID_GENERATION must be True or False"),
     ("MV_VARIANT_ID", '"variant-too-long"', "MV_VARIANT_ID must be a text of 1 to 10 characters"),

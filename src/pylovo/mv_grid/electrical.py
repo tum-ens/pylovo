@@ -359,26 +359,32 @@ def _generation_rows(inp: DistrictInput, keys: Sequence[int]) -> list[dict[str, 
 
 
 # ---------------------------------------------------------------------------------------------- design net
-def _line_type(name: str, params: Any, cache: dict[str, LineType]) -> LineType:
+def _line_type(name: str, types: tuple[LineType, LineType], cache: dict[str, LineType]) -> LineType:
+    """The type of a name: the district's cable or overhead type (resolved values of the variant), else pandapower."""
     if name not in cache:
-        if name == params.cable.name:
-            cache[name] = params.cable
-        elif name == params.overhead.name:
-            cache[name] = params.overhead
-        else:
-            cache[name] = equipment.line_type(name)
+        known = {lt.name: lt for lt in types}
+        cache[name] = known[name] if name in known else equipment.line_type(name)
     return cache[name]
 
 
-def _line_parameters(line: LinePlan, params: Any, cache: dict[str, LineType]) -> tuple[float, float, float, float]:
-    """``(r_ohm_per_km, x_ohm_per_km, c_nf_per_km, max_i_ka)`` of a planned line; mixed lines length-weighted."""
+def line_types(inp: DistrictInput) -> tuple[LineType, LineType]:
+    """``(cable, overhead)`` of the district: the variant's types for the district's nominal voltage."""
+    return inp.params.cable_at(inp.vn_kv), inp.params.overhead_at(inp.vn_kv)
+
+
+def _line_parameters(line: LinePlan, types: tuple[LineType, LineType], cache: dict[str, LineType]
+                     ) -> tuple[float, float, float, float]:
+    """``(r_ohm_per_km, x_ohm_per_km, c_nf_per_km, max_i_ka)`` of a planned line; mixed lines length-weighted.
+
+    ``types`` are the district's ``(cable, overhead)`` types (:func:`line_types`).
+    """
     name = (line.std_type or "").strip()
     if line.kind == "mixed" or " + " in name:
         if " + " in name:
             cable_name, overhead_name = (part.strip() for part in name.split(" + ", 1))
-            cable, overhead = _line_type(cable_name, params, cache), _line_type(overhead_name, params, cache)
+            cable, overhead = _line_type(cable_name, types, cache), _line_type(overhead_name, types, cache)
         else:
-            cable, overhead = params.cable, params.overhead
+            cable, overhead = types
         if line.cable_m + line.overhead_m <= 0:
             lt = cable
         else:
@@ -386,9 +392,9 @@ def _line_parameters(line: LinePlan, params: Any, cache: dict[str, LineType]) ->
             return (float(mixed["r_ohm_per_km"]), float(mixed["x_ohm_per_km"]), float(mixed["c_nf_per_km"]),
                     float(mixed["max_i_ka"]))
     elif name:
-        lt = _line_type(name, params, cache)
+        lt = _line_type(name, types, cache)
     else:
-        lt = params.overhead if line.kind == "overhead" else params.cable
+        lt = types[1] if line.kind == "overhead" else types[0]
     return float(lt.r_ohm_per_km), float(lt.x_ohm_per_km), float(lt.c_nf_per_km), float(lt.max_i_ka)
 
 
@@ -464,7 +470,8 @@ def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFA
 
     if lines:
         cache: dict[str, LineType] = {}
-        electrical = [_line_parameters(line, params, cache) for line in lines]
+        types = line_types(inp)
+        electrical = [_line_parameters(line, types, cache) for line in lines]
         exits = _ring_exits(plan, busbar)
         offsets = np.cumsum([len(keys)] + [len(c) for c in line_coords])
         geodata = [[tuple(p) for p in lonlat[offsets[i]:offsets[i + 1]]] for i in range(len(lines))]
@@ -1119,9 +1126,11 @@ def substation_metrics(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[st
 
 
 def _hv_mv_type(params: Any, vn_kv: float, unit_mva: float) -> HvMvType:
-    """The HV/MV transformer type of a rating: from the variant's types, else ``equipment.hv_mv_types``, else the
-    nearest type with the rating replaced (no-load losses scaled, flagged ``interpolated``)."""
-    for item in params.hv_mv_types:
+    """The HV/MV transformer type of a rating for the district's voltage (``110/20 kV`` or ``110/10 kV``): from the
+    variant's types, else ``equipment.hv_mv_types``, else the nearest type with the rating replaced (no-load losses
+    scaled, flagged ``interpolated``)."""
+    types = params.hv_mv_types_at(vn_kv)
+    for item in types:
         if abs(float(item.sn_mva) - unit_mva) < 1e-6:
             return item
     try:
@@ -1130,7 +1139,7 @@ def _hv_mv_type(params: Any, vn_kv: float, unit_mva: float) -> HvMvType:
                 return item
     except (LookupError, ValueError, UserWarning) as exc:
         logger.debug(f"no HV/MV type for {unit_mva:g} MVA: {exc}")
-    base = min(params.hv_mv_types, key=lambda t: (abs(float(t.sn_mva) - unit_mva), float(t.sn_mva)))
+    base = min(types, key=lambda t: (abs(float(t.sn_mva) - unit_mva), float(t.sn_mva)))
     return dataclasses.replace(base, name=f"{unit_mva:g} MVA {base.vn_hv_kv:g}/{base.vn_lv_kv:g} kV",
                                sn_mva=float(unit_mva), pfe_kw=float(base.pfe_kw) * unit_mva / float(base.sn_mva),
                                interpolated=True)

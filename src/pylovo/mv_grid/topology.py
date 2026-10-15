@@ -388,8 +388,8 @@ class _Ctx:
         self.g = np.asarray(inp.lv.g(), dtype=float)
         self.pf = float(inp.lv.power_factor)
         self.vn_kv = float(inp.vn_kv)
-        self.cable = self.p.cable
-        self.overhead = self.p.overhead
+        self.cable = self.p.cable_at(self.vn_kv)            # the types of the district's nominal voltage
+        self.overhead = self.p.overhead_at(self.vn_kv)
         self.straight_detour = float(self.p.crowfly_detour if self.p.routing == "crowfly"
                                      else self.p.overhead_detour)
         self.limits = RingLimits(max_members=int(self.p.max_stations_per_ring),

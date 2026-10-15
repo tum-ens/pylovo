@@ -19,9 +19,10 @@ or LV grids.
    station equivalents of the MV net removed, the LV-side generation moved to ``LVbus 1``, the station-busbar
    customers added as fixed loads at ``LVbus 1`` (:func:`add_busbar_customers`), the LV loads scaled per MV feeder
    and consumer category by pylovo's coincidence law (:func:`coupled_scaling`), so the feeder heads carry the loads
-   of the MV design net, and the MV/LV taps ``t*``. A 10 kV variant re-types the LV transformers
-   (``vn_hv_kv``). Result per station: ``coupled_op_lv_busbar_vm_pu``; the difference of the MV node voltages to
-   the MV-only net at the same busbar voltage is a consistency diagnostic in ``mv_grid.metrics``.
+   of the MV design net, and the MV/LV taps ``t*``. The LV transformers of a 10 kV district (``mv_grid.vn_kv``,
+   e.g. a dense district of ``MV_NOMINAL_VOLTAGE_KV`` auto) are re-typed to 10 kV (``vn_hv_kv``). Result per
+   station: ``coupled_op_lv_busbar_vm_pu``; the difference of the MV node voltages to the MV-only net at the same
+   busbar voltage is a consistency diagnostic in ``mv_grid.metrics``.
 
 The helpers are pure (pandapower, pandas and the MV stage modules; no database or configuration). The drivers
 :func:`run_coupling` and :func:`export_coupled_net` read the variant, the stored MV nets and the streamed LV nets
@@ -332,7 +333,7 @@ def couple_lv_nets(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dic
     except the transformer's HV bus (``MVbus 1``) are appended with ``kind`` ``lv`` and the station's
     ``grid_result_id``; lines, transformers and loads follow with their bus references re-mapped, the transformer's
     HV side on the MV node bus; the LV-side generation of the station (sgen ``level`` ``lv``) moves to its LV
-    busbar. Transformers whose ``vn_hv_kv`` differs from ``mv_vn_kv`` are re-typed to it (10 kV variants; the
+    busbar. Transformers whose ``vn_hv_kv`` differs from ``mv_vn_kv`` are re-typed to it (10 kV districts; the
     impedances in % are unchanged). LV results and ext_grids are never copied; the pandapower dtypes are restored.
 
     Args:

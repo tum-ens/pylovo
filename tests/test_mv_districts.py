@@ -273,3 +273,58 @@ def test_egon_assignment_overlaps_take_the_lowest_bus_and_no_sites():
     assert districts.egon_assignment(np.array([[50.0, 50.0]]), polygons, [8, 4]).tolist() == [1]
     assert districts.egon_assignment(np.array([[50.0, 50.0]]), polygons, [-1, None]).tolist() == [-1]
     assert districts.egon_assignment(np.zeros((0, 2)), polygons, [8]).tolist() == []
+
+
+# ---------------------------------------------------------------------------------------------- nominal voltage
+def _density_nodes() -> pd.DataFrame:
+    """District 1: two stations (630 + 400 kVA) and a 950 kW customer; district 2: a 250 kVA station, a 190 kW
+    customer, an HV customer and a generator; one station without a district."""
+    return pd.DataFrame({
+        "mv_node_id": [1, 2, 3, 4, 5, 6, 7, 8],
+        "mv_grid_id": [1, 1, 1, 2, 2, 2, 2, np.nan],
+        "kind": ["station", "station", "customer", "station", "customer", "customer", "generator", "station"],
+        "connection_hint": ["ring", "ring", "ring", "ring", "ring", "excluded", "tee", "ring"],
+        "sn_kva": [630.0, 400.0, np.nan, 250.0, np.nan, np.nan, np.nan, 400.0],
+        "installed_kw": [99.0, 50.0, 950.0, 10.0, 190.0, 30000.0, 5000.0, 1.0],
+    })
+
+
+def test_installed_density_counts_station_ratings_and_customer_peaks():
+    table = districts.installed_density(_density_nodes(), {1: 0.25, 2: 2.0, 3: 0.0})
+    assert table.index.tolist() == [1, 2, 3] and list(table.columns) == list(districts.DENSITY_COLUMNS)
+    one, two, empty = table.loc[1], table.loc[2], table.loc[3]
+    assert (one["n_stations"], one["n_customers"], two["n_stations"], two["n_customers"]) == (2, 1, 1, 1)
+    assert one["station_kva"] == 1030.0 and one["customer_kva"] == pytest.approx(1000.0)    # 950 kW / 0.95
+    assert one["density_mva_km2"] == pytest.approx(2.03 / 0.25)                             # 8.12 MVA/km²
+    assert two["station_kva"] == 250.0 and two["customer_kva"] == pytest.approx(200.0)      # no HV customer
+    assert two["density_mva_km2"] == pytest.approx(0.45 / 2.0)
+    assert empty["installed_mva"] == 0.0 and np.isnan(empty["density_mva_km2"])             # no area: no density
+    assert np.isnan(districts.installed_density(_density_nodes(), {1: np.nan}).loc[1, "density_mva_km2"])
+
+
+@pytest.mark.parametrize("density, expected", [
+    (7.999, 20.0), (8.0, 10.0), (8.12, 10.0), (0.3, 20.0), (np.nan, 20.0), (None, 20.0)])
+def test_auto_voltage_takes_ten_kv_from_the_threshold_on(density, expected):
+    assert PARAMS.auto_voltage and PARAMS.mv_10kv_min_density_mva_km2 == 8.0
+    assert PARAMS.district_kv(density) == expected
+    assert MvParameters(vn_kv=20).district_kv(density) == 20.0                 # a fixed voltage ignores the density
+    assert MvParameters(vn_kv=10).district_kv(density) == 10.0
+
+
+def test_district_voltages_on_both_sides_of_the_threshold():
+    table = districts.installed_density(_density_nodes(), {1: 0.25, 2: 2.0})
+    auto = districts.district_voltages(table, PARAMS)
+    assert auto["vn_kv"].to_dict() == {1: 10.0, 2: 20.0}                          # 8.12 and 0.23 MVA/km²
+    above = districts.district_voltages(table, PARAMS.replace(mv_10kv_min_density_mva_km2=8.2))
+    assert above["vn_kv"].to_dict() == {1: 20.0, 2: 20.0}
+    low = districts.district_voltages(table, PARAMS.replace(mv_10kv_min_density_mva_km2=0.1))
+    assert low["vn_kv"].to_dict() == {1: 10.0, 2: 10.0}
+    fixed = districts.district_voltages(table, PARAMS.replace(vn_kv=20.0))
+    assert fixed["vn_kv"].to_dict() == {1: 20.0, 2: 20.0}
+    record = districts.voltage_record(auto.loc[1], PARAMS)
+    assert record == {"rule": "auto", "vn_kv": 10.0, "density_mva_km2": pytest.approx(8.12),
+                      "threshold_mva_km2": 8.0, "station_kva": 1030.0, "customer_kva": pytest.approx(1000.0),
+                      "area_km2": 0.25, "n_stations": 2, "n_customers": 1}
+    assert districts.voltage_record(fixed.loc[2], PARAMS.replace(vn_kv=20.0))["rule"] == "fixed"
+    text = districts.describe_voltages(auto, PARAMS)
+    assert "auto, 10 kV from 8 MVA/km²" in text and "1 at 20 kV, 1 at 10 kV" in text

@@ -86,12 +86,39 @@ def test_mv_parameters_resolve_and_check_the_types():
     with pytest.raises(ValueError, match="MV_STANDARD_CABLE must name a pandapower cable line type for 20 kV"):
         _ = MvParameters(cable_type="122-AL1/20-ST1A 20.0").cable
     with pytest.raises(ValueError, match="MV_OVERHEAD_LINE .* rated for 10 kV"):
-        _ = MvParameters(overhead_type="122-AL1/20-ST1A 10.0").overhead
+        _ = MvParameters(vn_kv=20, overhead_type="122-AL1/20-ST1A 10.0").overhead   # a fixed voltage is checked
     with pytest.raises(ValueError, match="hv_mv_sizes_mva .* no HV/MV transformer type of 16 MVA"):
         _ = MvParameters(hv_mv_sizes_mva=[16, 25]).hv_mv_types
     snapshot = json.loads(json.dumps(params.to_snapshot()))
     assert [t["interpolated"] for t in snapshot["equipment"]["hv_mv_types"]] == [False, True, False, False]
     assert MvParameters.from_snapshot("1", "default", snapshot).to_snapshot() == snapshot
+
+
+def test_auto_voltage_resolves_the_types_of_both_voltages():
+    """MV_NOMINAL_VOLTAGE_KV auto: the 10 kV districts take the same conductors with their 10 kV insulation."""
+    params = MvParameters()
+    assert params.auto_voltage and params.voltages == (20.0, 10.0) and params.base_kv == 20.0
+    assert params.cable_at(10.0).name == "NA2XS2Y 1x150 RM/25 6/10 kV" and params.cable_at(10.0).vn_kv == 10.0
+    assert params.overhead_at(10.0).name == "48-AL1/8-ST1A 10.0"
+    assert [t.name for t in params.hv_mv_types_at(10.0)][-1] == "63 MVA 110/10 kV"
+    assert equipment.thermal_mva(params.cable_at(10.0)) == pytest.approx(math.sqrt(3) * 10.0 * 0.315)
+    heavier = params.replace_raw({"MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV",
+                                  "MV_OVERHEAD_LINE": "122-AL1/20-ST1A 10.0"})   # either voltage names the conductor
+    assert heavier.cable_at(10.0).name == "NA2XS2Y 1x240 RM/25 6/10 kV"
+    assert heavier.overhead_at(20.0).name == "122-AL1/20-ST1A 20.0"
+    assert equipment.line_type_name_at("NA2XS2Y 1x240 RM/25 6/10 kV", 20) == "NA2XS2Y 1x240 RM/25 12/20 kV"
+    with pytest.raises(ValueError, match="MV_OVERHEAD_LINE .* no 10 kV type of the conductor"):
+        params.replace_raw({"MV_OVERHEAD_LINE": "243-AL1/39-ST1A 20.0"}).check_types()
+    with pytest.raises(ValueError, match="has no 10 kV districts"):
+        MvParameters(vn_kv=20).cable_at(10.0)
+    snapshot = json.loads(json.dumps(heavier.to_snapshot()))
+    assert snapshot["voltage"]["vn_kv"] == "auto" and snapshot["voltage"]["mv_10kv_min_density_mva_km2"] == 8.0
+    assert snapshot["equipment"]["cable_10kv"]["name"] == "NA2XS2Y 1x240 RM/25 6/10 kV"
+    assert {t["vn_lv_kv"] for t in snapshot["equipment"]["hv_mv_types_10kv"]} == {10.0}
+    rebuilt = MvParameters.from_snapshot("1", "default", snapshot)
+    assert rebuilt.to_snapshot() == snapshot and rebuilt.cable_at(10.0) == heavier.cable_at(10.0)
+    assert rebuilt == heavier.replace(overhead_type="122-AL1/20-ST1A 20.0")   # the snapshot names the 20 kV type
+    assert "cable_10kv" not in MvParameters(vn_kv=10).to_snapshot()["equipment"]
 
 
 # ---------------------------------------------------------------------------------------------- line parameters

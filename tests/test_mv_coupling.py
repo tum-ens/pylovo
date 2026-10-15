@@ -16,7 +16,7 @@ from shapely.geometry import LineString
 
 import pylovo.mv_grid as mv_grid_package
 from pylovo.mv_grid import coincidence, electrical
-from pylovo.mv_grid.model import NODE_COLUMNS, DistrictInput, EdgeSet, LinePlan, RingPlan, TopologyPlan
+from pylovo.mv_grid.model import NODE_COLUMNS, DistrictInput, EdgeSet, GridOutcome, LinePlan, RingPlan, TopologyPlan
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
 
 X0, Y0 = 700_000.0, 5_380_000.0
@@ -117,10 +117,12 @@ def _row(kind: str, x: float, y: float, **values) -> dict:
 
 def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], *, params: MvParameters | None = None,
                   spacing: float = 700.0, generation: dict[int, dict[str, float]] | None = None,
-                  ) -> tuple[DistrictInput, TopologyPlan]:
+                  vn_kv: float | None = None) -> tuple[DistrictInput, TopologyPlan]:
     """Hairpin open rings from the busbar over the stations of ``lv_nets`` (lists of grid_result_ids per ring);
-    station node key = grid_result_id + 100, statistics and LV requirement from the LV nets."""
+    station node key = grid_result_id + 100, statistics and LV requirement from the LV nets. The district has the
+    nominal voltage ``vn_kv`` (default: the base voltage of ``params``) and its cable type."""
     params = params or MvParameters()
+    cable = params.cable_at(vn_kv or params.base_kv)
     generation = generation or {}
     rows = {BUSBAR: _row("busbar", X0, Y0)}
     lines: list[LinePlan] = []
@@ -154,7 +156,7 @@ def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], 
             lines.append(LinePlan(key=len(lines), from_key=a, to_key=b, role="ring", kind="cable",
                                   feeder_id=fa if j < m else fb, ring_id=r, length_m=max(geometry.length, 1.0),
                                   cable_m=max(geometry.length, 1.0), overhead_m=0.0, straight_m=geometry.length,
-                                  bridge_m=0.0, geometry=geometry, std_type=params.cable.name,
+                                  bridge_m=0.0, geometry=geometry, std_type=cable.name,
                                   normally_open=is_open, open_at_key=a if is_open else None))
         for i, key in enumerate(members):
             role[key], feeder[key], ring_of[key], position[key] = "ring", fa if i < m else fb, r, i + 1
@@ -163,8 +165,8 @@ def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], 
     nodes.index.name = "mv_node_id"
     edges = EdgeSet(*(np.array([], dtype=np.int64) for _ in range(4)), np.array([], dtype=bool),
                     np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.zeros((0, 2)))
-    inp = DistrictInput(mv_grid_id=3, substation_id=7, vn_kv=params.vn_kv, nodes=nodes, edges=edges, params=params,
-                        lv=_lv(), known_units_mva=(), edge_geometry=lambda ids: {})
+    inp = DistrictInput(mv_grid_id=3, substation_id=7, vn_kv=vn_kv or params.base_kv, nodes=nodes, edges=edges,
+                        params=params, lv=_lv(), known_units_mva=(), edge_geometry=lambda ids: {})
     plan = TopologyPlan(rings=plans, lines=lines, joints={}, node_role=role, node_feeder=feeder, node_ring=ring_of,
                         node_position=position, stub_parent={}, diagnostics={})
     return inp, plan
@@ -411,6 +413,27 @@ def test_ten_kv_variant_retypes_the_lv_transformers():
         assert np.abs(_lv_bus_voltages(net, gid) - alone.res_bus.loc[alone.bus.index != 1, "vm_pu"].to_numpy()
                       ).max() < 1e-6
         assert _lv_bus_voltages(net, gid)[0] > 0.95                       # LVbus 1, not 0.43 p.u. (20 kV ratio)
+
+
+def test_a_ten_kv_district_of_an_auto_variant_is_coupled_at_ten_kv():
+    """MV_NOMINAL_VOLTAGE_KV auto: the district's voltage (not the variant's) types the MV net, and couple re-types
+    the 20/0.4 kV station transformers of that district to 10 kV (impedances in % unchanged)."""
+    lv_nets = {gid: make_lv_net(gid) for gid in (1, 2, 3)}
+    params = MvParameters()
+    assert params.auto_voltage
+    inp, plan = make_district(lv_nets, [[1, 2, 3]], params=params, spacing=400.0, vn_kv=10.0)
+    design, cases, budgets, stored = planned(inp, plan)
+    mv = stored.bus[stored.bus["kind"].astype(str) != "hv_busbar"]
+    assert set(mv["vn_kv"]) == {10.0} and set(stored.trafo["vn_lv_kv"]) == {10.0}
+    assert set(stored.line["max_i_ka"]) == {params.cable_at(10.0).max_i_ka}
+    stations = station_rows(inp, cases, budgets)
+    result = coupling.couple_district(stored, stations, iter(lv_nets.items()), params, inp.lv, vn_kv=10.0,
+                                      keep_net=True)
+    lv_trafo = result.net.trafo[result.net.trafo["grid_result_id"].notna()]
+    assert (lv_trafo["vn_hv_kv"] == 10.0).all() and (lv_trafo["vk_percent"] == 6.0).all()
+    assert result.status == "done" and result.metrics["operating_point"]["converged"]["load"]
+    assert result.metrics["design_point"]["busbar"]["share_within"] == 1.0       # budget = coupled design point
+    assert result.rows["coupled_op_lv_busbar_vm_pu"].between(0.93, 1.05).all()   # not 0.43 p.u. (20 kV ratio)
 
 
 # ---------------------------------------------------------------------------------------------- scaling
@@ -751,6 +774,20 @@ def test_run_coupling_in_a_fork_pool(fake_db, monkeypatch, tmp_path):
     summary = coupling.run_coupling("t", "d1", jobs=2, log_file=log_file)
     assert summary.status == "done" and summary.done == 2
     assert {p.stem: json.loads(p.read_text())["status"] for p in out_dir.iterdir()} == {"3": "done", "5": "done"}
+
+
+def test_run_coupling_gives_each_district_its_own_voltage(fake_db, monkeypatch):
+    state, log_file = fake_db
+    state["grids"] = pd.DataFrame({"mv_grid_id": [3, 5], "status": ["done", "done"], "vn_kv": [10.0, 20.0]})
+    seen = {}
+
+    def run_tasks(tasks, n, log, warnings_):
+        seen.update({task[2]: task[7] for task in tasks})
+        return [GridOutcome(task[2], "done", None, 0.0) for task in tasks]
+
+    monkeypatch.setattr(coupling, "_run_tasks", run_tasks)
+    assert coupling.run_coupling("t", "d1", log_file=log_file).status == "done"
+    assert seen == {3: 10.0, 5: 20.0}
 
 
 def test_export_coupled_net_writes_the_case(fake_db, tmp_path):

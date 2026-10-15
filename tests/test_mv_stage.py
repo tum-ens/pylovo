@@ -496,6 +496,12 @@ class RegionDb:
     def write_grid_areas(self, version_id, variant_id, plz):
         self._record("write_grid_areas", list(plz))
 
+    def grid_areas(self, version_id, variant_id):
+        return {900: 0.25}
+
+    def set_grid_voltages(self, version_id, variant_id, voltages, records):
+        self._record("set_grid_voltages", voltages.copy(), records)
+
 
 @pytest.fixture()
 def region_modules(monkeypatch):
@@ -512,9 +518,10 @@ def region_modules(monkeypatch):
     inputs = types.ModuleType("pylovo.mv_grid.inputs")
     inputs.station_table = lambda st, stats, lv: pd.DataFrame({
         "kind": "station", "connection_hint": "ring", "grid_result_id": [7, 8], "x": [10.0, 20.0], "y": 0.0,
-        "p_own_kw": [10.0, 20.0], "gen_solar_kw": 0.0})
+        "p_own_kw": [10.0, 20.0], "gen_solar_kw": 0.0, "sn_kva": [400.0, 630.0]})
     inputs.customer_table = lambda rows, lv, params: pd.DataFrame({
-        "kind": ["customer"], "connection_hint": ["ring"], "x": [30.0], "y": [40.0], "mapped_station": [False]})
+        "kind": ["customer"], "connection_hint": ["ring"], "x": [30.0], "y": [40.0], "mapped_station": [False],
+        "installed_kw": [950.0]})
 
     def busbar_customers(stations, customers, params):
         recorded["split"] = len(customers)
@@ -541,7 +548,11 @@ def region_modules(monkeypatch):
         return pd.concat([busbars, stations, customers, gens], ignore_index=True)
 
     inputs.node_rows = node_rows
+    from pylovo.mv_grid import districts as real_districts
+
     districts = types.ModuleType("pylovo.mv_grid.districts")
+    for name in ("installed_density", "district_voltages", "voltage_record", "describe_voltages"):
+        setattr(districts, name, getattr(real_districts, name))
     districts.site_capacity_mva = lambda sites, params: (recorded.__setitem__("sites", sites) or np.full(len(sites),
                                                                                                          63.0))
 
@@ -587,5 +598,10 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert grids["mv_node_id"].tolist() == [104, 105, 106, 107] and grids["mv_grid_id"].tolist() == [900] * 4
     assert grids["bridged"].tolist() == [False, True, False, False]
     assert db.calls["write_grid_areas"] == [([1, 2],)]
+    # nominal voltage of the district: (400 + 630 kVA + 950 kW / 0.95) / 0.25 km² = 8.12 MVA/km² -> 10 kV (auto)
+    voltages, records = db.calls["set_grid_voltages"][0]
+    assert voltages.loc[900, "density_mva_km2"] == pytest.approx(8.12) and voltages.loc[900, "vn_kv"] == 10.0
+    assert records[900]["rule"] == "auto" and records[900]["threshold_mva_km2"] == 8.0
+    assert (records[900]["n_stations"], records[900]["n_customers"]) == (2, 1)
     assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1, "generator": 1}}
     assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])

@@ -11,7 +11,9 @@
    set, DESIGN §2.5).
 3. **Region** (one transaction): HV/MV substations, MV nodes (stations with their load statistics and LV-side
    generation, MV customers, MV generators, busbars), their attachment to the routing graph, the supply areas and
-   one pending ``mv_grid`` per supplying substation with its Voronoi-cell polygon. Skipped when a run resumes.
+   one pending ``mv_grid`` per supplying substation with its Voronoi-cell polygon and its nominal voltage (with
+   ``MV_NOMINAL_VOLTAGE_KV`` auto 10 kV from an installed density of ``mv_10kv_min_density_mva_km2``, else
+   20 kV). Skipped when a run resumes.
 4. **Districts:** one task per ``pending`` or ``failed`` grid, largest first, in a ``fork`` process pool (or in
    process): each worker opens its own database connection, reads its district, plans it with the pure
    :func:`~pylovo.mv_grid.planner.plan_district` and stores it in one transaction. A failed district is marked
@@ -501,6 +503,36 @@ def _assign_supply_areas(dbc: Any, graph_id: str, nodes: pd.DataFrame, sites: pd
     return np.asarray(result.site_of_node, dtype=np.int64), bridged, [int(i) for i in result.overloaded]
 
 
+def _set_district_voltages(dbc: Any, version_id: str, variant_id: str, rows: pd.DataFrame,
+                           grid_of_node: dict[int, int | None], params: MvParameters,
+                           logger: logging.Logger) -> pd.DataFrame:
+    """The nominal voltage of every district from its installed density (``MV_NOMINAL_VOLTAGE_KV``, DESIGN §4.6).
+
+    Runs after the district areas are written: ``districts.installed_density`` of the station ratings and MV
+    customer peaks of each district over its area, ``districts.district_voltages`` by the variant's rule; sets
+    ``mv_grid.vn_kv`` and ``mv_grid.metrics['voltage_level']`` (caller commits).
+
+    Args:
+        rows: The node rows of the region with ``mv_node_id`` (``kind``, ``connection_hint``, ``sn_kva``,
+            ``installed_kw``).
+        grid_of_node: ``mv_grid_id`` per ``mv_node_id`` (None: not assigned).
+
+    Returns:
+        The table of ``districts.district_voltages`` (index ``mv_grid_id``).
+    """
+    districts = _module("districts")
+    nodes = pd.DataFrame({column: rows[column] if column in rows.columns else np.nan
+                          for column in ("mv_node_id", "kind", "connection_hint", "sn_kva", "installed_kw")})
+    nodes["mv_grid_id"] = [grid_of_node.get(int(k)) for k in nodes["mv_node_id"]]
+    nodes["mv_grid_id"] = pd.to_numeric(nodes["mv_grid_id"], errors="coerce")
+    table = districts.district_voltages(districts.installed_density(nodes, dbc.grid_areas(version_id, variant_id)),
+                                        params)
+    dbc.set_grid_voltages(version_id, variant_id, table,
+                          {int(g): districts.voltage_record(row, params) for g, row in table.iterrows()})
+    logger.info(districts.describe_voltages(table, params))
+    return table
+
+
 def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int], region_wkb: bytes, graph_id: str,
                  params: MvParameters, lv: LvVersionParameters, extra_stations: pd.DataFrame | None,
                  logger: logging.Logger, warnings: list[str]) -> dict:
@@ -544,10 +576,11 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
         owner, bridged, overloaded = np.zeros(0, dtype=np.int64), np.zeros(0, dtype=bool), []
     owner_sub = np.where(owner >= 0, usable["substation_id"].to_numpy(dtype=np.int64)[np.clip(owner, 0, None)], -1)
     used = sorted({int(s) for s in owner_sub if s >= 0})
-    grids = dbc.create_grids(version_id, variant_id, used, params.vn_kv)
+    grids = dbc.create_grids(version_id, variant_id, used, params.base_kv)
+    grid_of_node = [grids.get(int(s)) if s >= 0 else None for s in owner_sub]
     dbc.set_node_grids(pd.DataFrame({
         "mv_node_id": members.index.to_numpy(dtype=np.int64),
-        "mv_grid_id": [grids.get(int(s)) if s >= 0 else None for s in owner_sub],
+        "mv_grid_id": grid_of_node,
         "bridged": bridged,
     }))
     dbc.flag_substations([int(usable["substation_id"].iloc[i]) for i in overloaded], "over_capacity")
@@ -557,6 +590,8 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     if unassigned:
         warnings.append(f"{unassigned} MV nodes were assigned to no HV/MV substation")
     dbc.write_grid_areas(version_id, variant_id, plz)
+    _set_district_voltages(dbc, version_id, variant_id, rows,
+                           dict(zip(members.index.to_numpy(dtype=np.int64).tolist(), grid_of_node)), params, logger)
     kinds = members["kind"].value_counts().to_dict()
     logger.info(f"Region: {len(sites)} substations ({len(grids)} supplying), "
                 f"{kinds.get('station', 0)} stations, {kinds.get('customer', 0)} customers, "

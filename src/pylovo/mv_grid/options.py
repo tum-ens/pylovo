@@ -26,7 +26,11 @@ import yaml
 MV_STAGE_VERSION: int = 2
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
-                          "mapping")
+                          "mapping", "voltage")
+
+#: ``MV_NOMINAL_VOLTAGE_KV`` value of the density rule: each district gets 10 kV when its installed MV/LV capacity
+#: per km² reaches ``mv_10kv_min_density_mva_km2``, else 20 kV (DESIGN §4.6, user decision 2026-10-15).
+AUTO_VOLTAGE: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -74,8 +78,10 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="as VERSION_ID; the key of pylovo.mv_variant together with the LV version"),
     Spec("MV_VARIANT_COMMENT", "comment", "default", "str",
          source="as VERSION_COMMENT; stored once with a new MV variant"),
-    Spec("MV_NOMINAL_VOLTAGE_KV", "vn_kv", 20.0, "float", choices=(20.0, 10.0), group="voltage",
-         source="Harnisch 2016 (rural MV grids at 20 kV); the stored LV station transformers are 20/0.4 kV"),
+    Spec("MV_NOMINAL_VOLTAGE_KV", "vn_kv", AUTO_VOLTAGE, "voltage", choices=(20.0, 10.0), group="voltage",
+         source="auto: 10 kV in districts with an installed density of at least mv_10kv_min_density_mva_km2, else "
+                "20 kV (dense city grids run at 10 kV, rural grids at 20 kV, Harnisch 2016); the stored LV station "
+                "transformers are 20/0.4 kV and are re-typed to 10 kV by pylovo-mv couple"),
     Spec("MV_SUBSTATIONS", "substations", "osm", "choice", choices=("osm", "egon"), group="sources",
          source="Hülk et al. 2017 (HV/MV substations from OSM); eGon-data"),
     Spec("MV_SUPPLY_AREAS", "supply_areas", "routed", "choice", choices=("routed", "egon"), group="sources",
@@ -124,6 +130,11 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="(n-1): ring fed from one side; Ding0; SimBench"),
     _constant("max_rise_percent", 2.0, "float", "voltage", bounds=(0.1, 20.0),
               source="generation-driven rise, VDE-AR-N 4110 (dena 2012 p. 91)"),
+    _constant("mv_10kv_min_density_mva_km2", 8.0, "float", "voltage", bounds=_POSITIVE,
+              source="MV_NOMINAL_VOLTAGE_KV auto: districts with at least this installed MV/LV capacity per km² "
+                     "(station ratings plus MV customer peaks / 0.95) are 10 kV, the others 20 kV. Structural data "
+                     "of § 23c EnWG (2025): a large-city 10 kV DSO has about 8.1 MVA MV/LV capacity per km² of its "
+                     "whole area, large Bavarian 20 kV DSOs 0.3 to 0.6 MVA/km²; not calibrated on district data"),
     # loading
     _constant("n1_utilization", 1.0, "float", "loading", bounds=(0.1, 2.0),
               source="lines in the (n-1) and feed-in cases, dena 2012"),
@@ -314,8 +325,8 @@ def coerce_mv_value(name: str, value: Any) -> Any:
     """Check a value of a YAML key or constant and return it in canonical form.
 
     Canonical forms: ``float`` for numbers of kind float (``20`` becomes ``20.0``), ``int`` for integers, a
-    sorted tuple for ``float_tuple`` and ``str_tuple`` values (a single text is a one-element tuple) and a new
-    ``dict`` in the key order of the default for mappings.
+    sorted tuple for ``float_tuple`` and ``str_tuple`` values (a single text is a one-element tuple), a new
+    ``dict`` in the key order of the default for mappings, and ``"auto"`` or a ``float`` for the nominal voltage.
 
     Raises:
         ValueError: ``"<name> must be ..., got <value>"`` if the value does not fit, or if ``name`` is unknown.
@@ -368,6 +379,14 @@ def coerce_mv_value(name: str, value: Any) -> Any:
         result = tuple(sorted(set(items)))
     elif kind == "mapping":
         result = _mapping(spec, value, spec.default, value)
+    elif kind == "voltage":
+        if isinstance(value, str) and value.strip().casefold() == AUTO_VOLTAGE:
+            result = AUTO_VOLTAGE
+        elif (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+              or float(value) not in spec.choices):
+            raise _error(spec, "one of " + ", ".join([AUTO_VOLTAGE, *(_fmt(c) for c in spec.choices)]), value)
+        else:
+            result = float(value)
     else:   # pragma: no cover - a Spec with an unknown kind is a programming error
         raise AssertionError(f"unknown kind {kind!r} of {spec.name}")
     return result

@@ -209,11 +209,11 @@ def test_edge_geometries_are_used_for_street_ties():
 
 
 # ---------------------------------------------------------------------------------------------- takeover
-def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0) -> pp.pandapowerNet:
+def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0, vn_kv: float = 20.0) -> pp.pandapowerNet:
     """A stored-net-like district: busbar ``base`` and one open ring busbar - base+1 - base+2 | base+3 - busbar
     (feeder 0: base+1, base+2 from exit a; feeder 1: base+3 from exit b; the NOP open at base+3)."""
     net = pp.create_empty_network()
-    buses = [pp.create_bus(net, 20.0, name=f"MV node {base + i}") for i in range(4)]
+    buses = [pp.create_bus(net, vn_kv, name=f"MV node {base + i}") for i in range(4)]
     net.bus["kind"] = ["busbar", "station", "station", "station"]
     net.bus["mv_node_id"] = [float(base + i) for i in range(4)]
     net.bus["node_key"] = [base + i for i in range(4)]
@@ -258,6 +258,29 @@ def test_takeover_of_the_half_ring_through_the_tie():
     unknown = ic.takeover_checks(pd.DataFrame([tie_row(from_feeder=7)], columns=list(ic.TIE_COLUMNS)),
                                  {1: ring_net(1, 100, 0.5), 2: ring_net(2, 200, 0.5)}, PARAMS)
     assert unknown.loc[0, "error"].startswith("LookupError") and unknown.loc[1, "ok"]
+
+
+def test_ties_take_the_line_types_of_their_districts_voltage(monkeypatch):
+    """MV_NOMINAL_VOLTAGE_KV auto: a tie between two 10 kV districts is a 10 kV cable or overhead line, and its
+    takeover check uses that type."""
+    assert PARAMS.auto_voltage
+    grids = grids_frame((1, 10.0), (2, 10.0))
+    rural = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 1800.0)), grids, LINE, PARAMS)
+    assert rural.loc[0, "kind"] == "overhead" and rural.loc[0, "std_type"] == "48-AL1/8-ST1A 10.0"
+    urban = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0, area="urban"), node(21, 2, 0, 1800.0)), grids, LINE,
+                         PARAMS)
+    assert urban.loc[0, "std_type"] == PARAMS.cable_at(10.0).name == "NA2XS2Y 1x150 RM/25 6/10 kV"
+    twenty = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0, area="urban"), node(21, 2, 0, 1800.0)),
+                          grids_frame((1, 20.0), (2, 20.0)), LINE, PARAMS)
+    assert twenty.loc[0, "std_type"] == PARAMS.cable_at(20.0).name
+    used = []
+    real = PARAMS.cable_at
+    monkeypatch.setattr(type(PARAMS), "cable_at", lambda self, vn_kv=None: used.append(vn_kv) or real(vn_kv))
+    ties = pd.DataFrame([tie_row(std_type=PARAMS.cable_at(10.0).name)], columns=list(ic.TIE_COLUMNS))
+    used.clear()
+    check = ic.takeover_checks(ties, {1: ring_net(1, 100, 0.2, vn_kv=10.0), 2: ring_net(2, 200, 0.2, vn_kv=10.0)},
+                               PARAMS)
+    assert used == [10.0] and check["converged"].all() and check["error"].isna().all()
 
 
 def test_the_takeover_does_not_change_the_normal_flow():

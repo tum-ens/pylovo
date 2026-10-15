@@ -189,7 +189,7 @@ class Builder:
         nodes.index.name = "mv_node_id"
         edges = EdgeSet(*(np.array([], dtype=np.int64) for _ in range(4)), np.array([], dtype=bool),
                         np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.zeros((0, 2)))
-        inp = DistrictInput(mv_grid_id=3, substation_id=SUBSTATION, vn_kv=self.params.vn_kv, nodes=nodes, edges=edges,
+        inp = DistrictInput(mv_grid_id=3, substation_id=SUBSTATION, vn_kv=self.params.base_kv, nodes=nodes, edges=edges,
                             params=self.params, lv=self.lv, known_units_mva=known_units_mva,
                             edge_geometry=lambda ids: {})
         plan = TopologyPlan(rings=list(self.rings), lines=list(self.lines), joints=dict(self.joints),

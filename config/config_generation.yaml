@@ -182,8 +182,8 @@ MV_GRID_GENERATION: False
 # MV variant of the LV version (1 to 10 characters); a changed MV parameter needs a new MV_VARIANT_ID
 MV_VARIANT_ID: "1"
 MV_VARIANT_COMMENT: default # Stored with a new MV variant
-# MV nominal voltage in kV: 20 or 10 (the stored LV station transformers are 20/0.4 kV)
-MV_NOMINAL_VOLTAGE_KV: 20
+# MV nominal voltage in kV: auto (10 kV in districts with an installed MV/LV capacity of at least 8 MVA/km², constant mv_10kv_min_density_mva_km2, else 20 kV), 20 or 10; the stored LV station transformers are 20/0.4 kV
+MV_NOMINAL_VOLTAGE_KV: auto
 # HV/MV substations: osm (power=substation with 110 kV in current OSM) or egon (eGon-data HV/MV substations)
 MV_SUBSTATIONS: osm
 # Supply areas: routed (nearest substation along the streets, capacity-aware) or egon (eGon MV grid districts, needs MV_SUBSTATIONS egon)

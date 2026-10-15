@@ -14,6 +14,11 @@ DESIGN §4.1. Two rules assign every MV node (station, customer, generator) to o
 The load of a site is the coincident load of its loads (pylovo's category law on the summed statistics of its
 stations plus the fixed loads of its customers, :mod:`pylovo.mv_grid.coincidence`) divided by the power factor;
 generators and excluded nodes (HV customers) do not count.
+
+**Nominal voltage per district** (``MV_NOMINAL_VOLTAGE_KV`` auto, decision of 2026-10-15): after the supply areas
+are formed, :func:`installed_density` gives each district its installed MV/LV capacity per km² of its area, and
+:func:`district_voltages` gives 10 kV to the districts at or above ``mv_10kv_min_density_mva_km2`` and 20 kV to the
+others (dense city grids run at 10 kV, rural grids at 20 kV).
 """
 from __future__ import annotations
 
@@ -35,6 +40,12 @@ logger = logging.getLogger(__name__)
 
 #: Node kinds whose load counts for the capacity of a site.
 LOAD_KINDS: tuple[str, ...] = ("station", "customer")
+#: Power factor that turns the corrected own peak of an MV customer (kW) into the rating of its own station (kVA)
+#: in the installed density of :func:`installed_density`.
+DENSITY_CUSTOMER_COS_PHI: float = 0.95
+#: Columns of :func:`installed_density` (and of :func:`district_voltages`, which adds ``vn_kv``).
+DENSITY_COLUMNS: tuple[str, ...] = ("n_stations", "n_customers", "station_kva", "customer_kva", "installed_mva",
+                                    "area_km2", "density_mva_km2")
 
 
 def _graph():
@@ -344,6 +355,107 @@ def routed_assignment(csr, vertex_index: dict[int, int], edge_len: Mapping[int, 
     return Assignment(site_of_node=owner.astype(np.int64), weights_m=weights, iterations=iterations,
                       load_mva=load, overloaded=overloaded, bridged=bridged, capacity_mva=capacity,
                       distance_m=np.where(bridged, np.inf, distance), history=history)
+
+
+# ---------------------------------------------------------------------------------------------- nominal voltage
+def installed_density(nodes: pd.DataFrame, areas_km2: Mapping[int, float]) -> pd.DataFrame:
+    """The installed MV/LV capacity per km² of each district, the measure of ``MV_NOMINAL_VOLTAGE_KV`` auto.
+
+    ``installed = Σ station ratings (kVA) + Σ corrected own peak (kW) / 0.95`` of the MV customer nodes, divided
+    by the district's area: the station ratings of the MV model (``sn_kva``; a station overloaded by its
+    station-busbar customers carries its upsized rating, and those customers count through it), the corrected own
+    peak of a customer is its ``installed_kw`` after the hall rule (pylovo's law gives factor 1 for one building)
+    over :data:`DENSITY_CUSTOMER_COS_PHI`. HV customers (``connection_hint`` excluded) and generators do not
+    count. The area is the district's Voronoi cell clipped to the planning region (``mv_grid.area_km2``), so the
+    areas of all districts add up to the region.
+
+    Args:
+        nodes: Node rows with ``mv_grid_id`` (NaN: not assigned), ``kind``, ``connection_hint``, ``sn_kva``
+            (stations) and ``installed_kw`` (customers); missing columns count as 0.
+        areas_km2: Area per ``mv_grid_id`` in km².
+
+    Returns:
+        Index ``mv_grid_id`` (every district of ``areas_km2`` or ``nodes``, ascending), :data:`DENSITY_COLUMNS`:
+        node counts, ``station_kva``, ``customer_kva``, ``installed_mva``, ``area_km2`` and ``density_mva_km2``
+        (NaN without a positive finite area).
+    """
+    frame = pd.DataFrame(nodes)
+    grid = pd.to_numeric(frame["mv_grid_id"], errors="coerce") if "mv_grid_id" in frame.columns \
+        else pd.Series(np.nan, index=frame.index)
+    kind = frame["kind"].astype(object) if "kind" in frame.columns else pd.Series(None, index=frame.index)
+    hint = frame["connection_hint"].astype(object) if "connection_hint" in frame.columns \
+        else pd.Series(None, index=frame.index)
+
+    def numbers(column: str) -> pd.Series:
+        if column not in frame.columns:
+            return pd.Series(0.0, index=frame.index)
+        values = pd.to_numeric(frame[column], errors="coerce")
+        return values.where(np.isfinite(values) & (values > 0), 0.0)
+
+    station = kind.eq("station") & grid.notna()
+    customer = kind.eq("customer") & ~hint.eq("excluded") & grid.notna()
+    key = grid.fillna(-1).astype(np.int64)                  # -1: not assigned (never a district id)
+    ids = sorted({int(g) for g in areas_km2} | {int(g) for g in key[station | customer]})
+    out = pd.DataFrame(index=pd.Index(ids, name="mv_grid_id", dtype="int64"))
+
+    def total(values: pd.Series) -> pd.Series:
+        return values.groupby(key).sum().reindex(out.index, fill_value=0)
+
+    out["n_stations"] = total(station.astype("int64")).astype("int64")
+    out["n_customers"] = total(customer.astype("int64")).astype("int64")
+    out["station_kva"] = total(numbers("sn_kva").where(station, 0.0)).astype(float)
+    out["customer_kva"] = total(numbers("installed_kw").where(customer, 0.0) / DENSITY_CUSTOMER_COS_PHI).astype(float)
+    out["installed_mva"] = (out["station_kva"] + out["customer_kva"]) / 1000.0
+    area = pd.Series({int(g): float(a) if a is not None else np.nan for g, a in areas_km2.items()}, dtype=float)
+    out["area_km2"] = area.reindex(out.index).astype(float)
+    valid = np.isfinite(out["area_km2"]) & (out["area_km2"] > 0)
+    out["density_mva_km2"] = (out["installed_mva"] / out["area_km2"].where(valid)).astype(float)
+    return out[list(DENSITY_COLUMNS)]
+
+
+def district_voltages(density: pd.DataFrame, params: "MvParameters") -> pd.DataFrame:
+    """The nominal voltage of every district (``params.district_kv`` of its installed density).
+
+    With ``MV_NOMINAL_VOLTAGE_KV`` auto: 10 kV at a density of at least ``mv_10kv_min_density_mva_km2``, else
+    20 kV (also for a district without a finite density); otherwise the fixed voltage.
+
+    Returns:
+        ``density`` with the column ``vn_kv``.
+    """
+    out = pd.DataFrame(density).copy()
+    out["vn_kv"] = [params.district_kv(d) for d in out["density_mva_km2"]]
+    return out
+
+
+def voltage_record(row: Mapping[str, Any], params: "MvParameters") -> dict:
+    """The ``mv_grid.metrics['voltage_level']`` entry of a district (JSON-native): ``rule`` (``auto`` or
+    ``fixed``), ``vn_kv``, ``density_mva_km2``, ``threshold_mva_km2`` and the parts of the density."""
+    def number(value: Any) -> float | None:
+        value = float(value)
+        return value if np.isfinite(value) else None
+
+    return {"rule": "auto" if params.auto_voltage else "fixed", "vn_kv": float(row["vn_kv"]),
+            "density_mva_km2": number(row["density_mva_km2"]),
+            "threshold_mva_km2": float(params.mv_10kv_min_density_mva_km2),
+            "station_kva": number(row["station_kva"]), "customer_kva": number(row["customer_kva"]),
+            "area_km2": number(row["area_km2"]), "n_stations": int(row["n_stations"]),
+            "n_customers": int(row["n_customers"])}
+
+
+def describe_voltages(table: pd.DataFrame, params: "MvParameters") -> str:
+    """One log line of :func:`district_voltages`: the districts per nominal voltage and their density range."""
+    if not len(table):
+        return "Nominal voltage: no districts"
+    density = table["density_mva_km2"].astype(float)
+    counts = table["vn_kv"].astype(float).value_counts()
+    parts = [f"{int(counts[vn])} at {vn:g} kV" for vn in sorted(counts.index, reverse=True)]
+    rule = (f"auto, 10 kV from {params.mv_10kv_min_density_mva_km2:g} MVA/km²" if params.auto_voltage
+            else f"fixed {float(params.vn_kv):g} kV")
+    text = f"Nominal voltage ({rule}): {len(table)} districts, {', '.join(parts)}"
+    if density.notna().any():
+        text += (f"; installed density {density.min():.2f} to {density.max():.2f} MVA/km² "
+                 f"(median {density.median():.2f})")
+    return text
 
 
 # ---------------------------------------------------------------------------------------------- eGon

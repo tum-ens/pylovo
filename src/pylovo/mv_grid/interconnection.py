@@ -258,7 +258,8 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             ``in_region`` (of the substation).
         edges: The routing graph around the candidates (at least within ``tie_max_length_m`` of them, with their
             attachment edges).
-        params: The MV variant (``tie_max_length_m``, ``MV_OVERHEAD_LINES``, ``MV_ROUTING``, detours, line types).
+        params: The MV variant (``tie_max_length_m``, ``MV_OVERHEAD_LINES``, ``MV_ROUTING``, detours, the line
+            types of the districts' voltage).
         edge_geometry: Graph edge ids -> shapely LineStrings (source -> target) for the street geometries;
             None draws every edge straight between its end vertices.
 
@@ -337,7 +338,7 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             geoms.update(_straight_edge_geometries(edges, missing))
     else:
         geoms = {}
-    cable, overhead_type = params.cable, params.overhead
+    vn_of = pd.to_numeric(grids["vn_kv"], errors="coerce")             # both ends have the same voltage
 
     out = []
     for p, f, t in ends:
@@ -348,6 +349,8 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             line = graph.path_geometry(rg, pieces.get(key, []), geoms, start_vertex=key[0])
             geometry = _with_ends(line, xy[f], xy[t])
         kind = "overhead" if overhead[p] else "cable"
+        vn_kv = float(vn_of.loc[int(grid[f])])
+        lt = params.cable_at(vn_kv) if kind == "cable" else params.overhead_at(vn_kv)
         out.append({
             "from_node": int(ids[f]), "to_node": int(ids[t]), "from_grid": int(grid[f]), "to_grid": int(grid[t]),
             "from_ring": int(ring[f]), "to_ring": int(ring[t]), "from_feeder": int(feeder[f]),
@@ -355,7 +358,7 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             "street_m": float(street[p]), "straight_m": float(straight_m[p]),
             "cable_m": float(length[p]) if kind == "cable" else 0.0,
             "overhead_m": float(length[p]) if kind == "overhead" else 0.0,
-            "std_type": cable.name if kind == "cable" else overhead_type.name,
+            "std_type": lt.name,
             "flags": _flags(grids, (int(grid[f]), int(grid[t]))), "geometry": geometry,
         })
     ties = pd.DataFrame(out, columns=list(TIE_COLUMNS))
@@ -479,9 +482,11 @@ def takeover_checks(ties: pd.DataFrame, nets: Mapping[int, Any], params: "MvPara
                 warnings.simplefilter("ignore", FutureWarning)
                 net = merge_nets(prepared[int(tie.from_grid)], prepared[int(tie.to_grid)], validate=False,
                                  merge_results=False, net2_reindex_log_level=None)
-            lt = params.cable if tie.kind == "cable" else params.overhead
+            from_bus, to_bus = _bus(net, tie.from_grid, tie.from_node), _bus(net, tie.to_grid, tie.to_node)
+            vn_kv = float(net.bus.at[from_bus, "vn_kv"])                  # the voltage of both districts
+            lt = params.cable_at(vn_kv) if tie.kind == "cable" else params.overhead_at(vn_kv)
             tie_line = pp.create_line_from_parameters(
-                net, _bus(net, tie.from_grid, tie.from_node), _bus(net, tie.to_grid, tie.to_node),
+                net, from_bus, to_bus,
                 length_km=max(float(tie.length_m), MIN_TIE_M) / 1000.0, r_ohm_per_km=lt.r_ohm_per_km,
                 x_ohm_per_km=lt.x_ohm_per_km, c_nf_per_km=lt.c_nf_per_km, max_i_ka=lt.max_i_ka, name="tie")
             net.line.at[tie_line, "role"] = "tie"

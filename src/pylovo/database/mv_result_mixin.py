@@ -598,6 +598,37 @@ class MvResultMixin(BaseMixin):
             """,
             {"v": version_id, "var": variant_id, "plz": [int(p) for p in plz_list]})
 
+    def grid_areas(self, version_id: str, variant_id: str) -> dict[int, float]:
+        """The area of every district of a variant in km² (``mv_grid.area_km2``, NaN where it has none)."""
+        self.cur.execute("""SELECT mv_grid_id, area_km2 FROM pylovo.mv_grid
+                            WHERE version_id = %s AND mv_variant_id = %s ORDER BY mv_grid_id""",
+                         (version_id, variant_id))
+        return {int(g): (float(a) if a is not None else math.nan) for g, a in self.cur.fetchall()}
+
+    def set_grid_voltages(self, version_id: str, variant_id: str, voltages: pd.DataFrame,
+                          records: Mapping[int, dict]) -> None:
+        """Set the nominal voltage of the districts and record its density rule (``MV_NOMINAL_VOLTAGE_KV``).
+
+        Args:
+            voltages: Index ``mv_grid_id``, column ``vn_kv`` (``pylovo.mv_grid.districts.district_voltages``).
+            records: ``{mv_grid_id: entry}`` stored as ``mv_grid.metrics['voltage_level']`` (kept when the
+                district is saved, :meth:`save_district`).
+        """
+        values = [(int(g), float(vn), _dumps(records.get(int(g), {})), version_id, variant_id)
+                  for g, vn in voltages["vn_kv"].items()]
+        if not values:
+            return
+        execute_values(
+            self.cur,
+            """UPDATE pylovo.mv_grid g
+               SET vn_kv = v.vn_kv,
+                   metrics = COALESCE(g.metrics, '{}'::jsonb) || jsonb_build_object('voltage_level', v.record)
+               FROM (VALUES %s) AS v(mv_grid_id, vn_kv, record, version_id, mv_variant_id)
+               WHERE g.mv_grid_id = v.mv_grid_id AND g.version_id = v.version_id
+                 AND g.mv_variant_id = v.mv_variant_id""",
+            values, template="(%s::bigint, %s::double precision, %s::jsonb, %s::varchar, %s::varchar)",
+            page_size=1000)
+
     def variant_node_table(self, version_id: str, variant_id: str) -> pd.DataFrame:
         """All nodes of a variant in NODE_COLUMNS form plus ``mv_grid_id`` and ``substation_id`` (no joints)."""
         frame = self._node_rows("n.version_id = %(v)s AND n.mv_variant_id = %(var)s",
@@ -831,8 +862,11 @@ class MvResultMixin(BaseMixin):
         net_json = _net_json(plan.net, key_to_id, line_key_to_id)
         # 9. grid row and substation sizing
         grid = _grid_values(plan, stored, busbar_vm, vm, loading, runtime_s)
-        assignments = ", ".join(f"{c} = %({c})s::jsonb" if c in ("metrics", "repairs") else f"{c} = %({c})s"
-                                for c in grid)
+        # the region step's entry of the nominal voltage rule (set_grid_voltages) stays in the metrics
+        assignments = ", ".join(
+            ("metrics = %(metrics)s::jsonb || CASE WHEN metrics ? 'voltage_level' "
+             "THEN jsonb_build_object('voltage_level', metrics -> 'voltage_level') ELSE '{}'::jsonb END")
+            if c == "metrics" else f"{c} = %({c})s::jsonb" if c == "repairs" else f"{c} = %({c})s" for c in grid)
         self.cur.execute(
             f"""UPDATE pylovo.mv_grid SET status = 'done', error = NULL, {assignments}, net = %(net)s::json
                 WHERE mv_grid_id = %(g)s AND version_id = %(v)s AND mv_variant_id = %(var)s""",

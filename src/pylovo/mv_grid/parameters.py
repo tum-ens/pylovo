@@ -20,6 +20,7 @@ import dataclasses
 import importlib
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
@@ -27,6 +28,7 @@ import numpy as np
 
 from pylovo.mv_grid.model import CATEGORIES, HvMvType, LineType
 from pylovo.mv_grid.options import (
+    AUTO_VOLTAGE,
     CONSTANTS,
     MV_STAGE_VERSION,
     YAML_KEYS,
@@ -55,6 +57,14 @@ FIXED_RULES: dict[tuple[str, ...], Any] = {
 
 #: Fields whose snapshot path holds the resolved type data instead of the field value.
 RESOLVED_FIELDS: tuple[str, ...] = ("cable_type", "overhead_type", "hv_mv_sizes_mva")
+#: ``MV_NOMINAL_VOLTAGE_KV`` auto: the voltage of the districts below ``mv_10kv_min_density_mva_km2`` (the base
+#: voltage of the variant, whose resolved types are the unsuffixed equipment records of the snapshot) ...
+AUTO_BASE_KV: float = 20.0
+#: ... and the voltage of the dense districts (snapshot records ``cable_10kv``, ``overhead_10kv``,
+#: ``hv_mv_types_10kv``).
+AUTO_DENSE_KV: float = 10.0
+#: Suffix of the equipment records of :data:`AUTO_DENSE_KV` in the snapshot of an auto variant.
+DENSE_SUFFIX: str = "_10kv"
 #: Fields the resolved types depend on (a change drops the cached types).
 _TYPE_FIELDS = frozenset({"vn_kv", *RESOLVED_FIELDS})
 #: The non-residential consumer categories (the MV customers): their specific peak load per m² is read.
@@ -89,7 +99,7 @@ class MvParameters:
 
     variant_id: str = _y("MV_VARIANT_ID")                   # MV_VARIANT_ID
     comment: str = _y("MV_VARIANT_COMMENT")                 # MV_VARIANT_COMMENT
-    vn_kv: float = _y("MV_NOMINAL_VOLTAGE_KV")              # MV_NOMINAL_VOLTAGE_KV
+    vn_kv: float | str = _y("MV_NOMINAL_VOLTAGE_KV")        # MV_NOMINAL_VOLTAGE_KV: 20.0, 10.0 or "auto"
     substations: str = _y("MV_SUBSTATIONS")                 # MV_SUBSTATIONS
     supply_areas: str = _y("MV_SUPPLY_AREAS")               # MV_SUPPLY_AREAS
     routing: str = _y("MV_ROUTING")                         # MV_ROUTING
@@ -107,6 +117,7 @@ class MvParameters:
     busbar_band_pu: float = _y("busbar_band_pu")
     max_drop_n1_percent: float = _y("max_drop_n1_percent")
     max_rise_percent: float = _y("max_rise_percent")
+    mv_10kv_min_density_mva_km2: float = _y("mv_10kv_min_density_mva_km2")
     # loading
     n1_utilization: float = _y("n1_utilization")
     hv_mv_n1_utilization: float = _y("hv_mv_n1_utilization")
@@ -167,7 +178,7 @@ class MvParameters:
     mvlv_tap_max: int = _y("mvlv_tap_max")
     lv_design_tolerance_pu: float = _y("lv_design_tolerance_pu")
     lv_feed_in_max_pu: float = _y("lv_feed_in_max_pu")
-    # resolved types (cable, overhead, hv_mv_types), filled lazily or from a snapshot; not a parameter
+    # resolved types {(cable | overhead | hv_mv_types, vn_kv): ...}, filled lazily or from a snapshot; no parameter
     _types: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -221,20 +232,27 @@ class MvParameters:
                 legacy = MV_ADDED_LATER.get(spec.path, UNKNOWN)
                 value = default_value(spec.name) if legacy is UNKNOWN else copy.deepcopy(legacy)
             values[spec.field] = value
+        vn_kv = coerce_mv_value("MV_NOMINAL_VOLTAGE_KV", values["vn_kv"])
+        base = AUTO_BASE_KV if vn_kv == AUTO_VOLTAGE else float(vn_kv)
+        suffixes = {base: ""}
+        if vn_kv == AUTO_VOLTAGE:
+            suffixes[AUTO_DENSE_KV] = DENSE_SUFFIX
+        types: dict = {}
         try:
             equipment = snapshot["equipment"]
-            cable = LineType(**equipment["cable"])
-            overhead = LineType(**equipment["overhead"])
-            hv_mv_types = tuple(HvMvType(**item) for item in equipment["hv_mv_types"])
+            for vn, suffix in suffixes.items():
+                types[("cable", vn)] = LineType(**equipment["cable" + suffix])
+                types[("overhead", vn)] = LineType(**equipment["overhead" + suffix])
+                types[("hv_mv_types", vn)] = tuple(HvMvType(**item) for item in equipment["hv_mv_types" + suffix])
         except (KeyError, TypeError) as exc:
             raise MvStageError(f"the MV snapshot has no complete resolved equipment ({exc!r})") from exc
-        values["hv_mv_sizes_mva"] = [t.sn_mva for t in hv_mv_types]
-        default_cable, default_overhead = _equipment().default_line_types(coerce_mv_value(
-            "MV_NOMINAL_VOLTAGE_KV", values["vn_kv"]))
+        cable, overhead = types[("cable", base)], types[("overhead", base)]
+        values["hv_mv_sizes_mva"] = [t.sn_mva for t in types[("hv_mv_types", base)]]
+        default_cable, default_overhead = _equipment().default_line_types(base)
         values["cable_type"] = None if cable.name == default_cable else cable.name
         values["overhead_type"] = None if overhead.name == default_overhead else overhead.name
         params = cls(**values)
-        params._types.update(cable=cable, overhead=overhead, hv_mv_types=hv_mv_types)
+        params._types.update(types)
         return params
 
     def replace(self, **changes: Any) -> "MvParameters":
@@ -251,40 +269,106 @@ class MvParameters:
         """A copy with some parameters changed by YAML key or constant name (the names of ``--set``)."""
         return self.replace(**_fields_from_raw(raw))
 
+    # ------------------------------------------------------------------ nominal voltage
+    @property
+    def auto_voltage(self) -> bool:
+        """``MV_NOMINAL_VOLTAGE_KV`` is ``auto``: each district gets 10 or 20 kV by its installed density."""
+        return self.vn_kv == AUTO_VOLTAGE
+
+    @property
+    def base_kv(self) -> float:
+        """The fixed nominal voltage, or with ``auto`` the 20 kV of the districts below the density threshold."""
+        return AUTO_BASE_KV if self.auto_voltage else float(self.vn_kv)
+
+    @property
+    def voltages(self) -> tuple[float, ...]:
+        """The nominal voltages the districts of the variant can have: ``(20.0, 10.0)`` with ``auto``, else one."""
+        return (AUTO_BASE_KV, AUTO_DENSE_KV) if self.auto_voltage else (float(self.vn_kv),)
+
+    def district_kv(self, density_mva_km2: float | None) -> float:
+        """The nominal voltage of a district with the given installed density in MVA/km² (DESIGN §4.6).
+
+        With ``auto``: 10 kV when the density is at least ``mv_10kv_min_density_mva_km2``, else 20 kV (also without
+        a finite density, e.g. a district without area); otherwise ``MV_NOMINAL_VOLTAGE_KV``.
+        """
+        if not self.auto_voltage:
+            return float(self.vn_kv)
+        if density_mva_km2 is not None and math.isfinite(float(density_mva_km2)) \
+                and float(density_mva_km2) >= float(self.mv_10kv_min_density_mva_km2):
+            return AUTO_DENSE_KV
+        return AUTO_BASE_KV
+
+    def _voltage(self, vn_kv: float | None) -> float:
+        """``vn_kv`` (None: the base voltage) as one of :attr:`voltages`.
+
+        Raises:
+            ValueError: The variant has no districts of that voltage.
+        """
+        vn = self.base_kv if vn_kv is None else float(vn_kv)
+        if vn not in self.voltages:
+            raise ValueError(f"MV variant {self.variant_id} has no {vn:g} kV districts (MV_NOMINAL_VOLTAGE_KV "
+                             f"{self.vn_kv})")
+        return vn
+
     # ------------------------------------------------------------------ resolved types
+    def cable_at(self, vn_kv: float | None = None) -> LineType:
+        """The standard MV cable of the districts of nominal voltage ``vn_kv`` (None: :attr:`base_kv`).
+
+        ``MV_STANDARD_CABLE``, or the default cable of the voltage. With ``auto`` a configured type serves both
+        voltages: the other voltage takes the same conductor with its insulation for that voltage
+        (``equipment.line_type_name_at``).
+        """
+        vn = self._voltage(vn_kv)
+        if ("cable", vn) not in self._types:
+            self._types[("cable", vn)] = _line_type(self.cable_type, 0, "cable", "MV_STANDARD_CABLE", vn,
+                                                    any_voltage=self.auto_voltage)
+        return self._types[("cable", vn)]
+
+    def overhead_at(self, vn_kv: float | None = None) -> LineType:
+        """The overhead line type of the districts of nominal voltage ``vn_kv`` (None: :attr:`base_kv`):
+        ``MV_OVERHEAD_LINE``, or the default overhead line of the voltage (with ``auto`` as :meth:`cable_at`)."""
+        vn = self._voltage(vn_kv)
+        if ("overhead", vn) not in self._types:
+            self._types[("overhead", vn)] = _line_type(self.overhead_type, 1, "overhead", "MV_OVERHEAD_LINE", vn,
+                                                       any_voltage=self.auto_voltage)
+        return self._types[("overhead", vn)]
+
+    def hv_mv_types_at(self, vn_kv: float | None = None) -> tuple[HvMvType, ...]:
+        """The HV/MV transformer types of ``hv_mv_sizes_mva`` for the districts of nominal voltage ``vn_kv`` (None:
+        :attr:`base_kv`; ``110/20 kV`` or ``110/10 kV``, 31.5 MVA interpolated)."""
+        vn = self._voltage(vn_kv)
+        if ("hv_mv_types", vn) not in self._types:
+            try:
+                types = tuple(_equipment().hv_mv_types(vn, self.hv_mv_sizes_mva))
+            except (LookupError, ValueError, UserWarning) as exc:
+                raise ValueError(f"hv_mv_sizes_mva {list(self.hv_mv_sizes_mva)} has no HV/MV transformer types "
+                                 f"for {vn:g} kV: {exc}") from exc
+            self._types[("hv_mv_types", vn)] = types
+        return self._types[("hv_mv_types", vn)]
+
     @property
     def cable(self) -> LineType:
-        """The standard MV cable: ``MV_STANDARD_CABLE``, or the default cable of the nominal voltage."""
-        if "cable" not in self._types:
-            self._types["cable"] = _line_type(self.cable_type, 0, "cable", "MV_STANDARD_CABLE", self.vn_kv)
-        return self._types["cable"]
+        """The standard MV cable of the base voltage (:meth:`cable_at`); districts use ``cable_at(vn_kv)``."""
+        return self.cable_at()
 
     @property
     def overhead(self) -> LineType:
-        """The overhead line type: ``MV_OVERHEAD_LINE``, or the default overhead line of the nominal voltage."""
-        if "overhead" not in self._types:
-            self._types["overhead"] = _line_type(self.overhead_type, 1, "overhead", "MV_OVERHEAD_LINE", self.vn_kv)
-        return self._types["overhead"]
+        """The overhead line type of the base voltage (:meth:`overhead_at`)."""
+        return self.overhead_at()
 
     @property
     def hv_mv_types(self) -> tuple[HvMvType, ...]:
-        """The HV/MV transformer types of ``hv_mv_sizes_mva`` for the nominal voltage (31.5 MVA interpolated)."""
-        if "hv_mv_types" not in self._types:
-            try:
-                types = tuple(_equipment().hv_mv_types(self.vn_kv, self.hv_mv_sizes_mva))
-            except (LookupError, ValueError, UserWarning) as exc:
-                raise ValueError(f"hv_mv_sizes_mva {list(self.hv_mv_sizes_mva)} has no HV/MV transformer types "
-                                 f"for {self.vn_kv:g} kV: {exc}") from exc
-            self._types["hv_mv_types"] = types
-        return self._types["hv_mv_types"]
+        """The HV/MV transformer types of the base voltage (:meth:`hv_mv_types_at`)."""
+        return self.hv_mv_types_at()
 
     def check_types(self) -> None:
-        """Resolve the cable, overhead line and HV/MV types now.
+        """Resolve the cable, overhead line and HV/MV types of every voltage of the variant now.
 
         Raises:
             ValueError: If a type does not exist or does not fit the nominal voltage (the message names the key).
         """
-        _ = self.cable, self.overhead, self.hv_mv_types
+        for vn in self.voltages:
+            _ = self.cable_at(vn), self.overhead_at(vn), self.hv_mv_types_at(vn)
 
     # ------------------------------------------------------------------ snapshot
     def to_snapshot(self) -> dict:
@@ -293,14 +377,21 @@ class MvParameters:
         Layout: ``schema``, ``mv_stage_version`` and the groups ``voltage``, ``loading``, ``sources``,
         ``routing``, ``settlements``, ``topology``, ``equipment``, ``loads``, ``generation``, ``cases``, ``taps``
         and ``coupling`` (see the ``group`` and ``key`` of each :class:`~pylovo.mv_grid.options.Spec`). The
-        variant id and comment are not part of it (they are columns of ``pylovo.mv_variant``).
+        variant id and comment are not part of it (they are columns of ``pylovo.mv_variant``). ``equipment``
+        holds the resolved types of the base voltage (``cable``, ``overhead``, ``hv_mv_types``) and, with
+        ``MV_NOMINAL_VOLTAGE_KV`` auto, those of the 10 kV districts (``cable_10kv``, ``overhead_10kv``,
+        ``hv_mv_types_10kv``).
         """
         snapshot: dict[str, Any] = {"schema": SNAPSHOT_SCHEMA, "mv_stage_version": MV_STAGE_VERSION}
         for spec in _SNAPSHOT_SPECS:
             _place(snapshot, spec.path, _json_value(getattr(self, spec.field)))
-        _place(snapshot, _FIELD_SPECS["cable_type"].path, _record(self.cable))
-        _place(snapshot, _FIELD_SPECS["overhead_type"].path, _record(self.overhead))
-        _place(snapshot, _FIELD_SPECS["hv_mv_sizes_mva"].path, [_record(t) for t in self.hv_mv_types])
+        for vn in self.voltages:
+            suffix = "" if vn == self.base_kv else DENSE_SUFFIX
+            for name, value in (("cable_type", _record(self.cable_at(vn))),
+                                ("overhead_type", _record(self.overhead_at(vn))),
+                                ("hv_mv_sizes_mva", [_record(t) for t in self.hv_mv_types_at(vn)])):
+                path = _FIELD_SPECS[name].path
+                _place(snapshot, (*path[:-1], path[-1] + suffix), value)
         for path, value in FIXED_RULES.items():
             _place(snapshot, path, value)
         return snapshot
@@ -329,12 +420,15 @@ def _equipment():
     return importlib.import_module("pylovo.mv_grid.equipment")
 
 
-def _line_type(name: str | None, index: int, kind: str, key: str, vn_kv: float) -> LineType:
+def _line_type(name: str | None, index: int, kind: str, key: str, vn_kv: float, *,
+               any_voltage: bool = False) -> LineType:
+    """The resolved line type of a key for a voltage; with ``any_voltage`` (``MV_NOMINAL_VOLTAGE_KV`` auto) a
+    configured name of the other voltage stands for its conductor at ``vn_kv`` (``equipment.line_type_name_at``)."""
     equipment = _equipment()
     if name is None:
         name = equipment.default_line_types(vn_kv)[index]
     try:
-        line_type = equipment.line_type(name)
+        line_type = equipment.line_type(equipment.line_type_name_at(name, vn_kv) if any_voltage else name)
         equipment.check_line_type(line_type, vn_kv, kind)
     except (LookupError, ValueError, UserWarning) as exc:   # pandapower raises UserWarning for unknown types
         raise ValueError(f"{key} must name a pandapower {kind} line type for {vn_kv:g} kV, got {name!r}: {exc}"

@@ -436,9 +436,9 @@ class RingEvaluator:
         * loads: :func:`pylovo.mv_grid.coincidence.node_stats` of the terminal rows (``model.terminals``,
           positions in ``inp.nodes``); members and switchgear by node kind (:data:`MEMBER_KINDS`,
           :data:`SWITCHGEAR_KINDS`);
-        * links: length ``model.dist_m``; r, x and ampacity of the overhead line type
-          (``inp.params.overhead``) where ``model.overhead`` is set, else of the standard cable
-          (``inp.params.cable``);
+        * links: length ``model.dist_m``; r, x and ampacity of the overhead line type of the district's voltage
+          (``inp.params.overhead_at(inp.vn_kv)``) where ``model.overhead`` is set, else of its standard cable
+          (``inp.params.cable_at(inp.vn_kv)``);
         * ``g`` and the power factor of the LV version (``inp.lv``), the nominal voltage ``inp.vn_kv`` and the
           limits of :func:`ring_limits`.
         """
@@ -446,7 +446,7 @@ class RingEvaluator:
         installed, units, fixed = coincidence.node_stats(rows)
         kinds = rows["kind"].astype(str).to_numpy()
         params = inp.params
-        cable, overhead = params.cable, params.overhead
+        cable, overhead = params.cable_at(inp.vn_kv), params.overhead_at(inp.vn_kv)
         n = len(rows)
         oh = np.asarray(model.overhead, dtype=bool)
         if oh.shape != (n, n):

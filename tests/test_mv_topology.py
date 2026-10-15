@@ -131,7 +131,7 @@ def fakes(monkeypatch):
 # ============================================================================================ synthetic districts
 def make_params(**changes) -> MvParameters:
     params = MvParameters().replace(**changes) if changes else MvParameters()
-    params._types.update(cable=CABLE, overhead=OVERHEAD)
+    params._types.update({("cable", 20.0): CABLE, ("overhead", 20.0): OVERHEAD})       # the 20 kV district types
     return params
 
 

@@ -5,9 +5,10 @@ The types are pandapower standard types, resolved once per MV variant into the f
 snapshot by :class:`~pylovo.mv_grid.parameters.MvParameters`). pandapower is imported on the first lookup only.
 
 * Lines: one standard cable and one overhead line type per nominal voltage, by default the most used types in
-  German MV grids (:data:`DEFAULT_LINE_TYPES`; ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE`` choose others). A
-  line that is partly cable (inside settlements) and partly overhead line gets length-weighted parameters
-  (:func:`mixed_parameters`).
+  German MV grids (:data:`DEFAULT_LINE_TYPES`; ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE`` choose others; with
+  ``MV_NOMINAL_VOLTAGE_KV`` auto the 10 kV districts take the same conductor for 10 kV,
+  :func:`line_type_name_at`). A line that is partly cable (inside settlements) and partly overhead line gets
+  length-weighted parameters (:func:`mixed_parameters`).
 * HV/MV transformers: the pandapower types ``25/40/63 MVA 110/20 kV`` (``110/10 kV`` at 10 kV). pandapower has no
   31.5 MVA type; it is interpolated between 25 and 40 MVA with rounded data-sheet values
   (:data:`INTERPOLATED_HV_MV`) and flagged ``interpolated``. Other sizes are rejected.
@@ -40,6 +41,9 @@ DEFAULT_LINE_TYPES: dict[float, tuple[str, str]] = {
 
 #: pandapower line ``type`` per line kind of the MV stage.
 PANDAPOWER_LINE_KIND: dict[str, str] = {"cs": "cable", "ol": "overhead"}
+
+#: Insulation voltage ``U0/U`` of the MV cables per nominal voltage, as in the pandapower type names.
+CABLE_INSULATION: dict[float, str] = {20.0: "12/20", 10.0: "6/10"}
 
 #: HV side of the HV/MV transformers in kV.
 HV_KV: float = 110.0
@@ -114,6 +118,37 @@ def line_type(name: str) -> LineType:
         raise ValueError(f"pandapower line type {name!r} names no rated voltage (cables end with 'U0/U kV', "
                          "overhead lines with the voltage)")
     return LineType(name=name, kind=kind, vn_kv=vn_kv, **{key: float(data[key]) for key in _LINE_PARAMETERS})
+
+
+def line_type_name_at(name: str, vn_kv: float) -> str:
+    """The pandapower name of the same conductor for another nominal voltage (``MV_NOMINAL_VOLTAGE_KV`` auto).
+
+    A name rated for ``vn_kv`` is returned as it is. A cable takes the insulation of the voltage
+    (:data:`CABLE_INSULATION`: ``NA2XS2Y 1x150 RM/25 12/20 kV`` -> ``NA2XS2Y 1x150 RM/25 6/10 kV``), an overhead
+    line the voltage at the end of its name (``48-AL1/8-ST1A 20.0`` -> ``48-AL1/8-ST1A 10.0``).
+
+    Raises:
+        ValueError: If the name rates no voltage, a cable has no insulation for ``vn_kv``, or pandapower has no
+            type of that name.
+    """
+    vn = float(vn_kv)
+    rated = rated_kv(name)
+    if rated is None:
+        raise ValueError(f"{name!r} names no rated voltage (cables end with 'U0/U kV', overhead lines with the "
+                         "voltage)")
+    if math.isclose(rated, vn):
+        return name
+    cable = _CABLE_VOLTAGE.search(name)
+    if cable is not None:
+        if vn not in CABLE_INSULATION:
+            raise ValueError(f"there is no cable insulation for {vn:g} kV (known: "
+                             f"{', '.join(f'{v:g}' for v in CABLE_INSULATION)} kV)")
+        other = f"{name[:cable.start()]}{CABLE_INSULATION[vn]} kV"
+    else:
+        other = f"{name[:_OVERHEAD_VOLTAGE.search(name).start()]} {vn:.1f}"
+    if other not in _std_types()["line"]:
+        raise ValueError(f"pandapower has no {vn:g} kV type of the conductor of {name!r} ({other!r})")
+    return other
 
 
 def default_line_types(vn_kv: float) -> tuple[str, str]:
