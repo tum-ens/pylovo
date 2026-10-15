@@ -159,17 +159,33 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     assert out[2].startswith("✗ mv1/d1: partial") and ", stale" in out[2]
 
 
-def test_couple_and_coupled_export_need_the_coupling_module(monkeypatch, capsys):
-    monkeypatch.setitem(sys.modules, "pylovo.mv_grid.coupling", None)       # import fails
-    for argv in (["couple", "--version", "mv1", "--variant", "d1"],
-                 ["export", "--version", "mv1", "--variant", "d1", "--grid", "3", "--output", "x.json",
-                  "--coupled"]):
-        with pytest.raises(SystemExit) as exc:
-            cli.main(argv)
-        assert exc.value.code == 1
+def test_couple_and_coupled_export_delegate_to_the_coupling_module(monkeypatch, capsys, tmp_path):
+    from pylovo.mv_grid import coupling
+
+    calls = []
+
+    def run_coupling(version_id, variant_id, mv_grid_ids=None, *, jobs, merged):
+        calls.append(("couple", version_id, variant_id, mv_grid_ids, jobs, merged))
+        status = "done" if merged else "partial"
+        return coupling.CouplingSummary(version_id, variant_id, status, 2, 2 if merged else 1, 0, 1.0,
+                                        partial=0 if merged else 1, warnings=[] if merged else ["MV grid 4 partial"])
+
+    monkeypatch.setattr(coupling, "run_coupling", run_coupling)                # never the database
+    monkeypatch.setattr(coupling, "export_coupled_net",
+                        lambda *a, **k: calls.append(("export", a, k)) or Path(a[3]))
+    cli.main(["couple", "--version", "mv1", "--variant", "d1"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["couple", "--version", "mv1", "--variant", "d1", "--grid", "3", "4", "--no-merged"])
+    assert exc.value.code == 1
+    cli.main(["export", "--version", "mv1", "--variant", "d1", "--grid", "3", "--output", str(tmp_path / "c.json"),
+              "--coupled", "--case", "n1b"])
+    assert calls == [("couple", "mv1", "d1", None, 2, True), ("couple", "mv1", "d1", [3, 4], 2, False),
+                     ("export", ("mv1", "d1", 3, tmp_path / "c.json"), {"case": "n1b"})]
     out = capsys.readouterr().out.splitlines()
-    assert out == ["✗ pylovo-mv couple is not available in this build",
-                   "✗ pylovo-mv export --coupled is not available in this build"]
+    assert out[0].startswith("✓ Coupling of MV variant d1 of version mv1: done, 2 of 2 grids done")
+    assert out[1].startswith("✗ Coupling of MV variant d1 of version mv1: partial, 1 of 2 grids done, 1 partial")
+    assert out[2] == "✗ MV grid 4 partial"
+    assert out[3].startswith("✓ Wrote MV grid 3 (n1b)")
 
 
 def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):

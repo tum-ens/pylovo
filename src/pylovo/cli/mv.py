@@ -3,7 +3,7 @@
 Subcommands:
 
 - ``generate``: run the MV stage for one MV variant of an LV version (:func:`pylovo.mv_grid.stage.run_mv_stage`).
-- ``couple``: LV design-point check and merged MV+LV power flows of a done variant (needs the coupling module).
+- ``couple``: LV design-point check and merged MV+LV power flows of a done variant.
 - ``delete``: delete MV variants of a version.
 - ``list``: list the MV variants (status, PLZ, grids, km, stale).
 - ``graph``: build or reuse the MV routing graph of a region and print its QA tables.
@@ -106,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--grid", type=int, required=True, help="MV grid id")
     export.add_argument("--output", type=Path, required=True, help="JSON file to write")
     export.add_argument("--case", choices=CASES, default="load")
-    export.add_argument("--coupled", action="store_true", help="the merged MV+LV net (needs the coupling module)")
+    export.add_argument("--coupled", action="store_true", help="the merged MV+LV net with its LV grids")
     return parser
 
 
@@ -160,15 +160,10 @@ def _generate(args: argparse.Namespace) -> int:
 
 
 def _couple(args: argparse.Namespace) -> int:
-    try:
-        from pylovo.mv_grid import coupling
-    except ImportError:
-        print("✗ pylovo-mv couple is not available in this build")
-        return 1
+    from pylovo.mv_grid import coupling
+
     summary = coupling.run_coupling(args.version, args.variant, args.grids, jobs=args.jobs, merged=args.merged)
-    mark = "✓" if summary.status == "done" else "✗"
-    print(f"{mark} Coupling of MV variant {args.variant} of version {args.version}: {summary.status}, "
-          f"{summary.done} of {summary.grids} grids done, {summary.failed} failed, {summary.elapsed_s:.0f} s")
+    print(summary.describe())
     return 0 if summary.status == "done" else 1
 
 
@@ -222,11 +217,8 @@ def _graph(args: argparse.Namespace) -> int:
 
 def _export(args: argparse.Namespace) -> int:
     if args.coupled:
-        try:
-            from pylovo.mv_grid import coupling
-        except ImportError:
-            print("✗ pylovo-mv export --coupled is not available in this build")
-            return 1
+        from pylovo.mv_grid import coupling
+
         path = coupling.export_coupled_net(args.version, args.variant, args.grid, args.output, case=args.case)
     else:
         from pylovo.mv_grid import stage
@@ -260,7 +252,6 @@ def main(argv: list[str] | None = None) -> None:
         code = 1
     if code:
         sys.exit(code)
-
 
 
 if __name__ == "__main__":
