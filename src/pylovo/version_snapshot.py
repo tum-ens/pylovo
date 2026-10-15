@@ -48,6 +48,12 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
 MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
     # Before MV_NOMINAL_VOLTAGE_KV auto every variant had one fixed nominal voltage, which no threshold changes.
     ("voltage", "mv_10kv_min_density_mva_km2"): 8.0,
+    # Before the hall rule the MV load of a customer was its LV load (no building counted as a hall).
+    ("loads", "customer_hall_min_footprint_m2"): None,
+    # Before the station-busbar customers every MV customer had an own MV node.
+    ("loads", "customer_min_mv_kw"): 0.0,
+    # Station-busbar customers came without a distance limit.
+    ("loads", "busbar_customer_max_m"): None,
 }
 
 

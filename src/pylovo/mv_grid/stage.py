@@ -403,6 +403,8 @@ def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes,
             if column in stations.columns else 0.0
     customers = inputs.customer_table(dbc.mv_customer_rows(version_id, plz, lv), lv, params)
     stations, customers = inputs.busbar_customers(stations, customers, params)
+    stations = inputs.upsize_busbar_stations(stations, lv)
+    customers.attrs["n_upsized_stations"] = stations.attrs.get("n_upsized", 0)
     logger.info(inputs.describe_customers(customers.attrs, params))
     generators = locations[node_mask].reset_index(drop=True)
     rows = inputs.node_rows(stations, customers, generators, sites, params).reset_index(drop=True)

@@ -69,6 +69,8 @@ DENSE_SUFFIX: str = "_10kv"
 _TYPE_FIELDS = frozenset({"vn_kv", *RESOLVED_FIELDS})
 #: The non-residential consumer categories (the MV customers): their specific peak load per m² is read.
 NONRESIDENTIAL_CATEGORIES: tuple[str, ...] = tuple(c for c in CATEGORIES if c != "Residential")
+#: Station ratings of pylovo's default ``TRANSFORMER_MAPPING`` (kVA), for LV snapshots without a catalogue.
+DEFAULT_STATION_RATINGS_KVA: tuple[float, ...] = (250.0, 400.0, 630.0)
 
 
 class MvStageError(RuntimeError):
@@ -136,8 +138,9 @@ class MvParameters:
     # loads
     dedicated_feeder_kw: float = _y("dedicated_feeder_kw")
     hv_customer_kw: float = _y("hv_customer_kw")
-    customer_hall_min_footprint_m2: float = _y("customer_hall_min_footprint_m2")
+    customer_hall_min_footprint_m2: float | None = _y("customer_hall_min_footprint_m2")   # None: no hall rule
     customer_min_mv_kw: float = _y("customer_min_mv_kw")
+    busbar_customer_max_m: float | None = _y("busbar_customer_max_m")                     # None: no limit
     # generation
     generator_lv_side_kw: float = _y("generator_lv_side_kw")
     generator_fallback_kw: dict[str, float] = _c("generator_fallback_kw")
@@ -508,6 +511,11 @@ class LvVersionParameters:
     # W/m² of the gross floor area per non-residential category (consumer_categories.peak_load_per_m2); empty in
     # the lv_parameters of variants stored before it was read
     peak_load_per_m2: dict[str, float] = field(default_factory=dict)
+    # TRANSFORMER_PLANNING_UTILIZATION and TRANSFORMER_MAPPING (settlement type as text -> station ratings in kVA)
+    # of the LV version: the capacity check of the stations with station-busbar customers (1.0 and empty in the
+    # lv_parameters of variants stored before they were read)
+    transformer_planning_utilization: float = 1.0
+    transformer_mapping: dict[str, list[float]] = field(default_factory=dict)
 
     @classmethod
     def from_generation_parameters(cls, version_id: str, gp: dict | str | None) -> "LvVersionParameters":
@@ -557,6 +565,11 @@ class LvVersionParameters:
         if reference is not None:
             reference = _number(reference, "LV reference voltage", version_id, low=0.8, high=1.2)
         placement = gp.get("transformer_placement") or {}
+        utilization = placement.get("transformer_planning_utilization")
+        utilization = 1.0 if utilization is None else _number(utilization, "transformer planning utilization",
+                                                                version_id, low=0.0, low_open=True)
+        mapping = {str(k): sorted(float(v) for v in (values or []) if isinstance(v, (int, float)) and v > 0)
+                   for k, values in (placement.get("transformer_mapping") or {}).items()}
         return cls(
             version_id=str(version_id),
             sim_factor=sim_factor,
@@ -569,6 +582,8 @@ class LvVersionParameters:
             use_manual=bool(placement.get("use_manual_transformer_positions", False)),
             electrical_backend=str(backend),
             peak_load_per_m2=peak_load_per_m2,
+            transformer_planning_utilization=utilization,
+            transformer_mapping={k: v for k, v in mapping.items() if v},
         )
 
     @classmethod
@@ -577,7 +592,24 @@ class LvVersionParameters:
         values = dict(data)
         values["sim_factor"] = dict(values["sim_factor"])
         values["peak_load_per_m2"] = dict(values.get("peak_load_per_m2") or {})
+        values["transformer_mapping"] = {str(k): [float(x) for x in v]
+                                         for k, v in (values.get("transformer_mapping") or {}).items()}
         return cls(**values)
+
+    def station_ratings(self, settlement_type: Any = None) -> list[float]:
+        """The catalogue ratings (kVA, ascending) of the LV version for a station of a PLZ settlement type
+        (``TRANSFORMER_MAPPING``); an unknown type takes every rating of the catalogue, a version without one
+        pylovo's default ratings (:data:`DEFAULT_STATION_RATINGS_KVA`)."""
+        key = None
+        try:
+            if settlement_type is not None and not (isinstance(settlement_type, float) and np.isnan(settlement_type)):
+                key = str(int(settlement_type))
+        except (TypeError, ValueError):
+            key = None
+        if key in self.transformer_mapping:
+            return sorted(self.transformer_mapping[key])
+        every = sorted({float(v) for values in self.transformer_mapping.values() for v in values})
+        return every or list(DEFAULT_STATION_RATINGS_KVA)
 
     def g(self) -> np.ndarray:
         """The sim factors in :data:`~pylovo.mv_grid.model.CATEGORIES` order."""
@@ -588,4 +620,6 @@ class LvVersionParameters:
         values = dataclasses.asdict(self)
         values["sim_factor"] = {c: float(self.sim_factor[c]) for c in CATEGORIES}
         values["peak_load_per_m2"] = {str(c): float(v) for c, v in self.peak_load_per_m2.items()}
+        values["transformer_planning_utilization"] = float(self.transformer_planning_utilization)
+        values["transformer_mapping"] = {str(k): [float(x) for x in v] for k, v in self.transformer_mapping.items()}
         return values

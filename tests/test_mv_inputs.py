@@ -262,7 +262,8 @@ def test_busbar_customers_keep_the_totals(seed):
                           nonresidential_floor_area=area, footprint_m2=area / rng.integers(1, 5, n_cu),
                           x=rng.uniform(0, 5000, n_cu), y=rng.uniform(0, 5000, n_cu))
     customers = inputs.customer_table(rows, lv, PARAMS)
-    st, kept = inputs.busbar_customers(stations, customers, PARAMS)
+    unlimited = PARAMS.replace(busbar_customer_max_m=None)               # every small customer at a station busbar
+    st, kept = inputs.busbar_customers(stations, customers, unlimited)
     small = customers["installed_kw"] < PARAMS.customer_min_mv_kw
     assert 0 < small.sum() < n_cu and len(kept) == (~small).sum()
     records = [inputs.busbar_record(s) for s in st["load_stats"]]
@@ -279,6 +280,76 @@ def test_busbar_customers_keep_the_totals(seed):
     for c in customers[small].itertuples():
         nearest = int(np.argmin(np.hypot(xy["x"] - c.x, xy["y"] - c.y)))
         assert station_of[c.objectid] == xy.index[nearest]
+
+
+def test_small_customers_beyond_the_distance_limit_keep_their_node():
+    lv = _lv()
+    stations = inputs.station_table(_stations([1, 2]).assign(x=[0.0, 100.0]),
+                                    pd.DataFrame(columns=["grid_result_id", "category", "installed_kw", "units"]), lv)
+    rows = _customer_rows(nonresidential_use=["Commercial"] * 3, installed_kw=[100.0, 120.0, 150.0],
+                          x=[1000.0, 1100.0, 1101.0], y=[0.0, 0.0, 0.0])   # 900 m, 1,000 m and 1,001 m from station 2
+    customers = inputs.customer_table(rows, lv, PARAMS)
+    assert PARAMS.busbar_customer_max_m == 1000.0
+    st, kept = inputs.busbar_customers(stations, customers, PARAMS)
+    assert inputs.busbar_record(st.set_index("grid_result_id").loc[2, "load_stats"])["objectids"] == ["c0", "c1"]
+    assert kept["objectid"].tolist() == ["c2"] and kept.loc[0, "flags"] == ["remote_small_customer"]
+    assert (kept.attrs["n_busbar"], kept.attrs["n_remote"]) == (2, 1)
+    assert kept.attrs["remote_kw"] == pytest.approx(0.5 * 150.0)
+    assert "1 below 200 kW farther than 1,000 m from every station keep an own MV node" in inputs.describe_customers(
+        kept.attrs, PARAMS)
+    _, all_remote = inputs.busbar_customers(stations, customers, PARAMS.replace(busbar_customer_max_m=500.0))
+    assert len(all_remote) == 3 and all_remote.attrs["n_busbar"] == 0 and all_remote.attrs["n_remote"] == 3
+    _, unlimited = inputs.busbar_customers(stations, customers, PARAMS.replace(busbar_customer_max_m=None))
+    assert unlimited.empty and unlimited.attrs["n_busbar"] == 3
+
+
+def test_overloaded_busbar_stations_get_the_next_catalogue_rating():
+    """LV peak + busbar customers above rating x TRANSFORMER_PLANNING_UTILIZATION: the next catalogue rating of the
+    PLZ settlement type (pylovo's choice for load / utilization), above the catalogue n x 630 kVA."""
+    lv = _lv(transformer_planning_utilization=0.8,
+             transformer_mapping={"1": [100.0, 160.0, 250.0, 400.0], "2": [250.0, 400.0, 630.0]})
+    record = {"n": 1, "kw": 50.0, "installed_kw": 100.0, "categories": {}, "objectids": ["c0"],
+              "max_distance_m": 10.0}
+    stations = pd.DataFrame({
+        "grid_result_id": [1, 2, 3, 4, 5, 6], "sn_kva": [400.0, 400.0, 400.0, 400.0, 400.0, np.nan],
+        "p_own_kw": [270.0, 300.0, 300.0, 600.0, 340.0, 300.0], "plz_settlement_type": [2, 2, 1, 1, 2, 2],
+        "load_stats": [{"busbar_customers": record}] * 4 + [{"Residential": [1.0, 1.0]}, {"busbar_customers": record}],
+        "flags": [["busbar_customers"]] * 4 + [[], ["busbar_customers"]]})
+    out = inputs.upsize_busbar_stations(stations, lv)
+    assert out["sn_kva"].tolist()[:5] == [400.0, 630.0, 630.0, 1260.0, 400.0] and np.isnan(out["sn_kva"].iloc[5])
+    # 1: 320 kW = 400 x 0.8 fits; 2: 350 kW needs 437.5 kVA -> 630 (type 2); 3: rural catalogue ends at 400 ->
+    # 1 x 630; 4: 650 kW needs 812.5 kVA -> 2 x 630; 5: no busbar customers; 6: no rating
+    assert out.attrs["n_upsized"] == 3
+    two = inputs.busbar_record(out["load_stats"].iloc[1])
+    assert (two["lv_sn_kva"], two["upsized_sn_kva"], two["load_kw"]) == (400.0, 630.0, 350.0)
+    assert out["flags"].iloc[1] == ["busbar_customers", "station_busbar_overload"]
+    assert out["flags"].iloc[0] == ["busbar_customers"] and "lv_sn_kva" not in inputs.busbar_record(
+        out["load_stats"].iloc[0])
+    assert stations["sn_kva"].tolist()[:5] == [400.0] * 5                 # the input stays
+    text = json.dumps(dict(out["load_stats"].iloc[3]))                     # a JSON record (as stored) works too
+    again = inputs.upsize_busbar_stations(stations.assign(load_stats=[text] * 6), lv)
+    assert again["sn_kva"].iloc[3] == 1260.0
+    assert "3 stations upsized" in inputs.describe_customers({"n_upsized_stations": 3}, PARAMS)
+
+
+def test_upsized_station_rating_survives_the_database_round_trip():
+    from pylovo.database.mv_result_mixin import node_columns_frame
+
+    lv = _lv(transformer_planning_utilization=0.8, transformer_mapping={"2": [250.0, 400.0, 630.0]})
+    stations, customers = _split_case()
+    stations = stations.assign(sn_kva=[50.0, 400.0, 400.0])
+    st, kept = inputs.busbar_customers(stations, customers, PARAMS)
+    st = inputs.upsize_busbar_stations(st, lv)
+    # station 1: 23.5 kW LV peak + 25 kW busbar customer > 0.8 x 50 kVA -> the smallest catalogue rating, 250 kVA
+    assert st["sn_kva"].tolist() == [250.0, 400.0, 400.0]
+    sites = pd.DataFrame({"substation_id": [41], "x": [0.0], "y": [0.0]})
+    rows = inputs.node_rows(st, kept, pd.DataFrame(), sites, PARAMS)
+    stored = rows.assign(mv_node_id=np.arange(1, len(rows) + 1),
+                         load_stats=[None if not isinstance(s, dict) else json.dumps(s) for s in rows["load_stats"]])
+    nodes = node_columns_frame(stored)
+    stations_out = nodes[nodes["kind"] == "station"]
+    assert stations_out["sn_kva"].tolist() == [250.0, 400.0, 400.0]
+    assert stations_out["lv_sn_kva"].tolist() == [50.0, 400.0, 400.0]
 
 
 def test_busbar_customers_without_stations_keep_their_nodes(caplog):

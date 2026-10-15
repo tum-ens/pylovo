@@ -1203,6 +1203,23 @@ def station_transformer(sn_kva: float) -> tuple[float, float]:
     return STATION_TRANSFORMERS[-1][1], STATION_TRANSFORMERS[-1][2]
 
 
+def station_drop_ratio(lv_sn_kva: float, sn_kva: float, power_factor: float) -> float:
+    """The transformer drop of a station with the rating ``sn_kva`` of the MV model per drop with the rating
+    ``lv_sn_kva`` of its LV grid, at the same load: ``(vkr cos φ + vkx sin φ) / S_n`` of the two ratings
+    (:func:`station_transformer`). It scales the stored LV requirement of a station upsized for its
+    station-busbar customers (``inputs.upsize_busbar_stations``); 1 without two positive ratings."""
+    if not (math.isfinite(lv_sn_kva) and math.isfinite(sn_kva) and lv_sn_kva > 0 and sn_kva > 0) \
+            or abs(sn_kva - lv_sn_kva) < 1e-9:
+        return 1.0
+    sin_phi = math.sqrt(max(1.0 - float(power_factor) ** 2, 0.0))
+
+    def drop(rating: float) -> float:
+        vk, vkr = station_transformer(rating)
+        return (vkr * float(power_factor) + math.sqrt(max(vk * vk - vkr * vkr, 0.0)) * sin_phi) / rating
+
+    return drop(sn_kva) / drop(lv_sn_kva)
+
+
 def _transformer_rise(row: pd.Series, p_kw: float, q_kvar: float, params: Any) -> float:
     """Voltage rise (p.u.) over the station transformer in the feed-in cases (reverse flow), the largest case.
 
@@ -1251,8 +1268,10 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
         band_conflict = min(margin_low(t*), margin_high(t*)) < 0;  tap_limit = margin_low(t*) < 0
 
     ``rise_T`` is the reverse-flow rise over the station transformer (:func:`station_transformer` values, the
-    station's normal-case load and its LV-side generation). Without a converged feed-in case the tap is the one
-    closest to 0 that meets the LV design point (else the most raising one) and the feed-in values are NaN.
+    station's normal-case load and its LV-side generation). A station upsized in the MV model for its
+    station-busbar customers (``sn_kva`` above ``lv_sn_kva``) scales ``dT`` by :func:`station_drop_ratio`.
+    Without a converged feed-in case the tap is the one closest to 0 that meets the LV design point (else the most
+    raising one) and the feed-in values are NaN.
 
     Stations are skipped (no entry) when the LV version has no ``lv_reference_voltage_pu``, the station has no
     stored requirement, or the load case gives it no voltage (not converged or unsupplied); :func:`node_flags`
@@ -1283,7 +1302,9 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
         v_load = float(vm_load.get(key, math.nan))
         if not (math.isfinite(r) and math.isfinite(v_load)):
             continue
-        d_t = r - float(lv_ref)
+        ratio = station_drop_ratio(_value(row, "lv_sn_kva", math.nan), _value(row, "sn_kva", math.nan),
+                                   float(inp.lv.power_factor))
+        d_t = (r - float(lv_ref)) * ratio
         lv_bus = (v_load - band) * k - d_t
         margin_low = lv_bus - floor
         v_feed = float(vm_feed.get(key, math.nan)) if len(vm_feed) else math.nan

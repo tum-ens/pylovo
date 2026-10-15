@@ -8,7 +8,8 @@ The region step of the MV stage turns the rows read by :class:`~pylovo.database.
 * :func:`customer_table`: the MV customers with their MV load (halls count one storey), fixed load
   ``g_c x installed`` and connection class.
 * :func:`busbar_customers`: customers below ``customer_min_mv_kw`` get no MV node; they hang on the busbar of the
-  nearest station.
+  nearest station within ``busbar_customer_max_m``; :func:`upsize_busbar_stations` gives a station that they
+  overload the next catalogue rating (MV model only).
 * :func:`demand_anchor`: the regional coincident MV load per inhabitant.
 * :func:`classify_level`, :func:`aggregate_locations`: MaStR units grouped per grid connection point
   (``LokationMastrNummer``) with the voltage class of the point (DSO-entered ``Spannungsebene``, else by power).
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections import Counter
 from typing import TYPE_CHECKING, Any, Mapping
 
@@ -82,6 +84,8 @@ CUSTOMER_COLUMNS: tuple[str, ...] = (
 )
 #: Key of the station-busbar customers in ``load_stats`` of a station node (:func:`busbar_customers`).
 BUSBAR_CUSTOMERS: str = "busbar_customers"
+#: Unit rating of pylovo's stations above the catalogue (kVA): they get n x 630 kVA (``update_transformer_rated_power``).
+STATION_UNIT_KVA: float = 630.0
 #: A PLZ polygon with less than this share of the PLZ area of the municipal register lies only partly in the
 #: planning region (the data extent cuts it): its population counts pro rata and the demand anchor is approximate.
 PLZ_FULL_AREA_SHARE: float = 0.95
@@ -250,9 +254,10 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
 
     **MV load (hall rule).** The LV stage gives a customer ``nonresidential_floor_area x W/m²`` of its category on
     the gross floor area, whose storeys the building data derive from the height, so large single-storey halls
-    count several storeys. A building with a footprint of at least ``customer_hall_min_footprint_m2`` is a hall:
-    its floor area for the MV load is one storey, ``min(footprint, nonresidential_floor_area)`` (flag
-    ``hall_one_storey`` where this lowers it). ``installed_kw`` = that area x the W/m² of the category in the
+    count several storeys. A building with a footprint of at least ``customer_hall_min_footprint_m2`` (None: no
+    hall rule) is a hall: its floor area for the MV load is one storey, ``min(footprint,
+    nonresidential_floor_area)`` (flag ``hall_one_storey`` where this lowers it). ``installed_kw`` = that area x
+    the W/m² of the category in the
     LV snapshot (``lv.peak_load_per_m2``); the stored LV value is kept as ``lv_installed_kw``. A row without a
     floor area takes the area of its LV load (``lv_installed_kw / W/m²``).
 
@@ -307,7 +312,9 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
     area = _num(frame, "nonresidential_floor_area")
     area = area.where(area > 0, lv_installed * 1000.0 / w_per_m2)
     footprint = _num(frame, "footprint_m2")
-    hall = (footprint >= params.customer_hall_min_footprint_m2) & (footprint < area)
+    hall_m2 = params.customer_hall_min_footprint_m2                       # None: no hall rule
+    hall = (footprint >= hall_m2) & (footprint < area) if hall_m2 is not None \
+        else pd.Series(False, index=frame.index)
     area = area.where(~hall, footprint)
     for i in np.flatnonzero(hall.to_numpy()):
         flags[i].append("hall_one_storey")
@@ -364,7 +371,9 @@ def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
     A customer whose own peak is below ``customer_min_mv_kw`` gets no MV node (eGon-data: MV level above 200 kW
     building peak); the own peak of one building is its ``installed_kw`` after the hall rule (pylovo's law gives
     factor 1 for one unit). It becomes a station-busbar customer of the nearest station node by straight-line
-    distance (k-d tree), so it lies in that station's district. Its MV-level load stays its fixed load
+    distance (k-d tree), so it lies in that station's district, if that station is at most
+    ``busbar_customer_max_m`` away (pylovo's default greenfield station distance); a farther one keeps an own MV
+    node with the flag ``remote_small_customer``. Its MV-level load stays its fixed load
     ``p_fixed_kw = g_c x installed_kw``; the station gets the sum as ``p_fixed_kw`` and the record
     ``load_stats["busbar_customers"]``: ``n``, ``kw`` (fixed load), ``installed_kw``, ``categories``
     (``{category: {"n", "installed_kw", "kw"}}``), ``objectids`` and ``max_distance_m``, plus the flag
@@ -373,13 +382,14 @@ def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
     Args:
         stations: :func:`station_table` rows (``x``, ``y``, ``load_stats``, ``p_fixed_kw``, ``flags``).
         customers: :func:`customer_table` rows.
-        params: MV parameters (``customer_min_mv_kw``).
+        params: MV parameters (``customer_min_mv_kw``, ``busbar_customer_max_m``).
 
     Returns:
         ``(stations, customers)``: new frames; ``customers`` keeps the customers with an own MV node. ``attrs`` of
         the customers (for :func:`describe_customers`): ``n_customers``, ``n_halls``, ``lv_kw`` (fixed load of the
         LV installed loads), ``kw`` (after the hall rule), ``n_busbar``, ``busbar_kw``, ``busbar_installed_kw``,
-        ``n_busbar_stations`` and ``max_busbar_distance_m``.
+        ``n_busbar_stations``, ``max_busbar_distance_m``, ``n_remote`` and ``remote_kw`` (small customers beyond
+        ``busbar_customer_max_m``).
     """
     st = pd.DataFrame(stations).copy()
     cu = pd.DataFrame(customers).copy()
@@ -390,7 +400,7 @@ def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
              "n_halls": int(sum("hall_one_storey" in f for f in _flag_lists(cu))),
              "lv_kw": float((fixed * lv_installed / installed.where(installed > 0)).fillna(0.0).sum()),
              "kw": float(fixed.sum()), "n_busbar": 0, "busbar_kw": 0.0, "busbar_installed_kw": 0.0,
-             "n_busbar_stations": 0, "max_busbar_distance_m": 0.0}
+             "n_busbar_stations": 0, "max_busbar_distance_m": 0.0, "n_remote": 0, "remote_kw": 0.0}
     if not len(cu):
         cu.attrs.update(attrs)
         return st, cu
@@ -406,9 +416,24 @@ def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
     from scipy.spatial import cKDTree
 
     candidates = np.flatnonzero(located)
+    small_rows = np.flatnonzero(small)
+    distance, nearest = cKDTree(xy[located]).query(cu.iloc[small_rows][["x", "y"]].to_numpy(dtype=float))
+    limit = params.busbar_customer_max_m
+    near = np.ones(len(small_rows), dtype=bool) if limit is None else np.asarray(distance) <= float(limit)
+    remote = np.zeros(len(cu), dtype=bool)
+    remote[small_rows[~near]] = True
+    if remote.any():
+        cu["flags"] = _flag_lists(cu)
+        for i in np.flatnonzero(remote):
+            cu["flags"].iloc[i].append("remote_small_customer")
+        attrs.update(n_remote=int(remote.sum()), remote_kw=float(fixed[remote].sum()))
+    small = small & ~remote
+    if not small.any():
+        cu.attrs.update(attrs)
+        return st, cu
     part = cu[small]
-    distance, nearest = cKDTree(xy[located]).query(part[["x", "y"]].to_numpy(dtype=float))
-    row_of = candidates[np.asarray(nearest, dtype=np.int64)]
+    distance = np.asarray(distance)[near]
+    row_of = candidates[np.asarray(nearest, dtype=np.int64)[near]]
     st["load_stats"] = [dict(s) if isinstance(s, Mapping) else {} for s in st.get("load_stats", [None] * len(st))]
     st["p_fixed_kw"] = _num(st, "p_fixed_kw").fillna(0.0)
     st["flags"] = _flag_lists(st)
@@ -436,14 +461,80 @@ def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
 
 
 def describe_customers(attrs: Mapping[str, Any], params: "MvParameters") -> str:
-    """One log line of the MV customers from the ``attrs`` of :func:`busbar_customers`."""
+    """One log line of the MV customers from the ``attrs`` of :func:`busbar_customers` (and ``n_upsized_stations``
+    of :func:`upsize_busbar_stations`)."""
     own = attrs.get("n_customers", 0) - attrs.get("n_busbar", 0)
-    return (f"MV customers: {attrs.get('n_customers', 0)} ({attrs.get('lv_kw', 0.0) / 1000:.1f} MW coincident with "
+    text = (f"MV customers: {attrs.get('n_customers', 0)} ({attrs.get('lv_kw', 0.0) / 1000:.1f} MW coincident with "
             f"the LV loads, {attrs.get('kw', 0.0) / 1000:.1f} MW with {attrs.get('n_halls', 0)} halls counted one "
             f"storey); {own} own MV nodes ({(attrs.get('kw', 0.0) - attrs.get('busbar_kw', 0.0)) / 1000:.1f} MW), "
             f"{attrs.get('n_busbar', 0)} below {params.customer_min_mv_kw:g} kW at "
             f"{attrs.get('n_busbar_stations', 0)} station busbars ({attrs.get('busbar_kw', 0.0) / 1000:.1f} MW, at "
             f"most {attrs.get('max_busbar_distance_m', 0.0):,.0f} m away)")
+    if attrs.get("n_remote"):
+        limit = params.busbar_customer_max_m
+        text += (f", {attrs['n_remote']} below {params.customer_min_mv_kw:g} kW farther than "
+                 f"{limit:,.0f} m from every station keep an own MV node ({attrs.get('remote_kw', 0.0) / 1000:.1f} MW)"
+                 if limit is not None else f", {attrs['n_remote']} remote small customers keep an own MV node")
+    if attrs.get("n_upsized_stations"):
+        text += f"; {attrs['n_upsized_stations']} stations upsized for their busbar customers (MV model only)"
+    return text
+
+
+def upsize_busbar_stations(stations: pd.DataFrame, lv: "LvVersionParameters") -> pd.DataFrame:
+    """Give a station that its station-busbar customers overload a larger rating in the MV model (DESIGN §3.5).
+
+    A station with station-busbar customers (:func:`busbar_customers`) is overloaded when its LV coincident peak
+    (``p_own_kw``, pylovo's station design load) plus the fixed load of its busbar customers exceeds its rating
+    times ``TRANSFORMER_PLANNING_UTILIZATION`` of the LV version (pylovo compares the kW with the kVA). It then
+    gets pylovo's rating for that load: the smallest catalogue rating of the LV version for its PLZ settlement type
+    above ``load / utilization`` (``TRANSFORMER_MAPPING``, :meth:`LvVersionParameters.station_ratings`), above the
+    catalogue n x 630 kVA (:data:`STATION_UNIT_KVA`). The new rating replaces ``sn_kva``; its busbar record keeps
+    ``lv_sn_kva`` (the rating of its LV grid), ``upsized_sn_kva`` and ``load_kw``; the flag is
+    ``station_busbar_overload``. The LV grid is not changed; ``pylovo-mv couple`` uses the upsized transformer.
+
+    Args:
+        stations: Station rows after :func:`busbar_customers` (``sn_kva``, ``p_own_kw``, ``load_stats``,
+            ``plz_settlement_type``, ``flags``).
+        lv: Parameters of the LV version (``transformer_planning_utilization``, ``transformer_mapping``).
+
+    Returns:
+        A new frame; ``attrs['n_upsized']`` counts the upsized stations.
+    """
+    st = pd.DataFrame(stations).copy()
+    st.attrs["n_upsized"] = 0
+    if not len(st) or "load_stats" not in st.columns:
+        return st
+    utilization = float(lv.transformer_planning_utilization)
+    rating = _num(st, "sn_kva")
+    own = _num(st, "p_own_kw").fillna(0.0)
+    settlement = st["plz_settlement_type"] if "plz_settlement_type" in st.columns \
+        else pd.Series(None, index=st.index, dtype=object)
+    stats = list(st["load_stats"])
+    flags = _flag_lists(st)
+    sn_kva = rating.to_numpy(dtype=float).copy()
+    n = 0
+    for i in range(len(st)):
+        record = busbar_record(stats[i])
+        sn = float(sn_kva[i])
+        if not record or not (math.isfinite(sn) and sn > 0):
+            continue
+        load = float(own.iloc[i]) + float(record.get("kw") or 0.0)
+        if load <= sn * utilization * (1.0 + 1e-9):
+            continue
+        need = load / utilization
+        larger = [r for r in lv.station_ratings(settlement.iloc[i]) if r > need]
+        new = larger[0] if larger else math.ceil(need / STATION_UNIT_KVA - 1e-9) * STATION_UNIT_KVA
+        record.update(lv_sn_kva=sn, upsized_sn_kva=float(new), load_kw=load)
+        stats[i] = {**(json.loads(stats[i]) if isinstance(stats[i], str) else dict(stats[i])),
+                    BUSBAR_CUSTOMERS: record}
+        sn_kva[i] = float(new)
+        flags[i].append("station_busbar_overload")
+        n += 1
+    st["load_stats"] = stats
+    st["flags"] = flags
+    st["sn_kva"] = sn_kva
+    st.attrs["n_upsized"] = n
+    return st
 
 
 def demand_anchor(nodes: pd.DataFrame, population: pd.DataFrame, lv: "LvVersionParameters") -> dict:

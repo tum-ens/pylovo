@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import importlib
 import json
 import math
@@ -774,6 +775,35 @@ def test_run_coupling_in_a_fork_pool(fake_db, monkeypatch, tmp_path):
     summary = coupling.run_coupling("t", "d1", jobs=2, log_file=log_file)
     assert summary.status == "done" and summary.done == 2
     assert {p.stem: json.loads(p.read_text())["status"] for p in out_dir.iterdir()} == {"3": "done", "5": "done"}
+
+
+def test_an_upsized_station_is_coupled_with_its_upsized_transformer():
+    """A station that the MV model upsized for its station-busbar customers: couple replaces the 0.4 MVA transformer
+    of its LV net by the upsized one, and the analytic budget (transformer drop scaled) matches the coupled design
+    point."""
+    lv_nets = {gid: make_lv_net(gid, households=60.0, commercial_kw=150.0) for gid in (1, 2, 3)}
+    inp, plan = make_district(lv_nets, [[1, 2, 3]], spacing=400.0)
+    key = 102
+    inp.nodes.loc[key, ["sn_kva", "lv_sn_kva"]] = [630.0, 400.0]
+    design, cases, budgets, stored = planned(inp, plan)
+    stations = station_rows(inp, cases, budgets)
+    record = {"busbar_customers": {"n": 1, "kw": 0.0, "categories": {}, "lv_sn_kva": 400.0,
+                                   "upsized_sn_kva": 630.0}}
+    stations["load_stats"] = [json.dumps(record) if k == key else None for k in stations["mv_node_id"]]
+    assert coupling.upsized_ratings(stations) == {2: 630.0}
+    result = coupling.couple_district(stored, stations, iter(lv_nets.items()), inp.params, inp.lv,
+                                      vn_kv=inp.vn_kv, keep_net=True)
+    assert result.metrics["upsized_stations"] == [key] and result.status == "done"
+    trafo = result.net.trafo[result.net.trafo["grid_result_id"] == 2.0]
+    assert trafo["sn_mva"].tolist() == [0.63] and trafo["std_type"].tolist() == ["0.63 MVA 20/0.4 kV"]
+    assert result.net.trafo.loc[result.net.trafo["grid_result_id"] == 1.0, "sn_mva"].tolist() == [0.4]
+    rows = result.rows.set_index("mv_node_id")
+    assert abs(rows.at[key, "coupled_lv_busbar_vm_pu"] - budgets[key].lv_busbar_vm_pu) < 1e-3
+    # the budget without the scaled drop would miss the coupled design point by several mV
+    plain = electrical.station_budgets(dataclasses.replace(inp, nodes=inp.nodes.assign(lv_sn_kva=630.0)), plan, cases)
+    assert rows.at[key, "coupled_lv_busbar_vm_pu"] - plain[key].lv_busbar_vm_pu > 3e-3
+    upsized = coupling.upsize_station_transformer(lv_nets[2], 1260.0)
+    assert upsized.trafo[["sn_mva", "parallel"]].values.tolist() == [[0.63, 2]] and lv_nets[2].trafo.at[0, "sn_mva"] == 0.4
 
 
 def test_run_coupling_gives_each_district_its_own_voltage(fake_db, monkeypatch):

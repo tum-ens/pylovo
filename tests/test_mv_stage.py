@@ -528,7 +528,15 @@ def region_modules(monkeypatch):
         return stations, customers
 
     inputs.busbar_customers = busbar_customers
-    inputs.describe_customers = lambda attrs, params: "MV customers"
+
+    def upsize(stations, lv):
+        recorded["upsize_lv"] = lv
+        out = stations.copy()
+        out.attrs["n_upsized"] = 1
+        return out
+
+    inputs.upsize_busbar_stations = upsize
+    inputs.describe_customers = lambda attrs, params: f"MV customers, {attrs.get('n_upsized_stations')} upsized"
     inputs.aggregate_locations = lambda units, params: pd.DataFrame({
         "mastr_connection_id": ["SEL1", "SEL2", "SEL3"], "x": [50.0, 60.0, 70.0], "y": 0.0,
         "gen_solar_kw": [800.0, 30.0, 50000.0], "treatment": ["node", "lv_side", "excluded"]})
@@ -579,6 +587,7 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert region_modules["generators"]["mastr_connection_id"].tolist() == ["SEL1"]
     assert region_modules["stations"]["gen_solar_kw"].tolist() == [30.0, 0.0]
     assert region_modules["split"] == 1                                   # the small customers are split off
+    assert region_modules["upsize_lv"] is LV                              # then overloaded stations are upsized
     nodes = db.inserted_nodes
     assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer", "generator"]
     # the customer moves to its street transfer point

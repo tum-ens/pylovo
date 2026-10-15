@@ -717,6 +717,29 @@ def test_station_budget_far_rural_pv_station_has_a_band_conflict():
     assert budget.tap_limit and budget.band_conflict and budget.tap_pos == -2
 
 
+def test_station_drop_ratio_of_an_upsized_station():
+    sin = math.sqrt(1 - 0.95 ** 2)
+    expected = ((1.206 * 0.95 + math.sqrt(36 - 1.206 ** 2) * sin) / 630) / (
+        (1.425 * 0.95 + math.sqrt(36 - 1.425 ** 2) * sin) / 400)
+    assert electrical.station_drop_ratio(400.0, 630.0, 0.95) == pytest.approx(expected) == pytest.approx(0.596, abs=1e-3)
+    assert electrical.station_drop_ratio(630.0, 1260.0, 0.95) == pytest.approx(0.5)   # two units of the same type
+    for lv_sn, sn in ((400.0, 400.0), (math.nan, 630.0), (0.0, 630.0), (400.0, math.nan)):
+        assert electrical.station_drop_ratio(lv_sn, sn, 0.95) == 1.0
+
+
+def test_station_budget_of_an_upsized_station_scales_the_transformer_drop():
+    """A station upsized in the MV model (sn_kva 630 for an LV grid with 400 kVA) keeps the stored requirement of
+    its LV grid, but its transformer drop at the LV design load shrinks: the LV busbar is higher."""
+    inp, plan, (s1, s2) = _budget_district(lv_design_source_vm_pu=0.975)
+    cases = _budget_cases({s1: 1.0, s2: 1.0}, {s1: 1.02, s2: 1.02})
+    before = electrical.station_budgets(inp, plan, cases)[s1]
+    inp.nodes.loc[s1, ["sn_kva", "lv_sn_kva"]] = [630.0, 400.0]
+    after = electrical.station_budgets(inp, plan, cases)[s1]
+    ratio = electrical.station_drop_ratio(400.0, 630.0, inp.lv.power_factor)
+    assert after.tap_pos == before.tap_pos == 0
+    assert after.lv_busbar_vm_pu - before.lv_busbar_vm_pu == pytest.approx((0.975 - 0.96) * (1 - ratio))
+
+
 def test_station_budget_skips_and_flags():
     inp, plan, (s1, s2) = _budget_district()
     inp.nodes.loc[s2, "lv_design_source_vm_pu"] = math.nan

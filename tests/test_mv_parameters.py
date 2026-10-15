@@ -127,7 +127,8 @@ EXPECTED_SNAPSHOT = {
                   "overhead_10kv": record(LINE_TYPES["48-AL1/8-ST1A 10.0"]),
                   "hv_mv_types_10kv": [record(fake_hv_mv_type(s, 10.0)) for s in (25.0, 31.5, 40.0, 63.0)]},
     "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0,
-              "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0},
+              "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0,
+              "busbar_customer_max_m": 1000.0},
     "generation": {"lv_side_kw": 200.0, "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
                    "mv_gen_cos_phi": 0.95, "lv_pv_cos_phi": 1.0, "include_storage": False},
     "cases": {"feed_in_wind": {"load_p": 0.1, "load_q": 0.123, "wind": 1.0, "solar": 0.8, "other": 1.0},
@@ -250,6 +251,9 @@ def test_parse_assignment():
     assert parse_assignment("generator_fallback_kw={lv: 1, mvlv: 2, mv: 3, hvmv: 4}")[1]["hvmv"] == 4.0
     assert parse_assignment("customer_min_mv_kw=300") == ("customer_min_mv_kw", 300.0)
     assert parse_assignment("customer_hall_min_footprint_m2=1500") == ("customer_hall_min_footprint_m2", 1500.0)
+    assert parse_assignment("customer_hall_min_footprint_m2=null") == ("customer_hall_min_footprint_m2", None)
+    assert parse_assignment("busbar_customer_max_m=500") == ("busbar_customer_max_m", 500.0)
+    assert parse_assignment("busbar_customer_max_m=null") == ("busbar_customer_max_m", None)
 
 
 @pytest.mark.parametrize("text, message", [
@@ -457,6 +461,21 @@ def test_older_fixed_voltage_snapshots_take_the_legacy_threshold(equipment):
     assert "voltage.vn_kv" in differences and "equipment.cable_10kv.name" in differences
 
 
+def test_customer_rules_of_older_snapshots_take_their_legacy_values(equipment):
+    """Before the hall rule, the station-busbar customers and their distance limit (MV_ADDED_LATER)."""
+    stored = json_round_trip(MvParameters(vn_kv=20).to_snapshot())
+    for key in ("customer_hall_min_footprint_m2", "customer_min_mv_kw", "busbar_customer_max_m"):
+        del stored["loads"][key]
+    rebuilt = MvParameters.from_snapshot("d1", "old", stored)
+    assert (rebuilt.customer_hall_min_footprint_m2, rebuilt.customer_min_mv_kw, rebuilt.busbar_customer_max_m) == (
+        None, 0.0, None)
+    differences, _ = compare_snapshots(stored, json_round_trip(MvParameters(vn_kv=20).to_snapshot()),
+                                       added_later=MV_ADDED_LATER)
+    assert differences == ["loads.busbar_customer_max_m", "loads.customer_hall_min_footprint_m2",
+                           "loads.customer_min_mv_kw"]
+    assert compare_snapshots(stored, json_round_trip(rebuilt.to_snapshot()), added_later=MV_ADDED_LATER) == ([], [])
+
+
 def test_from_snapshot_rejects_other_layouts(equipment):
     stored = json_round_trip(MvParameters().to_snapshot())
     with pytest.raises(MvStageError, match="schema 2"):
@@ -574,6 +593,14 @@ def test_lv_parameters_from_the_snapshot_of_this_code(lv_snapshot):
     assert LvVersionParameters.from_generation_parameters("mv1", json.dumps(lv_snapshot)) == lv   # text column
     legacy = {key: value for key, value in data.items() if key != "peak_load_per_m2"}       # stored before it existed
     assert LvVersionParameters.from_json(legacy).peak_load_per_m2 == {}
+    # the station catalogue and planning utilization of the LV version (capacity of the busbar stations)
+    assert lv.transformer_planning_utilization == config_loader.TRANSFORMER_PLANNING_UTILIZATION
+    assert lv.transformer_mapping == {str(k): sorted(map(float, v)) for k, v in config_loader.TRANSFORMER_MAPPING.items()}
+    older = {key: value for key, value in data.items()
+             if key not in ("transformer_planning_utilization", "transformer_mapping")}
+    old = LvVersionParameters.from_json(older)
+    assert old.transformer_planning_utilization == 1.0 and old.transformer_mapping == {}
+    assert old.station_ratings(2) == [250.0, 400.0, 630.0]                 # pylovo's default catalogue
 
 
 def test_lv_parameters_fallbacks(lv_snapshot, caplog):
@@ -610,6 +637,18 @@ def test_lv_parameters_reject_incomplete_snapshots(lv_snapshot, change, message)
     change(snapshot)
     with pytest.raises(MvStageError, match=re.escape(message)):
         LvVersionParameters.from_generation_parameters("v", snapshot)
+
+
+def test_lv_station_ratings_by_settlement_type():
+    lv = LvVersionParameters(version_id="v", sim_factor={c: 0.5 for c in CATEGORIES}, power_factor=0.95,
+                             mv_direct_threshold_kw=200.0, residential_only=False, lv_reference_voltage_pu=0.96,
+                             use_dso=False, use_open=False, use_manual=False, electrical_backend="pandapower",
+                             transformer_planning_utilization=0.8,
+                             transformer_mapping={"1": [100.0, 160.0, 250.0, 400.0], "3": [400.0, 630.0, 800.0]})
+    assert lv.station_ratings(1) == [100.0, 160.0, 250.0, 400.0] and lv.station_ratings(3.0) == [400.0, 630.0, 800.0]
+    assert lv.station_ratings(2) == lv.station_ratings(None) == lv.station_ratings(float("nan")) == [
+        100.0, 160.0, 250.0, 400.0, 630.0, 800.0]                          # unknown type: the whole catalogue
+    assert LvVersionParameters.from_json(json_round_trip(lv.as_json())) == lv
 
 
 def test_lv_parameters_need_a_snapshot():

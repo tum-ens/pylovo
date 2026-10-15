@@ -174,8 +174,9 @@ CONSUMER_CONNECTION_CABLES:
 # generators to HV/MV substations with open rings. It never changes the LV grids. Its parameters are stored per
 # MV variant (pylovo.mv_variant), not in the snapshot of VERSION_ID. Which loads are MV customers is decided by
 # MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW above, an LV-version parameter. In the MV stage, MV customer halls count one
-# storey and customers below 200 kW own peak hang on the busbar of the nearest station (constants
-# customer_hall_min_footprint_m2 and customer_min_mv_kw, changeable with pylovo-mv generate --set).
+# storey and customers below 200 kW own peak hang on the busbar of the nearest station within 1 km (constants
+# customer_hall_min_footprint_m2, customer_min_mv_kw and busbar_customer_max_m, changeable with pylovo-mv generate
+# --set); a station they overload gets the next rating of the LV catalogue in the MV model.
 
 # Run the MV stage after the LV grids in pylovo-generate (pylovo-generate --mv / --no-mv override it)
 MV_GRID_GENERATION: False

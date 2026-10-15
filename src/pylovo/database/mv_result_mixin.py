@@ -175,7 +175,9 @@ def node_columns_frame(rows: pd.DataFrame) -> pd.DataFrame:
 
     ``inst_*``/``units_*`` come from ``load_stats`` (0 when a category is absent); ``p_fixed_kw = p_own_kw`` for
     customers, the fixed load of the station-busbar customers (``load_stats['busbar_customers']['kw']``,
-    :func:`pylovo.mv_grid.inputs.busbar_customers`) for stations, else 0; ``urban = (area_class == 'urban')``;
+    :func:`pylovo.mv_grid.inputs.busbar_customers`) for stations, else 0; ``lv_sn_kva`` is the rating of the
+    station's LV grid (``load_stats['busbar_customers']['lv_sn_kva']`` of a station upsized in the MV model by
+    :func:`pylovo.mv_grid.inputs.upsize_busbar_stations`, else ``sn_kva``); ``urban = (area_class == 'urban')``;
     ``gen_level`` is ``'mv'`` for generators, ``'lv'`` for stations with LV-side generation and ``''`` otherwise.
     The busbar rows come first, then ascending ``mv_node_id``; the index is ``mv_node_id``.
 
@@ -204,6 +206,9 @@ def node_columns_frame(rows: pd.DataFrame) -> pd.DataFrame:
     p_own = pd.to_numeric(df["p_own_kw"], errors="coerce").fillna(0.0) if "p_own_kw" in df.columns else 0.0
     busbar_kw = stats.map(lambda s: float(busbar_record(s).get("kw") or 0.0))
     df["p_fixed_kw"] = np.where(kind == "customer", p_own, np.where(kind == "station", busbar_kw, 0.0))
+    sn_kva = pd.to_numeric(df["sn_kva"], errors="coerce") if "sn_kva" in df.columns else pd.Series(np.nan, df.index)
+    lv_sn_kva = pd.to_numeric(stats.map(lambda s: busbar_record(s).get("lv_sn_kva")), errors="coerce")
+    df["lv_sn_kva"] = lv_sn_kva.where(lv_sn_kva.notna(), sn_kva).astype(float)
     df["urban"] = df["area_class"].astype(object).eq("urban") if "area_class" in df.columns else False
     for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
         df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0).astype(float) if column in df.columns \

@@ -26,7 +26,7 @@ import yaml
 MV_STAGE_VERSION: int = 2
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
-                          "mapping", "voltage")
+                          "mapping", "voltage", "nullable_float")
 
 #: ``MV_NOMINAL_VOLTAGE_KV`` value of the density rule: each district gets 10 kV when its installed MV/LV capacity
 #: per km² reaches ``mv_10kv_min_density_mva_km2``, else 20 kV (DESIGN §4.6, user decision 2026-10-15).
@@ -168,13 +168,17 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="eGon-data MV customers up to 5.5 MW; 20 kV connection rules 0.2 to 5.5 MW"),
     _constant("hv_customer_kw", 20000.0, "float", "loads", bounds=_POSITIVE,
               source="eGon-data HV/MV level up to 20 MW; larger customers are HV customers (excluded)"),
-    _constant("customer_hall_min_footprint_m2", 2000.0, "float", "loads", bounds=_POSITIVE,
+    _constant("customer_hall_min_footprint_m2", 2000.0, "nullable_float", "loads", bounds=_POSITIVE,
               source="MV customer buildings with at least this footprint are halls: their non-residential floor area "
                      "for the MV load is one storey, min(footprint, floor area); the building data count large "
-                     "single-storey halls with storeys derived from their height [assumption]"),
+                     "single-storey halls with storeys derived from their height [assumption]; null: no hall rule"),
     _constant("customer_min_mv_kw", 200.0, "float", "loads", bounds=_POSITIVE,
               source="eGon-data: MV level above 200 kW building peak (the own peak: installed load after the hall "
                      "rule, factor 1); smaller MV customers are station-busbar customers of the nearest MV/LV station"),
+    _constant("busbar_customer_max_m", 1000.0, "nullable_float", "loads", bounds=_POSITIVE,
+              source="a small MV customer hangs on the busbar of its nearest MV/LV station only within this "
+                     "straight-line distance (pylovo's default MAX_GREENFIELD_TRAFO_DISTANCE), else it keeps an own "
+                     "MV node (flag remote_small_customer); null: no limit"),
     # generation
     _constant("generator_lv_side_kw", 200.0, "float", "generation", key="lv_side_kw", bounds=_POSITIVE,
               source="eGon-data MV/LV threshold: MaStR units at MV/LV level above it are own MV nodes"),
@@ -326,7 +330,8 @@ def coerce_mv_value(name: str, value: Any) -> Any:
 
     Canonical forms: ``float`` for numbers of kind float (``20`` becomes ``20.0``), ``int`` for integers, a
     sorted tuple for ``float_tuple`` and ``str_tuple`` values (a single text is a one-element tuple), a new
-    ``dict`` in the key order of the default for mappings, and ``"auto"`` or a ``float`` for the nominal voltage.
+    ``dict`` in the key order of the default for mappings, ``"auto"`` or a ``float`` for the nominal voltage, and
+    ``None`` or a ``float`` for ``nullable_float`` (``null`` switches the rule off).
 
     Raises:
         ValueError: ``"<name> must be ..., got <value>"`` if the value does not fit, or if ``name`` is unknown.
@@ -365,6 +370,8 @@ def coerce_mv_value(name: str, value: Any) -> Any:
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise _error(spec, "a name or null", value)
         result = value
+    elif kind == "nullable_float":
+        result = None if value is None else _float(spec, value, value)
     elif kind == "float_tuple":
         if isinstance(value, (bool, str)) or not isinstance(value, (list, tuple)) or not value:
             raise _error(spec, "a non-empty list of numbers", value)

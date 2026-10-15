@@ -33,6 +33,7 @@ The helpers are pure (pandapower, pandas and the MV stage modules; no database o
 from __future__ import annotations
 
 import copy
+import functools
 import importlib
 import logging
 import math
@@ -97,6 +98,10 @@ OPERATING_COLUMNS: tuple[str, ...] = (
 AGREEMENT_PU: float = 0.005
 #: ``load`` column that marks the station-busbar customers of the merged net (fixed loads, never scaled).
 BUSBAR_CUSTOMER_COLUMN: str = "busbar_customer"
+#: Station ratings that pylovo builds as one unit, and as two units of half the rating; any other rating is
+#: ``int(rating / 630)`` units of 630 kVA (``cable_installer.create_transformer``).
+SINGLE_UNIT_KVA: tuple[float, ...] = (100.0, 160.0, 250.0, 400.0, 630.0)
+DOUBLE_UNIT_KVA: tuple[float, ...] = (500.0, 800.0, 1260.0)
 
 
 # ---------------------------------------------------------------------------------------------- small helpers
@@ -164,6 +169,80 @@ def _trafo_buses(trafo: pd.DataFrame) -> tuple[int, int]:
     if len(hv) != 1 or len(lv) != 1:
         raise ValueError(f"the LV net has transformers on several buses (HV {list(hv)}, LV {list(lv)})")
     return int(hv[0]), int(lv[0])
+
+
+# ---------------------------------------------------------------------------------------------- upsized stations
+def station_units(sn_kva: float) -> tuple[float, int]:
+    """``(unit kVA, units)`` of a station rating as pylovo builds its transformer (:data:`SINGLE_UNIT_KVA`,
+    :data:`DOUBLE_UNIT_KVA`, else ``int(rating / 630)`` units of 630 kVA, at least one)."""
+    rating = float(sn_kva)
+    if any(math.isclose(rating, r) for r in SINGLE_UNIT_KVA):
+        return rating, 1
+    if any(math.isclose(rating, r) for r in DOUBLE_UNIT_KVA):
+        return rating / 2.0, 2
+    return 630.0, max(1, int(rating / 630.0 + 1e-9))
+
+
+@functools.lru_cache(maxsize=1)
+def _trafo_types() -> dict[str, dict]:
+    """pandapower's standard transformer types."""
+    return pp.create_empty_network().std_types["trafo"]
+
+
+def _unit_type(unit_kva: float) -> tuple[str, dict]:
+    """Name and data of the pandapower 20/0.4 kV type of a station unit (pylovo's names). A unit without its own
+    type takes the next larger 20/0.4 kV type (below 250 kVA :data:`SMALL_UNIT_BASE`, as pylovo's backend) with the
+    rating replaced and the no-load losses scaled."""
+    types = _trafo_types()
+    name = f"{unit_kva / 1000.0:g} MVA 20/0.4 kV"
+    if name in types:
+        return name, dict(types[name])
+    candidates = sorted((float(d["sn_mva"]), n) for n, d in types.items()
+                        if float(d["vn_hv_kv"]) == 20.0 and float(d["vn_lv_kv"]) == 0.4)
+    larger = [n for sn, n in candidates if sn * 1000.0 >= unit_kva]
+    base = dict(types[larger[0] if larger else candidates[-1][1]])
+    scale = unit_kva / 1000.0 / float(base["sn_mva"])
+    return name, {**base, "sn_mva": unit_kva / 1000.0, "pfe_kw": float(base["pfe_kw"]) * scale}
+
+
+def upsize_station_transformer(lv_net: pp.pandapowerNet, sn_kva: float) -> pp.pandapowerNet:
+    """A copy of a stored LV net with the station transformer of the rating ``sn_kva``: the rating of a station
+    that the MV model upsized for its station-busbar customers (``inputs.upsize_busbar_stations``).
+
+    The transformer becomes pylovo's units of that rating (:func:`station_units`) of the 20/0.4 kV type of the unit
+    (:func:`_unit_type`): ``std_type``, ``sn_mva``, ``vk_percent``, ``vkr_percent``, ``pfe_kw``, ``i0_percent``
+    and ``parallel`` change; its buses, tap settings and ``vn_hv_kv`` stay. A net with several transformer rows keeps
+    the first one.
+
+    Raises:
+        ValueError: The net has no station transformer or the rating is not positive.
+    """
+    station_buses(lv_net)
+    if not (math.isfinite(float(sn_kva)) and float(sn_kva) > 0):
+        raise ValueError(f"a station rating must be positive, got {sn_kva!r}")
+    unit_kva, parallel = station_units(sn_kva)
+    name, data = _unit_type(unit_kva)
+    net = copy.deepcopy(lv_net)
+    first = net.trafo.index[0]
+    net.trafo = net.trafo.loc[[first]].copy()
+    for column in ("sn_mva", "vk_percent", "vkr_percent", "pfe_kw", "i0_percent"):
+        net.trafo.loc[first, column] = float(data[column])
+    net.trafo.loc[first, "std_type"] = name
+    net.trafo.loc[first, "parallel"] = int(parallel)
+    return net
+
+
+def upsized_ratings(stations: pd.DataFrame) -> dict[int, float]:
+    """``{grid_result_id: kVA}`` of the stations that the MV model upsized for their station-busbar customers
+    (``upsized_sn_kva`` of the busbar record in ``load_stats``)."""
+    if "load_stats" not in stations.columns or "grid_result_id" not in stations.columns:
+        return {}
+    out: dict[int, float] = {}
+    for gid, stats in zip(pd.to_numeric(stations["grid_result_id"], errors="coerce"), stations["load_stats"]):
+        rating = _finite(busbar_record(stats).get("upsized_sn_kva"))
+        if rating is not None and rating > 0 and pd.notna(gid):
+            out[int(gid)] = rating
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- design point
@@ -750,7 +829,9 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     """Couple the stations of one district with their LV nets (pure; DESIGN §5.7 steps 2–5).
 
     Every LV net is checked at its design point (:func:`design_point_check`, MV voltages and taps from the station
-    table) and reduced to its frames (:func:`lv_frames`) at once, so one LV net is in memory at a time. With
+    table) and reduced to its frames (:func:`lv_frames`) at once, so one LV net is in memory at a time; the LV net of
+    a station upsized in the MV model for its station-busbar customers gets the upsized transformer first
+    (:func:`upsized_ratings`, :func:`upsize_station_transformer`). With
     ``merged`` the frames are fused under the MV net (:func:`build_coupled_net`) and the operating point is solved
     (:func:`run_coupled_cases`); the MV-only net at the same busbar voltage is the reference of the consistency
     diagnostic. Stations without an LV net keep their MV equivalent (``not_coupled``).
@@ -780,6 +861,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     band = float(params.busbar_band_pu)
     node_of_grid = {int(g): int(k) for k, g in table["grid_result_id"].dropna().items()}
     bus_of_node = _node_buses(stored_net)
+    upsized = upsized_ratings(table)
     checks: dict[int, dict[str, float]] = {}
     frames: dict[int, tuple[int, dict[str, pd.DataFrame]]] = {}
     lists: dict[str, list[int]] = {"unknown_lv_grid": [], "lv_error": [], "no_mv_bus": [],
@@ -797,6 +879,8 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             tap = 0
         generation = {group: row[f"gen_{group}_kw"] for group in electrical.GENERATION_GROUPS}
         try:
+            if int(gid) in upsized:
+                lv_net = upsize_station_transformer(lv_net, upsized[int(gid)])
             check = design_point_check(lv_net, _number(row["vm_load_pu"]) - band,
                                        _number(row["vm_feed_in_pu"]) + band, int(tap), generation, params)
             part = lv_frames(lv_net, int(gid)) if merged else None
@@ -833,6 +917,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     metrics: dict[str, Any] = {
         "n_stations": int(len(table)), "n_with_lv_grid": len(with_grid), "n_checked": len(checks),
         "n_merged": len(frames), "not_coupled": not_coupled,
+        "upsized_stations": sorted(node_of_grid[g] for g in upsized if g in node_of_grid),
         **{name: sorted(values) for name, values in lists.items()},
         "design_point": {
             "busbar": _diff_stats(rows["coupled_lv_busbar_vm_pu"], table["lv_busbar_vm_pu"]),
@@ -1203,12 +1288,15 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
         node_of_grid = {int(g): int(k) for k, g in table["grid_result_id"].dropna().items()}
         bus_of_node = _node_buses(stored)
         frames = {}
+        upsized = upsized_ratings(table)
         for gid, lv_net in dbc.iter_lv_nets(version_id, sorted(node_of_grid), chunk=LV_NET_CHUNK):
             key = node_of_grid.get(int(gid))
             if key is None or key not in bus_of_node:
                 continue
             try:
                 station_buses(lv_net)
+                if int(gid) in upsized:
+                    lv_net = upsize_station_transformer(lv_net, upsized[int(gid)])
             except ValueError as exc:
                 logger.warning(f"LV grid {gid} not coupled: {exc}")
                 continue

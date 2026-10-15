@@ -33,6 +33,7 @@ NODE_COLUMNS: tuple[str, ...] = (
     "p_fixed_kw",                         # customers: g_c * installed; 0 otherwise
     "gen_solar_kw", "gen_wind_kw", "gen_other_kw", "gen_level",   # gen_level: mv | lv (LV-side aggregate) | ''
     "sn_kva", "grid_result_id", "lv_design_source_vm_pu", "lv_max_drop_pu",
+    "lv_sn_kva",                          # station rating of its LV grid; sn_kva is larger for an upsized station
 )
 
 
