@@ -12,6 +12,10 @@ from pylovo.database.analysis_mixin import AnalysisMixin
 from pylovo.database.clustering_mixin import ClusteringMixin
 from pylovo.database.grid_mixin import GridMixin
 from pylovo.database.load_edit_mixin import LoadEditMixin
+from pylovo.database.mv_graph_mixin import MvGraphMixin
+from pylovo.database.mv_input_mixin import MvInputMixin
+from pylovo.database.mv_result_mixin import MvResultMixin
+from pylovo.database.mv_source_mixin import MvSourceMixin
 from pylovo.database.preprocessing_mixin import PreprocessingMixin
 from pylovo.database.results_mixin import ResultsMixin
 from pylovo.database.transformer_ui_mixin import TransformerUiMixin
@@ -29,6 +33,10 @@ class DatabaseClient(
     TransformerUiMixin,
     UtilsMixin,
     LoadEditMixin,
+    MvGraphMixin,
+    MvSourceMixin,
+    MvInputMixin,
+    MvResultMixin,
 ):
     """Connection to the pylovo database with all query methods.
 
@@ -43,6 +51,10 @@ class DatabaseClient(
     * ``TransformerUiMixin``: queries of the transformer map UI.
     * ``UtilsMixin``: PLZ working tables, transactions and shared lookups.
     * ``LoadEditMixin``: manual load edits of stored grids and their audit table (:mod:`pylovo.load_editing`).
+    * ``MvGraphMixin``: the persistent MV routing graph with settlement flags (MV stage).
+    * ``MvSourceMixin``: OSM, eGon and MaStR inputs of the MV stage.
+    * ``MvInputMixin``: LV results of a version as MV inputs (stations, loads, MV customers).
+    * ``MvResultMixin``: MV variants and their results (substations, grids, nodes, lines, rings).
 
     All queries share one psycopg2 connection (``search_path`` ``pylovo, public``) and cursor.
     Most methods do not commit; call ``commit_changes()`` or ``rollback_changes()``. Use the

@@ -78,6 +78,36 @@ DESCRIPTIONS = {
                                        "(``transformer_rated_power``) and the equipment data of one unit "
                                        "(``transformer_units`` per station).",
     "buildings_result_with_grid": "Regular view: live buildings with kcid, bcid and plz; base geometry is indexed.",
+    "mv_customers": "Buildings of a version whose non-residential load is connected directly to MV "
+                    "(``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV stage; the residential "
+                    "part of a mixed building stays in its LV grid.",
+    "mastr_units": "Generating units in operation with coordinates from the Marktstammdatenregister "
+                   "(``pylovo-import mastr``): technology, net power and connection voltage level. Not versioned; "
+                   "replaced by each import.",
+    "mastr_postcode_aggregates": "MaStR units in operation without coordinates (mostly small rooftop PV), summed per "
+                                 "postcode and technology. Replaced by each import.",
+    "mv_graph": "One row per MV routing graph built from the regional street graph of InfDB, content-addressed by "
+                "``graph_id``, with its build parameters and QA figures. Not versioned.",
+    "mv_graph_vertex": "Vertices of an MV routing graph with their degree and connected component.",
+    "mv_graph_edge": "Edges of an MV routing graph (street pieces) with length, component and the settlement flags "
+                     "``in_settlement``, ``settlement_id`` and ``settlement_urban``.",
+    "mv_graph_settlement": "Settlements of an MV routing graph (connected settlement edges) with building count, "
+                           "length, urban class and buffer geometry.",
+    "mv_variant": "One row per MV variant of a version: the MV parameter snapshot (``mv_parameters``), the PLZ set, "
+                  "the routing graph, status, LV fingerprint and run summary. Deleting it cascades to all MV results "
+                  "of the variant.",
+    "mv_substation": "HV/MV substations of an MV variant (OSM or eGon) with busbar point, graph attachment, "
+                     "transformer sizing and loading.",
+    "mv_grid": "One MV grid per supplying HV/MV substation: status, HV/MV transformers, peak load, counts, line "
+               "lengths, voltage and loading extremes, metrics and the stored pandapower net (``net``).",
+    "mv_node": "Nodes of the MV grids (busbars, LV stations, MV customers, MV generators, joints) with loads, ring "
+               "position, MV voltages and the voltage budget of each station (MV/LV tap, LV busbar voltage).",
+    "mv_line": "MV lines (ring, stub, dedicated, generator and tie lines) with kind, standard type, cable and "
+               "overhead length, normally-open flag and loadings.",
+    "mv_ring": "One row per ring, dedicated feeder, generator feeder or busbar radial with member counts, lengths, "
+               "coincident loads, normally-open point and voltage and loading extremes.",
+    "mv_variant_stats": "View: grid counts by status and sums of stations, rings, line lengths, cable share, km per "
+                        "supply point and peak load per version and MV variant.",
 }
 
 
@@ -207,6 +237,13 @@ ZONES = [
         ["lines_result_helper", "lines_result", "lines_result_cache"],
         ["split_points", "pandapower_bus", "pandapower_line"],
         ["pandapower_trafo", "pandapower_load", "load_edit"],
+    ]),
+    ("MV stage: every MV result table references mv_variant (ON DELETE CASCADE)", 0.2, [
+        ["mv_variant", "mv_substation", "mv_grid"],
+        ["mv_node", "mv_line", "mv_ring"],
+        ["mv_customers", "mastr_units", "mastr_postcode_aggregates"],
+        ["mv_graph_vertex", "mv_graph", "mv_graph_edge"],
+        [None, "mv_graph_settlement", None],
     ]),
     ("Standalone tables (municipal register; file-based input with USE_INFDB=False)", 0.2, [
         ["municipal_register", "ags_log", None],
@@ -343,6 +380,16 @@ def draw_diagram(tables: dict[str, Table]) -> None:
     end_y = ry + rh / 2
     ax.plot([tx + tw, margin_x, margin_x], [start_y, start_y, end_y], color=st.INK_MUTED, lw=1.0, zorder=2.5)
     _edge(ax, (margin_x, end_y), (rx + rw, end_y))
+    # MV stage: variant -> substation -> grid; nodes, lines and rings; routing graph
+    _edge(ax, side("mv_substation", "left"), side("mv_variant", "right"))
+    _edge(ax, side("mv_grid", "left"), side("mv_substation", "right"))
+    _edge(ax, side("mv_node", "top"), side("mv_variant", "bottom"))
+    _edge(ax, side("mv_node", "bottom"), side("mv_customers", "top"))
+    _edge(ax, side("mv_line", "left"), side("mv_node", "right"))
+    _edge(ax, side("mv_ring", "top"), side("mv_grid", "bottom"))
+    _edge(ax, side("mv_graph_vertex", "right"), side("mv_graph", "left"))
+    _edge(ax, side("mv_graph_edge", "left"), side("mv_graph", "right"))
+    _edge(ax, side("mv_graph_settlement", "top"), side("mv_graph", "bottom"))
     st.save(fig, "diagrams", "database_schema", formats=("svg", "png"), dpi=170)
 
 
@@ -380,11 +427,15 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
     ]
     groups = [
         ("Reference and input tables", ["version", "equipment_data", "consumer_categories", "postcode",
-                                        "municipal_register", "transformers", "ags_log", "res", "oth", "ways"]),
+                                        "municipal_register", "transformers", "mastr_units",
+                                        "mastr_postcode_aggregates", "mv_graph", "mv_graph_vertex", "mv_graph_edge",
+                                        "mv_graph_settlement", "ags_log", "res", "oth", "ways"]),
         ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "buildings_result",
                            "transformer_positions", "lines_result", "lines_result_helper", "lines_result_cache",
                            "split_points", "pandapower_bus", "pandapower_line", "pandapower_trafo",
                            "pandapower_load", "clustering_parameters", "load_edit"]),
+        ("MV stage tables", ["mv_customers", "mv_variant", "mv_substation", "mv_grid", "mv_node", "mv_line",
+                             "mv_ring"]),
         ("Temporary tables", ["buildings_tem", "ways_tem"]),
     ]
     listed = set()

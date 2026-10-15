@@ -235,6 +235,7 @@ class DatabaseConstructor:
             "fk_lines_result_view_source_line",
             "uq_lines_result_grid_id",
             "fk_buildings_result_grid_result",
+            "fk_mv_variant_version",
         }
         with self.dbc.conn.cursor() as cur:
             cur.execute("""

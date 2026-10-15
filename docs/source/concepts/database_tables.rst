@@ -244,6 +244,273 @@ Transformer candidates: OSM download, LoD2 transformer-station buildings, DSO CS
      - ``geometry(MultiPoint, <TARGET_EPSG>)``
      - 
 
+``mastr_units``
+~~~~~~~~~~~~~~~
+
+Generating units in operation with coordinates from the Marktstammdatenregister (``pylovo-import mastr``): technology, net power and connection voltage level. Not versioned; replaced by each import.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``mastr_id``
+     - ``text``
+     - PK
+   * - ``location_id``
+     - ``text``
+     - 
+   * - ``technology``
+     - ``varchar(20)``
+     - 
+   * - ``solar_kind``
+     - ``varchar(20)``
+     - 
+   * - ``status``
+     - ``varchar(20)``
+     - 
+   * - ``net_power_kw``
+     - ``double precision``
+     - 
+   * - ``gross_power_kw``
+     - ``double precision``
+     - 
+   * - ``voltage_level``
+     - ``text``
+     - 
+   * - ``commissioning_date``
+     - ``date``
+     - 
+   * - ``gemeindeschluessel``
+     - ``text``
+     - 
+   * - ``postcode``
+     - ``text``
+     - 
+   * - ``geom``
+     - ``geometry(Point,<TARGET_EPSG>)``
+     - 
+
+``mastr_postcode_aggregates``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+MaStR units in operation without coordinates (mostly small rooftop PV), summed per postcode and technology. Replaced by each import.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``postcode``
+     - ``text``
+     - PK
+   * - ``technology``
+     - ``varchar(20)``
+     - PK
+   * - ``n_units``
+     - ``integer``
+     - 
+   * - ``net_power_kw``
+     - ``double precision``
+     - 
+
+``mv_graph``
+~~~~~~~~~~~~
+
+One row per MV routing graph built from the regional street graph of InfDB, content-addressed by ``graph_id``, with its build parameters and QA figures. Not versioned.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``graph_id``
+     - ``varchar(40)``
+     - PK
+   * - ``source_table``
+     - ``text``
+     - 
+   * - ``ags``
+     - ``text[]``
+     - 
+   * - ``excluded_klasse``
+     - ``text[]``
+     - 
+   * - ``snap_tolerance_m``
+     - ``double precision``
+     - 
+   * - ``build_parameters``
+     - ``jsonb``
+     - 
+   * - ``source_fingerprint``
+     - ``text``
+     - 
+   * - ``edge_count``
+     - ``integer``
+     - 
+   * - ``vertex_count``
+     - ``integer``
+     - 
+   * - ``component_count``
+     - ``integer``
+     - 
+   * - ``largest_component_share``
+     - ``double precision``
+     - 
+   * - ``total_length_km``
+     - ``double precision``
+     - 
+   * - ``settlement_count``
+     - ``integer``
+     - 
+   * - ``settlement_edge_share``
+     - ``double precision``
+     - 
+   * - ``seam_endpoint_count``
+     - ``integer``
+     - 
+   * - ``build_seconds``
+     - ``double precision``
+     - 
+   * - ``created_at``
+     - ``timestamptz``
+     - 
+
+``mv_graph_vertex``
+~~~~~~~~~~~~~~~~~~~
+
+Vertices of an MV routing graph with their degree and connected component.
+
+Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``graph_id``
+     - ``varchar(40)``
+     - PK, FK → ``mv_graph``
+   * - ``vertex_id``
+     - ``bigint``
+     - PK
+   * - ``degree``
+     - ``integer``
+     - 
+   * - ``component``
+     - ``bigint``
+     - 
+   * - ``geom``
+     - ``geometry(Point,<TARGET_EPSG>)``
+     - 
+
+``mv_graph_edge``
+~~~~~~~~~~~~~~~~~
+
+Edges of an MV routing graph (street pieces) with length, component and the settlement flags ``in_settlement``, ``settlement_id`` and ``settlement_urban``.
+
+Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``graph_id``
+     - ``varchar(40)``
+     - PK, FK → ``mv_graph``
+   * - ``edge_id``
+     - ``bigint``
+     - PK
+   * - ``ags``
+     - ``text``
+     - 
+   * - ``src_id``
+     - ``text``
+     - 
+   * - ``klasse``
+     - ``text``
+     - 
+   * - ``objektart``
+     - ``text``
+     - 
+   * - ``source``
+     - ``bigint``
+     - 
+   * - ``target``
+     - ``bigint``
+     - 
+   * - ``length_m``
+     - ``double precision``
+     - 
+   * - ``component``
+     - ``bigint``
+     - 
+   * - ``n_buildings``
+     - ``integer``
+     - 
+   * - ``in_settlement``
+     - ``boolean``
+     - 
+   * - ``settlement_id``
+     - ``bigint``
+     - 
+   * - ``settlement_urban``
+     - ``boolean``
+     - 
+   * - ``geom``
+     - ``geometry(LineString,<TARGET_EPSG>)``
+     - 
+
+``mv_graph_settlement``
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Settlements of an MV routing graph (connected settlement edges) with building count, length, urban class and buffer geometry.
+
+Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``graph_id``
+     - ``varchar(40)``
+     - PK, FK → ``mv_graph``
+   * - ``settlement_id``
+     - ``bigint``
+     - PK
+   * - ``n_buildings``
+     - ``integer``
+     - 
+   * - ``length_km``
+     - ``double precision``
+     - 
+   * - ``urban``
+     - ``boolean``
+     - 
+   * - ``geom``
+     - ``geometry(MultiPolygon,<TARGET_EPSG>)``
+     - 
+
 ``ags_log``
 ~~~~~~~~~~~
 
@@ -1488,6 +1755,727 @@ Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id,
      - ``text``
      - 
 
+MV stage tables
+---------------
+
+``mv_customers``
+~~~~~~~~~~~~~~~~
+
+Buildings of a version whose non-residential load is connected directly to MV (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV stage; the residential part of a mixed building stays in its LV grid.
+
+Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``version_id``
+     - ``varchar(10)``
+     - PK, FK → ``version``
+   * - ``objectid``
+     - ``text``
+     - PK
+   * - ``plz``
+     - ``integer``
+     - 
+   * - ``id``
+     - ``integer``
+     - 
+   * - ``building_use``
+     - ``text``
+     - 
+   * - ``building_use_id``
+     - ``text``
+     - 
+   * - ``building_type``
+     - ``text``
+     - 
+   * - ``type``
+     - ``varchar(30)``
+     - 
+   * - ``nonresidential_use``
+     - ``varchar(30)``
+     - 
+   * - ``nonresidential_floor_area``
+     - ``double precision``
+     - 
+   * - ``nonresidential_peak_load_in_kw``
+     - ``double precision``
+     - 
+   * - ``residential_peak_load_in_kw``
+     - ``double precision``
+     - 
+   * - ``households``
+     - ``integer``
+     - 
+   * - ``gemeindeschluessel``
+     - ``text``
+     - 
+   * - ``geom``
+     - ``geometry(MultiPolygon,<TARGET_EPSG>)``
+     - 
+   * - ``centroid``
+     - ``geometry(Point,<TARGET_EPSG>)``
+     - 
+
+``mv_variant``
+~~~~~~~~~~~~~~
+
+One row per MV variant of a version: the MV parameter snapshot (``mv_parameters``), the PLZ set, the routing graph, status, LV fingerprint and run summary. Deleting it cascades to all MV results of the variant.
+
+Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
+
+Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE SET NULL.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``version_id``
+     - ``varchar(10)``
+     - PK, FK → ``version``
+   * - ``mv_variant_id``
+     - ``varchar(10)``
+     - PK
+   * - ``mv_variant_comment``
+     - ``varchar``
+     - 
+   * - ``mv_parameters``
+     - ``jsonb``
+     - 
+   * - ``lv_parameters``
+     - ``jsonb``
+     - 
+   * - ``plz_list``
+     - ``integer[]``
+     - 
+   * - ``graph_id``
+     - ``varchar(40)``
+     - FK → ``mv_graph``
+   * - ``status``
+     - ``varchar(16)``
+     - 
+   * - ``lv_fingerprint``
+     - ``jsonb``
+     - 
+   * - ``summary``
+     - ``jsonb``
+     - 
+   * - ``created_at``
+     - ``timestamptz``
+     - 
+   * - ``finished_at``
+     - ``timestamptz``
+     - 
+
+``mv_substation``
+~~~~~~~~~~~~~~~~~
+
+HV/MV substations of an MV variant (OSM or eGon) with busbar point, graph attachment, transformer sizing and loading.
+
+Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, mv_variant_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``substation_id``
+     - ``bigint``
+     - PK
+   * - ``version_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``mv_variant_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``source``
+     - ``varchar(8)``
+     - 
+   * - ``source_ids``
+     - ``text[]``
+     - 
+   * - ``name``
+     - ``text``
+     - 
+   * - ``operator``
+     - ``text``
+     - 
+   * - ``voltage_tag``
+     - ``text``
+     - 
+   * - ``egon_bus_id``
+     - ``bigint``
+     - 
+   * - ``egon_distance_m``
+     - ``double precision``
+     - 
+   * - ``in_region``
+     - ``boolean``
+     - 
+   * - ``attach_edge_id``
+     - ``bigint``
+     - 
+   * - ``attach_fraction``
+     - ``double precision``
+     - 
+   * - ``attach_offset_m``
+     - ``double precision``
+     - 
+   * - ``osm_ratings_mva``
+     - ``double precision[]``
+     - 
+   * - ``n_transformers``
+     - ``integer``
+     - 
+   * - ``transformer_mva``
+     - ``double precision``
+     - 
+   * - ``transformer_sizing``
+     - ``varchar(16)``
+     - 
+   * - ``peak_load_mw``
+     - ``double precision``
+     - 
+   * - ``peak_feed_in_mw``
+     - ``double precision``
+     - 
+   * - ``loading_n0_percent``
+     - ``double precision``
+     - 
+   * - ``loading_n1_percent``
+     - ``double precision``
+     - 
+   * - ``flags``
+     - ``text[]``
+     - 
+   * - ``geom``
+     - ``geometry(Point,<TARGET_EPSG>)``
+     - 
+   * - ``footprint``
+     - ``geometry(MultiPolygon,<TARGET_EPSG>)``
+     - 
+
+``mv_grid``
+~~~~~~~~~~~
+
+One MV grid per supplying HV/MV substation: status, HV/MV transformers, peak load, counts, line lengths, voltage and loading extremes, metrics and the stored pandapower net (``net``).
+
+Unique: (substation_id).
+
+Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, mv_variant_id), ON DELETE CASCADE.
+
+Foreign key (substation_id) references ``mv_substation`` (substation_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``mv_grid_id``
+     - ``bigint``
+     - PK
+   * - ``version_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``mv_variant_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``substation_id``
+     - ``bigint``
+     - FK → ``mv_substation``
+   * - ``status``
+     - ``varchar(16)``
+     - 
+   * - ``power_flow_status``
+     - ``varchar(32)``
+     - 
+   * - ``coupled_status``
+     - ``varchar(16)``
+     - 
+   * - ``vn_kv``
+     - ``double precision``
+     - 
+   * - ``complete``
+     - ``boolean``
+     - 
+   * - ``area_km2``
+     - ``double precision``
+     - 
+   * - ``hv_mv_transformers``
+     - ``integer``
+     - 
+   * - ``hv_mv_transformer_mva``
+     - ``double precision``
+     - 
+   * - ``hv_mv_sizing``
+     - ``varchar(16)``
+     - 
+   * - ``oltc_tap_pos``
+     - ``integer``
+     - 
+   * - ``peak_load_mw``
+     - ``double precision``
+     - 
+   * - ``peak_feed_in_mw``
+     - ``double precision``
+     - 
+   * - ``sum_station_kva``
+     - ``double precision``
+     - 
+   * - ``n_stations``
+     - ``integer``
+     - 
+   * - ``n_customers``
+     - ``integer``
+     - 
+   * - ``n_generators``
+     - ``integer``
+     - 
+   * - ``n_joints``
+     - ``integer``
+     - 
+   * - ``n_rings``
+     - ``integer``
+     - 
+   * - ``n_stub_nodes``
+     - ``integer``
+     - 
+   * - ``n_feeder_bays``
+     - ``integer``
+     - 
+   * - ``circuit_km``
+     - ``double precision``
+     - 
+   * - ``cable_km``
+     - ``double precision``
+     - 
+   * - ``overhead_km``
+     - ``double precision``
+     - 
+   * - ``trench_km``
+     - ``double precision``
+     - 
+   * - ``bridge_km``
+     - ``double precision``
+     - 
+   * - ``max_voltage_drop_percent``
+     - ``double precision``
+     - 
+   * - ``max_voltage_drop_n1_percent``
+     - ``double precision``
+     - 
+   * - ``max_voltage_rise_percent``
+     - ``double precision``
+     - 
+   * - ``max_line_loading_percent``
+     - ``double precision``
+     - 
+   * - ``max_line_loading_n1_percent``
+     - ``double precision``
+     - 
+   * - ``max_line_loading_feed_in_percent``
+     - ``double precision``
+     - 
+   * - ``n_band_conflicts``
+     - ``integer``
+     - 
+   * - ``n_tap_limit``
+     - ``integer``
+     - 
+   * - ``metrics``
+     - ``jsonb``
+     - 
+   * - ``repairs``
+     - ``jsonb``
+     - 
+   * - ``error``
+     - ``text``
+     - 
+   * - ``runtime_s``
+     - ``double precision``
+     - 
+   * - ``geom``
+     - ``geometry(MultiPolygon,<TARGET_EPSG>)``
+     - 
+   * - ``net``
+     - ``json``
+     - 
+
+``mv_node``
+~~~~~~~~~~~
+
+Nodes of the MV grids (busbars, LV stations, MV customers, MV generators, joints) with loads, ring position, MV voltages and the voltage budget of each station (MV/LV tap, LV busbar voltage).
+
+Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, mv_variant_id), ON DELETE CASCADE.
+
+Foreign key (mv_grid_id) references ``mv_grid`` (mv_grid_id), ON DELETE CASCADE.
+
+Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id, grid_result_id), ON DELETE CASCADE.
+
+Foreign key (version_id, customer_objectid) references ``mv_customers`` (version_id, objectid), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``mv_node_id``
+     - ``bigint``
+     - PK
+   * - ``version_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``, FK → ``grid_result``, FK → ``mv_customers``
+   * - ``mv_variant_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``mv_grid_id``
+     - ``bigint``
+     - FK → ``mv_grid``
+   * - ``kind``
+     - ``varchar(16)``
+     - 
+   * - ``connection_hint``
+     - ``varchar(16)``
+     - 
+   * - ``connection``
+     - ``varchar(16)``
+     - 
+   * - ``substation_id``
+     - ``bigint``
+     - 
+   * - ``grid_result_id``
+     - ``bigint``
+     - FK → ``grid_result``
+   * - ``customer_objectid``
+     - ``text``
+     - FK → ``mv_customers``
+   * - ``mastr_connection_id``
+     - ``text``
+     - 
+   * - ``voltage_class``
+     - ``varchar(8)``
+     - 
+   * - ``technology``
+     - ``varchar(32)``
+     - 
+   * - ``plz``
+     - ``integer``
+     - 
+   * - ``plz_settlement_type``
+     - ``integer``
+     - 
+   * - ``settlement_id``
+     - ``bigint``
+     - 
+   * - ``area_class``
+     - ``varchar(8)``
+     - 
+   * - ``station_source``
+     - ``varchar(24)``
+     - 
+   * - ``households``
+     - ``double precision``
+     - 
+   * - ``n_buildings``
+     - ``integer``
+     - 
+   * - ``load_stats``
+     - ``jsonb``
+     - 
+   * - ``installed_kw``
+     - ``double precision``
+     - 
+   * - ``p_own_kw``
+     - ``double precision``
+     - 
+   * - ``gen_solar_kw``
+     - ``double precision``
+     - 
+   * - ``gen_wind_kw``
+     - ``double precision``
+     - 
+   * - ``gen_other_kw``
+     - ``double precision``
+     - 
+   * - ``sn_kva``
+     - ``double precision``
+     - 
+   * - ``feeder_id``
+     - ``integer``
+     - 
+   * - ``ring_id``
+     - ``integer``
+     - 
+   * - ``ring_position``
+     - ``integer``
+     - 
+   * - ``stub_parent``
+     - ``bigint``
+     - 
+   * - ``attach_edge_id``
+     - ``bigint``
+     - 
+   * - ``attach_fraction``
+     - ``double precision``
+     - 
+   * - ``attach_offset_m``
+     - ``double precision``
+     - 
+   * - ``bridged``
+     - ``boolean``
+     - 
+   * - ``vm_load_pu``
+     - ``double precision``
+     - 
+   * - ``vm_n1_pu``
+     - ``double precision``
+     - 
+   * - ``vm_feed_in_pu``
+     - ``double precision``
+     - 
+   * - ``lv_design_source_vm_pu``
+     - ``double precision``
+     - 
+   * - ``lv_max_drop_pu``
+     - ``double precision``
+     - 
+   * - ``mv_lv_tap_pos``
+     - ``integer``
+     - 
+   * - ``lv_busbar_vm_pu``
+     - ``double precision``
+     - 
+   * - ``lv_min_vm_pu``
+     - ``double precision``
+     - 
+   * - ``lv_busbar_vm_feed_in_pu``
+     - ``double precision``
+     - 
+   * - ``band_conflict``
+     - ``boolean``
+     - 
+   * - ``coupled_lv_busbar_vm_pu``
+     - ``double precision``
+     - 
+   * - ``coupled_lv_min_vm_pu``
+     - ``double precision``
+     - 
+   * - ``coupled_lv_busbar_vm_feed_in_pu``
+     - ``double precision``
+     - 
+   * - ``coupled_lv_max_vm_pu``
+     - ``double precision``
+     - 
+   * - ``coupled_op_lv_busbar_vm_pu``
+     - ``double precision``
+     - 
+   * - ``flags``
+     - ``text[]``
+     - 
+   * - ``geom``
+     - ``geometry(Point,<TARGET_EPSG>)``
+     - 
+
+``mv_line``
+~~~~~~~~~~~
+
+MV lines (ring, stub, dedicated, generator and tie lines) with kind, standard type, cable and overhead length, normally-open flag and loadings.
+
+Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, mv_variant_id), ON DELETE CASCADE.
+
+Foreign key (mv_grid_id) references ``mv_grid`` (mv_grid_id), ON DELETE CASCADE.
+
+Foreign key (from_node) references ``mv_node`` (mv_node_id), ON DELETE CASCADE.
+
+Foreign key (to_node) references ``mv_node`` (mv_node_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``mv_line_id``
+     - ``bigint``
+     - PK
+   * - ``version_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``mv_variant_id``
+     - ``varchar(10)``
+     - FK → ``mv_variant``
+   * - ``mv_grid_id``
+     - ``bigint``
+     - FK → ``mv_grid``
+   * - ``from_node``
+     - ``bigint``
+     - FK → ``mv_node``
+   * - ``to_node``
+     - ``bigint``
+     - FK → ``mv_node``
+   * - ``role``
+     - ``varchar(16)``
+     - 
+   * - ``kind``
+     - ``varchar(8)``
+     - 
+   * - ``feeder_id``
+     - ``integer``
+     - 
+   * - ``ring_id``
+     - ``integer``
+     - 
+   * - ``std_type``
+     - ``varchar(160)``
+     - 
+   * - ``parallel``
+     - ``integer``
+     - 
+   * - ``length_km``
+     - ``double precision``
+     - 
+   * - ``cable_km``
+     - ``double precision``
+     - 
+   * - ``overhead_km``
+     - ``double precision``
+     - 
+   * - ``straight_km``
+     - ``double precision``
+     - 
+   * - ``bridge_m``
+     - ``double precision``
+     - 
+   * - ``normally_open``
+     - ``boolean``
+     - 
+   * - ``open_at_node``
+     - ``bigint``
+     - 
+   * - ``loading_load_percent``
+     - ``double precision``
+     - 
+   * - ``loading_n1_percent``
+     - ``double precision``
+     - 
+   * - ``loading_feed_in_percent``
+     - ``double precision``
+     - 
+   * - ``geom``
+     - ``geometry(LineString,<TARGET_EPSG>)``
+     - 
+
+``mv_ring``
+~~~~~~~~~~~
+
+One row per ring, dedicated feeder, generator feeder or busbar radial with member counts, lengths, coincident loads, normally-open point and voltage and loading extremes.
+
+Foreign key (mv_grid_id) references ``mv_grid`` (mv_grid_id), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``version_id``
+     - ``varchar(10)``
+     - 
+   * - ``mv_variant_id``
+     - ``varchar(10)``
+     - 
+   * - ``mv_grid_id``
+     - ``bigint``
+     - PK, FK → ``mv_grid``
+   * - ``ring_id``
+     - ``integer``
+     - PK
+   * - ``kind``
+     - ``varchar(16)``
+     - 
+   * - ``n_members``
+     - ``integer``
+     - 
+   * - ``n_stations``
+     - ``integer``
+     - 
+   * - ``n_customers``
+     - ``integer``
+     - 
+   * - ``n_generators``
+     - ``integer``
+     - 
+   * - ``n_stub_nodes``
+     - ``integer``
+     - 
+   * - ``length_km``
+     - ``double precision``
+     - 
+   * - ``half_a_km``
+     - ``double precision``
+     - 
+   * - ``half_b_km``
+     - ``double precision``
+     - 
+   * - ``stub_km``
+     - ``double precision``
+     - 
+   * - ``overhead_km``
+     - ``double precision``
+     - 
+   * - ``p_ring_kw``
+     - ``double precision``
+     - 
+   * - ``p_half_a_kw``
+     - ``double precision``
+     - 
+   * - ``p_half_b_kw``
+     - ``double precision``
+     - 
+   * - ``nop_node``
+     - ``bigint``
+     - 
+   * - ``max_drop_percent``
+     - ``double precision``
+     - 
+   * - ``max_drop_n1_percent``
+     - ``double precision``
+     - 
+   * - ``max_loading_percent``
+     - ``double precision``
+     - 
+   * - ``max_loading_n1_percent``
+     - ``double precision``
+     - 
+   * - ``area_class``
+     - ``varchar(8)``
+     - 
+   * - ``has_tie``
+     - ``boolean``
+     - 
+
 Temporary tables
 ----------------
 
@@ -1662,6 +2650,9 @@ Views
 
 ``lines_result_view``
    Compatibility SQL view over lines_result_cache for existing QGIS and API readers.
+
+``mv_variant_stats``
+   View: grid counts by status and sums of stations, rings, line lengths, cable share, km per supply point and peak load per version and MV variant.
 
 ``transformer_positions_with_grid``
    View: transformer positions with grid identifiers, the station rating (``transformer_rated_power``) and the equipment data of one unit (``transformer_units`` per station).

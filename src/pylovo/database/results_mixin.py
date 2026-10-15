@@ -70,13 +70,25 @@ class ResultsMixin(BaseMixin):
     def delete_plz_from_all_tables(self, plz: int, version_id: str) -> None:
         """Delete all results of one PLZ and version, refresh the materialized views and commit.
 
-        Deleting the ``postcode_result`` row cascades to ``grid_result`` and everything that
-        references it (buildings, lines, pandapower tables, parameters, transformer positions).
+        First the MV variants of the version that were built for this PLZ are deleted with all
+        their rows (``mv_variant`` cascades): MV grids span several PLZ, so removing only the nodes
+        of this PLZ would leave rings with holes. Deleting the ``postcode_result`` row then cascades
+        to ``grid_result`` and everything that references it (buildings, lines, pandapower tables,
+        parameters, transformer positions).
 
         Args:
             plz: Postcode to delete.
             version_id: Version whose results are deleted.
         """
+        self.cur.execute(
+            "DELETE FROM pylovo.mv_variant WHERE version_id = %(v)s AND %(p)s = ANY(plz_list) "
+            "RETURNING mv_variant_id;",
+            {"v": version_id, "p": int(plz)},
+        )
+        mv_variants = sorted(row[0] for row in self.cur.fetchall())
+        if mv_variants:
+            self.logger.info(f"MV variant(s) {', '.join(mv_variants)} of version {version_id} deleted "
+                             f"because they contain PLZ {plz}")
         delete_ways_query = """DELETE
                FROM pylovo.ways_result
                    WHERE version_id = %(v)s
