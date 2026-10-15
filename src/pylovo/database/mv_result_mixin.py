@@ -288,9 +288,11 @@ class MvResultMixin(BaseMixin):
                          lv: "LvVersionParameters", lv_fingerprint: dict) -> str:
         """Insert the MV variant once, or check it against the stored snapshot (mirrors the LV version rule); commits.
 
-        Union semantics of the PLZ set (DESIGN §2.5): if ``plz_list`` is a subset of the stored set the run resumes;
-        otherwise the stored row gets the union, the new graph and fingerprint ('grow': the caller rebuilds every
-        district with :meth:`reset_variant_region`).
+        Union semantics of the PLZ set (DESIGN §2.5): if ``plz_list`` is a subset of the stored set and the routing
+        graph is the stored one, the run resumes; otherwise the stored row gets the union, the new graph and
+        fingerprint ('grow': the caller rebuilds every district with :meth:`reset_variant_region`). A changed graph
+        (changed source rows or graph build) always rebuilds: the stored attachments refer to the edge ids of the
+        stored graph.
 
         Returns:
             ``'new'``, ``'resume'`` or ``'grow'``.
@@ -317,7 +319,7 @@ class MvResultMixin(BaseMixin):
                     raise RuntimeError(f"MV variant {variant_id} of version {version_id} vanished during registration")
                 self._compare_variant_snapshot(version_id, params, row["mv_parameters"])
                 stored = set(row["plz_list"])
-                if set(plz) <= stored:
+                if set(plz) <= stored and row.get("graph_id") == graph_id:
                     mode = "resume"
                     self.cur.execute(
                         """UPDATE pylovo.mv_variant SET status = 'running', finished_at = NULL

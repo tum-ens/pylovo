@@ -158,6 +158,12 @@ def test_register_subset_resumes_and_superset_grows():
     assert params[0] == [1, 2, 3, 4] and params[1] == "g2" and params[-2:] == ("mv1", "d0")
     assert client.conn.commits == 1
 
+    # a subset with another routing graph rebuilds: the stored attachments use the edge ids of graph g1
+    client = make_client([("INSERT INTO pylovo.mv_variant", ([], [], 0)), variant_rule(snapshot, [1, 2, 3])])
+    assert client.register_variant("mv1", FakeParams(), [1, 2], "g2", LV, {}) == "grow"
+    sql, params = client.cur.sql("SET plz_list")[0]
+    assert params[0] == [1, 2, 3] and params[1] == "g2"
+
 
 def test_register_rejects_other_parameters():
     stored = {"schema": 1, "mv_stage_version": 1, "topology": {"stubs": "rural"}}

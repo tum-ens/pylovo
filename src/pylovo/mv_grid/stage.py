@@ -653,8 +653,10 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
     graph_id = dbc.ensure_graph(region_wkb, params)
     fingerprint = dbc.lv_fingerprint(version_id, union)
     mode = dbc.register_variant(version_id, params, union, graph_id, lv, fingerprint)
-    if mode == "grow":
+    if mode == "grow" and len(union) > len(row["plz_list"]):
         logger.info(f"PLZ set grew from {len(row['plz_list'])} to {len(union)}: rebuilding all districts")
+    elif mode == "grow":
+        logger.info(f"routing graph changed from {row.get('graph_id')} to {graph_id}: rebuilding all districts")
     try:
         # 3. region
         if mode in ("new", "grow") or not dbc.variant_region_built(version_id, variant_id):
