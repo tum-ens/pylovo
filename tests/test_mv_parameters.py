@@ -101,7 +101,7 @@ def record(item) -> dict:
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 2,
+    "schema": 1, "mv_stage_version": 3,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},

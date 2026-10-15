@@ -23,7 +23,9 @@ import yaml
 
 #: Version of the MV stage code; bumped whenever results change. Stored in every MV variant snapshot.
 #: 2: MV customer halls count one storey, customers below ``customer_min_mv_kw`` hang on the nearest station.
-MV_STAGE_VERSION: int = 2
+#: 3: nominal voltage per district (``MV_NOMINAL_VOLTAGE_KV`` auto), station-busbar customers only within
+#: ``busbar_customer_max_m``, stations they overload upsized in the MV model (and in ``pylovo-mv couple``).
+MV_STAGE_VERSION: int = 3
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
