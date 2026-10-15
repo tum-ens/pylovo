@@ -26,8 +26,9 @@ larger groups of feeders joined by NOP lines are open-meshed (``mesh``). A feede
 line is a two-leg feeder (``two_leg``: a 2-leg customer feeder, or a ring whose open section ends at the busbar,
 as in some Ding0 grids); a feeder with two or more closed outlets is a closed ring
 (``closed_ring``); a feeder without any of these is ``radial``; a component without an outlet is an ``island``
-(unsupplied in normal operation). NOP lines between feeders of different busbars, and lines with role ``tie``, are
-ties. The **main path** of a feeder runs from the busbar along the shortest closed path to every end of its NOP
+(unsupplied in normal operation). NOP lines between feeders of different busbars, lines with role ``tie`` and
+normally-open lines to a node outside the table (a district's ties to its neighbours) are ties; a feeder with a tie
+end has ``has_tie``. The **main path** of a feeder runs from the busbar along the shortest closed path to every end of its NOP
 lines (radial and closed-ring feeders also to their farthest node). Nodes off the main paths are stub nodes and
 lines off the main paths are stub lines. The **ring members** of a ring are the stations, customers and generators
 on the main paths of its feeders (the cap definition of the MV stage; generators on a main path are looped in);
@@ -543,6 +544,14 @@ def _analyse(nodes: pd.DataFrame, lines: pd.DataFrame) -> _Analysis:
                 elif cls == "two_leg":
                     feeder_flags[side[1]].add("two_leg")
 
+    # a normally-open line to a node outside the table (e.g. a tie of one district to its neighbour) is a tie of
+    # the feeder of its known end
+    for u, v, is_open in zip(external["from_node"], external["to_node"], external["normally_open"]):
+        end = u if u in known else (v if v in known else None)
+        if bool(is_open) and end is not None and end not in is_busbar:
+            feeder_targets[feeder_of_node[end]].add(end)
+            feeder_flags[feeder_of_node[end]].add("tie")
+
     # ring groups: feeders of one busbar joined by NOP lines
     ring_graph = nx.Graph()
     ring_graph.add_nodes_from(range(n_feeders))
@@ -859,7 +868,8 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
 
     Returns:
         A flat, JSON-safe dict (NaN becomes None): counts by node kind, ``n_hv_mv_transformers`` (with an
-        ``n_transformers`` node column), line and NOP counts, feeder and ring counts by kind, ``n_feeder_bays``,
+        ``n_transformers`` node column), line and NOP counts, feeder and ring counts by kind,
+        ``n_rings_with_tie`` and ``tie_ring_share`` (rings and open meshes with a tie end), ``n_feeder_bays``,
         ``feeders_per_substation``, ``circuit_km``, ``cable_km``, ``overhead_km``, ``cable_share``,
         ``circuit_km_per_substation``, ``supply_points_per_substation``, ``km_per_supply_point``,
         ``km_per_station``, statistics (``_mean``, ``_median``, ``_min``, ``_max``) of ``ring_members``,
@@ -905,6 +915,8 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
         "feeders_per_substation": _ratio(supplied["n_bays"].sum(), n_busbars),
         "n_rings": int((rings["kind"] == "ring").sum()),
         "n_meshes": int((rings["kind"] == "mesh").sum()),
+        "n_rings_with_tie": int(true_rings["has_tie"].astype(bool).sum()),
+        "tie_ring_share": _ratio(true_rings["has_tie"].astype(bool).sum(), len(true_rings)),
         "n_two_leg": int((rings["kind"] == "two_leg").sum()),
         "n_closed_rings": int((rings["kind"] == "closed_ring").sum()),
         "n_radial": int((rings["kind"] == "radial").sum()),

@@ -875,13 +875,21 @@ class MvResultMixin(BaseMixin):
         out["cable_share"] = out["cable_km"] / out["circuit_km"] if out["circuit_km"] > 0 else 0.0
         return out
 
-    def finish_variant(self, version_id: str, variant_id: str, summary: "MvRunSummary") -> None:
-        """Store the run summary, the final status and ``finished_at`` of a variant; commits."""
+    def finish_variant(self, version_id: str, variant_id: str, summary: "MvRunSummary",
+                       extra: Mapping[str, Any] | None = None) -> None:
+        """Store the run summary, the final status and ``finished_at`` of a variant; commits.
+
+        Args:
+            extra: Further entries of the stored summary next to the fields of ``summary`` (e.g. ``ties``).
+        """
+        data = summary.to_dict()
+        if extra:
+            data.update(extra)
         try:
             self.cur.execute(
                 """UPDATE pylovo.mv_variant SET status = %s, summary = %s::jsonb, finished_at = now()
                    WHERE version_id = %s AND mv_variant_id = %s""",
-                (summary.status, _dumps(summary.to_dict()), version_id, variant_id))
+                (summary.status, _dumps(data), version_id, variant_id))
             self.conn.commit()
         except Exception:
             self.conn.rollback()
@@ -1062,6 +1070,137 @@ class MvResultMixin(BaseMixin):
         except Exception:
             self.conn.rollback()
             raise
+
+    # ------------------------------------------------------------------------------------------ ties (WP14)
+    def tie_grids(self, version_id: str, variant_id: str) -> pd.DataFrame:
+        """The districts of a variant for the tie step (:mod:`pylovo.mv_grid.interconnection`).
+
+        Returns:
+            One row per ``mv_grid`` (index ``mv_grid_id``): ``substation_id``, ``status``, ``vn_kv``, ``complete``,
+            ``in_region`` (of the substation), ``n_stations``, ``n_customers``, ``n_rings`` and ``circuit_km``
+            (without ties).
+        """
+        self.cur.execute(
+            """SELECT g.mv_grid_id, g.substation_id, g.status, g.vn_kv, g.complete, s.in_region, g.n_stations,
+                      g.n_customers, g.n_rings, g.circuit_km
+               FROM pylovo.mv_grid g JOIN pylovo.mv_substation s ON s.substation_id = g.substation_id
+               WHERE g.version_id = %s AND g.mv_variant_id = %s
+               ORDER BY g.mv_grid_id""", (version_id, variant_id))
+        frame = pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
+        frame.index = pd.Index(frame.pop("mv_grid_id").astype("int64"), name="mv_grid_id")
+        return frame
+
+    def tie_candidate_nodes(self, version_id: str, variant_id: str) -> pd.DataFrame:
+        """The nodes that may hold a tie: stations and MV customers looped into an open ring of a done district.
+
+        Returns:
+            Index ``mv_node_id``: ``mv_grid_id``, ``kind``, ``connection``, ``ring_id``, ``ring_kind``,
+            ``feeder_id``, ``ring_position``, ``x``, ``y``, ``attach_edge_id``, ``attach_fraction``,
+            ``attach_offset_m``, ``settlement_id`` and ``area_class``, ordered by ``mv_node_id``.
+        """
+        self.cur.execute(
+            """SELECT n.mv_node_id, n.mv_grid_id, n.kind, n.connection, n.ring_id, r.kind AS ring_kind, n.feeder_id,
+                      n.ring_position, ST_X(n.geom) AS x, ST_Y(n.geom) AS y, n.attach_edge_id, n.attach_fraction,
+                      n.attach_offset_m, n.settlement_id, n.area_class
+               FROM pylovo.mv_node n
+               JOIN pylovo.mv_grid g ON g.mv_grid_id = n.mv_grid_id
+               JOIN pylovo.mv_ring r ON r.mv_grid_id = n.mv_grid_id AND r.ring_id = n.ring_id
+               WHERE n.version_id = %s AND n.mv_variant_id = %s AND g.status = 'done' AND r.kind = 'ring'
+                 AND n.connection = 'ring' AND n.kind IN ('station', 'customer')
+               ORDER BY n.mv_node_id""", (version_id, variant_id))
+        frame = pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
+        frame.index = pd.Index(frame.pop("mv_node_id").astype("int64"), name="mv_node_id")
+        for column in ("mv_grid_id", "ring_id", "feeder_id", "ring_position", "attach_edge_id", "attach_fraction",
+                       "attach_offset_m", "settlement_id", "x", "y"):
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        return frame
+
+    def save_ties(self, version_id: str, variant_id: str, ties: pd.DataFrame,
+                  grid_metrics: Mapping[int, dict]) -> int:
+        """Replace the normally-open ties of a variant in one transaction; commits (rolls back and re-raises on error).
+
+        Deletes the variant's ``mv_line`` rows with role ``tie``, resets ``mv_ring.has_tie`` and removes
+        ``mv_grid.metrics['ties']``. Then inserts one ``mv_line`` per tie (role ``tie``, ``normally_open``,
+        ``open_at_node = to_node``, ``mv_grid_id`` of the ``from_node``, no ring or feeder, no loadings), sets
+        ``mv_ring.has_tie`` on the rings at both ends and writes ``grid_metrics`` as ``mv_grid.metrics['ties']``.
+
+        Args:
+            ties: Ties of :func:`pylovo.mv_grid.interconnection.plan_ties` (``from_node``, ``to_node``,
+                ``from_grid``, ``to_grid``, ``from_ring``, ``to_ring``, ``kind``, ``std_type``, ``length_m``,
+                ``cable_m``, ``overhead_m``, ``straight_m``, ``geometry``).
+            grid_metrics: ``{mv_grid_id: entry}`` of :func:`pylovo.mv_grid.interconnection.grid_tie_metrics`.
+
+        Returns:
+            The number of stored ties.
+        """
+        variant = (version_id, variant_id)
+        ties = pd.DataFrame(ties).reset_index(drop=True)
+        try:
+            self.cur.execute("""DELETE FROM pylovo.mv_line
+                                WHERE version_id = %s AND mv_variant_id = %s AND role = 'tie'""", variant)
+            self.cur.execute("""UPDATE pylovo.mv_ring SET has_tie = false
+                                WHERE version_id = %s AND mv_variant_id = %s AND has_tie""", variant)
+            self.cur.execute("""UPDATE pylovo.mv_grid SET metrics = metrics - 'ties'
+                                WHERE version_id = %s AND mv_variant_id = %s AND metrics ? 'ties'""", variant)
+            ids = self._allocate_ids("mv_line", "mv_line_id", len(ties))
+            if len(ties):
+                values = [(
+                    int(ids[i]), version_id, variant_id, int(tie["from_grid"]), int(tie["from_node"]),
+                    int(tie["to_node"]), "tie", str(tie["kind"]), str(tie["std_type"]), 1,
+                    max(float(tie["length_m"]) / 1000.0, 0.001), float(tie["cable_m"] or 0.0) / 1000.0,
+                    float(tie["overhead_m"] or 0.0) / 1000.0, _py_float(float(tie["straight_m"]) / 1000.0), 0.0, True,
+                    int(tie["to_node"]), tie["geometry"].wkb,
+                ) for i, tie in enumerate(ties.to_dict("records"))]
+                execute_values(
+                    self.cur,
+                    """INSERT INTO pylovo.mv_line (mv_line_id, version_id, mv_variant_id, mv_grid_id, from_node, to_node,
+                           role, kind, std_type, parallel, length_km, cable_km, overhead_km, straight_km, bridge_m,
+                           normally_open, open_at_node, geom) VALUES %s""",
+                    values,
+                    template=("(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                              f"ST_GeomFromWKB(%s, {int(TARGET_EPSG)}))"),
+                    page_size=1000)
+                rings = sorted({(int(g), int(r)) for g, r in zip(ties["from_grid"], ties["from_ring"])}
+                               | {(int(g), int(r)) for g, r in zip(ties["to_grid"], ties["to_ring"])})
+                execute_values(
+                    self.cur,
+                    """UPDATE pylovo.mv_ring r SET has_tie = true FROM (VALUES %s) AS v(mv_grid_id, ring_id)
+                       WHERE r.mv_grid_id = v.mv_grid_id AND r.ring_id = v.ring_id""",
+                    rings, template="(%s::bigint, %s::integer)", page_size=1000)
+            if grid_metrics:
+                execute_values(
+                    self.cur,
+                    """UPDATE pylovo.mv_grid g
+                       SET metrics = COALESCE(g.metrics, '{}'::jsonb) || jsonb_build_object('ties', v.ties)
+                       FROM (VALUES %s) AS v(mv_grid_id, ties) WHERE g.mv_grid_id = v.mv_grid_id""",
+                    [(int(g), _dumps(entry)) for g, entry in sorted(grid_metrics.items())],
+                    template="(%s::bigint, %s::jsonb)", page_size=1000)
+            self.conn.commit()
+            return int(len(ties))
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def read_ties(self, version_id: str, variant_id: str) -> pd.DataFrame:
+        """The normally-open ties of a variant with the district and ring of both ends (no geometry).
+
+        Returns:
+            One row per tie, ordered by ``mv_line_id``: ``mv_line_id``, ``from_grid`` (= ``mv_grid_id``),
+            ``from_node``, ``from_ring``, ``to_grid``, ``to_node``, ``to_ring``, ``kind``, ``std_type``,
+            ``length_km``, ``cable_km``, ``overhead_km``, ``straight_km``, ``geom_km``, ``normally_open`` and
+            ``open_at_node``.
+        """
+        self.cur.execute(
+            """SELECT l.mv_line_id, l.mv_grid_id AS from_grid, l.from_node, a.ring_id AS from_ring,
+                      b.mv_grid_id AS to_grid, l.to_node, b.ring_id AS to_ring, l.kind, l.std_type, l.length_km,
+                      l.cable_km, l.overhead_km, l.straight_km, ST_Length(l.geom) / 1000.0 AS geom_km,
+                      l.normally_open, l.open_at_node
+               FROM pylovo.mv_line l
+               JOIN pylovo.mv_node a ON a.mv_node_id = l.from_node
+               JOIN pylovo.mv_node b ON b.mv_node_id = l.to_node
+               WHERE l.version_id = %s AND l.mv_variant_id = %s AND l.role = 'tie'
+               ORDER BY l.mv_line_id""", (version_id, variant_id))
+        return pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
 
 
 # ---------------------------------------------------------------------------------------------- helpers

@@ -1,0 +1,541 @@
+"""Normally-open ties between the rings of neighbouring MV districts (WP14), without a database: tie selection on
+synthetic street graphs, the takeover check on small pandapower nets, the summaries, the persistence with a fake
+cursor, the post step of the stage and the tie handling of the metrics."""
+from __future__ import annotations
+
+import json
+import logging
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+import pandapower as pp
+import pytest
+import shapely
+
+import pylovo.database.mv_result_mixin as mixin
+from pylovo.mv_grid import interconnection as ic
+from pylovo.mv_grid import metrics, stage
+from pylovo.mv_grid.model import EdgeSet
+from pylovo.mv_grid.parameters import MvParameters
+
+PARAMS = MvParameters(variant_id="y0", interconnection="ties")
+
+
+# ---------------------------------------------------------------------------------------------- synthetic inputs
+def street(xs, y=0.0, first_vertex=1, first_edge=1):
+    """A straight street along x through the given vertex positions: (vertex ids, vertex xy, edges)."""
+    xs = np.asarray(xs, dtype=float)
+    vid = np.arange(first_vertex, first_vertex + len(xs))
+    eid = np.arange(first_edge, first_edge + len(xs) - 1)
+    return vid, np.column_stack([xs, np.full(len(xs), y)]), (eid, vid[:-1], vid[1:], np.diff(xs))
+
+
+def edge_set(*streets, links=()) -> EdgeSet:
+    """Edge set of streets plus extra links ``(edge_id, source, target, length_m)``."""
+    vid = np.concatenate([s[0] for s in streets])
+    xy = np.vstack([s[1] for s in streets])
+    parts = [s[2] for s in streets] + [tuple(np.array([v]) for v in link) for link in links]
+    eid, src, dst, length = (np.concatenate([np.asarray(p[k]) for p in parts]) for k in range(4))
+    n = len(eid)
+    return EdgeSet(edge_id=eid.astype(np.int64), source=src.astype(np.int64), target=dst.astype(np.int64),
+                   length_m=length.astype(float), in_settlement=np.zeros(n, bool), settlement_id=np.full(n, -1),
+                   vertex_id=vid.astype(np.int64), vertex_xy=xy)
+
+
+LINE = edge_set(street(np.arange(0.0, 6001.0, 500.0)))      # one street, 0 .. 6 km, edges 1..12
+
+
+def node(nid, grid, ring, x, *, feeder=None, kind="station", connection="ring", ring_kind="ring", offset=0.0,
+         area="rural", settlement=np.nan, y=None, edge=None, fraction=None):
+    """A node row on LINE (or on a given edge) in the form of ``MvResultMixin.tie_candidate_nodes``."""
+    if edge is None:
+        edge = int(min(x // 500.0, 11)) + 1
+        fraction = (x - 500.0 * (edge - 1)) / 500.0
+    return {"mv_node_id": nid, "mv_grid_id": grid, "kind": kind, "connection": connection, "ring_id": ring,
+            "ring_kind": ring_kind, "feeder_id": 2 * ring if feeder is None else feeder, "x": float(x),
+            "y": float(offset if y is None else y), "attach_edge_id": edge, "attach_fraction": fraction,
+            "attach_offset_m": float(offset), "settlement_id": settlement, "area_class": area}
+
+
+def nodes_frame(*rows) -> pd.DataFrame:
+    return pd.DataFrame(list(rows)).set_index("mv_node_id")
+
+
+def grids_frame(*rows) -> pd.DataFrame:
+    """Rows ``(mv_grid_id, vn_kv[, status, complete, in_region])``."""
+    out = []
+    for row in rows:
+        g, vn, status, complete, in_region = (tuple(row) + ("done", True, True))[:5]
+        out.append({"mv_grid_id": g, "vn_kv": vn, "status": status, "complete": complete, "in_region": in_region,
+                    "n_stations": 10, "n_customers": 2, "n_rings": 3, "circuit_km": 20.0})
+    return pd.DataFrame(out).set_index("mv_grid_id")
+
+
+def pairs_of(ties: pd.DataFrame) -> list[tuple[int, int]]:
+    return list(zip(ties["from_node"].astype(int), ties["to_node"].astype(int)))
+
+
+# ---------------------------------------------------------------------------------------------- selection
+def test_the_limit_applies_to_the_street_distance():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    near = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 2900.0)), grids, LINE, PARAMS)
+    assert pairs_of(near) == [(11, 21)] and near.loc[0, "street_m"] == pytest.approx(1900.0)
+    far = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 3100.0)), grids, LINE, PARAMS)
+    assert far.empty and list(far.columns) == list(ic.TIE_COLUMNS)
+    # connectors count: 1,900 m along the street plus 150 m off it is beyond 2 km
+    off = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 2900.0, offset=150.0)), grids, LINE,
+                       PARAMS)
+    assert off.empty
+    # 300 m apart in a straight line, but 4.3 km along the streets (two parallel streets joined at x = 0)
+    upper = street([0.0, 1000.0, 2000.0], y=300.0, first_vertex=101, first_edge=101)
+    lower = street([0.0, 1000.0, 2000.0], y=0.0, first_vertex=201, first_edge=201)
+    u_turn = edge_set(upper, lower, links=[(301, 101, 201, 300.0)])
+    rows = nodes_frame(node(11, 1, 0, 2000.0, y=300.0, edge=102, fraction=1.0),
+                       node(21, 2, 0, 2000.0, y=0.0, edge=202, fraction=1.0))
+    assert ic.plan_ties(rows, grids, u_turn, PARAMS).empty
+    assert pairs_of(ic.plan_ties(rows, grids, u_turn, PARAMS.replace(tie_max_length_m=5000.0))) == [(11, 21)]
+
+
+def test_at_most_one_tie_per_ring_greedy_by_length():
+    grids = grids_frame((1, 20.0), (2, 20.0), (3, 20.0))
+    rows = nodes_frame(
+        node(11, 1, 0, 1000.0), node(12, 1, 0, 1200.0),          # ring (1, 0): two members
+        node(21, 2, 0, 2000.0),                                   # 800 m from node 12
+        node(22, 2, 1, 2100.0),                                   # ring (2, 1): next to ring (2, 0)
+        node(31, 3, 0, 3500.0),                                   # 1.4 km from 22, 1.5 km from 21
+    )
+    ties = ic.plan_ties(rows, grids, LINE, PARAMS)
+    assert pairs_of(ties) == [(12, 21), (22, 31)]
+    rings = list(zip(ties["from_grid"], ties["from_ring"])) + list(zip(ties["to_grid"], ties["to_ring"]))
+    assert len(rings) == len(set(rings))                         # every ring at most once
+    assert ties["length_m"].tolist() == pytest.approx([800.0, 1400.0])
+
+
+def test_only_switchgear_ring_members_of_done_open_rings_hold_ties():
+    grids = grids_frame((1, 20.0), (2, 20.0), (4, 20.0, "failed"))
+    closer = [                                                    # each of them 100 m from node 21
+        node(12, 1, 0, 1900.0, kind="joint", connection="joint"),
+        node(13, 1, 0, 1900.0, kind="generator", connection="loop_in"),
+        node(14, 1, 0, 1900.0, connection="stub"),
+        node(15, 1, 1, 1900.0, kind="customer", connection="dedicated", ring_kind="dedicated"),
+        node(16, 1, 2, 1900.0, ring_kind="radial"),
+        node(41, 4, 0, 1900.0),                                   # failed district
+    ]
+    rows = nodes_frame(node(11, 1, 0, 1000.0, kind="customer"), *closer, node(21, 2, 0, 2000.0))
+    ties = ic.plan_ties(rows, grids, LINE, PARAMS)
+    assert pairs_of(ties) == [(11, 21)]
+    kinds = rows.loc[[11, 21], "kind"].tolist()
+    assert set(kinds) <= set(ic.TIE_NODE_KINDS)
+    assert ic.tie_candidates(rows, grids).index.tolist() == [11, 21]
+
+
+def test_no_ties_within_a_district_or_between_voltages():
+    rows = nodes_frame(node(11, 1, 0, 1000.0), node(12, 1, 1, 1100.0), node(31, 3, 0, 1200.0))
+    assert ic.plan_ties(rows, grids_frame((1, 20.0), (3, 10.0)), LINE, PARAMS).empty
+    assert pairs_of(ic.plan_ties(rows, grids_frame((1, 20.0), (3, 20.0)), LINE, PARAMS)) == [(12, 31)]
+
+
+def test_ties_are_deterministic():
+    grids = grids_frame((1, 20.0), (2, 20.0), (3, 20.0))
+    rows = nodes_frame(node(11, 1, 0, 1000.0), node(12, 1, 1, 1500.0), node(21, 2, 0, 2000.0),
+                       node(22, 2, 1, 2000.0), node(31, 3, 0, 2900.0), node(32, 3, 1, 2500.0))
+    first = ic.plan_ties(rows, grids, LINE, PARAMS)
+    shuffled = ic.plan_ties(rows.sample(frac=1.0, random_state=3), grids, LINE, PARAMS)
+    again = ic.plan_ties(rows, grids, LINE, PARAMS)
+    for other in (shuffled, again):
+        pd.testing.assert_frame_equal(first.drop(columns="geometry"), other.drop(columns="geometry"))
+        assert [g.wkb for g in first["geometry"]] == [g.wkb for g in other["geometry"]]
+    # equal lengths are broken by the node ids: 21 and 22 lie on the same point, 500 m from 12; 21 wins
+    assert pairs_of(first) == [(11, 31), (12, 21), (22, 32)]
+
+
+def test_kind_and_route_follow_the_link_rule():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    # a detour street: up 400 m, along 1,000 m, down 400 m (1.8 km) between points 1 km apart
+    vid = np.array([1, 2, 3, 4])
+    xy = np.array([[0.0, 0.0], [0.0, 400.0], [1000.0, 400.0], [1000.0, 0.0]])
+    detour = EdgeSet(edge_id=np.array([1, 2, 3]), source=np.array([1, 2, 3]), target=np.array([2, 3, 4]),
+                     length_m=np.array([400.0, 1000.0, 400.0]), in_settlement=np.zeros(3, bool),
+                     settlement_id=np.full(3, -1), vertex_id=vid, vertex_xy=xy)
+    a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
+    b = node(21, 2, 0, 1000.0, y=0.0, edge=3, fraction=1.0)
+    rural = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS).iloc[0]
+    assert rural["kind"] == "overhead" and rural["straight"]                  # 1.1 x 1,000 m < 1,800 m
+    assert rural["length_m"] == pytest.approx(1100.0) and rural["overhead_m"] == pytest.approx(1100.0)
+    assert rural["std_type"] == PARAMS.overhead.name and rural["geometry"].length == pytest.approx(1000.0)
+    urban = ic.plan_ties(nodes_frame(a, {**b, "area_class": "urban"}), grids, detour, PARAMS).iloc[0]
+    assert urban["kind"] == "cable" and not urban["straight"] and urban["length_m"] == pytest.approx(1800.0)
+    assert urban["std_type"] == PARAMS.cable.name and urban["geometry"].length == pytest.approx(1800.0)
+    same = ic.plan_ties(nodes_frame({**a, "settlement_id": 7}, {**b, "settlement_id": 7}), grids, detour, PARAMS)
+    assert same.iloc[0]["kind"] == "cable"
+    cables = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS.replace(overhead_lines="none")).iloc[0]
+    assert cables["kind"] == "cable" and cables["length_m"] == pytest.approx(1800.0)
+    crowfly = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS.replace(routing="crowfly")).iloc[0]
+    assert crowfly["straight"] and crowfly["length_m"] == pytest.approx(PARAMS.crowfly_detour * 1000.0)
+
+
+def test_orientation_geometry_and_flags():
+    grids = grids_frame((5, 20.0, "done", False, True), (2, 20.0, "done", True, False))
+    rows = nodes_frame(node(51, 5, 0, 1000.0, offset=30.0), node(21, 2, 0, 2200.0, offset=20.0))
+    tie = ic.plan_ties(rows, grids, LINE, PARAMS).iloc[0]
+    assert (tie["from_grid"], tie["from_node"], tie["to_grid"], tie["to_node"]) == (2, 21, 5, 51)   # lower grid id
+    assert tie["street_m"] == pytest.approx(1200.0 + 30.0 + 20.0)
+    coords = list(tie["geometry"].coords)
+    assert coords[0] == (2200.0, 20.0) and coords[-1] == (1000.0, 30.0)       # starts at from_node, ends at to_node
+    assert tie["geometry"].length == pytest.approx(tie["length_m"])
+    assert tie["flags"] == ["incomplete_district", "substation_outside_region"]
+    clean = ic.plan_ties(rows, grids_frame((5, 20.0), (2, 20.0)), LINE, PARAMS).iloc[0]
+    assert clean["flags"] == []
+
+
+def test_edge_geometries_are_used_for_street_ties():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    rows = nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 1900.0))
+    asked = []
+
+    def bent(ids):                     # every edge bends 10 m to the north at its middle
+        asked.extend(ids)
+        out = {}
+        for e in ids:
+            x0 = 500.0 * (e - 1)
+            out[e] = shapely.LineString([(x0, 0.0), (x0 + 250.0, 10.0), (x0 + 500.0, 0.0)])
+        return out
+
+    tie = ic.plan_ties(rows, grids, LINE, PARAMS, edge_geometry=bent).iloc[0]
+    assert sorted(set(asked)) == [3, 4]
+    assert max(y for _, y in tie["geometry"].coords) == pytest.approx(10.0)
+    assert tie["geometry"].coords[0] == (1000.0, 0.0) and tie["geometry"].coords[-1] == (1900.0, 0.0)
+
+
+# ---------------------------------------------------------------------------------------------- takeover
+def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0) -> pp.pandapowerNet:
+    """A stored-net-like district: busbar ``base`` and one open ring busbar - base+1 - base+2 | base+3 - busbar
+    (feeder 0: base+1, base+2 from exit a; feeder 1: base+3 from exit b; the NOP open at base+3)."""
+    net = pp.create_empty_network()
+    buses = [pp.create_bus(net, 20.0, name=f"MV node {base + i}") for i in range(4)]
+    net.bus["kind"] = ["busbar", "station", "station", "station"]
+    net.bus["mv_node_id"] = [float(base + i) for i in range(4)]
+    net.bus["node_key"] = [base + i for i in range(4)]
+    pp.create_ext_grid(net, buses[0], vm_pu=1.0)
+    sections = [(0, 1, 0, "a"), (1, 2, 0, None), (2, 3, 1, None), (3, 0, 1, "b")]
+    for a, b, feeder, exit_ in sections:
+        pp.create_line_from_parameters(net, buses[a], buses[b], length_km, r_ohm_per_km=0.122, x_ohm_per_km=0.112,
+                                       c_nf_per_km=304.0, max_i_ka=0.421)
+    net.line["ring_id"] = 0.0
+    net.line["feeder_id"] = [float(s[2]) for s in sections]
+    net.line["exit"] = [s[3] for s in sections]
+    net.line["role"] = "ring"
+    pp.create_switch(net, buses[3], 2, et="l", closed=False)
+    net.switch["normally_open"] = True
+    for b in buses[1:]:
+        pp.create_load(net, b, p_mw=load_mw, q_mvar=0.33 * load_mw)
+    return net
+
+
+def tie_row(**changes) -> dict:
+    row = {"from_node": 102, "to_node": 202, "from_grid": 1, "to_grid": 2, "from_ring": 0, "to_ring": 0,
+           "from_feeder": 0, "to_feeder": 0, "kind": "cable", "straight": False, "length_m": 800.0,
+           "street_m": 800.0, "straight_m": 700.0, "cable_m": 800.0, "overhead_m": 0.0,
+           "std_type": PARAMS.cable.name, "flags": [], "geometry": shapely.LineString([(0, 0), (700, 0)])}
+    row.update(changes)
+    return row
+
+
+def test_takeover_of_the_half_ring_through_the_tie():
+    ties = pd.DataFrame([tie_row()], columns=list(ic.TIE_COLUMNS))
+    light = ic.takeover_checks(ties, {1: ring_net(1, 100, 0.5), 2: ring_net(2, 200, 0.5)}, PARAMS)
+    assert light[["side", "mv_grid_id", "node", "partner_grid_id"]].values.tolist() == [
+        ["from", 1, 102, 2], ["to", 2, 202, 1]]
+    assert light["converged"].all() and light["ok"].all() and light["error"].isna().all()
+    # half A (2 x 0.5 MW) through B's exit a (1 km), B's 101-102 section ... about 4.6 km from busbar B
+    assert 0.0 < light.loc[0, "drop_percent"] < 1.0 and 0.0 < light.loc[0, "loading_percent"] < 30.0
+    heavy = ic.takeover_checks(ties, {1: ring_net(1, 100, 4.0), 2: ring_net(2, 200, 4.0)}, PARAMS)
+    assert heavy["converged"].all() and not heavy["ok"].any()
+    assert (heavy["loading_percent"] > 100.0).all()                # 16 MW through one 1x240 exit
+    missing = ic.takeover_checks(ties, {1: ring_net(1, 100, 0.5)}, PARAMS)
+    assert not missing["ok"].any() and missing["error"].str.contains("no stored net").all()
+    unknown = ic.takeover_checks(pd.DataFrame([tie_row(from_feeder=7)], columns=list(ic.TIE_COLUMNS)),
+                                 {1: ring_net(1, 100, 0.5), 2: ring_net(2, 200, 0.5)}, PARAMS)
+    assert unknown.loc[0, "error"].startswith("LookupError") and unknown.loc[1, "ok"]
+
+
+def test_the_takeover_does_not_change_the_normal_flow():
+    nets = {1: ring_net(1, 100, 0.5), 2: ring_net(2, 200, 0.5)}
+    before = {g: net.line.copy() for g, net in nets.items()}
+    ic.takeover_checks(pd.DataFrame([tie_row()], columns=list(ic.TIE_COLUMNS)), nets, PARAMS)
+    for g, net in nets.items():                                    # the input nets are not changed
+        pd.testing.assert_frame_equal(net.line, before[g])
+        assert not net.switch["closed"].any()
+
+
+# ---------------------------------------------------------------------------------------------- reporting
+def test_grid_metrics_and_summary():
+    ties = pd.DataFrame([tie_row(), tie_row(from_node=103, to_node=301, to_grid=3, from_ring=1, to_ring=0,
+                                            kind="overhead", cable_m=0.0, overhead_m=1200.0, length_m=1200.0,
+                                            flags=["incomplete_district"])], columns=list(ic.TIE_COLUMNS))
+    takeover = pd.DataFrame([
+        {"tie": 0, "side": "from", "mv_grid_id": 1, "ring_id": 0, "node": 102, "partner_grid_id": 2,
+         "converged": True, "drop_percent": 3.0, "loading_percent": 40.0, "ok": True, "error": None},
+        {"tie": 0, "side": "to", "mv_grid_id": 2, "ring_id": 0, "node": 202, "partner_grid_id": 1,
+         "converged": True, "drop_percent": 12.0, "loading_percent": 50.0, "ok": False, "error": None},
+        {"tie": 1, "side": "from", "mv_grid_id": 1, "ring_id": 1, "node": 103, "partner_grid_id": 3,
+         "converged": False, "drop_percent": None, "loading_percent": None, "ok": False, "error": None},
+        {"tie": 1, "side": "to", "mv_grid_id": 3, "ring_id": 0, "node": 301, "partner_grid_id": 1,
+         "converged": False, "drop_percent": None, "loading_percent": None, "ok": False,
+         "error": "LookupError: MV grid 3 has no stored net"},
+    ], columns=list(ic.TAKEOVER_COLUMNS))
+    per_grid = ic.grid_tie_metrics(ties, takeover)
+    assert sorted(per_grid) == [1, 2, 3]
+    assert per_grid[1]["n_ties"] == 2 and per_grid[1]["n_rings_with_tie"] == 2
+    assert per_grid[1]["tie_km"] == pytest.approx(2.0)
+    first = per_grid[2]["ties"][0]
+    assert first["owner"] is False and first["open_here"] is True and first["partner_node"] == 102
+    assert first["takeover"]["ok"] is False and first["takeover"]["drop_percent"] == pytest.approx(12.0)
+    json.dumps(per_grid, allow_nan=False)
+    grids = grids_frame((1, 20.0), (2, 20.0), (3, 20.0), (4, 20.0, "failed"))
+    summary = ic.tie_summary(ties, grids, PARAMS, takeover, runtime_s=1.234)
+    assert summary["n_ties"] == 2 and summary["tie_km"] == pytest.approx(2.0)
+    assert summary["tie_cable_km"] == pytest.approx(0.8) and summary["tie_overhead_km"] == pytest.approx(1.2)
+    assert summary["circuit_km"] == pytest.approx(60.0)
+    assert summary["tie_share_of_circuit_km"] == pytest.approx(2 / 60, rel=1e-4)
+    assert summary["n_rings"] == 9 and summary["n_rings_with_tie"] == 4
+    assert summary["ring_share_with_tie"] == pytest.approx(4 / 9, rel=1e-4)
+    assert summary["km_per_station"] == pytest.approx(2.0)
+    assert summary["km_per_station_with_ties"] == pytest.approx(62.0 / 30, abs=1e-4)      # rounded to 4 digits
+    assert summary["n_incomplete_district"] == 1 and summary["n_district_pairs"] == 2
+    assert (summary["takeover_checked"], summary["takeover_ok"], summary["takeover_not_converged"],
+            summary["takeover_errors"]) == (3, 1, 1, 1)
+    assert summary["takeover_max_drop_percent"] == pytest.approx(12.0)
+    json.dumps(summary, allow_nan=False)
+    line = ic.describe_ties(summary)
+    assert line.startswith("2 normally-open ties between districts: 2.0 km (3.3 % of 60 km MV circuits)")
+    assert "4 of 9 rings (44 %) with a tie" in line and "1 of 3 tie ends" in line
+    empty = ic.tie_summary(ic.empty_ties(), grids, PARAMS)
+    assert empty["n_ties"] == 0 and empty["ring_share_with_tie"] == 0.0 and empty["takeover_checked"] == 0
+    assert ic.describe_ties(empty).startswith("no normally-open ties")
+
+
+# ---------------------------------------------------------------------------------------------- persistence
+class FakeCursor:
+    def __init__(self):
+        self.statements: list[tuple[str, object]] = []
+        self.next_id = 500
+        self._rows: list[tuple] = []
+        self.rowcount = 1
+
+    def execute(self, query, params=None):
+        text = " ".join(str(query).split())
+        self.statements.append((text, params))
+        self._rows = []
+        if "nextval(pg_get_serial_sequence" in text:
+            self._rows = [(self.next_id + i,) for i in range(params[0])]
+            self.next_id += params[0]
+
+    def fetchall(self):
+        return list(self._rows)
+
+
+class FakeConnection:
+    def __init__(self):
+        self.commits = self.rollbacks = 0
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+class Client(mixin.MvResultMixin):
+    pass
+
+
+def make_client(monkeypatch, fail_on=None):
+    client = object.__new__(Client)
+    client.cur, client.conn = FakeCursor(), FakeConnection()
+    client.logger = logging.getLogger("mv-tie-test")
+    calls = []
+
+    def fake_execute_values(cur, query, values, template=None, page_size=100, fetch=False):
+        text = " ".join(str(query).split())
+        if fail_on and fail_on in text:
+            raise RuntimeError("insert failed")
+        cur.statements.append((text, "execute_values"))
+        calls.append((text, list(values), template))
+
+    monkeypatch.setattr(mixin, "execute_values", fake_execute_values)
+    return client, calls
+
+
+def test_save_ties_replaces_the_ties_of_the_variant(monkeypatch):
+    client, calls = make_client(monkeypatch)
+    ties = pd.DataFrame([tie_row(), tie_row(from_node=103, to_node=301, to_grid=3, from_ring=1)],
+                        columns=list(ic.TIE_COLUMNS))
+    metrics_by_grid = ic.grid_tie_metrics(ties)
+    assert client.save_ties("mv1", "y1", ties, metrics_by_grid) == 2
+    texts = [s for s, _ in client.cur.statements]
+    assert texts[0].startswith("DELETE FROM pylovo.mv_line") and "role = 'tie'" in texts[0]
+    assert "SET has_tie = false" in texts[1] and "metrics - 'ties'" in texts[2]
+    assert all(p == ("mv1", "y1") for _, p in client.cur.statements[:3])            # the variant only
+    insert, values, template = calls[0]
+    assert insert.startswith("INSERT INTO pylovo.mv_line") and "ST_GeomFromWKB" in template
+    first = values[0]
+    assert first[:11] == (500, "mv1", "y1", 1, 102, 202, "tie", "cable", PARAMS.cable.name, 1, 0.8)
+    assert first[14:17] == (0.0, True, 202)                         # bridge_m, normally open, open at to_node
+    assert [v[0] for v in values] == [500, 501]
+    assert "SET has_tie = true" in calls[1][0] and calls[1][1] == [(1, 0), (1, 1), (2, 0), (3, 0)]
+    assert "jsonb_build_object('ties'" in calls[2][0] and [g for g, _ in calls[2][1]] == [1, 2, 3]
+    assert json.loads(calls[2][1][0][1])["n_ties"] == 2
+    assert client.conn.commits == 1 and client.conn.rollbacks == 0
+    # no ties: the old ones are still removed
+    client, calls = make_client(monkeypatch)
+    assert client.save_ties("mv1", "y1", ic.empty_ties(), {}) == 0
+    assert len(client.cur.statements) == 3 and calls == [] and client.conn.commits == 1
+    # an error rolls the whole replacement back
+    client, _ = make_client(monkeypatch, fail_on="INSERT INTO pylovo.mv_line")
+    with pytest.raises(RuntimeError):
+        client.save_ties("mv1", "y1", ties, metrics_by_grid)
+    assert client.conn.rollbacks == 1 and client.conn.commits == 0
+
+
+class TieDb:
+    """The reads and the write of ``plan_and_save_ties`` on synthetic data."""
+
+    def __init__(self, nodes, grids, edges, nets=None):
+        self.nodes, self.grids, self.edges, self.nets = nodes, grids, edges, nets or {}
+        self.calls: list[tuple] = []
+        self.saved = None
+
+    def tie_grids(self, version_id, variant_id):
+        return self.grids
+
+    def tie_candidate_nodes(self, version_id, variant_id):
+        return self.nodes
+
+    def subgraph_edges(self, graph_id, hull_wkb, buffer_m, must):
+        self.calls.append(("subgraph", graph_id, len(shapely.from_wkb(hull_wkb).geoms), buffer_m, list(must)))
+        return self.edges
+
+    def edge_geometries(self, graph_id, ids):
+        self.calls.append(("geometries", list(ids)))
+        return {}
+
+    def read_mv_grid_net(self, mv_grid_id):
+        if mv_grid_id not in self.nets:
+            raise LookupError(f"MV grid {mv_grid_id} has no stored net")
+        return self.nets[mv_grid_id]
+
+    def save_ties(self, version_id, variant_id, ties, grid_metrics):
+        self.saved = (version_id, variant_id, ties, grid_metrics)
+        return len(ties)
+
+
+def test_plan_and_save_ties_reads_plans_checks_and_writes():
+    rows = nodes_frame(node(102, 1, 0, 1000.0, feeder=0), node(101, 1, 0, 400.0, feeder=0),
+                       node(202, 2, 0, 1800.0, feeder=0), node(301, 3, 0, 5800.0))
+    db = TieDb(rows, grids_frame((1, 20.0), (2, 20.0), (3, 20.0)), LINE,
+               nets={1: ring_net(1, 100, 0.5), 2: ring_net(2, 200, 0.5)})
+    summary = ic.plan_and_save_ties(db, "mv1", "y1", "g1", PARAMS)
+    _, _, ties, per_grid = db.saved
+    assert pairs_of(ties) == [(102, 202)] and summary["n_ties"] == 1
+    subgraph = db.calls[0]
+    assert subgraph[:4] == ("subgraph", "g1", 3, PARAMS.tie_max_length_m + ic.SUBGRAPH_MARGIN_M)   # 301 is far
+    assert summary["takeover_checked"] == 2 and summary["takeover_ok"] == 2
+    assert per_grid[1]["ties"][0]["takeover"]["ok"] is True
+    # nothing in reach: the old ties are still replaced (by none)
+    db = TieDb(nodes_frame(node(11, 1, 0, 0.0), node(31, 3, 0, 6000.0)), grids_frame((1, 20.0), (3, 20.0)), LINE)
+    summary = ic.plan_and_save_ties(db, "mv1", "y1", "g1", PARAMS)
+    assert db.saved[2].empty and db.saved[3] == {} and summary["n_ties"] == 0 and db.calls == []
+
+
+# ---------------------------------------------------------------------------------------------- stage
+class LvStub:
+    """Stands in for ``LvVersionParameters`` (the stage only passes it on to the patched steps)."""
+
+    @classmethod
+    def from_generation_parameters(cls, version_id, snapshot):
+        return cls()
+
+    def as_json(self):
+        return {}
+
+
+class StageDb:
+    """The calls of ``run_mv_stage`` up to the post step (every other method records its call)."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+        self.cur = SimpleNamespace(execute=lambda *args, **kwargs: None)   # savepoints of optional reads
+
+    def __getattr__(self, name):
+        def method(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+        return method
+
+    def try_lock_variant(self, version_id, variant_id):
+        return True
+
+    def generated_plz(self, version_id, plz):
+        return [1]
+
+    def variant_row(self, version_id, variant_id):
+        return None
+
+    def lv_snapshot(self, version_id):
+        return {}
+
+    def ensure_graph(self, region, params):
+        return "g1"
+
+    def register_variant(self, *args):
+        return "new"
+
+    def pending_grids(self, version_id, variant_id):
+        return []
+
+    def variant_totals(self, version_id, variant_id):
+        return {"grids_total": 1, "grids_done": 1, "grids_failed": 0, "grids_pending": 0, "n_stations": 3,
+                "n_customers": 0, "n_generators": 0, "circuit_km": 5.0, "cable_share": 1.0,
+                "n_violation_grids": 0, "n_band_conflicts": 0}
+
+
+def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
+    db = StageDb()
+    seen = []
+
+    def fake_ties(dbc, version_id, variant_id, graph_id, params, logger=None):
+        seen.append((version_id, variant_id, graph_id, params.interconnection))
+        return {"n_ties": 3, "tie_km": 2.5, "tie_max_length_m": 2000.0}
+
+    monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
+    monkeypatch.setattr(stage, "LvVersionParameters", LvStub)              # no LV snapshot rules in this test
+    monkeypatch.setattr(stage, "_region_step", lambda *a, **k: {})
+    monkeypatch.setattr(stage, "_run_districts", lambda *a, **k: [])
+    monkeypatch.setattr(ic, "plan_and_save_ties", fake_ties)
+    summary = stage.run_mv_stage("mv1", [1], PARAMS, log_file=str(tmp_path / "log.txt"))
+    assert seen == [("mv1", "y0", "g1", "ties")] and summary.status == "done"
+    finish = [c for c in db.calls if c[0] == "finish_variant"]
+    assert len(finish) == 1 and finish[0][2] == {"extra": {"ties": {"n_ties": 3, "tie_km": 2.5,
+                                                                     "tie_max_length_m": 2000.0}}}
+    db = StageDb()
+    monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
+    stage.run_mv_stage("mv1", [1], PARAMS.replace(interconnection="none"), log_file=str(tmp_path / "log.txt"))
+    assert [c[2] for c in db.calls if c[0] == "finish_variant"] == [{}]          # no ties without the switch
+
+
+# ---------------------------------------------------------------------------------------------- metrics
+def test_metrics_count_a_district_tie_to_a_neighbour():
+    nodes = pd.DataFrame({"node_id": [1, 2, 3, 4], "kind": ["busbar", "station", "station", "station"],
+                          "x": [0.0, 1000.0, 2000.0, 1000.0], "y": [0.0, 0.0, 0.0, 1000.0]})
+    lines = pd.DataFrame({
+        "line_id": [1, 2, 3, 4, 5], "from_node": [1, 2, 3, 4, 3], "to_node": [2, 3, 4, 1, 99],
+        "length_km": [1.0, 1.0, 1.5, 1.0, 0.8], "kind": "cable", "normally_open": [False, False, True, False, True],
+        "open_at_node": [None, None, 4, None, 99], "role": ["ring", "ring", "ring", "ring", "tie"]})
+    rings = metrics.ring_table(nodes, lines)
+    assert rings["kind"].tolist() == ["ring"] and rings["has_tie"].tolist() == [True]
+    tm = metrics.topology_metrics(nodes, lines)
+    assert tm["n_ties"] == 1 and tm["tie_km"] == pytest.approx(0.8) and tm["circuit_km"] == pytest.approx(4.5)
+    assert tm["n_rings_with_tie"] == 1 and tm["tie_ring_share"] == 1.0 and tm["n_nops"] == 1
+    without = metrics.topology_metrics(nodes, lines.iloc[:4])
+    assert without["n_rings_with_tie"] == 0 and without["tie_ring_share"] == 0.0

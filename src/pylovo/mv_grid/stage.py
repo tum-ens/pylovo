@@ -676,8 +676,9 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
         # 5. post
+        ties = None
         if params.interconnection == "ties":
-            _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
+            ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
     except Exception as exc:
@@ -690,22 +691,34 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
             logger.error(f"Could not store the failed status of MV variant {variant_id}: {_one_line(finish_exc)}")
         raise
     summary = _summary(version_id, variant_id, _status(totals), requested, used, missing, totals, warnings, start)
-    dbc.finish_variant(version_id, variant_id, summary)
+    if ties is None:
+        dbc.finish_variant(version_id, variant_id, summary)
+    else:
+        dbc.finish_variant(version_id, variant_id, summary, extra={"ties": ties})
     logger.info(summary.describe().splitlines()[0])
     return summary
 
 
 def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
-               logger: logging.Logger, warnings: list[str]) -> None:
+               logger: logging.Logger, warnings: list[str]) -> dict | None:
+    """Plan and store the normally-open ties between the districts (post step, DESIGN §4.5).
+
+    The ties of the variant are always planned anew from its done districts (a resumed run replaces them).
+
+    Returns:
+        The tie summary of :func:`pylovo.mv_grid.interconnection.tie_summary` (stored as
+        ``mv_variant.summary['ties']``), or None when the module is missing.
+    """
     try:
         interconnection = _module("interconnection")
     except ImportError:
         message = "ties not implemented in this build: MV_INTERCONNECTION ties was ignored"
         logger.warning(message)
         warnings.append(message)
-        return
-    n = interconnection.plan_and_save_ties(dbc, version_id, variant_id, graph_id, params)
-    logger.info(f"{n} normally-open ties between districts")
+        return None
+    summary = interconnection.plan_and_save_ties(dbc, version_id, variant_id, graph_id, params, logger=logger)
+    logger.info(interconnection.describe_ties(summary))
+    return summary
 
 
 def _summary(version_id: str, variant_id: str, status: str, requested: list[int] | None, used: list[int],
