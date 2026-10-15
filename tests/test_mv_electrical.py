@@ -397,7 +397,7 @@ def test_run_cases_converge_and_n1_feeds_each_ring_from_one_side():
 
 
 def test_long_heavy_ring_violates_voltage():
-    b = Builder()
+    b = Builder(MvParameters(cable_type="NA2XS2Y 1x240 RM/25 12/20 kV"))    # the hand value is for 1x240
     b.ring(10, spacing=6000.0, households=1500.0)       # about 9 MW per 30 km half: 5.4 % drop by hand
     inp, plan = b.build()
     cases = electrical.run_cases(electrical.build_design_net(inp, plan), inp, plan)

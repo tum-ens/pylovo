@@ -92,9 +92,12 @@ _YAML_SPECS: tuple[Spec, ...] = (
     Spec("MV_INTERCONNECTION", "interconnection", "none", "choice", choices=("none", "ties"), group="topology",
          source="Weisenstein 2021; Dubielzig 2022"),
     Spec("MV_STANDARD_CABLE", "cable_type", None, "nullable_str", group="equipment", key="cable",
-         source="NA2XS2Y 1x240 RM/25 (eDisGo 20 kV standard cable); null = the default type of the nominal voltage"),
+         source="null = NA2XS2Y 1x150 RM/25, the most used MV cable in Germany (SimBench statistics of 74 real MV "
+                "grids: the cable length peaks at 150 mm²; Almomani & Witzmann 2024: over 60 % of the cables in "
+                "southern Germany are 150 to 185 mm²); NA2XS2Y 1x240 RM/25 is the eDisGo 20 kV standard cable"),
     Spec("MV_OVERHEAD_LINE", "overhead_type", None, "nullable_str", group="equipment", key="overhead",
-         source="122-AL1/20-ST1A; null = the default type of the nominal voltage"),
+         source="null = 48-AL1/8-ST1A, the most used MV overhead line in Germany (SimBench statistics of 74 real MV "
+                "grids: the overhead line length peaks at 50 mm²); 122-AL1/20-ST1A is the heavier alternative"),
     Spec("MV_LINE_PLANNING_UTILIZATION", "line_utilization", 0.6, "float", bounds=(0.1, 1.0), group="loading",
          source="dena 2012; Harnisch 2016; Wintzek 2021 (SimBench 0.5)"),
     Spec("MV_MAX_VOLTAGE_DROP_PERCENT", "max_drop_percent", 5.0, "float", bounds=(0.5, 20.0), group="voltage",

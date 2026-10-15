@@ -39,9 +39,13 @@ LINE_TYPES = {
     "122-AL1/20-ST1A 20.0": LineType("122-AL1/20-ST1A 20.0", "overhead", 20.0, 0.2376, 0.344, 10.3, 0.41),
     "122-AL1/20-ST1A 10.0": LineType("122-AL1/20-ST1A 10.0", "overhead", 10.0, 0.2376, 0.323, 11.1, 0.41),
     "70-AL1/11-ST1A 20.0": LineType("70-AL1/11-ST1A 20.0", "overhead", 20.0, 0.4132, 0.36, 9.7, 0.29),
+    "NA2XS2Y 1x150 RM/25 6/10 kV": LineType("NA2XS2Y 1x150 RM/25 6/10 kV", "cable", 10.0, 0.206, 0.11, 360.0, 0.315),
+    "48-AL1/8-ST1A 20.0": LineType("48-AL1/8-ST1A 20.0", "overhead", 20.0, 0.5939, 0.372, 9.5, 0.21),
+    "48-AL1/8-ST1A 10.0": LineType("48-AL1/8-ST1A 10.0", "overhead", 10.0, 0.5939, 0.35, 10.1, 0.21),
 }
-DEFAULT_TYPES = {20.0: ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0"),
-                 10.0: ("NA2XS2Y 1x240 RM/25 6/10 kV", "122-AL1/20-ST1A 10.0")}
+#: The defaults: the most used conductors of German MV grids (equipment.DEFAULT_LINE_TYPES).
+DEFAULT_TYPES = {20.0: ("NA2XS2Y 1x150 RM/25 12/20 kV", "48-AL1/8-ST1A 20.0"),
+                 10.0: ("NA2XS2Y 1x150 RM/25 6/10 kV", "48-AL1/8-ST1A 10.0")}
 
 
 def fake_hv_mv_type(sn_mva: float, vn_lv_kv: float) -> HvMvType:
@@ -102,8 +106,8 @@ EXPECTED_SNAPSHOT = {
                  "stub_max_length_m": 2000.0, "stub_min_offset_m": 100.0, "loop_in_max_offset_m": 100.0,
                  "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0, "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 4},
-    "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]),
-                  "overhead": record(LINE_TYPES["122-AL1/20-ST1A 20.0"]),
+    "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x150 RM/25 12/20 kV"]),
+                  "overhead": record(LINE_TYPES["48-AL1/8-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
                   "hv_mv_types": [record(fake_hv_mv_type(s, 20.0)) for s in (25.0, 31.5, 40.0, 63.0)]},
     "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0},
@@ -319,8 +323,8 @@ def test_replace_raw_takes_yaml_keys_and_constant_names():
 def test_types_are_resolved_lazily_and_cached(equipment):
     params = MvParameters()
     assert equipment.calls == []
-    assert params.cable == LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]
-    assert params.overhead == LINE_TYPES["122-AL1/20-ST1A 20.0"]
+    assert params.cable == LINE_TYPES["NA2XS2Y 1x150 RM/25 12/20 kV"]
+    assert params.overhead == LINE_TYPES["48-AL1/8-ST1A 20.0"]
     assert [t.sn_mva for t in params.hv_mv_types] == [25.0, 31.5, 40.0, 63.0]
     assert [t.interpolated for t in params.hv_mv_types] == [False, True, False, False]
     calls = len(equipment.calls)
@@ -330,7 +334,7 @@ def test_types_are_resolved_lazily_and_cached(equipment):
     same.check_types()
     assert len(equipment.calls) == calls                               # unrelated change keeps the types
     ten = params.replace(vn_kv=10)
-    assert ten.cable.name == "NA2XS2Y 1x240 RM/25 6/10 kV" and ten.overhead.name == "122-AL1/20-ST1A 10.0"
+    assert ten.cable.name == "NA2XS2Y 1x150 RM/25 6/10 kV" and ten.overhead.name == "48-AL1/8-ST1A 10.0"
     assert ten.hv_mv_types[0].vn_lv_kv == 10.0
 
 
@@ -361,13 +365,15 @@ def test_snapshot_layout(equipment):
 
 
 def test_snapshot_round_trip(equipment):
-    params = MvParameters(variant_id="sq", comment="status-quo conductors").replace_raw({
-        "MV_STANDARD_CABLE": "NA2XS2Y 1x150 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "70-AL1/11-ST1A 20.0",
+    # the former default types stay reachable through the keys (the variant sq of the first design, 1x150 and
+    # 70-AL1, became nearly redundant when 1x150 and 48-AL1 became the defaults)
+    params = MvParameters(variant_id="hv", comment="heavier conductors").replace_raw({
+        "MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "122-AL1/20-ST1A 20.0",
         "MV_STUBS": "none", "MV_INTERCONNECTION": "ties", "local_search_rounds": 0, "hv_mv_sizes_mva": [40, 25],
         "generator_fallback_kw": {"lv": 50, "mvlv": 150, "mv": 5000, "hvmv": 15000}, "lv_pv_cos_phi": 0.95,
         "graph_excluded_klasse": ["Bundesautobahn", "Bundesstraße"]})
     stored = json_round_trip(params.to_snapshot())
-    rebuilt = MvParameters.from_snapshot("sq", "status-quo conductors", stored)
+    rebuilt = MvParameters.from_snapshot("hv", "heavier conductors", stored)
     assert rebuilt == params
     assert rebuilt.to_snapshot() == stored
     assert rebuilt.cable == params.cable and rebuilt.hv_mv_types == params.hv_mv_types
@@ -384,7 +390,7 @@ def test_from_snapshot_keeps_the_stored_types(equipment):
     assert rebuilt.cable.r_ohm_per_km == 0.5 and rebuilt.to_snapshot() == stored
     assert len(equipment.calls) == calls                               # nothing resolved again
     assert rebuilt.replace(stubs="none").cable.r_ohm_per_km == 0.5
-    assert rebuilt.replace(vn_kv=10).cable.name == "NA2XS2Y 1x240 RM/25 6/10 kV"
+    assert rebuilt.replace(vn_kv=10).cable.name == "NA2XS2Y 1x150 RM/25 6/10 kV"
 
 
 def test_from_snapshot_fills_values_of_older_snapshots(equipment, monkeypatch):
@@ -422,17 +428,19 @@ def test_from_config_reads_the_shipped_defaults(equipment, monkeypatch):
 
 
 def test_snapshot_with_the_pandapower_types():
-    """With the real equipment module (once it exists): the default types of DESIGN §4.6 and the round trip."""
+    """With the real equipment module: the default types (the most used German MV conductors) and the round trip."""
     try:
         import pylovo.mv_grid.equipment  # noqa: F401
     except Exception as exc:          # not there yet (or not importable)
         pytest.skip(f"pylovo.mv_grid.equipment not available: {exc!r}")
     params = MvParameters()
     cable, overhead = params.cable, params.overhead
-    assert cable.name == "NA2XS2Y 1x240 RM/25 12/20 kV" and cable.kind == "cable"
+    assert cable.name == "NA2XS2Y 1x150 RM/25 12/20 kV" and cable.kind == "cable"
     assert (cable.r_ohm_per_km, cable.x_ohm_per_km, cable.c_nf_per_km, cable.max_i_ka) == pytest.approx(
-        (0.122, 0.112, 304.0, 0.421))
-    assert overhead.name == "122-AL1/20-ST1A 20.0" and overhead.kind == "overhead"
+        (0.206, 0.116, 250.0, 0.319))
+    assert overhead.name == "48-AL1/8-ST1A 20.0" and overhead.kind == "overhead"
+    assert (overhead.r_ohm_per_km, overhead.x_ohm_per_km, overhead.c_nf_per_km, overhead.max_i_ka) == pytest.approx(
+        (0.5939, 0.372, 9.5, 0.21))
     assert sorted(t.sn_mva for t in params.hv_mv_types) == [25.0, 31.5, 40.0, 63.0]
     assert [t.interpolated for t in params.hv_mv_types if t.sn_mva == 31.5] == [True]
     stored = json_round_trip(params.to_snapshot())

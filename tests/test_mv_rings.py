@@ -535,8 +535,10 @@ def test_from_model_uses_the_variant_line_types_and_limits():
     installed, units, fixed = coincidence.node_stats(nodes.iloc[[1, 2, 3]])
     assert check.p_ring_kw == pytest.approx(coincidence.pooled_kw(installed, units, fixed, G))
     assert check.feasible and check.length_m == 6000.0
+    cable, overhead = params.cable, params.overhead                   # the default types of the variant
+    sections = (cable, overhead, cable, cable)                         # section 1-2 is an overhead line
     expected = rings.check_ring(installed, units, fixed, np.full(4, 1500.0),
-                                [0.122, 0.2376, 0.122, 0.122], [0.112, 0.344, 0.112, 0.112],
-                                [0.421, 0.41, 0.421, 0.421], np.ones(3, bool), np.ones(3, bool), G, 0.95, 20.0,
+                                [t.r_ohm_per_km for t in sections], [t.x_ohm_per_km for t in sections],
+                                [t.max_i_ka for t in sections], np.ones(3, bool), np.ones(3, bool), G, 0.95, 20.0,
                                 ev.limits)
     _assert_same(check, expected)

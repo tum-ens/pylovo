@@ -4,9 +4,10 @@ The types are pandapower standard types, resolved once per MV variant into the f
 :class:`~pylovo.mv_grid.model.LineType` and :class:`~pylovo.mv_grid.model.HvMvType` (and stored in the variant
 snapshot by :class:`~pylovo.mv_grid.parameters.MvParameters`). pandapower is imported on the first lookup only.
 
-* Lines: one standard cable and one overhead line type per nominal voltage (:data:`DEFAULT_LINE_TYPES`;
-  ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE`` choose others). A line that is partly cable (inside settlements)
-  and partly overhead line gets length-weighted parameters (:func:`mixed_parameters`).
+* Lines: one standard cable and one overhead line type per nominal voltage, by default the most used types in
+  German MV grids (:data:`DEFAULT_LINE_TYPES`; ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE`` choose others). A
+  line that is partly cable (inside settlements) and partly overhead line gets length-weighted parameters
+  (:func:`mixed_parameters`).
 * HV/MV transformers: the pandapower types ``25/40/63 MVA 110/20 kV`` (``110/10 kV`` at 10 kV). pandapower has no
   31.5 MVA type; it is interpolated between 25 and 40 MVA with rounded data-sheet values
   (:data:`INTERPOLATED_HV_MV`) and flagged ``interpolated``. Other sizes are rejected.
@@ -26,10 +27,15 @@ from typing import Any, Sequence
 
 from pylovo.mv_grid.model import LINE_KINDS, HvMvType, LineType
 
-#: Default (cable, overhead line) pandapower type names per nominal voltage in kV (DESIGN section 4.6).
+#: Default (cable, overhead line) pandapower type names per nominal voltage in kV: the most used conductors of
+#: existing German MV grids. In the SimBench statistics of 74 real German MV grids (SimBench documentation, German
+#: edition, p. 14, Fig. 3.2) the cable length peaks at 150 mm² and the overhead line length at 50 mm²; in southern
+#: German grids more than 60 % of the cables are 150 to 185 mm² (Almomani & Witzmann 2024). The heavier types of
+#: the first design (``NA2XS2Y 1x240 RM/25 12/20 kV``, ``122-AL1/20-ST1A 20.0``) stay available through
+#: ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE``.
 DEFAULT_LINE_TYPES: dict[float, tuple[str, str]] = {
-    20.0: ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0"),
-    10.0: ("NA2XS2Y 1x240 RM/25 6/10 kV", "122-AL1/20-ST1A 10.0"),
+    20.0: ("NA2XS2Y 1x150 RM/25 12/20 kV", "48-AL1/8-ST1A 20.0"),
+    10.0: ("NA2XS2Y 1x150 RM/25 6/10 kV", "48-AL1/8-ST1A 10.0"),
 }
 
 #: pandapower line ``type`` per line kind of the MV stage.
@@ -196,7 +202,8 @@ def line_std_type_name(kind: str, cable: LineType, overhead: LineType) -> str:
 
 
 def thermal_mva(lt: LineType) -> float:
-    """Thermal rating of one circuit in MVA: ``sqrt(3) * vn_kv * max_i_ka`` (14.6 MVA for 1x240 at 20 kV)."""
+    """Thermal rating of one circuit in MVA: ``sqrt(3) * vn_kv * max_i_ka`` (11.1 MVA for the default 1x150 cable
+    and 14.6 MVA for 1x240 at 20 kV)."""
     return math.sqrt(3.0) * lt.vn_kv * lt.max_i_ka
 
 

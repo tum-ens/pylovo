@@ -20,7 +20,10 @@ LINE_VALUES = {
     "122-AL1/20-ST1A 20.0": ("overhead", 20.0, 0.2376, 0.344, 10.3, 0.41),
     "NA2XS2Y 1x240 RM/25 6/10 kV": ("cable", 10.0, 0.122, 0.105, 456.0, 0.416),
     "122-AL1/20-ST1A 10.0": ("overhead", 10.0, 0.2376, 0.323, 11.1, 0.41),
-    "NA2XS2Y 1x150 RM/25 12/20 kV": ("cable", 20.0, 0.206, 0.116, 250.0, 0.319),     # status-quo variant sq
+    "NA2XS2Y 1x150 RM/25 12/20 kV": ("cable", 20.0, 0.206, 0.116, 250.0, 0.319),     # defaults: the most used
+    "48-AL1/8-ST1A 20.0": ("overhead", 20.0, 0.5939, 0.372, 9.5, 0.21),               # types in German MV grids
+    "NA2XS2Y 1x150 RM/25 6/10 kV": ("cable", 10.0, 0.206, 0.11, 360.0, 0.315),
+    "48-AL1/8-ST1A 10.0": ("overhead", 10.0, 0.5939, 0.35, 10.1, 0.21),
     "70-AL1/11-ST1A 20.0": ("overhead", 20.0, 0.4132, 0.36, 9.7, 0.29),
 }
 
@@ -32,8 +35,11 @@ def test_line_types_come_from_pandapower():
         assert all(type(getattr(lt, f)) is float for f in ("vn_kv", "r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km",
                                                             "max_i_ka"))
         equipment.check_line_type(lt, vn_kv, kind)
-    assert equipment.default_line_types(20) == ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0")
-    assert equipment.default_line_types(10.0) == ("NA2XS2Y 1x240 RM/25 6/10 kV", "122-AL1/20-ST1A 10.0")
+    assert equipment.default_line_types(20) == ("NA2XS2Y 1x150 RM/25 12/20 kV", "48-AL1/8-ST1A 20.0")
+    assert equipment.default_line_types(10.0) == ("NA2XS2Y 1x150 RM/25 6/10 kV", "48-AL1/8-ST1A 10.0")
+    for vn_kv, names in equipment.DEFAULT_LINE_TYPES.items():          # the defaults fit their voltage
+        for name, kind in zip(names, ("cable", "overhead")):
+            equipment.check_line_type(equipment.line_type(name), vn_kv, kind)
     with pytest.raises(ValueError, match="20 and 10 kV only"):
         equipment.default_line_types(15)
 
@@ -66,13 +72,14 @@ def test_unknown_and_unsuitable_line_types_are_rejected():
 
 def test_mv_parameters_resolve_and_check_the_types():
     params = MvParameters()
-    assert params.cable == equipment.line_type("NA2XS2Y 1x240 RM/25 12/20 kV")
-    assert params.overhead == equipment.line_type("122-AL1/20-ST1A 20.0")
+    assert params.cable == equipment.line_type("NA2XS2Y 1x150 RM/25 12/20 kV")
+    assert params.overhead == equipment.line_type("48-AL1/8-ST1A 20.0")
     assert [t.name for t in params.hv_mv_types] == ["25 MVA 110/20 kV", "31.5 MVA 110/20 kV", "40 MVA 110/20 kV",
                                                      "63 MVA 110/20 kV"]
-    status_quo = MvParameters().replace_raw({"MV_STANDARD_CABLE": "NA2XS2Y 1x150 RM/25 12/20 kV",
-                                             "MV_OVERHEAD_LINE": "70-AL1/11-ST1A 20.0"})
-    assert (status_quo.cable.max_i_ka, status_quo.overhead.max_i_ka) == (0.319, 0.29)
+    heavier = MvParameters().replace_raw({"MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV",   # the former
+                                          "MV_OVERHEAD_LINE": "122-AL1/20-ST1A 20.0"})          # defaults
+    assert (heavier.cable.max_i_ka, heavier.overhead.max_i_ka) == (0.421, 0.41)
+    assert (heavier.cable_type, heavier.overhead_type) == ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0")
     ten = MvParameters(vn_kv=10)
     assert (ten.cable.vn_kv, ten.overhead.vn_kv) == (10.0, 10.0)
     assert {t.vn_lv_kv for t in ten.hv_mv_types} == {10.0}
@@ -129,6 +136,9 @@ def test_thermal_rating_and_parallel_circuits():
     assert equipment.parallel_count(equipment.thermal_mva(cable), cable, 1.0, 2) == (1, False)   # feed-in at 100 %
     assert equipment.parallel_count(0.0, cable, 0.6, 2) == (1, False)
     assert equipment.parallel_count(math.nan, cable, 0.6, 2) == (1, False)
+    default = equipment.line_type("NA2XS2Y 1x150 RM/25 12/20 kV")
+    assert equipment.thermal_mva(default) == pytest.approx(11.051, abs=1e-3)
+    assert equipment.parallel_count(5.5 / 0.95, default, 0.6, 2) == (1, False)      # 5.5 MW still on one cable
     with pytest.raises(ValueError, match="positive"):
         equipment.parallel_count(1.0, cable, 0.0, 2)
 
