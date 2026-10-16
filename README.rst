@@ -80,6 +80,19 @@ grid parameters are in ``config/config_generation_lv.yaml``; use a new ``VERSION
 them. All commands and options are described in the
 `command-line reference <https://pylovo.readthedocs.io/en/latest/user_guide/cli.html>`_.
 
+Map viewer
+----------
+
+``pylovo-viewer`` shows the database of your ``.env`` as an interactive map: LV grids, MV grids,
+their input data and the 110-380 kV grid of Germany (eTraGo), with all attributes on click, colour
+modes, a legend, key figures and 3D LoD2 buildings. It only reads the database. See the
+`map viewer guide <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_.
+
+.. code-block:: bash
+
+   uv sync --extra viewer
+   uv run --extra viewer pylovo-viewer       # http://127.0.0.1:8770/
+
 Browser UI (GridPlanner)
 ------------------------
 

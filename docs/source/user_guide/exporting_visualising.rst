@@ -1,8 +1,9 @@
 Exporting and visualising
 =========================
 
-Generated grids live in the database. You can look at them directly with QGIS, export them as
-CSV or pandapower JSON, or plot them with the helpers in :mod:`pylovo.plotting`.
+Generated grids live in the database. You can look at them in the browser with the map viewer
+(:doc:`viewer`) or with QGIS, export them as CSV or pandapower JSON, or plot them with the helpers
+in :mod:`pylovo.plotting`.
 
 QGIS templates
 --------------

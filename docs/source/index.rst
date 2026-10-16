@@ -36,9 +36,9 @@ GIS data.
   customers to the HV/MV substations of the region with open rings along the streets and checks them with pandapower (:doc:`concepts/mv_grids`).
 * **Grid classification** -- group the grids of a region into representative grid types with
   ``pylovo-classify`` (:doc:`user_guide/classification`).
-* **Analysis and visualisation** -- key figures per postcode and per grid, QGIS templates,
-  CSV export, plotting helpers, and the GridPlanner browser UI on top of pylovo's HTTP API
-  (:doc:`user_guide/browser_ui`).
+* **Analysis and visualisation** -- key figures per postcode and per grid, the read-only map
+  viewer ``pylovo-viewer`` (:doc:`user_guide/viewer`), QGIS templates, CSV export, plotting
+  helpers, and the GridPlanner browser UI on top of pylovo's HTTP API (:doc:`user_guide/browser_ui`).
 
 .. rubric:: Where to start
 
@@ -126,6 +126,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    user_guide/classification
    user_guide/applications
    user_guide/exporting_visualising
+   user_guide/viewer
    user_guide/browser_ui
    user_guide/http_api
    user_guide/cli

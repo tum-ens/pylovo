@@ -23,6 +23,7 @@ Project layout
    |   |-- source/               this documentation (Sphinx)
    |   `-- scripts/              scripts that create the figures
    |-- api/                      HTTP API for the GridPlanner UI (pylovo-api)
+   |-- viewer/                   read-only map viewer (pylovo-viewer): server, static page, tests
    |-- notebook_tutorials/       Jupyter notebooks
    |-- QGIS/                     QGIS project templates
    |-- tests/                    unit tests (no database needed; database tests are opt-in)

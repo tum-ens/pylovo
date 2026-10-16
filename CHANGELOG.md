@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### Added
+- Map viewer `pylovo-viewer` (`viewer/`, extra `viewer`): a read-only browser map of the database in the `.env`, as an alternative to the QGIS templates. It shows the LV grids of a version, the MV grids of an MV run, the LV input data, the classification, eGon, OSM power and MaStR context layers and the 110-380 kV eTraGo grid of Germany (`pylovo-viewer fetch etrago`). Regions by postcode, MV supply area or grid, a search, identify with all database attributes, colour modes with a legend, key figures, shareable views in the URL and 3D buildings (LoD2 from `citydb`, else extruded footprints). Every query runs in a read-only transaction. Documented in `user_guide/viewer`
 - HTTP API `pylovo-api` (`api/`, extra `api`, image `ghcr.io/tum-ens/pylovo`) for the GridPlanner browser UI: database setup, region input check, transformer editing and imports, configuration editing with backups, generation, analysis and export jobs with live logs, statistics, grid details, an on-demand power flow, diagnostics and load editing
 - `pylovo.load_editing` and the audit table `pylovo.load_edit`: edit the building loads of stored grids
 - `pylovo.feeder_planning`: feeder branch planning and feeder cable sizing as a separate module
