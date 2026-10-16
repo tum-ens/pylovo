@@ -113,11 +113,16 @@ greyed out with the reason, so one viewer works with any pylovo database.
    * -
      - HV/MV substations
      - ``pylovo.mv_substation`` of the MV run with their site outlines; candidates the run did not use
-       are hollow.
+       are hollow. The facts give the eTraGo 110 kV bus of each substation.
    * - MV grids
      - MV lines
      - ``pylovo.mv_line``: rings, stubs and dedicated feeders by ring, kind, role or loading, with the
-       normally-open points; overhead lines dashed, ties between supply areas dotted.
+       normally-open points; overhead lines dashed, ties between supply areas dotted. Mixed lines run
+       partly on an OSM MV line, and their facts give the cable and overhead length.
+   * -
+     - OSM MV lines (off by default)
+     - The MV overhead lines mapped in OpenStreetMap as corridors of the run's routing graph
+       (``pylovo.mv_graph_edge``, ``MV_OVERHEAD_LINES: osm``).
    * -
      - MV/LV substations
      - ``pylovo.grid_result`` and ``transformer_positions``, with the MV ring and voltage of the
