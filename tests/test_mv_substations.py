@@ -323,6 +323,9 @@ def test_sites_frame_has_the_substation_columns():
     assert table["in_region"].tolist() == [True, False, False, True]
     assert table["egon_bus_id"].tolist() == [8, pd.NA, 10, 7]
     assert table["egon_distance_m"].isna().tolist() == [False, True, False, False]
+    # a site without an eGon match has no eTraGo 110 kV bus either
+    assert ["no_egon_bus" in f for f in table["flags"]] == [False, True, False, False]
+    assert not any("no_egon_bus" in f for f in sites_frame(sites)["flags"])           # no cross-check: no flag
     assert table["osm_ratings_mva"].tolist() == [None, None, None, [40.0, 40.0]]
     assert table["source"].unique().tolist() == ["osm"]
     assert table["footprint_wkb"].iloc[3] is not None and table["footprint_wkb"].iloc[0] is None

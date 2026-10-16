@@ -439,6 +439,24 @@ its German buses do not provide a 110 kV attachment. The
 `eGon HV model <https://egon-data.readthedocs.io/en/latest/data.html>`_ includes 110 kV, but its
 release, scenario and bus identities must still be checked against the selected substations.
 
+pylovo-mv boundary
+~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+   pylovo-mv boundary --version VERSION --variant VARIANT --output OUTPUT
+
+Writes the HV boundary of a variant to a CSV file, one row per supplying HV/MV substation, for a
+coupling with the eTraGo grid model of eGon-data. ``etrago_bus_id`` is the ``egon_bus_id`` of the
+substation. In eGon-data the bus id of an HV/MV substation is the id of its 110 kV bus in eTraGo.
+In the test regions, all 37 matched sites had an eTraGo 110 kV bus with the same id within 55 m
+(scenario eGon2035). A site without an eGon match has no bus (flag ``no_egon_bus``). ``p_mw``
+and ``q_mvar`` are the load case at the MV busbar, the coincident district peaks plus the MV
+losses, so they can replace eTraGo's load at that bus. The file also lists the HV/MV
+transformers, their loading in normal operation and with one unit out, and the position (WGS84).
+In the stored net of every grid, the HV bus carries the same id in the column
+``etrago_bus_id``.
+
 pylovo-mv graph
 ~~~~~~~~~~~~~~~
 

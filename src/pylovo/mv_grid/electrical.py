@@ -1153,8 +1153,8 @@ def build_stored_net(design_net: pp.pandapowerNet, units: int, unit_mva: float, 
                      ) -> tuple[pp.pandapowerNet, int]:
     """The stored net: the design net with the HV side and a fixed OLTC tap (DESIGN §5.5).
 
-    The ext_grid of the MV busbar is replaced by an HV bus (``HV busbar <substation_id>``, ``kind`` ``hv_busbar``)
-    with ``ext_grid(vm_pu = 1.0)`` and ``units`` rows ``HV/MV transformer 1..n`` of the sized type (its values are
+    The ext_grid of the MV busbar is replaced by an HV bus (``HV busbar <substation_id>``, ``kind`` ``hv_busbar``,
+    ``etrago_bus_id`` the eTraGo 110 kV bus of the substation or missing) with ``ext_grid(vm_pu = 1.0)`` and ``units`` rows ``HV/MV transformer 1..n`` of the sized type (its values are
     written into ``net.std_types`` from the variant snapshot; a 31.5 MVA type is created there). The discrete OLTC tap
     follows ``tap += round((vm(busbar) - busbar_vm_pu) / tap_step)``, clipped to the type's range, for at most
     :data:`OLTC_MAX_ITERATIONS` corrections (a negative tap raises the MV side). The returned net holds the load-case
@@ -1175,6 +1175,9 @@ def build_stored_net(design_net: pp.pandapowerNet, units: int, unit_mva: float, 
         net.bus.at[hv, "geo"] = geo
     if "kind" in net.bus.columns:
         net.bus.at[hv, "kind"] = "hv_busbar"
+    if "etrago_bus_id" not in net.bus.columns:
+        net.bus["etrago_bus_id"] = pd.Series(pd.NA, index=net.bus.index, dtype="Int64")
+    net.bus.at[hv, "etrago_bus_id"] = pd.NA if getattr(inp, "hv_bus_id", None) is None else int(inp.hv_bus_id)
     pp.create_ext_grid(net, hv, vm_pu=1.0, name="HV grid")
     std_type = equipment.add_hv_mv_std_type(net, item)
     rows = [pp.create_transformer(net, hv, busbar, std_type=std_type, name=f"HV/MV transformer {i + 1}",

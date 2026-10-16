@@ -281,8 +281,11 @@ with the smaller footprint is dropped. The MV level of a site is rarely tagged, 
 voltage comes from the rule of :ref:`mv-voltage-level`.
 
 Each OSM site gets the nearest eGon-data HV/MV substation within ``egon_match_m`` (300 m) as a
-cross-check (``mv_substation.egon_bus_id``). With ``MV_SUBSTATIONS: egon``, the eGon-data
-substations themselves are the sites, since eGon-data has filtered and aggregated them already.
+cross-check (``mv_substation.egon_bus_id``). A site without one gets the flag ``no_egon_bus``. The
+eGon bus id of an HV/MV substation is the id of its 110 kV bus in the eTraGo grid model of
+eGon-data, so it links the MV grid to the HV grid (``pylovo-mv boundary``). With
+``MV_SUBSTATIONS: egon``, the eGon-data substations themselves are the sites, since eGon-data has
+filtered and aggregated them already.
 
 A substation whose busbar lies more than ``substation_max_attach_m`` (2 km) from the routing graph
 supplies nothing (flag ``long_attach``). A substation that supplies no node gets no MV grid (flag

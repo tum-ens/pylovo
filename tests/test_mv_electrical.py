@@ -628,6 +628,9 @@ def test_stored_net_oltc_holds_the_busbar_setpoint(unit_mva, households):
     assert (stored.trafo["sn_mva"] == unit_mva).all() and (stored.trafo["tap_changer_type"] == "Ratio").all()
     hv = stored.bus.index[stored.bus["kind"] == "hv_busbar"]
     assert len(hv) == 1 and stored.bus.at[hv[0], "vn_kv"] == 110.0
+    assert pd.isna(stored.bus.at[hv[0], "etrago_bus_id"])                     # the test district has no eTraGo bus
+    linked, _ = electrical.build_stored_net(design, 2, unit_mva, dataclasses.replace(inp, hv_bus_id=33316))
+    assert linked.bus.at[hv[0], "etrago_bus_id"] == 33316
     assert stored.ext_grid["bus"].tolist() == [hv[0]] and len(design.ext_grid) == 1   # design net unchanged
     std_name = stored.trafo.at[stored.trafo.index[0], "std_type"]
     assert std_name in stored.std_types["trafo"]

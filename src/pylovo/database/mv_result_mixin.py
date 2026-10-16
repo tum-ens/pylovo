@@ -682,19 +682,54 @@ class MvResultMixin(BaseMixin):
             (version_id, variant_id))
         return [(int(g), int(n)) for g, n in self.cur.fetchall()]
 
+    def hv_boundary(self, version_id: str, variant_id: str) -> pd.DataFrame:
+        """The HV boundary of a variant for a coupling with eTraGo: one row per supplying HV/MV substation.
+
+        ``etrago_bus_id`` is the eGon bus id of the substation, which is the id of its 110 kV bus in the eTraGo grid
+        model of eGon-data (NULL for a site without an eGon match, flag ``no_egon_bus``). ``p_mw`` and ``q_mvar``
+        are the load case at the MV busbar (sum over the districts of the substation: their coincident peak plus
+        the MV losses), so the MV and LV demand can replace eTraGo's load at that bus. ``lon`` and ``lat`` are
+        WGS84.
+
+        Returns:
+            Columns ``substation_id``, ``name``, ``operator``, ``source``, ``etrago_bus_id``,
+            ``egon_distance_m``, ``flags``, ``n_grids``, ``vn_kv``, ``p_mw``, ``q_mvar``, ``peak_load_mw``,
+            ``n_transformers``, ``transformer_mva``, ``loading_n0_percent``, ``loading_n1_percent``, ``lon``,
+            ``lat``, ordered by ``substation_id``.
+        """
+        self.cur.execute(
+            """SELECT s.substation_id, s.name, s.operator, s.source, s.egon_bus_id AS etrago_bus_id, s.egon_distance_m,
+                      s.flags, count(g.mv_grid_id) AS n_grids, max(g.vn_kv) AS vn_kv,
+                      sum((g.metrics->>'load_slack_p_mw')::double precision) AS p_mw,
+                      sum((g.metrics->>'load_slack_q_mvar')::double precision) AS q_mvar,
+                      s.peak_load_mw, s.n_transformers, s.transformer_mva, s.loading_n0_percent,
+                      s.loading_n1_percent, ST_X(ST_Transform(s.geom, 4326)) AS lon,
+                      ST_Y(ST_Transform(s.geom, 4326)) AS lat
+               FROM pylovo.mv_substation s
+               JOIN pylovo.mv_grid g ON g.version_id = s.version_id AND g.mv_variant_id = s.mv_variant_id
+                                    AND g.substation_id = s.substation_id AND g.status = 'done'
+               WHERE s.version_id = %s AND s.mv_variant_id = %s
+               GROUP BY s.substation_id
+               ORDER BY s.substation_id""", (version_id, variant_id))
+        table = pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
+        table["etrago_bus_id"] = pd.array([None if b is None or pd.isna(b) else int(b) for b in table["etrago_bus_id"]],
+                                          dtype="Int64")
+        return table
+
     def load_district_nodes(self, mv_grid_id: int) -> tuple[pd.DataFrame, dict]:
         """The nodes of one district in NODE_COLUMNS form (busbar first) and its grid row.
 
         Returns:
             ``(nodes, grid)``: ``grid`` has ``mv_grid_id``, ``version_id``, ``mv_variant_id``, ``substation_id``,
-            ``vn_kv``, ``status``, ``osm_ratings_mva`` (list or None), ``in_region`` and ``substation_flags``.
+            ``vn_kv``, ``status``, ``osm_ratings_mva`` (list or None), ``in_region``, ``substation_flags`` and
+            ``egon_bus_id`` (the eTraGo 110 kV bus of the substation, or None).
 
         Raises:
             LookupError: The grid does not exist.
         """
         self.cur.execute(
             """SELECT g.mv_grid_id, g.version_id, g.mv_variant_id, g.substation_id, g.vn_kv, g.status,
-                      s.osm_ratings_mva, s.in_region, s.flags AS substation_flags
+                      s.osm_ratings_mva, s.in_region, s.flags AS substation_flags, s.egon_bus_id
                FROM pylovo.mv_grid g JOIN pylovo.mv_substation s ON s.substation_id = g.substation_id
                WHERE g.mv_grid_id = %s""", (int(mv_grid_id),))
         row = self.cur.fetchone()

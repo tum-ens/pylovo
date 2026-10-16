@@ -192,6 +192,32 @@ def test_couple_and_coupled_export_delegate_to_the_coupling_module(monkeypatch, 
     assert out[3].startswith("✓ Wrote MV grid 3 (n1b)")
 
 
+def test_boundary_writes_one_row_per_substation(monkeypatch, capsys, tmp_path, no_grid_generator):
+    import pandas as pd
+
+    table = pd.DataFrame([
+        {"substation_id": 7, "name": "A", "operator": None, "source": "osm", "etrago_bus_id": 33316,
+         "egon_distance_m": 0.0, "flags": [], "n_grids": 1, "vn_kv": 20.0, "p_mw": 14.5, "q_mvar": -0.5,
+         "peak_load_mw": 13.3, "n_transformers": 2, "transformer_mva": 25.0, "loading_n0_percent": 30.0,
+         "loading_n1_percent": 60.0, "lon": 11.5, "lat": 48.5},
+        {"substation_id": 8, "name": "B", "operator": "x", "source": "osm", "etrago_bus_id": None,
+         "egon_distance_m": None, "flags": ["no_egon_bus"], "n_grids": 1, "vn_kv": 20.0, "p_mw": 6.0,
+         "q_mvar": 0.3, "peak_load_mw": 5.5, "n_transformers": 2, "transformer_mva": 25.0,
+         "loading_n0_percent": 12.0, "loading_n1_percent": 24.0, "lon": 11.6, "lat": 48.6},
+    ])
+    calls = []
+    client = FakeClient(hv_boundary=lambda v, x: calls.append((v, x)) or table, rollback_changes=lambda: None)
+    monkeypatch.setattr(cli, "_database_client", lambda: client)
+    out_file = tmp_path / "b" / "boundary.csv"
+    cli.main(["boundary", "--version", "mv1", "--variant", "d1", "--output", str(out_file)])
+    assert calls == [("mv1", "d1")]
+    written = pd.read_csv(out_file)
+    assert written["etrago_bus_id"].isna().tolist() == [False, True] and written["flags"].fillna("").tolist() == [
+        "", "no_egon_bus"]
+    assert capsys.readouterr().out.strip() == (f"✓ Wrote the HV boundary of 2 substations (1 with an eTraGo 110 kV bus, "
+                                               f"20.5 MW) to {out_file}")
+
+
 def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):
     calls = []
     monkeypatch.setattr(stage, "export_net", lambda *a, **k: calls.append((a, k)) or Path(a[3]))

@@ -8,6 +8,8 @@ Subcommands:
 - ``list``: list the MV variants (status, PLZ, grids, km, stale).
 - ``graph``: build or reuse the MV routing graph of a region and print its QA tables.
 - ``export``: write the stored pandapower net of one MV grid to a JSON file.
+- ``boundary``: write the HV boundary of a variant (one row per supplying HV/MV substation with its eTraGo 110 kV bus,
+  load-case P and Q, HV/MV transformers and their loading) to a CSV file.
 
 Every output line starts with ✓ or ✗; the exit code is 0 when the command (the variant, the coupling) is done and
 1 otherwise. The command never constructs ``GridGenerator``: it works on stored LV versions with an explicit
@@ -37,6 +39,9 @@ Examples:
 
   # Stored net of one MV grid as pandapower JSON (feed-in case)
   pylovo-mv export --version mv1 --variant d1 --grid 12 --output grid_12.json --case feed_in_pv
+
+  # HV boundary for a coupling with eTraGo: eTraGo 110 kV bus, P and Q per HV/MV substation
+  pylovo-mv boundary --version mv1 --variant d1 --output boundary.csv
 
 --set takes MV_* keys of config_generation.yaml (not MV_GRID_GENERATION, MV_VARIANT_ID, MV_VARIANT_COMMENT) and the
 constants of pylovo.mv_grid.options.CONSTANTS, e.g. --set MV_RING_SOLVER=sweep local_search_rounds=0.
@@ -107,6 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--output", type=Path, required=True, help="JSON file to write")
     export.add_argument("--case", choices=CASES, default="load")
     export.add_argument("--coupled", action="store_true", help="the merged MV+LV net with its LV grids")
+
+    boundary = sub.add_parser("boundary", help="write the HV boundary (eTraGo 110 kV bus, P, Q) of a variant to CSV")
+    boundary.add_argument("--version", required=True)
+    boundary.add_argument("--variant", required=True)
+    boundary.add_argument("--output", type=Path, required=True, help="CSV file to write")
     return parser
 
 
@@ -234,8 +244,23 @@ def _export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _boundary(args: argparse.Namespace) -> int:
+    with _database_client() as dbc:
+        table = dbc.hv_boundary(args.version, args.variant)
+        dbc.rollback_changes()
+    if table.empty:
+        print(f"✗ MV variant {args.variant} of version {args.version} has no done grids")
+        return 1
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    table.assign(flags=table["flags"].map(lambda f: ";".join(f or []))).to_csv(args.output, index=False)
+    linked = int(table["etrago_bus_id"].notna().sum())
+    print(f"✓ Wrote the HV boundary of {len(table)} substations ({linked} with an eTraGo 110 kV bus, "
+          f"{table['p_mw'].sum():.1f} MW) to {args.output}")
+    return 0
+
+
 _COMMANDS = {"generate": _generate, "couple": _couple, "delete": _delete, "list": _list, "graph": _graph,
-             "export": _export}
+             "export": _export, "boundary": _boundary}
 
 
 def main(argv: list[str] | None = None) -> None:

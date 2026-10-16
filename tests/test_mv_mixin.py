@@ -127,6 +127,20 @@ def variant_rule(snapshot, plz_list):
     return ("FROM pylovo.mv_variant WHERE version_id = %s AND mv_variant_id = %s", (VARIANT_COLUMNS, [row], 1))
 
 
+def test_hv_boundary_reads_the_etrago_bus_of_every_supplying_substation():
+    columns = ["substation_id", "name", "operator", "source", "etrago_bus_id", "egon_distance_m", "flags", "n_grids",
+               "vn_kv", "p_mw", "q_mvar", "peak_load_mw", "n_transformers", "transformer_mva",
+               "loading_n0_percent", "loading_n1_percent", "lon", "lat"]
+    rows = [(7, "A", None, "osm", 33316, 0.0, [], 1, 20.0, 14.5, -0.5, 13.3, 2, 25.0, 30.0, 60.0, 11.5, 48.5),
+            (8, "B", None, "osm", None, None, ["no_egon_bus"], 1, 20.0, 6.0, 0.3, 5.5, 2, 25.0, 12.0, 24.0, 11.6, 48.6)]
+    client = make_client([("FROM pylovo.mv_substation s", (columns, rows, 2))])
+    table = client.hv_boundary("mv1", "d1")
+    assert table["etrago_bus_id"].dtype == "Int64" and table["etrago_bus_id"].isna().tolist() == [False, True]
+    assert int(table["etrago_bus_id"].iloc[0]) == 33316 and table["p_mw"].sum() == pytest.approx(20.5)
+    sql, params = client.cur.statements[0]
+    assert params == ("mv1", "d1") and "load_slack_q_mvar" in sql and "g.status = 'done'" in sql
+
+
 def test_variant_lock_uses_its_own_key():
     client = make_client([("pg_try_advisory_lock", (["ok"], [(True,)], 1))])
     assert client.try_lock_variant("mv1", "d0") is True

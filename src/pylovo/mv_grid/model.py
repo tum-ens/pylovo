@@ -102,6 +102,7 @@ class DistrictInput:
     known_units_mva: tuple[float, ...]     # OSM transformer ratings of the substation, or ()
     edge_geometry: Callable[[Sequence[int]], Mapping[int, Any]]   # edge ids -> shapely LineString (source→target)
     settlement_geoms: Mapping[int, Any] = field(default_factory=dict)   # settlement_id -> shapely (Multi)Polygon (P2 mixed spans)
+    hv_bus_id: int | None = None           # eTraGo 110 kV bus of the substation (its eGon bus id), None without one
 
 
 @dataclass

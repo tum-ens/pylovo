@@ -546,6 +546,8 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         region_wkb: The planning region (WKB, ``TARGET_EPSG``); ``in_region`` is True if the busbar point lies in
             it. Without a region ``in_region`` is None.
         matches: The result of :func:`match_egon` (``egon_bus_id``, ``egon_distance_m``); None leaves them empty.
+            With matches, a site without one gets the flag ``no_egon_bus``: it has no bus in the eGon-data grid
+            model, whose HV/MV bus ids are the 110 kV buses of eTraGo.
         ratings: OSM transformer ratings per site (:func:`site_ratings`); None or an empty entry gives None.
     """
     n = len(sites)
@@ -573,7 +575,8 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         "egon_distance_m": pd.Series([np.nan if d is None else d for _, d in egon], dtype=float),
         "in_region": pd.Series(in_region, dtype=object),
         "osm_ratings_mva": [list(r) if r else None for r in (ratings if ratings is not None else [()] * n)],
-        "flags": [list(site.flags) for site in sites],
+        "flags": [list(site.flags) + (["no_egon_bus"] if matches is not None and bus is None else [])
+                  for site, (bus, _) in zip(sites, egon)],
         "x": pd.Series([site.x for site in sites], dtype=float),
         "y": pd.Series([site.y for site in sites], dtype=float),
         "area_m2": pd.Series([site.area_m2 for site in sites], dtype=float),
