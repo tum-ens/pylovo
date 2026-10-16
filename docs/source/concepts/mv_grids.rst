@@ -432,6 +432,16 @@ line with both parts is a mixed line, with length-weighted resistance and reacta
 ampacity of its parts. The overhead lines are therefore real corridors, and no line is overhead
 where OSM maps none. Where the OSM layer is incomplete, the overhead length is a lower bound.
 
+An existing overhead corridor needs no new trench, so an OSM line costs ``osm_line_cost_factor``
+(0.7) times its length when routes and rings are planned. Routes and rings then follow the
+corridors where the detour is moderate, while the line lengths, the half-ring limit and the
+electrical checks use the true lengths. Without this preference the routes used an OSM line only
+where it was the shortest way between two consecutive ring members. In the test regions that gave
+385 km of overhead lines and 93 % cable. With 0.7 it gave 1,147 km, within the range that the
+§ 23c structural data of the regional DSOs imply (1,080 to 1,690 km), for 1.8 % more route length.
+With 0.5 it gave 1,789 km, and several rings shared one OSM line. A real line carries one or two
+circuits, and the planner does not limit the circuits per corridor.
+
 With ``MV_OVERHEAD_LINES: rural``, a link is an overhead line if its two ends are not in the same
 settlement and neither end is urban (two open-field ends count as different settlements). An
 overhead line then takes a straight span with angle poles, ``overhead_detour`` (1.1) times the

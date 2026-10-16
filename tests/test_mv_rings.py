@@ -525,6 +525,26 @@ def test_the_member_cap_counts_weighted_members(weights, feasible):
     assert check.feasible is feasible and (feasible or check.reason == "count")
 
 
+def test_the_evaluator_checks_true_lengths_and_ranks_by_cost():
+    k = 3
+    zeros = np.zeros((k, 4))
+    installed = np.array([[0, 0, 0, 0], [400.0, 0, 0, 0], [400.0, 0, 0, 0]])
+    units = np.array([[0, 0, 0, 0], [10.0, 0, 0, 0], [10.0, 0, 0, 0]])
+    cost = np.array([[0.0, 500.0, 500.0], [500.0, 0.0, 500.0], [500.0, 500.0, 0.0]])
+    true = 4.0 * cost
+    kwargs = dict(installed=installed, units=units, fixed_kw=np.zeros(k), member=np.array([0.0, 1.0, 1.0]),
+                  switchgear=np.array([False, True, True]), r_ohm_km=np.full((k, k), 0.2),
+                  x_ohm_km=np.full((k, k), 0.1), imax_ka=np.full((k, k), 0.3), g=G, power_factor=0.95, vn_kv=20.0,
+                  limits=RingLimits(20, 0.05, 0.1, 0.6, 1.0, 28000.0))
+    by_cost = rings.RingEvaluator(dist_m=cost, length_m=true, **kwargs)
+    by_length = rings.RingEvaluator(dist_m=true, **kwargs)
+    assert by_cost.ring_length([1, 2]) == pytest.approx(1500.0)              # the solvers rank by cost
+    check, reference = by_cost.evaluate([1, 2]), by_length.evaluate([1, 2])
+    assert check.length_m == pytest.approx(6000.0) and check.drop_n1 == pytest.approx(reference.drop_n1)
+    assert by_cost.section_arrays([1, 2])["section_m"].tolist() == [2000.0, 2000.0, 2000.0]
+    del zeros
+
+
 def test_from_model_uses_the_variant_line_types_and_limits():
     params = MvParameters()
     lv = LvVersionParameters(version_id="t", sim_factor=dict(zip(("Residential", "Commercial", "Public", "Unknown"),

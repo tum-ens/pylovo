@@ -32,9 +32,9 @@ from pylovo.mv_grid.model import EdgeSet, RunGraph
 
 #: Columns of :attr:`RunGraph.pieces <pylovo.mv_grid.model.RunGraph.pieces>`.
 PIECE_COLUMNS: tuple[str, ...] = ("piece_id", "u", "v", "length_m", "edge_id", "f0", "f1", "kind", "in_settlement",
-                                  "settlement_id", "overhead")
-#: Weight surcharge per m of overhead line in :func:`terminal_overhead` (small enough not to change a route).
-OVERHEAD_TRACE: float = 1e-6
+                                  "settlement_id", "overhead", "cost_m")
+#: Weight surcharge per traced unit in :func:`terminal_path_sums` (small enough not to change a route).
+PATH_TRACE: float = 1e-6
 #: Split points of one edge closer than this (m along the edge) share one vertex.
 SPLIT_MERGE_M: float = 1e-3
 
@@ -234,7 +234,7 @@ def _column(nodes: pd.DataFrame, name: str, default: float) -> np.ndarray:
 
 def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 1.0, connector_min_m: float = 0.5,
                     long_connector_m: float = 300.0, bridge_detour: float = 1.3,
-                    exit_radius_m: float = 0.0) -> RunGraph:
+                    exit_radius_m: float = 0.0, osm_cost_factor: float = 1.0) -> RunGraph:
     """The routing graph of one district: the subgraph split at the terminals, connectors and island bridges.
 
     * Every attachment edge is split at the sorted fractions of its terminals; a fraction within ``end_snap_m`` of an
@@ -245,6 +245,9 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
     * **Busbar exits**: the busbar's vertex gets a straight connector (cost = distance) to every street vertex (graph
       vertex or split point, no other terminal's own vertex) within ``exit_radius_m``, so feeders can leave the
       substation in several directions.
+    * **Costs**: a piece on an OSM MV line (``EdgeSet.overhead``) costs ``osm_cost_factor`` times its length, every
+      other piece its length (``pieces.cost_m``). Routes and distances use the costs; ``length_m`` stays the true
+      length (:func:`terminal_path_sums`).
     * Every component that holds terminals but not the busbar's is joined by a straight bridge between its closest
       vertex pair and the connected part (``cKDTree``, cost straight x ``bridge_detour``), nearest island first,
       until all terminals are connected. Rows with ``connection_hint == 'excluded'`` never cause a bridge.
@@ -259,6 +262,7 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
         long_connector_m: Connectors above this cost ``bridge_detour`` x their length.
         bridge_detour: Detour factor of long connectors and bridges.
         exit_radius_m: Radius of the busbar exits (0: none).
+        osm_cost_factor: Cost per m of a piece on an OSM MV line.
 
     Returns:
         The :class:`~pylovo.mv_grid.model.RunGraph`; ``terminal_vertex`` and ``bridged_rows`` follow the row order
@@ -422,6 +426,7 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
     u = np.concatenate(p_u)
     v = np.concatenate(p_v)
     w = np.concatenate(p_len)
+    w = np.where(np.concatenate(p_oh), w * float(osm_cost_factor), w)
 
     # 3. bridges: islands with terminals joined to the busbar's component, nearest first
     csr, _ = _undirected_csr(u, v, w, n_vertices)
@@ -459,13 +464,13 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
                    np.full(k, -1))
         u = np.concatenate(p_u)
         v = np.concatenate(p_v)
-        w = np.concatenate(p_len)
+        w = np.where(np.concatenate(p_oh), np.concatenate(p_len) * float(osm_cost_factor), np.concatenate(p_len))
 
     pieces = pd.DataFrame({
-        "piece_id": np.arange(len(u), dtype=np.int64), "u": u, "v": v, "length_m": w,
+        "piece_id": np.arange(len(u), dtype=np.int64), "u": u, "v": v, "length_m": np.concatenate(p_len),
         "edge_id": np.concatenate(p_edge), "f0": np.concatenate(p_f0), "f1": np.concatenate(p_f1),
         "kind": np.concatenate(p_kind), "in_settlement": np.concatenate(p_in),
-        "settlement_id": np.concatenate(p_sid), "overhead": np.concatenate(p_oh),
+        "settlement_id": np.concatenate(p_sid), "overhead": np.concatenate(p_oh), "cost_m": w,
     }, columns=list(PIECE_COLUMNS))
     csr, chosen = _undirected_csr(u, v, w, n_vertices)
     a = np.minimum(u, v)[chosen].tolist()
@@ -509,34 +514,53 @@ def terminal_distances(rg: RunGraph, rows: Sequence[int], *, chunk: int = 64) ->
     return out
 
 
-def terminal_overhead(rg: RunGraph, rows: Sequence[int], *, chunk: int = 64) -> np.ndarray:
-    """Overhead length (m) of the shortest path between every pair of the given node rows: the pieces on OSM MV
-    lines (``pieces.overhead``) along the routes of :func:`terminal_distances`.
+def terminal_path_sums(rg: RunGraph, rows: Sequence[int], values: np.ndarray, *, chunk: int = 64) -> np.ndarray:
+    """Sum of a per-piece value along the routes of :func:`terminal_distances` between every pair of node rows.
 
-    Every overhead piece weighs ``1 + OVERHEAD_TRACE`` times its length in a second Dijkstra; the difference of the
-    two distances divided by ``OVERHEAD_TRACE`` is the overhead length (to about 1e-3 m; only routes that tie
-    within millimetres can be traced on the other one). Unreachable pairs get ``inf``; without overhead pieces the
-    matrix is zero.
+    Every piece weighs its cost plus ``PATH_TRACE`` times its value in a second Dijkstra; the difference of the two
+    distances divided by ``PATH_TRACE`` is the sum (to about 1e-3; only routes whose costs tie within millimetres
+    can be traced on the other one). Unreachable pairs get ``inf``.
+
+    Args:
+        rg: Run graph.
+        rows: Node rows.
+        values: One non-negative value per piece (e.g. its length, or its length on OSM MV lines).
     """
     rows = np.asarray(rows, dtype=np.int64)
-    k = len(rows)
+    pieces = rg.pieces
+    values = np.asarray(values, dtype=np.float64)
+    cost = (pieces["cost_m"] if "cost_m" in pieces.columns else pieces["length_m"]).to_numpy(dtype=np.float64)
+    traced, _ = _undirected_csr(pieces["u"].to_numpy(dtype=np.int64), pieces["v"].to_numpy(dtype=np.int64),
+                                cost + PATH_TRACE * values, rg.n_vertices)
+    plain = terminal_distances(rg, rows, chunk=chunk)
+    with np.errstate(invalid="ignore"):
+        out = (terminal_distances(dataclasses.replace(rg, csr=traced), rows, chunk=chunk) - plain) / PATH_TRACE
+    out = np.where(np.isfinite(plain), np.clip(out, 0.0, None), np.inf)
+    np.fill_diagonal(out, 0.0)
+    return out
+
+
+def terminal_overhead(rg: RunGraph, rows: Sequence[int], *, chunk: int = 64) -> np.ndarray:
+    """Overhead length (m) of the routes between every pair of node rows: their pieces on OSM MV lines
+    (``pieces.overhead``); zero without such pieces, ``inf`` where unreachable."""
     pieces = rg.pieces
     flags = (pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in pieces.columns
              else np.zeros(len(pieces), dtype=bool))
     if not flags.any():
-        out = np.zeros((k, k))
+        rows = np.asarray(rows, dtype=np.int64)
+        out = np.zeros((len(rows), len(rows)))
         out[~np.isfinite(terminal_distances(rg, rows, chunk=chunk))] = np.inf
         return out
-    u = pieces["u"].to_numpy(dtype=np.int64)
-    v = pieces["v"].to_numpy(dtype=np.int64)
-    w = pieces["length_m"].to_numpy(dtype=np.float64)
-    traced, _ = _undirected_csr(u, v, w * (1.0 + OVERHEAD_TRACE * flags), rg.n_vertices)
-    plain = terminal_distances(rg, rows, chunk=chunk)
-    with np.errstate(invalid="ignore"):
-        out = (terminal_distances(dataclasses.replace(rg, csr=traced), rows, chunk=chunk) - plain) / OVERHEAD_TRACE
-    out = np.where(np.isfinite(plain), np.clip(out, 0.0, None), np.inf)
-    np.fill_diagonal(out, 0.0)
-    return out
+    return terminal_path_sums(rg, rows, pieces["length_m"].to_numpy(dtype=np.float64) * flags, chunk=chunk)
+
+
+def terminal_lengths(rg: RunGraph, rows: Sequence[int], *, chunk: int = 64) -> np.ndarray:
+    """True length (m) of the routes between every pair of node rows; the distances themselves when every piece
+    costs its length."""
+    pieces = rg.pieces
+    if "cost_m" not in pieces.columns or np.allclose(pieces["cost_m"], pieces["length_m"]):
+        return terminal_distances(rg, rows, chunk=chunk)
+    return terminal_path_sums(rg, rows, pieces["length_m"].to_numpy(dtype=np.float64), chunk=chunk)
 
 
 def _walk(pred_row: np.ndarray, source: int, target: int) -> list[int]:

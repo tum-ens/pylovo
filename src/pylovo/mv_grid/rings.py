@@ -358,7 +358,7 @@ class RingEvaluator:
     def __init__(self, *, installed: np.ndarray, units: np.ndarray, fixed_kw: np.ndarray,
                  member: np.ndarray, switchgear: np.ndarray, dist_m: np.ndarray, r_ohm_km: np.ndarray,
                  x_ohm_km: np.ndarray, imax_ka: np.ndarray, g: np.ndarray, power_factor: float, vn_kv: float,
-                 limits: RingLimits, cache_size: int = DEFAULT_CACHE_SIZE) -> None:
+                 limits: RingLimits, cache_size: int = DEFAULT_CACHE_SIZE, length_m: np.ndarray | None = None) -> None:
         """Create the evaluator.
 
         Args:
@@ -376,6 +376,8 @@ class RingEvaluator:
             vn_kv: Nominal voltage in kV.
             limits: The ring limits (:func:`ring_limits`).
             cache_size: Most memoised rings; the memo is cleared when it is full (0: no memo).
+            length_m: True link lengths in m for the electrics and the half-ring limit, shape (n, n), where
+                ``dist_m`` is a routing cost (default: ``dist_m``); ``dist_m`` stays the ring length of the solvers.
 
         Raises:
             ValueError: If a shape or value does not fit (as in :func:`check_ring`).
@@ -397,6 +399,10 @@ class RingEvaluator:
         dist[np.isnan(dist)] = np.inf
         if (dist < 0).any():
             raise ValueError("dist_m must not be negative")
+        length = dist.copy() if length_m is None else _square(length_m, n, "length_m")
+        length[np.isnan(length)] = np.inf
+        if (length < 0).any():
+            raise ValueError("length_m must not be negative")
         if not (np.isfinite(r).all() and np.isfinite(x).all() and (r >= 0).all() and (x >= 0).all()):
             raise ValueError("r_ohm_km and x_ohm_km must be finite and not negative")
         if not (np.isfinite(imax).all() and (imax > 0).all()):
@@ -411,9 +417,10 @@ class RingEvaluator:
         self.vn_kv = float(vn_kv)
         self.limits = limits
         self.dist_m = _frozen(dist)
+        self.length_m = _frozen(length)
         self.r_ohm_km, self.x_ohm_km, self.imax_ka = _frozen(r), _frozen(x), _frozen(imax)
-        finite = np.isfinite(dist)
-        self._w = _frozen(np.where(finite, _drop_coefficient(r, x, np.where(finite, dist, 0.0), 1.0, tan_phi,
+        finite = np.isfinite(length)
+        self._w = _frozen(np.where(finite, _drop_coefficient(r, x, np.where(finite, length, 0.0), 1.0, tan_phi,
                                                              self.vn_kv), np.inf))
         self._cap = _frozen(_capacity_kw(imax, 1.0, self.power_factor, self.vn_kv))
         self.cache_size = int(cache_size)
@@ -463,9 +470,9 @@ class RingEvaluator:
         if oh.shape != (n, n):
             raise ValueError(f"model.overhead must have the shape ({n}, {n}), got {oh.shape}")
         if model.overhead_m is not None:                 # MV_OVERHEAD_LINES osm: length-weighted mixed links
-            dist = np.asarray(model.dist_m, dtype=float)
+            true = np.asarray(model.length_m if model.length_m is not None else model.dist_m, dtype=float)
             with np.errstate(invalid="ignore", divide="ignore"):
-                share = np.where(np.isfinite(dist) & (dist > 0), np.asarray(model.overhead_m) / dist, 0.0)
+                share = np.where(np.isfinite(true) & (true > 0), np.asarray(model.overhead_m) / true, 0.0)
             share = np.clip(np.nan_to_num(share, nan=0.0, posinf=1.0), 0.0, 1.0)
             both = min(overhead.max_i_ka, cable.max_i_ka)
             imax = np.where(share >= 1.0 - 1e-9, overhead.max_i_ka, np.where(share <= 1e-9, cable.max_i_ka, both))
@@ -476,7 +483,7 @@ class RingEvaluator:
                 r_ohm_km=share * overhead.r_ohm_per_km + (1.0 - share) * cable.r_ohm_per_km,
                 x_ohm_km=share * overhead.x_ohm_per_km + (1.0 - share) * cable.x_ohm_per_km,
                 imax_ka=imax, g=inp.lv.g(), power_factor=inp.lv.power_factor, vn_kv=inp.vn_kv,
-                limits=ring_limits(params), cache_size=cache_size,
+                limits=ring_limits(params), cache_size=cache_size, length_m=model.length_m,
             )
         return cls(
             installed=installed, units=units, fixed_kw=fixed,
@@ -551,8 +558,8 @@ class RingEvaluator:
         ``section_x`` and ``section_imax`` of the ``len(seq) + 1`` links from the busbar back to the busbar."""
         path = np.fromiter((BUSBAR, *seq, BUSBAR), dtype=np.int64, count=len(seq) + 2)
         a, b = path[:-1], path[1:]
-        return {"section_m": self.dist_m[a, b], "section_r": self.r_ohm_km[a, b], "section_x": self.x_ohm_km[a, b],
-                "section_imax": self.imax_ka[a, b]}
+        return {"section_m": self.length_m[a, b], "section_r": self.r_ohm_km[a, b],
+                "section_x": self.x_ohm_km[a, b], "section_imax": self.imax_ka[a, b]}
 
     # ------------------------------------------------------------------ memo
     def _lookup(self, key: tuple[int, ...]) -> RingCheck:
@@ -581,5 +588,5 @@ class RingEvaluator:
         path[1:-1] = idx
         a, b = path[:-1], path[1:]
         loads = coincidence.segment_loads(self.installed[idx], self.units[idx], self.fixed_kw[idx], self.g)
-        return _check(loads, self.dist_m[a, b], self._w[a, b], self._cap[a, b], float(self.member[idx].sum()),
+        return _check(loads, self.length_m[a, b], self._w[a, b], self._cap[a, b], float(self.member[idx].sum()),
                       self.switchgear[idx], self.limits)

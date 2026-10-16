@@ -912,6 +912,11 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 100
      - ``MV_OVERHEAD_LINES: osm``: a loose end of an OSM MV line joins the nearest street point
        within this distance by a straight cable connector (assumption).
+   * - ``osm_line_cost_factor``
+     - 0.7
+     - ``MV_OVERHEAD_LINES: osm``: routing cost of an OSM MV line per m of its length, so that routes
+       and rings follow the existing corridors (assumption; 1: no preference). Lengths and checks use
+       the true lengths.
    * - ``busbar_exit_radius_m``
      - 200
      - The busbar gets straight cable connectors to every street vertex within this distance, so the

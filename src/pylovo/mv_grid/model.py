@@ -126,7 +126,7 @@ class DistanceModel:
 
     terminals: np.ndarray                  # node row index per terminal; terminal 0 = busbar
     candidates: np.ndarray                 # terminal indices of the ring candidates
-    dist_m: np.ndarray                     # (k, k) design distance used by the solvers; inf = unreachable
+    dist_m: np.ndarray                     # (k, k) design distance (routing cost) used by the solvers; inf = unreachable
     street_m: np.ndarray                   # (k, k)
     straight_m: np.ndarray                 # (k, k)
     overhead: np.ndarray                   # (k, k) bool: the link is an overhead line
@@ -134,6 +134,7 @@ class DistanceModel:
     xy: np.ndarray                         # (k, 2)
     satellite: np.ndarray | None = None    # (k,) bool: isolated rural station, a stub after the rings (no candidate)
     overhead_m: np.ndarray | None = None   # (k, k) overhead length of each link (MV_OVERHEAD_LINES osm), else None
+    length_m: np.ndarray | None = None     # (k, k) true length of each link where dist_m is a routing cost, else None
 
 
 def line_kind(overhead_m: float, length_m: float, tolerance_m: float = 1.0) -> str:

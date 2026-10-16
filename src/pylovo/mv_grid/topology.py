@@ -47,7 +47,7 @@ from scipy.sparse.csgraph import dijkstra
 from shapely.geometry import LineString
 from shapely.ops import substring
 
-from pylovo.mv_grid.graph import terminal_overhead
+from pylovo.mv_grid.graph import terminal_lengths, terminal_overhead
 from pylovo.mv_grid.model import (
     MEMBER_KINDS,
     DistanceModel,
@@ -124,7 +124,9 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
 
     With ``MV_OVERHEAD_LINES`` osm (and street routing) there are no straight spans and no settlement rule: every link
     follows the run graph, and its overhead length is the part of the route on OSM MV lines (``overhead_m``,
-    :func:`pylovo.mv_grid.graph.terminal_overhead`); ``overhead`` marks links that are mostly overhead.
+    :func:`pylovo.mv_grid.graph.terminal_overhead`); ``overhead`` marks links that are mostly overhead. The OSM
+    lines cost ``osm_line_cost_factor`` times their length, so ``dist_m`` is a routing cost and ``length_m`` holds
+    the true lengths of the same routes.
 
     Ring candidates are the stations and the customers that are neither dedicated nor excluded, without the
     **satellites** (``MV_STUBS: rural``): rural stations outside every settlement or alone in their settlement. They
@@ -140,10 +142,12 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
     settlement = _settlement_ids(nodes)[terminals]
     urban = _flags(nodes["urban"])[terminals]
     overhead_m = None
-    if p.overhead_lines == "osm" and p.routing != "crowfly":
+    length_m = None
+    if p.osm_overhead:
         overhead_m = terminal_overhead(rg, terminals)
+        length_m = terminal_lengths(rg, terminals)
         with np.errstate(invalid="ignore", divide="ignore"):
-            share = np.where(np.isfinite(street_m) & (street_m > 0), overhead_m / street_m, 0.0)
+            share = np.where(np.isfinite(length_m) & (length_m > 0), overhead_m / length_m, 0.0)
         overhead = share > 0.5
         straight = np.zeros_like(overhead)
         dist = street_m.copy()
@@ -179,7 +183,7 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
             satellite[:] = False
     return DistanceModel(terminals=terminals, candidates=np.flatnonzero(candidate & ~satellite).astype(np.int64),
                          dist_m=dist, street_m=street_m, straight_m=straight_m, overhead=overhead,
-                         straight=straight, xy=xy, satellite=satellite, overhead_m=overhead_m)
+                         straight=straight, xy=xy, satellite=satellite, overhead_m=overhead_m, length_m=length_m)
 
 
 # ============================================================================================ public: plan and repairs
@@ -438,7 +442,8 @@ class _Ctx:
         self.overhead = self.p.overhead_at(self.vn_kv)
         self.straight_detour = float(self.p.crowfly_detour if self.p.routing == "crowfly"
                                      else self.p.overhead_detour)
-        self.osm = self.p.overhead_lines == "osm" and self.p.routing != "crowfly"   # kinds from the route pieces
+        self.osm = bool(self.p.osm_overhead)            # line kinds from the route pieces
+        self.costed = self.osm and self.p.osm_cost_factor != 1.0   # router distances are costs, not lengths
         self.limits = RingLimits(max_members=int(self.p.max_stations_per_ring),
                                  max_drop=self.p.max_drop_percent / 100.0,
                                  max_drop_n1=self.p.max_drop_n1_percent / 100.0,
@@ -455,6 +460,7 @@ class _Ctx:
         self.piece_f1 = np.ones(size)
         self.piece_bridge = np.zeros(size, dtype=bool)
         self.piece_overhead = np.zeros(size, dtype=bool)
+        self.piece_length = np.zeros(size)
         self.piece_settlement = np.full(size, -1, dtype=np.int64)
         if size:
             self.piece_edge[pid] = pd.to_numeric(pieces["edge_id"], errors="coerce").fillna(-1).astype(np.int64)
@@ -463,6 +469,7 @@ class _Ctx:
             self.piece_bridge[pid] = pieces["kind"].astype(str).to_numpy() == "bridge"
             if "overhead" in pieces:
                 self.piece_overhead[pid] = _flags(pieces["overhead"])
+            self.piece_length[pid] = pd.to_numeric(pieces["length_m"], errors="coerce").fillna(0.0)
             if "settlement_id" in pieces and "in_settlement" in pieces:
                 inside = _flags(pieces["in_settlement"])
                 ids = pd.to_numeric(pieces["settlement_id"], errors="coerce").fillna(-1).to_numpy().astype(np.int64)
@@ -632,8 +639,14 @@ class _Route:
 
 
 def _street(ctx: _Ctx, verts: np.ndarray, cum: np.ndarray) -> _Route:
-    return _Route(np.asarray(verts, dtype=np.int64), np.asarray(cum, dtype=float),
-                  ctx.vertex_xy[int(verts[0])].copy(), ctx.vertex_xy[int(verts[-1])].copy())
+    """A run-graph route; with routing costs (``osm_line_cost_factor``) ``cum`` is replaced by the true lengths."""
+    verts = np.asarray(verts, dtype=np.int64)
+    cum = np.asarray(cum, dtype=float)
+    if ctx.costed and len(verts) > 1:
+        pieces = [ctx.piece(int(a), int(b)) for a, b in zip(verts[:-1], verts[1:])]
+        steps = np.array([ctx.piece_length[q] if q >= 0 else c for q, c in zip(pieces, np.diff(cum))])
+        cum = np.concatenate([[0.0], np.cumsum(steps)])
+    return _Route(verts, cum, ctx.vertex_xy[int(verts[0])].copy(), ctx.vertex_xy[int(verts[-1])].copy())
 
 
 def _span(p0: Any, p1: Any, detour: float) -> _Route:

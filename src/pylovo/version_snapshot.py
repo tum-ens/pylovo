@@ -60,6 +60,8 @@ MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("topology", "rural_ring_factor"): 1.0,
     # Before the busbar exits the busbar was joined to the street graph at its attachment only.
     ("routing", "busbar_exit_radius_m"): 0.0,
+    # The first variants with OSM MV lines in the routing graph routed on them at their length.
+    ("routing", "osm_line_cost_factor"): 1.0,
 }
 
 

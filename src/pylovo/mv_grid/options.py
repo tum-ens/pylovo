@@ -230,6 +230,11 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="MV_OVERHEAD_LINES osm: a loose end of an OSM MV line joins the nearest street vertex within "
                      "this distance by a straight cable connector (a riser pole and its cable); OSM lines also join "
                      "the streets where they cross them [assumption]"),
+    _constant("osm_line_cost_factor", 0.7, "float", "routing", bounds=(0.05, 1.0),
+              source="MV_OVERHEAD_LINES osm: an OSM MV line costs this factor times its length when routes and "
+                     "rings are planned, because an existing overhead corridor needs no new trench, so rings follow "
+                     "the corridors; lengths and electrics use the true length. 0.7 gave overhead circuit km within "
+                     "the § 23c range of the test regions, 0.5 above it [assumption; 1 = no preference]"),
     _constant("busbar_exit_radius_m", 200.0, "float", "routing", bounds=(0.0, 2000.0),
               source="the HV/MV busbar gets straight cable connectors to every street vertex within this distance, "
                      "so its feeders leave in several directions instead of one street [assumption]; 0 = only the "

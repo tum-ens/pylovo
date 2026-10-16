@@ -281,7 +281,7 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
     sub = cand.iloc[rows]
     lpairs = np.array([(local[int(i)], local[int(j)]) for i, j in pairs], dtype=np.int64).reshape(-1, 2)
     rg = graph.build_run_graph(edges, _run_graph_rows(sub), long_connector_m=params.long_connector_m,
-                               bridge_detour=params.bridge_detour)
+                               bridge_detour=params.bridge_detour, osm_cost_factor=params.osm_cost_factor)
     street = _street_distances(rg, lpairs, limit)
     ok = np.isfinite(street) & (street <= limit)
     lpairs, street = lpairs[ok], street[ok]
@@ -331,7 +331,7 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
     pieces = {key: graph.path_pieces(rg, path) for key, path in paths.items() if path}
     edge_kind = rg.pieces["kind"].astype(str).to_numpy()
     edge_ids = rg.pieces["edge_id"].to_numpy(dtype=np.int64)
-    osm = params.overhead_lines == "osm" and params.routing != "crowfly"
+    osm = params.osm_overhead
     on_osm = (rg.pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in rg.pieces.columns
               else np.zeros(len(rg.pieces), dtype=bool))
     piece_m = rg.pieces["length_m"].to_numpy(dtype=float)
@@ -354,8 +354,10 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             line = graph.path_geometry(rg, pieces.get(key, []), geoms, start_vertex=key[0])
             geometry = _with_ends(line, xy[f], xy[t])
         if osm and not straight[p]:                     # overhead where the route runs on OSM MV lines
-            route = pieces.get((int(vertex[f]), int(vertex[t])), [])
-            overhead_m = min(float(length[p]), float(sum(piece_m[q] for q in route if q >= 0 and on_osm[q])))
+            route = [q for q in pieces.get((int(vertex[f]), int(vertex[t])), []) if q >= 0]
+            if route:                                   # the true length of the route (street is its cost)
+                length[p] = street[p] = max(float(piece_m[route].sum()), MIN_TIE_M)
+            overhead_m = min(float(length[p]), float(piece_m[route][on_osm[route]].sum()) if route else 0.0)
         else:
             overhead_m = float(length[p]) if overhead[p] else 0.0
         kind = line_kind(overhead_m, float(length[p]))

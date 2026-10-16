@@ -260,6 +260,26 @@ def test_busbar_exits_join_the_street_vertices_within_the_radius():
     assert len(graph.build_run_graph(edges, nodes, exit_radius_m=0.0).pieces) == len(plain.pieces)
 
 
+def test_osm_pieces_cost_less_and_the_routes_keep_their_true_lengths():
+    # two routes from A (0, 0) to B (1000, 0): the street straight (1,000 m) and an OSM line over (500, 400)
+    coords = {1: (0.0, 0.0), 2: (1000.0, 0.0), 3: (500.0, 400.0)}
+    edges = _edge_set([(11, 1, 2), (12, 1, 3), (13, 3, 2)], coords)
+    edges = EdgeSet(**{**edges.__dict__, "overhead": np.array([False, True, True])})
+    nodes = _nodes([{"kind": "busbar", "x": 0.0, "y": 0.0, "attach_edge_id": 11, "attach_fraction": 0.0,
+                     "attach_offset_m": 0.0},
+                    {"x": 1000.0, "y": 0.0, "attach_edge_id": 11, "attach_fraction": 1.0, "attach_offset_m": 0.0}])
+    osm_m = 2 * np.hypot(500.0, 400.0)                                   # 1,280.6 m on the OSM line
+    plain = graph.build_run_graph(edges, nodes)
+    assert graph.terminal_distances(plain, [0, 1])[0, 1] == pytest.approx(1000.0)
+    assert graph.terminal_overhead(plain, [0, 1])[0, 1] == pytest.approx(0.0, abs=1e-3)
+    rg = graph.build_run_graph(edges, nodes, osm_cost_factor=0.5)
+    np.testing.assert_allclose(rg.pieces.cost_m, np.where(rg.pieces.overhead, 0.5, 1.0) * rg.pieces.length_m)
+    assert graph.terminal_distances(rg, [0, 1])[0, 1] == pytest.approx(0.5 * osm_m)          # the cost
+    assert graph.terminal_lengths(rg, [0, 1])[0, 1] == pytest.approx(osm_m, abs=1e-2)        # the true length
+    assert graph.terminal_overhead(rg, [0, 1])[0, 1] == pytest.approx(osm_m, abs=1e-2)
+    np.testing.assert_allclose(graph.terminal_lengths(plain, [0, 1]), graph.terminal_distances(plain, [0, 1]))
+
+
 def test_island_bridging_connects_every_terminal_and_flags_the_rows():
     coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (100.0, 500.0), 4: (300.0, 500.0), 5: (900.0, 900.0),
               6: (950.0, 900.0)}

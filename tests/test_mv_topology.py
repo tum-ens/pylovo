@@ -192,8 +192,10 @@ class District:
         pieces = pd.DataFrame(rows, columns=["piece_id", "u", "v", "length_m", "edge_id", "f0", "f1", "kind",
                                              "in_settlement", "settlement_id", "overhead"])
         n = len(xy)
-        csr = csr_matrix((np.r_[pieces.length_m, pieces.length_m], (np.r_[pieces.u, pieces.v],
-                                                                    np.r_[pieces.v, pieces.u])), shape=(n, n))
+        params = make_params(**param_changes)
+        pieces["cost_m"] = np.where(pieces.overhead, params.osm_cost_factor, 1.0) * pieces.length_m
+        csr = csr_matrix((np.r_[pieces.cost_m, pieces.cost_m], (np.r_[pieces.u, pieces.v],
+                                                                np.r_[pieces.v, pieces.u])), shape=(n, n))
         pair_piece = {(min(a, b), max(a, b)): int(i) for i, a, b in zip(pieces.piece_id, pieces.u, pieces.v)}
         rg = RunGraph(csr=csr, n_vertices=n, vertex_xy=xy, terminal_vertex=np.asarray(terminal_vertex),
                       pieces=pieces, pair_piece=pair_piece, n_bridges=0,
@@ -220,7 +222,7 @@ class District:
         edges = EdgeSet(*(np.zeros(0, dtype=np.int64) for _ in range(3)), np.zeros(0), np.zeros(0, dtype=bool),
                         np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros((0, 2)))
         inp = DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=frame, edges=edges,
-                            params=make_params(**param_changes), lv=LV, known_units_mva=(),
+                            params=params, lv=LV, known_units_mva=(),
                             edge_geometry=edge_geometry)
         return inp, rg
 
@@ -465,12 +467,15 @@ def osm_district() -> District:
 
 
 def test_osm_mode_takes_the_overhead_lines_of_the_graph_and_no_straight_spans():
-    model = model_of(osm_district(), overhead_lines="osm")
+    model = model_of(osm_district(), overhead_lines="osm", osm_line_cost_factor=0.5)
     assert not model.straight.any()
     np.testing.assert_allclose(model.dist_m, model.street_m)
-    assert model.dist_m[1, 2] == pytest.approx(1000.0) and model.overhead_m[1, 2] == pytest.approx(1000.0)
+    # dist_m is the routing cost (OSM lines at osm_line_cost_factor 0.5), length_m the true length
+    assert model.dist_m[1, 2] == pytest.approx(500.0) and model.length_m[1, 2] == pytest.approx(1000.0, abs=1e-2)
+    assert model.overhead_m[1, 2] == pytest.approx(1000.0, abs=1e-2)
     # the busbar leg to Q: 1 km of street cable to P, then 1 km on the OSM line
-    assert model.dist_m[0, 2] == pytest.approx(2000.0) and model.overhead_m[0, 2] == pytest.approx(1000.0)
+    assert model.dist_m[0, 2] == pytest.approx(1500.0) and model.length_m[0, 2] == pytest.approx(2000.0, abs=1e-2)
+    assert model.overhead_m[0, 2] == pytest.approx(1000.0, abs=1e-2)
     assert model.overhead_m[0, 1] == 0.0 and model.overhead[1, 2] and not model.overhead[0, 1]
     assert model_of(osm_district()).overhead_m is None                # rural: no overhead lengths
 
@@ -485,6 +490,26 @@ def test_osm_mode_plans_cable_overhead_and_mixed_lines():
     assert span.kind == "overhead" and span.overhead_m == pytest.approx(1000.0) and span.cable_m == 0.0
     assert leg_b.kind == "mixed" and leg_b.cable_m == pytest.approx(1000.0) and leg_b.overhead_m == pytest.approx(1000.0)
     assert leg_b.std_type == f"{CABLE.name} + {OVERHEAD.name}" and span.std_type == OVERHEAD.name
+
+
+def test_osm_lines_cost_less_so_routes_follow_them_with_their_true_length():
+    # P and Q 1 km apart along a street; an OSM line between them bends north (1.28 km): cheaper at a factor 0.5
+    d = District()
+    d.street((0, 0), (1000, 0), (2000, 0))
+    d.street((1000, 0), (1500, 400), (2000, 0), overhead=True)
+    d.node(BUSBAR, "busbar", 0, 0, hint="busbar")
+    d.node(2, "station", 1000, 0, settlement=1)
+    d.node(3, "station", 2000, 0, settlement=2)
+    osm_m = 2 * np.hypot(500.0, 400.0)
+    model = model_of(d, overhead_lines="osm", osm_line_cost_factor=0.5)
+    assert model.dist_m[1, 2] == pytest.approx(0.5 * osm_m) and model.length_m[1, 2] == pytest.approx(osm_m, abs=1e-2)
+    assert model.overhead_m[1, 2] == pytest.approx(osm_m, abs=1e-2)
+    plan, (inp, *_) = plan_of(d, [[2, 3]], overhead_lines="osm", osm_line_cost_factor=0.5, stubs="none")
+    assert_plan_valid(plan, inp)
+    span, = line_between(plan, 2, 3)
+    assert span.kind == "overhead" and span.length_m == pytest.approx(osm_m) and span.overhead_m == pytest.approx(osm_m)
+    street = model_of(d, overhead_lines="osm", osm_line_cost_factor=1.0)
+    assert street.dist_m[1, 2] == pytest.approx(1000.0) and street.overhead_m[1, 2] == pytest.approx(0.0, abs=1e-3)
 
 
 def test_crowfly_routing_uses_stretched_straight_spans():

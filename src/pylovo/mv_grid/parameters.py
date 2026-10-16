@@ -161,6 +161,7 @@ class MvParameters:
     bridge_detour: float = _y("bridge_detour")
     long_connector_m: float = _y("long_connector_m")
     osm_line_snap_m: float = _y("osm_line_snap_m")
+    osm_line_cost_factor: float = _y("osm_line_cost_factor")
     busbar_exit_radius_m: float = _y("busbar_exit_radius_m")
     graph_excluded_klasse: tuple[str, ...] = _y("graph_excluded_klasse")
     graph_snap_tolerance_m: float = _y("graph_snap_tolerance_m")
@@ -292,6 +293,16 @@ class MvParameters:
     def voltages(self) -> tuple[float, ...]:
         """The nominal voltages the districts of the variant can have: ``(20.0, 10.0)`` with ``auto``, else one."""
         return (AUTO_BASE_KV, AUTO_DENSE_KV) if self.auto_voltage else (float(self.vn_kv),)
+
+    @property
+    def osm_overhead(self) -> bool:
+        """``MV_OVERHEAD_LINES`` osm with street routing: overhead lines only along the OSM MV lines of the graph."""
+        return self.overhead_lines == "osm" and self.routing != "crowfly"
+
+    @property
+    def osm_cost_factor(self) -> float:
+        """Routing cost per m of OSM MV line: ``osm_line_cost_factor`` with :attr:`osm_overhead`, else 1."""
+        return float(self.osm_line_cost_factor) if self.osm_overhead else 1.0
 
     @property
     def active_cases(self) -> tuple[str, ...]:
