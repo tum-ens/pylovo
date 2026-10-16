@@ -31,7 +31,8 @@ same name.
      - Meaning
    * - ``DBNAME``
      - required
-     - Database that holds the schema ``pylovo`` (with InfDB: the InfDB database).
+     - Database that holds the schema ``pylovo`` (with InfDB: the InfDB database, unless
+       ``USE_EXTERNAL_BASEDATA``).
    * - ``DBUSER``
      - required
      - Database user.
@@ -48,11 +49,20 @@ same name.
      - ``True``
      - ``True``/``1``/``yes``: read buildings, streets and postcodes from the InfDB schemas in the
        same database. Anything else: file-based mode (:ref:`file-based-input`).
+   * - ``USE_EXTERNAL_BASEDATA``
+     - ``False``
+     - ``True``/``1``/``yes``: read the InfDB schemas from the database given by ``INFDB_DBNAME``,
+       ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT`` and ``INFDB_PASSWORD``, e.g. a central InfDB
+       on another server, while the schema ``pylovo`` and the results stay in ``DBNAME``.
+       PgBouncer in front of InfDB is supported.
+   * - ``INFDB_DBNAME``, ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT``, ``INFDB_PASSWORD``
+     - pylovo connection
+     - Connection of the external InfDB (``USE_EXTERNAL_BASEDATA`` only). Unset values take the
+       value of ``DBNAME``, ``DBUSER``, ``HOST``, ``PORT`` and ``PASSWORD``.
    * - ``INFDB_SOURCE_SCHEMA``
-     - ``pylovo_input``
-     - InfDB schema with the street tables ``ways_per_connection`` and ``connection_lines``.
-       Set it to ``basedata`` for current InfDB releases; the building query always reads
-       ``basedata.buildings``.
+     - ``basedata``
+     - InfDB schema with ``buildings``, the function ``classify_building_use`` and the street
+       tables ``ways_per_connection`` and ``connection_lines``.
    * - ``INFDB_OPENDATA_SCHEMA``
      - ``opendata``
      - InfDB schema with ``postcodes_germany``.

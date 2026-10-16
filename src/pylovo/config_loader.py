@@ -211,13 +211,22 @@ PASSWORD = get_required_env_var("PASSWORD", "Database password")
 
 # INFDB (external database) connection (recommended)
 USE_INFDB = os.getenv("USE_INFDB", "True").lower() in ("true", "1", "yes")
+# InfDB source data in another database than the pylovo schema; unset INFDB_* values fall back to the pylovo connection
+USE_EXTERNAL_BASEDATA = os.getenv("USE_EXTERNAL_BASEDATA", "False").lower() in ("true", "1", "yes")
 if USE_INFDB:
-    INFDB_DBNAME = DBNAME
-    INFDB_USER = DBUSER
-    INFDB_HOST = HOST
-    INFDB_PORT = PORT
-    INFDB_PASSWORD = PASSWORD
-    INFDB_SOURCE_SCHEMA = os.getenv("INFDB_SOURCE_SCHEMA", "pylovo_input")
+    if USE_EXTERNAL_BASEDATA:
+        INFDB_DBNAME = os.getenv("INFDB_DBNAME") or DBNAME
+        INFDB_USER = os.getenv("INFDB_USER") or DBUSER
+        INFDB_HOST = os.getenv("INFDB_HOST") or HOST
+        INFDB_PORT = os.getenv("INFDB_PORT") or PORT
+        INFDB_PASSWORD = os.getenv("INFDB_PASSWORD") or PASSWORD
+    else:
+        INFDB_DBNAME = DBNAME
+        INFDB_USER = DBUSER
+        INFDB_HOST = HOST
+        INFDB_PORT = PORT
+        INFDB_PASSWORD = PASSWORD
+    INFDB_SOURCE_SCHEMA = os.getenv("INFDB_SOURCE_SCHEMA", "basedata")
     INFDB_OPENDATA_SCHEMA = os.getenv("INFDB_OPENDATA_SCHEMA", "opendata")
 else:
     INFDB_DBNAME = None
