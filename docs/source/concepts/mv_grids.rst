@@ -382,6 +382,15 @@ built once in the database and stored in ``pylovo.mv_graph``, ``mv_graph_vertex`
    alone decide.
 #. Connected settlement edges form one settlement. A settlement with at least
    ``urban_min_buildings`` (1,000) address buildings, about a small town, is urban.
+#. With ``MV_OVERHEAD_LINES: osm`` (default), the MV overhead lines mapped in OpenStreetMap
+   (``<INFDB_OSM_SCHEMA>.infrastructure_line`` with ``tags``) become edges of the graph as well.
+   A way counts if it is a ``line`` or ``minor_line`` in service with an MV voltage (above 1 kV and
+   below 60 kV, also on shared towers with 110 kV), or a ``minor_line`` without a voltage tag that
+   is not an LV line. In the test regions, untagged ``minor_line`` ways were 98 % MV by length.
+   An OSM line and a street are split where they cross, so the crossing is a common vertex. A line
+   is split where a branch line ends on it, and each loose end gets a straight connector to the
+   nearest street point within ``osm_line_snap_m`` (100 m). OSM edges are never in a settlement,
+   never the attachment edge of a node and not part of the supply-area routing.
 
 The graph id is a hash of the municipalities, the build parameters and a fingerprint of the source
 rows. A graph is therefore reused by every variant with the same inputs, and a changed source gives
@@ -417,14 +426,23 @@ Line lengths and kinds
 The planner first computes the design length of every possible link between two nodes of a supply
 area. With ``MV_ROUTING: street`` (default) it is the street distance on the district graph.
 Meinecke et al. (2019) state that urban MV grids use cables only, while rural grids mix overhead
-lines and cables. With ``MV_OVERHEAD_LINES: rural`` (default), a link is therefore an overhead line
-if its two ends are not in the same settlement and neither end is urban (two open-field ends count
-as different settlements). An overhead line takes a straight span with angle poles,
-``overhead_detour`` (1.1) times the straight distance, where this is shorter than the street path.
-Otherwise it follows the street. All other links are cables along the streets.
+lines and cables. With ``MV_OVERHEAD_LINES: osm`` (default), every link follows the routing graph,
+and a line is an overhead line where its route runs on an OSM MV line and a cable elsewhere. A
+line with both parts is a mixed line, with length-weighted resistance and reactance and the smaller
+ampacity of its parts. The overhead lines are therefore real corridors, and no line is overhead
+where OSM maps none. Where the OSM layer is incomplete, the overhead length is a lower bound.
 
-The busbar legs, the links from the busbar to the first and last member of a ring and to a radial
-or dedicated node, are always cables along the streets. Feeders leave HV/MV substations as cables
+With ``MV_OVERHEAD_LINES: rural``, a link is an overhead line if its two ends are not in the same
+settlement and neither end is urban (two open-field ends count as different settlements). An
+overhead line then takes a straight span with angle poles, ``overhead_detour`` (1.1) times the
+straight distance, where this is shorter than the street path. Otherwise it follows the street.
+All other links are cables along the streets. Straight spans are synthetic and do not follow real
+corridors.
+
+With ``MV_OVERHEAD_LINES: rural``, the busbar legs are always cables along the streets: the links
+from the busbar to the first and last member of a ring and to a radial or dedicated node. With
+``osm`` they follow the routing graph like every link and become overhead only on an OSM line.
+Feeders leave HV/MV substations as cables
 in shared trenches, so legs in the same direction share their streets near the substation instead
 of fanning out as straight overhead spans. The busbar is joined by straight cable connectors to
 every street vertex within ``busbar_exit_radius_m`` (200 m), so the feeders can leave the
@@ -875,8 +893,10 @@ Limitations
 * One cable and one overhead type are used per voltage. The repair loop adds parallel cables and
   splits rings but never upgrades types, so long rural feeders forced to 10 kV can keep voltage
   violations. Transformer ratings mapped in OSM are not read.
-* Overhead lines are not cabled inside settlements (mixed lines), so a straight span between two
-  non-urban ends can cross a settlement.
+* With ``MV_OVERHEAD_LINES: osm`` the overhead lines exist only where OpenStreetMap maps them. Their
+  use depends on the completeness of the OSM layer, which varies by district, and MV cables are
+  hardly mapped. With ``rural``, a straight span between two non-urban ends can cross a
+  settlement.
 * The LV grids are not changed. The stage chooses MV/LV taps and upsizes stations in the MV model
   only, but it does not reinforce LV grids.
 * Streets outside the municipalities of the routing graph are missing, and supply areas cut by the

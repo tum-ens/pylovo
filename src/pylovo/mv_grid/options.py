@@ -28,7 +28,8 @@ import yaml
 #: 4: load-only planning by default, optional generation and feed-in cases, heavier starting conductors.
 #: 5: rural ring members count ``1 / rural_ring_factor``, busbar legs are cables along the streets with exits within
 #: ``busbar_exit_radius_m``, isolated rural stations hang on stubs after the rings are solved (satellites).
-MV_STAGE_VERSION: int = 5
+#: 6: ``MV_OVERHEAD_LINES`` osm (default): overhead lines only along the OSM MV lines of the routing graph.
+MV_STAGE_VERSION: int = 6
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
@@ -104,8 +105,11 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="rural: isolated rural stations (outside settlements or alone in theirs) hang on stubs after the "
                 "rings are solved (Ding0 satellites), ring stations leave for a stub where it saves ring length; "
                 "Harnisch 2016 p. 103; Amme et al. 2018 p. 10"),
-    Spec("MV_OVERHEAD_LINES", "overhead_lines", "rural", "choice", choices=("rural", "none"), group="topology",
-         source="Meinecke 2019; cable shares of rural DSOs (§ 23c EnWG structural data) 57 to 70 %"),
+    Spec("MV_OVERHEAD_LINES", "overhead_lines", "osm", "choice", choices=("osm", "rural", "none"), group="topology",
+         source="osm: the MV overhead lines mapped in OpenStreetMap are edges of the routing graph and a line is "
+                "an overhead line where its route runs on them, else a cable (OSM holds about the overhead length "
+                "of the § 23c structural data of rural DSOs); rural: links between rural settlements are straight "
+                "overhead spans (Meinecke 2019); none: cables only"),
     Spec("MV_INTERCONNECTION", "interconnection", "ties", "choice", choices=("none", "ties"), group="topology",
          source="normally-open ties to the rings of neighbouring substations, the reserve of real MV grids "
                 "(Weisenstein 2021; Dubielzig 2022)"),
@@ -222,6 +226,10 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="straight bridges between graph islands, as crowfly_detour"),
     _constant("long_connector_m", 300.0, "float", "routing", bounds=_POSITIVE,
               source="connectors from a node to the street longer than this are flagged"),
+    _constant("osm_line_snap_m", 100.0, "float", "routing", bounds=(0.0, 1000.0),
+              source="MV_OVERHEAD_LINES osm: a loose end of an OSM MV line joins the nearest street vertex within "
+                     "this distance by a straight cable connector (a riser pole and its cable); OSM lines also join "
+                     "the streets where they cross them [assumption]"),
     _constant("busbar_exit_radius_m", 200.0, "float", "routing", bounds=(0.0, 2000.0),
               source="the HV/MV busbar gets straight cable connectors to every street vertex within this distance, "
                      "so its feeders leave in several directions instead of one street [assumption]; 0 = only the "

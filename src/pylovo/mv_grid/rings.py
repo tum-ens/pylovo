@@ -448,7 +448,8 @@ class RingEvaluator:
           switchgear by node kind (:data:`SWITCHGEAR_KINDS`);
         * links: length ``model.dist_m``; r, x and ampacity of the overhead line type of the district's voltage
           (``inp.params.overhead_at(inp.vn_kv)``) where ``model.overhead`` is set, else of its standard cable
-          (``inp.params.cable_at(inp.vn_kv)``);
+          (``inp.params.cable_at(inp.vn_kv)``); with ``model.overhead_m`` (``MV_OVERHEAD_LINES`` osm) r and x are
+          length-weighted by the overhead share of each link and the ampacity is the smaller one of its parts;
         * ``g`` and the power factor of the LV version (``inp.lv``), the nominal voltage ``inp.vn_kv`` and the
           limits of :func:`ring_limits`.
         """
@@ -461,6 +462,22 @@ class RingEvaluator:
         oh = np.asarray(model.overhead, dtype=bool)
         if oh.shape != (n, n):
             raise ValueError(f"model.overhead must have the shape ({n}, {n}), got {oh.shape}")
+        if model.overhead_m is not None:                 # MV_OVERHEAD_LINES osm: length-weighted mixed links
+            dist = np.asarray(model.dist_m, dtype=float)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                share = np.where(np.isfinite(dist) & (dist > 0), np.asarray(model.overhead_m) / dist, 0.0)
+            share = np.clip(np.nan_to_num(share, nan=0.0, posinf=1.0), 0.0, 1.0)
+            both = min(overhead.max_i_ka, cable.max_i_ka)
+            imax = np.where(share >= 1.0 - 1e-9, overhead.max_i_ka, np.where(share <= 1e-9, cable.max_i_ka, both))
+            return cls(
+                installed=installed, units=units, fixed_kw=fixed,
+                member=member_weights(kinds, _urban(rows), params.rural_ring_factor),
+                switchgear=np.isin(kinds, SWITCHGEAR_KINDS), dist_m=model.dist_m,
+                r_ohm_km=share * overhead.r_ohm_per_km + (1.0 - share) * cable.r_ohm_per_km,
+                x_ohm_km=share * overhead.x_ohm_per_km + (1.0 - share) * cable.x_ohm_per_km,
+                imax_ka=imax, g=inp.lv.g(), power_factor=inp.lv.power_factor, vn_kv=inp.vn_kv,
+                limits=ring_limits(params), cache_size=cache_size,
+            )
         return cls(
             installed=installed, units=units, fixed_kw=fixed,
             member=member_weights(kinds, _urban(rows), params.rural_ring_factor),

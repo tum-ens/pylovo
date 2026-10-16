@@ -500,6 +500,8 @@ def _client(answers):
 
 
 GRAPH_ID = "g0123456789abcdef"
+#: Parameters of a street graph without OSM MV lines (MV_OVERHEAD_LINES rural).
+STREETS = MvParameters().replace(overhead_lines="rural")
 BASE_ANSWERS = [
     (r"SELECT ST_SRID\(geom\)", [(25832,)]),
     (r"array_agg\(DISTINCT w\.ags", [(["09000001", "09000002"],)]),
@@ -549,7 +551,7 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
         (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
     ]
     client = _client(answers)
-    graph_id = client.ensure_graph(b"\x01", MvParameters())
+    graph_id = client.ensure_graph(b"\x01", STREETS)
     assert client.conn.commits == 1 and client.conn.rollbacks == 0
     texts = [t for t, _ in client.cur.statements]
     lock = next(i for i, t in enumerate(texts) if "pg_advisory_xact_lock" in t)
@@ -591,7 +593,7 @@ def test_settlement_flags_use_built_up_osm_landuse_when_present():
         (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
     ]
     client = _client(answers)
-    graph_id = client.ensure_graph(b"\x01", MvParameters())
+    graph_id = client.ensure_graph(b"\x01", STREETS)
     texts = [t for t, _ in client.cur.statements]
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
     assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107"
@@ -605,7 +607,64 @@ def test_settlement_flags_use_built_up_osm_landuse_when_present():
     assert "ST_LineInterpolatePoint(e.geom, 0.5)" in texts[flags] and "OR EXISTS" in texts[flags]
     # the land-use count is part of the fingerprint and so of the graph id
     without = _client(BASE_ANSWERS + [(r"SELECT 1 FROM pylovo\.mv_graph WHERE", [(1,)])])
-    assert without.ensure_graph(b"\x01", MvParameters()) != graph_id
+    assert without.ensure_graph(b"\x01", STREETS) != graph_id
+
+
+def test_osm_mv_lines_join_the_graph_at_crossings_branches_and_loose_ends(monkeypatch):
+    mv = LineString([(0.0, 0.0), (500.0, 0.0)]).wkb
+    lines = [(11, "minor_line", {}, mv),                                        # untagged minor_line: MV
+             (12, "line", {"voltage": "110000"}, mv),                           # 110 kV: left out
+             (13, "minor_line", {"voltage": "20000", "disused:power": "line"}, mv),   # not in service
+             (14, "line", {"voltage": "110000;20000"}, mv)]                     # shared towers: MV corridor
+    answers = BASE_ANSWERS + [
+        (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
+        (r"table_name IN \('infrastructure_line', 'tags'\)", [(True,)]),
+        (r'FROM "osm"\.infrastructure_line l\s+WHERE l\.osm_type', [(1000, 2500, 99)]),
+        (r'FROM "osm"\.infrastructure_line l\s+LEFT JOIN', lines),
+        (r"WITH lone AS", [(0,)]),
+        (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
+    ]
+    inserted = []
+    monkeypatch.setattr(mixin_module, "execute_values",
+                        lambda cur, query, values, **kw: inserted.append((query, list(values))))
+    client = _client(answers)
+    graph_id = client.ensure_graph(b"\x01", MvParameters())
+    assert graph_id != _client(answers).ensure_graph(b"\x01", STREETS)
+    texts = [t for t, _ in client.cur.statements]
+    insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
+    assert insert["fingerprint"].endswith("|osm_lines 1000:2500:99")
+    assert '"osm_mv_lines": true' in insert["params"] and '"osm_line_snap_m": 100.0' in insert["params"]
+    # the MV lines of the classifier (11 and 14) go into the build as edges of klasse osm_mv_line
+    assert [(row[0], row[1]) for row in inserted[0][1]] == [(11, "minor_line"), (14, "line")]
+    osm_insert = next(p for t, p in client.cur.statements if "FROM mvg_osm o" in t)
+    assert osm_insert == {"klasse": "osm_mv_line"}
+    # crossings and branch junctions cut first, then the loose ends join the streets within osm_line_snap_m
+    order = [next(i for i, t in enumerate(texts) if marker in t)
+             for marker in ("FROM mvg_osm o", "INSERT INTO mvg_cut", "CREATE TEMP TABLE mvg_conn", "ST_MakeLine(c.pt, c.cp)",
+                            "CREATE TEMP TABLE mvg_vert")]
+    assert order == sorted(order)
+    loose = next(p for t, p in client.cur.statements if "CREATE TEMP TABLE mvg_conn" in t)
+    assert loose["snap"] == 100.0 and loose["osm"] == ["osm_mv_line", "osm_mv_connector"]
+    # OSM edges are never in a settlement
+    flags = next(p for t, p in client.cur.statements if "SET in_settlement" in t)
+    assert flags["osm"] == ["osm_mv_line", "osm_mv_connector"]
+
+
+def test_osm_line_classifier_keeps_mv_overhead_lines_in_service():
+    from pylovo.mv_grid.osm_lines import is_mv_overhead_line, parse_voltages
+
+    assert parse_voltages("110000;20000") == [110000.0, 20000.0] and parse_voltages("20 kV") == [20000.0]
+    assert parse_voltages("medium") == [-1.0] and parse_voltages(None) == []
+    keep = [("minor_line", {}), ("line", {"voltage": "20000"}), ("minor_line", {"voltage": "medium"}),
+            ("line", {"voltage": "110000;20000"}), ("minor_line", {"cables": "3"})]
+    drop = [("line", {}), ("cable", {"voltage": "20000"}), ("line", {"voltage": "110000"}),
+            ("minor_line", {"voltage": "400"}), ("minor_line", {"cables": "4"}),
+            ("minor_line", {"location": "underground"}), ("minor_line", {"line": "busbar"}),
+            ("line", {"voltage": "15000", "frequency": "16.7"}), ("minor_line", {"abandoned:power": "line"}),
+            ("minor_line", {"location": "roof"})]
+    assert all(is_mv_overhead_line(sub, tags) for sub, tags in keep)
+    assert not any(is_mv_overhead_line(sub, tags) for sub, tags in drop)
+    assert is_mv_overhead_line("line", {"voltage": "20000", "frequency": "50;16.7"})
 
 
 def test_seam_split_switch_changes_the_build_and_the_graph_id(monkeypatch):
@@ -649,7 +708,7 @@ def test_attach_points_returns_one_typed_row_per_key(monkeypatch):
 
 
 def test_subgraph_edges_and_region_arrays_build_typed_arrays():
-    edge_rows = [(5, 100, 101, 12.5, True, 3), (7, 101, 102, 20.0, False, -1)]
+    edge_rows = [(5, 100, 101, 12.5, True, 3, False), (7, 101, 102, 20.0, False, -1, True)]
     vertex_rows = [(100, 0.0, 0.0), (101, 12.5, 0.0), (102, 12.5, 20.0)]
     client = _client([(r"FROM pylovo\.mv_graph_vertex v", vertex_rows), (r"FROM pylovo\.mv_graph_edge e\s+WHERE",
                                                                          edge_rows),
@@ -657,6 +716,7 @@ def test_subgraph_edges_and_region_arrays_build_typed_arrays():
     es = client.subgraph_edges(GRAPH_ID, b"\x01", 2000.0, [7, np.int64(5), None])
     assert es.edge_id.dtype == np.int64 and es.vertex_id.tolist() == [100, 101, 102]
     assert es.vertex_xy.shape == (3, 2) and es.settlement_id.tolist() == [3, -1] and es.in_settlement.dtype == bool
+    assert es.overhead.tolist() == [False, True]                    # edge 7 is an OSM MV line
     edge_params = next(p for t, p in client.cur.statements if "ST_DWithin" in t)
     assert edge_params["must"] == [5, 7] and edge_params["buffer_m"] == 2000.0
     edge_id, source, target, length = client.region_graph_arrays(GRAPH_ID)

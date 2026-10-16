@@ -199,13 +199,13 @@ MV_RING_SOLVER: savings
 MV_MAX_STATIONS_PER_RING: 20
 # Stubs: rural (isolated rural stations and small rural loads off the ring hang on a T-off, at most 1 MVA and 2 km) or none (every station looped in)
 MV_STUBS: rural
-# Overhead lines: rural (links between rural settlements are overhead lines) or none (cables only)
-MV_OVERHEAD_LINES: rural
+# Overhead lines: osm (only along the MV overhead lines mapped in OpenStreetMap, the rest is cable), rural (links between rural settlements are straight overhead spans) or none (cables only)
+MV_OVERHEAD_LINES: osm
 # Ties between neighbouring HV/MV substations: ties (one normally-open tie per ring where a neighbour ring is within 2 km) or none
 MV_INTERCONNECTION: ties
 # Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 at 10 or 20 kV)
 MV_STANDARD_CABLE: null
-# Overhead line type for MV_OVERHEAD_LINES rural (null: 122-AL1/20-ST1A at 10 or 20 kV)
+# Overhead line type for MV_OVERHEAD_LINES osm or rural (null: 122-AL1/20-ST1A at 10 or 20 kV)
 MV_OVERHEAD_LINE: null
 # Planned current per ampacity of MV lines in normal operation; the (n-1) case may use 1.0
 MV_LINE_PLANNING_UTILIZATION: 0.6

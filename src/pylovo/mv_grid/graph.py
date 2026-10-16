@@ -18,6 +18,7 @@ weight per vertex pair (parallel edges are not summed).
 """
 from __future__ import annotations
 
+import dataclasses
 from collections import Counter, defaultdict
 from typing import Any, Mapping, Sequence
 
@@ -31,7 +32,9 @@ from pylovo.mv_grid.model import EdgeSet, RunGraph
 
 #: Columns of :attr:`RunGraph.pieces <pylovo.mv_grid.model.RunGraph.pieces>`.
 PIECE_COLUMNS: tuple[str, ...] = ("piece_id", "u", "v", "length_m", "edge_id", "f0", "f1", "kind", "in_settlement",
-                                  "settlement_id")
+                                  "settlement_id", "overhead")
+#: Weight surcharge per m of overhead line in :func:`terminal_overhead` (small enough not to change a route).
+OVERHEAD_TRACE: float = 1e-6
 #: Split points of one edge closer than this (m along the edge) share one vertex.
 SPLIT_MERGE_M: float = 1e-3
 
@@ -275,6 +278,8 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
     e_len = np.asarray(edges.length_m, dtype=np.float64)
     e_in = np.asarray(edges.in_settlement, dtype=bool)
     e_sid = np.asarray(edges.settlement_id, dtype=np.int64)
+    e_oh = (np.zeros(len(edge_id), dtype=bool) if getattr(edges, "overhead", None) is None
+            else np.asarray(edges.overhead, dtype=bool))
     edge_pos = {int(e): i for i, e in enumerate(edge_id.tolist())}
 
     n_rows = len(nodes)
@@ -326,8 +331,9 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
     p_kind: list[np.ndarray] = []
     p_in: list[np.ndarray] = []
     p_sid: list[np.ndarray] = []
+    p_oh: list[np.ndarray] = []
 
-    def add_pieces(u, v, length, edge, f0, f1, kind, in_s, sid):
+    def add_pieces(u, v, length, edge, f0, f1, kind, in_s, sid, oh=None):
         p_u.append(np.asarray(u, dtype=np.int64))
         p_v.append(np.asarray(v, dtype=np.int64))
         p_len.append(np.asarray(length, dtype=np.float64))
@@ -337,6 +343,7 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
         p_kind.append(np.asarray(kind, dtype=object))
         p_in.append(np.asarray(in_s, dtype=bool))
         p_sid.append(np.asarray(sid, dtype=np.int64))
+        p_oh.append(np.zeros(len(p_u[-1]), dtype=bool) if oh is None else np.asarray(oh, dtype=bool))
 
     unsplit = np.ones(len(edge_id), dtype=bool)
     for p in sorted(splits):
@@ -365,10 +372,10 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
         f0 = np.asarray(chain_f[:-1])
         f1 = np.asarray(chain_f[1:])
         add_pieces(chain_v[:-1], chain_v[1:], length * (f1 - f0), np.full(k, edge_id[p]), f0, f1,
-                   np.full(k, "street", dtype=object), np.full(k, e_in[p]), np.full(k, e_sid[p]))
+                   np.full(k, "street", dtype=object), np.full(k, e_in[p]), np.full(k, e_sid[p]), np.full(k, e_oh[p]))
     idx = np.flatnonzero(unsplit)
     add_pieces(es[idx], et[idx], e_len[idx], edge_id[idx], np.zeros(len(idx)), np.ones(len(idx)),
-               np.full(len(idx), "street", dtype=object), e_in[idx], e_sid[idx])
+               np.full(len(idx), "street", dtype=object), e_in[idx], e_sid[idx], e_oh[idx])
 
     n_street_vertices = len(vid) + len(extra_xy)                 # graph vertices and split points
 
@@ -458,7 +465,7 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
         "piece_id": np.arange(len(u), dtype=np.int64), "u": u, "v": v, "length_m": w,
         "edge_id": np.concatenate(p_edge), "f0": np.concatenate(p_f0), "f1": np.concatenate(p_f1),
         "kind": np.concatenate(p_kind), "in_settlement": np.concatenate(p_in),
-        "settlement_id": np.concatenate(p_sid),
+        "settlement_id": np.concatenate(p_sid), "overhead": np.concatenate(p_oh),
     }, columns=list(PIECE_COLUMNS))
     csr, chosen = _undirected_csr(u, v, w, n_vertices)
     a = np.minimum(u, v)[chosen].tolist()
@@ -498,6 +505,36 @@ def terminal_distances(rg: RunGraph, rows: Sequence[int], *, chunk: int = 64) ->
         sources = uniq[start:start + step]
         block[start:start + len(sources)] = dijkstra(rg.csr, directed=False, indices=sources)[:, uniq]
     out = block[np.ix_(inverse, inverse)]
+    np.fill_diagonal(out, 0.0)
+    return out
+
+
+def terminal_overhead(rg: RunGraph, rows: Sequence[int], *, chunk: int = 64) -> np.ndarray:
+    """Overhead length (m) of the shortest path between every pair of the given node rows: the pieces on OSM MV
+    lines (``pieces.overhead``) along the routes of :func:`terminal_distances`.
+
+    Every overhead piece weighs ``1 + OVERHEAD_TRACE`` times its length in a second Dijkstra; the difference of the
+    two distances divided by ``OVERHEAD_TRACE`` is the overhead length (to about 1e-3 m; only routes that tie
+    within millimetres can be traced on the other one). Unreachable pairs get ``inf``; without overhead pieces the
+    matrix is zero.
+    """
+    rows = np.asarray(rows, dtype=np.int64)
+    k = len(rows)
+    pieces = rg.pieces
+    flags = (pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in pieces.columns
+             else np.zeros(len(pieces), dtype=bool))
+    if not flags.any():
+        out = np.zeros((k, k))
+        out[~np.isfinite(terminal_distances(rg, rows, chunk=chunk))] = np.inf
+        return out
+    u = pieces["u"].to_numpy(dtype=np.int64)
+    v = pieces["v"].to_numpy(dtype=np.int64)
+    w = pieces["length_m"].to_numpy(dtype=np.float64)
+    traced, _ = _undirected_csr(u, v, w * (1.0 + OVERHEAD_TRACE * flags), rg.n_vertices)
+    plain = terminal_distances(rg, rows, chunk=chunk)
+    with np.errstate(invalid="ignore"):
+        out = (terminal_distances(dataclasses.replace(rg, csr=traced), rows, chunk=chunk) - plain) / OVERHEAD_TRACE
+    out = np.where(np.isfinite(plain), np.clip(out, 0.0, None), np.inf)
     np.fill_diagonal(out, 0.0)
     return out
 

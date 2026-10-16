@@ -85,6 +85,7 @@ class EdgeSet:                             # a district subgraph without geometr
     settlement_id: np.ndarray              # int64, -1 outside settlements
     vertex_id: np.ndarray                  # int64, every vertex referenced by the edges
     vertex_xy: np.ndarray                  # (n_vertices, 2) float64, TARGET_EPSG
+    overhead: np.ndarray | None = None     # bool: an OSM MV overhead line (MV_OVERHEAD_LINES osm); None: none is
 
 
 @dataclass
@@ -112,7 +113,8 @@ class RunGraph:
     vertex_xy: np.ndarray                  # (n_vertices, 2) local vertices (graph vertices, split points, off-street terminals)
     terminal_vertex: np.ndarray            # local vertex per row of DistrictInput.nodes
     pieces: pd.DataFrame                   # piece_id, u, v, length_m, edge_id (-1: connector/bridge), f0, f1,
-                                           # kind ('street'|'connector'|'bridge'), in_settlement, settlement_id
+                                           # kind ('street'|'connector'|'bridge'), in_settlement, settlement_id,
+                                           # overhead (on an OSM MV line; the column may be missing: none is)
     pair_piece: dict[tuple[int, int], int] # (min(u, v), max(u, v)) -> piece_id of the minimum-weight piece
     n_bridges: int
     bridged_rows: np.ndarray               # bool per node row
@@ -131,6 +133,17 @@ class DistanceModel:
     straight: np.ndarray                   # (k, k) bool: the link geometry is a straight span
     xy: np.ndarray                         # (k, 2)
     satellite: np.ndarray | None = None    # (k,) bool: isolated rural station, a stub after the rings (no candidate)
+    overhead_m: np.ndarray | None = None   # (k, k) overhead length of each link (MV_OVERHEAD_LINES osm), else None
+
+
+def line_kind(overhead_m: float, length_m: float, tolerance_m: float = 1.0) -> str:
+    """``cable``, ``overhead`` or ``mixed`` (:data:`LINE_KINDS`) by the overhead part of a line; a part shorter than
+    ``tolerance_m`` is ignored."""
+    if overhead_m < tolerance_m:
+        return "cable"
+    if length_m - overhead_m < tolerance_m:
+        return "overhead"
+    return "mixed"
 
 
 def member_weights(kinds: Any, urban: Any, rural_ring_factor: float) -> np.ndarray:

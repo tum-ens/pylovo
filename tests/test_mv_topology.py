@@ -131,7 +131,8 @@ def fakes(monkeypatch):
 
 # ============================================================================================ synthetic districts
 def make_params(**changes) -> MvParameters:
-    params = MvParameters().replace(**changes) if changes else MvParameters()
+    """The parameters of a test district; the tests of the straight-span rule run with MV_OVERHEAD_LINES rural."""
+    params = MvParameters().replace(**{"overhead_lines": "rural", **changes})
     params._types.update({("cable", 20.0): CABLE, ("overhead", 20.0): OVERHEAD})       # the 20 kV district types
     return params
 
@@ -143,6 +144,7 @@ class District:
         self.xy: list[tuple[float, float]] = []
         self.edges: list[tuple[int, int]] = []
         self.edge_settlement: list[int] = []
+        self.edge_overhead: list[bool] = []
         self.connectors: list[tuple[int, int]] = []
         self.nodes: list[dict] = []
 
@@ -152,11 +154,13 @@ class District:
             self.xy.append(point)
         return self.xy.index(point)
 
-    def street(self, *points, settlement: int | None = None) -> None:
+    def street(self, *points, settlement: int | None = None, overhead: bool = False) -> None:
+        """Edges through the points; ``overhead``: an OSM MV line instead of a street."""
         ids = [self.vertex(*p) for p in points]
         for a, b in zip(ids[:-1], ids[1:]):
             self.edges.append((a, b))
             self.edge_settlement.append(-1 if settlement is None else settlement)
+            self.edge_overhead.append(overhead)
 
     def node(self, key: int, kind: str, x: float, y: float, *, hint: str = "ring", urban: bool = False,
              settlement: int | None = None, inst_res: float = 150.0, units_res: float = 50.0,
@@ -183,9 +187,10 @@ class District:
             rows.append(dict(piece_id=i, u=a, v=b, length_m=float(np.hypot(*(xy[a] - xy[b]))),
                              edge_id=i if i < len(self.edges) else -1, f0=0.0, f1=1.0,
                              kind="street" if i < len(self.edges) else "connector", in_settlement=settlement >= 0,
-                             settlement_id=settlement))
+                             settlement_id=settlement,
+                             overhead=self.edge_overhead[i] if i < len(self.edges) else False))
         pieces = pd.DataFrame(rows, columns=["piece_id", "u", "v", "length_m", "edge_id", "f0", "f1", "kind",
-                                             "in_settlement", "settlement_id"])
+                                             "in_settlement", "settlement_id", "overhead"])
         n = len(xy)
         csr = csr_matrix((np.r_[pieces.length_m, pieces.length_m], (np.r_[pieces.u, pieces.v],
                                                                     np.r_[pieces.v, pieces.u])), shape=(n, n))
@@ -307,9 +312,11 @@ def assert_plan_valid(plan, inp) -> None:
         if ln.pieces:
             assert geom.length == pytest.approx(ln.length_m, abs=1.0)
         if ln.std_type == CABLE.name:
-            assert ln.kind == "cable"
+            assert ln.kind == "cable" and ln.overhead_m == 0.0
+        elif ln.std_type == OVERHEAD.name:
+            assert ln.kind == "overhead" and ln.cable_m == 0.0
         else:
-            assert ln.kind == "overhead" and ln.std_type == OVERHEAD.name
+            assert ln.kind == "mixed" and ln.std_type == f"{CABLE.name} + {OVERHEAD.name}"
 
 
 # ============================================================================================ terminals and model
@@ -443,6 +450,41 @@ def test_a_satellite_without_a_ring_gets_its_own():
     assert sorted(ring_of(plan, 80).members) == [80, 81] and plan.node_role[81] == "ring"
     assert "satellite_in_ring" in plan.diagnostics["node_flags"][81]
     assert plan.diagnostics["satellites"] == {"stub": 0, "ring": 1, "own_ring": 1}
+
+
+def osm_district() -> District:
+    """P (2) and Q (3) in two villages; the street between them is 5 km long, an OSM MV line runs straight from P to
+    Q (1 km); the busbar is 1 km west of P."""
+    d = District()
+    d.street((0, 0), (1000, 0), (3000, 0), (3000, 1000), (1000, 1000))
+    d.street((1000, 0), (1000, 1000), overhead=True)
+    d.node(BUSBAR, "busbar", 0, 0, hint="busbar")
+    d.node(2, "station", 1000, 0, settlement=1)
+    d.node(3, "station", 1000, 1000, settlement=2)
+    return d
+
+
+def test_osm_mode_takes_the_overhead_lines_of_the_graph_and_no_straight_spans():
+    model = model_of(osm_district(), overhead_lines="osm")
+    assert not model.straight.any()
+    np.testing.assert_allclose(model.dist_m, model.street_m)
+    assert model.dist_m[1, 2] == pytest.approx(1000.0) and model.overhead_m[1, 2] == pytest.approx(1000.0)
+    # the busbar leg to Q: 1 km of street cable to P, then 1 km on the OSM line
+    assert model.dist_m[0, 2] == pytest.approx(2000.0) and model.overhead_m[0, 2] == pytest.approx(1000.0)
+    assert model.overhead_m[0, 1] == 0.0 and model.overhead[1, 2] and not model.overhead[0, 1]
+    assert model_of(osm_district()).overhead_m is None                # rural: no overhead lengths
+
+
+def test_osm_mode_plans_cable_overhead_and_mixed_lines():
+    plan, (inp, *_) = plan_of(osm_district(), [[2, 3]], overhead_lines="osm", stubs="none")
+    assert_plan_valid(plan, inp)
+    leg_a, = line_between(plan, BUSBAR, 2)
+    span, = line_between(plan, 2, 3)
+    leg_b, = line_between(plan, 3, BUSBAR)
+    assert (leg_a.kind, leg_a.overhead_m) == ("cable", 0.0) and leg_a.length_m == pytest.approx(1000.0)
+    assert span.kind == "overhead" and span.overhead_m == pytest.approx(1000.0) and span.cable_m == 0.0
+    assert leg_b.kind == "mixed" and leg_b.cable_m == pytest.approx(1000.0) and leg_b.overhead_m == pytest.approx(1000.0)
+    assert leg_b.std_type == f"{CABLE.name} + {OVERHEAD.name}" and span.std_type == OVERHEAD.name
 
 
 def test_crowfly_routing_uses_stretched_straight_spans():

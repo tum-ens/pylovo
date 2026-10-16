@@ -694,12 +694,14 @@ value, so older configuration files keep working.
        5 to 30 in a large-city grid, Kreutmayr 2023).
    * - ``MV_STUBS``
      - ``rural``
-     - Small rural loads off the ring hang on a T-off (at most 1 MVA and 2 km), or ``none``: every
-       node is looped in (Amme et al. 2018; Harnisch et al. 2016).
+     - Isolated rural stations (satellites) and small rural loads off the ring hang on a T-off (at
+       most 1 MVA and 2 km), or ``none``: every node is looped in (Amme et al. 2018; Harnisch et al.
+       2016).
    * - ``MV_OVERHEAD_LINES``
-     - ``rural``
-     - Links between rural settlements are overhead lines, or ``none``: cables only (Meinecke et al.
-       2019).
+     - ``osm``
+     - Overhead lines only along the MV overhead lines mapped in OpenStreetMap, the rest cable;
+       ``rural``: links between rural settlements are straight overhead spans (Meinecke et al.
+       2019); ``none``: cables only.
    * - ``MV_INTERCONNECTION``
      - ``ties``
      - Normally-open ties to rings of neighbouring substations within ``tie_max_length_m``, or
@@ -906,6 +908,10 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 300
      - Connectors from a node to the street above this length count ``bridge_detour`` times and are
        logged.
+   * - ``osm_line_snap_m``
+     - 100
+     - ``MV_OVERHEAD_LINES: osm``: a loose end of an OSM MV line joins the nearest street point
+       within this distance by a straight cable connector (assumption).
    * - ``busbar_exit_radius_m``
      - 200
      - The busbar gets straight cable connectors to every street vertex within this distance, so the

@@ -3,6 +3,8 @@ synthetic street graphs, the takeover check on small pandapower nets, the summar
 cursor, the post step of the stage and the tie handling of the metrics."""
 from __future__ import annotations
 
+import dataclasses
+
 import json
 import logging
 from types import SimpleNamespace
@@ -19,7 +21,8 @@ from pylovo.mv_grid import metrics, stage
 from pylovo.mv_grid.model import EdgeSet
 from pylovo.mv_grid.parameters import MvParameters
 
-PARAMS = MvParameters(variant_id="y0", interconnection="ties")
+#: Ties with the straight-span rule of MV_OVERHEAD_LINES rural (the osm rule: test_osm_ties_are_overhead_on_osm_lines).
+PARAMS = MvParameters(variant_id="y0", interconnection="ties", overhead_lines="rural")
 
 
 # ---------------------------------------------------------------------------------------------- synthetic inputs
@@ -173,6 +176,25 @@ def test_kind_and_route_follow_the_link_rule():
     assert cables["kind"] == "cable" and cables["length_m"] == pytest.approx(1800.0)
     crowfly = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS.replace(routing="crowfly")).iloc[0]
     assert crowfly["straight"] and crowfly["length_m"] == pytest.approx(PARAMS.crowfly_detour * 1000.0)
+
+
+def test_osm_ties_are_overhead_on_osm_lines():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    vid = np.array([1, 2, 3, 4])
+    xy = np.array([[0.0, 0.0], [0.0, 400.0], [1000.0, 400.0], [1000.0, 0.0]])
+    detour = EdgeSet(edge_id=np.array([1, 2, 3]), source=np.array([1, 2, 3]), target=np.array([2, 3, 4]),
+                     length_m=np.array([400.0, 1000.0, 400.0]), in_settlement=np.zeros(3, bool),
+                     settlement_id=np.full(3, -1), vertex_id=vid, vertex_xy=xy,
+                     overhead=np.array([False, True, False]))                 # the middle edge is an OSM MV line
+    a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
+    b = node(21, 2, 0, 1000.0, y=0.0, edge=3, fraction=1.0)
+    osm = PARAMS.replace(overhead_lines="osm")
+    tie = ic.plan_ties(nodes_frame(a, b), grids, detour, osm).iloc[0]
+    assert tie["kind"] == "mixed" and not tie["straight"] and tie["length_m"] == pytest.approx(1800.0)
+    assert tie["overhead_m"] == pytest.approx(1000.0) and tie["cable_m"] == pytest.approx(800.0)
+    assert tie["std_type"] == f"{osm.cable.name} + {osm.overhead.name}"
+    streets = dataclasses.replace(detour, overhead=None)
+    assert ic.plan_ties(nodes_frame(a, b), grids, streets, osm).iloc[0]["kind"] == "cable"
 
 
 def test_orientation_geometry_and_flags():

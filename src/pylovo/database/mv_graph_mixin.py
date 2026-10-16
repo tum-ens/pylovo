@@ -21,6 +21,13 @@ Build (:meth:`MvGraphMixin.ensure_graph`), one transaction under an advisory loc
    are the connected components of the settlement edges, urban with at least ``urban_min_buildings`` buildings;
 5. summary columns of ``pylovo.mv_graph`` (counts, largest component share, settlement share, seam diagnostic).
 
+With ``MV_OVERHEAD_LINES: osm`` the MV overhead lines of ``INFDB_OSM_SCHEMA.infrastructure_line`` (rules of
+:mod:`pylovo.mv_grid.osm_lines`) are added after step 2 as edges of ``klasse`` :data:`OSM_LINE_KLASSE`. Where an OSM
+line crosses a street both are split, so the crossing is a common vertex, and every loose end of an OSM line gets a
+straight connector (:data:`OSM_CONNECTOR_KLASSE`) to the nearest street vertex within ``osm_line_snap_m``. The OSM
+edges are never in a settlement, never an attachment edge of a node and not part of the supply-area routing; only
+the routes of the MV lines use them.
+
 A changed source or build parameter gives another ``graph_id``, so a stored graph is never rebuilt in place.
 """
 from __future__ import annotations
@@ -39,6 +46,7 @@ from psycopg2.extras import execute_values
 from pylovo.config_loader import INFDB_OSM_SCHEMA, INFDB_SOURCE_SCHEMA, TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
 from pylovo.mv_grid.model import EdgeSet
+from pylovo.mv_grid.osm_lines import OVERHEAD_SUBTYPES, is_mv_overhead_line
 from pylovo.mv_grid.parameters import MvStageError
 
 if TYPE_CHECKING:
@@ -63,6 +71,11 @@ SETTLEMENT_BUILDING_USES: tuple[str, ...] = ("Commercial", "Public", "Residentia
 SETTLEMENT_LANDUSE_TYPES: tuple[str, ...] = ("commercial", "industrial", "residential", "retail")
 #: Graph ids are 'g' + 16 hex digits of an md5 (safe to inline as SQL literals).
 GRAPH_ID_PATTERN = re.compile(r"^g[0-9a-f]{16}$")
+#: ``klasse`` of the edges from OSM MV overhead lines (``MV_OVERHEAD_LINES: osm``) ...
+OSM_LINE_KLASSE: str = "osm_mv_line"
+#: ... and of the straight connectors from their loose ends to the street graph.
+OSM_CONNECTOR_KLASSE: str = "osm_mv_connector"
+_OSM_KLASSEN = (OSM_LINE_KLASSE, OSM_CONNECTOR_KLASSE)
 
 _EDGE_COLUMNS = "edge_id AS id, source, target, length_m AS cost, length_m AS reverse_cost"
 
@@ -96,7 +109,7 @@ GRAPH_EXISTS_SQL = "SELECT 1 FROM pylovo.mv_graph WHERE graph_id = %(g)s"
 LOCK_SQL = "SELECT pg_advisory_xact_lock(%(key)s, hashtext(%(g)s))"
 
 DROP_BUILD_TEMP_SQL = ("DROP TABLE IF EXISTS pg_temp.mvg_src, pg_temp.mvg_end, pg_temp.mvg_vert, pg_temp.mvg_bld, "
-                       "pg_temp.mvg_cut, pg_temp.mvg_split, pg_temp.mvg_lu")
+                       "pg_temp.mvg_cut, pg_temp.mvg_split, pg_temp.mvg_lu, pg_temp.mvg_osm, pg_temp.mvg_conn")
 
 SOURCE_EDGES_SQL = sql.SQL("""
     CREATE TEMP TABLE mvg_src ON COMMIT DROP AS
@@ -176,6 +189,84 @@ SEAM_REPLACE_SQL = (
     "DELETE FROM mvg_src WHERE edge_id IN (SELECT host FROM mvg_split)",
     "ANALYZE mvg_src",
 )
+
+# overhead power ways with their tags inside the extent of the street edges ({osm}: INFDB_OSM_SCHEMA)
+OSM_LINES_SQL = sql.SQL("""
+    SELECT l.osm_id, l.osm_subtype, t.tags, ST_AsBinary(ST_Force2D(ST_Transform(l.geom, {epsg}))) AS wkb
+    FROM {osm}.infrastructure_line l
+    LEFT JOIN {osm}.tags t ON t.geom_type = 'W' AND t.osm_id = l.osm_id
+    WHERE l.osm_type = 'power' AND l.osm_subtype = ANY(%(subtypes)s)
+      AND l.geom && ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, {epsg}), %(osm_srid)s)
+    ORDER BY l.osm_id
+""")
+
+OSM_FINGERPRINT_SQL = sql.SQL("""
+    SELECT count(*), COALESCE(round(sum(ST_Length(l.geom))::numeric), 0), max(l.osm_id)
+    FROM {osm}.infrastructure_line l
+    WHERE l.osm_type = 'power' AND l.osm_subtype = ANY(%(subtypes)s)
+""")
+
+OSM_TABLES_SQL = """
+    SELECT count(*) = 2 FROM information_schema.tables
+    WHERE table_schema = %(schema)s AND table_name IN ('infrastructure_line', 'tags')
+"""
+
+OSM_INSERT_SQL = """
+    INSERT INTO mvg_src (edge_id, ags, src_id, klasse, objektart, geom)
+    SELECT (SELECT max(edge_id) FROM mvg_src) + row_number() OVER (ORDER BY o.osm_id, d.path),
+           NULL, 'way/' || o.osm_id, %(klasse)s, o.subtype, d.geom
+    FROM mvg_osm o
+    CROSS JOIN LATERAL ST_Dump(o.geom) d
+    WHERE GeometryType(d.geom) = 'LINESTRING' AND ST_Length(d.geom) > 0
+"""
+
+# both an OSM line and a street are cut where they cross (points of their intersection only, no overlaps)
+OSM_CROSSING_CUTS_SQL = """
+    INSERT INTO mvg_cut (host, f, pt)
+    WITH x AS (SELECT o.edge_id AS o_id, s.edge_id AS s_id, d.geom AS pt
+               FROM mvg_src o
+               JOIN mvg_src s ON COALESCE(s.klasse, '') <> ALL(%(osm)s) AND ST_Intersects(o.geom, s.geom)
+               CROSS JOIN LATERAL ST_Dump(ST_Intersection(o.geom, s.geom)) d
+               WHERE o.klasse = %(line)s AND GeometryType(d.geom) = 'POINT'),
+         h AS (SELECT o_id AS host, pt FROM x UNION ALL SELECT s_id, pt FROM x)
+    SELECT h.host, ST_LineLocatePoint(e.geom, h.pt), h.pt
+    FROM h JOIN mvg_src e ON e.edge_id = h.host
+"""
+
+# an OSM line that ends on the interior of another OSM line (a branch: OSM ways are not split at junctions) cuts it
+OSM_JUNCTION_CUTS_SQL = """
+    INSERT INTO mvg_cut (host, f, pt)
+    SELECT DISTINCT ON (p.edge_id, p.end_no) h.edge_id, ST_LineLocatePoint(h.geom, p.pt), p.pt
+    FROM mvg_end p
+    JOIN mvg_src pe ON pe.edge_id = p.edge_id AND pe.klasse = %(line)s
+    JOIN mvg_src h ON h.edge_id <> p.edge_id AND h.klasse = %(line)s AND ST_DWithin(h.geom, p.pt, %(tol)s)
+    WHERE ST_Distance(ST_StartPoint(h.geom), p.pt) > %(tol)s AND ST_Distance(ST_EndPoint(h.geom), p.pt) > %(tol)s
+    ORDER BY p.edge_id, p.end_no, ST_Distance(h.geom, p.pt), h.edge_id
+"""
+
+# a loose end of an OSM line (an end cluster of its own) and its nearest street point within %(snap)s
+OSM_LOOSE_ENDS_SQL = """
+    CREATE TEMP TABLE mvg_conn ON COMMIT DROP AS
+    SELECT l.edge_id, l.end_no, l.pt, e.src_id, n.host, n.f, n.cp
+    FROM (SELECT p.edge_id, p.end_no, p.pt
+          FROM mvg_end p
+          WHERE p.cluster_id IN (SELECT cluster_id FROM mvg_end GROUP BY cluster_id HAVING count(*) = 1)) l
+    JOIN mvg_src e ON e.edge_id = l.edge_id AND e.klasse = %(line)s
+    CROSS JOIN LATERAL (SELECT s.edge_id AS host, ST_LineLocatePoint(s.geom, l.pt) AS f,
+                               ST_ClosestPoint(s.geom, l.pt) AS cp
+                        FROM mvg_src s
+                        WHERE COALESCE(s.klasse, '') <> ALL(%(osm)s) AND ST_DWithin(s.geom, l.pt, %(snap)s)
+                        ORDER BY s.geom <-> l.pt, s.edge_id LIMIT 1) n
+"""
+
+# the straight connectors from the loose ends to their street points (cut into the streets before)
+OSM_CONNECTORS_SQL = """
+    INSERT INTO mvg_src (edge_id, ags, src_id, klasse, objektart, geom)
+    SELECT (SELECT max(edge_id) FROM mvg_src) + row_number() OVER (ORDER BY c.edge_id, c.end_no),
+           NULL, c.src_id, %(connector)s, NULL, ST_MakeLine(c.pt, c.cp)
+    FROM mvg_conn c
+    WHERE ST_Distance(c.pt, c.cp) > 0
+"""
 
 INSERT_GRAPH_SQL = """
     INSERT INTO pylovo.mv_graph (graph_id, source_table, ags, excluded_klasse, snap_tolerance_m, build_parameters,
@@ -265,9 +356,10 @@ NO_LANDUSE_TEMP_SQL = "CREATE TEMP TABLE mvg_lu (geom geometry) ON COMMIT DROP"
 
 IN_SETTLEMENT_SQL = """
     UPDATE pylovo.mv_graph_edge e
-    SET in_settlement = e.n_buildings >= GREATEST(%(smin)s, e.length_m / %(sspacing)s)
-                        OR EXISTS (SELECT 1 FROM mvg_lu l
-                                   WHERE ST_Intersects(l.geom, ST_LineInterpolatePoint(e.geom, 0.5)))
+    SET in_settlement = COALESCE(e.klasse, '') <> ALL(%(osm)s)
+                        AND (e.n_buildings >= GREATEST(%(smin)s, e.length_m / %(sspacing)s)
+                             OR EXISTS (SELECT 1 FROM mvg_lu l
+                                        WHERE ST_Intersects(l.geom, ST_LineInterpolatePoint(e.geom, 0.5))))
     WHERE e.graph_id = %(g)s
 """
 
@@ -318,7 +410,9 @@ SUMMARY_SQL = """
 ANALYZE_SQL = ("ANALYZE pylovo.mv_graph_vertex", "ANALYZE pylovo.mv_graph_edge", "ANALYZE pylovo.mv_graph_settlement")
 
 REGION_ARRAYS_SQL = """
-    SELECT edge_id, source, target, length_m FROM pylovo.mv_graph_edge WHERE graph_id = %(g)s ORDER BY edge_id
+    SELECT edge_id, source, target, length_m FROM pylovo.mv_graph_edge
+    WHERE graph_id = %(g)s AND COALESCE(klasse, '') <> ALL(%(osm)s)
+    ORDER BY edge_id
 """
 
 ATTACH_TEMP_SQL = sql.SQL(
@@ -331,13 +425,15 @@ ATTACH_SQL = """
            ST_X(ST_ClosestPoint(e.geom, p.geom)) AS ax, ST_Y(ST_ClosestPoint(e.geom, p.geom)) AS ay
     FROM mv_point_tem p
     LEFT JOIN LATERAL (SELECT e.edge_id, e.component, e.in_settlement, e.settlement_id, e.settlement_urban, e.geom
-                       FROM pylovo.mv_graph_edge e WHERE e.graph_id = %(g)s
+                       FROM pylovo.mv_graph_edge e
+                       WHERE e.graph_id = %(g)s AND COALESCE(e.klasse, '') <> ALL(%(osm)s)
                        ORDER BY e.geom <-> p.geom LIMIT 1) e ON true
     ORDER BY p.key
 """
 
 SUBGRAPH_EDGES_SQL = sql.SQL("""
-    SELECT e.edge_id, e.source, e.target, e.length_m, e.in_settlement, COALESCE(e.settlement_id, -1)
+    SELECT e.edge_id, e.source, e.target, e.length_m, e.in_settlement, COALESCE(e.settlement_id, -1),
+           COALESCE(e.klasse = %(line)s, false)
     FROM pylovo.mv_graph_edge e
     WHERE e.graph_id = %(g)s
       AND (ST_DWithin(e.geom, ST_GeomFromWKB(%(hull)s, {epsg}), %(buffer_m)s) OR e.edge_id = ANY(%(must)s))
@@ -411,6 +507,8 @@ def build_parameters(params: "MvParameters") -> dict[str, Any]:
         "seam_split_m": SEAM_SPLIT_M,
         "epsg": int(TARGET_EPSG),
         "build_version": GRAPH_BUILD_VERSION,
+        **({"osm_mv_lines": True, "osm_line_snap_m": float(params.osm_line_snap_m)}
+           if params.overhead_lines == "osm" else {}),
     }
 
 
@@ -470,9 +568,19 @@ class MvGraphMixin(BaseMixin):
         row = self.cur.fetchone()
         return sql.Identifier(INFDB_OSM_SCHEMA, "landuse_polygon") if row and row[0] else None
 
-    def graph_fingerprint(self, ags: Sequence[str]) -> str:
+    def _osm_lines_available(self) -> bool:
+        """Whether ``INFDB_OSM_SCHEMA`` has ``infrastructure_line`` and ``tags`` (the OSM MV lines)."""
+        if not INFDB_OSM_SCHEMA:
+            return False
+        self.cur.execute(OSM_TABLES_SQL, {"schema": INFDB_OSM_SCHEMA})
+        row = self.cur.fetchone()
+        return bool(row and row[0])
+
+    def graph_fingerprint(self, ags: Sequence[str], osm_lines: bool = False) -> str:
         """Fingerprint of the source rows of the AGS: ways ``count:length:max changelog``, buildings
-        ``count:max changelog``, and the number of built-up OSM land-use polygons (``none`` without the table)."""
+        ``count:max changelog``, and the number of built-up OSM land-use polygons (``none`` without the table);
+        with ``osm_lines`` also the overhead power ways of the OSM schema ``count:length:max id`` (``none``
+        without the tables)."""
         params = {"ags": list(ags)}
         self.cur.execute(WAYS_FINGERPRINT_SQL.format(ways=_source("ways_per_junction")), params)
         n_ways, length, ways_changelog = self.cur.fetchone()
@@ -485,9 +593,18 @@ class MvGraphMixin(BaseMixin):
                              {"types": list(SETTLEMENT_LANDUSE_TYPES)})
             row = self.cur.fetchone()
             n_landuse = str(int(row[0])) if row and row[0] is not None else "none"
-        return (f"ways {int(n_ways)}:{int(length)}:{'' if ways_changelog is None else ways_changelog}"
+        text = (f"ways {int(n_ways)}:{int(length)}:{'' if ways_changelog is None else ways_changelog}"
                 f"|buildings {int(n_buildings)}:{'' if buildings_changelog is None else buildings_changelog}"
                 f"|landuse {n_landuse}")
+        if osm_lines:
+            lines = "none"
+            if self._osm_lines_available():
+                self.cur.execute(OSM_FINGERPRINT_SQL.format(osm=sql.Identifier(INFDB_OSM_SCHEMA)),
+                                 {"subtypes": list(OVERHEAD_SUBTYPES)})
+                n, km, top = self.cur.fetchone() or (0, 0, None)
+                lines = f"{int(n)}:{int(km)}:{'' if top is None else top}"
+            text += f"|osm_lines {lines}"
+        return text
 
     def ensure_graph(self, region_wkb: bytes, params: "MvParameters") -> str:
         """Return the id of the routing graph of a planning region, building and committing it if it is missing.
@@ -516,7 +633,7 @@ class MvGraphMixin(BaseMixin):
                                f"{params.region_buffer_m:g} m of the planning region")
         source_table = f"{INFDB_SOURCE_SCHEMA}.ways_per_junction"
         parameters = build_parameters(params)
-        fingerprint = self.graph_fingerprint(ags)
+        fingerprint = self.graph_fingerprint(ags, osm_lines=bool(parameters.get("osm_mv_lines")))
         graph_id = graph_id_for(source_table, ags, parameters, fingerprint)
         self.cur.execute(GRAPH_EXISTS_SQL, {"g": graph_id})
         if self.cur.fetchone():
@@ -560,6 +677,8 @@ class MvGraphMixin(BaseMixin):
             for statement in SEAM_REPLACE_SQL:
                 self.cur.execute(statement)
             self._cluster_endpoints(parameters["snap_tolerance_m"])
+        if parameters.get("osm_mv_lines"):
+            self._add_osm_lines(parameters["snap_tolerance_m"], float(parameters["osm_line_snap_m"]))
         self.cur.execute(VERTICES_TEMP_SQL)
         self.cur.execute("CREATE INDEX ON mvg_vert (cluster_id)")
         self.cur.execute("ANALYZE mvg_vert")
@@ -603,7 +722,7 @@ class MvGraphMixin(BaseMixin):
         sbuf = parameters["settlement_buffer_m"]
         self.cur.execute(EDGE_BUILDINGS_SQL, {**g, "sbuf": sbuf})
         self.cur.execute(IN_SETTLEMENT_SQL, {**g, "smin": parameters["settlement_min_buildings"],
-                                             "sspacing": parameters["settlement_spacing_m"]})
+                                             "sspacing": parameters["settlement_spacing_m"], "osm": list(_OSM_KLASSEN)})
         self.cur.execute(SETTLEMENT_ID_SQL, {**g, "settlement_edges_sql": edges_sql(graph_id, settlement_only=True)})
         self.cur.execute(INSERT_SETTLEMENTS_SQL, {**g, "sbuf": sbuf, "spoly": parameters["settlement_polygon_buffer_m"],
                                                   "urban_min": parameters["urban_min_buildings"]})
@@ -613,6 +732,65 @@ class MvGraphMixin(BaseMixin):
             self.cur.execute(statement)
         self.logger.info("MV routing graph %s built from %d municipalities in %.1f s (%d seam endpoints, "
                          "%d seam cuts)", graph_id, len(ags), time.perf_counter() - started, seams, cuts)
+
+    def _add_osm_lines(self, snap_m: float, connect_m: float) -> None:
+        """Add the OSM MV overhead lines to ``mvg_src``: cut them and the streets at their crossings, cut OSM lines
+        where a branch line ends on them, and join their loose ends to the nearest street point within ``connect_m``
+        (see the module docstring); re-clusters the edge ends. Without the OSM tables the graph stays a street graph
+        (logged)."""
+        import shapely
+
+        if not self._osm_lines_available():
+            self.logger.warning("no %s.infrastructure_line and tags: MV_OVERHEAD_LINES osm finds no OSM MV lines, "
+                                "so every MV line is a cable", INFDB_OSM_SCHEMA or "OSM schema")
+            return
+        osm = sql.Identifier(INFDB_OSM_SCHEMA)
+        epsg = sql.Literal(TARGET_EPSG)
+        self.cur.execute(SRID_SQL.format(table=sql.Identifier(INFDB_OSM_SCHEMA, "infrastructure_line")))
+        row = self.cur.fetchone()
+        osm_srid = int(row[0]) if row and row[0] else int(TARGET_EPSG)
+        self.cur.execute(EXTENT_SQL)
+        x0, y0, x1, y1 = self.cur.fetchone()
+        self.cur.execute(OSM_LINES_SQL.format(osm=osm, epsg=epsg),
+                         {"subtypes": list(OVERHEAD_SUBTYPES), "x0": x0, "y0": y0, "x1": x1, "y1": y1,
+                          "osm_srid": osm_srid})
+        kept = [(int(osm_id), str(subtype), bytes(wkb)) for osm_id, subtype, tags, wkb in self.cur.fetchall()
+                if wkb is not None and is_mv_overhead_line(subtype, tags if isinstance(tags, dict) else {})]
+        self.cur.execute(f"CREATE TEMP TABLE mvg_osm (osm_id bigint, subtype text, geom geometry(Geometry, "
+                         f"{int(TARGET_EPSG)})) ON COMMIT DROP")
+        if kept:
+            execute_values(self.cur, "INSERT INTO mvg_osm (osm_id, subtype, geom) VALUES %s", kept,
+                           template=f"(%s, %s, ST_GeomFromWKB(%s, {int(TARGET_EPSG)}))", page_size=2000)
+        self.cur.execute(OSM_INSERT_SQL, {"klasse": OSM_LINE_KLASSE})
+        n_edges = self.cur.rowcount
+        km = sum(shapely.from_wkb(wkb).length for _, _, wkb in kept) / 1000.0
+        self.cur.execute("ANALYZE mvg_src")
+        self._cluster_endpoints(snap_m)
+        osm_params = {"osm": list(_OSM_KLASSEN), "line": OSM_LINE_KLASSE}
+        # 1. cut OSM lines and streets at their crossings, and OSM lines where a branch line ends on them
+        self.cur.execute("DROP TABLE IF EXISTS pg_temp.mvg_cut, pg_temp.mvg_split")
+        self.cur.execute("CREATE TEMP TABLE mvg_cut (host bigint, f double precision, pt geometry) ON COMMIT DROP")
+        self.cur.execute(OSM_CROSSING_CUTS_SQL, osm_params)
+        crossings = self.cur.rowcount // 2
+        self.cur.execute(OSM_JUNCTION_CUTS_SQL, {**osm_params, "tol": SEAM_TOLERANCE_M})
+        junctions = self.cur.rowcount
+        self._apply_cuts(snap_m)
+        # 2. join the loose ends to the nearest street point (the street is cut there)
+        self.cur.execute("DROP TABLE IF EXISTS pg_temp.mvg_conn, pg_temp.mvg_cut, pg_temp.mvg_split")
+        self.cur.execute(OSM_LOOSE_ENDS_SQL, {**osm_params, "snap": connect_m})
+        self.cur.execute("CREATE TEMP TABLE mvg_cut ON COMMIT DROP AS SELECT host, f, cp AS pt FROM mvg_conn")
+        self.cur.execute(OSM_CONNECTORS_SQL, {"connector": OSM_CONNECTOR_KLASSE})
+        connectors = self.cur.rowcount
+        self._apply_cuts(snap_m)
+        self.logger.info("OSM MV lines: %d ways (%.0f km, %d edges), %d street crossings, %d branch junctions, "
+                         "%d end connectors", len(kept), km, n_edges, crossings, junctions, connectors)
+
+    def _apply_cuts(self, snap_m: float) -> None:
+        """Split the hosts of ``mvg_cut`` at their cut points (seam pieces) and re-cluster the edge ends."""
+        self.cur.execute(SEAM_PIECES_SQL)
+        for statement in SEAM_REPLACE_SQL:
+            self.cur.execute(statement)
+        self._cluster_endpoints(snap_m)
 
     def _cluster_endpoints(self, snap_m: float) -> None:
         """(Re)create ``mvg_end``: the edge ends of ``mvg_src`` with their DBSCAN cluster."""
@@ -625,7 +803,7 @@ class MvGraphMixin(BaseMixin):
     # ------------------------------------------------------------------------------------------------ readers
     def region_graph_arrays(self, graph_id: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """All edges of a graph as arrays ``(edge_id, source, target, length_m)``, ordered by ``edge_id``."""
-        self.cur.execute(REGION_ARRAYS_SQL, {"g": graph_id})
+        self.cur.execute(REGION_ARRAYS_SQL, {"g": graph_id, "osm": list(_OSM_KLASSEN)})
         rows = self.cur.fetchall()
         if not rows:
             return (np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.float64))
@@ -658,7 +836,7 @@ class MvGraphMixin(BaseMixin):
                            template=f"(%s, ST_SetSRID(ST_MakePoint(%s, %s), {int(TARGET_EPSG)}))", page_size=5000)
         self.cur.execute("CREATE INDEX ON mv_point_tem USING gist (geom)")
         self.cur.execute("ANALYZE mv_point_tem")
-        self.cur.execute(ATTACH_SQL, {"g": graph_id})
+        self.cur.execute(ATTACH_SQL, {"g": graph_id, "osm": list(_OSM_KLASSEN)})
         frame = pd.DataFrame(self.cur.fetchall(), columns=columns)
         for name in ("key", "edge_id", "component", "settlement_id"):
             frame[name] = pd.array(frame[name].tolist(), dtype="Int64")
@@ -683,14 +861,16 @@ class MvGraphMixin(BaseMixin):
         """
         must_ids = sorted({int(e) for e in must if e is not None and not pd.isna(e)})
         self.cur.execute(SUBGRAPH_EDGES_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
-                         {"g": graph_id, "hull": bytes(hull_wkb), "buffer_m": float(buffer_m), "must": must_ids})
+                         {"g": graph_id, "hull": bytes(hull_wkb), "buffer_m": float(buffer_m), "must": must_ids,
+                          "line": OSM_LINE_KLASSE})
         rows = self.cur.fetchall()
         if rows:
-            edge_id, source, target, length, in_settlement, settlement_id = (np.asarray(c) for c in zip(*rows))
+            edge_id, source, target, length, in_settlement, settlement_id, overhead = (np.asarray(c)
+                                                                                       for c in zip(*rows))
         else:
             edge_id = source = target = settlement_id = np.zeros(0, np.int64)
             length = np.zeros(0, np.float64)
-            in_settlement = np.zeros(0, bool)
+            in_settlement = overhead = np.zeros(0, bool)
         source = source.astype(np.int64)
         target = target.astype(np.int64)
         vertex_ids = np.unique(np.concatenate([source, target]))
@@ -705,7 +885,7 @@ class MvGraphMixin(BaseMixin):
         return EdgeSet(edge_id=edge_id.astype(np.int64), source=source, target=target,
                        length_m=length.astype(np.float64), in_settlement=in_settlement.astype(bool),
                        settlement_id=settlement_id.astype(np.int64), vertex_id=vertex_ids.astype(np.int64),
-                       vertex_xy=xy)
+                       vertex_xy=xy, overhead=overhead.astype(bool))
 
     def edge_geometries(self, graph_id: str, edge_ids: Sequence[int]) -> dict[int, Any]:
         """Geometries of graph edges (shapely LineStrings in ``TARGET_EPSG``, oriented source -> target)."""

@@ -51,8 +51,8 @@ from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 
-from pylovo.mv_grid import graph
-from pylovo.mv_grid.model import EdgeSet
+from pylovo.mv_grid import equipment, graph
+from pylovo.mv_grid.model import EdgeSet, line_kind
 
 if TYPE_CHECKING:
     import pandapower as pp
@@ -331,6 +331,10 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
     pieces = {key: graph.path_pieces(rg, path) for key, path in paths.items() if path}
     edge_kind = rg.pieces["kind"].astype(str).to_numpy()
     edge_ids = rg.pieces["edge_id"].to_numpy(dtype=np.int64)
+    osm = params.overhead_lines == "osm" and params.routing != "crowfly"
+    on_osm = (rg.pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in rg.pieces.columns
+              else np.zeros(len(rg.pieces), dtype=bool))
+    piece_m = rg.pieces["length_m"].to_numpy(dtype=float)
     wanted = sorted({int(edge_ids[q]) for ps in pieces.values() for q in ps if edge_kind[q] == "street"})
     if wanted:
         geoms = dict(edge_geometry(wanted)) if edge_geometry is not None else _straight_edge_geometries(edges, wanted)
@@ -349,17 +353,23 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             key = (int(vertex[f]), int(vertex[t]))
             line = graph.path_geometry(rg, pieces.get(key, []), geoms, start_vertex=key[0])
             geometry = _with_ends(line, xy[f], xy[t])
-        kind = "overhead" if overhead[p] else "cable"
+        if osm and not straight[p]:                     # overhead where the route runs on OSM MV lines
+            route = pieces.get((int(vertex[f]), int(vertex[t])), [])
+            overhead_m = min(float(length[p]), float(sum(piece_m[q] for q in route if q >= 0 and on_osm[q])))
+        else:
+            overhead_m = float(length[p]) if overhead[p] else 0.0
+        kind = line_kind(overhead_m, float(length[p]))
         vn_kv = float(vn_of.loc[int(grid[f])])
-        lt = params.cable_at(vn_kv) if kind == "cable" else params.overhead_at(vn_kv)
+        cable_type, overhead_type = params.cable_at(vn_kv), params.overhead_at(vn_kv)
+        std_type = {"cable": cable_type.name, "overhead": overhead_type.name}.get(
+            kind, f"{cable_type.name} + {overhead_type.name}")
         out.append({
             "from_node": int(ids[f]), "to_node": int(ids[t]), "from_grid": int(grid[f]), "to_grid": int(grid[t]),
             "from_ring": int(ring[f]), "to_ring": int(ring[t]), "from_feeder": int(feeder[f]),
             "to_feeder": int(feeder[t]), "kind": kind, "straight": bool(straight[p]), "length_m": float(length[p]),
             "street_m": float(street[p]), "straight_m": float(straight_m[p]),
-            "cable_m": float(length[p]) if kind == "cable" else 0.0,
-            "overhead_m": float(length[p]) if kind == "overhead" else 0.0, "parallel": 1,
-            "std_type": lt.name,
+            "cable_m": float(length[p]) - overhead_m, "overhead_m": overhead_m, "parallel": 1,
+            "std_type": std_type,
             "flags": _flags(grids, (int(grid[f]), int(grid[t]))), "geometry": geometry,
         })
     ties = pd.DataFrame(out, columns=list(TIE_COLUMNS))
@@ -485,11 +495,13 @@ def takeover_checks(ties: pd.DataFrame, nets: Mapping[int, Any], params: "MvPara
                                  merge_results=False, net2_reindex_log_level=None)
             from_bus, to_bus = _bus(net, tie.from_grid, tie.from_node), _bus(net, tie.to_grid, tie.to_node)
             vn_kv = float(net.bus.at[from_bus, "vn_kv"])                  # the voltage of both districts
-            lt = params.cable_at(vn_kv) if tie.kind == "cable" else params.overhead_at(vn_kv)
+            cable_m = float(getattr(tie, "cable_m", 0.0) or 0.0)
+            overhead_m = float(getattr(tie, "overhead_m", 0.0) or 0.0)
+            values = equipment.line_parameters(tie.kind, params.cable_at(vn_kv), params.overhead_at(vn_kv),
+                                               cable_m, overhead_m if cable_m + overhead_m > 0 else 1.0)
             tie_line = pp.create_line_from_parameters(
-                net, from_bus, to_bus,
-                length_km=max(float(tie.length_m), MIN_TIE_M) / 1000.0, r_ohm_per_km=lt.r_ohm_per_km,
-                x_ohm_per_km=lt.x_ohm_per_km, c_nf_per_km=lt.c_nf_per_km, max_i_ka=lt.max_i_ka, name="tie")
+                net, from_bus, to_bus, length_km=max(float(tie.length_m), MIN_TIE_M) / 1000.0, name="tie",
+                **{key: values[key] for key in ("r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka")})
             net.line.at[tie_line, "role"] = "tie"
             for row, end in zip(base, ends):
                 try:

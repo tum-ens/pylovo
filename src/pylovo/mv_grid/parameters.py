@@ -160,6 +160,7 @@ class MvParameters:
     overhead_detour: float = _y("overhead_detour")
     bridge_detour: float = _y("bridge_detour")
     long_connector_m: float = _y("long_connector_m")
+    osm_line_snap_m: float = _y("osm_line_snap_m")
     busbar_exit_radius_m: float = _y("busbar_exit_radius_m")
     graph_excluded_klasse: tuple[str, ...] = _y("graph_excluded_klasse")
     graph_snap_tolerance_m: float = _y("graph_snap_tolerance_m")

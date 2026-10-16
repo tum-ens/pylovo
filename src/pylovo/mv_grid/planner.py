@@ -151,8 +151,11 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
 
     peak_load_mw = district_peak_kw(inp) / 1000.0
     s_load_mva = peak_load_mw / inp.lv.power_factor if inp.lv.power_factor > 0 else peak_load_mw
-    trench, max_circuits = graph.trench_km(rg, [line.pieces for line in plan.lines
-                                                if line.role != "tie" and line.kind != "overhead"])
+    pieces = getattr(rg, "pieces", None)                                                 # trench: cable pieces
+    on_osm = (pieces["overhead"].fillna(False).to_numpy(dtype=bool)
+              if pieces is not None and "overhead" in pieces.columns else None)
+    trench, max_circuits = graph.trench_km(rg, [[p for p in line.pieces if on_osm is None or p < 0 or not on_osm[p]]
+                                                for line in plan.lines if line.role != "tie" and line.kind != "overhead"])
     bridged = [int(k) for k, flag in zip(inp.nodes.index, np.asarray(rg.bridged_rows, dtype=bool)) if flag]
 
     nodes_t, lines_t = plan_tables(inp, plan)                                            # generic metric format
