@@ -117,7 +117,8 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
         inp = replace(inp, nodes=nodes)
 
     rg = graph.build_run_graph(inp.edges, inp.nodes, long_connector_m=params.long_connector_m,
-                               bridge_detour=params.bridge_detour)                       # §3.8
+                               bridge_detour=params.bridge_detour,
+                               exit_radius_m=params.busbar_exit_radius_m)                # §3.8
     terminals = topology.terminal_rows(inp)                                              # busbar first
     model = topology.distance_model(inp, rg, terminals)                                  # §4.2
     ev = rings.RingEvaluator.from_model(inp, model)                                      # §4.3

@@ -234,6 +234,32 @@ def test_connectors_and_long_connectors():
     np.testing.assert_allclose(d[0], [0.0, 70.0, 20.0 + 150.0 + 520.0])
 
 
+def test_busbar_exits_join_the_street_vertices_within_the_radius():
+    coords = {1: (0.0, 0.0), 3: (120.0, 0.0), 4: (0.0, 1000.0), 5: (1000.0, 0.0), 6: (150.0, 120.0),
+              7: (1000.0, 1000.0)}
+    edges = _edge_set([(11, 1, 4), (12, 3, 5), (13, 6, 4), (14, 4, 7), (15, 7, 5)], coords)
+    nodes = _nodes([
+        {"kind": "busbar", "x": 0.0, "y": -50.0, "attach_edge_id": 11, "attach_fraction": 0.0,
+         "attach_offset_m": 50.0},
+        {"x": 1000.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 1.0, "attach_offset_m": 0.0},
+        {"x": 100.0, "y": -60.0, "attach_edge_id": 12, "attach_fraction": 0.0, "attach_offset_m": 60.0},
+    ])
+    plain = graph.build_run_graph(edges, nodes)
+    rg = graph.build_run_graph(edges, nodes, exit_radius_m=200.0)
+    assert plain.n_bridges == rg.n_bridges == 0
+    bv = rg.terminal_vertex[0]
+    exits = rg.pieces.iloc[len(plain.pieces):]                       # added after the terminal connectors
+    assert (exits.kind == "connector").all() and (exits.u == bv).all() and (exits.edge_id == -1).all()
+    reached = sorted((float(x), float(y)) for x, y in rg.vertex_xy[exits.v.to_numpy()])
+    # the street vertices within 200 m of (0, -50): (0, 0) and (120, 0); (150, 120) is 228 m away, and the own
+    # vertex of the off-street station at (100, -60) is no street vertex
+    assert reached == [(0.0, 0.0), (120.0, 0.0)]
+    np.testing.assert_allclose(sorted(exits.length_m), [50.0, np.hypot(120.0, 50.0)])
+    assert graph.terminal_distances(plain, [0, 1])[0, 1] == pytest.approx(3050.0)     # round the block
+    assert graph.terminal_distances(rg, [0, 1])[0, 1] == pytest.approx(np.hypot(120.0, 50.0) + 880.0)
+    assert len(graph.build_run_graph(edges, nodes, exit_radius_m=0.0).pieces) == len(plain.pieces)
+
+
 def test_island_bridging_connects_every_terminal_and_flags_the_rows():
     coords = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (100.0, 500.0), 4: (300.0, 500.0), 5: (900.0, 900.0),
               6: (950.0, 900.0)}

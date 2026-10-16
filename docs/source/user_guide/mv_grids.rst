@@ -773,6 +773,11 @@ routing graph and the settlements are part of the graph id, so a change builds a
    * - ``max_half_ring_length_m``
      - 28000
      - Longest half-ring in m (Ding0 configuration; ring length up to 60 km after FGH).
+   * - ``rural_ring_factor``
+     - 2
+     - Rural ring members count 1 / factor against ``MV_MAX_STATIONS_PER_RING``, so rural rings hold
+       40 members and urban rings 20 (rural feeders carry 11 to 28 supply points: SimBench;
+       Almomani and Witzmann 2024). 1 counts every member 1.
    * - ``stub_max_kva``
      - 1000
      - Largest coincident load of a stub tree in kVA (Amme et al. 2018 after Consentec and FGH).
@@ -901,6 +906,11 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 300
      - Connectors from a node to the street above this length count ``bridge_detour`` times and are
        logged.
+   * - ``busbar_exit_radius_m``
+     - 200
+     - The busbar gets straight cable connectors to every street vertex within this distance, so the
+       feeders leave the substation in several directions (assumption). 0: only the attachment of
+       the substation.
    * - ``graph_excluded_klasse``
      - ``[Bundesautobahn]``
      - Street classes (``klasse``) left out of the graph: no MV lines along motorways.

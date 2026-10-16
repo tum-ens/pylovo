@@ -195,9 +195,9 @@ MV_SUPPLY_AREAS: routed
 MV_ROUTING: street
 # Ring solver: savings (Clarke-Wright savings with local search) or sweep
 MV_RING_SOLVER: savings
-# Most ring members (stations, MV customers, looped generators) in one open ring; stub stations do not count
+# Most ring members (stations, MV customers, looped generators) in one open ring; rural members count half (rural rings hold 40), stub stations do not count
 MV_MAX_STATIONS_PER_RING: 20
-# Stubs: rural (small rural loads off the ring hang on a T-off, at most 1 MVA and 2 km) or none (every station looped in)
+# Stubs: rural (isolated rural stations and small rural loads off the ring hang on a T-off, at most 1 MVA and 2 km) or none (every station looped in)
 MV_STUBS: rural
 # Overhead lines: rural (links between rural settlements are overhead lines) or none (cables only)
 MV_OVERHEAD_LINES: rural

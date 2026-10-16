@@ -230,7 +230,8 @@ def _column(nodes: pd.DataFrame, name: str, default: float) -> np.ndarray:
 
 
 def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 1.0, connector_min_m: float = 0.5,
-                    long_connector_m: float = 300.0, bridge_detour: float = 1.3) -> RunGraph:
+                    long_connector_m: float = 300.0, bridge_detour: float = 1.3,
+                    exit_radius_m: float = 0.0) -> RunGraph:
     """The routing graph of one district: the subgraph split at the terminals, connectors and island bridges.
 
     * Every attachment edge is split at the sorted fractions of its terminals; a fraction within ``end_snap_m`` of an
@@ -238,6 +239,9 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
     * A terminal with ``attach_offset_m > connector_min_m`` gets its own vertex at ``(x, y)`` and a straight
       connector of cost ``attach_offset_m`` (x ``bridge_detour`` above ``long_connector_m``). Terminals without an
       attachment edge (or one missing from ``edges``) get an own vertex only.
+    * **Busbar exits**: the busbar's vertex gets a straight connector (cost = distance) to every street vertex (graph
+      vertex or split point, no other terminal's own vertex) within ``exit_radius_m``, so feeders can leave the
+      substation in several directions.
     * Every component that holds terminals but not the busbar's is joined by a straight bridge between its closest
       vertex pair and the connected part (``cKDTree``, cost straight x ``bridge_detour``), nearest island first,
       until all terminals are connected. Rows with ``connection_hint == 'excluded'`` never cause a bridge.
@@ -251,6 +255,7 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
         connector_min_m: Offsets above this get a connector.
         long_connector_m: Connectors above this cost ``bridge_detour`` x their length.
         bridge_detour: Detour factor of long connectors and bridges.
+        exit_radius_m: Radius of the busbar exits (0: none).
 
     Returns:
         The :class:`~pylovo.mv_grid.model.RunGraph`; ``terminal_vertex`` and ``bridged_rows`` follow the row order
@@ -365,6 +370,8 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
     add_pieces(es[idx], et[idx], e_len[idx], edge_id[idx], np.zeros(len(idx)), np.ones(len(idx)),
                np.full(len(idx), "street", dtype=object), e_in[idx], e_sid[idx])
 
+    n_street_vertices = len(vid) + len(extra_xy)                 # graph vertices and split points
+
     # 2. terminal vertices and connectors
     terminal_vertex = np.full(n_rows, -1, dtype=np.int64)
     seen: dict[tuple[float, float, int], int] = {}
@@ -395,6 +402,16 @@ def build_run_graph(edges: EdgeSet, nodes: pd.DataFrame, *, end_snap_m: float = 
 
     n_vertices = len(vid) + len(extra_xy)
     vertex_xy = np.vstack([vxy, np.asarray(extra_xy, dtype=np.float64).reshape(-1, 2)])
+    if exit_radius_m > 0 and n_street_vertices:
+        bv = int(terminal_vertex[busbar_row])
+        near = np.asarray(cKDTree(vertex_xy[:n_street_vertices]).query_ball_point(vertex_xy[bv], exit_radius_m),
+                          dtype=np.int64)
+        near = np.sort(near[near != bv])
+        if len(near):
+            k = len(near)
+            length = np.maximum(np.hypot(*(vertex_xy[near] - vertex_xy[bv]).T), SPLIT_MERGE_M)
+            add_pieces(np.full(k, bv), near, length, np.full(k, -1), np.full(k, np.nan), np.full(k, np.nan),
+                       np.full(k, "connector", dtype=object), np.zeros(k, bool), np.full(k, -1))
     u = np.concatenate(p_u)
     v = np.concatenate(p_v)
     w = np.concatenate(p_len)

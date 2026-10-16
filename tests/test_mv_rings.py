@@ -10,7 +10,15 @@ import pandas as pd
 import pytest
 
 from pylovo.mv_grid import coincidence, rings
-from pylovo.mv_grid.model import NODE_COLUMNS, DistanceModel, DistrictInput, EdgeSet, RingCheck, RingLimits
+from pylovo.mv_grid.model import (
+    NODE_COLUMNS,
+    DistanceModel,
+    DistrictInput,
+    EdgeSet,
+    RingCheck,
+    RingLimits,
+    member_weights,
+)
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters
 
 #: Sim factors in CATEGORIES order (Residential, Commercial, Public, Unknown), as shipped.
@@ -494,6 +502,29 @@ def test_evaluator_is_fast_enough():
     assert best < 200e-6, f"{best * 1e6:.0f} us per evaluation"
 
 
+def test_member_weights_count_rural_members_by_the_factor():
+    kinds = ["busbar", "station", "station", "customer", "generator", "joint"]
+    urban = [False, True, False, False, True, False]
+    np.testing.assert_allclose(member_weights(kinds, urban, 2.0), [0.0, 1.0, 0.5, 0.5, 1.0, 0.0])
+    np.testing.assert_allclose(member_weights(kinds, urban, 1.0), [0.0, 1.0, 1.0, 1.0, 1.0, 0.0])
+    with pytest.raises(ValueError, match="at least 1"):
+        member_weights(kinds, urban, 0.5)
+    with pytest.raises(ValueError, match="shape"):
+        member_weights(kinds, urban[:2], 2.0)
+
+
+@pytest.mark.parametrize("weights, feasible", [([0.5] * 40, True), ([0.5] * 41, False), ([1.0] * 20, True),
+                                               ([1.0] * 21, False), ([1.0] * 10 + [0.5] * 20, True),
+                                               ([1.0] * 10 + [0.5] * 21, False)])
+def test_the_member_cap_counts_weighted_members(weights, feasible):
+    k = len(weights)
+    zeros = np.zeros((k, 4))
+    check = rings.check_ring(zeros, zeros, np.zeros(k), np.full(k + 1, 10.0), np.full(k + 1, 0.1),
+                             np.full(k + 1, 0.1), np.full(k + 1, 0.4), np.asarray(weights), np.ones(k, bool), G,
+                             0.95, 20.0, RingLimits(20, 0.05, 0.1, 0.6, 1.0, 28000.0))
+    assert check.feasible is feasible and (feasible or check.reason == "count")
+
+
 def test_from_model_uses_the_variant_line_types_and_limits():
     params = MvParameters()
     lv = LvVersionParameters(version_id="t", sim_factor=dict(zip(("Residential", "Commercial", "Public", "Unknown"),
@@ -508,6 +539,7 @@ def test_from_model_uses_the_variant_line_types_and_limits():
     nodes.loc[7, ["inst_res", "units_res", "inst_com", "units_com"]] = [300.0, 20.0, 150.0, 1.0]
     nodes.loc[9, "p_fixed_kw"] = 1200.0
     nodes.loc[7, "inst_pub"] = np.nan                                 # missing statistics count as 0
+    nodes["urban"] = [False, False, True, False, False, False]        # rural members weigh 1 / rural_ring_factor
     terminals = np.array([0, 1, 2, 3, 4])                             # rows of nodes, busbar first
     k = len(terminals)
     dist = np.full((k, k), 1500.0)
@@ -528,7 +560,7 @@ def test_from_model_uses_the_variant_line_types_and_limits():
                                    n1_utilization=1.0, max_half_m=28000.0) == rings.ring_limits(params)
     assert ev.r_ohm_km[1, 2] == params.overhead.r_ohm_per_km and ev.imax_ka[1, 2] == params.overhead.max_i_ka
     assert ev.r_ohm_km[0, 1] == params.cable.r_ohm_per_km and ev.x_ohm_km[2, 3] == params.cable.x_ohm_per_km
-    assert ev.member.tolist() == [False, True, True, True, True]
+    assert ev.member.tolist() == [0.0, 0.5, 1.0, 0.5, 0.5]
     assert ev.switchgear.tolist() == [False, True, True, True, True]
     assert ev.vn_kv == 20.0 and ev.power_factor == 0.95 and ev.g.tolist() == G.tolist()
     check = ev.evaluate([1, 2, 3])

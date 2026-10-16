@@ -56,6 +56,10 @@ MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("loads", "customer_min_mv_kw"): 0.0,
     # Station-busbar customers came without a distance limit.
     ("loads", "busbar_customer_max_m"): None,
+    # Before the rural ring factor every ring member counted 1 against the cap.
+    ("topology", "rural_ring_factor"): 1.0,
+    # Before the busbar exits the busbar was joined to the street graph at its attachment only.
+    ("routing", "busbar_exit_radius_m"): 0.0,
 }
 
 

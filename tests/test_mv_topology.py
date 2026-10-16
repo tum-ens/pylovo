@@ -5,6 +5,7 @@ their contracts (DESIGN §4.3, §9.3 WP3/WP4/WP5), so these tests do not depend 
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 import types
 
@@ -219,11 +220,16 @@ class District:
         return inp, rg
 
 
-def plan_of(district: District, routes: list[list[int]], *, cap: int = 20, **param_changes):
-    """Build the plan of a district; ``routes`` hold node keys."""
+def plan_of(district: District, routes: list[list[int]], *, cap: int = 20, satellites: bool = True,
+            **param_changes):
+    """Build the plan of a district; ``routes`` hold node keys. ``satellites=False`` makes every satellite of the
+    model an ordinary ring candidate (for tests of the ring, stub and radial rules)."""
     inp, rg = district.build(**param_changes)
     terminals = topology.terminal_rows(inp)
     model = topology.distance_model(inp, rg, terminals)
+    if not satellites:
+        model = dataclasses.replace(model, candidates=np.union1d(model.candidates, np.flatnonzero(model.satellite)),
+                                    satellite=np.zeros_like(model.satellite))
     keys = list(inp.nodes.index[terminals])
     route_t = [[keys.index(k) for k in route] for route in routes]
     ev = FakeEvaluator(cap)
@@ -373,6 +379,70 @@ def test_cable_inside_a_settlement_and_between_urban_areas():
     assert open_field.overhead[1, 2] and open_field.straight[1, 2]
     no_overhead = model_of(detour_district(p=dict(settlement=1), q=dict(settlement=2)), overhead_lines="none")
     assert not no_overhead.overhead.any() and not no_overhead.straight.any()
+
+
+def test_busbar_legs_are_cables_along_the_streets():
+    d = detour_district(p=dict(settlement=1), q=dict(settlement=2), r=dict(settlement=3))
+    model = model_of(d)
+    assert not model.overhead[0].any() and not model.overhead[:, 0].any()
+    assert not model.straight[0].any() and not model.straight[:, 0].any()
+    # Q lies 1.4 km from the busbar in a straight line, 6 km along the streets: the leg takes the streets
+    assert model.dist_m[0, 2] == pytest.approx(model.street_m[0, 2]) == pytest.approx(6000.0)
+    assert model.overhead[1, 2] and model.straight[1, 2]           # between two settlements still a straight span
+    crowfly = model_of(d, routing="crowfly")
+    assert crowfly.straight[0, 2] and not crowfly.overhead[0, 2]     # crowfly: a stretched span, but a cable
+    assert crowfly.dist_m[0, 2] == pytest.approx(1.3 * np.hypot(1000.0, 1000.0))
+
+
+def satellite_district() -> District:
+    """The loop village of :func:`loop_district` plus two farms in open field: F (80) 300 m south of the loop
+    street at (2500, 0), G (81) 2.7 km further down the same field path."""
+    d = loop_district()
+    d.street((2500, 0), (2500, -300), (2500, -3000))
+    d.node(80, "station", 2500, -300)
+    d.node(81, "station", 2500, -3000)
+    return d
+
+
+def test_isolated_rural_stations_are_satellites_and_no_ring_candidates():
+    model = model_of(satellite_district())
+    inp, _ = satellite_district().build()
+    keys = list(inp.nodes.index[model.terminals])
+    assert [keys[t] for t in np.flatnonzero(model.satellite)] == [80, 81]
+    assert [keys[t] for t in model.candidates] == [10, 20, 30, 40, 50]
+    off = model_of(satellite_district(), stubs="none")
+    assert not off.satellite.any() and [keys[t] for t in off.candidates] == [10, 20, 30, 40, 50, 80, 81]
+    town = satellite_district()
+    for node in town.nodes:
+        if node["key"] in (80, 81):
+            node["urban"] = True                                    # urban stations are never satellites
+    assert not model_of(town).satellite.any()
+    alone = detour_district(p=dict(settlement=1), q=dict(settlement=2), r=dict(settlement=3))
+    assert not model_of(alone).satellite.any()                       # all would be satellites: none is
+
+
+def test_satellites_hang_on_stubs_or_go_into_the_cheapest_ring():
+    plan, (inp, *_) = plan_of(satellite_district(), RING)
+    assert_plan_valid(plan, inp)
+    assert plan.node_role[80] == "stub"
+    joint = plan.stub_parent[80]
+    assert joint < 0 and tuple(plan.joints[joint]) == (2500.0, 0.0)  # T-off where the field path leaves the loop
+    stub = line_between(plan, joint, 80)[0]
+    assert stub.role == "stub" and stub.length_m == pytest.approx(300.0)
+    # G is 2.7 km from the nearest line, beyond stub_max_length_m: it joins the ring where it costs the least
+    assert plan.node_role[81] == "ring" and 81 in ring_of(plan, 10).members
+    assert "satellite_in_ring" in plan.diagnostics["node_flags"][81]
+    assert plan.diagnostics["satellites"] == {"stub": 1, "ring": 1, "own_ring": 0}
+
+
+def test_a_satellite_without_a_ring_gets_its_own():
+    # the village ring is full: F can neither hang on it nor join it, so it gets its own ring, which G then joins
+    plan, (inp, *_) = plan_of(satellite_district(), RING, max_stations_per_ring=3, rural_ring_factor=1.0, cap=3)
+    assert_plan_valid(plan, inp)
+    assert "satellite_own_ring" in plan.diagnostics["node_flags"][80]
+    assert sorted(ring_of(plan, 80).members) == [80, 81] and plan.node_role[81] == "ring"
+    assert "satellite_in_ring" in plan.diagnostics["node_flags"][81]
+    assert plan.diagnostics["satellites"] == {"stub": 0, "ring": 1, "own_ring": 1}
 
 
 def test_crowfly_routing_uses_stretched_straight_spans():
@@ -546,7 +616,7 @@ def radial_district() -> District:
 
 
 def test_small_rural_single_station_rings_near_the_busbar_become_radials():
-    plan, (inp, *_) = plan_of(radial_district(), [[40], [41], [42]])
+    plan, (inp, *_) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
     assert_plan_valid(plan, inp)
     radial = ring_of(plan, 40)
     assert radial.kind == "radial" and radial.nop_key is None and radial.feeder_b is None
@@ -622,7 +692,7 @@ def test_generators_connect_by_t_off_loop_in_or_dedicated_feeder():
 
 
 def test_loop_in_falls_back_to_a_t_off_when_the_ring_is_full():
-    plan, (inp, *_) = plan_of(generator_district(), GEN_RING, max_stations_per_ring=4)
+    plan, (inp, *_) = plan_of(generator_district(), GEN_RING, max_stations_per_ring=4, rural_ring_factor=1.0)
     assert_plan_valid(plan, inp)
     assert plan.node_role[61] == "tee"
     assert "loop_in_infeasible" in plan.diagnostics["node_flags"][61]
@@ -711,7 +781,7 @@ def test_split_ring_halves_the_ring_and_reconnects_its_generators():
 
 
 def test_split_ring_keeps_single_member_rings():
-    plan, (inp, rg, model, ev) = plan_of(radial_district(), [[40], [41], [42]])
+    plan, (inp, rg, model, ev) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
     assert topology.split_ring(inp, rg, model, ev, plan, ring_of(plan, 41).ring_id) is plan
 
 

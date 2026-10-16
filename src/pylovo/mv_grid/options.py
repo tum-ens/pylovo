@@ -26,7 +26,9 @@ import yaml
 #: 3: nominal voltage per district (``MV_NOMINAL_VOLTAGE_KV`` auto), station-busbar customers only within
 #: ``busbar_customer_max_m``, stations they overload upsized in the MV model (and in ``pylovo-mv couple``).
 #: 4: load-only planning by default, optional generation and feed-in cases, heavier starting conductors.
-MV_STAGE_VERSION: int = 4
+#: 5: rural ring members count ``1 / rural_ring_factor``, busbar legs are cables along the streets with exits within
+#: ``busbar_exit_radius_m``, isolated rural stations hang on stubs after the rings are solved (satellites).
+MV_STAGE_VERSION: int = 5
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
@@ -96,9 +98,12 @@ _YAML_SPECS: tuple[Spec, ...] = (
     Spec("MV_RING_SOLVER", "solver", "savings", "choice", choices=("savings", "sweep"), group="topology",
          source="Clarke & Wright 1964 savings with local search; sweep"),
     Spec("MV_MAX_STATIONS_PER_RING", "max_stations_per_ring", 20, "int", bounds=(1, 100), group="topology",
-         source="Ding0 and Heuck; 5 to 30 stations per ring in a large-city grid study (mean 15)"),
+         source="Ding0 and Heuck; 5 to 30 stations per ring in a large-city grid study (mean 15); urban members "
+                "count 1, rural members 1 / rural_ring_factor"),
     Spec("MV_STUBS", "stubs", "rural", "choice", choices=("rural", "none"), group="topology",
-         source="Harnisch 2016 p. 103; Amme et al. 2018 p. 10"),
+         source="rural: isolated rural stations (outside settlements or alone in theirs) hang on stubs after the "
+                "rings are solved (Ding0 satellites), ring stations leave for a stub where it saves ring length; "
+                "Harnisch 2016 p. 103; Amme et al. 2018 p. 10"),
     Spec("MV_OVERHEAD_LINES", "overhead_lines", "rural", "choice", choices=("rural", "none"), group="topology",
          source="Meinecke 2019; cable shares of rural DSOs (§ 23c EnWG structural data) 57 to 70 %"),
     Spec("MV_INTERCONNECTION", "interconnection", "ties", "choice", choices=("none", "ties"), group="topology",
@@ -145,6 +150,10 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
     # topology
     _constant("max_half_ring_length_m", 28000.0, "float", "topology", bounds=(100.0, None),
               source="Ding0 configuration; FGH ring length up to 60 km"),
+    _constant("rural_ring_factor", 2.0, "float", "topology", bounds=(1.0, 10.0),
+              source="rural ring members count 1 / factor against MV_MAX_STATIONS_PER_RING, so rural rings hold "
+                     "twice as many members: rural feeders carry 11 to 28 supply points (SimBench; Almomani & "
+                     "Witzmann 2024), urban ones about 10 (large-city grid study); 1 = all members count 1"),
     _constant("stub_max_kva", 1000.0, "float", "topology", bounds=_POSITIVE,
               source="Amme et al. 2018 (Consentec 2006, FGH); Harnisch 2016"),
     _constant("stub_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
@@ -213,6 +222,10 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="straight bridges between graph islands, as crowfly_detour"),
     _constant("long_connector_m", 300.0, "float", "routing", bounds=_POSITIVE,
               source="connectors from a node to the street longer than this are flagged"),
+    _constant("busbar_exit_radius_m", 200.0, "float", "routing", bounds=(0.0, 2000.0),
+              source="the HV/MV busbar gets straight cable connectors to every street vertex within this distance, "
+                     "so its feeders leave in several directions instead of one street [assumption]; 0 = only the "
+                     "attachment of the substation"),
     _constant("graph_excluded_klasse", ("Bundesautobahn",), "str_tuple", "routing",
               source="no MV lines along motorways (klasse of the street graph)"),
     _constant("graph_snap_tolerance_m", 0.25, "float", "routing", bounds=(0.0, 10.0),

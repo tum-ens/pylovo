@@ -24,8 +24,10 @@ computed, never inferred from a neighbour. This is the MV analogue of pylovo's L
 
 **Feasible** iff (in this order; the first failing rule is the ``reason``):
 
-1. ``count``: the ring members (stations, MV customers, looped-in generators; joints and stub nodes do not count)
-   are at most ``RingLimits.max_members``;
+1. ``count``: the weighted ring members (stations, MV customers, looped-in generators; joints and stub nodes do
+   not count) are at most ``RingLimits.max_members``. An urban member weighs 1, a rural member
+   ``1 / rural_ring_factor``, so rural rings hold more members
+   (:func:`~pylovo.mv_grid.model.member_weights`);
 2. ``unreachable``: every section length is finite;
 3. ``no_nop``: an *allowed* open section exists: ``1 <= m <= k - 1`` (``k = 1``: ``m = 1``, the B exit) with a
    switchgear node (station, customer, generator) at ``v_m`` or ``v_{m+1}``, whose ring panel holds the open
@@ -58,15 +60,13 @@ from typing import TYPE_CHECKING, Any, Sequence
 import numpy as np
 
 from pylovo.mv_grid import coincidence
-from pylovo.mv_grid.model import DistanceModel, DistrictInput, RingCheck, RingLimits
+from pylovo.mv_grid.model import DistanceModel, DistrictInput, RingCheck, RingLimits, member_weights
 
 if TYPE_CHECKING:
     from pylovo.mv_grid.parameters import MvParameters
 
 #: Terminal index of the busbar in the matrices of a :class:`RingEvaluator` (as in the distance model).
 BUSBAR = 0
-#: Node kinds that count as ring members for ``MV_MAX_STATIONS_PER_RING`` (joints do not).
-MEMBER_KINDS: tuple[str, ...] = ("station", "customer", "generator")
 #: Node kinds with switchgear: their ring panel may hold the normally-open switch (never a T-joint).
 SWITCHGEAR_KINDS: tuple[str, ...] = ("station", "customer", "generator")
 #: Reasons of an infeasible ring, in the order the rules are checked.
@@ -80,6 +80,13 @@ _SQRT3 = math.sqrt(3.0)
 
 
 # ---------------------------------------------------------------------------------------------- limits
+def _urban(rows: Any) -> np.ndarray:
+    """The urban flags of node rows (missing column or values: rural)."""
+    if "urban" not in rows.columns:
+        return np.zeros(len(rows), dtype=bool)
+    return np.array([bool(u) if u is not None and u == u else False for u in rows["urban"]], dtype=bool)
+
+
 def ring_limits(params: "MvParameters") -> RingLimits:
     """The ring limits of an MV variant.
 
@@ -145,7 +152,7 @@ def _unreachable(p_ring_kw: float, reason: str) -> RingCheck:
                      p_a_kw=0.0, p_b_kw=0.0, reason=reason)
 
 
-def _check(loads: np.ndarray, length: np.ndarray, w: np.ndarray, cap: np.ndarray, n_members: int,
+def _check(loads: np.ndarray, length: np.ndarray, w: np.ndarray, cap: np.ndarray, n_members: float,
            switchgear: np.ndarray, limits: RingLimits) -> RingCheck:
     """The ring check on prepared arrays (``k >= 1``).
 
@@ -154,7 +161,7 @@ def _check(loads: np.ndarray, length: np.ndarray, w: np.ndarray, cap: np.ndarray
         length: (k + 1,) section lengths in m.
         w: (k + 1,) drop coefficients in p.u. per kW.
         cap: (k + 1,) section capacities in kW at 100 % of the ampacity.
-        n_members: Number of ring members.
+        n_members: Weighted number of ring members.
         switchgear: (k,) bool per position.
         limits: The ring limits.
     """
@@ -162,7 +169,7 @@ def _check(loads: np.ndarray, length: np.ndarray, w: np.ndarray, cap: np.ndarray
     P = np.triu(loads)                                   # zeros below the diagonal
     p_ring = float(P[0, k - 1])
     if not np.isfinite(length).all():
-        return _unreachable(p_ring, "count" if n_members > limits.max_members else "unreachable")
+        return _unreachable(p_ring, "count" if n_members > limits.max_members + _TOL else "unreachable")
     # half A ending at position e (0-based) is fed through sections 0..e: section j carries P[j, e]
     drop_end = w[:k] @ P                                 # (k,): du of a half A ending at e
     util_end = (P / cap[:k, None]).max(axis=0)           # (k,): max utilization of a half A ending at e
@@ -191,7 +198,7 @@ def _check(loads: np.ndarray, length: np.ndarray, w: np.ndarray, cap: np.ndarray
     drop_n1 = float(max(drop_end[k - 1], drop_start[0]))
     util_n1 = float(max(util_end[k - 1], util_start[0]))
 
-    if n_members > limits.max_members:
+    if n_members > limits.max_members + _TOL:
         reason = "count"
     elif not allowed.any():
         reason = "no_nop"
@@ -264,7 +271,7 @@ def check_ring(installed: np.ndarray, units: np.ndarray, fixed_kw: np.ndarray,
         section_r: Resistance per section in Ohm/km (of its kind; mixed lines length-weighted), shape (k + 1,).
         section_x: Reactance per section in Ohm/km, shape (k + 1,).
         section_imax: Ampacity per section and circuit in kA, shape (k + 1,).
-        member: Whether a position counts for the member cap, shape (k,).
+        member: Weight of a position for the member cap (0 for joints; True/False count 1/0), shape (k,).
         switchgear: Whether a position's ring panel can hold the open switch, shape (k,).
         g: Sim factors, shape (4,).
         power_factor: cos(phi) of the loads (0 < cos(phi) <= 1).
@@ -295,7 +302,7 @@ def check_ring(installed: np.ndarray, units: np.ndarray, fixed_kw: np.ndarray,
     r = _vector(section_r, k + 1, "section_r")
     x = _vector(section_x, k + 1, "section_x")
     imax = _vector(section_imax, k + 1, "section_imax")
-    members = _vector(member, k, "member", dtype=bool)
+    members = _vector(member, k, "member", dtype=float)
     gear = _vector(switchgear, k, "switchgear", dtype=bool)
     par = np.ones(k + 1) if parallel is None else _vector(parallel, k + 1, "parallel")
     if (length < 0).any():
@@ -315,7 +322,7 @@ def check_ring(installed: np.ndarray, units: np.ndarray, fixed_kw: np.ndarray,
     with np.errstate(invalid="ignore"):                  # inf lengths are reported as unreachable
         w = _drop_coefficient(r, x, length, par, tan_phi, vn_kv)
     cap = _capacity_kw(imax, par, power_factor, vn_kv)
-    return _check(loads, length, w, cap, int(members.sum()), gear, limits)
+    return _check(loads, length, w, cap, float(members.sum()), gear, limits)
 
 
 # ---------------------------------------------------------------------------------------------- evaluator
@@ -358,7 +365,7 @@ class RingEvaluator:
             installed: Installed load per terminal and category in kW, shape (n, 4).
             units: Load units per terminal and category, shape (n, 4).
             fixed_kw: Fixed load per terminal in kW, shape (n,).
-            member: Whether a terminal counts for the member cap, shape (n,).
+            member: Weight of a terminal for the member cap (0: not counted; True/False count 1/0), shape (n,).
             switchgear: Whether a terminal can hold the open switch, shape (n,).
             dist_m: Design link lengths in m, shape (n, n); ``inf`` = unreachable.
             r_ohm_km: Resistance per link in Ohm/km, shape (n, n).
@@ -379,7 +386,9 @@ class RingEvaluator:
             raise ValueError("a ring evaluator needs at least the busbar terminal")
         self.n_terminals = n
         self.installed, self.units, self.fixed_kw = installed, units, fixed_kw
-        self.member = _frozen(_vector(member, n, "member", dtype=bool).copy())
+        self.member = _frozen(_vector(member, n, "member", dtype=float).copy())
+        if not (np.isfinite(self.member).all() and (self.member >= 0).all()):
+            raise ValueError("member weights must be finite and not negative")
         self.switchgear = _frozen(_vector(switchgear, n, "switchgear", dtype=bool).copy())
         dist = _square(dist_m, n, "dist_m")
         r = _square(r_ohm_km, n, "r_ohm_km")
@@ -434,8 +443,9 @@ class RingEvaluator:
         """The evaluator of a district: terminal statistics from ``inp.nodes``, links from the distance model.
 
         * loads: :func:`pylovo.mv_grid.coincidence.node_stats` of the terminal rows (``model.terminals``,
-          positions in ``inp.nodes``); members and switchgear by node kind (:data:`MEMBER_KINDS`,
-          :data:`SWITCHGEAR_KINDS`);
+          positions in ``inp.nodes``); member weights by node kind and urban flag
+          (:func:`~pylovo.mv_grid.model.member_weights`),
+          switchgear by node kind (:data:`SWITCHGEAR_KINDS`);
         * links: length ``model.dist_m``; r, x and ampacity of the overhead line type of the district's voltage
           (``inp.params.overhead_at(inp.vn_kv)``) where ``model.overhead`` is set, else of its standard cable
           (``inp.params.cable_at(inp.vn_kv)``);
@@ -453,7 +463,8 @@ class RingEvaluator:
             raise ValueError(f"model.overhead must have the shape ({n}, {n}), got {oh.shape}")
         return cls(
             installed=installed, units=units, fixed_kw=fixed,
-            member=np.isin(kinds, MEMBER_KINDS), switchgear=np.isin(kinds, SWITCHGEAR_KINDS),
+            member=member_weights(kinds, _urban(rows), params.rural_ring_factor),
+            switchgear=np.isin(kinds, SWITCHGEAR_KINDS),
             dist_m=model.dist_m,
             r_ohm_km=np.where(oh, overhead.r_ohm_per_km, cable.r_ohm_per_km),
             x_ohm_km=np.where(oh, overhead.x_ohm_per_km, cable.x_ohm_per_km),
@@ -504,11 +515,11 @@ class RingEvaluator:
         path = np.fromiter((BUSBAR, *seq, BUSBAR), dtype=np.int64, count=len(seq) + 2)
         return float(self.dist_m[path[:-1], path[1:]].sum())
 
-    def member_count(self, seq: Sequence[int]) -> int:
-        """Number of ring members among the terminals of ``seq`` (joints and the busbar do not count)."""
+    def member_count(self, seq: Sequence[int]) -> float:
+        """Weighted number of ring members among the terminals of ``seq`` (joints and the busbar do not count)."""
         if len(seq) == 0:
-            return 0
-        return int(self.member[np.fromiter(seq, dtype=np.int64, count=len(seq))].sum())
+            return 0.0
+        return float(self.member[np.fromiter(seq, dtype=np.int64, count=len(seq))].sum())
 
     # ------------------------------------------------------------------ arrays for explicit checks
     def position_arrays(self, seq: Sequence[int]) -> dict[str, np.ndarray]:
@@ -553,5 +564,5 @@ class RingEvaluator:
         path[1:-1] = idx
         a, b = path[:-1], path[1:]
         loads = coincidence.segment_loads(self.installed[idx], self.units[idx], self.fixed_kw[idx], self.g)
-        return _check(loads, self.dist_m[a, b], self._w[a, b], self._cap[a, b], int(self.member[idx].sum()),
+        return _check(loads, self.dist_m[a, b], self._w[a, b], self._cap[a, b], float(self.member[idx].sum()),
                       self.switchgear[idx], self.limits)

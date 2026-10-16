@@ -52,6 +52,8 @@ FIXED_RULES: dict[tuple[str, ...], Any] = {
     ("generation", "include_storage"): False,
     ("coupling", "merged_scaling"): "feeder_category",
     ("coupling", "lv_pv_at"): "LVbus 1",
+    ("topology", "busbar_legs"): "cable_along_streets",
+    ("topology", "rural_satellites"): "stubs_after_rings",
 }
 
 #: Fields whose snapshot path holds the resolved type data instead of the field value.
@@ -125,6 +127,7 @@ class MvParameters:
     hv_mv_n1_utilization: float = _y("hv_mv_n1_utilization")
     # topology
     max_half_ring_length_m: float = _y("max_half_ring_length_m")
+    rural_ring_factor: float = _y("rural_ring_factor")
     stub_max_kva: float = _y("stub_max_kva")
     stub_max_length_m: float = _y("stub_max_length_m")
     stub_min_offset_m: float = _y("stub_min_offset_m")
@@ -157,6 +160,7 @@ class MvParameters:
     overhead_detour: float = _y("overhead_detour")
     bridge_detour: float = _y("bridge_detour")
     long_connector_m: float = _y("long_connector_m")
+    busbar_exit_radius_m: float = _y("busbar_exit_radius_m")
     graph_excluded_klasse: tuple[str, ...] = _y("graph_excluded_klasse")
     graph_snap_tolerance_m: float = _y("graph_snap_tolerance_m")
     region_buffer_m: float = _y("region_buffer_m")

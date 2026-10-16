@@ -74,7 +74,9 @@ Normally-open point (NOP)
    generator, never at a T-joint, which has no switchgear.
 Ring member
    A station, MV customer or looped-in generator on the main path of a ring.
-   ``MV_MAX_STATIONS_PER_RING`` limits the members. Joints and stub nodes do not count.
+   ``MV_MAX_STATIONS_PER_RING`` limits the members. An urban member counts 1, a rural member
+   1 / ``rural_ring_factor`` (½), so rural rings hold up to twice as many members. Joints and stub
+   nodes do not count.
 Stub (T-off)
    A radial branch from a joint on a ring to a rural node. A stub has no (n-1) reserve.
 Busbar radial
@@ -421,6 +423,13 @@ as different settlements). An overhead line takes a straight span with angle pol
 ``overhead_detour`` (1.1) times the straight distance, where this is shorter than the street path.
 Otherwise it follows the street. All other links are cables along the streets.
 
+The busbar legs, the links from the busbar to the first and last member of a ring and to a radial
+or dedicated node, are always cables along the streets. Feeders leave HV/MV substations as cables
+in shared trenches, so legs in the same direction share their streets near the substation instead
+of fanning out as straight overhead spans. The busbar is joined by straight cable connectors to
+every street vertex within ``busbar_exit_radius_m`` (200 m), so the feeders can leave the
+substation in several directions.
+
 With ``MV_ROUTING: crowfly``, every link is a straight span of ``crowfly_detour`` (1.3) times the
 straight distance, as in the first version of Ding0 (Amme et al. 2018). The overhead rule still
 decides the kind. This variant serves as a comparison with straight-line models.
@@ -444,7 +453,9 @@ and half B follows in the same way. The section current is
 :math:`I = P / (\sqrt{3}\,U_n \cos\varphi)`. In (n-1) operation one exit is out of service and the
 closed ring is fed from the other exit. A ring is feasible if
 
-#. it has at most ``MV_MAX_STATIONS_PER_RING`` (20) members,
+#. its weighted members are at most ``MV_MAX_STATIONS_PER_RING`` (20): an urban ring holds 20
+   members, a rural ring 40 (``rural_ring_factor`` 2). Rural feeders carry 11 to 28 supply points
+   (SimBench; Almomani and Witzmann 2024), urban ones about 10,
 #. every section has a street path,
 #. an open section exists next to a node with switchgear,
 #. for one such open section, both half-rings are at most ``max_half_ring_length_m`` (28 km) long,
@@ -508,6 +519,14 @@ generators.
    hang on earlier ones (stub trees). Urban nodes always stay in the ring. The limits of 1 MVA, the
    size of an emergency generator, and 2 km come from Amme et al. (2018, after Consentec and FGH),
    and Harnisch et al. (2016) connect stations more than about 100 m off the trunk as stubs.
+#. Also with ``MV_STUBS: rural``, the *satellites*, rural stations outside every settlement or alone
+   in their settlement such as farms and hamlets, are not part of the ring problem, as the
+   satellites of Ding0 (Amme et al. 2018). After the rings are solved, they are connected from the
+   one nearest to the busbar outwards. Each hangs on a stub from the nearest line within the stub
+   limits above, if its ring stays feasible. Otherwise it goes into the ring where it adds the least
+   length and the ring stays feasible (flag ``satellite_in_ring``), else into a ring of its own
+   (flag ``satellite_own_ring``). In a supply area where every candidate would be a satellite, none
+   is.
 #. A rural ring with a single node of at most 1 MVA within 2 km street distance of the busbar
    becomes a busbar radial.
 #. A customer above 5.5 MW gets a dedicated feeder with two legs from the busbar along the same

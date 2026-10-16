@@ -4,10 +4,14 @@ This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
 :class:`~pylovo.mv_grid.model.TopologyPlan` (DESIGN §4.2, §4.5, §4.7):
 
 1. **Rings** from the solver, each link routed along the run graph or as a straight span (:func:`distance_model`).
+   The busbar legs always follow the run graph as cables.
 2. **Rural stubs** (``MV_STUBS: rural``): a rural station or MV customer leaves its ring for a T-off when that saves
    more ring length than the T-off costs (``saving > spur``, ``spur > stub_min_offset_m``), the stub tree stays
    within ``stub_max_kva`` and ``stub_max_length_m`` and the shortened ring with the stub loads stays feasible.
-   Later stubs may hang on earlier ones (stub trees). Urban nodes are always looped in.
+   Later stubs may hang on earlier ones (stub trees). Urban nodes are always looped in. Then the **satellites**
+   (rural stations outside settlements or alone in theirs, which the solver never saw) hang on a stub from the
+   nearest ring within the same limits, nearest to the busbar first; a satellite that fits no stub goes into the
+   ring where it costs the least length and stays feasible, else into a ring of its own (Ding0's satellites).
 3. **Busbar radials**: a rural single-station ring of at most ``stub_max_kva`` within ``stub_max_length_m`` (street)
    of the busbar becomes one radial line.
 4. **Dedicated customers** (``connection_hint = 'dedicated'``): a 2-leg feeder from the busbar, leg 2 normally open
@@ -42,6 +46,7 @@ from shapely.geometry import LineString
 from shapely.ops import substring
 
 from pylovo.mv_grid.model import (
+    MEMBER_KINDS,
     DistanceModel,
     DistrictInput,
     LinePlan,
@@ -50,6 +55,7 @@ from pylovo.mv_grid.model import (
     RingPlan,
     RunGraph,
     TopologyPlan,
+    member_weights,
 )
 
 INSTALLED_COLUMNS: tuple[str, ...] = ("inst_res", "inst_com", "inst_pub", "inst_unk")
@@ -57,8 +63,6 @@ UNIT_COLUMNS: tuple[str, ...] = ("units_res", "units_com", "units_pub", "units_u
 GENERATION_COLUMNS: tuple[str, ...] = ("gen_solar_kw", "gen_wind_kw", "gen_other_kw")
 #: Node kinds with a load (station statistics or the fixed customer load).
 LOAD_KINDS: tuple[str, ...] = ("station", "customer")
-#: Node kinds that count as ring members and hold switchgear (a generator only when looped in).
-MEMBER_KINDS: tuple[str, ...] = ("station", "customer", "generator")
 #: Shortest stored line (no zero-impedance lines between co-located nodes).
 MIN_LINE_M: float = 1.0
 #: Limited Dijkstra trees kept per district (stub and T-off searches reuse them).
@@ -111,7 +115,13 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
     an overhead line and takes the straight span (``overhead_detour`` × straight) where that is shorter than the
     street path; with crowfly every link is a straight span of ``crowfly_detour`` × straight.
 
-    Ring candidates are the stations and the customers that are neither dedicated nor excluded.
+    The **busbar legs** (links from or to the busbar) are cables and, with street routing, follow the run graph:
+    feeders leave HV/MV substations as cables in shared trenches, not as straight overhead spokes.
+
+    Ring candidates are the stations and the customers that are neither dedicated nor excluded, without the
+    **satellites** (``MV_STUBS: rural``): rural stations outside every settlement or alone in their settlement. They
+    are connected after the rings are solved (:func:`build_plan`). A district whose candidates would all be
+    satellites has none.
     """
     p = inp.params
     terminals = np.asarray(terminals, dtype=np.int64)
@@ -131,15 +141,27 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
     else:
         straight = eligible & (p.overhead_detour * straight_m < street_m)
         dist = np.where(straight, p.overhead_detour * straight_m, street_m)
+    overhead[0, :] = overhead[:, 0] = False                     # busbar legs: cables
+    if p.routing != "crowfly":
+        straight[0, :] = straight[:, 0] = False                 # ... along the run graph
+        dist[0, :] = street_m[0, :]
+        dist[:, 0] = street_m[:, 0]
     np.fill_diagonal(straight, False)
     np.fill_diagonal(dist, 0.0)
     kind = nodes["kind"].astype(str).to_numpy()[terminals]
     hint = nodes["connection_hint"].astype(str).to_numpy()[terminals]
     candidate = np.isin(kind, LOAD_KINDS) & ~np.isin(hint, ("dedicated", "excluded"))
     candidate[0] = False
-    return DistanceModel(terminals=terminals, candidates=np.flatnonzero(candidate).astype(np.int64),
+    satellite = np.zeros(len(terminals), dtype=bool)
+    if p.stubs == "rural":
+        counts = pd.Series(settlement[candidate & (settlement >= 0)]).value_counts()
+        alone = np.array([s < 0 or counts.get(int(s), 0) <= 1 for s in settlement], dtype=bool)
+        satellite = candidate & (kind == "station") & ~urban & alone
+        if not (candidate & ~satellite).any():
+            satellite[:] = False
+    return DistanceModel(terminals=terminals, candidates=np.flatnonzero(candidate & ~satellite).astype(np.int64),
                          dist_m=dist, street_m=street_m, straight_m=straight_m, overhead=overhead,
-                         straight=straight, xy=xy)
+                         straight=straight, xy=xy, satellite=satellite)
 
 
 # ============================================================================================ public: plan and repairs
@@ -154,7 +176,8 @@ def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any,
         ev: The ring evaluator of the solver (kept for the contract; the build checks rings with joints through
             :func:`pylovo.mv_grid.rings.check_ring` on explicit sections).
         routes: Rings as terminal indices in ring order, busbar excluded. A ring candidate missing from every route
-            becomes a single-station ring (flag ``unrouted``).
+            becomes a single-station ring (flag ``unrouted``). The satellites of the model are connected after the
+            stubs (:func:`_attach_satellites`).
     """
     ctx = _context(inp, rg, model)
     dec = _Decisions()
@@ -176,14 +199,17 @@ def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any,
             dec.flag(ctx, row, "unrouted")
     ring_ids = [st.ring_id for st in dec.structs]
     _decide_stubs(ctx, dec, ring_ids)
-    _decide_radials(ctx, dec, ring_ids)
+    satellites = _attach_satellites(ctx, dec)
+    _decide_radials(ctx, dec, [st.ring_id for st in dec.structs])
     for row in ctx.terminals[1:]:
         row = int(row)
         if ctx.kind[row] == "customer" and ctx.hint[row] == "dedicated":
             dec.structs.append(_Struct(dec.next_ring_id(), "dedicated", [row]))
     generators = [int(r) for r in ctx.terminals[1:] if ctx.kind[int(r)] == "generator"]
     _decide_generators(ctx, dec, generators)
-    return _materialize(ctx, dec)
+    plan = _materialize(ctx, dec)
+    plan.diagnostics["satellites"] = satellites
+    return plan
 
 
 def move_nop(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, plan: TopologyPlan,
@@ -230,9 +256,9 @@ def move_nop(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, pl
 
 def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, plan: TopologyPlan,
                ring_id: int) -> TopologyPlan:
-    """Split ring ``ring_id``: re-solve its stations and customers (its stubs included) with at most
-    ``ceil(k / 2)`` members per ring (``savings`` with local search) and rebuild stubs, radials and the
-    connections of the generators that hung on it.
+    """Split ring ``ring_id``: re-solve its stations and customers (its stubs included) with at most half of its
+    weighted members per ring, ``(w + w_max) / 2`` (``ceil(k / 2)`` members when all weigh the same; ``savings`` with
+    local search), and rebuild stubs, radials and the connections of the generators that hung on it.
 
     The first new ring keeps ``ring_id``; the others get new ids. A ring with fewer than two members is returned
     unchanged. Line parallels of the plan are kept where the new lines use the same street pieces.
@@ -242,8 +268,8 @@ def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, 
     struct = next((s for s in dec.structs if s.ring_id == ring_id and s.kind == "ring"), None)
     if struct is None or len(struct.rows) < 2:
         return plan
-    k = len(struct.rows)
-    cap = max(1, math.ceil(k / 2))
+    weights = [float(ctx.cap_weight[r]) for r in struct.rows] or [1.0]
+    cap = (sum(weights) + max(weights)) / 2.0
     stub_rows = [row for row, rid in dec.stubs if rid == ring_id]
     ring_rows = [r for r in struct.rows if ctx.kind[r] in LOAD_KINDS] + stub_rows
     generator_rows = [r for r in struct.rows if ctx.kind[r] == "generator"]
@@ -372,6 +398,7 @@ class _Ctx:
         self.hint = nodes["connection_hint"].astype(str).to_numpy()
         self.xy = _numbers(nodes, ("x", "y"))
         self.urban = _flags(nodes["urban"])
+        self.cap_weight = member_weights(self.kind, self.urban, self.p.rural_ring_factor)
         self.settlement = _settlement_ids(nodes)
         loads = np.isin(self.kind, LOAD_KINDS)
         self.inst = _numbers(nodes, INSTALLED_COLUMNS) * loads[:, None]
@@ -631,22 +658,22 @@ class _Decisions:
 class _CappedEvaluator:
     """A ring evaluator whose rings hold at most ``cap`` members (ring splits)."""
 
-    def __init__(self, ev: Any, cap: int, ctx: _Ctx) -> None:
+    def __init__(self, ev: Any, cap: float, ctx: _Ctx) -> None:
         self._ev = ev
-        self._cap = int(cap)
+        self._cap = float(cap)
         base = getattr(ev, "limits", ctx.limits)
-        self.limits = dataclasses.replace(base, max_members=min(int(base.max_members), self._cap))
+        self.limits = dataclasses.replace(base, max_members=min(float(base.max_members), self._cap))
 
     def evaluate(self, seq: Sequence[int]) -> RingCheck:
         check = self._ev.evaluate(seq)
-        if self._ev.member_count(seq) > self._cap and check.feasible:
+        if self._ev.member_count(seq) > self._cap + 1e-9 and check.feasible:
             return dataclasses.replace(check, feasible=False, reason="count")
         return check
 
     def ring_length(self, seq: Sequence[int]) -> float:
         return self._ev.ring_length(seq)
 
-    def member_count(self, seq: Sequence[int]) -> int:
+    def member_count(self, seq: Sequence[int]) -> float:
         return self._ev.member_count(seq)
 
     def __getattr__(self, name: str) -> Any:
@@ -721,6 +748,76 @@ def _stub_trial(ctx: _Ctx, struct: _Struct, rows: list[int], stubs: list[int], r
     net.attach(row, att, "stub")
     check = net.ring_check(struct.ring_id)
     return bool(check.feasible), spur, saving
+
+
+def _attach_satellites(ctx: _Ctx, dec: _Decisions) -> dict[str, int]:
+    """Step 2b: the satellites of the distance model, nearest to the busbar (street) first.
+
+    Each satellite hangs on a stub from the line nearest to it within ``stub_max_length_m`` when its ring (or
+    radial) takes the stub within the stub limits and stays feasible. Otherwise it goes into the ring position that
+    adds the least length and keeps the ring feasible (flag ``satellite_in_ring``), else into a ring of its own (flag
+    ``satellite_own_ring``).
+
+    Returns:
+        How many satellites became stubs, went into a ring or got their own ring.
+    """
+    satellite = ctx.model.satellite
+    stats = {"stub": 0, "ring": 0, "own_ring": 0}
+    if satellite is None or not np.any(satellite):
+        return stats
+    rows = [int(ctx.terminals[t]) for t in np.flatnonzero(satellite)]
+    rows.sort(key=lambda r: (float(ctx.model.street_m[0, ctx.t_of_row[r]]), ctx.key(r)))
+    net = _layout(ctx, dec)
+    for row in rows:
+        att = net.nearest(row, ctx.p.stub_max_length_m, net.searchable())
+        struct = None if att is None else next((s for s in dec.structs
+                                                 if s.ring_id == net.lines[att.line].ring_id), None)
+        if struct is not None and struct.kind in ("ring", "radial"):
+            stub = net.stub_attachment(row, struct.ring_id)
+            if stub is not None:
+                net.attach(row, stub, "stub")
+                if struct.kind != "ring" or net.ring_check(struct.ring_id).feasible:
+                    dec.stubs.append((row, struct.ring_id))
+                    stats["stub"] += 1
+                    continue
+                net = _layout(ctx, dec)                 # drop the trial stub
+        insertion = _cheapest_insertion(ctx, dec, row)
+        if insertion is not None:
+            insertion[0].rows = insertion[1]
+            dec.flag(ctx, row, "satellite_in_ring")
+            stats["ring"] += 1
+        else:
+            dec.structs.append(_Struct(dec.next_ring_id(), "ring", [row]))
+            dec.flag(ctx, row, "satellite_own_ring")
+            stats["own_ring"] += 1
+        net = _layout(ctx, dec)
+    return stats
+
+
+def _cheapest_insertion(ctx: _Ctx, dec: _Decisions, row: int) -> tuple[_Struct, list[int]] | None:
+    """The ring and its new order with ``row`` inserted where it adds the least length and the ring (with its
+    stubs) stays feasible; None if no ring takes it."""
+    d, t = ctx.model.dist_m, ctx.t_of_row
+    options = []
+    for struct in dec.structs:
+        if struct.kind != "ring":
+            continue
+        seq = [ctx.busbar_row, *struct.rows, ctx.busbar_row]
+        for i in range(len(seq) - 1):
+            a, b = seq[i], seq[i + 1]
+            delta = float(d[t[a], t[row]] + d[t[row], t[b]] - d[t[a], t[b]])
+            if math.isfinite(delta):
+                options.append((delta, struct.ring_id, i, struct))
+    for _, rid, i, struct in sorted(options, key=lambda o: o[:3]):
+        rows = struct.rows[:i] + [row] + struct.rows[i:]
+        trial = _Network(ctx)
+        trial.add_structure(_Struct(rid, "ring", rows))
+        for stub, stub_ring in dec.stubs:
+            if stub_ring == rid:
+                trial.add_stub(stub, rid, enforce=False)
+        if trial.ring_check(rid).feasible:
+            return struct, rows
+    return None
 
 
 def _decide_radials(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None:
@@ -1135,6 +1232,7 @@ def _ring_check(ctx: _Ctx, pos_keys: Sequence[int], sections: Sequence[tuple[flo
     k = len(pos_keys)
     inst, units, fixed = np.zeros((k, 4)), np.zeros((k, 4)), np.zeros(k)
     member = np.zeros(k, dtype=bool)
+    weight = np.zeros(k)
     for j, key in enumerate(pos_keys):
         rows = [ctx.row_of_key[x] for x in [key, *_below(key, kids)] if x > 0]
         if rows:
@@ -1142,13 +1240,14 @@ def _ring_check(ctx: _Ctx, pos_keys: Sequence[int], sections: Sequence[tuple[flo
             units[j] = ctx.units[rows].sum(axis=0)
             fixed[j] = ctx.fixed[rows].sum()
         member[j] = key > 0 and ctx.kind[ctx.row_of_key[key]] in MEMBER_KINDS
+        weight[j] = ctx.cap_weight[ctx.row_of_key[key]] if key > 0 else 0.0
     length = np.array([max(MIN_LINE_M, s[0]) for s in sections], dtype=float)
     params = [ctx.line_type(s[1]) for s in sections]
     parallel = np.array([max(1, int(s[2])) for s in sections], dtype=float)
     r = np.array([lt.r_ohm_per_km for lt in params]) / parallel
     x = np.array([lt.x_ohm_per_km for lt in params]) / parallel
     imax = np.array([lt.max_i_ka for lt in params]) * parallel
-    return _rings().check_ring(inst, units, fixed, length, r, x, imax, member, member.copy(), ctx.g, ctx.pf,
+    return _rings().check_ring(inst, units, fixed, length, r, x, imax, weight, member, ctx.g, ctx.pf,
                                ctx.vn_kv, ctx.relaxed if relaxed else ctx.limits)
 
 

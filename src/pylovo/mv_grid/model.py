@@ -23,6 +23,7 @@ CASES: tuple[str, ...] = ("load", "n1a", "n1b", "feed_in_wind", "feed_in_pv")
 NODE_KINDS = ("busbar", "station", "customer", "generator", "joint")
 LINE_ROLES = ("ring", "stub", "dedicated", "generator", "tie")
 LINE_KINDS = ("cable", "overhead", "mixed")
+MEMBER_KINDS: tuple[str, ...] = ("station", "customer", "generator")   # ring members (the member cap counts them)
 
 #: Columns of DistrictInput.nodes (index = mv_node_id, busbar row first).
 NODE_COLUMNS: tuple[str, ...] = (
@@ -129,13 +130,33 @@ class DistanceModel:
     overhead: np.ndarray                   # (k, k) bool: the link is an overhead line
     straight: np.ndarray                   # (k, k) bool: the link geometry is a straight span
     xy: np.ndarray                         # (k, 2)
+    satellite: np.ndarray | None = None    # (k,) bool: isolated rural station, a stub after the rings (no candidate)
+
+
+def member_weights(kinds: Any, urban: Any, rural_ring_factor: float) -> np.ndarray:
+    """Weight of each node for the member cap of a ring (:class:`RingLimits`): 1 for an urban member,
+    ``1 / rural_ring_factor`` for a rural member, 0 for other kinds (busbar, joints).
+
+    Args:
+        kinds: Node kind per node (:data:`MEMBER_KINDS` count).
+        urban: Urban flag per node.
+        rural_ring_factor: How many times more rural than urban members a ring may hold (at least 1).
+    """
+    kinds = np.asarray(kinds, dtype=object).astype(str)
+    urban = np.asarray(urban, dtype=bool)
+    if urban.shape != kinds.shape:
+        raise ValueError(f"urban must have the shape {kinds.shape} of kinds, got {urban.shape}")
+    factor = float(rural_ring_factor)
+    if not (np.isfinite(factor) and factor >= 1.0):
+        raise ValueError(f"rural_ring_factor must be at least 1, got {rural_ring_factor!r}")
+    return np.where(np.isin(kinds, MEMBER_KINDS), np.where(urban, 1.0, 1.0 / factor), 0.0)
 
 
 @dataclass(frozen=True)
 class RingLimits:
     """Limits of one open ring (normal operation and (n-1))."""
 
-    max_members: int
+    max_members: int                       # cap of the weighted members (urban 1, rural 1 / rural_ring_factor)
     max_drop: float                        # p.u., normal
     max_drop_n1: float                     # p.u.
     utilization: float                     # normal
@@ -169,7 +190,7 @@ class RingEvaluatorProtocol(Protocol):
 
     def evaluate(self, seq: Sequence[int]) -> RingCheck: ...
     def ring_length(self, seq: Sequence[int]) -> float: ...
-    def member_count(self, seq: Sequence[int]) -> int: ...
+    def member_count(self, seq: Sequence[int]) -> float: ...
 
 
 @dataclass

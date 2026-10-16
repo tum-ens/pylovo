@@ -291,7 +291,7 @@ class _Feasibility:
         self.evaluations = 0
 
     def within_cap(self, seq: Sequence[int]) -> bool:
-        return self.cap is None or self.ev.member_count(seq) <= self.cap
+        return self.cap is None or self.ev.member_count(seq) <= self.cap + 1e-9
 
     def __call__(self, seq: Sequence[int]) -> bool:
         if not seq:
