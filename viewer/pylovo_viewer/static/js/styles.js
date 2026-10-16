@@ -111,6 +111,7 @@ export const STYLES = {
     facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
       ['Transformers', o.transformers ? `${o.transformers} × ${f.num(o.mva / Math.max(o.transformers, 1), 0)} MVA` : '–'],
       ['Loading (n-0 / n-1)', `${f.pct(o.loading)} / ${f.pct(o.loading_n1)}`], ['Voltage tag', o.voltage || '–'],
+      ['eTraGo 110 kV bus', o.etrago_bus ?? 'none (no eGon match)'],
       ['Operator', o.operator || '–'], ...(o.flags ? [['Flags', o.flags]] : [])] }),
   },
   hv_sites: {
@@ -124,7 +125,8 @@ export const STYLES = {
   mv_lines: {
     modes: { ring: { label: 'Ring', scheme: () => slot('ring_slot') },
       kind: { label: 'Cable / overhead', scheme: () => ({ type: 'match', prop: 'kind', entries: [
-        ['cable', pal().cat[0], 'Cable'], ['overhead', pal().cat[1], 'Overhead line (dashed)'], ['mixed', pal().cat[6], 'Mixed']],
+        ['cable', pal().cat[0], 'Cable'], ['overhead', pal().cat[1], 'Overhead line (dashed)'],
+        ['mixed', pal().cat[2], 'Cable and overhead line']],
         fallback: [pal().ink.neutral, 'Other'] }) },
       role: { label: 'Role', scheme: () => ({ type: 'match', prop: 'role', entries: [
         ['ring', pal().cat[0], 'Open ring'], ['stub', pal().cat[2], 'Stub (T-off)'], ['dedicated', pal().cat[1], 'Dedicated feeder'],
@@ -151,12 +153,25 @@ export const STYLES = {
     extraLegend: (mode) => [
       ...(mode !== 'kind' ? [{ kind: 'line', dash: true, colour: pal().ink.secondary, label: 'Overhead line (dashed)' }] : []),
       { kind: 'line', dot: true, colour: pal().ink.muted, label: 'Tie between supply areas (normally open)' }],
-    facts: (o) => ({ title: `MV ${o.kind === 'overhead' ? 'overhead line' : 'cable'}`, subtitle: `${o.role}${o.open ? ' · normally open' : ''}`, rows: [
-      ['Type', o.std_type || '–'], ['Length', f.km(o.length_km)], ['Parallel', o.parallel > 1 ? `${o.parallel}×` : '1'],
+    facts: (o) => ({ title: `MV ${{ overhead: 'overhead line', mixed: 'cable and overhead line' }[o.kind] || 'cable'}`,
+      subtitle: `${o.role}${o.open ? ' · normally open' : ''}`, rows: [
+      ['Type', o.std_type || '–'], ['Length', f.km(o.length_km)],
+      ...(o.kind === 'mixed' ? [['Cable / overhead', `${f.km(o.cable_km)} / ${f.km(o.overhead_km)}`]] : []),
+      ['Parallel', o.parallel > 1 ? `${o.parallel}×` : '1'],
       ['Ring / feeder', o.ring === null || o.ring === undefined ? '–' : `${o.ring} / ${o.feeder ?? '–'}`],
       ['Loading (load case)', f.pct(o.loading)], ['Loading (n-1)', f.pct(o.loading_n1)],
       ...(o.loading_feed_in !== null && o.loading_feed_in !== undefined ? [['Loading (feed-in)', f.pct(o.loading_feed_in)]] : []),
       ['Supply area', o.area]] }),
+  },
+  mv_osm_lines: {
+    layers: ({ id, p }) => [
+      { id, type: 'line', layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': p.ink.neutral, 'line-opacity': 0.55,
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 8, 2, 12, 5, 16, 10] } },
+    ],
+    legend: () => [{ kind: 'line', colour: pal().ink.neutral, label: 'OSM MV overhead line (corridor)' }],
+    facts: (o) => ({ title: 'OSM MV line', subtitle: o.osm_way || '', rows: [['OSM type', o.osm_type || '–'],
+      ['Length', f.km(o.length_km)]] }),
   },
   mv_open_points: {
     layers: ({ id, p }) => [

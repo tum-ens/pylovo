@@ -166,7 +166,7 @@ def build_layers() -> list[Layer]:
               "are drawn hollow. Their site outlines show from zoom 12.",
               "point", "run", "pylovo.mv_substation",
               sql=f"""SELECT s.substation_id AS fid, s.source, s.name, s.operator, s.voltage_tag AS voltage,
-                             s.n_transformers AS transformers, s.transformer_mva AS mva,
+                             s.egon_bus_id AS etrago_bus, s.n_transformers AS transformers, s.transformer_mva AS mva,
                              {num("s.loading_n0_percent", 1)} AS loading, {num("s.loading_n1_percent", 1)} AS loading_n1,
                              array_to_string(s.flags, ', ') AS flags, s.in_region,
                              EXISTS (SELECT 1 FROM pylovo.mv_grid g WHERE g.substation_id = s.substation_id) AS used,
@@ -188,13 +188,31 @@ def build_layers() -> list[Layer]:
               "line", "run", "pylovo.mv_line",
               sql=f"""SELECT l.mv_line_id AS fid, l.mv_grid_id AS area, l.role, l.kind, l.ring_id AS ring,
                              l.feeder_id AS feeder, l.std_type, COALESCE(l.parallel, 1) AS parallel,
-                             {num("l.length_km", 3)} AS length_km, l.normally_open AS open,
+                             {num("l.length_km", 3)} AS length_km, {num("l.cable_km", 3)} AS cable_km,
+                             {num("l.overhead_km", 3)} AS overhead_km, l.normally_open AS open,
                              {num("l.loading_load_percent", 1)} AS loading, {num("l.loading_n1_percent", 1)} AS loading_n1,
                              {num("l.loading_feed_in_percent", 1)} AS loading_feed_in,
                              {geo("ST_Simplify(l.geom, 1)")} AS geometry
                       FROM pylovo.mv_line l WHERE {run('l')}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots")),
+        Layer("mv_osm_lines", "mv", "OSM MV lines",
+              "The MV overhead lines mapped in OpenStreetMap, as corridors in the routing graph of the run "
+              "(MV_OVERHEAD_LINES osm): an MV line is an overhead line where it runs on them, else a cable.",
+              "line", "run", "pylovo.mv_graph_edge",
+              sql=f"""SELECT e.edge_id AS fid, e.src_id AS osm_way, e.objektart AS osm_type,
+                             {num("e.length_m / 1000", 3)} AS length_km, {geo("ST_Simplify(e.geom, 2)")} AS geometry
+                      FROM pylovo.mv_graph_edge e
+                      WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
+                                          WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
+                        AND e.klasse = 'osm_mv_line'""",
+              detail="""SELECT e.edge_id, e.src_id AS osm_way, e.objektart AS osm_type, e.length_m, e.graph_id
+                        FROM pylovo.mv_graph_edge e
+                        WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
+                                            WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
+                          AND e.edge_id = %(fid)s""",
+              requires=("pylovo.mv_graph_edge", "pylovo.mv_variant"), rows=("pylovo.mv_variant",), default=False,
+              attribution="© OpenStreetMap contributors (ODbL)"),
         Layer("mv_open_points", "mv", "Normally-open points",
               "Where each open ring is opened, drawn next to the node it opens at.",
               "point", "run", "pylovo.mv_line",
