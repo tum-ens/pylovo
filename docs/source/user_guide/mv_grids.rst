@@ -2,10 +2,15 @@ MV grids
 ========
 
 The MV stage adds medium-voltage (MV) grids to a generated LV version: open rings from the HV/MV
-substations of the region to the stations of the LV grids, the MV customers and the MV generators
+substations of the region to the stations of the LV grids and the MV customers
 (:doc:`../concepts/mv_grids`). This page shows how to prepare its inputs, run it, compare MV
 variants and read the results. The stage runs on the command line and from Python. The HTTP API and
 the GridPlanner UI do not offer it yet.
+
+The default workflow plans for peak load and N-1, like the LV-first workflow. It uses 240 mm² cable
+and 122-AL1 overhead conductors. Generation is optional: ``MV_INCLUDE_GENERATION: true`` adds
+generator inputs, connections and feed-in checks in a separate variant. Load-only results do not
+claim feed-in acceptance.
 
 .. _mv-prerequisites:
 
@@ -26,7 +31,7 @@ Prerequisites
    * - Migration ``0009_mv_grids``
      - The MV tables
      - ``pylovo-setup`` (:ref:`mv-schema`)
-   * - MaStR units
+   * - MaStR units (generation-enabled variants only)
      - MV generators and LV-side generation
      - ``pylovo-import mastr`` (:ref:`mv-mastr-import`)
    * - OSM power data in InfDB
@@ -85,10 +90,11 @@ transactions.
 
 .. _mv-mastr-import:
 
-MaStR import
-~~~~~~~~~~~~
+MaStR import (optional)
+~~~~~~~~~~~~~~~~~~~~~~~
 
-The generators come from the Marktstammdatenregister (MaStR) of the Bundesnetzagentur. Its bulk
+Load-only planning does not query or require MaStR data. With ``MV_INCLUDE_GENERATION: true``,
+the generators come from the Marktstammdatenregister (MaStR) of the Bundesnetzagentur. Its bulk
 export is downloaded and parsed with `open-mastr <https://open-mastr.readthedocs.io>`_, a separate
 tool that writes an SQLite file and is not a dependency of pylovo:
 
@@ -163,19 +169,25 @@ needed for ``MV_SUBSTATIONS: egon`` and ``MV_SUPPLY_AREAS: egon``. Without them,
 runs and only the eGon cross-check of the OSM substations is skipped (warning). pylovo has no
 importer for these tables yet. Copy them from the eGon-data database or the Open Energy Platform.
 
+The eGon substations are processed OSM-derived records. Keep the source release and the typed OSM
+identifiers when comparing them with another grid dataset. The stored ``egon_bus_id`` of an OSM
+site is a spatial cross-check; it does not establish an electrical connection to an external HV
+network. Its distance is measured to the station footprint where available, otherwise to its point.
+
 Quick start
 -----------
 
 .. code-block:: bash
 
    uv run pylovo-setup                                   # once: migration 0009_mv_grids
-   uv run pylovo-import mastr --sqlite ~/.open-MaStR/data/sqlite/open-mastr.db
    uv run pylovo-generate --plz 80803 80802 --mv         # LV grids, then the MV grids
    uv run pylovo-mv list --version 1                     # the MV variants of version 1
 
 ``pylovo-generate --mv`` runs the MV stage for the MV variant of the configuration
 (``MV_VARIANT_ID``, default ``1``) of ``VERSION_ID``. Further variants of the same LV version are
-built with ``pylovo-mv generate`` (:ref:`mv-variants`).
+built with ``pylovo-mv generate`` (:ref:`mv-variants`). To opt into generation, prepare MaStR data
+and create another variant with ``--set MV_INCLUDE_GENERATION=true``. Existing snapshots without
+this flag retain their original generation-enabled behavior.
 
 Running the MV stage
 --------------------
@@ -358,7 +370,9 @@ and LV operating point (:ref:`mv-coupling`). ``--grid`` selects MV grids (defaul
 ``--jobs`` sets the workers (default 2, about 1 GB of memory each) and ``--no-merged`` runs only the
 design-point check. The results are the ``coupled_*`` columns of ``mv_node``,
 ``mv_grid.coupled_status`` (``done``, ``partial`` or ``failed``) and ``mv_grid.metrics['coupling']``.
-``couple`` takes the same lock as ``generate`` and can be run again at any time.
+``couple`` takes the same lock as ``generate`` and can be run again at any time. For load-only
+variants, it checks the LV design point and the merged load case; feed-in checks are not requested
+and their empty results are not counted as failures.
 
 pylovo-mv list
 ~~~~~~~~~~~~~~
@@ -367,8 +381,11 @@ pylovo-mv list
 
    pylovo-mv list [--version VERSION]
 
-One line per variant: status, number of postcodes, grids done and failed, circuit length, the
-stale flag and the comment.
+One line per variant: generation status, number of postcodes, grids done and failed, electrical
+pass/violation/unchecked counts, stored line length, the stale flag and the comment. The check mark
+describes generation completion; it does not certify electrical compliance. Non-converging power flows
+count among electrical failures. Electrical acceptance refers to the cases requested by that variant.
+Circuit lengths count parallel circuits individually; route lengths count each modeled line once.
 
 pylovo-mv delete
 ~~~~~~~~~~~~~~~~
@@ -392,6 +409,35 @@ Writes the stored pandapower net of one MV grid to a JSON file. ``load`` (defaul
 net with the HV side, the fixed OLTC tap and the results of the load case. Any other case is
 applied to a copy and solved before writing. ``--coupled`` writes the merged MV and LV net of the
 supply area instead.
+
+The coupled JSON is a single pandapower network and can be solved with the standard API:
+
+.. code-block:: bash
+
+   uv run pylovo-mv export --version VERSION --variant VARIANT --grid GRID_ID \
+       --coupled --output mv_lv.json
+
+.. code-block:: python
+
+   import pandapower as pp
+
+   net = pp.from_json("mv_lv.json")
+   pp.runpp(net)
+   print(net.converged)
+
+The merge removes the aggregate MV station loads and the LV external grids, then connects the
+LV transformers at their assigned MV stations. It preserves the original stored LV networks.
+Check coupling diagnostics and voltage/loading results as well as convergence: an exported model
+can contain LV grids whose design-point check failed.
+
+The coupled export uses an ideal source at the MV busbar and omits the upstream HV side and
+HV/MV transformers. Attaching an HV network therefore needs an explicit transformer boundary,
+consistent source controls and reconciliation of the HV aggregate demand with the MV/LV demand.
+Use original physical bus identities before simplification or clustering. For example, the
+`PyPSA-Eur prebuilt OSM v0.7 network <https://zenodo.org/records/18619025>`_ covers 220–750 kV;
+its German buses do not provide a 110 kV attachment. The
+`eGon HV model <https://egon-data.readthedocs.io/en/latest/data.html>`_ includes 110 kV, but its
+release, scenario and bus identities must still be checked against the selected substations.
 
 pylovo-mv graph
 ~~~~~~~~~~~~~~~
@@ -458,8 +504,11 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
 The column ``connection`` of ``mv_node`` gives the result of the planning: ``busbar``, ``ring``,
 ``stub``, ``dedicated``, ``tee`` (T-off generator), ``loop_in`` (looped-in generator), ``joint`` or
 ``excluded`` (HV customers and nodes that could not be connected). ``connection_hint`` keeps the
-class decided before the planning. Lengths in ``mv_grid`` and ``mv_ring`` are circuit lengths:
-parallel cables of one circuit count once, and ties are not included.
+class decided before the planning. ``mv_grid.circuit_km``, ``cable_km`` and ``overhead_km`` count
+installed parallel circuits individually, including normally-open sections and excluding interdistrict
+ties. ``mv_grid.metrics['route_km']`` counts each modeled line once; it is not the union of shared
+trenches. ``mv_ring`` lengths and feeder/path distances remain unweighted geometric lengths.
+Regional inventory includes the installed ties and clips each circuit to the region.
 
 Flags
 ~~~~~
@@ -616,6 +665,10 @@ value, so older configuration files keep working.
    * - ``MV_VARIANT_COMMENT``
      - ``default``
      - Comment stored with a new MV variant.
+   * - ``MV_INCLUDE_GENERATION``
+     - ``False``
+     - Opt into MaStR generator connections, LV generation and feed-in cases. The default plans
+       peak load and N-1 only; no MaStR query or generator-driven feeder is required.
    * - ``MV_NOMINAL_VOLTAGE_KV``
      - ``auto``
      - ``auto``: 10 kV for supply areas with at least ``mv_10kv_min_density_mva_km2`` of installed
@@ -634,8 +687,7 @@ value, so older configuration files keep working.
        (Ding0).
    * - ``MV_RING_SOLVER``
      - ``savings``
-     - Clarke-Wright savings with local search (Clarke and Wright 1964), or ``sweep``. ``ortools``
-       is reserved and not available in the current version.
+     - Clarke-Wright savings with local search (Clarke and Wright 1964), or ``sweep``.
    * - ``MV_MAX_STATIONS_PER_RING``
      - ``20``
      - Most ring members (stations, MV customers, looped-in generators) of one ring, 1 to 100 (Ding0;
@@ -654,12 +706,11 @@ value, so older configuration files keep working.
        ``none`` (Weisenstein and Wellßow 2021; Dubielzig 2022).
    * - ``MV_STANDARD_CABLE``
      - ``null``
-     - A pandapower cable type. ``null`` is NA2XS2Y 1x150 RM/25 for the voltage, the most used MV
-       cable in Germany (SimBench documentation; Almomani and Witzmann 2024).
+     - A pandapower cable type. ``null`` selects NA2XS2Y 1x240 RM/25 for the voltage.
+       Explicit types and frozen historical equipment remain authoritative.
    * - ``MV_OVERHEAD_LINE``
      - ``null``
-     - A pandapower overhead line type. ``null`` is 48-AL1/8-ST1A for the voltage, the most used MV
-       overhead line in Germany (SimBench documentation).
+     - A pandapower overhead line type. ``null`` selects 122-AL1/20-ST1A for the voltage.
    * - ``MV_LINE_PLANNING_UTILIZATION``
      - ``0.6``
      - Planned current per ampacity of MV lines in normal operation, 0.1 to 1.0 (dena 2012;

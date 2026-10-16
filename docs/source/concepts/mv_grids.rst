@@ -3,9 +3,10 @@ Medium-voltage grids
 
 The MV stage connects the stations of a generated LV version to the HV/MV substations of its region
 with medium-voltage (MV) grids. Every LV grid of the version becomes one MV node at its station.
-The large non-residential consumers that the LV stage leaves to the MV grid (MV customers) and the
-generators of the Marktstammdatenregister (MaStR) that feed in at MV level are added as further
-nodes. The stage plans open rings along the streets, sizes the lines and the HV/MV transformers and
+The large non-residential consumers that the LV stage leaves to the MV grid (MV customers)
+are added as further nodes. By default, the stage plans for normal load and N-1 only.
+``MV_INCLUDE_GENERATION: true`` adds MaStR generator nodes, LV-side generation and feed-in cases
+for an explicit generation-enabled variant. The stage plans open rings along the streets, sizes the lines and the HV/MV transformers and
 checks the result with pandapower power flows. It reads the stored LV results and never changes
 the LV grids. Its parameters belong to an *MV variant* of the LV version, so several MV designs of
 one LV version can be stored and compared.
@@ -28,13 +29,13 @@ For one MV variant of an LV version, :func:`~pylovo.mv_grid.stage.run_mv_stage` 
 #. Build or reuse the routing graph of the region from the regional street graph of InfDB, with a
    settlement flag for every street edge (:ref:`mv-routing-graph`).
 #. Select the HV/MV substations from OpenStreetMap or eGon-data (:ref:`mv-substations`) and add the
-   MV generators of MaStR (:ref:`mv-generators`).
+   MV generators of MaStR only when generation is enabled (:ref:`mv-generators`).
 #. Attach all nodes and substations to the routing graph, split the region into supply areas, one
    per substation (:ref:`mv-supply-areas`), and give each supply area its nominal voltage
    (:ref:`mv-voltage-level`).
 #. Plan every supply area on its own, in parallel worker processes: rings with normally-open
-   points, rural stubs, feeders of large customers and generators, line types, five power-flow
-   cases, a repair loop, the HV/MV transformers and the voltage budget of every station
+   points, rural stubs, feeders of large customers, line types, three load/N-1 power-flow
+   cases (five including feed-in when generation is enabled), a repair loop, the HV/MV transformers and the voltage budget of every station
    (:ref:`mv-rings` to :ref:`mv-voltage-budget`).
 #. Add normally-open ties between the rings of neighbouring supply areas (:ref:`mv-ties`) and
    store the run summary.
@@ -481,9 +482,6 @@ objective of every solver is the total ring length, both busbar sections include
    The sweep heuristic (Gillett and Miller 1974) as a baseline. The nodes are ordered by their
    angle around the busbar and fill one ring after the other until a ring becomes infeasible. Eight
    start angles are tried and the shortest result is kept.
-``ortools``
-   Reserved for an OR-Tools solver. The current version does not contain it and stops with an
-   error.
 
 A granular local search follows the construction (Toth and Vigo 2003; Bräysy and Gendreau 2005).
 For every node and each of its ``neighbours`` (15) nearest nodes, the moves relocate, exchange,
@@ -602,18 +600,14 @@ types:
      - Cable (``MV_STANDARD_CABLE: null``)
      - Overhead line (``MV_OVERHEAD_LINE: null``)
    * - 20 kV
-     - NA2XS2Y 1x150 RM/25 12/20 kV: 0.206 / 0.116 Ω/km, 250 nF/km, 319 A
-     - 48-AL1/8-ST1A 20.0: 0.594 / 0.372 Ω/km, 210 A
+     - NA2XS2Y 1x240 RM/25 12/20 kV: 0.122 / 0.112 Ω/km, 304 nF/km, 421 A
+     - 122-AL1/20-ST1A 20.0: 0.2376 / 0.344 Ω/km, 410 A
    * - 10 kV
-     - NA2XS2Y 1x150 RM/25 6/10 kV: 0.206 / 0.110 Ω/km, 360 nF/km, 315 A
-     - 48-AL1/8-ST1A 10.0: 0.594 / 0.350 Ω/km, 210 A
+     - NA2XS2Y 1x240 RM/25 6/10 kV: 0.122 / 0.105 Ω/km, 456 nF/km, 416 A
+     - 122-AL1/20-ST1A 10.0: 0.2376 / 0.323 Ω/km, 410 A
 
-These are the most used MV conductors in Germany. In the SimBench statistics of 74 real MV grids,
-the cable length peaks at 150 mm² and the overhead line length at 50 mm² (SimBench documentation),
-and more than 60 % of the cables of four southern German MV grids are 150 to 185 mm² (Almomani and
-Witzmann 2024). The heavier types NA2XS2Y 1x240 RM/25 12/20 kV (the 20 kV standard cable of
-eDisGo) and 122-AL1/20-ST1A 20.0 can be selected with ``MV_STANDARD_CABLE`` and
-``MV_OVERHEAD_LINE``. A configured type must be a pandapower line type of the right kind and
+These thicker starting types are the selected planning defaults. The former 150 mm² cable and
+48-AL1 overhead types remain available through explicit configuration and in historical snapshots. A configured type must be a pandapower line type of the right kind and
 voltage. With ``MV_NOMINAL_VOLTAGE_KV: auto`` it stands for its conductor, and the 10 kV supply
 areas use the same conductor with 6/10 kV insulation or the ``10.0`` overhead type. The resolved
 values are stored in the variant snapshot, so a stored variant does not change when pandapower's
@@ -648,8 +642,9 @@ at ``busbar_vm_pu`` (1.02 p.u.), the setpoint of the on-load tap changer (OLTC) 
 transformers (Harnisch et al. 2016: 102.5 ± 1.5 %, Wintzek et al. 2021: 102 ± 2 %). Stations and
 MV customers are loads, MV generators and the LV-side generation of the stations are static
 generators. With an ideal busbar the rings are electrically independent, so the (n-1) cases of all
-rings run in two power flows. The five cases follow the SimBench study cases hL, n1, lW and lPV
-(Meinecke et al. 2020):
+rings run in two power flows. Default load-only variants run ``load``, ``n1a`` and ``n1b``.
+Generation-enabled variants also run ``feed_in_wind`` and ``feed_in_pv``. The cases follow the
+SimBench study cases hL, n1, lW and lPV (Meinecke et al. 2020):
 
 .. list-table::
    :header-rows: 1
@@ -806,11 +801,16 @@ stored LV designs, and ``pylovo-mv couple`` verifies it with the LV nets.
 Coupling with the LV grids
 --------------------------
 
+Load-only variants check the LV design point and merged load case. Feed-in fields are not requested;
+empty values do not imply a failed check or a feed-in acceptance result. The feed-in descriptions
+below apply when ``MV_INCLUDE_GENERATION`` is enabled.
+
 ``pylovo-mv couple`` checks the voltage budget with the stored LV nets and computes the operating
 point of the joint MV and LV grid of every done supply area. It runs after ``pylovo-mv generate``
 and never changes the MV or LV grids:
 
-#. The design-point check takes one LV net at a time. The stored LV net with its own loads, the
+#. The design-point check takes one LV net at a time. A copy of the stored LV net includes its own
+   loads and fixed station-busbar customer loads with the LV version's power factor. These loads, the
    tap :math:`t^*` and the MV voltage :math:`v_\mathrm{load} - b` at its station gives
    ``coupled_lv_busbar_vm_pu`` and ``coupled_lv_min_vm_pu``. The feed-in cases (MV voltage
    :math:`v_\mathrm{feed} + b`, loads scaled by the case factors, the LV-side generation of the
@@ -830,6 +830,10 @@ upsized for its busbar customers gets the larger transformer. An LV net whose ow
 converge is left out of the merged flow (its station keeps its MV load), and the supply area is
 then ``partial``. The merged net is not stored, but ``pylovo-mv export --coupled`` rebuilds it for
 one supply area.
+
+Missing voltage budgets and failed or skipped design/feed-in checks also produce ``partial`` when
+using ``--no-merged``. Completion describes the checks performed, not compliance with voltage limits.
+Previously stored coupling results are unchanged until ``pylovo-mv couple`` is run again.
 
 Limitations
 -----------

@@ -34,6 +34,7 @@ READ_ONLY_OPTIONS = "-c search_path=pylovo,public -c default_transaction_read_on
 REGION_GAP_M = 5000.0
 #: Parameter groups of the variant snapshot that define the comparisons of the variant notebook (first match).
 DIMENSIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("planning scope", ("generation.include_generation",)),
     ("solver", ("topology.solver", "topology.local_search_rounds", "topology.neighbours", "topology.ls_time_guard_s")),
     ("routing", ("routing.",)),
     ("sources", ("sources.",)),
@@ -64,14 +65,17 @@ def read_only_client() -> Any:
     return dbc
 
 
-def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | None = None
+def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | None = None,
+            default_variant: str | Sequence[str] | None = None
             ) -> tuple[str, list[str], pd.DataFrame]:
     """The LV version and MV variants to analyse, and the variant listing of the version (``pylovo-mv list``).
 
     Args:
         dbc: Database client.
         version_id: LV version; None: ``VERSION_ID`` of ``config/config_generation.yaml``.
-        variants: MV variants; None: all variants of the version. Unknown ids are reported and dropped.
+        variants: MV variants; None: all variants of the version unless ``default_variant`` is set.
+            Unknown ids are reported and dropped.
+        default_variant: Preferred id or ordered ids when variants are omitted; otherwise the first available.
 
     Returns:
         ``(version_id, variants, listing)``.
@@ -83,7 +87,8 @@ def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | N
     _end(dbc)
     available = [str(v) for v in listing["mv_variant_id"]]
     if variants is None:
-        chosen = available
+        preferred = ([default_variant] if isinstance(default_variant, str) else list(default_variant or []))
+        chosen = [next((name for name in preferred if name in available), available[0])] if available and preferred else available
     else:
         chosen = [str(v) for v in variants if str(v) in available]
         missing = [str(v) for v in variants if str(v) not in available]
@@ -161,6 +166,18 @@ class Variant:
     def summary(self) -> dict:
         """The run summary of the variant (``mv_variant.summary``)."""
         return self.row.get("summary") or {}
+
+    @property
+    def include_generation(self) -> bool:
+        """Whether generation was modeled. Historical snapshots without the switch used the full model."""
+        return bool(self.snapshot("generation.include_generation", True))
+
+    @property
+    def active_cases(self) -> tuple[str, ...]:
+        """The MV cases requested by this variant's saved planning mode."""
+        from pylovo.mv_grid.model import CASES
+
+        return tuple(CASES) if self.include_generation else ("load", "n1a", "n1b")
 
     def snapshot(self, path: str, default: Any = None) -> Any:
         """One value of the parameter snapshot by dotted path, e.g. ``"taps.lv_design_tolerance_pu"``."""
@@ -273,7 +290,13 @@ def district_table(v: Variant) -> pd.DataFrame:
     busbar["mv_grid_id"] = stations["mv_grid_id"]
     gen = nodes[nodes["kind"] == "generator"]
     loads = nodes[nodes["kind"].isin(["station", "customer", "generator"])]
-    ties = lines[lines["role"] == "tie"]
+    ties = lines[lines["role"] == "tie"].copy()
+    installed = lines[lines["role"] != "tie"].copy()
+    for frame in (installed, ties):
+        parallel = pd.to_numeric(frame["parallel"], errors="coerce").fillna(1)
+        frame["_circuit_km"] = pd.to_numeric(frame["length_km"], errors="coerce") * parallel
+        frame["_cable_km"] = pd.to_numeric(frame["cable_km"], errors="coerce") * parallel
+        frame["_overhead_km"] = pd.to_numeric(frame["overhead_km"], errors="coerce") * parallel
     nops = lines[lines["normally_open"].astype(bool) & (lines["role"] != "tie")]
     ring_rows = rings[rings["kind"] == "ring"]
     halves = pd.concat([ring_rows[["mv_grid_id", "half_a_km"]].rename(columns={"half_a_km": "km"}),
@@ -320,9 +343,11 @@ def district_table(v: Variant) -> pd.DataFrame:
         "n_radial_feeders": feeders["radial"].reindex(g.index, fill_value=0) if "radial" in feeders else 0,
         "n_stub_nodes": g["n_stub_nodes"], "n_feeder_bays": g["n_feeder_bays"],
         "n_nops": count(nops), "n_ties": count(ties),
-        "tie_km": pd.to_numeric(ties["length_km"]).groupby(ties["mv_grid_id"].astype(int)).sum()
-        .reindex(g.index).fillna(0.0) if len(ties) else 0.0,
-        "circuit_km": g["circuit_km"], "cable_km": g["cable_km"], "overhead_km": g["overhead_km"],
+        "tie_km": per_grid(ties, "_circuit_km", "sum").fillna(0.0),
+        "route_km": per_grid(installed, "length_km", "sum").fillna(0.0),
+        "circuit_km": per_grid(installed, "_circuit_km", "sum").fillna(0.0),
+        "cable_km": per_grid(installed, "_cable_km", "sum").fillna(0.0),
+        "overhead_km": per_grid(installed, "_overhead_km", "sum").fillna(0.0),
         "trench_km": g["trench_km"],
         "ring_members_mean": per_grid(ring_rows, "n_members", "mean"),
         "ring_members_max": per_grid(ring_rows, "n_members", "max"),
@@ -376,7 +401,7 @@ def ring_table(v: Variant) -> pd.DataFrame:
 _SUMS = ("n_stations", "n_customers", "customer_mw", "n_dedicated_customers", "n_busbar_customers",
          "busbar_customer_mw", "n_generators", "generator_mw", "gen_loop_in",
          "gen_tee", "gen_dedicated", "n_rings", "n_dedicated_feeders", "n_generator_feeders", "n_radial_feeders",
-         "n_stub_nodes", "n_feeder_bays", "n_nops", "n_ties", "tie_km", "circuit_km", "cable_km", "overhead_km",
+         "n_stub_nodes", "n_feeder_bays", "n_nops", "n_ties", "tie_km", "route_km", "circuit_km", "cable_km", "overhead_km",
          "trench_km", "area_km2", "peak_load_mw", "n_repairs", "n_band_conflicts", "n_tap_limit", "n_tap_nonzero",
          "runtime_s")
 _MAXES = ("max_loading_percent", "max_loading_n1_percent", "max_loading_feed_in_percent", "max_drop_percent",
@@ -712,7 +737,7 @@ BLOCKS: dict[str, list[str]] = {
                           "ring_members_mean", "ring_members_median", "ring_members_max", "stations_per_ring",
                           "half_ring_km_mean", "half_ring_km_median", "half_ring_km_max", "ring_km_mean",
                           "ring_km_max"],
-    "Lengths": ["circuit_km", "cable_km", "overhead_km", "cable_share", "trench_km", "km_per_station",
+    "Lengths": ["route_km", "circuit_km", "cable_km", "overhead_km", "cable_share", "trench_km", "km_per_station",
                 "km_per_supply_point", "km_per_km2_cells", "km_per_km2", "circuit_km_per_substation",
                 "supply_points_per_substation"],
     "Loading and voltage": ["peak_load_mw", "max_loading_percent", "max_loading_n1_percent",
@@ -1141,15 +1166,13 @@ def earth_fault_table(v: Variant, districts: pd.DataFrame) -> pd.DataFrame:
 
 
 def case_table(v: Variant) -> pd.DataFrame:
-    """One row per district and power-flow case (load, n1a, n1b, feed_in_wind, feed_in_pv) of the MV-only
+    """One row per district and requested MV-only power-flow case of the
     district net after the repairs (``mv_grid.metrics``): ``converged``, ``min_vm_pu``, ``max_vm_pu``,
     ``max_loading_percent``, ``slack_p_mw`` and ``unsupplied_nodes``."""
-    from pylovo.mv_grid.model import CASES
-
     rows = []
     for gid, m in zip(v.grids["mv_grid_id"], v.grids["metrics"]):
         m = m if isinstance(m, Mapping) else {}
-        for case in CASES:
+        for case in v.active_cases:
             rows.append({"variant": v.label, "mv_grid_id": int(gid), "case": case,
                          **{k: m.get(f"{case}_{k}") for k in ("converged", "min_vm_pu", "max_vm_pu",
                                                               "max_loading_percent", "slack_p_mw",
