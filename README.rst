@@ -83,9 +83,10 @@ them. All commands and options are described in the
 Map viewer
 ----------
 
-``pylovo-viewer`` shows the database of your ``.env`` as an interactive map: LV grids, MV grids,
-their input data and the 110-380 kV grid of Germany (eTraGo), with all attributes on click, colour
-modes, a legend, key figures and 3D LoD2 buildings. It only reads the database. See the
+``pylovo-viewer`` shows the database of your ``.env`` as an interactive map with one switch per
+level: the 110-380 kV grid of Germany (eTraGo), the MV grids, the LV grids and the MaStR units, with
+all attributes on click, colour modes, a legend, key figures and 3D LoD2 buildings. It only reads the
+database. See the
 `map viewer guide <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_.
 
 .. code-block:: bash
