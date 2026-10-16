@@ -85,7 +85,7 @@ def test_valid_values_are_coerced(tmp_path):
 
 
 @pytest.mark.parametrize("key, value, message", [
-    ("MV_RING_SOLVER", "genetic", "MV_RING_SOLVER must be one of savings, sweep, ortools"),
+    ("MV_RING_SOLVER", "ortools", "MV_RING_SOLVER must be one of savings, sweep"),
     ("MV_NOMINAL_VOLTAGE_KV", "15", "MV_NOMINAL_VOLTAGE_KV must be one of auto, 20, 10"),
     ("MV_MAX_STATIONS_PER_RING", "0", "MV_MAX_STATIONS_PER_RING must be between 1 and 100"),
     ("MV_GRID_GENERATION", '"False"', "MV_GRID_GENERATION must be True or False"),

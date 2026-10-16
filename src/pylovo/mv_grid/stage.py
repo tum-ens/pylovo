@@ -379,39 +379,44 @@ def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes,
             rel = ((own.loc[both] - stored.loc[both]).abs() / stored.loc[both].abs().clip(lower=1e-9)).max()
             (logger.warning if rel > 1e-6 else logger.info)(
                 f"Station peaks vs pandapower_load: largest relative difference {rel:.2e}")
-    # MaStR: MV generator nodes and LV-side generation of the stations
-    units = dbc.mastr_units_in_region(region_wkb)
-    locations = inputs.aggregate_locations(units, params).reset_index(drop=True)
-    node_mask, lv_mask, hv_mask = _generator_split(locations, params)
-    if hv_mask.any():
-        logger.info(f"{int(hv_mask.sum())} MaStR connection points at HV level are not modelled")
-    lv_points = locations[lv_mask].copy()
-    lv_points["key"] = np.arange(len(lv_points), dtype=np.int64)
-    targets = dbc.lv_side_targets(version_id, lv_points)
-    aggregates = dbc.mastr_postcode_aggregates(plz)
-    counts = dbc.station_building_counts(version_id, plz)
-    generation = inputs.distribute_lv_generation(stations, targets, aggregates, counts)
-    if generation is not None and len(generation):
-        if "grid_result_id" not in generation.columns:
-            generation = generation.rename_axis("grid_result_id").reset_index()
-        gen = generation.groupby("grid_result_id")[[c for c in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw")
-                                                    if c in generation.columns]].sum()
-        stations = stations.drop(columns=[c for c in gen.columns if c in stations.columns])
-        stations = stations.merge(gen, left_on="grid_result_id", right_index=True, how="left")
+    # MaStR is only required for a variant that actually plans generation.
+    generators = pd.DataFrame()
+    if params.include_generation:
+        units = dbc.mastr_units_in_region(region_wkb)
+        locations = inputs.aggregate_locations(units, params).reset_index(drop=True)
+        node_mask, lv_mask, hv_mask = _generator_split(locations, params)
+        if hv_mask.any():
+            logger.info(f"{int(hv_mask.sum())} MaStR connection points at HV level are not modelled")
+        lv_points = locations[lv_mask].copy()
+        lv_points["key"] = np.arange(len(lv_points), dtype=np.int64)
+        targets = dbc.lv_side_targets(version_id, lv_points)
+        aggregates = dbc.mastr_postcode_aggregates(plz)
+        counts = dbc.station_building_counts(version_id, plz)
+        generation = inputs.distribute_lv_generation(stations, targets, aggregates, counts)
+        if generation is not None and len(generation):
+            if "grid_result_id" not in generation.columns:
+                generation = generation.rename_axis("grid_result_id").reset_index()
+            gen = generation.groupby("grid_result_id")[[c for c in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw")
+                                                        if c in generation.columns]].sum()
+            stations = stations.drop(columns=[c for c in gen.columns if c in stations.columns])
+            stations = stations.merge(gen, left_on="grid_result_id", right_index=True, how="left")
+        generators = locations[node_mask].reset_index(drop=True)
     for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
-        stations[column] = pd.to_numeric(stations[column], errors="coerce").fillna(0.0) \
-            if column in stations.columns else 0.0
+        stations[column] = (pd.to_numeric(stations[column], errors="coerce").fillna(0.0)
+                            if params.include_generation and column in stations.columns else 0.0)
     customers = inputs.customer_table(dbc.mv_customer_rows(version_id, plz, lv), lv, params)
     stations, customers = inputs.busbar_customers(stations, customers, params)
     stations = inputs.upsize_busbar_stations(stations, lv)
     customers.attrs["n_upsized_stations"] = stations.attrs.get("n_upsized", 0)
     logger.info(inputs.describe_customers(customers.attrs, params))
-    generators = locations[node_mask].reset_index(drop=True)
     rows = inputs.node_rows(stations, customers, generators, sites, params).reset_index(drop=True)
     if not rows["kind"].eq("busbar").any():          # the busbar rows are part of node_rows; never go without them
         rows = pd.concat([_busbar_rows(sites), rows], ignore_index=True)
     if extra_stations is not None and len(extra_stations):
         rows = pd.concat([rows, _external_station_rows(extra_stations)], ignore_index=True)
+    if not params.include_generation:
+        for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
+            rows[column] = 0.0
     return rows
 
 
@@ -665,6 +670,8 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
                 logger: logging.Logger, start: float) -> MvRunSummary:
     variant_id = params.variant_id
     warnings: list[str] = []
+    logger.info(f"MV planning cases: {', '.join(params.active_cases)}"
+                + (" (generation included)" if params.include_generation else " (load-only)"))
     # 1. PLZ
     requested = None if plz_list is None else sorted({int(p) for p in plz_list})
     used = [int(p) for p in dbc.generated_plz(version_id, requested)]
@@ -724,7 +731,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
     except Exception as exc:
         dbc.rollback_changes()
         summary = _summary(version_id, variant_id, "failed", requested, used, missing, None,
-                           warnings + [_one_line(exc)], start)
+                           warnings + [_one_line(exc)], start, params=params)
         try:
             dbc.finish_variant(version_id, variant_id, summary)
         except Exception as finish_exc:
@@ -796,7 +803,8 @@ def _summary(version_id: str, variant_id: str, status: str, requested: list[int]
         circuit_km=float(totals.get("circuit_km", 0.0)), cable_share=float(totals.get("cable_share", 0.0)),
         n_violation_grids=int(totals.get("n_violation_grids", 0)),
         n_band_conflicts=int(totals.get("n_band_conflicts", 0)), warnings=list(warnings),
-        elapsed_s=time.time() - start, demand=dict(demand or {}), ties=dict(ties or {}), voltages=voltages)
+        elapsed_s=time.time() - start, demand=dict(demand or {}), ties=dict(ties or {}), voltages=voltages,
+        active_cases=params.active_cases if params is not None else CASES)
 
 
 # ---------------------------------------------------------------------------------------------- export
@@ -823,12 +831,15 @@ def export_net(version_id: str, variant_id: str, mv_grid_id: int, output: Path, 
         row = dbc.variant_row(version_id, variant_id)
         if row is None:
             raise LookupError(f"MV variant {variant_id} of version {version_id} does not exist")
+        params = MvParameters.from_snapshot(variant_id, row.get("mv_variant_comment") or "", row["mv_parameters"])
+        if case not in params.active_cases:
+            raise ValueError(f"case {case!r} was not requested for MV variant {variant_id}; "
+                             f"available cases: {', '.join(params.active_cases)}")
         _, grid = dbc.load_district_nodes(mv_grid_id)
         if grid["version_id"] != version_id or grid["mv_variant_id"] != variant_id:
             raise LookupError(f"MV grid {mv_grid_id} does not belong to variant {variant_id} of version {version_id}")
         net = dbc.read_mv_grid_net(mv_grid_id)
     if case != "load":
-        params = MvParameters.from_snapshot(variant_id, row.get("mv_variant_comment") or "", row["mv_parameters"])
         net = _module("electrical").case_net(net, case, params)
         try:
             pp.runpp(net, algorithm="nr", init="auto")

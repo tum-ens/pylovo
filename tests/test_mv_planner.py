@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import dataclasses
 import sys
 import types
 
@@ -137,7 +138,7 @@ def test_plan_district_composes_the_steps(fakes):
     calls, state = fakes
     params = MvParameters(solver="sweep", local_search_rounds=7, neighbours=9, ls_time_guard_s=30.0,
                           long_connector_m=250.0, bridge_detour=1.4)
-    plan = planner.plan_district(small_input(params))
+    plan = planner.plan_district(small_input(params.replace(include_generation=True)))
     assert isinstance(plan, DistrictPlan)
     assert calls == ["run_graph:250:1.4", "terminals", "distances", "evaluator", "solve:sweep:7:9:30",
                      "plan:[[1, 2, 3]]", "net", "cases:net-12", "check", "size", "stored:net-12:2:25", "budgets",
@@ -271,7 +272,8 @@ def synthetic_district() -> DistrictInput:
                      "y": float(xy_arr[dst[e - 1] - 1][1]) - 50.0, "attach_edge_id": e, "attach_fraction": 1.0,
                      "attach_offset_m": 50.0, "sn_kva": np.nan})
     return DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=node_table(rows), edges=edges,
-                         params=MvParameters(stubs="none", overhead_lines="none"), lv=LV, known_units_mva=(),
+                         params=MvParameters(stubs="none", overhead_lines="none", include_generation=True),
+                         lv=LV, known_units_mva=(),
                          edge_geometry=lambda ids: {int(i): geoms[int(i)] for i in ids})
 
 
@@ -291,6 +293,19 @@ def test_plan_district_end_to_end_on_a_synthetic_district():
     assert plan.metrics["bridged_nodes"] == [100]   # the island station
     again = planner.plan_district(synthetic_district())
     assert [r.members for r in again.topology.rings] == [r.members for r in topo.rings]   # deterministic
+
+
+@pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),
+                    reason="needs every planning module (WP3-WP10)")
+def test_load_only_planner_omits_generator_nodes_before_routing():
+    source = synthetic_district()
+    assert source.nodes.loc[[300, 301], "kind"].eq("generator").all()
+    assert source.nodes["gen_solar_kw"].sum() > 0
+    result = planner.plan_district(dataclasses.replace(source, params=source.params.replace(include_generation=False)))
+    assert set(result.cases) == {"load", "n1a", "n1b"}
+    assert 300 not in result.topology.node_role and 301 not in result.topology.node_role
+    assert not result.net.sgen.size and result.peak_feed_in_mw == 0.0
+    assert source.nodes.loc[[300, 301], "kind"].eq("generator").all()   # caller input stays intact
 
 
 @pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),

@@ -14,7 +14,6 @@ Implemented from the published methods, no Ding0 code:
   the operators relocate, exchange, 2-opt*, 2-opt and Or-opt on the 15 nearest neighbours of every node,
   don't-look bits, a pass limit and a wall-clock safety net.
 * ``sweep``: the sweep heuristic (Gillett & Miller 1974) as a baseline, with eight start angles.
-* ``ortools``: optional, in :mod:`pylovo.mv_grid.solvers_ortools` (extra ``mv``).
 
 :func:`solve` runs the construction of the chosen solver and then the local search (``rounds = 0`` turns the local
 search off). Every function is deterministic: no random numbers, nodes in index order, ties broken by index. Only
@@ -38,7 +37,7 @@ from pylovo.mv_grid.model import RingEvaluatorProtocol, SolverResult
 #: Terminal index of the busbar in every distance matrix.
 BUSBAR = 0
 #: Names accepted by :func:`solve` (``MV_RING_SOLVER``).
-SOLVERS: tuple[str, ...] = ("savings", "sweep", "ortools")
+SOLVERS: tuple[str, ...] = ("savings", "sweep")
 #: Local search operators in the order they are tried for every node pair.
 OPERATORS: tuple[str, ...] = ("relocate", "exchange", "two_opt_star", "two_opt", "or_opt")
 #: Smallest length gain (m) for which a move is applied; smaller gains are float noise and could cycle.
@@ -49,9 +48,6 @@ SAVINGS_ALL_PAIRS_MAX = 800
 SAVINGS_NEIGHBOURS = 40
 #: Chain lengths of the Or-opt operator.
 OR_OPT_CHAINS: tuple[int, ...] = (1, 2, 3)
-
-_ORTOOLS_HINT = ("MV_RING_SOLVER ortools needs the optional extra 'mv' (OR-Tools): install it with "
-                 "'uv sync --extra mv' or use MV_RING_SOLVER savings or sweep")
 
 Routes = list[list[int]]
 _Build = Callable[[], dict[int, list[int]]]
@@ -65,7 +61,7 @@ def solve(name: str, ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: 
     """Form the open rings of one district with a construction heuristic followed by the local search.
 
     Args:
-        name: ``savings`` (Clarke-Wright), ``sweep`` (baseline) or ``ortools`` (needs the extra ``mv``).
+        name: ``savings`` (Clarke-Wright) or ``sweep`` (baseline).
         ev: Ring evaluator; its ``evaluate(seq).feasible`` decides every merge and move.
         dist_m: ``(k, k)`` design distances between the terminals in m (terminal 0 = busbar, ``inf`` =
             unreachable, symmetric).
@@ -83,7 +79,6 @@ def solve(name: str, ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: 
 
     Raises:
         ValueError: On an unknown solver name or invalid inputs.
-        ImportError: For ``ortools`` without the optional extra ``mv`` (the message names it).
     """
     if name not in SOLVERS:
         raise ValueError(f"MV_RING_SOLVER must be one of {', '.join(SOLVERS)}, got {name!r}")
@@ -93,15 +88,8 @@ def solve(name: str, ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: 
     started = time.perf_counter()
     if name == "savings":
         routes = _savings(feas, d, nodes)
-    elif name == "sweep":
+    else:  # the public solver-name check above leaves only sweep
         routes = _sweep(feas, D, nodes, _prepare_xy(xy, d.shape[0]))
-    else:
-        try:
-            from pylovo.mv_grid.solvers_ortools import solve_ortools
-        except ImportError as exc:
-            raise ImportError(_ORTOOLS_HINT) from exc
-        routes = [list(map(int, r)) for r in solve_ortools(ev, d, nodes) if len(r)]
-        _check_cover(routes, nodes, "the ortools solver")
     construction_s = time.perf_counter() - started
     construction_evaluations = feas.evaluations
     routes, ls = _local_search(feas, d, D, routes, rounds=rounds, neighbours=neighbours, time_guard_s=time_guard_s)

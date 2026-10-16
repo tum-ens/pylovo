@@ -1,6 +1,6 @@
 """MV stage parameters: the ``MV_*`` YAML keys, the constants and their coercion rules.
 
-* :data:`YAML_KEYS`: the 16 ``MV_*`` keys of ``config_generation.yaml``. :mod:`pylovo.config_loader` reads each of
+* :data:`YAML_KEYS`: the ``MV_*`` keys of ``config_generation.yaml``. :mod:`pylovo.config_loader` reads each of
   them with :func:`coerce_mv_value`; a missing key takes its default (the shipped value).
 * :data:`CONSTANTS`: the constants of the stage. They are not YAML keys, but they are part of the snapshot of an MV
   variant and can be changed per variant with ``pylovo-mv generate --set name=value`` or
@@ -25,7 +25,8 @@ import yaml
 #: 2: MV customer halls count one storey, customers below ``customer_min_mv_kw`` hang on the nearest station.
 #: 3: nominal voltage per district (``MV_NOMINAL_VOLTAGE_KV`` auto), station-busbar customers only within
 #: ``busbar_customer_max_m``, stations they overload upsized in the MV model (and in ``pylovo-mv couple``).
-MV_STAGE_VERSION: int = 3
+#: 4: load-only planning by default, optional generation and feed-in cases, heavier starting conductors.
+MV_STAGE_VERSION: int = 4
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
@@ -80,6 +81,8 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="as VERSION_ID; the key of pylovo.mv_variant together with the LV version"),
     Spec("MV_VARIANT_COMMENT", "comment", "default", "str",
          source="as VERSION_COMMENT; stored once with a new MV variant"),
+    Spec("MV_INCLUDE_GENERATION", "include_generation", False, "bool", group="generation",
+         source="false: plan loads and (n-1) only, without MaStR; true: include generators and feed-in cases"),
     Spec("MV_NOMINAL_VOLTAGE_KV", "vn_kv", AUTO_VOLTAGE, "voltage", choices=(20.0, 10.0), group="voltage",
          source="auto: 10 kV in districts with an installed density of at least mv_10kv_min_density_mva_km2, else "
                 "20 kV (dense city grids run at 10 kV, rural grids at 20 kV, Harnisch 2016); the stored LV station "
@@ -90,8 +93,8 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="nearest substation along the streets with capacity rebalancing; eGon-data MV grid districts"),
     Spec("MV_ROUTING", "routing", "street", "choice", choices=("street", "crowfly"), group="routing", key="mode",
          source="lines along streets and field paths; straight lines x 1.3 as in Ding0"),
-    Spec("MV_RING_SOLVER", "solver", "savings", "choice", choices=("savings", "sweep", "ortools"), group="topology",
-         source="Clarke & Wright 1964 savings with local search; sweep; OR-Tools (extra 'mv')"),
+    Spec("MV_RING_SOLVER", "solver", "savings", "choice", choices=("savings", "sweep"), group="topology",
+         source="Clarke & Wright 1964 savings with local search; sweep"),
     Spec("MV_MAX_STATIONS_PER_RING", "max_stations_per_ring", 20, "int", bounds=(1, 100), group="topology",
          source="Ding0 and Heuck; 5 to 30 stations per ring in a large-city grid study (mean 15)"),
     Spec("MV_STUBS", "stubs", "rural", "choice", choices=("rural", "none"), group="topology",
@@ -102,12 +105,9 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="normally-open ties to the rings of neighbouring substations, the reserve of real MV grids "
                 "(Weisenstein 2021; Dubielzig 2022)"),
     Spec("MV_STANDARD_CABLE", "cable_type", None, "nullable_str", group="equipment", key="cable",
-         source="null = NA2XS2Y 1x150 RM/25, the most used MV cable in Germany (SimBench statistics of 74 real MV "
-                "grids: the cable length peaks at 150 mm²; Almomani & Witzmann 2024: over 60 % of the cables in "
-                "southern Germany are 150 to 185 mm²); NA2XS2Y 1x240 RM/25 is the eDisGo 20 kV standard cable"),
+         source="null = NA2XS2Y 1x240 RM/25, starting cable for both 10 and 20 kV; narrower types remain selectable"),
     Spec("MV_OVERHEAD_LINE", "overhead_type", None, "nullable_str", group="equipment", key="overhead",
-         source="null = 48-AL1/8-ST1A, the most used MV overhead line in Germany (SimBench statistics of 74 real MV "
-                "grids: the overhead line length peaks at 50 mm²); 122-AL1/20-ST1A is the heavier alternative"),
+         source="null = 122-AL1/20-ST1A, starting overhead conductor for both 10 and 20 kV"),
     Spec("MV_LINE_PLANNING_UTILIZATION", "line_utilization", 0.6, "float", bounds=(0.1, 1.0), group="loading",
          source="dena 2012; Harnisch 2016; Wintzek 2021 (SimBench 0.5)"),
     Spec("MV_MAX_VOLTAGE_DROP_PERCENT", "max_drop_percent", 5.0, "float", bounds=(0.5, 20.0), group="voltage",

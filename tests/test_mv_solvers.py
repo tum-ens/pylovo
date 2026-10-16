@@ -1,6 +1,5 @@
 """Tests of the MV ring solvers (savings, local search, sweep) with a small fake ring evaluator."""
 
-import importlib.util
 import itertools
 import json
 import math
@@ -472,8 +471,7 @@ def test_invalid_inputs_raise():
         S.local_search([[1, 2], [2, 3]], ev, dist)
 
 
-@pytest.mark.skipif(importlib.util.find_spec("ortools") is not None, reason="OR-Tools is installed")
-def test_ortools_without_the_extra_names_it():
+def test_unsupported_solver_fails_before_reading_solver_inputs():
     xy, dist, load = settlement_instance(5, 0, 0, seed=0)
-    with pytest.raises(ImportError, match="'mv'"):
-        S.solve("ortools", FakeEvaluator(dist, load), dist, [1, 2, 3], xy)
+    with pytest.raises(ValueError, match="MV_RING_SOLVER must be one of savings, sweep"):
+        S.solve("ortools", FakeEvaluator(dist, load), np.array([[np.nan]]), [0], xy)

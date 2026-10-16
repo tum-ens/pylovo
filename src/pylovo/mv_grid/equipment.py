@@ -28,15 +28,11 @@ from typing import Any, Sequence
 
 from pylovo.mv_grid.model import LINE_KINDS, HvMvType, LineType
 
-#: Default (cable, overhead line) pandapower type names per nominal voltage in kV: the most used conductors of
-#: existing German MV grids. In the SimBench statistics of 74 real German MV grids (SimBench documentation, German
-#: edition, p. 14, Fig. 3.2) the cable length peaks at 150 mm² and the overhead line length at 50 mm²; in southern
-#: German grids more than 60 % of the cables are 150 to 185 mm² (Almomani & Witzmann 2024). The heavier types of
-#: the first design (``NA2XS2Y 1x240 RM/25 12/20 kV``, ``122-AL1/20-ST1A 20.0``) stay available through
-#: ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE``.
+#: Starting (cable, overhead line) pandapower types per nominal voltage. Older, narrower conductors remain
+#: selectable through ``MV_STANDARD_CABLE`` and ``MV_OVERHEAD_LINE`` and stored snapshots retain their types.
 DEFAULT_LINE_TYPES: dict[float, tuple[str, str]] = {
-    20.0: ("NA2XS2Y 1x150 RM/25 12/20 kV", "48-AL1/8-ST1A 20.0"),
-    10.0: ("NA2XS2Y 1x150 RM/25 6/10 kV", "48-AL1/8-ST1A 10.0"),
+    20.0: ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0"),
+    10.0: ("NA2XS2Y 1x240 RM/25 6/10 kV", "122-AL1/20-ST1A 10.0"),
 }
 
 #: pandapower line ``type`` per line kind of the MV stage.

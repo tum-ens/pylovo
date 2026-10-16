@@ -183,6 +183,8 @@ MV_GRID_GENERATION: False
 # MV variant of the LV version (1 to 10 characters); a changed MV parameter needs a new MV_VARIANT_ID
 MV_VARIANT_ID: "1"
 MV_VARIANT_COMMENT: default # Stored with a new MV variant
+# Include MaStR generator nodes, LV-side generation, and feed-in planning cases (default: load and n-1 only)
+MV_INCLUDE_GENERATION: false
 # MV nominal voltage in kV: auto (10 kV in districts with an installed MV/LV capacity of at least 8 MVA/km², constant mv_10kv_min_density_mva_km2, else 20 kV), 20 or 10; the stored LV station transformers are 20/0.4 kV
 MV_NOMINAL_VOLTAGE_KV: auto
 # HV/MV substations: osm (power=substation with 110 kV in current OSM) or egon (eGon-data HV/MV substations)
@@ -191,7 +193,7 @@ MV_SUBSTATIONS: osm
 MV_SUPPLY_AREAS: routed
 # Line routes: street (along streets and field paths) or crowfly (straight line x 1.3, as Ding0 2017)
 MV_ROUTING: street
-# Ring solver: savings (Clarke-Wright savings with local search), sweep, or ortools (needs the mv extra)
+# Ring solver: savings (Clarke-Wright savings with local search) or sweep
 MV_RING_SOLVER: savings
 # Most ring members (stations, MV customers, looped generators) in one open ring; stub stations do not count
 MV_MAX_STATIONS_PER_RING: 20
@@ -201,9 +203,9 @@ MV_STUBS: rural
 MV_OVERHEAD_LINES: rural
 # Ties between neighbouring HV/MV substations: ties (one normally-open tie per ring where a neighbour ring is within 2 km) or none
 MV_INTERCONNECTION: ties
-# Standard MV cable, a pandapower line type (null: NA2XS2Y 1x150 RM/25 for the nominal voltage, the most used MV cable in German grids; heavier: "NA2XS2Y 1x240 RM/25 12/20 kV")
+# Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 at 10 or 20 kV)
 MV_STANDARD_CABLE: null
-# Overhead line type for MV_OVERHEAD_LINES rural (null: 48-AL1/8-ST1A for the nominal voltage, the most used MV overhead line in German grids; heavier: "122-AL1/20-ST1A 20.0")
+# Overhead line type for MV_OVERHEAD_LINES rural (null: 122-AL1/20-ST1A at 10 or 20 kV)
 MV_OVERHEAD_LINE: null
 # Planned current per ampacity of MV lines in normal operation; the (n-1) case may use 1.0
 MV_LINE_PLANNING_UTILIZATION: 0.6

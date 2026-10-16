@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Hashable, Mapping, Optional, Sequence, Tuple
 
 import contextily as cx
 import geopandas as gpd
@@ -295,7 +295,7 @@ def _nop_points(lines: pd.DataFrame, nodes: pd.DataFrame) -> pd.DataFrame:
     if sel.empty:
         return pd.DataFrame(columns=["node", "x", "y"])
     at = _column(sel, "open_at_node")
-    node_ids = [int(a) if pd.notna(a) else int(t) for a, t in zip(at, sel["to_node"])]
+    node_ids = [a if pd.notna(a) else t for a, t in zip(at, sel["to_node"])]
     rows = [(n, nodes.at[n, "x"], nodes.at[n, "y"]) for n in node_ids if n in nodes.index]
     return pd.DataFrame(rows, columns=["node", "x", "y"])
 
@@ -418,14 +418,14 @@ def _graph(rows: pd.DataFrame) -> nx.Graph:
     """Undirected graph of ``rows`` (``from_node``, ``to_node``, ``_len``) keeping the shortest of parallel lines."""
     graph = nx.Graph()
     for a, b, w in zip(rows["from_node"], rows["to_node"], rows["_len"]):
-        a, b, w = int(a), int(b), float(w)
+        w = float(w)
         if graph.has_edge(a, b) and graph[a][b]["weight"] <= w:
             continue
         graph.add_edge(a, b, weight=w)
     return graph
 
 
-def _distances(rows: pd.DataFrame, source: int) -> dict[int, float]:
+def _distances(rows: pd.DataFrame, source: Hashable) -> dict[Hashable, float]:
     graph = _graph(rows)
     if source not in graph:
         return {}
@@ -475,16 +475,16 @@ def ring_paths(nodes: Any, lines: Any, mv_grid_id: int, ring_id: int) -> tuple[p
         raise ValueError(f"MV grid {mv_grid_id} has no lines of ring {ring_id}")
     ring["_len"] = pd.to_numeric(_column(ring, "length_km", 0.0), errors="coerce").fillna(0.0)
     ring["_open"] = _as_bool(_column(ring, "normally_open", False))
-    ends = pd.unique(pd.concat([ring["from_node"], ring["to_node"]]).astype("int64"))
+    ends = pd.unique(pd.concat([ring["from_node"], ring["to_node"]]))
     kinds = node_tab["kind"].astype(str) if not node_tab.empty else pd.Series(dtype=str)
-    busbars = [int(n) for n in ends if n in kinds.index and kinds.get(n) == "busbar"]
+    busbars = [n for n in ends if n in kinds.index and kinds.get(n) == "busbar"]
     if not busbars:
         raise ValueError(f"ring {ring_id} of MV grid {mv_grid_id} has no busbar node")
     busbar = busbars[0]
 
     at_busbar = (ring["from_node"] == busbar) | (ring["to_node"] == busbar)
     exits = ring[at_busbar].copy()
-    exits["_first"] = np.where(exits["from_node"] == busbar, exits["to_node"], exits["from_node"]).astype("int64")
+    exits["_first"] = np.where(exits["from_node"] == busbar, exits["to_node"], exits["from_node"])
     position = pd.to_numeric(_column(node_tab, "ring_position"), errors="coerce")
     exits["_pos"] = [position.get(n, np.nan) for n in exits["_first"]]
     exits["_id"] = exits.index.to_numpy()
@@ -494,21 +494,21 @@ def ring_paths(nodes: Any, lines: Any, mv_grid_id: int, ring_id: int) -> tuple[p
     exit_label = {line_id: label for line_id, label in zip(exits.index, ("a", "b"))}
 
     closed = ring[~ring["_open"]]
-    d0: dict[int, float] = {}
-    half: dict[int, Optional[str]] = {busbar: None}
+    d0: dict[Hashable, float] = {}
+    half: dict[Hashable, Optional[str]] = {busbar: None}
     graph = _graph(closed)
     if busbar in graph:
         d0, paths = nx.single_source_dijkstra(graph, busbar, weight="weight")
         first_label = {}
         for line_id, row in exits.iterrows():
             if not row["_open"] and line_id in exit_label:
-                first_label.setdefault(int(row["_first"]), exit_label[line_id])
+                first_label.setdefault(row["_first"], exit_label[line_id])
         for node, path in paths.items():
             if node != busbar:
                 half[node] = first_label.get(path[1])
 
-    n1: dict[int, float] = {}
-    through_a: dict[int, float] = {}
+    n1: dict[Hashable, float] = {}
+    through_a: dict[Hashable, float] = {}
     if len(exits) >= 2:
         for k, line_id in enumerate(exits.index[:2]):
             dist = _distances(ring.drop(index=line_id), busbar)
@@ -518,9 +518,9 @@ def ring_paths(nodes: Any, lines: Any, mv_grid_id: int, ring_id: int) -> tuple[p
                 n1[node] = max(n1.get(node, value), value)
 
     full = _graph(ring)
-    main: set[int] = {busbar}
+    main: set[Hashable] = {busbar}
     if len(exits) >= 2:
-        a1, b1 = int(exits["_first"].iloc[0]), int(exits["_first"].iloc[1])
+        a1, b1 = exits["_first"].iloc[0], exits["_first"].iloc[1]
         inner = full.copy()
         inner.remove_node(busbar)
         if a1 == b1:
@@ -528,13 +528,12 @@ def ring_paths(nodes: Any, lines: Any, mv_grid_id: int, ring_id: int) -> tuple[p
         elif a1 in inner and b1 in inner and nx.has_path(inner, a1, b1):
             main.update(nx.shortest_path(inner, a1, b1, weight="weight"))
     elif d0:
-        far = max((n for n in d0 if n != busbar), key=lambda n: (d0[n], -n), default=None)
+        far = min((n for n in d0 if n != busbar), key=lambda n: (-d0[n], n), default=None)
         if far is not None:
             main.update(nx.shortest_path(graph, busbar, far, weight="weight"))
 
     rows = []
     for node in ends:
-        node = int(node)
         row = node_tab.loc[node] if node in node_tab.index else None
         rows.append({
             "mv_node_id": node,
@@ -561,7 +560,7 @@ def ring_paths(nodes: Any, lines: Any, mv_grid_id: int, ring_id: int) -> tuple[p
 
     line_rows = []
     for line_id, row in ring.iterrows():
-        a, b = int(row["from_node"]), int(row["to_node"])
+        a, b = row["from_node"], row["to_node"]
         if row["_open"]:
             label: Optional[str] = "nop"
         else:
@@ -780,7 +779,7 @@ def plot_mv_grid_map(layers: Mapping[str, Any], mv_grid_id: int, color_by: str =
         not_tie = role != "tie"
         km = pd.to_numeric(_column(lines, "length_km", 0.0), errors="coerce").fillna(0.0)[not_tie].sum()
         rings = pd.unique(_column(lines[not_tie], "ring_id").dropna())
-        title = f"MV grid {mv_grid_id}: {len(rings)} rings and feeders, {km:,.1f} km"
+        title = f"MV grid {mv_grid_id}: {len(rings)} rings and feeders, {km:,.1f} route km"
     ax.set_title(title, fontsize=13, fontweight="bold")
     x0, y0, x1, y1 = bounds
     ax.set_xlim(x0, x1)
@@ -841,8 +840,9 @@ def plot_mv_ring(layers: Mapping[str, Any], mv_grid_id: int, ring_id: int, ax: O
                    linestyle="--", zorder=4)
     n_nops = _draw_nops(ax, ring_lines, all_nodes, size=220)
     if numbers:
-        for node, row in members[members["order"].notna()].iterrows():
-            ax.annotate(f"{int(row['order'])}", (row["x"], row["y"]), xytext=(5, 5), textcoords="offset points",
+        numbered = members[members["main"] & members["kind"].isin(_MEMBER_KINDS)].sort_values("order")
+        for number, (_, row) in enumerate(numbered.iterrows(), 1):
+            ax.annotate(f"{number}", (row["x"], row["y"]), xytext=(5, 5), textcoords="offset points",
                         fontsize=8, zorder=10)
 
     handles = [Line2D([], [], color=_HALF_COLORS["a"], linewidth=2, label="half A (exit A)"),
@@ -1053,7 +1053,7 @@ def plot_variants_side_by_side(layers_by_variant: Mapping[str, Mapping[str, Any]
         not_tie = _column(lines, "role", "ring").fillna("ring").astype(str) != "tie"
         km = pd.to_numeric(_column(lines, "length_km", 0.0), errors="coerce").fillna(0.0)[not_tie].sum()
         plot_mv_grid_map(layers, gid, color_by=color_by, ax=ax, basemap=False, settlements=settlements,
-                         title=f"{variant}: grid {gid}, {km:,.1f} km{note}")
+                         title=f"{variant}: grid {gid}, {km:,.1f} route km{note}")
         extents.append(_bounds(nodes, lines))
     x0 = min(e[0] for e in extents)
     y0 = min(e[1] for e in extents)

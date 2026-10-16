@@ -244,6 +244,14 @@ def test_ring_map_numbers_the_members():
             "normally-open point"} <= set(_legend_labels(ax))
 
 
+def test_ring_map_renumbers_members_sequentially_when_stored_positions_have_gaps():
+    layers = _layers(ring_position=True)
+    for node, position in {2: 1, 3: 4, 5: 9, 6: 13, 7: 17}.items():
+        layers["nodes"].loc[layers["nodes"]["mv_node_id"] == node, "ring_position"] = position
+    fig = mvplot.plot_mv_ring(layers, 11, 1)
+    assert sorted(t.get_text() for t in fig.axes[0].texts) == ["1", "2", "3", "4", "5"]
+
+
 def test_lv_busbar_voltage_map_marks_band_conflicts():
     fig = mvplot.plot_lv_busbar_voltage_map(_layers())
     ax = fig.axes[0]
@@ -449,3 +457,21 @@ def test_package_exports():
         assert callable(getattr(mvplot, name))
     assert statistics.metric_label("km_per_km2") == "Circuit km per km²"
     assert statistics.metric_label("my_metric") == "my metric"
+
+
+@pytest.mark.parametrize('ring_id', [1, 2, 3])
+def test_maps_preserve_string_node_ids(ring_id):
+    layers = _layers()
+    expected_nodes, expected_lines = maps.ring_paths(layers['nodes'], layers['lines'], 11, ring_id)
+    ids = {n: f'node-{n}' for n in layers['nodes']['mv_node_id']}
+    layers['nodes']['mv_node_id'] = layers['nodes']['mv_node_id'].map(ids)
+    for column in ('from_node', 'to_node', 'open_at_node'):
+        layers['lines'][column] = layers['lines'][column].map(ids)
+    nodes, lines = maps.ring_paths(layers['nodes'], layers['lines'], 11, ring_id)
+    expected_nodes.index = expected_nodes.index.map(ids)
+    pd.testing.assert_frame_equal(nodes.sort_index(), expected_nodes.sort_index())
+    assert lines['half'].to_dict() == expected_lines['half'].to_dict()
+    points = maps._nop_points(maps._line_table(layers['lines']), maps._node_table(layers['nodes']))
+    assert set(points['node']) == {'node-6', 'node-9', 'node-24'}
+    assert isinstance(mvplot.plot_mv_grid_map(layers, 11), Figure)
+    assert isinstance(mvplot.plot_mv_ring(layers, 11, ring_id), Figure)

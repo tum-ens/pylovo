@@ -2,7 +2,7 @@
 
 Reads HV/MV substation candidates and their tags from the OSM schema of InfDB (``INFDB_OSM_SCHEMA``), the
 ratings of the transformers mapped inside their footprints, the eGon-data HV/MV substations and MV grid
-districts (``pylovo.egon_*`` of ``pylovo-import egon`` if filled, else the copies in ``INFDB_OPENDATA_SCHEMA``), and
+districts (``pylovo.egon_*`` if populated, else the copies in ``INFDB_OPENDATA_SCHEMA``), and
 the generating units of ``pylovo.mastr_units`` and ``pylovo.mastr_postcode_aggregates``
 (``pylovo-import mastr``). The rules that turn these rows into MV inputs are pure functions of
 :mod:`pylovo.mv_grid.substations` and :mod:`pylovo.mv_grid.inputs`.
@@ -259,7 +259,7 @@ class MvSourceMixin(BaseMixin):
     def _egon_table_or_raise(self, table: str) -> sql.Identifier:
         found = self._egon_table(table)
         if found is None:
-            raise _stage_error(f"no eGon-data table {table}: neither pylovo.{table} (pylovo-import egon) nor "
+            raise _stage_error(f"no eGon-data table {table}: neither populated pylovo.{table} nor "
                                f"{INFDB_OPENDATA_SCHEMA or '<INFDB_OPENDATA_SCHEMA>'}.{table} exists with rows; "
                                "use MV_SUBSTATIONS=osm and MV_SUPPLY_AREAS=routed")
         return found[1]
@@ -267,8 +267,8 @@ class MvSourceMixin(BaseMixin):
     def egon_available(self) -> tuple[bool, str]:
         """Whether the eGon-data substations and MV grid districts can be read, and from which schema.
 
-        The tables ``pylovo.egon_hvmv_substation`` and ``pylovo.egon_mv_grid_district`` (``pylovo-import egon``)
-        are used if they exist and hold rows, else the copies in ``INFDB_OPENDATA_SCHEMA``.
+        The tables ``pylovo.egon_hvmv_substation`` and ``pylovo.egon_mv_grid_district`` are used if they exist and
+        hold rows, else the copies in ``INFDB_OPENDATA_SCHEMA``.
 
         Returns:
             ``(True, schema)`` (``"pylovo"``, ``"opendata"``, or ``"<a> (substations), <b> (districts)"`` when they
@@ -278,8 +278,8 @@ class MvSourceMixin(BaseMixin):
         missing = [table for table, hit in found.items() if hit is None]
         if missing:
             where = f"pylovo or {INFDB_OPENDATA_SCHEMA}" if INFDB_OPENDATA_SCHEMA else "pylovo"
-            return False, (f"no rows in {', '.join(missing)} ({where}); run pylovo-import egon or provide the "
-                           "eGon-data copies in the opendata schema")
+            return False, (f"no rows in {', '.join(missing)} ({where}); populate the eGon-data tables or provide "
+                           "the eGon-data copies in the opendata schema")
         schemas = [found[table][0] for table in EGON_TABLES]
         if schemas[0] == schemas[1]:
             return True, schemas[0]

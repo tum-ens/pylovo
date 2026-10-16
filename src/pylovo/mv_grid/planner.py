@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import time
+from dataclasses import replace
 from types import ModuleType
 from typing import Any
 
@@ -108,6 +109,12 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     graph, topology, rings, solvers, electrical, metrics = (
         _module(name) for name in ("graph", "topology", "rings", "solvers", "electrical", "metrics"))
     params = inp.params
+    if not params.include_generation:
+        nodes = inp.nodes.loc[inp.nodes["kind"].astype(str) != "generator"].copy()
+        for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
+            if column in nodes.columns:
+                nodes[column] = 0.0
+        inp = replace(inp, nodes=nodes)
 
     rg = graph.build_run_graph(inp.edges, inp.nodes, long_connector_m=params.long_connector_m,
                                bridge_detour=params.bridge_detour)                       # §3.8

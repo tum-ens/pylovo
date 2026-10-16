@@ -337,6 +337,8 @@ def district_load_kw(inp: DistrictInput, plan: TopologyPlan | None = None) -> fl
 def _generation_rows(inp: DistrictInput, keys: Sequence[int]) -> list[dict[str, Any]]:
     """One static generator per node and technology group with generation (MV generators and LV-side sums)."""
     params = inp.params
+    if not params.include_generation:
+        return []
     nodes = inp.nodes
     rows = []
     for key in keys:
@@ -581,6 +583,8 @@ def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: flo
     """
     if case not in CASES:
         raise ValueError(f"unknown MV case {case!r}, expected one of {', '.join(CASES)}")
+    if case not in params.active_cases:
+        raise ValueError(f"case {case!r} was not requested; available cases: {', '.join(params.active_cases)}")
     out = copy.deepcopy(net)
     setpoint = float(params.busbar_vm_pu if busbar_vm_pu is None else busbar_vm_pu)
     if len(out.ext_grid) and "kind" in out.bus.columns:
@@ -656,13 +660,13 @@ def _case_result(net: pp.pandapowerNet, case: str, converged: bool) -> CaseResul
 
 
 def run_cases(net: pp.pandapowerNet, inp: DistrictInput, plan: TopologyPlan) -> dict[str, CaseResult]:
-    """Run the five snapshot cases on copies of the design net (Newton-Raphson; non-convergence is a result).
+    """Run the variant's requested cases on copies of the design net (non-convergence is a result).
 
     ``CaseResult.vm_pu`` is indexed by node key with the busbar first, ``loading_percent`` by line key (0 for lines
     out of service); a case that does not converge has NaN values and NaN slack powers.
     """
     results: dict[str, CaseResult] = {}
-    for case in CASES:
+    for case in inp.params.active_cases:
         current = case_net(net, case, inp.params)
         converged = _runpp(current)
         if not converged:
@@ -691,7 +695,7 @@ def check(cases: Mapping[str, CaseResult], inp: DistrictInput, plan: TopologyPla
     node_ring = {int(k): int(v) for k, v in plan.node_ring.items() if v is not None}
     line_ring = {int(line.key): (None if line.ring_id is None else int(line.ring_id)) for line in plan.lines}
     violations: list[Violation] = []
-    for case in CASES:
+    for case in params.active_cases:
         result = cases.get(case)
         if result is None:
             continue

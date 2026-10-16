@@ -406,6 +406,7 @@ class MvRunSummary:
     demand: dict = field(default_factory=dict)
     ties: dict = field(default_factory=dict)
     voltages: dict = field(default_factory=dict)
+    active_cases: tuple[str, ...] = CASES
 
     def describe(self) -> str:
         """The summary lines printed by the CLI; each starts with a check mark (variant done) or a cross."""
@@ -415,12 +416,13 @@ class MvRunSummary:
             counts.append(f"{self.grids_failed} failed")
         if self.grids_pending:
             counts.append(f"{self.grids_pending} pending")
+        mode = "generation included" if any(case.startswith("feed_in_") for case in self.active_cases) else "load-only"
         lines = [
             f"{mark} MV variant {self.variant_id} of version {self.version_id}: {self.grids_total} grids "
             f"({', '.join(counts)}), {self.n_stations:,} stations, {self.n_customers:,} customers, "
             f"{self.n_generators:,} generators, {self.circuit_km:,.0f} km (cable {100 * self.cable_share:.0f} %), "
             f"{self.n_violation_grids:,} grids with violations, {self.n_band_conflicts:,} band conflicts, "
-            f"{self.elapsed_s:,.0f} s"
+            f"{self.elapsed_s:,.0f} s, {mode} planning"
         ]
         if self.plz_missing:
             lines.append(f"✗ {len(self.plz_missing)} requested PLZ have no LV grids in version {self.version_id}: "

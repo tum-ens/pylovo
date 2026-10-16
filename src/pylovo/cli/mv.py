@@ -187,8 +187,14 @@ def _list(args: argparse.Namespace) -> int:
         km = row.get("circuit_km")
         km_text = f"{float(km):,.0f} km" if km is not None and km == km else "- km"
         stale_text = {True: ", stale", None: ", stale unknown"}.get(stale, "")
-        print(f"{'✓' if ok else '✗'} {row['version_id']}/{row['mv_variant_id']}: {row['status']}, "
+        electrical_violations = row.get("n_electrical_violations", 0)
+        violation_text = f"{electrical_violations} violation{'s' if electrical_violations != 1 else ''}"
+        generation_mode = "generation included" if bool(row.get("include_generation", True)) else "load-only"
+        print(f"{'✓' if ok else '✗'} {row['version_id']}/{row['mv_variant_id']}: generation {row['status']}, "
               f"{row['n_plz']} PLZ, {row['n_grids']} grids ({row['n_done']} done, {row['n_failed']} failed), "
+              f"{generation_mode}; electrical: {row.get('n_electrical_pass', 0)} pass, "
+              f"{violation_text}, "
+              f"{row.get('n_electrical_not_checked', 0)} not checked, "
               f"{km_text}{stale_text} - {row.get('mv_variant_comment') or ''}")
     return 0
 

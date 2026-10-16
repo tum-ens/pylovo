@@ -68,7 +68,8 @@ TIE_FLAGS: tuple[str, ...] = ("incomplete_district", "substation_outside_region"
 #: Columns of the tie table of :func:`plan_ties`.
 TIE_COLUMNS: tuple[str, ...] = (
     "from_node", "to_node", "from_grid", "to_grid", "from_ring", "to_ring", "from_feeder", "to_feeder", "kind",
-    "straight", "length_m", "street_m", "straight_m", "cable_m", "overhead_m", "std_type", "flags", "geometry",
+    "straight", "length_m", "street_m", "straight_m", "cable_m", "overhead_m", "parallel", "std_type", "flags",
+    "geometry",
 )
 #: Columns of the table of :func:`takeover_checks`.
 TAKEOVER_COLUMNS: tuple[str, ...] = (
@@ -357,7 +358,7 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             "to_feeder": int(feeder[t]), "kind": kind, "straight": bool(straight[p]), "length_m": float(length[p]),
             "street_m": float(street[p]), "straight_m": float(straight_m[p]),
             "cable_m": float(length[p]) if kind == "cable" else 0.0,
-            "overhead_m": float(length[p]) if kind == "overhead" else 0.0,
+            "overhead_m": float(length[p]) if kind == "overhead" else 0.0, "parallel": 1,
             "std_type": lt.name,
             "flags": _flags(grids, (int(grid[f]), int(grid[t]))), "geometry": geometry,
         })
@@ -521,6 +522,7 @@ def grid_tie_metrics(ties: pd.DataFrame, takeover: pd.DataFrame | None = None) -
         end), ``flags`` and ``takeover`` (the partner takes over this end's half-ring: ``ok``, ``converged``,
         ``drop_percent``, ``loading_percent``, ``error``; None without a check).
     """
+    parallel = _tie_parallel(ties)
     checks: dict[tuple[int, str], dict] = {}
     if takeover is not None and len(takeover):
         for rec in takeover.to_dict("records"):
@@ -537,14 +539,24 @@ def grid_tie_metrics(ties: pd.DataFrame, takeover: pd.DataFrame | None = None) -
             entry["ties"].append({
                 "ring_id": int(ring), "node": int(node), "partner_grid_id": int(pg), "partner_ring_id": int(pring),
                 "partner_node": int(pnode), "length_km": _round(float(tie.length_m) / 1000.0), "kind": tie.kind,
+                "parallel": int(parallel[t]),
                 "owner": side == "from", "open_here": side == "to", "flags": list(tie.flags),
                 "takeover": checks.get((t, side))})
             entry["n_ties"] += 1
-            entry["tie_km"] += float(tie.length_m) / 1000.0
+            entry["tie_km"] += float(tie.length_m) * parallel[t] / 1000.0
     for entry in out.values():
         entry["tie_km"] = _round(entry["tie_km"])
         entry["n_rings_with_tie"] = len({rec["ring_id"] for rec in entry["ties"]})
     return out
+
+
+def _tie_parallel(ties: pd.DataFrame) -> np.ndarray:
+    """Validated installed circuit count of each tie; older callers can omit the column."""
+    values = pd.to_numeric(ties["parallel"].fillna(1), errors="coerce") if "parallel" in ties else pd.Series(
+        np.ones(len(ties)))
+    if (~np.isfinite(values) | (values < 1) | (values % 1 != 0)).any():
+        raise ValueError("parallel must be a positive integer")
+    return values.to_numpy(dtype=int)
 
 
 def tie_summary(ties: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters",
@@ -575,8 +587,10 @@ def tie_summary(ties: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters",
         return float(pd.to_numeric(done[column], errors="coerce").fillna(0.0).sum()) if column in done.columns else 0.0
 
     n = int(len(ties))
-    tie_km = float(pd.to_numeric(ties["length_m"], errors="coerce").sum()) / 1000.0 if n else 0.0
+    parallel = _tie_parallel(ties)
     lengths = pd.to_numeric(ties["length_m"], errors="coerce") / 1000.0 if n else pd.Series(dtype=float)
+    circuit_lengths = lengths * parallel
+    tie_km = float(circuit_lengths.sum()) if n else 0.0
     circuit_km, n_rings = total("circuit_km"), int(total("n_rings"))
     n_stations, n_supply = int(total("n_stations")), int(total("n_stations") + total("n_customers"))
     rings_with_tie = len({(int(g), int(r)) for g, r in zip(ties["from_grid"], ties["from_ring"])}
@@ -585,11 +599,12 @@ def tie_summary(ties: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters",
     out: dict[str, Any] = {
         "n_ties": n,
         "tie_km": _round(tie_km),
-        "tie_cable_km": _round(float(pd.to_numeric(ties["cable_m"], errors="coerce").sum()) / 1000.0 if n else 0.0),
-        "tie_overhead_km": _round(float(pd.to_numeric(ties["overhead_m"], errors="coerce").sum()) / 1000.0
+        "tie_cable_km": _round(float((pd.to_numeric(ties["cable_m"], errors="coerce") * parallel).sum()) / 1000.0
+                               if n else 0.0),
+        "tie_overhead_km": _round(float((pd.to_numeric(ties["overhead_m"], errors="coerce") * parallel).sum()) / 1000.0
                                   if n else 0.0),
-        "tie_km_mean": _round(float(lengths.mean())) if n else None,
-        "tie_km_max": _round(float(lengths.max())) if n else None,
+        "tie_km_mean": _round(float(circuit_lengths.mean())) if n else None,
+        "tie_km_max": _round(float(circuit_lengths.max())) if n else None,
         "n_district_pairs": len({(int(a), int(b)) for a, b in zip(ties["from_grid"], ties["to_grid"])}) if n else 0,
         "circuit_km": _round(circuit_km),
         "tie_share_of_circuit_km": _round(tie_km / circuit_km, 6) if circuit_km > 0 else None,

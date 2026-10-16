@@ -10,13 +10,14 @@ plotting module.
 - ``nodes``: ``node_id``, ``kind`` (``busbar``, ``station``, ``customer``, ``generator`` or ``joint``), ``x``, ``y``
   (metres in a projected CRS, TARGET_EPSG for pylovo). Optional: ``area_class`` (``urban`` or ``rural``),
   ``n_transformers`` and ``transformer_mva`` (HV/MV units of a busbar), ``sn_kva`` (station rating).
-- ``lines``: ``line_id``, ``from_node``, ``to_node``, ``length_km`` (circuit length, parallel cables count once),
+- ``lines``: ``line_id``, ``from_node``, ``to_node``, ``length_km`` (length of one line route),
   ``kind`` (``cable``, ``overhead`` or ``mixed``), ``cable_km``, ``overhead_km``, ``normally_open``, ``parallel``.
   Optional: ``open_at_node`` (the end of a normally-open line that holds the open switch) and ``role``
   (``ring``, ``stub``, ``dedicated``, ``generator`` or ``tie``; ``tie`` marks a tie to another substation).
 
 ``cable_km`` and ``overhead_km`` default to the line length by ``kind``; ``normally_open`` defaults to False and
-``parallel`` to 1. ``normalise_tables`` checks the format and fills these defaults.
+``parallel`` to 1. Inventory totals multiply each line length by ``parallel``; geometric feeder and ring
+distances use each route once. ``normalise_tables`` checks the format and fills these defaults.
 
 **Feeders, rings and stubs** (DESIGN section 7.2). Remove the busbars and every normally-open line (NOP line): the
 connected components of the rest are the feeders; the closed lines between a busbar and a feeder are its outlets. A
@@ -400,7 +401,10 @@ def normalise_tables(nodes: pd.DataFrame, lines: pd.DataFrame) -> tuple[pd.DataF
     lines["normally_open"] = lines["normally_open"].fillna(False).astype(bool)
     if "parallel" not in lines.columns:
         lines["parallel"] = 1
-    lines["parallel"] = lines["parallel"].fillna(1).astype(int)
+    parallel = pd.to_numeric(lines["parallel"].fillna(1), errors="coerce")
+    if (~np.isfinite(parallel) | (parallel < 1) | (parallel % 1 != 0)).any():
+        raise ValueError("parallel must be a positive integer")
+    lines["parallel"] = parallel.astype(int)
     if "open_at_node" not in lines.columns:
         lines["open_at_node"] = None
     lines["open_at_node"] = lines["open_at_node"].astype(object).where(lines["open_at_node"].notna(), None)
@@ -652,8 +656,8 @@ def _analyse(nodes: pd.DataFrame, lines: pd.DataFrame) -> _Analysis:
             "stub_km": stub_km,
             "feeder_km_incl_stubs": main_km + nop_km + stub_km,
             "length_km": float(own["length_km"].sum()),
-            "cable_km": float(own["cable_km"].sum()),
-            "overhead_km": float(own["overhead_km"].sum()),
+            "cable_km": float((own["cable_km"] * own["parallel"]).sum()),
+            "overhead_km": float((own["overhead_km"] * own["parallel"]).sum()),
             "two_leg_km": float(busbar_nops["length_km"].sum()),
             "n_nops": int(len(own_nop)),
             "has_tie": "tie" in feeder_flags[f],
@@ -729,7 +733,8 @@ def _analyse(nodes: pd.DataFrame, lines: pd.DataFrame) -> _Analysis:
         "n_external_lines": int(len(external)),
         "n_busbar_links": len(busbar_links),
         "n_ties": int(len(tie_lines) + len(external_ties)),
-        "tie_km": float(tie_lines["length_km"].sum() + (external_ties["length_km"].sum() if len(external) else 0.0)),
+        "tie_km": float((tie_lines["length_km"] * tie_lines["parallel"]).sum()
+                        + (external_ties["length_km"] * external_ties["parallel"]).sum()),
     }
     return _Analysis(nodes, lines, feeders, rings, roles_df, diagnostics)
 
@@ -860,7 +865,8 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
     Per-substation values divide by the number of busbars. Ring statistics use rings and open meshes (not
     ``two_leg`` feeders), feeder statistics the supplied feeders with at least one supply point. Ties (NOP lines
     between feeders of different busbars, lines with role ``tie`` and lines to nodes outside the table) are
-    excluded from ``circuit_km`` and reported as ``n_ties`` and ``tie_km``.
+    excluded from ``circuit_km`` and reported as ``n_ties`` and ``tie_km``. Circuit and material lengths
+    count installed parallel circuits; ``route_km`` sums each included line once, including open lines.
 
     Args:
         nodes: Generic node table.
@@ -870,7 +876,7 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
         A flat, JSON-safe dict (NaN becomes None): counts by node kind, ``n_hv_mv_transformers`` (with an
         ``n_transformers`` node column), line and NOP counts, feeder and ring counts by kind,
         ``n_rings_with_tie`` and ``tie_ring_share`` (rings and open meshes with a tie end), ``n_feeder_bays``,
-        ``feeders_per_substation``, ``circuit_km``, ``cable_km``, ``overhead_km``, ``cable_share``,
+        ``feeders_per_substation``, ``route_km``, ``circuit_km``, ``cable_km``, ``overhead_km``, ``cable_share``,
         ``circuit_km_per_substation``, ``supply_points_per_substation``, ``km_per_supply_point``,
         ``km_per_station``, statistics (``_mean``, ``_median``, ``_min``, ``_max``) of ``ring_members``,
         ``ring_members_incl_stubs``, ``ring_km``, ``feeder_km``, ``feeder_km_incl_stubs`` and
@@ -884,9 +890,10 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
     n_busbars = kinds.get("busbar", 0)
     n_supply = kinds.get("station", 0) + kinds.get("customer", 0)
     circuits = internal[internal["nop_class"] != "tie"]
-    circuit_km = float(circuits["length_km"].sum())
-    cable_km = float(circuits["cable_km"].sum())
-    overhead_km = float(circuits["overhead_km"].sum())
+    route_km = float(circuits["length_km"].sum())
+    circuit_km = float((circuits["length_km"] * circuits["parallel"]).sum())
+    cable_km = float((circuits["cable_km"] * circuits["parallel"]).sum())
+    overhead_km = float((circuits["overhead_km"] * circuits["parallel"]).sum())
     feeders, rings = a.feeders, a.rings
     supplied = feeders[feeders["busbar"].notna()]
     with_supply = supplied[supplied["feeder_supply_points"] > 0]
@@ -921,6 +928,7 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
         "n_closed_rings": int((rings["kind"] == "closed_ring").sum()),
         "n_radial": int((rings["kind"] == "radial").sum()),
         "n_islands": int((rings["kind"] == "island").sum()),
+        "route_km": route_km,
         "circuit_km": circuit_km,
         "cable_km": cable_km,
         "overhead_km": overhead_km,
@@ -958,19 +966,20 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
 def region_metrics(lines_gdf: Any, region_geom: Any, nodes: pd.DataFrame | None = None) -> dict:
     """Circuit length per area of a region, with the line geometries clipped to the region (section 23c style).
 
-    Each line contributes ``length_km`` times the share of its geometry inside the region, so detour factors of
-    straight spans and the cable/overhead split of mixed lines are kept. Ties and normally-open lines count: the
-    published circuit length contains every circuit.
+    Each line contributes ``length_km`` times its ``parallel`` count and the share of its geometry inside the
+    region, so detour factors and the cable/overhead split are kept. Ties and normally-open lines count: the
+    regional installed inventory includes every circuit whose geometry is inside the region.
 
     Args:
         lines_gdf: GeoDataFrame of lines in a projected CRS (metres); ``length_km`` (default: geometry length),
-            ``cable_km`` and ``overhead_km`` or ``kind`` (default: cable) are used when present.
+            ``cable_km`` and ``overhead_km`` or ``kind`` (default: cable) are used when present;
+            ``parallel`` defaults to 1 and must be a positive integer.
         region_geom: Region polygon (shapely geometry in the CRS of ``lines_gdf``, or a GeoSeries or GeoDataFrame,
             reprojected to the CRS of ``lines_gdf`` and dissolved).
         nodes: Optional generic node table; its stations and customers inside the region give the supply points.
 
     Returns:
-        JSON-safe dict: ``region_area_km2``, ``circuit_km_in_region``, ``cable_km_in_region``,
+        JSON-safe dict: ``region_area_km2``, ``route_km_in_region``, ``circuit_km_in_region``, ``cable_km_in_region``,
         ``overhead_km_in_region``, ``km_per_km2``, ``cable_share``, and with ``nodes`` also
         ``n_supply_points_in_region``, ``n_stations_in_region`` and ``km_per_supply_point``.
 
@@ -1004,15 +1013,21 @@ def region_metrics(lines_gdf: Any, region_geom: Any, nodes: pd.DataFrame | None 
         kinds = gdf["kind"].to_numpy() if "kind" in gdf.columns else np.full(len(gdf), "cable")
         cable = np.where(kinds == "overhead", 0.0, length_km)
         overhead = np.where(kinds == "overhead", length_km, 0.0)
+    parallel = pd.to_numeric(gdf["parallel"].fillna(1), errors="coerce") if "parallel" in gdf else pd.Series(
+        np.ones(len(gdf)))
+    if (~np.isfinite(parallel) | (parallel < 1) | (parallel % 1 != 0)).any():
+        raise ValueError("parallel must be a positive integer")
+    weighted_share = share * parallel.to_numpy(dtype=float)
     area_km2 = float(region.area) / 1e6
-    circuit = float(np.sum(length_km * share))
+    circuit = float(np.sum(length_km * weighted_share))
     out: dict[str, Any] = {
         "region_area_km2": area_km2,
+        "route_km_in_region": float(np.sum(length_km * share)),
         "circuit_km_in_region": circuit,
-        "cable_km_in_region": float(np.sum(cable * share)),
-        "overhead_km_in_region": float(np.sum(overhead * share)),
+        "cable_km_in_region": float(np.sum(cable * weighted_share)),
+        "overhead_km_in_region": float(np.sum(overhead * weighted_share)),
         "km_per_km2": _ratio(circuit, area_km2),
-        "cable_share": _ratio(float(np.sum(cable * share)), circuit),
+        "cable_share": _ratio(float(np.sum(cable * weighted_share)), circuit),
     }
     if nodes is not None:
         pts = nodes[nodes["kind"].isin(SUPPLY_POINT_KINDS)]

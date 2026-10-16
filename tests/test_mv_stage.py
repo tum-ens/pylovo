@@ -580,7 +580,8 @@ def region_modules(monkeypatch):
 def test_region_step_writes_substations_nodes_and_districts(region_modules):
     db = RegionDb()
     warnings: list[str] = []
-    info = stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1", MvParameters(), LV,
+    info = stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1",
+                              MvParameters(include_generation=True), LV,
                               None, stage.logging.getLogger("t"), warnings)
     # LV-side points go to lv_side_targets; only treatment 'node' becomes a generator node
     assert db.calls["lv_side_targets"][0][0]["mastr_connection_id"].tolist() == ["SEL2"]
@@ -590,6 +591,8 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert region_modules["upsize_lv"] is LV                              # then overloaded stations are upsized
     nodes = db.inserted_nodes
     assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer", "generator"]
+
+
     # the customer moves to its street transfer point
     update = db.calls["update_node_attachments"][0][0].set_index("mv_node_id")
     assert update.loc[106, ["x", "y", "attach_offset_m"]].tolist() == [31.0, 0.0, 0.0]
@@ -614,3 +617,25 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert (records[900]["n_stations"], records[900]["n_customers"]) == (2, 1)
     assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1, "generator": 1}}
     assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])
+
+
+def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
+    db = RegionDb()
+
+    def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity, params):
+        return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), iterations=1,
+                                     overloaded=[], bridged=np.zeros(len(nodes), dtype=bool))
+
+    monkeypatch.setattr(sys.modules["pylovo.mv_grid.districts"], "routed_assignment", routed)
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("load-only MV planning accessed MaStR")
+
+    for name in ("mastr_units_in_region", "lv_side_targets", "mastr_postcode_aggregates",
+                 "station_building_counts"):
+        setattr(db, name, unexpected)
+    stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1", MvParameters(), LV,
+                       None, stage.logging.getLogger("t"), [])
+    assert db.inserted_nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
+    assert region_modules["generators"].empty
+    assert (region_modules["stations"][["gen_solar_kw", "gen_wind_kw", "gen_other_kw"]] == 0).all().all()

@@ -329,15 +329,26 @@ def test_plot_readers_never_read_the_net(monkeypatch):
 
 
 def test_list_variants_flags_stale_fingerprints():
-    columns = ["version_id", "mv_variant_id", "mv_variant_comment", "status", "plz_list", "graph_id",
-               "lv_fingerprint", "created_at", "finished_at", "n_grids", "n_done", "n_failed", "n_stations",
-               "circuit_km", "cable_share"]
-    rows = [("mv1", "d0", "a", "done", [1, 2], "g", {"n_grids": 3}, None, None, 2, 2, 0, 10, 4.0, 0.5),
-            ("mv1", "d1", "b", "done", [1], "g", {"n_grids": 1}, None, None, 1, 1, 0, 3, 1.0, 0.5)]
+    columns = ["version_id", "mv_variant_id", "mv_variant_comment", "status", "include_generation", "plz_list",
+               "graph_id", "lv_fingerprint", "created_at", "finished_at", "n_grids", "n_done", "n_failed",
+               "n_stations",
+               "circuit_km", "cable_share", "n_electrical_pass", "n_electrical_violations",
+               "n_electrical_not_checked"]
+    rows = [("mv1", "d0", "a", "done", False, [1, 2], "g", {"n_grids": 3}, None, None, 2, 2, 0, 10,
+             4.0, 0.5, 1, 1, 0),
+            ("mv1", "d1", "b", "done", True, [1], "g", {"n_grids": 1}, None, None, 1, 1, 0, 3,
+             1.0, 0.5, 0, 0, 1)]
     client = make_client([("LEFT JOIN pylovo.mv_variant_stats s", (columns, rows, 2))])
     client.lv_fingerprint = lambda version_id, plz: {"n_grids": 3}
     df = client.list_variants("mv1")
     assert df["stale"].tolist() == [False, True] and df["n_plz"].tolist() == [2, 1]
+    assert df[["n_electrical_pass", "n_electrical_violations", "n_electrical_not_checked"]].values.tolist() == [
+        [1, 1, 0], [0, 0, 1]]
+    query, params = client.cur.sql("LEFT JOIN pylovo.mv_variant_stats s")[0]
+    assert "power_flow_status = 'converged'" in query and "n_electrical_not_checked" in query
+    assert "COALESCE((v.mv_parameters #>> '{generation,include_generation}')::boolean, TRUE)" in query
+    assert df["include_generation"].tolist() == [False, True]  # false is new; true is the legacy fallback
+    assert params["violations"] == ["voltage_violation", "loading_violation", "not_converged"]
     assert client.cur.sql("SAVEPOINT mv_list_fingerprint")
 
 
@@ -421,16 +432,33 @@ def test_save_district_writes_one_transaction(recorded):
     grid_sql, grid_params = client.cur.sql("UPDATE pylovo.mv_grid SET status = 'done'")[0]
     assert "metrics = %(metrics)s::jsonb" in grid_sql and grid_params["net"] is None
     assert grid_params["n_stations"] == 3 and grid_params["n_joints"] == 1 and grid_params["n_rings"] == 1
-    assert grid_params["circuit_km"] == pytest.approx(0.35) and grid_params["overhead_km"] == pytest.approx(0.1)
+    assert grid_params["circuit_km"] == pytest.approx(0.351) and grid_params["overhead_km"] == pytest.approx(0.1)
     assert grid_params["max_voltage_drop_percent"] == pytest.approx(3.5)
     assert grid_params["max_voltage_drop_n1_percent"] == pytest.approx(7.0)
     assert grid_params["max_voltage_rise_percent"] == pytest.approx(1.5)
     assert grid_params["n_band_conflicts"] == 1 and grid_params["n_tap_limit"] == 1
     assert grid_params["sum_station_kva"] == 750.0 and grid_params["runtime_s"] == 12.5
     assert json.loads(grid_params["metrics"])["violations"][0]["key"] == 12
+    assert json.loads(grid_params["metrics"])["route_km"] == pytest.approx(0.351)
     assert grid_params["g"] == 6 and grid_params["v"] == "mv1" and grid_params["var"] == "d0"
     sub_sql, sub_params = client.cur.sql("UPDATE pylovo.mv_substation s SET n_transformers")[0]
     assert sub_params["n"] == 2 and sub_params["mva"] == 25.0 and sub_params["n0"] == 10.0
+
+
+def test_save_district_parallel_inventory_preserves_line_lengths(recorded):
+    plan = district_plan()
+    plan.topology.lines[0].parallel = 2
+    plan.topology.lines[2].parallel = 3  # normally-open minimum-length switch section
+    client = district_client()
+    client.save_district("mv1", "d0", 6, plan, 12.5)
+    _, values, _ = next(call for call in recorded if call[0].startswith("INSERT INTO pylovo.mv_line"))
+    assert values[0][11:14] == (2, 0.1, 0.1)
+    assert values[2][11:14] == (3, 0.001, 0.0)
+    _, grid = client.cur.sql("UPDATE pylovo.mv_grid SET status = 'done'")[0]
+    assert grid["circuit_km"] == pytest.approx(0.453)
+    assert grid["cable_km"] == pytest.approx(0.35)
+    assert grid["overhead_km"] == pytest.approx(0.1)
+    assert json.loads(grid["metrics"])["route_km"] == pytest.approx(0.351)
 
 
 def test_district_voltages_are_set_and_kept_by_the_district_result(recorded):

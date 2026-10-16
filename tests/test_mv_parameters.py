@@ -43,9 +43,9 @@ LINE_TYPES = {
     "48-AL1/8-ST1A 20.0": LineType("48-AL1/8-ST1A 20.0", "overhead", 20.0, 0.5939, 0.372, 9.5, 0.21),
     "48-AL1/8-ST1A 10.0": LineType("48-AL1/8-ST1A 10.0", "overhead", 10.0, 0.5939, 0.35, 10.1, 0.21),
 }
-#: The defaults: the most used conductors of German MV grids (equipment.DEFAULT_LINE_TYPES).
-DEFAULT_TYPES = {20.0: ("NA2XS2Y 1x150 RM/25 12/20 kV", "48-AL1/8-ST1A 20.0"),
-                 10.0: ("NA2XS2Y 1x150 RM/25 6/10 kV", "48-AL1/8-ST1A 10.0")}
+#: The starting conductors of the MV planner (equipment.DEFAULT_LINE_TYPES).
+DEFAULT_TYPES = {20.0: ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0"),
+                 10.0: ("NA2XS2Y 1x240 RM/25 6/10 kV", "122-AL1/20-ST1A 10.0")}
 
 
 def fake_hv_mv_type(sn_mva: float, vn_lv_kv: float) -> HvMvType:
@@ -101,7 +101,7 @@ def record(item) -> dict:
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 3,
+    "schema": 1, "mv_stage_version": 4,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
@@ -119,21 +119,21 @@ EXPECTED_SNAPSHOT = {
                  "stub_max_length_m": 2000.0, "stub_min_offset_m": 100.0, "loop_in_max_offset_m": 100.0,
                  "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0, "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 4},
-    "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x150 RM/25 12/20 kV"]),
-                  "overhead": record(LINE_TYPES["48-AL1/8-ST1A 20.0"]),
+    "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]),
+                  "overhead": record(LINE_TYPES["122-AL1/20-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
                   "hv_mv_types": [record(fake_hv_mv_type(s, 20.0)) for s in (25.0, 31.5, 40.0, 63.0)],
-                  "cable_10kv": record(LINE_TYPES["NA2XS2Y 1x150 RM/25 6/10 kV"]),
-                  "overhead_10kv": record(LINE_TYPES["48-AL1/8-ST1A 10.0"]),
+                  "cable_10kv": record(LINE_TYPES["NA2XS2Y 1x240 RM/25 6/10 kV"]),
+                  "overhead_10kv": record(LINE_TYPES["122-AL1/20-ST1A 10.0"]),
                   "hv_mv_types_10kv": [record(fake_hv_mv_type(s, 10.0)) for s in (25.0, 31.5, 40.0, 63.0)]},
     "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0,
               "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0,
               "busbar_customer_max_m": 1000.0},
-    "generation": {"lv_side_kw": 200.0, "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
+    "generation": {"include_generation": False, "lv_side_kw": 200.0, "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
                    "mv_gen_cos_phi": 0.95, "lv_pv_cos_phi": 1.0, "include_storage": False},
     "cases": {"feed_in_wind": {"load_p": 0.1, "load_q": 0.123, "wind": 1.0, "solar": 0.8, "other": 1.0},
               "feed_in_pv": {"load_p": 0.1, "load_q": 0.123, "wind": 0.85, "solar": 0.95, "other": 1.0}},
-    "taps": {"rule": "centre_load_feed_in", "step_percent": 2.5, "min": -2, "max": 2, "lv_design_tolerance_pu": 0.002,
+    "taps": {"rule": "load_only", "step_percent": 2.5, "min": -2, "max": 2, "lv_design_tolerance_pu": 0.002,
              "lv_feed_in_max_pu": 1.07},
     "coupling": {"merged_scaling": "feeder_category", "lv_pv_at": "LVbus 1"},
 }
@@ -147,7 +147,7 @@ def json_round_trip(value):
 
 
 def test_specs_have_known_kinds_and_canonical_defaults():
-    assert len(YAML_KEYS) == 16 and len(CONSTANTS) >= 50
+    assert len(YAML_KEYS) == 17 and len(CONSTANTS) >= 50
     assert not set(YAML_KEYS) & set(CONSTANTS)
     for spec in (*YAML_KEYS.values(), *CONSTANTS.values()):
         assert spec.kind in options.KINDS, spec.name
@@ -354,12 +354,12 @@ def test_replace_raw_takes_yaml_keys_and_constant_names():
 def test_types_are_resolved_lazily_and_cached(equipment):
     params = MvParameters()
     assert equipment.calls == []
-    assert params.cable == LINE_TYPES["NA2XS2Y 1x150 RM/25 12/20 kV"]
-    assert params.overhead == LINE_TYPES["48-AL1/8-ST1A 20.0"]
+    assert params.cable == LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]
+    assert params.overhead == LINE_TYPES["122-AL1/20-ST1A 20.0"]
     assert [t.sn_mva for t in params.hv_mv_types] == [25.0, 31.5, 40.0, 63.0]
     assert [t.interpolated for t in params.hv_mv_types] == [False, True, False, False]
     params.check_types()                                               # auto: the 10 kV types too
-    assert params.cable_at(10.0) == LINE_TYPES["NA2XS2Y 1x150 RM/25 6/10 kV"]
+    assert params.cable_at(10.0) == LINE_TYPES["NA2XS2Y 1x240 RM/25 6/10 kV"]
     calls = len(equipment.calls)
     params.check_types()
     assert len(equipment.calls) == calls                               # cached
@@ -367,7 +367,7 @@ def test_types_are_resolved_lazily_and_cached(equipment):
     same.check_types()
     assert len(equipment.calls) == calls                               # unrelated change keeps the types
     ten = params.replace(vn_kv=10)
-    assert ten.cable.name == "NA2XS2Y 1x150 RM/25 6/10 kV" and ten.overhead.name == "48-AL1/8-ST1A 10.0"
+    assert ten.cable.name == "NA2XS2Y 1x240 RM/25 6/10 kV" and ten.overhead.name == "122-AL1/20-ST1A 10.0"
     assert ten.hv_mv_types[0].vn_lv_kv == 10.0
 
 
@@ -400,10 +400,9 @@ def test_snapshot_layout(equipment):
 
 
 def test_snapshot_round_trip(equipment):
-    # the former default types stay reachable through the keys (the variant sq of the first design, 1x150 and
-    # 70-AL1, became nearly redundant when 1x150 and 48-AL1 became the defaults)
-    params = MvParameters(variant_id="hv", comment="heavier conductors").replace_raw({
-        "MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "122-AL1/20-ST1A 20.0",
+    # The historical, narrower conductors remain selectable and round-trip through a stored snapshot.
+    params = MvParameters(variant_id="hv", comment="historical conductors").replace_raw({
+        "MV_STANDARD_CABLE": "NA2XS2Y 1x150 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "48-AL1/8-ST1A 20.0",
         "MV_STUBS": "none", "MV_INTERCONNECTION": "ties", "local_search_rounds": 0, "hv_mv_sizes_mva": [40, 25],
         "generator_fallback_kw": {"lv": 50, "mvlv": 150, "mv": 5000, "hvmv": 15000}, "lv_pv_cos_phi": 0.95,
         "graph_excluded_klasse": ["Bundesautobahn", "Bundesstraße"], "customer_min_mv_kw": 300,
@@ -411,7 +410,7 @@ def test_snapshot_round_trip(equipment):
     stored = json_round_trip(params.to_snapshot())
     assert (stored["loads"]["customer_min_mv_kw"], stored["loads"]["customer_hall_min_footprint_m2"]) == (300.0,
                                                                                                         1500.0)
-    rebuilt = MvParameters.from_snapshot("hv", "heavier conductors", stored)
+    rebuilt = MvParameters.from_snapshot("hv", "historical conductors", stored)
     assert rebuilt == params
     assert rebuilt.to_snapshot() == stored
     assert rebuilt.cable == params.cable and rebuilt.hv_mv_types == params.hv_mv_types
@@ -428,7 +427,7 @@ def test_from_snapshot_keeps_the_stored_types(equipment):
     assert rebuilt.cable.r_ohm_per_km == 0.5 and rebuilt.to_snapshot() == stored
     assert len(equipment.calls) == calls                               # nothing resolved again
     assert rebuilt.replace(stubs="none").cable.r_ohm_per_km == 0.5
-    assert rebuilt.replace(vn_kv=10).cable.name == "NA2XS2Y 1x150 RM/25 6/10 kV"
+    assert rebuilt.replace(vn_kv=10).cable.name == "NA2XS2Y 1x240 RM/25 6/10 kV"
     stored["equipment"]["cable_10kv"]["r_ohm_per_km"] = 0.7          # the 10 kV types are stored as well
     assert MvParameters.from_snapshot("1", "default", stored).cable_at(10.0).r_ohm_per_km == 0.7
     del stored["equipment"]["hv_mv_types_10kv"]
@@ -459,6 +458,25 @@ def test_older_fixed_voltage_snapshots_take_the_legacy_threshold(equipment):
     differences, _ = compare_snapshots(older, json_round_trip(MvParameters().to_snapshot()),
                                        added_later=MV_ADDED_LATER)
     assert "voltage.vn_kv" in differences and "equipment.cable_10kv.name" in differences
+
+
+def test_generation_mode_defaults_to_load_only_and_legacy_snapshots_remain_full(equipment):
+    current = MvParameters()
+    assert current.active_cases == ("load", "n1a", "n1b")
+    assert current.to_snapshot()["generation"]["include_generation"] is False
+    assert current.to_snapshot()["taps"]["rule"] == "load_only"
+
+    full = MvParameters(include_generation=True, cable_type="NA2XS2Y 1x150 RM/25 12/20 kV",
+                        overhead_type="48-AL1/8-ST1A 20.0")
+    assert full.active_cases == ("load", "n1a", "n1b", "feed_in_wind", "feed_in_pv")
+    legacy = json_round_trip(full.to_snapshot())
+    del legacy["generation"]["include_generation"]
+    legacy["mv_stage_version"] = 3
+    restored = MvParameters.from_snapshot("old", "old", legacy)
+    assert restored.include_generation is True and restored.active_cases == full.active_cases
+    assert restored.cable.name == "NA2XS2Y 1x150 RM/25 12/20 kV"
+    assert restored.overhead.name == "48-AL1/8-ST1A 20.0"
+    assert restored.to_snapshot()["taps"]["rule"] == "centre_load_feed_in"
 
 
 def test_customer_rules_of_older_snapshots_take_their_legacy_values(equipment):
@@ -508,12 +526,12 @@ def test_snapshot_with_the_pandapower_types():
         pytest.skip(f"pylovo.mv_grid.equipment not available: {exc!r}")
     params = MvParameters()
     cable, overhead = params.cable, params.overhead
-    assert cable.name == "NA2XS2Y 1x150 RM/25 12/20 kV" and cable.kind == "cable"
+    assert cable.name == "NA2XS2Y 1x240 RM/25 12/20 kV" and cable.kind == "cable"
     assert (cable.r_ohm_per_km, cable.x_ohm_per_km, cable.c_nf_per_km, cable.max_i_ka) == pytest.approx(
-        (0.206, 0.116, 250.0, 0.319))
-    assert overhead.name == "48-AL1/8-ST1A 20.0" and overhead.kind == "overhead"
+        (0.122, 0.112, 304.0, 0.421))
+    assert overhead.name == "122-AL1/20-ST1A 20.0" and overhead.kind == "overhead"
     assert (overhead.r_ohm_per_km, overhead.x_ohm_per_km, overhead.c_nf_per_km, overhead.max_i_ka) == pytest.approx(
-        (0.5939, 0.372, 9.5, 0.21))
+        (0.2376, 0.344, 10.3, 0.41))
     assert sorted(t.sn_mva for t in params.hv_mv_types) == [25.0, 31.5, 40.0, 63.0]
     assert [t.interpolated for t in params.hv_mv_types if t.sn_mva == 31.5] == [True]
     stored = json_round_trip(params.to_snapshot())
@@ -671,11 +689,15 @@ def summary(**changes) -> MvRunSummary:
 def test_run_summary_lines():
     text = summary().describe()
     assert text == ("✓ MV variant d1 of version mv1: 42 grids (42 done), 4,903 stations, 61 customers, "
-                    "37 generators, 4,230 km (cable 66 %), 2 grids with violations, 118 band conflicts, 312 s")
+                    "37 generators, 4,230 km (cable 66 %), 2 grids with violations, 118 band conflicts, 312 s, "
+                    "generation included planning")
     partial = summary(status="partial", grids_done=39, grids_failed=1, grids_pending=2, plz_missing=[3],
                       warnings=["ties not implemented"]).describe().splitlines()
     assert partial[0].startswith("✗ MV variant d1 of version mv1: 42 grids (39 done, 1 failed, 2 pending)")
     assert partial[1:] == ["✗ 1 requested PLZ have no LV grids in version mv1: 3", "✗ ties not implemented"]
+    load_only = summary(active_cases=("load", "n1a", "n1b"))
+    assert "load-only planning" in load_only.describe()
+    assert load_only.to_dict()["active_cases"] == ["load", "n1a", "n1b"]
 
 
 def test_run_summary_prints_voltages_ties_and_the_demand_anchor():

@@ -26,7 +26,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from pylovo.mv_grid.model import CATEGORIES, HvMvType, LineType
+from pylovo.mv_grid.model import CASES, CATEGORIES, HvMvType, LineType
 from pylovo.mv_grid.options import (
     AUTO_VOLTAGE,
     CONSTANTS,
@@ -50,7 +50,6 @@ SNAPSHOT_SCHEMA: int = 1
 FIXED_RULES: dict[tuple[str, ...], Any] = {
     ("loads", "customer_peak"): "sim_factor_times_installed",
     ("generation", "include_storage"): False,
-    ("taps", "rule"): "centre_load_feed_in",
     ("coupling", "merged_scaling"): "feeder_category",
     ("coupling", "lv_pv_at"): "LVbus 1",
 }
@@ -101,6 +100,7 @@ class MvParameters:
 
     variant_id: str = _y("MV_VARIANT_ID")                   # MV_VARIANT_ID
     comment: str = _y("MV_VARIANT_COMMENT")                 # MV_VARIANT_COMMENT
+    include_generation: bool = _y("MV_INCLUDE_GENERATION")  # MV_INCLUDE_GENERATION
     vn_kv: float | str = _y("MV_NOMINAL_VOLTAGE_KV")        # MV_NOMINAL_VOLTAGE_KV: 20.0, 10.0 or "auto"
     substations: str = _y("MV_SUBSTATIONS")                 # MV_SUBSTATIONS
     supply_areas: str = _y("MV_SUPPLY_AREAS")               # MV_SUPPLY_AREAS
@@ -288,6 +288,11 @@ class MvParameters:
         """The nominal voltages the districts of the variant can have: ``(20.0, 10.0)`` with ``auto``, else one."""
         return (AUTO_BASE_KV, AUTO_DENSE_KV) if self.auto_voltage else (float(self.vn_kv),)
 
+    @property
+    def active_cases(self) -> tuple[str, ...]:
+        """The electrical planning cases selected by this variant."""
+        return CASES if self.include_generation else CASES[:3]
+
     def district_kv(self, density_mva_km2: float | None) -> float:
         """The nominal voltage of a district with the given installed density in MVA/km² (DESIGN §4.6).
 
@@ -397,6 +402,7 @@ class MvParameters:
                 _place(snapshot, (*path[:-1], path[-1] + suffix), value)
         for path, value in FIXED_RULES.items():
             _place(snapshot, path, value)
+        _place(snapshot, ("taps", "rule"), "centre_load_feed_in" if self.include_generation else "load_only")
         return snapshot
 
 

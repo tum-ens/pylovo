@@ -236,7 +236,7 @@ def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0, vn_kv
 def tie_row(**changes) -> dict:
     row = {"from_node": 102, "to_node": 202, "from_grid": 1, "to_grid": 2, "from_ring": 0, "to_ring": 0,
            "from_feeder": 0, "to_feeder": 0, "kind": "cable", "straight": False, "length_m": 800.0,
-           "street_m": 800.0, "straight_m": 700.0, "cable_m": 800.0, "overhead_m": 0.0,
+           "street_m": 800.0, "straight_m": 700.0, "cable_m": 800.0, "overhead_m": 0.0, "parallel": 1,
            "std_type": PARAMS.cable.name, "flags": [], "geometry": shapely.LineString([(0, 0), (700, 0)])}
     row.update(changes)
     return row
@@ -266,10 +266,10 @@ def test_ties_take_the_line_types_of_their_districts_voltage(monkeypatch):
     assert PARAMS.auto_voltage
     grids = grids_frame((1, 10.0), (2, 10.0))
     rural = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 1800.0)), grids, LINE, PARAMS)
-    assert rural.loc[0, "kind"] == "overhead" and rural.loc[0, "std_type"] == "48-AL1/8-ST1A 10.0"
+    assert rural.loc[0, "kind"] == "overhead" and rural.loc[0, "std_type"] == "122-AL1/20-ST1A 10.0"
     urban = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0, area="urban"), node(21, 2, 0, 1800.0)), grids, LINE,
                          PARAMS)
-    assert urban.loc[0, "std_type"] == PARAMS.cable_at(10.0).name == "NA2XS2Y 1x150 RM/25 6/10 kV"
+    assert urban.loc[0, "std_type"] == PARAMS.cable_at(10.0).name == "NA2XS2Y 1x240 RM/25 6/10 kV"
     twenty = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0, area="urban"), node(21, 2, 0, 1800.0)),
                           grids_frame((1, 20.0), (2, 20.0)), LINE, PARAMS)
     assert twenty.loc[0, "std_type"] == PARAMS.cable_at(20.0).name
@@ -337,6 +337,17 @@ def test_grid_metrics_and_summary():
     empty = ic.tie_summary(ic.empty_ties(), grids, PARAMS)
     assert empty["n_ties"] == 0 and empty["ring_share_with_tie"] == 0.0 and empty["takeover_checked"] == 0
     assert ic.describe_ties(empty).startswith("no normally-open ties")
+
+
+def test_tie_inventory_counts_installed_parallel_circuits():
+    ties = pd.DataFrame([tie_row(parallel=2)], columns=list(ic.TIE_COLUMNS))
+    per_grid = ic.grid_tie_metrics(ties)
+    assert per_grid[1]["tie_km"] == per_grid[2]["tie_km"] == pytest.approx(1.6)
+    assert per_grid[1]["ties"][0]["length_km"] == pytest.approx(0.8)
+    summary = ic.tie_summary(ties, grids_frame((1, 20.0), (2, 20.0)), PARAMS)
+    assert summary["tie_km"] == pytest.approx(1.6)
+    assert summary["tie_cable_km"] == pytest.approx(1.6)
+    assert summary["tie_share_of_circuit_km"] == pytest.approx(1.6 / 40)
 
 
 # ---------------------------------------------------------------------------------------------- persistence

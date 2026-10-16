@@ -123,6 +123,22 @@ def _py_int(value: Any) -> int | None:
     return None if value is None else int(value)
 
 
+def _parallel_count(value: Any) -> int:
+    """Return a validated installed circuit count (one when omitted)."""
+    value = _py(value)
+    if value is None:
+        return 1
+    if isinstance(value, bool):
+        raise ValueError("parallel must be a positive integer")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("parallel must be a positive integer") from exc
+    if not math.isfinite(number) or number < 1 or not number.is_integer():
+        raise ValueError("parallel must be a positive integer")
+    return int(number)
+
+
 def _py_float(value: Any) -> float | None:
     value = _py(value)
     return None if value is None else float(value)
@@ -831,7 +847,8 @@ class MvResultMixin(BaseMixin):
             line_values.append((
                 line_key_to_id[ln.key], version_id, variant_id, mv_grid_id, key_to_id[ln.from_key],
                 key_to_id[ln.to_key], ln.role, ln.kind, _py_int(ln.feeder_id), _py_int(ln.ring_id), ln.std_type,
-                int(ln.parallel or 1), max(float(ln.length_m) / 1000.0, 0.001), float(ln.cable_m or 0.0) / 1000.0,
+                _parallel_count(ln.parallel), max(float(ln.length_m) / 1000.0, 0.001),
+                float(ln.cable_m or 0.0) / 1000.0,
                 float(ln.overhead_m or 0.0) / 1000.0, _py_float(ln.straight_m / 1000.0 if ln.straight_m is not None
                                                                 else None),
                 float(ln.bridge_m or 0.0), bool(ln.normally_open),
@@ -966,7 +983,7 @@ class MvResultMixin(BaseMixin):
             raise
 
     def list_variants(self, version_id: str | None) -> pd.DataFrame:
-        """The MV variants (of one version, or all) with status, PLZ count, grid counts, km and a ``stale`` flag.
+        """The MV variants with generation mode/status, electrical outcome counts, km and a ``stale`` flag.
 
         ``stale`` is True when the LV fingerprint of the variant's PLZ (``MvInputMixin.lv_fingerprint``) differs
         from the one stored at creation (load edits, deleted or regenerated LV grids), None when it cannot be
@@ -974,16 +991,32 @@ class MvResultMixin(BaseMixin):
         """
         where = "WHERE v.version_id = %(v)s" if version_id is not None else ""
         self.cur.execute(
-            f"""SELECT v.version_id, v.mv_variant_id, v.mv_variant_comment, v.status, v.plz_list, v.graph_id,
+            f"""SELECT v.version_id, v.mv_variant_id, v.mv_variant_comment, v.status,
+                       COALESCE((v.mv_parameters #>> '{{generation,include_generation}}')::boolean, TRUE)
+                           AS include_generation,
+                       v.plz_list, v.graph_id,
                        v.lv_fingerprint, v.created_at, v.finished_at,
                        COALESCE(s.n_grids, 0) AS n_grids, COALESCE(s.n_done, 0) AS n_done,
-                       COALESCE(s.n_failed, 0) AS n_failed, s.n_stations, s.circuit_km, s.cable_share
+                       COALESCE(s.n_failed, 0) AS n_failed, s.n_stations, s.circuit_km, s.cable_share,
+                       COALESCE(e.n_electrical_pass, 0) AS n_electrical_pass,
+                       COALESCE(e.n_electrical_violations, 0) AS n_electrical_violations,
+                       COALESCE(e.n_electrical_not_checked, 0) AS n_electrical_not_checked
                 FROM pylovo.mv_variant v
                 LEFT JOIN pylovo.mv_variant_stats s ON s.version_id = v.version_id
                                                      AND s.mv_variant_id = v.mv_variant_id
+                LEFT JOIN (
+                    SELECT version_id, mv_variant_id,
+                           count(*) FILTER (WHERE power_flow_status = 'converged') AS n_electrical_pass,
+                           count(*) FILTER (WHERE power_flow_status = ANY(%(violations)s))
+                               AS n_electrical_violations,
+                           count(*) FILTER (WHERE power_flow_status IS NULL OR power_flow_status NOT IN
+                               ('converged', 'voltage_violation', 'loading_violation', 'not_converged'))
+                               AS n_electrical_not_checked
+                    FROM pylovo.mv_grid GROUP BY version_id, mv_variant_id
+                ) e ON e.version_id = v.version_id AND e.mv_variant_id = v.mv_variant_id
                 {where}
                 ORDER BY v.version_id, v.mv_variant_id""",
-            {"v": version_id})
+            {"v": version_id, "violations": list(_VIOLATION_STATUSES)})
         names = [d[0] for d in self.cur.description]
         df = pd.DataFrame(self.cur.fetchall(), columns=names)
         if df.empty:
@@ -1194,7 +1227,8 @@ class MvResultMixin(BaseMixin):
             if len(ties):
                 values = [(
                     int(ids[i]), version_id, variant_id, int(tie["from_grid"]), int(tie["from_node"]),
-                    int(tie["to_node"]), "tie", str(tie["kind"]), str(tie["std_type"]), 1,
+                    int(tie["to_node"]), "tie", str(tie["kind"]), str(tie["std_type"]),
+                    _parallel_count(tie.get("parallel", 1)),
                     max(float(tie["length_m"]) / 1000.0, 0.001), float(tie["cable_m"] or 0.0) / 1000.0,
                     float(tie["overhead_m"] or 0.0) / 1000.0, _py_float(float(tie["straight_m"]) / 1000.0), 0.0, True,
                     int(tie["to_node"]), tie["geometry"].wkb,
@@ -1337,9 +1371,11 @@ def _grid_values(plan: "DistrictPlan", stored: Mapping[int, dict], busbar_vm: fl
     modelled = [k for k, v in stored.items() if roles.get(k) != "excluded" and v["kind"] != "busbar"]
     kinds = Counter(stored[k]["kind"] for k in modelled)
     circuits = [ln for ln in topo.lines if ln.role != "tie"]
-    circuit_km = sum(ln.length_m for ln in circuits) / 1000.0
-    cable_km = sum(ln.cable_m or 0.0 for ln in circuits) / 1000.0
-    overhead_km = sum(ln.overhead_m or 0.0 for ln in circuits) / 1000.0
+    # mv_line stores a minimum 1 m per route, including zero-length switch sections.
+    route_km = sum(max(float(ln.length_m) / 1000.0, 0.001) for ln in circuits)
+    circuit_km = sum(max(float(ln.length_m) / 1000.0, 0.001) * _parallel_count(ln.parallel) for ln in circuits)
+    cable_km = sum((ln.cable_m or 0.0) * _parallel_count(ln.parallel) for ln in circuits) / 1000.0
+    overhead_km = sum((ln.overhead_m or 0.0) * _parallel_count(ln.parallel) for ln in circuits) / 1000.0
     busbars = {k for k, v in stored.items() if v["kind"] == "busbar"}
     bays = sum(1 for ln in circuits if ln.from_key in busbars or ln.to_key in busbars)
     metrics = plan.metrics or {}
@@ -1377,7 +1413,14 @@ def _grid_values(plan: "DistrictPlan", stored: Mapping[int, dict], busbar_vm: fl
         "max_line_loading_feed_in_percent": _series_extreme(loading, _FEED_IN_CASES, "max"),
         "n_band_conflicts": sum(1 for b in budgets if b.band_conflict),
         "n_tap_limit": sum(1 for b in budgets if b.tap_limit),
-        "metrics": _dumps({**metrics, "violations": [dataclasses.asdict(v) for v in plan.violations or []]}),
+        "metrics": _dumps({**metrics, "route_km": route_km, "circuit_km": circuit_km,
+                           "cable_km": cable_km, "overhead_km": overhead_km,
+                           "cable_share": cable_km / circuit_km if circuit_km else None,
+                           "km_per_supply_point": circuit_km / (kinds.get("station", 0) + kinds.get("customer", 0))
+                           if kinds.get("station", 0) + kinds.get("customer", 0) else None,
+                           "km_per_station": circuit_km / kinds.get("station", 0) if kinds.get("station", 0) else None,
+                           "circuit_km_per_substation": circuit_km,
+                           "violations": [dataclasses.asdict(v) for v in plan.violations or []]}),
         "repairs": _dumps(list(plan.repairs or [])),
         "runtime_s": float(runtime_s),
     }

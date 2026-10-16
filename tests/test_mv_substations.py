@@ -461,7 +461,7 @@ def test_egon_tables_prefer_filled_pylovo_tables_then_opendata(schemas):
     mixed = {**both, "pylovo.egon_mv_grid_district": False}
     assert _client(_egon_responder(mixed)).egon_available() == (True, "pylovo (substations), open_x (districts)")
     ok, reason = _client(_egon_responder({"open_x.egon_hvmv_substation": True})).egon_available()
-    assert not ok and "egon_mv_grid_district" in reason and "pylovo-import egon" in reason
+    assert not ok and "egon_mv_grid_district" in reason and "populate the eGon-data tables" in reason
 
 
 def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):

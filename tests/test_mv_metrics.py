@@ -83,6 +83,7 @@ def test_toy_topology_metrics():
     assert tm["n_nops"] == 1 and tm["n_ties"] == 0 and tm["n_rings"] == 1
     assert tm["n_feeder_bays"] == 2 and tm["feeders_per_substation"] == 2.0
     assert tm["circuit_km"] == pytest.approx(8.0)
+    assert tm["route_km"] == pytest.approx(8.0)
     assert tm["cable_share"] == pytest.approx(0.75)
     assert tm["km_per_supply_point"] == pytest.approx(8.0 / 6.0)
     assert tm["ring_members_mean"] == 5.0
@@ -281,7 +282,10 @@ def test_read_ding0_grid_fixture(tmp_path):
     assert ring["ring_members"] == 2 and ring["n_stub_nodes"] == 1
     assert ring["ring_km"] == pytest.approx(1.0 + 0.5 + 0.7 + 1.2)
     tm = m.topology_metrics(nodes, lines.reset_index())
-    assert tm["n_hv_mv_transformers"] == 2 and tm["cable_share"] == pytest.approx(3.1 / 3.6)
+    assert tm["n_hv_mv_transformers"] == 2
+    assert tm["route_km"] == pytest.approx(3.6)
+    assert tm["circuit_km"] == pytest.approx(3.8)  # Branch_5 is 0.2 km x 2
+    assert tm["cable_share"] == pytest.approx(3.3 / 3.8)
     # the topology folder itself works too
     nodes2, _ = m.read_ding0_grid(tmp_path / "1" / "topology")
     pd.testing.assert_frame_equal(nodes, nodes2)
@@ -309,6 +313,56 @@ def test_region_metrics_clips_to_the_region():
     assert m.region_metrics(lines, series)["km_per_km2"] == pytest.approx(out["km_per_km2"])
     with pytest.raises(ValueError, match="projected"):
         m.region_metrics(lines.to_crs(4326), region)
+
+
+def test_parallel_inventory_keeps_route_and_topology_distances():
+    nodes, lines = _ring_toy()
+    lines["parallel"] = 1
+    lines.loc[lines["line_id"] == 10, "parallel"] = 2  # 1 km x 2 at an outlet
+    lines.loc[lines["line_id"] == 14, "parallel"] = 3  # installed open section
+    tm = m.topology_metrics(nodes, lines)
+    assert tm["route_km"] == pytest.approx(8.0)
+    assert tm["circuit_km"] == pytest.approx(11.0)
+    assert tm["cable_km"] == pytest.approx(9.0)
+    assert tm["overhead_km"] == pytest.approx(2.0)
+    assert tm["cable_share"] == pytest.approx(9 / 11)
+    feeders = m.feeder_table(nodes, lines)
+    assert feeders["feeder_km"].tolist() == pytest.approx([3.0, 4.0])
+    assert feeders["cable_km"].tolist() == pytest.approx([5.0, 4.0])
+    assert feeders["overhead_km"].tolist() == pytest.approx([0.0, 2.0])
+    ring = m.ring_table(nodes, lines).iloc[0]
+    assert ring["ring_km"] == pytest.approx(7.0)
+    assert ring["cable_km"] == pytest.approx(9.0)
+    assert ring["overhead_km"] == pytest.approx(2.0)
+    for invalid in (0, -1, 1.5, "bad"):
+        with pytest.raises(ValueError, match="parallel must be a positive integer"):
+            m.normalise_tables(nodes, lines.assign(parallel=invalid))
+
+
+def test_parallel_external_tie_is_separate_from_district_inventory():
+    nodes = _nodes([(0, "busbar", 0, 0), (1, "station", 1000, 0)])
+    lines = _lines([(1, 0, 1, 1.0, "cable", False, None),
+                    (2, 1, 99, 0.5, "overhead", True, 99)])
+    lines["parallel"] = [2, 3]
+    lines["role"] = ["ring", "tie"]
+    tm = m.topology_metrics(nodes, lines)
+    assert tm["route_km"] == pytest.approx(1.0)
+    assert tm["circuit_km"] == pytest.approx(2.0)
+    assert tm["tie_km"] == pytest.approx(1.5)
+
+
+def test_region_parallel_inventory_uses_clipped_length():
+    lines = gpd.GeoDataFrame({
+        "length_km": [2.0, 1.3], "cable_km": [2.0, 0.0], "overhead_km": [0.0, 1.3],
+        "parallel": [2, 3], "geometry": [LineString([(0, 0), (2000, 0)]),
+                                        LineString([(0, 1000), (1000, 1000)])],
+    }, crs=25832)
+    out = m.region_metrics(lines, box(0, -500, 1000, 1500))
+    assert out["route_km_in_region"] == pytest.approx(2.3)
+    assert out["circuit_km_in_region"] == pytest.approx(5.9)
+    assert out["cable_km_in_region"] == pytest.approx(2.0)
+    assert out["overhead_km_in_region"] == pytest.approx(3.9)
+    assert out["cable_share"] == pytest.approx(2 / 5.9)
 
 
 def test_traffic_lights_and_literature_comparison():

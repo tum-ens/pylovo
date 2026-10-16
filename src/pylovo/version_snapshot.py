@@ -46,6 +46,8 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
 #: The same for the MV variant snapshots (``MvParameters.to_snapshot``): a path added to that snapshot later, with
 #: the value that reproduces the results of the variants stored before it.
 MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
+    # Earlier MV variants always used MaStR generation and all five electrical cases.
+    ("generation", "include_generation"): True,
     # Before MV_NOMINAL_VOLTAGE_KV auto every variant had one fixed nominal voltage, which no threshold changes.
     ("voltage", "mv_10kv_min_density_mva_km2"): 8.0,
     # Before the hall rule the MV load of a customer was its LV load (no building counted as a hall).

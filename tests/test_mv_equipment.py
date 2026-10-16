@@ -35,8 +35,8 @@ def test_line_types_come_from_pandapower():
         assert all(type(getattr(lt, f)) is float for f in ("vn_kv", "r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km",
                                                             "max_i_ka"))
         equipment.check_line_type(lt, vn_kv, kind)
-    assert equipment.default_line_types(20) == ("NA2XS2Y 1x150 RM/25 12/20 kV", "48-AL1/8-ST1A 20.0")
-    assert equipment.default_line_types(10.0) == ("NA2XS2Y 1x150 RM/25 6/10 kV", "48-AL1/8-ST1A 10.0")
+    assert equipment.default_line_types(20) == ("NA2XS2Y 1x240 RM/25 12/20 kV", "122-AL1/20-ST1A 20.0")
+    assert equipment.default_line_types(10.0) == ("NA2XS2Y 1x240 RM/25 6/10 kV", "122-AL1/20-ST1A 10.0")
     for vn_kv, names in equipment.DEFAULT_LINE_TYPES.items():          # the defaults fit their voltage
         for name, kind in zip(names, ("cable", "overhead")):
             equipment.check_line_type(equipment.line_type(name), vn_kv, kind)
@@ -72,8 +72,8 @@ def test_unknown_and_unsuitable_line_types_are_rejected():
 
 def test_mv_parameters_resolve_and_check_the_types():
     params = MvParameters()
-    assert params.cable == equipment.line_type("NA2XS2Y 1x150 RM/25 12/20 kV")
-    assert params.overhead == equipment.line_type("48-AL1/8-ST1A 20.0")
+    assert params.cable == equipment.line_type("NA2XS2Y 1x240 RM/25 12/20 kV")
+    assert params.overhead == equipment.line_type("122-AL1/20-ST1A 20.0")
     assert [t.name for t in params.hv_mv_types] == ["25 MVA 110/20 kV", "31.5 MVA 110/20 kV", "40 MVA 110/20 kV",
                                                      "63 MVA 110/20 kV"]
     heavier = MvParameters().replace_raw({"MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV",   # the former
@@ -98,10 +98,10 @@ def test_auto_voltage_resolves_the_types_of_both_voltages():
     """MV_NOMINAL_VOLTAGE_KV auto: the 10 kV districts take the same conductors with their 10 kV insulation."""
     params = MvParameters()
     assert params.auto_voltage and params.voltages == (20.0, 10.0) and params.base_kv == 20.0
-    assert params.cable_at(10.0).name == "NA2XS2Y 1x150 RM/25 6/10 kV" and params.cable_at(10.0).vn_kv == 10.0
-    assert params.overhead_at(10.0).name == "48-AL1/8-ST1A 10.0"
+    assert params.cable_at(10.0).name == "NA2XS2Y 1x240 RM/25 6/10 kV" and params.cable_at(10.0).vn_kv == 10.0
+    assert params.overhead_at(10.0).name == "122-AL1/20-ST1A 10.0"
     assert [t.name for t in params.hv_mv_types_at(10.0)][-1] == "63 MVA 110/10 kV"
-    assert equipment.thermal_mva(params.cable_at(10.0)) == pytest.approx(math.sqrt(3) * 10.0 * 0.315)
+    assert equipment.thermal_mva(params.cable_at(10.0)) == pytest.approx(math.sqrt(3) * 10.0 * 0.416)
     heavier = params.replace_raw({"MV_STANDARD_CABLE": "NA2XS2Y 1x240 RM/25 12/20 kV",
                                   "MV_OVERHEAD_LINE": "122-AL1/20-ST1A 10.0"})   # either voltage names the conductor
     assert heavier.cable_at(10.0).name == "NA2XS2Y 1x240 RM/25 6/10 kV"
@@ -117,7 +117,7 @@ def test_auto_voltage_resolves_the_types_of_both_voltages():
     assert {t["vn_lv_kv"] for t in snapshot["equipment"]["hv_mv_types_10kv"]} == {10.0}
     rebuilt = MvParameters.from_snapshot("1", "default", snapshot)
     assert rebuilt.to_snapshot() == snapshot and rebuilt.cable_at(10.0) == heavier.cable_at(10.0)
-    assert rebuilt == heavier.replace(overhead_type="122-AL1/20-ST1A 20.0")   # the snapshot names the 20 kV type
+    assert rebuilt == heavier.replace(cable_type=None, overhead_type=None)   # default names normalize to null
     assert "cable_10kv" not in MvParameters(vn_kv=10).to_snapshot()["equipment"]
 
 

@@ -59,7 +59,7 @@ class Builder:
     """Synthetic district: nodes, lines and rings of a TopologyPlan built step by step."""
 
     def __init__(self, params: MvParameters | None = None, lv: LvVersionParameters | None = None):
-        self.params = params or MvParameters()
+        self.params = params or MvParameters(include_generation=True)
         self.lv = lv or _lv()
         self.rows: dict[int, dict] = {BUSBAR: _row("busbar", X0, Y0)}
         self.lines: list[LinePlan] = []
@@ -775,7 +775,7 @@ def test_mv_oberrhein_cases_reproduce_the_pandapower_load_case():
     import pandapower.topology as top
 
     net = pn.mv_oberrhein()
-    params = MvParameters()
+    params = MvParameters(include_generation=True)
     load = electrical.case_net(net, "load", params)
     pp.runpp(load)
     vm = load.res_bus.vm_pu[load.bus.vn_kv < 60]
@@ -798,6 +798,19 @@ def test_end_to_end_design_net_is_deterministic():
     second = electrical.run_cases(electrical.build_design_net(inp, plan), inp, plan)
     for case in first:
         pd.testing.assert_series_equal(first[case].vm_pu, second[case].vm_pu)
+
+
+def test_load_only_electrical_cases_ignore_stored_generation():
+    b = Builder(MvParameters(include_generation=False))
+    b.ring(2, gen_solar_kw=250.0)
+    inp, plan = b.build()
+    net = electrical.build_design_net(inp, plan)
+    assert net.sgen.empty
+    cases = electrical.run_cases(net, inp, plan)
+    assert tuple(cases) == inp.params.active_cases == ("load", "n1a", "n1b")
+    assert electrical.substation_loads(inp, plan, cases)[1] == 0.0
+    with pytest.raises(ValueError, match="was not requested"):
+        electrical.case_net(net, "feed_in_pv", inp.params)
 
 
 def test_unconnected_station_is_unsupplied_not_a_crash():
