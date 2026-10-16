@@ -98,15 +98,20 @@
     </div>
 
     <section class="scroll" v-if="tab === 'layers'">
-      <div class="empty-db" v-if="!versions.length && meta.length">This database has no pylovo results yet. Context layers still work.</div>
-      <div class="group" v-for="g in groups" :key="g.id">
-        <button class="group-head" @click="groupToggle(g.id)">
-          <span class="chev" :class="{ open: groupsOpen[g.id] }">›</span>{{ g.title }}
-          <span class="badge" v-if="g.active">{{ g.active }}</span>
-        </button>
-        <div v-show="groupsOpen[g.id]">
+      <div class="empty-db" v-if="!versions.length && meta.length">This database has no pylovo results yet.</div>
+      <div class="group" v-for="g in groupList" :key="g.id" :class="{ off: !groups[g.id]?.on, na: !g.available }">
+        <div class="group-row">
+          <label class="switch" :title="g.available ? 'Show or hide the whole level' : g.reason">
+            <input type="checkbox" :checked="groups[g.id]?.on && g.available" :disabled="!g.available" @change="toggleGroup(g.id)"><span></span>
+          </label>
+          <button class="group-name" @click="groups[g.id].open = !groups[g.id].open" :title="groups[g.id]?.open ? 'Hide details' : 'Details: single layers and colours'">
+            <b>{{ g.title }}</b><small>{{ groupNote(g) }}</small>
+          </button>
+          <button class="icon-btn small" @click="groups[g.id].open = !groups[g.id].open"><span class="chev" :class="{ open: groups[g.id]?.open }">›</span></button>
+        </div>
+        <div class="group-body" v-show="groups[g.id]?.open">
           <div class="layer" v-for="m in g.layers" :key="m.id" :class="{ off: !layers[m.id]?.on, na: !m.available }">
-            <label class="switch" :title="m.available ? 'Show or hide' : m.reason">
+            <label class="switch small" :title="m.available ? 'Show or hide' : m.reason">
               <input type="checkbox" :checked="layers[m.id]?.on" :disabled="!m.available" @change="toggle(m.id)"><span></span>
             </label>
             <span class="swatch" :class="m.geometry" :style="{ background: swatch(m.id) }"></span>
@@ -115,7 +120,7 @@
                 <span class="info" tabindex="0" :data-tip="m.description + '\n\nSource: ' + m.source + (m.attribution ? '\n' + m.attribution : '')">i</span>
               </div>
               <div class="sub" v-if="!m.available">{{ m.reason }}</div>
-              <div class="sub" v-else-if="layers[m.id]?.on">
+              <div class="sub" v-else-if="visible(m.id)">
                 <template v-if="layers[m.id].status === 'loading'"><span class="spin"></span>loading</template>
                 <template v-else-if="layers[m.id].status === 'ok'">{{ fmt.num(layers[m.id].count) }} features<span class="warn" v-if="layers[m.id].truncated"> · first {{ fmt.num(layers[m.id].count) }} only</span></template>
                 <template v-else-if="layers[m.id].status === 'wait'">{{ layers[m.id].note }}</template>
@@ -129,7 +134,7 @@
           </div>
         </div>
       </div>
-      <div class="note" v-if="lod2" :class="lod2.state">{{ lod2.text }}</div>
+      <div class="note" v-if="lod2">{{ lod2.text }}</div>
     </section>
 
     <section class="scroll" v-if="tab === 'regions'">
@@ -262,11 +267,11 @@
         (<b>{{ info?.database.dbname }}</b> on {{ info?.database.host }}:{{ info?.database.port }}). It never writes to the database.</p>
       <ul>
         <li><b>Pick a version</b> (LV grids) and, if there is one, an <b>MV run</b> in the top bar.</li>
-        <li><b>Pick a region</b>: click a postcode or supply area on the map, use the <i>Regions</i> tab, or search. The map flies there and loads its cables and buildings.</li>
-        <li>Without a region, cables and buildings load for the map view once you zoom in far enough.</li>
+        <li><b>One switch per level</b>: HV grid, MV grids, LV grids and generation. <i>Details</i> (the arrow) shows the single layers and their colours.</li>
+        <li>LV cables and buildings appear when you zoom in (from zoom 13). <b>Regions</b> (click a postcode or supply area, the <i>Regions</i> tab, or search) fly there and give the key figures.</li>
         <li><b>Click</b> anything for its facts and all its database attributes; <b>hover</b> for a quick look.</li>
         <li>Each layer has a <b>colour mode</b> (the small menu next to it) and an <b>i</b> with its source.</li>
-        <li><b>3D</b> tilts the map and extrudes the buildings; with LoD2 data (citydb) the selected region shows real roofs.</li>
+        <li><b>3D</b> tilts the map and extrudes the buildings; with LoD2 data (citydb) the buildings in view show real roofs from zoom 15.</li>
         <li>The address bar keeps the view: bookmark or share it.</li>
       </ul>
       <h3>Keys</h3>
@@ -275,7 +280,7 @@
         <tr><td><kbd>L</kbd></td><td>layer panel</td><td><kbd>Esc</kbd></td><td>close, then clear the region</td></tr>
         <tr><td><kbd>?</kbd></td><td>this help</td><td><kbd>right drag</kbd></td><td>tilt and rotate</td></tr>
       </table>
-      <p class="muted">Context data: eTraGo grid of eGon-data (download once with <code>pylovo-viewer fetch etrago</code>), eGon districts, OSM power and MaStR when they are in the database.</p>
+      <p class="muted">The HV grid is eGon-data's eTraGo grid (download once with <code>pylovo-viewer fetch etrago</code>); generation shows the MaStR units in the database.</p>
     </div>
   </div>
 </div>

@@ -114,7 +114,8 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
             catalog.refresh()
             service.clear()
             cache.clear()
-        return send_json(request, {"layers": service.describe(), "lod2": catalog.citydb_classes is not None})
+        return send_json(request, {"groups": service.groups(), "layers": service.describe(),
+                                   "lod2": catalog.citydb_classes is not None})
 
     @app.get("/api/versions")
     def versions(request: Request) -> Response:
@@ -170,14 +171,13 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
                                    "mv": summary.mv(db, catalog, q)})
 
     @app.get("/api/lod2")
-    def lod2(request: Request, version: str, mv: str | None = None, plz: int | None = None,
-             area: int | None = None, grid: int | None = None) -> Response:
-        from pylovo_viewer.lod2 import region_mesh
-        q = query(version, mv, plz, area, grid)
+    def lod2(request: Request, version: str, bbox: str) -> Response:
+        from pylovo_viewer.lod2 import view_mesh
+        q = query(version, bbox=bbox)
         key = ("lod2", q.key())
         body = cache.get(key)
         if body is None:
-            body = region_mesh(db, catalog, q)
+            body = view_mesh(db, catalog, q)
             if catalog.citydb_classes is not None:
                 cache.put(key, body)
         return send(request, body, "application/octet-stream", key)

@@ -34,19 +34,20 @@ def test_layer_errors(client):
 
 def test_layer_gzip_and_cache(client, fake_db):
     fake_db.rows = {"AS origin": [{"fid": 1, "kva": 400, "geometry": '{"type":"Point","coordinates":[11,48]}'}] * 40}
-    response = client.get("/api/layer/lv_stations?version=v1", headers={"Accept-Encoding": "gzip"})
+    response = client.get("/api/layer/mv_stations?version=v1", headers={"Accept-Encoding": "gzip"})
     assert response.status_code == 200 and response.headers["content-encoding"] == "gzip"
     assert len(response.json()["features"]) == 40          # the client decompresses
     calls = len(fake_db.calls)
-    raw = client.get("/api/layer/lv_stations?version=v1", headers={"Accept-Encoding": "identity"})
+    raw = client.get("/api/layer/mv_stations?version=v1", headers={"Accept-Encoding": "identity"})
     assert len(fake_db.calls) == calls                     # served from the cache
     assert "content-encoding" not in raw.headers and json.loads(raw.content)["features"]
     assert gzip.decompress(gzip.compress(raw.content)) == raw.content
 
 
 def test_catalog_refresh(client):
-    layers = client.get("/api/catalog?refresh=1").json()["layers"]
-    assert {layer["id"] for layer in layers if layer["available"]} >= {"lv_cables", "lv_stations", "postcodes"}
+    catalog = client.get("/api/catalog?refresh=1").json()
+    assert {layer["id"] for layer in catalog["layers"] if layer["available"]} >= {"lv_cables", "mv_stations", "postcodes"}
+    assert catalog["groups"][1]["title"] == "HV grid"
 
 
 @pytest.mark.parametrize("text, expected", [

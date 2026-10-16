@@ -112,12 +112,16 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .selection .sel-kind { color: var(--text-2); }
 .selection b { margin-right: auto; }
 .scroll { flex: 1; overflow: auto; padding: 6px 8px 12px; }
-.group-head {
-  display: flex; align-items: center; gap: 4px; width: 100%; padding: 8px 6px 6px; border: 0; background: none; cursor: pointer;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3);
-}
-.badge { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; letter-spacing: 0; }
-.layer { display: grid; grid-template-columns: 30px 16px 1fr auto; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 10px; }
+.group { border-radius: 12px; margin: 2px 0 6px; }
+.group-row { display: grid; grid-template-columns: 30px 1fr 26px; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 12px; }
+.group-row:hover { background: var(--surface-2); }
+.group-name { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
+.group-name b { font-size: 14px; font-weight: 600; }
+.group-name small { color: var(--text-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.group.off .group-name b { color: var(--text-2); }
+.group.na { opacity: 0.55; }
+.group-body { margin: 0 0 4px 20px; padding-left: 10px; border-left: 2px solid var(--surface-3); }
+.layer { display: grid; grid-template-columns: 24px 16px 1fr auto; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 10px; }
 .layer:hover { background: var(--surface-2); }
 .layer.off .name { color: var(--text-2); }
 .layer.na { opacity: 0.55; }
@@ -145,6 +149,9 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(12px); }
 .switch input:disabled + span { opacity: 0.5; cursor: not-allowed; }
+.switch.small { width: 24px; height: 14px; }
+.switch.small span::after { top: 2px; left: 2px; width: 10px; height: 10px; }
+.switch.small input:checked + span::after { transform: translateX(10px); }
 .note { margin: 10px 6px 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); font-size: 12px; }
 .empty-db { margin: 6px; padding: 10px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); }
 .filter { width: 100%; height: 32px; margin: 4px 0 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); outline: none; }

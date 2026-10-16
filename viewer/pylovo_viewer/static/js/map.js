@@ -20,11 +20,9 @@ export const BASEMAPS = {
 };
 
 // Draw order, bottom to top ('lod2' is the custom 3D layer).
-export const Z_ORDER = ['ctx_egon_districts', 'mv_settlements', 'postcodes', 'mv_areas', 'lv_areas', 'mv_customers',
-  'in_buildings', 'lv_buildings', 'lod2', 'mv_sites', 'ctx_osm_substations', 'in_ways', 'in_connections', 'mv_graph',
-  'ctx_etrago_lines', 'ctx_osm_lines', 'lv_cables', 'mv_lines', 'lv_cabinets', 'in_transformers', 'ctx_mastr',
-  'ctx_egon_substations', 'ctx_etrago_buses', 'mv_open_points', 'mv_nodes', 'lv_stations', 'lv_classes', 'mv_substations'];
-const HOVER = new Set(['postcodes', 'lv_areas', 'mv_areas', 'ctx_egon_districts']);
+export const Z_ORDER = ['postcodes', 'mv_areas', 'lv_areas', 'mv_customers', 'lv_buildings', 'lod2', 'hv_sites',
+  'hv_lines', 'lv_cables', 'mv_lines', 'lv_cabinets', 'mastr', 'mv_open_points', 'mv_stations', 'hv_substations'];
+const HOVER = new Set(['postcodes', 'lv_areas', 'mv_areas']);
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
 function labelPoints(fc) {

@@ -1,5 +1,6 @@
-// The viewer app: selection (version, MV run, region), layer toggles and colour modes, search,
-// inspector, legend, key figures, 3D and the URL hash. Map drawing lives in map.js.
+// The viewer app: version and MV run, one switch per voltage level (with optional detail per
+// layer), regions for navigation and key figures, search, inspector, legend, 3D and the URL hash.
+// Map drawing lives in map.js. LV detail and LoD2 always follow the map view.
 import { createApp, markRaw } from 'vue';
 import { getJson } from './api.js';
 import * as f from './format.js';
@@ -10,8 +11,9 @@ import { showLod2 } from './lod2.js';
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const REGION_SOURCE = { plz: 'postcodes', area: 'mv_areas', grid: 'lv_areas' };
-const GRID_LAYERS = new Set(['lv_areas', 'lv_stations', 'lv_classes']);
+const GRID_LAYERS = new Set(['lv_areas', 'mv_stations']);
 const KIND = { point: 'circle', line: 'line', polygon: 'fill' };
+const LOD2_ZOOM = 15;
 const STORE = 'pylovo-viewer';
 
 function readHash() {
@@ -33,10 +35,10 @@ const inside = (a, b) => b && a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[
 createApp({
   data() {
     return {
-      fatal: null, info: null, meta: [], lod2Available: false, versions: [],
-      version: null, mv: null, region: null, layers: {}, zoom: 5,
+      fatal: null, info: null, meta: [], groupMeta: [], lod2Available: false, versions: [],
+      version: null, mv: null, region: null, layers: {}, groups: {}, zoom: 5,
       theme: stored('theme', 'auto'), basemap: stored('basemap', 'auto'), d3: false,
-      tab: 'layers', panel: true, legendOpen: true, help: false, groupsOpen: { regions: true, lv: true, mv: true },
+      tab: 'layers', panel: true, legendOpen: true, help: false,
       search: { text: '', hits: [], open: false, index: 0 }, tooltip: null, inspector: null,
       summary: null, postcodes: [], areas: [], regionFilter: '', lod2: null, toast: null, tick: 0, themeTick: 0,
       basemaps: Object.fromEntries(Object.entries(BASEMAPS).map(([k, v]) => [k, v.label])),
@@ -46,16 +48,13 @@ createApp({
     fmt() { return f; },
     metaById() { return Object.fromEntries(this.meta.map((m) => [m.id, m])); },
     runs() { return this.versions.find((v) => v.version_id === this.version)?.runs || []; },
-    run() { return this.runs.find((r) => r.id === this.mv) || null; },
-    versionInfo() { return this.versions.find((v) => v.version_id === this.version) || null; },
-    groups() {
-      const out = [];
-      for (const m of this.meta) {
-        let g = out.find((x) => x.id === m.group);
-        if (!g) out.push(g = { id: m.group, title: m.group_title, layers: [] });
-        g.layers.push(m);
-      }
-      return out.map((g) => ({ ...g, active: g.layers.filter((m) => this.layers[m.id]?.on && m.available).length }));
+    groupList() {
+      return this.groupMeta.map((g) => {
+        const layers = this.meta.filter((m) => m.group === g.id && !m.parent);
+        const available = layers.filter((m) => m.available);
+        return { ...g, layers, available: available.length > 0,
+          reason: available.length ? '' : (layers[0]?.reason || 'no data in this database') };
+      }).filter((g) => g.layers.length);
     },
     regionLabel() {
       if (!this.region) return null;
@@ -72,10 +71,10 @@ createApp({
       for (const id of [...Z_ORDER].reverse()) {
         const m = this.metaById[id];
         const st = this.layers[id];
-        if (!m || !st?.on || !m.available || st.status !== 'ok' || !st.count) continue;
+        if (!m || !this.visible(id) || st.status !== 'ok' || !st.count) continue;
         const style = STYLES[id];
         const entries = [...(style.legend ? style.legend() : [])];
-        const scheme = schemeOf(id, st.mode);
+        const scheme = schemeOf(id, this.modeOf(id));
         const kind = KIND[m.geometry];
         if (scheme?.type === 'match') {
           const counts = new Map();
@@ -87,7 +86,7 @@ createApp({
           for (const [value, colour, label] of scheme.entries) {
             const n = (Array.isArray(value) ? value : [value]).reduce((sum, v) => sum + (counts.get(v) || 0), 0);
             rest -= n;
-            if (n || !counts.size) entries.push({ kind, colour, label, count: counts.size ? n : null });
+            if (n) entries.push({ kind, colour, label, count: n });
           }
           if (rest > 0) entries.push({ kind, colour: scheme.fallback[0], label: scheme.fallback[1], count: rest });
         } else if (scheme?.type === 'slot') {
@@ -98,7 +97,7 @@ createApp({
         } else if (scheme?.type === 'const') {
           entries.push({ kind, colour: scheme.colour, label: scheme.label });
         }
-        if (style.extraLegend) entries.push(...style.extraLegend(st.mode));
+        if (style.extraLegend) entries.push(...style.extraLegend(this.modeOf(id)));
         if (entries.length) out.push({ id, title: m.title, entries });
       }
       return out;
@@ -114,7 +113,7 @@ createApp({
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.applyTheme());
     try {
       const [info, catalog, versions] = await Promise.all([getJson('/api/info'), getJson('/api/catalog'), getJson('/api/versions')]);
-      Object.assign(this, { info, meta: catalog.layers, lod2Available: catalog.lod2, versions });
+      Object.assign(this, { info, meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2, versions });
     } catch (err) {
       this.fatal = err.message;
       return;
@@ -122,10 +121,12 @@ createApp({
     this.loaded = {};
     this.pending = {};
     const h = readHash();
+    const groupsOn = h.g !== undefined ? new Set(h.g.split(',')) : null;
+    for (const g of this.groupMeta) this.groups[g.id] = { on: groupsOn ? groupsOn.has(g.id) : g.default, open: false };
     const wanted = h.l ? new Set(h.l.split(',')) : null;
     const modes = Object.fromEntries((h.m || '').split(',').filter(Boolean).map((x) => x.split(':')));
     for (const m of this.meta) {
-      this.layers[m.id] = { on: (wanted ? wanted.has(m.id) : m.default) && m.available, mode: modes[m.id] || defaultMode(m.id),
+      this.layers[m.id] = { on: wanted && !m.parent ? wanted.has(m.id) : m.default, mode: modes[m.id] || defaultMode(m.id),
         status: 'idle', count: null, note: '', truncated: false };
     }
     this.version = this.versions.some((v) => v.version_id === h.v) ? h.v : this.versions[0]?.version_id || null;
@@ -146,9 +147,9 @@ createApp({
   },
   methods: {
     // ---------------------------------------------------------------------------- start-up
-    async ready(fit) {
+    ready(fit) {
       for (const m of this.meta) {
-        this.map.setLayer(m.id, { visible: this.layers[m.id].on, mode: this.layers[m.id].mode, attribution: m.attribution, minZoom: m.min_zoom });
+        this.map.setLayer(m.id, { visible: this.visible(m.id), mode: this.modeOf(m.id), attribution: m.attribution, minZoom: m.min_zoom });
       }
       this.zoom = this.map.view().zoom;
       if (this.d3) this.map.set3D(true);
@@ -165,11 +166,125 @@ createApp({
       if (!this.map) return;
       if (!this.map.setBasemap(this.effectiveBasemap())) this.map.restyle();
       this.themeTick++;
-      this.refreshLod2();
+      this.refreshLod2(true);
     },
     effectiveBasemap() {
       if (this.basemap !== 'auto') return this.basemap;
       return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    },
+
+    // ------------------------------------------------------------------------------- layers
+    /** Shown on the map: available, its group switched on, and the layer (or its parent) on. */
+    visible(id) {
+      const m = this.metaById[id];
+      if (!m?.available || !this.groups[m.group]?.on) return false;
+      return m.parent ? this.visible(m.parent) : !!this.layers[id]?.on;
+    },
+    modeOf(id) {
+      return this.layers[this.metaById[id]?.parent || id]?.mode;
+    },
+    children(id) {
+      return this.meta.filter((m) => m.parent === id).map((m) => m.id);
+    },
+    applyVisibility() {
+      for (const m of this.meta) {
+        const on = this.visible(m.id);
+        this.map.setLayer(m.id, { visible: on });
+        if (on) this.load(m.id); else this.layers[m.id].status = 'idle';
+      }
+      this.refreshLod2();
+      this.tick++;
+      this.saveHash();
+    },
+    toggleGroup(gid) {
+      this.groups[gid].on = !this.groups[gid].on;
+      this.applyVisibility();
+    },
+    toggle(id) {
+      this.layers[id].on = !this.layers[id].on;
+      if (this.layers[id].on && !this.groups[this.metaById[id].group].on) this.groups[this.metaById[id].group].on = true;
+      this.applyVisibility();
+    },
+    setMode(id, mode) {
+      this.layers[id].mode = mode;
+      for (const child of [id, ...this.children(id)]) this.map.setLayer(child, { mode });
+      if (id === 'lv_buildings') this.refreshLod2(true);
+      this.tick++;
+      this.saveHash();
+    },
+    params(m) {
+      const need = (cond, note) => (cond ? null : note);
+      const bbox = () => this.map.bbox(0.25).map((v) => Number(v.toFixed(4))).join(',');
+      const zoomed = () => need(this.zoom >= m.min_zoom, `Zoom in to see them (from zoom ${m.min_zoom})`);
+      switch (m.scope) {
+        case 'version':
+          return need(this.version, 'Choose a version') || { version: this.version, mv: m.with_run ? this.mv : null };
+        case 'view':
+          return need(this.version, 'Choose a version') || zoomed() || { version: this.version, bbox: bbox() };
+        case 'run':
+          return need(this.version && this.mv, 'No MV run for this version') || { version: this.version, mv: this.mv };
+        case 'bbox':
+          return zoomed() || { bbox: bbox() };
+        default:
+          return {};
+      }
+    },
+    async load(id, force = false) {
+      const m = this.metaById[id];
+      const st = this.layers[id];
+      if (!m || !this.visible(id)) return;
+      const params = this.params(m);
+      if (typeof params === 'string') {
+        st.status = 'wait'; st.note = params; st.count = null;
+        if (this.map.data(id)?.features.length) { this.map.setData(id, EMPTY); this.loaded[id] = null; this.tick++; }
+        return;
+      }
+      const { bbox, ...rest } = params;
+      const base = JSON.stringify(rest);
+      const last = this.loaded[id];
+      if (!force && last && last.base === base && (!bbox || inside(this.map.bbox(0), last.bbox))) return;
+      const token = `${base}|${bbox || ''}`;
+      this.pending[id] = token;
+      st.status = 'loading';
+      try {
+        const fc = await getJson(`/api/layer/${id}`, params);
+        if (this.pending[id] !== token) return;
+        this.map.setData(id, fc);
+        this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null };
+        Object.assign(st, { status: 'ok', count: fc.features.length, truncated: fc.truncated, note: '' });
+        this.tick++;
+        if (id === 'lv_buildings') this.refreshLod2(true);
+      } catch (err) {
+        if (this.pending[id] !== token) return;
+        Object.assign(st, { status: 'error', note: err.message });
+      }
+    },
+    /** Load the visible layers of the given scopes (all when null); `withRun` adds the run-aware ones. */
+    reload(scopes = null, force = false, withRun = false) {
+      for (const m of this.meta) {
+        if (!scopes || scopes.includes(m.scope) || (withRun && m.with_run)) this.load(m.id, force);
+      }
+    },
+    swatch(id) {
+      this.themeTick;   // eslint-disable-line no-unused-expressions
+      const scheme = schemeOf(id, this.layers[id]?.mode);
+      if (!scheme) return STYLES[id]?.legend?.()[0]?.colour || pal().ink.secondary;
+      if (scheme.type === 'slot') return `conic-gradient(${pal().cat.slice(0, 4).join(',')})`;
+      if (scheme.type === 'ramp') return gradient(scheme.stops);
+      if (scheme.type === 'match') return scheme.entries[0]?.[1] || scheme.fallback[0];
+      return scheme.colour;
+    },
+    modes(id) {
+      return Object.entries(STYLES[id]?.modes || {}).map(([k, v]) => ({ id: k, label: v.label }));
+    },
+    groupNote(g) {
+      if (!g.available) return g.reason;
+      if (!this.groups[g.id]?.on) return g.description;
+      const loading = g.layers.some((m) => this.layers[m.id]?.status === 'loading');
+      const waiting = g.layers.filter((m) => this.visible(m.id) && this.layers[m.id]?.status === 'wait');
+      if (loading) return 'loading …';
+      if (waiting.length) return `${waiting.map((m) => m.title).join(' and ')}: ${this.layers[waiting[0].id].note.toLowerCase()}`;
+      return g.description;
     },
 
     // ---------------------------------------------------------------------------- selection
@@ -183,32 +298,29 @@ createApp({
       this.loadLists();
       this.loadSummary();
       this.flyTo(null);
-      this.refreshLod2();
+      this.refreshLod2(true);
       this.saveHash();
     },
     setRun(mv) {
       this.mv = mv || null;
       if (this.region?.kind === 'area') { this.region = null; this.map.select(null, null); }
-      this.reload(['run', 'run_bbox', 'region'], true);
+      this.reload(['run'], true, true);
       this.loadLists();
       this.loadSummary();
       this.saveHash();
     },
+    /** Select a region: fly there, mark it and show its key figures (the layers follow the view). */
     selectRegion(kind, id, { fly = true } = {}) {
       this.region = { kind, id };
       this.map.select(REGION_SOURCE[kind], id);
-      this.reload(['region'], true);
       this.loadSummary();
       if (fly) this.flyTo(this.region);
-      this.refreshLod2();
       this.saveHash();
     },
     clearRegion() {
       this.region = null;
       this.map.select(null, null);
-      this.reload(['region'], true);
       this.loadSummary();
-      this.refreshLod2();
       this.saveHash();
     },
     async flyTo(region) {
@@ -251,111 +363,17 @@ createApp({
       }
     },
 
-    // ------------------------------------------------------------------------------- layers
-    params(m) {
-      const z = this.zoom;
-      const need = (cond, note) => (cond ? null : note);
-      const bbox = () => this.map.bbox(0.25).map((v) => Number(v.toFixed(4))).join(',');
-      switch (m.scope) {
-        case 'version':
-          return need(this.version, 'Choose a version') || { version: this.version };
-        case 'region':
-          if (!this.version) return 'Choose a version';
-          if (this.region) return { version: this.version, mv: this.region.kind === 'area' ? this.mv : null, [this.region.kind]: this.region.id };
-          return need(z >= m.min_zoom, `Pick a region or zoom in (≥ ${m.min_zoom})`) || { version: this.version, bbox: bbox() };
-        case 'run':
-          return need(this.version && this.mv, 'No MV run for this version') || { version: this.version, mv: this.mv };
-        case 'run_bbox':
-          return need(this.version && this.mv, 'No MV run for this version') || need(z >= m.min_zoom, `Zoom in (≥ ${m.min_zoom})`)
-            || { version: this.version, mv: this.mv, bbox: bbox() };
-        case 'bbox':
-          return need(z >= m.min_zoom, `Zoom in (≥ ${m.min_zoom})`) || { bbox: bbox() };
-        default:
-          return {};
-      }
-    },
-    async load(id, force = false) {
-      const m = this.metaById[id];
-      const st = this.layers[id];
-      if (!m?.available || !st.on) return;
-      const params = this.params(m);
-      if (typeof params === 'string') {
-        st.status = 'wait'; st.note = params; st.count = null;
-        if (this.map.data(id)?.features.length) { this.map.setData(id, EMPTY); this.loaded[id] = null; this.tick++; }
-        return;
-      }
-      const { bbox, ...rest } = params;
-      const base = JSON.stringify(rest);
-      const last = this.loaded[id];
-      if (!force && last && last.base === base) {
-        if (!bbox) return;
-        if (inside(this.map.bbox(0), last.bbox)) return;
-      }
-      const token = `${base}|${bbox || ''}`;
-      this.pending[id] = token;
-      st.status = 'loading';
-      try {
-        const fc = await getJson(`/api/layer/${id}`, params);
-        if (this.pending[id] !== token) return;
-        this.map.setData(id, fc);
-        this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null };
-        Object.assign(st, { status: 'ok', count: fc.features.length, truncated: fc.truncated, note: '' });
-        this.tick++;
-        if (id === 'lv_buildings') this.refreshLod2();
-      } catch (err) {
-        if (this.pending[id] !== token) return;
-        Object.assign(st, { status: 'error', note: err.message });
-      }
-    },
-    reload(scopes = null, force = false) {
-      this.loaded ||= {};
-      this.pending ||= {};
-      for (const m of this.meta) if (!scopes || scopes.includes(m.scope)) this.load(m.id, force);
-    },
-    toggle(id) {
-      const st = this.layers[id];
-      st.on = !st.on;
-      this.map.setLayer(id, { visible: st.on });
-      if (st.on) this.load(id); else st.status = 'idle';
-      if (id === 'lv_buildings') this.refreshLod2();
-      this.tick++;
-      this.saveHash();
-    },
-    setMode(id, mode) {
-      this.layers[id].mode = mode;
-      this.map.setLayer(id, { mode });
-      if (id === 'lv_buildings') this.refreshLod2();
-      this.tick++;
-      this.saveHash();
-    },
-    groupToggle(id) {
-      this.groupsOpen[id] = !this.groupsOpen[id];
-    },
-    swatch(id) {
-      this.themeTick;   // eslint-disable-line no-unused-expressions
-      const scheme = schemeOf(id, this.layers[id]?.mode);
-      if (!scheme) return STYLES[id]?.legend?.()[0]?.colour || pal().ink.secondary;
-      if (scheme.type === 'slot') return `conic-gradient(${pal().cat.slice(0, 4).join(',')})`;
-      if (scheme.type === 'ramp') return gradient(scheme.stops);
-      if (scheme.type === 'match') return scheme.entries[0]?.[1] || scheme.fallback[0];
-      return scheme.colour;
-    },
-    modes(id) {
-      const modes = STYLES[id]?.modes || {};
-      return Object.entries(modes).map(([k, v]) => ({ id: k, label: v.label }));
-    },
-
     // ----------------------------------------------------------------------- map interaction
     moved(view) {
       this.zoom = view.zoom;
       this.tooltip = null;
       clearTimeout(this.moveTimer);
-      this.moveTimer = setTimeout(() => { this.reload(['region', 'bbox', 'run_bbox']); this.saveHash(); }, 250);
+      this.moveTimer = setTimeout(() => { this.reload(['view', 'bbox']); this.refreshLod2(); this.saveHash(); }, 250);
     },
     facts(hit) {
       const style = STYLES[hit.layer];
       const facts = style?.facts ? style.facts(hit.props) : { title: hit.layer, rows: [] };
-      const scheme = schemeOf(hit.layer, this.layers[hit.layer]?.mode);
+      const scheme = schemeOf(hit.layer, this.modeOf(hit.layer));
       return { ...facts, colour: scheme ? colourOf(scheme, hit.props) : style?.legend?.()[0]?.colour, layerTitle: this.metaById[hit.layer]?.title };
     },
     hovered(hit) {
@@ -404,11 +422,11 @@ createApp({
       if (feature) out.push({ label: 'Zoom to', run: () => this.map.fit(boundsOf(feature.geometry), this.padding(), 18) });
       const grid = GRID_LAYERS.has(hit.layer) ? p.fid : p.grid;
       if (grid !== null && grid !== undefined && !(this.region?.kind === 'grid' && this.region.id === grid)) {
-        out.push({ label: 'Show this LV grid', run: () => this.selectRegion('grid', grid) });
+        out.push({ label: 'Select this LV grid', run: () => this.selectRegion('grid', grid) });
       }
       const area = hit.layer === 'mv_areas' ? p.fid : p.area;
       if (area !== null && area !== undefined && this.mv && !(this.region?.kind === 'area' && this.region.id === area)) {
-        out.push({ label: 'Show supply area', run: () => this.selectRegion('area', area) });
+        out.push({ label: 'Select supply area', run: () => this.selectRegion('area', area) });
       }
       if (hit.layer === 'postcodes' && !(this.region?.kind === 'plz' && this.region.id === p.fid)) {
         out.push({ label: 'Select postcode', run: () => this.selectRegion('plz', p.fid) });
@@ -425,45 +443,52 @@ createApp({
     toggle3D() {
       this.d3 = !this.d3;
       this.map.set3D(this.d3);
-      this.refreshLod2();
+      this.refreshLod2(true);
       this.saveHash();
     },
-    async refreshLod2() {
+    /** LoD2 models of the buildings in view (3D, zoom >= 15); else the footprints are extruded. */
+    async refreshLod2(recolour = false) {
       if (!this.map) return;
-      const wanted = this.d3 && this.lod2Available && this.region && this.layers.lv_buildings?.on;
+      const buildings = this.visible('lv_buildings');
+      const wanted = this.d3 && this.lod2Available && buildings && this.zoom >= LOD2_ZOOM;
       if (!wanted) {
-        this.lod2 = this.d3 && this.layers.lv_buildings?.on
-          ? { state: 'none', text: this.lod2Available ? 'Select a region for LoD2 roofs' : 'No LoD2 data: footprints are extruded' } : null;
+        this.lod2 = this.d3 && buildings ? { text: !this.lod2Available ? 'No LoD2 data in this database: buildings are extruded footprints'
+          : `Zoom in (from zoom ${LOD2_ZOOM}) for LoD2 roofs` } : null;
+        this.lod2Bbox = null;
         await showLod2(null);
         this.map.setLod2Hide(null);
         return;
       }
-      const params = { version: this.version, mv: this.region.kind === 'area' ? this.mv : null, [this.region.kind]: this.region.id };
-      const scheme = schemeOf('lv_buildings', this.layers.lv_buildings.mode);
+      if (!recolour && inside(this.map.bbox(0), this.lod2Bbox)) return;
+      const box = this.lod2Bbox && recolour ? this.lod2Bbox : this.map.bbox(0.2).map((v) => Number(v.toFixed(4)));
+      this.lod2Bbox = box;
+      const scheme = schemeOf('lv_buildings', this.modeOf('lv_buildings'));
       const byId = new Map((this.map.data('lv_buildings')?.features || []).map((ft) => [ft.properties.fid, ft.properties]));
-      this.lod2 = { state: 'loading', text: 'Loading LoD2 buildings…' };
+      this.lod2 = { text: 'Loading LoD2 buildings …' };
       try {
-        const head = await showLod2(params, (oid) => (byId.has(oid) ? colourOf(scheme, byId.get(oid)) : null),
-          document.documentElement.dataset.theme === 'dark');
+        const head = await showLod2({ version: this.version, bbox: box.join(',') },
+          (oid) => (byId.has(oid) ? colourOf(scheme, byId.get(oid)) : null), document.documentElement.dataset.theme === 'dark');
         const n = head?.buildings?.length || 0;
         this.map.setLod2Hide(n ? head.buildings : null);
-        this.lod2 = { state: 'ready', text: n ? `${f.num(n)} buildings in LoD2${head.truncated ? ' (first 5,000)' : ''}` : 'No LoD2 models here: footprints are extruded' };
+        this.lod2 = { text: n ? `${f.num(n)} buildings as LoD2 models${head.truncated ? ' (first 5,000)' : ''}` : 'No LoD2 models here: footprints are extruded' };
       } catch (err) {
-        this.lod2 = { state: 'error', text: `LoD2: ${err.message}` };
+        this.lod2 = { text: `LoD2: ${err.message}` };
       }
     },
 
+    // ------------------------------------------------------------------------------- reload
     async refreshAll() {
       try {
         const catalog = await getJson('/api/catalog', { refresh: 1 });
-        Object.assign(this, { meta: catalog.layers, lod2Available: catalog.lod2, versions: await getJson('/api/versions') });
+        Object.assign(this, { meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2, versions: await getJson('/api/versions') });
         for (const m of this.meta) {
-          this.layers[m.id] ||= { on: false, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
-          if (!m.available && this.layers[m.id].on) { this.layers[m.id].on = false; this.map.setLayer(m.id, { visible: false }); }
+          this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
+          this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });
         }
         if (!this.versions.some((v) => v.version_id === this.version)) this.version = this.versions[0]?.version_id || null;
         if (!this.runs.some((r) => r.id === this.mv)) this.mv = this.runs[0]?.id || null;
         this.loaded = {};
+        this.applyVisibility();
         this.reload(null, true);
         this.loadLists();
         this.loadSummary();
@@ -528,13 +553,15 @@ createApp({
       this.hashTimer = setTimeout(() => {
         if (!this.map) return;
         const v = this.map.view();
-        const on = this.meta.filter((m) => this.layers[m.id]?.on).map((m) => m.id);
+        const groups = this.groupMeta.filter((g) => this.groups[g.id]?.on).map((g) => g.id);
+        const on = this.meta.filter((m) => !m.parent && this.layers[m.id]?.on).map((m) => m.id);
         const modes = this.meta.filter((m) => this.layers[m.id]?.on && this.layers[m.id].mode && this.layers[m.id].mode !== defaultMode(m.id))
           .map((m) => `${m.id}:${this.layers[m.id].mode}`);
         const parts = { v: this.version, mv: this.mv, r: this.region ? `${this.region.kind}:${this.region.id}` : null,
-          l: on.join(','), m: modes.join(','), b: this.basemap !== 'auto' ? this.basemap : null, '3d': this.d3 ? '1' : null,
+          g: groups.join(','), l: on.join(','), m: modes.join(','), b: this.basemap !== 'auto' ? this.basemap : null, '3d': this.d3 ? '1' : null,
           c: [v.center[0].toFixed(5), v.center[1].toFixed(5), v.zoom.toFixed(2), Math.round(v.pitch), Math.round(v.bearing)].join(',') };
-        const hash = Object.entries(parts).filter(([, x]) => x).map(([k, x]) => `${k}=${encodeURIComponent(x)}`).join('&');
+        const hash = Object.entries(parts).filter(([k, x]) => x !== null && x !== undefined && (x !== '' || k === 'g' || k === 'l'))
+          .map(([k, x]) => `${k}=${encodeURIComponent(x)}`).join('&');
         history.replaceState(null, '', `#${hash}`);
       }, 300);
     },
