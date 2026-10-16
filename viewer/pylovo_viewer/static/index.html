@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pylovo viewer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Cpath d='M18 4 8 18h7l-2 10 11-15h-7z' fill='white'/%3E%3C/svg%3E">
+  <script>
+    // Theme before the first paint (no flash): stored choice, else the OS setting.
+    (() => {
+      let t = 'auto';
+      try { t = localStorage.getItem('pylovo-viewer.theme') || 'auto'; } catch (e) { /* private mode */ }
+      const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.11.2/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/static/css/viewer.css">
+  <script type="importmap">
+    { "imports": {
+        "maplibre-gl": "https://cdn.jsdelivr.net/npm/maplibre-gl@6.11.2/dist/maplibre-gl.mjs",
+        "vue": "https://cdn.jsdelivr.net/npm/vue@3.5.43/dist/vue.esm-browser.prod.js"
+    } }
+  </script>
+  <script type="module" src="/static/js/main.js"></script>
+</head>
+<body>
+<div id="app" v-cloak :class="{ 'no-panel': !panel }">
+  <div ref="map" class="map"></div>
+
+  <div class="fatal glass" v-if="fatal">
+    <h1>The viewer cannot read the database</h1>
+    <p>{{ fatal }}</p>
+    <p class="muted">Check the database settings in the <code>.env</code> and that the database is running, then reload.</p>
+  </div>
+
+  <!-- ------------------------------------------------------------------------- top bar -->
+  <header class="topbar glass" v-if="!fatal">
+    <button class="icon-btn" @click="panel = !panel" :class="{ on: panel }" title="Layer panel (L)">
+      <svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
+    <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M18 4 8 18h7l-2 10 11-15h-7z"/></svg></span>pylovo<b>viewer</b></div>
+    <div class="db" v-if="info" :title="`${info.database.dbname} on ${info.database.host}:${info.database.port}\nSettings: ${info.database.env_file || 'environment'}\nRead-only connection: the viewer never writes.`">
+      <span class="pulse"></span>{{ info.database.dbname }}<span class="ro">read-only</span>
+    </div>
+    <label class="field" v-if="versions.length">
+      <span>Version</span>
+      <select :value="version" @change="setVersion($event.target.value)">
+        <option v-for="v in versions" :key="v.version_id" :value="v.version_id">{{ v.version_id }} · {{ fmt.num(v.grids) }} grids</option>
+      </select>
+    </label>
+    <label class="field" v-if="runs.length">
+      <span>MV run</span>
+      <select :value="mv" @change="setRun($event.target.value)">
+        <option v-for="r in runs" :key="r.id" :value="r.id">{{ r.id }}{{ r.comment ? ' · ' + r.comment : '' }}</option>
+      </select>
+    </label>
+    <div class="search">
+      <svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+      <input ref="search" v-model="search.text" @input="searchInput" @keydown="searchKey" @focus="search.open = true"
+             @blur="closeSearch" placeholder="Search postcode, place, grid, supply area …" spellcheck="false">
+      <kbd>/</kbd>
+      <ul class="hits glass" v-if="search.open && search.hits.length">
+        <li v-for="(h, i) in search.hits" :key="i" :class="{ active: i === search.index }" @mousedown.prevent="choose(h)">
+          <span class="kind" :class="h.kind">{{ h.kind }}</span><b>{{ h.label }}</b><small>{{ h.detail }}</small>
+        </li>
+      </ul>
+    </div>
+    <div class="spacer"></div>
+    <button class="pill" :class="{ on: d3 }" @click="toggle3D" title="3D view with LoD2 buildings (3)">3D</button>
+    <select class="pill" v-model="basemap" title="Basemap">
+      <option value="auto">Basemap: auto</option>
+      <option v-for="(label, key) in basemaps" :key="key" :value="key">{{ label }}</option>
+    </select>
+    <button class="icon-btn" @click="theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]" :title="`Theme: ${theme} (click to change)`">
+      <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" class="fill"/></svg></button>
+    <button class="icon-btn" @click="refreshAll" title="Reload everything from the database">
+      <svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5"/></svg></button>
+    <button class="icon-btn" @click="help = true" title="Help and shortcuts (?)">?</button>
+  </header>
+
+  <!-- --------------------------------------------------------------------------- panel -->
+  <aside class="panel glass" v-if="!fatal" v-show="panel">
+    <nav class="tabs">
+      <button :class="{ on: tab === 'layers' }" @click="tab = 'layers'">Layers</button>
+      <button :class="{ on: tab === 'regions' }" @click="tab = 'regions'">Regions</button>
+      <button :class="{ on: tab === 'figures' }" @click="tab = 'figures'">Key figures</button>
+    </nav>
+    <div class="selection" :class="{ empty: !region }">
+      <template v-if="region">
+        <span class="sel-kind">{{ { plz: 'Postcode', area: 'MV supply area', grid: 'LV grid' }[region.kind] }}</span>
+        <b>{{ region.id }}</b>
+        <button class="link" @click="flyTo(region)" title="Zoom to the region">zoom</button>
+        <button class="icon-btn small" @click="clearRegion" title="Clear the region (Esc)">×</button>
+      </template>
+      <template v-else><span class="muted">No region selected: click a postcode or supply area, or search.</span></template>
+    </div>
+
+    <section class="scroll" v-if="tab === 'layers'">
+      <div class="empty-db" v-if="!versions.length && meta.length">This database has no pylovo results yet. Context layers still work.</div>
+      <div class="group" v-for="g in groups" :key="g.id">
+        <button class="group-head" @click="groupToggle(g.id)">
+          <span class="chev" :class="{ open: groupsOpen[g.id] }">›</span>{{ g.title }}
+          <span class="badge" v-if="g.active">{{ g.active }}</span>
+        </button>
+        <div v-show="groupsOpen[g.id]">
+          <div class="layer" v-for="m in g.layers" :key="m.id" :class="{ off: !layers[m.id]?.on, na: !m.available }">
+            <label class="switch" :title="m.available ? 'Show or hide' : m.reason">
+              <input type="checkbox" :checked="layers[m.id]?.on" :disabled="!m.available" @change="toggle(m.id)"><span></span>
+            </label>
+            <span class="swatch" :class="m.geometry" :style="{ background: swatch(m.id) }"></span>
+            <div class="lt">
+              <div class="name">{{ m.title }}
+                <span class="info" tabindex="0" :data-tip="m.description + '\n\nSource: ' + m.source + (m.attribution ? '\n' + m.attribution : '')">i</span>
+              </div>
+              <div class="sub" v-if="!m.available">{{ m.reason }}</div>
+              <div class="sub" v-else-if="layers[m.id]?.on">
+                <template v-if="layers[m.id].status === 'loading'"><span class="spin"></span>loading</template>
+                <template v-else-if="layers[m.id].status === 'ok'">{{ fmt.num(layers[m.id].count) }} features<span class="warn" v-if="layers[m.id].truncated"> · first {{ fmt.num(layers[m.id].count) }} only</span></template>
+                <template v-else-if="layers[m.id].status === 'wait'">{{ layers[m.id].note }}</template>
+                <template v-else-if="layers[m.id].status === 'error'"><span class="warn">{{ layers[m.id].note }}</span></template>
+              </div>
+            </div>
+            <select class="mode" v-if="layers[m.id]?.on && modes(m.id).length > 1" :value="layers[m.id].mode"
+                    @change="setMode(m.id, $event.target.value)" title="Colour by">
+              <option v-for="o in modes(m.id)" :key="o.id" :value="o.id">{{ o.label }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="note" v-if="lod2" :class="lod2.state">{{ lod2.text }}</div>
+    </section>
+
+    <section class="scroll" v-if="tab === 'regions'">
+      <input class="filter" v-model="regionFilter" placeholder="Filter postcodes by number or name">
+      <h4>Postcodes of {{ version }} <span class="muted">{{ filteredPostcodes.length }}</span></h4>
+      <ul class="list">
+        <li v-for="p in filteredPostcodes" :key="p.plz" :class="{ on: region?.kind === 'plz' && region.id === p.plz }" @click="selectRegion('plz', p.plz)">
+          <b>{{ p.plz }}</b><span>{{ p.name || '–' }}</span><small>{{ fmt.num(p.grids) }} grids</small>
+        </li>
+      </ul>
+      <template v-if="areas.length">
+        <h4>MV supply areas of {{ mv }} <span class="muted">{{ areas.length }}</span></h4>
+        <ul class="list">
+          <li v-for="a in areas" :key="a.area" :class="{ on: region?.kind === 'area' && region.id === a.area }" @click="selectRegion('area', a.area)">
+            <b>{{ a.area }}</b><span>{{ a.substation || 'HV/MV substation' }}</span>
+            <small>{{ fmt.kv(a.vn_kv) }} · {{ fmt.num(a.stations) }} stations{{ a.complete ? '' : ' · at border' }}</small>
+          </li>
+        </ul>
+      </template>
+    </section>
+
+    <section class="scroll figures" v-if="tab === 'figures'">
+      <div class="muted scope">{{ regionLabel || `Whole version ${version || ''}` }}{{ mv ? ` · MV run ${mv}` : '' }}</div>
+      <template v-if="summary?.lv">
+        <h3>LV grids</h3>
+        <div class="tiles">
+          <div class="tile"><b>{{ fmt.num(summary.lv.grids) }}</b><span>grids</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.lv.buildings) }}</b><span>buildings</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.lv.households) }}</b><span>households</span></div>
+          <div class="tile"><b>{{ fmt.mw(summary.lv.peak_mw) }}</b><span>Σ building peaks</span></div>
+          <div class="tile"><b>{{ fmt.km(summary.lv.feeder_km) }}</b><span>feeder cable</span></div>
+          <div class="tile"><b>{{ fmt.km(summary.lv.service_km) }}</b><span>service cable</span></div>
+        </div>
+        <h4>Stations by rated power</h4>
+        <div class="bars">
+          <div class="bar" v-for="s in summary.lv.stations_by_kva" :key="s.kva">
+            <span>{{ fmt.kva(s.kva) }}</span><i :style="{ width: (100 * s.n / Math.max(...summary.lv.stations_by_kva.map((x) => x.n))) + '%' }"></i><b>{{ fmt.num(s.n) }}</b>
+          </div>
+        </div>
+        <h4>Power flow of the grids</h4>
+        <div class="chips"><span class="chip" v-for="s in summary.lv.power_flow" :key="s.status" :class="s.status">{{ statusText(s.status) }} <b>{{ fmt.num(s.n) }}</b></span></div>
+      </template>
+      <template v-if="summary?.mv">
+        <h3>MV run {{ mv }}{{ region?.kind === 'area' ? ` · area ${region.id}` : '' }}</h3>
+        <div class="tiles">
+          <div class="tile"><b>{{ fmt.num(summary.mv.areas) }}</b><span>supply areas</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.mv.rings) }}</b><span>rings and feeders</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.mv.stations) }}</b><span>MV/LV stations</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.mv.customers) }}</b><span>MV customers</span></div>
+          <div class="tile"><b>{{ fmt.km(summary.mv.cable_km) }}</b><span>cable (circuit)</span></div>
+          <div class="tile"><b>{{ fmt.km(summary.mv.overhead_km) }}</b><span>overhead (circuit)</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.mv.ties) }}</b><span>ties · {{ fmt.km(summary.mv.tie_km) }}</span></div>
+          <div class="tile"><b>{{ fmt.num(summary.mv.open_points) }}</b><span>open points</span></div>
+          <div class="tile"><b>{{ fmt.pct(summary.mv.max_loading) }}</b><span>max line loading</span></div>
+          <div class="tile"><b>{{ fmt.pct(summary.mv.max_drop, 2) }}</b><span>max voltage drop</span></div>
+        </div>
+        <h4>Voltage of the supply areas</h4>
+        <div class="chips"><span class="chip">20 kV <b>{{ fmt.num(summary.mv.areas_20kv) }}</b></span><span class="chip">10 kV <b>{{ fmt.num(summary.mv.areas_10kv) }}</b></span><span class="chip">at the region border <b>{{ fmt.num(summary.mv.incomplete) }}</b></span></div>
+        <h4>Power flow of the supply areas</h4>
+        <div class="chips"><span class="chip" v-for="s in summary.mv.power_flow" :key="s.status" :class="s.status">{{ statusText(s.status) }} <b>{{ fmt.num(s.n) }}</b></span></div>
+      </template>
+      <p class="muted" v-if="!summary">No figures for this selection.</p>
+    </section>
+  </aside>
+
+  <!-- ----------------------------------------------------------------------- inspector -->
+  <aside class="inspector glass" v-if="inspector">
+    <template v-for="hit in [inspector.hits[inspector.index]]" :key="hit.layer + hit.fid">
+      <header>
+        <span class="dot" :style="{ background: facts(hit).colour }"></span>
+        <div class="head">
+          <div class="kicker">{{ facts(hit).layerTitle }}</div>
+          <h2>{{ facts(hit).title }}</h2>
+          <div class="subtitle" v-if="facts(hit).subtitle">{{ facts(hit).subtitle }}</div>
+        </div>
+        <button class="icon-btn small" @click="closeInspector" title="Close (Esc)">×</button>
+      </header>
+      <div class="hit-tabs" v-if="inspector.hits.length > 1">
+        <span class="muted">{{ inspector.hits.length }} features here:</span>
+        <button v-for="(h, i) in inspector.hits" :key="i" :class="{ on: i === inspector.index }" @click="show(i)"
+                :title="metaById[h.layer]?.title">{{ facts(h).title }}</button>
+      </div>
+      <table class="facts"><tr v-for="r in facts(hit).rows" :key="r[0]"><th>{{ r[0] }}</th><td>{{ r[1] }}</td></tr></table>
+      <div class="actions"><button v-for="a in actions(hit)" :key="a.label" @click="a.run()">{{ a.label }}</button></div>
+      <div class="attrs">
+        <button class="attrs-head" @click="inspector.attrsOpen ? (inspector.attrsOpen = false) : loadAttrs()">
+          <span class="chev" :class="{ open: inspector.attrsOpen }">›</span>All attributes</button>
+        <template v-if="inspector.attrsOpen">
+          <div class="muted" v-if="inspector.loading"><span class="spin"></span>loading</div>
+          <div class="warn" v-if="inspector.error">{{ inspector.error }}</div>
+          <table v-if="inspector.attrs"><tr v-for="[k, v] in inspector.attrs" :key="k"><th>{{ k }}</th><td>{{ attrValue(v) }}</td></tr></table>
+          <button class="link" v-if="inspector.attrs" @click="copyAttrs">Copy as JSON</button>
+        </template>
+      </div>
+    </template>
+  </aside>
+
+  <!-- -------------------------------------------------------------------------- legend -->
+  <div class="legend glass" v-if="legend.length && !fatal" :class="{ shift: inspector }">
+    <button class="legend-head" @click="legendOpen = !legendOpen"><span class="chev" :class="{ open: legendOpen }">›</span>Legend</button>
+    <div class="legend-body" v-show="legendOpen">
+      <div class="lg" v-for="l in legend" :key="l.id">
+        <div class="lg-title">{{ l.title }}</div>
+        <div class="lg-row" v-for="(e, i) in l.entries" :key="i">
+          <span v-if="e.kind === 'slots'" class="lg-slots"><i v-for="c in e.colours" :key="c" :style="{ background: c }"></i></span>
+          <span v-else-if="e.kind === 'ramp'" class="lg-ramp" :style="{ background: e.css }"></span>
+          <span v-else-if="e.kind === 'note'" class="lg-note"></span>
+          <span v-else class="lg-sym" :class="[e.kind, { hollow: e.hollow, dash: e.dash, dot: e.dot, thin: e.thin }]" :style="{ '--c': e.colour }"></span>
+          <span class="lg-label">{{ e.label }}<span class="muted" v-if="e.kind === 'ramp'"> {{ fmt.auto(e.min) }}–{{ fmt.auto(e.max) }} {{ e.unit }}</span></span>
+          <span class="lg-count" v-if="e.count !== null && e.count !== undefined">{{ fmt.num(e.count) }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------------------ tooltip, toast -->
+  <div class="tooltip glass" v-if="tooltip" :style="tooltipStyle()">
+    <div class="tt-title"><span class="dot" :style="{ background: tooltip.colour }"></span>{{ tooltip.title }}</div>
+    <div class="tt-sub" v-if="tooltip.subtitle">{{ tooltip.subtitle }}</div>
+    <table v-if="tooltip.rows.length"><tr v-for="r in tooltip.rows" :key="r[0]"><th>{{ r[0] }}</th><td>{{ r[1] }}</td></tr></table>
+  </div>
+  <div class="toast glass" v-if="toast" :class="toast.kind">{{ toast.text }}</div>
+
+  <!-- ---------------------------------------------------------------------------- help -->
+  <div class="modal" v-if="help" @click.self="help = false">
+    <div class="glass help">
+      <button class="icon-btn small close" @click="help = false">×</button>
+      <h2>pylovo viewer</h2>
+      <p>A read-only map of the pylovo database in your <code>.env</code>
+        (<b>{{ info?.database.dbname }}</b> on {{ info?.database.host }}:{{ info?.database.port }}). It never writes to the database.</p>
+      <ul>
+        <li><b>Pick a version</b> (LV grids) and, if there is one, an <b>MV run</b> in the top bar.</li>
+        <li><b>Pick a region</b>: click a postcode or supply area on the map, use the <i>Regions</i> tab, or search. The map flies there and loads its cables and buildings.</li>
+        <li>Without a region, cables and buildings load for the map view once you zoom in far enough.</li>
+        <li><b>Click</b> anything for its facts and all its database attributes; <b>hover</b> for a quick look.</li>
+        <li>Each layer has a <b>colour mode</b> (the small menu next to it) and an <b>i</b> with its source.</li>
+        <li><b>3D</b> tilts the map and extrudes the buildings; with LoD2 data (citydb) the selected region shows real roofs.</li>
+        <li>The address bar keeps the view: bookmark or share it.</li>
+      </ul>
+      <h3>Keys</h3>
+      <table class="keys">
+        <tr><td><kbd>/</kbd></td><td>search</td><td><kbd>3</kbd></td><td>3D on/off</td></tr>
+        <tr><td><kbd>L</kbd></td><td>layer panel</td><td><kbd>Esc</kbd></td><td>close, then clear the region</td></tr>
+        <tr><td><kbd>?</kbd></td><td>this help</td><td><kbd>right drag</kbd></td><td>tilt and rotate</td></tr>
+      </table>
+      <p class="muted">Context data: eTraGo grid of eGon-data (download once with <code>pylovo-viewer fetch etrago</code>), eGon districts, OSM power and MaStR when they are in the database.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

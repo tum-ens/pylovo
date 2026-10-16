@@ -99,6 +99,13 @@ api = [
     # Only needed by the FastAPI TestClient in api/tests
     "httpx>=0.27.0",
 ]
+viewer = [
+    # Read-only browser map of the database (pylovo-viewer): web server for the page and its data
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    # Only needed by the FastAPI TestClient in viewer/tests
+    "httpx>=0.27.0",
+]
 
 [dependency-groups]
 # Installed by `uv sync` / `uv run` (not by `pip install pylovo`, not in the image: `uv sync --no-dev`)
@@ -116,9 +123,10 @@ pylovo-export = "pylovo.cli.launch:export"
 pylovo-import = "pylovo.cli.launch:import_data"
 pylovo-mv = "pylovo.cli.mv:main"
 pylovo-api = "pylovo_api.cli:main"
+pylovo-viewer = "pylovo_viewer.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pylovo", "api/pylovo_api"]
+packages = ["src/pylovo", "api/pylovo_api", "viewer/pylovo_viewer"]
 
 [tool.hatch.build.targets.wheel.force-include]
 # The default configuration and the read-only reference data of pylovo-setup, for a wheel outside a checkout
@@ -150,6 +158,9 @@ include = [
     "src/pylovo/**/*.sql",
     # HTTP API package (pylovo-api)
     "api/pylovo_api/**/*.py",
+    # Map viewer (pylovo-viewer): the server and its static page (HTML, JS, CSS)
+    "viewer/pylovo_viewer/**/*.py",
+    "viewer/pylovo_viewer/static/**",
 ]
 
 [tool.pytest.ini_options]
