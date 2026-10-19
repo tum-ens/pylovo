@@ -463,6 +463,16 @@ transformers, their loading in normal operation and with one unit out, and the p
 In the stored net of every grid, the HV bus carries the same id in the column
 ``etrago_bus_id``.
 
+pylovo-mv display
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+   pylovo-mv display --version VERSION --variant VARIANT [VARIANT ...]
+
+Stores the display geometry of variants again (see `Display geometry`_), for example for
+variants built before it existed. ``generate`` stores it at the end of every run.
+
 pylovo-mv graph
 ~~~~~~~~~~~~~~~
 
@@ -499,7 +509,8 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
        ties and the demand anchor).
    * - ``mv_substation``
      - HV/MV substations with busbar point, footprint, OSM tags, eGon match, sizing (number and
-       rating of the transformers), peak load and feed-in, loading and flags.
+       rating of the transformers), peak load and feed-in, loading, flags and the busbar circle
+       of the display geometry (``display_geom``).
    * - ``mv_grid``
      - One MV grid per supply area: status, nominal voltage, polygon and area, ``complete``,
        HV/MV transformers and OLTC tap, counts, circuit, cable, overhead and trench length, voltage
@@ -510,8 +521,9 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
        ring, feeder and position, MV voltages per case, voltage budget, MV/LV tap, coupling results
        and flags.
    * - ``mv_line``
-     - Lines with role (``ring``, ``stub``, ``dedicated``, ``generator``, ``tie``), kind (cable or
-       overhead), standard type, parallel cables, lengths, normally-open flag and loadings per case.
+     - Lines with role (``ring``, ``stub``, ``dedicated``, ``generator``, ``tie``, ``link``), kind
+       (cable or overhead), standard type, parallel cables, lengths, normally-open flag, loadings per
+       case and the display geometry (``display_geom``).
    * - ``mv_ring``
      - One row per ring, dedicated feeder, generator feeder or busbar radial: members, lengths of
        the ring, the halves and the stubs, coincident loads, open point, drops and loadings.
@@ -533,6 +545,22 @@ installed parallel circuits individually, including normally-open sections and e
 ties. ``mv_grid.metrics['route_km']`` counts each modeled line once; it is not the union of shared
 trenches. ``mv_ring`` lengths and feeder/path distances remain unweighted geometric lengths.
 Regional inventory includes the installed ties and clips each circuit to the region.
+
+Display geometry
+~~~~~~~~~~~~~~~~
+
+Lines that run along the same streets have the same geometry, so a map draws them on top of each
+other. At the end of every run the stage stores a display geometry for maps
+(:mod:`pylovo.mv_grid.display`); ``geom`` and every length stay as they are:
+
+* ``mv_line.display_geom`` shifts the lines sideways into lanes where they share a route: 2 m
+  apart, the band at most 12 m wide (more lines share it with a smaller spacing). A line lies on
+  the side where it leaves the bundle, and consecutive lines of one ring, stub or feeder keep
+  their lane through their stations. A line changes lane over 10 m.
+* ``mv_substation.display_geom`` is the busbar circle: half the widest band at the busbar plus
+  2 m, at least 6 m. Every line from the substation ends on it, whatever its direction.
+* Other line ends bend into their node point. Lines that need no change keep ``display_geom``
+  NULL, so maps draw ``COALESCE(display_geom, geom)``.
 
 Flags
 ~~~~~

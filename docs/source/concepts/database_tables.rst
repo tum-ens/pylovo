@@ -1966,6 +1966,9 @@ Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, m
    * - ``footprint``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
      - 
+   * - ``display_geom``
+     - ``geometry(Polygon,<TARGET_EPSG>)``
+     - 
 
 ``mv_grid``
 ~~~~~~~~~~~
@@ -2382,6 +2385,9 @@ Foreign key (to_node) references ``mv_node`` (mv_node_id), ON DELETE CASCADE.
      - ``double precision``
      - 
    * - ``geom``
+     - ``geometry(LineString,<TARGET_EPSG>)``
+     - 
+   * - ``display_geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
      - 
 
