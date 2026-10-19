@@ -87,7 +87,8 @@ The import runs two Overpass queries from ``data/transformer_data/overpass_queri
 (``$relation_id$`` is replaced by the area id) and processes the result:
 
 ``substations_query.txt``
-   All ``power=transformer`` and ``power=substation`` objects in the area, without Deutsche Bahn
+   All ``power=transformer`` and ``power=substation`` objects and the ``power=pole`` nodes with a
+   ``transformer`` tag (pole-mounted stations on overhead lines) in the area, without Deutsche Bahn
    operators, historic and abandoned objects.
 
 ``shopping_mall_query.txt``
