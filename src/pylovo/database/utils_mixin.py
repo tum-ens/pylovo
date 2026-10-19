@@ -131,6 +131,27 @@ class UtilsMixin(BaseMixin):
             return None
         return int(result[0])
 
+    def get_postcode_polygon_wkb(self, plz: int) -> bytes:
+        """Return the polygon of a PLZ in ``TARGET_EPSG`` as WKB (``postcode_result`` of the version, else ``postcode``).
+
+        Raises:
+            ValueError: If the PLZ has no polygon.
+        """
+        query = """SELECT ST_AsBinary(geom) FROM (
+                       SELECT geom, 0 AS rank FROM pylovo.postcode_result
+                       WHERE version_id = %(v)s AND postcode_result_plz = %(p)s
+                       UNION ALL
+                       SELECT geom, 1 FROM pylovo.postcode WHERE plz = %(p)s
+                   ) polygons
+                   WHERE geom IS NOT NULL
+                   ORDER BY rank
+                   LIMIT 1;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": int(plz)})
+        row = self.cur.fetchone()
+        if row is None:
+            raise ValueError(f"PLZ {plz} has no polygon")
+        return bytes(row[0])
+
     def get_list_from_plz(self, plz: int) -> list:
         """Return the ``(kcid, bcid)`` pairs of all grids of ``plz`` in the configured version."""
         query = """SELECT DISTINCT kcid, bcid

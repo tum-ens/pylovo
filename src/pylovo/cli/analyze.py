@@ -4,7 +4,8 @@ The PLZ analysis stores transformer, load, bus and cable statistics per PLZ; the
 stores the clustering parameters of every grid and needs the PLZ analysis first.
 
 ``--coverage`` accounts for every source building of the PLZ (in a grid, left out with a reason, or
-missing); it writes CSV/JSON reports and changes nothing in the database.
+missing) and ``--border-diagnostics`` reports the PLZ-border and data-edge context of the PLZ and their
+grids; both write CSV/JSON reports and change nothing in the database.
 """
 import argparse
 import json
@@ -32,8 +33,10 @@ def analyze_grid(plz: int):
     print(f"✓ Calculated parameters per grid for PLZ {plz}")
 
 
-def run_diagnostics(plz_list: list[int], coverage: bool, version_id: str | None, output: Path) -> int:
-    """Write the coverage report of ``plz_list`` to ``output``; return the number of missing buildings."""
+def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_id: str | None,
+                    output: Path) -> int:
+    """Write the coverage and/or border reports of ``plz_list`` to ``output``; return the number of missing buildings."""
+    from pylovo.analysis import border_diagnostics
     from pylovo.analysis.coverage import coverage_totals, reconcile_coverage
     from pylovo.config_loader import VERSION_ID
     from pylovo.database.database_client import DatabaseClient
@@ -51,8 +54,15 @@ def run_diagnostics(plz_list: list[int], coverage: bool, version_id: str | None,
             summary.to_csv(output / f"coverage_summary_{version_id}.csv", index=False)
             report["coverage"] = coverage_totals(buildings)
             missing = int(report["coverage"].get("missing", 0))
+        if border:
+            context = border_diagnostics.postcode_context(dbc, inf_dbc, plz_list)
+            grids = border_diagnostics.grid_edges(dbc, inf_dbc, plz_list, version_id)
+            context.to_csv(output / f"postcode_context_{version_id}.csv", index=False)
+            grids.to_csv(output / f"grid_edges_{version_id}.csv", index=False)
+            report["postcodes"] = context.round(4).to_dict(orient="records")
+            report["grids"] = border_diagnostics.summarize(grids)
     (output / f"diagnostics_{version_id}.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
-    print(json.dumps(report, indent=2, default=str))
+    print(json.dumps({key: value for key, value in report.items() if key != "postcodes"}, indent=2, default=str))
     return missing
 
 
@@ -72,8 +82,8 @@ Examples:
   # Do both in sequence
   pylovo-analyze --plz 80803 --all
 
-  # Account for every source building (CSV/JSON in results/diagnostics)
-  pylovo-analyze --plz 80331 80333 --coverage
+  # Account for every source building and report the border context (CSV/JSON in results/diagnostics)
+  pylovo-analyze --plz 80331 80333 --coverage --border-diagnostics
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -93,15 +103,21 @@ Examples:
     )
 
     parser.add_argument(
+        "--border-diagnostics",
+        action="store_true",
+        help="Report the PLZ-border and data-edge context of the PLZ and their grids"
+    )
+
+    parser.add_argument(
         "--version-id",
         default=None,
-        help="Version for --coverage (default: VERSION_ID of the config)"
+        help="Version for --coverage/--border-diagnostics (default: VERSION_ID of the config)"
     )
 
     parser.add_argument(
         "--output",
         default="results/diagnostics",
-        help="Directory of the --coverage reports"
+        help="Directory of the --coverage/--border-diagnostics reports"
     )
 
     parser.add_argument(
@@ -119,8 +135,9 @@ Examples:
     args = parser.parse_args()
 
     try:
-        if args.coverage:
-            missing = run_diagnostics(args.plz, args.coverage, args.version_id, Path(args.output))
+        if args.coverage or args.border_diagnostics:
+            missing = run_diagnostics(args.plz, args.coverage, args.border_diagnostics, args.version_id,
+                                      Path(args.output))
             if missing:
                 print(f"✗ {missing} source buildings are neither in a grid nor recorded as left out")
                 sys.exit(EXIT_INCOMPLETE)

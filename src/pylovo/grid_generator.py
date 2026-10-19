@@ -64,6 +64,7 @@ from pylovo.config_loader import (
     RURAL_MAX_HOUSEHOLDS,
     RURAL_MIN_BUILDING_DISTANCE,
     SAVE_GRID_FOLDER,
+    TARGET_EPSG,
     TRANSFORMER_PLANNING_UTILIZATION,
     URBAN_MAX_BUILDING_DISTANCE,
     URBAN_MIN_HOUSEHOLDS,
@@ -77,7 +78,7 @@ from pylovo.config_loader import (
 # Import electrical backend components
 from pylovo.electrical_backend import IElectricalBackend, create_backend
 from pylovo.cable_installer import CableInstaller
-from pylovo import feeder_planning
+from pylovo import feeder_planning, postcode_border
 from pylovo.station_voltage import solve_validation_power_flow
 
 class ResultExistsError(Exception):
@@ -513,6 +514,13 @@ class GridGenerator:
         """
         if USE_INFDB:
             ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
+            if postcode_border.halo_enabled():
+                halo_rows = self.inf_dbc.fetch_halo_ways(
+                    self.plz, self.dbc.get_postcode_polygon_wkb(self.plz), TARGET_EPSG,
+                    postcode_border.halo_width_m(), first_way_id=max(int(row[-1]) for row in ways_rows))
+                self.logger.info(
+                    f"Halo: {len(halo_rows)} ways of other PLZ within {postcode_border.halo_width_m():.0f} m added")
+                ways_rows = list(ways_rows) + list(halo_rows)
             ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows, self.plz)
         else:
             ways_count = self.dbc.set_ways_tem_table(self.plz)

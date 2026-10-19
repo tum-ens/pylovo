@@ -194,18 +194,29 @@ The loads of a stored net are the synthetic validation snapshot (:ref:`validatio
 for time-series studies.
 
 
-Coverage
---------
+Coverage and border diagnostics
+-------------------------------
 
-The coverage report accounts for the buildings of generated PLZ; it writes CSV and JSON files to
-``--output`` (default ``results/diagnostics``) and changes nothing in the database:
+Two reports account for the buildings of generated PLZ and show the context of their borders; they
+write CSV and JSON files to ``--output`` (default ``results/diagnostics``) and change nothing in the
+database:
 
 .. code-block:: bash
 
-   pylovo-analyze --plz 80331 80333 80469 --coverage [--version-id <id>]
+   pylovo-analyze --plz 80331 80333 80469 --coverage --border-diagnostics [--version-id <id>]
 
-Every source building that generation loads (InfDB, same filters) is ``generated`` (in a grid, in
-any PLZ), ``excluded`` with the step that left it out (``pylovo.building_exclusion``: e.g.
-``mv_direct``, ``no_connection_point``, ``isolated_component``, ``unloaded``,
-``transformer_evidence``), ``postcode_not_generated`` (its PLZ has no results) or ``missing``. A
-complete run has no missing building; the command then exits with 3.
+``--coverage``
+    Every source building that generation loads (InfDB, same filters) is ``generated`` (in a grid,
+    in any PLZ), ``excluded`` with the step that left it out (``pylovo.building_exclusion``: e.g.
+    ``mv_direct``, ``no_connection_point``, ``isolated_component``, ``unloaded``,
+    ``transformer_evidence``), ``postcode_not_generated`` (its PLZ has no results) or ``missing``.
+    A complete run has no missing building; the command then exits with 3.
+
+``--border-diagnostics``
+    Per PLZ the share of its polygon inside the InfDB import scope (``scope_share``), the share of
+    the halo ring around it inside the scope (``context_share``) and the street length inside and in
+    the ring: a PLZ can lie inside the scope while its surroundings were never imported. Per grid
+    the number of buildings and the distance to the nearest PLZ border with a generated neighbour,
+    with a neighbour without results (open) and without a neighbouring PLZ (outer), and to the edge
+    of the import scope. These are diagnostics: report flagged and unflagged grids side by side.
+

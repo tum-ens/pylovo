@@ -9,6 +9,7 @@ import pandas as pd
 from psycopg2 import sql
 from psycopg2.extras import execute_batch
 
+from pylovo import postcode_border
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
@@ -138,6 +139,7 @@ class PreprocessingMixin(BaseMixin):
                 "max_buildings_per_kcid": MAX_BUILDINGS_PER_KCID,
                 "k_means_seed": K_MEANS_SEED,
             },
+            "postcode_border": postcode_border.snapshot(),
         }
 
     def insert_version_if_not_exists(self):
