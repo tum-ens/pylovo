@@ -187,6 +187,9 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="longest normally-open link between two rings of one district: a cross connection between "
                      "neighbouring stations, two to three times the distance between neighbouring stations "
                      "(assumption, decision of 2026-10-19)"),
+    _constant("link_max_length_rural_m", 500.0, "float", "topology", bounds=_POSITIVE,
+              source="longest link between two rural ring members of one district (rural stations lie farther "
+                     "apart; tested 2026-10-19)"),
     _constant("local_search_rounds", 50, "int", "topology", bounds=(0, None),
               source="pass limit of the granular local search (Ding0 used 10 fixed rounds); 0 = no local search"),
     _constant("neighbours", 15, "int", "topology", bounds=(1, None),

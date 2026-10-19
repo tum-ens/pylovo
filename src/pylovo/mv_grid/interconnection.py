@@ -36,7 +36,8 @@ share of rings with a tie and the takeover results go into ``mv_variant.summary[
 **Links** (:func:`plan_links`, :func:`plan_and_save_links`): real MV grids join neighbouring rings by cross
 connections, so that their stations can be resupplied in more ways than through their own ring, and many short
 loops run between rings rather than through the busbar. After the ties, the stage joins ring members of different
-rings of the same district within ``link_max_length_m`` (true length along the routing graph), greedy by length:
+rings of the same district within ``link_max_length_m`` (``link_max_length_rural_m`` between two rural members; true
+length along the routing graph), greedy by length:
 each member takes at most one link (a third cable bay) and two rings at most two links, which close a loop between
 them. Links are ``mv_line`` rows with ``role = 'link'``, normally open at ``to_node``, outside the cases like the
 ties; ``mv_variant.summary['links']`` and ``mv_grid.metrics['links']`` hold their counts.
@@ -439,20 +440,29 @@ def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params:
     """The normally-open links between the rings of one district (pure).
 
     Pairs of ring members (stations and MV customers with switchgear) of different rings of the same district
-    within ``link_max_length_m`` along the routing graph (true length), greedy by length: each member holds at most
-    one link (a third cable bay, :data:`LINKS_PER_NODE`), and two rings are joined at most :data:`LINKS_PER_RING_PAIR`
-    times, so that two links can close a short loop between them. Lengths, kinds and geometries as for the ties.
+    within ``link_max_length_m`` along the routing graph (true length; ``link_max_length_rural_m`` when both ends
+    are rural, where stations lie farther apart), greedy by length: each member holds at most one link (a third
+    cable bay, :data:`LINKS_PER_NODE`), and two rings are joined at most :data:`LINKS_PER_RING_PAIR` times, so that
+    two links can close a short loop between them. Lengths, kinds and geometries as for the ties.
 
     Returns:
         One row per link (:data:`TIE_COLUMNS`; ``from_grid`` = ``to_grid``), the end on the ring with the lower
         ``ring_id`` first, open at ``to_node``; ``flags`` empty.
     """
-    limit = float(params.link_max_length_m)
+    urban_limit, rural_limit = float(params.link_max_length_m), float(params.link_max_length_rural_m)
+    limit = max(urban_limit, rural_limit)
     cand = tie_candidates(nodes, grids)
     pairs = close_pairs(cand, grids, limit + PREFILTER_SLACK_M, within=True)
     m = _measure(cand, pairs, edges, params, limit) if len(pairs) else None
     if m is None:
         return empty_ties()
+    rural = _texts(m["sub"], "area_class") != "urban"
+    i, j = m["pairs"][:, 0], m["pairs"][:, 1]
+    keep = m["street"] <= np.where(rural[i] & rural[j], rural_limit, urban_limit)
+    if not keep.any():
+        return empty_ties()
+    for name in ("pairs", "street", "straight_m", "overhead", "straight", "length"):
+        m[name] = m[name][keep]
     i, j = m["pairs"][:, 0], m["pairs"][:, 1]
     ids, grid, ring = m["ids"], m["grid"], m["ring"]
     order = np.lexsort((ids[j], ids[i], m["street"], m["length"]))
