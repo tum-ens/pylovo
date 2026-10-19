@@ -9,6 +9,8 @@ from collections.abc import Callable
 
 from psycopg2.extensions import cursor
 
+from pylovo.database.config_table_structure import CREATE_QUERIES
+
 
 def drop_rebuilt_views(cur: cursor) -> None:
     """Drop, without CASCADE, only the views that the baseline must rebuild.
@@ -449,6 +451,11 @@ def percentage_checks(cur: cursor) -> None:
     """)
 
 
+def building_exclusion(cur: cursor) -> None:
+    """Create the table of buildings left out of the grids (the baseline creates it on new schemas)."""
+    cur.execute(CREATE_QUERIES["building_exclusion"])
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -461,6 +468,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0006_legacy_building_fk", legacy_building_fk),
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),
     ("0008_percentage_checks", percentage_checks),
+    ("0009_building_exclusion", building_exclusion),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

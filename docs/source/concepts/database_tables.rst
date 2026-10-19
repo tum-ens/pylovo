@@ -558,6 +558,37 @@ Foreign key (version_id, plz) references ``postcode_result`` (version_id, postco
      - ``integer``
      - PK, FK → ``postcode_result``
 
+``building_exclusion``
+~~~~~~~~~~~~~~~~~~~~~~
+
+Loaded buildings of a generated postcode that are in no grid, with the step that left them out
+(``unloaded``, ``mv_direct``, ``no_connection_point``, ``isolated_component``, ``not_clustered``,
+``transformer_evidence``, ``overlaps_transformer``, ``residential_only``, ``duplicate``, ...). With
+``buildings_result`` it accounts for every loaded building (``pylovo-analyze --coverage``).
+
+Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``version_id``
+     - ``varchar(10)``
+     - PK, FK → ``postcode_result``
+   * - ``objectid``
+     - ``text``
+     - PK
+   * - ``plz``
+     - ``integer``
+     - FK → ``postcode_result``
+   * - ``reason``
+     - ``varchar(40)``
+     - 
+
 ``plz_parameters``
 ~~~~~~~~~~~~~~~~~~
 

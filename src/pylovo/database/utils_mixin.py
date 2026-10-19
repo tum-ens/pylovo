@@ -144,15 +144,25 @@ class UtilsMixin(BaseMixin):
         return cluster_list
 
     def delete_transformers_from_buildings_tem(self, vertices: list) -> None:
-        """
-        Deletes selected transformers from buildings_tem
-        :param vertices:
-        :return:
+        """Delete the rows of ``buildings_tem`` at the given vertices.
+
+        Used for unused transformers and for the street components with at most one consumer;
+        a consumer deleted with such a component is recorded in ``excluded_tem`` as ``isolated_component``.
+
+        Args:
+            vertices: Vertex IDs.
         """
         query = """
-                DELETE
-                FROM buildings_tem
-                WHERE vertice_id IN %(v)s;"""
+                WITH deleted AS (
+                    DELETE
+                    FROM buildings_tem
+                    WHERE vertice_id IN %(v)s
+                    RETURNING objectid, type, peak_load_in_kw
+                )
+                INSERT INTO excluded_tem (objectid, reason)
+                SELECT objectid, 'isolated_component'
+                FROM deleted
+                WHERE type IS DISTINCT FROM 'Transformer' AND peak_load_in_kw IS DISTINCT FROM -1;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
     def get_consumer_categories(self):

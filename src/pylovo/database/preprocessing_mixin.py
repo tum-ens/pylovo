@@ -452,9 +452,9 @@ class PreprocessingMixin(BaseMixin):
 
     def remove_duplicate_buildings(self):
         """Delete buildings without geometry or objectid, and ``*copy*`` duplicates of identical geometries."""
-        remove_query = """DELETE
-                          FROM buildings_tem
-                          WHERE geom ISNULL;"""
+        remove_query = """WITH deleted AS (DELETE FROM buildings_tem WHERE geom ISNULL RETURNING objectid)
+                          INSERT INTO excluded_tem (objectid, reason)
+                          SELECT objectid, 'no_geometry' FROM deleted WHERE objectid IS NOT NULL;"""
         self.cur.execute(remove_query)
 
         remove_noid_building = """DELETE
@@ -462,11 +462,16 @@ class PreprocessingMixin(BaseMixin):
                                   WHERE objectid ISNULL;"""
         self.cur.execute(remove_noid_building)
 
-        query = """DELETE
-                   FROM buildings_tem
-                   WHERE geom IN
-                         (SELECT geom FROM buildings_tem GROUP BY geom HAVING count(*) > 1)
-                     AND objectid LIKE '%copy%';"""
+        query = """WITH deleted AS (
+                       DELETE
+                       FROM buildings_tem
+                       WHERE geom IN
+                             (SELECT geom FROM buildings_tem GROUP BY geom HAVING count(*) > 1)
+                         AND objectid LIKE '%copy%'
+                       RETURNING objectid
+                   )
+                   INSERT INTO excluded_tem (objectid, reason)
+                   SELECT objectid, 'duplicate' FROM deleted;"""
         self.cur.execute(query)
 
     def calculate_house_distance_metric(self, plz: int, k_nearest: int = 4) -> float:
@@ -801,9 +806,9 @@ class PreprocessingMixin(BaseMixin):
         self.cur.execute(count_query)
         count = self.cur.fetchone()[0]
 
-        delete_query = """DELETE
-                          FROM buildings_tem
-                          WHERE peak_load_in_kw = 0;"""
+        delete_query = """WITH deleted AS (DELETE FROM buildings_tem WHERE peak_load_in_kw = 0 RETURNING objectid)
+                          INSERT INTO excluded_tem (objectid, reason)
+                          SELECT objectid, 'unloaded' FROM deleted;"""
         self.cur.execute(delete_query)
 
         return count
@@ -942,16 +947,21 @@ class PreprocessingMixin(BaseMixin):
             Number of deleted buildings.
         """
         query = f"""
-            DELETE FROM buildings_tem b
-            WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
-              AND COALESCE(b.residential_floor_area, 0) <= 0
-              AND COALESCE(b.type, '') != 'Transformer'
-              AND EXISTS (
-                  SELECT 1
-                  FROM pylovo.transformers t
-                  WHERE (ST_Intersects(t.geom, b.geom) OR ST_Within(t.geom, b.geom))
-                    AND (%(include_dso)s OR NOT {_IS_DSO_TRANSFORMER_SQL})
-              );
+            WITH deleted AS (
+                DELETE FROM buildings_tem b
+                WHERE (b.type IS NULL OR b.type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
+                  AND COALESCE(b.residential_floor_area, 0) <= 0
+                  AND COALESCE(b.type, '') != 'Transformer'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM pylovo.transformers t
+                      WHERE (ST_Intersects(t.geom, b.geom) OR ST_Within(t.geom, b.geom))
+                        AND (%(include_dso)s OR NOT {_IS_DSO_TRANSFORMER_SQL})
+                  )
+                RETURNING b.objectid
+            )
+            INSERT INTO excluded_tem (objectid, reason)
+            SELECT objectid, 'overlaps_transformer' FROM deleted;
         """
         self.cur.execute(query, {"include_dso": include_dso})
         return self.cur.rowcount
@@ -963,9 +973,14 @@ class PreprocessingMixin(BaseMixin):
             Number of deleted buildings.
         """
         query = """
-            DELETE FROM buildings_tem
-            WHERE COALESCE(residential_floor_area, 0) <= 0
-              AND (type IS NULL OR type NOT IN ('SFH', 'MFH', 'TH', 'AB'));
+            WITH deleted AS (
+                DELETE FROM buildings_tem
+                WHERE COALESCE(residential_floor_area, 0) <= 0
+                  AND (type IS NULL OR type NOT IN ('SFH', 'MFH', 'TH', 'AB'))
+                RETURNING objectid
+            )
+            INSERT INTO excluded_tem (objectid, reason)
+            SELECT objectid, 'residential_only' FROM deleted;
         """
         self.cur.execute(query)
         return self.cur.rowcount
@@ -1066,9 +1081,13 @@ class PreprocessingMixin(BaseMixin):
                 USING transformer_buildings tb
                 WHERE b.objectid = tb.objectid
                   AND b.plz IS NOT DISTINCT FROM tb.plz
+                RETURNING b.objectid
+            ), recorded AS (
+                INSERT INTO excluded_tem (objectid, reason)
+                SELECT objectid, 'transformer_evidence' FROM deleted
                 RETURNING 1
             )
-            SELECT COUNT(*) FROM deleted;
+            SELECT COUNT(*) FROM recorded;
         """
         self.cur.execute(query, source_params(include_dso, include_open, include_manual))
         return int(self.cur.fetchone()[0])
@@ -1322,10 +1341,15 @@ class PreprocessingMixin(BaseMixin):
         self.cur.execute(count_query)
         count = self.cur.fetchone()[0]
 
-        delete_query = """DELETE
-                          FROM buildings_tem
-                          WHERE connection_point IS NULL
-                            AND peak_load_in_kw != 0;"""
+        delete_query = """WITH deleted AS (
+                              DELETE
+                              FROM buildings_tem
+                              WHERE connection_point IS NULL
+                                AND peak_load_in_kw != 0
+                              RETURNING objectid, peak_load_in_kw
+                          )
+                          INSERT INTO excluded_tem (objectid, reason)
+                          SELECT objectid, 'no_connection_point' FROM deleted WHERE peak_load_in_kw <> -1;"""
         self.cur.execute(delete_query)
 
         return count

@@ -66,6 +66,39 @@ class ResultsMixin(BaseMixin):
                         SELECT %(v)s as version_id, clazz, source, target, cost, reverse_cost, geom, way_id,
                 %(p)s as plz FROM {ways};""").format(ways=ways_table)
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        self.save_building_exclusions(plz)
+
+    def save_building_exclusions(self, plz: int) -> None:
+        """Record every loaded building of the PLZ that is in no grid, with the reason, in ``building_exclusion``.
+
+        Removed rows come from ``excluded_tem`` (written by the removal steps). Rows still in
+        ``buildings_tem`` but not saved are MV-direct (``peak_load_in_kw = 0``), in a street
+        component that was dropped (no kcid) or not clustered. Must run after the buildings were
+        saved. Does not commit.
+
+        Args:
+            plz: Postcode of the working tables.
+        """
+        excluded = sql.Identifier("pg_temp", plz_table_name("excluded_tem", plz))
+        buildings = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
+        query = sql.SQL("""
+            INSERT INTO pylovo.building_exclusion (version_id, objectid, plz, reason)
+            SELECT %(v)s, objectid, %(p)s, reason
+            FROM {excluded}
+            WHERE objectid IS NOT NULL
+            UNION ALL
+            SELECT %(v)s, bt.objectid, %(p)s,
+                   CASE WHEN bt.peak_load_in_kw = 0 THEN 'mv_direct'
+                        WHEN bt.kcid IS NULL THEN 'isolated_component'
+                        ELSE 'not_clustered' END
+            FROM {buildings} bt
+            WHERE bt.objectid IS NOT NULL
+              AND bt.peak_load_in_kw IS DISTINCT FROM -1
+              AND bt.type IS DISTINCT FROM 'Transformer'
+              AND NOT EXISTS (SELECT 1 FROM pylovo.buildings_result br
+                              WHERE br.version_id = %(v)s AND br.objectid = bt.objectid)
+            ON CONFLICT (version_id, objectid) DO NOTHING;""").format(excluded=excluded, buildings=buildings)
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz})
 
     def delete_plz_from_all_tables(self, plz: int, version_id: str) -> None:
         """Delete all results of one PLZ and version, refresh the materialized views and commit.

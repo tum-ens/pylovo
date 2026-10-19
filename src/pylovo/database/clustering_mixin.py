@@ -734,11 +734,22 @@ class ClusteringMixin(BaseMixin):
         return count
 
     def delete_isolated_building(self, plz: int, kcid):
-        query = """DELETE
-                   FROM buildings_tem
-                   WHERE plz = %(p)s
-                     AND kcid = %(k)s
-                     AND bcid ISNULL;"""
+        """Delete the rows of a kcid that no grid took (MV-direct buildings, unused transformers).
+
+        Consumer rows are recorded in ``excluded_tem``.
+        """
+        query = """WITH deleted AS (
+                       DELETE
+                       FROM buildings_tem
+                       WHERE plz = %(p)s
+                         AND kcid = %(k)s
+                         AND bcid ISNULL
+                       RETURNING objectid, peak_load_in_kw, type
+                   )
+                   INSERT INTO excluded_tem (objectid, reason)
+                   SELECT objectid, CASE WHEN peak_load_in_kw = 0 THEN 'mv_direct' ELSE 'isolated_after_brownfield' END
+                   FROM deleted
+                   WHERE peak_load_in_kw IS DISTINCT FROM -1 AND type IS DISTINCT FROM 'Transformer';"""
         self.cur.execute(query, {"p": plz, "k": kcid})
 
     def get_greenfield_bcids(self, plz: int, kcid: int) -> list:
