@@ -707,3 +707,34 @@ def test_osm_coverage_report_and_its_fallback(caplog):
     with caplog.at_level("WARNING"):
         assert stage._osm_coverage(broken, "mv1", "d0", region, "g1", stage.logging.getLogger("t")) == {}
     assert "OSM coverage skipped: RuntimeError: no OSM schema" in caplog.text and broken.rolled_back == 1
+
+
+# ---------------------------------------------------------------------------------------- display geometry
+class DisplayDb:
+    def __init__(self, fail=False):
+        self.saved, self.rollbacks, self.fail = None, 0, fail
+
+    def display_input(self, version_id, variant_id):
+        if self.fail:
+            raise RuntimeError("no column display_geom")
+        a = shapely.LineString([(0, 0), (300, 0), (300, 200)])
+        b = shapely.LineString([(0, 0), (300, 0), (300, -200)])
+        from pylovo.mv_grid.display import DisplayLine
+        return [DisplayLine(1, a, 10, 11), DisplayLine(2, b, 10, 12)], {10: (0.0, 0.0)}
+
+    def save_display_geometry(self, version_id, variant_id, lines, busbars):
+        self.saved = (version_id, variant_id, sorted(lines), sorted(busbars))
+
+    def rollback_changes(self):
+        self.rollbacks += 1
+
+
+def test_display_geometry_is_stored_and_its_errors_only_logged():
+    import logging
+
+    db = DisplayDb()
+    assert stage.display_geometry(db, "mv1", "d1", logging.getLogger("t")) == 2
+    assert db.saved == ("mv1", "d1", [1, 2], [10])
+    failing = DisplayDb(fail=True)
+    assert stage.display_geometry(failing, "mv1", "d1", logging.getLogger("t")) is None
+    assert failing.saved is None and failing.rollbacks == 1

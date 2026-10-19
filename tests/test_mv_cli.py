@@ -294,3 +294,16 @@ def test_pylovo_mv_script_is_registered():
     text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     assert 'pylovo-mv = "pylovo.cli.mv:main"' in text
     assert SimpleNamespace(main=cli.main).main is cli.main
+
+
+def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys):
+    checked = []
+    client = FakeClient(ensure_grid_persistence_schema=lambda: checked.append(True))
+    monkeypatch.setattr(cli, "_database_client", lambda: client)
+    monkeypatch.setattr(stage, "display_geometry", lambda dbc, v, var, logger: {"d1": 12, "d2": None}[var])
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["display", "--version", "mv1", "--variant", "d1", "d2"])
+    assert exc.value.code == 1 and checked == [True]
+    out = capsys.readouterr().out.splitlines()
+    assert out == ["✓ MV variant d1 of version mv1: 12 lines with display geometry",
+                   "✗ MV variant d2 of version mv1: no display geometry (no lines, or an error)"]

@@ -183,9 +183,9 @@ def test_mv_grid_objects_exist_in_dict_order_and_cover_the_mv_stage():
         MV_GRID_OBJECTS)
 
 
-def test_migration_0009_is_last_and_runs_the_mv_ddl_in_order():
-    assert MIGRATION_NAMES[-1] == "0009_mv_grids"
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0009_mv_grids", mv_grids)
+def test_migration_0009_runs_the_mv_ddl_in_order():
+    assert MIGRATION_NAMES[-2] == "0009_mv_grids"
+    assert POST_SCHEMA_MIGRATIONS[-2] == ("0009_mv_grids", mv_grids)
 
     class Cursor:
         def __init__(self):
@@ -306,3 +306,30 @@ def test_diagram_script_places_every_table():
     assert tables <= placed
     assert tables <= listed
     assert set(MV_GRID_OBJECTS) <= set(descriptions)
+
+
+def test_migration_0010_adds_the_display_geometry_to_existing_tables():
+    from pylovo.config_loader import TARGET_EPSG
+    from pylovo.database.migrations import mv_display_geometry
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0010_mv_display_geometry", mv_display_geometry)
+    assert MIGRATION_NAMES[-1] == "0010_mv_display_geometry"
+
+    class Cursor:
+        def __init__(self, existing):
+            self.existing, self.queries, self.last = existing, [], None
+
+        def execute(self, query, params=None):
+            self.queries.append(query)
+            self.last = params[0] if params else None
+
+        def fetchone(self):
+            return ("x" if self.last in self.existing else None,)
+
+    cur = Cursor({"pylovo.mv_line"})                      # an MV schema without mv_substation yet
+    mv_display_geometry(cur)
+    alters = [q for q in cur.queries if q.startswith("ALTER")]
+    assert alters == [f"ALTER TABLE pylovo.mv_line ADD COLUMN IF NOT EXISTS display_geom "
+                      f"geometry(LineString,{int(TARGET_EPSG)})"]
+    for table in ("mv_line", "mv_substation"):
+        assert "display_geom geometry(" in CREATE_QUERIES[table]

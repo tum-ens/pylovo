@@ -534,3 +534,32 @@ def test_variant_totals_and_pending_grids():
     assert out["grids_by_kv"] == {"20": 2, "10": 1}
     assert client.pending_grids("mv1", "d0") == [(7, 30), (6, 10)]
     assert "status IN ('pending', 'failed')" in client.cur.statements[-1][0]
+
+
+# ---------------------------------------------------------------------------------------- display geometry
+def test_display_input_keys_paths_by_grid_ring_and_role():
+    from shapely import LineString
+
+    line = LineString([(0, 0), (10, 0)]).wkb
+    client = make_client([
+        ("FROM pylovo.mv_line", (["id"], [(1, 11, 12, 5, 2, "ring", line), (2, 12, 13, 5, None, "tie", line)], 2)),
+        ("kind = 'busbar'", (["id"], [(11, 0.0, 0.0)], 1)),
+    ])
+    lines, busbars = client.display_input("mv1", "d1")
+    assert [(ln.id, ln.from_node, ln.to_node, ln.path_key) for ln in lines] == [(1, 11, 12, (5, 2, "ring")),
+                                                                                (2, 12, 13, None)]
+    assert busbars == {11: (0.0, 0.0)}
+
+
+def test_save_display_geometry_clears_the_variant_then_writes_lines_and_busbar_circles(recorded):
+    from shapely import LineString, Point
+
+    client = make_client()
+    client.save_display_geometry("mv1", "d1", {7: LineString([(0, 0), (1, 1)])}, {11: Point(0, 0).buffer(6)})
+    clears = client.cur.sql("SET display_geom = NULL")
+    assert [p for _, p in clears] == [("mv1", "d1"), ("mv1", "d1")]
+    assert "pylovo.mv_line" in clears[0][0] and "pylovo.mv_substation" in clears[1][0]
+    (line_sql, line_values, _), (bus_sql, bus_values, _) = recorded
+    assert "UPDATE pylovo.mv_line l SET display_geom" in line_sql and line_values[0][0] == 7
+    assert "JOIN pylovo.mv_node n ON n.mv_node_id = v.mv_node_id" in bus_sql and bus_values[0][0] == 11
+    assert client.conn.commits == 1

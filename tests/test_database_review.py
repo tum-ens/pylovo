@@ -40,6 +40,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0007_line_cache_compatibility_view",
             "0008_percentage_checks",
             "0009_mv_grids",
+            "0010_mv_display_geometry",
         ]
         db.cur.execute("""
             SELECT conname, convalidated
