@@ -1232,13 +1232,15 @@ class MvResultMixin(BaseMixin):
         return frame
 
     def save_ties(self, version_id: str, variant_id: str, ties: pd.DataFrame,
-                  grid_metrics: Mapping[int, dict]) -> int:
-        """Replace the normally-open ties of a variant in one transaction; commits (rolls back and re-raises on error).
+                  grid_metrics: Mapping[int, dict], role: str = "tie") -> int:
+        """Replace the normally-open ties (or, with ``role`` link, the links inside the districts) of a variant in one
+        transaction; commits (rolls back and re-raises on error).
 
-        Deletes the variant's ``mv_line`` rows with role ``tie``, resets ``mv_ring.has_tie`` and removes
-        ``mv_grid.metrics['ties']``. Then inserts one ``mv_line`` per tie (role ``tie``, ``normally_open``,
-        ``open_at_node = to_node``, ``mv_grid_id`` of the ``from_node``, no ring or feeder, no loadings), sets
-        ``mv_ring.has_tie`` on the rings at both ends and writes ``grid_metrics`` as ``mv_grid.metrics['ties']``.
+        Deletes the variant's ``mv_line`` rows of the role, resets ``mv_ring.has_tie`` (ties only) and removes
+        ``mv_grid.metrics['ties']`` (``['links']``). Then inserts one ``mv_line`` per row (the role,
+        ``normally_open``, ``open_at_node = to_node``, ``mv_grid_id`` of the ``from_node``, no ring or feeder, no
+        loadings), sets ``mv_ring.has_tie`` on the rings at both ends of a tie and writes ``grid_metrics`` as
+        ``mv_grid.metrics['ties']`` (``['links']``).
 
         Args:
             ties: Ties of :func:`pylovo.mv_grid.interconnection.plan_ties` (``from_node``, ``to_node``,
@@ -1249,20 +1251,25 @@ class MvResultMixin(BaseMixin):
         Returns:
             The number of stored ties.
         """
+        if role not in ("tie", "link"):
+            raise ValueError(f"role must be tie or link, got {role!r}")
+        key = "ties" if role == "tie" else "links"
         variant = (version_id, variant_id)
         ties = pd.DataFrame(ties).reset_index(drop=True)
         try:
             self.cur.execute("""DELETE FROM pylovo.mv_line
-                                WHERE version_id = %s AND mv_variant_id = %s AND role = 'tie'""", variant)
-            self.cur.execute("""UPDATE pylovo.mv_ring SET has_tie = false
-                                WHERE version_id = %s AND mv_variant_id = %s AND has_tie""", variant)
-            self.cur.execute("""UPDATE pylovo.mv_grid SET metrics = metrics - 'ties'
-                                WHERE version_id = %s AND mv_variant_id = %s AND metrics ? 'ties'""", variant)
+                                WHERE version_id = %s AND mv_variant_id = %s AND role = %s""", (*variant, role))
+            if role == "tie":
+                self.cur.execute("""UPDATE pylovo.mv_ring SET has_tie = false
+                                    WHERE version_id = %s AND mv_variant_id = %s AND has_tie""", variant)
+            self.cur.execute("""UPDATE pylovo.mv_grid SET metrics = metrics - %s
+                                WHERE version_id = %s AND mv_variant_id = %s AND metrics ? %s""",
+                             (key, *variant, key))
             ids = self._allocate_ids("mv_line", "mv_line_id", len(ties))
             if len(ties):
                 values = [(
                     int(ids[i]), version_id, variant_id, int(tie["from_grid"]), int(tie["from_node"]),
-                    int(tie["to_node"]), "tie", str(tie["kind"]), str(tie["std_type"]),
+                    int(tie["to_node"]), role, str(tie["kind"]), str(tie["std_type"]),
                     _parallel_count(tie.get("parallel", 1)),
                     max(float(tie["length_m"]) / 1000.0, 0.001), float(tie["cable_m"] or 0.0) / 1000.0,
                     float(tie["overhead_m"] or 0.0) / 1000.0, _py_float(float(tie["straight_m"]) / 1000.0), 0.0, True,
@@ -1277,19 +1284,20 @@ class MvResultMixin(BaseMixin):
                     template=("(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
                               f"ST_GeomFromWKB(%s, {int(TARGET_EPSG)}))"),
                     page_size=1000)
-                rings = sorted({(int(g), int(r)) for g, r in zip(ties["from_grid"], ties["from_ring"])}
-                               | {(int(g), int(r)) for g, r in zip(ties["to_grid"], ties["to_ring"])})
-                execute_values(
-                    self.cur,
-                    """UPDATE pylovo.mv_ring r SET has_tie = true FROM (VALUES %s) AS v(mv_grid_id, ring_id)
-                       WHERE r.mv_grid_id = v.mv_grid_id AND r.ring_id = v.ring_id""",
-                    rings, template="(%s::bigint, %s::integer)", page_size=1000)
+                if role == "tie":
+                    rings = sorted({(int(g), int(r)) for g, r in zip(ties["from_grid"], ties["from_ring"])}
+                                   | {(int(g), int(r)) for g, r in zip(ties["to_grid"], ties["to_ring"])})
+                    execute_values(
+                        self.cur,
+                        """UPDATE pylovo.mv_ring r SET has_tie = true FROM (VALUES %s) AS v(mv_grid_id, ring_id)
+                           WHERE r.mv_grid_id = v.mv_grid_id AND r.ring_id = v.ring_id""",
+                        rings, template="(%s::bigint, %s::integer)", page_size=1000)
             if grid_metrics:
                 execute_values(
                     self.cur,
-                    """UPDATE pylovo.mv_grid g
-                       SET metrics = COALESCE(g.metrics, '{}'::jsonb) || jsonb_build_object('ties', v.ties)
-                       FROM (VALUES %s) AS v(mv_grid_id, ties) WHERE g.mv_grid_id = v.mv_grid_id""",
+                    f"""UPDATE pylovo.mv_grid g
+                        SET metrics = COALESCE(g.metrics, '{{}}'::jsonb) || jsonb_build_object('{key}', v.entry)
+                        FROM (VALUES %s) AS v(mv_grid_id, entry) WHERE g.mv_grid_id = v.mv_grid_id""",
                     [(int(g), _dumps(entry)) for g, entry in sorted(grid_metrics.items())],
                     template="(%s::bigint, %s::jsonb)", page_size=1000)
             self.conn.commit()

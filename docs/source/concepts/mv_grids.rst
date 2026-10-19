@@ -628,6 +628,31 @@ are then compared with the (n-1) limits. Ties of supply areas cut by the region 
 substation outside the region are kept and flagged (``incomplete_district``,
 ``substation_outside_region``).
 
+.. _mv-links:
+
+Links between rings of one supply area
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Real MV grids also join neighbouring rings of the same substation. Many stations have a third
+cable to a station of another ring, so that a station can be resupplied in more ways than along its
+own ring, and many loops of the meshed grid run between rings instead of through the busbar. In the
+two DSO grids checked on 2026-10-19, a fifth to a third of the stations had three or more MV
+cables. The rings of the stage have none. With ``MV_INTERCONNECTION: ties``, the stage therefore
+adds normally-open links after the ties:
+
+#. The candidates are the same ring members as for the ties.
+#. Pairs of candidates of different rings of the same supply area within ``link_max_length_m``
+   (500 m) along the streets, in true length, are taken in the order of their length.
+#. Each candidate takes at most one link, as a station with a third cable bay. Two rings take at
+   most two links, so that two links close a short loop between them.
+
+Links are ``mv_line`` rows with ``role = 'link'``, normally open at their ``to_node``. Like the ties,
+they carry no flow in the checked cases and are not part of the district nets or of
+``circuit_km``. Their count, length, the rings and supply points with a link and the ring pairs
+joined twice are stored in ``mv_variant.summary['links']`` and ``mv_grid.metrics['links']``. The
+500 m is an assumption: a cross connection joins neighbouring stations, two to three times the
+distance between neighbouring stations.
+
 .. _mv-voltage-level:
 
 Nominal voltage
@@ -953,9 +978,9 @@ planned count was right, and overstated it by 5 to 9 points elsewhere.
 Limitations
 -----------
 
-* The stage plans open rings, stubs, busbar radials and dedicated feeders only. Closed rings,
-  meshed operation, chords between rings and support or remote stations, which urban grids have
-  (Kreutmayr 2023), are not modelled.
+* The stage plans open rings, stubs, busbar radials and dedicated feeders only, with normally-open
+  ties and links between rings. Closed rings, meshed operation and support or remote stations,
+  which urban grids have (Kreutmayr 2023), are not modelled.
 * Every ring starts and ends at the busbar of one substation. Rings between two substations (A-B
   rings) are not formed, and the ties represent the reserve between substations only as
   normally-open lines outside the checked cases.

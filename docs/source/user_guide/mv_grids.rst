@@ -249,6 +249,7 @@ variant. The summary at the end has this form (``<...>`` stands for the values o
    ✓ MV variant d0 of version 1: <n> grids (<n> done), <n> stations, <n> customers, <n> generators, <km> km (cable <share> %), <n> grids with violations, <n> band conflicts, <s> s
    ✓ Nominal voltage auto (10 kV from 8 MVA/km² installed): <n> at 20 kV
    ✓ Ties: none (no rings of different districts of the same voltage within 2 km)
+   ✓ Links: <n> normally-open links between rings, <km> km, <n> of <n> rings, <share> % of the supply points with a third cable, <n> ring pairs joined twice
    ✓ Demand anchor: <kW> kW per inhabitant (<MW> MW coincident, <n> inhabitants of <n> PLZ; MV customers ...)
    ✓ OSM coverage: <n> mapped MV/LV station sites for <n> planned stations (<share> %; town ..., village ..., open field ...), OSM MV lines <km> km (<km/km²> km/km²)
 
@@ -729,7 +730,8 @@ value, so older configuration files keep working.
        2019); ``none``: cables only.
    * - ``MV_INTERCONNECTION``
      - ``ties``
-     - Normally-open ties to rings of neighbouring substations within ``tie_max_length_m``, or
+     - Normally-open ties to rings of neighbouring substations within ``tie_max_length_m`` and
+       normally-open links between rings of one substation within ``link_max_length_m``, or
        ``none`` (Weisenstein and Wellßow 2021; Dubielzig 2022).
    * - ``MV_STANDARD_CABLE``
      - ``null``
@@ -830,6 +832,10 @@ routing graph and the settlements are part of the graph id, so a change builds a
    * - ``tie_max_length_m``
      - 2000
      - Longest tie to a neighbouring supply area (assumption).
+   * - ``link_max_length_m``
+     - 500
+     - Longest link between two rings of one supply area, a cross connection between neighbouring
+       stations (assumption). Each ring member takes at most one link, two rings at most two.
    * - ``local_search_rounds``
      - 50
      - Pass limit of the local search, 0 switches it off (Ding0 used 10 fixed rounds).

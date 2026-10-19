@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 CATEGORIES: tuple[str, ...] = ("Residential", "Commercial", "Public", "Unknown")   # order of every stats array
 CASES: tuple[str, ...] = ("load", "n1a", "n1b", "feed_in_wind", "feed_in_pv")
 NODE_KINDS = ("busbar", "station", "customer", "generator", "joint")
-LINE_ROLES = ("ring", "stub", "dedicated", "generator", "tie")
+LINE_ROLES = ("ring", "stub", "dedicated", "generator", "tie", "link")
 LINE_KINDS = ("cable", "overhead", "mixed")
 MEMBER_KINDS: tuple[str, ...] = ("station", "customer", "generator")   # ring members (the member cap counts them)
 
@@ -399,6 +399,21 @@ def ties_line(ties: Mapping[str, Any]) -> str:
     return text
 
 
+def links_line(links: Mapping[str, Any]) -> str:
+    """The summary line of the normally-open links inside the districts
+    (``pylovo.mv_grid.interconnection.link_summary``)."""
+    n = int(links.get("n_links") or 0)
+    if not n:
+        return (f"✓ Links: none (no rings of one district within "
+                f"{float(links.get('link_max_length_m') or 0.0):g} m)")
+    text = f"✓ Links: {n:,} normally-open links between rings, {float(links.get('link_km') or 0.0):,.1f} km"
+    if links.get("n_rings"):
+        text += f", {links.get('n_rings_with_link', 0):,} of {links['n_rings']:,} rings"
+    if links.get("node_share_with_link") is not None:
+        text += f", {100 * links['node_share_with_link']:.0f} % of the supply points with a third cable"
+    return text + f", {links.get('n_ring_pairs_closed', 0):,} ring pairs joined twice"
+
+
 def voltage_line(voltages: Mapping[str, Any]) -> str:
     """The summary line of the nominal voltages of the districts (``MV_NOMINAL_VOLTAGE_KV``)."""
     grids = {float(k): int(v) for k, v in (voltages.get("grids") or {}).items()}
@@ -418,7 +433,8 @@ class MvRunSummary:
     the normally-open ties (``pylovo.mv_grid.interconnection.tie_summary``), empty without the tie step;
     ``voltages`` the nominal voltage rule (``rule`` auto or fixed, ``threshold_mva_km2``) and the districts per
     voltage (``grids``: ``{"20": n, "10": m}``); ``osm_coverage`` the OSM completeness per land-use class
-    (``pylovo.mv_grid.osm_coverage.coverage_record``), empty when it was not computed.
+    (``pylovo.mv_grid.osm_coverage.coverage_record``), empty when it was not computed; ``links`` the summary of the
+    normally-open links inside the districts (``pylovo.mv_grid.interconnection.link_summary``).
     """
 
     version_id: str
@@ -445,6 +461,7 @@ class MvRunSummary:
     voltages: dict = field(default_factory=dict)
     active_cases: tuple[str, ...] = CASES
     osm_coverage: dict = field(default_factory=dict)
+    links: dict = field(default_factory=dict)
 
     def describe(self) -> str:
         """The summary lines printed by the CLI; each starts with a check mark (variant done) or a cross."""
@@ -469,6 +486,8 @@ class MvRunSummary:
             lines.append(voltage_line(self.voltages))
         if self.ties:
             lines.append(ties_line(self.ties))
+        if self.links:
+            lines.append(links_line(self.links))
         if self.demand:
             lines.append(demand_line(self.demand))
         if self.osm_coverage:

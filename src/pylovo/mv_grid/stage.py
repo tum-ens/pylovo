@@ -732,9 +732,10 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
         # 5. post
-        ties = None
+        ties = links = None
         if params.interconnection == "ties":
             ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
+            links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger, warnings)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
         demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
@@ -749,7 +750,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
             logger.error(f"Could not store the failed status of MV variant {variant_id}: {_one_line(finish_exc)}")
         raise
     summary = _summary(version_id, variant_id, _status(totals), requested, used, missing, totals, warnings, start,
-                       demand, ties=ties, params=params, osm_coverage=coverage)
+                       demand, ties=ties, params=params, osm_coverage=coverage, links=links)
     dbc.finish_variant(version_id, variant_id, summary)                 # summary['ties'] holds the tie summary
     logger.info(summary.describe().splitlines()[0])
     return summary
@@ -774,6 +775,23 @@ def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params
         return None
     summary = interconnection.plan_and_save_ties(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_ties(summary))
+    return summary
+
+
+def _plan_links(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
+                logger: logging.Logger, warnings: list[str]) -> dict | None:
+    """Plan and store the normally-open links between the rings of each district (post step after the ties).
+
+    Returns:
+        The link summary of :func:`pylovo.mv_grid.interconnection.link_summary` (stored as
+        ``mv_variant.summary['links']``), or None when the module is missing.
+    """
+    try:
+        interconnection = _module("interconnection")
+    except ImportError:
+        return None
+    summary = interconnection.plan_and_save_links(dbc, version_id, variant_id, graph_id, params, logger=logger)
+    logger.info(interconnection.describe_links(summary))
     return summary
 
 
@@ -832,7 +850,8 @@ def _osm_coverage(dbc: Any, version_id: str, variant_id: str, region_wkb: bytes,
 def _summary(version_id: str, variant_id: str, status: str, requested: list[int] | None, used: list[int],
              missing: list[int], totals: dict | None, warnings: list[str], start: float,
              demand: dict | None = None, *, ties: dict | None = None,
-             params: MvParameters | None = None, osm_coverage: dict | None = None) -> MvRunSummary:
+             params: MvParameters | None = None, osm_coverage: dict | None = None,
+             links: dict | None = None) -> MvRunSummary:
     totals = totals or {}
     voltages = {}
     if params is not None:
@@ -850,7 +869,8 @@ def _summary(version_id: str, variant_id: str, status: str, requested: list[int]
         n_violation_grids=int(totals.get("n_violation_grids", 0)),
         n_band_conflicts=int(totals.get("n_band_conflicts", 0)), warnings=list(warnings),
         elapsed_s=time.time() - start, demand=dict(demand or {}), ties=dict(ties or {}), voltages=voltages,
-        active_cases=params.active_cases if params is not None else CASES, osm_coverage=dict(osm_coverage or {}))
+        active_cases=params.active_cases if params is not None else CASES, osm_coverage=dict(osm_coverage or {}),
+        links=dict(links or {}))
 
 
 # ---------------------------------------------------------------------------------------------- export

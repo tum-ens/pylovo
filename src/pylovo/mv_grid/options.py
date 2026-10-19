@@ -32,7 +32,8 @@ import yaml
 #: 7: supply areas without capacity rebalancing (``rebalance_max_iter`` 0) and the option ``MV_SUPPLY_AREAS``
 #: municipal; stub, radial and T-off limits on the true route length; larger conductors before topology changes in
 #: the repair loop (8 rounds).
-#: 8: stub trees up to 4 km, shortened by their load (``stub_max_kva_km``).
+#: 8: stub trees up to 4 km, shortened by their load (``stub_max_kva_km``); normally-open links between the rings of
+#: one district (``link_max_length_m``).
 MV_STAGE_VERSION: int = 8
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
@@ -182,6 +183,10 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="longest generator T-off before a dedicated feeder [assumption]"),
     _constant("tie_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
               source="normally-open ties to a neighbouring district [assumption]"),
+    _constant("link_max_length_m", 500.0, "float", "topology", bounds=_POSITIVE,
+              source="longest normally-open link between two rings of one district: a cross connection between "
+                     "neighbouring stations, two to three times the distance between neighbouring stations "
+                     "(assumption, decision of 2026-10-19)"),
     _constant("local_search_rounds", 50, "int", "topology", bounds=(0, None),
               source="pass limit of the granular local search (Ding0 used 10 fixed rounds); 0 = no local search"),
     _constant("neighbours", 15, "int", "topology", bounds=(1, None),

@@ -133,6 +133,34 @@ def test_only_switchgear_ring_members_of_done_open_rings_hold_ties():
     assert ic.tie_candidates(rows, grids).index.tolist() == [11, 21]
 
 
+# ---------------------------------------------------------------------------------------------- links
+def test_links_join_rings_of_one_district_one_per_member_two_per_ring_pair():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    rows = nodes_frame(
+        node(11, 1, 0, 1000.0), node(12, 1, 0, 2000.0), node(13, 1, 0, 3000.0),     # ring 0
+        node(21, 1, 1, 1100.0), node(22, 1, 1, 2150.0), node(23, 1, 1, 3200.0),     # ring 1, 100-200 m away
+        node(31, 1, 2, 1020.0),                                                     # ring 2, 20 m from node 11
+        node(41, 2, 0, 3250.0),                                                     # another district
+    )
+    links = ic.plan_links(rows, grids, LINE, PARAMS)
+    # shortest first: 11-31 (20 m); 11 is then taken, so ring 0 meets ring 1 at 12-22 and 13-23 (two links)
+    assert pairs_of(links) == [(11, 31), (12, 22), (13, 23)]
+    assert links["length_m"].tolist() == pytest.approx([20.0, 150.0, 200.0])
+    assert (links["from_grid"] == links["to_grid"]).all() and links["flags"].map(len).eq(0).all()
+    # 21 is free but ring 0 and ring 1 already have two links; node 41 is in another district (a tie, not a link)
+    assert 21 not in set(links["to_node"]) | set(links["from_node"]) and 41 not in set(links["to_node"])
+    short = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_max_length_m=100.0))
+    assert pairs_of(short) == [(11, 31)]
+    summary = ic.link_summary(links, grids, PARAMS)
+    assert summary["n_links"] == 3 and summary["link_km"] == pytest.approx(0.37)
+    assert summary["n_ring_pairs"] == 2 and summary["n_ring_pairs_closed"] == 1
+    assert summary["n_rings_with_link"] == 3 and summary["n_nodes_with_link"] == 6
+    assert summary["node_share_with_link"] == pytest.approx(6 / 24)                 # 2 districts x 12 supply points
+    json.dumps(summary)
+    assert "3 normally-open links between rings" in ic.describe_links(summary)
+    assert ic.plan_links(nodes_frame(node(11, 1, 0, 1000.0), node(12, 1, 0, 1100.0)), grids, LINE, PARAMS).empty
+
+
 def test_no_ties_within_a_district_or_between_voltages():
     rows = nodes_frame(node(11, 1, 0, 1000.0), node(12, 1, 1, 1100.0), node(31, 3, 0, 1200.0))
     assert ic.plan_ties(rows, grids_frame((1, 20.0), (3, 10.0)), LINE, PARAMS).empty
@@ -448,9 +476,10 @@ def test_save_ties_replaces_the_ties_of_the_variant(monkeypatch):
     metrics_by_grid = ic.grid_tie_metrics(ties)
     assert client.save_ties("mv1", "y1", ties, metrics_by_grid) == 2
     texts = [s for s, _ in client.cur.statements]
-    assert texts[0].startswith("DELETE FROM pylovo.mv_line") and "role = 'tie'" in texts[0]
-    assert "SET has_tie = false" in texts[1] and "metrics - 'ties'" in texts[2]
-    assert all(p == ("mv1", "y1") for _, p in client.cur.statements[:3])            # the variant only
+    assert texts[0].startswith("DELETE FROM pylovo.mv_line") and "role = %s" in texts[0]
+    assert "SET has_tie = false" in texts[1] and "metrics - %s" in texts[2]
+    params = [p for _, p in client.cur.statements[:3]]                               # the variant only
+    assert params == [("mv1", "y1", "tie"), ("mv1", "y1"), ("ties", "mv1", "y1", "ties")]
     insert, values, template = calls[0]
     assert insert.startswith("INSERT INTO pylovo.mv_line") and "ST_GeomFromWKB" in template
     first = values[0]
@@ -470,6 +499,22 @@ def test_save_ties_replaces_the_ties_of_the_variant(monkeypatch):
     with pytest.raises(RuntimeError):
         client.save_ties("mv1", "y1", ties, metrics_by_grid)
     assert client.conn.rollbacks == 1 and client.conn.commits == 0
+
+
+def test_save_links_replaces_only_the_links_and_keeps_has_tie(monkeypatch):
+    client, calls = make_client(monkeypatch)
+    links = pd.DataFrame([tie_row(to_grid=1, to_ring=1)], columns=list(ic.TIE_COLUMNS))
+    assert client.save_ties("mv1", "y1", links, ic.grid_link_metrics(links), role="link") == 1
+    texts = [s for s, _ in client.cur.statements]
+    assert not any("has_tie" in t for t in texts)                                # ties keep their ring flags
+    assert [p for _, p in client.cur.statements[:2]] == [("mv1", "y1", "link"), ("links", "mv1", "y1", "links")]
+    insert, values, _ = calls[0]
+    assert values[0][6] == "link" and values[0][15] is True                     # role, normally open
+    assert "jsonb_build_object('links'" in calls[1][0]
+    entry = json.loads(calls[1][1][0][1])
+    assert entry["n_links"] == 1 and entry["n_rings_with_link"] == 2 and entry["n_nodes_with_link"] == 2
+    with pytest.raises(ValueError, match="role must be tie or link"):
+        client.save_ties("mv1", "y1", links, {}, role="ring")
 
 
 class TieDb:
@@ -586,8 +631,14 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
     monkeypatch.setattr(stage, "_region_step", lambda *a, **k: {})
     monkeypatch.setattr(stage, "_run_districts", lambda *a, **k: [])
     monkeypatch.setattr(ic, "plan_and_save_ties", fake_ties)
+    monkeypatch.setattr(ic, "plan_and_save_links", lambda dbc, version_id, variant_id, graph_id, params, logger=None: {
+        "n_links": 4, "link_km": 1.2, "n_rings": 6, "n_rings_with_link": 4, "node_share_with_link": 0.1,
+        "n_ring_pairs_closed": 1, "link_max_length_m": 500.0})
     summary = stage.run_mv_stage("mv1", [1], PARAMS, log_file=str(tmp_path / "log.txt"))
     assert seen == [("mv1", "y0", "g1", "ties")] and summary.status == "done"
+    assert summary.to_dict()["links"]["n_links"] == 4
+    assert ("✓ Links: 4 normally-open links between rings, 1.2 km, 4 of 6 rings, 10 % of the supply points with a "
+            "third cable, 1 ring pairs joined twice") in summary.describe()
     finish = [c for c in db.calls if c[0] == "finish_variant"]
     assert len(finish) == 1 and finish[0][1][2] is summary                      # mv_variant.summary['ties']
     assert summary.to_dict()["ties"] == {"n_ties": 3, "tie_km": 2.5, "tie_max_length_m": 2000.0}
@@ -596,6 +647,7 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
     monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
     plain = stage.run_mv_stage("mv1", [1], PARAMS.replace(interconnection="none"), log_file=str(tmp_path / "log.txt"))
     assert plain.ties == {} and "Ties" not in plain.describe()                   # no ties without the switch
+    assert plain.links == {} and "Links" not in plain.describe()
 
 
 # ---------------------------------------------------------------------------------------------- metrics
