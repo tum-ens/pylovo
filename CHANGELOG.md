@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `USE_EXTERNAL_BASEDATA` with the optional `INFDB_DBNAME`, `INFDB_USER`, `INFDB_HOST`, `INFDB_PORT` and `INFDB_PASSWORD`: read the InfDB source data (buildings, ways, postcodes) from another database or server than the pylovo schema; unset values fall back to the pylovo connection
 
 ### Changed
+- `GridGenerator.generate_grid_for_single_plz` returns the outcome of the PLZ (`generated`, `exists`, `empty`, `failed`) and `generate_grid_for_multiple_plz` returns the outcomes of all PLZ (a failing PLZ is still logged and skipped; the log lines are unchanged)
 - `InfdbClient` sends no startup `options` (PgBouncer rejects them) and schema-qualifies its tables; buildings and `classify_building_use` are read from `INFDB_SOURCE_SCHEMA` (default now `basedata`) instead of a fixed `basedata`; every query runs in its own read-only transaction; the way id offset (largest `way_id` of `ways_result`) is taken from the pylovo database instead of the InfDB connection
 - Feeder cables: among the designs with the fewest parallel cables the cheapest cable is taken (then the smaller cross-section), as for the service cables; with the shipped catalogue, whose cost rises with the cross-section, the choices are the same
 - The cable and transformer catalogue is read from the `equipment_data` rows of the current `VERSION_ID` only; before, the rows of all versions were read, so a cable's values could come from another version and every transformer rating was listed once per version

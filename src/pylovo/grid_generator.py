@@ -18,6 +18,7 @@ temporary tables and finally copies the results into the ``*_result`` tables:
 import math
 import traceback
 import warnings
+from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
@@ -83,6 +84,19 @@ class ResultExistsError(Exception):
     """Raised when the grids of a PLZ already exist for the current ``VERSION_ID``."""
 
 
+class GenerationOutcome(StrEnum):
+    """What :meth:`GridGenerator.generate_grid_for_single_plz` did with a PLZ.
+
+    The log lines that ``pylovo-api`` parses stay unchanged; the outcome makes the same
+    information available to callers that must not rely on the log.
+    """
+
+    GENERATED = "generated"
+    EXISTS = "exists"
+    EMPTY = "empty"
+    FAILED = "failed"
+
+
 class GridGenerator:
     """
     Generates the synthetic LV grids of postcode areas (PLZ).
@@ -114,8 +128,11 @@ class GridGenerator:
 
     def generate_grid_for_single_plz(
         self, plz: int, analyze_grids: bool = False, refresh_mv: bool = True
-    ) -> None:
+    ) -> GenerationOutcome:
         """Generates the grid for a single PLZ.
+
+        A failing PLZ is logged and skipped (the exception is not raised); the returned outcome
+        tells callers what happened.
 
         :param plz: Postal code for which the grid should be generated.
         :type plz: int
@@ -123,6 +140,8 @@ class GridGenerator:
         :type analyze_grids: bool
         :param refresh_mv: Refresh materialized views after processing, defaults to True.
         :type refresh_mv: bool
+        :return: The outcome of the PLZ.
+        :rtype: GenerationOutcome
         """
         self.plz = plz
         self.dbc.ensure_grid_persistence_schema()
@@ -130,6 +149,7 @@ class GridGenerator:
         print('-------------------- start', self.plz, '---------------------------')
         self.dbc.acquire_plz_lock(plz)
         interrupted = False
+        outcome = GenerationOutcome.GENERATED
         try:
             self.dbc.create_temp_tables(plz)
             self.generate_grid()
@@ -138,7 +158,7 @@ class GridGenerator:
                     f"No grid_result rows were generated for PLZ {plz}; skipping result-table persistence."
                 )
                 self.dbc.rollback_changes()
-                return
+                return GenerationOutcome.EMPTY
             self.dbc.save_tables(plz=self.plz)
             self.dbc.commit_changes()
             if analyze_grids:
@@ -146,12 +166,14 @@ class GridGenerator:
                 pc.analyze_parameters_for_plz(plz)
                 self.dbc.commit_changes()  # commit the changes to the database
         except ResultExistsError:
+            outcome = GenerationOutcome.EXISTS
             self.dbc.logger.info(f"Grid for the postcode area {plz} has already been generated.")
         except KeyboardInterrupt:
             interrupted = True
             self.logger.warning(f"Grid generation interrupted by user for PLZ {self.plz}.")
             self.dbc.rollback_changes()
         except Exception as e:
+            outcome = GenerationOutcome.FAILED
             self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
             self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
             self.dbc.rollback_changes()
@@ -191,10 +213,11 @@ class GridGenerator:
         else:
             self.dbc.commit_changes()  # commit the changes to the database
         print('-------------------- end', self.plz, '-----------------------------')
+        return outcome
 
     def generate_grid_for_multiple_plz(
         self, df_plz: pd.DataFrame, analyze_grids: bool = False, parallel: bool = True
-    ) -> None:
+    ) -> dict[int, GenerationOutcome]:
         """Generate the grids of several PLZ, in parallel worker processes if possible.
 
         Workers are used when ``parallel`` is set, there is more than one PLZ and
@@ -206,6 +229,9 @@ class GridGenerator:
             df_plz: Table with a ``plz`` column.
             analyze_grids: Run the parameter analysis after each PLZ.
             parallel: Allow parallel workers.
+
+        Returns:
+            The outcome of every PLZ; a worker that raised counts as ``failed``.
 
         Raises:
             KeyboardInterrupt: If the run is interrupted; pending PLZ are cancelled.
@@ -221,6 +247,7 @@ class GridGenerator:
             f"(requested={parallel}, N_JOBS={N_JOBS})"
         )
         failed_plz = []
+        outcomes: dict[int, GenerationOutcome] = {}
 
         if should_use_parallel:
             max_workers = min(N_JOBS, len(plz_list))
@@ -240,7 +267,7 @@ class GridGenerator:
                         completed_count += 1
                         try:
                             # Raises the worker's exception, if any.
-                            future.result()
+                            outcomes[plz] = GenerationOutcome(future.result())
                             self.logger.info(f"Completed PLZ {plz} ({completed_count}/{total_count})")
                         except Exception as exc:
                             # Record the failure and continue with the other PLZ.
@@ -248,6 +275,7 @@ class GridGenerator:
                                 f"PLZ {plz} generated an exception ({completed_count}/{total_count}): {exc}"
                             )
                             failed_plz.append(plz)
+                            outcomes[plz] = GenerationOutcome.FAILED
 
                 except KeyboardInterrupt:
                     self.logger.warning(
@@ -283,7 +311,7 @@ class GridGenerator:
         else:
             for plz in plz_list:
                 # defer materialized view refresh until all PLZ are processed
-                self.generate_grid_for_single_plz(
+                outcomes[plz] = self.generate_grid_for_single_plz(
                     plz=plz, analyze_grids=analyze_grids, refresh_mv=False
                 )
 
@@ -305,10 +333,14 @@ class GridGenerator:
                 )
             else:
                 self.logger.info("Parallel grid generation finished with no failed PLZ.")
+        counts = {outcome.value: sum(1 for value in outcomes.values() if value == outcome)
+                  for outcome in GenerationOutcome}
+        self.logger.info("Generation outcomes: " + ", ".join(f"{key}={value}" for key, value in counts.items()))
+        return outcomes
 
     @staticmethod
-    def _worker(plz: int, analyze_grids: bool) -> None:
-        """Generate the grid of one PLZ in a worker process.
+    def _worker(plz: int, analyze_grids: bool) -> GenerationOutcome:
+        """Generate the grid of one PLZ in a worker process and return its outcome.
 
         Each worker builds its own :class:`GridGenerator` (own database connection)
         that logs to ``log/log_<plz>.txt``. The connection is closed afterwards;
@@ -321,7 +353,7 @@ class GridGenerator:
         gg = None
         try:
             gg = GridGenerator(log_file=log_file)
-            gg.generate_grid_for_single_plz(
+            return gg.generate_grid_for_single_plz(
                 plz=plz, analyze_grids=analyze_grids, refresh_mv=False
             )
         except Exception:
@@ -934,7 +966,6 @@ class GridGenerator:
 
         # Get cost dataframe between consumers and transformers
         cost_df = self.dbc.get_consumer_to_transformer_df(kcid, transformer_list)
-
         # Keep connections shorter than MAX_BROWNFIELD_TRAFO_DISTANCE, nearest first
         cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(by=["agg_cost"])
         if BROWNFIELD_NEAREST_ONLY and not cost_df.empty:
