@@ -994,6 +994,10 @@ Limitations
 * Every ring starts and ends at the busbar of one substation. Rings between two substations (A-B
   rings) are not formed, and the ties represent the reserve between substations only as
   normally-open lines outside the checked cases.
+* Every station belongs to its nearest HV/MV substation along the streets. A DSO may feed its area
+  from fewer substations or from one outside it. In one checked rural DSO area, five substations
+  of the stage supply the stations that the DSO feeds from one infeed. Open data do not tell which
+  substation feeds which area, so rural supply paths can be shorter than real ones.
 * There is no short-circuit check: short-circuit power, the reach of the protection at feeder ends
   and the earth-fault compensation are not checked. The plausibility notebook only estimates the
   earth-fault current from the cable length.
