@@ -654,3 +654,46 @@ def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
     assert db.inserted_nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
     assert region_modules["generators"].empty
     assert (region_modules["stations"][["gen_solar_kw", "gen_wind_kw", "gen_other_kw"]] == 0).all().all()
+
+
+# ---------------------------------------------------------------------------------------------- OSM coverage
+class CoverageDb:
+    """The reads of the OSM coverage report."""
+
+    def __init__(self):
+        self.rolled_back = 0
+
+    def settlement_polygons(self, graph_id, region_wkb):
+        return pd.DataFrame({"settlement_id": [1], "urban": [True], "geom_wkb": [shapely.box(0, 0, 50, 50).wkb]})
+
+    def osm_landuse(self, region_wkb):
+        return pd.DataFrame({"osm_type": ["residential"], "geom_wkb": [shapely.box(0, 0, 100, 50).wkb]})
+
+    def variant_node_table(self, version_id, variant_id):
+        return pd.DataFrame({"kind": ["busbar", "station", "station"], "x": [0.0, 10.0, 80.0], "y": [0.0, 10.0, 80.0]})
+
+    def osm_line_geometries(self, graph_id, region_wkb):
+        return [shapely.LineString([(0, 90), (100, 90)]).wkb]
+
+    def osm_power_objects(self, region_wkb):
+        return pd.DataFrame({"source_id": ["node/1"], "kind": ["substation"], "tags": ['{"substation": "minor_distribution"}'],
+                             "x": [12.0], "y": [10.0], "area_m2": [0.0]})
+
+    def rollback_changes(self):
+        self.rolled_back += 1
+
+
+def test_osm_coverage_report_and_its_fallback(caplog):
+    region = shapely.box(0, 0, 100, 100).wkb
+    db = CoverageDb()
+    record = stage._osm_coverage(db, "mv1", "d0", region, "g1", stage.logging.getLogger("t"))
+    town = next(c for c in record["settlement"] if c["class"] == "town")
+    assert (town["stations"], town["osm_stations"]) == (1, 1) and db.rolled_back == 1
+    total = next(c for c in record["settlement"] if c["class"] == "all")
+    assert (total["stations"], total["osm_stations"], total["osm_line_km"]) == (2, 1, 0.1)
+    assert [c["class"] for c in record["land_use"]][:3] == ["industrial", "commercial", "residential"]
+    broken = CoverageDb()
+    broken.osm_power_objects = lambda region_wkb: (_ for _ in ()).throw(RuntimeError("no OSM schema"))
+    with caplog.at_level("WARNING"):
+        assert stage._osm_coverage(broken, "mv1", "d0", region, "g1", stage.logging.getLogger("t")) == {}
+    assert "OSM coverage skipped: RuntimeError: no OSM schema" in caplog.text and broken.rolled_back == 1

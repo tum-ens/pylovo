@@ -250,6 +250,11 @@ variant. The summary at the end has this form (``<...>`` stands for the values o
    ✓ Nominal voltage auto (10 kV from 8 MVA/km² installed): <n> at 20 kV
    ✓ Ties: none (no rings of different districts of the same voltage within 2 km)
    ✓ Demand anchor: <kW> kW per inhabitant (<MW> MW coincident, <n> inhabitants of <n> PLZ; MV customers ...)
+   ✓ OSM coverage: <n> mapped MV/LV station sites for <n> planned stations (<share> %; town ..., village ..., open field ...), OSM MV lines <km> km (<km/km²> km/km²)
+
+The OSM coverage line compares the station sites and MV lines mapped in OpenStreetMap with the planned
+stations (:ref:`mv-osm-coverage`); the full tables per settlement and land-use class are in the log and
+in ``mv_variant.summary['osm_coverage']``. Without an OSM power layer the line is missing.
 
 The exit code is 0 when the variant is ``done`` and 1 otherwise (2 for a usage error). A variant is
 ``partial`` when some supply areas failed. Every supply area is one database transaction, and a

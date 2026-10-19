@@ -738,6 +738,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
         demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
+        coverage = _osm_coverage(dbc, version_id, variant_id, region_wkb, graph_id, logger)
     except Exception as exc:
         dbc.rollback_changes()
         summary = _summary(version_id, variant_id, "failed", requested, used, missing, None,
@@ -748,7 +749,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
             logger.error(f"Could not store the failed status of MV variant {variant_id}: {_one_line(finish_exc)}")
         raise
     summary = _summary(version_id, variant_id, _status(totals), requested, used, missing, totals, warnings, start,
-                       demand, ties=ties, params=params)
+                       demand, ties=ties, params=params, osm_coverage=coverage)
     dbc.finish_variant(version_id, variant_id, summary)                 # summary['ties'] holds the tie summary
     logger.info(summary.describe().splitlines()[0])
     return summary
@@ -793,10 +794,45 @@ def _demand_anchor(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int
     return anchor
 
 
+def _osm_coverage(dbc: Any, version_id: str, variant_id: str, region_wkb: bytes, graph_id: str,
+                  logger: logging.Logger) -> dict:
+    """The OSM completeness per land-use class of a variant for its summary (``osm_coverage.summarise``), logged.
+
+    A report only: without an OSM schema, or on any error, it is logged, the read is rolled back and the record
+    stays empty.
+    """
+    try:
+        import shapely
+
+        osm_coverage = _module("osm_coverage")
+        region = shapely.from_wkb(bytes(region_wkb))
+
+        def shapes(frame: pd.DataFrame, columns: Sequence[str]) -> pd.DataFrame:
+            out = frame[list(columns)].copy()
+            out["geometry"] = [shapely.from_wkb(g) if g is not None else None for g in frame["geom_wkb"]]
+            return out
+
+        settlements = shapes(dbc.settlement_polygons(graph_id, region_wkb), ("urban",))
+        landuse = shapes(dbc.osm_landuse(region_wkb), ("osm_type",))
+        nodes = dbc.variant_node_table(version_id, variant_id)
+        stations = nodes[nodes["kind"] == "station"][["x", "y"]].to_numpy(dtype=float)
+        lines = [shapely.from_wkb(g) for g in dbc.osm_line_geometries(graph_id, region_wkb)]
+        by_settlement, by_land_use, record = osm_coverage.summarise(region, dbc.osm_power_objects(region_wkb),
+                                                                     stations, settlements, landuse, lines)
+        dbc.rollback_changes()
+    except Exception as exc:
+        logger.warning(f"OSM coverage skipped: {_one_line(exc)}")
+        dbc.rollback_changes()
+        return {}
+    logger.info("OSM coverage per settlement class:\n" + osm_coverage.describe_table(by_settlement))
+    logger.info("OSM coverage per land-use class:\n" + osm_coverage.describe_table(by_land_use))
+    return record
+
+
 def _summary(version_id: str, variant_id: str, status: str, requested: list[int] | None, used: list[int],
              missing: list[int], totals: dict | None, warnings: list[str], start: float,
              demand: dict | None = None, *, ties: dict | None = None,
-             params: MvParameters | None = None) -> MvRunSummary:
+             params: MvParameters | None = None, osm_coverage: dict | None = None) -> MvRunSummary:
     totals = totals or {}
     voltages = {}
     if params is not None:
@@ -814,7 +850,7 @@ def _summary(version_id: str, variant_id: str, status: str, requested: list[int]
         n_violation_grids=int(totals.get("n_violation_grids", 0)),
         n_band_conflicts=int(totals.get("n_band_conflicts", 0)), warnings=list(warnings),
         elapsed_s=time.time() - start, demand=dict(demand or {}), ties=dict(ties or {}), voltages=voltages,
-        active_cases=params.active_cases if params is not None else CASES)
+        active_cases=params.active_cases if params is not None else CASES, osm_coverage=dict(osm_coverage or {}))
 
 
 # ---------------------------------------------------------------------------------------------- export

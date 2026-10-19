@@ -916,6 +916,32 @@ Missing voltage budgets and failed or skipped design/feed-in checks also produce
 using ``--no-merged``. Completion describes the checks performed, not compliance with voltage limits.
 Previously stored coupling results are unchanged until ``pylovo-mv couple`` is run again.
 
+.. _mv-osm-coverage:
+
+OSM completeness
+----------------
+
+After the supply areas are planned, the stage reports how complete the OSM power layer of the region
+is (``mv_variant.summary['osm_coverage']`` and one summary line), after the land-use comparison of
+Babli et al. (2025). The planning never reads it. It shows how far the OSM-based parts can be
+trusted: the overhead lines on OSM corridors and the brownfield stations of the LV stage.
+
+* **Mapped MV/LV station sites**: ``power=substation`` features that are no site of a higher level
+  (no voltage above 30 kV; not transmission, traction, converter, generation or compensation; a
+  polygon of at least 1,000 m² counts as an HV/MV site unless its voltages are MV only),
+  ``power=transformer`` features up to 30 kV outside the HV/MV sites, ``building=transformer_tower``
+  and ``power=pole`` nodes with a ``transformer`` tag. Features out of service do not count, and
+  features within 15 m of each other are one site.
+* **Per class**: the stations of the variant, the mapped sites, their ratio, and the OSM MV line km
+  and km per km². The classes are the settlement classes of the routing graph (town, village, open
+  field) and the OSM land-use classes (industrial, commercial, residential, agricultural, forest,
+  other, none).
+
+On the test regions, OSM mapped 1,270 station sites for 4,580 planned stations (28 %: town 22 %,
+village 30 %, open field 37 %) and 1,357 km of MV overhead line. Against the stations of two DSOs,
+the ratio per settlement class matched the true share of mapped stations within 2 points where the
+planned count was right, and overstated it by 5 to 9 points elsewhere.
+
 Limitations
 -----------
 
@@ -962,6 +988,9 @@ Methods and models:
   a high spatial resolution <https://doi.org/10.5278/ijsepm.2017.13.6>`_, *International Journal of
   Sustainable Energy Planning and Management* 13, 79–92. Filter of the HV/MV substations in
   OpenStreetMap.
+* M. Babli, M. Gebhard and E. Brucherseifer (2025), `Open data-driven reconstruction of power
+  distribution grid: a land use-based approach <https://doi.org/10.3390/electronics14071414>`_,
+  *Electronics* 14(7), 1414. Completeness of the OSM stations per land-use class.
 * P. Dubielzig (2022), `Modellierung synthetischer Verteilnetztopologien in urbanen Gebieten
   <https://reiner-lemoine-institut.de/wp-content/uploads/2023/05/2022_MA_Paul_Dubielzig_UrbaneVerteilnetze.pdf>`_,
   master thesis, Technische Universität Berlin, published by the Reiner Lemoine Institut.

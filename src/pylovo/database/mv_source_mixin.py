@@ -37,6 +37,11 @@ MASTR_UNIT_COLUMNS: tuple[str, ...] = ("mastr_id", "location_id", "technology", 
 MASTR_AGGREGATE_COLUMNS: tuple[str, ...] = ("postcode", "plz", "technology", "n_units", "net_power_kw",
                                             "area_ratio")
 
+#: Columns of :meth:`MvSourceMixin.osm_power_objects`.
+OSM_OBJECT_COLUMNS: tuple[str, ...] = ("source_id", "kind", "tags", "x", "y", "area_m2")
+#: Columns of :meth:`MvSourceMixin.osm_landuse`.
+OSM_LANDUSE_COLUMNS: tuple[str, ...] = ("osm_type", "geom_wkb")
+
 #: The eGon-data tables and the schemas they are read from, in this order (the first non-empty one wins).
 EGON_TABLES: tuple[str, str] = ("egon_hvmv_substation", "egon_mv_grid_district")
 
@@ -96,6 +101,45 @@ FROM fp f
 JOIN tr ON ST_DWithin(ST_Transform(tr.geom, {epsg}), f.geom, %(margin_m)s)
 LEFT JOIN {osm}.tags t ON t.geom_type = tr.gt AND t.osm_id = tr.tag_id
 ORDER BY f.site_index, tr.source_id;
+""")
+
+# power=substation and power=transformer features, power=pole nodes, and transformer-tower buildings inside the
+# planning region (plus 1 km for the HV/MV sites at its edge), with their tags (pylovo.mv_grid.osm_coverage tells the
+# MV/LV stations from the sites of a higher level).
+_OSM_OBJECTS_SQL = sql.SQL("""
+WITH obj AS (
+    SELECT 'N'::char(1) AS gt, p.osm_id AS tag_id, 'node/' || p.osm_id AS source_id, p.osm_subtype AS kind,
+           p.geom AS src, 0.0::double precision AS area_src
+    FROM {osm}.infrastructure_point p
+    WHERE p.osm_type = 'power' AND p.osm_subtype IN ('substation', 'transformer', 'pole')
+    UNION ALL
+    SELECT CASE WHEN g.osm_id < 0 THEN 'R' ELSE 'W' END::char(1), abs(g.osm_id),
+           CASE WHEN g.osm_id < 0 THEN 'relation/' || -g.osm_id ELSE 'way/' || g.osm_id END, g.osm_subtype,
+           ST_PointOnSurface(g.geom), ST_Area(ST_Transform(g.geom, {epsg}))
+    FROM {osm}.infrastructure_polygon g
+    WHERE g.osm_type = 'power' AND g.osm_subtype IN ('substation', 'transformer')
+    UNION ALL
+    SELECT CASE WHEN b.osm_id < 0 THEN 'R' ELSE 'W' END::char(1), abs(b.osm_id),
+           CASE WHEN b.osm_id < 0 THEN 'relation/' || -b.osm_id ELSE 'way/' || b.osm_id END, 'transformer_tower',
+           ST_PointOnSurface(b.geom), ST_Area(ST_Transform(b.geom, {epsg}))
+    FROM {osm}.building_polygon b
+    WHERE b.osm_subtype = 'transformer_tower'
+),
+pts AS (SELECT o.*, ST_Transform(o.src, {epsg}) AS pt FROM obj o)
+SELECT o.source_id, o.kind, t.tags::text AS tags, ST_X(o.pt) AS x, ST_Y(o.pt) AS y, o.area_src AS area_m2
+FROM pts o
+LEFT JOIN {osm}.tags t ON t.geom_type = o.gt AND t.osm_id = o.tag_id
+WHERE ST_DWithin(o.pt, ST_GeomFromWKB(%(region)s, {epsg}), 1000.0)
+ORDER BY o.source_id;
+""")
+
+# OSM land-use polygons clipped to the planning region.
+_OSM_LANDUSE_SQL = sql.SQL("""
+WITH r AS (SELECT ST_GeomFromWKB(%(region)s, {epsg}) AS g)
+SELECT l.osm_type, ST_AsBinary(ST_Intersection(ST_MakeValid(ST_Transform(l.geom, {epsg})), r.g))
+FROM {osm}.landuse_polygon l, r
+WHERE ST_Intersects(ST_Transform(l.geom, {epsg}), r.g)
+ORDER BY l.osm_id;
 """)
 
 _EGON_SUBSTATIONS_SQL = sql.SQL("""
@@ -210,6 +254,36 @@ class MvSourceMixin(BaseMixin):
         self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m)})
         rows = [(*row[:10], _wkb(row[10]), row[11]) for row in self.cur.fetchall()]
         return _frame(rows, OSM_CANDIDATE_COLUMNS, floats=("x", "y", "area_m2"), bools=("in_plant",))
+
+    def osm_power_objects(self, region_wkb: bytes) -> pd.DataFrame:
+        """The ``power=substation``, ``power=transformer`` and ``power=pole`` features and the ``transformer_tower``
+        buildings of the OSM schema within 1 km of the planning region (the inputs of
+        :func:`pylovo.mv_grid.osm_coverage.station_objects`).
+
+        Returns:
+            Columns of :data:`OSM_OBJECT_COLUMNS`: ``source_id``, ``kind`` (``substation``, ``transformer``,
+            ``pole`` or ``transformer_tower``), ``tags`` (JSON text, None without tags), the point (point-on-surface
+            of a polygon) ``x``, ``y`` and the footprint ``area_m2`` (0 for nodes).
+
+        Raises:
+            MvStageError: If ``INFDB_OSM_SCHEMA`` is not set.
+        """
+        query = _OSM_OBJECTS_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
+                                        epsg=sql.Literal(TARGET_EPSG))
+        self.cur.execute(query, {"region": _wkb(region_wkb)})
+        return _frame(self.cur.fetchall(), OSM_OBJECT_COLUMNS, floats=("x", "y", "area_m2"))
+
+    def osm_landuse(self, region_wkb: bytes) -> pd.DataFrame:
+        """The OSM ``landuse`` polygons clipped to the planning region: ``osm_type`` and ``geom_wkb`` (WKB,
+        ``TARGET_EPSG``).
+
+        Raises:
+            MvStageError: If ``INFDB_OSM_SCHEMA`` is not set.
+        """
+        query = _OSM_LANDUSE_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
+                                        epsg=sql.Literal(TARGET_EPSG))
+        self.cur.execute(query, {"region": _wkb(region_wkb)})
+        return _frame([(t, _wkb(g)) for t, g in self.cur.fetchall()], OSM_LANDUSE_COLUMNS)
 
     def osm_transformer_ratings(self, footprints_wkb: Sequence[bytes | None], margin_m: float = 10.0
                                 ) -> pd.DataFrame:

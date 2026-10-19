@@ -415,6 +415,18 @@ REGION_ARRAYS_SQL = """
     ORDER BY edge_id
 """
 
+SETTLEMENT_POLYGONS_SQL = sql.SQL("""
+    SELECT s.settlement_id, s.urban, ST_AsBinary(s.geom) FROM pylovo.mv_graph_settlement s
+    WHERE s.graph_id = %(g)s AND s.geom IS NOT NULL AND ST_Intersects(s.geom, ST_GeomFromWKB(%(region)s, {epsg}))
+    ORDER BY s.settlement_id
+""")
+
+OSM_LINE_GEOMS_SQL = sql.SQL("""
+    SELECT ST_AsBinary(e.geom) FROM pylovo.mv_graph_edge e
+    WHERE e.graph_id = %(g)s AND e.klasse = %(line)s AND ST_Intersects(e.geom, ST_GeomFromWKB(%(region)s, {epsg}))
+    ORDER BY e.edge_id
+""")
+
 EDGE_AGS_SQL = """
     SELECT edge_id, ags FROM pylovo.mv_graph_edge
     WHERE graph_id = %(g)s AND ags IS NOT NULL AND COALESCE(klasse, '') <> ALL(%(osm)s)
@@ -816,6 +828,20 @@ class MvGraphMixin(BaseMixin):
         edge_id, source, target, length = zip(*rows)
         return (np.asarray(edge_id, dtype=np.int64), np.asarray(source, dtype=np.int64),
                 np.asarray(target, dtype=np.int64), np.asarray(length, dtype=np.float64))
+
+    def settlement_polygons(self, graph_id: str, region_wkb: bytes) -> pd.DataFrame:
+        """The settlement polygons of a graph that touch the planning region: ``settlement_id``, ``urban`` and
+        ``geom_wkb`` (WKB, ``TARGET_EPSG``)."""
+        self.cur.execute(SETTLEMENT_POLYGONS_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
+                         {"g": graph_id, "region": bytes(region_wkb)})
+        rows = [(int(i), bool(u), bytes(g)) for i, u, g in self.cur.fetchall()]
+        return pd.DataFrame(rows, columns=["settlement_id", "urban", "geom_wkb"])
+
+    def osm_line_geometries(self, graph_id: str, region_wkb: bytes) -> list[bytes]:
+        """WKB of the OSM MV line edges of a graph that touch the planning region (empty without OSM lines)."""
+        self.cur.execute(OSM_LINE_GEOMS_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
+                         {"g": graph_id, "line": OSM_LINE_KLASSE, "region": bytes(region_wkb)})
+        return [bytes(row[0]) for row in self.cur.fetchall() if row[0] is not None]
 
     def edge_municipalities(self, graph_id: str) -> pd.Series:
         """The municipality key (AGS, text) of every street edge of a graph, indexed by ``edge_id``."""

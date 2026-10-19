@@ -417,7 +417,8 @@ class MvRunSummary:
     demand anchor (``pylovo.mv_grid.inputs.demand_anchor``), empty when it was not computed; ``ties`` the summary of
     the normally-open ties (``pylovo.mv_grid.interconnection.tie_summary``), empty without the tie step;
     ``voltages`` the nominal voltage rule (``rule`` auto or fixed, ``threshold_mva_km2``) and the districts per
-    voltage (``grids``: ``{"20": n, "10": m}``).
+    voltage (``grids``: ``{"20": n, "10": m}``); ``osm_coverage`` the OSM completeness per land-use class
+    (``pylovo.mv_grid.osm_coverage.coverage_record``), empty when it was not computed.
     """
 
     version_id: str
@@ -443,6 +444,7 @@ class MvRunSummary:
     ties: dict = field(default_factory=dict)
     voltages: dict = field(default_factory=dict)
     active_cases: tuple[str, ...] = CASES
+    osm_coverage: dict = field(default_factory=dict)
 
     def describe(self) -> str:
         """The summary lines printed by the CLI; each starts with a check mark (variant done) or a cross."""
@@ -469,6 +471,9 @@ class MvRunSummary:
             lines.append(ties_line(self.ties))
         if self.demand:
             lines.append(demand_line(self.demand))
+        if self.osm_coverage:
+            from pylovo.mv_grid.osm_coverage import coverage_line
+            lines.append(coverage_line(self.osm_coverage))
         lines.extend(f"✗ {warning}" for warning in self.warnings)
         return "\n".join(lines)
 
