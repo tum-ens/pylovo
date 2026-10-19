@@ -129,7 +129,8 @@ reason, so one viewer works with any pylovo database.
    * - MV grids
      - MV lines
      - ``pylovo.mv_line``: rings, stubs and dedicated feeders by ring, kind, role or loading, with the
-       normally-open points; overhead lines dashed, ties between supply areas dotted. Mixed lines run
+       normally-open points; overhead lines dashed, ties between supply areas and links between the
+       rings of one supply area dotted. Mixed lines run
        partly on an OSM MV line: that part is dashed, and their facts give the cable and overhead
        length.
    * -
