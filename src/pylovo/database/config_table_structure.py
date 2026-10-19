@@ -480,6 +480,7 @@ CREATE_QUERIES = {
         flags text[] NOT NULL DEFAULT ARRAY[]::text[],   -- ehv_uncertain, long_attach, over_capacity, no_nodes
         geom geometry(Point,{TARGET_EPSG}) NOT NULL,     -- busbar point
         footprint geometry(MultiPolygon,{TARGET_EPSG}),
+        display_geom geometry(Polygon,{TARGET_EPSG}),    -- busbar circle the display lines end on
         CONSTRAINT fk_mv_substation_variant FOREIGN KEY (version_id, mv_variant_id)
             REFERENCES pylovo.mv_variant (version_id, mv_variant_id) ON DELETE CASCADE
     );
@@ -635,6 +636,7 @@ CREATE_QUERIES = {
         loading_n1_percent double precision,
         loading_feed_in_percent double precision,
         geom geometry(LineString,{TARGET_EPSG}) NOT NULL,
+        display_geom geometry(LineString,{TARGET_EPSG}), -- lanes where lines share a route; NULL: as geom
         CONSTRAINT fk_mv_line_variant FOREIGN KEY (version_id, mv_variant_id)
             REFERENCES pylovo.mv_variant (version_id, mv_variant_id) ON DELETE CASCADE,
         CONSTRAINT fk_mv_line_grid FOREIGN KEY (mv_grid_id)

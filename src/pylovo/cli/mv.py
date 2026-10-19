@@ -10,6 +10,8 @@ Subcommands:
 - ``export``: write the stored pandapower net of one MV grid to a JSON file.
 - ``boundary``: write the HV boundary of a variant (one row per supplying HV/MV substation with its eTraGo 110 kV bus,
   load-case P and Q, HV/MV transformers and their loading) to a CSV file.
+- ``display``: store the display geometry of variants again (lanes where lines share a route, busbar circles;
+  :mod:`pylovo.mv_grid.display`), e.g. for variants built before it existed.
 
 Every output line starts with ✓ or ✗; the exit code is 0 when the command (the variant, the coupling) is done and
 1 otherwise. The command never constructs ``GridGenerator``: it works on stored LV versions with an explicit
@@ -42,6 +44,9 @@ Examples:
 
   # HV boundary for a coupling with eTraGo: eTraGo 110 kV bus, P and Q per HV/MV substation
   pylovo-mv boundary --version mv1 --variant d1 --output boundary.csv
+
+  # Display geometry (lanes, busbar circles) of variants built before it existed
+  pylovo-mv display --version mv1 --variant d1 d2
 
 --set takes MV_* keys of config_generation.yaml (not MV_GRID_GENERATION, MV_VARIANT_ID, MV_VARIANT_COMMENT) and the
 constants of pylovo.mv_grid.options.CONSTANTS, e.g. --set MV_RING_SOLVER=sweep local_search_rounds=0.
@@ -117,6 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
     boundary.add_argument("--version", required=True)
     boundary.add_argument("--variant", required=True)
     boundary.add_argument("--output", type=Path, required=True, help="CSV file to write")
+
+    display = sub.add_parser("display", help="store the display geometry (lanes, busbar circles) of variants again")
+    display.add_argument("--version", required=True)
+    display.add_argument("--variant", dest="variants", nargs="+", required=True, help="MV variant id(s)")
     return parser
 
 
@@ -259,8 +268,26 @@ def _boundary(args: argparse.Namespace) -> int:
     return 0
 
 
+def _display(args: argparse.Namespace) -> int:
+    import logging
+
+    from pylovo.mv_grid import stage
+
+    failed = 0
+    with _database_client() as dbc:
+        dbc.ensure_grid_persistence_schema()
+        for variant in args.variants:
+            lanes = stage.display_geometry(dbc, args.version, variant, logging.getLogger(__name__))
+            if not lanes:
+                print(f"✗ MV variant {variant} of version {args.version}: no display geometry (no lines, or an error)")
+                failed += 1
+            else:
+                print(f"✓ MV variant {variant} of version {args.version}: {lanes} lines with display geometry")
+    return 1 if failed else 0
+
+
 _COMMANDS = {"generate": _generate, "couple": _couple, "delete": _delete, "list": _list, "graph": _graph,
-             "export": _export, "boundary": _boundary}
+             "export": _export, "boundary": _boundary, "display": _display}
 
 
 def main(argv: list[str] | None = None) -> None:

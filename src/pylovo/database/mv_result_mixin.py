@@ -1327,6 +1327,58 @@ class MvResultMixin(BaseMixin):
                ORDER BY l.mv_line_id""", (version_id, variant_id))
         return pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
 
+    def display_input(self, version_id: str, variant_id: str) -> tuple[list, dict[int, tuple[float, float]]]:
+        """The lines of a variant for :func:`pylovo.mv_grid.display.layout` and its busbar nodes (id -> x, y).
+
+        A line's path key is (MV grid, ring, role); lines without a ring (ties, links) form no paths.
+        """
+        import shapely
+
+        from pylovo.mv_grid.display import DisplayLine
+
+        self.cur.execute(
+            """SELECT mv_line_id, from_node, to_node, mv_grid_id, ring_id, role, ST_AsBinary(geom)
+               FROM pylovo.mv_line WHERE version_id = %s AND mv_variant_id = %s ORDER BY mv_line_id""",
+            (version_id, variant_id))
+        lines = [DisplayLine(int(i), shapely.from_wkb(bytes(wkb)), int(a), int(b),
+                             None if ring is None else (int(grid), int(ring), role))
+                 for i, a, b, grid, ring, role, wkb in self.cur.fetchall()]
+        self.cur.execute(
+            """SELECT mv_node_id, ST_X(geom), ST_Y(geom) FROM pylovo.mv_node
+               WHERE version_id = %s AND mv_variant_id = %s AND kind = 'busbar'""", (version_id, variant_id))
+        return lines, {int(n): (float(x), float(y)) for n, x, y in self.cur.fetchall()}
+
+    def save_display_geometry(self, version_id: str, variant_id: str, lines: Mapping[int, Any],
+                              busbars: Mapping[int, Any]) -> None:
+        """Replace the display geometry of a variant: ``lines`` (mv_line_id -> LineString) and ``busbars`` (busbar
+        node id -> circle Polygon, stored on the node's substation); every other row gets NULL. Commits."""
+        try:
+            key = (version_id, variant_id)
+            self.cur.execute("UPDATE pylovo.mv_line SET display_geom = NULL "
+                             "WHERE version_id = %s AND mv_variant_id = %s AND display_geom IS NOT NULL", key)
+            self.cur.execute("UPDATE pylovo.mv_substation SET display_geom = NULL "
+                             "WHERE version_id = %s AND mv_variant_id = %s AND display_geom IS NOT NULL", key)
+            epsg = int(TARGET_EPSG)
+            if lines:
+                execute_values(
+                    self.cur,
+                    f"""UPDATE pylovo.mv_line l SET display_geom = ST_GeomFromWKB(v.wkb, {epsg})
+                        FROM (VALUES %s) AS v(mv_line_id, wkb)
+                        WHERE l.mv_line_id = v.mv_line_id""",
+                    [(int(i), g.wkb) for i, g in lines.items()], template="(%s::bigint, %s::bytea)", page_size=1000)
+            if busbars:
+                execute_values(
+                    self.cur,
+                    f"""UPDATE pylovo.mv_substation s SET display_geom = ST_GeomFromWKB(v.wkb, {epsg})
+                        FROM (VALUES %s) AS v(mv_node_id, wkb)
+                        JOIN pylovo.mv_node n ON n.mv_node_id = v.mv_node_id
+                        WHERE s.substation_id = n.substation_id""",
+                    [(int(n), g.wkb) for n, g in busbars.items()], template="(%s::bigint, %s::bytea)")
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+
 
 # ---------------------------------------------------------------------------------------------- helpers
 def _ring_rows(plan: "DistrictPlan", stored: Mapping[int, dict], key_to_id: Mapping[int, int],

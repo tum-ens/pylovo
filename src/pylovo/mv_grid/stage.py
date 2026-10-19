@@ -736,6 +736,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         if params.interconnection == "ties":
             ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
             links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger, warnings)
+        display_geometry(dbc, version_id, variant_id, logger)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
         demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
@@ -793,6 +794,25 @@ def _plan_links(dbc: Any, version_id: str, variant_id: str, graph_id: str, param
     summary = interconnection.plan_and_save_links(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_links(summary))
     return summary
+
+
+def display_geometry(dbc: Any, version_id: str, variant_id: str, logger: logging.Logger) -> int | None:
+    """Store the display geometry of a variant's lines and busbar circles (``display.layout``); logged.
+
+    For maps only: an error is logged, rolled back and leaves the display geometry empty (readers then draw
+    ``geom``). Returns the number of lines with a display geometry, or None after an error.
+    """
+    try:
+        lines, busbars = dbc.display_input(version_id, variant_id)
+        result = _module("display").layout(lines, busbars)
+        dbc.save_display_geometry(version_id, variant_id, result.lines, result.busbar_polygons())
+    except Exception as exc:
+        logger.warning(f"Display geometry skipped: {_one_line(exc)}")
+        dbc.rollback_changes()
+        return None
+    logger.info(f"Display geometry: {len(result.lines)} of {len(lines)} lines in lanes, "
+                f"{len(result.busbars)} busbar circles")
+    return len(result.lines)
 
 
 def _demand_anchor(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int], lv: LvVersionParameters,

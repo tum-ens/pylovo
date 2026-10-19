@@ -471,6 +471,21 @@ def mv_grids(cur: cursor) -> None:
         cur.execute(CREATE_QUERIES[name])
 
 
+def mv_display_geometry(cur: cursor) -> None:
+    """Add the display geometry of MV lines (lanes on shared routes) and HV/MV substations (busbar circle).
+
+    Both are nullable and filled by the MV stage (``pylovo.mv_grid.display``); readers fall back to ``geom``.
+    """
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.config_loader import TARGET_EPSG
+
+    for table, kind in (("mv_line", "LineString"), ("mv_substation", "Polygon")):
+        cur.execute("SELECT to_regclass(%s)", (f"pylovo.{table}",))
+        if cur.fetchone()[0] is not None:
+            cur.execute(f"ALTER TABLE pylovo.{table} ADD COLUMN IF NOT EXISTS display_geom "
+                        f"geometry({kind},{int(TARGET_EPSG)})")
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -484,6 +499,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),
     ("0008_percentage_checks", percentage_checks),
     ("0009_mv_grids", mv_grids),
+    ("0010_mv_display_geometry", mv_display_geometry),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (
