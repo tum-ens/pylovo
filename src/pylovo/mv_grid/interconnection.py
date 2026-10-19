@@ -200,6 +200,24 @@ def _street_distances(rg: Any, pairs: np.ndarray, limit_m: float) -> np.ndarray:
     return out
 
 
+def _true_lengths(rg: Any, pairs: np.ndarray) -> np.ndarray:
+    """True length (m) of the minimum-cost route per local row pair (``inf`` if unreachable).
+
+    The run graph weights OSM MV lines below their length (``osm_cost_factor``), so the street distance of
+    :func:`_street_distances` undercounts routes on OSM corridors.
+    """
+    vertex = np.asarray(rg.terminal_vertex, dtype=np.int64)
+    keys = [(int(vertex[i]), int(vertex[j])) for i, j in pairs]
+    paths = graph.vertex_paths(rg, list(set(keys)))
+    piece_m = rg.pieces["length_m"].to_numpy(dtype=float)
+    out = np.full(len(pairs), np.inf)
+    for p, key in enumerate(keys):
+        path = paths.get(key, [])
+        if path:
+            out[p] = float(piece_m[graph.path_pieces(rg, path)].sum())
+    return out
+
+
 def _straight_edge_geometries(edges: EdgeSet, edge_ids: Sequence[int]) -> dict[int, Any]:
     """Straight geometries of graph edges from their end vertices (when no edge geometry reader is given)."""
     index = {int(v): i for i, v in enumerate(np.asarray(edges.vertex_id, dtype=np.int64).tolist())}
@@ -287,6 +305,12 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
     lpairs, street = lpairs[ok], street[ok]
     if not len(lpairs):
         return empty_ties()
+    if "cost_m" in rg.pieces.columns and not np.allclose(rg.pieces["cost_m"], rg.pieces["length_m"]):
+        street = _true_lengths(rg, lpairs)              # the limit and the ranking use the true route length
+        ok = street <= limit
+        lpairs, street = lpairs[ok], street[ok]
+        if not len(lpairs):
+            return empty_ties()
 
     ids = np.asarray(sub.index, dtype=np.int64)
     grid = sub["mv_grid_id"].to_numpy(dtype=np.int64)

@@ -197,6 +197,23 @@ def test_osm_ties_are_overhead_on_osm_lines():
     assert ic.plan_ties(nodes_frame(a, b), grids, streets, osm).iloc[0]["kind"] == "cable"
 
 
+def test_the_limit_applies_to_the_true_length_on_osm_lines():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    vid = np.array([1, 2, 3, 4])
+    xy = np.array([[0.0, 0.0], [0.0, 400.0], [1600.0, 400.0], [1600.0, 0.0]])
+    corridor = EdgeSet(edge_id=np.array([1, 2, 3]), source=np.array([1, 2, 3]), target=np.array([2, 3, 4]),
+                       length_m=np.array([400.0, 1600.0, 400.0]), in_settlement=np.zeros(3, bool),
+                       settlement_id=np.full(3, -1), vertex_id=vid, vertex_xy=xy,
+                       overhead=np.array([False, True, False]))               # the middle edge is an OSM MV line
+    a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
+    b = node(21, 2, 0, 1600.0, y=0.0, edge=3, fraction=1.0)
+    osm = PARAMS.replace(overhead_lines="osm")
+    # 2,400 m long, but only 1,920 m in costs at the OSM factor of 0.7: beyond the 2 km limit
+    assert ic.plan_ties(nodes_frame(a, b), grids, corridor, osm).empty
+    tie = ic.plan_ties(nodes_frame(a, b), grids, corridor, osm.replace(tie_max_length_m=2500.0)).iloc[0]
+    assert tie["length_m"] == pytest.approx(2400.0) and tie["street_m"] == pytest.approx(2400.0)
+
+
 def test_orientation_geometry_and_flags():
     grids = grids_frame((5, 20.0, "done", False, True), (2, 20.0, "done", True, False))
     rows = nodes_frame(node(51, 5, 0, 1000.0, offset=30.0), node(21, 2, 0, 2200.0, offset=20.0))
