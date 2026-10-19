@@ -14,10 +14,6 @@ This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
    ring where it costs the least length and stays feasible, else into a ring of its own (Ding0's satellites).
 3. **Busbar radials**: a rural single-station ring of at most ``stub_max_kva`` within ``stub_max_length_m`` (street)
    of the busbar becomes one radial line.
-
-All length limits (``stub_max_length_m``, ``generator_max_tee_m``) hold for the true route length: with
-``osm_line_cost_factor`` below 1, routes are chosen by their cost, but a stub, T-off or radial is accepted by its
-length.
 4. **Dedicated customers** (``connection_hint = 'dedicated'``): a 2-leg feeder from the busbar, leg 2 normally open
    at the customer, parallel cables by load.
 5. **MV generators**, in decreasing power: a dedicated feeder (``connection_hint = 'dedicated'`` or above
@@ -28,6 +24,10 @@ length.
 7. **Geometries** along the run-graph pieces (street) or straight spans, and the line types. With
    ``MV_OVERHEAD_LINES`` osm a line is an overhead line where its route runs on OSM MV lines and a cable elsewhere:
    ``cable``, ``overhead`` or ``mixed`` (length-weighted r and x, the smaller ampacity).
+
+All length limits (``stub_max_length_m``, ``generator_max_tee_m``) hold for the true route length: with
+``osm_line_cost_factor`` below 1, routes are chosen by their cost, but a stub, T-off or radial is accepted by its
+length.
 
 The plan is always built from its *decisions* (ring orders, stubs, T-offs, feeders), so the repair functions
 (:func:`move_nop`, :func:`split_ring`, :func:`convert_to_dedicated`, :func:`add_parallel`, :func:`upgrade_lines`)

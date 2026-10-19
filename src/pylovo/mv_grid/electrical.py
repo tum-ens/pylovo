@@ -880,7 +880,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
            ) -> tuple[TopologyPlan, list[dict]]:
     """One round of the repair loop (DESIGN §5.4): applies all non-conflicting actions, at most one per ring.
 
-Larger conductors come before topology changes, as in Ding0's reinforcement (``topology.upgrade_lines``, the
+    Larger conductors come before topology changes, as in Ding0's reinforcement (``topology.upgrade_lines``, the
     pandapower conductors of the kind by ampacity, :func:`pylovo.mv_grid.equipment.upgrade_ladder`). In this order:
 
     1. Voltage (``load``, ``n1a``, ``n1b``) on a node of ring r, a ladder over the rounds: move the NOP to the best
