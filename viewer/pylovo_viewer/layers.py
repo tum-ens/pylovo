@@ -121,7 +121,8 @@ class Layer:
     geometry: str                     # point | line | polygon
     scope: str
     source: str
-    sql: str = ""                     # placeholders: {env} (map view), {mv_cols} {mv_join} (station MV data)
+    sql: str = ""                     # placeholders: {env} (map view), {mv_cols} {mv_join} (station MV data),
+    #                                   {line_geom} (an MV line's display geometry where the database has one)
     detail: str = ""                  # one feature, parameter %(fid)s
     requires: tuple[str, ...] = ()    # "schema.table" or "schema.table(col, col)"
     rows: tuple[str, ...] = ()        # tables that must hold rows
@@ -183,6 +184,13 @@ def build_layers() -> list[Layer]:
               detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
               requires=("pylovo.mv_substation(footprint)",), rows=("pylovo.mv_variant",),
               parent="hv_substations", min_zoom=12),
+        Layer("hv_busbars", "hv", "Busbars", "The busbar circle of each HV/MV substation, where its MV lines end.",
+              "polygon", "run", "pylovo.mv_substation (display geometry)",
+              sql=f"""SELECT s.substation_id AS fid, s.name, {geo("s.display_geom")} AS geometry
+                      FROM pylovo.mv_substation s WHERE {run('s')} AND s.display_geom IS NOT NULL""",
+              detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
+              requires=("pylovo.mv_substation(display_geom)",), rows=("pylovo.mv_variant",),
+              parent="hv_substations", min_zoom=15),
         # -------------------------------------------------------------------------------- MV grids
         Layer("mv_lines", "mv", "MV lines",
               "MV cables and overhead lines of the run: open rings, stubs, dedicated feeders, ties between supply "
@@ -194,7 +202,7 @@ def build_layers() -> list[Layer]:
                              {num("l.overhead_km", 3)} AS overhead_km, l.normally_open AS open,
                              {num("l.loading_load_percent", 1)} AS loading, {num("l.loading_n1_percent", 1)} AS loading_n1,
                              {num("l.loading_feed_in_percent", 1)} AS loading_feed_in,
-                             {geo("ST_Simplify(l.geom, 1)")} AS geometry
+                             {geo("ST_Simplify({line_geom}, 0.3)")} AS geometry
                       FROM pylovo.mv_line l WHERE {run('l')}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts")),
@@ -219,10 +227,10 @@ def build_layers() -> list[Layer]:
               "Where each open ring is opened, drawn next to the node it opens at.",
               "point", "run", "pylovo.mv_line",
               sql=f"""SELECT l.mv_line_id AS fid, l.mv_grid_id AS area, l.ring_id AS ring, n.mv_node_id AS node,
-                             {geo('''ST_LineInterpolatePoint(l.geom, CASE
+                             {geo('''ST_LineInterpolatePoint({line_geom}, CASE
                                  WHEN COALESCE(l.open_at_node, l.to_node) = l.from_node
-                                   THEN LEAST(0.5, 12 / NULLIF(ST_Length(l.geom), 0))
-                                 ELSE GREATEST(0.5, 1 - 12 / NULLIF(ST_Length(l.geom), 0)) END)''')} AS geometry
+                                   THEN LEAST(0.5, 12 / NULLIF(ST_Length({line_geom}), 0))
+                                 ELSE GREATEST(0.5, 1 - 12 / NULLIF(ST_Length({line_geom}), 0)) END)''')} AS geometry
                       FROM pylovo.mv_line l JOIN pylovo.mv_node n ON n.mv_node_id = COALESCE(l.open_at_node, l.to_node)
                       WHERE {run('l')} AND l.normally_open AND l.role NOT IN ('tie', 'link') AND ST_Length(l.geom) > 0""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
@@ -445,7 +453,11 @@ class LayerService:
         cols = (f", n.mv_grid_id AS area, n.ring_id AS ring, n.feeder_id AS feeder, n.connection AS mv_connection, "
                 f"{num('n.vm_load_pu', 4)} AS vm, {num('n.lv_busbar_vm_pu', 4)} AS lv_vm") if mv else ""
         return (layer.sql.replace("{env}", env).replace("{mv_cols}", cols)
-                .replace("{mv_join}", STATION_MV_JOIN if mv else ""))
+                .replace("{mv_join}", STATION_MV_JOIN if mv else "").replace("{line_geom}", self.line_geom()))
+
+    def line_geom(self) -> str:
+        """An MV line's geometry to draw: its display geometry (lanes where lines share a route) if stored."""
+        return "COALESCE(l.display_geom, l.geom)" if self.catalog.has("pylovo.mv_line", "display_geom") else "l.geom"
 
     def geojson(self, layer_id: str, q: Query) -> str:
         layer = self.layers[layer_id]
@@ -617,12 +629,14 @@ class LayerService:
 
     def _overhead_parts(self, rows: list[dict[str, Any]], q: Query) -> None:
         """Overhead parts of mixed MV lines (``overhead``, MultiLineString coordinates): where they run on the OSM
-        MV lines of the run's routing graph."""
+        MV lines of the run's routing graph, moved onto the line's display geometry where it has one."""
         mixed = [row for row in rows if row.get("kind") == "mixed"]
         if not mixed or not self.catalog.has("pylovo.mv_graph_edge", "graph_id", "klasse") \
                 or not self.catalog.has("pylovo.mv_variant", "graph_id"):
             return
-        parts = {r["id"]: r["geometry"] for r in self.db.query(OVERHEAD_PARTS, q.params())}
+        display = "l.display_geom" if self.catalog.has("pylovo.mv_line", "display_geom") else "NULL::geometry"
+        parts = {r["id"]: r["geometry"] for r in self.db.query(OVERHEAD_PARTS.replace("{display}", display),
+                                                               q.params())}
         for row in mixed:
             if parts.get(row["fid"]):
                 row["overhead"] = json.loads(parts[row["fid"]])["coordinates"]
@@ -635,11 +649,18 @@ class LayerService:
 
 
 # A mixed MV line is overhead where it runs on an OSM MV line of the routing graph (1 m apart at most,
-# pieces of 5 m or less, such as crossings, left out).
+# pieces of 5 m or less, such as crossings, left out). With a display geometry ({display}), each piece is the part of
+# it between the points nearest to the piece's ends.
 OVERHEAD_PARTS = f"""
 SELECT l.mv_line_id AS id,
-       (SELECT {geo("ST_Multi(ST_Collect(d.geom))")} FROM ST_Dump(ST_LineMerge(ST_CollectionExtract(
-                 ST_Intersection(l.geom, c.g), 2))) d WHERE ST_Length(d.geom) > 5) AS geometry
+       (SELECT {geo("ST_Multi(ST_Collect(p.part))")} FROM (
+          SELECT CASE WHEN {{display}} IS NULL THEN d.geom
+                      ELSE ST_LineSubstring({{display}}, LEAST(f.a, f.b), GREATEST(f.a, f.b)) END AS part
+          FROM ST_Dump(ST_LineMerge(ST_CollectionExtract(ST_Intersection(l.geom, c.g), 2))) d
+          CROSS JOIN LATERAL (SELECT ST_LineLocatePoint({{display}}, ST_StartPoint(d.geom)) AS a,
+                                     ST_LineLocatePoint({{display}}, ST_EndPoint(d.geom)) AS b) f
+          WHERE ST_Length(d.geom) > 5) p
+        WHERE GeometryType(p.part) = 'LINESTRING') AS geometry
 FROM pylovo.mv_line l
 CROSS JOIN LATERAL (SELECT ST_Union(ST_Buffer(e.geom, 1, 'quad_segs=1')) AS g FROM pylovo.mv_graph_edge e
                     WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v

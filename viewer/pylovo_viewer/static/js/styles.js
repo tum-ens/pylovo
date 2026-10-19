@@ -118,6 +118,16 @@ export const STYLES = {
     legend: () => [{ kind: 'fill', colour: pal().ink.primary, label: 'Substation site' }],
     facts: (o) => ({ title: o.name || 'Substation site', subtitle: o.source, rows: [] }),
   },
+  hv_busbars: {
+    // the circle the MV lines of a substation end on (their display geometry), under the substation symbol
+    layers: ({ id, p }) => [
+      { id, type: 'fill', paint: { 'fill-color': p.surface, 'fill-opacity': 0.95 } },
+      { id: `${id}:line`, type: 'line', pick: false, paint: { 'line-color': p.ink.primary,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 19, 3] } },
+    ],
+    legend: () => [{ kind: 'circle', hollow: true, colour: pal().ink.primary, label: 'Busbar: the MV lines end on it' }],
+    facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: 'busbar', rows: [] }),
+  },
   mv_lines: {
     modes: { ring: { label: 'Ring', scheme: () => slot('ring_slot') },
       kind: { label: 'Cable / overhead', scheme: () => ({ type: 'match', prop: 'kind', entries: [
