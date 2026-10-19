@@ -564,10 +564,12 @@ generators.
    (c) the stub tree carries at most ``stub_max_kva`` (1 MVA, coincident) and is at most
    ``stub_max_length_m`` (2 km) long in true route length (the routing cost of OSM lines does not
    count here, as for busbar radials and generator T-offs), and (d) the shortened ring stays
-   feasible. Later stubs may
-   hang on earlier ones (stub trees). Urban nodes always stay in the ring. The limits of 1 MVA, the
-   size of an emergency generator, and 2 km come from Amme et al. (2018, after Consentec and FGH),
-   and Harnisch et al. (2016) connect stations more than about 100 m off the trunk as stubs.
+   feasible. Later stubs may hang on earlier ones (stub trees). Urban nodes always stay in the ring.
+   The 1 MVA is the size of a typical mobile emergency generator, which supplies a stub during a
+   repair (Amme et al. 2018, after LEW and an FGH report of 2008). The 2 km follow Consentec (2006),
+   cited by Amme et al., whose example rule allowed at most three stations, 0.5 MW and 2 km per stub.
+   No public German planning rule gives other numbers. Harnisch et al. (2016) connect stations more
+   than about 100 m off the trunk as stubs.
 #. Also with ``MV_STUBS: rural``, the *satellites*, rural stations outside every settlement or alone
    in their settlement such as farms and hamlets, are not part of the ring problem, as the
    satellites of Ding0 (Amme et al. 2018). After the rings are solved, they are connected from the

@@ -807,10 +807,12 @@ routing graph and the settlements are part of the graph id, so a change builds a
        Almomani and Witzmann 2024). 1 counts every member 1.
    * - ``stub_max_kva``
      - 1000
-     - Largest coincident load of a stub tree in kVA (Amme et al. 2018 after Consentec and FGH).
+     - Largest coincident load of a stub tree in kVA: the size of a typical mobile emergency
+       generator (Amme et al. 2018, after LEW and FGH 2008).
    * - ``stub_max_length_m``
      - 2000
-     - Longest stub tree in m (Amme et al. 2018 after Consentec and FGH).
+     - Longest stub tree in m (Amme et al. 2018 after Consentec 2006, an example rule of at most
+       three stations, 0.5 MW and 2 km per stub).
    * - ``stub_min_offset_m``
      - 100
      - Only nodes more than this off the ring become stubs (Harnisch et al. 2016; Amme et al. 2018).

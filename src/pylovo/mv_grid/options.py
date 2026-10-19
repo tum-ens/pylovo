@@ -165,9 +165,10 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
                      "twice as many members: rural feeders carry 11 to 28 supply points (SimBench; Almomani & "
                      "Witzmann 2024), urban ones about 10 (large-city grid study); 1 = all members count 1"),
     _constant("stub_max_kva", 1000.0, "float", "topology", bounds=_POSITIVE,
-              source="Amme et al. 2018 (Consentec 2006, FGH); Harnisch 2016"),
+              source="size of a typical mobile emergency generator, Amme et al. 2018 p. 10 (after LEW and FGH 2008)"),
     _constant("stub_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
-              source="Amme et al. 2018 (Consentec 2006, FGH); Harnisch 2016"),
+              source="Amme et al. 2018 p. 10 after Consentec 2006 p. 129 (example rule: at most 3 stations, 0.5 MW "
+                     "and 2 km per stub)"),
     _constant("stub_min_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,
               source="only nodes more than this off the ring become stubs; Amme et al. 2018"),
     _constant("loop_in_max_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,
