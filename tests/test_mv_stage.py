@@ -486,6 +486,10 @@ class RegionDb:
         ids = np.arange(1100, 1108)
         return ids, ids * 10, ids * 10 + 1, np.full(len(ids), 100.0)
 
+    def edge_municipalities(self, graph_id):
+        ids = np.arange(1100, 1108)
+        return pd.Series(["09000001"] * len(ids), index=pd.Index(ids, name="edge_id"), dtype=object, name="ags")
+
     def create_grids(self, version_id, variant_id, substation_ids, vn_kv):
         self._record("create_grids", list(substation_ids), vn_kv)
         return {int(s): 900 + i for i, s in enumerate(substation_ids)}
@@ -569,7 +573,12 @@ def region_modules(monkeypatch):
         return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), iterations=1,
                                      overloaded=[0], bridged=np.array([False, True, False, False]))
 
+    def municipal(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity):
+        recorded["municipal_sites"] = sites
+        return routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity, None)
+
     districts.routed_assignment = routed
+    districts.municipal_assignment = municipal
     graph = types.ModuleType("pylovo.mv_grid.graph")
     graph.region_csr = lambda source, target, length: ("csr", {})
     for name, module in (("substations", subs), ("inputs", inputs), ("districts", districts), ("graph", graph)):
@@ -605,6 +614,9 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert {"edge_source", "edge_target", "edge_length_m", "attach_edge_id"} <= set(region_modules["sites"].columns)
     assert region_modules["sites"]["edge_source"].tolist() == [11010, 11030]    # edges 1101, 1103
     assert region_modules["nodes"]["kind"].tolist() == ["station", "station", "customer", "generator"]
+    # municipal supply areas (default): every node and the site near its street edge get the edge's municipality
+    assert region_modules["nodes"]["ags"].tolist() == ["09000001"] * 4
+    assert region_modules["municipal_sites"]["ags"].notna().any()
     assert db.calls["create_grids"] == [([11], 20.0)]
     grids = db.calls["set_node_grids"][0][0]
     assert grids["mv_node_id"].tolist() == [104, 105, 106, 107] and grids["mv_grid_id"].tolist() == [900] * 4
@@ -627,6 +639,9 @@ def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
                                      overloaded=[], bridged=np.zeros(len(nodes), dtype=bool))
 
     monkeypatch.setattr(sys.modules["pylovo.mv_grid.districts"], "routed_assignment", routed)
+    monkeypatch.setattr(sys.modules["pylovo.mv_grid.districts"], "municipal_assignment",
+                        lambda csr, vi, el, sites, nodes, g, pf, capacity: routed(csr, vi, el, sites, nodes, g, pf,
+                                                                                  capacity, None))
 
     def unexpected(*args, **kwargs):
         raise AssertionError("load-only MV planning accessed MaStR")

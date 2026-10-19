@@ -503,10 +503,18 @@ def _assign_supply_areas(dbc: Any, graph_id: str, nodes: pd.DataFrame, sites: pd
     sites_in = sites.join(ends, on="attach_edge_id")
     nodes_in = nodes.join(ends, on="attach_edge_id")
     capacity = districts.site_capacity_mva(sites_in, params)
-    result = districts.routed_assignment(csr, vertex_index, edge_len, sites_in, nodes_in, lv.g(), lv.power_factor,
-                                         capacity, params)
-    logger.info(f"Supply areas: {result.iterations} rebalancing iterations, "
-                f"{len(result.overloaded)} substations above capacity")
+    if params.supply_areas == "municipal":
+        ags = dbc.edge_municipalities(graph_id)
+        nodes_in["ags"] = nodes_in["attach_edge_id"].map(ags)
+        near = pd.to_numeric(sites_in["attach_offset_m"], errors="coerce") <= params.municipal_site_max_offset_m
+        sites_in["ags"] = sites_in["attach_edge_id"].map(ags).where(near)
+        result = districts.municipal_assignment(csr, vertex_index, edge_len, sites_in, nodes_in, lv.g(),
+                                                lv.power_factor, capacity)
+    else:
+        result = districts.routed_assignment(csr, vertex_index, edge_len, sites_in, nodes_in, lv.g(),
+                                             lv.power_factor, capacity, params)
+        logger.info(f"Supply areas: {result.iterations - 1} rebalancing steps, "
+                    f"{len(result.overloaded)} substations above capacity")
     bridged = np.asarray(result.bridged, dtype=bool) if result.bridged is not None \
         else np.zeros(len(nodes), dtype=bool)
     return np.asarray(result.site_of_node, dtype=np.int64), bridged, [int(i) for i in result.overloaded]

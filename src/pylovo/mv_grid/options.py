@@ -29,7 +29,9 @@ import yaml
 #: 5: rural ring members count ``1 / rural_ring_factor``, busbar legs are cables along the streets with exits within
 #: ``busbar_exit_radius_m``, isolated rural stations hang on stubs after the rings are solved (satellites).
 #: 6: ``MV_OVERHEAD_LINES`` osm (default): overhead lines only along the OSM MV lines of the routing graph.
-MV_STAGE_VERSION: int = 6
+#: 7: municipal supply areas (``MV_SUPPLY_AREAS`` municipal, default) without capacity rebalancing
+#: (``rebalance_max_iter`` 0); stub, radial and T-off limits on the true route length.
+MV_STAGE_VERSION: int = 7
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
@@ -92,8 +94,11 @@ _YAML_SPECS: tuple[Spec, ...] = (
                 "transformers are 20/0.4 kV and are re-typed to 10 kV by pylovo-mv couple"),
     Spec("MV_SUBSTATIONS", "substations", "osm", "choice", choices=("osm", "egon"), group="sources",
          source="Hülk et al. 2017 (HV/MV substations from OSM); eGon-data"),
-    Spec("MV_SUPPLY_AREAS", "supply_areas", "routed", "choice", choices=("routed", "egon"), group="sources",
-         source="nearest substation along the streets with capacity rebalancing; eGon-data MV grid districts"),
+    Spec("MV_SUPPLY_AREAS", "supply_areas", "municipal", "choice", choices=("municipal", "routed", "egon"),
+         group="sources",
+         source="municipal: whole municipalities on their own substation, split among several, else on the substation "
+                "nearest to most of their load (Hülk et al. 2017, as Ding0); routed: nearest substation along the "
+                "streets; eGon-data MV grid districts"),
     Spec("MV_ROUTING", "routing", "street", "choice", choices=("street", "crowfly"), group="routing", key="mode",
          source="lines along streets and field paths; straight lines x 1.3 as in Ding0"),
     Spec("MV_RING_SOLVER", "solver", "savings", "choice", choices=("savings", "sweep"), group="topology",
@@ -270,9 +275,13 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
     _constant("egon_match_m", 300.0, "float", "sources", bounds=_POSITIVE,
               source="cross-check of OSM sites against eGon-data substations"),
     _constant("rebalance_step_m", 500.0, "float", "sources", bounds=_POSITIVE,
-              source="weight step of the capacity rebalancing of the supply areas"),
-    _constant("rebalance_max_iter", 50, "int", "sources", bounds=(0, None),
-              source="iterations of the capacity rebalancing of the supply areas"),
+              source="weight step of the capacity rebalancing of routed supply areas"),
+    _constant("rebalance_max_iter", 0, "int", "sources", bounds=(0, None),
+              source="raises of the capacity rebalancing of routed supply areas; 0: none, a site above its (n-1) "
+                     "capacity keeps its load and gets more transformer units (decision of 2026-10-19)"),
+    _constant("municipal_site_max_offset_m", 250.0, "float", "sources", bounds=_POSITIVE,
+              source="a substation belongs to the municipality of its street edge within this distance (municipal "
+                     "supply areas); farther away it belongs to none"),
     # MV/LV taps and LV verdicts
     _constant("mvlv_tap_step_percent", 2.5, "float", "taps", key="step_percent", bounds=(0.1, 10.0),
               source="off-load tap step of the MV/LV transformers (pandapower and SimBench types)"),

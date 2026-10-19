@@ -577,7 +577,7 @@ important ones:
      - Node without a voltage in the load case, or without any line.
    * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``
      - Substation flags: extra-high-voltage site without an HV/MV partner, busbar too far from the
-       streets, load above the (n-1) capacity after rebalancing, no node assigned.
+       streets, load above the (n-1) capacity (more transformer units), no node assigned.
 
 SQL examples
 ~~~~~~~~~~~~
@@ -696,9 +696,11 @@ value, so older configuration files keep working.
      - ``osm``
      - HV/MV substations from OpenStreetMap (Hülk et al. 2017), or ``egon`` from eGon-data.
    * - ``MV_SUPPLY_AREAS``
-     - ``routed``
-     - Supply areas by the weighted street distance with capacity rebalancing, or ``egon``: the
-       eGon-data MV grid districts (needs ``MV_SUBSTATIONS: egon``).
+     - ``municipal``
+     - Whole municipalities on their own substation, split among several, else on the substation
+       nearest to most of their load (Hülk et al. 2017, as Ding0); ``routed``: the nearest
+       substation along the streets; ``egon``: the eGon-data MV grid districts (needs
+       ``MV_SUBSTATIONS: egon``).
    * - ``MV_ROUTING``
      - ``street``
      - Lines along streets and field paths, or ``crowfly``: straight lines × ``crowfly_detour``
@@ -994,10 +996,15 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - Distance of the eGon-data cross-check of the OSM sites.
    * - ``rebalance_step_m``
      - 500
-     - Weight step of the capacity rebalancing of the supply areas.
+     - Weight step of the capacity rebalancing of routed supply areas.
    * - ``rebalance_max_iter``
-     - 50
-     - Most weight raises of the rebalancing.
+     - 0
+     - Most weight raises of the rebalancing of routed supply areas; 0: none, a substation above
+       its (n-1) capacity keeps its load and gets more transformer units.
+   * - ``municipal_site_max_offset_m``
+     - 250
+     - A substation belongs to the municipality of its street edge within this distance (municipal
+       supply areas), else to none.
 
 .. list-table:: MV/LV taps
    :header-rows: 1

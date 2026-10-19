@@ -415,6 +415,12 @@ REGION_ARRAYS_SQL = """
     ORDER BY edge_id
 """
 
+EDGE_AGS_SQL = """
+    SELECT edge_id, ags FROM pylovo.mv_graph_edge
+    WHERE graph_id = %(g)s AND ags IS NOT NULL AND COALESCE(klasse, '') <> ALL(%(osm)s)
+    ORDER BY edge_id
+"""
+
 ATTACH_TEMP_SQL = sql.SQL(
     "CREATE TEMP TABLE mv_point_tem (key bigint PRIMARY KEY, geom geometry(Point, {epsg}) NOT NULL) ON COMMIT DROP"
 )
@@ -810,6 +816,13 @@ class MvGraphMixin(BaseMixin):
         edge_id, source, target, length = zip(*rows)
         return (np.asarray(edge_id, dtype=np.int64), np.asarray(source, dtype=np.int64),
                 np.asarray(target, dtype=np.int64), np.asarray(length, dtype=np.float64))
+
+    def edge_municipalities(self, graph_id: str) -> pd.Series:
+        """The municipality key (AGS, text) of every street edge of a graph, indexed by ``edge_id``."""
+        self.cur.execute(EDGE_AGS_SQL, {"g": graph_id, "osm": list(_OSM_KLASSEN)})
+        rows = self.cur.fetchall()
+        return pd.Series([str(a) for _, a in rows], index=pd.Index([int(e) for e, _ in rows], name="edge_id"),
+                         dtype=object, name="ags")
 
     def attach_points(self, graph_id: str, points: pd.DataFrame) -> pd.DataFrame:
         """Attach points to their nearest graph edge (KNN on the GiST index), all in one statement.

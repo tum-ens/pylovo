@@ -320,32 +320,48 @@ and for metrics per km².
 How they are formed
 ~~~~~~~~~~~~~~~~~~~
 
-With ``MV_SUPPLY_AREAS: routed`` (default), each node goes to the substation that it reaches with
-the smallest weighted street distance. This is the distance along the routing graph from the busbar
-of the substation to the node plus a weight per substation:
+All rules start from the *street distance*: the distance along the routing graph from the busbar of
+a substation to a node. Assigning every node to the substation that it reaches first gives a
+Voronoi partition on the street graph instead of the plane. Since a node on the shortest path to a
+node of a substation belongs to the same substation, these areas stay connected along the streets.
 
-#. All weights start at 0, so every node goes to the substation that it reaches first along the
-   streets. This is a Voronoi partition on the street graph instead of the plane.
-#. The coincident load of each substation (stations and MV customers of its area, divided by the
-   power factor) is compared with its (n-1) capacity: (``hv_mv_units`` - 1) units of the largest of
-   ``hv_mv_sizes_mva``, i.e. 63 MVA with the defaults.
-#. Every overloaded substation gets ``rebalance_step_m`` (500 m) more weight, which hands the
-   outermost nodes of its area to its neighbours. The assignment is repeated until no substation is
-   overloaded or ``rebalance_max_iter`` (50) raises are spent. Remaining overloads get the flag
-   ``over_capacity`` and more transformers (:ref:`mv-equipment`).
+With ``MV_SUPPLY_AREAS: municipal`` (default), municipalities stay whole. This is the rule of the MV
+grid districts of open_eGo and Ding0 (Hülk et al. 2017), applied to street distances instead of
+Voronoi polygons:
 
-For example, a town between two substations is split at the streets that are equally far from
-both. If one of the two cannot supply its part with one transformer out of service, its distances
-are lengthened in steps of 500 m until the stations at the border of its area belong to the other
-one. Since the weight is added to the distance from the substation, a node on the shortest path to
-a node of a substation belongs to the same substation. The supply areas therefore stay connected
-along the streets, unlike areas formed by moving single nodes. Generators and HV customers are
-assigned by the same rule but do not count for the capacity. A node without any street path to a
-substation goes to the nearest substation in straight line (column ``mv_node.bridged``).
+#. A municipality with exactly one substation is supplied by that substation.
+#. A municipality with several substations is split among them by the street distance to these
+   substations alone.
+#. A municipality without a substation goes as a whole to the substation that is nearest along the
+   streets to the largest part of its coincident load.
+
+The municipality of a node is the one of its street edge (``ways_per_junction.ags``). A substation
+belongs to the municipality of its street edge if it lies within ``municipal_site_max_offset_m``
+(250 m) of it, else to none (a substation outside the municipalities of the graph). Nodes without a
+municipality go to their nearest substation.
+
+The reason is the history of the grids. Concessions for MV grids were mostly awarded per
+municipality (Hülk et al. 2017), and a town is fed from its own substation. A plain Voronoi
+partition splits a town between substations several kilometres away when two neighbours lie at
+similar distances. The validation on DSO data showed such splits as the main structural error of
+the routed areas: the feeders of a town started 8 to 10 km away instead of at its own substation.
+
+With ``MV_SUPPLY_AREAS: routed``, each node goes to its nearest substation along the streets.
+
+Neither rule moves load because of the capacity of a substation. The coincident load of each
+substation (stations and MV customers of its area, divided by the power factor) is compared with
+its (n-1) capacity, (``hv_mv_units`` - 1) units of the largest of ``hv_mv_sizes_mva`` (63 MVA with
+the defaults). A substation above it gets the flag ``over_capacity`` and more transformer units
+(:ref:`mv-equipment`). Earlier versions handed the outer nodes of an overloaded substation to its
+neighbours (``rebalance_max_iter`` above 0, routed areas only). Because the area-based loads of the
+LV stage are high, this moved whole towns to substations far away, so it is off by default.
+Generators and HV customers are assigned by the same rules but do not count for the capacity. A
+node without any street path to a substation goes to the nearest substation in straight line
+(column ``mv_node.bridged``).
 
 With ``MV_SUPPLY_AREAS: egon``, which needs ``MV_SUBSTATIONS: egon``, a node goes to the eGon-data
 MV grid district that contains it (else to the nearest one), and the depot is the eGon substation
-with the same bus id. There is no rebalancing in this case.
+with the same bus id.
 
 Polygon and completeness
 ~~~~~~~~~~~~~~~~~~~~~~~~

@@ -101,13 +101,14 @@ def record(item) -> dict:
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 6,
+    "schema": 1, "mv_stage_version": 7,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
-    "sources": {"substations": "osm", "supply_areas": "routed", "region_buffer_m": 5000.0, "substation_merge_m": 75.0,
-                "substation_drop_m": 150.0, "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0,
-                "egon_match_m": 300.0, "rebalance_step_m": 500.0, "rebalance_max_iter": 50},
+    "sources": {"substations": "osm", "supply_areas": "municipal", "region_buffer_m": 5000.0,
+                "substation_merge_m": 75.0, "substation_drop_m": 150.0, "ehv_partner_m": 1000.0,
+                "substation_max_attach_m": 2000.0, "egon_match_m": 300.0, "rebalance_step_m": 500.0,
+                "rebalance_max_iter": 0, "municipal_site_max_offset_m": 250.0},
     "routing": {"mode": "street", "crowfly_detour": 1.3, "overhead_detour": 1.1, "bridge_detour": 1.3,
                 "long_connector_m": 300.0, "osm_line_snap_m": 100.0, "osm_line_cost_factor": 0.7,
                 "busbar_exit_radius_m": 200.0,
@@ -303,8 +304,8 @@ def test_one_field_per_spec_and_defaults_equal_the_options():
     assert (params.variant_id, params.comment, params.vn_kv, params.substations, params.supply_areas,
             params.routing, params.solver, params.max_stations_per_ring, params.stubs, params.overhead_lines,
             params.cable_type, params.overhead_type, params.line_utilization,
-            params.max_drop_percent) == ("1", "default", "auto", "osm", "routed", "street", "savings", 20, "rural",
-                                         "osm", None, None, 0.6, 5.0)
+            params.max_drop_percent) == ("1", "default", "auto", "osm", "municipal", "street", "savings", 20,
+                                         "rural", "osm", None, None, 0.6, 5.0)
     assert params.interconnection == "ties"                # normally-open ties between districts by default
 
 

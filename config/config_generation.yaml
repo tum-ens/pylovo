@@ -189,8 +189,8 @@ MV_INCLUDE_GENERATION: false
 MV_NOMINAL_VOLTAGE_KV: auto
 # HV/MV substations: osm (power=substation with 110 kV in current OSM) or egon (eGon-data HV/MV substations)
 MV_SUBSTATIONS: osm
-# Supply areas: routed (nearest substation along the streets, capacity-aware) or egon (eGon MV grid districts, needs MV_SUBSTATIONS egon)
-MV_SUPPLY_AREAS: routed
+# Supply areas: municipal (whole municipalities on their own substation, as Ding0), routed (nearest substation along the streets) or egon (eGon MV grid districts, needs MV_SUBSTATIONS egon)
+MV_SUPPLY_AREAS: municipal
 # Line routes: street (along streets and field paths) or crowfly (straight line x 1.3, as Ding0 2017)
 MV_ROUTING: street
 # Ring solver: savings (Clarke-Wright savings with local search) or sweep

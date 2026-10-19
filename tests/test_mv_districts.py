@@ -150,7 +150,7 @@ def test_rebalancing_moves_load_to_the_neighbour():
     nodes = _attach(_nodes(19, households=3000.0), edges, list(range(1, 20)), 1.0)   # at vertices 1..19
     capacity = np.array([1.2, 63.0])                                # MVA; site 0 holds about two nodes
     result = districts.routed_assignment(csr, vertex_index, {}, sites, nodes, G, 0.95, capacity,
-                                         PARAMS.replace(rebalance_step_m=250.0))
+                                         PARAMS.replace(rebalance_step_m=250.0, rebalance_max_iter=50))
     assert result.overloaded == [] and result.iterations > 1
     assert result.weights_m[0] > 0 and result.weights_m[1] == 0
     owner = result.site_of_node
@@ -217,6 +217,58 @@ def test_input_checks():
         districts.routed_assignment(csr, vertex_index, {}, sites, nodes, G, 0.95, np.array([1.0, 2.0]), PARAMS)
     with pytest.raises(ValueError, match="power_factor"):
         districts.routed_assignment(csr, vertex_index, {}, sites, nodes, G, 0.0, np.array([1.0]), PARAMS)
+
+
+# ---------------------------------------------------------------------------------------------- municipal
+def _municipal_line():
+    """A 2.4 km street (24 edges of 100 m) with sites at 0, 1,200 and 2,400 m and a node at every vertex 1..23."""
+    csr, vertex_index, edges = _path_graph([100.0] * 24)
+    sites = _attach(_sites(3, [0.0, 1200.0, 2400.0]), edges, [1, 12, 24], [0.0, 1.0, 1.0])
+    nodes = _attach(_nodes(23, x=np.arange(1, 24) * 100.0), edges, list(range(1, 24)), 1.0)
+    return csr, vertex_index, sites, nodes
+
+
+def test_municipal_areas_keep_a_town_on_its_own_substation():
+    csr, vertex_index, sites, nodes = _municipal_line()
+    sites["ags"] = ["A", "B", "C"]
+    nodes["ags"] = ["A"] * 3 + ["B"] * 15 + ["C"] * 5            # B: 400-1,800 m, its site at 1,200 m
+    result = districts.municipal_assignment(csr, vertex_index, {}, sites, nodes, G, 0.95, np.full(3, 63.0))
+    owner = result.site_of_node
+    assert owner.tolist() == [0] * 3 + [1] * 15 + [2] * 5
+    # 400-600 m are nearest to the site at 0 m (600 m: a tie, the lower index) but belong to B
+    assert result.moved.tolist() == [n in (3, 4, 5) for n in range(23)]
+    assert np.isnan(result.distance_m[result.moved]).all() and np.isfinite(result.distance_m[~result.moved]).all()
+    assert result.summary["municipalities_one_site"] == 3 and result.summary["nodes_moved"] == 3
+
+
+def test_municipal_areas_split_a_municipality_among_its_own_substations():
+    csr, vertex_index, sites, nodes = _municipal_line()
+    sites["ags"] = ["A", "A", "C"]
+    nodes["ags"] = ["A"] * 20 + ["C"] * 3                        # A: 100-2,000 m with sites at 0 and 1,200 m
+    result = districts.municipal_assignment(csr, vertex_index, {}, sites, nodes, G, 0.95, np.full(3, 63.0))
+    owner = result.site_of_node
+    assert owner[:6].tolist() == [0] * 6 and owner[6:20].tolist() == [1] * 14   # 1,900 and 2,000 m stay in A
+    assert owner[20:].tolist() == [2, 2, 2]
+    assert result.summary["municipalities_split"] == 1 and result.summary["municipalities_one_site"] == 1
+
+
+def test_municipal_areas_put_a_municipality_without_substation_on_the_nearest_of_most_load():
+    csr, vertex_index, sites, nodes = _municipal_line()
+    sites["ags"] = ["A", None, "C"]                              # the middle site belongs to no municipality
+    nodes["ags"] = ["A"] * 3 + ["V"] * 12 + ["C"] * 8          # V: 400-1,500 m, mostly nearest to the middle site
+    result = districts.municipal_assignment(csr, vertex_index, {}, sites, nodes, G, 0.95, np.full(3, 63.0))
+    owner = result.site_of_node
+    assert owner[3:15].tolist() == [1] * 12 and result.summary["municipalities_no_site"] == 1
+    assert owner[:3].tolist() == [0] * 3 and owner[15:].tolist() == [2] * 8
+
+
+def test_municipal_areas_report_overloads_and_keep_nodes_without_municipality_at_the_nearest_site():
+    csr, vertex_index, sites, nodes = _municipal_line()
+    sites["ags"] = ["A", "B", "C"]
+    nodes["ags"] = ["B"] * 22 + [None]
+    result = districts.municipal_assignment(csr, vertex_index, {}, sites, nodes, G, 0.95, np.full(3, 0.1))
+    assert result.site_of_node.tolist() == [1] * 22 + [2]
+    assert result.overloaded == [1] and result.summary["nodes_without_municipality"] == 1
 
 
 def test_routed_assignment_with_the_graph_module(monkeypatch):

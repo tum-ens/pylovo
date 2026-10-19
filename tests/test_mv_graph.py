@@ -742,3 +742,11 @@ def test_subgraph_edges_and_region_arrays_build_typed_arrays():
     edge_id, source, target, length = client.region_graph_arrays(GRAPH_ID)
     assert edge_id.dtype == source.dtype == target.dtype == np.int64 and length.dtype == np.float64
     assert graph.region_csr(source, target, length)[0].shape == (3, 3)
+
+
+def test_edge_municipalities_give_the_ags_per_street_edge():
+    client = _client([(r"SELECT edge_id, ags FROM pylovo\.mv_graph_edge", [(5, "09474126"), (7, 9474127)])])
+    ags = client.edge_municipalities(GRAPH_ID)
+    assert ags.to_dict() == {5: "09474126", 7: "9474127"} and ags.index.name == "edge_id"
+    text, params = client.cur.statements[-1]
+    assert "ags IS NOT NULL" in text and params["osm"] == ["osm_mv_line", "osm_mv_connector"]

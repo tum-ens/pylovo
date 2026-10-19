@@ -181,6 +181,7 @@ class MvParameters:
     egon_match_m: float = _y("egon_match_m")
     rebalance_step_m: float = _y("rebalance_step_m")
     rebalance_max_iter: int = _y("rebalance_max_iter")
+    municipal_site_max_offset_m: float = _y("municipal_site_max_offset_m")
     # MV/LV taps
     mvlv_tap_step_percent: float = _y("mvlv_tap_step_percent")
     mvlv_tap_min: int = _y("mvlv_tap_min")
