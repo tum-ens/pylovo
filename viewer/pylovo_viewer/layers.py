@@ -185,8 +185,8 @@ def build_layers() -> list[Layer]:
               parent="hv_substations", min_zoom=12),
         # -------------------------------------------------------------------------------- MV grids
         Layer("mv_lines", "mv", "MV lines",
-              "MV cables and overhead lines of the run: open rings, stubs, dedicated feeders and ties between "
-              "supply areas, with the normally-open points.",
+              "MV cables and overhead lines of the run: open rings, stubs, dedicated feeders, ties between supply "
+              "areas and links between rings, with the normally-open points.",
               "line", "run", "pylovo.mv_line",
               sql=f"""SELECT l.mv_line_id AS fid, l.mv_grid_id AS area, l.role, l.kind, l.ring_id AS ring,
                              l.feeder_id AS feeder, l.std_type, COALESCE(l.parallel, 1) AS parallel,
@@ -224,7 +224,7 @@ def build_layers() -> list[Layer]:
                                    THEN LEAST(0.5, 12 / NULLIF(ST_Length(l.geom), 0))
                                  ELSE GREATEST(0.5, 1 - 12 / NULLIF(ST_Length(l.geom), 0)) END)''')} AS geometry
                       FROM pylovo.mv_line l JOIN pylovo.mv_node n ON n.mv_node_id = COALESCE(l.open_at_node, l.to_node)
-                      WHERE {run('l')} AND l.normally_open AND l.role <> 'tie' AND ST_Length(l.geom) > 0""",
+                      WHERE {run('l')} AND l.normally_open AND l.role NOT IN ('tie', 'link') AND ST_Length(l.geom) > 0""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line", "pylovo.mv_node"), rows=("pylovo.mv_variant",),
               parent="mv_lines", min_zoom=11),

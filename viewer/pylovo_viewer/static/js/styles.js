@@ -134,9 +134,11 @@ export const STYLES = {
       const width = (add) => ['interpolate', ['exponential', 1.5], ['zoom'],
         ...[[8, 0.5], [12, 1.6], [16, 4]].flatMap(([z, k]) => [z, ['+', ['*', k, parallelWidth], add]])];
       const w = width(0);
-      const notTie = ['!=', ['get', 'role'], 'tie'];
+      // ties (between supply areas) and links (between rings of one area) are normally open: dotted
+      const open = ['in', ['get', 'role'], ['literal', ['tie', 'link']]];
+      const notTie = ['!', open];
       return [
-        { id: `${id}:tie`, type: 'line', filter: ['==', ['get', 'role'], 'tie'],
+        { id: `${id}:tie`, type: 'line', filter: open,
           paint: { 'line-color': p.ink.muted, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 2.5], 'line-dasharray': [0.6, 1.6] } },
         { id: `${id}:casing`, type: 'line', pick: false, filter: notTie, layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': p.surface, 'line-width': width(1.6), 'line-opacity': 0.8 } },
@@ -155,7 +157,7 @@ export const STYLES = {
     extraLegend: (mode) => [
       ...(mode !== 'kind' ? [{ kind: 'line', colour: pal().ink.secondary, label: 'Cable' },
         { kind: 'line', dash: true, colour: pal().ink.secondary, label: 'Overhead line, or the overhead part of a line (dashed)' }] : []),
-      { kind: 'line', dot: true, colour: pal().ink.muted, label: 'Tie between supply areas (normally open)' }],
+      { kind: 'line', dot: true, colour: pal().ink.muted, label: 'Tie between supply areas or link between rings (normally open)' }],
     facts: (o) => ({ title: `MV ${{ overhead: 'overhead line', mixed: 'cable and overhead line' }[o.kind] || 'cable'}`,
       subtitle: `${o.role}${o.open ? ' · normally open' : ''}`, rows: [
       ['Type', o.std_type || '–'], ['Length', f.km(o.length_km)],

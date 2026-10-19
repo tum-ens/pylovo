@@ -32,7 +32,7 @@ def lv(db: Database, q: Query) -> dict[str, Any]:
 
 
 def mv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any] | None:
-    """Supply areas, rings, stations, circuit length by kind, ties and open points."""
+    """Supply areas, rings, stations, circuit length by kind, ties, links and open points."""
     if q.mv is None or not catalog.has("pylovo.mv_grid"):
         return None
     area = "AND mv_grid_id = %(area)s" if q.area is not None else ""
@@ -46,10 +46,13 @@ def mv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any] | None:
                {num("max(max_voltage_drop_percent)", 2)} AS max_drop
         FROM pylovo.mv_grid WHERE version_id = %(version)s AND mv_variant_id = %(mv)s {area}""", params)
     lines = db.one(f"""
-        SELECT {num("sum(cable_km * COALESCE(parallel, 1)) FILTER (WHERE role <> 'tie')", 1)} AS cable_km,
-               {num("sum(overhead_km * COALESCE(parallel, 1)) FILTER (WHERE role <> 'tie')", 1)} AS overhead_km,
+        SELECT {num("sum(cable_km * COALESCE(parallel, 1)) FILTER (WHERE role NOT IN ('tie', 'link'))", 1)} AS cable_km,
+               {num("sum(overhead_km * COALESCE(parallel, 1)) FILTER (WHERE role NOT IN ('tie', 'link'))", 1)}
+                 AS overhead_km,
                count(*) FILTER (WHERE role = 'tie') AS ties,
                {num("sum(length_km) FILTER (WHERE role = 'tie')", 1)} AS tie_km,
-               count(*) FILTER (WHERE normally_open AND role <> 'tie') AS open_points
+               count(*) FILTER (WHERE role = 'link') AS links,
+               {num("sum(length_km) FILTER (WHERE role = 'link')", 1)} AS link_km,
+               count(*) FILTER (WHERE normally_open AND role NOT IN ('tie', 'link')) AS open_points
         FROM pylovo.mv_line WHERE version_id = %(version)s AND mv_variant_id = %(mv)s {area}""", params)
     return {**(head or {}), **(lines or {})}
