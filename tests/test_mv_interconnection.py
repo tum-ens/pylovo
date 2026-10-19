@@ -18,7 +18,7 @@ import shapely
 import pylovo.database.mv_result_mixin as mixin
 from pylovo.mv_grid import interconnection as ic
 from pylovo.mv_grid import metrics, stage
-from pylovo.mv_grid.model import EdgeSet
+from pylovo.mv_grid.model import EdgeSet, links_line
 from pylovo.mv_grid.parameters import MvParameters
 
 #: Ties with the straight-span rule of MV_OVERHEAD_LINES rural (the osm rule: test_osm_ties_are_overhead_on_osm_lines).
@@ -50,15 +50,17 @@ LINE = edge_set(street(np.arange(0.0, 6001.0, 500.0)))      # one street, 0 .. 6
 
 
 def node(nid, grid, ring, x, *, feeder=None, kind="station", connection="ring", ring_kind="ring", offset=0.0,
-         area="rural", settlement=np.nan, y=None, edge=None, fraction=None):
-    """A node row on LINE (or on a given edge) in the form of ``MvResultMixin.tie_candidate_nodes``."""
+         area="rural", settlement=np.nan, y=None, edge=None, fraction=None, degree=None):
+    """A node row on LINE (or on a given edge) in the form of ``MvResultMixin.tie_candidate_nodes`` (``degree``:
+    2 for ring members, 1 for stub nodes, unless given)."""
     if edge is None:
         edge = int(min(x // 500.0, 11)) + 1
         fraction = (x - 500.0 * (edge - 1)) / 500.0
     return {"mv_node_id": nid, "mv_grid_id": grid, "kind": kind, "connection": connection, "ring_id": ring,
             "ring_kind": ring_kind, "feeder_id": 2 * ring if feeder is None else feeder, "x": float(x),
             "y": float(offset if y is None else y), "attach_edge_id": edge, "attach_fraction": fraction,
-            "attach_offset_m": float(offset), "settlement_id": settlement, "area_class": area}
+            "attach_offset_m": float(offset), "settlement_id": settlement, "area_class": area,
+            "degree": (1 if connection == "stub" else 2) if degree is None else degree}
 
 
 def nodes_frame(*rows) -> pd.DataFrame:
@@ -159,6 +161,64 @@ def test_links_join_rings_of_one_district_one_per_member_two_per_ring_pair():
     json.dumps(summary)
     assert "3 normally-open links between rings" in ic.describe_links(summary)
     assert ic.plan_links(nodes_frame(node(11, 1, 0, 1000.0), node(12, 1, 0, 1100.0)), grids, LINE, PARAMS).empty
+
+
+def stub_rows():
+    """One district: ring 0 (feeders 0 and 1) and ring 1 (feeders 2 and 3) with ring members and stub nodes."""
+    return nodes_frame(
+        node(11, 1, 0, 1000.0), node(12, 1, 0, 1500.0),                             # ring 0, feeder 0
+        node(41, 1, 0, 1300.0, feeder=1),                                            # ring 0, feeder 1
+        node(31, 1, 1, 1050.0),                                                      # ring 1, feeder 2
+        node(13, 1, 0, 1100.0, connection="stub"),                                   # stub end on feeder 0
+        node(14, 1, 1, 1600.0, connection="stub", degree=2),                         # stub node with a child
+        node(15, 1, 1, 3000.0, feeder=3, connection="stub"),                         # stub end on feeder 3
+        node(16, 1, 0, 3100.0, feeder=1, connection="stub", kind="customer"),        # stub end on feeder 1
+    )
+
+
+def test_links_from_stub_ends_take_the_nearest_free_node_of_another_feeder():
+    grids = grids_frame((1, 20.0))
+    rows = stub_rows()
+    cand = ic.stub_link_candidates(rows, grids)
+    assert cand.index.tolist() == [11, 12, 13, 14, 15, 16, 31, 41]
+    assert cand.index[cand["stub_end"]].tolist() == [13, 15, 16]
+    assert ic.tie_candidates(rows, grids).index.tolist() == [11, 12, 31, 41]       # ties keep the ring members
+    # off (the default): the ring members 11 and 31 (50 m) take the only link between rings
+    assert not PARAMS.link_stub_ends
+    assert pairs_of(ic.plan_links(rows, grids, LINE, PARAMS)) == [(11, 31)]
+    links = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_stub_ends=True))
+    # stub end 13: 31 (50 m) holds its link already and 11, 12 are on its own feeder, so 41 on the other half of
+    # ring 0 (200 m); the stub ends 15 and 16 of different feeders join each other (100 m); node 14 has a child
+    # and no link
+    assert pairs_of(links) == [(11, 31), (13, 41), (16, 15)]
+    assert links["length_m"].tolist() == pytest.approx([50.0, 200.0, 100.0])
+    assert (links["from_grid"] == links["to_grid"]).all()
+    summary = ic.link_summary(links, grids, PARAMS.replace(link_stub_ends=True), stub_ends=[13, 15, 16])
+    assert summary["link_stub_ends"] is True and summary["n_stub_ends"] == 3
+    assert summary["n_stub_end_links"] == 2 and summary["n_stub_ends_with_link"] == 3
+    assert summary["stub_end_share_with_link"] == pytest.approx(1.0)
+    assert summary["n_ring_pairs"] == 1 and summary["n_ring_pairs_closed"] == 1     # 13-41 joins one ring
+    json.dumps(summary)
+    text = ic.describe_links(summary)
+    assert text.startswith("3 normally-open links inside the districts") and "with a link" in text
+    assert text.endswith("2 of them from stub ends (3 of 3 stub ends with a second infeed)")
+    assert links_line(summary).endswith("2 of them from stub ends (3 of 3 stub ends with a second infeed)")
+    plain = ic.link_summary(links.iloc[:1], grids, PARAMS)
+    assert "n_stub_ends" not in plain and plain["link_stub_ends"] is False
+    assert "third cable" in links_line(plain) and "stub ends" not in links_line(plain)
+
+
+def test_links_from_stub_ends_stay_within_the_limit_and_the_district():
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    on = PARAMS.replace(link_stub_ends=True)
+    rows = nodes_frame(node(13, 1, 0, 1000.0, connection="stub"), node(21, 1, 1, 1600.0),     # 600 m
+                       node(22, 2, 0, 1100.0))                                                # another district
+    assert ic.plan_links(rows, grids, LINE, on).empty
+    assert pairs_of(ic.plan_links(rows, grids, LINE, on.replace(link_max_length_m=700.0))) == [(13, 21)]
+    # two stub nodes with children on different feeders do not take a link
+    rows = nodes_frame(node(13, 1, 0, 1000.0, connection="stub", degree=2),
+                       node(14, 1, 1, 1100.0, connection="stub", degree=3))
+    assert ic.plan_links(rows, grids, LINE, on).empty
 
 
 def test_no_ties_within_a_district_or_between_voltages():
@@ -565,6 +625,27 @@ def test_plan_and_save_ties_reads_plans_checks_and_writes():
     db = TieDb(nodes_frame(node(11, 1, 0, 0.0), node(31, 3, 0, 6000.0)), grids_frame((1, 20.0), (3, 20.0)), LINE)
     summary = ic.plan_and_save_ties(db, "mv1", "y1", "g1", PARAMS)
     assert db.saved[2].empty and db.saved[3] == {} and summary["n_ties"] == 0 and db.calls == []
+
+
+class LinkDb(TieDb):
+    """The reads and the write of ``plan_and_save_links`` on synthetic data."""
+
+    def save_ties(self, version_id, variant_id, ties, grid_metrics, role="tie"):
+        self.saved = (version_id, variant_id, ties, grid_metrics, role)
+        return len(ties)
+
+
+def test_plan_and_save_links_reads_the_stub_nodes_with_the_option():
+    db = LinkDb(stub_rows(), grids_frame((1, 20.0)), LINE)
+    summary = ic.plan_and_save_links(db, "mv1", "y1", "g1", PARAMS)
+    assert pairs_of(db.saved[2]) == [(11, 31)] and db.saved[4] == "link" and "n_stub_ends" not in summary
+    assert db.calls[0][2] == 4                                       # the subgraph around the ring members
+    db = LinkDb(stub_rows(), grids_frame((1, 20.0)), LINE)
+    summary = ic.plan_and_save_links(db, "mv1", "y1", "g1", PARAMS.replace(link_stub_ends=True))
+    assert pairs_of(db.saved[2]) == [(11, 31), (13, 41), (16, 15)]
+    assert db.calls[0][2] == 8                                       # ... and the stub nodes in reach
+    assert summary["n_stub_ends"] == 3 and summary["n_stub_end_links"] == 2
+    assert db.saved[3][1]["n_links"] == 3
 
 
 # ---------------------------------------------------------------------------------------------- stage

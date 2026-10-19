@@ -41,6 +41,12 @@ each member takes at most one link (a third cable bay) and two rings at most two
 them. Links are ``mv_line`` rows with ``role = 'link'``, normally open at ``to_node``, outside the cases like the
 ties; ``mv_variant.summary['links']`` and ``mv_grid.metrics['links']`` hold their counts.
 
+**Links from stub ends** (test option ``link_stub_ends``, off by default): after the links between rings, each stub
+end (a station or MV customer on a stub with one MV line, :func:`stub_link_candidates`) may take one link to a
+ring member or stub node of another feeder of its district within ``link_max_length_m``, greedy by length with the
+same limit per node. The stub end then has a second infeed, as many real rural stations have. These links have
+role ``link`` as well; the summary counts them and the stub ends with a link.
+
 The planning functions are pure (no database, configuration or plotting import); :func:`plan_and_save_ties` and
 :func:`plan_and_save_links` read and write through the methods of
 :class:`~pylovo.database.mv_result_mixin.MvResultMixin` and :class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`.
@@ -52,7 +58,7 @@ import math
 import time
 import warnings
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Collection, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -61,7 +67,7 @@ from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 
 from pylovo.mv_grid import equipment, graph
-from pylovo.mv_grid.model import EdgeSet, line_kind
+from pylovo.mv_grid.model import EdgeSet, line_kind, stub_end_text
 
 if TYPE_CHECKING:
     import pandapower as pp
@@ -72,6 +78,8 @@ _LOGGER = logging.getLogger(__name__)
 
 #: Node kinds that may hold a tie: the switchgear ring members with a load.
 TIE_NODE_KINDS: tuple[str, ...] = ("station", "customer")
+#: Node connections of the links from stub ends (``link_stub_ends``): ring members and stub nodes.
+STUB_LINK_CONNECTIONS: tuple[str, ...] = ("ring", "stub")
 #: Flags of a tie (kept in ``mv_grid.metrics['ties']`` and counted in the variant summary).
 TIE_FLAGS: tuple[str, ...] = ("incomplete_district", "substation_outside_region")
 #: Columns of the tie table of :func:`plan_ties`.
@@ -128,6 +136,27 @@ def tie_candidates(nodes: pd.DataFrame, grids: pd.DataFrame) -> pd.DataFrame:
         feeder, ``ring_kind`` ring when given) of a district of ``grids`` (done, with a nominal voltage), sorted
         by ``mv_node_id``.
     """
+    return _members(nodes, grids, ("ring",))
+
+
+def stub_link_candidates(nodes: pd.DataFrame, grids: pd.DataFrame) -> pd.DataFrame:
+    """The nodes of the links from stub ends (``link_stub_ends``): the ring members of :func:`tie_candidates` and the
+    stations and MV customers on the stubs of the open rings of done districts.
+
+    Args:
+        nodes: As for :func:`tie_candidates`, with ``degree`` (MV lines at the node, without ties and links).
+
+    Returns:
+        The rows sorted by ``mv_node_id``, with the column ``stub_end``: a stub node with one MV line.
+    """
+    out = _members(nodes, grids, STUB_LINK_CONNECTIONS).copy()
+    out["stub_end"] = (_texts(out, "connection") == "stub") & (_numbers(out, "degree") == 1)
+    return out
+
+
+def _members(nodes: pd.DataFrame, grids: pd.DataFrame, connections: Sequence[str]) -> pd.DataFrame:
+    """The station and customer rows of ``nodes`` with one of the ``connections``, on an open ring (a ring and a
+    feeder, ``ring_kind`` ring when given) of a done district with a nominal voltage, sorted by ``mv_node_id``."""
     if nodes is None or not len(nodes):
         return pd.DataFrame(nodes).iloc[0:0]
     usable = grids
@@ -135,7 +164,7 @@ def tie_candidates(nodes: pd.DataFrame, grids: pd.DataFrame) -> pd.DataFrame:
         usable = grids[grids["status"].astype(object) == "done"]
     usable = usable[np.isfinite(_numbers(usable, "vn_kv"))]
     keep = (np.isin(_texts(nodes, "kind"), TIE_NODE_KINDS)
-            & (_texts(nodes, "connection") == "ring")
+            & np.isin(_texts(nodes, "connection"), tuple(connections))
             & np.isfinite(_numbers(nodes, "ring_id"))
             & np.isfinite(_numbers(nodes, "feeder_id"))
             & np.isin(_numbers(nodes, "mv_grid_id"), np.asarray(usable.index, dtype=float))
@@ -146,8 +175,8 @@ def tie_candidates(nodes: pd.DataFrame, grids: pd.DataFrame) -> pd.DataFrame:
     return out.sort_index(kind="mergesort")
 
 
-def close_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, radius_m: float, *, within: bool = False
-                ) -> np.ndarray:
+def close_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, radius_m: float, *, within: bool = False,
+                apart: str = "ring_id") -> np.ndarray:
     """Row pairs ``(i, j)``, ``i < j``, of candidates whose points lie within ``radius_m`` (the Euclidean pre-filter:
     a street path is never shorter than the straight line): of different districts with the same nominal voltage
     (ties), or with ``within`` of the same district and different rings (links).
@@ -157,6 +186,8 @@ def close_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, radius_m: float, 
         grids: Districts with ``vn_kv``, index ``mv_grid_id``.
         radius_m: Search radius.
         within: Pairs inside one district (different rings) instead of pairs between districts.
+        apart: With ``within``, the column whose values differ in a pair: ``ring_id`` (links between rings) or
+            ``feeder_id`` (links from stub ends, which may join the two halves of one ring).
 
     Returns:
         ``(n, 2)`` int64 array of row positions, sorted.
@@ -172,8 +203,8 @@ def close_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, radius_m: float, 
     vn = pd.to_numeric(grids["vn_kv"], errors="coerce").reindex(grid).to_numpy(dtype=float)
     same_voltage = np.isfinite(vn[pairs[:, 0]]) & np.isclose(vn[pairs[:, 0]], vn[pairs[:, 1]])
     if within:
-        ring = _numbers(candidates, "ring_id")
-        keep = (grid[pairs[:, 0]] == grid[pairs[:, 1]]) & (ring[pairs[:, 0]] != ring[pairs[:, 1]]) & same_voltage
+        group = _numbers(candidates, apart)
+        keep = (grid[pairs[:, 0]] == grid[pairs[:, 1]]) & (group[pairs[:, 0]] != group[pairs[:, 1]]) & same_voltage
     else:
         keep = (grid[pairs[:, 0]] != grid[pairs[:, 1]]) & same_voltage
     pairs = pairs[keep]
@@ -434,44 +465,92 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
                        lambda a, b: _flags(grids, (a, b)))
 
 
-def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: "MvParameters",
-               edge_geometry: Callable[[Sequence[int]], Mapping[int, Any]] | None = None) -> pd.DataFrame:
-    """The normally-open links between the rings of one district (pure).
+def stub_link_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, limit_m: float,
+                    full: Collection[int] = ()) -> np.ndarray:
+    """Row pairs of :func:`stub_link_candidates` that may hold a link from a stub end: in one district, on different
+    feeders, at least one end a stub end, within the pre-filter of ``limit_m``, and no end in ``full`` (the
+    ``mv_node_id`` of nodes that already hold their links)."""
+    pairs = close_pairs(candidates, grids, limit_m + PREFILTER_SLACK_M, within=True, apart="feeder_id")
+    if not len(pairs):
+        return pairs
+    end = candidates["stub_end"].to_numpy(dtype=bool)
+    ok = end[pairs[:, 0]] | end[pairs[:, 1]]
+    if len(full):
+        free = ~np.isin(np.asarray(candidates.index, dtype=np.int64), np.asarray(list(full), dtype=np.int64))
+        ok &= free[pairs[:, 0]] & free[pairs[:, 1]]
+    return pairs[ok]
 
-    Pairs of ring members (stations and MV customers with switchgear) of different rings of the same district
-    within ``link_max_length_m`` along the routing graph (true length), greedy by length: each member holds at most
-    one link (a third cable bay, :data:`LINKS_PER_NODE`), and two rings are joined at most :data:`LINKS_PER_RING_PAIR`
-    times, so that two links can close a short loop between them. Lengths, kinds and geometries as for the ties.
 
-    Returns:
-        One row per link (:data:`TIE_COLUMNS`; ``from_grid`` = ``to_grid``), the end on the ring with the lower
-        ``ring_id`` first, open at ``to_node``; ``flags`` empty.
-    """
-    limit = float(params.link_max_length_m)
-    cand = tie_candidates(nodes, grids)
-    pairs = close_pairs(cand, grids, limit + PREFILTER_SLACK_M, within=True)
-    m = _measure(cand, pairs, edges, params, limit) if len(pairs) else None
-    if m is None:
-        return empty_ties()
+def _greedy_links(m: dict, per_node: dict[int, int], per_pair: dict[tuple[int, int, int], int] | None
+                  ) -> list[tuple[int, int, int]]:
+    """The chosen pairs ``(pair, from_row, to_row)`` of :func:`_measure`, greedy by length (then street distance and
+    node ids): at most :data:`LINKS_PER_NODE` links per node (``per_node`` by ``mv_node_id``, updated) and, with
+    ``per_pair``, at most :data:`LINKS_PER_RING_PAIR` per ring pair. The end on the ring with the lower ``ring_id``
+    (then the lower ``mv_node_id``) comes first."""
     i, j = m["pairs"][:, 0], m["pairs"][:, 1]
     ids, grid, ring = m["ids"], m["grid"], m["ring"]
     order = np.lexsort((ids[j], ids[i], m["street"], m["length"]))
-    per_node: dict[int, int] = defaultdict(int)
-    per_pair: dict[tuple[int, int, int], int] = defaultdict(int)
     ends = []
     for p in order:
         a, b = int(i[p]), int(j[p])
-        key = (int(grid[a]), *sorted((int(ring[a]), int(ring[b]))))
-        if per_node[a] >= LINKS_PER_NODE or per_node[b] >= LINKS_PER_NODE or per_pair[key] >= LINKS_PER_RING_PAIR:
+        na, nb = int(ids[a]), int(ids[b])
+        if per_node[na] >= LINKS_PER_NODE or per_node[nb] >= LINKS_PER_NODE:
             continue
-        per_node[a] += 1
-        per_node[b] += 1
-        per_pair[key] += 1
+        if per_pair is not None:
+            key = (int(grid[a]), *sorted((int(ring[a]), int(ring[b]))))
+            if per_pair[key] >= LINKS_PER_RING_PAIR:
+                continue
+            per_pair[key] += 1
+        per_node[na] += 1
+        per_node[nb] += 1
         f, t = (a, b) if (ring[a], ids[a]) < (ring[b], ids[b]) else (b, a)
         ends.append((int(p), f, t))
-    if not ends:
+    return ends
+
+
+def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: "MvParameters",
+               edge_geometry: Callable[[Sequence[int]], Mapping[int, Any]] | None = None) -> pd.DataFrame:
+    """The normally-open links inside the districts (pure).
+
+    1. **Between rings:** pairs of ring members (stations and MV customers with switchgear) of different rings of the
+       same district within ``link_max_length_m`` along the routing graph (true length), greedy by length: each
+       member holds at most one link (a third cable bay, :data:`LINKS_PER_NODE`), and two rings are joined at most
+       :data:`LINKS_PER_RING_PAIR` times, so that two links can close a short loop between them.
+    2. **From stub ends** (only with ``link_stub_ends``): pairs of a stub end and a ring member or stub node of
+       another feeder of the same district (:func:`stub_link_pairs`) within ``link_max_length_m``, greedy by length
+       with the same limit per node, after the links between rings: the stub end gets a second infeed.
+
+    Lengths, kinds and geometries as for the ties.
+
+    Returns:
+        One row per link (:data:`TIE_COLUMNS`; ``from_grid`` = ``to_grid``), the end on the ring with the lower
+        ``ring_id`` first, open at ``to_node``; ``flags`` empty; sorted by ``from_grid``, ``from_ring`` and
+        ``from_node``.
+    """
+    limit = float(params.link_max_length_m)
+    per_node: dict[int, int] = defaultdict(int)
+    tables = []
+    cand = tie_candidates(nodes, grids)
+    pairs = close_pairs(cand, grids, limit + PREFILTER_SLACK_M, within=True)
+    m = _measure(cand, pairs, edges, params, limit) if len(pairs) else None
+    if m is not None:
+        ends = _greedy_links(m, per_node, defaultdict(int))
+        if ends:
+            tables.append(_line_table(m, ends, grids, edges, params, edge_geometry, lambda a, b: []))
+    if params.link_stub_ends:
+        cand = stub_link_candidates(nodes, grids)
+        pairs = stub_link_pairs(cand, grids, limit, [n for n, k in per_node.items() if k >= LINKS_PER_NODE])
+        m = _measure(cand, pairs, edges, params, limit) if len(pairs) else None
+        if m is not None:
+            ends = _greedy_links(m, per_node, None)
+            if ends:
+                tables.append(_line_table(m, ends, grids, edges, params, edge_geometry, lambda a, b: []))
+    if not tables:
         return empty_ties()
-    return _line_table(m, ends, grids, edges, params, edge_geometry, lambda a, b: [])
+    if len(tables) == 1:
+        return tables[0]
+    links = pd.concat(tables, ignore_index=True)
+    return links.sort_values(["from_grid", "from_ring", "from_node"], kind="mergesort").reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------------------------- takeover
@@ -683,14 +762,19 @@ def grid_link_metrics(links: pd.DataFrame) -> dict[int, dict]:
 
 
 def link_summary(links: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters",
-                 runtime_s: float | None = None) -> dict:
+                 runtime_s: float | None = None, stub_ends: Collection[int] | None = None) -> dict:
     """The variant summary of the links inside the districts (``mv_variant.summary['links']``).
+
+    Args:
+        stub_ends: The ``mv_node_id`` of all stub ends of the done districts, with ``link_stub_ends``.
 
     Returns:
         A JSON-safe dict: ``n_links``, ``link_km``, ``link_cable_km``, ``link_overhead_km``, ``link_km_mean``,
-        ``n_ring_pairs``, ``n_ring_pairs_closed`` (pairs joined twice: a loop that does not run through the busbar),
-        ``n_rings``, ``n_rings_with_link``, ``ring_share_with_link``, ``n_supply_points``, ``n_nodes_with_link``,
-        ``node_share_with_link``, ``link_max_length_m`` and ``runtime_s``.
+        ``n_ring_pairs``, ``n_ring_pairs_closed`` (pairs of different rings joined twice: a loop that does not run
+        through the busbar), ``n_rings``, ``n_rings_with_link``, ``ring_share_with_link``, ``n_supply_points``,
+        ``n_nodes_with_link``, ``node_share_with_link``, ``link_max_length_m``, ``link_stub_ends`` and
+        ``runtime_s``; with ``stub_ends`` also ``n_stub_ends``, ``n_stub_end_links`` (links with a stub end),
+        ``n_stub_ends_with_link`` and ``stub_end_share_with_link``.
     """
     done = grids[grids["status"].astype(object) == "done"] if "status" in grids.columns else grids
 
@@ -700,14 +784,14 @@ def link_summary(links: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters
     n = int(len(links))
     km = pd.to_numeric(links["length_m"], errors="coerce") / 1000.0 if n else pd.Series(dtype=float)
     pairs = pd.Series([(int(g), *sorted((int(a), int(b)))) for g, a, b in
-                       zip(links["from_grid"], links["from_ring"], links["to_ring"])]).value_counts() if n \
-        else pd.Series(dtype=int)
+                       zip(links["from_grid"], links["from_ring"], links["to_ring"]) if int(a) != int(b)],
+                      dtype=object).value_counts() if n else pd.Series(dtype=int)
     rings = {(int(g), int(r)) for g, a, b in zip(links["from_grid"], links["from_ring"], links["to_ring"])
              for r in (a, b)} if n else set()
     nodes = {int(x) for x in links["from_node"]} | {int(x) for x in links["to_node"]} if n else set()
     n_rings = int(total("n_rings"))
     n_supply = int(total("n_stations") + total("n_customers"))
-    return {
+    out = {
         "n_links": n,
         "link_km": _round(float(km.sum())) if n else 0.0,
         "link_cable_km": _round(float(pd.to_numeric(links["cable_m"], errors="coerce").sum()) / 1000.0) if n else 0.0,
@@ -723,8 +807,17 @@ def link_summary(links: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters
         "n_nodes_with_link": len(nodes),
         "node_share_with_link": _round(len(nodes) / n_supply, 6) if n_supply else None,
         "link_max_length_m": float(params.link_max_length_m),
+        "link_stub_ends": bool(params.link_stub_ends),
         "runtime_s": _round(runtime_s, 2) if runtime_s is not None else None,
     }
+    if stub_ends is not None:
+        ends = {int(x) for x in stub_ends}
+        with_end = [int(a) in ends or int(b) in ends for a, b in zip(links["from_node"], links["to_node"])] if n \
+            else []
+        out.update({"n_stub_ends": len(ends), "n_stub_end_links": int(sum(with_end)),
+                    "n_stub_ends_with_link": len(nodes & ends),
+                    "stub_end_share_with_link": _round(len(nodes & ends) / len(ends), 6) if ends else None})
+    return out
 
 
 def describe_links(summary: Mapping[str, Any]) -> str:
@@ -733,13 +826,16 @@ def describe_links(summary: Mapping[str, Any]) -> str:
     if not n:
         return (f"no normally-open links: no rings of one district within "
                 f"{float(summary.get('link_max_length_m') or 0):g} m")
-    text = f"{n} normally-open links between rings inside the districts: {summary.get('link_km') or 0:,.1f} km"
+    stubs = bool(summary.get("n_stub_end_links"))
+    text = (f"{n} normally-open links {'' if stubs else 'between rings '}inside the districts: "
+            f"{summary.get('link_km') or 0:,.1f} km")
     if summary.get("n_rings_with_link") is not None and summary.get("n_rings"):
         text += f", {summary['n_rings_with_link']} of {summary['n_rings']} rings"
     if summary.get("node_share_with_link") is not None:
-        text += f", {100 * summary['node_share_with_link']:.0f} % of the supply points with a third cable"
+        text += (f", {100 * summary['node_share_with_link']:.0f} % of the supply points with "
+                 f"{'a link' if stubs else 'a third cable'}")
     text += f", {summary.get('n_ring_pairs_closed', 0)} ring pairs joined twice"
-    return text
+    return text + stub_end_text(summary)
 
 
 def _tie_parallel(ties: pd.DataFrame) -> np.ndarray:
@@ -930,8 +1026,9 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
                         logger: logging.Logger | None = None) -> dict:
     """Plan the links inside the districts of a variant and replace its stored links (one transaction; commits).
 
-    Reads the done districts and their ring members and the routing graph around them, deletes the variant's old
-    links, inserts the new ones (``mv_line`` with role ``link``) and sets ``mv_grid.metrics['links']``.
+    Reads the done districts, their ring members (with ``link_stub_ends`` also their stub nodes) and the routing
+    graph around them, deletes the variant's old links, inserts the new ones (``mv_line`` with role ``link``) and
+    sets ``mv_grid.metrics['links']``.
 
     Returns:
         The summary of :func:`link_summary` (for ``mv_variant.summary['links']``).
@@ -945,11 +1042,21 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
     nodes = dbc.tie_candidate_nodes(version_id, variant_id)
     cand = tie_candidates(nodes, grids)
     pairs = close_pairs(cand, grids, limit + PREFILTER_SLACK_M, within=True)
+    rows = [cand.iloc[np.unique(pairs)]] if len(pairs) else []
+    stub_ends, note = None, ""
+    if params.link_stub_ends:
+        stub_cand = stub_link_candidates(nodes, grids)
+        stub_pairs = stub_link_pairs(stub_cand, grids, limit)
+        stub_ends = np.asarray(stub_cand.index, dtype=np.int64)[stub_cand["stub_end"].to_numpy(dtype=bool)].tolist()
+        if len(stub_pairs):
+            rows.append(stub_cand.iloc[np.unique(stub_pairs)])
+        note = f", {len(stub_ends)} stub ends with {len(stub_pairs)} pairs to another feeder"
     links = empty_ties()
-    if len(pairs):
+    if rows:
         from pylovo.mv_grid.stage import attachment_points
 
-        sub = cand.iloc[np.unique(pairs)]
+        sub = pd.concat(rows) if len(rows) > 1 else rows[0]
+        sub = sub[~sub.index.duplicated()]
         must = sorted({int(e) for e in pd.to_numeric(sub["attach_edge_id"], errors="coerce").dropna()})
         points = shapely.MultiPoint(sub[["x", "y"]].to_numpy(dtype=float))
         edges = dbc.subgraph_edges(graph_id, shapely.to_wkb(points), limit + SUBGRAPH_MARGIN_M, must)
@@ -961,13 +1068,13 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
                 cache.update({int(k): v for k, v in dbc.edge_geometries(graph_id, missing).items()})
             return {int(e): cache[int(e)] for e in edge_ids if int(e) in cache}
 
-        cand = cand.copy()
+        nodes = nodes.copy()
         ax, ay = attachment_points(sub, edge_geometry(must) if must else {})
-        cand["ax"], cand["ay"] = np.nan, np.nan
-        cand.loc[sub.index, "ax"], cand.loc[sub.index, "ay"] = ax, ay
-        links = plan_links(cand, grids, edges, params, edge_geometry=edge_geometry)
+        nodes["ax"], nodes["ay"] = np.nan, np.nan
+        nodes.loc[sub.index, "ax"], nodes.loc[sub.index, "ay"] = ax, ay
+        links = plan_links(nodes, grids, edges, params, edge_geometry=edge_geometry)
     log.info(f"Links: {len(cand)} ring members as candidates, {len(pairs)} pairs of different rings of one "
-             f"district within {limit + PREFILTER_SLACK_M:g} m, {len(links)} links")
-    summary = link_summary(links, grids, params, runtime_s=time.time() - start)
+             f"district within {limit + PREFILTER_SLACK_M:g} m{note}, {len(links)} links")
+    summary = link_summary(links, grids, params, runtime_s=time.time() - start, stub_ends=stub_ends)
     dbc.save_ties(version_id, variant_id, links, grid_link_metrics(links), role="link")
     return summary

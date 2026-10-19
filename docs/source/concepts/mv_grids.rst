@@ -653,6 +653,16 @@ joined twice are stored in ``mv_variant.summary['links']`` and ``mv_grid.metrics
 500 m is an assumption: a cross connection joins neighbouring stations, two to three times the
 distance between neighbouring stations.
 
+Many real rural stations at the end of a stub have a second cable to a station of another feeder,
+so that they keep a second infeed. The test option ``link_stub_ends`` (off by default, ``pylovo-mv
+generate --set link_stub_ends=true``) adds these links after the links between rings. Each stub end
+(a station or MV customer on a stub with one MV line) may take one link within
+``link_max_length_m`` to a ring member or stub node of another feeder of its supply area, which
+can be the other half of its own ring. The pairs are taken in the order of their length, and every
+node still takes at most one link. These links are ``role = 'link'`` as well;
+``mv_variant.summary['links']`` adds the number of stub ends, the links from stub ends and the stub
+ends with a link.
+
 .. _mv-voltage-level:
 
 Nominal voltage

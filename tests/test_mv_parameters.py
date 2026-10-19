@@ -123,6 +123,7 @@ EXPECTED_SNAPSHOT = {
                  "stub_max_length_m": 4000.0, "stub_max_kva_km": 2000.0, "stub_min_offset_m": 100.0,
                  "loop_in_max_offset_m": 100.0,
                  "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0, "link_max_length_m": 500.0,
+                 "link_stub_ends": False,
                  "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 8,
                  "busbar_legs": "cable_along_streets", "rural_satellites": "stubs_after_rings",

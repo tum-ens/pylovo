@@ -187,6 +187,10 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="longest normally-open link between two rings of one district: a cross connection between "
                      "neighbouring stations, two to three times the distance between neighbouring stations "
                      "(assumption, decision of 2026-10-19)"),
+    _constant("link_stub_ends", False, "bool", "topology",
+              source="test option: after the links between rings, each stub end (a stub station with one MV line) "
+                     "takes at most one normally-open link within link_max_length_m to a station of another feeder "
+                     "of its district, a second infeed as many real rural stations have (decision of 2026-10-19)"),
     _constant("local_search_rounds", 50, "int", "topology", bounds=(0, None),
               source="pass limit of the granular local search (Ding0 used 10 fixed rounds); 0 = no local search"),
     _constant("neighbours", 15, "int", "topology", bounds=(1, None),

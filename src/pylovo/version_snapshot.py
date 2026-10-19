@@ -62,6 +62,8 @@ MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("routing", "busbar_exit_radius_m"): 0.0,
     # The first variants with OSM MV lines in the routing graph routed on them at their length.
     ("routing", "osm_line_cost_factor"): 1.0,
+    # Before the stub-end links the links joined ring members only.
+    ("topology", "link_stub_ends"): False,
 }
 
 

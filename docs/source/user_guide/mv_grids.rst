@@ -864,6 +864,10 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 500
      - Longest link between two rings of one supply area, a cross connection between neighbouring
        stations (assumption). Each ring member takes at most one link, two rings at most two.
+   * - ``link_stub_ends``
+     - False
+     - Test option: each stub end may also take one link to a station of another feeder of its
+       supply area within ``link_max_length_m``, a second infeed (:ref:`mv-links`).
    * - ``local_search_rounds``
      - 50
      - Pass limit of the local search, 0 switches it off (Ding0 used 10 fixed rounds).

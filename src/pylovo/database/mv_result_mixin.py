@@ -1207,27 +1207,38 @@ class MvResultMixin(BaseMixin):
         return frame
 
     def tie_candidate_nodes(self, version_id: str, variant_id: str) -> pd.DataFrame:
-        """The nodes that may hold a tie: stations and MV customers looped into an open ring of a done district.
+        """The nodes that may hold a tie or a link: stations and MV customers looped into an open ring of a done
+        district or on a stub of one (ties take only the ring members).
 
         Returns:
             Index ``mv_node_id``: ``mv_grid_id``, ``kind``, ``connection``, ``ring_id``, ``ring_kind``,
             ``feeder_id``, ``ring_position``, ``x``, ``y``, ``attach_edge_id``, ``attach_fraction``,
-            ``attach_offset_m``, ``settlement_id`` and ``area_class``, ordered by ``mv_node_id``.
+            ``attach_offset_m``, ``settlement_id``, ``area_class`` and ``degree`` (the MV lines at the node,
+            without ties and links: 1 at a stub end), ordered by ``mv_node_id``.
         """
+        variant = (version_id, variant_id)
         self.cur.execute(
-            """SELECT n.mv_node_id, n.mv_grid_id, n.kind, n.connection, n.ring_id, r.kind AS ring_kind, n.feeder_id,
+            """WITH ends AS (
+                   SELECT from_node AS node FROM pylovo.mv_line
+                   WHERE version_id = %s AND mv_variant_id = %s AND role NOT IN ('tie', 'link')
+                   UNION ALL
+                   SELECT to_node FROM pylovo.mv_line
+                   WHERE version_id = %s AND mv_variant_id = %s AND role NOT IN ('tie', 'link')),
+               degree AS (SELECT node, count(*) AS degree FROM ends GROUP BY node)
+               SELECT n.mv_node_id, n.mv_grid_id, n.kind, n.connection, n.ring_id, r.kind AS ring_kind, n.feeder_id,
                       n.ring_position, ST_X(n.geom) AS x, ST_Y(n.geom) AS y, n.attach_edge_id, n.attach_fraction,
-                      n.attach_offset_m, n.settlement_id, n.area_class
+                      n.attach_offset_m, n.settlement_id, n.area_class, coalesce(d.degree, 0) AS degree
                FROM pylovo.mv_node n
                JOIN pylovo.mv_grid g ON g.mv_grid_id = n.mv_grid_id
                JOIN pylovo.mv_ring r ON r.mv_grid_id = n.mv_grid_id AND r.ring_id = n.ring_id
+               LEFT JOIN degree d ON d.node = n.mv_node_id
                WHERE n.version_id = %s AND n.mv_variant_id = %s AND g.status = 'done' AND r.kind = 'ring'
-                 AND n.connection = 'ring' AND n.kind IN ('station', 'customer')
-               ORDER BY n.mv_node_id""", (version_id, variant_id))
+                 AND n.connection IN ('ring', 'stub') AND n.kind IN ('station', 'customer')
+               ORDER BY n.mv_node_id""", (*variant, *variant, *variant))
         frame = pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
         frame.index = pd.Index(frame.pop("mv_node_id").astype("int64"), name="mv_node_id")
         for column in ("mv_grid_id", "ring_id", "feeder_id", "ring_position", "attach_edge_id", "attach_fraction",
-                       "attach_offset_m", "settlement_id", "x", "y"):
+                       "attach_offset_m", "settlement_id", "x", "y", "degree"):
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
         return frame
 

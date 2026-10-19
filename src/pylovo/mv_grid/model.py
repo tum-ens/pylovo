@@ -406,12 +406,24 @@ def links_line(links: Mapping[str, Any]) -> str:
     if not n:
         return (f"✓ Links: none (no rings of one district within "
                 f"{float(links.get('link_max_length_m') or 0.0):g} m)")
-    text = f"✓ Links: {n:,} normally-open links between rings, {float(links.get('link_km') or 0.0):,.1f} km"
+    stubs = bool(links.get("n_stub_end_links"))
+    text = (f"✓ Links: {n:,} normally-open links{'' if stubs else ' between rings'}, "
+            f"{float(links.get('link_km') or 0.0):,.1f} km")
     if links.get("n_rings"):
         text += f", {links.get('n_rings_with_link', 0):,} of {links['n_rings']:,} rings"
     if links.get("node_share_with_link") is not None:
-        text += f", {100 * links['node_share_with_link']:.0f} % of the supply points with a third cable"
-    return text + f", {links.get('n_ring_pairs_closed', 0):,} ring pairs joined twice"
+        text += (f", {100 * links['node_share_with_link']:.0f} % of the supply points with "
+                 f"{'a link' if stubs else 'a third cable'}")
+    return text + f", {links.get('n_ring_pairs_closed', 0):,} ring pairs joined twice" + stub_end_text(links)
+
+
+def stub_end_text(links: Mapping[str, Any]) -> str:
+    """The part of a link summary line on the links from stub ends (``link_stub_ends``); empty without them."""
+    if not links.get("n_stub_end_links"):
+        return ""
+    return (f", {int(links['n_stub_end_links']):,} of them from stub ends "
+            f"({int(links.get('n_stub_ends_with_link') or 0):,} of {int(links.get('n_stub_ends') or 0):,} stub "
+            f"ends with a second infeed)")
 
 
 def voltage_line(voltages: Mapping[str, Any]) -> str:
