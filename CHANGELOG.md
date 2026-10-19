@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `HOUSE_CONNECTION` (`joint` | `cabinet`) and `CABINET_SPACING_M` (default 100): `cabinet` models cabinet networks (Kabelverteilertechnik): cabinets at the split points, the branch ends and at most `CABINET_SPACING_M` apart, feeders from cabinet to cabinet and every house with its own cable from its nearest cabinet; the cabinets are stored in `split_points` (`end_cabinet`, `added_cabinet`); `joint` (default) keeps the tee-joint connections; both are in the version snapshot (older versions need `joint`)
 - `USE_EXTERNAL_BASEDATA` with the optional `INFDB_DBNAME`, `INFDB_USER`, `INFDB_HOST`, `INFDB_PORT` and `INFDB_PASSWORD`: read the InfDB source data (buildings, ways, postcodes) from another database or server than the pylovo schema; unset values fall back to the pylovo connection
 - `pylovo.building_exclusion` (migration `0009_building_exclusion`, run `pylovo-setup`): every loaded building of a generated PLZ that is in no grid, with the step that left it out
+- `pylovo-analyze --coverage`: every source building of the PLZ is generated, excluded with a reason, or missing (exit 3 when buildings are missing); `--plz` takes several PLZ
 
 ### Changed
 - `GridGenerator.generate_grid_for_single_plz` returns the outcome of the PLZ (`generated`, `exists`, `empty`, `failed`) and `generate_grid_for_multiple_plz` returns the outcomes of all PLZ (a failing PLZ is still logged and skipped; the log lines are unchanged)
