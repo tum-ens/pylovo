@@ -6,8 +6,9 @@ import { getJson } from './api.js';
 import * as f from './format.js';
 import { BASEMAPS, MapView, Z_ORDER, boundsOf } from './map.js';
 import { colourOf, gradient, pal } from './palette.js';
-import { STYLES, defaultMode, schemeOf, statusText } from './styles.js';
+import { STYLES, defaultMode, schemeOf } from './styles.js';
 import { showLod2 } from './lod2.js';
+import { stationColours } from './icons.js';
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const REGION_SOURCE = { plz: 'postcodes', area: 'mv_areas', grid: 'lv_areas' };
@@ -37,7 +38,7 @@ createApp({
     return {
       fatal: null, info: null, meta: [], groupMeta: [], lod2Available: false, versions: [],
       version: null, mv: null, region: null, layers: {}, groups: {}, zoom: 5,
-      theme: stored('theme', 'auto'), basemap: stored('basemap', 'auto'), d3: false,
+      theme: stored('theme', 'auto'), basemap: 'osm', d3: true,
       tab: 'layers', panel: true, legendOpen: true, help: false,
       search: { text: '', hits: [], open: false, index: 0 }, tooltip: null, inspector: null,
       summary: null, postcodes: [], areas: [], regionFilter: '', lod2: null, toast: null, tick: 0, themeTick: 0,
@@ -50,7 +51,7 @@ createApp({
     runs() { return this.versions.find((v) => v.version_id === this.version)?.runs || []; },
     groupList() {
       return this.groupMeta.map((g) => {
-        const layers = this.meta.filter((m) => m.group === g.id && !m.parent);
+        const layers = this.meta.filter((m) => m.groups.includes(g.id) && !m.parent);
         const available = layers.filter((m) => m.available);
         return { ...g, layers, available: available.length > 0,
           reason: available.length ? '' : (layers[0]?.reason || 'no data in this database') };
@@ -71,11 +72,11 @@ createApp({
       for (const id of [...Z_ORDER].reverse()) {
         const m = this.metaById[id];
         const st = this.layers[id];
-        if (!m || !this.visible(id) || st.status !== 'ok' || !st.count) continue;
+        if (!m || !this.visible(id) || st.status !== 'ok' || !st.count || this.zoom < (m.min_zoom || 0)) continue;
         const style = STYLES[id];
         const entries = [...(style.legend ? style.legend() : [])];
         const scheme = schemeOf(id, this.modeOf(id));
-        const kind = KIND[m.geometry];
+        const kind = style.legendKind || KIND[m.geometry];
         if (scheme?.type === 'match') {
           const counts = new Map();
           for (const ft of this.map?.data(id)?.features || []) {
@@ -89,15 +90,14 @@ createApp({
             if (n) entries.push({ kind, colour, label, count: n });
           }
           if (rest > 0) entries.push({ kind, colour: scheme.fallback[0], label: scheme.fallback[1], count: rest });
-        } else if (scheme?.type === 'slot') {
-          entries.push({ kind: 'slots', colours: pal().cat, label: 'Neighbours never share a colour' });
-        } else if (scheme?.type === 'ramp') {
+        } else if (scheme?.type === 'ramp') {   // identity colours (slots: grid, ring, area) need no legend
           entries.push({ kind: 'ramp', css: gradient(scheme.stops), min: scheme.stops[0][0], max: scheme.stops[scheme.stops.length - 1][0],
             unit: scheme.unit, label: scheme.label });
         } else if (scheme?.type === 'const') {
           entries.push({ kind, colour: scheme.colour, label: scheme.label });
         }
         if (style.extraLegend) entries.push(...style.extraLegend(this.modeOf(id)));
+        for (const e of entries) if (e.kind === 'station') Object.assign(e, stationColours(e.colour, pal().surface));
         if (entries.length) out.push({ id, title: m.title, entries });
       }
       return out;
@@ -105,7 +105,8 @@ createApp({
   },
   watch: {
     theme(value) { store('theme', value); this.applyTheme(); },
-    basemap(value) { store('basemap', value); this.map?.setBasemap(this.effectiveBasemap()); this.saveHash(); },
+    // not remembered between visits (the URL keeps it), so a new visit starts on OpenStreetMap
+    basemap() { this.map?.setBasemap(this.effectiveBasemap()); this.saveHash(); },
   },
   async mounted() {
     this.applyTheme();
@@ -131,16 +132,16 @@ createApp({
     }
     this.version = this.versions.some((v) => v.version_id === h.v) ? h.v : this.versions[0]?.version_id || null;
     this.mv = this.runs.some((r) => r.id === h.mv) ? h.mv : this.runs[0]?.id || null;
-    if (h.b && BASEMAPS[h.b]) this.basemap = h.b;
+    if (h.b && (BASEMAPS[h.b] || h.b === 'auto')) this.basemap = h.b;
     if (h.r) {
       const [kind, id] = h.r.split(':');
       if (REGION_SOURCE[kind] && id) this.region = { kind, id: Number(id) };
     }
     const c = (h.c || '').split(',').map(Number);
     const view = c.length >= 3 && c.every(Number.isFinite) ? { center: [c[0], c[1]], zoom: c[2], pitch: c[3] || 0, bearing: c[4] || 0 } : null;
-    this.d3 = h['3d'] === '1';
+    this.d3 = h['3d'] !== '0';
     this.map = markRaw(new MapView(this.$refs.map, {
-      basemap: this.effectiveBasemap(), view,
+      basemap: this.effectiveBasemap(), view, d3: this.d3,
       onMove: (v) => this.moved(v), onHover: (hit) => this.hovered(hit), onClick: (hits) => this.clicked(hits),
       onReady: () => this.ready(!view),
     }));
@@ -152,7 +153,6 @@ createApp({
         this.map.setLayer(m.id, { visible: this.visible(m.id), mode: this.modeOf(m.id), attribution: m.attribution, minZoom: m.min_zoom });
       }
       this.zoom = this.map.view().zoom;
-      if (this.d3) this.map.set3D(true);
       this.loadLists();
       this.reload();
       this.loadSummary();
@@ -174,11 +174,12 @@ createApp({
     },
 
     // ------------------------------------------------------------------------------- layers
-    /** Shown on the map: available, its group switched on, and the layer (or its parent) on. */
+    /** Shown on the map: available, and its parent, or the layer itself in one of its groups, on. */
     visible(id) {
       const m = this.metaById[id];
-      if (!m?.available || !this.groups[m.group]?.on) return false;
-      return m.parent ? this.visible(m.parent) : !!this.layers[id]?.on;
+      if (!m?.available) return false;
+      if (m.parent) return this.visible(m.parent);
+      return !!this.layers[id]?.on && m.groups.some((g) => this.groups[g]?.on);
     },
     modeOf(id) {
       return this.layers[this.metaById[id]?.parent || id]?.mode;
@@ -200,9 +201,9 @@ createApp({
       this.groups[gid].on = !this.groups[gid].on;
       this.applyVisibility();
     },
-    toggle(id) {
+    toggle(id, gid) {
       this.layers[id].on = !this.layers[id].on;
-      if (this.layers[id].on && !this.groups[this.metaById[id].group].on) this.groups[this.metaById[id].group].on = true;
+      if (this.layers[id].on && !this.groups[gid].on) this.groups[gid].on = true;
       this.applyVisibility();
     },
     setMode(id, mode) {
@@ -372,7 +373,8 @@ createApp({
     },
     facts(hit) {
       const style = STYLES[hit.layer];
-      const facts = style?.facts ? style.facts(hit.props) : { title: hit.layer, rows: [] };
+      const props = hit.group ? { ...hit.props, ...hit.group } : hit.props;
+      const facts = style?.facts ? style.facts(props) : { title: hit.layer, rows: [] };
       const scheme = schemeOf(hit.layer, this.modeOf(hit.layer));
       return { ...facts, colour: scheme ? colourOf(scheme, hit.props) : style?.legend?.()[0]?.colour, layerTitle: this.metaById[hit.layer]?.title };
     },
@@ -392,8 +394,36 @@ createApp({
       ins.attrs = null;
       ins.error = null;
       const hit = ins.hits[index];
-      this.map.setHighlight(this.map.feature(hit.layer, hit.fid));
+      hit.group ||= this.ringOf(hit);
+      this.map.setHighlight(hit.group || this.map.feature(hit.layer, hit.fid), hit.group?.open_points);
       if (ins.attrsOpen) this.loadAttrs();
+      if (hit.layer === 'lv_cables' && hit.props.role === 'feeder' && !hit.group) this.loadSection(ins, hit);
+    },
+    /** A feeder cable stands for its section, from a split point (or the station) to the next. */
+    async loadSection(ins, hit) {
+      try {
+        const section = await getJson(`/api/section/${encodeURIComponent(hit.fid)}`);
+        hit.group = section;
+        if (this.inspector === ins && ins.hits[ins.index] === hit) this.map.setHighlight(section);
+      } catch (err) {
+        this.notify(err.message);
+      }
+    },
+    /** An MV line stands for its whole ring (ring and stub lines of the same ring), with the open points. */
+    ringOf(hit) {
+      const p = hit.props;
+      if (hit.layer !== 'mv_lines' || p.role === 'tie' || p.ring === null || p.ring === undefined) return null;
+      const same = (ft) => ft.properties.area === p.area && ft.properties.ring === p.ring;
+      const lines = (this.map.data('mv_lines')?.features || []).filter((ft) => same(ft) && ft.properties.role !== 'tie');
+      const km = (role, key = 'length_km') => lines.filter((ft) => !role || ft.properties.role === role)
+        .reduce((sum, ft) => sum + (ft.properties[key] || 0), 0);
+      return {
+        geometry: { type: 'MultiLineString', coordinates: lines.flatMap((ft) => (ft.geometry.type === 'LineString' ? [ft.geometry.coordinates] : ft.geometry.coordinates)) },
+        open_points: (this.map.data('mv_open_points')?.features || []).filter(same).map((ft) => ft.geometry),
+        ring_lines: lines.length, ring_km: km('ring'), stub_km: km('stub'), ring_overhead_km: km(null, 'overhead_km'),
+        ring_stations: (this.map.data('mv_stations')?.features || []).filter(same).length,
+        ring_max_n1: Math.max(...lines.map((ft) => ft.properties.loading_n1 ?? -Infinity)),
+      };
     },
     async loadAttrs() {
       const ins = this.inspector;
@@ -418,7 +448,7 @@ createApp({
     actions(hit) {
       const p = hit.props;
       const out = [];
-      const feature = this.map.feature(hit.layer, hit.fid);
+      const feature = hit.group || this.map.feature(hit.layer, hit.fid);
       if (feature) out.push({ label: 'Zoom to', run: () => this.map.fit(boundsOf(feature.geometry), this.padding(), 18) });
       const grid = GRID_LAYERS.has(hit.layer) ? p.fid : p.grid;
       if (grid !== null && grid !== undefined && !(this.region?.kind === 'grid' && this.region.id === grid)) {
@@ -558,14 +588,13 @@ createApp({
         const modes = this.meta.filter((m) => this.layers[m.id]?.on && this.layers[m.id].mode && this.layers[m.id].mode !== defaultMode(m.id))
           .map((m) => `${m.id}:${this.layers[m.id].mode}`);
         const parts = { v: this.version, mv: this.mv, r: this.region ? `${this.region.kind}:${this.region.id}` : null,
-          g: groups.join(','), l: on.join(','), m: modes.join(','), b: this.basemap !== 'auto' ? this.basemap : null, '3d': this.d3 ? '1' : null,
+          g: groups.join(','), l: on.join(','), m: modes.join(','), b: this.basemap !== 'osm' ? this.basemap : null, '3d': this.d3 ? null : '0',
           c: [v.center[0].toFixed(5), v.center[1].toFixed(5), v.zoom.toFixed(2), Math.round(v.pitch), Math.round(v.bearing)].join(',') };
         const hash = Object.entries(parts).filter(([k, x]) => x !== null && x !== undefined && (x !== '' || k === 'g' || k === 'l'))
           .map(([k, x]) => `${k}=${encodeURIComponent(x)}`).join('&');
         history.replaceState(null, '', `#${hash}`);
       }, 300);
     },
-    statusText,
     attrValue: f.value,
   },
 }).mount('#app');

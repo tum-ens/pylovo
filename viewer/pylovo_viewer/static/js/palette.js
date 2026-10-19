@@ -27,7 +27,6 @@ export const PALETTE = {
     settlement: { rural: '#3a3427', urban: '#4a3f2c' },
   },
 };
-export const STATUS = { good: '#0ca30c', warning: '#fab219', serious: '#ec835a', critical: '#d03b3b' };
 export const LOADING_STOPS = [[0, '#0ca30c'], [50, '#0ca30c'], [75, '#fab219'], [90, '#ec835a'], [100, '#d03b3b'], [130, '#7a1414']];
 export const VOLTAGE_STOPS = [[0.88, '#7a1414'], [0.9, '#d03b3b'], [0.92, '#ec835a'], [0.945, '#fab219'], [0.975, '#0ca30c'], [1.03, '#0ca30c'], [1.05, '#fab219'], [1.1, '#d03b3b']];
 

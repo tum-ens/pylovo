@@ -112,7 +112,7 @@
         <div class="group-body" v-show="groups[g.id]?.open">
           <div class="layer" v-for="m in g.layers" :key="m.id" :class="{ off: !layers[m.id]?.on, na: !m.available }">
             <label class="switch small" :title="m.available ? 'Show or hide' : m.reason">
-              <input type="checkbox" :checked="layers[m.id]?.on" :disabled="!m.available" @change="toggle(m.id)"><span></span>
+              <input type="checkbox" :checked="layers[m.id]?.on" :disabled="!m.available" @change="toggle(m.id, g.id)"><span></span>
             </label>
             <span class="swatch" :class="m.geometry" :style="{ background: swatch(m.id) }"></span>
             <div class="lt">
@@ -174,8 +174,6 @@
             <span>{{ fmt.kva(s.kva) }}</span><i :style="{ width: (100 * s.n / Math.max(...summary.lv.stations_by_kva.map((x) => x.n))) + '%' }"></i><b>{{ fmt.num(s.n) }}</b>
           </div>
         </div>
-        <h4>Power flow of the grids</h4>
-        <div class="chips"><span class="chip" v-for="s in summary.lv.power_flow" :key="s.status" :class="s.status">{{ statusText(s.status) }} <b>{{ fmt.num(s.n) }}</b></span></div>
       </template>
       <template v-if="summary?.mv">
         <h3>MV run {{ mv }}{{ region?.kind === 'area' ? ` · area ${region.id}` : '' }}</h3>
@@ -193,8 +191,6 @@
         </div>
         <h4>Voltage of the supply areas</h4>
         <div class="chips"><span class="chip">20 kV <b>{{ fmt.num(summary.mv.areas_20kv) }}</b></span><span class="chip">10 kV <b>{{ fmt.num(summary.mv.areas_10kv) }}</b></span><span class="chip">at the region border <b>{{ fmt.num(summary.mv.incomplete) }}</b></span></div>
-        <h4>Power flow of the supply areas</h4>
-        <div class="chips"><span class="chip" v-for="s in summary.mv.power_flow" :key="s.status" :class="s.status">{{ statusText(s.status) }} <b>{{ fmt.num(s.n) }}</b></span></div>
       </template>
       <p class="muted" v-if="!summary">No figures for this selection.</p>
     </section>
@@ -242,6 +238,7 @@
           <span v-if="e.kind === 'slots'" class="lg-slots"><i v-for="c in e.colours" :key="c" :style="{ background: c }"></i></span>
           <span v-else-if="e.kind === 'ramp'" class="lg-ramp" :style="{ background: e.css }"></span>
           <span v-else-if="e.kind === 'note'" class="lg-note"></span>
+          <svg v-else-if="e.kind === 'station'" class="lg-station" viewBox="0 0 26 26"><rect x="2" y="2" width="22" height="22" rx="6" :fill="e.colour" :stroke="e.edge"/><circle cx="9.8" cy="13" r="5.2" :stroke="e.ink"/><circle cx="16.2" cy="13" r="5.2" :stroke="e.ink"/></svg>
           <span v-else class="lg-sym" :class="[e.kind, { hollow: e.hollow, dash: e.dash, dot: e.dot, thin: e.thin }]" :style="{ '--c': e.colour }"></span>
           <span class="lg-label">{{ e.label }}<span class="muted" v-if="e.kind === 'ramp'"> {{ fmt.auto(e.min) }}–{{ fmt.auto(e.max) }} {{ e.unit }}</span></span>
           <span class="lg-count" v-if="e.count !== null && e.count !== undefined">{{ fmt.num(e.count) }}</span>
@@ -267,11 +264,11 @@
         (<b>{{ info?.database.dbname }}</b> on {{ info?.database.host }}:{{ info?.database.port }}). It never writes to the database.</p>
       <ul>
         <li><b>Pick a version</b> (LV grids) and, if there is one, an <b>MV run</b> in the top bar.</li>
-        <li><b>One switch per level</b>: HV grid, MV grids, LV grids and generation. <i>Details</i> (the arrow) shows the single layers and their colours.</li>
+        <li><b>One switch per level</b>: HV grid, MV grids, LV grids and generation. <i>Details</i> (the arrow) shows the single layers and their colours. Substations belong to both of their levels.</li>
         <li>LV cables and buildings appear when you zoom in (from zoom 13). <b>Regions</b> (click a postcode or supply area, the <i>Regions</i> tab, or search) fly there and give the key figures.</li>
         <li><b>Click</b> anything for its facts and all its database attributes; <b>hover</b> for a quick look.</li>
         <li>Each layer has a <b>colour mode</b> (the small menu next to it) and an <b>i</b> with its source.</li>
-        <li><b>3D</b> tilts the map and extrudes the buildings; with LoD2 data (citydb) the buildings in view show real roofs from zoom 15.</li>
+        <li><b>3D</b> (on at the start) tilts the map and extrudes the buildings; with LoD2 data (citydb) the buildings in view show real roofs from zoom 15.</li>
         <li>The address bar keeps the view: bookmark or share it.</li>
       </ul>
       <h3>Keys</h3>

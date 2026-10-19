@@ -177,9 +177,6 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .chip { padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
 .chip b { color: var(--text-1); font-weight: 600; margin-left: 3px; }
-.chip.converged, .chip.done { box-shadow: inset 3px 0 0 var(--good); }
-.chip.voltage_violation, .chip.not_converged, .chip.failed { box-shadow: inset 3px 0 0 var(--critical); }
-.chip.loading_violation { box-shadow: inset 3px 0 0 var(--warning); }
 
 /* -------------------------------------------------------------------------- inspector */
 .inspector { position: absolute; top: 76px; right: 12px; width: 370px; max-height: calc(100% - 190px); overflow: auto; z-index: 11; padding: 12px 12px 10px; }
@@ -226,6 +223,9 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .lg-sym.line.dash::before { background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
 .lg-sym.line.dot::before { background: repeating-linear-gradient(90deg, var(--c) 0 2px, transparent 2px 5px); }
 .lg-sym.fill.dash { background: none; border: 1.5px dashed var(--c); opacity: 1; }
+.lg-station { flex: none; width: 18px; height: 16px; }
+.lg-station rect { stroke-width: 1.8; }
+.lg-station circle { fill: none; stroke-width: 2; }
 .lg-slots { display: flex; flex: none; width: 66px; height: 10px; border-radius: 3px; overflow: hidden; }
 .lg-slots i { flex: 1; }
 .lg-ramp { flex: none; width: 66px; height: 10px; border-radius: 3px; }

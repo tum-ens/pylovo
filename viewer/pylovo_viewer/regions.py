@@ -61,7 +61,6 @@ def areas(db: Database, version: str, mv: str) -> list[dict[str, Any]]:
     """MV supply areas of a run with their substation name and bounds."""
     return db.query(f"""
         SELECT g.mv_grid_id AS area, s.name AS substation, g.vn_kv, g.n_stations AS stations, g.complete,
-               g.power_flow_status AS pf,
                (SELECT {BOUNDS} FROM (SELECT ST_Transform(ST_Envelope(g.geom), 4326) AS e) b) AS bounds
         FROM pylovo.mv_grid g LEFT JOIN pylovo.mv_substation s ON s.substation_id = g.substation_id
         WHERE g.version_id = %s AND g.mv_variant_id = %s ORDER BY g.mv_grid_id""", (version, mv))

@@ -9,7 +9,7 @@ from pylovo_viewer.layers import REGION_GRIDS, Query, num
 
 
 def lv(db: Database, q: Query) -> dict[str, Any]:
-    """Grids, buildings, load, cable lengths, stations by size and power-flow results."""
+    """Grids, buildings, load, cable lengths and stations by size."""
     region = q.region()
     grids = REGION_GRIDS[region] if region else \
         "SELECT grid_result_id FROM pylovo.grid_result WHERE version_id = %(version)s"
@@ -28,13 +28,11 @@ def lv(db: Database, q: Query) -> dict[str, Any]:
                  WHERE c.grid_result_id IN (SELECT * FROM g) AND c.feeder_section_id IS NULL) AS service_km""", params)
     sizes = db.query(f"""SELECT transformer_rated_power AS kva, count(*) AS n FROM pylovo.grid_result
                          WHERE grid_result_id IN ({grids}) GROUP BY 1 ORDER BY 1""", params)
-    status = db.query(f"""SELECT COALESCE(power_flow_status, 'unknown') AS status, count(*) AS n FROM pylovo.grid_result
-                          WHERE grid_result_id IN ({grids}) GROUP BY 1 ORDER BY 2 DESC""", params)
-    return {**(head or {}), "stations_by_kva": sizes, "power_flow": status}
+    return {**(head or {}), "stations_by_kva": sizes}
 
 
 def mv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any] | None:
-    """Supply areas, rings, stations, circuit length by kind, ties, open points and power-flow results."""
+    """Supply areas, rings, stations, circuit length by kind, ties and open points."""
     if q.mv is None or not catalog.has("pylovo.mv_grid"):
         return None
     area = "AND mv_grid_id = %(area)s" if q.area is not None else ""
@@ -54,7 +52,4 @@ def mv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any] | None:
                {num("sum(length_km) FILTER (WHERE role = 'tie')", 1)} AS tie_km,
                count(*) FILTER (WHERE normally_open AND role <> 'tie') AS open_points
         FROM pylovo.mv_line WHERE version_id = %(version)s AND mv_variant_id = %(mv)s {area}""", params)
-    status = db.query(f"""SELECT COALESCE(power_flow_status, status) AS status, count(*) AS n FROM pylovo.mv_grid
-                          WHERE version_id = %(version)s AND mv_variant_id = %(mv)s {area}
-                          GROUP BY 1 ORDER BY 2 DESC""", params)
-    return {**(head or {}), **(lines or {}), "power_flow": status}
+    return {**(head or {}), **(lines or {})}

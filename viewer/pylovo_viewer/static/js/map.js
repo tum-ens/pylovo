@@ -5,6 +5,7 @@ import * as maplibregl from 'maplibre-gl';
 import { mapLayers, STYLES } from './styles.js';
 import { pal } from './palette.js';
 import { createLod2Layer } from './lod2.js';
+import { addIcon } from './icons.js';
 
 const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 export const BASEMAPS = {
@@ -25,11 +26,45 @@ export const Z_ORDER = ['postcodes', 'mv_areas', 'lv_areas', 'mv_customers', 'lv
   'hv_substations'];
 const HOVER = new Set(['postcodes', 'lv_areas', 'mv_areas']);
 const EMPTY = { type: 'FeatureCollection', features: [] };
+export const PITCH_3D = 25;              // camera tilt of the 3D view (65° above the ground)
+const HIGHLIGHT = '#ffe600';             // a clicked line
+const LINES = ['in', ['geometry-type'], ['literal', ['LineString', 'MultiLineString']]];
 
 function labelPoints(fc) {
   return { type: 'FeatureCollection', features: fc.features.filter((f) => f.properties.lon !== undefined)
     .map((f) => ({ type: 'Feature', properties: f.properties, geometry: { type: 'Point', coordinates: [f.properties.lon, f.properties.lat] } })) };
 }
+
+// Web Mercator, for the direction of a line end as drawn on the map.
+const mercator = ([lon, lat]) => [lon * Math.PI / 180, Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+
+/** The end of every cable that supplies a cabinet (`to_cabinet`), with its direction (degrees from north). */
+function cabinetArrows(fc) {
+  const features = [];
+  for (const f of fc.features) {
+    if (!f.properties.to_cabinet || f.geometry?.type !== 'LineString') continue;
+    const c = f.geometry.coordinates;
+    const [x1, y1] = mercator(c[c.length - 1]);
+    for (let i = c.length - 2; i >= 0; i--) {
+      const [x0, y0] = mercator(c[i]);
+      if (Math.hypot(x1 - x0, y1 - y0) < 1e-8) continue;   // skip zero-length segments at the end
+      features.push({ type: 'Feature', properties: { ...f.properties, bearing: Math.atan2(x1 - x0, y1 - y0) * 180 / Math.PI },
+        geometry: { type: 'Point', coordinates: c[c.length - 1] } });
+      break;
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/** The overhead parts of mixed MV lines (`overhead`: MultiLineString coordinates), with the line's properties. */
+function overheadParts(fc) {
+  return { type: 'FeatureCollection', features: fc.features.filter((f) => f.properties.overhead)
+    .map((f) => ({ type: 'Feature', properties: { ...f.properties, overhead: null },
+      geometry: { type: 'MultiLineString', coordinates: f.properties.overhead } })) };
+}
+
+// Sources derived from a layer's data, named `<layer>:<key>`, for the layers whose style sets the key.
+const DERIVED = { labels: labelPoints, arrows: cabinetArrows, overhead: overheadParts };
 
 export function boundsOf(geometry) {
   let w = Infinity; let s = Infinity; let e = -Infinity; let n = -Infinity;
@@ -41,9 +76,9 @@ export function boundsOf(geometry) {
 }
 
 export class MapView {
-  constructor(container, { basemap, view, onMove, onHover, onClick, onReady }) {
+  constructor(container, { basemap, view, d3, onMove, onHover, onClick, onReady }) {
     this.layers = {};        // viewer layer id -> { data, visible, mode, attribution, sublayers: [] }
-    this.d3 = false;
+    this.d3 = !!d3;
     this.lod2Hide = null;    // object ids drawn as LoD2 (their extrusions are hidden)
     this.selected = {};      // source -> fid with feature-state "selected"
     this.hovered = null;
@@ -53,7 +88,7 @@ export class MapView {
     this.handlers = { onMove, onHover, onClick };
     this.map = new maplibregl.Map({
       container, style: this.styleOf(basemap), center: view?.center || [10.45, 51.16], zoom: view?.zoom ?? 5.3,
-      pitch: view?.pitch || 0, bearing: view?.bearing || 0, maxPitch: 75, attributionControl: false,
+      pitch: view ? view.pitch : (this.d3 ? PITCH_3D : 0), bearing: view?.bearing || 0, maxPitch: 75, attributionControl: false,
       canvasContextAttributes: { antialias: true },
     });
     this.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
@@ -64,6 +99,7 @@ export class MapView {
       this.restore();
       if (!this.ready) { this.ready = true; onReady?.(); }
     });
+    this.map.setMissingStyleImageResolver((id) => addIcon(this.map, id));
     this.map.on('moveend', () => this.handlers.onMove?.(this.view()));
     this.map.on('mousemove', (e) => this.hover(e));
     this.map.on('mouseout', () => { this.setHover(null); this.handlers.onHover?.(null); });
@@ -96,10 +132,17 @@ export class MapView {
     const p = pal();
     map.addLayer({ id: 'highlight:fill', type: 'line', source: 'highlight', filter: ['==', ['geometry-type'], 'Polygon'],
       paint: { 'line-color': p.accent, 'line-width': 3.5, 'line-opacity': 0.95 } });
-    map.addLayer({ id: 'highlight:line', type: 'line', source: 'highlight', filter: ['==', ['geometry-type'], 'LineString'],
-      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': p.accent, 'line-width': 9, 'line-opacity': 0.45 } });
-    map.addLayer({ id: 'highlight:point', type: 'circle', source: 'highlight', filter: ['==', ['geometry-type'], 'Point'],
+    const width = (add) => ['interpolate', ['linear'], ['zoom'], 8, 4 + add, 14, 6 + add, 18, 9 + add];
+    map.addLayer({ id: 'highlight:casing', type: 'line', source: 'highlight', filter: LINES,
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#121620', 'line-width': width(3), 'line-opacity': 0.6 } });
+    map.addLayer({ id: 'highlight:line', type: 'line', source: 'highlight', filter: LINES,
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': HIGHLIGHT, 'line-width': width(0) } });
+    map.addLayer({ id: 'highlight:point', type: 'circle', source: 'highlight', filter: ['all', ['==', ['geometry-type'], 'Point'], ['!', ['has', 'open']]],
       paint: { 'circle-radius': 13, 'circle-color': p.accent, 'circle-opacity': 0.18, 'circle-stroke-color': p.accent, 'circle-stroke-width': 2.5 } });
+    // the normally-open points of a selected MV ring, on top of it at every zoom
+    map.addLayer({ id: 'highlight:open', type: 'circle', source: 'highlight', filter: ['has', 'open'],
+      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4.5, 14, 7, 18, 9], 'circle-color': '#ffffff',
+        'circle-stroke-color': '#121620', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 8, 2, 14, 3] } });
     this.applySelected();
   }
 
@@ -109,7 +152,9 @@ export class MapView {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: layer.data || EMPTY, promoteId: 'fid', tolerance: 0.25,
         ...(layer.attribution ? { attribution: layer.attribution } : {}) });
-      if (STYLES[id]?.labels) map.addSource(`${id}:labels`, { type: 'geojson', data: labelPoints(layer.data || EMPTY) });
+      for (const [key, derive] of Object.entries(DERIVED)) {
+        if (STYLES[id]?.[key]) map.addSource(`${id}:${key}`, { type: 'geojson', data: derive(layer.data || EMPTY) });
+      }
     }
   }
 
@@ -162,7 +207,7 @@ export class MapView {
     const source = this.ready ? this.map.getSource(id) : null;
     if (source) {
       source.setData(fc);
-      this.map.getSource(`${id}:labels`)?.setData(labelPoints(fc));
+      for (const [key, derive] of Object.entries(DERIVED)) this.map.getSource(`${id}:${key}`)?.setData(derive(fc));
       this.applySelected();
     }
   }
@@ -178,7 +223,7 @@ export class MapView {
       this.removeSublayers(id);
       if (this.layers[id].visible) this.addSublayers(id);
     }
-    for (const id of ['highlight:fill', 'highlight:line', 'highlight:point']) {
+    for (const id of ['highlight:fill', 'highlight:point']) {   // a clicked line stays yellow
       if (!this.map.getLayer(id)) continue;
       const prop = id.endsWith('point') ? 'circle-stroke-color' : 'line-color';
       this.map.setPaintProperty(id, prop, pal().accent);
@@ -190,7 +235,7 @@ export class MapView {
   set3D(on) {
     if (on === this.d3) return;
     this.d3 = on;
-    this.map.easeTo({ pitch: on ? 55 : 0, duration: 700 });
+    this.map.easeTo({ pitch: on ? PITCH_3D : 0, duration: 700 });
     if (this.layers.lv_buildings?.visible) { this.removeSublayers('lv_buildings'); this.addSublayers('lv_buildings'); }
   }
 
@@ -215,8 +260,10 @@ export class MapView {
     this.applySelected();
   }
 
-  setHighlight(feature) {
-    this.highlight = feature ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: feature.geometry }] } : EMPTY;
+  /** Highlight a feature (its geometry), with normally-open points (Point geometries) on top. */
+  setHighlight(feature, openPoints = []) {
+    this.highlight = feature ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: feature.geometry },
+      ...openPoints.map((geometry) => ({ type: 'Feature', properties: { open: true }, geometry }))] } : EMPTY;
     this.map.getSource('highlight')?.setData(this.highlight);
   }
 

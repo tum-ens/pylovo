@@ -1,8 +1,9 @@
 // How each layer looks: its colour modes, its MapLibre layers, and the facts its tooltip and the
 // inspector show. Colours come from schemes (palette.js), so the legend is derived from the same
 // description as the map.
-import { LOADING_STOPS, STATUS, VOLTAGE_STOPS, constant, expr, pal, slot, voltageLevels } from './palette.js';
+import { LOADING_STOPS, VOLTAGE_STOPS, constant, expr, pal, slot, voltageLevels } from './palette.js';
 import * as f from './format.js';
+import { arrowIcon, stationIcon } from './icons.js';
 
 // Line width that grows with the zoom (exponentially, like the GridPlanner map).
 export function lw(base, mult = null, add = 0) {
@@ -24,17 +25,13 @@ const label = (text, size = 11) => ({
   'text-field': text, 'text-font': ['Noto Sans Regular'], 'text-size': size, 'text-optional': true,
 });
 const prettyCable = (t) => String(t || '').replace(/_(\d+)_(\d+)$/, ' $1×$2').replace(/_/g, ' ');
+// Station symbols: always drawn, never hidden by other symbols.
+const symbol = (image, size) => ({ 'icon-image': image, 'icon-size': size, 'icon-allow-overlap': true, 'icon-ignore-placement': true });
+
+// The ends of a feeder section.
+const sectionEnd = (e) => ({ station: 'station', cabinet: `cabinet ${e?.id}` }[e?.kind] || 'end of the feeder');
 
 // --------------------------------------------------------------------------------- schemes
-const STATUS_ENTRIES = () => [
-  ['converged', STATUS.good, 'Converged'], ['voltage_violation', STATUS.critical, 'Voltage violation'],
-  ['loading_violation', STATUS.serious, 'Overloaded'], ['not_converged', '#7a1414', 'Not converged'],
-  ['failed', '#7a1414', 'Failed'], ['done', STATUS.good, 'Done'],
-];
-const status = (prop) => ({ type: 'match', prop, entries: STATUS_ENTRIES(), fallback: [pal().ink.neutral, 'No result'] });
-// Thousands of fine stations would bury the few problems: converged ones stay neutral.
-const quietStatus = (prop) => ({ ...status(prop), entries: status(prop).entries.map(([v, c, l]) =>
-  (v === 'converged' ? [v, pal().ink.secondary, 'Converged (no violation)'] : [v, c, l])) });
 const buildingTypes = () => {
   const p = pal();
   return { type: 'match', prop: 'type', entries: [
@@ -99,15 +96,14 @@ export const STYLES = {
   },
   hv_substations: {
     layers: ({ id, p }) => [
-      { id, type: 'circle', paint: { 'circle-radius': radius(['case', ['get', 'used'], 8.5, 6.5]),
-        'circle-color': ['case', ['get', 'used'], p.ink.primary, p.surface],
-        'circle-stroke-color': ['case', ['get', 'used'], p.surface, p.ink.primary], 'circle-stroke-width': 2.4 } },
+      { id, type: 'symbol', layout: symbol(stationIcon('hvmv', ['case', ['get', 'used'], p.ink.primary, p.surface], p.surface),
+        ['interpolate', ['linear'], ['zoom'], 5, 0.45, 9, 0.7, 12, 0.9, 15, 1.1]) },
       { id: `${id}:label`, type: 'symbol', pick: false, minzoom: 10,
-        layout: { ...label(['coalesce', ['get', 'name'], ''], 11.5), 'text-offset': [0, 1.5], 'text-anchor': 'top' },
+        layout: { ...label(['coalesce', ['get', 'name'], ''], 11.5), 'text-offset': [0, 1.9], 'text-anchor': 'top' },
         paint: { 'text-color': p.ink.primary, 'text-halo-color': p.surface, 'text-halo-width': 1.8 } },
     ],
-    legend: () => [{ kind: 'circle', colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
-      { kind: 'circle', hollow: true, colour: pal().ink.primary, label: 'Candidate, not used' }],
+    legend: () => [{ kind: 'station', colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
+      { kind: 'station', colour: pal().surface, label: 'Candidate, not used' }],
     facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
       ['Transformers', o.transformers ? `${o.transformers} × ${f.num(o.mva / Math.max(o.transformers, 1), 0)} MVA` : '–'],
       ['Loading (n-0 / n-1)', `${f.pct(o.loading)} / ${f.pct(o.loading_n1)}`], ['Voltage tag', o.voltage || '–'],
@@ -126,7 +122,7 @@ export const STYLES = {
     modes: { ring: { label: 'Ring', scheme: () => slot('ring_slot') },
       kind: { label: 'Cable / overhead', scheme: () => ({ type: 'match', prop: 'kind', entries: [
         ['cable', pal().cat[0], 'Cable'], ['overhead', pal().cat[1], 'Overhead line (dashed)'],
-        ['mixed', pal().cat[2], 'Cable and overhead line']],
+        ['mixed', pal().cat[2], 'Cable and overhead line (overhead parts dashed)']],
         fallback: [pal().ink.neutral, 'Other'] }) },
       role: { label: 'Role', scheme: () => ({ type: 'match', prop: 'role', entries: [
         ['ring', pal().cat[0], 'Open ring'], ['stub', pal().cat[2], 'Stub (T-off)'], ['dedicated', pal().cat[1], 'Dedicated feeder'],
@@ -148,10 +144,17 @@ export const STYLES = {
           paint: { 'line-color': colour, 'line-width': w } },
         { id: `${id}:overhead`, type: 'line', filter: ['all', notTie, ['==', ['get', 'kind'], 'overhead']],
           paint: { 'line-color': colour, 'line-width': w, 'line-dasharray': [2.4, 1.2] } },
+        // the overhead parts of mixed lines: their solid line is cleared there and drawn dashed
+        { id: `${id}:mixed-clear`, type: 'line', source: `${id}:overhead`, pick: false, filter: notTie,
+          paint: { 'line-color': p.surface, 'line-width': w } },
+        { id: `${id}:mixed-overhead`, type: 'line', source: `${id}:overhead`, pick: false, filter: notTie,
+          paint: { 'line-color': colour, 'line-width': w, 'line-dasharray': [2.4, 1.2] } },
       ];
     },
+    overhead: true,
     extraLegend: (mode) => [
-      ...(mode !== 'kind' ? [{ kind: 'line', dash: true, colour: pal().ink.secondary, label: 'Overhead line (dashed)' }] : []),
+      ...(mode !== 'kind' ? [{ kind: 'line', colour: pal().ink.secondary, label: 'Cable' },
+        { kind: 'line', dash: true, colour: pal().ink.secondary, label: 'Overhead line, or the overhead part of a line (dashed)' }] : []),
       { kind: 'line', dot: true, colour: pal().ink.muted, label: 'Tie between supply areas (normally open)' }],
     facts: (o) => ({ title: `MV ${{ overhead: 'overhead line', mixed: 'cable and overhead line' }[o.kind] || 'cable'}`,
       subtitle: `${o.role}${o.open ? ' · normally open' : ''}`, rows: [
@@ -161,7 +164,11 @@ export const STYLES = {
       ['Ring / feeder', o.ring === null || o.ring === undefined ? '–' : `${o.ring} / ${o.feeder ?? '–'}`],
       ['Loading (load case)', f.pct(o.loading)], ['Loading (n-1)', f.pct(o.loading_n1)],
       ...(o.loading_feed_in !== null && o.loading_feed_in !== undefined ? [['Loading (feed-in)', f.pct(o.loading_feed_in)]] : []),
-      ['Supply area', o.area]] }),
+      ['Supply area', o.area],
+      // a clicked line stands for its ring (see main.js)
+      ...(o.ring_lines ? [['Ring with stubs', `${f.num(o.ring_lines)} lines · ${f.km(o.ring_km)} + ${f.km(o.stub_km)} stubs`],
+        ['Overhead in the ring', f.km(o.ring_overhead_km)], ['Stations on the ring', f.num(o.ring_stations)],
+        ['Max loading of the ring (n-1)', Number.isFinite(o.ring_max_n1) ? f.pct(o.ring_max_n1) : '–']] : [])] }),
   },
   mv_osm_lines: {
     layers: ({ id, p }) => [
@@ -182,22 +189,24 @@ export const STYLES = {
     facts: (o) => ({ title: 'Normally-open point', subtitle: `ring ${o.ring} · supply area ${o.area}`, rows: [['Opens at node', o.node]] }),
   },
   mv_stations: {
-    modes: { status: { label: 'LV power flow', scheme: () => quietStatus('status') }, ring: { label: 'MV ring', scheme: () => slot('ring_slot') },
+    modes: { plain: { label: 'Plain', scheme: () => constant(pal().ink.secondary, 'MV/LV substation') },
+      ring: { label: 'MV ring', scheme: () => slot('ring_slot') },
       kva: { label: 'Rated power', scheme: kvaRamp },
       origin: { label: 'Origin', scheme: () => ({ type: 'match', prop: 'origin', entries: [
         ['new', pal().cat[0], 'New (greenfield)'], ['osm', pal().cat[1], 'Existing (OSM)'], ['lod2', pal().cat[2], 'Existing (LoD2)']],
         fallback: [pal().ink.neutral, 'Other'] }) } },
+    legendKind: 'station',
     layers: ({ id, colour, p }) => [
-      { id, type: 'circle', paint: {
-        'circle-radius': ['interpolate', ['exponential', 1.4], ['zoom'], ...[[9, 0.3], [13, 0.65], [16, 1], [19, 1.7]].flatMap(([z, k]) =>
-          [z, ['*', k, ['interpolate', ['linear'], ['coalesce', ['get', 'kva'], 250], 100, 3.6, 400, 5.2, 630, 6.2, 1260, 8.5]]])],
-        'circle-color': colour, 'circle-stroke-color': p.surface, 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 15, 2] } },
+      // badge size grows with the zoom and a little with the rated power
+      { id, type: 'symbol', layout: symbol(stationIcon('mvlv', colour, p.surface),
+        ['interpolate', ['linear'], ['zoom'], ...[[10.2, 0.4], [12, 0.6], [14, 0.9], [16, 1.15], [19, 1.5]].flatMap(([z, k]) =>
+          [z, ['*', k, ['interpolate', ['linear'], ['coalesce', ['get', 'kva'], 250], 100, 0.85, 400, 0.95, 630, 1.05, 1260, 1.25]]])]) },
       { id: `${id}:label`, type: 'symbol', pick: false, minzoom: 15,
-        layout: { ...label(['concat', ['to-string', ['get', 'kva']], ' kVA'], 11), 'text-offset': [0, 1.3], 'text-anchor': 'top' },
+        layout: { ...label(['concat', ['to-string', ['get', 'kva']], ' kVA'], 11), 'text-offset': [0, 1.8], 'text-anchor': 'top' },
         paint: { 'text-color': p.ink.primary, 'text-halo-color': p.surface, 'text-halo-width': 1.6 } },
     ],
     facts: (o) => ({ title: `MV/LV substation of grid ${o.fid}`, subtitle: `PLZ ${o.plz} · cluster ${o.kcid}/${o.bcid}`, rows: [
-      ['Rated power', f.kva(o.kva)], ['LV power flow', statusText(o.status)],
+      ['Rated power', f.kva(o.kva)],
       ['Origin', { new: 'new (greenfield)', osm: 'existing (OSM)', lod2: 'existing (LoD2)' }[o.origin] || '–'],
       ...(o.area !== null && o.area !== undefined ? [['MV supply area / ring', `${o.area} / ${o.ring ?? '–'}`],
         ['MV voltage (load case)', f.pu(o.vm)], ['LV busbar voltage', f.pu(o.lv_vm)]] : [])] }),
@@ -205,7 +214,7 @@ export const STYLES = {
   mv_areas: {
     modes: { area: { label: 'Supply area', scheme: () => slot() },
       voltage: { label: 'Voltage', scheme: () => ({ type: 'match', prop: 'vn_kv', entries: [[10, pal().cat[1], '10 kV'], [20, pal().cat[0], '20 kV']],
-        fallback: [pal().ink.neutral, 'Other'] }) }, status: { label: 'Power flow', scheme: () => status('pf') } },
+        fallback: [pal().ink.neutral, 'Other'] }) } },
     layers: ({ id, colour, p }) => [
       { id, type: 'fill', paint: { 'fill-color': colour,
         'fill-opacity': zoomed([[8, 0.13], [11, 0.07], [14, 0.025]], (v) => hover(0.2, v)) } },
@@ -218,7 +227,7 @@ export const STYLES = {
     facts: (o) => ({ title: `Supply area ${o.fid}`, subtitle: o.substation || 'HV/MV substation', rows: [
       ['Voltage', f.kv(o.vn_kv)], ['MV/LV stations', f.num(o.stations)], ['MV customers', f.num(o.customers)],
       ['Rings', f.num(o.rings)], ['Peak load', f.mw(o.peak_mw)], ['Max loading', f.pct(o.max_loading)],
-      ['Max voltage drop', f.pct(o.max_drop, 2)], ['Power flow', statusText(o.pf)], ['Complete', o.complete ? 'yes' : 'no (border)']] }),
+      ['Max voltage drop', f.pct(o.max_drop, 2)], ['Complete', o.complete ? 'yes' : 'no (border)']] }),
   },
   mv_customers: {
     layers: ({ id, p }) => [
@@ -230,7 +239,7 @@ export const STYLES = {
       ['Peak load', f.kw(o.peak_kw)], ['Households', f.num(o.households)]] }),
   },
   lv_areas: {
-    modes: { grid: { label: 'Grid', scheme: () => slot() }, status: { label: 'Power flow', scheme: () => status('status') },
+    modes: { grid: { label: 'Grid', scheme: () => slot() },
       kva: { label: 'Station size', scheme: kvaRamp } },
     layers: ({ id, colour }) => [
       { id, type: 'fill', paint: { 'fill-color': colour,
@@ -239,12 +248,12 @@ export const STYLES = {
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0.5, 15, 0.9] } },
     ],
     facts: (o) => ({ title: `LV grid ${o.fid}`, subtitle: `PLZ ${o.plz} · cluster ${o.kcid}/${o.bcid}`, rows: [
-      ['Station', f.kva(o.kva)], ['Buildings', f.num(o.buildings)], ['Power flow', statusText(o.status)]] }),
+      ['Station', f.kva(o.kva)], ['Buildings', f.num(o.buildings)]] }),
   },
   lv_cables: {
-    modes: { type: { label: 'Cable type', scheme: () => ({ type: 'ramp', prop: 'mm2', label: 'Cross-section', unit: 'mm²',
-      stops: [[50, pal().slate[0]], [95, pal().slate[1]], [150, pal().slate[2]], [185, pal().slate[3]], [240, pal().slate[4]], [300, pal().slate[5]]] }) },
-    feeder: { label: 'Feeder', scheme: feeders }, grid: { label: 'Grid', scheme: () => slot() },
+    modes: { grid: { label: 'Grid', scheme: () => slot() }, feeder: { label: 'Feeder', scheme: feeders },
+      type: { label: 'Cable type', scheme: () => ({ type: 'ramp', prop: 'mm2', label: 'Cross-section', unit: 'mm²',
+        stops: [[50, pal().slate[0]], [95, pal().slate[1]], [150, pal().slate[2]], [185, pal().slate[3]], [240, pal().slate[4]], [300, pal().slate[5]]] }) },
     role: { label: 'Feeder / service', scheme: () => ({ type: 'match', prop: 'role', entries: [
       ['feeder', pal().cat[0], 'Feeder cable'], ['service', pal().cat[1], 'Service cable']], fallback: [pal().ink.neutral, 'Other'] }) } },
     layers: ({ id, colour, mode, p }) => [
@@ -256,9 +265,20 @@ export const STYLES = {
         paint: { 'line-color': p.surface, 'line-width': lw(2.6, parallelWidth, 2.4), 'line-opacity': 0.9 } },
       { id, type: 'line', filter: ['!=', ['get', 'role'], 'service'], layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': colour, 'line-width': lw(2.6, parallelWidth) } },
+      // the arrow at the end of the cable that supplies a cabinet, tip at the cabinet's rim
+      { id: `${id}:arrow`, type: 'symbol', source: `${id}:arrows`, pick: false, minzoom: 15,
+        layout: { ...symbol(arrowIcon(colour, p.surface), ['interpolate', ['linear'], ['zoom'], 15, 1.1, 18, 1.6]),
+          'icon-anchor': 'top', 'icon-offset': [0, 5], 'icon-rotate': ['get', 'bearing'],
+          'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map' } },
     ],
-    extraLegend: (mode) => (mode === 'type' ? [{ kind: 'line', colour: pal().ink.muted, label: 'Service cable', thin: true }] : []),
-    facts: (o) => ({ title: prettyCable(o.std_type), subtitle: o.role === 'service' ? 'Service cable' : 'Feeder cable', rows: [
+    arrows: true,
+    extraLegend: (mode) => [...(mode === 'type' ? [{ kind: 'line', colour: pal().ink.muted, label: 'Service cable', thin: true }] : []),
+      { kind: 'note', label: 'Arrow: the cable that supplies a cabinet' }],
+    // a clicked feeder cable stands for its section (from a split point to the next), see main.js
+    facts: (o) => (o.section_cables ? { title: 'Feeder section', subtitle: `${sectionEnd(o.from)} → ${sectionEnd(o.to)}`, rows: [
+      ['Length', f.meters(o.section_m)], ['Cables', o.types.map(([t, m]) => `${prettyCable(t)} (${f.meters(m)})`).join(', ')],
+      ['House connections', f.num(o.connections)], ['Feeder', o.feeder ? `#${o.feeder}` : '–'], ['Grid', o.grid]] }
+      : { title: prettyCable(o.std_type), subtitle: o.role === 'service' ? 'Service cable' : 'Feeder cable', rows: [
       ['Length', f.meters(o.length_m)], ['Parallel', o.parallel > 1 ? `${o.parallel}×` : '1'],
       ['Feeder', o.feeder ? `#${o.feeder}` : '–'], ['Grid', o.grid]] }),
   },
@@ -310,11 +330,6 @@ export const STYLES = {
 
 function theme3(p, light, dark) {
   return p.surface === '#ffffff' ? light : dark;
-}
-
-export function statusText(s) {
-  return { converged: 'converged', voltage_violation: 'voltage violation', loading_violation: 'overloaded',
-    not_converged: 'not converged', failed: 'failed', done: 'done' }[s] || (s || '–');
 }
 
 /** The scheme of a layer in `mode` (or null for layers with fixed colours). */

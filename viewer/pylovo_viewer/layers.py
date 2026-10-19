@@ -1,7 +1,8 @@
 """The map layers: what each one shows, where its data comes from and how it is filtered.
 
-Layers are grouped by voltage level, plus regions and generation. A substation belongs to the level
-of its higher voltage: HV/MV substations to the HV grid, MV/LV substations to the MV grids. Every
+Layers are grouped by voltage level, plus regions and generation. A substation belongs to both of
+its levels: HV/MV substations to the HV and the MV grids, MV/LV substations to the MV and the LV
+grids. It stays one layer, listed in both, so it looks the same whichever level shows it. Every
 layer is one :class:`Layer` with a SELECT that returns ``fid``, ``geometry`` (GeoJSON text in
 EPSG:4326) and the few properties the map styles and tooltips need; the full row of a clicked
 feature comes from its ``detail`` query. A layer whose tables are missing in the connected database
@@ -39,8 +40,8 @@ from pylovo_viewer.topology import colour_slots, feeders
 GROUPS = {
     "regions": ("Regions", "Postcode areas of the version", True),
     "hv": ("HV grid", "110-380 kV lines (eTraGo) and the HV/MV substations", True),
-    "mv": ("MV grids", "MV lines, MV/LV substations and supply areas of the MV run", True),
-    "lv": ("LV grids", "Grid areas; cables and buildings when zoomed in", True),
+    "mv": ("MV grids", "MV lines, substations and supply areas of the MV run", True),
+    "lv": ("LV grids", "Grid areas and MV/LV substations; cables and buildings when zoomed in", True),
     "generation": ("Generation", "Generating units and storage of the Marktstammdatenregister", False),
 }
 DROP = {"geom", "centroid", "footprint", "geometry", "geo", "net", "grid"}   # never sent as attributes
@@ -125,6 +126,7 @@ class Layer:
     requires: tuple[str, ...] = ()    # "schema.table" or "schema.table(col, col)"
     rows: tuple[str, ...] = ()        # tables that must hold rows
     parent: str | None = None         # shown and hidden with this layer
+    also: tuple[str, ...] = ()        # further groups that list the layer (substations: both levels)
     with_run: bool = False            # a version layer that adds data of the MV run when one is given
     default: bool = True
     min_zoom: float = 0.0
@@ -173,7 +175,7 @@ def build_layers() -> list[Layer]:
                              {geo("s.geom")} AS geometry
                       FROM pylovo.mv_substation s WHERE {run('s')}""",
               detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
-              requires=("pylovo.mv_substation", "pylovo.mv_grid"), rows=("pylovo.mv_variant",)),
+              requires=("pylovo.mv_substation", "pylovo.mv_grid"), rows=("pylovo.mv_variant",), also=("mv",)),
         Layer("hv_sites", "hv", "Substation sites", "Site outlines of the HV/MV substations.",
               "polygon", "run", "pylovo.mv_substation",
               sql=f"""SELECT s.substation_id AS fid, s.name, s.source, {geo("s.footprint")} AS geometry
@@ -195,7 +197,7 @@ def build_layers() -> list[Layer]:
                              {geo("ST_Simplify(l.geom, 1)")} AS geometry
                       FROM pylovo.mv_line l WHERE {run('l')}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
-              requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots")),
+              requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts")),
         Layer("mv_osm_lines", "mv", "OSM MV lines",
               "The MV overhead lines mapped in OpenStreetMap, as corridors in the routing graph of the run "
               "(MV_OVERHEAD_LINES osm): an MV line is an overhead line where it runs on them, else a cable.",
@@ -227,11 +229,10 @@ def build_layers() -> list[Layer]:
               requires=("pylovo.mv_line", "pylovo.mv_node"), rows=("pylovo.mv_variant",),
               parent="mv_lines", min_zoom=11),
         Layer("mv_stations", "mv", "MV/LV substations",
-              "The transformer station of every LV grid: size, power-flow result of its LV grid and, with an "
-              "MV run, its MV ring and voltage.",
+              "The transformer station of every LV grid: size, origin and, with an MV run, its MV ring and voltage. "
+              "Shown from zoom 10.2 (a scale bar of about 3 km).",
               "point", "version", "pylovo.grid_result + transformer_positions (+ mv_node)",
               sql=f"""SELECT g.grid_result_id AS fid, g.kcid, g.bcid, g.plz, g.transformer_rated_power AS kva,
-                             g.power_flow_status AS status,
                              CASE WHEN tp.lod2 THEN 'lod2' WHEN tp.osm THEN 'osm' ELSE 'new' END AS origin
                              {{mv_cols}}, {geo("tp.geom")} AS geometry
                       FROM pylovo.grid_result g
@@ -239,13 +240,12 @@ def build_layers() -> list[Layer]:
                       {{mv_join}}
                       WHERE g.version_id = %(version)s""",
               detail="grid", requires=("pylovo.grid_result", "pylovo.transformer_positions"),
-              with_run=True, post=("ring_slots",)),
+              with_run=True, post=("ring_slots",), also=("lv",), min_zoom=10.2),
         Layer("mv_areas", "mv", "Supply areas",
-              "Area supplied by each HV/MV substation (MV grid district), with its voltage and status. Areas cut "
+              "Area supplied by each HV/MV substation (MV grid district), with its voltage. Areas cut "
               "by the border of the planning region have a dashed outline.",
               "polygon", "run", "pylovo.mv_grid",
-              sql=f"""SELECT g.mv_grid_id AS fid, g.substation_id, s.name AS substation, g.vn_kv, g.status,
-                             g.power_flow_status AS pf, g.complete, g.n_stations AS stations,
+              sql=f"""SELECT g.mv_grid_id AS fid, g.substation_id, s.name AS substation, g.vn_kv, g.complete, g.n_stations AS stations,
                              g.n_customers AS customers, g.n_rings AS rings, {num("g.area_km2", 1)} AS area_km2,
                              {num("g.peak_load_mw", 2)} AS peak_mw, {num("g.max_line_loading_percent", 1)} AS max_loading,
                              {num("g.max_voltage_drop_percent", 2)} AS max_drop,
@@ -269,7 +269,7 @@ def build_layers() -> list[Layer]:
               "Area of each LV grid (convex hull of its buildings), coloured so that neighbours differ.",
               "polygon", "version", "pylovo.grid_result + buildings_result",
               sql=f"""SELECT g.grid_result_id AS fid, g.kcid, g.bcid, g.plz, g.transformer_rated_power AS kva,
-                             g.power_flow_status AS status, count(*) AS buildings,
+                             count(*) AS buildings,
                              {geo("ST_SimplifyPreserveTopology(ST_Buffer(ST_ConvexHull(ST_Collect(b.centroid)), 8, 2), 2)")}
                                AS geometry
                       FROM pylovo.grid_result g JOIN pylovo.buildings_result b ON b.grid_result_id = g.grid_result_id
@@ -277,12 +277,12 @@ def build_layers() -> list[Layer]:
               detail="grid", requires=("pylovo.grid_result", "pylovo.buildings_result"), post=("grid_slots",)),
         Layer("lv_cables", "lv", "Cables",
               "LV feeder cables along the streets and service cables to the buildings, with the cable cabinets. "
-              "Shown when zoomed in.",
+              "An arrow marks the cable that supplies each cabinet. Shown when zoomed in.",
               "line", "view", "pylovo.lines_result_cache",
               sql=f"""SELECT c.id AS fid, c.grid_result_id AS grid, c.std_type, COALESCE(c.parallel, 1) AS parallel,
                              {num("c.length_km * 1000", 1)} AS length_m,
                              CASE WHEN c.feeder_section_id IS NULL THEN 'service' ELSE 'feeder' END AS role,
-                             NULLIF(substring(c.std_type from '([0-9]+)$'), '')::int AS mm2,
+                             NULLIF(substring(c.std_type from '([0-9]+)$'), '')::int AS mm2, c.to_bus,
                              {geo("c.geom")} AS geometry
                       FROM pylovo.lines_result_cache c WHERE c.version_id = %(version)s AND c.geom && {in_view}""",
               detail="""SELECT c.*, l.pp_index, l.max_i_ka, l.r_ohm_per_km, l.x_ohm_per_km, l.feeder_sizing_basis,
@@ -292,8 +292,8 @@ def build_layers() -> list[Layer]:
                         LEFT JOIN pylovo.pandapower_line l ON l.grid_result_id = c.grid_result_id
                          AND c.line_name = regexp_replace(l.name, '^Line to ', 'L')
                         WHERE c.id = %(fid)s""",
-              requires=("pylovo.lines_result_cache(feeder_section_id, version_id)", "pylovo.pandapower_line"),
-              min_zoom=13, post=("grid_slots", "cable_feeders")),
+              requires=("pylovo.lines_result_cache(feeder_section_id, version_id, to_bus)", "pylovo.pandapower_line"),
+              min_zoom=13, post=("grid_slots", "cable_feeders", "cabinet_cables")),
         Layer("lv_cabinets", "lv", "Cable cabinets",
               "Cable distribution cabinets where feeders split, with the number of outgoing cables.",
               "point", "view", "pylovo.split_points",
@@ -410,7 +410,7 @@ class LayerService:
         out = []
         for layer in self.layers.values():
             reason = self.unavailable(layer)
-            out.append({"id": layer.id, "group": layer.group, "title": layer.title, "description": layer.description,
+            out.append({"id": layer.id, "groups": [layer.group, *layer.also], "title": layer.title, "description": layer.description,
                         "geometry": layer.geometry, "scope": layer.scope, "source": layer.source,
                         "parent": layer.parent, "with_run": layer.with_run, "default": layer.default,
                         "min_zoom": layer.min_zoom,
@@ -563,12 +563,89 @@ class LayerService:
         for row in rows:
             row["feeder"] = maps.get(row["grid"], ({}, {}))[0].get(row["fid"])
 
+    def _cabinet_cables(self, rows: list[dict[str, Any]], q: Query) -> None:
+        """Mark the cable that supplies a cable cabinet: cables run away from the station, so it ends there."""
+        ends = [(row.get("grid"), row.pop("to_bus", None)) for row in rows]
+        grids = sorted({grid for grid, _ in ends if grid is not None})
+        if not grids or not self.catalog.has("pylovo.split_points", "grid_result_id", "split_bus"):
+            return
+        cabinets = {(r["g"], r["b"]) for r in self.db.query(
+            "SELECT grid_result_id AS g, split_bus AS b FROM pylovo.split_points WHERE grid_result_id = ANY(%s)",
+            (grids,))}
+        for row, end in zip(rows, ends):
+            if end in cabinets:
+                row["to_cabinet"] = True
+
+    def section(self, cable: int) -> dict[str, Any]:
+        """The feeder section of a cable: its cables from a split point (or the station) to the next split point
+        (or the end of the feeder), with geometry, length, cable types and house connections."""
+        rows = self.db.query(f"""SELECT c.grid_result_id AS grid, c.feeder_section_id AS section, c.std_type, c.length_km,
+                                         c.from_bus, c.to_bus, {geo("c.geom")} AS geometry
+                                  FROM pylovo.lines_result_cache me JOIN pylovo.lines_result_cache c
+                                    ON c.grid_result_id = me.grid_result_id AND c.feeder_section_id = me.feeder_section_id
+                                  WHERE me.id = %s""", (cable,))
+        if not rows:
+            raise LookupError(f"cable {cable} belongs to no feeder section")
+        grid = rows[0]["grid"]
+        starts = {r["from_bus"] for r in rows} - {r["to_bus"] for r in rows}
+        ends = {r["to_bus"] for r in rows} - {r["from_bus"] for r in rows}
+        station = self.db.one("SELECT ont_vertice_id FROM pylovo.grid_result WHERE grid_result_id = %s", (grid,))
+        cabinets = {r["bus"]: r["id"] for r in self.db.query(
+            """SELECT split_bus AS bus, split_point_id AS id FROM pylovo.split_points
+               WHERE grid_result_id = %s AND split_bus = ANY(%s)""", (grid, sorted(starts | ends)))} \
+            if self.catalog.has("pylovo.split_points", "split_bus") else {}
+        # house connections start on the section's buses; those at its start belong to the section upstream
+        connections = self.db.one("""SELECT count(*) AS n FROM pylovo.lines_result_cache
+                                     WHERE grid_result_id = %s AND feeder_section_id IS NULL AND from_bus = ANY(%s)""",
+                                  (grid, sorted({r["to_bus"] for r in rows})))
+
+        def end(buses: set[int]) -> dict[str, Any]:
+            bus = next(iter(buses), None)
+            if station and bus == station["ont_vertice_id"]:
+                return {"kind": "station", "id": grid}
+            return {"kind": "cabinet", "id": cabinets[bus]} if bus in cabinets else {"kind": "end", "id": None}
+
+        types: dict[str, float] = {}
+        for r in rows:
+            types[r["std_type"]] = types.get(r["std_type"], 0.0) + 1000 * float(r["length_km"] or 0)
+        return {"grid": grid, "section": rows[0]["section"], "feeder": self.feeder_maps({grid})[grid][0].get(cable),
+                "section_cables": len(rows), "section_m": round(sum(types.values()), 1),
+                "types": sorted(([t, round(m, 1)] for t, m in types.items()), key=lambda x: -x[1]),
+                "from": end(starts), "to": end(ends), "connections": connections["n"] if connections else 0,
+                "geometry": {"type": "MultiLineString",
+                             "coordinates": [json.loads(r["geometry"])["coordinates"] for r in rows if r["geometry"]]}}
+
+    def _overhead_parts(self, rows: list[dict[str, Any]], q: Query) -> None:
+        """Overhead parts of mixed MV lines (``overhead``, MultiLineString coordinates): where they run on the OSM
+        MV lines of the run's routing graph."""
+        mixed = [row for row in rows if row.get("kind") == "mixed"]
+        if not mixed or not self.catalog.has("pylovo.mv_graph_edge", "graph_id", "klasse") \
+                or not self.catalog.has("pylovo.mv_variant", "graph_id"):
+            return
+        parts = {r["id"]: r["geometry"] for r in self.db.query(OVERHEAD_PARTS, q.params())}
+        for row in mixed:
+            if parts.get(row["fid"]):
+                row["overhead"] = json.loads(parts[row["fid"]])["coordinates"]
+
     def _building_feeders(self, rows: list[dict[str, Any]], q: Query) -> None:
         maps = self.feeder_maps({row["grid"] for row in rows if row.get("grid") is not None})
         for row in rows:
             vertex = row.pop("vertice_id", None)
             row["feeder"] = maps.get(row["grid"], ({}, {}))[1].get(vertex)
 
+
+# A mixed MV line is overhead where it runs on an OSM MV line of the routing graph (1 m apart at most,
+# pieces of 5 m or less, such as crossings, left out).
+OVERHEAD_PARTS = f"""
+SELECT l.mv_line_id AS id,
+       (SELECT {geo("ST_Multi(ST_Collect(d.geom))")} FROM ST_Dump(ST_LineMerge(ST_CollectionExtract(
+                 ST_Intersection(l.geom, c.g), 2))) d WHERE ST_Length(d.geom) > 5) AS geometry
+FROM pylovo.mv_line l
+CROSS JOIN LATERAL (SELECT ST_Union(ST_Buffer(e.geom, 1, 'quad_segs=1')) AS g FROM pylovo.mv_graph_edge e
+                    WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
+                                        WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
+                      AND e.klasse = 'osm_mv_line' AND e.geom && ST_Expand(l.geom, 5)) c
+WHERE {run('l')} AND l.kind = 'mixed'"""
 
 GRID_DETAIL = f"""
 SELECT {{grid_columns}}, tp.osm_id AS station_osm_id, tp.comment AS station_comment, tp.osm AS station_from_osm,

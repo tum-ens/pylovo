@@ -162,6 +162,10 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
             raise LookupError(f"no layer {layer_id}")
         return send_json(request, service.feature(layer_id, fid, query(version, mv)))
 
+    @app.get("/api/section/{cable}")
+    def section(request: Request, cable: int) -> Response:
+        return send_json(request, service.section(cable))
+
     @app.get("/api/summary")
     def key_figures(request: Request, version: str, mv: str | None = None, plz: int | None = None,
                     area: int | None = None, grid: int | None = None) -> Response:
