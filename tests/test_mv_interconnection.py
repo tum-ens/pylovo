@@ -149,7 +149,7 @@ def test_links_join_rings_of_one_district_one_per_member_two_per_ring_pair():
     assert (links["from_grid"] == links["to_grid"]).all() and links["flags"].map(len).eq(0).all()
     # 21 is free but ring 0 and ring 1 already have two links; node 41 is in another district (a tie, not a link)
     assert 21 not in set(links["to_node"]) | set(links["from_node"]) and 41 not in set(links["to_node"])
-    short = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_max_length_m=100.0, link_max_length_rural_m=100.0))
+    short = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_max_length_m=100.0))
     assert pairs_of(short) == [(11, 31)]
     summary = ic.link_summary(links, grids, PARAMS)
     assert summary["n_links"] == 3 and summary["link_km"] == pytest.approx(0.37)
@@ -159,17 +159,6 @@ def test_links_join_rings_of_one_district_one_per_member_two_per_ring_pair():
     json.dumps(summary)
     assert "3 normally-open links between rings" in ic.describe_links(summary)
     assert ic.plan_links(nodes_frame(node(11, 1, 0, 1000.0), node(12, 1, 0, 1100.0)), grids, LINE, PARAMS).empty
-
-
-def test_rural_members_may_take_longer_links():
-    grids = grids_frame((1, 20.0))
-    rows = nodes_frame(node(11, 1, 0, 1000.0), node(21, 1, 1, 1800.0),                 # rural, 800 m apart
-                       node(12, 1, 0, 3000.0, area="urban"), node(22, 1, 1, 3800.0))   # one end urban
-    assert ic.plan_links(rows, grids, LINE, PARAMS).empty                              # 500 m everywhere
-    longer = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_max_length_rural_m=1000.0))
-    assert pairs_of(longer) == [(11, 21)]                                              # the urban pair stays at 500 m
-    both = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_max_length_m=1000.0))
-    assert pairs_of(both) == [(12, 22)]                                                # 500 m rural, 1 km urban
 
 
 def test_no_ties_within_a_district_or_between_voltages():

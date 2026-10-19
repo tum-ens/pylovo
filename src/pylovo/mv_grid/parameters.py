@@ -137,7 +137,6 @@ class MvParameters:
     generator_max_tee_m: float = _y("generator_max_tee_m")
     tie_max_length_m: float = _y("tie_max_length_m")
     link_max_length_m: float = _y("link_max_length_m")
-    link_max_length_rural_m: float = _y("link_max_length_rural_m")
     local_search_rounds: int = _y("local_search_rounds")
     neighbours: int = _y("neighbours")
     ls_time_guard_s: float = _y("ls_time_guard_s")

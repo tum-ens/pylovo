@@ -642,8 +642,7 @@ adds normally-open links after the ties:
 
 #. The candidates are the same ring members as for the ties.
 #. Pairs of candidates of different rings of the same supply area within ``link_max_length_m``
-   (500 m; ``link_max_length_rural_m`` between two rural members) along the streets, in true
-   length, are taken in the order of their length.
+   (500 m) along the streets, in true length, are taken in the order of their length.
 #. Each candidate takes at most one link, as a station with a third cable bay. Two rings take at
    most two links, so that two links close a short loop between them.
 
