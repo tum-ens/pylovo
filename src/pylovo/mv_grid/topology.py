@@ -30,8 +30,10 @@ length.
    ``cable``, ``overhead`` or ``mixed`` (length-weighted r and x, the smaller ampacity).
 
 The plan is always built from its *decisions* (ring orders, stubs, T-offs, feeders), so the repair functions
-(:func:`move_nop`, :func:`split_ring`, :func:`convert_to_dedicated`, :func:`add_parallel`) change a decision and
-rebuild the joints and geometries from it. They return a new plan and never change the plan they are given.
+(:func:`move_nop`, :func:`split_ring`, :func:`convert_to_dedicated`, :func:`add_parallel`, :func:`upgrade_lines`)
+change a decision and rebuild the joints and geometries from it. They return a new plan and never change the plan
+they are given. A rebuilt plan keeps the parallel cables and the upgraded conductors of the old plan on the same
+street pieces.
 
 Paths, stub and T-off searches use SciPy's Dijkstra on ``RunGraph.csr`` directly (searches limited to the stub or
 T-off length), keyed by the local vertices of the run graph. The module is pure: no database, configuration or
@@ -51,6 +53,7 @@ from scipy.sparse.csgraph import dijkstra
 from shapely.geometry import LineString
 from shapely.ops import substring
 
+from pylovo.mv_grid import equipment
 from pylovo.mv_grid.graph import terminal_lengths, terminal_overhead
 from pylovo.mv_grid.model import (
     MEMBER_KINDS,
@@ -388,6 +391,45 @@ def add_parallel(plan: TopologyPlan, line_keys: Sequence[int], max_parallel: int
     return dataclasses.replace(plan, lines=lines), changed
 
 
+def upgrade_lines(plan: TopologyPlan, line_keys: Sequence[int], vn_kv: float,
+                  needed_ka: dict[int, float] | None = None) -> tuple[TopologyPlan, list[int]]:
+    """Give each of ``line_keys`` the next larger conductor of its kind, as Ding0's reinforcement does; with
+    ``needed_ka[key]`` the smallest conductor that carries that current (one circuit). A mixed line upgrades both of
+    its parts. Lines that already have the largest conductors keep them.
+
+    The ring checks stored in the plan are not recomputed (pandapower verifies the repaired plan).
+
+    Returns:
+        The new plan and the keys of the lines that got a larger conductor (in the order given).
+    """
+    lines = list(plan.lines)
+    position = {line.key: i for i, line in enumerate(lines)}
+    changed = []
+    for key in (int(k) for k in line_keys):
+        i = position.get(key)
+        if i is None or key in changed:
+            continue
+        need = None if needed_ka is None else needed_ka.get(key)
+        parts = [part.strip() for part in (lines[i].std_type or "").split(" + ")]
+        larger = [_upgraded(part, vn_kv, need) for part in parts]
+        if any(name is not None for name in larger):
+            name = " + ".join(new or old for new, old in zip(larger, parts))
+            lines[i] = dataclasses.replace(lines[i], std_type=name)
+            changed.append(key)
+    if not changed:
+        return plan, []
+    return dataclasses.replace(plan, lines=lines), changed
+
+
+def _upgraded(name: str, vn_kv: float, need: float | None) -> str | None:
+    """The larger conductor of :func:`pylovo.mv_grid.equipment.upgraded_line_type`; None for a type that pandapower
+    does not know."""
+    try:
+        return equipment.upgraded_line_type(name, vn_kv, need) if name else None
+    except ValueError:
+        return None
+
+
 # ============================================================================================ helpers: tables, context
 def _numbers(frame: pd.DataFrame, columns: Sequence[str]) -> np.ndarray:
     return frame[list(columns)].apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy(dtype=float)
@@ -672,6 +714,7 @@ class _Line:
     open_at: int | None = None
     exit: str | None = None
     searchable: bool = True                # stubs and T-offs may attach to it
+    std_type: str | None = None            # an upgraded conductor (None: the district's type of the kind)
 
 
 @dataclass
@@ -1419,6 +1462,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
     pieces = {i: _route_pieces(ctx, line.route) for i, line in enumerate(net.lines)}
     if old is not None:
         _keep_parallels(ctx, net, pieces, old)
+        _keep_types(ctx, net, pieces, old)
     geoms = _edge_geometries(ctx, pieces)
 
     lines_out: list[LinePlan] = []
@@ -1443,7 +1487,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
             cable_m=length - overhead_m, overhead_m=overhead_m,
             straight_m=float(np.hypot(*(p1 - p0))), bridge_m=_bridge_m(ctx, line.route),
             geometry=_geometry(ctx, line.route, pieces[i], geoms, p0, p1),
-            std_type=ctx.std_type(line.kind), parallel=int(line.parallel),
+            std_type=line.std_type or ctx.std_type(line.kind), parallel=int(line.parallel),
             normally_open=bool(line.normally_open), open_at_key=None if line.open_at is None else int(line.open_at),
             exit=line.exit, pieces=tuple(int(x) for x in pieces[i])))
 
@@ -1585,6 +1629,33 @@ def _keep_parallels(ctx: _Ctx, net: _Network, pieces: dict[int, list[int]], old:
         keep = [by_piece.get((line.role, piece), 1) for piece in pieces[i] if piece >= 0]
         keep.append(by_ends.get((line.role, frozenset(k for k in (line.a, line.b) if k > 0)), 1))
         line.parallel = max(line.parallel, *keep)
+
+
+def _keep_types(ctx: _Ctx, net: _Network, pieces: dict[int, list[int]], old: TopologyPlan) -> None:
+    """Keep the upgraded conductors of the old plan on lines of the same role and kind that use the same street
+    pieces (or join the same nodes); of several, the largest."""
+    by_piece: dict[tuple[str, str, int], str] = {}
+    by_ends: dict[tuple[str, str, frozenset], str] = {}
+
+    def larger(current: str | None, name: str) -> str:
+        return name if current is None or equipment.type_rank(name) > equipment.type_rank(current) else current
+
+    for line in old.lines:
+        if not line.std_type or line.std_type == ctx.std_type(line.kind):
+            continue
+        for piece in line.pieces:
+            key = (line.role, line.kind, piece)
+            by_piece[key] = larger(by_piece.get(key), line.std_type)
+        ends = (line.role, line.kind, frozenset(k for k in (line.from_key, line.to_key) if k > 0))
+        by_ends[ends] = larger(by_ends.get(ends), line.std_type)
+    if not by_piece and not by_ends:
+        return
+    for i, line in enumerate(net.lines):
+        found = [by_piece.get((line.role, line.kind, piece)) for piece in pieces[i] if piece >= 0]
+        found.append(by_ends.get((line.role, line.kind, frozenset(k for k in (line.a, line.b) if k > 0))))
+        for name in found:
+            if name is not None:
+                line.std_type = larger(line.std_type, name)
 
 
 def _edge_geometries(ctx: _Ctx, pieces: dict[int, list[int]]) -> dict[int, Any]:

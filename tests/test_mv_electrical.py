@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import importlib
 import json
 import math
 
@@ -475,6 +476,10 @@ class FakeTopology:
         roles[node_key] = "dedicated"
         return dataclasses.replace(plan, node_role=roles)
 
+    def upgrade_lines(self, plan, line_keys, vn_kv, needed_ka=None):
+        self.calls.append(("upgrade_lines", tuple(line_keys)))
+        return importlib.import_module("pylovo.mv_grid.topology").upgrade_lines(plan, line_keys, vn_kv, needed_ka)
+
     def add_parallel(self, plan, line_keys, max_parallel):
         self.calls.append(("add_parallel", tuple(line_keys)))
         lines, changed = [], []
@@ -536,6 +541,94 @@ def test_repair_voltage_ladder_moves_the_nop_then_splits_then_adds_parallel(fake
     assert actions == [] and plan.diagnostics["repair_reports"][0]["action"] == "unresolved_voltage"
     assert plan.diagnostics["repair_round"] == 4
     assert [c[0] for c in fake.calls] == ["move_nop", "split_ring", "add_parallel"]
+
+
+def _types_of(plan, keys):
+    by_key = {line.key: line.std_type for line in plan.lines}
+    return [by_key[k] for k in keys]
+
+
+def test_path_lines_follow_the_switching_state_of_the_case():
+    b = Builder()
+    r = b.ring(6, set_exits=True)
+    inp, plan = b.build()
+    m = plan.rings[0].members
+    keys = {frozenset((ln.from_key, ln.to_key)): ln.key for ln in plan.lines}
+    a_half = [keys[frozenset(p)] for p in [(BUSBAR, m[0]), (m[0], m[1]), (m[1], m[2])]]
+    assert electrical.path_lines(plan, BUSBAR, m[2], "load") == a_half
+    # exit A out: m[2] is fed around the ring from exit B through the closed open point
+    around = electrical.path_lines(plan, BUSBAR, m[2], "n1a")
+    assert around[0] == keys[frozenset((BUSBAR, m[5]))] and len(around) == 4
+    assert electrical.path_lines(plan, BUSBAR, 999, "load") == []
+
+
+def test_repair_upgrades_an_overloaded_overhead_section_before_splitting(fake_topology):
+    fake = fake_topology()
+    b = Builder()
+    r = b.ring(6, kind="overhead", set_exits=True)
+    inp, plan = b.build()
+    exit_key = next(line.key for line in plan.lines if line.exit == "a")
+    load = _violation("load", "loading", "line", exit_key, r, 70.0, 60.0)
+    plan, actions = electrical.repair(inp, None, None, None, plan, [load])
+    # 410 A x 70/60 = 478 A: the smallest overhead line that carries it is 184-AL1 (535 A)
+    assert [a["action"] for a in actions] == ["upgrade"] and actions[0]["line_keys"] == [exit_key]
+    assert actions[0]["std_types"] == ["184-AL1/30-ST1A 20.0"] and actions[0]["reason"] == "loading"
+    plan, actions = electrical.repair(inp, None, None, None, plan, [load])
+    assert _types_of(plan, [exit_key]) == ["243-AL1/39-ST1A 20.0"]
+    plan, actions = electrical.repair(inp, None, None, None, plan, [load])    # the largest: split the ring
+    assert [a["action"] for a in actions] == ["split_ring"]
+    assert [c[0] for c in fake.calls] == ["upgrade_lines", "upgrade_lines", "split_ring"]
+
+
+def test_repair_voltage_ladder_upgrades_the_path_before_splitting(fake_topology):
+    fake = fake_topology(moved=True)
+    b = Builder()
+    r = b.ring(6, kind="overhead", set_exits=True)
+    inp, plan = b.build()
+    target = plan.rings[0].members[2]
+    path = electrical.path_lines(plan, BUSBAR, target, "load")
+    low = _violation("load", "voltage_low", "bus", target, r, 0.96, 0.97)
+    names = []
+    for _ in range(4):
+        plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+        names.append([a["action"] for a in actions])
+        if actions and actions[0]["action"] == "upgrade":
+            assert actions[0]["line_keys"] == path and actions[0]["reason"] == "voltage"
+    assert names == [["move_nop"], ["upgrade"], ["upgrade"], ["upgrade"]]
+    assert set(_types_of(plan, path)) == {"243-AL1/39-ST1A 20.0"}
+    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    assert [a["action"] for a in actions] == ["split_ring"]
+
+
+def test_repair_upgrades_the_path_at_once_when_the_nop_cannot_move(fake_topology):
+    fake = fake_topology(moved=False)
+    b = Builder()
+    r = b.ring(6, kind="overhead")
+    inp, plan = b.build()
+    target = plan.rings[0].members[1]
+    low = _violation("load", "voltage_low", "bus", target, r, 0.96, 0.97)
+    plan, actions = electrical.repair(inp, None, None, None, plan, [low])
+    assert [c[0] for c in fake.calls] == ["move_nop", "upgrade_lines"]
+    assert [a["action"] for a in actions] == ["upgrade"]
+    assert plan.diagnostics["repair_stage"] == {"1": 1}
+
+
+def test_repair_feed_in_upgrades_the_path_before_converting_the_generator(fake_topology):
+    fake = fake_topology()
+    b = Builder()
+    r = b.ring(6, kind="overhead", set_exits=True)
+    gen = b.tee_generator(r, 2, wind_kw=3000.0)
+    inp, plan = b.build()
+    rise = _violation("feed_in_wind", "voltage_high", "bus", gen, r, 1.05, 1.04)
+    overhead = [k for k in electrical.path_lines(plan, BUSBAR, gen, "feed_in_wind")
+                if next(line for line in plan.lines if line.key == k).kind == "overhead"]
+    plan, actions = electrical.repair(inp, None, None, None, plan, [rise])
+    assert [a["action"] for a in actions] == ["upgrade"] and actions[0]["line_keys"] == overhead
+    for _ in range(2):
+        plan, actions = electrical.repair(inp, None, None, None, plan, [rise])
+    assert set(_types_of(plan, overhead)) == {"243-AL1/39-ST1A 20.0"}
+    plan, actions = electrical.repair(inp, None, None, None, plan, [rise])      # largest conductors: convert
+    assert [a["action"] for a in actions] == ["convert_to_dedicated"] and actions[0]["node_key"] == gen
 
 
 def test_repair_splits_at_once_when_the_nop_cannot_move(fake_topology):

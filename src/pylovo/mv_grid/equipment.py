@@ -147,6 +147,36 @@ def line_type_name_at(name: str, vn_kv: float) -> str:
     return other
 
 
+@functools.lru_cache(maxsize=None)
+def upgrade_ladder(kind: str, vn_kv: float) -> tuple[LineType, ...]:
+    """The pandapower conductors of one kind (``cable`` or ``overhead``) rated for ``vn_kv``, by ampacity: the steps
+    of the conductor upgrade in the repair loop (Ding0's reinforcement takes the next larger type)."""
+    found = []
+    for name, data in _std_types()["line"].items():
+        rated = rated_kv(name)
+        if PANDAPOWER_LINE_KIND.get(data.get("type")) == kind and rated is not None and math.isclose(rated, vn_kv):
+            found.append(line_type(name))
+    return tuple(sorted(found, key=lambda lt: (lt.max_i_ka, lt.name)))
+
+
+def upgraded_line_type(name: str, vn_kv: float, min_i_ka: float | None = None) -> str | None:
+    """The next larger conductor of the same kind as the pandapower type ``name`` at ``vn_kv`` (with ``min_i_ka``:
+    the smallest one that carries this current, else the largest); None if there is no larger one."""
+    current = line_type(name)
+    larger = [lt for lt in upgrade_ladder(current.kind, float(vn_kv)) if lt.max_i_ka > current.max_i_ka + 1e-9]
+    if not larger:
+        return None
+    if min_i_ka is not None:
+        return next((lt.name for lt in larger if lt.max_i_ka >= float(min_i_ka) - 1e-9), larger[-1].name)
+    return larger[0].name
+
+
+def type_rank(name: str) -> tuple[float, ...]:
+    """The ampacities of the parts of a line type name (``<cable> + <overhead>`` for a mixed line), to compare
+    conductors of the same kind."""
+    return tuple(line_type(part.strip()).max_i_ka for part in str(name).split(" + "))
+
+
 def default_line_types(vn_kv: float) -> tuple[str, str]:
     """The default (cable, overhead line) type names of a nominal voltage (20 or 10 kV).
 

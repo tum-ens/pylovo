@@ -679,8 +679,8 @@ These thicker starting types are the selected planning defaults. The former 150 
 voltage. With ``MV_NOMINAL_VOLTAGE_KV: auto`` it stands for its conductor, and the 10 kV supply
 areas use the same conductor with 6/10 kV insulation or the ``10.0`` overhead type. The resolved
 values are stored in the variant snapshot, so a stored variant does not change when pandapower's
-type tables change. Parallel cables are used only for dedicated feeders and as a repair measure,
-at most ``max_parallel_cables`` (2).
+type tables change. Larger conductors and parallel cables are used only for dedicated feeders and
+as repair measures (:ref:`mv-repair`), at most ``max_parallel_cables`` (2) parallel cables.
 
 HV/MV transformers
 ~~~~~~~~~~~~~~~~~~
@@ -781,11 +781,18 @@ follow Harnisch et al. (2016), SimBench and Ding0. The 2 % rise is the limit of 
 2012). Nodes on stubs, T-offs, busbar radials and generator feeders have no (n-1) requirement. The
 stations and customers among them are flagged ``not_n1_secure``.
 
+.. _mv-repair:
+
 Repair loop
 ~~~~~~~~~~~
 
-Violations are repaired in up to ``repair_rounds`` (4) rounds. Each round applies all actions that
-do not conflict, at most one per ring, and all cases run again afterwards:
+Violations are repaired in up to ``repair_rounds`` (8) rounds. Each round applies all actions that
+do not conflict, at most one per ring, and all cases run again afterwards. As in Ding0's
+reinforcement (Amme et al. 2018), larger conductors come before changes of the topology: a line
+gets the next larger pandapower conductor of its kind and voltage, or for an overload the smallest
+one that carries the current within the limit. A mixed line upgrades both parts. The cables end at
+NA2XS2Y 1x240, the overhead lines at 243-AL1/39-ST1A (149-AL1/24-ST1A at 10 kV), so with the default
+types only overhead lines can grow; the cables then get parallel cables.
 
 .. list-table::
    :header-rows: 1
@@ -795,26 +802,31 @@ do not conflict, at most one per ring, and all cases run again afterwards:
    * - Violation
      - Repair
    * - Voltage on a ring (``load``, ``n1a``, ``n1b``)
-     - Move the open point to its best position. If it is there already, split the ring: its
-       members are solved again with at most half of them per ring. As a last step, one more
-       parallel cable on both exits.
+     - Move the open point to its best position. If it is there already, the next larger conductor
+       on every line of the path from the busbar to the node in that case, round by round while a
+       line can grow. Then split the ring: its members are solved again with at most half of them
+       per ring. As a last step, one more parallel cable on both exits.
    * - Loading of a ring section
-     - Split the ring if the section is a busbar exit and the ring has at least 4 members, else one
-       more parallel cable, up to ``max_parallel_cables``.
+     - A conductor that carries the current. At the largest conductor, split the ring if the section
+       is a busbar exit and the ring has at least 4 members, else one more parallel cable, up to
+       ``max_parallel_cables``.
    * - Loading or voltage on a dedicated feeder, generator feeder or busbar radial
-     - One more parallel cable, else the report ``dedicated_overload``.
-   * - Rise or loading in a feed-in case on a feeder with a T-off or looped-in generator
-     - Give the generator with the largest feed-in a dedicated feeder (one per feeder and round).
-   * - Rise caused by LV-side generation alone
-     - Report ``lv_pv_rise``, no repair.
+     - Larger conductors (the overloaded line, or every line of the feeder for voltage), then one
+       more parallel cable, else the report ``dedicated_overload``.
+   * - Rise or loading in a feed-in case on a ring feeder
+     - Larger conductors on the path to the node (or on the overloaded line). At the largest
+       conductors, give the T-off or looped-in generator with the largest feed-in a dedicated
+       feeder (one per feeder and round); without such a generator, the report ``lv_pv_rise``.
    * - A case does not converge
      - Report, the topology is kept.
 
-Rises caused by LV-side PV are not repaired, because real grids keep them within the band by
-measures that the model does not represent, such as cos φ(P) control of the inverters and regulated
-MV/LV transformers. The repair loop never changes line types. A supply area is stored with its
-remaining violations, as the LV stage stores its grids, and ``mv_grid.power_flow_status`` is
-``converged``, ``voltage_violation``, ``loading_violation`` or ``not_converged``.
+Rises caused by LV-side PV get larger conductors but no further measures. Real grids also keep them
+within the band by measures that the model does not represent, such as cos φ(P) control of the
+inverters and regulated MV/LV transformers. A supply area is stored with its remaining violations,
+as the LV stage stores its grids, and ``mv_grid.power_flow_status`` is ``converged``,
+``voltage_violation``, ``loading_violation`` or ``not_converged``. The repair actions are kept in
+``mv_grid.repairs`` (``upgrade`` with the new types, ``parallel``, ``move_nop``, ``split_ring``,
+``convert_to_dedicated``).
 
 Stored net and OLTC
 ~~~~~~~~~~~~~~~~~~~
@@ -922,9 +934,9 @@ Limitations
   contain a transformer candidate are removed by the LV stage before loads exist and never become
   MV customers.
 * The checks use five snapshot cases and no time series.
-* One cable and one overhead type are used per voltage. The repair loop adds parallel cables and
-  splits rings but never upgrades types, so long rural feeders forced to 10 kV can keep voltage
-  violations. Transformer ratings mapped in OSM are not read.
+* One cable and one overhead type are planned per voltage. The repair loop upgrades conductors up
+  to the largest pandapower type, adds parallel cables and splits rings; long rural feeders forced to
+  10 kV can still keep voltage violations. Transformer ratings mapped in OSM are not read.
 * With ``MV_OVERHEAD_LINES: osm`` the overhead lines exist only where OpenStreetMap maps them. Their
   use depends on the completeness of the OSM layer, which varies by district, and MV cables are
   hardly mapped. With ``rural``, a straight span between two non-urban ends can cross a

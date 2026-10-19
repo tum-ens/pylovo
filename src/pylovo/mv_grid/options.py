@@ -30,7 +30,8 @@ import yaml
 #: ``busbar_exit_radius_m``, isolated rural stations hang on stubs after the rings are solved (satellites).
 #: 6: ``MV_OVERHEAD_LINES`` osm (default): overhead lines only along the OSM MV lines of the routing graph.
 #: 7: municipal supply areas (``MV_SUPPLY_AREAS`` municipal, default) without capacity rebalancing
-#: (``rebalance_max_iter`` 0); stub, radial and T-off limits on the true route length.
+#: (``rebalance_max_iter`` 0); stub, radial and T-off limits on the true route length; larger conductors before
+#: topology changes in the repair loop (8 rounds).
 MV_STAGE_VERSION: int = 7
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
@@ -181,8 +182,9 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="neighbour list length of the granular local search"),
     _constant("ls_time_guard_s", 120.0, "float", "topology", bounds=_POSITIVE,
               source="wall-clock safety net of the local search (flagged when hit)"),
-    _constant("repair_rounds", 4, "int", "topology", bounds=(0, 20),
-              source="rounds of the electrical repair loop"),
+    _constant("repair_rounds", 8, "int", "topology", bounds=(0, 20),
+              source="rounds of the electrical repair loop (an overhead line takes up to three rounds to reach the "
+                     "largest conductor)"),
     # loads
     _constant("dedicated_feeder_kw", 5500.0, "float", "loads", bounds=_POSITIVE,
               source="eGon-data MV customers up to 5.5 MW; 20 kV connection rules 0.2 to 5.5 MW"),

@@ -828,8 +828,9 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 120.0
      - Wall-clock guard of the local search in s (flagged when hit).
    * - ``repair_rounds``
-     - 4
-     - Rounds of the repair loop.
+     - 8
+     - Rounds of the repair loop (an overhead line needs up to three rounds to reach the largest
+       conductor).
 
 .. list-table:: Loads
    :header-rows: 1

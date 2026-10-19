@@ -15,7 +15,7 @@ import pytest
 from scipy.sparse import csr_matrix
 from shapely.geometry import LineString, Point
 
-from pylovo.mv_grid import topology
+from pylovo.mv_grid import equipment, topology
 from pylovo.mv_grid.model import NODE_COLUMNS, DistrictInput, EdgeSet, LineType, RingCheck, RunGraph, SolverResult
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters
 
@@ -313,12 +313,13 @@ def assert_plan_valid(plan, inp) -> None:
         assert ln.cable_m + ln.overhead_m == pytest.approx(ln.length_m)
         if ln.pieces:
             assert geom.length == pytest.approx(ln.length_m, abs=1.0)
-        if ln.std_type == CABLE.name:
+        kinds = [equipment.line_type(part.strip()).kind for part in ln.std_type.split(" + ")]   # upgrades too
+        if kinds == ["cable"]:
             assert ln.kind == "cable" and ln.overhead_m == 0.0
-        elif ln.std_type == OVERHEAD.name:
+        elif kinds == ["overhead"]:
             assert ln.kind == "overhead" and ln.cable_m == 0.0
         else:
-            assert ln.kind == "mixed" and ln.std_type == f"{CABLE.name} + {OVERHEAD.name}"
+            assert ln.kind == "mixed" and kinds == ["cable", "overhead"]
 
 
 # ============================================================================================ terminals and model
@@ -904,6 +905,25 @@ def test_convert_loop_in_generator_and_keep_parallel_cables():
     assert 61 not in ring_of(new, 10).members
     new_exit = next(ln for ln in new.lines if ln.exit == "a" and ln.role == "ring")
     assert new_exit.parallel == 2
+
+
+def test_upgrade_lines_takes_larger_conductors_and_a_rebuild_keeps_them():
+    plan, (inp, rg, model, ev) = plan_of(generator_district(), GEN_RING)
+    tee = next(ln for ln in plan.lines if 60 in (ln.from_key, ln.to_key))
+    assert (tee.kind, tee.std_type) == ("overhead", OVERHEAD.name)
+    up, changed = topology.upgrade_lines(plan, [tee.key, tee.key, 99], 20.0)
+    assert changed == [tee.key] and up.lines[tee.key].std_type == "149-AL1/24-ST1A 20.0"
+    big, changed = topology.upgrade_lines(up, [tee.key], 20.0, {tee.key: 0.6})     # the smallest with 600 A
+    assert big.lines[tee.key].std_type == "243-AL1/39-ST1A 20.0"
+    assert topology.upgrade_lines(big, [tee.key], 20.0) == (big, [])               # already the largest
+    cable = next(ln for ln in plan.lines if ln.kind == "cable")
+    assert topology.upgrade_lines(plan, [cable.key], 20.0)[1] == []                 # 1x240 is the largest cable
+    assert plan.lines[tee.key].std_type == OVERHEAD.name                            # the given plan is unchanged
+    rebuilt = topology.convert_to_dedicated(inp, rg, model, big, 61)
+    assert_plan_valid(rebuilt, inp)
+    kept = next(ln for ln in rebuilt.lines if 60 in (ln.from_key, ln.to_key))
+    assert kept.std_type == "243-AL1/39-ST1A 20.0"
+    assert all(ln.std_type == CABLE.name for ln in rebuilt.lines if ln.kind == "cable")
 
 
 # ============================================================================================ crowfly

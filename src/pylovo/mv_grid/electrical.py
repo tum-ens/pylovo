@@ -36,6 +36,7 @@ import functools
 import importlib
 import logging
 import math
+from collections import deque
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -833,23 +834,71 @@ def _signature(plan: TopologyPlan) -> tuple:
             tuple(sorted((int(k), str(v)) for k, v in plan.node_role.items())))
 
 
+def path_lines(plan: TopologyPlan, busbar: int, target: int, case: str) -> list[int]:
+    """Keys of the lines from the busbar to node ``target`` in the switching state of ``case``: the normally-open
+    lines open in normal operation (``load``, feed-in cases), closed in ``n1a``/``n1b`` with the A or B exits out.
+    Empty if ``target`` is not reached."""
+    out = N1_EXIT.get(case)
+    exits = _ring_exits(plan, busbar) if out is not None else {}
+    neighbours: dict[int, list[tuple[int, int]]] = {}
+    for line in _net_lines(plan):
+        if (line.normally_open and out is None) or (out is not None and exits.get(int(line.key)) == out):
+            continue
+        a, b = int(line.from_key), int(line.to_key)
+        neighbours.setdefault(a, []).append((b, int(line.key)))
+        neighbours.setdefault(b, []).append((a, int(line.key)))
+    parent: dict[int, tuple[int, int] | None] = {busbar: None}
+    queue = deque([busbar])
+    while queue and target not in parent:
+        node = queue.popleft()
+        for other, key in sorted(neighbours.get(node, ())):
+            if other not in parent:
+                parent[other] = (node, key)
+                queue.append(other)
+    if target not in parent:
+        return []
+    keys = []
+    node = target
+    while parent[node] is not None:
+        node, key = parent[node]
+        keys.append(key)
+    return keys[::-1]
+
+
+def _upgradable(line: LinePlan, vn_kv: float) -> bool:
+    """Whether a larger conductor of the same kind exists for some part of the line (no type name: no)."""
+    for part in (line.std_type or "").split(" + "):
+        try:
+            if part.strip() and equipment.upgraded_line_type(part.strip(), vn_kv) is not None:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan, violations: Sequence[Violation]
            ) -> tuple[TopologyPlan, list[dict]]:
     """One round of the repair loop (DESIGN §5.4): applies all non-conflicting actions, at most one per ring.
 
-    In this order:
+Larger conductors come before topology changes, as in Ding0's reinforcement (``topology.upgrade_lines``, the
+    pandapower conductors of the kind by ampacity, :func:`pylovo.mv_grid.equipment.upgrade_ladder`). In this order:
 
     1. Voltage (``load``, ``n1a``, ``n1b``) on a node of ring r, a ladder over the rounds: move the NOP to the best
        feasible position (``topology.move_nop``); if it does not move (or moved in an earlier round and the ring
-       still violates): split the ring (``topology.split_ring``, rings with at least 2 members); then ``parallel``
-       + 1 on the first section of each half (the two exits). Rings made by a split continue at the third step.
-    2. Loading (``load``, ``n1*``) on a section of ring r: split the ring if the section is a busbar exit and the
-       ring has at least 4 members, else ``parallel`` + 1 (up to ``max_parallel_cables``).
-    3. Loading or voltage on a dedicated feeder, a generator feeder or a busbar radial: ``parallel`` + 1 on its
-       lines (up to the cap), else the report ``dedicated_overload``.
-    4. Rise or loading in a feed-in case on a feeder with a T-off or loop-in MV generator: convert the generator with
-       the largest feed-in to a dedicated feeder (``topology.convert_to_dedicated``), one per feeder; without such a
-       generator the report ``lv_pv_rise`` (rise or loading driven by LV-side generation, not repaired).
+       still violates): the next larger conductor on every line of the path from the busbar to the node in that
+       case (:func:`path_lines`), repeated while a line can be upgraded; then split the ring
+       (``topology.split_ring``, rings with at least 2 members); then ``parallel`` + 1 on the first section of each
+       half (the two exits). Rings made by a split continue at the last step.
+    2. Loading (``load``, ``n1*``) on a section of ring r: the smallest conductor that carries the current within
+       the limit; at the largest conductor, split the ring if the section is a busbar exit and the ring has at least
+       4 members, else ``parallel`` + 1 (up to ``max_parallel_cables``).
+    3. Loading or voltage on a dedicated feeder, a generator feeder or a busbar radial: larger conductors (the
+       overloaded line, or all lines of the feeder for voltage), then ``parallel`` + 1 on its lines (up to the cap),
+       else the report ``dedicated_overload``.
+    4. Rise or loading in a feed-in case on a ring feeder: larger conductors on the path to the node (or on the
+       overloaded line); at the largest conductors, convert the T-off or loop-in MV generator with the largest
+       feed-in to a dedicated feeder (``topology.convert_to_dedicated``), one per feeder; without such a generator
+       the report ``lv_pv_rise`` (rise or loading driven by LV-side generation).
     5. ``not_converged``: report, the topology is kept.
 
     Args:
@@ -867,6 +916,9 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     """
     params = inp.params
     topology = _topology()
+    vn_kv = float(inp.vn_kv)
+    cache: dict[str, LineType] = {}
+    types = line_types(inp)
     round_no = int(plan.diagnostics.get("repair_round", 0)) + 1
     stage: dict[int, int] = {int(k): int(v) for k, v in (plan.diagnostics.get("repair_stage") or {}).items()}
     busbar = busbar_key(inp)
@@ -939,8 +991,17 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
             reports.append(_record(round_no, "unassigned", v))
 
     touched: set[int] = set()
+    upgrade_requests: list[tuple[list[int], int | None, Violation, str, dict[int, float] | None]] = []
     parallel_requests: list[tuple[list[int], int | None, Violation, str]] = []
     structural: list[tuple[str, Any, Violation]] = []   # ("move_nop" | "split_ring", ring_id) or ("convert", key)
+
+    def upgradable(keys: Iterable[int], current: TopologyPlan | None = None) -> list[int]:
+        by_key = lines if current is None else {int(line.key): line for line in current.lines}
+        return [int(k) for k in keys if int(k) in by_key and _upgradable(by_key[int(k)], vn_kv)]
+
+    def needed_ka(key: int, v: Violation) -> float:
+        """Ampacity per circuit that carries the current of an overloaded line within the limit."""
+        return _line_parameters(lines[key], types, cache)[3] * float(v.value) / max(float(v.limit), 1e-9)
 
     def exit_lines(ring_id: int) -> list[int]:
         return sorted(k for k, line in lines.items()
@@ -955,6 +1016,11 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
         if level < 1:
             stage[ring_id] = 1
             structural.append(("move_nop", ring_id, v))
+            touched.add(ring_id)
+            continue
+        path = upgradable(path_lines(plan, busbar, int(v.key), v.case)) if level < 2 else []
+        if path:
+            upgrade_requests.append((path, ring_id, v, "voltage", None))
             touched.add(ring_id)
             continue
         if level < 2 and _member_count(inp, ring.members) >= 2:
@@ -974,6 +1040,11 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
         ring = rings.get(ring_id)
         if ring is None or ring_id in touched:
             continue
+        larger = {k: needed_ka(k, v) for k, v in items if upgradable([k])}
+        if larger:
+            upgrade_requests.append((list(larger), ring_id, items[0][1], "loading", larger))
+            touched.add(ring_id)
+            continue
         on_exit = [(k, v) for k, v in items if exits.get(k) in ("a", "b")]
         if on_exit and _member_count(inp, ring.members) >= 4:
             structural.append(("split_ring", ring_id, on_exit[0][1]))
@@ -988,25 +1059,58 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
             continue
         keys_of_feeder = sorted(k for k, line in lines.items()
                                 if line.ring_id is not None and int(line.ring_id) == ring_id)
-        parallel_requests.append((keys_of_feeder, ring_id, v, "dedicated"))
         touched.add(ring_id)
+        if v.element == "line":
+            larger = {int(v.key): needed_ka(int(v.key), v)} if upgradable([int(v.key)]) else {}
+        else:
+            larger = {k: None for k in upgradable(keys_of_feeder)}
+        if larger:
+            upgrade_requests.append((list(larger), ring_id, v, "dedicated",
+                                     larger if v.element == "line" else None))
+            continue
+        parallel_requests.append((keys_of_feeder, ring_id, v, "dedicated"))
 
     # 4. feed-in: convert the largest T-off or loop-in generator of the feeder (one per feeder)
     for label, v in sorted(feed_in.items()):
         members = sorted(k for k, lab in normal.items() if lab == label)
         ring_id = next((r for r in (ring_of_node(k) for k in members) if r is not None), None)
+        if ring_id is not None and ring_id in touched:
+            continue
+        if v.element == "bus":
+            larger = {k: None for k in upgradable(path_lines(plan, busbar, int(v.key), v.case))}
+        else:
+            larger = {int(v.key): needed_ka(int(v.key), v)} if upgradable([int(v.key)]) else {}
+        if larger:
+            upgrade_requests.append((list(larger), ring_id, v, "feed_in", larger if v.element == "line" else None))
+            if ring_id is not None:
+                touched.add(ring_id)
+            continue
         generators = [k for k in members if k in inp.nodes.index and inp.nodes.at[k, "kind"] == "generator"
                       and plan.node_role.get(k) in ("tee", "loop_in")]
         if not generators:
             reports.append(_record(round_no, "lv_pv_rise", v, ring_id=ring_id))
             continue
-        if ring_id is not None and ring_id in touched:
-            continue
         key = max(generators, key=lambda k: (_generator_power(inp, k, v.case), -k))
         structural.append(("convert_to_dedicated", key, v))
 
-    # ---- apply: parallel cables first (line keys stay valid), then the structural changes
+    # ---- apply: larger conductors and parallel cables first (line keys stay valid), then the structural changes
     actions: list[dict] = []
+
+    def upgrade(line_keys: list[int], ring_id: int | None, v: Violation, reason: str,
+                need: dict[int, float] | None) -> bool:
+        nonlocal plan
+        plan, changed = topology.upgrade_lines(plan, line_keys, vn_kv,
+                                               None if need is None else {k: x for k, x in need.items()
+                                                                          if x is not None})
+        if changed:
+            names = sorted({line.std_type for line in plan.lines if int(line.key) in set(changed)})
+            actions.append(_record(round_no, "upgrade", v, ring_id=ring_id, line_keys=changed, reason=reason,
+                                   std_types=names))
+        return bool(changed)
+
+    for line_keys, ring_id, v, reason, need in upgrade_requests:
+        if not upgrade(line_keys, ring_id, v, reason, need):
+            reports.append(_record(round_no, "unresolved_" + reason, v, ring_id=ring_id, line_keys=line_keys))
     for line_keys, ring_id, v, reason in parallel_requests:
         before = _parallel(plan)
         if line_keys:
@@ -1044,6 +1148,9 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
                 plan = new_plan
                 actions.append(_record(round_no, "move_nop", v, ring_id=target))
                 continue
+            path = upgradable(path_lines(plan, busbar, int(v.key), v.case), plan)
+            if path and upgrade(path, target, v, "voltage", None):
+                continue                        # the open point is already at its best position
             ring = next(r for r in plan.rings if int(r.ring_id) == target)
             if _member_count(inp, ring.members) < 2:
                 exit_parallel(target, v)
