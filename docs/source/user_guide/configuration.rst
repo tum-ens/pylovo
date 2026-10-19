@@ -521,84 +521,10 @@ MV grids
 ~~~~~~~~
 
 The last section of ``config_generation.yaml`` configures the MV stage (:doc:`mv_grids`). Its keys
-are stored per MV variant (**MV variant** in the column Snapshot), not in the snapshot of
-``VERSION_ID``, and ``pylovo-mv generate --set`` changes them for one variant. A missing key takes
-its shipped value. :ref:`mv-parameters` gives their sources and the constants of the stage.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 33 12 41 14
-   :class: fixed-table
-
-   * - Key
-     - Shipped value
-     - Meaning
-     - Snapshot
-   * - ``MV_GRID_GENERATION``
-     - ``False``
-     - Run the MV stage after the LV grids in ``pylovo-generate`` (``--mv``, ``--no-mv``).
-     -
-   * - ``MV_VARIANT_ID``
-     - ``"1"``
-     - MV variant of the LV version (at most 10 characters).
-     - key
-   * - ``MV_VARIANT_COMMENT``
-     - ``default``
-     - Description stored with a new MV variant.
-     -
-   * - ``MV_NOMINAL_VOLTAGE_KV``
-     - ``auto``
-     - ``auto`` (10 kV from 8 MVA/km² installed MV/LV capacity, else 20 kV), ``20`` or ``10``.
-     - MV variant
-   * - ``MV_SUBSTATIONS``
-     - ``osm``
-     - HV/MV substations from OpenStreetMap (``osm``) or eGon-data (``egon``).
-     - MV variant
-   * - ``MV_SUPPLY_AREAS``
-     - ``routed``
-     - Supply areas by street distance with capacity rebalancing (``routed``) or the eGon-data MV
-       grid districts (``egon``, needs ``MV_SUBSTATIONS: egon``).
-     - MV variant
-   * - ``MV_ROUTING``
-     - ``street``
-     - Lines along streets (``street``) or straight lines × 1.3 (``crowfly``).
-     - MV variant
-   * - ``MV_RING_SOLVER``
-     - ``savings``
-     - Clarke-Wright savings with local search (``savings``) or ``sweep``.
-     - MV variant
-   * - ``MV_MAX_STATIONS_PER_RING``
-     - ``20``
-     - Most ring members of one open ring.
-     - MV variant
-   * - ``MV_STUBS``
-     - ``rural``
-     - Small rural loads on stubs (``rural``) or every node looped in (``none``).
-     - MV variant
-   * - ``MV_OVERHEAD_LINES``
-     - ``rural``
-     - Overhead lines between rural settlements (``rural``) or cables only (``none``).
-     - MV variant
-   * - ``MV_INTERCONNECTION``
-     - ``ties``
-     - Normally-open ties between neighbouring supply areas (``ties``) or none (``none``).
-     - MV variant
-   * - ``MV_STANDARD_CABLE``
-     - ``null``
-     - pandapower cable type; ``null`` is NA2XS2Y 1x150 RM/25 for the nominal voltage.
-     - MV variant
-   * - ``MV_OVERHEAD_LINE``
-     - ``null``
-     - pandapower overhead line type; ``null`` is 48-AL1/8-ST1A for the nominal voltage.
-     - MV variant
-   * - ``MV_LINE_PLANNING_UTILIZATION``
-     - ``0.6``
-     - Planned current per ampacity of MV lines in normal operation.
-     - MV variant
-   * - ``MV_MAX_VOLTAGE_DROP_PERCENT``
-     - ``5``
-     - MV share of the voltage band in normal operation, from the HV/MV busbar (1.02 p.u.).
-     - MV variant
+are stored per MV variant, not in the snapshot of ``VERSION_ID``, and ``pylovo-mv generate --set``
+changes them for one variant. A missing key takes its shipped value. The :ref:`MV parameter
+reference <mv-parameters>` lists the keys with their shipped values, meanings and sources, together
+with the constants of the stage.
 
 ``config_analysis.yaml``
 ------------------------
