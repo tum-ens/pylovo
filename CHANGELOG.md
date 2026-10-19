@@ -66,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The double-transformer comparison in the greenfield clustering (it could never win), `pylovo.analysis.powerflow_calculation` and `ParameterCalculator.count_consumers` (no callers)
 
 ### Fixed
+- pandapower LV lines get a minimum length of 1 m, as in the OpenDSS backend: buses at one point gave lines of a few micrometres whose power flow did not converge (2 of 4,589 grids of a test version)
 - Overpass and OSM tile requests send an identifying User-Agent (Overpass answered HTTP 406)
 - `pylovo-import transformers-osm` (called a non-existent method; failed for small areas), `pylovo-delete transformers` (TRUNCATE rejected by a foreign key), `pylovo-export` with kcid/bcid 0 or negative ids, `pylovo-validate --help`, `pylovo-classify --help`
 - int16 overflow of vertex ids in brownfield assignment; aborted transactions in several database helpers

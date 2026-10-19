@@ -34,6 +34,9 @@ from ..core.specs import (
 )
 from pylovo.config_loader import POWER_FLOW_MAX_VM_PU, POWER_FLOW_MIN_VM_PU
 
+#: Shortest line in km, as in the OpenDSS backend: shorter lines (co-located buses) get this length.
+MIN_LINE_KM: float = 0.001
+
 
 class PandapowerBackendError(Exception):
     """Exception raised by Pandapower backend operations."""
@@ -261,7 +264,8 @@ class PandapowerBackend(IElectricalBackend):
         return index
 
     def _create_lines(self, queued: list) -> None:
-        # pandapower takes the geometry of all lines of a call or of none
+        # pandapower takes the geometry of all lines of a call or of none; lines shorter than MIN_LINE_KM get that
+        # length: two buses at one point give a line of a few micrometres, whose admittance stops Newton-Raphson
         with_geometry = [item for item in queued if item[1].coordinates]
         without_geometry = [item for item in queued if not item[1].coordinates]
         for group, geometry in ((with_geometry, True), (without_geometry, False)):
@@ -272,7 +276,7 @@ class PandapowerBackend(IElectricalBackend):
                 self._net,
                 from_buses=[item[2] for item in group],
                 to_buses=[item[3] for item in group],
-                length_km=[spec.length_km for spec in specs],
+                length_km=[max(float(spec.length_km), MIN_LINE_KM) for spec in specs],
                 std_type=[item[4] for item in group],
                 name=[spec.name for spec in specs],
                 index=[item[0] for item in group],
