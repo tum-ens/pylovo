@@ -23,7 +23,7 @@ def test_registry():
     ids = [layer.id for layer in layers]
     assert len(ids) == len(set(ids))
     for layer in layers:
-        assert layer.scope in SCOPES and layer.group in GROUPS
+        assert layer.scope in SCOPES and layer.group in GROUPS and set(layer.also) <= set(GROUPS) - {layer.group}
         assert layer.geometry in {"point", "line", "polygon"}
         assert layer.parent is None or layer.parent in ids
         if layer.scope != "file":
@@ -63,6 +63,55 @@ def test_availability(service):
     assert "not downloaded yet" in layers["hv_lines"]["reason"]
     assert layers["lv_cabinets"]["parent"] == "lv_cables" and layers["mv_stations"]["with_run"]
     assert [g["id"] for g in service.groups()] == ["regions", "hv", "mv", "lv", "generation"]
+    assert layers["hv_substations"]["groups"] == ["hv", "mv"] and layers["mv_stations"]["groups"] == ["mv", "lv"]
+
+
+def test_cable_into_cabinet(service, fake_db):
+    # cables run away from the station: the one that ends at a cabinet's bus supplies it
+    fake_db.rows = {"FROM pylovo.split_points": [{"g": 7, "b": 5}]}
+    rows = [{"fid": 1, "grid": 7, "to_bus": 5}, {"fid": 2, "grid": 7, "to_bus": 6}, {"fid": 3, "grid": 8, "to_bus": 5}]
+    service._cabinet_cables(rows, Query(version="v1"))
+    assert rows == [{"fid": 1, "grid": 7, "to_cabinet": True}, {"fid": 2, "grid": 7}, {"fid": 3, "grid": 8}]
+    assert fake_db.calls[-1][1] == ([7, 8],)
+
+
+def test_feeder_section(service, fake_db):
+    # cable 10 (station bus 1 -> 2) and cable 11 (2 -> cabinet bus 3) form section 3 of grid 7
+    line = '{"type":"LineString","coordinates":[[11,48],[11.001,48]]}'
+    fake_db.rows = {
+        "FROM pylovo.lines_result_cache me": [
+            {"grid": 7, "section": 3, "std_type": "NAYY_4_150", "length_km": 0.05, "from_bus": 1, "to_bus": 2, "geometry": line},
+            {"grid": 7, "section": 3, "std_type": "NAYY_4_95", "length_km": 0.02, "from_bus": 2, "to_bus": 3, "geometry": line}],
+        "SELECT ont_vertice_id FROM": [{"ont_vertice_id": 1}],
+        "FROM pylovo.split_points": [{"bus": 3, "id": 42}],
+        "feeder_section_id IS NULL AND from_bus": [{"n": 4}],
+        "SELECT grid_result_id, ont_vertice_id": [{"grid_result_id": 7, "ont_vertice_id": 1}],
+        "AS g, id, from_bus": [{"g": 7, "id": 10, "from_bus": 1, "to_bus": 2, "length_km": 0.05},
+                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02}],
+    }
+    out = service.section(10)
+    assert out["from"] == {"kind": "station", "id": 7} and out["to"] == {"kind": "cabinet", "id": 42}
+    assert out["section_m"] == 70.0 and out["types"] == [["NAYY_4_150", 50.0], ["NAYY_4_95", 20.0]]
+    assert out["connections"] == 4 and out["feeder"] == 1 and out["section_cables"] == 2
+    assert out["geometry"]["type"] == "MultiLineString" and len(out["geometry"]["coordinates"]) == 2
+    connections = next(params for sql, params in fake_db.calls if "feeder_section_id IS NULL AND from_bus" in sql)
+    assert connections == (7, [2, 3])   # not at the start bus: those belong upstream
+    fake_db.rows = {}
+    with pytest.raises(LookupError):
+        service.section(99)
+
+
+def test_overhead_parts_of_mixed_lines(service, fake_db):
+    rows = [{"fid": 1, "kind": "mixed"}, {"fid": 2, "kind": "cable"}, {"fid": 3, "kind": "mixed"}]
+    service._overhead_parts(rows, Query(version="v1", mv="d1"))   # no routing graph in the database: left out
+    assert all("overhead" not in row for row in rows) and not any("osm_mv_line" in sql for sql, _ in fake_db.calls)
+    service.catalog.columns["pylovo.mv_graph_edge"] = {"graph_id": "int8", "klasse": "text", "geom": "geometry"}
+    service.catalog.columns["pylovo.mv_variant"] = {"graph_id": "int8"}
+    fake_db.rows = {"klasse = 'osm_mv_line'": [
+        {"id": 1, "geometry": '{"type":"MultiLineString","coordinates":[[[11,48],[11.001,48]]]}'}, {"id": 3, "geometry": None}]}
+    service._overhead_parts(rows, Query(version="v1", mv="d1"))
+    assert rows[0]["overhead"] == [[[11, 48], [11.001, 48]]] and "overhead" not in rows[1] and "overhead" not in rows[2]
+    assert fake_db.calls[-1][1]["mv"] == "d1"
 
 
 def test_geojson_with_colour_slots(service, fake_db):

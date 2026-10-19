@@ -18,6 +18,7 @@ TABLES = {
     "pylovo.buildings_result": ["version_id", "objectid", "grid_result_id", "geom", "centroid", "type"],
     "pylovo.postcode_result": ["version_id", "postcode_result_plz", "geom"],
     "pylovo.postcode": ["plz", "note", "geom"],
+    "pylovo.split_points": ["split_point_id", "grid_result_id", "split_bus", "outgoing_count", "geom"],
 }
 GEOMETRY = {"geom", "centroid"}
 
