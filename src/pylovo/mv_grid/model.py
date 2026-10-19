@@ -404,8 +404,7 @@ def links_line(links: Mapping[str, Any]) -> str:
     (``pylovo.mv_grid.interconnection.link_summary``)."""
     n = int(links.get("n_links") or 0)
     if not n:
-        return (f"✓ Links: none (no rings of one district within "
-                f"{float(links.get('link_max_length_m') or 0.0):g} m)")
+        return f"✓ Links: none (no rings of one district within {reach_text(links.get('link_max_length_m'))})"
     stubs = bool(links.get("n_stub_end_links"))
     text = (f"✓ Links: {n:,} normally-open links{'' if stubs else ' between rings'}, "
             f"{float(links.get('link_km') or 0.0):,.1f} km")
@@ -415,6 +414,17 @@ def links_line(links: Mapping[str, Any]) -> str:
         text += (f", {100 * links['node_share_with_link']:.0f} % of the supply points with "
                  f"{'a link' if stubs else 'a third cable'}")
     return text + f", {links.get('n_ring_pairs_closed', 0):,} ring pairs joined twice" + stub_end_text(links)
+
+
+def reach_text(reach: Any) -> str:
+    """The link reach of a summary: ``1,000/750/500 m (rural/semi-urban/urban)`` by settlement type, else one length
+    (``500 m``; also the single number of older summaries)."""
+    if isinstance(reach, Mapping):
+        values = [float(reach.get(k) or 0.0) for k in ("rural", "semi_urban", "urban")]
+        if len(set(values)) == 1:
+            return f"{values[0]:,g} m"
+        return "/".join(f"{v:,g}" for v in values) + " m (rural/semi-urban/urban)"
+    return f"{float(reach or 0.0):,g} m"
 
 
 def stub_end_text(links: Mapping[str, Any]) -> str:

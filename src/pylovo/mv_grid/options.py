@@ -34,10 +34,17 @@ import yaml
 #: the repair loop (8 rounds).
 #: 8: stub trees up to 4 km, shortened by their load (``stub_max_kva_km``); normally-open links between the rings of
 #: one district (``link_max_length_m``).
-MV_STAGE_VERSION: int = 8
+#: 9: the links reach by the settlement type of the PLZ (``link_max_length_m`` per type, a link takes the shorter
+#: reach of its ends), and stub ends take links to another feeder (``link_stub_ends``).
+MV_STAGE_VERSION: int = 9
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
+
+#: Keys of ``link_max_length_m`` by the settlement type of a PLZ (pylovo LV stage: 1 rural, 2 semi-urban, 3 urban).
+SETTLEMENT_TYPE_KEYS: dict[int, str] = {1: "rural", 2: "semi_urban", 3: "urban"}
+#: Mappings that also take one number, which then applies to every key (their former single value).
+BROADCAST_MAPPINGS: frozenset[str] = frozenset({"link_max_length_m"})
 
 #: ``MV_NOMINAL_VOLTAGE_KV`` value of the density rule: each district gets 10 kV when its installed MV/LV capacity
 #: per km² reaches ``mv_10kv_min_density_mva_km2``, else 20 kV (DESIGN §4.6, user decision 2026-10-15).
@@ -119,8 +126,8 @@ _YAML_SPECS: tuple[Spec, ...] = (
                 "of the § 23c structural data of rural DSOs); rural: links between rural settlements are straight "
                 "overhead spans (Meinecke 2019); none: cables only"),
     Spec("MV_INTERCONNECTION", "interconnection", "ties", "choice", choices=("none", "ties"), group="topology",
-         source="normally-open ties to the rings of neighbouring substations, the reserve of real MV grids "
-                "(Weisenstein 2021; Dubielzig 2022)"),
+         source="normally-open ties to the rings of neighbouring substations and links inside a supply area, the "
+                "reserve of real MV grids (Weisenstein 2021; Dubielzig 2022)"),
     Spec("MV_STANDARD_CABLE", "cable_type", None, "nullable_str", group="equipment", key="cable",
          source="null = NA2XS2Y 1x240 RM/25, starting cable for both 10 and 20 kV; narrower types remain selectable"),
     Spec("MV_OVERHEAD_LINE", "overhead_type", None, "nullable_str", group="equipment", key="overhead",
@@ -183,14 +190,17 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="longest generator T-off before a dedicated feeder [assumption]"),
     _constant("tie_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
               source="normally-open ties to a neighbouring district [assumption]"),
-    _constant("link_max_length_m", 500.0, "float", "topology", bounds=_POSITIVE,
-              source="longest normally-open link between two rings of one district: a cross connection between "
-                     "neighbouring stations, two to three times the distance between neighbouring stations "
-                     "(assumption, decision of 2026-10-19)"),
-    _constant("link_stub_ends", False, "bool", "topology",
-              source="test option: after the links between rings, each stub end (a stub station with one MV line) "
-                     "takes at most one normally-open link within link_max_length_m to a station of another feeder "
-                     "of its district, a second infeed as many real rural stations have (decision of 2026-10-19)"),
+    _constant("link_max_length_m", {"rural": 1000.0, "semi_urban": 750.0, "urban": 500.0}, "mapping", "topology",
+              bounds=_POSITIVE,
+              source="longest normally-open link inside a district by the settlement type of the PLZ of its ends "
+                     "(pylovo settlement_type 1 rural, 2 semi-urban, 3 urban): about three times the median distance "
+                     "between neighbouring stations (320, 250 and 180 m in the test region); a link takes the shorter "
+                     "reach of its two ends, an end without a type the urban one (assumption, decision of "
+                     "2026-10-19); one number applies to every type"),
+    _constant("link_stub_ends", True, "bool", "topology",
+              source="after the links between rings, each stub end (a stub station with one MV line) takes at most "
+                     "one normally-open link within its reach to a station of another feeder of its district, a "
+                     "second infeed as many real rural stations have (decision of 2026-10-19)"),
     _constant("local_search_rounds", 50, "int", "topology", bounds=(0, None),
               source="pass limit of the granular local search (Ding0 used 10 fixed rounds); 0 = no local search"),
     _constant("neighbours", 15, "int", "topology", bounds=(1, None),
@@ -384,8 +394,9 @@ def coerce_mv_value(name: str, value: Any) -> Any:
 
     Canonical forms: ``float`` for numbers of kind float (``20`` becomes ``20.0``), ``int`` for integers, a
     sorted tuple for ``float_tuple`` and ``str_tuple`` values (a single text is a one-element tuple), a new
-    ``dict`` in the key order of the default for mappings, ``"auto"`` or a ``float`` for the nominal voltage, and
-    ``None`` or a ``float`` for ``nullable_float`` (``null`` switches the rule off).
+    ``dict`` in the key order of the default for mappings (for those of :data:`BROADCAST_MAPPINGS` one number
+    applies to every key), ``"auto"`` or a ``float`` for the nominal voltage, and ``None`` or a ``float`` for
+    ``nullable_float`` (``null`` switches the rule off).
 
     Raises:
         ValueError: ``"<name> must be ..., got <value>"`` if the value does not fit, or if ``name`` is unknown.
@@ -439,6 +450,8 @@ def coerce_mv_value(name: str, value: Any) -> Any:
             raise _error(spec, "a list of names", value)
         result = tuple(sorted(set(items)))
     elif kind == "mapping":
+        if spec.name in BROADCAST_MAPPINGS and isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = {key: value for key in spec.default}
         result = _mapping(spec, value, spec.default, value)
     elif kind == "voltage":
         if isinstance(value, str) and value.strip().casefold() == AUTO_VOLTAGE:

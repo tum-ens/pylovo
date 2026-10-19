@@ -101,7 +101,7 @@ def record(item) -> dict:
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 8,
+    "schema": 1, "mv_stage_version": 9,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
@@ -122,12 +122,13 @@ EXPECTED_SNAPSHOT = {
                  "max_half_ring_length_m": 28000.0, "rural_ring_factor": 2.0, "stub_max_kva": 1000.0,
                  "stub_max_length_m": 4000.0, "stub_max_kva_km": 2000.0, "stub_min_offset_m": 100.0,
                  "loop_in_max_offset_m": 100.0,
-                 "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0, "link_max_length_m": 500.0,
-                 "link_stub_ends": False,
+                 "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0,
+                 "link_max_length_m": {"rural": 1000.0, "semi_urban": 750.0, "urban": 500.0},
+                 "link_stub_ends": True,
                  "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 8,
                  "busbar_legs": "cable_along_streets", "rural_satellites": "stubs_after_rings",
-                 "links": "one_per_member_two_per_ring_pair"},
+                 "links": "one_per_node_two_per_ring_pair_shorter_end_reach"},
     "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]),
                   "overhead": record(LINE_TYPES["122-AL1/20-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
@@ -501,6 +502,20 @@ def test_customer_rules_of_older_snapshots_take_their_legacy_values(equipment):
     assert differences == ["loads.busbar_customer_max_m", "loads.customer_hall_min_footprint_m2",
                            "loads.customer_min_mv_kw"]
     assert compare_snapshots(stored, json_round_trip(rebuilt.to_snapshot()), added_later=MV_ADDED_LATER) == ([], [])
+
+
+def test_link_rules_of_older_snapshots_read_as_one_length_without_stub_ends(equipment):
+    """Before 2026-10-19 the link length was one number and stub ends took no links (MV_ADDED_LATER)."""
+    stored = json_round_trip(MvParameters(vn_kv=20).to_snapshot())
+    stored["topology"]["link_max_length_m"] = 500.0
+    del stored["topology"]["link_stub_ends"]
+    rebuilt = MvParameters.from_snapshot("load6", "old", stored)
+    assert rebuilt.link_max_length_m == {"rural": 500.0, "semi_urban": 500.0, "urban": 500.0}
+    assert rebuilt.link_stub_ends is False
+    assert MvParameters(link_max_length_m=800).link_max_length_m == {"rural": 800.0, "semi_urban": 800.0,
+                                                                      "urban": 800.0}
+    with pytest.raises(ValueError, match="link_max_length_m"):
+        MvParameters(link_max_length_m={"rural": 1000.0})
 
 
 def test_from_snapshot_rejects_other_layouts(equipment):

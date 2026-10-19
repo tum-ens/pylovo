@@ -54,7 +54,7 @@ FIXED_RULES: dict[tuple[str, ...], Any] = {
     ("coupling", "lv_pv_at"): "LVbus 1",
     ("topology", "busbar_legs"): "cable_along_streets",
     ("topology", "rural_satellites"): "stubs_after_rings",
-    ("topology", "links"): "one_per_member_two_per_ring_pair",
+    ("topology", "links"): "one_per_node_two_per_ring_pair_shorter_end_reach",
 }
 
 #: Fields whose snapshot path holds the resolved type data instead of the field value.
@@ -136,7 +136,7 @@ class MvParameters:
     loop_in_max_offset_m: float = _y("loop_in_max_offset_m")
     generator_max_tee_m: float = _y("generator_max_tee_m")
     tie_max_length_m: float = _y("tie_max_length_m")
-    link_max_length_m: float = _y("link_max_length_m")
+    link_max_length_m: dict[str, float] = _c("link_max_length_m")
     link_stub_ends: bool = _y("link_stub_ends")
     local_search_rounds: int = _y("local_search_rounds")
     neighbours: int = _y("neighbours")

@@ -36,16 +36,17 @@ share of rings with a tie and the takeover results go into ``mv_variant.summary[
 **Links** (:func:`plan_links`, :func:`plan_and_save_links`): real MV grids join neighbouring rings by cross
 connections, so that their stations can be resupplied in more ways than through their own ring, and many short
 loops run between rings rather than through the busbar. After the ties, the stage joins ring members of different
-rings of the same district within ``link_max_length_m`` (true length along the routing graph), greedy by length:
-each member takes at most one link (a third cable bay) and two rings at most two links, which close a loop between
-them. Links are ``mv_line`` rows with ``role = 'link'``, normally open at ``to_node``, outside the cases like the
-ties; ``mv_variant.summary['links']`` and ``mv_grid.metrics['links']`` hold their counts.
+rings of the same district within their reach (true length along the routing graph), greedy by length: each member
+takes at most one link (a third cable bay) and two rings at most two links, which close a loop between them. The
+reach of a node is ``link_max_length_m`` of the settlement type of its PLZ (:func:`link_reach`), and a link takes the
+shorter reach of its two ends. Links are ``mv_line`` rows with ``role = 'link'``, normally open at ``to_node``,
+outside the cases like the ties; ``mv_variant.summary['links']`` and ``mv_grid.metrics['links']`` hold their counts.
 
-**Links from stub ends** (test option ``link_stub_ends``, off by default): after the links between rings, each stub
-end (a station or MV customer on a stub with one MV line, :func:`stub_link_candidates`) may take one link to a
-ring member or stub node of another feeder of its district within ``link_max_length_m``, greedy by length with the
-same limit per node. The stub end then has a second infeed, as many real rural stations have. These links have
-role ``link`` as well; the summary counts them and the stub ends with a link.
+**Links from stub ends** (``link_stub_ends``): after the links between rings, each stub end (a station or MV
+customer on a stub with one MV line, :func:`stub_link_candidates`) may take one link to a ring member or stub node of
+another feeder of its district within the reach, greedy by length with the same limit per node. The stub end then
+has a second infeed, as many real rural stations have. These links have role ``link`` as well; the summary counts
+them and the stub ends with a link.
 
 The planning functions are pure (no database, configuration or plotting import); :func:`plan_and_save_ties` and
 :func:`plan_and_save_links` read and write through the methods of
@@ -67,7 +68,8 @@ from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 
 from pylovo.mv_grid import equipment, graph
-from pylovo.mv_grid.model import EdgeSet, line_kind, stub_end_text
+from pylovo.mv_grid.model import EdgeSet, line_kind, reach_text, stub_end_text
+from pylovo.mv_grid.options import SETTLEMENT_TYPE_KEYS
 
 if TYPE_CHECKING:
     import pandapower as pp
@@ -465,6 +467,36 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
                        lambda a, b: _flags(grids, (a, b)))
 
 
+def link_reach(nodes: pd.DataFrame, params: "MvParameters") -> np.ndarray:
+    """The reach (m) of each node for the links: ``link_max_length_m`` of the settlement type of its PLZ (column
+    ``settlement_type``: 1 rural, 2 semi-urban, 3 urban); a node without a known type takes the urban reach."""
+    reach = params.link_max_length_m
+    types = _numbers(nodes, "settlement_type")
+    keys = [SETTLEMENT_TYPE_KEYS.get(int(t), "urban") if np.isfinite(t) else "urban" for t in types]
+    return np.array([float(reach[k]) for k in keys], dtype=float)
+
+
+def largest_reach(params: "MvParameters") -> float:
+    """The longest reach of ``link_max_length_m`` (the search radius of the links)."""
+    return max(float(v) for v in params.link_max_length_m.values())
+
+
+def _within_reach(m: dict | None, params: "MvParameters") -> dict | None:
+    """The pairs of :func:`_measure` whose street distance is within the shorter reach of their two ends; None
+    when no pair is left."""
+    if m is None:
+        return None
+    reach = link_reach(m["sub"], params)
+    i, j = m["pairs"][:, 0], m["pairs"][:, 1]
+    ok = m["street"] <= np.minimum(reach[i], reach[j])
+    if not ok.any():
+        return None
+    out = dict(m)
+    for key in ("pairs", "street", "straight_m", "overhead", "straight", "length"):
+        out[key] = m[key][ok]
+    return out
+
+
 def stub_link_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, limit_m: float,
                     full: Collection[int] = ()) -> np.ndarray:
     """Row pairs of :func:`stub_link_candidates` that may hold a link from a stub end: in one district, on different
@@ -513,26 +545,27 @@ def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params:
     """The normally-open links inside the districts (pure).
 
     1. **Between rings:** pairs of ring members (stations and MV customers with switchgear) of different rings of the
-       same district within ``link_max_length_m`` along the routing graph (true length), greedy by length: each
-       member holds at most one link (a third cable bay, :data:`LINKS_PER_NODE`), and two rings are joined at most
+       same district within their reach along the routing graph (true length), greedy by length: each member holds
+       at most one link (a third cable bay, :data:`LINKS_PER_NODE`), and two rings are joined at most
        :data:`LINKS_PER_RING_PAIR` times, so that two links can close a short loop between them.
-    2. **From stub ends** (only with ``link_stub_ends``): pairs of a stub end and a ring member or stub node of
-       another feeder of the same district (:func:`stub_link_pairs`) within ``link_max_length_m``, greedy by length
-       with the same limit per node, after the links between rings: the stub end gets a second infeed.
+    2. **From stub ends** (with ``link_stub_ends``): pairs of a stub end and a ring member or stub node of another
+       feeder of the same district (:func:`stub_link_pairs`) within their reach, greedy by length with the same limit
+       per node, after the links between rings: the stub end gets a second infeed.
 
-    Lengths, kinds and geometries as for the ties.
+    The reach of a pair is the shorter :func:`link_reach` of its two ends (``link_max_length_m`` by the settlement
+    type of the PLZ, column ``settlement_type``). Lengths, kinds and geometries as for the ties.
 
     Returns:
         One row per link (:data:`TIE_COLUMNS`; ``from_grid`` = ``to_grid``), the end on the ring with the lower
         ``ring_id`` first, open at ``to_node``; ``flags`` empty; sorted by ``from_grid``, ``from_ring`` and
         ``from_node``.
     """
-    limit = float(params.link_max_length_m)
+    limit = largest_reach(params)
     per_node: dict[int, int] = defaultdict(int)
     tables = []
     cand = tie_candidates(nodes, grids)
     pairs = close_pairs(cand, grids, limit + PREFILTER_SLACK_M, within=True)
-    m = _measure(cand, pairs, edges, params, limit) if len(pairs) else None
+    m = _within_reach(_measure(cand, pairs, edges, params, limit) if len(pairs) else None, params)
     if m is not None:
         ends = _greedy_links(m, per_node, defaultdict(int))
         if ends:
@@ -540,7 +573,7 @@ def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params:
     if params.link_stub_ends:
         cand = stub_link_candidates(nodes, grids)
         pairs = stub_link_pairs(cand, grids, limit, [n for n, k in per_node.items() if k >= LINKS_PER_NODE])
-        m = _measure(cand, pairs, edges, params, limit) if len(pairs) else None
+        m = _within_reach(_measure(cand, pairs, edges, params, limit) if len(pairs) else None, params)
         if m is not None:
             ends = _greedy_links(m, per_node, None)
             if ends:
@@ -772,7 +805,8 @@ def link_summary(links: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters
         A JSON-safe dict: ``n_links``, ``link_km``, ``link_cable_km``, ``link_overhead_km``, ``link_km_mean``,
         ``n_ring_pairs``, ``n_ring_pairs_closed`` (pairs of different rings joined twice: a loop that does not run
         through the busbar), ``n_rings``, ``n_rings_with_link``, ``ring_share_with_link``, ``n_supply_points``,
-        ``n_nodes_with_link``, ``node_share_with_link``, ``link_max_length_m``, ``link_stub_ends`` and
+        ``n_nodes_with_link``, ``node_share_with_link``, ``link_max_length_m`` (the reach by settlement type),
+        ``link_stub_ends`` and
         ``runtime_s``; with ``stub_ends`` also ``n_stub_ends``, ``n_stub_end_links`` (links with a stub end),
         ``n_stub_ends_with_link`` and ``stub_end_share_with_link``.
     """
@@ -806,7 +840,7 @@ def link_summary(links: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters
         "n_supply_points": n_supply,
         "n_nodes_with_link": len(nodes),
         "node_share_with_link": _round(len(nodes) / n_supply, 6) if n_supply else None,
-        "link_max_length_m": float(params.link_max_length_m),
+        "link_max_length_m": {k: float(v) for k, v in params.link_max_length_m.items()},
         "link_stub_ends": bool(params.link_stub_ends),
         "runtime_s": _round(runtime_s, 2) if runtime_s is not None else None,
     }
@@ -825,7 +859,7 @@ def describe_links(summary: Mapping[str, Any]) -> str:
     n = int(summary.get("n_links") or 0)
     if not n:
         return (f"no normally-open links: no rings of one district within "
-                f"{float(summary.get('link_max_length_m') or 0):g} m")
+                f"{reach_text(summary.get('link_max_length_m'))}")
     stubs = bool(summary.get("n_stub_end_links"))
     text = (f"{n} normally-open links {'' if stubs else 'between rings '}inside the districts: "
             f"{summary.get('link_km') or 0:,.1f} km")
@@ -1037,7 +1071,7 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
 
     log = logger or _LOGGER
     start = time.time()
-    limit = float(params.link_max_length_m)
+    limit = largest_reach(params)
     grids = dbc.tie_grids(version_id, variant_id)
     nodes = dbc.tie_candidate_nodes(version_id, variant_id)
     cand = tie_candidates(nodes, grids)

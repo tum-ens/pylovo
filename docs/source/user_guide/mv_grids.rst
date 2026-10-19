@@ -759,7 +759,7 @@ value, so older configuration files keep working.
    * - ``MV_INTERCONNECTION``
      - ``ties``
      - Normally-open ties to rings of neighbouring substations within ``tie_max_length_m`` and
-       normally-open links between rings of one substation within ``link_max_length_m``, or
+       normally-open links inside the supply area of one substation within ``link_max_length_m``, or
        ``none`` (Weisenstein and Wellßow 2021; Dubielzig 2022).
    * - ``MV_STANDARD_CABLE``
      - ``null``
@@ -861,13 +861,15 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 2000
      - Longest tie to a neighbouring supply area (assumption).
    * - ``link_max_length_m``
-     - 500
-     - Longest link between two rings of one supply area, a cross connection between neighbouring
-       stations (assumption). Each ring member takes at most one link, two rings at most two.
+     - ``{rural: 1000, semi_urban: 750, urban: 500}``
+     - Reach of the normally-open links inside a supply area by the settlement type of the PLZ,
+       about three times the distance between neighbouring stations (assumption); a link takes the
+       shorter reach of its two ends, and one number applies to every type. Each node takes at most
+       one link, two rings at most two (:ref:`mv-links`).
    * - ``link_stub_ends``
-     - False
-     - Test option: each stub end may also take one link to a station of another feeder of its
-       supply area within ``link_max_length_m``, a second infeed (:ref:`mv-links`).
+     - True
+     - Each stub end may also take one link within its reach to a station of another feeder of its
+       supply area, a second infeed (:ref:`mv-links`).
    * - ``local_search_rounds``
      - 50
      - Pass limit of the local search, 0 switches it off (Ding0 used 10 fixed rounds).

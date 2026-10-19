@@ -201,7 +201,7 @@ MV_MAX_STATIONS_PER_RING: 20
 MV_STUBS: rural
 # Overhead lines: osm (only along the MV overhead lines mapped in OpenStreetMap, the rest is cable), rural (links between rural settlements are straight overhead spans) or none (cables only)
 MV_OVERHEAD_LINES: osm
-# Ties between neighbouring HV/MV substations: ties (one normally-open tie per ring where a neighbour ring is within 2 km) or none
+# Ties and links: ties (one normally-open tie per ring where a ring of a neighbouring HV/MV substation is within 2 km, and normally-open links between rings and from stub ends inside a supply area, 0.5 to 1 km by the settlement type of the PLZ) or none
 MV_INTERCONNECTION: ties
 # Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 at 10 or 20 kV)
 MV_STANDARD_CABLE: null

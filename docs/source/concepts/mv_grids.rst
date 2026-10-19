@@ -630,38 +630,64 @@ substation outside the region are kept and flagged (``incomplete_district``,
 
 .. _mv-links:
 
-Links between rings of one supply area
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Links inside a supply area
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Real MV grids also join neighbouring rings of the same substation. Many stations have a third
 cable to a station of another ring, so that a station can be resupplied in more ways than along its
-own ring, and many loops of the meshed grid run between rings instead of through the busbar. In the
-two DSO grids checked on 2026-10-19, a fifth to a third of the stations had three or more MV
-cables. The rings of the stage have none. With ``MV_INTERCONNECTION: ties``, the stage therefore
-adds normally-open links after the ties:
+own ring, and many loops of the meshed grid run between rings instead of through the busbar. Many
+rural stations at the end of a stub have a second cable to a station of another feeder, so that
+they keep a second infeed. In the two DSO grids checked on 2026-10-19, a fifth to a third of the
+stations had three or more MV cables, and a tenth to a seventh were stub ends with one cable. The
+rings of the stage have no such cables. With ``MV_INTERCONNECTION: ties``, the stage therefore adds
+normally-open links after the ties:
 
-#. The candidates are the same ring members as for the ties.
-#. Pairs of candidates of different rings of the same supply area within ``link_max_length_m``
-   (500 m) along the streets, in true length, are taken in the order of their length.
-#. Each candidate takes at most one link, as a station with a third cable bay. Two rings take at
-   most two links, so that two links close a short loop between them.
+#. **Between rings:** pairs of ring members (the candidates of the ties) of different rings of the
+   same supply area within their reach along the streets, in true length, are taken in the order
+   of their length. Each ring member takes at most one link, as a station with a third cable bay.
+   Two rings take at most two links, so that two links close a short loop between them.
+#. **From stub ends** (``link_stub_ends``, on by default): each stub end (a station or MV customer
+   on a stub with one MV line) may then take one link within its reach to a ring member or stub
+   node of another feeder of its supply area, which can be the other half of its own ring. The
+   pairs are again taken in the order of their length, and every node still takes at most one
+   link.
+
+The reach follows the settlement type of the PLZ, which the LV stage determines from the households
+per building and the distance between houses (``link_max_length_m``):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 25 45
+   :class: fixed-table
+
+   * - Settlement type of the PLZ
+     - Reach
+     - Median distance between neighbouring stations (test region)
+   * - rural (1)
+     - 1,000 m
+     - 320 m
+   * - semi-urban (2)
+     - 750 m
+     - 250 m
+   * - urban (3)
+     - 500 m
+     - 180 m
+
+A link takes the shorter reach of its two ends, and an MV customer takes the type of its PLZ. The
+reach is an assumption of about three times the distance between neighbouring stations. Stub ends
+lie far from other feeders: in the test region the median straight distance from a stub end to a
+station of another feeder was 0.7 km in urban, 1.0 km in semi-urban and 1.4 km in rural PLZ. With
+500 m in all PLZ, only 5 % of the stub ends found a link. With 1 km in all PLZ, the town DSO grid
+got twice as many loops as it has. With the reach by settlement type, the loops of the rural DSO
+grid matched the real ones in count, supply points and length within 15 %, and the town DSO grid
+kept about the loops it had without links from stub ends (a third more than real). The links come
+to about 5 % of the circuit length.
 
 Links are ``mv_line`` rows with ``role = 'link'``, normally open at their ``to_node``. Like the ties,
 they carry no flow in the checked cases and are not part of the district nets or of
-``circuit_km``. Their count, length, the rings and supply points with a link and the ring pairs
-joined twice are stored in ``mv_variant.summary['links']`` and ``mv_grid.metrics['links']``. The
-500 m is an assumption: a cross connection joins neighbouring stations, two to three times the
-distance between neighbouring stations.
-
-Many real rural stations at the end of a stub have a second cable to a station of another feeder,
-so that they keep a second infeed. The test option ``link_stub_ends`` (off by default, ``pylovo-mv
-generate --set link_stub_ends=true``) adds these links after the links between rings. Each stub end
-(a station or MV customer on a stub with one MV line) may take one link within
-``link_max_length_m`` to a ring member or stub node of another feeder of its supply area, which
-can be the other half of its own ring. The pairs are taken in the order of their length, and every
-node still takes at most one link. These links are ``role = 'link'`` as well;
-``mv_variant.summary['links']`` adds the number of stub ends, the links from stub ends and the stub
-ends with a link.
+``circuit_km``. Their count, length, the rings and supply points with a link, the ring pairs joined
+twice and the stub ends with a link are stored in ``mv_variant.summary['links']`` and
+``mv_grid.metrics['links']``.
 
 .. _mv-voltage-level:
 

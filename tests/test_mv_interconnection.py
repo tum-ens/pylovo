@@ -50,9 +50,9 @@ LINE = edge_set(street(np.arange(0.0, 6001.0, 500.0)))      # one street, 0 .. 6
 
 
 def node(nid, grid, ring, x, *, feeder=None, kind="station", connection="ring", ring_kind="ring", offset=0.0,
-         area="rural", settlement=np.nan, y=None, edge=None, fraction=None, degree=None):
+         area="rural", settlement=np.nan, y=None, edge=None, fraction=None, degree=None, settlement_type=None):
     """A node row on LINE (or on a given edge) in the form of ``MvResultMixin.tie_candidate_nodes`` (``degree``:
-    2 for ring members, 1 for stub nodes, unless given)."""
+    2 for ring members, 1 for stub nodes, unless given; no ``settlement_type``: the urban link reach of 500 m)."""
     if edge is None:
         edge = int(min(x // 500.0, 11)) + 1
         fraction = (x - 500.0 * (edge - 1)) / 500.0
@@ -60,7 +60,8 @@ def node(nid, grid, ring, x, *, feeder=None, kind="station", connection="ring", 
             "ring_kind": ring_kind, "feeder_id": 2 * ring if feeder is None else feeder, "x": float(x),
             "y": float(offset if y is None else y), "attach_edge_id": edge, "attach_fraction": fraction,
             "attach_offset_m": float(offset), "settlement_id": settlement, "area_class": area,
-            "degree": (1 if connection == "stub" else 2) if degree is None else degree}
+            "degree": (1 if connection == "stub" else 2) if degree is None else degree,
+            "settlement_type": settlement_type}
 
 
 def nodes_frame(*rows) -> pd.DataFrame:
@@ -183,17 +184,18 @@ def test_links_from_stub_ends_take_the_nearest_free_node_of_another_feeder():
     assert cand.index.tolist() == [11, 12, 13, 14, 15, 16, 31, 41]
     assert cand.index[cand["stub_end"]].tolist() == [13, 15, 16]
     assert ic.tie_candidates(rows, grids).index.tolist() == [11, 12, 31, 41]       # ties keep the ring members
-    # off (the default): the ring members 11 and 31 (50 m) take the only link between rings
-    assert not PARAMS.link_stub_ends
-    assert pairs_of(ic.plan_links(rows, grids, LINE, PARAMS)) == [(11, 31)]
-    links = ic.plan_links(rows, grids, LINE, PARAMS.replace(link_stub_ends=True))
+    # off: the ring members 11 and 31 (50 m) take the only link between rings
+    off = PARAMS.replace(link_stub_ends=False)
+    assert pairs_of(ic.plan_links(rows, grids, LINE, off)) == [(11, 31)]
+    assert PARAMS.link_stub_ends                                                    # on by default
+    links = ic.plan_links(rows, grids, LINE, PARAMS)
     # stub end 13: 31 (50 m) holds its link already and 11, 12 are on its own feeder, so 41 on the other half of
     # ring 0 (200 m); the stub ends 15 and 16 of different feeders join each other (100 m); node 14 has a child
     # and no link
     assert pairs_of(links) == [(11, 31), (13, 41), (16, 15)]
     assert links["length_m"].tolist() == pytest.approx([50.0, 200.0, 100.0])
     assert (links["from_grid"] == links["to_grid"]).all()
-    summary = ic.link_summary(links, grids, PARAMS.replace(link_stub_ends=True), stub_ends=[13, 15, 16])
+    summary = ic.link_summary(links, grids, PARAMS, stub_ends=[13, 15, 16])
     assert summary["link_stub_ends"] is True and summary["n_stub_ends"] == 3
     assert summary["n_stub_end_links"] == 2 and summary["n_stub_ends_with_link"] == 3
     assert summary["stub_end_share_with_link"] == pytest.approx(1.0)
@@ -203,14 +205,31 @@ def test_links_from_stub_ends_take_the_nearest_free_node_of_another_feeder():
     assert text.startswith("3 normally-open links inside the districts") and "with a link" in text
     assert text.endswith("2 of them from stub ends (3 of 3 stub ends with a second infeed)")
     assert links_line(summary).endswith("2 of them from stub ends (3 of 3 stub ends with a second infeed)")
-    plain = ic.link_summary(links.iloc[:1], grids, PARAMS)
+    plain = ic.link_summary(links.iloc[:1], grids, off)
     assert "n_stub_ends" not in plain and plain["link_stub_ends"] is False
     assert "third cable" in links_line(plain) and "stub ends" not in links_line(plain)
 
 
+def test_the_link_reach_follows_the_settlement_type_of_both_ends():
+    grids = grids_frame((1, 20.0))
+    types = nodes_frame(*(node(n, 1, 0, 0.0, settlement_type=t) for n, t in ((1, 1), (2, 2), (3, 3), (4, None))))
+    assert ic.link_reach(types, PARAMS).tolist() == [1000.0, 750.0, 500.0, 500.0]   # no type: the urban reach
+    assert ic.largest_reach(PARAMS) == 1000.0
+    rows = nodes_frame(node(11, 1, 0, 1000.0, settlement_type=1), node(21, 1, 1, 1800.0, settlement_type=1),
+                       node(12, 1, 0, 3000.0, settlement_type=1), node(22, 1, 1, 3800.0, settlement_type=3))
+    # 800 m each: rural to rural is within 1 km, rural to urban takes the urban 500 m
+    assert pairs_of(ic.plan_links(rows, grids, LINE, PARAMS)) == [(11, 21)]
+    one = PARAMS.replace(link_max_length_m=900.0)                                    # one number for every type
+    assert pairs_of(ic.plan_links(rows, grids, LINE, one)) == [(11, 21), (12, 22)]
+    summary = ic.link_summary(ic.empty_ties(), grids, PARAMS)
+    assert summary["link_max_length_m"] == {"rural": 1000.0, "semi_urban": 750.0, "urban": 500.0}
+    assert ic.describe_links(summary).endswith("within 1,000/750/500 m (rural/semi-urban/urban)")
+    assert links_line({"n_links": 0, "link_max_length_m": 500.0}).endswith("within 500 m)")         # older summary
+
+
 def test_links_from_stub_ends_stay_within_the_limit_and_the_district():
     grids = grids_frame((1, 20.0), (2, 20.0))
-    on = PARAMS.replace(link_stub_ends=True)
+    on = PARAMS
     rows = nodes_frame(node(13, 1, 0, 1000.0, connection="stub"), node(21, 1, 1, 1600.0),     # 600 m
                        node(22, 2, 0, 1100.0))                                                # another district
     assert ic.plan_links(rows, grids, LINE, on).empty
@@ -637,11 +656,12 @@ class LinkDb(TieDb):
 
 def test_plan_and_save_links_reads_the_stub_nodes_with_the_option():
     db = LinkDb(stub_rows(), grids_frame((1, 20.0)), LINE)
-    summary = ic.plan_and_save_links(db, "mv1", "y1", "g1", PARAMS)
+    summary = ic.plan_and_save_links(db, "mv1", "y1", "g1", PARAMS.replace(link_stub_ends=False))
     assert pairs_of(db.saved[2]) == [(11, 31)] and db.saved[4] == "link" and "n_stub_ends" not in summary
     assert db.calls[0][2] == 4                                       # the subgraph around the ring members
+    assert db.calls[0][3] == 1000.0 + ic.SUBGRAPH_MARGIN_M           # the longest reach
     db = LinkDb(stub_rows(), grids_frame((1, 20.0)), LINE)
-    summary = ic.plan_and_save_links(db, "mv1", "y1", "g1", PARAMS.replace(link_stub_ends=True))
+    summary = ic.plan_and_save_links(db, "mv1", "y1", "g1", PARAMS)
     assert pairs_of(db.saved[2]) == [(11, 31), (13, 41), (16, 15)]
     assert db.calls[0][2] == 8                                       # ... and the stub nodes in reach
     assert summary["n_stub_ends"] == 3 and summary["n_stub_end_links"] == 2
