@@ -125,14 +125,16 @@ reason, so one viewer works with any pylovo database.
    * - HV and MV grids
      - HV/MV substations
      - ``pylovo.mv_substation`` of the MV run with their site outlines; candidates the run did not use
-       are hollow. The facts give the eTraGo 110 kV bus of each substation.
+       are hollow. The facts give the eTraGo 110 kV bus of each substation. From zoom 15 the busbar
+       circle shows where the MV lines end (display geometry of the MV stage).
    * - MV grids
      - MV lines
      - ``pylovo.mv_line``: rings, stubs and dedicated feeders by ring, kind, role or loading, with the
        normally-open points; overhead lines dashed, ties between supply areas and links between the
        rings of one supply area dotted. Mixed lines run
        partly on an OSM MV line: that part is dashed, and their facts give the cable and overhead
-       length.
+       length. Where the run stores a display geometry (``pylovo-mv display``), lines that share a
+       route lie side by side in lanes instead of on top of each other.
    * -
      - OSM MV lines (off by default)
      - The MV overhead lines mapped in OpenStreetMap as corridors of the run's routing graph
