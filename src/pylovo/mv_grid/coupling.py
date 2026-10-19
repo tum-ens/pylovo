@@ -98,6 +98,9 @@ OPERATING_COLUMNS: tuple[str, ...] = (
 AGREEMENT_PU: float = 0.005
 #: ``load`` column that marks the station-busbar customers of the merged net (fixed loads, never scaled).
 BUSBAR_CUSTOMER_COLUMN: str = "busbar_customer"
+#: Shortest LV line of a coupled net (km). Stored LV nets can hold lines of a few micrometres (two buses at one
+#: point), whose admittance stops Newton-Raphson; they get 1 m, which changes no voltage noticeably.
+MIN_LINE_KM: float = 0.001
 #: Station ratings that pylovo builds as one unit, and as two units of half the rating; any other rating is
 #: ``int(rating / 630)`` units of 630 kVA (``cable_installer.create_transformer``).
 SINGLE_UNIT_KVA: tuple[float, ...] = (100.0, 160.0, 250.0, 400.0, 630.0)
@@ -120,12 +123,23 @@ def _number(value: Any, default: float = math.nan) -> float:
 
 
 def _runpp(net: pp.pandapowerNet) -> bool:
-    """Newton-Raphson as in the electrical module; non-convergence is a result, not an error."""
-    try:
-        pp.runpp(net, algorithm="nr", init="auto")
-    except LoadflowNotConverged:
-        return False
-    return bool(net.converged)
+    """Newton-Raphson as in the electrical module, then Iwamoto-damped Newton-Raphson if that fails;
+    non-convergence is a result, not an error."""
+    for algorithm in ("nr", "iwamoto_nr"):
+        try:
+            pp.runpp(net, algorithm=algorithm, init="auto")
+        except LoadflowNotConverged:
+            continue
+        if net.converged:
+            return True
+    return False
+
+
+def _min_line_length(lines: pd.DataFrame) -> pd.DataFrame:
+    """``lines`` with every ``length_km`` below :data:`MIN_LINE_KM` raised to it (in place; returned)."""
+    if len(lines) and "length_km" in lines.columns:
+        lines["length_km"] = lines["length_km"].astype(float).clip(lower=MIN_LINE_KM)
+    return lines
 
 
 def operating_busbar_vm(case: str, params: MvParameters) -> float:
@@ -252,6 +266,8 @@ def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, vm_high: float, 
                        power_factor: float = 1.0) -> dict[str, float]:
     """The LV verdict of one station at its design point (DESIGN §5.7 step 2); ``lv_net`` is not changed.
 
+    Lines shorter than :data:`MIN_LINE_KM` get that length in the check's copy.
+
     - **Load:** the MV side (ext_grid) at ``vm_low``, the station transformer at ``tap``, the stored
       station-coincident LV loads and fixed station-busbar customer loads → ``coupled_lv_busbar_vm_pu``
       (``LVbus 1``, the LV side of the
@@ -288,6 +304,7 @@ def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, vm_high: float, 
            "coupled_lv_busbar_vm_feed_in_pu": math.nan, "coupled_lv_max_vm_pu": math.nan,
            "design_converged": math.nan, "feed_in_converged": math.nan}
     net = copy.deepcopy(lv_net)
+    _min_line_length(net.line)
     if busbar_loads:
         categories = [(str(category), float(kw)) for category, kw in sorted(busbar_loads.items())
                       if float(kw) > 0]
@@ -339,13 +356,15 @@ def lv_frames(lv_net: pp.pandapowerNet, grid_result_id: int) -> dict[str, pd.Dat
     """The bus, line, trafo and load tables of an LV net (copies, with a ``grid_result_id`` column) for the merge.
 
     Results and the ext_grid are not kept (the LV net is dropped right after); the station transformer's HV bus
-    (``MVbus 1``) identifies the bus that :func:`couple_lv_nets` replaces by the MV node.
+    (``MVbus 1``) identifies the bus that :func:`couple_lv_nets` replaces by the MV node. Lines shorter than
+    :data:`MIN_LINE_KM` get that length.
     """
     frames = {}
     for table in FRAME_TABLES:
         frame = lv_net[table].copy()
         frame["grid_result_id"] = float(grid_result_id)
         frames[table] = frame
+    _min_line_length(frames["line"])
     return frames
 
 
@@ -865,10 +884,10 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     Returns:
         :class:`CoupledDistrict`: ``rows`` (``mv_node_id`` and :data:`COUPLED_COLUMNS` per station), ``status``
         (``done``, or ``partial`` when a station with an LV grid could not be coupled, lacks a voltage budget,
-        has a skipped or non-converging design/feed-in check, was left out of the merged net, or the merged flow
-        did not converge) and JSON-native ``metrics``. An LV net whose design-point
-        or feed-in check does not converge on its own is left out of the merged net (``not_merged``; its station
-        keeps the MV-level load): one such net would stop the merged flow of the whole district.
+        has a skipped or non-converging design/feed-in check, or the merged flow did not converge) and JSON-native
+        ``metrics``. Every LV net that loads is merged, also one whose design-point or feed-in check does not
+        converge on its own (it stays in ``design_not_converged`` / ``feed_in_not_converged``): the MV operating
+        point always carries the real LV grids.
     """
     log = log or logger
     start = time.time()
@@ -882,7 +901,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     frames: dict[int, tuple[int, dict[str, pd.DataFrame]]] = {}
     lists: dict[str, list[int]] = {"unknown_lv_grid": [], "lv_error": [], "no_mv_bus": [],
                                    "lv_stored_not_converged": [], "design_not_converged": [],
-                                   "feed_in_not_converged": [], "no_budget": [], "not_merged": []}
+                                   "feed_in_not_converged": [], "no_budget": []}
     for gid, lv_net in lv_nets:
         key = node_of_grid.get(int(gid))
         if key is None:
@@ -916,8 +935,6 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             bus = bus_of_node.get(key)
             if bus is None:
                 lists["no_mv_bus"].append(key)
-            elif check["design_converged"] == 0.0 or (params.include_generation and check["feed_in_converged"] == 0.0):
-                lists["not_merged"].append(key)
             else:
                 frames[bus] = (int(gid), part)
     with_grid = set(node_of_grid.values())
@@ -946,7 +963,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         "agreement_pu": AGREEMENT_PU,
     }
     required_checks = ("design_converged", "feed_in_converged") if params.include_generation else ("design_converged",)
-    status = "partial" if (not_coupled or lists["not_merged"] or lists["no_budget"]
+    status = "partial" if (not_coupled or lists["no_budget"]
                            or lists["design_not_converged"] or lists["feed_in_not_converged"]
                            or any(math.isnan(check[case]) for check in checks.values()
                                   for case in required_checks)) else "done"

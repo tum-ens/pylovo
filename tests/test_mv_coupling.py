@@ -669,7 +669,7 @@ def test_couple_district_survives_a_broken_lv_net_and_unknown_grids(small):
     assert result.rows["coupled_op_lv_busbar_vm_pu"].isna().all()
 
 
-def test_couple_district_leaves_a_non_converging_lv_net_out_of_the_merged_flow(small):
+def test_couple_district_merges_an_lv_net_that_does_not_converge_on_its_own(small):
     lv_nets, inp, plan, design, cases, budgets, stored = small
     stations = station_rows(inp, cases, budgets)
     diverging = copy.deepcopy(lv_nets[4])
@@ -677,15 +677,26 @@ def test_couple_district_leaves_a_non_converging_lv_net_out_of_the_merged_flow(s
     nets = [(gid, diverging if gid == 4 else net) for gid, net in lv_nets.items()]
     result = coupling.couple_district(stored, stations, iter(nets), inp.params, inp.lv, vn_kv=inp.vn_kv,
                                       keep_net=True)
-    assert result.metrics["design_not_converged"] == [104] and result.metrics["not_merged"] == [104]
-    assert result.status == "partial"
-    op = result.metrics["operating_point"]
-    assert all(op["converged"].values())                               # the other LV nets are merged and solved
-    rows = result.rows.set_index("mv_node_id")
-    assert np.isnan(rows.at[104, "coupled_op_lv_busbar_vm_pu"])
-    assert rows.drop(index=104)["coupled_op_lv_busbar_vm_pu"].notna().all()
+    assert result.metrics["design_not_converged"] == [104] and "not_merged" not in result.metrics
+    assert result.metrics["n_merged"] == len(lv_nets) and result.status == "partial"
     names = result.net.load["name"].astype(str)
-    assert (names == "Station 4").sum() == 1                           # the station keeps its MV-level load
+    assert (names == "Station 4").sum() == 0                           # its LV loads replace the MV-level load
+    assert (pd.to_numeric(result.net.bus["grid_result_id"], errors="coerce") == 4).any()
+
+
+def test_micrometre_lines_get_the_minimum_length_and_converge(small):
+    lv_nets, inp, plan, design, cases, budgets, stored = small
+    stations = station_rows(inp, cases, budgets)
+    net = copy.deepcopy(lv_nets[2])
+    line = net.line.index[0]
+    net.line.loc[line, "length_km"] = 8e-12                              # two buses at one point
+    frames = coupling.lv_frames(net, 2)
+    assert frames["line"].at[line, "length_km"] == coupling.MIN_LINE_KM
+    assert net.line.at[line, "length_km"] == 8e-12                       # the input is not changed
+    nets = [(gid, net if gid == 2 else other) for gid, other in lv_nets.items()]
+    result = coupling.couple_district(stored, stations, iter(nets), inp.params, inp.lv, vn_kv=inp.vn_kv)
+    assert result.status == "done" and result.metrics["design_not_converged"] == []
+    assert all(result.metrics["operating_point"]["converged"].values())
 
 
 @pytest.mark.parametrize("flag, diagnostic", [("design_converged", "design_not_converged"),

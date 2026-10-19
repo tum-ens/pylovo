@@ -876,10 +876,11 @@ and never changes the MV or LV grids:
    as a consistency check in ``mv_grid.metrics['coupling']``.
 
 In 10 kV supply areas the LV transformers are re-typed to 10 kV on their MV side, and a station
-upsized for its busbar customers gets the larger transformer. An LV net whose own check does not
-converge is left out of the merged flow (its station keeps its MV load), and the supply area is
-then ``partial``. The merged net is not stored, but ``pylovo-mv export --coupled`` rebuilds it for
-one supply area.
+upsized for its busbar customers gets the larger transformer. Every LV net is merged, also one
+whose own check does not converge; the supply area is then ``partial``. Lines shorter than 1 m get
+1 m, because stored LV nets can hold lines of a few micrometres that stop Newton-Raphson, and a
+failed Newton-Raphson is repeated with Iwamoto damping. The merged net is not stored, but
+``pylovo-mv export --coupled`` rebuilds it for one supply area.
 
 Missing voltage budgets and failed or skipped design/feed-in checks also produce ``partial`` when
 using ``--no-merged``. Completion describes the checks performed, not compliance with voltage limits.
