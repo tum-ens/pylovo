@@ -29,9 +29,9 @@ import yaml
 #: 5: rural ring members count ``1 / rural_ring_factor``, busbar legs are cables along the streets with exits within
 #: ``busbar_exit_radius_m``, isolated rural stations hang on stubs after the rings are solved (satellites).
 #: 6: ``MV_OVERHEAD_LINES`` osm (default): overhead lines only along the OSM MV lines of the routing graph.
-#: 7: municipal supply areas (``MV_SUPPLY_AREAS`` municipal, default) without capacity rebalancing
-#: (``rebalance_max_iter`` 0); stub, radial and T-off limits on the true route length; larger conductors before
-#: topology changes in the repair loop (8 rounds).
+#: 7: supply areas without capacity rebalancing (``rebalance_max_iter`` 0) and the option ``MV_SUPPLY_AREAS``
+#: municipal; stub, radial and T-off limits on the true route length; larger conductors before topology changes in
+#: the repair loop (8 rounds).
 MV_STAGE_VERSION: int = 7
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
@@ -95,11 +95,11 @@ _YAML_SPECS: tuple[Spec, ...] = (
                 "transformers are 20/0.4 kV and are re-typed to 10 kV by pylovo-mv couple"),
     Spec("MV_SUBSTATIONS", "substations", "osm", "choice", choices=("osm", "egon"), group="sources",
          source="Hülk et al. 2017 (HV/MV substations from OSM); eGon-data"),
-    Spec("MV_SUPPLY_AREAS", "supply_areas", "municipal", "choice", choices=("municipal", "routed", "egon"),
+    Spec("MV_SUPPLY_AREAS", "supply_areas", "routed", "choice", choices=("routed", "municipal", "egon"),
          group="sources",
-         source="municipal: whole municipalities on their own substation, split among several, else on the substation "
-                "nearest to most of their load (Hülk et al. 2017, as Ding0); routed: nearest substation along the "
-                "streets; eGon-data MV grid districts"),
+         source="routed: nearest substation along the streets (closest to the DSO data, 2026-10-19); municipal: whole "
+                "municipalities on their own substation, split among several, else on the substation nearest to most "
+                "of their load (Hülk et al. 2017, as Ding0); eGon-data MV grid districts"),
     Spec("MV_ROUTING", "routing", "street", "choice", choices=("street", "crowfly"), group="routing", key="mode",
          source="lines along streets and field paths; straight lines x 1.3 as in Ding0"),
     Spec("MV_RING_SOLVER", "solver", "savings", "choice", choices=("savings", "sweep"), group="topology",

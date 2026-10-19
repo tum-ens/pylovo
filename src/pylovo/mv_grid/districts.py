@@ -2,16 +2,15 @@
 
 DESIGN §4.1. Three rules assign every MV node (station, customer, generator) to one HV/MV substation (site):
 
-* :func:`municipal_assignment` (``MV_SUPPLY_AREAS: municipal``, default): municipalities stay whole, as in Ding0's
-  MV grid districts (Hülk et al. 2017). A municipality with one site goes to that site, one with several sites is
-  split among them by the routed Voronoi of those sites, and one without a site goes as a whole to the site that the
-  routed Voronoi gives the largest part of its load. Concessions for MV grids were mostly awarded per
-  municipality, and a town is fed from its own substation rather than from several distant ones.
-* :func:`routed_assignment` (``MV_SUPPLY_AREAS: routed``): an **additively weighted graph Voronoi** on the
+* :func:`routed_assignment` (``MV_SUPPLY_AREAS: routed``, default): an **additively weighted graph Voronoi** on the
   regional street graph (:func:`pylovo.mv_grid.graph.weighted_owner`): every node goes to the site with the
   smallest ``weight + street distance``. Cells are contiguous along shortest paths. The weights are 0; with
   ``rebalance_max_iter`` above 0 (off by default), the sites above their (n-1) capacity are raised by
   ``rebalance_step_m`` until no site is overloaded or the raises are spent.
+* :func:`municipal_assignment` (``MV_SUPPLY_AREAS: municipal``): municipalities stay whole, as in Ding0's MV grid
+  districts (Hülk et al. 2017). A municipality with one site goes to that site, one with several sites is split
+  among them by the routed Voronoi of those sites, and one without a site goes as a whole to the site that the
+  routed Voronoi gives the largest part of its load.
 * :func:`egon_assignment` (``MV_SUPPLY_AREAS: egon``): the eGon-data MV grid district polygon that contains the
   node; its depot is the site with the same eGon bus id.
 

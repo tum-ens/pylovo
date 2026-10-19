@@ -701,10 +701,10 @@ value, so older configuration files keep working.
      - ``osm``
      - HV/MV substations from OpenStreetMap (Hülk et al. 2017), or ``egon`` from eGon-data.
    * - ``MV_SUPPLY_AREAS``
-     - ``municipal``
-     - Whole municipalities on their own substation, split among several, else on the substation
-       nearest to most of their load (Hülk et al. 2017, as Ding0); ``routed``: the nearest
-       substation along the streets; ``egon``: the eGon-data MV grid districts (needs
+     - ``routed``
+     - The nearest substation along the streets; ``municipal``: whole municipalities on their own
+       substation, split among several, else on the substation nearest to most of their load (Hülk
+       et al. 2017, as Ding0); ``egon``: the eGon-data MV grid districts (needs
        ``MV_SUBSTATIONS: egon``).
    * - ``MV_ROUTING``
      - ``street``

@@ -614,9 +614,7 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert {"edge_source", "edge_target", "edge_length_m", "attach_edge_id"} <= set(region_modules["sites"].columns)
     assert region_modules["sites"]["edge_source"].tolist() == [11010, 11030]    # edges 1101, 1103
     assert region_modules["nodes"]["kind"].tolist() == ["station", "station", "customer", "generator"]
-    # municipal supply areas (default): every node and the site near its street edge get the edge's municipality
-    assert region_modules["nodes"]["ags"].tolist() == ["09000001"] * 4
-    assert region_modules["municipal_sites"]["ags"].notna().any()
+    assert "municipal_sites" not in region_modules                       # routed supply areas by default
     assert db.calls["create_grids"] == [([11], 20.0)]
     grids = db.calls["set_node_grids"][0][0]
     assert grids["mv_node_id"].tolist() == [104, 105, 106, 107] and grids["mv_grid_id"].tolist() == [900] * 4
@@ -629,6 +627,16 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert (records[900]["n_stations"], records[900]["n_customers"]) == (2, 1)
     assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1, "generator": 1}}
     assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])
+
+
+def test_region_step_municipal_areas_get_the_municipality_of_nodes_and_sites(region_modules):
+    db = RegionDb()
+    stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1",
+                       MvParameters(include_generation=True, supply_areas="municipal"), LV, None,
+                       stage.logging.getLogger("t"), [])
+    # every node and the site near its street edge get the edge's municipality
+    assert region_modules["nodes"]["ags"].tolist() == ["09000001"] * 4
+    assert region_modules["municipal_sites"]["ags"].notna().any()
 
 
 def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
