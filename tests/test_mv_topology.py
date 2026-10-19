@@ -624,6 +624,33 @@ def test_stub_rules_keep_the_station_looped_in(case):
 
 
 
+@pytest.mark.parametrize("limit_m, stub", [(2000.0, False), (2500.0, True)])
+def test_the_stub_limit_applies_to_the_true_length_on_osm_lines(limit_m, stub):
+    """D hangs 2.4 km south of J on an OSM line: 1.68 km of routing cost at a factor 0.7, but 2.4 km of line."""
+    d = loop_district(side_m=None)
+    d.street((2000, 0), (2000, -2400), overhead=True)
+    d.node(20, "station", 2000, -2400, settlement=1)
+    plan, (inp, *_) = plan_of(d, RING, satellites=False, overhead_lines="osm", osm_line_cost_factor=0.7,
+                              stub_max_length_m=limit_m)
+    assert_plan_valid(plan, inp)
+    assert (plan.node_role[20] == "stub") == stub
+    if stub:
+        line, = line_between(plan, plan.stub_parent[20], 20)
+        assert line.length_m == pytest.approx(2400.0) and line.kind == "overhead"
+
+
+@pytest.mark.parametrize("limit_m, radial", [(2000.0, False), (2500.0, True)])
+def test_the_radial_limit_applies_to_the_true_length_on_osm_lines(limit_m, radial):
+    d = District()
+    d.street((0, 0), (0, -2400), overhead=True)
+    d.node(BUSBAR, "busbar", 0, 0, hint="busbar")
+    d.node(41, "station", 0, -2400)                         # 1.68 km of cost, 2.4 km of line
+    plan, (inp, *_) = plan_of(d, [[41]], satellites=False, overhead_lines="osm", osm_line_cost_factor=0.7,
+                              stub_max_length_m=limit_m)
+    assert_plan_valid(plan, inp)
+    assert (ring_of(plan, 41).kind == "radial") == radial
+
+
 def test_a_station_on_the_way_stays_in_the_ring():
     d = loop_district()
     d.nodes[2].update(x=2000.0, y=0.0)                     # D on the loop street itself

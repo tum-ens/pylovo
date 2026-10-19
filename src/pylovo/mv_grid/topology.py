@@ -14,6 +14,10 @@ This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
    ring where it costs the least length and stays feasible, else into a ring of its own (Ding0's satellites).
 3. **Busbar radials**: a rural single-station ring of at most ``stub_max_kva`` within ``stub_max_length_m`` (street)
    of the busbar becomes one radial line.
+
+All length limits (``stub_max_length_m``, ``generator_max_tee_m``) hold for the true route length: with
+``osm_line_cost_factor`` below 1, routes are chosen by their cost, but a stub, T-off or radial is accepted by its
+length.
 4. **Dedicated customers** (``connection_hint = 'dedicated'``): a 2-leg feeder from the busbar, leg 2 normally open
    at the customer, parallel cables by load.
 5. **MV generators**, in decreasing power: a dedicated feeder (``connection_hint = 'dedicated'`` or above
@@ -674,13 +678,14 @@ class _Line:
 class _Attach:
     """The nearest attachment point of a node on a line."""
 
-    dist: float
+    dist: float                            # routing cost of the connection (m; OSM lines discounted)
     line: int
     pos: int                               # street: index in route.verts; -1 on a straight span
     foot: np.ndarray                       # the attachment point
     t: float                               # straight span: position 0..1
     path: np.ndarray | None = None         # street: vertices from the node to the attachment vertex
     cum: np.ndarray | None = None
+    length: float = math.nan               # true length of the connection (m), checked against the limits
 
 
 # ============================================================================================ helpers: decisions
@@ -886,8 +891,9 @@ def _decide_radials(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None
         if ctx.urban[row] or ctx.kind[row] not in LOAD_KINDS:
             continue
         tree = [row] + [r for r, rid in dec.stubs if rid == struct.ring_id]
+        lengths = ctx.model.length_m if ctx.model.length_m is not None else ctx.model.street_m
         if (ctx.coincident_kva(tree) <= p.stub_max_kva
-                and ctx.model.street_m[0, ctx.t_of_row[row]] <= p.stub_max_length_m):
+                and lengths[0, ctx.t_of_row[row]] <= p.stub_max_length_m):
             struct.kind = "radial"
 
 
@@ -1110,8 +1116,9 @@ class _Network:
         return [i for i, line in enumerate(self.lines) if line.searchable]
 
     def nearest(self, row: int, limit: float, line_ids: Sequence[int]) -> _Attach | None:
-        """The nearest point of node ``row`` on the given lines within ``limit`` (street distance from the node,
-        or the stretched straight distance to the foot point on a straight span); never the busbar."""
+        """The nearest point of node ``row`` on the given lines whose connection is at most ``limit`` long (street:
+        the cheapest route from the node, nearest by routing cost, with its true length within ``limit``; straight
+        span: the stretched straight distance to the foot point); never the busbar."""
         ctx = self.ctx
         line_ids = [i for i in line_ids if self.lines[i].searchable]
         street = [i for i in line_ids if self.lines[i].route.verts is not None]
@@ -1123,16 +1130,20 @@ class _Network:
             keep = verts != ctx.busbar_vertex
             verts, owner, pos = verts[keep], owner[keep], pos[keep]
             if len(verts):
-                tree = ctx.router.tree(int(ctx.vertex[row]), limit)
+                tree = ctx.router.tree(int(ctx.vertex[row]), limit)    # costs never exceed true lengths
                 dist = tree.distance(verts)
                 ok = np.isfinite(dist) & (dist <= limit)
-                if ok.any():
-                    sel = np.flatnonzero(ok)
-                    j = sel[np.lexsort((pos[sel], owner[sel], dist[sel]))[0]]
+                sure = limit * min(1.0, float(ctx.p.osm_cost_factor)) if ctx.costed else limit
+                sel = np.flatnonzero(ok)
+                for j in sel[np.lexsort((pos[sel], owner[sel], dist[sel]))]:
                     target = int(verts[j])
                     path = tree.path(target)
-                    best = _Attach(float(dist[j]), int(owner[j]), int(pos[j]), ctx.vertex_xy[target].copy(), -1.0,
-                                   path, tree.distance(path))
+                    cum = tree.distance(path)
+                    length = float(dist[j]) if dist[j] <= sure else _street(ctx, path, cum).length
+                    if length <= limit:
+                        best = _Attach(float(dist[j]), int(owner[j]), int(pos[j]), ctx.vertex_xy[target].copy(),
+                                       -1.0, path, cum, length)
+                        break
         src = ctx.xy[row]
         for i in line_ids:
             line = self.lines[i]
@@ -1147,7 +1158,7 @@ class _Network:
             foot = route.p0 + t * vec
             dist = route.detour * float(np.hypot(*(src - foot)))
             if dist <= limit and (best is None or dist < best.dist):
-                best = _Attach(dist, i, -1, foot, t)
+                best = _Attach(dist, i, -1, foot, t, length=dist)
         return best
 
     def trees(self, ring_id: int) -> dict[int, list[int]]:
@@ -1177,7 +1188,7 @@ class _Network:
                 best = (att.dist, 0, 0, att)
         for tree_id, line_ids in sorted(self.trees(ring_id).items()):
             att = self.nearest(row, limit, line_ids)
-            if att is None or self.depth_at(att) + att.dist > limit:
+            if att is None or self.depth_at(att) + att.length > limit:
                 continue
             members = [ctx.row_of_key[k] for k, t in self.tree_of.items() if t == tree_id and k > 0]
             if ctx.coincident_kva(members + [row]) > p.stub_max_kva:

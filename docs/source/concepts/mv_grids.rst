@@ -546,7 +546,9 @@ generators.
    (T-off) from the nearest point of the shortened ring if (a) the T-off is longer than
    ``stub_min_offset_m`` (100 m), (b) leaving the ring saves more ring length than the T-off costs,
    (c) the stub tree carries at most ``stub_max_kva`` (1 MVA, coincident) and is at most
-   ``stub_max_length_m`` (2 km) long, and (d) the shortened ring stays feasible. Later stubs may
+   ``stub_max_length_m`` (2 km) long in true route length (the routing cost of OSM lines does not
+   count here, as for busbar radials and generator T-offs), and (d) the shortened ring stays
+   feasible. Later stubs may
    hang on earlier ones (stub trees). Urban nodes always stay in the ring. The limits of 1 MVA, the
    size of an emergency generator, and 2 km come from Amme et al. (2018, after Consentec and FGH),
    and Harnisch et al. (2016) connect stations more than about 100 m off the trunk as stubs.
