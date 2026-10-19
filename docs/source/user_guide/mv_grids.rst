@@ -720,8 +720,8 @@ value, so older configuration files keep working.
    * - ``MV_STUBS``
      - ``rural``
      - Isolated rural stations (satellites) and small rural loads off the ring hang on a T-off (at
-       most 1 MVA and 2 km), or ``none``: every node is looped in (Amme et al. 2018; Harnisch et al.
-       2016).
+       most 1 MVA; 4 km up to 0.5 MVA, 2 km at 1 MVA), or ``none``: every node is looped in (Amme et
+       al. 2018; Harnisch et al. 2016; Tran et al. 2019).
    * - ``MV_OVERHEAD_LINES``
      - ``osm``
      - Overhead lines only along the MV overhead lines mapped in OpenStreetMap, the rest cable;
@@ -810,9 +810,14 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - Largest coincident load of a stub tree in kVA: the size of a typical mobile emergency
        generator (Amme et al. 2018, after LEW and FGH 2008).
    * - ``stub_max_length_m``
+     - 4000
+     - Longest stub tree in m: the upper end of the 2 to 4 km of load stubs in real grids (Tran et
+       al. 2019).
+   * - ``stub_max_kva_km``
      - 2000
-     - Longest stub tree in m (Amme et al. 2018 after Consentec 2006, an example rule of at most
-       three stations, 0.5 MW and 2 km per stub).
+     - Largest product of stub tree load (kVA) and length (km): 2 km at 1 MVA (Consentec 2006 after
+       Amme et al. 2018), 4 km up to 0.5 MVA. A derived rule: the energy not supplied after a stub
+       fault grows with both.
    * - ``stub_min_offset_m``
      - 100
      - Only nodes more than this off the ring become stubs (Harnisch et al. 2016; Amme et al. 2018).

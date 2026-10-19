@@ -130,6 +130,7 @@ class MvParameters:
     rural_ring_factor: float = _y("rural_ring_factor")
     stub_max_kva: float = _y("stub_max_kva")
     stub_max_length_m: float = _y("stub_max_length_m")
+    stub_max_kva_km: float = _y("stub_max_kva_km")
     stub_min_offset_m: float = _y("stub_min_offset_m")
     loop_in_max_offset_m: float = _y("loop_in_max_offset_m")
     generator_max_tee_m: float = _y("generator_max_tee_m")

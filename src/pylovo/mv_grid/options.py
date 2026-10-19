@@ -32,7 +32,8 @@ import yaml
 #: 7: supply areas without capacity rebalancing (``rebalance_max_iter`` 0) and the option ``MV_SUPPLY_AREAS``
 #: municipal; stub, radial and T-off limits on the true route length; larger conductors before topology changes in
 #: the repair loop (8 rounds).
-MV_STAGE_VERSION: int = 7
+#: 8: stub trees up to 4 km, shortened by their load (``stub_max_kva_km``).
+MV_STAGE_VERSION: int = 8
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
@@ -166,9 +167,13 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
                      "Witzmann 2024), urban ones about 10 (large-city grid study); 1 = all members count 1"),
     _constant("stub_max_kva", 1000.0, "float", "topology", bounds=_POSITIVE,
               source="size of a typical mobile emergency generator, Amme et al. 2018 p. 10 (after LEW and FGH 2008)"),
-    _constant("stub_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
-              source="Amme et al. 2018 p. 10 after Consentec 2006 p. 129 (example rule: at most 3 stations, 0.5 MW "
-                     "and 2 km per stub)"),
+    _constant("stub_max_length_m", 4000.0, "float", "topology", bounds=_POSITIVE,
+              source="longest stub tree: the upper end of the 2 to 4 km of load stubs in real grids (Tran et al. "
+                     "2019)"),
+    _constant("stub_max_kva_km", 2000.0, "float", "topology", bounds=_POSITIVE,
+              source="largest product of stub tree load (kVA) and length (km): the outage energy of a stub grows with "
+                     "both; 2 MVA km gives 2 km at the 1 MVA of an emergency generator (Consentec 2006, Amme et al. "
+                     "2018) and 4 km up to 0.5 MVA (derived rule, decision of 2026-10-19)"),
     _constant("stub_min_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,
               source="only nodes more than this off the ring become stubs; Amme et al. 2018"),
     _constant("loop_in_max_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,

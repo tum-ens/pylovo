@@ -101,7 +101,7 @@ def record(item) -> dict:
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 7,
+    "schema": 1, "mv_stage_version": 8,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
@@ -120,7 +120,8 @@ EXPECTED_SNAPSHOT = {
     "topology": {"solver": "savings", "max_stations_per_ring": 20, "stubs": "rural", "overhead_lines": "osm",
                  "interconnection": "ties",
                  "max_half_ring_length_m": 28000.0, "rural_ring_factor": 2.0, "stub_max_kva": 1000.0,
-                 "stub_max_length_m": 2000.0, "stub_min_offset_m": 100.0, "loop_in_max_offset_m": 100.0,
+                 "stub_max_length_m": 4000.0, "stub_max_kva_km": 2000.0, "stub_min_offset_m": 100.0,
+                 "loop_in_max_offset_m": 100.0,
                  "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0, "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 8,
                  "busbar_legs": "cable_along_streets", "rural_satellites": "stubs_after_rings"},

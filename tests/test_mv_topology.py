@@ -432,7 +432,7 @@ def test_isolated_rural_stations_are_satellites_and_no_ring_candidates():
 
 
 def test_satellites_hang_on_stubs_or_go_into_the_cheapest_ring():
-    plan, (inp, *_) = plan_of(satellite_district(), RING)
+    plan, (inp, *_) = plan_of(satellite_district(), RING, stub_max_length_m=2000.0)   # the 2 km geometry
     assert_plan_valid(plan, inp)
     assert plan.node_role[80] == "stub"
     joint = plan.stub_parent[80]
@@ -447,7 +447,8 @@ def test_satellites_hang_on_stubs_or_go_into_the_cheapest_ring():
 
 def test_a_satellite_without_a_ring_gets_its_own():
     # the village ring is full: F can neither hang on it nor join it, so it gets its own ring, which G then joins
-    plan, (inp, *_) = plan_of(satellite_district(), RING, max_stations_per_ring=3, rural_ring_factor=1.0, cap=3)
+    plan, (inp, *_) = plan_of(satellite_district(), RING, max_stations_per_ring=3, rural_ring_factor=1.0, cap=3,
+                              stub_max_length_m=2000.0)
     assert_plan_valid(plan, inp)
     assert "satellite_own_ring" in plan.diagnostics["node_flags"][80]
     assert sorted(ring_of(plan, 80).members) == [80, 81] and plan.node_role[81] == "ring"
@@ -606,7 +607,7 @@ def test_stub_rules_keep_the_station_looped_in(case):
     if case == "urban":
         kwargs = dict(urban=True)
     elif case == "too_far":
-        side = 2500.0                                       # spur above stub_max_length_m
+        side = 4500.0                                       # spur above stub_max_length_m
     elif case == "too_close":
         side = 80.0                                         # spur below stub_min_offset_m
     elif case == "too_large":
@@ -623,6 +624,32 @@ def test_stub_rules_keep_the_station_looped_in(case):
     assert not plan.joints
 
 
+
+
+@pytest.mark.parametrize("load_kw, spur_m, stub", [(60.0, 3800.0, True), (900.0, 2500.0, False),
+                                                  (900.0, 2000.0, True), (1200.0, 400.0, False)])
+def test_the_stub_length_shrinks_with_the_load(load_kw, spur_m, stub):
+    """4 km for a light stub; load x length at most 2 MVA km (900 kW / 0.95: 2.1 km); never above 1 MVA."""
+    d = loop_district(spur_m, inst_res=0.0, units_res=0.0, p_fixed_kw=load_kw)
+    d.nodes[2]["kind"] = "customer"
+    plan, (inp, *_) = plan_of(d, RING)
+    assert_plan_valid(plan, inp)
+    assert (plan.node_role[20] == "stub") == stub
+
+
+def test_a_stub_may_not_join_a_tree_whose_deepest_node_its_load_would_put_out_of_reach():
+    """D1 (100 kW) hangs 3 km deep below J. D2 (700 kW) branches off D1's street 200 m below J: on D1's tree the load
+    would be 842 kVA, whose limit is 2.4 km, so D2 gets its own stub from the ring at J."""
+    d = loop_district(side_m=None)
+    d.street((2000, 0), (2000, -200), (2000, -3000), settlement=1)
+    d.street((2000, -200), (2300, -200), settlement=1)
+    d.node(21, "customer", 2000, -3000, settlement=1, p_fixed_kw=100.0)
+    d.node(22, "customer", 2300, -200, settlement=1, p_fixed_kw=700.0)
+    plan, (inp, *_) = plan_of(d, [[10, 21, 22, 30, 40, 50]])
+    assert_plan_valid(plan, inp)
+    assert plan.node_role[21] == "stub" and plan.node_role[22] == "stub"
+    assert plan.joints[plan.stub_parent[21]] == pytest.approx((2000.0, 0.0))
+    assert plan.joints[plan.stub_parent[22]] == pytest.approx((2000.0, 0.0))      # not on D1's stub line
 
 
 @pytest.mark.parametrize("limit_m, stub", [(2000.0, False), (2500.0, True)])
@@ -711,7 +738,7 @@ def radial_district() -> District:
 
 
 def test_small_rural_single_station_rings_near_the_busbar_become_radials():
-    plan, (inp, *_) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
+    plan, (inp, *_) = plan_of(radial_district(), [[40], [41], [42]], satellites=False, stub_max_length_m=2000.0)
     assert_plan_valid(plan, inp)
     radial = ring_of(plan, 40)
     assert radial.kind == "radial" and radial.nop_key is None and radial.feeder_b is None

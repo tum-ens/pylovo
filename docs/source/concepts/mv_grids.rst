@@ -560,15 +560,22 @@ generators.
 #. With ``MV_STUBS: rural`` (default), a rural station or MV customer leaves its ring for a stub
    (T-off) from the nearest point of the shortened ring if (a) the T-off is longer than
    ``stub_min_offset_m`` (100 m), (b) leaving the ring saves more ring length than the T-off costs,
-   (c) the stub tree carries at most ``stub_max_kva`` (1 MVA, coincident) and is at most
-   ``stub_max_length_m`` (2 km) long in true route length (the routing cost of OSM lines does not
-   count here, as for busbar radials and generator T-offs), and (d) the shortened ring stays
-   feasible. Later stubs may hang on earlier ones (stub trees). Urban nodes always stay in the ring.
-   The 1 MVA is the size of a typical mobile emergency generator, which supplies a stub during a
-   repair (Amme et al. 2018, after LEW and an FGH report of 2008). The 2 km follow Consentec (2006),
-   cited by Amme et al., whose example rule allowed at most three stations, 0.5 MW and 2 km per stub.
-   No public German planning rule gives other numbers. Harnisch et al. (2016) connect stations more
-   than about 100 m off the trunk as stubs.
+   (c) the stub tree carries at most ``stub_max_kva`` (1 MVA, coincident), (d) every node of the
+   tree lies within the stub length of that load in true route length (the routing cost of OSM lines
+   does not count here, as for busbar radials and generator T-offs), and (e) the shortened ring
+   stays feasible. Later stubs may hang on earlier ones (stub trees). Urban nodes always stay in the
+   ring.
+
+   The stub length shrinks with the load: at most ``stub_max_length_m`` (4 km), and load times
+   length at most ``stub_max_kva_km`` (2 MVA·km), so 4 km up to 0.5 MVA, 2.5 km at 0.8 MVA and 2 km
+   at 1 MVA. A stub has no reserve: after a fault its stations wait for the repair or for a mobile
+   emergency generator, so the energy not supplied grows with the load and with the length to be
+   searched and repaired. The 1 MVA is the size of a typical mobile emergency generator (Amme et al.
+   2018, after LEW and an FGH report of 2008). The 2 km at 1 MVA follow Consentec (2006), cited by
+   Amme et al., whose example rule allowed at most three stations, 0.5 MW and 2 km per stub. Tran et
+   al. (2019) found load stubs of 2 to 4 km in real grids, longer for smaller loads. The product rule
+   joins these numbers; it is a derived planning rule, not a published one. Harnisch et al. (2016)
+   connect stations more than about 100 m off the trunk as stubs.
 #. Also with ``MV_STUBS: rural``, the *satellites*, rural stations outside every settlement or alone
    in their settlement such as farms and hamlets, are not part of the ring problem, as the
    satellites of Ding0 (Amme et al. 2018). After the rings are solved, they are connected from the
@@ -577,8 +584,8 @@ generators.
    length and the ring stays feasible (flag ``satellite_in_ring``), else into a ring of its own
    (flag ``satellite_own_ring``). In a supply area where every candidate would be a satellite, none
    is.
-#. A rural ring with a single node of at most 1 MVA within 2 km street distance of the busbar
-   becomes a busbar radial.
+#. A rural ring with a single node of at most 1 MVA within the stub length of its load (street
+   distance) of the busbar becomes a busbar radial.
 #. A customer above 5.5 MW gets a dedicated feeder with two legs from the busbar along the same
    route. Leg 2 is open at the customer, so the two legs together are (n-1) secure. Each leg gets as
    many parallel cables as the load needs at ``MV_LINE_PLANNING_UTILIZATION``, at most
@@ -989,6 +996,10 @@ Methods and models:
   a high spatial resolution <https://doi.org/10.5278/ijsepm.2017.13.6>`_, *International Journal of
   Sustainable Energy Planning and Management* 13, 79–92. Filter of the HV/MV substations in
   OpenStreetMap.
+* J. Tran, C. Wirtz, P. Pfeifer, D. Wursthorn, H. Vennegeerts and A. Moser (2019), `Modelling of
+  synthetic power distribution systems in consideration of the local electricity supply task
+  <https://doi.org/10.34890/956>`_, CIRED 2019, Madrid, paper 2107. Lengths of load stubs in real
+  grids.
 * M. Babli, M. Gebhard and E. Brucherseifer (2025), `Open data-driven reconstruction of power
   distribution grid: a land use-based approach <https://doi.org/10.3390/electronics14071414>`_,
   *Electronics* 14(7), 1414. Completeness of the OSM stations per land-use class.
