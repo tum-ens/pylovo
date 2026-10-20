@@ -574,7 +574,7 @@ def test_from_model_uses_the_variant_line_types_and_limits():
                         edges=EdgeSet(empty.astype(np.int64), empty.astype(np.int64), empty.astype(np.int64), empty,
                                       empty.astype(bool), empty.astype(np.int64), empty.astype(np.int64),
                                       np.zeros((0, 2))),
-                        params=params, lv=lv, known_units_mva=(), edge_geometry=lambda ids: {})
+                        params=params, lv=lv, edge_geometry=lambda ids: {})
     ev = rings.RingEvaluator.from_model(inp, model)
     assert ev.limits == RingLimits(max_members=20, max_drop=0.05, max_drop_n1=0.10, utilization=0.6,
                                    n1_utilization=1.0, max_half_m=28000.0) == rings.ring_limits(params)

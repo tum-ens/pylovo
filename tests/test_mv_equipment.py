@@ -235,7 +235,6 @@ def test_hv_mv_sizing_examples():
     assert equipment.size_hv_mv(10.0, SIZES, 2, 1.0) == (2, 25.0, "sized")
     assert equipment.size_hv_mv(30.0, SIZES, 2, 1.0) == (2, 31.5, "sized")
     assert equipment.size_hv_mv(70.0, SIZES, 2, 1.0) == (3, 63.0, "large_substation")
-    assert equipment.size_hv_mv(10.0, SIZES, 2, 1.0, known_units_mva=(40.0, 40.0)) == (2, 40.0, "osm_rating")
 
 
 def test_hv_mv_sizing_rules():
@@ -248,10 +247,6 @@ def test_hv_mv_sizing_rules():
     assert equipment.size_hv_mv(70.0, SIZES, 1, 1.0) == (2, 63.0, "large_substation")
     assert equipment.size_hv_mv(0.0, SIZES, 2, 1.0) == (2, 25.0, "sized")
     assert equipment.size_hv_mv(30.0, [63.0, 25.0], 2, 1.0) == (2, 63.0, "sized")       # sizes in any order
-    # known ratings: two or more are kept as built (the smallest one counts), a single one is not enough
-    assert equipment.size_hv_mv(60.0, SIZES, 2, 1.0, (40.0, 63.0, 40.0)) == (3, 40.0, "osm_rating")
-    assert equipment.size_hv_mv(30.0, SIZES, 2, 1.0, (40.0,)) == (2, 31.5, "sized")
-    assert equipment.size_hv_mv(30.0, SIZES, 2, 1.0, (40.0, None, math.nan, 0.0)) == (2, 31.5, "sized")
     with pytest.raises(ValueError, match="at least one positive transformer size"):
         equipment.size_hv_mv(10.0, (), 2, 1.0)
     with pytest.raises(ValueError, match="units >= 1"):

@@ -173,15 +173,14 @@ class Builder:
     def _renumber(self) -> None:
         self.lines = [dataclasses.replace(line, key=i) for i, line in enumerate(self.lines)]
 
-    def build(self, known_units_mva: tuple[float, ...] = ()) -> tuple[DistrictInput, TopologyPlan]:
+    def build(self) -> tuple[DistrictInput, TopologyPlan]:
         self._renumber()
         nodes = pd.DataFrame.from_dict(self.rows, orient="index")[list(NODE_COLUMNS)]
         nodes.index.name = "mv_node_id"
         edges = EdgeSet(*(np.array([], dtype=np.int64) for _ in range(4)), np.array([], dtype=bool),
                         np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.zeros((0, 2)))
         inp = DistrictInput(mv_grid_id=3, substation_id=SUBSTATION, vn_kv=self.params.base_kv, nodes=nodes, edges=edges,
-                            params=self.params, lv=self.lv, known_units_mva=known_units_mva,
-                            edge_geometry=lambda ids: {})
+                            params=self.params, lv=self.lv, edge_geometry=lambda ids: {})
         plan = TopologyPlan(rings=list(self.rings), lines=list(self.lines), joints=dict(self.joints),
                             node_role=dict(self.role), node_feeder=dict(self.feeder), node_ring=dict(self.ring_of),
                             node_position=dict(self.position), stub_parent=dict(self.stub_parent), diagnostics={})
@@ -609,8 +608,6 @@ def test_size_substation_on_district_statistics():
     assert 4.0 < s_load < 25.0
     assert electrical.substation_load(inp, plan) == pytest.approx(s_load)
     assert electrical.size_substation(inp, plan) == (2, 25.0, "sized")
-    inp_osm = dataclasses.replace(inp, known_units_mva=(40.0, 40.0))
-    assert electrical.size_substation(inp_osm, plan) == (2, 40.0, "osm_rating")
 
 
 @pytest.mark.parametrize("unit_mva, households", [(25.0, 80.0), (31.5, 400.0), (20.0, 200.0)])

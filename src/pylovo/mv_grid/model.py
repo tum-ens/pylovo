@@ -87,7 +87,7 @@ class EdgeSet:                             # a district subgraph without geometr
     settlement_id: np.ndarray              # int64, -1 outside settlements
     vertex_id: np.ndarray                  # int64, every vertex referenced by the edges
     vertex_xy: np.ndarray                  # (n_vertices, 2) float64, TARGET_EPSG
-    overhead: np.ndarray | None = None     # bool: an OSM MV overhead line (MV_OVERHEAD_LINES osm); None: none is
+    overhead: np.ndarray | None = None     # bool: an OSM MV overhead line; None: none is
 
 
 @dataclass
@@ -101,7 +101,6 @@ class DistrictInput:
     edges: EdgeSet
     params: "MvParameters"
     lv: "LvVersionParameters"
-    known_units_mva: tuple[float, ...]     # OSM transformer ratings of the substation, or ()
     edge_geometry: Callable[[Sequence[int]], Mapping[int, Any]]   # edge ids -> shapely LineString (source→target)
     settlement_geoms: Mapping[int, Any] = field(default_factory=dict)   # settlement_id -> shapely (Multi)Polygon (P2 mixed spans)
     hv_bus_id: int | None = None           # eTraGo 110 kV bus of the substation (its eGon bus id), None without one

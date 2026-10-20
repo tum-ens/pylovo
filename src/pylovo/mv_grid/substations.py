@@ -492,8 +492,7 @@ def match_egon(sites: Sequence[Site], egon: pd.DataFrame, max_m: float) -> list[
 
 # ---------------------------------------------------------------------------------------------- tables
 def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
-                matches: Sequence[tuple[int | None, float | None]] | None = None,
-                ratings: Sequence[Sequence[float]] | None = None) -> pd.DataFrame:
+                matches: Sequence[tuple[int | None, float | None]] | None = None) -> pd.DataFrame:
     """The sites as a table with the columns of :data:`SITE_COLUMNS` (one row per site, in the given order).
 
     Args:
@@ -503,13 +502,10 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         matches: The result of :func:`match_egon` (``egon_bus_id``, ``egon_distance_m``); None leaves them empty.
             With matches, a site without one gets the flag ``no_egon_bus``: it has no bus in the eGon-data grid
             model, whose HV/MV bus ids are the 110 kV buses of eTraGo.
-        ratings: Known transformer ratings per site (MVA, ``osm_ratings_mva``); None or an empty entry gives None.
     """
     n = len(sites)
     if matches is not None and len(matches) != n:
         raise ValueError(f"matches has {len(matches)} entries for {n} sites")
-    if ratings is not None and len(ratings) != n:
-        raise ValueError(f"ratings has {len(ratings)} entries for {n} sites")
     points = shapely.points([site.x for site in sites], [site.y for site in sites]) if n else np.array([])
     if region_wkb is not None and n:
         region = shapely.from_wkb(bytes(region_wkb))
@@ -529,7 +525,7 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         "egon_bus_id": pd.Series([bus for bus, _ in egon], dtype="Int64"),
         "egon_distance_m": pd.Series([np.nan if d is None else d for _, d in egon], dtype=float),
         "in_region": pd.Series(in_region, dtype=object),
-        "osm_ratings_mva": [list(r) if r else None for r in (ratings if ratings is not None else [()] * n)],
+        "osm_ratings_mva": [None] * n,                  # no OSM transformer ratings are read (column kept)
         "flags": [list(site.flags) + (["no_egon_bus"] if matches is not None and bus is None else [])
                   for site, (bus, _) in zip(sites, egon)],
         "x": pd.Series([site.x for site in sites], dtype=float),

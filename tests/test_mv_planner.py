@@ -55,7 +55,7 @@ def small_input(params: MvParameters | None = None) -> DistrictInput:
                     in_settlement=np.array([False]), settlement_id=np.array([-1]), vertex_id=np.array([1, 2]),
                     vertex_xy=np.array([[0.0, 0.0], [10.0, 0.0]]))
     return DistrictInput(mv_grid_id=6, substation_id=5, vn_kv=20.0, nodes=nodes, edges=edges,
-                         params=params or MvParameters(), lv=LV, known_units_mva=(), edge_geometry=lambda ids: {})
+                         params=params or MvParameters(), lv=LV, edge_geometry=lambda ids: {})
 
 
 def ring_topology(nop: int = 12) -> TopologyPlan:
@@ -265,7 +265,7 @@ def synthetic_district() -> DistrictInput:
                      "attach_edge_id": e, "attach_fraction": 0.0, "attach_offset_m": 30.0, "sn_kva": np.nan})
     return DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=node_table(rows), edges=edges,
                          params=MvParameters(stub_min_offset_m=1e9),   # no stubs
-                         lv=LV, known_units_mva=(),
+                         lv=LV,
                          edge_geometry=lambda ids: {int(i): geoms[int(i)] for i in ids})
 
 

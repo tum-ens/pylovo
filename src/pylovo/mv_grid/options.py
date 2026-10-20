@@ -63,7 +63,7 @@ class Spec:
     """Definition of one MV parameter.
 
     Attributes:
-        name: YAML key (``MV_STUBS``) or constant name (``stub_max_kva``).
+        name: YAML key (``MV_MAX_STATIONS_PER_RING``) or constant name (``stub_max_kva``).
         field: Field name in :class:`~pylovo.mv_grid.parameters.MvParameters`; empty for ``MV_GRID_GENERATION``,
             which is an execution flag and no parameter.
         default: Default in canonical form (the shipped value of a YAML key).
@@ -216,11 +216,11 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
     _constant("long_connector_m", 300.0, "float", "routing", bounds=_POSITIVE,
               source="connectors from a node to the street longer than this are flagged"),
     _constant("osm_line_snap_m", 100.0, "float", "routing", bounds=(0.0, 1000.0),
-              source="MV_OVERHEAD_LINES osm: a loose end of an OSM MV line joins the nearest street vertex within "
+              source="a loose end of an OSM MV line joins the nearest street vertex within "
                      "this distance by a straight cable connector (a riser pole and its cable); OSM lines also join "
                      "the streets where they cross them [assumption]"),
     _constant("osm_line_cost_factor", 0.7, "float", "routing", bounds=(0.05, 1.0),
-              source="MV_OVERHEAD_LINES osm: an OSM MV line costs this factor times its length when routes and "
+              source="an OSM MV line costs this factor times its length when routes and "
                      "rings are planned, because an existing overhead corridor needs no new trench, so rings follow "
                      "the corridors; lengths and electrics use the true length. 0.7 gave overhead circuit km within "
                      "the § 23c range of the test regions, 0.5 above it [assumption; 1 = no preference]"),

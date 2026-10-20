@@ -1,6 +1,6 @@
 """OSM MV overhead lines as corridors of the MV routing graph (pure: no database or configuration import).
 
-With ``MV_OVERHEAD_LINES: osm`` the MV overhead lines mapped in OpenStreetMap become edges of the routing graph
+The MV overhead lines mapped in OpenStreetMap become edges of the routing graph
 (:class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`), and an MV line is an overhead line exactly where its route
 runs on them. :func:`is_mv_overhead_line` decides which ways of the OSM power layer count. The rules come from a
 review of the OSM power lines of the test regions (2026-10-16), where untagged ``minor_line`` ways were 98 % MV

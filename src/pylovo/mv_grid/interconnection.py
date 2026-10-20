@@ -409,8 +409,8 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
             ``in_region`` (of the substation).
         edges: The routing graph around the candidates (at least within ``tie_max_length_m`` of them, with their
             attachment edges).
-        params: The MV variant (``tie_max_length_m``, ``MV_OVERHEAD_LINES``, ``MV_ROUTING``, detours, the line
-            types of the districts' voltage).
+        params: The MV variant (``tie_max_length_m``, ``osm_line_cost_factor``, the line types of the
+            districts' voltage).
         edge_geometry: Graph edge ids -> shapely LineStrings (source -> target) for the street geometries;
             None draws every edge straight between its end vertices.
 

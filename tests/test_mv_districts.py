@@ -84,9 +84,9 @@ def _sites(n, x):
 
 
 def test_site_capacity_mva():
-    sites = pd.DataFrame({"osm_ratings_mva": [None, [40.0, 40.0], [25.0, 40.0, 40.0], [31.5], [], "x", np.nan]})
+    sites = pd.DataFrame({"x": [0.0, 1.0, 2.0]})
     capacity = districts.site_capacity_mva(sites, PARAMS)
-    assert capacity.tolist() == [63.0, 40.0, 50.0, 63.0, 63.0, 63.0, 63.0]
+    assert capacity.tolist() == [63.0, 63.0, 63.0]                               # (2 - 1) x 63 MVA
     one_unit = PARAMS.replace(hv_mv_units=1, hv_mv_n1_utilization=0.8)
     assert districts.site_capacity_mva(sites.iloc[:1], one_unit).tolist() == [pytest.approx(63.0 * 0.8)]
     three = PARAMS.replace(hv_mv_units=3)

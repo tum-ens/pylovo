@@ -289,7 +289,7 @@ def test_each_site_gets_the_nearest_egon_substation_within_300_m():
 def test_sites_frame_has_the_substation_columns():
     sites = _sites()
     region = shapely.to_wkb(shapely.box(-100, -100, 2000, 100))
-    table = sites_frame(sites, region, match_egon(sites, EGON, 300.0), [(), (), (), (40.0, 40.0)])
+    table = sites_frame(sites, region, match_egon(sites, EGON, 300.0))
     assert tuple(table.columns) == SITE_COLUMNS
     assert table["source_ids"].tolist() == [["node/2"], ["node/3"], ["node/4"], ["way/1"]]
     assert table["in_region"].tolist() == [True, False, False, True]
@@ -298,7 +298,7 @@ def test_sites_frame_has_the_substation_columns():
     # a site without an eGon match has no eTraGo 110 kV bus either
     assert ["no_egon_bus" in f for f in table["flags"]] == [False, True, False, False]
     assert not any("no_egon_bus" in f for f in sites_frame(sites)["flags"])           # no cross-check: no flag
-    assert table["osm_ratings_mva"].tolist() == [None, None, None, [40.0, 40.0]]
+    assert table["osm_ratings_mva"].tolist() == [None] * 4                         # no OSM ratings are read
     assert table["source"].unique().tolist() == ["osm"]
     assert table["footprint_wkb"].iloc[3] is not None and table["footprint_wkb"].iloc[0] is None
     assert sites_frame(sites)["in_region"].tolist() == [None] * 4

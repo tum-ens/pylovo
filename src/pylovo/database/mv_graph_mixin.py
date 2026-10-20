@@ -21,7 +21,7 @@ Build (:meth:`MvGraphMixin.ensure_graph`), one transaction under an advisory loc
    are the connected components of the settlement edges, urban with at least ``urban_min_buildings`` buildings;
 5. summary columns of ``pylovo.mv_graph`` (counts, largest component share, settlement share, seam diagnostic).
 
-With ``MV_OVERHEAD_LINES: osm`` the MV overhead lines of ``INFDB_OSM_SCHEMA.infrastructure_line`` (rules of
+The MV overhead lines of ``INFDB_OSM_SCHEMA.infrastructure_line`` (rules of
 :mod:`pylovo.mv_grid.osm_lines`) are added after step 2 as edges of ``klasse`` :data:`OSM_LINE_KLASSE`. Where an OSM
 line crosses a street both are split, so the crossing is a common vertex, and every loose end of an OSM line gets a
 straight connector (:data:`OSM_CONNECTOR_KLASSE`) to the nearest street vertex within ``osm_line_snap_m``. The OSM
@@ -71,7 +71,7 @@ SETTLEMENT_BUILDING_USES: tuple[str, ...] = ("Commercial", "Public", "Residentia
 SETTLEMENT_LANDUSE_TYPES: tuple[str, ...] = ("commercial", "industrial", "residential", "retail")
 #: Graph ids are 'g' + 16 hex digits of an md5 (safe to inline as SQL literals).
 GRAPH_ID_PATTERN = re.compile(r"^g[0-9a-f]{16}$")
-#: ``klasse`` of the edges from OSM MV overhead lines (``MV_OVERHEAD_LINES: osm``) ...
+#: ``klasse`` of the edges from OSM MV overhead lines ...
 OSM_LINE_KLASSE: str = "osm_mv_line"
 #: ... and of the straight connectors from their loose ends to the street graph.
 OSM_CONNECTOR_KLASSE: str = "osm_mv_connector"
@@ -759,8 +759,8 @@ class MvGraphMixin(BaseMixin):
         import shapely
 
         if not self._osm_lines_available():
-            self.logger.warning("no %s.infrastructure_line and tags: MV_OVERHEAD_LINES osm finds no OSM MV lines, "
-                                "so every MV line is a cable", INFDB_OSM_SCHEMA or "OSM schema")
+            self.logger.warning("no %s.infrastructure_line and tags: no OSM MV lines are found, so every MV line "
+                                "is a cable", INFDB_OSM_SCHEMA or "OSM schema")
             return
         osm = sql.Identifier(INFDB_OSM_SCHEMA)
         epsg = sql.Literal(TARGET_EPSG)

@@ -1069,13 +1069,11 @@ def substation_load(inp: DistrictInput, plan: TopologyPlan) -> float:
 def size_substation(inp: DistrictInput, plan: TopologyPlan) -> tuple[int, float, str]:
     """``(units, unit_mva, sizing)`` of the HV/MV transformers (DESIGN §4.6, ``equipment.size_hv_mv``).
 
-    ``S_load`` is the coincident load of all district nodes (never the sum of feeder heads); known ratings of the
-    substation (``inp.known_units_mva``) win when two or more are known.
+    ``S_load`` is the coincident load of all district nodes (never the sum of feeder heads).
     """
     params = inp.params
     units, unit_mva, sizing = equipment.size_hv_mv(substation_load(inp, plan), tuple(params.hv_mv_sizes_mva),
-                                                   int(params.hv_mv_units), float(params.hv_mv_n1_utilization),
-                                                   tuple(inp.known_units_mva))
+                                                   int(params.hv_mv_units), float(params.hv_mv_n1_utilization))
     return int(units), float(unit_mva), str(sizing)
 
 

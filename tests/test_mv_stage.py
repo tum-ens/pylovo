@@ -311,8 +311,7 @@ class WorkerDb:
         self.calls.append(("load", mv_grid_id))
         if self.fail_on == "load":
             raise LookupError(f"MV grid {mv_grid_id} does not exist")
-        return district_nodes(), {"version_id": "mv1", "mv_variant_id": "d0", "substation_id": 5, "vn_kv": 20.0,
-                                  "osm_ratings_mva": [40.0, 40.0]}
+        return district_nodes(), {"version_id": "mv1", "mv_variant_id": "d0", "substation_id": 5, "vn_kv": 20.0}
 
     def lv_design_source_vm(self, version_id, ids):
         self.calls.append(("requirement", list(ids)))
@@ -348,7 +347,7 @@ def test_district_input_reads_the_district(monkeypatch):
     assert np.isnan(inp.nodes["lv_design_source_vm_pu"].iloc[0])
     (_, graph_id, buffer_m, must), = [c for c in db.calls if c[0] == "subgraph"]
     assert graph_id == "g123" and buffer_m == 2600.0 and must == [10, 11, 12, 13]
-    assert inp.known_units_mva == (40.0, 40.0) and inp.substation_id == 5 and inp.vn_kv == 20.0
+    assert inp.substation_id == 5 and inp.vn_kv == 20.0
     assert set(inp.edge_geometry([3, 4])) == {3, 4} and set(inp.edge_geometry([4, 5])) == {4, 5}
     assert set(inp.edge_geometry([10, 13])) == {10, 13}
     assert [c[1] for c in db.calls if c[0] == "geometries"] == [[10, 11, 12, 13], [3, 4], [5]]   # once per edge

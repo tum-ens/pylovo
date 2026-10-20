@@ -445,10 +445,10 @@ CREATE_QUERIES = {
         attach_edge_id bigint,
         attach_fraction double precision,
         attach_offset_m double precision,
-        osm_ratings_mva double precision[],              -- ratings of mapped 110 kV transformers in the footprint
+        osm_ratings_mva double precision[],              -- not filled (no OSM transformer ratings are read)
         n_transformers integer,
         transformer_mva double precision,
-        transformer_sizing varchar(16),                  -- sized | osm_rating | large_substation
+        transformer_sizing varchar(16),                  -- sized | large_substation
         peak_load_mw double precision,
         peak_feed_in_mw double precision,
         loading_n0_percent double precision,

@@ -454,7 +454,7 @@ class RingEvaluator:
           switchgear by node kind (:data:`SWITCHGEAR_KINDS`);
         * links: length ``model.dist_m``; r, x and ampacity of the overhead line type of the district's voltage
           (``inp.params.overhead_at(inp.vn_kv)``) where ``model.overhead`` is set, else of its standard cable
-          (``inp.params.cable_at(inp.vn_kv)``); with ``model.overhead_m`` (``MV_OVERHEAD_LINES`` osm) r and x are
+          (``inp.params.cable_at(inp.vn_kv)``); with ``model.overhead_m`` (links on OSM MV lines) r and x are
           length-weighted by the overhead share of each link and the ampacity is the smaller one of its parts;
         * ``g`` and the power factor of the LV version (``inp.lv``), the nominal voltage ``inp.vn_kv`` and the
           limits of :func:`ring_limits`.
@@ -468,7 +468,7 @@ class RingEvaluator:
         oh = np.asarray(model.overhead, dtype=bool)
         if oh.shape != (n, n):
             raise ValueError(f"model.overhead must have the shape ({n}, {n}), got {oh.shape}")
-        if model.overhead_m is not None:                 # MV_OVERHEAD_LINES osm: length-weighted mixed links
+        if model.overhead_m is not None:                 # links on OSM MV lines: length-weighted mixed links
             true = np.asarray(model.length_m if model.length_m is not None else model.dist_m, dtype=float)
             with np.errstate(invalid="ignore", divide="ignore"):
                 share = np.where(np.isfinite(true) & (true > 0), np.asarray(model.overhead_m) / true, 0.0)

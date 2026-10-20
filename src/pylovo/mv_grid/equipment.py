@@ -13,7 +13,7 @@ snapshot by :class:`~pylovo.mv_grid.parameters.MvParameters`). pandapower is imp
   31.5 MVA type; it is interpolated between 25 and 40 MVA with rounded data-sheet values
   (:data:`INTERPOLATED_HV_MV`) and flagged ``interpolated``. Other sizes are rejected.
 * Sizing (:func:`size_hv_mv`): two units by default, the smallest size that carries the district peak with one unit
-  out of service; known OSM ratings win.
+  out of service.
 
 The module is pure apart from the pandapower type tables: it imports no database or configuration module.
 """
@@ -378,12 +378,11 @@ def add_hv_mv_std_type(net, t: HvMvType) -> str:
     return t.name
 
 
-def size_hv_mv(s_load_mva: float, sizes_mva: Sequence[float], units: int, n1_utilization: float,
-               known_units_mva: Sequence[float] = ()) -> tuple[int, float, str]:
+def size_hv_mv(s_load_mva: float, sizes_mva: Sequence[float], units: int, n1_utilization: float
+               ) -> tuple[int, float, str]:
     """Number and rating of the HV/MV transformers of a substation (DESIGN section 4.6).
 
-    * Two or more known ratings (OSM): ``n = len(known)``, ``sn = min(known)``, sizing ``osm_rating``.
-    * Otherwise ``n = units`` and ``sn`` = the smallest size whose ``n - 1`` units carry the peak
+    * ``n = units`` and ``sn`` = the smallest size whose ``n - 1`` units carry the peak
       ``s_load_mva`` at ``n1_utilization`` (one unit out of service; with ``units = 1`` there is
       no reserve and the single unit carries the peak), sizing ``sized``.
     * If no size fits: ``sn`` = the largest size and as many units as the peak needs plus the reserve unit,
@@ -394,18 +393,13 @@ def size_hv_mv(s_load_mva: float, sizes_mva: Sequence[float], units: int, n1_uti
         sizes_mva: Available ratings in MVA (``hv_mv_sizes_mva``).
         units: Number of units of a sized substation (``hv_mv_units``).
         n1_utilization: Allowed loading of the remaining units with one unit out (``hv_mv_n1_utilization``).
-        known_units_mva: Ratings of the known units of the substation (OSM tags), or empty.
 
     Returns:
-        ``(n_units, unit_mva, sizing)`` with sizing ``osm_rating``, ``sized`` or ``large_substation``.
+        ``(n_units, unit_mva, sizing)`` with sizing ``sized`` or ``large_substation``.
 
     Raises:
         ValueError: Without sizes, with fewer than one unit or a non-positive utilization.
     """
-    known = sorted(_apparent_mva(s) for s in known_units_mva)
-    known = [s for s in known if s > 0]
-    if len(known) >= 2:
-        return len(known), known[0], "osm_rating"
     sizes = sorted(float(s) for s in sizes_mva if _apparent_mva(s) > 0)
     if not sizes:
         raise ValueError(f"size_hv_mv needs at least one positive transformer size, got {list(sizes_mva)!r}")

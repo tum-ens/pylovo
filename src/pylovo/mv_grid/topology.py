@@ -27,7 +27,7 @@ routes are chosen by their cost, but a stub or radial is accepted by its
 length.
 
 The plan is always built from its *decisions* (ring orders, stubs, T-offs, feeders), so the repair functions
-(:func:`move_nop`, :func:`split_ring`, :func:`convert_to_dedicated`, :func:`add_parallel`, :func:`upgrade_lines`)
+(:func:`move_nop`, :func:`split_ring`, :func:`add_parallel`, :func:`upgrade_lines`)
 change a decision and rebuild the joints and geometries from it. They return a new plan and never change the plan
 they are given. A rebuilt plan keeps the parallel cables and the upgraded conductors of the old plan on the same
 street pieces.

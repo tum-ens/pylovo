@@ -10,10 +10,12 @@ The load of a site is the coincident load of its loads (pylovo's category law on
 stations plus the fixed loads of its customers, :mod:`pylovo.mv_grid.coincidence`) divided by the power factor;
 excluded nodes (HV customers) do not count.
 
-**Nominal voltage per district** (``MV_NOMINAL_VOLTAGE_KV`` auto, decision of 2026-10-15): after the supply areas
-are formed, :func:`installed_density` gives each district its installed MV/LV capacity per km² of its area, and
-:func:`district_voltages` gives 10 kV to the districts at or above ``mv_10kv_min_density_mva_km2`` and 20 kV to the
-others (dense city grids run at 10 kV, rural grids at 20 kV).
+**Nominal voltage per district** (``MV_NOMINAL_VOLTAGE_KV`` auto): after the supply areas are formed,
+:func:`municipal_density` gives each municipality its installed MV/LV capacity per km², :func:`dense_share` the share
+of each district's installed capacity in municipalities at or above ``mv_10kv_min_density_mva_km2``, and
+:func:`district_voltages` gives 10 kV to the districts with at least half of it there and 20 kV to the others (dense
+cities run 10 kV in their whole grid, rural grids 20 kV). :func:`installed_density` is the district's own density,
+the fallback for a district without a municipal share.
 """
 from __future__ import annotations
 
@@ -70,48 +72,21 @@ class Assignment:
 
 
 # ---------------------------------------------------------------------------------------------- capacity
-def _ratings(value: Any) -> list[float]:
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return []
-    if isinstance(value, (int, float, np.integer, np.floating)):
-        return [float(value)] if float(value) > 0 else []
-    try:
-        items = list(value)
-    except TypeError:
-        return []
-    out = []
-    for item in items:
-        try:
-            number = float(item)
-        except (TypeError, ValueError):
-            continue
-        if np.isfinite(number) and number > 0:
-            out.append(number)
-    return out
-
-
 def site_capacity_mva(sites: pd.DataFrame, params: "MvParameters") -> np.ndarray:
     """(n-1) capacity of each HV/MV substation in MVA (DESIGN §4.1).
 
-    With at least two rated OSM transformers (``osm_ratings_mva``): ``(units - 1) x min(ratings)``; else
     ``(hv_mv_units - 1) x max(hv_mv_sizes_mva)`` (63 MVA with the defaults); at least one unit counts (a
-    one-transformer layout has no reserve). Both are scaled by ``hv_mv_n1_utilization`` (1.0 by default).
+    one-transformer layout has no reserve). It is scaled by ``hv_mv_n1_utilization`` (1.0 by default).
 
     Args:
-        sites: One row per site, optionally with ``osm_ratings_mva`` (list of MVA or None).
+        sites: One row per site.
         params: MV parameters.
 
     Returns:
         Capacity per site row (float64).
     """
-    sites = pd.DataFrame(sites)
-    default = max(int(params.hv_mv_units) - 1, 1) * max(params.hv_mv_sizes_mva)
-    ratings = sites["osm_ratings_mva"] if "osm_ratings_mva" in sites.columns else pd.Series([None] * len(sites))
-    capacity = []
-    for value in ratings:
-        units = _ratings(value)
-        capacity.append(max(len(units) - 1, 1) * min(units) if len(units) >= 2 else default)
-    return np.asarray(capacity, dtype=np.float64) * float(params.hv_mv_n1_utilization)
+    capacity = max(int(params.hv_mv_units) - 1, 1) * max(params.hv_mv_sizes_mva)
+    return np.full(len(sites), capacity * float(params.hv_mv_n1_utilization), dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------------------------- helpers

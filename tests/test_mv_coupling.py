@@ -162,7 +162,7 @@ def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], 
     edges = EdgeSet(*(np.array([], dtype=np.int64) for _ in range(4)), np.array([], dtype=bool),
                     np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.zeros((0, 2)))
     inp = DistrictInput(mv_grid_id=3, substation_id=7, vn_kv=vn_kv or params.base_kv, nodes=nodes, edges=edges,
-                        params=params, lv=_lv(), known_units_mva=(), edge_geometry=lambda ids: {})
+                        params=params, lv=_lv(), edge_geometry=lambda ids: {})
     plan = TopologyPlan(rings=plans, lines=lines, joints={}, node_role=role, node_feeder=feeder, node_ring=ring_of,
                         node_position=position, stub_parent={}, diagnostics={})
     return inp, plan

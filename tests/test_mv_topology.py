@@ -222,7 +222,7 @@ class District:
         edges = EdgeSet(*(np.zeros(0, dtype=np.int64) for _ in range(3)), np.zeros(0), np.zeros(0, dtype=bool),
                         np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros((0, 2)))
         inp = DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=frame, edges=edges,
-                            params=params, lv=LV, known_units_mva=(),
+                            params=params, lv=LV,
                             edge_geometry=edge_geometry)
         return inp, rg
 
