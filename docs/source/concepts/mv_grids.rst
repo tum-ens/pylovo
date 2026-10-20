@@ -261,7 +261,9 @@ the InfDB (``INFDB_OSM_SCHEMA``): every ``power=substation`` node, way or relati
 ``region_buffer_m`` (5 km) of the planning region, which is the union of the requested postcode
 polygons. Substations outside the region are needed, because they supply its border areas. The
 filter follows Hülk et al. (2017, Table 1), adapted. A candidate is kept if its ``voltage`` tag
-holds 110 kV or 60 kV and none of these rules applies:
+holds 110 kV or 60 kV and none of these rules applies. A ``substation=transmission`` footprint
+without any voltage tag also counts as HV, because some city utilities tag their 110 kV
+substations so and leave out the voltage (a point needs the voltage tag).
 
 #. ``substation`` is ``traction``, ``transition``, ``converter``, ``generation``, ``industrial`` or
    ``minor_distribution``. A ``transmission`` tag with 110 kV is kept, because many HV/MV
@@ -271,7 +273,11 @@ holds 110 kV or 60 kV and none of these rules applies:
    marks a railway substation (Unterwerk, Bahnstrom, Umformerwerk, Umrichter), or a ``railway`` tag
    is set.
 #. The candidate lies inside a ``power=plant`` or ``power=generator`` polygon (the substation of a
-   power plant or PV park).
+   power plant or PV park), unless a plant or generator within 100 m is a thermal plant
+   (``plant:source`` gas, coal, oil, biomass, biogas, waste, lignite or diesel) or a heating plant
+   by its name (Heizkraftwerk, Heizwerk, HKW, BHKW, KWK, CHP). City utilities run their HV/MV
+   substations on their combined heat and power and heating plant sites; in a large-city test,
+   this rule recovered three of them, each the only HV/MV substation of its supply area.
 
 Kept candidates within ``substation_merge_m`` (75 m) of each other form one site. Its busbar is a
 point inside its largest footprint polygon. An extra-high-voltage site (220 kV or more) without a

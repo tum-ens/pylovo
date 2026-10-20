@@ -36,7 +36,9 @@ import yaml
 #: one district (``link_max_length_m``).
 #: 9: the links reach by the settlement type of the PLZ (``link_max_length_m`` per type, a link takes the shorter
 #: reach of its ends), and stub ends take links to another feeder (``link_stub_ends``).
-MV_STAGE_VERSION: int = 9
+#: 10: HV/MV substations inside thermal or heating plants are kept, and ``substation=transmission`` without a voltage tag
+#: counts as HV (OSM substation filter).
+MV_STAGE_VERSION: int = 10
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")

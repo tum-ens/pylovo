@@ -60,7 +60,12 @@ _RAILWAY_FREQUENCY = re.compile(r"16\s*[.,]\s*6*7|16\s+2\s*/\s*3")
 
 #: Columns of the candidate table (:meth:`MvSourceMixin.osm_substation_candidates`).
 CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_tag", "frequency", "operator", "name",
-                                      "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant")
+                                      "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant", "plant")
+#: ``plant:source`` values of thermal plants and names of heating plants (``plant`` column, ``source:name``): a
+#: substation inside such a plant is kept, because city utilities run their HV/MV substations on their combined heat
+#: and power and heating plant sites.
+_THERMAL_PLANT = re.compile(r"(^|\|)(gas|coal|oil|biomass|biogas|waste|lignite|diesel)(;[a-z_;]*)?:|heiz(kraft)?werk|"
+                            r"\bhkw\b|\bbhkw\b|kraft-?wärme|\bkwk\b|\bchp\b")
 #: Reasons of :func:`classify_candidate` (``kept`` for a kept candidate).
 CANDIDATE_REASONS: tuple[str, ...] = ("kept", "no_hv", *(f"tag_{t}" for t in sorted(DROPPED_SUBSTATION_TAGS)),
                                       "frequency", "railway_operator", "railway_name", "railway_tag", "in_plant")
@@ -90,6 +95,16 @@ def _text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _number(value: Any) -> float:
+    """A float, or 0.0 for None, NaN and values that are no number."""
+    if _missing(value):
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _flag(value: Any) -> bool:
@@ -170,7 +185,9 @@ def classify_candidate(row: Mapping[str, Any]) -> tuple[bool, str]:
 
     The rules are applied in this order; the first that matches gives the reason:
 
-    1. ``no_hv``: the ``voltage`` tag holds neither 110 kV nor 60 kV.
+    1. ``no_hv``: the ``voltage`` tag holds neither 110 kV nor 60 kV. A mapped footprint (``area_m2`` > 0) without any
+       voltage tagged and with ``substation=transmission`` counts as HV (city utilities tag 110 kV substations so and
+       leave out the voltage); a point needs the voltage.
     2. ``tag_<value>``: ``substation`` is ``traction``, ``transition``, ``converter``, ``generation``,
        ``industrial`` or ``minor_distribution`` (``transmission`` with 110 kV is kept).
     3. ``frequency``: ``frequency`` holds 16.7 Hz (``16.7``, ``16,7``, ``16.67``, ``16 2/3``) or is ``0`` (DC).
@@ -178,7 +195,8 @@ def classify_candidate(row: Mapping[str, Any]) -> tuple[bool, str]:
        DB Netz, Bahnstrom), a railway substation name (Unterwerk, Bahnstrom, Umformerwerk, Umrichter) or a
        ``railway`` tag.
     5. ``in_plant``: the candidate lies inside a power plant or generator polygon (a substation of a plant or PV
-       park).
+       park), unless the plant is a thermal or heating plant (:data:`_THERMAL_PLANT` on ``plant``): city utilities
+       run HV/MV substations on their combined heat and power plant sites.
 
     Args:
         row: A candidate with the keys of :data:`CANDIDATE_COLUMNS` (a dict or a pandas row); missing keys and NaN
@@ -187,9 +205,11 @@ def classify_candidate(row: Mapping[str, Any]) -> tuple[bool, str]:
     Returns:
         ``(True, "kept")`` or ``(False, reason)``.
     """
-    if not parse_voltages(row.get("voltage")) & HV_LEVELS_V:
-        return False, "no_hv"
+    voltages = parse_voltages(row.get("voltage"))
     tag = (_text(row.get("substation_tag")) or "").lower()
+    footprint = _number(row.get("area_m2")) > 0
+    if not voltages & HV_LEVELS_V and (_text(row.get("voltage")) is not None or tag != "transmission" or not footprint):
+        return False, "no_hv"
     if tag in DROPPED_SUBSTATION_TAGS:
         return False, f"tag_{tag}"
     frequency = _text(row.get("frequency")) or ""
@@ -201,7 +221,7 @@ def classify_candidate(row: Mapping[str, Any]) -> tuple[bool, str]:
         return False, "railway_name"
     if (_text(row.get("railway")) or "no").lower() != "no":
         return False, "railway_tag"
-    if _flag(row.get("in_plant")):
+    if _flag(row.get("in_plant")) and not _THERMAL_PLANT.search(_text(row.get("plant")) or ""):
         return False, "in_plant"
     return True, "kept"
 

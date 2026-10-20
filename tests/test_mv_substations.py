@@ -133,6 +133,16 @@ def test_transformer_ratings_are_read_in_mva(text, expected):
     ({"railway": "no"}, (True, "kept")),
     ({"in_plant": True}, (False, "in_plant")),
     ({"in_plant": np.True_}, (False, "in_plant")),
+    ({"in_plant": True, "plant": "solar:solarpark nord"}, (False, "in_plant")),
+    ({"in_plant": True, "plant": "hydro:wasserkraftwerk"}, (False, "in_plant")),
+    ({"in_plant": True, "plant": "gas:heizkraftwerk nord"}, (True, "kept")),          # CHP site of a city utility
+    ({"in_plant": True, "plant": ":heizwerk süd|:"}, (True, "kept")),
+    ({"voltage": None, "substation_tag": "transmission"}, (True, "kept")),          # city utility, voltage not tagged
+    ({"voltage": None, "substation_tag": "transmission", "area_m2": 0.0}, (False, "no_hv")),    # a point needs it
+    ({"voltage": "", "substation_tag": "transmission"}, (True, "kept")),
+    ({"voltage": None, "substation_tag": "distribution"}, (False, "no_hv")),
+    ({"voltage": "medium", "substation_tag": "transmission"}, (False, "no_hv")),
+    ({"voltage": "220000", "substation_tag": "transmission"}, (False, "no_hv")),
     ({"operator": "Stadtwerke", "name": "Umspannwerk Süd"}, (True, "kept")),
 ])
 def test_filter_rules_keep_hv_mv_substations_only(changes, expected):
@@ -400,7 +410,8 @@ def schemas(monkeypatch):
 
 def test_osm_candidates_query_the_osm_schema_and_return_bytes(schemas):
     footprint = _square(0, 0, 10)
-    row = ("way/1", "110000;20000", None, "50", "Netz", "UW", None, 1.0, 2.0, 400.0, memoryview(footprint), True)
+    row = ("way/1", "110000;20000", None, "50", "Netz", "UW", None, 1.0, 2.0, 400.0, memoryview(footprint), True,
+           "solar:pv")
     client = _client(lambda text, params: [row])
     region = shapely.to_wkb(shapely.box(0, 0, 10, 10))
     result = client.osm_substation_candidates(memoryview(region), 5000)

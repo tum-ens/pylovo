@@ -23,7 +23,7 @@ from pylovo.database.base_mixin import BaseMixin
 
 #: Columns of :meth:`MvSourceMixin.osm_substation_candidates` (= ``substations.CANDIDATE_COLUMNS``).
 OSM_CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_tag", "frequency", "operator", "name",
-                                          "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant")
+                                          "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant", "plant")
 #: Columns of :meth:`MvSourceMixin.osm_transformer_ratings`.
 OSM_RATING_COLUMNS: tuple[str, ...] = ("site_index", "source_id", "voltage", "rating")
 #: Columns of :meth:`MvSourceMixin.egon_substations`.
@@ -72,7 +72,15 @@ SELECT c.source_id, t.tags->>'voltage' AS voltage, t.tags->>'substation' AS subs
        ST_AsBinary(c.fp) AS footprint_wkb,
        EXISTS (SELECT 1 FROM {osm}.infrastructure_polygon pl
                WHERE pl.osm_type = 'power' AND pl.osm_subtype IN ('plant', 'generator')
-                 AND ST_Intersects(pl.geom, c.pt_src)) AS in_plant
+                 AND ST_Intersects(pl.geom, c.pt_src)) AS in_plant,
+       (SELECT string_agg(DISTINCT lower(concat_ws(':', COALESCE(pt.tags->>'plant:source',
+                                                                 pt.tags->>'generator:source', ''),
+                                                    COALESCE(pt.tags->>'name', pl.name, ''))), '|')
+        FROM {osm}.infrastructure_polygon pl
+        LEFT JOIN {osm}.tags pt ON pt.geom_type = CASE WHEN pl.osm_id < 0 THEN 'R' ELSE 'W' END
+                               AND pt.osm_id = abs(pl.osm_id)
+        WHERE pl.osm_type = 'power' AND pl.osm_subtype IN ('plant', 'generator')
+          AND ST_DWithin(ST_Transform(pl.geom, {epsg}), c.pt, 100)) AS plant
 FROM pts c
 LEFT JOIN {osm}.tags t ON t.geom_type = c.gt AND t.osm_id = c.tag_id
 WHERE ST_DWithin(c.pt, ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s)
@@ -244,7 +252,10 @@ class MvSourceMixin(BaseMixin):
             ``relation/<id>``): the raw tags ``voltage``, ``substation_tag``, ``frequency``, ``operator``,
             ``name`` (falling back to the feature columns), ``railway``; the point (point-on-surface of a
             polygon) ``x``, ``y``; the footprint ``area_m2`` (0 for nodes) and ``footprint_wkb`` (MultiPolygon WKB
-            or None); ``in_plant``: the point lies inside a ``power=plant`` or ``power=generator`` polygon.
+            or None); ``in_plant``: the point lies inside a ``power=plant`` or ``power=generator`` polygon;
+            ``plant``: the ``plant:source`` (or ``generator:source``) and name of the plant and generator polygons
+            within 100 m, lower case, ``source:name`` joined with ``|`` (a substation inside an untagged plant
+            polygon next to a named generator takes the generator's description; None without such polygons).
 
         Raises:
             MvStageError: If ``INFDB_OSM_SCHEMA`` is not set.
@@ -252,7 +263,7 @@ class MvSourceMixin(BaseMixin):
         query = _OSM_CANDIDATES_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
                                            epsg=sql.Literal(TARGET_EPSG))
         self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m)})
-        rows = [(*row[:10], _wkb(row[10]), row[11]) for row in self.cur.fetchall()]
+        rows = [(*row[:10], _wkb(row[10]), row[11], row[12] if len(row) > 12 else None) for row in self.cur.fetchall()]
         return _frame(rows, OSM_CANDIDATE_COLUMNS, floats=("x", "y", "area_m2"), bools=("in_plant",))
 
     def osm_power_objects(self, region_wkb: bytes) -> pd.DataFrame:
