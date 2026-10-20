@@ -56,7 +56,10 @@ Working with the map
 --------------------
 
 **Version and MV run.** The top bar selects the LV version and, if the version has MV results, the
-MV run (:doc:`mv_grids`). The newest ones are preselected.
+MV run (:doc:`mv_grids`). The newest version and its newest MV run that is not retired are
+preselected. A retired run was planned by an earlier MV stage with an option the stage no longer has
+(:ref:`mv-variants`). The list marks it, the key figures name its options, and the map shows its
+results as stored.
 
 **One switch per level.** The *Layers* tab has one switch each for the HV grid, the MV grids and the
 LV grids. The arrow next to a level opens its single layers, their colour modes and

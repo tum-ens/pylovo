@@ -5,7 +5,12 @@ A region is a postcode (``plz``), an MV supply area (``area``) or one LV grid (`
 """
 from __future__ import annotations
 
+import functools
+import importlib.util
+import json
 import re
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from pylovo_viewer.catalog import Catalog
@@ -21,8 +26,38 @@ def _bounds(db: Database, sql: str, params: Any) -> list[float] | None:
     return [round(float(v), 6) for v in bounds] if bounds and None not in bounds else None
 
 
+@functools.cache
+def version_snapshot() -> ModuleType | None:
+    """pylovo's ``version_snapshot`` module, loaded from its file; ``None`` without pylovo next to the viewer.
+
+    ``import pylovo.version_snapshot`` would run ``pylovo/__init__.py``, which reads the ``.env`` with
+    ``override=True`` and imports the whole library. The module itself has no configuration or database access.
+    """
+    spec = importlib.util.find_spec("pylovo")   # finds the package without importing it
+    folders = list(spec.submodule_search_locations or []) if spec else []
+    path = Path(folders[0]) / "version_snapshot.py" if folders else None
+    if path is None or not path.is_file():
+        return None
+    module_spec = importlib.util.spec_from_file_location("pylovo_viewer._version_snapshot", path)
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+    return module
+
+
+def retired_options(parameters: Any) -> list[str] | None:
+    """The removed options an MV run used (its ``mv_parameters``), as ``pylovo-mv list`` names them.
+
+    An empty list for a current run, ``None`` when the viewer cannot tell. A retired run stays readable.
+    """
+    rules = version_snapshot()
+    if rules is None:
+        return None
+    stored = json.loads(parameters) if isinstance(parameters, str) else dict(parameters or {})
+    return rules.removed_differences(stored, rules.MV_REMOVED, rules.MV_ADDED_LATER)
+
+
 def versions(db: Database, catalog: Catalog) -> list[dict[str, Any]]:
-    """LV versions (newest first) with their counts and MV runs."""
+    """LV versions (newest first) with their counts and MV runs (with their ``retired`` options)."""
     if not catalog.has("pylovo.version"):
         return []
     rows = db.query("""SELECT v.version_id, v.version_comment AS comment, v.created_at,
@@ -33,10 +68,11 @@ def versions(db: Database, catalog: Catalog) -> list[dict[str, Any]]:
     runs: dict[str, list[dict[str, Any]]] = {}
     if catalog.has_rows.get("pylovo.mv_variant") and catalog.has("pylovo.mv_grid"):
         for run in db.query("""SELECT v.version_id, v.mv_variant_id AS id, v.mv_variant_comment AS comment, v.status,
-                                      v.created_at, v.finished_at,
+                                      v.created_at, v.finished_at, v.mv_parameters,
                                       (SELECT count(*) FROM pylovo.mv_grid g WHERE g.version_id = v.version_id
                                          AND g.mv_variant_id = v.mv_variant_id) AS areas
                                FROM pylovo.mv_variant v ORDER BY v.created_at DESC NULLS LAST"""):
+            run["retired"] = retired_options(run.pop("mv_parameters"))
             runs.setdefault(run.pop("version_id"), []).append(run)
     for row in rows:
         row["runs"] = runs.get(row["version_id"], [])

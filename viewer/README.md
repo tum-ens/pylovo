@@ -42,6 +42,7 @@ schemes), `lod2.js` (LoD2 custom layer, adapted from the GridPlanner UI).
 ## Rules
 
 - Read only: no writes, no `pylovo` imports (they load the checkout's `.env` with `override=True`),
-  no `pylovo-*` commands.
+  no `pylovo-*` commands. The one piece of pylovo code the viewer runs is `pylovo/version_snapshot.py`
+  (no configuration, no database), loaded from its file in `regions.py` to tell retired MV runs.
 - Colours: validated palettes only (see `palette.js`); map styles are MapLibre expressions, not
   colours written into the data.

@@ -49,6 +49,7 @@ createApp({
     fmt() { return f; },
     metaById() { return Object.fromEntries(this.meta.map((m) => [m.id, m])); },
     runs() { return this.versions.find((v) => v.version_id === this.version)?.runs || []; },
+    run() { return this.runs.find((r) => r.id === this.mv) || null; },
     groupList() {
       return this.groupMeta.map((g) => {
         const layers = this.meta.filter((m) => m.groups.includes(g.id) && !m.parent);
@@ -131,7 +132,7 @@ createApp({
         status: 'idle', count: null, note: '', truncated: false };
     }
     this.version = this.versions.some((v) => v.version_id === h.v) ? h.v : this.versions[0]?.version_id || null;
-    this.mv = this.runs.some((r) => r.id === h.mv) ? h.mv : this.runs[0]?.id || null;
+    this.mv = this.runs.some((r) => r.id === h.mv) ? h.mv : this.defaultRun();
     if (h.b && (BASEMAPS[h.b] || h.b === 'auto')) this.basemap = h.b;
     if (h.r) {
       const [kind, id] = h.r.split(':');
@@ -289,7 +290,7 @@ createApp({
     // ---------------------------------------------------------------------------- selection
     setVersion(version) {
       this.version = version;
-      this.mv = this.runs[0]?.id || null;
+      this.mv = this.defaultRun();
       this.region = null;
       this.map.select(null, null);
       this.closeInspector();
@@ -299,6 +300,14 @@ createApp({
       this.flyTo(null);
       this.refreshLod2(true);
       this.saveHash();
+    },
+    /** The newest MV run that is not retired, else the newest. */
+    defaultRun() {
+      return (this.runs.find((r) => !r.retired?.length) || this.runs[0])?.id || null;
+    },
+    /** Why a run is retired (it used options the MV stage no longer has), or ''. */
+    retiredNote(run) {
+      return run?.retired?.length ? `Retired: planned with options the MV stage no longer has (${run.retired.join(', ')}). Its results are shown as stored.` : '';
     },
     setRun(mv) {
       this.mv = mv || null;
@@ -514,7 +523,7 @@ createApp({
           this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });
         }
         if (!this.versions.some((v) => v.version_id === this.version)) this.version = this.versions[0]?.version_id || null;
-        if (!this.runs.some((r) => r.id === this.mv)) this.mv = this.runs[0]?.id || null;
+        if (!this.runs.some((r) => r.id === this.mv)) this.mv = this.defaultRun();
         this.loaded = {};
         this.applyVisibility();
         this.reload(null, true);
