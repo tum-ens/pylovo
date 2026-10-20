@@ -641,7 +641,7 @@ def test_stored_net_oltc_holds_the_busbar_setpoint(unit_mva, households):
     # the case logic works on the stored net (HV ext_grid untouched)
     n1 = electrical.case_net(stored, "n1a", inp.params)
     assert n1.ext_grid["vm_pu"].tolist() == [1.0]
-    nodes, lines = __import__("pylovo.mv_grid.metrics", fromlist=["net_to_tables"]).net_to_tables(stored)
+    nodes, lines = __import__("pylovo.analysis.mv_validation", fromlist=["net_to_tables"]).net_to_tables(stored)
     assert (nodes["kind"] == "busbar").sum() == 1 and nodes.loc[nodes["kind"] == "busbar", "n_transformers"].item() == 2
 
 

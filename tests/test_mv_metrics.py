@@ -14,6 +14,7 @@ import pytest
 from pyproj import Transformer
 from shapely.geometry import LineString, box
 
+from pylovo.analysis import mv_validation as v
 from pylovo.mv_grid import metrics as m
 
 
@@ -159,7 +160,7 @@ def test_normalise_tables_defaults_and_errors():
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")    # pandapower: mv_oberrhein has no tap_dependency_table
 def test_mv_oberrhein_hand_count():
     net = pn.mv_oberrhein()
-    nodes, lines = m.net_to_tables(net)
+    nodes, lines = v.net_to_tables(net)
     assert nodes["kind"].value_counts().to_dict() == {"station": 141, "joint": 16, "generator": 12,
                                                       "customer": 6, "busbar": 2}
     assert int(lines["normally_open"].sum()) == 6
@@ -200,7 +201,7 @@ def test_net_to_tables_stage_net_columns_switches_and_mixed_lines():
     net.line["std_type_name"] = ["NA2XS2Y 1x240 RM/25 12/20 kV + 122-AL1/20-ST1A 20.0"] + [None] * 3
     pp.create_switch(net, b2, b2b, et="b", closed=True)          # fused into one node
     pp.create_switch(net, b3, l4, et="l", closed=False)          # NOP, open at the customer
-    nodes, lines = m.net_to_tables(net, epsg=None)
+    nodes, lines = v.net_to_tables(net, epsg=None)
     assert set(nodes["node_id"]) == {bb, b1, b2, b3}               # HV bus dropped, b2b fused into b2
     assert nodes.set_index("node_id").loc[bb, "n_transformers"] == 2
     assert nodes.set_index("node_id").loc[bb, "transformer_mva"] == 50.0
@@ -261,7 +262,7 @@ def _write_ding0_fixture(folder):
 
 def test_read_ding0_grid_fixture(tmp_path):
     _write_ding0_fixture(tmp_path / "1")
-    nodes, lines = m.read_ding0_grid(tmp_path / "1")
+    nodes, lines = v.read_ding0_grid(tmp_path / "1")
     kinds = dict(zip(nodes["node_id"], nodes["kind"]))
     assert kinds == {"Busbar_mvgd_1_MV": "busbar", "BusBar_mvgd_1_lvgd_1_MV": "station",
                      "BusBar_mvgd_1_lvgd_2_MV": "station", "BranchTee_mvgd_1_1": "joint",
@@ -287,10 +288,10 @@ def test_read_ding0_grid_fixture(tmp_path):
     assert tm["circuit_km"] == pytest.approx(3.8)  # Branch_5 is 0.2 km x 2
     assert tm["cable_share"] == pytest.approx(3.3 / 3.8)
     # the topology folder itself works too
-    nodes2, _ = m.read_ding0_grid(tmp_path / "1" / "topology")
+    nodes2, _ = v.read_ding0_grid(tmp_path / "1" / "topology")
     pd.testing.assert_frame_equal(nodes, nodes2)
     with pytest.raises(FileNotFoundError):
-        m.read_ding0_grid(tmp_path)
+        v.read_ding0_grid(tmp_path)
 
 
 def test_region_metrics_clips_to_the_region():
@@ -302,7 +303,7 @@ def test_region_metrics_clips_to_the_region():
     region = box(0, -500, 1000, 1500)
     nodes = _nodes([(1, "station", 500, 0), (2, "station", 1500, 0), (3, "customer", 100, 1000),
                     (4, "joint", 200, 200)])
-    out = m.region_metrics(lines, region, nodes)
+    out = v.region_metrics(lines, region, nodes)
     assert out["region_area_km2"] == pytest.approx(2.0)
     assert out["circuit_km_in_region"] == pytest.approx(1.0 + 1.3)          # half of line 1, all of line 2
     assert out["km_per_km2"] == pytest.approx(2.3 / 2.0)
@@ -310,9 +311,9 @@ def test_region_metrics_clips_to_the_region():
     assert out["n_supply_points_in_region"] == 2 and out["n_stations_in_region"] == 1
     assert out["km_per_supply_point"] == pytest.approx(2.3 / 2)
     series = gpd.GeoSeries([box(0, -500, 1000, 500), box(0, 500, 1000, 1500)], crs=25832)
-    assert m.region_metrics(lines, series)["km_per_km2"] == pytest.approx(out["km_per_km2"])
+    assert v.region_metrics(lines, series)["km_per_km2"] == pytest.approx(out["km_per_km2"])
     with pytest.raises(ValueError, match="projected"):
-        m.region_metrics(lines.to_crs(4326), region)
+        v.region_metrics(lines.to_crs(4326), region)
 
 
 def test_parallel_inventory_keeps_route_and_topology_distances():
@@ -357,7 +358,7 @@ def test_region_parallel_inventory_uses_clipped_length():
         "parallel": [2, 3], "geometry": [LineString([(0, 0), (2000, 0)]),
                                         LineString([(0, 1000), (1000, 1000)])],
     }, crs=25832)
-    out = m.region_metrics(lines, box(0, -500, 1000, 1500))
+    out = v.region_metrics(lines, box(0, -500, 1000, 1500))
     assert out["route_km_in_region"] == pytest.approx(2.3)
     assert out["circuit_km_in_region"] == pytest.approx(5.9)
     assert out["cable_km_in_region"] == pytest.approx(2.0)
@@ -366,22 +367,22 @@ def test_region_parallel_inventory_uses_clipped_length():
 
 
 def test_traffic_lights_and_literature_comparison():
-    assert m.traffic_light(15, 5, 30) == ("green", 0.0)
-    status, dev = m.traffic_light(4.0, 5, 30)
+    assert v.traffic_light(15, 5, 30) == ("green", 0.0)
+    status, dev = v.traffic_light(4.0, 5, 30)
     assert status == "amber" and dev == pytest.approx(0.2)
-    assert m.traffic_light(2.0, 5, 30)[0] == "red"
-    assert m.traffic_light(25, None, 20)[0] == "amber"
-    assert m.traffic_light(15, None, None, 15) == ("green", 0.0)
-    assert m.traffic_light(float("nan"), 5, 30)[0] == "n/a"
+    assert v.traffic_light(2.0, 5, 30)[0] == "red"
+    assert v.traffic_light(25, None, 20)[0] == "amber"
+    assert v.traffic_light(15, None, None, 15) == ("green", 0.0)
+    assert v.traffic_light(float("nan"), 5, 30)[0] == "n/a"
     frame = pd.DataFrame({"ring_members": [15.0, 38.0], "area_class": ["urban", "urban"]},
                          index=pd.Index(["g1", "g2"], name="mv_grid_id"))
-    table = m.compare_to_literature(frame)
+    table = v.compare_to_literature(frame)
     assert set(table["area_class"].dropna()) == {"urban"}
     first = table[(table["mv_grid_id"] == "g1") & (table["low"] == 5) & (table["high"] == 30)]
     assert first["status"].item() == "green"
     second = table[(table["mv_grid_id"] == "g2") & (table["low"] == 5) & (table["high"] == 30)]
     assert second["status"].item() == "amber"
-    rural = m.compare_to_literature({"ring_members": 25}, area_class="rural")
+    rural = v.compare_to_literature({"ring_members": 25}, area_class="rural")
     assert set(rural["area_class"]) == {"rural"} and set(rural["status"]) == {"amber", "red"}
 
 
@@ -390,7 +391,7 @@ def test_literature_ranges_are_consistent():
                                                                    "feeder_supply_points", "km_per_km2"}
     external = {"substation_peak_mva", "hv_mv_unit_mva", "peak_to_station_rating", "max_line_loading_percent",
                 "open_ring_grid_share", "open_meshed_share", "length_ratio_to_real"}
-    for rng in m.LITERATURE_RANGES:
+    for rng in v.LITERATURE_RANGES:
         assert rng.metric in metrics_from_tables | external, rng.metric
         assert rng.area_class in (None, "rural", "urban")
         assert any(v is not None for v in (rng.low, rng.high, rng.typical))
@@ -399,27 +400,27 @@ def test_literature_ranges_are_consistent():
         assert rng.label and rng.citation
     assert set(m.feeder_table(*_ring_toy()).columns) >= {"feeder_km", "feeder_supply_points"}
     assert set(m.ring_table(*_ring_toy()).columns) >= {"ring_members", "ring_km"}
-    assert len(m.literature_ranges("cable_share", "urban")) == 2
+    assert len(v.literature_ranges("cable_share", "urban")) == 2
 
 
 def test_earth_fault_current():
-    assert m.earth_fault_current_a(1.0, 0.0, 20) == pytest.approx(3.31, abs=0.01)
-    assert m.earth_fault_current_a(0.0, 10.0, 20) == pytest.approx(0.544, abs=0.001)
-    assert m.earth_fault_current_a(1.0, 0.0, 10) == pytest.approx(math.sqrt(3) * 2 * math.pi * 50 * 10e3 * 456e-9)
+    assert v.earth_fault_current_a(1.0, 0.0, 20) == pytest.approx(3.31, abs=0.01)
+    assert v.earth_fault_current_a(0.0, 10.0, 20) == pytest.approx(0.544, abs=0.001)
+    assert v.earth_fault_current_a(1.0, 0.0, 10) == pytest.approx(math.sqrt(3) * 2 * math.pi * 50 * 10e3 * 456e-9)
     with pytest.raises(ValueError):
-        m.earth_fault_current_a(1.0, 0.0, 30)
-    assert m.earth_fault_current_a(1.0, 0.0, 30, cable_c_nf_per_km=200.0) > 0
+        v.earth_fault_current_a(1.0, 0.0, 30)
+    assert v.earth_fault_current_a(1.0, 0.0, 30, cable_c_nf_per_km=200.0) > 0
 
 
 def test_wasserstein_table_and_ring_membership_ari():
-    table = m.wasserstein_table({"a": [1, 2, 3], "b": [2, 3, 4, np.nan], "c": []}, reference="a").set_index("variant")
+    table = v.wasserstein_table({"a": [1, 2, 3], "b": [2, 3, 4, np.nan], "c": []}, reference="a").set_index("variant")
     assert table.loc["a", "wasserstein"] == 0.0
     assert table.loc["b", "wasserstein"] == pytest.approx(1.0) and table.loc["b", "n"] == 3
     assert table.loc["b", "wasserstein_rel"] == pytest.approx(0.5)
     assert np.isnan(table.loc["c", "wasserstein"])
     with pytest.raises(KeyError):
-        m.wasserstein_table({"a": [1]}, reference="x")
+        v.wasserstein_table({"a": [1]}, reference="x")
     a = {1: "r1", 2: "r1", 3: "r2", 4: "r2"}
-    assert m.ring_membership_ari(a, {1: 7, 2: 7, 3: 9, 4: 9, 5: 9}) == pytest.approx(1.0)
-    assert m.ring_membership_ari(a, {1: 0, 2: 1, 3: 0, 4: 1}) < 0.5
-    assert np.isnan(m.ring_membership_ari(a, {1: 0}))
+    assert v.ring_membership_ari(a, {1: 7, 2: 7, 3: 9, 4: 9, 5: 9}) == pytest.approx(1.0)
+    assert v.ring_membership_ari(a, {1: 0, 2: 1, 3: 0, 4: 1}) < 0.5
+    assert np.isnan(v.ring_membership_ari(a, {1: 0}))

@@ -463,13 +463,13 @@ def summary_table(districts: pd.DataFrame, rings: pd.DataFrame, by: Sequence[str
 def clipped_table(variants: Sequence[Variant], by_region: bool = True) -> pd.DataFrame:
     """Circuit km per km² of the planning region (lines clipped to it), per variant and region part.
 
-    Uses :func:`pylovo.mv_grid.metrics.region_metrics` on all lines of the variant (ties and open lines count, as
+    Uses :func:`pylovo.analysis.mv_validation.region_metrics` on all lines of the variant (ties and open lines count, as
     in published circuit lengths); the area is the selected region parts. Columns of ``region_metrics``; region 0
     is all selected parts together.
     """
     import shapely
 
-    from pylovo.mv_grid import metrics
+    from pylovo.analysis import mv_validation
 
     rows = []
     for v in variants:
@@ -479,7 +479,7 @@ def clipped_table(variants: Sequence[Variant], by_region: bool = True) -> pd.Dat
         if by_region:
             scopes += [(int(r), geom) for r, geom in zip(parts["region"], parts.geometry)]
         for scope, geom in scopes:
-            rows.append({"variant": v.label, "region": scope, **metrics.region_metrics(v.lines, geom, nodes)})
+            rows.append({"variant": v.label, "region": scope, **mv_validation.region_metrics(v.lines, geom, nodes)})
     return pd.DataFrame(rows).set_index(["variant", "region"])
 
 
@@ -1150,9 +1150,9 @@ def line_record(v: Variant, kind: str, vn_kv: float) -> dict:
 
 
 def earth_fault_table(v: Variant, districts: pd.DataFrame) -> pd.DataFrame:
-    """Capacitive earth-fault current per district (:func:`pylovo.mv_grid.metrics.earth_fault_current_a`) with the
+    """Capacitive earth-fault current per district (:func:`pylovo.analysis.mv_validation.earth_fault_current_a`) with the
     earth capacitance of the variant's conductors at the district voltage (module defaults where unknown)."""
-    from pylovo.mv_grid import metrics
+    from pylovo.analysis import mv_validation
 
     rows = []
     for gid, cable, overhead, vn in zip(districts["mv_grid_id"], districts["cable_km"], districts["overhead_km"],
@@ -1160,7 +1160,7 @@ def earth_fault_table(v: Variant, districts: pd.DataFrame) -> pd.DataFrame:
         c_cable = line_record(v, "cable", vn).get("c_nf_per_km")
         c_overhead = line_record(v, "overhead", vn).get("c_nf_per_km")
         kwargs = {"overhead_c_nf_per_km": float(c_overhead)} if c_overhead is not None else {}
-        current = metrics.earth_fault_current_a(cable, overhead, vn, cable_c_nf_per_km=c_cable, **kwargs)
+        current = mv_validation.earth_fault_current_a(cable, overhead, vn, cable_c_nf_per_km=c_cable, **kwargs)
         rows.append({"variant": v.label, "mv_grid_id": int(gid), "vn_kv": vn, "cable_km": cable,
                      "overhead_km": overhead, "cable_c_nf_per_km": c_cable, "earth_fault_a": current})
     return pd.DataFrame(rows)

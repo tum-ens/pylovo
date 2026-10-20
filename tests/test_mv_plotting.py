@@ -24,7 +24,7 @@ import pandas as pd  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 from shapely.geometry import LineString, Point, box  # noqa: E402
 
-from pylovo.mv_grid import metrics as mv_metrics  # noqa: E402
+from pylovo.analysis import mv_validation  # noqa: E402
 from pylovo.plotting import mv_grid as mvplot  # noqa: E402
 from pylovo.plotting.mv_grid import maps, statistics  # noqa: E402
 from pylovo.plotting.utils import OSM_TILE_HEADERS  # noqa: E402
@@ -329,7 +329,7 @@ def test_metric_distribution_with_literature_ranges():
     assert any("Ding0 planning limit" in label and "at most 20" in label for label in labels)
     assert any("textbook open ring" in label and "5 to 10" in label for label in labels)
     assert [t.get_text() for t in ax.get_xticklabels()] == ["d0\n(n=4)", "d1\n(n=3)"]
-    custom = [mv_metrics.LiteratureRange("ring_members", None, 5, 30, 15, "city", "x")]
+    custom = [mv_validation.LiteratureRange("ring_members", None, 5, 30, 15, "city", "x")]
     fig = statistics.plot_metric_distribution(df, "ring_members", ranges=custom, order=["d1", "d0"])
     assert {"city: 5 to 30", "city: typical 15"} <= set(_legend_labels(fig.axes[0]))
     fig = statistics.plot_metric_distribution(df, "ring_members")
@@ -425,7 +425,7 @@ def test_tap_distribution_per_variant():
 def test_plausibility_traffic_lights():
     values = pd.DataFrame({"ring_members": [12, 25], "cable_share": [0.6, 0.9], "area_class": ["rural", "rural"]},
                           index=pd.Index(["g1", "g2"], name="mv_grid_id"))
-    table = mv_metrics.compare_to_literature(values)
+    table = mv_validation.compare_to_literature(values)
     fig = statistics.plot_plausibility(table)
     ax = fig.axes[0]
     keys = table[["metric", "label", "area_class"]].astype(str).drop_duplicates()

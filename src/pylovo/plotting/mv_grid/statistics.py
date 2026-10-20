@@ -31,7 +31,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.ticker import NullFormatter, ScalarFormatter
 
-from pylovo.mv_grid import metrics as mv_metrics
+from pylovo.analysis import mv_validation
 from pylovo.plotting.mv_grid.maps import _HALF_COLORS, _as_bool, _column, _line_table, _node_table, ring_paths
 from pylovo.plotting.utils import add_limit_lines, add_statistics_box, get_color_map, setup_axes
 
@@ -92,7 +92,7 @@ METRIC_LABELS: dict[str, str] = {
     "runtime_s": "Runtime (s)",
 }
 
-#: Colours of the traffic-light statuses of ``metrics.compare_to_literature``.
+#: Colours of the traffic-light statuses of ``mv_validation.compare_to_literature``.
 STATUS_COLORS: dict[str, str] = {"green": "#2ca02c", "amber": "#ff9f1c", "red": "#d62728", "n/a": "#9a9a9a"}
 
 _RANGE_COLORS = ("#2ca02c", "#9467bd", "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f")
@@ -151,13 +151,13 @@ def _resolve_ranges(ranges: Any, metric: str, area_class: Optional[str]) -> pd.D
     if ranges is None or ranges is False:
         return pd.DataFrame(columns=columns)
     if ranges is True or (isinstance(ranges, str) and ranges == "auto"):
-        return mv_metrics.literature_ranges(metric, area_class)
+        return mv_validation.literature_ranges(metric, area_class)
     if isinstance(ranges, pd.DataFrame):
         frame = ranges
         if "metric" in frame.columns:
             frame = frame[frame["metric"] == metric]
     else:
-        frame = pd.DataFrame([r.__dict__ if isinstance(r, mv_metrics.LiteratureRange) else dict(r) for r in ranges])
+        frame = pd.DataFrame([r.__dict__ if isinstance(r, mv_validation.LiteratureRange) else dict(r) for r in ranges])
     for column in columns:
         if column not in frame.columns:
             frame = frame.assign(**{column: None})
@@ -198,11 +198,11 @@ def plot_metric_distribution(df: pd.DataFrame, metric: str, by: str = "variant",
     Args:
         df: One row per entity (district, ring, feeder, ...) with the columns ``by`` and ``metric``, e.g.
             ``metrics.ring_table`` or ``metrics.feeder_table`` rows of several variants with a ``variant`` column.
-        metric: Column to plot; its literature ranges have the same name (``metrics.LITERATURE_RANGES``).
+        metric: Column to plot; its literature ranges have the same name (``mv_validation.LITERATURE_RANGES``).
         by: Grouping column.
-        ranges: None (no ranges), ``"auto"`` or True (the ranges of ``metric`` in ``metrics.LITERATURE_RANGES``,
-            filtered by ``area_class``), a data frame like ``metrics.literature_ranges()`` or a sequence of
-            ``metrics.LiteratureRange``.
+        ranges: None (no ranges), ``"auto"`` or True (the ranges of ``metric`` in ``mv_validation.LITERATURE_RANGES``,
+            filtered by ``area_class``), a data frame like ``mv_validation.literature_ranges()`` or a sequence of
+            ``mv_validation.LiteratureRange``.
         ax: Axes to draw into; a new figure is created if None.
         figsize: Figure size in inches if a new figure is created.
         area_class: Area class for ``ranges="auto"`` (``rural`` or ``urban``; None: all classes).
@@ -629,8 +629,8 @@ def plot_tap_distribution(nodes_by_variant: Mapping[str, Any] | pd.DataFrame, ax
 
 def plot_plausibility(table: pd.DataFrame, ax: Optional[plt.Axes] = None,
                       figsize: Optional[Tuple[float, float]] = None,
-                      tolerance: float = mv_metrics.LITERATURE_TOLERANCE, title: Optional[str] = None) -> Figure:
-    """Metric values against literature ranges with traffic lights (output of ``metrics.compare_to_literature``).
+                      tolerance: float = mv_validation.LITERATURE_TOLERANCE, title: Optional[str] = None) -> Figure:
+    """Metric values against literature ranges with traffic lights (output of ``mv_validation.compare_to_literature``).
 
     One row per (metric, range). Values and ranges are divided by a reference of the range (its typical value,
     else the geometric mean of its bounds, else its one bound), so all metrics share one logarithmic axis; 1 is
@@ -639,11 +639,11 @@ def plot_plausibility(table: pd.DataFrame, ax: Optional[plt.Axes] = None,
     one row side by side).
 
     Args:
-        table: Rows of ``metrics.compare_to_literature`` (``metric``, ``label``, ``area_class``, ``value``,
+        table: Rows of ``mv_validation.compare_to_literature`` (``metric``, ``label``, ``area_class``, ``value``,
             ``low``, ``high``, ``typical``, ``status``).
         ax: Axes to draw into; a new figure is created if None.
         figsize: Figure size in inches; default height grows with the number of rows.
-        tolerance: Relative amber zone (``metrics.LITERATURE_TOLERANCE``).
+        tolerance: Relative amber zone (``mv_validation.LITERATURE_TOLERANCE``).
         title: Plot title.
 
     Returns:
