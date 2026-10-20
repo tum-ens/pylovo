@@ -25,9 +25,10 @@ def default_data_dir() -> Path:
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="pylovo-viewer",
-        description="Read-only browser map of the pylovo database in the .env: LV and MV grids, input data "
-                    "and grid context. It never writes to the database.")
-    p.add_argument("--env", help="the .env with the database settings (default: the one pylovo uses)")
+        description="Read-only browser map of the pylovo database in the .env and the other pylovo databases "
+                    "of its server: LV and MV grids, input data and grid context. It never writes to a database.")
+    p.add_argument("--env", help="the .env with the database settings (default: the one pylovo uses); "
+                                 "PYLOVO_VIEWER_DATABASES there limits the databases offered")
     p.add_argument("--host", default="127.0.0.1",
                    help="interface to listen on (default 127.0.0.1; there is no login, so only widen this on a "
                         "trusted network)")

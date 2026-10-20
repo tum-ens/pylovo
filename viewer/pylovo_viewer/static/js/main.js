@@ -1,6 +1,7 @@
-// The viewer app: version and MV run, one switch per voltage level (with optional detail per
-// layer), regions for navigation and key figures, search, inspector, legend, 3D and the URL hash.
-// Map drawing lives in map.js. LV detail and LoD2 always follow the map view.
+// The viewer app: database, version and MV run, one switch per voltage level (with optional detail
+// per layer), regions for navigation and key figures, search, inspector, legend, 3D and the URL hash.
+// Map drawing lives in map.js. LV detail and LoD2 always follow the map view. Every request names
+// the database of this page (`db`), so tabs on different databases never mix.
 import { createApp, markRaw } from 'vue';
 import { getJson } from './api.js';
 import * as f from './format.js';
@@ -36,7 +37,8 @@ const inside = (a, b) => b && a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[
 createApp({
   data() {
     return {
-      fatal: null, info: null, meta: [], groupMeta: [], lod2Available: false, mvVariants: false, versions: [],
+      fatal: null, info: null, db: null, databases: [], meta: [], groupMeta: [], lod2Available: false, mvVariants: false,
+      versions: [],
       version: null, mv: null, region: null, layers: {}, groups: {}, zoom: 5,
       theme: stored('theme', 'auto'), basemap: 'osm', d3: true,
       tab: 'layers', panel: true, legendOpen: true, help: false,
@@ -113,17 +115,25 @@ createApp({
     this.applyTheme();
     window.addEventListener('keydown', (e) => this.key(e));
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.applyTheme());
+    const h = readHash();
     try {
-      const [info, catalog, versions] = await Promise.all([getJson('/api/info'), getJson('/api/catalog'), getJson('/api/versions')]);
-      Object.assign(this, { info, meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2,
-        mvVariants: catalog.mv_variants, versions });
+      const [info, list] = await Promise.all([getJson('/api/info'), getJson('/api/databases')]);
+      Object.assign(this, { info, databases: list.databases });
+      this.db = list.databases.includes(h.db) ? h.db : list.default;
+      try {
+        await this.openDatabase();
+      } catch (err) {
+        if (this.db === list.default) throw err;
+        this.notify(`${this.db}: ${err.message}`);
+        this.db = list.default;
+        await this.openDatabase();
+      }
     } catch (err) {
       this.fatal = err.message;
       return;
     }
     this.loaded = {};
     this.pending = {};
-    const h = readHash();
     const groupsOn = h.g !== undefined ? new Set(h.g.split(',')) : null;
     for (const g of this.groupMeta) this.groups[g.id] = { on: groupsOn ? groupsOn.has(g.id) : g.default, open: false };
     const wanted = h.l ? new Set(h.l.split(',')) : null;
@@ -241,14 +251,14 @@ createApp({
         return;
       }
       const { bbox, ...rest } = params;
-      const base = JSON.stringify(rest);
+      const base = JSON.stringify({ db: this.db, ...rest });
       const last = this.loaded[id];
       if (!force && last && last.base === base && (!bbox || inside(this.map.bbox(0), last.bbox))) return;
       const token = `${base}|${bbox || ''}`;
       this.pending[id] = token;
       st.status = 'loading';
       try {
-        const fc = await getJson(`/api/layer/${id}`, params);
+        const fc = await this.api(`/api/layer/${id}`, params);
         if (this.pending[id] !== token) return;
         this.map.setData(id, fc);
         this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null };
@@ -303,6 +313,50 @@ createApp({
       this.refreshLod2(true);
       this.saveHash();
     },
+    // ----------------------------------------------------------------------------- database
+    /** GET from the viewer's API, always for the database of this page. */
+    api(path, params = {}) {
+      return getJson(path, { db: this.db, ...params });
+    },
+    /** Read what the database of this page holds: its layers and its versions. */
+    async openDatabase() {
+      const db = this.db;
+      const [catalog, versions] = await Promise.all([this.api('/api/catalog'), this.api('/api/versions')]);
+      if (this.db !== db) return false;   // switched again meanwhile
+      Object.assign(this, { meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2,
+        mvVariants: catalog.mv_variants, versions });
+      return true;
+    },
+    /** Show another database of the server: its newest version and MV run, the whole version in view. */
+    async setDatabase(db) {
+      const previous = this.db;
+      this.db = db;
+      try {
+        if (!await this.openDatabase()) return;
+      } catch (err) {
+        this.notify(`${db}: ${err.message}`);
+        if (this.db === db) this.db = previous;
+        return;
+      }
+      this.region = null;
+      this.map.select(null, null);
+      this.closeInspector();
+      for (const m of this.meta) {
+        this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
+        this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });
+        this.map.setData(m.id, EMPTY);
+      }
+      this.version = this.versions[0]?.version_id || null;
+      this.mv = this.defaultRun();
+      this.loaded = {};
+      this.lod2Bbox = null;
+      this.applyVisibility();
+      this.loadLists();
+      this.loadSummary();
+      this.flyTo(null);
+      this.refreshLod2(true);
+    },
+
     /** The newest MV run that is not retired, else the newest. */
     defaultRun() {
       return (this.runs.find((r) => !r.retired?.length) || this.runs[0])?.id || null;
@@ -335,11 +389,12 @@ createApp({
     },
     async flyTo(region) {
       if (!this.version) return;
+      const db = this.db;
       const params = { version: this.version, mv: region ? (region.kind === 'area' ? this.mv : null) : null };
       if (region) params[region.kind] = region.id;
       try {
-        const { bounds } = await getJson('/api/bounds', params);
-        this.map.fit(bounds, this.padding(), region ? 16 : 13);
+        const { bounds } = await this.api('/api/bounds', params);
+        if (this.db === db) this.map.fit(bounds, this.padding(), region ? 16 : 13);
       } catch (err) {
         this.notify(err.message);
       }
@@ -352,16 +407,19 @@ createApp({
       this.postcodes = [];
       this.areas = [];
       if (!this.version) return;
+      const key = `${this.db}|${this.version}|${this.mv}`;
+      this.listsKey = key;
       try {
-        this.postcodes = await getJson('/api/postcodes', { version: this.version });
-        if (this.mv) this.areas = await getJson('/api/areas', { version: this.version, mv: this.mv });
+        const postcodes = await this.api('/api/postcodes', { version: this.version });
+        const areas = this.mv ? await this.api('/api/areas', { version: this.version, mv: this.mv }) : [];
+        if (this.listsKey === key) Object.assign(this, { postcodes, areas });
       } catch (err) {
         this.notify(err.message);
       }
     },
     async loadSummary() {
       if (!this.version) { this.summary = null; return; }
-      const params = { version: this.version, mv: this.mv };
+      const params = { db: this.db, version: this.version, mv: this.mv };
       if (this.region) params[this.region.kind] = this.region.id;
       const key = JSON.stringify(params);
       this.summaryKey = key;
@@ -411,7 +469,7 @@ createApp({
     /** A feeder cable stands for its section, from a split point (or the station) to the next. */
     async loadSection(ins, hit) {
       try {
-        const section = await getJson(`/api/section/${encodeURIComponent(hit.fid)}`);
+        const section = await this.api(`/api/section/${encodeURIComponent(hit.fid)}`);
         hit.group = section;
         if (this.inspector === ins && ins.hits[ins.index] === hit) this.map.setHighlight(section);
       } catch (err) {
@@ -442,7 +500,7 @@ createApp({
       if (this.metaById[hit.layer]?.scope === 'file') { ins.attrs = Object.entries(hit.props); return; }
       ins.loading = true;
       try {
-        const row = await getJson(`/api/feature/${hit.layer}/${encodeURIComponent(hit.fid)}`, { version: this.version, mv: this.mv });
+        const row = await this.api(`/api/feature/${hit.layer}/${encodeURIComponent(hit.fid)}`, { version: this.version, mv: this.mv });
         if (this.inspector === ins && ins.hits[ins.index] === hit) ins.attrs = Object.entries(row);
       } catch (err) {
         ins.error = err.message;
@@ -505,7 +563,7 @@ createApp({
       const byId = new Map((this.map.data('lv_buildings')?.features || []).map((ft) => [ft.properties.fid, ft.properties]));
       this.lod2 = { text: 'Loading LoD2 buildings …' };
       try {
-        const head = await showLod2({ version: this.version, bbox: box.join(',') },
+        const head = await showLod2({ db: this.db, version: this.version, bbox: box.join(',') },
           (oid) => (byId.has(oid) ? colourOf(scheme, byId.get(oid)) : null), document.documentElement.dataset.theme === 'dark');
         const n = head?.buildings?.length || 0;
         this.map.setLod2Hide(n ? head.buildings : null);
@@ -518,9 +576,16 @@ createApp({
     // ------------------------------------------------------------------------------- reload
     async refreshAll() {
       try {
-        const catalog = await getJson('/api/catalog', { refresh: 1 });
+        const list = await getJson('/api/databases', { refresh: 1 });
+        this.databases = list.databases;
+        if (!this.databases.includes(this.db)) {
+          this.notify(`${this.db} is no longer on the server: back to ${list.default}`);
+          this.setDatabase(list.default);
+          return;
+        }
+        const catalog = await this.api('/api/catalog', { refresh: 1 });
         Object.assign(this, { meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2,
-          mvVariants: catalog.mv_variants, versions: await getJson('/api/versions') });
+          mvVariants: catalog.mv_variants, versions: await this.api('/api/versions') });
         for (const m of this.meta) {
           this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
           this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });
@@ -545,8 +610,9 @@ createApp({
       if (!text.trim()) { this.search.hits = []; return; }
       this.searchTimer = setTimeout(async () => {
         try {
-          const hits = await getJson('/api/search', { q: text, version: this.version, mv: this.mv });
-          if (this.search.text === text) Object.assign(this.search, { hits, open: true, index: 0 });
+          const db = this.db;
+          const hits = await this.api('/api/search', { q: text, version: this.version, mv: this.mv });
+          if (this.search.text === text && this.db === db) Object.assign(this.search, { hits, open: true, index: 0 });
         } catch (err) {
           this.notify(err.message);
         }
@@ -597,7 +663,7 @@ createApp({
         const on = this.meta.filter((m) => !m.parent && this.layers[m.id]?.on).map((m) => m.id);
         const modes = this.meta.filter((m) => this.layers[m.id]?.on && this.layers[m.id].mode && this.layers[m.id].mode !== defaultMode(m.id))
           .map((m) => `${m.id}:${this.layers[m.id].mode}`);
-        const parts = { v: this.version, mv: this.mv, r: this.region ? `${this.region.kind}:${this.region.id}` : null,
+        const parts = { db: this.db, v: this.version, mv: this.mv, r: this.region ? `${this.region.kind}:${this.region.id}` : null,
           g: groups.join(','), l: on.join(','), m: modes.join(','), b: this.basemap !== 'osm' ? this.basemap : null, '3d': this.d3 ? null : '0',
           c: [v.center[0].toFixed(5), v.center[1].toFixed(5), v.zoom.toFixed(2), Math.round(v.pitch), Math.round(v.bearing)].join(',') };
         const hash = Object.entries(parts).filter(([k, x]) => x !== null && x !== undefined && (x !== '' || k === 'g' || k === 'l'))

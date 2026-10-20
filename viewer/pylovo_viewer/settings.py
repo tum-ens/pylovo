@@ -1,5 +1,8 @@
 """Database settings of the viewer: the ``.env`` that pylovo uses, or the one given with ``--env``.
 
+``DBNAME`` is the database the viewer opens; ``PYLOVO_VIEWER_DATABASES`` (comma-separated, optional)
+names the databases of the same server that it offers besides (see :mod:`pylovo_viewer.databases`).
+
 The file is read with :func:`dotenv.dotenv_values` and never loaded into ``os.environ``. The viewer
 does not import :mod:`pylovo.config_loader`, which would load the checkout's own ``.env`` with
 ``override=True`` and import the whole library (pandapower, scikit-learn, ...).
@@ -34,6 +37,7 @@ class Settings:
     source_schema: str = "basedata"
     opendata_schema: str = "opendata"
     osm_schema: str = "osm"
+    databases: tuple[str, ...] = ()   # PYLOVO_VIEWER_DATABASES; empty: every pylovo database on the server
     env_file: str | None = None
 
     def public(self) -> dict:
@@ -85,5 +89,7 @@ def load_settings(env_file: Path | None) -> Settings:
         port, epsg = int(get("PORT")), int(get("TARGET_EPSG", "25832"))
     except ValueError as exc:
         raise SettingsError(f"PORT and TARGET_EPSG must be integers ({exc})") from None
+    databases = tuple(name.strip() for name in (get("PYLOVO_VIEWER_DATABASES") or "").split(",") if name.strip())
     return Settings(dbname=get("DBNAME"), user=get("DBUSER"), password=get("PASSWORD"), host=get("HOST"),
-                    port=port, target_epsg=epsg, env_file=str(env_file) if env_file else None, **schemas)
+                    port=port, target_epsg=epsg, databases=databases, env_file=str(env_file) if env_file else None,
+                    **schemas)

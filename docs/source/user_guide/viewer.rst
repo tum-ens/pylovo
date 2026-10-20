@@ -25,9 +25,17 @@ Start
    uv sync --extra viewer
    uv run --extra viewer pylovo-viewer          # http://127.0.0.1:8770/, opens the browser
 
-The viewer uses the database of the ``.env`` that pylovo uses (the one of the checkout), prints it
+The viewer opens the database of the ``.env`` that pylovo uses (the one of the checkout), prints it
 at start and shows it in the top bar with a *read-only* badge. On a remote machine, VS Code forwards
 the port; otherwise use ``ssh -L 8770:127.0.0.1:8770 <host>``.
+
+**Databases.** The viewer also offers the other pylovo databases of the same server, with the same
+user and password: every database with a ``pylovo.version`` table that the user may connect to, or
+only those listed in ``PYLOVO_VIEWER_DATABASES`` (comma-separated, in the ``.env`` or the
+environment, for example ``PYLOVO_VIEWER_DATABASES=grids_lv,grids_mv``). With more than one, the top
+bar has a *Database* menu next to the version. The list follows the server: it is read again after
+a minute and with the reload button. Every connection is read-only, each database has its own
+connections and cache, and the address bar keeps the database, so two tabs can show two databases.
 
 .. list-table::
    :header-rows: 1
@@ -39,7 +47,8 @@ the port; otherwise use ``ssh -L 8770:127.0.0.1:8770 <host>``.
    * - ``--env FILE``
      - the ``.env`` pylovo uses
      - Database settings: ``DBNAME``, ``DBUSER``, ``PASSWORD``, ``HOST``, ``PORT``, ``TARGET_EPSG``
-       and the ``INFDB_*_SCHEMA`` names, as in :doc:`configuration`.
+       and the ``INFDB_*_SCHEMA`` names, as in :doc:`configuration`, and the optional
+       ``PYLOVO_VIEWER_DATABASES``.
    * - ``--host``
      - ``127.0.0.1``
      - Interface to listen on. The viewer has no login, so only widen this on a trusted network.
@@ -92,8 +101,8 @@ to the flat map and back; buildings are extruded by their height in 3D. With a
 ``citydb`` schema (3DCityDB v5, see :doc:`input_data`) the buildings in view are drawn as their LoD2
 models with roofs and walls from zoom 15 (up to 5,000 buildings).
 
-**Sharing a view.** The address bar keeps version, MV run, region, levels, layers, colour modes,
-basemap and camera, so a view can be bookmarked or sent. Keys: ``/`` search, ``3`` 3D, ``L`` layer panel,
+**Sharing a view.** The address bar keeps database, version, MV run, region, levels, layers, colour
+modes, basemap and camera, so a view can be bookmarked or sent. Keys: ``/`` search, ``3`` 3D, ``L`` layer panel,
 ``Esc`` close the inspector and then clear the region, ``?`` help.
 
 .. figure:: /images/viewer/viewer-lod2.png

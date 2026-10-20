@@ -41,9 +41,15 @@
     <button class="icon-btn" @click="panel = !panel" :class="{ on: panel }" title="Layer panel (L)">
       <svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
     <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M18 4 8 18h7l-2 10 11-15h-7z"/></svg></span>pylovo<b>viewer</b></div>
-    <div class="db" v-if="info" :title="`${info.database.dbname} on ${info.database.host}:${info.database.port}\nSettings: ${info.database.env_file || 'environment'}\nRead-only connection: the viewer never writes.`">
-      <span class="pulse"></span>{{ info.database.dbname }}<span class="ro">read-only</span>
+    <div class="db" v-if="info" :title="`${db} on ${info.database.host}:${info.database.port}\nSettings: ${info.database.env_file || 'environment'}\nRead-only connection: the viewer never writes.`">
+      <span class="pulse"></span><template v-if="databases.length < 2">{{ db }}</template><span class="ro">read-only</span>
     </div>
+    <label class="field" v-if="databases.length > 1">
+      <span>Database</span>
+      <select :value="db" @change="setDatabase($event.target.value)" title="pylovo databases on this server">
+        <option v-for="d in databases" :key="d" :value="d">{{ d }}</option>
+      </select>
+    </label>
     <label class="field" v-if="versions.length">
       <span>Version</span>
       <select :value="version" @change="setVersion($event.target.value)">
@@ -262,10 +268,10 @@
     <div class="glass help">
       <button class="icon-btn small close" @click="help = false">×</button>
       <h2>pylovo viewer</h2>
-      <p>A read-only map of the pylovo database in your <code>.env</code>
-        (<b>{{ info?.database.dbname }}</b> on {{ info?.database.host }}:{{ info?.database.port }}). It never writes to the database.</p>
+      <p>A read-only map of the pylovo databases on the server of your <code>.env</code>
+        (<b>{{ db }}</b> on {{ info?.database.host }}:{{ info?.database.port }}). It never writes to a database.</p>
       <ul>
-        <li><b>Pick a version</b> (LV grids) and, if there is one, an <b>MV run</b> in the top bar.</li>
+        <li><b>Pick a database</b> (if the server has several), a <b>version</b> (LV grids) and, if there is one, an <b>MV run</b> in the top bar.</li>
         <li><b>One switch per level</b>: HV grid, MV grids and LV grids. <i>Details</i> (the arrow) shows the single layers and their colours. Substations belong to both of their levels.</li>
         <li>LV cables and buildings appear when you zoom in (from zoom 13). <b>Regions</b> (click a postcode or supply area, the <i>Regions</i> tab, or search) fly there and give the key figures.</li>
         <li><b>Click</b> anything for its facts and all its database attributes; <b>hover</b> for a quick look.</li>

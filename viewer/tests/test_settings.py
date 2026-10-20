@@ -23,12 +23,17 @@ def test_explicit_env_file(tmp_path):
 
 
 def test_load_settings_with_pylovo_defaults(tmp_path, monkeypatch):
-    for key in ("INFDB_SOURCE_SCHEMA", "INFDB_OPENDATA_SCHEMA", "INFDB_OSM_SCHEMA"):
+    for key in ("INFDB_SOURCE_SCHEMA", "INFDB_OPENDATA_SCHEMA", "INFDB_OSM_SCHEMA", "PYLOVO_VIEWER_DATABASES"):
         monkeypatch.delenv(key, raising=False)
     s = load_settings(write(tmp_path, ENV + "TARGET_EPSG = 3035 # comment\n"))
     assert (s.dbname, s.user, s.host, s.port, s.target_epsg) == ("db", "user", "localhost", 5432, 3035)
     assert (s.source_schema, s.opendata_schema, s.osm_schema) == ("basedata", "opendata", "osm")
-    assert "password" not in s.public() and "secret" not in repr(s)
+    assert s.databases == () and "password" not in s.public() and "secret" not in repr(s)
+
+
+def test_databases_to_offer(tmp_path):
+    s = load_settings(write(tmp_path, ENV + 'PYLOVO_VIEWER_DATABASES="infdb, infdb_mv,,infdb_test"\n'))
+    assert s.databases == ("infdb", "infdb_mv", "infdb_test")
 
 
 def test_env_file_wins_over_environment(tmp_path, monkeypatch):

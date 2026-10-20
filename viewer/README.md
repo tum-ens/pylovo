@@ -18,14 +18,15 @@ uv run --extra viewer pytest viewer/tests           # no database needed
 | --- | --- |
 | `pylovo_viewer/cli.py` | `pylovo-viewer` and `pylovo-viewer fetch etrago`; parses arguments before anything else |
 | `pylovo_viewer/settings.py` | the `.env` (pylovo's lookup, or `--env`), read without loading it into `os.environ` |
-| `pylovo_viewer/db.py` | pooled connections; every transaction read-only with a statement timeout |
+| `pylovo_viewer/db.py` | pooled connections, started read-only; every transaction read-only with a statement timeout |
+| `pylovo_viewer/databases.py` | the databases offered on the server; one site (pool, catalog, layers, cache) per database |
 | `pylovo_viewer/catalog.py` | tables and columns of the database; decides which layers are available |
 | `pylovo_viewer/layers.py` | the layer registry: one `Layer` (SQL, scope, requirements, identify query) per map layer |
 | `pylovo_viewer/topology.py` | neighbour-aware colour slots and feeder numbers |
 | `pylovo_viewer/regions.py`, `summary.py` | versions, MV runs, regions, search, bounds; key figures |
 | `pylovo_viewer/lod2.py` | LoD2 meshes of a region (query here, triangulation and format from `pylovo_api.lod2`) |
 | `pylovo_viewer/etrago.py` | download and cache of the eTraGo grid from the Open Energy Platform |
-| `pylovo_viewer/app.py` | FastAPI app: the page, static files and the GET routes under `/api` |
+| `pylovo_viewer/app.py` | FastAPI app: the page, static files and the GET routes under `/api` (parameter `db`) |
 | `pylovo_viewer/static/` | the page: MapLibre GL JS and Vue from jsDelivr (import map, no build step) |
 
 In `static/js/`: `main.js` (app state, loading, inspector, URL), `map.js` (MapLibre, draw order,
