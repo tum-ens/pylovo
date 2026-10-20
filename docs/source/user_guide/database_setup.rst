@@ -31,6 +31,13 @@ Import the intended region and run its PyLovo preprocessing first. Set
 PyLovo schema copies postcode polygons from InfDB; later runs add missing
 postcodes on demand.
 
+To keep a central InfDB untouched, the schema ``pylovo`` and its results can live
+in another database, e.g. on your own machine: point ``DBNAME``, ``HOST`` and the
+other connection variables at that database, set ``USE_EXTERNAL_BASEDATA=True``
+and give the central InfDB as ``INFDB_DBNAME``, ``INFDB_HOST``, ``INFDB_PORT``,
+``INFDB_USER`` and ``INFDB_PASSWORD``. PyLovo only reads from the central InfDB,
+in short read-only transactions, also through PgBouncer.
+
 File-based setup (USE_INFDB=False)
 ----------------------------------
 

@@ -20,11 +20,16 @@ from pylovo.config_loader import (
 class InfdbClient:
     """Connection to InfDB, the source of buildings, ways and postcodes when ``USE_INFDB=True``.
 
-    The connection defaults to the pylovo database itself (``config_loader`` sets the
-    ``INFDB_*`` settings to the ``.env`` connection); ``search_path`` is
-    ``INFDB_SOURCE_SCHEMA, public``. Buildings come from ``basedata.buildings``, ways from
-    ``ways_per_connection`` and ``connection_lines`` in ``INFDB_SOURCE_SCHEMA``, postcodes from
+    The connection defaults to the pylovo database itself; with ``USE_EXTERNAL_BASEDATA=True``
+    ``config_loader`` takes the ``INFDB_*`` connection settings of the ``.env`` file instead.
+    Buildings come from ``INFDB_SOURCE_SCHEMA.buildings``, ways from ``ways_per_connection`` and
+    ``connection_lines`` in ``INFDB_SOURCE_SCHEMA``, postcodes from
     ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.
+
+    All tables are schema-qualified and no startup ``options`` are sent, so the connection also
+    works through PgBouncer. Every query runs in its own read-only transaction that is closed
+    right after the fetch, so the client never writes to InfDB and never stays idle in a
+    transaction there.
 
     Args:
         dbname: Database name; defaults to ``INFDB_DBNAME``.
@@ -49,8 +54,10 @@ class InfdbClient:
                 password=pw,
                 host=host,
                 port=port,
-                options=f"-c search_path={INFDB_SOURCE_SCHEMA},public",
             )
+            # BEGIN READ ONLY per transaction; with autocommit psycopg2 would SET it for the session,
+            # which a PgBouncer in transaction mode can pass on to other clients
+            self.conn.set_session(readonly=True)
             self.cur = self.conn.cursor()
             self.db_path = f"{host}:{port}/{dbname}"
         except psy.OperationalError as err:
@@ -80,7 +87,7 @@ class InfdbClient:
             list[tuple]: A list of tuples containing the source building columns plus
                 a derived type used by the generation pipeline.
         """
-        query = """
+        query = sql.SQL("""
             SELECT
                 id,
                 feature_id,
@@ -94,12 +101,12 @@ class InfdbClient:
                     WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
                     WHEN building_use = 'Residential' THEN 'Commercial'
                     WHEN building_use = 'Mixed' THEN
-                        CASE basedata.classify_building_use(building_use_id)
+                        CASE {classify}(building_use_id)
                             -- a cell-quota promotion keeps the original Residential
                             -- function code, so its non-residential share is reclassified
                             -- the same way a plain Residential building's is above
                             WHEN 'Residential' THEN 'Commercial'
-                            ELSE basedata.classify_building_use(building_use_id)
+                            ELSE {classify}(building_use_id)
                         END
                     WHEN building_use IN ('Commercial', 'Public', 'Unknown') THEN building_use
                     ELSE NULL
@@ -121,18 +128,20 @@ class InfdbClient:
                 changelog_id,
                 assigned_way_id,
                 COALESCE(building_type, building_use) AS type
-            FROM basedata.buildings
+            FROM {buildings}
             WHERE postcode = %(p)s
             AND building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown')
             AND COALESCE(building_use_id, '') != '31001_2523'
-        """
+        """).format(classify=sql.Identifier(INFDB_SOURCE_SCHEMA, "classify_building_use"),
+                    buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"))
         if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
             # Outbuildings (sheds, garages, barns) carry no address of their own and are
             # almost never separate grid customers. An import restricted to a reviewed
             # building allowlist must not apply this filter.
-            query += " AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''"
-        self.cur.execute(query, {"p": plz})
-        buildings = self.cur.fetchall()
+            query += sql.SQL(" AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''")
+        with self.conn:
+            self.cur.execute(query, {"p": plz})
+            buildings = self.cur.fetchall()
 
         return buildings
     
@@ -142,17 +151,18 @@ class InfdbClient:
         Returns:
             ``(objectid, geom, centroid)`` rows in the source SRID.
         """
-        query = """
+        query = sql.SQL("""
             SELECT
                 objectid,
                 geom,
                 COALESCE(centroid, ST_Centroid(geom)) AS centroid
-            FROM basedata.buildings
+            FROM {buildings}
             WHERE postcode = %(p)s
               AND building_use_id = '31001_2523'
-        """
-        self.cur.execute(query, {"p": plz})
-        return self.cur.fetchall()
+        """).format(buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"))
+        with self.conn:
+            self.cur.execute(query, {"p": plz})
+            return self.cur.fetchall()
 
     def fetch_ways_from_infdb(self, plz) -> list:
         """Return the ways of a PLZ in the tuple layout of ``PreprocessingMixin.set_ways_tem_table_infdb``.
@@ -174,14 +184,11 @@ class InfdbClient:
         3. **Two source tables.** The street segments (``ways_per_connection``, split at the
            building connections) and the building connection lines (``connection_lines``) are
            combined with ``UNION ALL``.
-        4. **Unique way ids across runs.** A plain ``row_number()`` would restart at 1 for every
-           PLZ and collide with ids of earlier runs. The ids are therefore
-           ``COALESCE(MAX(way_id), 0) FROM pylovo.ways_result`` plus
-           ``row_number() OVER (ORDER BY remote_id)``, where ``remote_id`` is a stable key derived
-           from the source id. Sequential runs keep ``way_id`` unique; parallel runs can still
-           assign the same ids, because ``pylovo.ways_result`` only grows when a run commits.
-           ``pylovo.ways_result`` is read through this InfDB connection, which therefore has to
-           point to the pylovo database (the default).
+        4. **Way ids.** ``way_id`` is ``row_number() OVER (ORDER BY remote_id)``, where
+           ``remote_id`` is a stable key derived from the source id, so it starts at 1 for every
+           PLZ. ``PreprocessingMixin.set_ways_tem_table_infdb`` offsets it by the largest
+           ``way_id`` of ``pylovo.ways_result`` in the pylovo database, which may be another
+           database than InfDB.
 
         Args:
             plz: Postcode.
@@ -224,12 +231,10 @@ class InfdbClient:
             END)::int
         """
 
+        ways_per_connection = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
+        connection_lines = sql.Identifier(INFDB_SOURCE_SCHEMA, "connection_lines").as_string(self.cur)
         query = f"""
-            WITH max_id AS (
-                SELECT COALESCE(MAX(way_id), 0) AS base_id
-                FROM pylovo.ways_result
-            ),
-            base AS (
+            WITH base AS (
                 SELECT
                     {case_expr} AS clazz,
                     NULL::bigint AS source,
@@ -238,7 +243,7 @@ class InfdbClient:
                     length_geo AS reverse_cost,
                     geom,
                     ('ways_per_connection:' || id::text) AS remote_id
-                FROM ways_per_connection
+                FROM {ways_per_connection}
                 WHERE postcode = %(plz)s
 
                 UNION ALL
@@ -251,7 +256,7 @@ class InfdbClient:
                     length_geo AS reverse_cost,
                     geom,
                     ('connection_lines:' || id::text) AS remote_id
-                FROM connection_lines
+                FROM {connection_lines}
                 WHERE postcode = %(plz)s
             )
             SELECT
@@ -261,15 +266,14 @@ class InfdbClient:
                 b.cost,
                 b.reverse_cost,
                 b.geom,
-                (m.base_id + row_number() OVER (ORDER BY b.remote_id))::bigint AS way_id
+                (row_number() OVER (ORDER BY b.remote_id))::bigint AS way_id
             FROM base b
-            CROSS JOIN max_id m
             WHERE b.clazz != 72
         """
 
-        self.cur.execute(query, {"plz": plz})
-
-        ways = self.cur.fetchall()
+        with self.conn:
+            self.cur.execute(query, {"plz": plz})
+            ways = self.cur.fetchall()
         if not ways:
             raise ValueError("No ways found in remote DB intersecting the given PLZ geometry")
 
@@ -287,8 +291,9 @@ class InfdbClient:
             WHERE plz IN (%(plz)s::varchar, lpad(%(plz)s::varchar, 5, '0'))
             LIMIT 1;
         """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
-        self.cur.execute(query, {"plz": plz})
-        return self.cur.fetchone()
+        with self.conn:
+            self.cur.execute(query, {"plz": plz})
+            return self.cur.fetchone()
 
     def fetch_all_postcodes_from_infdb(self) -> list[tuple]:
         """Return all postcodes of ``INFDB_OPENDATA_SCHEMA.postcodes_germany`` for ``pylovo-setup``.
@@ -304,8 +309,9 @@ class InfdbClient:
             FROM {postcodes}
             ORDER BY plz;
         """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
-        self.cur.execute(query)
-        rows = self.cur.fetchall()
+        with self.conn:
+            self.cur.execute(query)
+            rows = self.cur.fetchall()
         if not rows:
             raise ValueError("No postcode found in infdb")
 

@@ -31,7 +31,8 @@ same name.
      - Meaning
    * - ``DBNAME``
      - required
-     - Database that holds the schema ``pylovo`` (with InfDB: the InfDB database).
+     - Database that holds the schema ``pylovo`` (with InfDB: the InfDB database, unless
+       ``USE_EXTERNAL_BASEDATA``).
    * - ``DBUSER``
      - required
      - Database user.
@@ -48,11 +49,20 @@ same name.
      - ``True``
      - ``True``/``1``/``yes``: read buildings, streets and postcodes from the InfDB schemas in the
        same database. Anything else: file-based mode (:ref:`file-based-input`).
+   * - ``USE_EXTERNAL_BASEDATA``
+     - ``False``
+     - ``True``/``1``/``yes``: read the InfDB schemas from the database given by ``INFDB_DBNAME``,
+       ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT`` and ``INFDB_PASSWORD``, e.g. a central InfDB
+       on another server, while the schema ``pylovo`` and the results stay in ``DBNAME``.
+       PgBouncer in front of InfDB is supported.
+   * - ``INFDB_DBNAME``, ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT``, ``INFDB_PASSWORD``
+     - pylovo connection
+     - Connection of the external InfDB (``USE_EXTERNAL_BASEDATA`` only). Unset values take the
+       value of ``DBNAME``, ``DBUSER``, ``HOST``, ``PORT`` and ``PASSWORD``.
    * - ``INFDB_SOURCE_SCHEMA``
-     - ``pylovo_input``
-     - InfDB schema with the street tables ``ways_per_connection`` and ``connection_lines``.
-       Set it to ``basedata`` for current InfDB releases; the building query always reads
-       ``basedata.buildings``.
+     - ``basedata``
+     - InfDB schema with ``buildings``, the function ``classify_building_use`` and the street
+       tables ``ways_per_connection`` and ``connection_lines``.
    * - ``INFDB_OPENDATA_SCHEMA``
      - ``opendata``
      - InfDB schema with ``postcodes_germany``.
@@ -431,6 +441,12 @@ Clustering
      - ``1000``
      - Maximum routed distance (m) between an existing transformer and a building assigned to it.
      - ✓
+   * - ``BROWNFIELD_NEAREST_ONLY``
+     - ``False``
+     - A building joins only its nearest existing station. When that station is full, the
+       building gets a greenfield station instead of joining a farther existing station that still
+       has capacity, so existing stations do not reach far beyond their own area.
+     - ✓
    * - ``USE_OPEN_TRANSFORMER_POSITIONS``
      - ``False``
      - Use open transformer positions (OSM, LoD2 stations, manual edits) from
@@ -453,11 +469,12 @@ disabled source never sizes a station.
 .. note::
 
    ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``,
-   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` and ``USE_MANUAL_TRANSFORMER_POSITIONS`` were added
-   to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
+   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS`` and
+   ``BROWNFIELD_NEAREST_ONLY`` were added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
    accepts the current values of the first two with a warning (the values used for the existing
-   grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null`` and
-   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, the behaviour before these keys existed.
+   grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null``,
+   ``USE_MANUAL_TRANSFORMER_POSITIONS: False`` and ``BROWNFIELD_NEAREST_ONLY: False``, the behaviour
+   before these keys existed.
 
 Station voltage
 ~~~~~~~~~~~~~~~

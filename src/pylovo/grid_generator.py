@@ -32,6 +32,7 @@ from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo import utils
 from pylovo.config_loader import (
+    BROWNFIELD_NEAREST_ONLY,
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
     CLASSIFICATION_VERSION,
@@ -915,7 +916,8 @@ class GridGenerator:
         Assign buildings to the existing transformers and store them as bcid in buildings_tem.
 
         Consumer-transformer pairs closer than ``MAX_BROWNFIELD_TRAFO_DISTANCE`` are
-        visited from the shortest routed distance up; a consumer joins the
+        visited from the shortest routed distance up (with ``BROWNFIELD_NEAREST_ONLY`` only the
+        pairs of each consumer's nearest transformer); a consumer joins the
         transformer unless the coincident load would exceed the transformer's
         imported rating or, without one, the largest allowed catalogue rating
         (after ``TRANSFORMER_PLANNING_UTILIZATION``). Every used transformer becomes a
@@ -938,6 +940,10 @@ class GridGenerator:
 
         # Keep connections shorter than MAX_BROWNFIELD_TRAFO_DISTANCE, nearest first
         cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(by=["agg_cost"])
+        if BROWNFIELD_NEAREST_ONLY and not cost_df.empty:
+            # only each consumer's nearest station: when it is full, the consumer is left for greenfield
+            # instead of joining a farther station that still has capacity
+            cost_df = cost_df[cost_df["agg_cost"] <= cost_df.groupby("start_vid")["agg_cost"].transform("min")]
 
         # Get available transformer capacities from database
         settlement_type = self.dbc.get_settlement_type_from_plz(plz)

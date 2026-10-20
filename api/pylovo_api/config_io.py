@@ -75,6 +75,7 @@ FORM_SECTIONS: list[dict[str, Any]] = [
         {"key": "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", "type": "int", "min": 1, "nullable": True, "unit": "buildings",
          "label": "Merge: max. buildings of the smaller cluster"},
         {"key": "MAX_BROWNFIELD_TRAFO_DISTANCE", "type": "float", "min": 0, "unit": "m", "label": "Brownfield: max. distance"},
+        {"key": "BROWNFIELD_NEAREST_ONLY", "type": "bool", "label": "Brownfield: nearest station only"},
         {"key": "USE_OPEN_TRANSFORMER_POSITIONS", "type": "bool", "label": "Use OSM / LoD2 / manual transformer positions"},
         {"key": "USE_DSO_TRANSFORMER_POSITIONS", "type": "bool", "label": "Use DSO transformer positions"},
         {"key": "USE_MANUAL_TRANSFORMER_POSITIONS", "type": "bool", "label": "Use manual (UI) positions only"},

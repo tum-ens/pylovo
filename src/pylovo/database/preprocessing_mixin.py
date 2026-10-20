@@ -28,6 +28,7 @@ from pylovo.config_loader import (
     HOUSE_CONNECTION,
     K_MEANS_SEED,
     LV_REFERENCE_VOLTAGE_PU,
+    BROWNFIELD_NEAREST_ONLY,
     MAX_BROWNFIELD_TRAFO_DISTANCE,
     MAX_BUILDINGS_PER_KCID,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
@@ -123,6 +124,7 @@ class PreprocessingMixin(BaseMixin):
                 "urban_max_building_distance": URBAN_MAX_BUILDING_DISTANCE,
                 "transformer_mapping": TRANSFORMER_MAPPING,
                 "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
+                "brownfield_nearest_only": BROWNFIELD_NEAREST_ONLY,
                 "use_dso_transformer_positions": USE_DSO_TRANSFORMER_POSITIONS,
                 "use_open_transformer_positions": USE_OPEN_TRANSFORMER_POSITIONS,
                 "use_manual_transformer_positions": USE_MANUAL_TRANSFORMER_POSITIONS,
@@ -1137,7 +1139,10 @@ class PreprocessingMixin(BaseMixin):
 
         Args:
             ways_data: ``(clazz, source, target, cost, reverse_cost, geom, way_id)`` rows of
-                ``InfdbClient.fetch_ways_from_infdb``; ``geom`` is transformed to ``TARGET_EPSG``.
+                ``InfdbClient.fetch_ways_from_infdb``; ``geom`` is transformed to ``TARGET_EPSG``,
+                ``way_id`` (numbered from 1 per PLZ) is offset by the largest ``way_id`` of
+                ``ways_result``, so sequential runs keep it unique. Parallel runs can still assign
+                the same ids, because ``ways_result`` only grows when a run commits.
             plz: Unused.
 
         Returns:
@@ -1148,6 +1153,10 @@ class PreprocessingMixin(BaseMixin):
         """
         if not ways_data:
             raise ValueError("No rows to insert into ways_tem")
+
+        self.cur.execute("SELECT COALESCE(MAX(way_id), 0) FROM pylovo.ways_result")
+        base_id = self.cur.fetchone()[0]
+        ways_data = [(*row[:-1], row[-1] + base_id) for row in ways_data]
 
         insert_query = f"""
             INSERT INTO ways_tem
