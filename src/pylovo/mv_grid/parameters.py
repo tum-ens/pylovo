@@ -79,6 +79,28 @@ class MvStageError(RuntimeError):
     """The MV stage cannot run on its inputs (for example an incomplete snapshot of the LV version)."""
 
 
+def require_local_source_data(config: Any) -> None:
+    """Refuse an MV run whose InfDB source data lie in another database than the schema ``pylovo``.
+
+    The MV stage reads the InfDB streets, OSM layers and eGon-data tables with SQL on the pylovo connection.
+    With ``USE_EXTERNAL_BASEDATA`` and an ``INFDB_DBNAME``, ``INFDB_HOST`` or ``INFDB_PORT`` of another database,
+    these schemas are not there, so the run stops before it starts.
+
+    Args:
+        config: The module :mod:`pylovo.config_loader` (or an object with its connection attributes).
+
+    Raises:
+        MvStageError: The InfDB source data are in another database.
+    """
+    if not getattr(config, "USE_EXTERNAL_BASEDATA", False):
+        return
+    source = (config.INFDB_DBNAME, config.INFDB_HOST, str(config.INFDB_PORT))
+    if source != (config.DBNAME, config.HOST, str(config.PORT)):
+        raise MvStageError(f"the MV stage reads the InfDB source data on the pylovo connection, but "
+                           f"USE_EXTERNAL_BASEDATA points to {source[0]}@{source[1]}:{source[2]}; run the MV stage "
+                           f"on a database that holds both the InfDB schemas and the schema pylovo")
+
+
 def _y(name: str) -> Any:
     return default_value(name)
 

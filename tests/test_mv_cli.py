@@ -14,7 +14,7 @@ from pylovo.cli import generate
 from pylovo.cli import mv as cli
 from pylovo.mv_grid import stage
 from pylovo.mv_grid.model import MvRunSummary
-from pylovo.mv_grid.parameters import MvParameters
+from pylovo.mv_grid.parameters import MvParameters, MvStageError, require_local_source_data
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -307,3 +307,34 @@ def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys
     out = capsys.readouterr().out.splitlines()
     assert out == ["✓ MV variant d1 of version mv1: 12 lines with display geometry",
                    "✗ MV variant d2 of version mv1: no display geometry (no lines, or an error)"]
+
+
+def test_source_data_of_another_database_stop_the_mv_stage_before_any_grid(monkeypatch, capsys, no_grid_generator,
+                                                                           config_params):
+    from pylovo import config_loader
+
+    monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", True)
+    monkeypatch.setattr(config_loader, "INFDB_DBNAME", "central_infdb")
+    lv = []
+    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: lv.append(plz) or [plz])
+    with pytest.raises(SystemExit) as stopped:
+        generate.main(["--plz", "80803", "--mv"])
+    assert stopped.value.code == 1 and lv == []                          # no LV grids before the MV stage fails
+    assert "central_infdb" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        cli.main(["graph", "--version", "v1", "--plz", "80803"])
+    assert capsys.readouterr().out.startswith("✗ the MV stage reads the InfDB source data on the pylovo connection")
+    with pytest.raises(MvStageError, match="central_infdb"):
+        stage.run_mv_stage("v1", [80803], MvParameters())
+
+
+def test_external_source_data_in_the_pylovo_database_keep_the_mv_stage():
+    pylovo = {"DBNAME": "pylovo", "HOST": "localhost", "PORT": "5432"}
+    same = SimpleNamespace(USE_EXTERNAL_BASEDATA=True, INFDB_DBNAME="pylovo", INFDB_HOST="localhost", INFDB_PORT=5432,
+                           **pylovo)
+    require_local_source_data(same)                                    # unset INFDB_* values fall back to pylovo's
+    require_local_source_data(SimpleNamespace(USE_EXTERNAL_BASEDATA=False, INFDB_DBNAME="x", INFDB_HOST="y",
+                                              INFDB_PORT=1, **pylovo))
+    with pytest.raises(MvStageError, match="infdb@remote:6432"):
+        require_local_source_data(SimpleNamespace(USE_EXTERNAL_BASEDATA=True, INFDB_DBNAME="infdb", INFDB_HOST="remote",
+                                                  INFDB_PORT="6432", **pylovo))

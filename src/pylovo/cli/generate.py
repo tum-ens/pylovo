@@ -18,6 +18,7 @@ import time
 
 import pandas as pd
 
+import pylovo.config_loader as config_loader
 import pylovo.database.database_client as dbc
 from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, USE_INFDB, VERSION_ID
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
@@ -180,6 +181,14 @@ For more information, see the README: https://github.com/tum-ens/pylovo
     # PARALLEL in config_generation.yaml is the default; the flags override it
     parallel = PARALLEL if args.parallel is None else args.parallel
     run_mv = MV_GRID_GENERATION if args.mv is None else args.mv
+    if run_mv:   # before the LV grids, not after them
+        from pylovo.mv_grid.parameters import MvStageError, require_local_source_data
+
+        try:
+            require_local_source_data(config_loader)
+        except MvStageError as exc:
+            print(f"MV stage cannot run: {exc}")
+            raise SystemExit(1)
 
     print("Pylovo Grid Creation Script")
     print("=" * 60)

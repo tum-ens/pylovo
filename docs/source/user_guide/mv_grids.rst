@@ -48,7 +48,9 @@ Prerequisites
      - Loaded by ``pylovo-setup``
 
 The stage needs ``USE_INFDB=True``: it reads the InfDB schemas in the pylovo database
-(:doc:`input_data`).
+(:doc:`input_data`). ``USE_EXTERNAL_BASEDATA`` with the InfDB in another database is not supported
+yet: ``pylovo-generate --mv``, ``pylovo-mv generate`` and ``pylovo-mv graph`` stop before they
+start. Run the MV stage on a database that holds both the InfDB schemas and the schema ``pylovo``.
 
 LV version
 ~~~~~~~~~~
@@ -1089,6 +1091,8 @@ Troubleshooting
 
 ``PyLovo schema has pending migrations (0009_mv_grids); run pylovo-setup first``
    Run the non-destructive ``pylovo-setup`` once (:ref:`mv-schema`).
+``the MV stage reads the InfDB source data on the pylovo connection, but USE_EXTERNAL_BASEDATA points to ...``
+   The InfDB schemas are in another database (:ref:`mv-prerequisites`).
 ``none of the requested PLZ has LV grids in version <version>``
    Generate the LV grids first, or check ``--version``. ``pylovo-mv`` never uses ``VERSION_ID``.
 ``PLZ ... of version <version> are being generated right now``

@@ -41,7 +41,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.mv_grid.model import CASES, DistrictInput, GridOutcome, MvRunSummary, demand_line
-from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
+from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, require_local_source_data
 
 #: Memory of one district worker after its imports plus a large district (GB), measured ~0.3 + district data.
 WORKER_GB: float = 0.6
@@ -667,6 +667,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
     """
     params = params if params is not None else MvParameters.from_config()
     config = _config()
+    require_local_source_data(config)
     variant_id = params.variant_id
     start = time.time()
     logger = _logger("MvGrid", log_file)

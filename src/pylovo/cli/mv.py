@@ -219,8 +219,10 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _graph(args: argparse.Namespace) -> int:
-    from pylovo.mv_grid.parameters import MvParameters
+    from pylovo import config_loader
+    from pylovo.mv_grid.parameters import MvParameters, require_local_source_data
 
+    require_local_source_data(config_loader)
     params = MvParameters.from_config()
     plz_list = _plz_of(args)
     with _database_client() as dbc:

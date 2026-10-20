@@ -54,7 +54,8 @@ same name.
      - ``True``/``1``/``yes``: read the InfDB schemas from the database given by ``INFDB_DBNAME``,
        ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT`` and ``INFDB_PASSWORD``, e.g. a central InfDB
        on another server, while the schema ``pylovo`` and the results stay in ``DBNAME``.
-       PgBouncer in front of InfDB is supported.
+       PgBouncer in front of InfDB is supported. LV grids only: the MV stage needs the InfDB
+       schemas in ``DBNAME`` (:ref:`mv-prerequisites`).
    * - ``INFDB_DBNAME``, ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT``, ``INFDB_PASSWORD``
      - pylovo connection
      - Connection of the external InfDB (``USE_EXTERNAL_BASEDATA`` only). Unset values take the
