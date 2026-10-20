@@ -468,7 +468,8 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0006_legacy_building_fk", legacy_building_fk),
     ("0007_line_cache_compatibility_view", line_cache_compatibility_view),
     ("0008_percentage_checks", percentage_checks),
-    ("0009_building_exclusion", building_exclusion),
+    # 0009 and 0010 are taken by the MV stage (feature/mv-grids), already applied on its databases
+    ("0011_building_exclusion", building_exclusion),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

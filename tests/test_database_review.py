@@ -39,7 +39,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0006_legacy_building_fk",
             "0007_line_cache_compatibility_view",
             "0008_percentage_checks",
-            "0009_building_exclusion",
+            "0011_building_exclusion",
         ]
         db.cur.execute("""
             SELECT conname, convalidated
