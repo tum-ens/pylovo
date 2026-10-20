@@ -563,3 +563,17 @@ def test_save_display_geometry_clears_the_variant_then_writes_lines_and_busbar_c
     assert "UPDATE pylovo.mv_line l SET display_geom" in line_sql and line_values[0][0] == 7
     assert "JOIN pylovo.mv_node n ON n.mv_node_id = v.mv_node_id" in bus_sql and bus_values[0][0] == 11
     assert client.conn.commits == 1
+
+
+def test_lv_fingerprint_counts_only_the_load_edits_of_its_plz():
+    """A load edit in another PLZ of the version does not mark the variant stale."""
+    from pylovo.database.mv_input_mixin import MvInputMixin
+
+    client = object.__new__(type("InputClient", (MvInputMixin,), {}))
+    client.cur = FakeCursor([("FROM pylovo.grid_result", (["n", "s"], [(2, 21)], 1)),
+                             ("FROM pylovo.load_edit", (["m"], [(7,)], 1)),
+                             ("FROM pylovo.mv_customers", (["n"], [(3,)], 1))])
+    assert client.lv_fingerprint("v1", [80803]) == {"n_grids": 2, "sum_grid_result_id": 21, "max_load_edit_id": 7,
+                                                     "n_mv_customers": 3}
+    [(query, params)] = client.cur.sql("FROM pylovo.load_edit")
+    assert "plz = ANY" in query and params["v"] == "v1" and list(params["plz"]) == [80803]
