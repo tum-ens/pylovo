@@ -88,7 +88,7 @@ def fake_check_ring(installed, units, fixed_kw, section_m, section_r, section_x,
                      max(drop_n1a, drop_n1b), util, util_n1, load(1, k), load(1, m), load(m + 1, k), reason)
 
 
-def fake_solve(name, ev, dist_m, candidates, xy, *, rounds=50, neighbours=15, time_guard_s=120.0):
+def fake_solve(ev, dist_m, candidates, *, rounds=50, neighbours=15, time_guard_s=120.0):
     routes, current = [], []
     for c in sorted(int(c) for c in candidates):
         trial = current + [c]
@@ -131,8 +131,8 @@ def fakes(monkeypatch):
 
 # ============================================================================================ synthetic districts
 def make_params(**changes) -> MvParameters:
-    """The parameters of a test district; the tests of the straight-span rule run with MV_OVERHEAD_LINES rural."""
-    params = MvParameters().replace(**{"overhead_lines": "rural", **changes})
+    """The parameters of a test district (an edge with ``overhead`` is an OSM MV line)."""
+    params = MvParameters().replace(**changes)
     params._types.update({("cable", 20.0): CABLE, ("overhead", 20.0): OVERHEAD})       # the 20 kV district types
     return params
 
@@ -193,7 +193,7 @@ class District:
                                              "in_settlement", "settlement_id", "overhead"])
         n = len(xy)
         params = make_params(**param_changes)
-        pieces["cost_m"] = np.where(pieces.overhead, params.osm_cost_factor, 1.0) * pieces.length_m
+        pieces["cost_m"] = np.where(pieces.overhead, params.osm_line_cost_factor, 1.0) * pieces.length_m
         csr = csr_matrix((np.r_[pieces.cost_m, pieces.cost_m], (np.r_[pieces.u, pieces.v],
                                                                 np.r_[pieces.v, pieces.u])), shape=(n, n))
         pair_piece = {(min(a, b), max(a, b)): int(i) for i, a, b in zip(pieces.piece_id, pieces.u, pieces.v)}
@@ -363,45 +363,12 @@ def model_of(district: District, **params):
     return topology.distance_model(inp, rg, topology.terminal_rows(inp))
 
 
-def test_overhead_links_between_rural_settlements_take_the_shorter_straight_span():
-    model = model_of(detour_district(p=dict(settlement=1), q=dict(settlement=2), r=dict(settlement=3)))
-    assert model.street_m[1, 2] == pytest.approx(5000.0)
-    assert model.straight_m[1, 2] == pytest.approx(1000.0)
-    assert model.overhead[1, 2] and model.straight[1, 2]
-    assert model.dist_m[1, 2] == pytest.approx(1100.0)
-    # a near-straight street keeps the street route, but the link is still an overhead line
-    assert model.overhead[1, 3] and not model.straight[1, 3]
-    assert model.dist_m[1, 3] == pytest.approx(1000.0)
-    assert list(model.candidates) == [1, 2, 3]
-    assert not model.overhead.diagonal().any() and not model.straight.diagonal().any()
-
-
-def test_cable_inside_a_settlement_and_between_urban_areas():
-    same = model_of(detour_district(p=dict(settlement=1), q=dict(settlement=1)))
-    assert not same.overhead[1, 2] and not same.straight[1, 2]
-    assert same.dist_m[1, 2] == pytest.approx(5000.0)
-    urban = model_of(detour_district(p=dict(settlement=1, urban=True), q=dict(settlement=2, urban=True)))
-    assert not urban.overhead[1, 2]
-    into_town = model_of(detour_district(p=dict(settlement=1, urban=True), q=dict(settlement=2)))
-    assert not into_town.overhead[1, 2] and not into_town.straight[1, 2]     # one urban end: cable along streets
-    assert into_town.dist_m[1, 2] == pytest.approx(5000.0)
-    open_field = model_of(detour_district())                 # two open-field ends count as different settlements
-    assert open_field.overhead[1, 2] and open_field.straight[1, 2]
-    no_overhead = model_of(detour_district(p=dict(settlement=1), q=dict(settlement=2)), overhead_lines="none")
-    assert not no_overhead.overhead.any() and not no_overhead.straight.any()
-
-
-def test_busbar_legs_are_cables_along_the_streets():
+def test_busbar_legs_follow_the_streets():
     d = detour_district(p=dict(settlement=1), q=dict(settlement=2), r=dict(settlement=3))
     model = model_of(d)
-    assert not model.overhead[0].any() and not model.overhead[:, 0].any()
-    assert not model.straight[0].any() and not model.straight[:, 0].any()
+    assert not model.overhead.any()                                  # no OSM MV line in the district: all cable
     # Q lies 1.4 km from the busbar in a straight line, 6 km along the streets: the leg takes the streets
     assert model.dist_m[0, 2] == pytest.approx(model.street_m[0, 2]) == pytest.approx(6000.0)
-    assert model.overhead[1, 2] and model.straight[1, 2]           # between two settlements still a straight span
-    crowfly = model_of(d, routing="crowfly")
-    assert crowfly.straight[0, 2] and not crowfly.overhead[0, 2]     # crowfly: a stretched span, but a cable
-    assert crowfly.dist_m[0, 2] == pytest.approx(1.3 * np.hypot(1000.0, 1000.0))
 
 
 def satellite_district() -> District:
@@ -420,8 +387,6 @@ def test_isolated_rural_stations_are_satellites_and_no_ring_candidates():
     keys = list(inp.nodes.index[model.terminals])
     assert [keys[t] for t in np.flatnonzero(model.satellite)] == [80, 81]
     assert [keys[t] for t in model.candidates] == [10, 20, 30, 40, 50]
-    off = model_of(satellite_district(), stubs="none")
-    assert not off.satellite.any() and [keys[t] for t in off.candidates] == [10, 20, 30, 40, 50, 80, 81]
     town = satellite_district()
     for node in town.nodes:
         if node["key"] in (80, 81):
@@ -432,17 +397,24 @@ def test_isolated_rural_stations_are_satellites_and_no_ring_candidates():
 
 
 def test_satellites_hang_on_stubs_or_go_into_the_cheapest_ring():
-    plan, (inp, *_) = plan_of(satellite_district(), RING, stub_max_length_m=2000.0)   # the 2 km geometry
+    farm = loop_district()
+    farm.street((2500, 0), (2500, -300))
+    farm.node(80, "station", 2500, -300)
+    farm.node(83, "station", 6000, 6000, settlement=9, offset=(5000, 0))   # a second satellite, far away
+    plan, (inp, *_) = plan_of(farm, RING, stub_max_length_m=2000.0)
     assert_plan_valid(plan, inp)
     assert plan.node_role[80] == "stub"
     joint = plan.stub_parent[80]
     assert joint < 0 and tuple(plan.joints[joint]) == (2500.0, 0.0)  # T-off where the field path leaves the loop
     stub = line_between(plan, joint, 80)[0]
     assert stub.role == "stub" and stub.length_m == pytest.approx(300.0)
-    # G is 2.7 km from the nearest line, beyond stub_max_length_m: it joins the ring where it costs the least
+    # G is 2.7 km beyond F, beyond stub_max_length_m: it joins the ring where it costs the least, along the field
+    # path past F, which then hangs on that ring line
+    plan, (inp, *_) = plan_of(satellite_district(), RING, stub_max_length_m=2000.0)
+    assert_plan_valid(plan, inp)
     assert plan.node_role[81] == "ring" and 81 in ring_of(plan, 10).members
     assert "satellite_in_ring" in plan.diagnostics["node_flags"][81]
-    assert plan.diagnostics["satellites"] == {"stub": 1, "ring": 1, "own_ring": 0}
+    assert plan.node_role[80] == "stub" and plan.diagnostics["satellites"] == {"stub": 1, "ring": 1, "own_ring": 0}
 
 
 def test_a_satellite_without_a_ring_gets_its_own():
@@ -468,9 +440,8 @@ def osm_district() -> District:
     return d
 
 
-def test_osm_mode_takes_the_overhead_lines_of_the_graph_and_no_straight_spans():
-    model = model_of(osm_district(), overhead_lines="osm", osm_line_cost_factor=0.5)
-    assert not model.straight.any()
+def test_the_overhead_lines_of_the_graph_set_the_line_kinds():
+    model = model_of(osm_district(), osm_line_cost_factor=0.5)
     np.testing.assert_allclose(model.dist_m, model.street_m)
     # dist_m is the routing cost (OSM lines at osm_line_cost_factor 0.5), length_m the true length
     assert model.dist_m[1, 2] == pytest.approx(500.0) and model.length_m[1, 2] == pytest.approx(1000.0, abs=1e-2)
@@ -479,11 +450,10 @@ def test_osm_mode_takes_the_overhead_lines_of_the_graph_and_no_straight_spans():
     assert model.dist_m[0, 2] == pytest.approx(1500.0) and model.length_m[0, 2] == pytest.approx(2000.0, abs=1e-2)
     assert model.overhead_m[0, 2] == pytest.approx(1000.0, abs=1e-2)
     assert model.overhead_m[0, 1] == 0.0 and model.overhead[1, 2] and not model.overhead[0, 1]
-    assert model_of(osm_district()).overhead_m is None                # rural: no overhead lengths
 
 
-def test_osm_mode_plans_cable_overhead_and_mixed_lines():
-    plan, (inp, *_) = plan_of(osm_district(), [[2, 3]], overhead_lines="osm", stubs="none")
+def test_plans_cable_overhead_and_mixed_lines():
+    plan, (inp, *_) = plan_of(osm_district(), [[2, 3]], stub_min_offset_m=1e9)            # no stubs
     assert_plan_valid(plan, inp)
     leg_a, = line_between(plan, BUSBAR, 2)
     span, = line_between(plan, 2, 3)
@@ -503,22 +473,15 @@ def test_osm_lines_cost_less_so_routes_follow_them_with_their_true_length():
     d.node(2, "station", 1000, 0, settlement=1)
     d.node(3, "station", 2000, 0, settlement=2)
     osm_m = 2 * np.hypot(500.0, 400.0)
-    model = model_of(d, overhead_lines="osm", osm_line_cost_factor=0.5)
+    model = model_of(d, osm_line_cost_factor=0.5)
     assert model.dist_m[1, 2] == pytest.approx(0.5 * osm_m) and model.length_m[1, 2] == pytest.approx(osm_m, abs=1e-2)
     assert model.overhead_m[1, 2] == pytest.approx(osm_m, abs=1e-2)
-    plan, (inp, *_) = plan_of(d, [[2, 3]], overhead_lines="osm", osm_line_cost_factor=0.5, stubs="none")
+    plan, (inp, *_) = plan_of(d, [[2, 3]], osm_line_cost_factor=0.5, stub_min_offset_m=1e9)
     assert_plan_valid(plan, inp)
     span, = line_between(plan, 2, 3)
     assert span.kind == "overhead" and span.length_m == pytest.approx(osm_m) and span.overhead_m == pytest.approx(osm_m)
-    street = model_of(d, overhead_lines="osm", osm_line_cost_factor=1.0)
+    street = model_of(d, osm_line_cost_factor=1.0)
     assert street.dist_m[1, 2] == pytest.approx(1000.0) and street.overhead_m[1, 2] == pytest.approx(0.0, abs=1e-3)
-
-
-def test_crowfly_routing_uses_stretched_straight_spans():
-    model = model_of(detour_district(p=dict(settlement=1), q=dict(settlement=1)), routing="crowfly")
-    assert model.dist_m[1, 2] == pytest.approx(1300.0)
-    assert model.straight[1, 2] and not model.overhead[1, 2]
-    assert np.isfinite(model.street_m).all()
 
 
 def test_unreachable_terminals_keep_inf():
@@ -601,7 +564,7 @@ def test_a_rural_dead_end_station_becomes_a_stub_at_a_joint():
     assert plan.diagnostics["n_stub_nodes"] == 1 and plan.diagnostics["n_joints"] == 1
 
 
-@pytest.mark.parametrize("case", ["urban", "too_far", "too_close", "too_large", "stubs_off"])
+@pytest.mark.parametrize("case", ["urban", "too_far", "too_close", "too_large"])
 def test_stub_rules_keep_the_station_looped_in(case):
     kwargs, params, side = {}, {}, 400.0
     if case == "urban":
@@ -612,8 +575,6 @@ def test_stub_rules_keep_the_station_looped_in(case):
         side = 80.0                                         # spur below stub_min_offset_m
     elif case == "too_large":
         kwargs = dict(inst_res=0.0, units_res=0.0, p_fixed_kw=1200.0)
-    else:
-        params = dict(stubs="none")
     d = loop_district(side, **kwargs)
     if case == "too_large":
         d.nodes[2]["kind"] = "customer"                     # 1.2 MW / 0.95 > 1 MVA
@@ -658,7 +619,7 @@ def test_the_stub_limit_applies_to_the_true_length_on_osm_lines(limit_m, stub):
     d = loop_district(side_m=None)
     d.street((2000, 0), (2000, -2400), overhead=True)
     d.node(20, "station", 2000, -2400, settlement=1)
-    plan, (inp, *_) = plan_of(d, RING, satellites=False, overhead_lines="osm", osm_line_cost_factor=0.7,
+    plan, (inp, *_) = plan_of(d, RING, satellites=False, osm_line_cost_factor=0.7,
                               stub_max_length_m=limit_m)
     assert_plan_valid(plan, inp)
     assert (plan.node_role[20] == "stub") == stub
@@ -673,7 +634,7 @@ def test_the_radial_limit_applies_to_the_true_length_on_osm_lines(limit_m, radia
     d.street((0, 0), (0, -2400), overhead=True)
     d.node(BUSBAR, "busbar", 0, 0, hint="busbar")
     d.node(41, "station", 0, -2400)                         # 1.68 km of cost, 2.4 km of line
-    plan, (inp, *_) = plan_of(d, [[41]], satellites=False, overhead_lines="osm", osm_line_cost_factor=0.7,
+    plan, (inp, *_) = plan_of(d, [[41]], satellites=False, osm_line_cost_factor=0.7,
                               stub_max_length_m=limit_m)
     assert_plan_valid(plan, inp)
     assert (ring_of(plan, 41).kind == "radial") == radial
@@ -731,7 +692,7 @@ def test_discounted_stub_extension_keeps_the_true_tree_depth(cost_factor):
     d.street((2000, 0), (2000, -1500), (2000, -2100), settlement=1, overhead=True)
     d.node(21, "station", 2000, -1500, settlement=1)
     d.node(22, "station", 2000, -2100, settlement=1)
-    inp, rg = d.build(overhead_lines="osm", osm_line_cost_factor=cost_factor, stub_max_length_m=2000.0)
+    inp, rg = d.build(osm_line_cost_factor=cost_factor, stub_max_length_m=2000.0)
     model = topology.distance_model(inp, rg, topology.terminal_rows(inp))
     ctx = topology._context(inp, rg, model)
     net = topology._Network(ctx)
@@ -809,11 +770,11 @@ def test_generators_connect_by_t_off_loop_in_or_dedicated_feeder():
     assert_plan_valid(plan, inp)
     roles = {k: plan.node_role[k] for k in (60, 61, 62, 63, 64)}
     assert roles == {60: "tee", 61: "loop_in", 62: "dedicated", 63: "dedicated", 64: "dedicated"}
-    # T-off at the street junction on the ring; rural open field: overhead line
+    # T-off at the street junction on the ring; a street without an OSM MV line: cable
     joint = plan.stub_parent[60]
     assert joint < 0 and plan.joints[joint] == pytest.approx((4000.0, 500.0))
     tee = line_between(plan, joint, 60)[0]
-    assert tee.role == "generator" and tee.kind == "overhead" and tee.length_m == pytest.approx(500.0)
+    assert tee.role == "generator" and tee.kind == "cable" and tee.length_m == pytest.approx(500.0)
     assert plan.node_feeder[60] == plan.node_feeder[joint]
     # loop-in: a ring member between 10 and 30, counted in the ring
     ring = ring_of(plan, 10)
@@ -919,6 +880,23 @@ def test_split_ring_halves_the_ring_and_reconnects_its_generators():
     assert sorted(k for r in rings for k in r.members if k > 0) == [11, 12, 13, 14, 15, 16]
 
 
+def test_split_ring_with_the_real_solver(monkeypatch):
+    """The split re-solves the ring with pylovo.mv_grid.solvers itself (its call signature, not the fake's)."""
+    from pylovo.mv_grid import solvers
+
+    monkeypatch.setattr(topology, "_solvers", lambda: solvers)
+    d = District()
+    d.street(*[(x, 0) for x in (0, 1000, 2000, 3000, 4000, 5000, 6000)], settlement=1)
+    d.node(BUSBAR, "busbar", 0, 0, hint="busbar", urban=True, settlement=1)
+    for key, x in zip((11, 12, 13, 14, 15, 16), range(1000, 7000, 1000)):
+        d.node(key, "station", x, 0, urban=True, settlement=1)
+    plan, (inp, rg, model, ev) = plan_of(d, [[11, 12, 13, 14, 15, 16]])
+    split = topology.split_ring(inp, rg, model, ev, plan, plan.rings[0].ring_id)
+    assert_plan_valid(split, inp)
+    rings = [r for r in split.rings if r.kind == "ring"]
+    assert len(rings) == 2 and sorted(k for r in rings for k in r.members if k > 0) == [11, 12, 13, 14, 15, 16]
+
+
 def test_split_ring_keeps_single_member_rings():
     plan, (inp, rg, model, ev) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
     assert topology.split_ring(inp, rg, model, ev, plan, ring_of(plan, 41).ring_id) is plan
@@ -951,33 +929,15 @@ def test_convert_loop_in_generator_and_keep_parallel_cables():
     assert new_exit.parallel == 2
 
 
-def test_upgrade_lines_takes_larger_conductors_and_a_rebuild_keeps_them():
-    plan, (inp, rg, model, ev) = plan_of(generator_district(), GEN_RING)
-    tee = next(ln for ln in plan.lines if 60 in (ln.from_key, ln.to_key))
-    assert (tee.kind, tee.std_type) == ("overhead", OVERHEAD.name)
-    up, changed = topology.upgrade_lines(plan, [tee.key, tee.key, 99], 20.0)
-    assert changed == [tee.key] and up.lines[tee.key].std_type == "149-AL1/24-ST1A 20.0"
-    big, changed = topology.upgrade_lines(up, [tee.key], 20.0, {tee.key: 0.6})     # the smallest with 600 A
-    assert big.lines[tee.key].std_type == "243-AL1/39-ST1A 20.0"
-    assert topology.upgrade_lines(big, [tee.key], 20.0) == (big, [])               # already the largest
+def test_upgrade_lines_takes_larger_conductors():
+    plan, (inp, *_) = plan_of(osm_district(), [[2, 3]], stub_min_offset_m=1e9)
+    span, = line_between(plan, 2, 3)                                                # 1 km on the OSM line
+    assert (span.kind, span.std_type) == ("overhead", OVERHEAD.name)
+    up, changed = topology.upgrade_lines(plan, [span.key, span.key, 99], 20.0)
+    assert changed == [span.key] and up.lines[span.key].std_type == "149-AL1/24-ST1A 20.0"
+    big, changed = topology.upgrade_lines(up, [span.key], 20.0, {span.key: 0.6})   # the smallest with 600 A
+    assert big.lines[span.key].std_type == "243-AL1/39-ST1A 20.0"
+    assert topology.upgrade_lines(big, [span.key], 20.0) == (big, [])             # already the largest
     cable = next(ln for ln in plan.lines if ln.kind == "cable")
-    assert topology.upgrade_lines(plan, [cable.key], 20.0)[1] == []                 # 1x240 is the largest cable
-    assert plan.lines[tee.key].std_type == OVERHEAD.name                            # the given plan is unchanged
-    rebuilt = topology.convert_to_dedicated(inp, rg, model, big, 61)
-    assert_plan_valid(rebuilt, inp)
-    kept = next(ln for ln in rebuilt.lines if 60 in (ln.from_key, ln.to_key))
-    assert kept.std_type == "243-AL1/39-ST1A 20.0"
-    assert all(ln.std_type == CABLE.name for ln in rebuilt.lines if ln.kind == "cable")
-
-
-# ============================================================================================ crowfly
-def test_crowfly_plan_uses_straight_spans_and_stubs_on_them():
-    plan, (inp, *_) = plan_of(loop_district(1500.0), RING, routing="crowfly", overhead_lines="none")
-    assert_plan_valid(plan, inp)
-    for ln in plan.lines:
-        assert len(ln.geometry.coords) == 2 and not ln.pieces
-        assert ln.length_m == pytest.approx(1.3 * ln.straight_m)
-    assert plan.node_role[20] == "stub"
-    joint = plan.stub_parent[20]
-    assert plan.joints[joint] == pytest.approx((2000.0, 0.0))
-    assert line_between(plan, joint, 20)[0].length_m == pytest.approx(1950.0)
+    assert topology.upgrade_lines(plan, [cable.key], 20.0)[1] == []               # 1x240 is the largest cable
+    assert plan.lines[span.key].std_type == OVERHEAD.name                          # the given plan is unchanged

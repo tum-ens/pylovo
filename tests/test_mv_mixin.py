@@ -111,7 +111,7 @@ class FakeParams:
     def __init__(self, variant_id="d0", comment="test", snapshot=None):
         self.variant_id = variant_id
         self.comment = comment
-        self._snapshot = snapshot or {"schema": 1, "mv_stage_version": 1, "topology": {"stubs": "none"}}
+        self._snapshot = snapshot or {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 15}}
 
     def to_snapshot(self):
         return json.loads(json.dumps(self._snapshot))
@@ -180,10 +180,10 @@ def test_register_subset_resumes_and_superset_grows():
 
 
 def test_register_rejects_other_parameters():
-    stored = {"schema": 1, "mv_stage_version": 1, "topology": {"stubs": "rural"}}
+    stored = {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 20}}
     client = make_client([("INSERT INTO pylovo.mv_variant", ([], [], 0)), variant_rule(stored, [1])])
     with pytest.raises(ValueError, match=r"MV parameters differ from the stored snapshot of MV variant d0 of "
-                                         r"version mv1 \(topology.stubs\)"):
+                                         r"version mv1 \(topology.max_stations_per_ring\)"):
         client.register_variant("mv1", FakeParams(), [1], "g1", LV, {})
     assert client.conn.rollbacks == 1 and client.conn.commits == 0
     client = make_client([variant_rule(stored, [1])])

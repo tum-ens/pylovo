@@ -25,8 +25,6 @@ OSM_CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_ta
                                           "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant", "plant")
 #: Columns of :meth:`MvSourceMixin.egon_substations`.
 EGON_SUBSTATION_COLUMNS: tuple[str, ...] = ("bus_id", "voltage", "osm_id", "x", "y")
-#: Columns of :meth:`MvSourceMixin.egon_districts`.
-EGON_DISTRICT_COLUMNS: tuple[str, ...] = ("bus_id", "geom_wkb")
 #: Columns of :meth:`MvSourceMixin.mastr_units_in_region`.
 MASTR_UNIT_COLUMNS: tuple[str, ...] = ("mastr_id", "location_id", "technology", "solar_kind", "net_power_kw",
                                        "voltage_level", "x", "y")
@@ -39,8 +37,8 @@ OSM_OBJECT_COLUMNS: tuple[str, ...] = ("source_id", "kind", "tags", "x", "y", "a
 #: Columns of :meth:`MvSourceMixin.osm_landuse`.
 OSM_LANDUSE_COLUMNS: tuple[str, ...] = ("osm_type", "geom_wkb")
 
-#: The eGon-data tables and the schemas they are read from, in this order (the first non-empty one wins).
-EGON_TABLES: tuple[str, str] = ("egon_hvmv_substation", "egon_mv_grid_district")
+#: The eGon-data table of the HV/MV substations (their bus ids are the 110 kV buses of eTraGo).
+EGON_SUBSTATION_TABLE: str = "egon_hvmv_substation"
 
 # power=substation features (points, ways, relations) of the OSM schema with their tags, inside the search buffer
 # of the planning region. The tags join uses (geom_type, osm_id): node, way and relation ids can collide. The
@@ -130,13 +128,6 @@ SELECT s.bus_id::bigint AS bus_id, NULLIF(btrim(s.voltage::text), 'NA') AS volta
 FROM {table} s
 WHERE ST_DWithin(ST_Transform(s.geom, {epsg}), ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s)
 ORDER BY s.bus_id;
-""")
-
-_EGON_DISTRICTS_SQL = sql.SQL("""
-SELECT d.bus_id::bigint AS bus_id, ST_AsBinary(ST_Multi(ST_Transform(d.geom, {epsg}))) AS geom_wkb
-FROM {table} d
-WHERE ST_Intersects(ST_Transform(d.geom, {epsg}), ST_GeomFromWKB(%(region)s, {epsg}))
-ORDER BY d.bus_id;
 """)
 
 # Units in operation with coordinates inside the planning region; storage takes part in no MV case.
@@ -313,30 +304,24 @@ class MvSourceMixin(BaseMixin):
         found = self._egon_table(table)
         if found is None:
             raise _stage_error(f"no eGon-data table {table}: neither populated pylovo.{table} nor "
-                               f"{INFDB_OPENDATA_SCHEMA or '<INFDB_OPENDATA_SCHEMA>'}.{table} exists with rows; "
-                               "use MV_SUBSTATIONS=osm and MV_SUPPLY_AREAS=routed")
+                               f"{INFDB_OPENDATA_SCHEMA or '<INFDB_OPENDATA_SCHEMA>'}.{table} exists with rows")
         return found[1]
 
     def egon_available(self) -> tuple[bool, str]:
-        """Whether the eGon-data substations and MV grid districts can be read, and from which schema.
+        """Whether the eGon-data HV/MV substations can be read (for the eTraGo bus of each site), and from which schema.
 
-        The tables ``pylovo.egon_hvmv_substation`` and ``pylovo.egon_mv_grid_district`` are used if they exist and
-        hold rows, else the copies in ``INFDB_OPENDATA_SCHEMA``.
+        The table ``pylovo.egon_hvmv_substation`` is used if it exists and holds rows, else the copy in
+        ``INFDB_OPENDATA_SCHEMA``.
 
         Returns:
-            ``(True, schema)`` (``"pylovo"``, ``"opendata"``, or ``"<a> (substations), <b> (districts)"`` when they
-            differ), or ``(False, reason)``.
+            ``(True, schema)`` (``"pylovo"`` or the opendata schema), or ``(False, reason)``.
         """
-        found = {table: self._egon_table(table) for table in EGON_TABLES}
-        missing = [table for table, hit in found.items() if hit is None]
-        if missing:
+        found = self._egon_table(EGON_SUBSTATION_TABLE)
+        if found is None:
             where = f"pylovo or {INFDB_OPENDATA_SCHEMA}" if INFDB_OPENDATA_SCHEMA else "pylovo"
-            return False, (f"no rows in {', '.join(missing)} ({where}); populate the eGon-data tables or provide "
-                           "the eGon-data copies in the opendata schema")
-        schemas = [found[table][0] for table in EGON_TABLES]
-        if schemas[0] == schemas[1]:
-            return True, schemas[0]
-        return True, f"{schemas[0]} (substations), {schemas[1]} (districts)"
+            return False, (f"no rows in {EGON_SUBSTATION_TABLE} ({where}); populate the eGon-data table or provide "
+                           "the eGon-data copy in the opendata schema")
+        return True, found[0]
 
     def egon_substations(self, region_wkb: bytes, buffer_m: float) -> pd.DataFrame:
         """The eGon-data HV/MV substations within ``buffer_m`` of the planning region.
@@ -348,27 +333,11 @@ class MvSourceMixin(BaseMixin):
         Raises:
             MvStageError: If no eGon-data substation table exists with rows.
         """
-        query = _EGON_SUBSTATIONS_SQL.format(table=self._egon_table_or_raise("egon_hvmv_substation"),
+        query = _EGON_SUBSTATIONS_SQL.format(table=self._egon_table_or_raise(EGON_SUBSTATION_TABLE),
                                              epsg=sql.Literal(TARGET_EPSG))
         self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m)})
         rows = [(bus_id, _na(voltage), _na(osm_id), x, y) for bus_id, voltage, osm_id, x, y in self.cur.fetchall()]
         return _frame(rows, EGON_SUBSTATION_COLUMNS, floats=("x", "y"), ints=("bus_id",))
-
-    def egon_districts(self, region_wkb: bytes) -> pd.DataFrame:
-        """The eGon-data MV grid districts that intersect the planning region (whole polygons, not clipped).
-
-        Returns:
-            Columns of :data:`EGON_DISTRICT_COLUMNS` sorted by ``bus_id``; ``geom_wkb`` is MultiPolygon WKB in
-            ``TARGET_EPSG``.
-
-        Raises:
-            MvStageError: If no eGon-data district table exists with rows.
-        """
-        query = _EGON_DISTRICTS_SQL.format(table=self._egon_table_or_raise("egon_mv_grid_district"),
-                                           epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb)})
-        rows = [(bus_id, _wkb(geom)) for bus_id, geom in self.cur.fetchall()]
-        return _frame(rows, EGON_DISTRICT_COLUMNS, ints=("bus_id",))
 
     # ------------------------------------------------------------------ MaStR
     def mastr_available(self) -> tuple[bool, str]:

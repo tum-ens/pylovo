@@ -180,7 +180,11 @@ class FakeDb:
 
 @pytest.fixture()
 def run(monkeypatch, tmp_path):
-    """Run the stage on a FakeDb with the region step and the district pool replaced by recorders."""
+    """Run the stage on a FakeDb with the region step, the district pool and the tie and link steps replaced by
+    recorders (a test may patch the tie and link steps itself)."""
+    monkeypatch.setattr(stage, "_plan_ties", lambda *a, **k: None)
+    monkeypatch.setattr(stage, "_plan_links", lambda *a, **k: None)
+
     def runner(db: FakeDb, plz=(1, 2, 3), *, region_error=None, **kwargs):
         def region(*args, **kw):
             db.calls.append(("region_step", list(args[3])))
@@ -192,7 +196,7 @@ def run(monkeypatch, tmp_path):
         monkeypatch.setattr(stage, "_region_step", region)
         monkeypatch.setattr(stage, "_run_districts",
                             lambda dbc, v, var, pending, *a, **k: db.calls.append(("districts", list(pending))))
-        params = kwargs.pop("params", MvParameters(variant_id="d0", interconnection="none"))
+        params = kwargs.pop("params", MvParameters(variant_id="d0"))
         return stage.run_mv_stage("mv1", None if plz is None else list(plz), params,
                                   log_file=str(tmp_path / "log.txt"), **kwargs)
     return runner
@@ -282,27 +286,22 @@ def test_partial_and_failed_runs(run):
 def test_ties_are_planned_by_default(run, monkeypatch):
     seen = []
     monkeypatch.setattr(stage, "_plan_ties", lambda dbc, v, var, graph_id, params, logger, warnings: seen.append(
-        (v, var, graph_id, params.interconnection)))
+        (v, var, graph_id)))
     monkeypatch.setattr(stage, "_plan_links", lambda dbc, v, var, graph_id, params, logger, warnings: seen.append(
         ("links", var)))
-    assert MvParameters().interconnection == "ties"
     run(FakeDb(), plz=(1,), params=MvParameters(variant_id="d0"))
-    assert seen == [("mv1", "d0", "g123", "ties"), ("links", "d0")]       # the links follow the ties
-    run(FakeDb(), plz=(1,))                                               # MV_INTERCONNECTION none: no tie step
-    assert len(seen) == 2
+    assert seen == [("mv1", "d0", "g123"), ("links", "d0")]               # the links follow the ties
 
 
-def test_ties_are_skipped_without_the_module(run, monkeypatch):
+def test_ties_are_skipped_without_the_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "pylovo.mv_grid.interconnection", None)
-    summary = run(FakeDb(), plz=(1,), )
-    assert summary.warnings == []
     db = FakeDb()
     monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
-    params = MvParameters(variant_id="d0", interconnection="ties")
+    params = MvParameters(variant_id="d0")
     monkeypatch.setattr(stage, "_region_step", lambda *a, **k: {})
     monkeypatch.setattr(stage, "_run_districts", lambda *a, **k: None)
     summary = stage.run_mv_stage("mv1", [1], params, log_file="log/log.txt")
-    assert summary.warnings == ["ties not implemented in this build: MV_INTERCONNECTION ties was ignored"]
+    assert summary.warnings[0] == "ties not implemented in this build: the tie step was skipped"
 
 
 # ---------------------------------------------------------------------------------------------- workers
@@ -575,17 +574,12 @@ def region_modules(monkeypatch):
     districts.site_capacity_mva = lambda sites, params: (recorded.__setitem__("sites", sites) or np.full(len(sites),
                                                                                                          63.0))
 
-    def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity, params):
+    def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity):
         recorded["nodes"] = nodes
-        return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), iterations=1,
-                                     overloaded=[0], bridged=np.array([False, True, False, False]))
-
-    def municipal(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity):
-        recorded["municipal_sites"] = sites
-        return routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity, None)
+        return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), overloaded=[0],
+                                     bridged=np.array([False, True, False, False]))
 
     districts.routed_assignment = routed
-    districts.municipal_assignment = municipal
     graph = types.ModuleType("pylovo.mv_grid.graph")
     graph.region_csr = lambda source, target, length: ("csr", {})
     for name, module in (("substations", subs), ("inputs", inputs), ("districts", districts), ("graph", graph)):
@@ -597,8 +591,7 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     db = RegionDb()
     warnings: list[str] = []
     info = stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1",
-                              MvParameters(include_generation=True), LV,
-                              None, stage.logging.getLogger("t"), warnings)
+                              MvParameters(include_generation=True), LV, stage.logging.getLogger("t"), warnings)
     # LV-side points go to lv_side_targets; only treatment 'node' becomes a generator node
     assert db.calls["lv_side_targets"][0][0]["mastr_connection_id"].tolist() == ["SEL2"]
     assert region_modules["generators"]["mastr_connection_id"].tolist() == ["SEL1"]
@@ -621,7 +614,6 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert {"edge_source", "edge_target", "edge_length_m", "attach_edge_id"} <= set(region_modules["sites"].columns)
     assert region_modules["sites"]["edge_source"].tolist() == [11010, 11030]    # edges 1101, 1103
     assert region_modules["nodes"]["kind"].tolist() == ["station", "station", "customer", "generator"]
-    assert "municipal_sites" not in region_modules                       # routed supply areas by default
     assert db.calls["create_grids"] == [([11], 20.0)]
     grids = db.calls["set_node_grids"][0][0]
     assert grids["mv_node_id"].tolist() == [104, 105, 106, 107] and grids["mv_grid_id"].tolist() == [900] * 4
@@ -639,27 +631,14 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])
 
 
-def test_region_step_municipal_areas_get_the_municipality_of_nodes_and_sites(region_modules):
-    db = RegionDb()
-    stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1",
-                       MvParameters(include_generation=True, supply_areas="municipal"), LV, None,
-                       stage.logging.getLogger("t"), [])
-    # every node and the site near its street edge get the edge's municipality
-    assert region_modules["nodes"]["ags"].tolist() == ["09000001"] * 4
-    assert region_modules["municipal_sites"]["ags"].notna().any()
-
-
 def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
     db = RegionDb()
 
-    def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity, params):
-        return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), iterations=1,
-                                     overloaded=[], bridged=np.zeros(len(nodes), dtype=bool))
+    def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity):
+        return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), overloaded=[],
+                                     bridged=np.zeros(len(nodes), dtype=bool))
 
     monkeypatch.setattr(sys.modules["pylovo.mv_grid.districts"], "routed_assignment", routed)
-    monkeypatch.setattr(sys.modules["pylovo.mv_grid.districts"], "municipal_assignment",
-                        lambda csr, vi, el, sites, nodes, g, pf, capacity: routed(csr, vi, el, sites, nodes, g, pf,
-                                                                                  capacity, None))
 
     def unexpected(*args, **kwargs):
         raise AssertionError("load-only MV planning accessed MaStR")
@@ -668,7 +647,7 @@ def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
                  "station_building_counts"):
         setattr(db, name, unexpected)
     stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1", MvParameters(), LV,
-                       None, stage.logging.getLogger("t"), [])
+                       stage.logging.getLogger("t"), [])
     assert db.inserted_nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
     assert region_modules["generators"].empty
     assert (region_modules["stations"][["gen_solar_kw", "gen_wind_kw", "gen_other_kw"]] == 0).all().all()

@@ -292,12 +292,13 @@ class MvResultMixin(BaseMixin):
             self._compare_variant_snapshot(version_id, params, row["mv_parameters"])
 
     def _compare_variant_snapshot(self, version_id: str, params: "MvParameters", stored: Any) -> None:
-        from pylovo.version_snapshot import MV_ADDED_LATER, compare_snapshots
+        from pylovo.version_snapshot import MV_ADDED_LATER, MV_REMOVED, compare_snapshots
 
         if isinstance(stored, str):
             stored = json.loads(stored)
         expected = json.loads(json.dumps(params.to_snapshot(), allow_nan=False, sort_keys=True))
-        differences, not_recorded = compare_snapshots(stored or {}, expected, added_later=MV_ADDED_LATER)
+        differences, not_recorded = compare_snapshots(stored or {}, expected, added_later=MV_ADDED_LATER,
+                                                      removed=MV_REMOVED)
         variant_id = params.variant_id
         if differences:
             more = " …" if len(differences) > 5 else ""

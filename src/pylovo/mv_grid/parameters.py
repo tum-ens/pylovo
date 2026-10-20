@@ -33,12 +33,11 @@ from pylovo.mv_grid.options import (
     MV_STAGE_VERSION,
     YAML_KEYS,
     Spec,
-    check_mv_combination,
     coerce_mv_value,
     default_value,
     spec_of,
 )
-from pylovo.version_snapshot import MV_ADDED_LATER, UNKNOWN
+from pylovo.version_snapshot import MV_ADDED_LATER, MV_REMOVED, UNKNOWN, removed_differences
 
 logger = logging.getLogger(__name__)
 
@@ -120,21 +119,14 @@ class MvParameters:
 
     Raises:
         ValueError: On construction, if a value does not fit its key (the message names the YAML key or the
-            constant) or if ``MV_SUPPLY_AREAS`` egon is combined with ``MV_SUBSTATIONS`` osm.
+            constant).
     """
 
     variant_id: str = _y("MV_VARIANT_ID")                   # MV_VARIANT_ID
     comment: str = _y("MV_VARIANT_COMMENT")                 # MV_VARIANT_COMMENT
     include_generation: bool = _y("MV_INCLUDE_GENERATION")  # MV_INCLUDE_GENERATION
     vn_kv: float | str = _y("MV_NOMINAL_VOLTAGE_KV")        # MV_NOMINAL_VOLTAGE_KV: 20.0, 10.0 or "auto"
-    substations: str = _y("MV_SUBSTATIONS")                 # MV_SUBSTATIONS
-    supply_areas: str = _y("MV_SUPPLY_AREAS")               # MV_SUPPLY_AREAS
-    routing: str = _y("MV_ROUTING")                         # MV_ROUTING
-    solver: str = _y("MV_RING_SOLVER")                      # MV_RING_SOLVER
     max_stations_per_ring: int = _y("MV_MAX_STATIONS_PER_RING")   # MV_MAX_STATIONS_PER_RING
-    stubs: str = _y("MV_STUBS")                             # MV_STUBS
-    overhead_lines: str = _y("MV_OVERHEAD_LINES")           # MV_OVERHEAD_LINES
-    interconnection: str = _y("MV_INTERCONNECTION")         # MV_INTERCONNECTION
     cable_type: str | None = _y("MV_STANDARD_CABLE")        # MV_STANDARD_CABLE
     overhead_type: str | None = _y("MV_OVERHEAD_LINE")      # MV_OVERHEAD_LINE
     line_utilization: float = _y("MV_LINE_PLANNING_UTILIZATION")  # MV_LINE_PLANNING_UTILIZATION
@@ -182,8 +174,6 @@ class MvParameters:
     hv_mv_units: int = _y("hv_mv_units")
     max_parallel_cables: int = _y("max_parallel_cables")
     # routing and graph
-    crowfly_detour: float = _y("crowfly_detour")
-    overhead_detour: float = _y("overhead_detour")
     bridge_detour: float = _y("bridge_detour")
     long_connector_m: float = _y("long_connector_m")
     osm_line_snap_m: float = _y("osm_line_snap_m")
@@ -205,9 +195,6 @@ class MvParameters:
     ehv_partner_m: float = _y("ehv_partner_m")
     substation_max_attach_m: float = _y("substation_max_attach_m")
     egon_match_m: float = _y("egon_match_m")
-    rebalance_step_m: float = _y("rebalance_step_m")
-    rebalance_max_iter: int = _y("rebalance_max_iter")
-    municipal_site_max_offset_m: float = _y("municipal_site_max_offset_m")
     # MV/LV taps
     mvlv_tap_step_percent: float = _y("mvlv_tap_step_percent")
     mvlv_tap_min: int = _y("mvlv_tap_min")
@@ -220,7 +207,6 @@ class MvParameters:
     def __post_init__(self) -> None:
         for spec in _FIELD_SPECS.values():
             object.__setattr__(self, spec.field, coerce_mv_value(spec.name, getattr(self, spec.field)))
-        check_mv_combination({"MV_SUBSTATIONS": self.substations, "MV_SUPPLY_AREAS": self.supply_areas})
 
     def __hash__(self) -> int:
         # the generated hash would fail on the dict fields (generator_fallback_kw, feed_in_cases)
@@ -320,16 +306,6 @@ class MvParameters:
     def voltages(self) -> tuple[float, ...]:
         """The nominal voltages the districts of the variant can have: ``(20.0, 10.0)`` with ``auto``, else one."""
         return (AUTO_BASE_KV, AUTO_DENSE_KV) if self.auto_voltage else (float(self.vn_kv),)
-
-    @property
-    def osm_overhead(self) -> bool:
-        """``MV_OVERHEAD_LINES`` osm with street routing: overhead lines only along the OSM MV lines of the graph."""
-        return self.overhead_lines == "osm" and self.routing != "crowfly"
-
-    @property
-    def osm_cost_factor(self) -> float:
-        """Routing cost per m of OSM MV line: ``osm_line_cost_factor`` with :attr:`osm_overhead`, else 1."""
-        return float(self.osm_line_cost_factor) if self.osm_overhead else 1.0
 
     @property
     def active_cases(self) -> tuple[str, ...]:
@@ -455,6 +431,12 @@ _FIELD_SPECS: dict[str, Spec] = {spec.field: spec for spec in (*YAML_KEYS.values
 #: The specs whose field value is written to the snapshot as it is.
 _SNAPSHOT_SPECS: tuple[Spec, ...] = tuple(spec for spec in _FIELD_SPECS.values()
                                           if spec.path and spec.field not in RESOLVED_FIELDS)
+
+
+def retired_options(snapshot: Mapping[str, Any]) -> list[str]:
+    """The removed options (dotted snapshot paths, :data:`~pylovo.version_snapshot.MV_REMOVED`) that a stored MV
+    variant used; empty if this code plans it the same way."""
+    return removed_differences(dict(snapshot), MV_REMOVED, MV_ADDED_LATER)
 
 
 def _fields_from_raw(raw: Mapping[str, Any]) -> dict[str, Any]:

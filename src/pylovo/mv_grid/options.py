@@ -108,32 +108,9 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="auto: 10 kV in districts with an installed density of at least mv_10kv_min_density_mva_km2, else "
                 "20 kV (dense city grids run at 10 kV, rural grids at 20 kV, Harnisch 2016); the stored LV station "
                 "transformers are 20/0.4 kV and are re-typed to 10 kV by pylovo-mv couple"),
-    Spec("MV_SUBSTATIONS", "substations", "osm", "choice", choices=("osm", "egon"), group="sources",
-         source="Hülk et al. 2017 (HV/MV substations from OSM); eGon-data"),
-    Spec("MV_SUPPLY_AREAS", "supply_areas", "routed", "choice", choices=("routed", "municipal", "egon"),
-         group="sources",
-         source="routed: nearest substation along the streets (closest to the DSO data, 2026-10-19); municipal: whole "
-                "municipalities on their own substation, split among several, else on the substation nearest to most "
-                "of their load (Hülk et al. 2017, as Ding0); eGon-data MV grid districts"),
-    Spec("MV_ROUTING", "routing", "street", "choice", choices=("street", "crowfly"), group="routing", key="mode",
-         source="lines along streets and field paths; straight lines x 1.3 as in Ding0"),
-    Spec("MV_RING_SOLVER", "solver", "savings", "choice", choices=("savings", "sweep"), group="topology",
-         source="Clarke & Wright 1964 savings with local search; sweep"),
     Spec("MV_MAX_STATIONS_PER_RING", "max_stations_per_ring", 20, "int", bounds=(1, 100), group="topology",
          source="Ding0 and Heuck; 5 to 30 stations per ring in a large-city grid study (mean 15); urban members "
                 "count 1, rural members 1 / rural_ring_factor"),
-    Spec("MV_STUBS", "stubs", "rural", "choice", choices=("rural", "none"), group="topology",
-         source="rural: isolated rural stations (outside settlements or alone in theirs) hang on stubs after the "
-                "rings are solved (Ding0 satellites), ring stations leave for a stub where it saves ring length; "
-                "Harnisch 2016 p. 103; Amme et al. 2018 p. 10"),
-    Spec("MV_OVERHEAD_LINES", "overhead_lines", "osm", "choice", choices=("osm", "rural", "none"), group="topology",
-         source="osm: the MV overhead lines mapped in OpenStreetMap are edges of the routing graph and a line is "
-                "an overhead line where its route runs on them, else a cable (OSM holds about the overhead length "
-                "of the § 23c structural data of rural DSOs); rural: links between rural settlements are straight "
-                "overhead spans (Meinecke 2019); none: cables only"),
-    Spec("MV_INTERCONNECTION", "interconnection", "ties", "choice", choices=("none", "ties"), group="topology",
-         source="normally-open ties to the rings of neighbouring substations and links inside a supply area, the "
-                "reserve of real MV grids (Weisenstein 2021; Dubielzig 2022)"),
     Spec("MV_STANDARD_CABLE", "cable_type", None, "nullable_str", group="equipment", key="cable",
          source="null = NA2XS2Y 1x240 RM/25, starting cable for both 10 and 20 kV; narrower types remain selectable"),
     Spec("MV_OVERHEAD_LINE", "overhead_type", None, "nullable_str", group="equipment", key="overhead",
@@ -259,12 +236,8 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
     _constant("max_parallel_cables", 2, "int", "equipment", bounds=(1, 10),
               source="parallel cables only as a repair fallback"),
     # routing and the regional routing graph
-    _constant("crowfly_detour", 1.3, "float", "routing", bounds=(1.0, 3.0),
-              source="Ding0 (detour factors 1.1 to 1.5)"),
-    _constant("overhead_detour", 1.1, "float", "routing", bounds=(1.0, 3.0),
-              source="straight overhead spans with angle poles [assumption]"),
     _constant("bridge_detour", 1.3, "float", "routing", bounds=(1.0, 3.0),
-              source="straight bridges between graph islands, as crowfly_detour"),
+              source="straight bridges between graph islands (detour factor of Ding0)"),
     _constant("long_connector_m", 300.0, "float", "routing", bounds=_POSITIVE,
               source="connectors from a node to the street longer than this are flagged"),
     _constant("osm_line_snap_m", 100.0, "float", "routing", bounds=(0.0, 1000.0),
@@ -310,14 +283,6 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="longest connection of a substation busbar to the street graph"),
     _constant("egon_match_m", 300.0, "float", "sources", bounds=_POSITIVE,
               source="cross-check of OSM sites against eGon-data substations"),
-    _constant("rebalance_step_m", 500.0, "float", "sources", bounds=_POSITIVE,
-              source="weight step of the capacity rebalancing of routed supply areas"),
-    _constant("rebalance_max_iter", 0, "int", "sources", bounds=(0, None),
-              source="raises of the capacity rebalancing of routed supply areas; 0: none, a site above its (n-1) "
-                     "capacity keeps its load and gets more transformer units (decision of 2026-10-19)"),
-    _constant("municipal_site_max_offset_m", 250.0, "float", "sources", bounds=_POSITIVE,
-              source="a substation belongs to the municipality of its street edge within this distance (municipal "
-                     "supply areas); farther away it belongs to none"),
     # MV/LV taps and LV verdicts
     _constant("mvlv_tap_step_percent", 2.5, "float", "taps", key="step_percent", bounds=(0.1, 10.0),
               source="off-load tap step of the MV/LV transformers (pandapower and SimBench types)"),
@@ -335,6 +300,18 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
 YAML_KEYS: dict[str, Spec] = {spec.name: spec for spec in _YAML_SPECS}
 #: The constants of the MV stage by name (= their field name in MvParameters).
 CONSTANTS: dict[str, Spec] = {spec.name: spec for spec in _CONSTANT_SPECS}
+
+#: ``MV_*`` keys whose alternatives were removed, with the only value the stage still has. An older configuration may
+#: keep them with that value; another value is an error (:func:`check_removed_keys`), not silently ignored.
+REMOVED_YAML_KEYS: dict[str, Any] = {
+    "MV_SUBSTATIONS": "osm",
+    "MV_SUPPLY_AREAS": "routed",
+    "MV_ROUTING": "street",
+    "MV_RING_SOLVER": "savings",
+    "MV_STUBS": "rural",
+    "MV_OVERHEAD_LINES": "osm",
+    "MV_INTERCONNECTION": "ties",
+}
 
 #: YAML keys that ``--set`` does not change, with the option to use instead.
 NOT_SETTABLE: dict[str, str] = {
@@ -480,18 +457,17 @@ def default_value(name: str) -> Any:
     return copy.deepcopy(spec_of(name).default)
 
 
-def check_mv_combination(values: Mapping[str, Any]) -> None:
-    """Check the rules between YAML keys (``values`` by YAML key; a missing key counts with its default).
+def check_removed_keys(config: Mapping[str, Any]) -> None:
+    """Accept a removed ``MV_*`` key of an older configuration only with the value the stage still has.
 
     Raises:
-        ValueError: If ``MV_SUPPLY_AREAS`` is ``egon`` without ``MV_SUBSTATIONS: egon`` (the eGon MV grid
-            districts belong to the eGon substations).
+        ValueError: If a key of :data:`REMOVED_YAML_KEYS` has another value (the branch ``feature/mv-backup`` keeps
+            the removed alternatives).
     """
-    areas = values.get("MV_SUPPLY_AREAS", YAML_KEYS["MV_SUPPLY_AREAS"].default)
-    substations = values.get("MV_SUBSTATIONS", YAML_KEYS["MV_SUBSTATIONS"].default)
-    if areas == "egon" and substations != "egon":
-        raise ValueError("MV_SUPPLY_AREAS egon needs MV_SUBSTATIONS egon (the eGon MV grid districts belong to "
-                         f"the eGon substations), got MV_SUBSTATIONS {substations!r}")
+    for key, fixed in REMOVED_YAML_KEYS.items():
+        if key in config and config[key] != fixed:
+            raise ValueError(f"{key} {config[key]!r} is no longer supported: the MV stage always uses {fixed!r} "
+                             "(remove the key; the branch feature/mv-backup keeps the alternatives)")
 
 
 def parse_assignment(text: str) -> tuple[str, Any]:

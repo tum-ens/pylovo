@@ -74,6 +74,47 @@ MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
 }
 
 
+#: Paths of the MV variant snapshot whose option the MV stage no longer has, with the value it still plans with
+#: (:data:`UNKNOWN`: a constant of a removed option, not compared). A stored variant with another value, or an older
+#: one without the path whose :data:`MV_ADDED_LATER` value differs, used a removed option: it stays readable, but it
+#: cannot be resumed or coupled. The branch ``feature/mv-backup`` keeps the removed options.
+MV_REMOVED: dict[tuple[str, ...], Any] = {
+    ("sources", "substations"): "osm",
+    ("sources", "supply_areas"): "routed",
+    ("routing", "mode"): "street",
+    ("topology", "solver"): "savings",
+    ("topology", "stubs"): "rural",
+    ("topology", "overhead_lines"): "osm",
+    ("topology", "interconnection"): "ties",
+    ("sources", "rebalance_max_iter"): 0,
+    ("sources", "rebalance_step_m"): UNKNOWN,
+    ("sources", "municipal_site_max_offset_m"): UNKNOWN,
+    ("routing", "crowfly_detour"): UNKNOWN,
+    ("routing", "overhead_detour"): UNKNOWN,
+}
+
+
+def removed_differences(stored: dict, removed: dict[tuple[str, ...], Any],
+                        added_later: dict[tuple[str, ...], Any] | None = None) -> list[str]:
+    """The dotted paths of ``removed`` (e.g. :data:`MV_REMOVED`) where ``stored`` used another value than the fixed one.
+
+    A path that ``stored`` does not contain counts with its ``added_later`` value, else as the fixed value.
+    """
+    differences = []
+    for path, fixed in removed.items():
+        if fixed is UNKNOWN:
+            continue
+        if _missing(stored, path):
+            value = (added_later or {}).get(path, fixed)
+        else:
+            value = stored
+            for key in path:
+                value = value[key]
+        if value is not UNKNOWN and value != fixed:
+            differences.append(".".join(path))
+    return sorted(differences)
+
+
 def _flatten(value: Any, prefix: tuple[str, ...] = ()) -> dict[tuple[str, ...], Any]:
     if isinstance(value, dict) and value:
         out: dict[tuple[str, ...], Any] = {}
@@ -92,8 +133,8 @@ def _missing(stored: dict, path: tuple[str, ...]) -> bool:
     return False
 
 
-def compare_snapshots(stored: dict, expected: dict,
-                      added_later: dict[tuple[str, ...], Any] | None = None) -> tuple[list[str], list[str]]:
+def compare_snapshots(stored: dict, expected: dict, added_later: dict[tuple[str, ...], Any] | None = None,
+                      removed: dict[tuple[str, ...], Any] | None = None) -> tuple[list[str], list[str]]:
     """Differences between a stored and an expected snapshot (both JSON round-tripped).
 
     Args:
@@ -101,6 +142,8 @@ def compare_snapshots(stored: dict, expected: dict,
         expected: The snapshot of the current configuration.
         added_later: Paths added to the snapshot later with their legacy values; ``None`` means
             :data:`ADDED_LATER` (LV versions). The MV stage passes :data:`MV_ADDED_LATER`.
+        removed: Paths removed from the snapshot with the value the code still uses (see
+            :func:`removed_differences`); the MV stage passes :data:`MV_REMOVED`.
 
     Returns:
         ``(differences, not_recorded)``: dotted paths whose values differ (these block the version),
@@ -108,9 +151,10 @@ def compare_snapshots(stored: dict, expected: dict,
         value is unknown (these are only reported).
     """
     added_later = ADDED_LATER if added_later is None else added_later
-    skipped: set[tuple[str, ...]] = set()
+    removed = removed or {}
+    skipped: set[tuple[str, ...]] = set(removed)
     not_recorded: list[str] = []
-    differences: list[str] = []
+    differences: list[str] = removed_differences(stored, removed, added_later)
     for path, legacy in added_later.items():
         if not _missing(stored, path) or _missing(expected, path):
             continue

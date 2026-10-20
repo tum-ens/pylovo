@@ -1,6 +1,6 @@
-"""Ring solvers of the MV stage: Clarke-Wright savings, a granular local search and a sweep baseline.
+"""Ring solver of the MV stage: Clarke-Wright savings followed by a granular local search.
 
-The solvers form the open rings of one HV/MV supply district. A ring is an ordered list of terminal indices (rows
+The solver forms the open rings of one HV/MV supply district. A ring is an ordered list of terminal indices (rows
 of the district's distance matrix); the busbar is terminal 0 and closes every ring at both ends, so the length of
 a ring ``[a, b, c]`` is ``d[0, a] + d[a, b] + d[b, c] + d[c, 0]``. The objective of every solver is the total ring
 length (both busbar sections included). Feasibility (member cap, voltage drop with the best open point, currents,
@@ -8,15 +8,13 @@ length (both busbar sections included). Feasibility (member cap, voltage drop wi
 
 Implemented from the published methods, no Ding0 code:
 
-* ``savings``: parallel Clarke-Wright savings (Clarke & Wright 1964) with route reversal, a merge is kept only
+* savings: parallel Clarke-Wright savings (Clarke & Wright 1964) with route reversal, a merge is kept only
   when the evaluator accepts the merged ring.
 * :func:`local_search`: granular first-improvement local search (Toth & Vigo 2003; Bräysy & Gendreau 2005) with
   the operators relocate, exchange, 2-opt*, 2-opt and Or-opt on the 15 nearest neighbours of every node,
   don't-look bits, a pass limit and a wall-clock safety net.
-* ``sweep``: the sweep heuristic (Gillett & Miller 1974) as a baseline, with eight start angles.
 
-:func:`solve` runs the construction of the chosen solver and then the local search (``rounds = 0`` turns the local
-search off). Every function is deterministic: no random numbers, nodes in index order, ties broken by index. Only
+:func:`solve` runs the savings construction and then the local search (``rounds = 0`` turns the local search off). Every function is deterministic: no random numbers, nodes in index order, ties broken by index. Only
 the wall-clock guard of the local search can make a result timing dependent, and it is flagged when it stops the
 search. ``dist_m`` is assumed symmetric (undirected rings); ``inf`` marks an unreachable pair.
 
@@ -27,7 +25,6 @@ from __future__ import annotations
 
 import math
 import time
-from bisect import bisect_left
 from typing import Callable, Iterator, Sequence
 
 import numpy as np
@@ -36,8 +33,6 @@ from pylovo.mv_grid.model import RingEvaluatorProtocol, SolverResult
 
 #: Terminal index of the busbar in every distance matrix.
 BUSBAR = 0
-#: Names accepted by :func:`solve` (``MV_RING_SOLVER``).
-SOLVERS: tuple[str, ...] = ("savings", "sweep")
 #: Local search operators in the order they are tried for every node pair.
 OPERATORS: tuple[str, ...] = ("relocate", "exchange", "two_opt_star", "two_opt", "or_opt")
 #: Smallest length gain (m) for which a move is applied; smaller gains are float noise and could cycle.
@@ -56,17 +51,15 @@ _Build = Callable[[], dict[int, list[int]]]
 # --------------------------------------------------------------------------------------------------------------
 # public API
 # --------------------------------------------------------------------------------------------------------------
-def solve(name: str, ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: Sequence[int], xy: np.ndarray, *,
+def solve(ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: Sequence[int], *,
           rounds: int = 50, neighbours: int = 15, time_guard_s: float = 120.0) -> SolverResult:
-    """Form the open rings of one district with a construction heuristic followed by the local search.
+    """Form the open rings of one district with the savings construction followed by the local search.
 
     Args:
-        name: ``savings`` (Clarke-Wright) or ``sweep`` (baseline).
         ev: Ring evaluator; its ``evaluate(seq).feasible`` decides every merge and move.
         dist_m: ``(k, k)`` design distances between the terminals in m (terminal 0 = busbar, ``inf`` =
             unreachable, symmetric).
         candidates: Terminal indices of the ring candidates (never 0, each once).
-        xy: ``(k, 2)`` terminal coordinates (only the sweep uses them).
         rounds: Pass limit of the local search (``local_search_rounds``); 0 turns it off.
         neighbours: Neighbour list length of the local search (``neighbours``).
         time_guard_s: Wall-clock safety net of the local search (``ls_time_guard_s``).
@@ -78,18 +71,13 @@ def solve(name: str, ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: 
         dict for the district metrics (keys ``solver_*`` and ``ls_time_guard``).
 
     Raises:
-        ValueError: On an unknown solver name or invalid inputs.
+        ValueError: On invalid inputs.
     """
-    if name not in SOLVERS:
-        raise ValueError(f"MV_RING_SOLVER must be one of {', '.join(SOLVERS)}, got {name!r}")
     d, nodes = _prepare(dist_m, candidates)
     D = d.tolist()
     feas = _Feasibility(ev)
     started = time.perf_counter()
-    if name == "savings":
-        routes = _savings(feas, d, nodes)
-    else:  # the public solver-name check above leaves only sweep
-        routes = _sweep(feas, D, nodes, _prepare_xy(xy, d.shape[0]))
+    routes = _savings(feas, d, nodes)
     construction_s = time.perf_counter() - started
     construction_evaluations = feas.evaluations
     routes, ls = _local_search(feas, d, D, routes, rounds=rounds, neighbours=neighbours, time_guard_s=time_guard_s)
@@ -102,7 +90,7 @@ def solve(name: str, ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: 
             if math.isfinite(length_construction) and math.isfinite(length_final) and length_construction > 0
             else None)
     diagnostics = {
-        "solver": name,
+        "solver": "savings",
         "solver_candidates": len(nodes),
         "solver_rings": len(routes),
         "solver_infeasible_rings": infeasible,
@@ -186,32 +174,6 @@ def local_search(routes: Routes, ev: RingEvaluatorProtocol, dist_m: np.ndarray, 
     return _canonical(improved), diagnostics
 
 
-def solve_sweep(ev: RingEvaluatorProtocol, dist_m: np.ndarray, candidates: Sequence[int], xy: np.ndarray, *,
-                n_starts: int = 8) -> Routes:
-    """Sweep heuristic (construction only): rings filled in polar-angle order around the busbar.
-
-    The candidates are sorted by their polar angle around the busbar (``xy[0]``; ties by index). For each start
-    angle (the first node after the largest angular gap, then ``n_starts - 1`` rotations by ``360 / n_starts``
-    degrees), nodes are appended in angle order to the current ring while the evaluator accepts it, otherwise a
-    new ring is opened. The ring order is the nearest-neighbour order from the busbar improved by intra-ring 2-opt
-    and Or-opt. The start with the shortest total length is kept (rings with an unreachable section first count
-    as worse).
-
-    Args:
-        ev: Ring evaluator.
-        dist_m: ``(k, k)`` design distances in m, terminal 0 = busbar.
-        candidates: Terminal indices of the ring candidates.
-        xy: ``(k, 2)`` terminal coordinates, ``xy[0]`` = busbar.
-        n_starts: Number of start angles.
-
-    Returns:
-        The rings (canonical orientation and order as in :func:`solve`).
-    """
-    d, nodes = _prepare(dist_m, candidates)
-    return _canonical(_sweep(_Feasibility(ev), d.tolist(), nodes, _prepare_xy(xy, d.shape[0]),
-                             n_starts=n_starts))
-
-
 # --------------------------------------------------------------------------------------------------------------
 # input checks and small helpers
 # --------------------------------------------------------------------------------------------------------------
@@ -237,13 +199,6 @@ def _prepare(dist_m: np.ndarray, candidates: Sequence[int]) -> tuple[np.ndarray,
     nodes = [int(t) for t in candidates]
     _check_nodes(nodes, d.shape[0], "candidates")
     return d, sorted(nodes)
-
-
-def _prepare_xy(xy: np.ndarray, k: int) -> list[tuple[float, float]]:
-    xy = np.asarray(xy, dtype=float)
-    if xy.shape != (k, 2):
-        raise ValueError(f"xy must have shape ({k}, 2), got {xy.shape}")
-    return [(float(x), float(y)) for x, y in xy]
 
 
 def _check_cover(routes: Routes, nodes: list[int], what: str) -> None:
@@ -549,110 +504,3 @@ def _local_search(feas: _Feasibility, d: np.ndarray, D: list[list[float]], route
         "runtime_s": time.perf_counter() - started,
     }
     return result, diagnostics
-
-
-# --------------------------------------------------------------------------------------------------------------
-# sweep
-# --------------------------------------------------------------------------------------------------------------
-def _improve_order(D: list[list[float]], route: list[int]) -> list[int]:
-    """Intra-ring 2-opt and Or-opt (chains of 1-3, kept orientation) on the length only, first improvement."""
-    r = list(route)
-    n = len(r)
-    for _ in range(100):                                  # a safety bound; small rings converge in a few rounds
-        improved = False
-        for a in range(n - 1):                            # 2-opt: reverse r[a..b]
-            p = r[a - 1] if a else BUSBAR
-            for b in range(a + 1, n):
-                q = r[b + 1] if b + 1 < n else BUSBAR
-                if D[p][r[b]] + D[r[a]][q] - D[p][r[a]] - D[r[b]][q] < -MIN_GAIN_M:
-                    r[a:b + 1] = r[a:b + 1][::-1]
-                    improved = True
-                    break
-            if improved:
-                break
-        if not improved:
-            for length in OR_OPT_CHAINS:                  # Or-opt: move r[a..a+length-1] behind another node
-                for a in range(n - length + 1):
-                    first, last = r[a], r[a + length - 1]
-                    p = r[a - 1] if a else BUSBAR
-                    q = r[a + length] if a + length < n else BUSBAR
-                    removal = D[p][q] - D[p][first] - D[last][q]
-                    rest = r[:a] + r[a + length:]
-                    ext = [BUSBAR, *rest, BUSBAR]
-                    for pos in range(len(ext) - 1):
-                        x, y = ext[pos], ext[pos + 1]
-                        if pos == a:                      # the original position
-                            continue
-                        if removal + D[x][first] + D[last][y] - D[x][y] < -MIN_GAIN_M:
-                            r = rest[:pos] + r[a:a + length] + rest[pos:]
-                            improved = True
-                            break
-                    if improved:
-                        break
-                if improved:
-                    break
-        if not improved:
-            break
-    return r
-
-
-def _order_ring(D: list[list[float]], nodes: list[int]) -> list[int]:
-    """Nearest-neighbour order from the busbar (ties by index), improved by intra-ring 2-opt and Or-opt."""
-    rest = sorted(nodes)
-    route: list[int] = []
-    current = BUSBAR
-    while rest:
-        row = D[current]
-        best = min(rest, key=lambda t: (row[t], t))
-        route.append(best)
-        rest.remove(best)
-        current = best
-    return _improve_order(D, route)
-
-
-def _sweep_once(feas: _Feasibility, D: list[list[float]], order: list[int]) -> Routes:
-    routes: Routes = []
-    current: list[int] = []
-    for t in order:
-        if current:
-            grown = current + [t]
-            if feas.within_cap(grown):
-                grown = _order_ring(D, grown)
-                if feas(grown):
-                    current = grown
-                    continue
-            routes.append(current)
-        current = [t]
-    if current:
-        routes.append(current)
-    return routes
-
-
-def _sweep(feas: _Feasibility, D: list[list[float]], nodes: list[int], xy: list[tuple[float, float]], *,
-           n_starts: int = 8) -> Routes:
-    if not nodes:
-        return []
-    x0, y0 = xy[BUSBAR]
-    two_pi = 2.0 * math.pi
-    angle = {t: math.atan2(xy[t][1] - y0, xy[t][0] - x0) % two_pi for t in nodes}
-    order = sorted(nodes, key=lambda t: (angle[t], t))
-    angles = [angle[t] for t in order]
-    n = len(order)
-    gaps = [angles[g + 1] - angles[g] for g in range(n - 1)] + [angles[0] + two_pi - angles[-1]]
-    widest = max(range(n), key=lambda g: (gaps[g], -g))
-    first = (widest + 1) % n
-    starts = [first]
-    count = max(1, int(n_starts))
-    for m in range(1, count):
-        start = bisect_left(angles, (angles[first] + m * two_pi / count) % two_pi) % n
-        if start not in starts:
-            starts.append(start)
-    best: Routes = []
-    best_key: tuple[int, float] | None = None
-    for start in starts:
-        routes = _sweep_once(feas, D, order[start:] + order[:start])
-        lengths = [_route_length(D, r) for r in routes]
-        key = (sum(1 for x in lengths if not math.isfinite(x)), math.fsum(x for x in lengths if math.isfinite(x)))
-        if best_key is None or key < best_key:
-            best, best_key = routes, key
-    return best

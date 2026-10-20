@@ -19,8 +19,8 @@
    :func:`~pylovo.mv_grid.planner.plan_district` and stores it in one transaction. A failed district is marked
    ``failed`` with its error; the others continue. A broken pool (e.g. out of memory) leaves the remaining grids
    ``pending``; a rerun with fewer ``jobs`` resumes them.
-5. **Post:** ties between districts (``MV_INTERCONNECTION: ties``), then the summary (``mv_variant.summary``) and
-   the final status ``done``, ``partial`` or ``failed``.
+5. **Post:** normally-open ties between districts and links inside them, then the summary (``mv_variant.summary``)
+   and the final status ``done``, ``partial`` or ``failed``.
 
 The planning modules (``graph``, ``substations``, ``inputs``, ``districts``, ...) are imported when they are used,
 so this module imports quickly and a missing optional module (ties, coupling) only disables its step.
@@ -315,27 +315,20 @@ def _optional(dbc: Any, name: str, logger: logging.Logger, func, *args, **kwargs
 
 def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger: logging.Logger,
                       warnings: list[str]) -> pd.DataFrame:
-    """The HV/MV substation sites of the region (OSM or eGon) as a table for ``insert_substations``."""
+    """The HV/MV substation sites of the region from OSM, matched to the eGon-data substations (eTraGo buses), as a
+    table for ``insert_substations``."""
     substations = _module("substations")
     egon_ok, egon_why = dbc.egon_available()
     egon = dbc.egon_substations(region_wkb, params.region_buffer_m) if egon_ok else None
-    if params.substations == "egon":
-        if not egon_ok:
-            raise MvStageError(f"MV_SUBSTATIONS egon needs the eGon-data tables: {egon_why}")
-        sites = substations.egon_sites(egon)
-        if not sites:
-            raise MvStageError(f"no eGon HV/MV substations within {params.region_buffer_m / 1000:g} km of the region")
-        logger.info(f"eGon substations: {len(sites)} sites")
-    else:
-        candidates = dbc.osm_substation_candidates(region_wkb, params.region_buffer_m)
-        selection = substations.select_osm_sites(candidates, params)
-        sites = selection.sites
-        logger.info(selection.describe())
-        if not egon_ok:
-            logger.warning(f"eGon cross-check disabled: {egon_why}")
+    candidates = dbc.osm_substation_candidates(region_wkb, params.region_buffer_m)
+    selection = substations.select_osm_sites(candidates, params)
+    sites = selection.sites
+    logger.info(selection.describe())
+    if not egon_ok:
+        logger.warning(f"eGon cross-check disabled: {egon_why}")
     matches = substations.match_egon(sites, egon, params.egon_match_m) if egon is not None else None
     frame = substations.sites_frame(sites, region_wkb=region_wkb, matches=matches)
-    if matches is not None and params.substations == "osm":
+    if matches is not None:
         unmatched = int(frame["egon_bus_id"].isna().sum())
         if unmatched:
             logger.info(f"{unmatched} of {len(frame)} OSM sites have no eGon substation within "
@@ -365,8 +358,8 @@ def _generator_split(locations: pd.DataFrame, params: MvParameters) -> tuple[pd.
 
 
 def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes, sites: pd.DataFrame,
-               params: MvParameters, lv: LvVersionParameters, extra_stations: pd.DataFrame | None,
-               logger: logging.Logger, warnings: list[str]) -> pd.DataFrame:
+               params: MvParameters, lv: LvVersionParameters, logger: logging.Logger,
+               warnings: list[str]) -> pd.DataFrame:
     """The ``mv_node`` rows of the region: stations, MV customers, MV generators and busbars (DESIGN §3.4–§3.6)."""
     inputs = _module("inputs")
     station_nodes = dbc.station_nodes(version_id, plz)
@@ -414,8 +407,6 @@ def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes,
     rows = inputs.node_rows(stations, customers, generators, sites, params).reset_index(drop=True)
     if not rows["kind"].eq("busbar").any():          # the busbar rows are part of node_rows; never go without them
         rows = pd.concat([_busbar_rows(sites), rows], ignore_index=True)
-    if extra_stations is not None and len(extra_stations):
-        rows = pd.concat([rows, _external_station_rows(extra_stations)], ignore_index=True)
     if not params.include_generation:
         for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
             rows[column] = 0.0
@@ -426,19 +417,6 @@ def _busbar_rows(sites: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({"kind": "busbar", "connection_hint": "busbar", "connection": "busbar",
                          "substation_id": sites["substation_id"].astype("int64").to_numpy(),
                          "x": sites["x"].astype(float).to_numpy(), "y": sites["y"].astype(float).to_numpy()})
-
-
-def _external_station_rows(extra: pd.DataFrame) -> pd.DataFrame:
-    """Zero-load station nodes for real stations without LV load (``extra_stations``, DESIGN §7.4)."""
-    extra = pd.DataFrame(extra).reset_index(drop=True)
-    source = extra["source_id"].astype(str) if "source_id" in extra.columns else pd.Series([""] * len(extra))
-    return pd.DataFrame({
-        "kind": "station", "connection_hint": "ring", "station_source": "external",
-        "x": extra["x"].astype(float), "y": extra["y"].astype(float),
-        "sn_kva": pd.to_numeric(extra["sn_kva"], errors="coerce") if "sn_kva" in extra.columns else np.nan,
-        "load_stats": [{} for _ in range(len(extra))], "installed_kw": 0.0, "p_own_kw": 0.0, "households": 0.0,
-        "flags": [["external"] + ([f"source:{s}"] if s else []) for s in source],
-    })
 
 
 def _attachment_updates(rows: pd.DataFrame, attach: pd.DataFrame, params: MvParameters,
@@ -484,16 +462,10 @@ def _attachment_updates(rows: pd.DataFrame, attach: pd.DataFrame, params: MvPara
 
 
 def _assign_supply_areas(dbc: Any, graph_id: str, nodes: pd.DataFrame, sites: pd.DataFrame,
-                         params: MvParameters, lv: LvVersionParameters, region_wkb: bytes,
+                         params: MvParameters, lv: LvVersionParameters,
                          logger: logging.Logger) -> tuple[np.ndarray, np.ndarray, list[int]]:
     """Site index per node (into ``sites``), bridged flags and the overloaded site indices (DESIGN §4.1)."""
     districts = _module("districts")
-    if params.supply_areas == "egon":
-        polygons = dbc.egon_districts(region_wkb)
-        bus_ids = [int(b) if pd.notna(b) else -1 for b in sites["egon_bus_id"]]
-        owner = np.asarray(districts.egon_assignment(nodes[["x", "y"]].to_numpy(dtype=float), polygons, bus_ids),
-                           dtype=np.int64)
-        return owner, np.zeros(len(nodes), dtype=bool), []
     graph = _module("graph")
     edge_id, source, target, length = dbc.region_graph_arrays(graph_id)
     csr, vertex_index = graph.region_csr(source, target, length)
@@ -503,20 +475,10 @@ def _assign_supply_areas(dbc: Any, graph_id: str, nodes: pd.DataFrame, sites: pd
     sites_in = sites.join(ends, on="attach_edge_id")
     nodes_in = nodes.join(ends, on="attach_edge_id")
     capacity = districts.site_capacity_mva(sites_in, params)
-    if params.supply_areas == "municipal":
-        ags = dbc.edge_municipalities(graph_id)
-        nodes_in["ags"] = nodes_in["attach_edge_id"].map(ags)
-        near = pd.to_numeric(sites_in["attach_offset_m"], errors="coerce") <= params.municipal_site_max_offset_m
-        sites_in["ags"] = sites_in["attach_edge_id"].map(ags).where(near)
-        result = districts.municipal_assignment(csr, vertex_index, edge_len, sites_in, nodes_in, lv.g(),
-                                                lv.power_factor, capacity)
-    else:
-        result = districts.routed_assignment(csr, vertex_index, edge_len, sites_in, nodes_in, lv.g(),
-                                             lv.power_factor, capacity, params)
-        logger.info(f"Supply areas: {result.iterations - 1} rebalancing steps, "
-                    f"{len(result.overloaded)} substations above capacity")
-    bridged = np.asarray(result.bridged, dtype=bool) if result.bridged is not None \
-        else np.zeros(len(nodes), dtype=bool)
+    result = districts.routed_assignment(csr, vertex_index, edge_len, sites_in, nodes_in, lv.g(), lv.power_factor,
+                                         capacity)
+    logger.info(f"Supply areas: {len(result.overloaded)} substations above capacity")
+    bridged = np.asarray(result.bridged, dtype=bool)
     return np.asarray(result.site_of_node, dtype=np.int64), bridged, [int(i) for i in result.overloaded]
 
 
@@ -567,14 +529,14 @@ def _set_district_voltages(dbc: Any, version_id: str, variant_id: str, rows: pd.
 
 
 def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int], region_wkb: bytes, graph_id: str,
-                 params: MvParameters, lv: LvVersionParameters, extra_stations: pd.DataFrame | None,
-                 logger: logging.Logger, warnings: list[str]) -> dict:
+                 params: MvParameters, lv: LvVersionParameters, logger: logging.Logger,
+                 warnings: list[str]) -> dict:
     """Write the substations, nodes, attachments, supply areas and grids of a variant (caller commits)."""
     # substations
     sites = _substation_sites(dbc, region_wkb, params, logger, warnings)
     sites["substation_id"] = dbc.insert_substations(version_id, variant_id, sites)
     # nodes
-    rows = _node_rows(dbc, version_id, plz, region_wkb, sites, params, lv, extra_stations, logger, warnings)
+    rows = _node_rows(dbc, version_id, plz, region_wkb, sites, params, lv, logger, warnings)
     rows["mv_node_id"] = dbc.insert_nodes(version_id, variant_id, rows)
     # attachment to the routing graph (one KNN query for all nodes and busbars)
     attach = dbc.attach_points(graph_id, pd.DataFrame({"key": rows["mv_node_id"].to_numpy(),
@@ -603,8 +565,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     members = nodes[nodes["kind"].isin(_KINDS_WITH_GRID)]
     # every node gets a district; generators and excluded nodes (HV customers) do not count for the capacity
     if len(members):
-        owner, bridged, overloaded = _assign_supply_areas(dbc, graph_id, members, usable, params, lv, region_wkb,
-                                                          logger)
+        owner, bridged, overloaded = _assign_supply_areas(dbc, graph_id, members, usable, params, lv, logger)
     else:
         owner, bridged, overloaded = np.zeros(0, dtype=np.int64), np.zeros(0, dtype=bool), []
     owner_sub = np.where(owner >= 0, usable["substation_id"].to_numpy(dtype=np.int64)[np.clip(owner, 0, None)], -1)
@@ -642,7 +603,7 @@ def _status(totals: dict) -> str:
 
 def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvParameters | None = None, *,
                  parallel: bool = True, jobs: int | None = None, replace: bool = False,
-                 extra_stations: pd.DataFrame | None = None, log_file: str = "log/log.txt") -> MvRunSummary:
+                 log_file: str = "log/log.txt") -> MvRunSummary:
     """Run the MV stage for one MV variant of a stored LV version (see the module docstring).
 
     Args:
@@ -652,9 +613,6 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
         parallel: Plan the districts in worker processes.
         jobs: Number of workers (default ``min(4, N_JOBS)``, capped by the free memory).
         replace: Delete the variant first and build it from scratch.
-        extra_stations: Real stations without LV load (``x``, ``y``, ``sn_kva``, ``source_id``): zero-load
-            ``station`` nodes with ``station_source = 'external'`` (Python API only; used by new or rebuilt
-            variants, not on resume).
         log_file: Log file of the run (workers log next to it).
 
     Returns:
@@ -681,7 +639,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
         locked = True
         dbc.commit_changes()
         return _run_locked(dbc, version_id, params, plz_list, parallel=parallel, jobs=jobs, replace=replace,
-                           extra_stations=extra_stations, log_file=log_file, logger=logger, start=start)
+                           log_file=log_file, logger=logger, start=start)
     finally:
         if locked:
             try:
@@ -694,8 +652,8 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
 
 
 def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Sequence[int] | None, *, parallel: bool,
-                jobs: int | None, replace: bool, extra_stations: pd.DataFrame | None, log_file: str,
-                logger: logging.Logger, start: float) -> MvRunSummary:
+                jobs: int | None, replace: bool, log_file: str, logger: logging.Logger,
+                start: float) -> MvRunSummary:
     variant_id = params.variant_id
     warnings: list[str] = []
     logger.info(f"MV planning cases: {', '.join(params.active_cases)}"
@@ -736,8 +694,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         if mode in ("new", "grow") or not dbc.variant_region_built(version_id, variant_id):
             try:
                 dbc.reset_variant_region(version_id, variant_id)
-                _region_step(dbc, version_id, variant_id, union, region_wkb, graph_id, params, lv, extra_stations,
-                             logger, warnings)
+                _region_step(dbc, version_id, variant_id, union, region_wkb, graph_id, params, lv, logger, warnings)
                 dbc.commit_changes()
             except Exception:
                 dbc.rollback_changes()
@@ -750,10 +707,8 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
         # 5. post
-        ties = links = None
-        if params.interconnection == "ties":
-            ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
-            links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger, warnings)
+        ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
+        links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger, warnings)
         display_geometry(dbc, version_id, variant_id, logger)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
@@ -788,7 +743,7 @@ def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params
     try:
         interconnection = _module("interconnection")
     except ImportError:
-        message = "ties not implemented in this build: MV_INTERCONNECTION ties was ignored"
+        message = "ties not implemented in this build: the tie step was skipped"
         logger.warning(message)
         warnings.append(message)
         return None

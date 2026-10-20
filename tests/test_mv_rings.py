@@ -567,7 +567,7 @@ def test_from_model_uses_the_variant_line_types_and_limits():
     overhead = np.zeros((k, k), bool)
     overhead[1, 2] = overhead[2, 1] = True
     model = DistanceModel(terminals=terminals, candidates=np.array([1, 2, 3]), dist_m=dist, street_m=dist,
-                          straight_m=dist, overhead=overhead, straight=np.zeros((k, k), bool),
+                          straight_m=dist, overhead=overhead,
                           xy=np.zeros((k, 2)))
     empty = np.zeros(0)
     inp = DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=nodes,

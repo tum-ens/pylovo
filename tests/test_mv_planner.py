@@ -98,8 +98,8 @@ def fakes(monkeypatch):
     r.RingEvaluator = type("RingEvaluator", (), {"from_model": classmethod(
         lambda cls, inp, model: (calls.append("evaluator") or cls()))})
 
-    def solve(name, ev, dist, candidates, xy, *, rounds, neighbours, time_guard_s):
-        calls.append(f"solve:{name}:{rounds}:{neighbours}:{time_guard_s:g}")
+    def solve(ev, dist, candidates, *, rounds, neighbours, time_guard_s):
+        calls.append(f"solve:{rounds}:{neighbours}:{time_guard_s:g}")
         return SolverResult([[1, 2, 3]], 500.0, 400.0, 3, 7, False, 0.1, {"ls_gain_percent": 20.0})
 
     s.solve = solve
@@ -136,11 +136,11 @@ VIOLATION = Violation("load", "voltage_low", "bus", 12, 0.96, 0.97, 1)
 
 def test_plan_district_composes_the_steps(fakes):
     calls, state = fakes
-    params = MvParameters(solver="sweep", local_search_rounds=7, neighbours=9, ls_time_guard_s=30.0,
+    params = MvParameters(local_search_rounds=7, neighbours=9, ls_time_guard_s=30.0,
                           long_connector_m=250.0, bridge_detour=1.4)
     plan = planner.plan_district(small_input(params.replace(include_generation=True)))
     assert isinstance(plan, DistrictPlan)
-    assert calls == ["run_graph:250:1.4", "terminals", "distances", "evaluator", "solve:sweep:7:9:30",
+    assert calls == ["run_graph:250:1.4", "terminals", "distances", "evaluator", "solve:7:9:30",
                      "plan:[[1, 2, 3]]", "net", "cases:net-12", "check", "size", "stored:net-12:2:25", "budgets",
                      "trench:4"]
     assert (plan.hv_mv_units, plan.hv_mv_unit_mva, plan.hv_mv_sizing, plan.oltc_tap) == (2, 25.0, "sized", -2)
@@ -272,7 +272,7 @@ def synthetic_district() -> DistrictInput:
                      "y": float(xy_arr[dst[e - 1] - 1][1]) - 50.0, "attach_edge_id": e, "attach_fraction": 1.0,
                      "attach_offset_m": 50.0, "sn_kva": np.nan})
     return DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=node_table(rows), edges=edges,
-                         params=MvParameters(stubs="none", overhead_lines="none", include_generation=True),
+                         params=MvParameters(stub_min_offset_m=1e9, include_generation=True),   # no stubs
                          lv=LV, known_units_mva=(),
                          edge_geometry=lambda ids: {int(i): geoms[int(i)] for i in ids})
 

@@ -13,11 +13,8 @@ cost-optimal plan of single districts lacks:
    within ``tie_max_length_m`` (Euclidean pre-filter) get their street distance on one run graph of the routing
    graph (split at the attachment points, with connectors, without island bridges) from a Dijkstra limited to
    ``tie_max_length_m``.
-3. **Link rule** of the district links (:func:`pylovo.mv_grid.topology.distance_model`): with ``MV_OVERHEAD_LINES``
-   rural, a tie between ends that are not urban and not in the same settlement is an overhead line and takes the
-   straight span (``overhead_detour`` x straight) where that is shorter than the street path; every other tie is a
-   cable along the streets. With ``MV_ROUTING`` crowfly every tie is a straight span of ``crowfly_detour`` x
-   straight.
+3. **Link rule** of the district links (:func:`pylovo.mv_grid.topology.distance_model`): a tie follows the
+   routing graph and is an overhead line where its route runs on OSM MV lines, a cable elsewhere.
 4. **Selection:** greedy by tie length (then street distance and node ids), at most one tie per ring. The tie
    belongs to the district with the lower ``mv_grid_id`` (``from_node``) and is open at the other end
    (``to_node``).
@@ -329,7 +326,7 @@ def _measure(cand: pd.DataFrame, pairs: np.ndarray, edges: EdgeSet, params: "MvP
     sub = cand.iloc[rows]
     lpairs = np.array([(local[int(i)], local[int(j)]) for i, j in pairs], dtype=np.int64).reshape(-1, 2)
     rg = graph.build_run_graph(edges, _run_graph_rows(sub), long_connector_m=params.long_connector_m,
-                               bridge_detour=params.bridge_detour, osm_cost_factor=params.osm_cost_factor)
+                               bridge_detour=params.bridge_detour, osm_cost_factor=params.osm_line_cost_factor)
     street = _street_distances(rg, lpairs, limit)
     ok = np.isfinite(street) & (street <= limit)
     lpairs, street = lpairs[ok], street[ok]
@@ -342,20 +339,10 @@ def _measure(cand: pd.DataFrame, pairs: np.ndarray, edges: EdgeSet, params: "MvP
         if not len(lpairs):
             return None
     xy = sub[["x", "y"]].to_numpy(dtype=float)
-    settlement = np.nan_to_num(_numbers(sub, "settlement_id"), nan=-1.0).astype(np.int64)
-    urban = _texts(sub, "area_class") == "urban"
     i, j = lpairs[:, 0], lpairs[:, 1]
     straight_m = np.hypot(*(xy[i] - xy[j]).T)
-    same_settlement = (settlement[i] == settlement[j]) & (settlement[i] >= 0)
-    overhead = (params.overhead_lines == "rural") & ~same_settlement & ~(urban[i] | urban[j])
-    if params.routing == "crowfly":
-        straight = np.ones(len(lpairs), dtype=bool)
-        length = float(params.crowfly_detour) * straight_m
-    else:
-        straight = overhead & (float(params.overhead_detour) * straight_m < street)
-        length = np.where(straight, float(params.overhead_detour) * straight_m, street)
     return {"sub": sub, "rg": rg, "pairs": lpairs, "street": street, "straight_m": straight_m,
-            "overhead": overhead, "straight": straight, "length": np.maximum(length, MIN_TIE_M), "xy": xy,
+            "length": np.maximum(street, MIN_TIE_M), "xy": xy,
             "ids": np.asarray(sub.index, dtype=np.int64), "grid": sub["mv_grid_id"].to_numpy(dtype=np.int64),
             "ring": _numbers(sub, "ring_id").astype(np.int64), "feeder": _numbers(sub, "feeder_id").astype(np.int64)}
 
@@ -366,14 +353,13 @@ def _line_table(m: dict, ends: Sequence[tuple[int, int, int]], grids: pd.DataFra
     """The rows (:data:`TIE_COLUMNS`) of the chosen pairs ``(pair, from_row, to_row)`` of :func:`_measure`: street
     geometry, true length, kind and type."""
     rg, xy, street, length = m["rg"], m["xy"], m["street"].copy(), m["length"].copy()
-    straight, overhead, ids, grid = m["straight"], m["overhead"], m["ids"], m["grid"]
+    ids, grid = m["ids"], m["grid"]
     vertex = np.asarray(rg.terminal_vertex, dtype=np.int64)
-    street_ends = [(int(vertex[f]), int(vertex[t])) for p, f, t in ends if not straight[p]]
+    street_ends = [(int(vertex[f]), int(vertex[t])) for p, f, t in ends]
     paths = graph.vertex_paths(rg, street_ends) if street_ends else {}
     pieces = {key: graph.path_pieces(rg, path) for key, path in paths.items() if path}
     edge_kind = rg.pieces["kind"].astype(str).to_numpy()
     edge_ids = rg.pieces["edge_id"].to_numpy(dtype=np.int64)
-    osm = params.osm_overhead
     on_osm = (rg.pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in rg.pieces.columns
               else np.zeros(len(rg.pieces), dtype=bool))
     piece_m = rg.pieces["length_m"].to_numpy(dtype=float)
@@ -389,19 +375,13 @@ def _line_table(m: dict, ends: Sequence[tuple[int, int, int]], grids: pd.DataFra
 
     out = []
     for p, f, t in ends:
-        if straight[p]:
-            geometry = LineString([tuple(xy[f]), tuple(xy[t])])
-        else:
-            key = (int(vertex[f]), int(vertex[t]))
-            line = graph.path_geometry(rg, pieces.get(key, []), geoms, start_vertex=key[0])
-            geometry = _with_ends(line, xy[f], xy[t])
-        if osm and not straight[p]:                     # overhead where the route runs on OSM MV lines
-            route = [q for q in pieces.get((int(vertex[f]), int(vertex[t])), []) if q >= 0]
-            if route:                                   # the true length of the route (street is its cost)
-                length[p] = street[p] = max(float(piece_m[route].sum()), MIN_TIE_M)
-            overhead_m = min(float(length[p]), float(piece_m[route][on_osm[route]].sum()) if route else 0.0)
-        else:
-            overhead_m = float(length[p]) if overhead[p] else 0.0
+        key = (int(vertex[f]), int(vertex[t]))
+        line = graph.path_geometry(rg, pieces.get(key, []), geoms, start_vertex=key[0])
+        geometry = _with_ends(line, xy[f], xy[t])
+        route = [q for q in pieces.get(key, []) if q >= 0]   # overhead where the route runs on OSM MV lines
+        if route:                                   # the true length of the route (street is its cost)
+            length[p] = street[p] = max(float(piece_m[route].sum()), MIN_TIE_M)
+        overhead_m = min(float(length[p]), float(piece_m[route][on_osm[route]].sum()) if route else 0.0)
         kind = line_kind(overhead_m, float(length[p]))
         vn_kv = float(vn_of.loc[int(grid[f])])
         cable_type, overhead_type = params.cable_at(vn_kv), params.overhead_at(vn_kv)
@@ -410,7 +390,7 @@ def _line_table(m: dict, ends: Sequence[tuple[int, int, int]], grids: pd.DataFra
         out.append({
             "from_node": int(ids[f]), "to_node": int(ids[t]), "from_grid": int(grid[f]), "to_grid": int(grid[t]),
             "from_ring": int(m["ring"][f]), "to_ring": int(m["ring"][t]), "from_feeder": int(m["feeder"][f]),
-            "to_feeder": int(m["feeder"][t]), "kind": kind, "straight": bool(straight[p]),
+            "to_feeder": int(m["feeder"][t]), "kind": kind, "straight": False,
             "length_m": float(length[p]), "street_m": float(street[p]), "straight_m": float(m["straight_m"][p]),
             "cable_m": float(length[p]) - overhead_m, "overhead_m": overhead_m, "parallel": 1,
             "std_type": std_type, "flags": flags(int(grid[f]), int(grid[t])), "geometry": geometry,
@@ -492,7 +472,7 @@ def _within_reach(m: dict | None, params: "MvParameters") -> dict | None:
     if not ok.any():
         return None
     out = dict(m)
-    for key in ("pairs", "street", "straight_m", "overhead", "straight", "length"):
+    for key in ("pairs", "street", "straight_m", "length"):
         out[key] = m[key][ok]
     return out
 

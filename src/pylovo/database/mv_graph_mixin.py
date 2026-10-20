@@ -525,8 +525,8 @@ def build_parameters(params: "MvParameters") -> dict[str, Any]:
         "seam_split_m": SEAM_SPLIT_M,
         "epsg": int(TARGET_EPSG),
         "build_version": GRAPH_BUILD_VERSION,
-        **({"osm_mv_lines": True, "osm_line_snap_m": float(params.osm_line_snap_m)}
-           if params.overhead_lines == "osm" else {}),
+        "osm_mv_lines": True,
+        "osm_line_snap_m": float(params.osm_line_snap_m),
     }
 
 

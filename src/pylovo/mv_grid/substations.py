@@ -14,8 +14,8 @@ adapted:
    other into one :class:`Site`, drops extra-high-voltage sites without an MV level next to an HV/MV site
    (``ehv_partner_m``; alone they are kept with the flag ``ehv_uncertain``) and, of two sites closer than
    ``substation_drop_m``, keeps the one with the larger footprint.
-3. :func:`match_egon` gives each site the nearest eGon-data HV/MV substation within ``egon_match_m``;
-   :func:`egon_sites` turns the eGon substations into sites for ``MV_SUBSTATIONS: egon``.
+3. :func:`match_egon` gives each site the nearest eGon-data HV/MV substation within ``egon_match_m``, whose bus id
+   is the 110 kV bus of eTraGo.
 
 :func:`select_osm_sites` runs steps 1 and 2 with the parameters of an MV variant; :func:`sites_frame` gives the
 sites as a table (columns of ``pylovo.mv_substation``).
@@ -443,11 +443,10 @@ def select_osm_sites(candidates: pd.DataFrame, params: "MvParameters") -> SiteSe
     if not sites:
         km = f"{params.region_buffer_m / 1000:g} km"
         if len(candidates) == 0:
-            raise MvStageError(f"no HV/MV substations within {km} of the region; check INFDB_OSM_SCHEMA or use "
-                               "MV_SUBSTATIONS=egon")
+            raise MvStageError(f"no HV/MV substations within {km} of the region; check INFDB_OSM_SCHEMA")
         reasons = ", ".join(f"{reason} {count}" for reason, count in selection.reason_counts().items())
         raise MvStageError(f"none of the {len(candidates)} OSM substations within {km} of the region is an HV/MV "
-                           f"substation ({reasons}); check INFDB_OSM_SCHEMA or use MV_SUBSTATIONS=egon")
+                           f"substation ({reasons}); check INFDB_OSM_SCHEMA")
     return selection
 
 
@@ -489,30 +488,6 @@ def match_egon(sites: Sequence[Site], egon: pd.DataFrame, max_m: float) -> list[
         best = np.lexsort((bus_ids[near], distances))[0]
         matches.append((int(bus_ids[near][best]), float(distances[best])))
     return matches
-
-
-def egon_sites(egon: pd.DataFrame) -> list[Site]:
-    """The eGon-data HV/MV substations as sites (for ``MV_SUBSTATIONS: egon``), sorted by ``bus_id``.
-
-    Each substation is one site ``egon/<bus_id>`` without footprint. eGon-data has filtered and aggregated them
-    already, so the OSM rules are not applied. Without a readable voltage the site counts as 110 kV.
-
-    Args:
-        egon: eGon substations with ``bus_id``, ``voltage``, ``x`` and ``y`` (``TARGET_EPSG``).
-    """
-    if egon is None or len(egon) == 0:
-        return []
-    sites = []
-    for row in egon.dropna(subset=["x", "y", "bus_id"]).sort_values("bus_id").to_dict("records"):
-        tag = _text(row.get("voltage"))
-        voltages = parse_voltages(tag)
-        sites.append(Site(
-            source_ids=[f"egon/{int(row['bus_id'])}"], x=float(row["x"]), y=float(row["y"]), area_m2=0.0,
-            footprint_wkb=None, name=_text(row.get("name")), operator=_text(row.get("operator")),
-            voltage_tag=tag or "", max_v=max(voltages, default=110000),
-            mv_tagged=any(MV_RANGE_V[0] <= v <= MV_RANGE_V[1] for v in voltages), flags=[],
-        ))
-    return sites
 
 
 # ---------------------------------------------------------------------------------------------- tables

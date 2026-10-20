@@ -1,4 +1,4 @@
-"""Tests of the MV ring solvers (savings, local search, sweep) with a small fake ring evaluator."""
+"""Tests of the MV ring solver (savings, local search) with a small fake ring evaluator."""
 
 import itertools
 import json
@@ -197,7 +197,7 @@ def test_savings_reaches_the_known_optimum_of_six_nodes_with_route_reversal():
     assert routes == [[1, 4, 6, 2], [3, 5]]
     # without reversal the same savings list ends 1.8 km longer
     assert length(_savings_without_reversal(dist, list(range(1, 7)), 4), dist) > optimum + 1000.0
-    result = S.solve("savings", FakeEvaluator(dist, np.ones(7), max_members=4), dist, range(1, 7), xy)
+    result = S.solve(FakeEvaluator(dist, np.ones(7), max_members=4), dist, range(1, 7))
     assert result.length_final_m == pytest.approx(optimum, abs=1e-6)
 
 
@@ -242,16 +242,15 @@ def test_savings_above_the_pair_limit_uses_near_neighbour_pairs(monkeypatch):
 
 
 # --------------------------------------------------------------------------------------------------------------
-# feasibility, local search, sweep
+# feasibility, local search
 # --------------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("make", [lambda s: settlement_instance(40, 6, 8, s), lambda s: uniform_instance(80, s)])
 @pytest.mark.parametrize("seed", [0, 1])
-@pytest.mark.parametrize("name", ["savings", "sweep"])
-def test_every_ring_respects_the_evaluator(make, seed, name):
+def test_every_ring_respects_the_evaluator(make, seed):
     xy, dist, load = make(seed)
     candidates = list(range(1, len(xy)))
     ev = FakeEvaluator(dist, load, **TIGHT)
-    result = S.solve(name, ev, dist, candidates, xy)
+    result = S.solve(ev, dist, candidates)
     assert isinstance(result, SolverResult)
     assert_partition(result.routes, candidates)
     assert_feasible(result.routes, dist, load, **TIGHT)
@@ -271,7 +270,6 @@ def test_local_search_never_increases_the_length_and_keeps_every_node_once(seed)
     xy, dist, load = settlement_instance(30, 5, 6, seed)
     candidates = list(range(1, len(xy)))
     for start in (S.solve_savings(FakeEvaluator(dist, load, **TIGHT), dist, candidates),
-                  S.solve_sweep(FakeEvaluator(dist, load, **TIGHT), dist, candidates, xy),
                   [[t] for t in candidates]):
         ev = FakeEvaluator(dist, load, **TIGHT)
         routes, diagnostics = S.local_search(start, ev, dist)
@@ -315,27 +313,14 @@ def test_move_deltas_equal_the_length_change_of_the_built_rings():
                 assert sorted(kept + [t for r in changes.values() for t in r]) == list(range(1, n + 1))
 
 
-def test_sweep_is_valid_and_the_best_of_its_starts():
-    xy, dist, load = settlement_instance(40, 6, 8, seed=4)
-    candidates = list(range(1, len(xy)))
-    routes = S.solve_sweep(FakeEvaluator(dist, load, **TIGHT), dist, candidates, xy)
-    assert_partition(routes, candidates)
-    assert_feasible(routes, dist, load, **TIGHT)
-    one_start = S.solve_sweep(FakeEvaluator(dist, load, **TIGHT), dist, candidates, xy, n_starts=1)
-    assert length(routes, dist) <= length(one_start, dist) + 1e-6
-    with pytest.raises(ValueError, match="xy"):
-        S.solve_sweep(FakeEvaluator(dist, load), dist, candidates, xy[:-1])
-
-
 # --------------------------------------------------------------------------------------------------------------
 # solve(): switches, determinism, guard, size, errors
 # --------------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("name", ["savings", "sweep"])
-def test_two_runs_are_identical(name):
+def test_two_runs_are_identical():
     xy, dist, load = settlement_instance(60, 8, 10, seed=11)
     candidates = list(range(1, len(xy)))
-    first = S.solve(name, FakeEvaluator(dist, load, **REAL), dist, candidates, xy)
-    second = S.solve(name, FakeEvaluator(dist, load, **REAL), dist, candidates[::-1], xy)
+    first = S.solve(FakeEvaluator(dist, load, **REAL), dist, candidates)
+    second = S.solve(FakeEvaluator(dist, load, **REAL), dist, candidates[::-1])
     assert first.routes == second.routes
     assert first.length_final_m == second.length_final_m
     assert (first.passes, first.moves) == (second.passes, second.moves)
@@ -347,7 +332,7 @@ def test_two_runs_are_identical(name):
 def test_rounds_zero_returns_the_construction():
     xy, dist, load = settlement_instance(40, 6, 8, seed=2)
     candidates = list(range(1, len(xy)))
-    result = S.solve("savings", FakeEvaluator(dist, load, **REAL), dist, candidates, xy, rounds=0)
+    result = S.solve(FakeEvaluator(dist, load, **REAL), dist, candidates, rounds=0)
     assert result.routes == S.solve_savings(FakeEvaluator(dist, load, **REAL), dist, candidates)
     assert (result.passes, result.moves) == (0, 0)
     assert result.length_final_m == result.length_savings_m
@@ -363,23 +348,20 @@ def test_time_guard_flags_and_keeps_a_feasible_solution():
     assert diagnostics["passes"] == 1 and diagnostics["moves"] <= 1
     assert_partition(routes, candidates)
     assert_feasible(routes, dist, load, **TIGHT)
-    result = S.solve("savings", FakeEvaluator(dist, load, **TIGHT), dist, candidates, xy, time_guard_s=1e-9)
+    result = S.solve(FakeEvaluator(dist, load, **TIGHT), dist, candidates, time_guard_s=1e-9)
     assert result.time_guard_hit is True and result.diagnostics["ls_time_guard"] is True
     assert_feasible(result.routes, dist, load, **TIGHT)
-    assert S.solve("savings", FakeEvaluator(dist, load, **TIGHT), dist, candidates, xy).time_guard_hit is False
+    assert S.solve(FakeEvaluator(dist, load, **TIGHT), dist, candidates).time_guard_hit is False
 
 
-def test_300_nodes_savings_with_local_search_is_fast_and_shorter_than_sweep():
+def test_300_nodes_savings_with_local_search_is_fast():
     # settlement-shaped random district: a town around the busbar and 15 villages of 12 stations
     xy, dist, load = settlement_instance(120, 15, 12, seed=0)
     candidates = list(range(1, len(xy)))
     assert len(candidates) == 300
     started = time.perf_counter()
-    savings = S.solve("savings", FakeEvaluator(dist, load, **REAL), dist, candidates, xy)
+    savings = S.solve(FakeEvaluator(dist, load, **REAL), dist, candidates)
     assert time.perf_counter() - started < 20.0
-    sweep = S.solve("sweep", FakeEvaluator(dist, load, **REAL), dist, candidates, xy)
-    assert savings.length_final_m < sweep.length_savings_m      # than the sweep construction
-    assert savings.length_final_m < sweep.length_final_m        # and than sweep with the same local search
     assert savings.length_final_m < savings.length_savings_m    # the local search gains something
     assert_feasible(savings.routes, dist, load, **REAL)
 
@@ -406,21 +388,19 @@ class CappedEvaluator:
 def test_member_cap_of_the_evaluator_and_of_a_capped_wrapper():
     xy, dist, load = settlement_instance(30, 4, 6, seed=6)
     candidates = list(range(1, len(xy)))
-    for name in ("savings", "sweep"):
-        result = S.solve(name, CappedEvaluator(FakeEvaluator(dist, load, **REAL), 4), dist, candidates, xy)
-        assert_partition(result.routes, candidates)
-        assert max(len(r) for r in result.routes) <= 4
+    result = S.solve(CappedEvaluator(FakeEvaluator(dist, load, **REAL), 4), dist, candidates)
+    assert_partition(result.routes, candidates)
+    assert max(len(r) for r in result.routes) <= 4
     # an evaluator with RingLimits is never asked about rings above its cap (cheap pre-check)
-    for name in ("savings", "sweep"):
-        ev = FakeEvaluator(dist, load, **{**REAL, "max_members": 5}, limits=True)
-        result = S.solve(name, ev, dist, candidates, xy)
-        assert ev.seen and max(len(seq) for seq in ev.seen) <= 5
-        assert max(len(r) for r in result.routes) <= 5
+    ev = FakeEvaluator(dist, load, **{**REAL, "max_members": 5}, limits=True)
+    result = S.solve(ev, dist, candidates)
+    assert ev.seen and max(len(seq) for seq in ev.seen) <= 5
+    assert max(len(r) for r in result.routes) <= 5
     # members are counted by the evaluator: non-members (e.g. joints) do not count for the cap
     member = np.ones(len(xy), bool)
     member[1::2] = False
     ev = FakeEvaluator(dist, load, **{**REAL, "max_members": 3, "max_load": INF}, member=member, limits=True)
-    result = S.solve("savings", ev, dist, candidates, xy)
+    result = S.solve(ev, dist, candidates)
     assert max(len(r) for r in result.routes) > 3
     assert max(ev.member_count(r) for r in result.routes) <= 3
 
@@ -431,7 +411,7 @@ def test_unreachable_station_and_json_safe_diagnostics():
     dist[5, :] = dist[:, 5] = INF
     dist[5, 5] = 0.0
     candidates = list(range(1, len(xy)))
-    result = S.solve("savings", FakeEvaluator(dist, load, **REAL), dist, candidates, xy)
+    result = S.solve(FakeEvaluator(dist, load, **REAL), dist, candidates)
     assert [5] in result.routes
     assert result.length_final_m == INF
     assert result.diagnostics["solver_infeasible_rings"] == 1
@@ -448,19 +428,17 @@ def test_unreachable_station_and_json_safe_diagnostics():
 def test_empty_and_single_candidate():
     xy = np.array([[0.0, 0.0], [100.0, 0.0]])
     dist = euclid(xy)
-    empty = S.solve("savings", FakeEvaluator(dist, np.ones(2)), dist, [], xy)
+    empty = S.solve(FakeEvaluator(dist, np.ones(2)), dist, [])
     assert empty.routes == [] and empty.length_final_m == 0.0
-    single = S.solve("sweep", FakeEvaluator(dist, np.ones(2)), dist, [1], xy)
+    single = S.solve(FakeEvaluator(dist, np.ones(2)), dist, [1])
     assert single.routes == [[1]] and single.length_final_m == pytest.approx(200.0)
 
 
 def test_invalid_inputs_raise():
     xy, dist, load = settlement_instance(5, 0, 0, seed=0)
     ev = FakeEvaluator(dist, load)
-    with pytest.raises(ValueError, match="MV_RING_SOLVER"):
-        S.solve("tabu", ev, dist, [1, 2], xy)
     with pytest.raises(ValueError, match="busbar"):
-        S.solve("savings", ev, dist, [0, 1], xy)
+        S.solve(ev, dist, [0, 1])
     with pytest.raises(ValueError, match="more than once"):
         S.solve_savings(ev, dist, [1, 1, 2])
     with pytest.raises(ValueError, match="NaN"):
@@ -469,9 +447,3 @@ def test_invalid_inputs_raise():
         S.solve_savings(ev, dist[:, :-1], [1, 2])
     with pytest.raises(ValueError, match="more than once"):
         S.local_search([[1, 2], [2, 3]], ev, dist)
-
-
-def test_unsupported_solver_fails_before_reading_solver_inputs():
-    xy, dist, load = settlement_instance(5, 0, 0, seed=0)
-    with pytest.raises(ValueError, match="MV_RING_SOLVER must be one of savings, sweep"):
-        S.solve("ortools", FakeEvaluator(dist, load), np.array([[np.nan]]), [0], xy)

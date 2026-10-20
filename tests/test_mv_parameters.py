@@ -25,12 +25,12 @@ from pylovo.mv_grid.options import (
     CONSTANTS,
     MV_STAGE_VERSION,
     YAML_KEYS,
-    check_mv_combination,
+    check_removed_keys,
     coerce_mv_value,
     parse_assignment,
 )
-from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
-from pylovo.version_snapshot import ADDED_LATER, MV_ADDED_LATER, UNKNOWN, compare_snapshots
+from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, retired_options
+from pylovo.version_snapshot import ADDED_LATER, MV_ADDED_LATER, MV_REMOVED, UNKNOWN, compare_snapshots
 
 LINE_TYPES = {
     "NA2XS2Y 1x240 RM/25 12/20 kV": LineType("NA2XS2Y 1x240 RM/25 12/20 kV", "cable", 20.0, 0.122, 0.112, 304.0, 0.421),
@@ -105,11 +105,9 @@ EXPECTED_SNAPSHOT = {
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 5.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
-    "sources": {"substations": "osm", "supply_areas": "routed", "region_buffer_m": 5000.0,
-                "substation_merge_m": 75.0, "substation_drop_m": 150.0, "ehv_partner_m": 1000.0,
-                "substation_max_attach_m": 2000.0, "egon_match_m": 300.0, "rebalance_step_m": 500.0,
-                "rebalance_max_iter": 0, "municipal_site_max_offset_m": 250.0},
-    "routing": {"mode": "street", "crowfly_detour": 1.3, "overhead_detour": 1.1, "bridge_detour": 1.3,
+    "sources": {"region_buffer_m": 5000.0, "substation_merge_m": 75.0, "substation_drop_m": 150.0,
+                "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0, "egon_match_m": 300.0},
+    "routing": {"bridge_detour": 1.3,
                 "long_connector_m": 300.0, "osm_line_snap_m": 100.0, "osm_line_cost_factor": 0.7,
                 "busbar_exit_radius_m": 200.0,
                 "graph_excluded_klasse": ["Bundesautobahn"],
@@ -117,8 +115,7 @@ EXPECTED_SNAPSHOT = {
                 "subgraph_buffer_m": 2000.0},
     "settlements": {"buffer_m": 50.0, "spacing_m": 100.0, "min_buildings": 2, "urban_min_buildings": 1000,
                     "polygon_buffer_m": 75.0},
-    "topology": {"solver": "savings", "max_stations_per_ring": 20, "stubs": "rural", "overhead_lines": "osm",
-                 "interconnection": "ties",
+    "topology": {"max_stations_per_ring": 20,
                  "max_half_ring_length_m": 28000.0, "rural_ring_factor": 2.0, "stub_max_kva": 1000.0,
                  "stub_max_length_m": 4000.0, "stub_max_kva_km": 2000.0, "stub_min_offset_m": 100.0,
                  "loop_in_max_offset_m": 100.0,
@@ -157,8 +154,8 @@ def json_round_trip(value):
 
 
 def test_specs_have_known_kinds_and_canonical_defaults():
-    assert len(YAML_KEYS) == 17 and len(CONSTANTS) >= 50
-    assert not set(YAML_KEYS) & set(CONSTANTS)
+    assert len(YAML_KEYS) == 10 and len(CONSTANTS) >= 50
+    assert not set(YAML_KEYS) & set(CONSTANTS) and not set(YAML_KEYS) & set(options.REMOVED_YAML_KEYS)
     for spec in (*YAML_KEYS.values(), *CONSTANTS.values()):
         assert spec.kind in options.KINDS, spec.name
         assert coerce_mv_value(spec.name, copy.deepcopy(spec.default)) == spec.default, spec.name
@@ -211,8 +208,6 @@ def test_coerce_accepts_and_canonicalises(name, value, expected):
     ("MV_NOMINAL_VOLTAGE_KV", "20 kV", "one of auto, 20, 10"),
     ("MV_NOMINAL_VOLTAGE_KV", True, "one of auto, 20, 10"),
     ("mv_10kv_min_density_mva_km2", -1, "at least 0"),
-    ("MV_SUBSTATIONS", "OSM", "one of osm, egon"),
-    ("MV_STUBS", False, "one of rural, none"),           # YAML 'no' is False
     ("MV_MAX_STATIONS_PER_RING", 0, "between 1 and 100"),
     ("MV_MAX_STATIONS_PER_RING", 2.5, "an integer"),
     ("MV_MAX_STATIONS_PER_RING", True, "an integer"),
@@ -243,12 +238,12 @@ def test_feed_in_case_factors_are_bounded():
 
 
 def test_unknown_names_are_rejected_with_a_hint():
-    with pytest.raises(ValueError, match="unknown MV parameter 'MV_STUB'.*MV_STUBS"):
-        coerce_mv_value("MV_STUB", "none")
+    with pytest.raises(ValueError, match="unknown MV parameter 'MV_STANDARD_CABL'.*MV_STANDARD_CABLE"):
+        coerce_mv_value("MV_STANDARD_CABL", None)
 
 
 def test_parse_assignment():
-    assert parse_assignment("MV_STUBS=none") == ("MV_STUBS", "none")
+    assert parse_assignment("MV_MAX_STATIONS_PER_RING=15") == ("MV_MAX_STATIONS_PER_RING", 15)
     assert parse_assignment("MV_STANDARD_CABLE=NA2XS2Y 1x150 RM/25 12/20 kV") == (
         "MV_STANDARD_CABLE", "NA2XS2Y 1x150 RM/25 12/20 kV")
     assert parse_assignment("MV_OVERHEAD_LINE=70-AL1/11-ST1A 20.0") == ("MV_OVERHEAD_LINE", "70-AL1/11-ST1A 20.0")
@@ -267,13 +262,13 @@ def test_parse_assignment():
 
 
 @pytest.mark.parametrize("text, message", [
-    ("MV_STUBS", "KEY=VALUE"),
-    ("=none", "KEY=VALUE"),
+    ("MV_MAX_STATIONS_PER_RING", "KEY=VALUE"),
+    ("=15", "KEY=VALUE"),
     ("MV_VARIANT_ID=d2", "use --variant"),
     ("MV_VARIANT_COMMENT=x", "use --comment"),
     ("MV_GRID_GENERATION=True", "pylovo-generate --mv"),
-    ("MV_STUBZ=none", "unknown MV parameter"),
-    ("MV_STUBS=sometimes", "MV_STUBS must be one of rural, none"),
+    ("MV_STUBS=none", "unknown MV parameter"),
+    ("MV_MAX_STATIONS_PER_RING=many", "MV_MAX_STATIONS_PER_RING must be an integer"),
     ("local_search_rounds=[1", "not a valid YAML value"),
 ])
 def test_parse_assignment_rejects(text, message):
@@ -281,17 +276,28 @@ def test_parse_assignment_rejects(text, message):
         parse_assignment(text)
 
 
-def test_egon_areas_need_egon_substations():
-    check_mv_combination({})
-    check_mv_combination({"MV_SUBSTATIONS": "egon", "MV_SUPPLY_AREAS": "egon"})
-    check_mv_combination({"MV_SUBSTATIONS": "egon", "MV_SUPPLY_AREAS": "routed"})
-    with pytest.raises(ValueError, match="MV_SUPPLY_AREAS egon needs MV_SUBSTATIONS egon"):
-        check_mv_combination({"MV_SUPPLY_AREAS": "egon"})
-    with pytest.raises(ValueError, match="MV_SUPPLY_AREAS egon needs MV_SUBSTATIONS egon"):
-        MvParameters(supply_areas="egon")
-    assert MvParameters(substations="egon", supply_areas="egon").supply_areas == "egon"
-    with pytest.raises(ValueError, match="needs MV_SUBSTATIONS egon"):
-        MvParameters().replace_raw({"MV_SUPPLY_AREAS": "egon"})
+def test_removed_keys_of_older_configurations_need_the_remaining_value():
+    check_removed_keys({})
+    check_removed_keys({"MV_RING_SOLVER": "savings", "MV_SUPPLY_AREAS": "routed", "MV_STUBS": "rural"})
+    with pytest.raises(ValueError, match="MV_RING_SOLVER 'sweep' is no longer supported.*feature/mv-backup"):
+        check_removed_keys({"MV_RING_SOLVER": "sweep"})
+    with pytest.raises(ValueError, match="MV_SUPPLY_AREAS 'municipal'"):
+        check_removed_keys({"MV_SUPPLY_AREAS": "municipal"})
+
+
+def test_retired_options_of_stored_snapshots(equipment):
+    stored = json_round_trip(MvParameters().to_snapshot())
+    assert retired_options(stored) == []
+    old = copy.deepcopy(stored)
+    old["topology"].update({"solver": "sweep", "stubs": "rural"})
+    old["sources"].update({"rebalance_max_iter": 50, "rebalance_step_m": 500.0})
+    old["routing"]["crowfly_detour"] = 1.3                                 # constants of removed options: not compared
+    assert retired_options(old) == ["sources.rebalance_max_iter", "topology.solver"]
+    differences, _ = compare_snapshots(old, stored, added_later=MV_ADDED_LATER, removed=MV_REMOVED)
+    assert differences == ["sources.rebalance_max_iter", "topology.solver"]
+    same = copy.deepcopy(stored)
+    same["topology"].update({"solver": "savings", "overhead_lines": "osm"})
+    assert compare_snapshots(same, stored, added_later=MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
 
 
 # ---------------------------------------------------------------------------------------------- MvParameters
@@ -306,12 +312,9 @@ def test_one_field_per_spec_and_defaults_equal_the_options():
         value = getattr(params, name)
         assert value == spec.default and type(value) is type(spec.default), name
     assert MvParameters().generator_fallback_kw is not MvParameters().generator_fallback_kw   # no shared dicts
-    assert (params.variant_id, params.comment, params.vn_kv, params.substations, params.supply_areas,
-            params.routing, params.solver, params.max_stations_per_ring, params.stubs, params.overhead_lines,
-            params.cable_type, params.overhead_type, params.line_utilization,
-            params.max_drop_percent) == ("1", "default", "auto", "osm", "routed", "street", "savings", 20,
-                                         "rural", "osm", None, None, 0.6, 5.0)
-    assert params.interconnection == "ties"                # normally-open ties between districts by default
+    assert (params.variant_id, params.comment, params.vn_kv, params.max_stations_per_ring, params.cable_type,
+            params.overhead_type, params.line_utilization, params.max_drop_percent) == (
+        "1", "default", "auto", 20, None, None, 0.6, 5.0)
 
 
 def test_construction_coerces_and_the_object_is_frozen():
@@ -321,13 +324,14 @@ def test_construction_coerces_and_the_object_is_frozen():
     assert params.hv_mv_sizes_mva == (40.0, 63.0)
     with pytest.raises(dataclasses.FrozenInstanceError):
         params.vn_kv = 20.0
-    with pytest.raises(ValueError, match="MV_STUBS must be one of rural, none"):
-        MvParameters(stubs="sometimes")
+    with pytest.raises(ValueError, match="MV_MAX_STATIONS_PER_RING must be an integer"):
+        MvParameters(max_stations_per_ring="many")
 
 
 def test_parameters_are_hashable_and_picklable(equipment):
-    params = MvParameters(stubs="none")
-    assert hash(params) == hash(MvParameters(stubs="none")) and len({params, MvParameters(stubs="none")}) == 1
+    params = MvParameters(max_stations_per_ring=15)
+    assert hash(params) == hash(MvParameters(max_stations_per_ring=15))
+    assert len({params, MvParameters(max_stations_per_ring=15)}) == 1
     assert hash(params) != hash(MvParameters())
     params.check_types()
     copied = pickle.loads(pickle.dumps(params))
@@ -336,11 +340,11 @@ def test_parameters_are_hashable_and_picklable(equipment):
 
 def test_replace_validates_and_keeps_the_original():
     params = MvParameters()
-    changed = params.replace(stubs="none", local_search_rounds=0, lv_pv_cos_phi=0.95)
-    assert (changed.stubs, changed.local_search_rounds, changed.lv_pv_cos_phi) == ("none", 0, 0.95)
-    assert params.stubs == "rural" and params == MvParameters()
+    changed = params.replace(max_stations_per_ring=15, local_search_rounds=0, lv_pv_cos_phi=0.95)
+    assert (changed.max_stations_per_ring, changed.local_search_rounds, changed.lv_pv_cos_phi) == (15, 0, 0.95)
+    assert params.max_stations_per_ring == 20 and params == MvParameters()
     with pytest.raises(ValueError, match="unknown MV parameter field"):
-        params.replace(MV_STUBS="none")
+        params.replace(MV_MAX_STATIONS_PER_RING=15)
     with pytest.raises(ValueError, match="unknown MV parameter field"):
         params.replace(_types={})
     with pytest.raises(ValueError, match="MV_MAX_STATIONS_PER_RING must be between 1 and 100"):
@@ -350,9 +354,8 @@ def test_replace_validates_and_keeps_the_original():
 
 
 def test_replace_raw_takes_yaml_keys_and_constant_names():
-    params = MvParameters().replace_raw({"MV_STUBS": "none", "MV_RING_SOLVER": "sweep", "stub_max_kva": 500,
-                                         "MV_VARIANT_ID": "sw"})
-    assert (params.stubs, params.solver, params.stub_max_kva, params.variant_id) == ("none", "sweep", 500.0, "sw")
+    params = MvParameters().replace_raw({"MV_MAX_STATIONS_PER_RING": 15, "stub_max_kva": 500, "MV_VARIANT_ID": "r15"})
+    assert (params.max_stations_per_ring, params.stub_max_kva, params.variant_id) == (15, 500.0, "r15")
     assert MvParameters.from_raw({"MV_NOMINAL_VOLTAGE_KV": 10, "repair_rounds": 2}) == MvParameters(
         vn_kv=10.0, repair_rounds=2)
     with pytest.raises(ValueError, match="execution flag"):
@@ -373,7 +376,7 @@ def test_types_are_resolved_lazily_and_cached(equipment):
     calls = len(equipment.calls)
     params.check_types()
     assert len(equipment.calls) == calls                               # cached
-    same = params.replace(stubs="none")
+    same = params.replace(max_stations_per_ring=15)
     same.check_types()
     assert len(equipment.calls) == calls                               # unrelated change keeps the types
     ten = params.replace(vn_kv=10)
@@ -413,7 +416,7 @@ def test_snapshot_round_trip(equipment):
     # The historical, narrower conductors remain selectable and round-trip through a stored snapshot.
     params = MvParameters(variant_id="hv", comment="historical conductors").replace_raw({
         "MV_STANDARD_CABLE": "NA2XS2Y 1x150 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "48-AL1/8-ST1A 20.0",
-        "MV_STUBS": "none", "MV_INTERCONNECTION": "ties", "local_search_rounds": 0, "hv_mv_sizes_mva": [40, 25],
+        "MV_MAX_STATIONS_PER_RING": 15, "local_search_rounds": 0, "hv_mv_sizes_mva": [40, 25],
         "generator_fallback_kw": {"lv": 50, "mvlv": 150, "mv": 5000, "hvmv": 15000}, "lv_pv_cos_phi": 0.95,
         "graph_excluded_klasse": ["Bundesautobahn", "Bundesstraße"], "customer_min_mv_kw": 300,
         "customer_hall_min_footprint_m2": 1500})
@@ -436,7 +439,7 @@ def test_from_snapshot_keeps_the_stored_types(equipment):
     rebuilt = MvParameters.from_snapshot("1", "default", stored)
     assert rebuilt.cable.r_ohm_per_km == 0.5 and rebuilt.to_snapshot() == stored
     assert len(equipment.calls) == calls                               # nothing resolved again
-    assert rebuilt.replace(stubs="none").cable.r_ohm_per_km == 0.5
+    assert rebuilt.replace(max_stations_per_ring=15).cable.r_ohm_per_km == 0.5
     assert rebuilt.replace(vn_kv=10).cable.name == "NA2XS2Y 1x240 RM/25 6/10 kV"
     stored["equipment"]["cable_10kv"]["r_ohm_per_km"] = 0.7          # the 10 kV types are stored as well
     assert MvParameters.from_snapshot("1", "default", stored).cable_at(10.0).r_ohm_per_km == 0.7
@@ -536,10 +539,10 @@ def test_from_config_reads_the_shipped_defaults(equipment, monkeypatch):
     with pytest.raises(ValueError, match="MV_STANDARD_CABLE"):
         MvParameters.from_config()
     monkeypatch.setattr(config_loader, "MV_STANDARD_CABLE", None)
-    monkeypatch.setattr(config_loader, "MV_RING_SOLVER", "sweep")
-    monkeypatch.setattr(config_loader, "MV_VARIANT_ID", "sw")
+    monkeypatch.setattr(config_loader, "MV_MAX_STATIONS_PER_RING", 15)
+    monkeypatch.setattr(config_loader, "MV_VARIANT_ID", "r15")
     params = MvParameters.from_config()
-    assert (params.solver, params.variant_id) == ("sweep", "sw")
+    assert (params.max_stations_per_ring, params.variant_id) == (15, "r15")
 
 
 def test_snapshot_with_the_pandapower_types():
@@ -578,9 +581,9 @@ def test_lv_snapshot_has_no_mv_parameters():
 def test_compare_snapshots_with_the_mv_legacy_values(equipment):
     stored = json_round_trip(MvParameters().to_snapshot())
     assert compare_snapshots(stored, copy.deepcopy(stored), added_later=MV_ADDED_LATER) == ([], [])
-    changed = json_round_trip(MvParameters(stubs="none", hv_mv_sizes_mva=[40, 63]).to_snapshot())
+    changed = json_round_trip(MvParameters(max_stations_per_ring=15, hv_mv_sizes_mva=[40, 63]).to_snapshot())
     differences, _ = compare_snapshots(stored, changed, added_later=MV_ADDED_LATER)
-    assert differences == ["equipment.hv_mv_types", "equipment.hv_mv_types_10kv", "topology.stubs"]
+    assert differences == ["equipment.hv_mv_types", "equipment.hv_mv_types_10kv", "topology.max_stations_per_ring"]
     # a path added later: its legacy value matches, an unknown legacy value is only reported
     newer = copy.deepcopy(stored)
     newer["topology"]["new_rule"] = 3

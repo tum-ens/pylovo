@@ -118,13 +118,12 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
 
     rg = graph.build_run_graph(inp.edges, inp.nodes, long_connector_m=params.long_connector_m,
                                bridge_detour=params.bridge_detour, exit_radius_m=params.busbar_exit_radius_m,
-                               osm_cost_factor=params.osm_cost_factor)                   # §3.8
+                               osm_cost_factor=params.osm_line_cost_factor)              # §3.8
     terminals = topology.terminal_rows(inp)                                              # busbar first
     model = topology.distance_model(inp, rg, terminals)                                  # §4.2
     ev = rings.RingEvaluator.from_model(inp, model)                                      # §4.3
-    result = solvers.solve(params.solver, ev, model.dist_m, model.candidates, model.xy,
-                           rounds=params.local_search_rounds, neighbours=params.neighbours,
-                           time_guard_s=params.ls_time_guard_s)                          # §4.4
+    result = solvers.solve(ev, model.dist_m, model.candidates, rounds=params.local_search_rounds,
+                           neighbours=params.neighbours, time_guard_s=params.ls_time_guard_s)  # §4.4
     plan = topology.build_plan(inp, rg, model, ev, result.routes)                       # §4.5, §4.7
 
     repairs: list[dict] = []

@@ -504,8 +504,8 @@ def _client(answers):
 
 
 GRAPH_ID = "g0123456789abcdef"
-#: Parameters of a street graph without OSM MV lines (MV_OVERHEAD_LINES rural).
-STREETS = MvParameters().replace(overhead_lines="rural")
+#: Parameters of a graph build (the fake cursor has no OSM MV lines, so it holds the streets only).
+STREETS = MvParameters()
 BASE_ANSWERS = [
     (r"SELECT ST_SRID\(geom\)", [(25832,)]),
     (r"array_agg\(DISTINCT w\.ags", [(["09000001", "09000002"],)]),
@@ -576,7 +576,7 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
     assert summary["seams"] == 3 and summary["seconds"] >= 0
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
     assert insert["ags"] == ["09000001", "09000002"] and insert["excluded"] == ["Bundesautobahn"]
-    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse none"
+    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse none|osm_lines none"
     # without the OSM land-use table the settlement flags use address buildings only (empty mvg_lu)
     assert any(t.startswith("CREATE TEMP TABLE mvg_lu (geom geometry)") for t in texts)
     # seam repair before the final endpoint clustering, recorded in the build parameters
@@ -600,7 +600,7 @@ def test_settlement_flags_use_built_up_osm_landuse_when_present():
     graph_id = client.ensure_graph(b"\x01", STREETS)
     texts = [t for t, _ in client.cur.statements]
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
-    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107"
+    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107|osm_lines 0:0:"
     assert '"settlement_landuse": ["commercial", "industrial", "residential", "retail"]' in insert["params"]
     landuse, params = next((t, p) for t, p in client.cur.statements if "CREATE TEMP TABLE mvg_lu ON COMMIT DROP" in t)
     assert '"osm"."landuse_polygon"' in landuse and params["types"] == ["commercial", "industrial", "residential",
@@ -633,7 +633,8 @@ def test_osm_mv_lines_join_the_graph_at_crossings_branches_and_loose_ends(monkey
                         lambda cur, query, values, **kw: inserted.append((query, list(values))))
     client = _client(answers)
     graph_id = client.ensure_graph(b"\x01", MvParameters())
-    assert graph_id != _client(answers).ensure_graph(b"\x01", STREETS)
+    assert graph_id != _client(BASE_ANSWERS + answers[len(BASE_ANSWERS):]).ensure_graph(
+        b"\x01", MvParameters(osm_line_snap_m=50.0))                      # the snap distance is a build parameter
     texts = [t for t, _ in client.cur.statements]
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
     assert insert["fingerprint"].endswith("|osm_lines 1000:2500:99")

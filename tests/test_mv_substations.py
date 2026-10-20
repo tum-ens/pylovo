@@ -23,7 +23,6 @@ from pylovo.mv_grid.substations import (
     Site,
     aggregate,
     classify_candidate,
-    egon_sites,
     filter_candidates,
     match_egon,
     parse_voltages,
@@ -262,7 +261,7 @@ def test_select_osm_sites_filters_merges_and_reports():
 
 def test_select_osm_sites_fails_clearly_without_hv_mv_substations():
     params = MvParameters()
-    with pytest.raises(MvStageError, match=r"no HV/MV substations within 5 km .*MV_SUBSTATIONS=egon"):
+    with pytest.raises(MvStageError, match=r"no HV/MV substations within 5 km .*INFDB_OSM_SCHEMA"):
         select_osm_sites(frame(), params)
     with pytest.raises(MvStageError, match=r"none of the 1 OSM substations within 5 km .*no_hv 1"):
         select_osm_sites(frame(cand("way/1", voltage="20000")), params)
@@ -285,18 +284,6 @@ def test_each_site_gets_the_nearest_egon_substation_within_300_m():
     assert match_egon(_sites(), EGON, 300.0) == [(8, 200.0), (None, None), (10, 100.0), (7, 0.0)]
     assert match_egon(_sites(), EGON.iloc[0:0], 300.0) == [(None, None)] * 4
     assert match_egon([], EGON, 300.0) == []
-
-
-def test_egon_substations_become_sites():
-    sites = egon_sites(EGON)
-    assert [s.source_ids for s in sites] == [["egon/7"], ["egon/8"], ["egon/9"], ["egon/10"], ["egon/11"]]
-    first = sites[0]
-    assert (first.x, first.y, first.area_m2, first.footprint_wkb) == (10.0, 10.0, 0.0, None)
-    assert first.max_v == 110000 and first.mv_tagged and first.voltage_tag == "110000;20000"
-    assert sites[1].max_v == 110000 and not sites[1].mv_tagged and sites[1].voltage_tag == ""
-    assert all(site.source == "egon" for site in sites)
-    assert match_egon(sites, EGON, 300.0) == [(7, 0.0), (8, 0.0), (9, 0.0), (10, 0.0), (11, 0.0)]
-    assert egon_sites(EGON.iloc[0:0]) == []
 
 
 def test_sites_frame_has_the_substation_columns():
@@ -414,20 +401,17 @@ def _egon_responder(present: dict[str, bool], rows: list | None = None):
     return respond
 
 
-def test_egon_tables_prefer_filled_pylovo_tables_then_opendata(schemas):
-    both = {"pylovo.egon_hvmv_substation": True, "pylovo.egon_mv_grid_district": True,
-            "open_x.egon_hvmv_substation": True, "open_x.egon_mv_grid_district": True}
+def test_egon_table_prefers_the_filled_pylovo_table_then_opendata(schemas):
+    both = {"pylovo.egon_hvmv_substation": True, "open_x.egon_hvmv_substation": True}
     assert _client(_egon_responder(both)).egon_available() == (True, "pylovo")
-    empty_pylovo = {**both, "pylovo.egon_hvmv_substation": False, "pylovo.egon_mv_grid_district": False}
+    empty_pylovo = {**both, "pylovo.egon_hvmv_substation": False}
     assert _client(_egon_responder(empty_pylovo)).egon_available() == (True, "open_x")
-    mixed = {**both, "pylovo.egon_mv_grid_district": False}
-    assert _client(_egon_responder(mixed)).egon_available() == (True, "pylovo (substations), open_x (districts)")
-    ok, reason = _client(_egon_responder({"open_x.egon_hvmv_substation": True})).egon_available()
-    assert not ok and "egon_mv_grid_district" in reason and "populate the eGon-data tables" in reason
+    ok, reason = _client(_egon_responder({})).egon_available()
+    assert not ok and "egon_hvmv_substation" in reason and "populate the eGon-data table" in reason
 
 
 def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):
-    present = {"open_x.egon_hvmv_substation": True, "open_x.egon_mv_grid_district": True}
+    present = {"open_x.egon_hvmv_substation": True}
     rows = [(501, "NA", "w123", 10.0, 20.0), (502, "110000;20000", "NA", 30.0, 40.0)]
     client = _client(_egon_responder(present, rows))
     result = client.egon_substations(b"region", 5000)
@@ -438,16 +422,10 @@ def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):
     assert result["voltage"].tolist() == [None, "110000;20000"]
     assert result["osm_id"].tolist() == ["w123", None]
     assert result["bus_id"].dtype == np.int64
-    assert [s.max_v for s in egon_sites(result)] == [110000, 110000]
-
-    districts = _client(_egon_responder(present, [(501, memoryview(b"wkb"))])).egon_districts(b"region")
-    assert districts["geom_wkb"].tolist() == [b"wkb"] and tuple(districts.columns) == ("bus_id", "geom_wkb")
 
     missing = _client(_egon_responder({}))
     with pytest.raises(MvStageError, match="no eGon-data table egon_hvmv_substation"):
         missing.egon_substations(b"region", 5000)
-    with pytest.raises(MvStageError, match="egon_mv_grid_district"):
-        missing.egon_districts(b"region")
 
 
 def test_mastr_readers(schemas):

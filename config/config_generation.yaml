@@ -191,25 +191,11 @@ MV_VARIANT_COMMENT: default # Stored with a new MV variant
 MV_INCLUDE_GENERATION: false
 # MV nominal voltage in kV: auto (10 kV in districts whose installed capacity lies mostly in municipalities with at least 5 MVA/km² installed MV/LV capacity, constant mv_10kv_min_density_mva_km2, else 20 kV), 20 or 10; the stored LV station transformers are 20/0.4 kV
 MV_NOMINAL_VOLTAGE_KV: auto
-# HV/MV substations: osm (power=substation with 110 kV in current OSM) or egon (eGon-data HV/MV substations)
-MV_SUBSTATIONS: osm
-# Supply areas: routed (nearest substation along the streets), municipal (whole municipalities on their own substation, as Ding0) or egon (eGon MV grid districts, needs MV_SUBSTATIONS egon)
-MV_SUPPLY_AREAS: routed
-# Line routes: street (along streets and field paths) or crowfly (straight line x 1.3, as Ding0 2017)
-MV_ROUTING: street
-# Ring solver: savings (Clarke-Wright savings with local search) or sweep
-MV_RING_SOLVER: savings
 # Most ring members (stations, MV customers, looped generators) in one open ring; rural members count half (rural rings hold 40), stub stations do not count
 MV_MAX_STATIONS_PER_RING: 20
-# Stubs: rural (isolated rural stations and small rural loads off the ring hang on a T-off, at most 1 MVA; 4 km up to 0.5 MVA, 2 km at 1 MVA) or none (every station looped in)
-MV_STUBS: rural
-# Overhead lines: osm (only along the MV overhead lines mapped in OpenStreetMap, the rest is cable), rural (links between rural settlements are straight overhead spans) or none (cables only)
-MV_OVERHEAD_LINES: osm
-# Ties and links: ties (one normally-open tie per ring where a ring of a neighbouring HV/MV substation is within 2 km, and normally-open links between rings and from stub ends inside a supply area, 0.5 to 1 km by the settlement type of the PLZ) or none
-MV_INTERCONNECTION: ties
 # Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 at 10 or 20 kV)
 MV_STANDARD_CABLE: null
-# Overhead line type for MV_OVERHEAD_LINES osm or rural (null: 122-AL1/20-ST1A at 10 or 20 kV)
+# Overhead line type where a line runs on an MV overhead line of OpenStreetMap (null: 122-AL1/20-ST1A at 10 or 20 kV)
 MV_OVERHEAD_LINE: null
 # Planned current per ampacity of MV lines in normal operation; the (n-1) case may use 1.0
 MV_LINE_PLANNING_UTILIZATION: 0.6

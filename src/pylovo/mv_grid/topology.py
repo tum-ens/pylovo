@@ -3,9 +3,8 @@
 This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
 :class:`~pylovo.mv_grid.model.TopologyPlan` (DESIGN §4.2, §4.5, §4.7):
 
-1. **Rings** from the solver, each link routed along the run graph or as a straight span (:func:`distance_model`).
-   The busbar legs always follow the run graph: as cables, or with ``MV_OVERHEAD_LINES`` osm partly on OSM MV lines.
-2. **Rural stubs** (``MV_STUBS: rural``): a rural station or MV customer leaves its ring for a T-off when that saves
+1. **Rings** from the solver, each link routed along the run graph (:func:`distance_model`).
+2. **Rural stubs**: a rural station or MV customer leaves its ring for a T-off when that saves
    more ring length than the T-off costs (``saving > spur``, ``spur > stub_min_offset_m``), the stub tree stays
    within ``stub_max_kva`` and within the length of its load (``stub_max_length_m``, and load x length at most
    ``stub_max_kva_km``), and the shortened ring with the stub loads stays feasible.
@@ -22,9 +21,9 @@ This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
    ``loop_in_max_offset_m``, else a T-off from the nearest line.
 6. The **normally-open point** of every ring at its voltage balance, only at a switchgear node
    (:func:`pylovo.mv_grid.rings.check_ring` on explicit sections, joints included).
-7. **Geometries** along the run-graph pieces (street) or straight spans, and the line types. With
-   ``MV_OVERHEAD_LINES`` osm a line is an overhead line where its route runs on OSM MV lines and a cable elsewhere:
-   ``cable``, ``overhead`` or ``mixed`` (length-weighted r and x, the smaller ampacity).
+7. **Geometries** along the run-graph pieces (straight only for bridges and connectors), and the line types: a line
+   is an overhead line where its route runs on OSM MV lines and a cable elsewhere, ``cable``, ``overhead`` or
+   ``mixed`` (length-weighted r and x, the smaller ampacity).
 
 All length limits (``stub_max_length_m``, ``generator_max_tee_m``) hold for the true route length: with
 ``osm_line_cost_factor`` below 1, routes are chosen by their cost, but a stub, T-off or radial is accepted by its
@@ -119,30 +118,17 @@ def terminal_rows(inp: DistrictInput) -> np.ndarray:
 def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> DistanceModel:
     """Design distances and link kinds between the terminals of a district (DESIGN §4.2).
 
-    ``street_m`` comes from the run graph (``inf`` where unreachable), ``straight_m`` is Euclidean. A link is
-    *eligible* for an overhead line if ``MV_OVERHEAD_LINES`` is rural, its ends are not in the same settlement (two
-    open-field ends count as different) and neither end is urban: urban MV is cabled along the streets (Meinecke
-    2019: "in urban areas, only cables are used"), so a link into a town, e.g. a busbar exit from a substation at the
-    edge of town, never becomes a straight overhead span across it. With ``MV_ROUTING`` street, an eligible link is
-    an overhead line and takes the straight span (``overhead_detour`` × straight) where that is shorter than the
-    street path; with crowfly every link is a straight span of ``crowfly_detour`` × straight.
-
-    The **busbar legs** (links from or to the busbar) never become straight spans: with street routing they follow the
-    run graph, as cables in shared trenches rather than straight overhead spokes. With ``MV_OVERHEAD_LINES`` osm they
-    are treated like every other link, overhead where their route runs on OSM MV lines.
-
-    With ``MV_OVERHEAD_LINES`` osm (and street routing) there are no straight spans and no settlement rule: every link
-    follows the run graph, and its overhead length is the part of the route on OSM MV lines (``overhead_m``,
-    :func:`pylovo.mv_grid.graph.terminal_overhead`); ``overhead`` marks links that are mostly overhead. The OSM
-    lines cost ``osm_line_cost_factor`` times their length, so ``dist_m`` is a routing cost and ``length_m`` holds
-    the true lengths of the same routes.
+    Every link follows the run graph: ``street_m`` is its routing cost (``inf`` where unreachable) and the solvers'
+    ``dist_m``, ``length_m`` its true length and ``overhead_m`` the part of it on OSM MV lines
+    (:func:`pylovo.mv_grid.graph.terminal_overhead`); ``overhead`` marks links that are mostly overhead. The OSM
+    lines cost ``osm_line_cost_factor`` times their length, so the routes follow the existing corridors.
+    ``straight_m`` is Euclidean. The busbar legs follow the run graph like every other link: feeders leave HV/MV
+    substations in shared trenches, not as straight spokes.
 
     Ring candidates are the stations and the customers that are neither dedicated nor excluded, without the
-    **satellites** (``MV_STUBS: rural``): rural stations outside every settlement or alone in their settlement. They
-    are connected after the rings are solved (:func:`build_plan`). A district whose candidates would all be
-    satellites has none.
+    **satellites**: rural stations outside every settlement or alone in their settlement. They are connected after
+    the rings are solved (:func:`build_plan`). A district whose candidates would all be satellites has none.
     """
-    p = inp.params
     terminals = np.asarray(terminals, dtype=np.int64)
     nodes = inp.nodes
     xy = _numbers(nodes, ("x", "y"))[terminals]
@@ -150,49 +136,26 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
     street_m = _terminal_distances(rg, terminals)
     settlement = _settlement_ids(nodes)[terminals]
     urban = _flags(nodes["urban"])[terminals]
-    overhead_m = None
-    length_m = None
-    if p.osm_overhead:
-        overhead_m = terminal_overhead(rg, terminals)
-        length_m = terminal_lengths(rg, terminals)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            share = np.where(np.isfinite(length_m) & (length_m > 0), overhead_m / length_m, 0.0)
-        overhead = share > 0.5
-        straight = np.zeros_like(overhead)
-        dist = street_m.copy()
-    else:
-        same_settlement = (settlement[:, None] == settlement[None, :]) & (settlement[:, None] >= 0)
-        eligible = (p.overhead_lines == "rural") & ~same_settlement & ~(urban[:, None] | urban[None, :])
-        np.fill_diagonal(eligible, False)
-        overhead = eligible.copy()
-        if p.routing == "crowfly":
-            straight = np.ones_like(eligible)
-            dist = p.crowfly_detour * straight_m
-        else:
-            straight = eligible & (p.overhead_detour * straight_m < street_m)
-            dist = np.where(straight, p.overhead_detour * straight_m, street_m)
-        overhead[0, :] = overhead[:, 0] = False                 # busbar legs: cables
-        if p.routing != "crowfly":
-            straight[0, :] = straight[:, 0] = False             # ... along the run graph
-            dist[0, :] = street_m[0, :]
-            dist[:, 0] = street_m[:, 0]
+    overhead_m = terminal_overhead(rg, terminals)
+    length_m = terminal_lengths(rg, terminals)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        share = np.where(np.isfinite(length_m) & (length_m > 0), overhead_m / length_m, 0.0)
+    overhead = share > 0.5
+    dist = street_m.copy()
     np.fill_diagonal(overhead, False)
-    np.fill_diagonal(straight, False)
     np.fill_diagonal(dist, 0.0)
     kind = nodes["kind"].astype(str).to_numpy()[terminals]
     hint = nodes["connection_hint"].astype(str).to_numpy()[terminals]
     candidate = np.isin(kind, LOAD_KINDS) & ~np.isin(hint, ("dedicated", "excluded"))
     candidate[0] = False
-    satellite = np.zeros(len(terminals), dtype=bool)
-    if p.stubs == "rural":
-        counts = pd.Series(settlement[candidate & (settlement >= 0)]).value_counts()
-        alone = np.array([s < 0 or counts.get(int(s), 0) <= 1 for s in settlement], dtype=bool)
-        satellite = candidate & (kind == "station") & ~urban & alone
-        if not (candidate & ~satellite).any():
-            satellite[:] = False
+    counts = pd.Series(settlement[candidate & (settlement >= 0)]).value_counts()
+    alone = np.array([s < 0 or counts.get(int(s), 0) <= 1 for s in settlement], dtype=bool)
+    satellite = candidate & (kind == "station") & ~urban & alone
+    if not (candidate & ~satellite).any():
+        satellite[:] = False
     return DistanceModel(terminals=terminals, candidates=np.flatnonzero(candidate & ~satellite).astype(np.int64),
-                         dist_m=dist, street_m=street_m, straight_m=straight_m, overhead=overhead,
-                         straight=straight, xy=xy, satellite=satellite, overhead_m=overhead_m, length_m=length_m)
+                         dist_m=dist, street_m=street_m, straight_m=straight_m, overhead=overhead, xy=xy,
+                         satellite=satellite, overhead_m=overhead_m, length_m=length_m)
 
 
 # ============================================================================================ public: plan and repairs
@@ -311,9 +274,8 @@ def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, 
     dec.tees = [r for r in dec.tees if r not in generator_rows]
     candidates = np.array(sorted(ctx.t_of_row[r] for r in ring_rows), dtype=np.int64)
     capped = _CappedEvaluator(ev, cap, ctx)
-    result = _solvers().solve("savings", capped, model.dist_m, candidates, model.xy,
-                              rounds=ctx.p.local_search_rounds, neighbours=ctx.p.neighbours,
-                              time_guard_s=ctx.p.ls_time_guard_s)
+    result = _solvers().solve(capped, model.dist_m, candidates, rounds=ctx.p.local_search_rounds,
+                              neighbours=ctx.p.neighbours, time_guard_s=ctx.p.ls_time_guard_s)
     new_ids = []
     seen: set[int] = set()
     for route in result.routes:
@@ -470,7 +432,6 @@ class _Ctx:
         self.xy = _numbers(nodes, ("x", "y"))
         self.urban = _flags(nodes["urban"])
         self.cap_weight = member_weights(self.kind, self.urban, self.p.rural_ring_factor)
-        self.settlement = _settlement_ids(nodes)
         loads = np.isin(self.kind, LOAD_KINDS)
         self.inst = _numbers(nodes, INSTALLED_COLUMNS) * loads[:, None]
         self.units = _numbers(nodes, UNIT_COLUMNS) * loads[:, None]
@@ -488,10 +449,7 @@ class _Ctx:
         self.vn_kv = float(inp.vn_kv)
         self.cable = self.p.cable_at(self.vn_kv)            # the types of the district's nominal voltage
         self.overhead = self.p.overhead_at(self.vn_kv)
-        self.straight_detour = float(self.p.crowfly_detour if self.p.routing == "crowfly"
-                                     else self.p.overhead_detour)
-        self.osm = bool(self.p.osm_overhead)            # line kinds from the route pieces
-        self.costed = self.osm and self.p.osm_cost_factor != 1.0   # router distances are costs, not lengths
+        self.costed = self.p.osm_line_cost_factor != 1.0   # router distances are costs, not lengths
         self.limits = RingLimits(max_members=int(self.p.max_stations_per_ring),
                                  max_drop=self.p.max_drop_percent / 100.0,
                                  max_drop_n1=self.p.max_drop_n1_percent / 100.0,
@@ -509,7 +467,6 @@ class _Ctx:
         self.piece_bridge = np.zeros(size, dtype=bool)
         self.piece_overhead = np.zeros(size, dtype=bool)
         self.piece_length = np.zeros(size)
-        self.piece_settlement = np.full(size, -1, dtype=np.int64)
         if size:
             self.piece_edge[pid] = pd.to_numeric(pieces["edge_id"], errors="coerce").fillna(-1).astype(np.int64)
             self.piece_f0[pid] = pd.to_numeric(pieces["f0"], errors="coerce").fillna(0.0)
@@ -518,15 +475,7 @@ class _Ctx:
             if "overhead" in pieces:
                 self.piece_overhead[pid] = _flags(pieces["overhead"])
             self.piece_length[pid] = pd.to_numeric(pieces["length_m"], errors="coerce").fillna(0.0)
-            if "settlement_id" in pieces and "in_settlement" in pieces:
-                inside = _flags(pieces["in_settlement"])
-                ids = pd.to_numeric(pieces["settlement_id"], errors="coerce").fillna(-1).to_numpy().astype(np.int64)
-                self.piece_settlement[pid] = np.where(inside, ids, -1)
         self.pair_piece = rg.pair_piece
-        self.urban_settlement: dict[int, bool] = {}
-        for s, u in zip(self.settlement, self.urban):
-            if s >= 0:
-                self.urban_settlement[int(s)] = self.urban_settlement.get(int(s), False) or bool(u)
         self.router = _Router(rg.csr)
         self.geoms: dict[int, Any] = {}
 
@@ -814,9 +763,6 @@ def _decisions_from_plan(ctx: _Ctx, plan: TopologyPlan) -> _Decisions:
 
 def _decide_stubs(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None:
     """Step 2: rural stations and customers that leave their ring for a T-off (stub trees allowed)."""
-    p = ctx.p
-    if p.stubs != "rural":
-        return
     for struct in [s for s in dec.structs if s.ring_id in set(ring_ids) and s.kind == "ring"]:
         candidates = [r for r in struct.rows if ctx.kind[r] in LOAD_KINDS and not ctx.urban[r]]
         if len(struct.rows) < 2 or not candidates:
@@ -935,8 +881,6 @@ def _cheapest_insertion(ctx: _Ctx, dec: _Decisions, row: int) -> tuple[_Struct, 
 def _decide_radials(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None:
     """Step 3: small rural single-member rings near the busbar become busbar radials."""
     p = ctx.p
-    if p.stubs != "rural":
-        return
     for struct in dec.structs:
         if struct.ring_id not in set(ring_ids) or struct.kind != "ring" or len(struct.rows) != 1:
             continue
@@ -1031,19 +975,13 @@ class _Network:
         """The line between terminal rows ``a`` and ``b`` by the link rule of the distance model."""
         ctx = self.ctx
         ta, tb = ctx.t_of_row[a], ctx.t_of_row[b]
-        if ctx.model.straight[ta, tb]:
-            route = _span(ctx.xy[a], ctx.xy[b], ctx.straight_detour)
+        found = ctx.router.path(ctx.vertex[a], ctx.vertex[b], float(ctx.model.street_m[ta, tb]))
+        if found is None:
+            route = _span(ctx.xy[a], ctx.xy[b], ctx.p.bridge_detour)
+            self.flag(ctx.key(b), "no_street_path")
         else:
-            found = ctx.router.path(ctx.vertex[a], ctx.vertex[b], float(ctx.model.street_m[ta, tb]))
-            if found is None:
-                route = _span(ctx.xy[a], ctx.xy[b], ctx.p.bridge_detour)
-                self.flag(ctx.key(b), "no_street_path")
-            else:
-                route = _street(ctx, *found)
-        if ctx.osm:
-            kind = line_kind(_route_overhead_m(ctx, route), route.length)
-        else:
-            kind = "overhead" if ctx.model.overhead[ta, tb] else "cable"
+            route = _street(ctx, *found)
+        kind = line_kind(_route_overhead_m(ctx, route), route.length)
         return _Line(ctx.key(a), ctx.key(b), route, kind, role, ring_id)
 
     def add_structure(self, struct: _Struct) -> None:
@@ -1118,7 +1056,7 @@ class _Network:
         joint = self.new_joint(xy)
         self.node_ring[joint] = line.ring_id
         kinds = (line.kind, line.kind)
-        if self.ctx.osm and line.kind == "mixed":
+        if line.kind == "mixed":
             kinds = tuple(line_kind(_route_overhead_m(self.ctx, part), part.length) for part in (first, second))
         self.lines[i] = dataclasses.replace(line, b=joint, route=first, kind=kinds[0],
                                             exit="a" if line.exit == "a" else None)
@@ -1137,7 +1075,7 @@ class _Network:
                 self.tree_of[joint] = self.tree_of[line.b]
         return joint
 
-    def attach(self, row: int, att: _Attach, role: str, kind: str | None = None, straight: bool = False) -> None:
+    def attach(self, row: int, att: _Attach, role: str, kind: str | None = None) -> None:
         """Connect node ``row`` at the attachment point with a stub (``role`` stub) or T-off (``generator``)."""
         ctx = self.ctx
         line = self.lines[att.line]
@@ -1151,15 +1089,14 @@ class _Network:
         if anchor is None:
             anchor = self.split(att.line, att)
         anchor_xy = ctx.point(anchor, self) if anchor != ctx.busbar_key else ctx.xy[ctx.busbar_row]
-        if route.verts is not None and not straight:
+        if route.verts is not None:
             verts = att.path[::-1].copy()
             cum = att.cum[-1] - att.cum[::-1]
             new_route = _street(ctx, verts, cum)
         else:
-            detour = route.detour if route.verts is None else ctx.straight_detour
-            new_route = _span(anchor_xy, ctx.xy[row], detour)
+            new_route = _span(anchor_xy, ctx.xy[row], route.detour)
         new_kind = kind or line.kind
-        if ctx.osm and new_route.verts is not None:
+        if new_route.verts is not None:
             new_kind = line_kind(_route_overhead_m(ctx, new_route), new_route.length)
         self.add_line(_Line(anchor, key, new_route, new_kind, role, line.ring_id))
         self.parent[key] = anchor
@@ -1293,28 +1230,8 @@ class _Network:
         if line.route.verts is None:
             self.attach(row, att, "generator", kind=line.kind)
             return True
-        if ctx.osm:                                     # the kind follows the T-off's route
-            self.attach(row, att, "generator")
-            return True
-        kind = self._tee_kind(row, att)
-        straight = kind == "overhead" and ctx.straight_detour * float(np.hypot(*(ctx.xy[row] - att.foot))) < att.dist
-        self.attach(row, att, "generator", kind=kind, straight=straight)
+        self.attach(row, att, "generator")                # the kind follows the T-off's route
         return True
-
-    def _tee_kind(self, row: int, att: _Attach) -> str:
-        """Kind of a T-off by the overhead rule of :func:`distance_model` (the attachment's settlement and urban
-        flag from its street piece)."""
-        ctx = self.ctx
-        if ctx.p.overhead_lines != "rural":
-            return "cable"
-        verts = self.lines[att.line].route.verts
-        pos = att.pos
-        nb = pos - 1 if pos > 0 else min(pos + 1, len(verts) - 1)
-        piece = ctx.piece(int(verts[pos]), int(verts[nb])) if nb != pos else -1
-        settlement = int(ctx.piece_settlement[piece]) if piece >= 0 else -1
-        same = settlement >= 0 and settlement == ctx.settlement[row]
-        urban = bool(ctx.urban[row]) or ctx.urban_settlement.get(settlement, False)
-        return "cable" if same or urban else "overhead"
 
     def locate_link(self, i: int) -> tuple[_Struct, int]:
         """The ring of chain line ``i`` and the index in its rows where a node inserted on that line goes."""

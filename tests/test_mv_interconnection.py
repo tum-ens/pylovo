@@ -21,8 +21,8 @@ from pylovo.mv_grid import metrics, stage
 from pylovo.mv_grid.model import EdgeSet, links_line
 from pylovo.mv_grid.parameters import MvParameters
 
-#: Ties with the straight-span rule of MV_OVERHEAD_LINES rural (the osm rule: test_osm_ties_are_overhead_on_osm_lines).
-PARAMS = MvParameters(variant_id="y0", interconnection="ties", overhead_lines="rural")
+#: Ties along the routing graph, overhead where they run on OSM MV lines (test_osm_ties_are_overhead_on_osm_lines).
+PARAMS = MvParameters(variant_id="y0")
 
 
 # ---------------------------------------------------------------------------------------------- synthetic inputs
@@ -260,7 +260,7 @@ def test_ties_are_deterministic():
     assert pairs_of(first) == [(11, 31), (12, 21), (22, 32)]
 
 
-def test_kind_and_route_follow_the_link_rule():
+def test_ties_follow_the_streets_as_cables_without_osm_lines():
     grids = grids_frame((1, 20.0), (2, 20.0))
     # a detour street: up 400 m, along 1,000 m, down 400 m (1.8 km) between points 1 km apart
     vid = np.array([1, 2, 3, 4])
@@ -270,19 +270,10 @@ def test_kind_and_route_follow_the_link_rule():
                      settlement_id=np.full(3, -1), vertex_id=vid, vertex_xy=xy)
     a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
     b = node(21, 2, 0, 1000.0, y=0.0, edge=3, fraction=1.0)
-    rural = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS).iloc[0]
-    assert rural["kind"] == "overhead" and rural["straight"]                  # 1.1 x 1,000 m < 1,800 m
-    assert rural["length_m"] == pytest.approx(1100.0) and rural["overhead_m"] == pytest.approx(1100.0)
-    assert rural["std_type"] == PARAMS.overhead.name and rural["geometry"].length == pytest.approx(1000.0)
-    urban = ic.plan_ties(nodes_frame(a, {**b, "area_class": "urban"}), grids, detour, PARAMS).iloc[0]
-    assert urban["kind"] == "cable" and not urban["straight"] and urban["length_m"] == pytest.approx(1800.0)
-    assert urban["std_type"] == PARAMS.cable.name and urban["geometry"].length == pytest.approx(1800.0)
-    same = ic.plan_ties(nodes_frame({**a, "settlement_id": 7}, {**b, "settlement_id": 7}), grids, detour, PARAMS)
-    assert same.iloc[0]["kind"] == "cable"
-    cables = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS.replace(overhead_lines="none")).iloc[0]
-    assert cables["kind"] == "cable" and cables["length_m"] == pytest.approx(1800.0)
-    crowfly = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS.replace(routing="crowfly")).iloc[0]
-    assert crowfly["straight"] and crowfly["length_m"] == pytest.approx(PARAMS.crowfly_detour * 1000.0)
+    tie = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS).iloc[0]
+    assert tie["kind"] == "cable" and not tie["straight"] and tie["length_m"] == pytest.approx(1800.0)
+    assert tie["std_type"] == PARAMS.cable.name and tie["geometry"].length == pytest.approx(1800.0)
+    assert tie["straight_m"] == pytest.approx(1000.0) and tie["overhead_m"] == 0.0
 
 
 def test_osm_ties_are_overhead_on_osm_lines():
@@ -295,7 +286,7 @@ def test_osm_ties_are_overhead_on_osm_lines():
                      overhead=np.array([False, True, False]))                 # the middle edge is an OSM MV line
     a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
     b = node(21, 2, 0, 1000.0, y=0.0, edge=3, fraction=1.0)
-    osm = PARAMS.replace(overhead_lines="osm")
+    osm = PARAMS
     tie = ic.plan_ties(nodes_frame(a, b), grids, detour, osm).iloc[0]
     assert tie["kind"] == "mixed" and not tie["straight"] and tie["length_m"] == pytest.approx(1800.0)
     assert tie["overhead_m"] == pytest.approx(1000.0) and tie["cable_m"] == pytest.approx(800.0)
@@ -314,7 +305,7 @@ def test_the_limit_applies_to_the_true_length_on_osm_lines():
                        overhead=np.array([False, True, False]))               # the middle edge is an OSM MV line
     a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
     b = node(21, 2, 0, 1600.0, y=0.0, edge=3, fraction=1.0)
-    osm = PARAMS.replace(overhead_lines="osm")
+    osm = PARAMS
     # 2,400 m long, but only 1,920 m in costs at the OSM factor of 0.7: beyond the 2 km limit
     assert ic.plan_ties(nodes_frame(a, b), grids, corridor, osm).empty
     tie = ic.plan_ties(nodes_frame(a, b), grids, corridor, osm.replace(tie_max_length_m=2500.0)).iloc[0]
@@ -407,15 +398,12 @@ def test_takeover_of_the_half_ring_through_the_tie():
 
 
 def test_ties_take_the_line_types_of_their_districts_voltage(monkeypatch):
-    """MV_NOMINAL_VOLTAGE_KV auto: a tie between two 10 kV districts is a 10 kV cable or overhead line, and its
-    takeover check uses that type."""
+    """MV_NOMINAL_VOLTAGE_KV auto: a tie between two 10 kV districts is a 10 kV cable, and its takeover check uses
+    that type."""
     assert PARAMS.auto_voltage
     grids = grids_frame((1, 10.0), (2, 10.0))
-    rural = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 1800.0)), grids, LINE, PARAMS)
-    assert rural.loc[0, "kind"] == "overhead" and rural.loc[0, "std_type"] == "122-AL1/20-ST1A 10.0"
-    urban = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0, area="urban"), node(21, 2, 0, 1800.0)), grids, LINE,
-                         PARAMS)
-    assert urban.loc[0, "std_type"] == PARAMS.cable_at(10.0).name == "NA2XS2Y 1x240 RM/25 6/10 kV"
+    ten = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0), node(21, 2, 0, 1800.0)), grids, LINE, PARAMS)
+    assert ten.loc[0, "std_type"] == PARAMS.cable_at(10.0).name == "NA2XS2Y 1x240 RM/25 6/10 kV"
     twenty = ic.plan_ties(nodes_frame(node(11, 1, 0, 1000.0, area="urban"), node(21, 2, 0, 1800.0)),
                           grids_frame((1, 20.0), (2, 20.0)), LINE, PARAMS)
     assert twenty.loc[0, "std_type"] == PARAMS.cable_at(20.0).name
@@ -724,7 +712,7 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
     seen = []
 
     def fake_ties(dbc, version_id, variant_id, graph_id, params, logger=None):
-        seen.append((version_id, variant_id, graph_id, params.interconnection))
+        seen.append((version_id, variant_id, graph_id))
         return {"n_ties": 3, "tie_km": 2.5, "tie_max_length_m": 2000.0}
 
     monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
@@ -736,7 +724,7 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
         "n_links": 4, "link_km": 1.2, "n_rings": 6, "n_rings_with_link": 4, "node_share_with_link": 0.1,
         "n_ring_pairs_closed": 1, "link_max_length_m": 500.0})
     summary = stage.run_mv_stage("mv1", [1], PARAMS, log_file=str(tmp_path / "log.txt"))
-    assert seen == [("mv1", "y0", "g1", "ties")] and summary.status == "done"
+    assert seen == [("mv1", "y0", "g1")] and summary.status == "done"
     assert summary.to_dict()["links"]["n_links"] == 4
     assert ("✓ Links: 4 normally-open links between rings, 1.2 km, 4 of 6 rings, 10 % of the supply points with a "
             "third cable, 1 ring pairs joined twice") in summary.describe()
@@ -744,11 +732,6 @@ def test_the_stage_stores_the_tie_summary(monkeypatch, tmp_path):
     assert len(finish) == 1 and finish[0][1][2] is summary                      # mv_variant.summary['ties']
     assert summary.to_dict()["ties"] == {"n_ties": 3, "tie_km": 2.5, "tie_max_length_m": 2000.0}
     assert "✓ Ties: 3 normally-open ties, 2.5 km" in summary.describe()
-    db = StageDb()
-    monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
-    plain = stage.run_mv_stage("mv1", [1], PARAMS.replace(interconnection="none"), log_file=str(tmp_path / "log.txt"))
-    assert plain.ties == {} and "Ties" not in plain.describe()                   # no ties without the switch
-    assert plain.links == {} and "Links" not in plain.describe()
 
 
 # ---------------------------------------------------------------------------------------------- metrics
