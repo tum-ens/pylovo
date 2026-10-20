@@ -31,7 +31,7 @@ class Settings:
     port: int
     password: str = field(repr=False)
     target_epsg: int = 25832
-    source_schema: str = "pylovo_input"
+    source_schema: str = "basedata"
     opendata_schema: str = "opendata"
     osm_schema: str = "osm"
     env_file: str | None = None
@@ -75,7 +75,7 @@ def load_settings(env_file: Path | None) -> Settings:
     missing = [key for key in REQUIRED if not get(key)]
     if missing:
         raise SettingsError(f"{', '.join(missing)} missing in {env_file or 'the environment (no .env found)'}")
-    schemas = {"source_schema": get("INFDB_SOURCE_SCHEMA", "pylovo_input"),
+    schemas = {"source_schema": get("INFDB_SOURCE_SCHEMA", "basedata"),
                "opendata_schema": get("INFDB_OPENDATA_SCHEMA", "opendata"),
                "osm_schema": get("INFDB_OSM_SCHEMA", "osm")}
     for name, value in schemas.items():
