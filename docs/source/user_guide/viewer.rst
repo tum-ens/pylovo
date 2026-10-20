@@ -138,7 +138,7 @@ reason, so one viewer works with any pylovo database.
    * -
      - OSM MV lines (off by default)
      - The MV overhead lines mapped in OpenStreetMap as corridors of the run's routing graph
-       (``pylovo.mv_graph_edge``, ``MV_OVERHEAD_LINES: osm``).
+       (``pylovo.mv_graph_edge``).
    * - MV and LV grids
      - MV/LV substations
      - ``pylovo.grid_result`` and ``transformer_positions``, with the MV ring and voltage of the

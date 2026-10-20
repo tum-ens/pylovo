@@ -197,8 +197,8 @@ def build_layers() -> list[Layer]:
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts")),
         Layer("mv_osm_lines", "mv", "OSM MV lines",
-              "The MV overhead lines mapped in OpenStreetMap, as corridors in the routing graph of the run "
-              "(MV_OVERHEAD_LINES osm): an MV line is an overhead line where it runs on them, else a cable.",
+              "The MV overhead lines mapped in OpenStreetMap, as corridors in the routing graph of the run: "
+              "an MV line is an overhead line where it runs on them, else a cable.",
               "line", "run", "pylovo.mv_graph_edge",
               sql=f"""SELECT e.edge_id AS fid, e.src_id AS osm_way, e.objektart AS osm_type,
                              {num("e.length_m / 1000", 3)} AS length_km, {geo("ST_Simplify(e.geom, 2)")} AS geometry
