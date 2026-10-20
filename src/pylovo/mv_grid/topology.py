@@ -950,9 +950,14 @@ def _decide_radials(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None
 
 
 def _decide_generators(ctx: _Ctx, dec: _Decisions, rows: Sequence[int]) -> None:
-    """Step 5: dedicated feeder, loop-in or T-off for each generator row, in decreasing power."""
+    """Step 5: dedicated feeder, loop-in or T-off for each generator row, in decreasing power.
+
+    Skip laying out the current plan when there are no generators; load-only districts have nothing to add here.
+    """
     p = ctx.p
     order = sorted({int(r) for r in rows}, key=lambda r: (-ctx.gen_kw[r], ctx.key(r)))
+    if not order:
+        return
     net = _layout(ctx, dec)
     for row in order:
         if ctx.hint[row] == "dedicated" or ctx.gen_kw[row] > p.dedicated_feeder_kw:
@@ -1185,13 +1190,14 @@ class _Network:
                 tree = ctx.router.tree(int(ctx.vertex[row]), limit)    # costs never exceed true lengths
                 dist = tree.distance(verts)
                 ok = np.isfinite(dist) & (dist <= limit)
-                sure = limit * min(1.0, float(ctx.p.osm_cost_factor)) if ctx.costed else limit
                 sel = np.flatnonzero(ok)
                 for j in sel[np.lexsort((pos[sel], owner[sel], dist[sel]))]:
                     target = int(verts[j])
                     path = tree.path(target)
                     cum = tree.distance(path)
-                    length = float(dist[j]) if dist[j] <= sure else _street(ctx, path, cum).length
+                    # The length also enters the accumulated stub-tree depth below;
+                    # a safe individual cost bound cannot replace the true length.
+                    length = _street(ctx, path, cum).length if ctx.costed else float(dist[j])
                     if length <= limit:
                         best = _Attach(float(dist[j]), int(owner[j]), int(pos[j]), ctx.vertex_xy[target].copy(),
                                        -1.0, path, cum, length)

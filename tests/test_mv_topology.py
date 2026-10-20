@@ -724,6 +724,23 @@ def test_stub_tree_load_limit_sends_the_second_stub_to_the_ring():
     assert (2000.0, -200.0) not in [tuple(xy) for xy in plan.joints.values()]
 
 
+@pytest.mark.parametrize("cost_factor", [0.7, 1.0])
+def test_discounted_stub_extension_keeps_the_true_tree_depth(cost_factor):
+    """A 600 m extension of a 1.5 km stub exceeds 2 km, even when its routing cost is only 420 m."""
+    d = loop_district(side_m=None)
+    d.street((2000, 0), (2000, -1500), (2000, -2100), settlement=1, overhead=True)
+    d.node(21, "station", 2000, -1500, settlement=1)
+    d.node(22, "station", 2000, -2100, settlement=1)
+    inp, rg = d.build(overhead_lines="osm", osm_line_cost_factor=cost_factor, stub_max_length_m=2000.0)
+    model = topology.distance_model(inp, rg, topology.terminal_rows(inp))
+    ctx = topology._context(inp, rg, model)
+    net = topology._Network(ctx)
+    net.add_structure(topology._Struct(0, "ring", [ctx.row_of_key[k] for k in (10, 30, 40, 50)]))
+    assert net.add_stub(ctx.row_of_key[21], 0, enforce=True)
+    assert net.depth[21] == pytest.approx(1500.0)
+    assert net.stub_attachment(ctx.row_of_key[22], 0) is None
+
+
 # ============================================================================================ radials, dedicated
 def radial_district() -> District:
     d = District()

@@ -40,7 +40,9 @@ import yaml
 #: counts as HV (OSM substation filter).
 #: 11: ``MV_NOMINAL_VOLTAGE_KV`` auto by municipality: a district gets 10 kV when most of its installed capacity lies in
 #: municipalities of at least ``mv_10kv_min_density_mva_km2`` (now 5 MVA/km²), not by its own cell.
-MV_STAGE_VERSION: int = 11
+#: 12: a stub tree takes the true street length of each extension into its depth, also where the OSM-discounted
+#: routing cost would already have been within the limit.
+MV_STAGE_VERSION: int = 12
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
