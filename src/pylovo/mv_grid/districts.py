@@ -1,6 +1,6 @@
 """Supply areas of the HV/MV substations (pure: numpy, pandas, SciPy and shapely; no database or configuration).
 
-DESIGN §4.1. :func:`routed_assignment` gives every MV node (station, customer, generator) to the HV/MV substation
+DESIGN §4.1. :func:`routed_assignment` gives every MV node (station, customer) to the HV/MV substation
 (site) nearest along the regional street graph, a graph Voronoi (:func:`pylovo.mv_grid.graph.weighted_owner` with
 zero weights). Cells are contiguous along shortest paths. The sites above their (n-1) capacity are reported (flag
 ``over_capacity``) and keep their load: the sizing gives such a site more transformer units. Nodes without a street
@@ -8,7 +8,7 @@ path to any site go to the Euclidean nearest site and are reported as ``bridged`
 
 The load of a site is the coincident load of its loads (pylovo's category law on the summed statistics of its
 stations plus the fixed loads of its customers, :mod:`pylovo.mv_grid.coincidence`) divided by the power factor;
-generators and excluded nodes (HV customers) do not count.
+excluded nodes (HV customers) do not count.
 
 **Nominal voltage per district** (``MV_NOMINAL_VOLTAGE_KV`` auto, decision of 2026-10-15): after the supply areas
 are formed, :func:`installed_density` gives each district its installed MV/LV capacity per km² of its area, and
@@ -20,7 +20,7 @@ from __future__ import annotations
 import importlib
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -365,7 +365,7 @@ def routed_assignment(csr, vertex_index: dict[int, int], edge_len: Mapping[int, 
 
     A site reaches a node through the ends of the node's attach edge (``dist[end] + part of the edge + offset``)
     or, when both lie on the same edge, directly along it. The sites whose coincident load (see
-    :func:`site_loads_mva`) exceeds ``capacity_mva`` are reported. Generators and nodes with
+    :func:`site_loads_mva`) exceeds ``capacity_mva`` are reported. Nodes with
     ``connection_hint == 'excluded'`` are assigned but do not count for the capacity.
 
     Args:
@@ -406,8 +406,7 @@ def installed_density(nodes: pd.DataFrame, areas_km2: Mapping[int, float]) -> pd
     by the district's area: the station ratings of the MV model (``sn_kva``; a station overloaded by its
     station-busbar customers carries its upsized rating, and those customers count through it), the corrected own
     peak of a customer is its ``installed_kw`` after the hall rule (pylovo's law gives factor 1 for one building)
-    over :data:`DENSITY_CUSTOMER_COS_PHI`. HV customers (``connection_hint`` excluded) and generators do not
-    count. The area is the district's Voronoi cell clipped to the planning region (``mv_grid.area_km2``), so the
+    over :data:`DENSITY_CUSTOMER_COS_PHI`. HV customers (``connection_hint`` excluded) do not count. The area is the district's Voronoi cell clipped to the planning region (``mv_grid.area_km2``), so the
     areas of all districts add up to the region.
 
     Args:
@@ -461,7 +460,7 @@ MUNICIPAL_DENSITY_COLUMNS: tuple[str, ...] = ("installed_mva", "area_km2", "dens
 def node_installed_kva(nodes: pd.DataFrame) -> pd.Series:
     """The installed MV/LV capacity of every node as :func:`installed_density` counts it (kVA): a station its
     rating ``sn_kva``, an MV customer its corrected own peak ``installed_kw`` over :data:`DENSITY_CUSTOMER_COS_PHI`;
-    HV customers (``connection_hint`` excluded), generators and other kinds 0."""
+    HV customers (``connection_hint`` excluded) and other kinds 0."""
     frame = pd.DataFrame(nodes)
     kind = frame["kind"].astype(object) if "kind" in frame.columns else pd.Series(None, index=frame.index)
     hint = frame["connection_hint"].astype(object) if "connection_hint" in frame.columns \

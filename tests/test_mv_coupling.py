@@ -117,14 +117,12 @@ def _row(kind: str, x: float, y: float, **values) -> dict:
 
 
 def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], *, params: MvParameters | None = None,
-                  spacing: float = 700.0, generation: dict[int, dict[str, float]] | None = None,
-                  vn_kv: float | None = None) -> tuple[DistrictInput, TopologyPlan]:
+                  spacing: float = 700.0, vn_kv: float | None = None) -> tuple[DistrictInput, TopologyPlan]:
     """Hairpin open rings from the busbar over the stations of ``lv_nets`` (lists of grid_result_ids per ring);
     station node key = grid_result_id + 100, statistics and LV requirement from the LV nets. The district has the
     nominal voltage ``vn_kv`` (default: the base voltage of ``params``) and its cable type."""
-    params = params or MvParameters(include_generation=True)
+    params = params or MvParameters()
     cable = params.cable_at(vn_kv or params.base_kv)
-    generation = generation or {}
     rows = {BUSBAR: _row("busbar", X0, Y0)}
     lines: list[LinePlan] = []
     plans: list[RingPlan] = []
@@ -138,14 +136,11 @@ def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], 
             step = i + 1 if i < half else k - i
             p = np.array([X0, Y0]) + d * spacing * step + n * (60.0 if i < half else -60.0)
             net = lv_nets[gid]
-            gen = generation.get(gid, {})
             key = gid + 100
             vm = net.res_bus["vm_pu"]
             rows[key] = _row("station", p[0], p[1], **lv_stats(net), sn_kva=400.0, grid_result_id=float(gid),
                              lv_design_source_vm_pu=float(net.ext_grid.at[0, "vm_pu"]),
-                             lv_max_drop_pu=float(vm.iloc[0] - vm.drop(index=1).min()),
-                             gen_solar_kw=gen.get("solar", 0.0), gen_wind_kw=gen.get("wind", 0.0),
-                             gen_other_kw=gen.get("other", 0.0), gen_level="lv" if gen else "")
+                             lv_max_drop_pu=float(vm.iloc[0] - vm.drop(index=1).min()))
             members.append(key)
         m = max(half, 1)
         sequence = [BUSBAR, *members, BUSBAR]
@@ -184,7 +179,6 @@ def planned(inp: DistrictInput, plan: TopologyPlan):
 
 def station_rows(inp: DistrictInput, cases, budgets) -> pd.DataFrame:
     """The mv_node rows of the stations as the coupling reads them (read_mv_layers 'nodes')."""
-    feed = pd.concat([cases[c].vm_pu for c in electrical.FEED_IN_CASES], axis=1).max(axis=1)
     rows = []
     for key, node in inp.nodes.iterrows():
         if node["kind"] != "station":
@@ -192,12 +186,9 @@ def station_rows(inp: DistrictInput, cases, budgets) -> pd.DataFrame:
         budget = budgets.get(int(key))
         rows.append({"mv_node_id": int(key), "kind": "station", "mv_grid_id": inp.mv_grid_id,
                      "grid_result_id": node["grid_result_id"], "vm_load_pu": cases["load"].vm_pu[key],
-                     "vm_feed_in_pu": feed[key], "mv_lv_tap_pos": budget.tap_pos if budget else math.nan,
-                     "gen_solar_kw": node["gen_solar_kw"], "gen_wind_kw": node["gen_wind_kw"],
-                     "gen_other_kw": node["gen_other_kw"],
+                     "mv_lv_tap_pos": budget.tap_pos if budget else math.nan,
                      "lv_busbar_vm_pu": budget.lv_busbar_vm_pu if budget else math.nan,
-                     "lv_min_vm_pu": budget.lv_min_vm_pu if budget else math.nan,
-                     "lv_busbar_vm_feed_in_pu": budget.lv_busbar_vm_feed_in_pu if budget else math.nan})
+                     "lv_min_vm_pu": budget.lv_min_vm_pu if budget else math.nan})
     return pd.DataFrame(rows)
 
 
@@ -208,9 +199,9 @@ def frames_for(stored: pp.pandapowerNet, lv_nets: dict[int, pp.pandapowerNet]) -
 
 @pytest.fixture(scope="module")
 def small():
-    """Two rings of three stations, one with LV-side PV."""
+    """Two rings of three stations."""
     lv_nets = {gid: make_lv_net(gid, households=30 + 5 * gid, commercial_kw=60.0 + 10 * gid) for gid in range(1, 7)}
-    inp, plan = make_district(lv_nets, [[1, 2, 3], [4, 5, 6]], generation={2: {"solar": 250.0}})
+    inp, plan = make_district(lv_nets, [[1, 2, 3], [4, 5, 6]])
     design, cases, budgets, stored = planned(inp, plan)
     return lv_nets, inp, plan, design, cases, budgets, stored
 
@@ -237,67 +228,41 @@ def test_station_buses_needs_one_transformer():
 
 def test_design_point_check_matches_the_analytic_budget(small):
     lv_nets, inp, plan, design, cases, budgets, stored = small
-    params = inp.params
-    feed = pd.concat([cases[c].vm_pu for c in electrical.FEED_IN_CASES], axis=1).max(axis=1)
-    band = params.busbar_band_pu
+    band = inp.params.busbar_band_pu
     for gid, net in lv_nets.items():
         key = gid + 100
         budget = budgets[key]
         state = (float(net.ext_grid.at[0, "vm_pu"]), float(net.trafo.at[0, "tap_pos"]), net.load["p_mw"].copy())
-        gen = {"solar": inp.nodes.at[key, "gen_solar_kw"]}
-        check = coupling.design_point_check(net, cases["load"].vm_pu[key] - band, feed[key] + band, budget.tap_pos,
-                                            gen, params)
-        assert check["design_converged"] == 1.0 and check["feed_in_converged"] == 1.0
+        check = coupling.design_point_check(net, cases["load"].vm_pu[key] - band, budget.tap_pos)
+        assert set(check) == {"coupled_lv_busbar_vm_pu", "coupled_lv_min_vm_pu", "design_converged"}
+        assert check["design_converged"] == 1.0
         # the analytic budget (superposition) and the LV power flow agree at the design point
         assert check["coupled_lv_busbar_vm_pu"] == pytest.approx(budget.lv_busbar_vm_pu, abs=0.002)
-        assert check["coupled_lv_busbar_vm_feed_in_pu"] == pytest.approx(budget.lv_busbar_vm_feed_in_pu, abs=0.003)
         assert check["coupled_lv_min_vm_pu"] <= check["coupled_lv_busbar_vm_pu"]
-        assert check["coupled_lv_max_vm_pu"] >= check["coupled_lv_busbar_vm_feed_in_pu"] - 1e-12
         # the stored LV net is not changed
         assert (float(net.ext_grid.at[0, "vm_pu"]), float(net.trafo.at[0, "tap_pos"])) == state[:2]
         assert net.load["p_mw"].equals(state[2]) and not len(net.sgen)
-    # PV raises the LV busbar in feed-in above the station without PV
-    assert budgets[102].lv_busbar_vm_feed_in_pu > budgets[101].lv_busbar_vm_feed_in_pu
 
 
-def test_design_point_check_tap_and_generation_rules():
+def test_design_point_check_tap_rules():
     net = make_lv_net(3)
-    params = MvParameters(include_generation=True)
     r = float(net.ext_grid.at[0, "vm_pu"])
-    neutral = coupling.design_point_check(net, r, math.nan, 0, 0.0, params)
+    neutral = coupling.design_point_check(net, r, 0)
     assert neutral["coupled_lv_busbar_vm_pu"] == pytest.approx(0.96, abs=1e-5)       # the stored requirement
-    assert math.isnan(neutral["coupled_lv_busbar_vm_feed_in_pu"]) and math.isnan(neutral["feed_in_converged"])
-    raised = coupling.design_point_check(net, r, math.nan, -1, 0.0, params)
+    raised = coupling.design_point_check(net, r, -1)
     assert raised["coupled_lv_busbar_vm_pu"] - 0.96 == pytest.approx(r / (1 - 0.025) - r, abs=0.002)
-    # a number is solar; a mapping gives kW per technology group (wind uses the wind factor of each case)
-    solar = coupling.design_point_check(net, math.nan, 1.03, 0, 200.0, params)
-    as_map = coupling.design_point_check(net, math.nan, 1.03, 0, {"solar": 200.0}, params)
-    wind = coupling.design_point_check(net, math.nan, 1.03, 0, {"wind": 200.0}, params)
-    assert solar["coupled_lv_busbar_vm_feed_in_pu"] == pytest.approx(as_map["coupled_lv_busbar_vm_feed_in_pu"])
-    assert wind["coupled_lv_busbar_vm_feed_in_pu"] > solar["coupled_lv_busbar_vm_feed_in_pu"]   # 1.0 > 0.95
-    assert math.isnan(solar["coupled_lv_busbar_vm_pu"])
-    with pytest.raises(ValueError, match="unknown technology groups"):
-        coupling.design_point_check(net, 1.0, 1.0, 0, {"hydro": 1.0}, params)
+    skipped = coupling.design_point_check(net, math.nan, 0)                          # no MV voltage: skipped
+    assert all(math.isnan(value) for value in skipped.values())
 
 
-def test_design_point_check_with_an_under_excited_lv_generator():
-    net = make_lv_net(4)
-    unity = coupling.design_point_check(net, math.nan, 1.03, 0, 300.0, MvParameters(include_generation=True))
-    pv95 = coupling.design_point_check(net, math.nan, 1.03, 0, 300.0,
-                                      MvParameters(include_generation=True, lv_pv_cos_phi=0.95))
-    assert pv95["coupled_lv_busbar_vm_feed_in_pu"] < unity["coupled_lv_busbar_vm_feed_in_pu"]
-
-
-def test_design_point_check_includes_fixed_busbar_customers_in_both_cases():
+def test_design_point_check_includes_fixed_busbar_customers():
     net = make_lv_net(4)
     original_load = net.load.copy(deep=True)
-    params = MvParameters(include_generation=True)
     customers = {"Commercial": 120.0, "Public": 80.0}
-    plain = coupling.design_point_check(net, 1.0, 1.03, 0, 0.0, params)
-    checked = coupling.design_point_check(net, 1.0, 1.03, 0, 0.0, params,
-                                          busbar_loads=customers, power_factor=0.95)
+    plain = coupling.design_point_check(net, 1.0, 0)
+    checked = coupling.design_point_check(net, 1.0, 0, busbar_loads=customers, power_factor=0.95)
 
-    # Independent power flows verify the customer Q, fixed load scaling, and feed-in P/Q factors.
+    # An independent power flow verifies the customer Q and the fixed load scaling.
     manual = copy.deepcopy(net)
     busbar = int(manual.trafo.at[manual.trafo.index[0], "lv_bus"])
     pp.create_load(manual, busbar, p_mw=0.12, q_mvar=0.12 * TAN, scaling=1.0)
@@ -306,18 +271,6 @@ def test_design_point_check_includes_fixed_busbar_customers_in_both_cases():
     pp.runpp(manual, init="auto")
     assert checked["coupled_lv_busbar_vm_pu"] == pytest.approx(manual.res_bus.at[busbar, "vm_pu"])
     assert checked["coupled_lv_busbar_vm_pu"] < plain["coupled_lv_busbar_vm_pu"]
-
-    feed_vm = []
-    for case in electrical.FEED_IN_CASES:
-        factors = params.feed_in_cases[case]
-        current = copy.deepcopy(manual)
-        current.ext_grid["vm_pu"] = 1.03
-        current.load["p_mw"] *= factors["load_p"]
-        current.load["q_mvar"] *= factors["load_q"]
-        pp.runpp(current, init="auto")
-        feed_vm.append(float(current.res_bus.at[busbar, "vm_pu"]))
-    assert checked["coupled_lv_busbar_vm_feed_in_pu"] == pytest.approx(max(feed_vm))
-    assert checked["coupled_lv_busbar_vm_feed_in_pu"] < plain["coupled_lv_busbar_vm_feed_in_pu"]
     pd.testing.assert_frame_equal(net.load, original_load)
 
 
@@ -347,10 +300,6 @@ def test_couple_fuses_the_lv_nets_at_their_mv_nodes(small):
     assert len(net.load) == sum(len(n.load) for n in lv_nets.values())
     assert net.bus.loc[stored.bus.index.drop(stored.bus.index[stored.bus["kind"] == "hv_busbar"]), "name"].equals(
         stored.bus.loc[net.bus.index[net.bus["kind"] != "lv"], "name"])
-    # the LV-side generation of station 2 moved to its LV busbar
-    sgen = net.sgen[net.sgen["level"] == "lv"]
-    assert len(sgen) == 1 and net.bus.at[int(sgen["bus"].iloc[0]), "name"] == "LVbus 1"
-    assert net.bus.at[int(sgen["bus"].iloc[0]), "grid_result_id"] == 2.0
     # dtypes and indices
     for table in ("bus", "line", "trafo", "load"):
         assert net[table].index.is_unique and net[table].index.dtype == np.int64
@@ -422,7 +371,6 @@ def test_fuse_equals_a_closed_bus_switch(small):
         pp.create_transformer(switched, lookup[int(trafo.hv_bus)], lookup[int(trafo.lv_bus)], std_type=trafo.std_type)
         for _, load in lv_net.load.iterrows():
             pp.create_load(switched, lookup[int(load.bus)], load.p_mw, load.q_mvar)
-    switched.sgen.loc[switched.sgen["level"] == "lv", "bus"] = lv_rows[2][0]     # LV PV at LVbus 1 of grid 2
     pp.runpp(switched)
     for gid in lv_nets:
         assert np.abs(_lv_bus_voltages(fused, gid) - switched.res_bus.loc[lv_rows[gid], "vm_pu"].to_numpy()).max() \
@@ -433,7 +381,7 @@ def test_fuse_equals_a_closed_bus_switch(small):
 
 def test_ten_kv_variant_retypes_the_lv_transformers():
     lv_nets = {gid: make_lv_net(gid) for gid in (1, 2, 3)}
-    params = MvParameters(vn_kv=10.0, include_generation=True)
+    params = MvParameters(vn_kv=10.0)
     inp, plan = make_district(lv_nets, [[1, 2, 3]], params=params, spacing=400.0)
     design = electrical.build_design_net(inp, plan)
     net = coupling.couple_lv_nets(design, frames_for(design, lv_nets), 10.0)
@@ -454,7 +402,7 @@ def test_a_ten_kv_district_of_an_auto_variant_is_coupled_at_ten_kv():
     """MV_NOMINAL_VOLTAGE_KV auto: the district's voltage (not the variant's) types the MV net, and couple re-types
     the 20/0.4 kV station transformers of that district to 10 kV (impedances in % unchanged)."""
     lv_nets = {gid: make_lv_net(gid) for gid in (1, 2, 3)}
-    params = MvParameters(include_generation=True)
+    params = MvParameters()
     assert params.auto_voltage
     inp, plan = make_district(lv_nets, [[1, 2, 3]], params=params, spacing=400.0, vn_kv=10.0)
     design, cases, budgets, stored = planned(inp, plan)
@@ -589,7 +537,7 @@ def test_mv_feeders_follow_the_open_points(small):
 
 
 # ---------------------------------------------------------------------------------------------- operating point
-def test_run_coupled_cases_reports_load_and_feed_in(small):
+def test_run_coupled_cases_reports_the_load_case(small):
     lv_nets, inp, plan, design, cases, budgets, stored = small
     taps = {gid: budgets[gid + 100].tap_pos for gid in lv_nets}
     net = coupling.build_coupled_net(stored, frames_for(stored, lv_nets), taps, inp.lv, inp.vn_kv)
@@ -598,12 +546,11 @@ def test_run_coupled_cases_reports_load_and_feed_in(small):
     assert all(result.attrs["converged"].values()) and result.notna().all().all()
     assert (result["op_lv_min_vm_pu"] <= result["op_lv_busbar_vm_pu"]).all()
     assert (result["op_mv_vm_pu"] <= inp.params.busbar_vm_pu - inp.params.busbar_band_pu + 1e-9).all()
-    assert result.at[2, "op_lv_busbar_vm_feed_in_pu"] > result.at[1, "op_lv_busbar_vm_feed_in_pu"]   # PV
-    slack = result.attrs["slack_p_mw"]
-    assert slack["load"] > 0 and slack["feed_in_pv"] < 0.2 * slack["load"]   # loads x 0.1, PV feeds in
+    assert list(result.attrs["converged"]) == ["load"] and result.attrs["slack_p_mw"]["load"] > 0
     assert result.attrs["mv_vm_pu"].index.isin(stored.bus.index).all()
-    with pytest.raises(ValueError, match="operating-point cases"):
-        coupling.run_coupled_cases(net, inp.params, cases=("n1a",))
+    for cases in (("n1a",), ("feed_in_pv",)):
+        with pytest.raises(ValueError, match="operating-point cases"):
+            coupling.run_coupled_cases(net, inp.params, cases=cases)
 
 
 def test_couple_district_verifies_the_budget(small):
@@ -622,23 +569,10 @@ def test_couple_district_verifies_the_budget(small):
     op = result.metrics["operating_point"]
     assert all(op["converged"].values())
     assert op["mv_vm_vs_mv_only"]["max_abs_diff_pu"] < 0.005                # LV losses only
+    assert op["converged"] == {"load": True}
     # less load at feeder coincidence than at the LV design point: the operating point is higher
     assert (rows["coupled_op_lv_busbar_vm_pu"] > rows["coupled_lv_busbar_vm_pu"] - 0.003).all()
-
-
-def test_load_only_coupling_skips_optional_feed_in_without_partial_status(small):
-    lv_nets, inp, plan, design, cases, budgets, stored = small
-    stations = station_rows(inp, cases, budgets)
-    stations["vm_feed_in_pu"] = math.nan
-    params = inp.params.replace(include_generation=False)
-    result = coupling.couple_district(stored, stations, iter(lv_nets.items()), params, inp.lv,
-                                      vn_kv=inp.vn_kv, keep_net=True)
-    assert result.status == "done"
-    assert result.metrics["feed_in_not_converged"] == []
-    assert result.metrics["operating_point"]["converged"] == {"load": True}
-    assert result.rows["coupled_lv_busbar_vm_feed_in_pu"].isna().all()
-    assert result.rows["coupled_lv_busbar_vm_pu"].notna().all()
-    assert result.net is not None and (result.net.bus["kind"] == "lv").any()
+    assert "feed_in_not_converged" not in result.metrics
     json.dumps(result.metrics, allow_nan=False)                         # JSON-native, no NaN
 
 
@@ -699,9 +633,7 @@ def test_micrometre_lines_get_the_minimum_length_and_converge(small):
     assert all(result.metrics["operating_point"]["converged"].values())
 
 
-@pytest.mark.parametrize("flag, diagnostic", [("design_converged", "design_not_converged"),
-                                            ("feed_in_converged", "feed_in_not_converged")])
-def test_design_only_coupling_reports_check_failures(small, monkeypatch, flag, diagnostic):
+def test_design_only_coupling_reports_check_failures(small, monkeypatch):
     lv_nets, inp, plan, design, cases, budgets, stored = small
     stations = station_rows(inp, cases, budgets)
     original = coupling.design_point_check
@@ -709,13 +641,13 @@ def test_design_only_coupling_reports_check_failures(small, monkeypatch, flag, d
     def fail_check(net, *args, **kwargs):
         check = original(net, *args, **kwargs)
         if net.name.endswith("bcid4"):
-            check[flag] = 0.0
+            check["design_converged"] = 0.0
         return check
 
     monkeypatch.setattr(coupling, "design_point_check", fail_check)
     result = coupling.couple_district(stored, stations, iter(lv_nets.items()), inp.params, inp.lv,
                                       vn_kv=inp.vn_kv, merged=False)
-    assert result.status == "partial" and result.metrics[diagnostic] == [104]
+    assert result.status == "partial" and result.metrics["design_not_converged"] == [104]
     assert "operating_point" not in result.metrics
 
 
@@ -922,30 +854,32 @@ def test_run_coupling_gives_each_district_its_own_voltage(fake_db, monkeypatch):
 
 def test_export_coupled_net_writes_the_case(fake_db, tmp_path):
     state, _ = fake_db
-    path = coupling.export_coupled_net("t", "d1", 3, tmp_path / "out" / "coupled.json", case="feed_in_pv")
+    path = coupling.export_coupled_net("t", "d1", 3, tmp_path / "out" / "coupled.json")
     net = pp.from_json(str(path))
     assert net.converged and (net.bus["kind"] == "lv").sum() > 0 and len(net.ext_grid) == 1
     params = MvParameters()
-    assert net.ext_grid["vm_pu"].iloc[0] == pytest.approx(params.busbar_vm_pu + params.busbar_band_pu)
+    assert net.ext_grid["vm_pu"].iloc[0] == pytest.approx(params.busbar_vm_pu - params.busbar_band_pu)
     assert (net.trafo["grid_result_id"].notna()).sum() == len(state["lv_nets"])
     n1 = pp.from_json(str(coupling.export_coupled_net("t", "d1", 3, tmp_path / "n1.json", case="n1a")))
     assert (~n1.line["in_service"]).sum() == 2                          # the A exit of both rings
-    with pytest.raises(ValueError, match="case must be one of"):
-        coupling.export_coupled_net("t", "d1", 3, tmp_path / "x.json", case="peak")
+    for case in ("peak", "feed_in_pv"):
+        with pytest.raises(ValueError, match="case must be one of"):
+            coupling.export_coupled_net("t", "d1", 3, tmp_path / "x.json", case=case)
     with pytest.raises(LookupError, match="does not belong"):
         coupling.export_coupled_net("t", "d1", 8, tmp_path / "x.json")
 
 
-def test_load_only_export_rejects_unrequested_feed_in_case(fake_db, tmp_path):
-    state, _ = fake_db
-    state["variant"]["mv_parameters"]["generation"]["include_generation"] = False
-    with pytest.raises(ValueError, match="was not requested"):
-        coupling.export_coupled_net("t", "d1", 3, tmp_path / "feed.json", case="feed_in_pv")
-    assert not (tmp_path / "feed.json").exists()
+def test_a_variant_planned_with_generation_is_not_coupled(fake_db, tmp_path):
+    state, log_file = fake_db
+    state["variant"]["mv_parameters"]["generation"] = {"include_generation": True}
+    with pytest.raises(MvStageError, match="generation.include_generation.*feature/mv-backup"):
+        coupling.run_coupling("t", "d1", log_file=log_file)
+    with pytest.raises(MvStageError, match="no longer has"):
+        coupling.export_coupled_net("t", "d1", 3, tmp_path / "old.json")
+    assert "saved" not in state and not (tmp_path / "old.json").exists()
 
 
-def test_operating_busbar_voltage_uses_the_band_edges():
+def test_operating_busbar_voltage_uses_the_lower_band_edge():
     params = MvParameters()
     assert coupling.operating_busbar_vm("load", params) == pytest.approx(1.005)
     assert coupling.operating_busbar_vm("n1b", params) == pytest.approx(1.005)
-    assert coupling.operating_busbar_vm("feed_in_wind", params) == pytest.approx(1.035)

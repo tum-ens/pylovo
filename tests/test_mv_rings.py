@@ -503,7 +503,7 @@ def test_evaluator_is_fast_enough():
 
 
 def test_member_weights_count_rural_members_by_the_factor():
-    kinds = ["busbar", "station", "station", "customer", "generator", "joint"]
+    kinds = ["busbar", "station", "station", "customer", "station", "joint"]
     urban = [False, True, False, False, True, False]
     np.testing.assert_allclose(member_weights(kinds, urban, 2.0), [0.0, 1.0, 0.5, 0.5, 1.0, 0.0])
     np.testing.assert_allclose(member_weights(kinds, urban, 1.0), [0.0, 1.0, 1.0, 1.0, 1.0, 0.0])
@@ -553,8 +553,8 @@ def test_from_model_uses_the_variant_line_types_and_limits():
                              lv_reference_voltage_pu=0.96, use_dso=False, use_open=False, use_manual=False,
                              electrical_backend="pandapower")
     nodes = pd.DataFrame(0.0, index=pd.Index([100, 5, 7, 9, 11, 13], name="mv_node_id"), columns=list(NODE_COLUMNS))
-    nodes["kind"] = ["busbar", "station", "station", "customer", "generator", "station"]
-    nodes["connection_hint"] = ["busbar", "ring", "ring", "ring", "tee", "excluded"]
+    nodes["kind"] = ["busbar", "station", "station", "customer", "station", "station"]
+    nodes["connection_hint"] = ["busbar", "ring", "ring", "ring", "ring", "excluded"]
     nodes.loc[5, ["inst_res", "units_res"]] = [600.0, 50.0]
     nodes.loc[7, ["inst_res", "units_res", "inst_com", "units_com"]] = [300.0, 20.0, 150.0, 1.0]
     nodes.loc[9, "p_fixed_kw"] = 1200.0

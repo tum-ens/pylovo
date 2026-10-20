@@ -22,7 +22,7 @@ on errors.
    * - ``pylovo-analyze``
      - Compute postcode and per-grid key figures.
    * - ``pylovo-import``
-     - Import transformer candidates (OSM, DSO CSV) and MaStR generating units.
+     - Import transformer candidates (OSM, DSO CSV).
    * - ``pylovo-export``
      - Export grid buses and lines as CSV.
    * - ``pylovo-delete``
@@ -134,10 +134,9 @@ pylovo-import
 
 .. code-block:: text
 
-   pylovo-import [-h] {transformers-osm,transformers-dso-csv,mastr} ...
+   pylovo-import [-h] {transformers-osm,transformers-dso-csv} ...
 
-Imports data into the database (:doc:`transformer_data`, :doc:`mv_grids`). Without a subcommand the
-help is shown.
+Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
 
 ``pylovo-import transformers-osm --relation-id RELATION_ID``
    Download the transformers inside the OSM relation from the Overpass API, process them and
@@ -152,14 +151,6 @@ help is shown.
    ``--replace-source``
       Delete the existing rows ``dso/<source>/...`` before the import.
 
-``pylovo-import mastr [--sqlite SQLITE] [--margin-m MARGIN_M]``
-   Replace ``pylovo.mastr_units`` and ``pylovo.mastr_postcode_aggregates`` with the generating
-   units in operation of an open-mastr SQLite file (default
-   ``~/.open-MaStR/data/sqlite/open-mastr.db``), for the MV stage (:ref:`mv-mastr-import`).
-
-   ``--margin-m MARGIN_M``
-      Margin in m around the extent of ``pylovo.postcode`` for units with coordinates (default
-      5000).
 
 pylovo-export
 -------------

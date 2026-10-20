@@ -187,11 +187,9 @@ MV_GRID_GENERATION: False
 # MV variant of the LV version (1 to 10 characters); a changed MV parameter needs a new MV_VARIANT_ID
 MV_VARIANT_ID: "1"
 MV_VARIANT_COMMENT: default # Stored with a new MV variant
-# Include MaStR generator nodes, LV-side generation, and feed-in planning cases (default: load and n-1 only)
-MV_INCLUDE_GENERATION: false
 # MV nominal voltage in kV: auto (10 kV in districts whose installed capacity lies mostly in municipalities with at least 5 MVA/km² installed MV/LV capacity, constant mv_10kv_min_density_mva_km2, else 20 kV), 20 or 10; the stored LV station transformers are 20/0.4 kV
 MV_NOMINAL_VOLTAGE_KV: auto
-# Most ring members (stations, MV customers, looped generators) in one open ring; rural members count half (rural rings hold 40), stub stations do not count
+# Most ring members (stations and MV customers) in one open ring; rural members count half (rural rings hold 40), stub stations do not count
 MV_MAX_STATIONS_PER_RING: 20
 # Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 at 10 or 20 kV)
 MV_STANDARD_CABLE: null

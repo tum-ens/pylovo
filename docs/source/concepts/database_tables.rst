@@ -244,82 +244,6 @@ Transformer candidates: OSM download, LoD2 transformer-station buildings, DSO CS
      - ``geometry(MultiPoint, <TARGET_EPSG>)``
      - 
 
-``mastr_units``
-~~~~~~~~~~~~~~~
-
-Generating units in operation with coordinates from the Marktstammdatenregister (``pylovo-import mastr``): technology, net power and connection voltage level. Not versioned; replaced by each import.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``mastr_id``
-     - ``text``
-     - PK
-   * - ``location_id``
-     - ``text``
-     - 
-   * - ``technology``
-     - ``varchar(20)``
-     - 
-   * - ``solar_kind``
-     - ``varchar(20)``
-     - 
-   * - ``status``
-     - ``varchar(20)``
-     - 
-   * - ``net_power_kw``
-     - ``double precision``
-     - 
-   * - ``gross_power_kw``
-     - ``double precision``
-     - 
-   * - ``voltage_level``
-     - ``text``
-     - 
-   * - ``commissioning_date``
-     - ``date``
-     - 
-   * - ``gemeindeschluessel``
-     - ``text``
-     - 
-   * - ``postcode``
-     - ``text``
-     - 
-   * - ``geom``
-     - ``geometry(Point,<TARGET_EPSG>)``
-     - 
-
-``mastr_postcode_aggregates``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-MaStR units in operation without coordinates (mostly small rooftop PV), summed per postcode and technology. Replaced by each import.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``postcode``
-     - ``text``
-     - PK
-   * - ``technology``
-     - ``varchar(20)``
-     - PK
-   * - ``n_units``
-     - ``integer``
-     - 
-   * - ``net_power_kw``
-     - ``double precision``
-     - 
-
 ``mv_graph``
 ~~~~~~~~~~~~
 
@@ -785,9 +709,7 @@ Foreign key (version_id, transformer_equipment_name) references ``equipment_data
 ``ways_result``
 ~~~~~~~~~~~~~~~
 
-Street segments of the processed routing graph of a postcode, including connection lines. With
-``ROUTE_ACROSS_POSTCODE_BORDERS`` only the segments touching the postcode are stored (the routing graph
-also held the streets around it).
+Street segments of the processed routing graph of a postcode, including connection lines.
 
 Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.
 
@@ -826,37 +748,6 @@ Foreign key (version_id, plz) references ``postcode_result`` (version_id, postco
    * - ``plz``
      - ``integer``
      - PK, FK → ``postcode_result``
-
-``building_exclusion``
-~~~~~~~~~~~~~~~~~~~~~~
-
-Loaded buildings of a generated postcode that are in no grid, with the step that left them out
-(``unloaded``, ``mv_direct``, ``no_connection_point``, ``isolated_component``, ``not_clustered``,
-``transformer_evidence``, ``overlaps_transformer``, ``residential_only``, ``duplicate``, ...). With
-``buildings_result`` it accounts for every loaded building (``pylovo-analyze --coverage``).
-
-Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``version_id``
-     - ``varchar(10)``
-     - PK, FK → ``postcode_result``
-   * - ``objectid``
-     - ``text``
-     - PK
-   * - ``plz``
-     - ``integer``
-     - FK → ``postcode_result``
-   * - ``reason``
-     - ``varchar(40)``
-     - 
 
 ``plz_parameters``
 ~~~~~~~~~~~~~~~~~~
@@ -899,6 +790,34 @@ Foreign key (version_id, plz) references ``postcode_result`` (version_id, postco
      - 
    * - ``avg_distance_per_trafo``
      - ``json``
+     - 
+
+``building_exclusion``
+~~~~~~~~~~~~~~~~~~~~~~
+
+Loaded buildings of a generated postcode that are in no grid, with the step that left them out; with buildings_result it accounts for every loaded building (``pylovo-analyze --coverage``).
+
+Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``version_id``
+     - ``varchar(10)``
+     - PK, FK → ``postcode_result``
+   * - ``objectid``
+     - ``text``
+     - PK
+   * - ``plz``
+     - ``integer``
+     - FK → ``postcode_result``
+   * - ``reason``
+     - ``varchar(40)``
      - 
 
 ``buildings_result``
@@ -2155,7 +2074,7 @@ Foreign key (substation_id) references ``mv_substation`` (substation_id), ON DEL
 ``mv_node``
 ~~~~~~~~~~~
 
-Nodes of the MV grids (busbars, LV stations, MV customers, MV generators, joints) with loads, ring position, MV voltages and the voltage budget of each station (MV/LV tap, LV busbar voltage).
+Nodes of the MV grids (busbars, LV stations, MV customers, joints) with loads, ring position, MV voltages and the voltage budget of each station (MV/LV tap, LV busbar voltage).
 
 Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, mv_variant_id), ON DELETE CASCADE.
 
@@ -2333,7 +2252,7 @@ Foreign key (version_id, customer_objectid) references ``mv_customers`` (version
 ``mv_line``
 ~~~~~~~~~~~
 
-MV lines (ring, stub, dedicated, generator and tie lines) with kind, standard type, cable and overhead length, normally-open flag and loadings.
+MV lines (ring, stub, dedicated, tie and link lines) with kind, standard type, cable and overhead length, normally-open flag and loadings.
 
 Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, mv_variant_id), ON DELETE CASCADE.
 
@@ -2427,7 +2346,7 @@ Foreign key (to_node) references ``mv_node`` (mv_node_id), ON DELETE CASCADE.
 ``mv_ring``
 ~~~~~~~~~~~
 
-One row per ring, dedicated feeder, generator feeder or busbar radial with member counts, lengths, coincident loads, normally-open point and voltage and loading extremes.
+One row per ring, dedicated feeder or busbar radial with member counts, lengths, coincident loads, normally-open point and voltage and loading extremes.
 
 Foreign key (mv_grid_id) references ``mv_grid`` (mv_grid_id), ON DELETE CASCADE.
 
@@ -2682,6 +2601,26 @@ Temporary street table of one postcode, created as ``ways_tem_<plz>``; pgRouting
      - 
    * - ``plz``
      - ``integer``
+     - 
+
+``excluded_tem_<plz>``
+~~~~~~~~~~~~~~~~~~~~~~
+
+Temporary table of the buildings removed during the generation of one postcode, with the reason; saved to ``building_exclusion``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``objectid``
+     - ``text``
+     - 
+   * - ``reason``
+     - ``varchar(40)``
      - 
 
 Views

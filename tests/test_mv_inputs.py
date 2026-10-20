@@ -343,7 +343,7 @@ def test_upsized_station_rating_survives_the_database_round_trip():
     # station 1: 23.5 kW LV peak + 25 kW busbar customer > 0.8 x 50 kVA -> the smallest catalogue rating, 250 kVA
     assert st["sn_kva"].tolist() == [250.0, 400.0, 400.0]
     sites = pd.DataFrame({"substation_id": [41], "x": [0.0], "y": [0.0]})
-    rows = inputs.node_rows(st, kept, pd.DataFrame(), sites, PARAMS)
+    rows = inputs.node_rows(st, kept, sites)
     stored = rows.assign(mv_node_id=np.arange(1, len(rows) + 1),
                          load_stats=[None if not isinstance(s, dict) else json.dumps(s) for s in rows["load_stats"]])
     nodes = node_columns_frame(stored)
@@ -377,7 +377,7 @@ def test_station_busbar_load_survives_the_database_round_trip():
     stations, customers = _split_case()
     st, kept = inputs.busbar_customers(stations, customers, PARAMS)
     sites = pd.DataFrame({"substation_id": [41], "x": [0.0], "y": [0.0]})
-    rows = inputs.node_rows(st, kept, pd.DataFrame(), sites, PARAMS)
+    rows = inputs.node_rows(st, kept, sites)
     stored = rows.assign(mv_node_id=np.arange(1, len(rows) + 1),
                          load_stats=[None if not isinstance(s, dict) else json.dumps(s) for s in rows["load_stats"]])
     nodes = node_columns_frame(stored)
@@ -416,161 +416,33 @@ def test_demand_anchor_per_inhabitant():
     assert inputs.demand_anchor(nodes.iloc[0:0], population.iloc[0:0], _lv())["kw_per_inhabitant"] is None
 
 
-# ---------------------------------------------------------------------------------------------- MaStR
-@pytest.mark.parametrize("text, expected", [
-    ("Höchstspannung", "hv"), ("Hochspannung", "hv"), ("Umspannebene Höchstspannung/Hochspannung", "hv"),
-    ("Umspannebene Hochspannung/Mittelspannung", "hvmv"), ("Mittelspannung", "mv"),
-    ("Umspannebene Mittelspannung/Niederspannung", "mvlv"),
-    ("Niederspannung (= Hausanschluss/Haushaltsstrom)", "lv"), ("  mittelspannung ", "mv"),
-])
-def test_classify_level_texts(text, expected):
-    assert inputs.classify_level(text, 50_000.0, PARAMS) == expected      # the text wins over the power
-
-
-@pytest.mark.parametrize("kw, expected", [
-    (10.0, "lv"), (100.0, "lv"), (150.0, "mvlv"), (200.0, "mvlv"), (201.0, "mv"), (5500.0, "mv"),
-    (6000.0, "hvmv"), (20000.0, "hvmv"), (20001.0, "hv"), (float("nan"), "lv"),
-])
-def test_classify_level_power_fallback(kw, expected):
-    assert inputs.classify_level(None, kw, PARAMS) == expected
-    assert inputs.classify_level("something new", kw, PARAMS) == expected
-
-
-def test_treatment_rules():
-    assert inputs.treatment("hv", 1e6, PARAMS) == "excluded"
-    assert inputs.treatment("hvmv", 1.0, PARAMS) == "node"
-    assert inputs.treatment("mv", 1.0, PARAMS) == "node"
-    assert inputs.treatment("mvlv", 250.0, PARAMS) == "node"
-    assert inputs.treatment("mvlv", 200.0, PARAMS) == "lv_side"
-    assert inputs.treatment("lv", 1e6, PARAMS) == "lv_side"
-
-
-def _units() -> pd.DataFrame:
-    return pd.DataFrame([
-        # a wind park: one location, three units close together
-        ("m01", "SEL1", "wind", 3000.0, "Mittelspannung", 0.0, 0.0),
-        ("m02", "SEL1", "wind", 3000.0, "Mittelspannung", 300.0, 0.0),
-        ("m03", "SEL1", "wind", 6000.0, "Mittelspannung", 600.0, 0.0),
-        # PV + storage + biomass at one connection point; storage is no generation
-        ("m04", "SEL2", "solar", 150.0, "Umspannebene Mittelspannung/Niederspannung", 1000.0, 1000.0),
-        ("m05", "SEL2", "storage", 500.0, "Umspannebene Mittelspannung/Niederspannung", 1000.0, 1000.0),
-        ("m06", "SEL2", "biomass", 100.0, "Umspannebene Mittelspannung/Niederspannung", 1000.0, 1010.0),
-        # a location with units 20 km apart (two connection points)
-        ("m07", "SEL3", "solar", 30.0, "Niederspannung (= Hausanschluss/Haushaltsstrom)", 0.0, 5000.0),
-        ("m09", "SEL3", "solar", 20.0, "Niederspannung (= Hausanschluss/Haushaltsstrom)", 20000.0, 5000.0),
-        ("m08", "SEL3", "solar", 10.0, "Niederspannung (= Hausanschluss/Haushaltsstrom)", 50.0, 5000.0),
-        # no location id, no level: classified by power
-        ("m10", None, "hydro", 7000.0, None, 3000.0, 3000.0),
-        ("m11", "", "solar", 0.0, None, 3000.0, 3000.0),                  # no power: left out
-        ("m12", "SEL4", "combustion", 900.0, "Hochspannung", 4000.0, 0.0),
-        # known level and a NULL unit: the known level decides
-        ("m13", "SEL5", "solar", 15000.0, "Mittelspannung", 9000.0, 0.0),
-        ("m14", "SEL5", "solar", 15000.0, None, 9010.0, 0.0),
-    ], columns=["mastr_id", "location_id", "technology", "net_power_kw", "voltage_level", "x", "y"])
-
-
-def test_aggregate_locations():
-    points = inputs.aggregate_locations(_units(), PARAMS)
-    assert tuple(points.columns) == inputs.LOCATION_COLUMNS
-    assert points["mastr_connection_id"].tolist() == ["SEL1", "SEL2", "SEL3/1", "SEL3/2", "SEL4", "SEL5",
-                                                       "unit/m10"]
-    by_id = points.set_index("mastr_connection_id")
-    wind = by_id.loc["SEL1"]
-    assert wind["gen_wind_kw"] == 12000.0 and wind["n_units"] == 3 and wind["technology"] == "wind"
-    assert wind["x"] == pytest.approx((0 * 3000 + 300 * 3000 + 600 * 6000) / 12000)
-    assert wind["voltage_class"] == "mv" and wind["treatment"] == "node"
-    mixed = by_id.loc["SEL2"]
-    assert mixed["gen_solar_kw"] == 150.0 and mixed["gen_other_kw"] == 100.0 and mixed["kw"] == 250.0
-    assert mixed["technology"] == "solar+other"
-    assert mixed["voltage_class"] == "mvlv" and mixed["treatment"] == "node"   # 250 kW > 200 kW
-    assert by_id.loc["SEL3/1", "n_units"] == 2 and by_id.loc["SEL3/2", "n_units"] == 1
-    assert by_id.loc["SEL3/1", "split"] and by_id.loc["SEL3/1", "flags"] == ["location_split"]
-    assert by_id.loc["SEL3/1", "treatment"] == "lv_side"
-    assert by_id.loc["SEL4", "voltage_class"] == "hv" and by_id.loc["SEL4", "treatment"] == "excluded"
-    assert by_id.loc["SEL5", "voltage_class"] == "mv"                      # not hvmv by its 30 MW
-    assert by_id.loc["unit/m10", "voltage_class"] == "hvmv"                # 7 MW without a level
-    assert by_id.loc["unit/m10", "location_id"] is None
-    assert points.attrs["n_split_locations"] == 1
-    assert points.attrs["class_counts"]["mv"] == 2
-
-
-def test_aggregate_locations_empty():
-    empty = inputs.aggregate_locations(pd.DataFrame(columns=_units().columns), PARAMS)
-    assert empty.empty and tuple(empty.columns) == inputs.LOCATION_COLUMNS
-
-
-# ---------------------------------------------------------------------------------------------- LV-side generation
-def test_distribute_lv_generation():
-    stations = _stations([1, 2, 3], plz=[90001, 90001, 90002])         # x = 0, 100, 200
-    targets = pd.DataFrame({
-        "x": [0.0, 140.0, 5000.0, 90.0], "y": 0.0,
-        "gen_solar_kw": [10.0, 20.0, 40.0, 5.0], "gen_wind_kw": 0.0, "gen_other_kw": [0.0, 0.0, 0.0, 1.0],
-        "grid_result_id": [3, np.nan, np.nan, 99],                    # 99: not a station of the table
-    })
-    aggregates = pd.DataFrame({"postcode": ["90001", "90001", "90002", "90003"], "plz": [90001, 90001, 90002, 90003],
-                               "technology": ["solar", "hydro", "solar", "solar"],
-                               "net_power_kw": [300.0, 30.0, 50.0, 70.0], "area_ratio": [0.5, 0.5, 1.0, 1.0]})
-    counts = pd.DataFrame({"grid_result_id": [1, 2, 2], "postcode": ["90001", "90001", "90005"],
-                           "n_buildings": [1, 2, 7]})
-    gen = inputs.distribute_lv_generation(stations, targets, aggregates, counts)
-    assert tuple(gen.columns) == inputs.GENERATION_RESULT_COLUMNS
-    by_id = gen.set_index("grid_result_id")
-    # grid 3: the building target (10) + PLZ 90002 without counted buildings: equal split over its stations (50)
-    assert by_id.loc[3, "gen_solar_kw"] == pytest.approx(10.0 + 50.0)
-    # point at x=140 -> nearest station 2 (x=100); point of grid 99 (no station) at x=90 -> station 2
-    # PLZ 90001: 300 x 0.5 = 150 solar, 15 other, split 1:2 by building counts
-    assert by_id.loc[2, "gen_solar_kw"] == pytest.approx(20.0 + 5.0 + 100.0)
-    assert by_id.loc[2, "gen_other_kw"] == pytest.approx(1.0 + 10.0)
-    assert by_id.loc[1, "gen_solar_kw"] == pytest.approx(50.0) and by_id.loc[1, "gen_other_kw"] == pytest.approx(5.0)
-    assert gen.attrs["points_building"] == 1 and gen.attrs["points_station"] == 2
-    assert gen.attrs["points_dropped"] == 1 and gen.attrs["kw_dropped"] == pytest.approx(40.0)
-    assert gen.attrs["aggregate_kw_dropped"] == pytest.approx(70.0)       # PLZ 90003 has no station
-    assert gen.attrs["aggregate_kw"] == pytest.approx(150.0 + 15.0 + 50.0 + 70.0)
-
-
-def test_distribute_lv_generation_without_inputs():
-    gen = inputs.distribute_lv_generation(_stations([4, 2]), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
-    assert gen["grid_result_id"].tolist() == [2, 4]
-    assert (gen[list(inputs.GENERATION_COLUMNS)] == 0.0).all().all()
-
-
 # ---------------------------------------------------------------------------------------------- node rows
 def test_node_rows_order_hints_and_columns():
     lv = _lv()
     stations = inputs.station_table(_stations([12, 11]), pd.DataFrame(columns=["grid_result_id", "category",
                                                                                "installed_kw", "units"]), lv)
-    stations.loc[stations["grid_result_id"] == 12, "gen_solar_kw"] = 30.0
     customers = inputs.customer_table(pd.DataFrame({"objectid": ["z", "a"], "plz": 1,
                                                     "nonresidential_use": "Commercial",
                                                     "installed_kw": [400.0, 13000.0], "x": 1.0, "y": 2.0,
                                                     "mapped_station": False}), lv, PARAMS)
-    points = inputs.aggregate_locations(_units(), PARAMS)
     sites = pd.DataFrame({"substation_id": [42, 41], "x": [0.0, 10.0], "y": [0.0, 0.0]})
-    rows = inputs.node_rows(stations, customers, points, sites, PARAMS)
+    rows = inputs.node_rows(stations, customers, sites)
     assert rows.index.tolist() == list(range(len(rows)))
     kinds = rows["kind"].tolist()
-    assert kinds == ["busbar"] * 2 + ["station"] * 2 + ["customer"] * 2 + ["generator"] * 4
+    assert kinds == ["busbar"] * 2 + ["station"] * 2 + ["customer"] * 2
     assert rows.loc[rows["kind"] == "busbar", "substation_id"].tolist() == [41, 42]
     assert rows.loc[rows["kind"] == "busbar", "connection_hint"].eq("busbar").all()
     assert rows.loc[rows["kind"] == "station", "grid_result_id"].tolist() == [11, 12]
     assert rows.loc[rows["kind"] == "customer", "customer_objectid"].tolist() == ["a", "z"]
-    gens = rows[rows["kind"] == "generator"].set_index("mastr_connection_id")
-    # node treatment only: SEL1 (mv), SEL2 (mvlv 250 kW), SEL5 (mv, 30 MW: dedicated), unit/m10 (hvmv)
-    assert gens.index.tolist() == ["SEL1", "SEL2", "SEL5", "unit/m10"]
-    assert gens.loc["SEL1", "connection_hint"] == "dedicated"             # 12 MW > 5.5 MW
-    assert gens.loc["SEL2", "connection_hint"] == "tee"
-    assert gens.loc["unit/m10", "connection_hint"] == "dedicated"         # HS/MS level
-    assert gens.loc["SEL1", "voltage_class"] == "mv" and gens.loc["SEL1", "technology"] == "wind"
-    for column in inputs.GENERATION_COLUMNS:
-        assert rows[column].notna().all()
-    assert rows.loc[rows["grid_result_id"] == 12, "gen_solar_kw"].item() == 30.0
+    for column in inputs.GENERATION_COLUMNS:                              # kept for stored variants, always 0
+        assert rows[column].eq(0.0).all()
     assert all(isinstance(f, list) for f in rows["flags"])
     assert rows["x"].notna().all() and rows["y"].notna().all()
     assert not rows.loc[rows["kind"] == "customer", "mapped_station"].any()
 
 
 def test_node_rows_without_sites_or_nodes():
-    rows = inputs.node_rows(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(columns=["x", "y"]), PARAMS)
+    rows = inputs.node_rows(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(columns=["x", "y"]))
     assert rows.empty and {"kind", "connection_hint", "x", "y"} <= set(rows.columns)
 
 

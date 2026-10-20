@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from types import SimpleNamespace
 
@@ -111,7 +112,8 @@ class FakeParams:
     def __init__(self, variant_id="d0", comment="test", snapshot=None):
         self.variant_id = variant_id
         self.comment = comment
-        self._snapshot = snapshot or {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 15}}
+        self._snapshot = snapshot or {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 15},
+                                      "generation": {"include_generation": False}}
 
     def to_snapshot(self):
         return json.loads(json.dumps(self._snapshot))
@@ -180,7 +182,8 @@ def test_register_subset_resumes_and_superset_grows():
 
 
 def test_register_rejects_other_parameters():
-    stored = {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 20}}
+    stored = {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 20},
+              "generation": {"include_generation": False}}
     client = make_client([("INSERT INTO pylovo.mv_variant", ([], [], 0)), variant_rule(stored, [1])])
     with pytest.raises(ValueError, match=r"MV parameters differ from the stored snapshot of MV variant d0 of "
                                          r"version mv1 \(topology.max_stations_per_ring\)"):
@@ -343,14 +346,15 @@ def test_plot_readers_never_read_the_net(monkeypatch):
 
 
 def test_list_variants_flags_stale_fingerprints():
-    columns = ["version_id", "mv_variant_id", "mv_variant_comment", "status", "include_generation", "plz_list",
+    columns = ["version_id", "mv_variant_id", "mv_variant_comment", "status", "mv_parameters", "plz_list",
                "graph_id", "lv_fingerprint", "created_at", "finished_at", "n_grids", "n_done", "n_failed",
                "n_stations",
                "circuit_km", "cable_share", "n_electrical_pass", "n_electrical_violations",
                "n_electrical_not_checked"]
-    rows = [("mv1", "d0", "a", "done", False, [1, 2], "g", {"n_grids": 3}, None, None, 2, 2, 0, 10,
+    current = {"generation": {"include_generation": False}}
+    rows = [("mv1", "d0", "a", "done", current, [1, 2], "g", {"n_grids": 3}, None, None, 2, 2, 0, 10,
              4.0, 0.5, 1, 1, 0),
-            ("mv1", "d1", "b", "done", True, [1], "g", {"n_grids": 1}, None, None, 1, 1, 0, 3,
+            ("mv1", "d1", "b", "done", "{}", [1], "g", {"n_grids": 1}, None, None, 1, 1, 0, 3,
              1.0, 0.5, 0, 0, 1)]
     client = make_client([("LEFT JOIN pylovo.mv_variant_stats s", (columns, rows, 2))])
     client.lv_fingerprint = lambda version_id, plz: {"n_grids": 3}
@@ -360,8 +364,9 @@ def test_list_variants_flags_stale_fingerprints():
         [1, 1, 0], [0, 0, 1]]
     query, params = client.cur.sql("LEFT JOIN pylovo.mv_variant_stats s")[0]
     assert "power_flow_status = 'converged'" in query and "n_electrical_not_checked" in query
-    assert "COALESCE((v.mv_parameters #>> '{generation,include_generation}')::boolean, TRUE)" in query
-    assert df["include_generation"].tolist() == [False, True]  # false is new; true is the legacy fallback
+    assert "v.mv_parameters" in query and "mv_parameters" not in df.columns
+    # a snapshot without the generation key predates it and was planned with generation (jsonb as dict or text)
+    assert df["retired"].tolist() == [[], ["generation.include_generation"]]
     assert params["violations"] == ["voltage_violation", "loading_violation", "not_converged"]
     assert client.cur.sql("SAVEPOINT mv_list_fingerprint")
 
@@ -391,20 +396,19 @@ def district_plan(extra_line=None) -> DistrictPlan:
         diagnostics={"node_flags": {12: ["band_conflict", "tap_limit"], 13: ["not_n1_secure"]}})
     keys = [10, 11, 12, 13, -1]
     vm = {"load": [1.02, 1.0, 0.99, 0.985, 0.995], "n1a": [1.02, 0.97, 0.96, 0.95, 0.965],
-          "n1b": [1.02, 0.98, 0.95, 0.96, 0.97], "feed_in_wind": [1.02, 1.03, 1.025, 1.02, 1.02],
-          "feed_in_pv": [1.02, 1.01, 1.035, 1.02, 1.02]}
+          "n1b": [1.02, 0.98, 0.95, 0.96, 0.97]}
     cases = {name: CaseResult(name, True, pd.Series(v, index=keys),
                               pd.Series([30.0, 20.0, 0.0, 25.0, 5.0], index=[0, 1, 2, 3, 4]) * (2 if "n1" in name
                                                                                                  else 1),
-                              -1.0 if "feed" in name else 2.0, 0.5) for name, v in vm.items()}
-    budgets = {11: StationBudget(11, 1.0, 0.97, 1.03, -1, 0.97, 0.94, 1.06, False, False),
-               12: StationBudget(12, 0.99, 0.95, 1.035, 1, 0.95, 0.93, 1.08, True, True)}
+                              2.0, 0.5) for name, v in vm.items()}
+    budgets = {11: StationBudget(11, 1.0, 0.97, math.nan, -1, 0.97, 0.94, math.nan, False, False),
+               12: StationBudget(12, 0.99, 0.95, math.nan, 1, 0.95, 0.93, math.nan, True, True)}
     return DistrictPlan(topology=topo, hv_mv_units=2, hv_mv_unit_mva=25.0, hv_mv_sizing="sized", oltc_tap=-1,
                         cases=cases, violations=[Violation("n1b", "voltage_low", "bus", 12, 0.95, 0.92, 1)],
                         repairs=[{"action": "move_nop", "round": 1}], budgets=budgets, net=None,
                         metrics={"n_feeder_bays": 2, "trench_km": 0.3, "bridged_nodes": [13],
                                  "hv_mv_loading_n0_percent": 10.0, "hv_mv_loading_n1_percent": 20.0},
-                        power_flow_status="converged", peak_load_mw=1.2, peak_feed_in_mw=1.0)
+                        power_flow_status="converged", peak_load_mw=1.2)
 
 
 def district_client() -> Client:
@@ -431,7 +435,7 @@ def test_save_district_writes_one_transaction(recorded):
     assert [v[0] for v in line_values] == [501, 502, 503, 504, 505]       # ids pre-allocated in key order
     assert [(v[4], v[5]) for v in line_values] == [(10, 11), (11, 500), (500, 12), (12, 10), (500, 13)]
     assert line_values[2][12] == 0.001 and line_values[2][17] is True and line_values[2][18] == 12
-    assert line_values[0][19:22] == (30.0, 60.0, 30.0)                     # load, worst n-1, worst feed-in
+    assert line_values[0][19:22] == (30.0, 60.0, None)                     # load, worst n-1, no feed-in case
     _, ring_values = by_table["INSERT INTO pylovo.mv_ring"]
     ring = ring_values[0]
     assert ring[:9] == ("mv1", "d0", 6, 1, "ring", 2, 2, 0, 0) and ring[9] == 1   # 2 members, 1 stub node
@@ -439,8 +443,8 @@ def test_save_district_writes_one_transaction(recorded):
     node_sql = next(s for s, v, _ in recorded if s.startswith("UPDATE pylovo.mv_node n SET connection"))
     node_values = {v[0]: v for s, v_list, _ in recorded if s == node_sql for v in v_list}
     assert node_values[13][1] == "stub" and node_values[13][5] == 500 and node_values[13][14] is True
-    assert node_values[12][9:14] == (1, 0.95, 0.93, 1.08, True) and node_values[11][15] == 0.98
-    assert node_values[12][6:9] == (0.99, 0.95, 1.035)
+    assert node_values[12][9:14] == (1, 0.95, 0.93, None, True) and node_values[11][15] == 0.98
+    assert node_values[12][6:9] == (0.99, 0.95, None)
     assert node_values[12][16] == ["band_conflict", "tap_limit"] and node_values[13][16] == ["not_n1_secure"]
     assert node_values[11][16] == [] and "unnest(n.flags || v.flags)" in node_sql     # region flags are kept
     grid_sql, grid_params = client.cur.sql("UPDATE pylovo.mv_grid SET status = 'done'")[0]
@@ -449,7 +453,7 @@ def test_save_district_writes_one_transaction(recorded):
     assert grid_params["circuit_km"] == pytest.approx(0.351) and grid_params["overhead_km"] == pytest.approx(0.1)
     assert grid_params["max_voltage_drop_percent"] == pytest.approx(3.5)
     assert grid_params["max_voltage_drop_n1_percent"] == pytest.approx(7.0)
-    assert grid_params["max_voltage_rise_percent"] == pytest.approx(1.5)
+    assert grid_params["max_voltage_rise_percent"] is None
     assert grid_params["n_band_conflicts"] == 1 and grid_params["n_tap_limit"] == 1
     assert grid_params["sum_station_kva"] == 750.0 and grid_params["runtime_s"] == 12.5
     assert json.loads(grid_params["metrics"])["violations"][0]["key"] == 12
@@ -525,8 +529,8 @@ def test_failed_grid_and_finished_variant_commit():
 
 
 def test_variant_totals_and_pending_grids():
-    totals = (3, 2, 1, 0, 40, 2, 1, 50.0, 30.0, 1, 4)
-    client = make_client([("FROM pylovo.mv_grid WHERE version_id", (["c"] * 11, [totals], 1)),
+    totals = (3, 2, 1, 0, 40, 2, 50.0, 30.0, 1, 4)
+    client = make_client([("FROM pylovo.mv_grid WHERE version_id", (["c"] * 10, [totals], 1)),
                           ("GROUP BY g.vn_kv", (["vn_kv", "n"], [(20.0, 2), (10.0, 1)], 2)),
                           ("GROUP BY g.mv_grid_id", (["g", "n"], [(7, 30), (6, 10)], 2))])
     out = client.variant_totals("mv1", "d0")
@@ -577,3 +581,16 @@ def test_lv_fingerprint_counts_only_the_load_edits_of_its_plz():
                                                      "n_mv_customers": 3}
     [(query, params)] = client.cur.sql("FROM pylovo.load_edit")
     assert "plz = ANY" in query and params["v"] == "v1" and list(params["plz"]) == [80803]
+
+
+def test_lv_requirement_and_population_readers():
+    from pylovo.database.mv_input_mixin import POPULATION_COLUMNS, MvInputMixin
+
+    client = object.__new__(type("InputClient", (MvInputMixin,), {}))
+    client.cur = FakeCursor([("FROM pylovo.grid_result gr", (["g", "vm"], [(5, 1.01), (6, None)], 2)),
+                             ("FROM unnest(%(plz)s::integer[])", (POPULATION_COLUMNS, [(80803, 9000, 2.0, None)], 1))])
+    assert client.lv_design_source_vm("v1", [6, 5, 5]) == {5: 1.01}            # a grid without ext_grid is missing
+    [(query, params)] = client.cur.sql("FROM pylovo.grid_result gr")
+    assert "ce.name = 'vm_pu'" in query and params == {"v": "v1", "ids": [5, 6]}
+    population = client.plz_population([80803])
+    assert population.columns.tolist() == list(POPULATION_COLUMNS) and math.isnan(population["polygon_km2"].iloc[0])

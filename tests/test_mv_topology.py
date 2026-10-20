@@ -164,11 +164,11 @@ class District:
 
     def node(self, key: int, kind: str, x: float, y: float, *, hint: str = "ring", urban: bool = False,
              settlement: int | None = None, inst_res: float = 150.0, units_res: float = 50.0,
-             p_fixed_kw: float = 0.0, gen_kw: float = 0.0, offset: tuple[float, float] | None = None) -> None:
+             p_fixed_kw: float = 0.0, offset: tuple[float, float] | None = None) -> None:
         self.nodes.append(dict(key=key, kind=kind, hint=hint, x=float(x), y=float(y), urban=urban,
                                settlement=settlement, inst_res=inst_res if kind == "station" else 0.0,
                                units_res=units_res if kind == "station" else 0.0, p_fixed_kw=p_fixed_kw,
-                               gen_kw=gen_kw, offset=offset))
+                               offset=offset))
 
     def build(self, **param_changes) -> tuple[DistrictInput, RunGraph]:
         terminal_vertex = []
@@ -213,8 +213,8 @@ class District:
             rec.update(kind=nd["kind"], connection_hint=nd["hint"], x=nd["x"], y=nd["y"], attach_edge_id=-1,
                        attach_fraction=0.0, attach_offset_m=0.0, bridged=False, settlement_id=nd["settlement"],
                        urban=nd["urban"], plz=12345, plz_settlement_type=3, inst_res=nd["inst_res"],
-                       units_res=nd["units_res"], p_fixed_kw=nd["p_fixed_kw"], gen_solar_kw=nd["gen_kw"],
-                       gen_level="mv" if nd["kind"] == "generator" else "", sn_kva=400.0, grid_result_id=None,
+                       units_res=nd["units_res"], p_fixed_kw=nd["p_fixed_kw"], gen_level="", sn_kva=400.0,
+                       grid_result_id=None,
                        lv_design_source_vm_pu=0.98, lv_max_drop_pu=0.03)
             records.append(rec)
         frame = pd.DataFrame(records, columns=list(NODE_COLUMNS),
@@ -289,7 +289,7 @@ def assert_plan_valid(plan, inp) -> None:
     assert set(plan.node_role) == set(keys) | set(plan.joints)
     # each connected non-busbar node is in exactly one place: a feeder structure or below one
     members = [k for r in plan.rings for k in r.members if k > 0]
-    placed = members + [k for k, role in plan.node_role.items() if role in ("stub", "tee") and k not in members]
+    placed = members + [k for k, role in plan.node_role.items() if role == "stub" and k not in members]
     connected = [k for k, role in plan.node_role.items() if role not in ("busbar", "joint", "excluded")]
     assert sorted(placed) == sorted(connected)
     assert len(placed) == len(set(placed))
@@ -301,7 +301,7 @@ def assert_plan_valid(plan, inp) -> None:
         assert len(opened) == 1, ring.ring_id
         nop = opened[0].open_at_key
         assert nop == ring.nop_key and nop in (opened[0].from_key, opened[0].to_key)
-        assert nop > 0 and inp.nodes.loc[nop, "kind"] in ("station", "customer", "generator")
+        assert nop > 0 and inp.nodes.loc[nop, "kind"] in ("station", "customer")
         assert sum(ln.exit == "a" for ln in sections) == 1 and sum(ln.exit == "b" for ln in sections) == 1
     for ln in plan.lines:
         geom = ln.geometry
@@ -330,10 +330,9 @@ def test_terminal_rows_start_with_the_busbar_and_skip_excluded_nodes():
     d.node(9, "station", 1000, 0)
     d.node(4, "customer", 500, 0)
     d.node(7, "customer", 0, 0, hint="excluded", p_fixed_kw=30000.0)
-    d.node(5, "generator", 1000, 0, hint="tee", gen_kw=500.0)
     inp, _ = d.build()
     rows = topology.terminal_rows(inp)
-    assert list(inp.nodes.index[rows]) == [BUSBAR, 4, 5, 9]
+    assert list(inp.nodes.index[rows]) == [BUSBAR, 4, 9]
 
 
 def test_terminal_rows_need_the_busbar_first():
@@ -748,75 +747,16 @@ def test_dedicated_customer_feeder_has_two_legs_sized_by_load(p_kw, parallel, ov
     assert ("dedicated_overload" in plan.diagnostics["node_flags"].get(60, [])) == overload
 
 
-# ============================================================================================ generators
-def generator_district() -> District:
-    d = loop_district(side_m=None)                          # no dead end
-    d.street((4000, 500), (4500, 500))                      # rural open-field generator: T-off
-    d.street((2500, 0), (2500, 50), settlement=2)           # urban generator: loop-in
-    d.street((4000, 0), (10000, 0))                         # generator 6 km from the lines
-    d.node(60, "generator", 4500, 500, hint="tee", gen_kw=2000.0)
-    d.node(61, "generator", 2500, 50, hint="tee", gen_kw=500.0, urban=True, settlement=2)
-    d.node(62, "generator", 10000, 0, hint="tee", gen_kw=1500.0)
-    d.node(63, "generator", 2000, 1000, hint="tee", gen_kw=8000.0, settlement=1)     # above dedicated_feeder_kw
-    d.node(64, "generator", 500, 0, hint="dedicated", gen_kw=900.0, settlement=1)     # HV/MV level
-    return d
-
-
-GEN_RING = [[10, 30, 40, 50]]
-
-
-def test_generators_connect_by_t_off_loop_in_or_dedicated_feeder():
-    plan, (inp, *_) = plan_of(generator_district(), GEN_RING)
+# ============================================================================================ off-street nodes
+def test_off_street_stub_runs_through_its_connector():
+    d = loop_district(side_m=None)
+    d.node(70, "station", 2600, 400, settlement=1, offset=(2600, 0))
+    plan, (inp, *_) = plan_of(d, [[10, 70, 30, 40, 50]])
     assert_plan_valid(plan, inp)
-    roles = {k: plan.node_role[k] for k in (60, 61, 62, 63, 64)}
-    assert roles == {60: "tee", 61: "loop_in", 62: "dedicated", 63: "dedicated", 64: "dedicated"}
-    # T-off at the street junction on the ring; a street without an OSM MV line: cable
-    joint = plan.stub_parent[60]
-    assert joint < 0 and plan.joints[joint] == pytest.approx((4000.0, 500.0))
-    tee = line_between(plan, joint, 60)[0]
-    assert tee.role == "generator" and tee.kind == "cable" and tee.length_m == pytest.approx(500.0)
-    assert plan.node_feeder[60] == plan.node_feeder[joint]
-    # loop-in: a ring member between 10 and 30, counted in the ring
-    ring = ring_of(plan, 10)
-    assert ring.members[:3] == [10, 61, 30] and ring.kind == "ring"
-    assert plan.node_ring[61] == ring.ring_id
-    # dedicated feeders: 62 (nothing within 5 km), 63 (8 MW), 64 (HV/MV level); one circuit, no open leg
-    for key in (62, 63, 64):
-        feeder = ring_of(plan, key)
-        assert feeder.kind == "generator" and feeder.nop_key is None
-        lines = line_between(plan, BUSBAR, key)
-        assert len(lines) == 1 and lines[0].role == "generator" and not lines[0].normally_open
-    assert "no_line_within_tee_limit" in plan.diagnostics["node_flags"][62]
-    assert line_between(plan, BUSBAR, 63)[0].parallel == 1                # 8.4 MVA < 14.6 MVA
-    assert plan.diagnostics["n_tee_generators"] == 1 and plan.diagnostics["n_loop_in_generators"] == 1
-
-
-def test_loop_in_falls_back_to_a_t_off_when_the_ring_is_full():
-    plan, (inp, *_) = plan_of(generator_district(), GEN_RING, max_stations_per_ring=4, rural_ring_factor=1.0)
-    assert_plan_valid(plan, inp)
-    assert plan.node_role[61] == "tee"
-    assert "loop_in_infeasible" in plan.diagnostics["node_flags"][61]
-    tee = line_between(plan, plan.stub_parent[61], 61)[0]
-    assert tee.kind == "cable"                              # urban generator inside its settlement
-    assert tee.length_m == pytest.approx(50.0)
-
-
-def test_large_generator_feeder_gets_parallel_cables():
-    d = generator_district()
-    d.nodes[-2]["gen_kw"] = 16000.0                         # 16.8 MVA > 14.6 MVA of one cable
-    plan, (inp, *_) = plan_of(d, GEN_RING)
-    assert line_between(plan, BUSBAR, 63)[0].parallel == 2
-
-
-def test_off_street_generator_t_off_runs_through_its_connector():
-    d = loop_district(urban=True)
-    d.node(70, "generator", 2600, 400, hint="tee", gen_kw=300.0, offset=(2600, 0))
-    plan, (inp, *_) = plan_of(d, RING)
-    assert_plan_valid(plan, inp)
-    assert plan.node_role[70] == "tee"
-    tee = line_between(plan, plan.stub_parent[70], 70)[0]
-    assert tee.length_m == pytest.approx(400.0)
-    assert Point(2600, 400).distance(Point(tee.geometry.coords[-1])) < 1e-6
+    assert plan.node_role[70] == "stub"
+    stub = line_between(plan, plan.stub_parent[70], 70)[0]
+    assert stub.length_m == pytest.approx(400.0)
+    assert Point(2600, 400).distance(Point(stub.geometry.coords[-1])) < 1e-6
 
 
 # ============================================================================================ repairs
@@ -861,22 +801,18 @@ def test_move_nop_follows_stronger_sections_and_reassigns_feeders():
     assert plan.rings[0].nop_key == 12                      # the given plan is unchanged
 
 
-def test_split_ring_halves_the_ring_and_reconnects_its_generators():
+def test_split_ring_halves_the_ring():
     d = District()
-    d.street(*[(x, 0) for x in (0, 1000, 2000, 3000, 3500, 4000, 5000, 6000)], settlement=1)
+    d.street(*[(x, 0) for x in (0, 1000, 2000, 3000, 4000, 5000, 6000)], settlement=1)
     d.node(BUSBAR, "busbar", 0, 0, hint="busbar", urban=True, settlement=1)
     for key, x in zip((11, 12, 13, 14, 15, 16), range(1000, 7000, 1000)):
         d.node(key, "station", x, 0, urban=True, settlement=1)
-    d.street((3500, 0), (3500, 400))
-    d.node(70, "generator", 3500, 400, hint="tee", gen_kw=400.0)
     plan, (inp, rg, model, ev) = plan_of(d, [[11, 12, 13, 14, 15, 16]])
-    assert plan.node_role[70] == "tee"
     plan2 = topology.split_ring(inp, rg, model, ev, plan, plan.rings[0].ring_id)
     assert_plan_valid(plan2, inp)
     rings = [r for r in plan2.rings if r.kind == "ring"]
     assert len(rings) == 2 and all(len([k for k in r.members if k > 0]) <= 3 for r in rings)
     assert rings[0].ring_id == plan.rings[0].ring_id
-    assert plan2.node_role[70] == "tee" and plan2.node_ring[70] == ring_of(plan2, 14).ring_id
     assert sorted(k for r in rings for k in r.members if k > 0) == [11, 12, 13, 14, 15, 16]
 
 
@@ -900,33 +836,6 @@ def test_split_ring_with_the_real_solver(monkeypatch):
 def test_split_ring_keeps_single_member_rings():
     plan, (inp, rg, model, ev) = plan_of(radial_district(), [[40], [41], [42]], satellites=False)
     assert topology.split_ring(inp, rg, model, ev, plan, ring_of(plan, 41).ring_id) is plan
-
-
-def test_convert_t_off_generator_to_dedicated_feeder_removes_its_joint():
-    plan, (inp, rg, model, ev) = plan_of(generator_district(), GEN_RING)
-    joint = plan.stub_parent[60]
-    new = topology.convert_to_dedicated(inp, rg, model, plan, 60)
-    assert_plan_valid(new, inp)
-    assert new.node_role[60] == "dedicated" and ring_of(new, 60).kind == "generator"
-    assert (4000.0, 500.0) not in [tuple(xy) for xy in new.joints.values()]
-    assert len(new.joints) == len(plan.joints) - 1 and joint in plan.joints
-    assert new.node_role[61] == "loop_in"                   # the other decisions are kept
-    assert topology.convert_to_dedicated(inp, rg, model, new, 60) is new
-    with pytest.raises(ValueError, match="not a generator"):
-        topology.convert_to_dedicated(inp, rg, model, new, 10)
-
-
-def test_convert_loop_in_generator_and_keep_parallel_cables():
-    plan, (inp, rg, model, ev) = plan_of(generator_district(), GEN_RING)
-    exit_a = next(ln.key for ln in plan.lines if ln.exit == "a" and ln.role == "ring")
-    plan, changed = topology.add_parallel(plan, [exit_a], max_parallel=2)
-    assert changed == [exit_a]
-    new = topology.convert_to_dedicated(inp, rg, model, plan, 61)
-    assert_plan_valid(new, inp)
-    assert new.node_role[61] == "dedicated"
-    assert 61 not in ring_of(new, 10).members
-    new_exit = next(ln for ln in new.lines if ln.exit == "a" and ln.role == "ring")
-    assert new_exit.parallel == 2
 
 
 def test_upgrade_lines_takes_larger_conductors():

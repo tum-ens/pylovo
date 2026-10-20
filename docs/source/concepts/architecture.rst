@@ -109,7 +109,7 @@ SQLAlchemy engine with the search path ``pylovo, public``. Its methods are group
      - MV stage: build of the routing graph with settlement flags, attachment of points, district
        subgraphs and quality tables.
    * - :class:`~pylovo.database.mv_source_mixin.MvSourceMixin`
-     - MV stage: OSM substations, eGon-data tables and MaStR units.
+     - MV stage: OSM substations and eGon-data tables.
    * - :class:`~pylovo.database.mv_input_mixin.MvInputMixin`
      - MV stage: LV results of a version (stations, load statistics, MV customers, stored LV nets).
    * - :class:`~pylovo.database.mv_result_mixin.MvResultMixin`

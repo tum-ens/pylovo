@@ -8,16 +8,12 @@ or LV grids.
 1. **Design-point check** (:func:`design_point_check`, one LV net at a time): the stored LV net with its own
    station-coincident loads, the MV/LV tap ``t*`` of the budget and the MV voltage of the budget with the busbar
    at the lower edge of its control band (``V_low = vm_load_pu - busbar_band_pu``) gives
-   ``coupled_lv_busbar_vm_pu`` (bus ``LVbus 1``) and ``coupled_lv_min_vm_pu`` (lowest LV bus). The feed-in cases
-   (``V_high = vm_feed_in_pu + busbar_band_pu``, loads scaled by the case factors, the station's LV-side generation
-   as one static generator at ``LVbus 1`` at ``lv_pv_cos_phi``) give ``coupled_lv_busbar_vm_feed_in_pu`` and
-   ``coupled_lv_max_vm_pu`` (the larger of the two cases, as in the budget).
+   ``coupled_lv_busbar_vm_pu`` (bus ``LVbus 1``) and ``coupled_lv_min_vm_pu`` (lowest LV bus).
 2. **Merged operating point** (:func:`couple_lv_nets`, :func:`run_coupled_cases`): the stored MV net without its
-   HV side and with an ideal slack at the busbar band edge (``busbar_vm_pu - busbar_band_pu`` in the load case,
-   ``+ busbar_band_pu`` in the feed-in cases), every LV net fused at its MV node by a bulk concat with index
-   offsets (the LV ``MVbus 1`` and ext_grid are dropped and the station transformer hangs on the MV node bus), the
-   station equivalents of the MV net removed, the LV-side generation moved to ``LVbus 1``, the station-busbar
-   customers added as fixed loads at ``LVbus 1`` (:func:`add_busbar_customers`), the LV loads scaled per MV feeder
+   HV side and with an ideal slack at the lower edge of the busbar band (``busbar_vm_pu - busbar_band_pu``), every
+   LV net fused at its MV node by a bulk concat with index offsets (the LV ``MVbus 1`` and ext_grid are dropped and
+   the station transformer hangs on the MV node bus), the station equivalents of the MV net removed, the
+   station-busbar customers added as fixed loads at ``LVbus 1`` (:func:`add_busbar_customers`), the LV loads scaled per MV feeder
    and consumer category by pylovo's coincidence law (:func:`coupled_scaling`), so the feeder heads carry the loads
    of the MV design net, and the MV/LV taps ``t*``. The LV transformers of a 10 kV district (``mv_grid.vn_kv``,
    e.g. a dense district of ``MV_NOMINAL_VOLTAGE_KV`` auto) are re-typed to 10 kV (``vn_hv_kv``). Result per
@@ -76,24 +72,16 @@ _BUS_REFS: dict[str, tuple[str, ...]] = {"line": ("from_bus", "to_bus"), "trafo"
                                          "load": ("bus",)}
 #: Bus kinds of the MV part of a net (``bus.kind`` of the electrical module); coupled LV buses get ``lv``.
 MV_BUS_KINDS: tuple[str, ...] = ("busbar", "station", "customer", "generator", "joint")
-#: Cases of the merged operating point: the load case at the lower band edge, the feed-in cases at the upper one.
-OPERATING_CASES: tuple[str, ...] = ("load", *electrical.FEED_IN_CASES)
+#: Cases of the merged operating point: the load case at the lower band edge.
+OPERATING_CASES: tuple[str, ...] = ("load",)
 #: ``mv_node`` columns written by the coupling (``MvResultMixin.save_coupled_results``).
-COUPLED_COLUMNS: tuple[str, ...] = (
-    "coupled_lv_busbar_vm_pu", "coupled_lv_min_vm_pu", "coupled_lv_busbar_vm_feed_in_pu", "coupled_lv_max_vm_pu",
-    "coupled_op_lv_busbar_vm_pu",
-)
+COUPLED_COLUMNS: tuple[str, ...] = ("coupled_lv_busbar_vm_pu", "coupled_lv_min_vm_pu", "coupled_op_lv_busbar_vm_pu")
 #: Columns of the station table of :func:`couple_district` (one row per station node of a district).
-STATION_COLUMNS: tuple[str, ...] = (
-    "mv_node_id", "grid_result_id", "vm_load_pu", "vm_feed_in_pu", "mv_lv_tap_pos", "gen_solar_kw", "gen_wind_kw",
-    "gen_other_kw",
-)
+STATION_COLUMNS: tuple[str, ...] = ("mv_node_id", "grid_result_id", "vm_load_pu", "mv_lv_tap_pos")
 #: Optional analytic budget columns of the station table, compared with the coupled values in the metrics.
-BUDGET_COLUMNS: tuple[str, ...] = ("lv_busbar_vm_pu", "lv_min_vm_pu", "lv_busbar_vm_feed_in_pu")
+BUDGET_COLUMNS: tuple[str, ...] = ("lv_busbar_vm_pu", "lv_min_vm_pu")
 #: Columns of :func:`run_coupled_cases`.
-OPERATING_COLUMNS: tuple[str, ...] = (
-    "op_mv_vm_pu", "op_lv_busbar_vm_pu", "op_lv_min_vm_pu", "op_lv_busbar_vm_feed_in_pu", "op_lv_max_vm_pu",
-)
+OPERATING_COLUMNS: tuple[str, ...] = ("op_mv_vm_pu", "op_lv_busbar_vm_pu", "op_lv_min_vm_pu")
 #: Agreement of the analytic and the coupled LV busbar voltage that the metrics count (p.u.).
 AGREEMENT_PU: float = 0.005
 #: ``load`` column that marks the station-busbar customers of the merged net (fixed loads, never scaled).
@@ -143,25 +131,9 @@ def _min_line_length(lines: pd.DataFrame) -> pd.DataFrame:
 
 
 def operating_busbar_vm(case: str, params: MvParameters) -> float:
-    """Busbar voltage of the coupled cases: the lower edge of the OLTC band for the load and (n-1) cases, the upper
-    edge for the feed-in cases (``busbar_vm_pu ∓ busbar_band_pu``, DESIGN §5.6, §5.7)."""
-    band = float(params.busbar_band_pu)
-    if case in electrical.FEED_IN_CASES:
-        return float(params.busbar_vm_pu) + band
-    return float(params.busbar_vm_pu) - band
-
-
-def _generation_kw(lv_gen_kw: float | Mapping[str, float] | None) -> dict[str, float]:
-    """LV-side generation per technology group (``solar``, ``wind``, ``other``); a single number is solar."""
-    if lv_gen_kw is None:
-        return {group: 0.0 for group in electrical.GENERATION_GROUPS}
-    if isinstance(lv_gen_kw, Mapping):
-        unknown = sorted(set(map(str, lv_gen_kw)) - set(electrical.GENERATION_GROUPS))
-        if unknown:
-            raise ValueError(f"unknown technology groups {', '.join(unknown)}; expected "
-                             f"{', '.join(electrical.GENERATION_GROUPS)}")
-        return {group: max(_number(lv_gen_kw.get(group), 0.0), 0.0) for group in electrical.GENERATION_GROUPS}
-    return {"solar": max(_number(lv_gen_kw, 0.0), 0.0), "wind": 0.0, "other": 0.0}
+    """Busbar voltage of the coupled cases: the lower edge of the OLTC band (``busbar_vm_pu - busbar_band_pu``,
+    DESIGN §5.6, §5.7); the same for every case."""
+    return float(params.busbar_vm_pu) - float(params.busbar_band_pu)
 
 
 def station_buses(lv_net: pp.pandapowerNet) -> tuple[int, int]:
@@ -260,49 +232,32 @@ def upsized_ratings(stations: pd.DataFrame) -> dict[int, float]:
 
 
 # ---------------------------------------------------------------------------------------------- design point
-def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, vm_high: float, tap: int,
-                       lv_gen_kw: float | Mapping[str, float], params: MvParameters, *,
+def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, tap: int, *,
                        busbar_loads: Mapping[str, float] | None = None,
                        power_factor: float = 1.0) -> dict[str, float]:
     """The LV verdict of one station at its design point (DESIGN §5.7 step 2); ``lv_net`` is not changed.
 
-    Lines shorter than :data:`MIN_LINE_KM` get that length in the check's copy.
-
-    - **Load:** the MV side (ext_grid) at ``vm_low``, the station transformer at ``tap``, the stored
-      station-coincident LV loads and fixed station-busbar customer loads → ``coupled_lv_busbar_vm_pu``
-      (``LVbus 1``, the LV side of the
-      station transformer) and ``coupled_lv_min_vm_pu`` (lowest LV bus).
-    - **Feed-in:** per feed-in case of ``params.feed_in_cases`` the MV side at ``vm_high``, the loads times
-      ``load_p`` (P) and ``load_q`` (Q), and one static generator at ``LVbus 1`` with the LV-side generation times
-      the case factor of its technology group, under-excited at ``params.lv_pv_cos_phi``
-      (``q = -p · tan(arccos(cos φ))``) → ``coupled_lv_busbar_vm_feed_in_pu`` and ``coupled_lv_max_vm_pu``, the
-      larger value of the cases (as ``rise_T`` of the budget).
+    Lines shorter than :data:`MIN_LINE_KM` get that length in the check's copy. The MV side (ext_grid) at
+    ``vm_low``, the station transformer at ``tap``, the stored station-coincident LV loads and fixed station-busbar
+    customer loads give ``coupled_lv_busbar_vm_pu`` (``LVbus 1``, the LV side of the station transformer) and
+    ``coupled_lv_min_vm_pu`` (lowest LV bus).
 
     Args:
         lv_net: A stored pylovo LV net (pruned to bus, line, trafo, load and ext_grid is enough).
         vm_low: MV voltage of the station in the load case with the busbar at its lower band edge (NaN: skipped).
-        vm_high: MV voltage of the station in the feed-in cases with the busbar at its upper band edge (NaN:
-            skipped).
         tap: MV/LV tap position (HV side; a negative tap raises the LV side).
-        lv_gen_kw: LV-side generation of the station in kW: one number (solar) or kW per technology group
-            (``solar``, ``wind``, ``other``).
-        params: The MV parameters (``feed_in_cases``, ``lv_pv_cos_phi``).
         busbar_loads: Fixed station-busbar customer kW by category, added to the check's copy of the LV net.
         power_factor: Power factor of those customer loads.
 
     Returns:
-        ``coupled_lv_busbar_vm_pu``, ``coupled_lv_min_vm_pu``, ``coupled_lv_busbar_vm_feed_in_pu``,
-        ``coupled_lv_max_vm_pu`` (NaN where a case was skipped or did not converge) and ``design_converged``,
-        ``feed_in_converged`` (1.0, 0.0, or NaN when skipped).
+        ``coupled_lv_busbar_vm_pu``, ``coupled_lv_min_vm_pu`` (NaN when skipped or not converged) and
+        ``design_converged`` (1.0, 0.0, or NaN when skipped).
 
     Raises:
-        ValueError: The net has no station transformer or an unknown technology group is given.
+        ValueError: The net has no station transformer.
     """
     mv_bus, lv_busbar = station_buses(lv_net)
-    generation = _generation_kw(lv_gen_kw)
-    out = {"coupled_lv_busbar_vm_pu": math.nan, "coupled_lv_min_vm_pu": math.nan,
-           "coupled_lv_busbar_vm_feed_in_pu": math.nan, "coupled_lv_max_vm_pu": math.nan,
-           "design_converged": math.nan, "feed_in_converged": math.nan}
+    out = {"coupled_lv_busbar_vm_pu": math.nan, "coupled_lv_min_vm_pu": math.nan, "design_converged": math.nan}
     net = copy.deepcopy(lv_net)
     _min_line_length(net.line)
     if busbar_loads:
@@ -325,29 +280,6 @@ def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, vm_high: float, 
             vm = net.res_bus["vm_pu"]
             out["coupled_lv_busbar_vm_pu"] = float(vm.at[lv_busbar])
             out["coupled_lv_min_vm_pu"] = float(vm.loc[lv_buses].min())
-    if params.include_generation and math.isfinite(_number(vm_high)):
-        base_p = net.load["p_mw"].astype(float).copy()
-        base_q = net.load["q_mvar"].astype(float).copy()
-        tan_phi = coincidence.tan_phi(float(params.lv_pv_cos_phi))
-        sgen = pp.create_sgen(net, lv_busbar, p_mw=0.0, q_mvar=0.0, name="LV generation")
-        net.ext_grid["vm_pu"] = float(vm_high)
-        busbar, highest, all_converged = [], [], True
-        for case in electrical.FEED_IN_CASES:
-            factors = params.feed_in_cases[case]
-            net.load["p_mw"] = base_p * float(factors["load_p"])
-            net.load["q_mvar"] = base_q * float(factors["load_q"])
-            p_mw = sum(generation[g] * float(factors[g]) for g in electrical.GENERATION_GROUPS) / 1000.0
-            net.sgen.loc[sgen, ["p_mw", "q_mvar"]] = [p_mw, -p_mw * tan_phi]
-            converged = _runpp(net)
-            all_converged &= converged
-            if converged:
-                vm = net.res_bus["vm_pu"]
-                busbar.append(float(vm.at[lv_busbar]))
-                highest.append(float(vm.loc[lv_buses].max()))
-        out["feed_in_converged"] = float(all_converged)
-        if busbar:
-            out["coupled_lv_busbar_vm_feed_in_pu"] = max(busbar)
-            out["coupled_lv_max_vm_pu"] = max(highest)
     return out
 
 
@@ -443,8 +375,7 @@ def couple_lv_nets(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dic
     MV bus with the station's ``grid_result_id``, or named ``Station <grid_result_id>``) is removed; the LV buses
     except the transformer's HV bus (``MVbus 1``) are appended with ``kind`` ``lv`` and the station's
     ``grid_result_id``; lines, transformers and loads follow with their bus references re-mapped, the transformer's
-    HV side on the MV node bus; the LV-side generation of the station (sgen ``level`` ``lv``) moves to its LV
-    busbar. Transformers whose ``vn_hv_kv`` differs from ``mv_vn_kv`` are re-typed to it (10 kV districts; the
+    HV side on the MV node bus. Transformers whose ``vn_hv_kv`` differs from ``mv_vn_kv`` are re-typed to it (10 kV districts; the
     impedances in % are unchanged). LV results and ext_grids are never copied; the pandapower dtypes are restored.
 
     Args:
@@ -477,7 +408,6 @@ def couple_lv_nets(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dic
     tables = ("bus", *_BUS_REFS)
     parts = {table: [net[table]] for table in tables}
     nxt = {table: (int(net[table].index.max()) + 1 if len(net[table]) else 0) for table in tables}
-    lv_busbar_of: dict[int, int] = {}
     for mv_bus in sorted(frames):
         gid, frame = frames[mv_bus]
         gid = int(gid)
@@ -508,7 +438,6 @@ def couple_lv_nets(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dic
             df["grid_result_id"] = float(gid)
             nxt[table] += len(df)
             parts[table].append(df)
-        lv_busbar_of[gid] = int(look.loc[lv_busbar])
     for table in tables:
         net[table] = _concat(parts[table])
 
@@ -517,21 +446,6 @@ def couple_lv_nets(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dic
     retype = coupled & ((trafo["vn_hv_kv"].astype(float) - float(mv_vn_kv)).abs() > 1e-9)
     if retype.any():
         trafo.loc[retype, "vn_hv_kv"] = float(mv_vn_kv)
-
-    sgen = net.sgen
-    if len(sgen):
-        expected = sgen["bus"].astype(np.int64).map(gid_of_bus)
-        if "level" in sgen.columns:
-            lv_side = sgen["level"].astype(object).eq("lv")
-        else:
-            lv_side = sgen["name"].astype(str).str.startswith("LV generation")
-        if "grid_result_id" in sgen.columns:
-            own = pd.to_numeric(sgen["grid_result_id"], errors="coerce").eq(expected)
-        else:
-            own = expected.notna()
-        move = (lv_side & own & expected.notna()).astype(bool)
-        if move.any():
-            net.sgen.loc[move, "bus"] = [lv_busbar_of[int(g)] for g in expected[move]]
     net["name"] = f"{mv_net.name} with {len(frames)} LV grids" if getattr(mv_net, "name", "") else \
         f"MV grid with {len(frames)} LV grids"
     return net
@@ -747,21 +661,20 @@ def build_coupled_net(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, 
 # ---------------------------------------------------------------------------------------------- operating point
 def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters,
                       cases: Sequence[str] | None = None) -> pd.DataFrame:
-    """The merged operating point (DESIGN §5.7 step 4): each case on a copy of the coupled net
+    """The merged operating point (DESIGN §5.7 step 4): the load case on a copy of the coupled net
     (``electrical.case_net``) with the busbar at its band edge (:func:`operating_busbar_vm`).
 
     Returns:
         One row per coupled ``grid_result_id`` with :data:`OPERATING_COLUMNS`: ``op_mv_vm_pu`` (the station's MV
-        node, load case), ``op_lv_busbar_vm_pu`` (``LVbus 1``) and ``op_lv_min_vm_pu`` (lowest LV bus) of the load
-        case, ``op_lv_busbar_vm_feed_in_pu`` and ``op_lv_max_vm_pu`` (highest values of the feed-in cases); NaN
-        where a case did not converge or was not run. ``attrs``: ``converged`` and ``slack_p_mw`` per case, and
-        ``mv_vm_pu`` (load case voltages of the MV buses, by bus index).
+        node), ``op_lv_busbar_vm_pu`` (``LVbus 1``) and ``op_lv_min_vm_pu`` (lowest LV bus); NaN where the case did
+        not converge. ``attrs``: ``converged`` and ``slack_p_mw`` per case, and ``mv_vm_pu`` (load case voltages of
+        the MV buses, by bus index).
 
     Raises:
         ValueError: A case is not one of :data:`OPERATING_CASES`.
     """
-    cases = (OPERATING_CASES if params.include_generation else ("load",)) if cases is None else cases
-    unknown = [case for case in cases if case not in OPERATING_CASES or case not in params.active_cases]
+    cases = OPERATING_CASES if cases is None else cases
+    unknown = [case for case in cases if case not in OPERATING_CASES]
     if unknown:
         raise ValueError(f"operating-point cases must be among {', '.join(OPERATING_CASES)}, got {unknown}")
     trafo = net.trafo
@@ -790,15 +703,10 @@ def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters,
         busbar_vm = pd.Series(vm.reindex(stations["lv_bus"].to_numpy()).to_numpy(), index=stations.index)
         lv_vm = vm[lv_rows]
         grouped = lv_vm.groupby(bus_gid[lv_rows].astype(np.int64))
-        if case in electrical.FEED_IN_CASES:
-            result["op_lv_busbar_vm_feed_in_pu"] = np.fmax(result["op_lv_busbar_vm_feed_in_pu"], busbar_vm)
-            result["op_lv_max_vm_pu"] = np.fmax(result["op_lv_max_vm_pu"], grouped.max().reindex(result.index))
-        else:
-            result["op_mv_vm_pu"] = pd.Series(vm.reindex(stations["hv_bus"].to_numpy()).to_numpy(),
-                                              index=stations.index)
-            result["op_lv_busbar_vm_pu"] = busbar_vm
-            result["op_lv_min_vm_pu"] = grouped.min().reindex(result.index)
-            mv_vm = vm[~lv_rows].copy()
+        result["op_mv_vm_pu"] = pd.Series(vm.reindex(stations["hv_bus"].to_numpy()).to_numpy(), index=stations.index)
+        result["op_lv_busbar_vm_pu"] = busbar_vm
+        result["op_lv_min_vm_pu"] = grouped.min().reindex(result.index)
+        mv_vm = vm[~lv_rows].copy()
     result.attrs["converged"] = converged
     result.attrs["slack_p_mw"] = slack
     result.attrs["mv_vm_pu"] = mv_vm
@@ -884,10 +792,9 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     Returns:
         :class:`CoupledDistrict`: ``rows`` (``mv_node_id`` and :data:`COUPLED_COLUMNS` per station), ``status``
         (``done``, or ``partial`` when a station with an LV grid could not be coupled, lacks a voltage budget,
-        has a skipped or non-converging design/feed-in check, or the merged flow did not converge) and JSON-native
-        ``metrics``. Every LV net that loads is merged, also one whose design-point or feed-in check does not
-        converge on its own (it stays in ``design_not_converged`` / ``feed_in_not_converged``): the MV operating
-        point always carries the real LV grids.
+        has a skipped or non-converging design check, or the merged flow did not converge) and JSON-native
+        ``metrics``. Every LV net that loads is merged, also one whose design-point check does not converge on its
+        own (it stays in ``design_not_converged``): the MV operating point always carries the real LV grids.
     """
     log = log or logger
     start = time.time()
@@ -900,8 +807,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
     checks: dict[int, dict[str, float]] = {}
     frames: dict[int, tuple[int, dict[str, pd.DataFrame]]] = {}
     lists: dict[str, list[int]] = {"unknown_lv_grid": [], "lv_error": [], "no_mv_bus": [],
-                                   "lv_stored_not_converged": [], "design_not_converged": [],
-                                   "feed_in_not_converged": [], "no_budget": []}
+                                   "lv_stored_not_converged": [], "design_not_converged": [], "no_budget": []}
     for gid, lv_net in lv_nets:
         key = node_of_grid.get(int(gid))
         if key is None:
@@ -912,12 +818,10 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         if not math.isfinite(_number(tap)):
             lists["no_budget"].append(key)
             tap = 0
-        generation = {group: row[f"gen_{group}_kw"] for group in electrical.GENERATION_GROUPS}
         try:
             if int(gid) in upsized:
                 lv_net = upsize_station_transformer(lv_net, upsized[int(gid)])
-            check = design_point_check(lv_net, _number(row["vm_load_pu"]) - band,
-                                       _number(row["vm_feed_in_pu"]) + band, int(tap), generation, params,
+            check = design_point_check(lv_net, _number(row["vm_load_pu"]) - band, int(tap),
                                        busbar_loads=busbar_loads.get(int(gid)), power_factor=lv.power_factor)
             part = lv_frames(lv_net, int(gid)) if merged else None
         except Exception as exc:     # one broken LV net never stops the district
@@ -929,8 +833,6 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             lists["lv_stored_not_converged"].append(key)
         if check["design_converged"] == 0.0:
             lists["design_not_converged"].append(key)
-        if params.include_generation and check["feed_in_converged"] == 0.0:
-            lists["feed_in_not_converged"].append(key)
         if merged:
             bus = bus_of_node.get(key)
             if bus is None:
@@ -945,7 +847,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         rows[column] = np.nan
     rows = rows.set_index("mv_node_id", drop=False)
     for key, check in checks.items():
-        for column in COUPLED_COLUMNS[:4]:
+        for column in ("coupled_lv_busbar_vm_pu", "coupled_lv_min_vm_pu"):
             rows.at[key, column] = check[column]
 
     metrics: dict[str, Any] = {
@@ -956,17 +858,12 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         "design_point": {
             "busbar": _diff_stats(rows["coupled_lv_busbar_vm_pu"], table["lv_busbar_vm_pu"]),
             "minimum": _diff_stats(rows["coupled_lv_min_vm_pu"], table["lv_min_vm_pu"]),
-            "feed_in_busbar": _diff_stats(rows["coupled_lv_busbar_vm_feed_in_pu"], table["lv_busbar_vm_feed_in_pu"]),
             "min_lv_vm_pu": _finite(rows["coupled_lv_min_vm_pu"].min()),
-            "max_lv_vm_feed_in_pu": _finite(rows["coupled_lv_max_vm_pu"].max()),
         },
         "agreement_pu": AGREEMENT_PU,
     }
-    required_checks = ("design_converged", "feed_in_converged") if params.include_generation else ("design_converged",)
-    status = "partial" if (not_coupled or lists["no_budget"]
-                           or lists["design_not_converged"] or lists["feed_in_not_converged"]
-                           or any(math.isnan(check[case]) for check in checks.values()
-                                  for case in required_checks)) else "done"
+    status = "partial" if (not_coupled or lists["no_budget"] or lists["design_not_converged"]
+                           or any(math.isnan(check["design_converged"]) for check in checks.values())) else "done"
     net = None
     if merged and frames:
         taps = {int(g): int(_number(table.at[node_of_grid[int(g)], "mv_lv_tap_pos"], 0.0))
@@ -998,7 +895,6 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
             "mv_only_slack_p_mw": _finite(reference.res_ext_grid["p_mw"].sum()) if ref_ok else None,
             "mv_vm_vs_mv_only": mv_diff,
             "min_lv_vm_pu": _finite(op["op_lv_min_vm_pu"].min()),
-            "max_lv_vm_feed_in_pu": _finite(op["op_lv_max_vm_pu"].max()),
             "busbar_vs_design_point": _diff_stats(rows["coupled_op_lv_busbar_vm_pu"],
                                                   rows["coupled_lv_busbar_vm_pu"]),
             "n_buses": int(len(net.bus)), "n_lines": int(len(net.line)),
@@ -1321,9 +1217,6 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
     output = Path(output)
     with _database_client("log/log.txt") as dbc:
         _, params, lv_json = _variant_inputs(dbc, version_id, variant_id)
-        if case not in params.active_cases:
-            raise ValueError(f"case {case!r} was not requested for MV variant {variant_id}; "
-                             f"available cases: {', '.join(params.active_cases)}")
         layers = dbc.read_mv_layers(version_id, variant_id, int(mv_grid_id))
         grids = _plain_frame(layers["grids"])
         if not len(grids):

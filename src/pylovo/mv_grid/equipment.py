@@ -378,20 +378,19 @@ def add_hv_mv_std_type(net, t: HvMvType) -> str:
     return t.name
 
 
-def size_hv_mv(s_load_mva: float, s_feed_mva: float, sizes_mva: Sequence[float], units: int,
-               n1_utilization: float, known_units_mva: Sequence[float] = ()) -> tuple[int, float, str]:
+def size_hv_mv(s_load_mva: float, sizes_mva: Sequence[float], units: int, n1_utilization: float,
+               known_units_mva: Sequence[float] = ()) -> tuple[int, float, str]:
     """Number and rating of the HV/MV transformers of a substation (DESIGN section 4.6).
 
     * Two or more known ratings (OSM): ``n = len(known)``, ``sn = min(known)``, sizing ``osm_rating``.
     * Otherwise ``n = units`` and ``sn`` = the smallest size whose ``n - 1`` units carry the peak
-      ``max(s_load_mva, s_feed_mva)`` at ``n1_utilization`` (one unit out of service; with ``units = 1`` there is
+      ``s_load_mva`` at ``n1_utilization`` (one unit out of service; with ``units = 1`` there is
       no reserve and the single unit carries the peak), sizing ``sized``.
     * If no size fits: ``sn`` = the largest size and as many units as the peak needs plus the reserve unit,
       sizing ``large_substation`` (70 MVA: 3 x 63 MVA).
 
     Args:
         s_load_mva: Coincident apparent load of all district nodes in MVA.
-        s_feed_mva: Largest apparent power of the feed-in cases at the busbar in MVA (NaN or None: not known).
         sizes_mva: Available ratings in MVA (``hv_mv_sizes_mva``).
         units: Number of units of a sized substation (``hv_mv_units``).
         n1_utilization: Allowed loading of the remaining units with one unit out (``hv_mv_n1_utilization``).
@@ -414,7 +413,7 @@ def size_hv_mv(s_load_mva: float, s_feed_mva: float, sizes_mva: Sequence[float],
     if units < 1 or not n1_utilization > 0:
         raise ValueError(f"size_hv_mv needs units >= 1 and a positive utilization, got {units!r} and "
                          f"{n1_utilization!r}")
-    peak = max(_apparent_mva(s_load_mva), _apparent_mva(s_feed_mva))
+    peak = _apparent_mva(s_load_mva)
     reserve = 1 if units > 1 else 0
     for size in sizes:
         if (units - reserve) * size * n1_utilization >= peak:

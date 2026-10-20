@@ -329,35 +329,11 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_mv_customers_centroid
     ON pylovo.mv_customers USING gist (centroid);
     """,
-    "mastr_units": """
-    CREATE TABLE IF NOT EXISTS pylovo.mastr_units (
-        mastr_id text PRIMARY KEY,
-        location_id text,
-        technology varchar(20) NOT NULL,
-        solar_kind varchar(20),
-        status varchar(20),
-        net_power_kw double precision,
-        gross_power_kw double precision,
-        voltage_level text,
-        commissioning_date date,
-        gemeindeschluessel text,
-        postcode text,
-        geom geometry(Point,{TARGET_EPSG}) NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_mastr_units_geom ON pylovo.mastr_units USING gist (geom);
-    """,
-    "mastr_postcode_aggregates": """
-    CREATE TABLE IF NOT EXISTS pylovo.mastr_postcode_aggregates (
-        postcode text NOT NULL,
-        technology varchar(20) NOT NULL,
-        n_units integer NOT NULL,
-        net_power_kw double precision NOT NULL,
-        CONSTRAINT mastr_postcode_aggregates_pkey PRIMARY KEY (postcode, technology)
-    );
-    """,
     # MV stage (pylovo.mv_grid). The routing graph (mv_graph*) is unversioned reference data,
     # content-addressed by graph_id. Every MV result table carries version_id and mv_variant_id and
     # is deleted with its mv_variant row (ON DELETE CASCADE). Migration 0009_mv_grids gates them.
+    # The generation columns (gen_*_kw, *feed_in*, n_generators, kind/role generator) hold values only in older
+    # variants planned with generation (branch feature/mv-backup); the stage writes 0 or NULL.
     "mv_graph": """
     CREATE TABLE IF NOT EXISTS pylovo.mv_graph (
         graph_id varchar(40) PRIMARY KEY,                -- 'g' || 16 hex of md5(source|ags|build parameters|fingerprint)
@@ -505,7 +481,7 @@ CREATE_QUERIES = {
         hv_mv_sizing varchar(16),
         oltc_tap_pos integer,
         peak_load_mw double precision,                   -- category law over all nodes of the district
-        peak_feed_in_mw double precision,                -- largest reverse flow of the feed-in cases
+        peak_feed_in_mw double precision,                -- older variants: largest reverse flow of the feed-in cases
         sum_station_kva double precision,
         n_stations integer,
         n_customers integer,
@@ -554,7 +530,7 @@ CREATE_QUERIES = {
         substation_id bigint,                            -- busbar nodes
         grid_result_id bigint,                           -- station: its LV grid (NULL for external stations)
         customer_objectid text,                          -- customer: pylovo.mv_customers.objectid
-        mastr_connection_id text,                        -- generator: LokationMastrNummer or 'unit/<mastr_id>'
+        mastr_connection_id text,                        -- generator rows of older variants with generation
         voltage_class varchar(8),                        -- generator: mv | mvlv | hvmv (after the level rules)
         technology varchar(32),                          -- generator: technology mix label, e.g. 'wind' or 'solar+other'
         plz integer,
@@ -660,7 +636,7 @@ CREATE_QUERIES = {
         mv_grid_id bigint NOT NULL,
         ring_id integer NOT NULL,
         kind varchar(16) NOT NULL,                       -- ring | dedicated | generator | radial
-        n_members integer,                               -- counted for the cap: stations + customers + loop-in generators
+        n_members integer,                               -- counted for the cap: stations + customers
         n_stations integer,
         n_customers integer,
         n_generators integer,

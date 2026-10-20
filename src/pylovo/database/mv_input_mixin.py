@@ -2,17 +2,16 @@
 
 Reads, for an explicit ``version_id``, the generated PLZ and the planning region, the LV version
 snapshot, the stations of the LV grids with their load statistics, the MV customers of
-``pylovo.mv_customers``, the LV-side generation targets, the stored LV voltage requirement, the
-stored LV pandapower nets and the population of the PLZ. Read-only (no temporary tables, so the
+``pylovo.mv_customers``, the stored LV voltage requirement, the stored LV pandapower nets and the
+population of the PLZ. Read-only (no temporary tables, so the
 methods also run in a read-only transaction); the methods never commit. The planning rules that turn
-these rows into MV nodes live in :mod:`pylovo.mv_grid.inputs` (DESIGN §3.1, §3.4–§3.6).
+these rows into MV nodes live in :mod:`pylovo.mv_grid.inputs` (DESIGN §3.1, §3.4–§3.5).
 """
 from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
-import numpy as np
 import pandas as pd
 from psycopg2 import sql
 
@@ -137,31 +136,6 @@ WHERE br.version_id = %(v)s AND br.postcode = ANY(%(plz)s) AND br.nonresidential
 ORDER BY br.objectid
 """
 
-# LV-side generation points: the grid of the nearest building of the version (KNN on buildings_result.geom,
-# which has the GiST index; WP0 D16). unnest instead of a temporary table: no writes.
-_LV_TARGETS_SQL = sql.SQL("""
-SELECT p.key, b.grid_result_id, b.distance_m
-FROM unnest(%(keys)s::bigint[], %(xs)s::double precision[], %(ys)s::double precision[]) AS p(key, x, y)
-CROSS JOIN LATERAL (SELECT ST_SetSRID(ST_MakePoint(p.x, p.y), {epsg}) AS geom) q
-LEFT JOIN LATERAL (
-    SELECT br.grid_result_id, ST_Distance(br.geom, q.geom) AS distance_m
-    FROM pylovo.buildings_result br
-    WHERE br.version_id = %(v)s AND br.grid_result_id IS NOT NULL
-    ORDER BY br.geom <-> q.geom
-    LIMIT 1) b ON b.distance_m <= %(max_m)s
-ORDER BY p.key
-""")
-
-_BUILDING_COUNTS_SQL = """
-SELECT br.grid_result_id, lpad(br.postcode::text, 5, '0') AS postcode, count(*) AS n_buildings
-FROM pylovo.buildings_result br
-JOIN pylovo.grid_result gr ON gr.version_id = br.version_id AND gr.grid_result_id = br.grid_result_id
-WHERE br.version_id = %(v)s AND gr.plz = ANY(%(plz)s) AND br.postcode IS NOT NULL
-GROUP BY br.grid_result_id, br.postcode
-ORDER BY br.grid_result_id, br.postcode
-"""
-
-# grid is json (not jsonb); the ext_grid DataFrame is a split-orient JSON string inside it
 _LV_REQUIREMENT_SQL = """
 SELECT gr.grid_result_id,
        ((gr.grid->'_object'->'ext_grid'->>'_object')::json->'data'->0->>(ce.ord - 1)::int)::float AS vm_pu
@@ -363,18 +337,6 @@ class MvInputMixin(BaseMixin):
         frame["p_kw"] = pd.to_numeric(frame["p_kw"], errors="coerce").astype(float)
         return frame
 
-    def station_building_counts(self, version_id: str, plz_list: Sequence[int]) -> pd.DataFrame:
-        """Buildings per LV grid and building postcode (to split the MaStR postcode aggregates, DESIGN §3.6).
-
-        Returns:
-            Columns ``grid_result_id``, ``postcode`` (text, 5 digits), ``n_buildings``.
-        """
-        plz = _ints(plz_list)
-        if not plz:
-            return _frame([], ("grid_result_id", "postcode", "n_buildings"))
-        self.cur.execute(_BUILDING_COUNTS_SQL, {"v": version_id, "plz": plz})
-        return _frame(self.cur.fetchall(), ("grid_result_id", "postcode", "n_buildings"))
-
     def lv_design_source_vm(self, version_id: str, grid_result_ids: Sequence[int]) -> dict[int, float]:
         """The stored LV requirement per grid: ``ext_grid.vm_pu`` of its net (DESIGN §3.4, §5.6).
 
@@ -516,47 +478,6 @@ class MvInputMixin(BaseMixin):
         frame = frame[frame["installed_kw"] > lv.mv_direct_threshold_kw]
         return frame.sort_values(["installed_kw", "objectid"], ascending=[False, True])[columns] \
             .reset_index(drop=True)
-
-    # ------------------------------------------------------------------------------------------ generation
-    def lv_side_targets(self, version_id: str, points: pd.DataFrame, max_m: float = 100.0) -> pd.DataFrame:
-        """The LV grid of the nearest building of the version within ``max_m`` of each point (DESIGN §3.6).
-
-        Used for the generation connected on the LV side: rooftop PV lies on (or next to) the building whose LV
-        grid connects it.
-
-        Args:
-            version_id: LV version.
-            points: ``key`` (unique integers; default: the row number), ``x``, ``y`` in ``TARGET_EPSG`` and any
-                other columns (kept).
-            max_m: Largest distance to the building polygon (m).
-
-        Returns:
-            ``points`` (index reset) with ``grid_result_id`` (NaN where no building is within ``max_m``) and
-            ``target_distance_m``.
-        """
-        frame = pd.DataFrame(points).copy().reset_index(drop=True)
-        if "key" not in frame.columns:
-            frame["key"] = np.arange(len(frame), dtype=np.int64)
-        frame["grid_result_id"] = np.nan
-        frame["target_distance_m"] = np.nan
-        xs = pd.to_numeric(frame.get("x"), errors="coerce") if len(frame) else pd.Series(dtype=float)
-        ys = pd.to_numeric(frame.get("y"), errors="coerce") if len(frame) else pd.Series(dtype=float)
-        ok = (xs.notna() & ys.notna()).to_numpy() if len(frame) else np.zeros(0, dtype=bool)
-        if not ok.any():
-            return frame
-        keys = frame.loc[ok, "key"].astype("int64").tolist()
-        if len(set(keys)) != len(keys):
-            raise ValueError("lv_side_targets needs unique point keys")
-        self.cur.execute(_LV_TARGETS_SQL.format(epsg=sql.Literal(int(TARGET_EPSG))),
-                         {"keys": keys, "xs": xs[ok].astype(float).tolist(), "ys": ys[ok].astype(float).tolist(),
-                          "v": version_id, "max_m": float(max_m)})
-        found = pd.DataFrame(self.cur.fetchall(), columns=["key", "grid_result_id", "distance_m"]).set_index("key")
-        position = pd.Series(np.flatnonzero(ok), index=keys)
-        hit = found["grid_result_id"].notna()
-        rows = position.loc[found.index[hit]].to_numpy()
-        frame.loc[rows, "grid_result_id"] = found.loc[hit, "grid_result_id"].astype(float).to_numpy()
-        frame.loc[rows, "target_distance_m"] = found.loc[hit, "distance_m"].astype(float).to_numpy()
-        return frame
 
     # ------------------------------------------------------------------------------------------ staleness
     def lv_fingerprint(self, version_id: str, plz_list: Sequence[int]) -> dict:

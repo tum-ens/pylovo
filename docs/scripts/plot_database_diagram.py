@@ -77,6 +77,8 @@ DESCRIPTIONS = {
                      "dropped after the run.",
     "ways_tem": "Temporary street table of one postcode, created as ``ways_tem_<plz>``; pgRouting adds "
                 "``ways_tem_<plz>_vertices_pgr``.",
+    "excluded_tem": "Temporary table of the buildings removed during the generation of one postcode, with the "
+                    "reason; saved to ``building_exclusion``.",
     "transformer_positions_with_grid": "View: transformer positions with grid identifiers, the station rating "
                                        "(``transformer_rated_power``) and the equipment data of one unit "
                                        "(``transformer_units`` per station).",
@@ -84,11 +86,6 @@ DESCRIPTIONS = {
     "mv_customers": "Buildings of a version whose non-residential load is connected directly to MV "
                     "(``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), written per PLZ by the LV stage; the residential "
                     "part of a mixed building stays in its LV grid.",
-    "mastr_units": "Generating units in operation with coordinates from the Marktstammdatenregister "
-                   "(``pylovo-import mastr``): technology, net power and connection voltage level. Not versioned; "
-                   "replaced by each import.",
-    "mastr_postcode_aggregates": "MaStR units in operation without coordinates (mostly small rooftop PV), summed per "
-                                 "postcode and technology. Replaced by each import.",
     "mv_graph": "One row per MV routing graph built from the regional street graph of InfDB, content-addressed by "
                 "``graph_id``, with its build parameters and QA figures. Not versioned.",
     "mv_graph_vertex": "Vertices of an MV routing graph with their degree and connected component.",
@@ -103,11 +100,11 @@ DESCRIPTIONS = {
                      "transformer sizing and loading.",
     "mv_grid": "One MV grid per supplying HV/MV substation: status, HV/MV transformers, peak load, counts, line "
                "lengths, voltage and loading extremes, metrics and the stored pandapower net (``net``).",
-    "mv_node": "Nodes of the MV grids (busbars, LV stations, MV customers, MV generators, joints) with loads, ring "
+    "mv_node": "Nodes of the MV grids (busbars, LV stations, MV customers, joints) with loads, ring "
                "position, MV voltages and the voltage budget of each station (MV/LV tap, LV busbar voltage).",
-    "mv_line": "MV lines (ring, stub, dedicated, generator and tie lines) with kind, standard type, cable and "
+    "mv_line": "MV lines (ring, stub, dedicated, tie and link lines) with kind, standard type, cable and "
                "overhead length, normally-open flag and loadings.",
-    "mv_ring": "One row per ring, dedicated feeder, generator feeder or busbar radial with member counts, lengths, "
+    "mv_ring": "One row per ring, dedicated feeder or busbar radial with member counts, lengths, "
                "coincident loads, normally-open point and voltage and loading extremes.",
     "mv_variant_stats": "View: grid counts by status and sums of stations, rings, line lengths, cable share, km per "
                         "supply point and peak load per version and MV variant.",
@@ -245,7 +242,7 @@ ZONES = [
     ("MV stage: every MV result table references mv_variant (ON DELETE CASCADE)", 0.2, [
         ["mv_variant", "mv_substation", "mv_grid"],
         ["mv_node", "mv_line", "mv_ring"],
-        ["mv_customers", "mastr_units", "mastr_postcode_aggregates"],
+        ["mv_customers", None, None],
         ["mv_graph_vertex", "mv_graph", "mv_graph_edge"],
         [None, "mv_graph_settlement", None],
     ]),
@@ -254,7 +251,7 @@ ZONES = [
         ["res", "oth", "ways"],
     ]),
     ("Temporary tables of one generation run (dropped afterwards)", 0.2, [
-        ["buildings_tem", "ways_tem", None],
+        ["buildings_tem", "ways_tem", "excluded_tem"],
     ]),
 ]
 
@@ -431,8 +428,8 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
     ]
     groups = [
         ("Reference and input tables", ["version", "equipment_data", "consumer_categories", "postcode",
-                                        "municipal_register", "transformers", "mastr_units",
-                                        "mastr_postcode_aggregates", "mv_graph", "mv_graph_vertex", "mv_graph_edge",
+                                        "municipal_register", "transformers", "mv_graph", "mv_graph_vertex",
+                                        "mv_graph_edge",
                                         "mv_graph_settlement", "ags_log", "res", "oth", "ways"]),
         ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "building_exclusion",
                            "buildings_result",
@@ -441,7 +438,7 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
                            "pandapower_load", "clustering_parameters", "load_edit"]),
         ("MV stage tables", ["mv_customers", "mv_variant", "mv_substation", "mv_grid", "mv_node", "mv_line",
                              "mv_ring"]),
-        ("Temporary tables", ["buildings_tem", "ways_tem"]),
+        ("Temporary tables", ["buildings_tem", "ways_tem", "excluded_tem"]),
     ]
     listed = set()
     for title, names in groups:

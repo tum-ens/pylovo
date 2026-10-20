@@ -174,10 +174,11 @@ class Variant:
 
     @property
     def active_cases(self) -> tuple[str, ...]:
-        """The MV cases requested by this variant's saved planning mode."""
+        """The MV cases of this variant: the planning cases, plus the feed-in cases of an older variant planned with
+        generation (the MV stage no longer has them)."""
         from pylovo.mv_grid.model import CASES
 
-        return tuple(CASES) if self.include_generation else ("load", "n1a", "n1b")
+        return tuple(CASES) + (("feed_in_wind", "feed_in_pv") if self.include_generation else ())
 
     def snapshot(self, path: str, default: Any = None) -> Any:
         """One value of the parameter snapshot by dotted path, e.g. ``"taps.lv_design_tolerance_pu"``."""

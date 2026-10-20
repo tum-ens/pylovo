@@ -99,15 +99,16 @@ def record(item) -> dict:
 
 
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
-#: 20 kV types and the 10 kV types of the dense districts.
+#: 20 kV types and the 10 kV types of the dense districts; the removed options with their fixed values (MV_REMOVED).
 EXPECTED_SNAPSHOT = {
     "schema": 1, "mv_stage_version": 12,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
-                "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 5.0},
+                "max_drop_n1_percent": 10.0, "mv_10kv_min_density_mva_km2": 5.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
     "sources": {"region_buffer_m": 5000.0, "substation_merge_m": 75.0, "substation_drop_m": 150.0,
-                "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0, "egon_match_m": 300.0},
-    "routing": {"bridge_detour": 1.3,
+                "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0, "egon_match_m": 300.0,
+                "substations": "osm", "supply_areas": "routed", "rebalance_max_iter": 0},
+    "routing": {"mode": "street", "bridge_detour": 1.3,
                 "long_connector_m": 300.0, "osm_line_snap_m": 100.0, "osm_line_cost_factor": 0.7,
                 "busbar_exit_radius_m": 200.0,
                 "graph_excluded_klasse": ["Bundesautobahn"],
@@ -118,14 +119,14 @@ EXPECTED_SNAPSHOT = {
     "topology": {"max_stations_per_ring": 20,
                  "max_half_ring_length_m": 28000.0, "rural_ring_factor": 2.0, "stub_max_kva": 1000.0,
                  "stub_max_length_m": 4000.0, "stub_max_kva_km": 2000.0, "stub_min_offset_m": 100.0,
-                 "loop_in_max_offset_m": 100.0,
-                 "generator_max_tee_m": 5000.0, "tie_max_length_m": 2000.0,
+                 "tie_max_length_m": 2000.0,
                  "link_max_length_m": {"rural": 1000.0, "semi_urban": 750.0, "urban": 500.0},
                  "link_stub_ends": True,
                  "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 8,
                  "busbar_legs": "cable_along_streets", "rural_satellites": "stubs_after_rings",
-                 "links": "one_per_node_two_per_ring_pair_shorter_end_reach"},
+                 "links": "one_per_node_two_per_ring_pair_shorter_end_reach",
+                 "solver": "savings", "stubs": "rural", "overhead_lines": "osm", "interconnection": "ties"},
     "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]),
                   "overhead": record(LINE_TYPES["122-AL1/20-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
@@ -136,13 +137,22 @@ EXPECTED_SNAPSHOT = {
     "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0,
               "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0,
               "busbar_customer_max_m": 1000.0},
-    "generation": {"include_generation": False, "lv_side_kw": 200.0, "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
+    "generation": {"include_generation": False},
+    "taps": {"rule": "load_only", "step_percent": 2.5, "min": -2, "max": 2, "lv_design_tolerance_pu": 0.002},
+    "coupling": {"merged_scaling": "feeder_category"},
+}
+
+#: The groups and keys of a load-only snapshot of stage 12 (variant load9) that the stage no longer writes.
+STAGE_12_REMOVED = {
+    "voltage": {"max_rise_percent": 2.0},
+    "topology": {"loop_in_max_offset_m": 100.0, "generator_max_tee_m": 5000.0},
+    "generation": {"include_generation": False, "lv_side_kw": 200.0,
+                   "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
                    "mv_gen_cos_phi": 0.95, "lv_pv_cos_phi": 1.0, "include_storage": False},
     "cases": {"feed_in_wind": {"load_p": 0.1, "load_q": 0.123, "wind": 1.0, "solar": 0.8, "other": 1.0},
               "feed_in_pv": {"load_p": 0.1, "load_q": 0.123, "wind": 0.85, "solar": 0.95, "other": 1.0}},
-    "taps": {"rule": "load_only", "step_percent": 2.5, "min": -2, "max": 2, "lv_design_tolerance_pu": 0.002,
-             "lv_feed_in_max_pu": 1.07},
-    "coupling": {"merged_scaling": "feeder_category", "lv_pv_at": "LVbus 1"},
+    "taps": {"lv_feed_in_max_pu": 1.07},
+    "coupling": {"lv_pv_at": "LVbus 1"},
 }
 
 
@@ -154,7 +164,7 @@ def json_round_trip(value):
 
 
 def test_specs_have_known_kinds_and_canonical_defaults():
-    assert len(YAML_KEYS) == 10 and len(CONSTANTS) >= 50
+    assert len(YAML_KEYS) == 9 and len(CONSTANTS) >= 50
     assert not set(YAML_KEYS) & set(CONSTANTS) and not set(YAML_KEYS) & set(options.REMOVED_YAML_KEYS)
     for spec in (*YAML_KEYS.values(), *CONSTANTS.values()):
         assert spec.kind in options.KINDS, spec.name
@@ -189,8 +199,8 @@ def test_snapshot_paths_are_unique():
     ("hv_mv_sizes_mva", [63, 25], (25.0, 63.0)),
     ("graph_excluded_klasse", "Bundesstraße", ("Bundesstraße",)),
     ("graph_excluded_klasse", [], ()),
-    ("generator_fallback_kw", {"mv": 5000, "lv": 50, "hvmv": 1e4, "mvlv": 150},
-     {"lv": 50.0, "mvlv": 150.0, "mv": 5000.0, "hvmv": 10000.0}),
+    ("link_max_length_m", {"urban": 400, "rural": 900, "semi_urban": 600},
+     {"rural": 900.0, "semi_urban": 600.0, "urban": 400.0}),
     ("mvlv_tap_min", -3, -3),
 ])
 def test_coerce_accepts_and_canonicalises(name, value, expected):
@@ -220,21 +230,14 @@ def test_coerce_accepts_and_canonicalises(name, value, expected):
     ("hv_mv_sizes_mva", [25, 25.0], "different numbers"),
     ("hv_mv_sizes_mva", 40, "non-empty list"),
     ("graph_excluded_klasse", [1], "a list of names"),
-    ("generator_fallback_kw", {"lv": 100}, "the keys lv, mvlv, mv, hvmv"),
-    ("feed_in_cases", {"feed_in_wind": {}, "feed_in_pv": {}}, "the keys load_p"),
+    ("link_max_length_m", {"rural": 1000}, "the keys rural, semi_urban, urban"),
+    ("link_max_length_m", {"rural": -1, "semi_urban": 750, "urban": 500}, "at least 0"),
     ("mvlv_tap_max", -1, "between 0 and 10"),
 ])
 def test_coerce_rejects_with_the_key_name(name, value, message):
     with pytest.raises(ValueError, match=f"^{name} must be") as info:
         coerce_mv_value(name, value)
     assert message in str(info.value)
-
-
-def test_feed_in_case_factors_are_bounded():
-    cases = copy.deepcopy(CONSTANTS["feed_in_cases"].default)
-    cases["feed_in_pv"]["solar"] = 1.5
-    with pytest.raises(ValueError, match="feed_in_cases must be between 0 and 1"):
-        coerce_mv_value("feed_in_cases", cases)
 
 
 def test_unknown_names_are_rejected_with_a_hint():
@@ -253,7 +256,7 @@ def test_parse_assignment():
     assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=10") == ("MV_NOMINAL_VOLTAGE_KV", 10.0)
     assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=auto") == ("MV_NOMINAL_VOLTAGE_KV", "auto")
     assert parse_assignment("mv_10kv_min_density_mva_km2=0.1") == ("mv_10kv_min_density_mva_km2", 0.1)
-    assert parse_assignment("generator_fallback_kw={lv: 1, mvlv: 2, mv: 3, hvmv: 4}")[1]["hvmv"] == 4.0
+    assert parse_assignment("link_max_length_m={rural: 1000, semi_urban: 750, urban: 400}")[1]["urban"] == 400.0
     assert parse_assignment("customer_min_mv_kw=300") == ("customer_min_mv_kw", 300.0)
     assert parse_assignment("customer_hall_min_footprint_m2=1500") == ("customer_hall_min_footprint_m2", 1500.0)
     assert parse_assignment("customer_hall_min_footprint_m2=null") == ("customer_hall_min_footprint_m2", None)
@@ -268,6 +271,8 @@ def test_parse_assignment():
     ("MV_VARIANT_COMMENT=x", "use --comment"),
     ("MV_GRID_GENERATION=True", "pylovo-generate --mv"),
     ("MV_STUBS=none", "unknown MV parameter"),
+    ("MV_INCLUDE_GENERATION=true", "unknown MV parameter"),
+    ("lv_pv_cos_phi=0.95", "unknown MV parameter"),
     ("MV_MAX_STATIONS_PER_RING=many", "MV_MAX_STATIONS_PER_RING must be an integer"),
     ("local_search_rounds=[1", "not a valid YAML value"),
 ])
@@ -283,11 +288,17 @@ def test_removed_keys_of_older_configurations_need_the_remaining_value():
         check_removed_keys({"MV_RING_SOLVER": "sweep"})
     with pytest.raises(ValueError, match="MV_SUPPLY_AREAS 'municipal'"):
         check_removed_keys({"MV_SUPPLY_AREAS": "municipal"})
+    check_removed_keys({"MV_INCLUDE_GENERATION": False})                  # load-only, as the stage plans
+    with pytest.raises(ValueError, match="MV_INCLUDE_GENERATION True is no longer supported.*always uses False"):
+        check_removed_keys({"MV_INCLUDE_GENERATION": True})
 
 
 def test_retired_options_of_stored_snapshots(equipment):
     stored = json_round_trip(MvParameters().to_snapshot())
-    assert retired_options(stored) == []
+    assert retired_options(MvParameters().to_snapshot()) == retired_options(stored) == []
+    assert compare_snapshots(stored, stored, MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
+    # the snapshot records the fixed value of every removed option: an older one without the path is told apart
+    assert all(stored[path[0]][path[1]] == fixed for path, fixed in MV_REMOVED.items() if fixed is not UNKNOWN)
     old = copy.deepcopy(stored)
     old["topology"].update({"solver": "sweep", "stubs": "rural"})
     old["sources"].update({"rebalance_max_iter": 50, "rebalance_step_m": 500.0})
@@ -298,6 +309,29 @@ def test_retired_options_of_stored_snapshots(equipment):
     same = copy.deepcopy(stored)
     same["topology"].update({"solver": "savings", "overhead_lines": "osm"})
     assert compare_snapshots(same, stored, added_later=MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
+
+
+def test_load_only_snapshots_of_stage_12_resume_and_generation_snapshots_are_retired(equipment):
+    """A stored load-only variant (e.g. load9) keeps its generation and cases groups: same plan, so it resumes. A
+    variant planned with generation, or one older than MV_INCLUDE_GENERATION (always with generation), is retired."""
+    current = json_round_trip(MvParameters().to_snapshot())
+    stage_12 = copy.deepcopy(current)
+    for group, values in STAGE_12_REMOVED.items():
+        stage_12.setdefault(group, {}).update(copy.deepcopy(values))
+    for group, values in STAGE_12_REMOVED.items():
+        assert all((group,) in MV_REMOVED or (group, key) in MV_REMOVED for key in values), group
+    assert retired_options(stage_12) == []
+    assert compare_snapshots(stage_12, current, added_later=MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
+    assert MvParameters.from_snapshot("load9", "old", stage_12) == MvParameters(variant_id="load9", comment="old")
+    full = copy.deepcopy(stage_12)
+    full["generation"]["include_generation"] = True
+    full["taps"]["rule"] = "centre_load_feed_in"
+    assert retired_options(full) == ["generation.include_generation"]
+    assert compare_snapshots(full, current, added_later=MV_ADDED_LATER, removed=MV_REMOVED)[0] == [
+        "generation.include_generation", "taps.rule"]
+    legacy = copy.deepcopy(full)
+    del legacy["generation"]["include_generation"]                          # before the key: always with generation
+    assert retired_options(legacy) == ["generation.include_generation"]
 
 
 # ---------------------------------------------------------------------------------------------- MvParameters
@@ -311,7 +345,7 @@ def test_one_field_per_spec_and_defaults_equal_the_options():
     for name, spec in specs.items():
         value = getattr(params, name)
         assert value == spec.default and type(value) is type(spec.default), name
-    assert MvParameters().generator_fallback_kw is not MvParameters().generator_fallback_kw   # no shared dicts
+    assert MvParameters().link_max_length_m is not MvParameters().link_max_length_m   # no shared dicts
     assert (params.variant_id, params.comment, params.vn_kv, params.max_stations_per_ring, params.cable_type,
             params.overhead_type, params.line_utilization, params.max_drop_percent) == (
         "1", "default", "auto", 20, None, None, 0.6, 5.0)
@@ -340,8 +374,8 @@ def test_parameters_are_hashable_and_picklable(equipment):
 
 def test_replace_validates_and_keeps_the_original():
     params = MvParameters()
-    changed = params.replace(max_stations_per_ring=15, local_search_rounds=0, lv_pv_cos_phi=0.95)
-    assert (changed.max_stations_per_ring, changed.local_search_rounds, changed.lv_pv_cos_phi) == (15, 0, 0.95)
+    changed = params.replace(max_stations_per_ring=15, local_search_rounds=0, stub_max_kva=500)
+    assert (changed.max_stations_per_ring, changed.local_search_rounds, changed.stub_max_kva) == (15, 0, 500.0)
     assert params.max_stations_per_ring == 20 and params == MvParameters()
     with pytest.raises(ValueError, match="unknown MV parameter field"):
         params.replace(MV_MAX_STATIONS_PER_RING=15)
@@ -417,7 +451,7 @@ def test_snapshot_round_trip(equipment):
     params = MvParameters(variant_id="hv", comment="historical conductors").replace_raw({
         "MV_STANDARD_CABLE": "NA2XS2Y 1x150 RM/25 12/20 kV", "MV_OVERHEAD_LINE": "48-AL1/8-ST1A 20.0",
         "MV_MAX_STATIONS_PER_RING": 15, "local_search_rounds": 0, "hv_mv_sizes_mva": [40, 25],
-        "generator_fallback_kw": {"lv": 50, "mvlv": 150, "mv": 5000, "hvmv": 15000}, "lv_pv_cos_phi": 0.95,
+        "link_max_length_m": {"rural": 900, "semi_urban": 600, "urban": 400}, "stub_max_kva": 500,
         "graph_excluded_klasse": ["Bundesautobahn", "Bundesstraße"], "customer_min_mv_kw": 300,
         "customer_hall_min_footprint_m2": 1500})
     stored = json_round_trip(params.to_snapshot())
@@ -471,25 +505,6 @@ def test_older_fixed_voltage_snapshots_take_the_legacy_threshold(equipment):
     differences, _ = compare_snapshots(older, json_round_trip(MvParameters().to_snapshot()),
                                        added_later=MV_ADDED_LATER)
     assert "voltage.vn_kv" in differences and "equipment.cable_10kv.name" in differences
-
-
-def test_generation_mode_defaults_to_load_only_and_legacy_snapshots_remain_full(equipment):
-    current = MvParameters()
-    assert current.active_cases == ("load", "n1a", "n1b")
-    assert current.to_snapshot()["generation"]["include_generation"] is False
-    assert current.to_snapshot()["taps"]["rule"] == "load_only"
-
-    full = MvParameters(include_generation=True, cable_type="NA2XS2Y 1x150 RM/25 12/20 kV",
-                        overhead_type="48-AL1/8-ST1A 20.0")
-    assert full.active_cases == ("load", "n1a", "n1b", "feed_in_wind", "feed_in_pv")
-    legacy = json_round_trip(full.to_snapshot())
-    del legacy["generation"]["include_generation"]
-    legacy["mv_stage_version"] = 3
-    restored = MvParameters.from_snapshot("old", "old", legacy)
-    assert restored.include_generation is True and restored.active_cases == full.active_cases
-    assert restored.cable.name == "NA2XS2Y 1x150 RM/25 12/20 kV"
-    assert restored.overhead.name == "48-AL1/8-ST1A 20.0"
-    assert restored.to_snapshot()["taps"]["rule"] == "centre_load_feed_in"
 
 
 def test_customer_rules_of_older_snapshots_take_their_legacy_values(equipment):
@@ -716,7 +731,7 @@ def test_lv_parameters_need_a_snapshot():
 def summary(**changes) -> MvRunSummary:
     values = dict(version_id="mv1", variant_id="d1", status="done", plz_requested=[1, 2], plz_used=[1, 2],
                   plz_missing=[], grids_total=42, grids_done=42, grids_failed=0, grids_pending=0, n_stations=4903,
-                  n_customers=61, n_generators=37, circuit_km=4230.4, cable_share=0.66, n_violation_grids=2,
+                  n_customers=61, circuit_km=4230.4, cable_share=0.66, n_violation_grids=2,
                   n_band_conflicts=118, warnings=[], elapsed_s=312.0)
     values.update(changes)
     return MvRunSummary(**values)
@@ -725,15 +740,11 @@ def summary(**changes) -> MvRunSummary:
 def test_run_summary_lines():
     text = summary().describe()
     assert text == ("✓ MV variant d1 of version mv1: 42 grids (42 done), 4,903 stations, 61 customers, "
-                    "37 generators, 4,230 km (cable 66 %), 2 grids with violations, 118 band conflicts, 312 s, "
-                    "generation included planning")
+                    "4,230 km (cable 66 %), 2 grids with violations, 118 band conflicts, 312 s")
     partial = summary(status="partial", grids_done=39, grids_failed=1, grids_pending=2, plz_missing=[3],
                       warnings=["ties not implemented"]).describe().splitlines()
     assert partial[0].startswith("✗ MV variant d1 of version mv1: 42 grids (39 done, 1 failed, 2 pending)")
     assert partial[1:] == ["✗ 1 requested PLZ have no LV grids in version mv1: 3", "✗ ties not implemented"]
-    load_only = summary(active_cases=("load", "n1a", "n1b"))
-    assert "load-only planning" in load_only.describe()
-    assert load_only.to_dict()["active_cases"] == ["load", "n1a", "n1b"]
 
 
 def test_run_summary_prints_voltages_ties_and_the_demand_anchor():

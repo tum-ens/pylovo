@@ -1,7 +1,7 @@
 """Medium-voltage (MV) grid stage of pylovo.
 
-The MV stage connects the LV stations of a stored pylovo version (one MV node per LV grid), the MV customers and
-the MV generators to HV/MV substations with open rings. It never changes the LV grids; its results and parameters
+The MV stage connects the LV stations of a stored pylovo version (one MV node per LV grid) and the MV customers to
+HV/MV substations with open rings. It never changes the LV grids; its results and parameters
 are stored per MV variant of the LV version (``pylovo.mv_variant``).
 
 Configuration and shared contracts:

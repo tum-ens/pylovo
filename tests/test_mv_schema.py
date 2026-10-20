@@ -85,9 +85,9 @@ def _raw_create_queries() -> dict[str, str]:
     raise AssertionError("CREATE_QUERIES dict literal not found")
 
 
-def test_mv_entries_sit_between_mastr_and_municipal_register():
+def test_mv_entries_sit_between_mv_customers_and_municipal_register():
     keys = list(CREATE_QUERIES)
-    start = keys.index("mastr_postcode_aggregates") + 1
+    start = keys.index("mv_customers") + 1
     assert tuple(keys[start:start + len(MV_STAGE_ENTRIES)]) == MV_STAGE_ENTRIES
     assert keys[start + len(MV_STAGE_ENTRIES)] == "municipal_register"
     assert keys.index("mv_variant_stats") == keys.index("mv_ring") + 1
@@ -179,8 +179,7 @@ def test_mv_grid_objects_exist_in_dict_order_and_cover_the_mv_stage():
     assert set(MV_GRID_OBJECTS) <= set(keys)
     assert len(MV_GRID_OBJECTS) == len(set(MV_GRID_OBJECTS))
     assert sorted(MV_GRID_OBJECTS, key=keys.index) == list(MV_GRID_OBJECTS)
-    assert set(MV_STAGE_ENTRIES) | {"mv_customers", "mastr_units", "mastr_postcode_aggregates"} == set(
-        MV_GRID_OBJECTS)
+    assert set(MV_STAGE_ENTRIES) | {"mv_customers"} == set(MV_GRID_OBJECTS)
 
 
 def test_migration_0009_runs_the_mv_ddl_in_order():

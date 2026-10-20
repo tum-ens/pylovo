@@ -1,10 +1,8 @@
-"""Queries of the external MV inputs: OSM power features, eGon-data tables and the MaStR units.
+"""Queries of the external MV inputs: OSM power features and the eGon-data HV/MV substations.
 
 Reads HV/MV substation candidates and their tags from the OSM schema of InfDB (``INFDB_OSM_SCHEMA``), the
-eGon-data HV/MV substations and MV grid districts (``pylovo.egon_*`` if populated, else the copies in
-``INFDB_OPENDATA_SCHEMA``), and the generating units of ``pylovo.mastr_units`` and ``pylovo.mastr_postcode_aggregates``
-(``pylovo-import mastr``). The rules that turn these rows into MV inputs are pure functions of
-:mod:`pylovo.mv_grid.substations` and :mod:`pylovo.mv_grid.inputs`.
+eGon-data HV/MV substations (``pylovo.egon_*`` if populated, else the copies in ``INFDB_OPENDATA_SCHEMA``). The rules
+that turn these rows into MV inputs are pure functions of :mod:`pylovo.mv_grid.substations`.
 
 Every method takes its region or PLZ list explicitly, returns a DataFrame in ``TARGET_EPSG`` coordinates, is
 read-only and never commits.
@@ -25,12 +23,6 @@ OSM_CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_ta
                                           "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant", "plant")
 #: Columns of :meth:`MvSourceMixin.egon_substations`.
 EGON_SUBSTATION_COLUMNS: tuple[str, ...] = ("bus_id", "voltage", "osm_id", "x", "y")
-#: Columns of :meth:`MvSourceMixin.mastr_units_in_region`.
-MASTR_UNIT_COLUMNS: tuple[str, ...] = ("mastr_id", "location_id", "technology", "solar_kind", "net_power_kw",
-                                       "voltage_level", "x", "y")
-#: Columns of :meth:`MvSourceMixin.mastr_postcode_aggregates`.
-MASTR_AGGREGATE_COLUMNS: tuple[str, ...] = ("postcode", "plz", "technology", "n_units", "net_power_kw",
-                                            "area_ratio")
 
 #: Columns of :meth:`MvSourceMixin.osm_power_objects`.
 OSM_OBJECT_COLUMNS: tuple[str, ...] = ("source_id", "kind", "tags", "x", "y", "area_m2")
@@ -130,27 +122,6 @@ WHERE ST_DWithin(ST_Transform(s.geom, {epsg}), ST_GeomFromWKB(%(region)s, {epsg}
 ORDER BY s.bus_id;
 """)
 
-# Units in operation with coordinates inside the planning region; storage takes part in no MV case.
-_MASTR_UNITS_SQL = sql.SQL("""
-SELECT u.mastr_id, u.location_id, u.technology, u.solar_kind, u.net_power_kw, u.voltage_level,
-       ST_X(u.geom) AS x, ST_Y(u.geom) AS y
-FROM pylovo.mastr_units u
-WHERE ST_Within(u.geom, ST_GeomFromWKB(%(region)s, {epsg}))
-  AND u.net_power_kw > 0 AND u.technology IS DISTINCT FROM 'storage'
-ORDER BY u.mastr_id;
-""")
-
-# Units without coordinates per postcode. The aggregates cover the whole postcode; area_ratio is the share of the
-# postcode area inside pylovo.postcode (clipped at the border of the imported region; 1 when unknown).
-_MASTR_AGGREGATES_SQL = sql.SQL("""
-SELECT a.postcode, a.technology, a.n_units, a.net_power_kw,
-       COALESCE(LEAST(1.0, ST_Area(p.geom) / NULLIF(p.qkm * 1e6, 0)), 1.0) AS area_ratio
-FROM pylovo.mastr_postcode_aggregates a
-LEFT JOIN pylovo.postcode p ON lpad(p.plz::text, 5, '0') = a.postcode
-WHERE a.postcode = ANY(%(plz_text)s) AND a.technology IS DISTINCT FROM 'storage'
-ORDER BY a.postcode, a.technology;
-""")
-
 
 def _stage_error(message: str) -> Exception:
     """An :class:`~pylovo.mv_grid.parameters.MvStageError` (imported on use: LV runs never load the MV stage)."""
@@ -198,7 +169,7 @@ def _frame(rows: list[tuple], columns: Sequence[str], floats: Sequence[str] = ()
 
 
 class MvSourceMixin(BaseMixin):
-    """Read OSM, eGon and MaStR inputs of the MV stage."""
+    """Read the OSM and eGon-data inputs of the MV stage."""
 
     # ------------------------------------------------------------------ OSM
     def osm_substation_candidates(self, region_wkb: bytes, buffer_m: float) -> pd.DataFrame:
@@ -339,49 +310,3 @@ class MvSourceMixin(BaseMixin):
         rows = [(bus_id, _na(voltage), _na(osm_id), x, y) for bus_id, voltage, osm_id, x, y in self.cur.fetchall()]
         return _frame(rows, EGON_SUBSTATION_COLUMNS, floats=("x", "y"), ints=("bus_id",))
 
-    # ------------------------------------------------------------------ MaStR
-    def mastr_available(self) -> tuple[bool, str]:
-        """Whether ``pylovo.mastr_units`` exists and holds units (``pylovo-import mastr``).
-
-        Returns:
-            ``(True, "<n> units")`` or ``(False, reason)``.
-        """
-        self.cur.execute("SELECT to_regclass(%s) IS NOT NULL", (_regclass_text("pylovo", "mastr_units"),))
-        if not self.cur.fetchone()[0]:
-            return False, "pylovo.mastr_units does not exist; run pylovo-setup first"
-        self.cur.execute("SELECT count(*) FROM pylovo.mastr_units")
-        count = int(self.cur.fetchone()[0])
-        if count == 0:
-            return False, "pylovo.mastr_units is empty; run pylovo-import mastr --sqlite PATH"
-        return True, f"{count} units"
-
-    def mastr_units_in_region(self, region_wkb: bytes) -> pd.DataFrame:
-        """The MaStR units in operation inside the planning region (without storage, ``net_power_kw > 0``).
-
-        Returns:
-            Columns of :data:`MASTR_UNIT_COLUMNS` sorted by ``mastr_id``: ``location_id``
-            (``LokationMastrNummer``, the grid connection point), ``technology`` (solar, wind, biomass, hydro,
-            gsgk, combustion), ``solar_kind``, ``net_power_kw``, ``voltage_level`` (MaStR ``Spannungsebene`` text
-            or None) and the unit position ``x``, ``y``.
-        """
-        query = _MASTR_UNITS_SQL.format(epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb)})
-        return _frame(self.cur.fetchall(), MASTR_UNIT_COLUMNS, floats=("net_power_kw", "x", "y"))
-
-    def mastr_postcode_aggregates(self, plz_list: Sequence[int]) -> pd.DataFrame:
-        """The MaStR units without coordinates of the given PLZ, per technology (without storage).
-
-        Returns:
-            Columns of :data:`MASTR_AGGREGATE_COLUMNS` sorted by postcode and technology: ``postcode`` (text,
-            5 digits), ``plz`` (int), ``technology``, ``n_units``, ``net_power_kw`` (of the whole postcode) and
-            ``area_ratio``: the share of the postcode area inside ``pylovo.postcode`` (below 1 for postcodes
-            clipped at the region border; 1 when unknown). The values are not scaled by it.
-        """
-        plz_text = sorted({f"{int(plz):05d}" for plz in plz_list})
-        if not plz_text:
-            return _frame([], MASTR_AGGREGATE_COLUMNS, floats=("net_power_kw", "area_ratio"),
-                          ints=("plz", "n_units"))
-        self.cur.execute(_MASTR_AGGREGATES_SQL, {"plz_text": plz_text})
-        rows = [(postcode, int(postcode), technology, n_units, kw, ratio)
-                for postcode, technology, n_units, kw, ratio in self.cur.fetchall()]
-        return _frame(rows, MASTR_AGGREGATE_COLUMNS, floats=("net_power_kw", "area_ratio"), ints=("plz", "n_units"))

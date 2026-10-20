@@ -24,13 +24,12 @@ computed, never inferred from a neighbour. This is the MV analogue of pylovo's L
 
 **Feasible** iff (in this order; the first failing rule is the ``reason``):
 
-1. ``count``: the weighted ring members (stations, MV customers, looped-in generators; joints and stub nodes do
-   not count) are at most ``RingLimits.max_members``. An urban member weighs 1, a rural member
+1. ``count``: the weighted ring members (stations and MV customers; joints and stub nodes do not count) are at most ``RingLimits.max_members``. An urban member weighs 1, a rural member
    ``1 / rural_ring_factor``, so rural rings hold more members
    (:func:`~pylovo.mv_grid.model.member_weights`);
 2. ``unreachable``: every section length is finite;
 3. ``no_nop``: an *allowed* open section exists: ``1 <= m <= k - 1`` (``k = 1``: ``m = 1``, the B exit) with a
-   switchgear node (station, customer, generator) at ``v_m`` or ``v_{m+1}``, whose ring panel holds the open
+   switchgear node (station or customer) at ``v_m`` or ``v_{m+1}``, whose ring panel holds the open
    switch (at ``v_m`` if possible). A NOP never sits at a T-joint;
 4. ``length``, ``current``, ``drop``: some allowed ``m`` has both half-ring lengths (busbar to the last node of the
    half; the open section belongs to neither half) at most ``max_half_m``, every section current of both halves at
@@ -68,7 +67,7 @@ if TYPE_CHECKING:
 #: Terminal index of the busbar in the matrices of a :class:`RingEvaluator` (as in the distance model).
 BUSBAR = 0
 #: Node kinds with switchgear: their ring panel may hold the normally-open switch (never a T-joint).
-SWITCHGEAR_KINDS: tuple[str, ...] = ("station", "customer", "generator")
+SWITCHGEAR_KINDS: tuple[str, ...] = ("station", "customer")
 #: Reasons of an infeasible ring, in the order the rules are checked.
 REASONS: tuple[str, ...] = ("count", "unreachable", "no_nop", "length", "current", "drop", "n1_current", "n1_drop")
 #: Default number of memoised rings per evaluator (about 0.7 kB each; the memo is cleared when it is full).

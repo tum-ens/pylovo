@@ -26,7 +26,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from pylovo.mv_grid.model import CASES, CATEGORIES, HvMvType, LineType
+from pylovo.mv_grid.model import CATEGORIES, HvMvType, LineType
 from pylovo.mv_grid.options import (
     AUTO_VOLTAGE,
     CONSTANTS,
@@ -48,9 +48,8 @@ SNAPSHOT_SCHEMA: int = 1
 #: changes results, so it also bumps :data:`~pylovo.mv_grid.options.MV_STAGE_VERSION`).
 FIXED_RULES: dict[tuple[str, ...], Any] = {
     ("loads", "customer_peak"): "sim_factor_times_installed",
-    ("generation", "include_storage"): False,
     ("coupling", "merged_scaling"): "feeder_category",
-    ("coupling", "lv_pv_at"): "LVbus 1",
+    ("taps", "rule"): "load_only",
     ("topology", "busbar_legs"): "cable_along_streets",
     ("topology", "rural_satellites"): "stubs_after_rings",
     ("topology", "links"): "one_per_node_two_per_ring_pair_shorter_end_reach",
@@ -124,7 +123,6 @@ class MvParameters:
 
     variant_id: str = _y("MV_VARIANT_ID")                   # MV_VARIANT_ID
     comment: str = _y("MV_VARIANT_COMMENT")                 # MV_VARIANT_COMMENT
-    include_generation: bool = _y("MV_INCLUDE_GENERATION")  # MV_INCLUDE_GENERATION
     vn_kv: float | str = _y("MV_NOMINAL_VOLTAGE_KV")        # MV_NOMINAL_VOLTAGE_KV: 20.0, 10.0 or "auto"
     max_stations_per_ring: int = _y("MV_MAX_STATIONS_PER_RING")   # MV_MAX_STATIONS_PER_RING
     cable_type: str | None = _y("MV_STANDARD_CABLE")        # MV_STANDARD_CABLE
@@ -135,7 +133,6 @@ class MvParameters:
     busbar_vm_pu: float = _y("busbar_vm_pu")
     busbar_band_pu: float = _y("busbar_band_pu")
     max_drop_n1_percent: float = _y("max_drop_n1_percent")
-    max_rise_percent: float = _y("max_rise_percent")
     mv_10kv_min_density_mva_km2: float = _y("mv_10kv_min_density_mva_km2")
     # loading
     n1_utilization: float = _y("n1_utilization")
@@ -147,8 +144,6 @@ class MvParameters:
     stub_max_length_m: float = _y("stub_max_length_m")
     stub_max_kva_km: float = _y("stub_max_kva_km")
     stub_min_offset_m: float = _y("stub_min_offset_m")
-    loop_in_max_offset_m: float = _y("loop_in_max_offset_m")
-    generator_max_tee_m: float = _y("generator_max_tee_m")
     tie_max_length_m: float = _y("tie_max_length_m")
     link_max_length_m: dict[str, float] = _c("link_max_length_m")
     link_stub_ends: bool = _y("link_stub_ends")
@@ -162,13 +157,6 @@ class MvParameters:
     customer_hall_min_footprint_m2: float | None = _y("customer_hall_min_footprint_m2")   # None: no hall rule
     customer_min_mv_kw: float = _y("customer_min_mv_kw")
     busbar_customer_max_m: float | None = _y("busbar_customer_max_m")                     # None: no limit
-    # generation
-    generator_lv_side_kw: float = _y("generator_lv_side_kw")
-    generator_fallback_kw: dict[str, float] = _c("generator_fallback_kw")
-    mv_gen_cos_phi: float = _y("mv_gen_cos_phi")
-    lv_pv_cos_phi: float = _y("lv_pv_cos_phi")
-    # cases
-    feed_in_cases: dict[str, dict[str, float]] = _c("feed_in_cases")
     # equipment
     hv_mv_sizes_mva: tuple[float, ...] = _y("hv_mv_sizes_mva")
     hv_mv_units: int = _y("hv_mv_units")
@@ -200,7 +188,6 @@ class MvParameters:
     mvlv_tap_min: int = _y("mvlv_tap_min")
     mvlv_tap_max: int = _y("mvlv_tap_max")
     lv_design_tolerance_pu: float = _y("lv_design_tolerance_pu")
-    lv_feed_in_max_pu: float = _y("lv_feed_in_max_pu")
     # resolved types {(cable | overhead | hv_mv_types, vn_kv): ...}, filled lazily or from a snapshot; no parameter
     _types: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
@@ -209,7 +196,7 @@ class MvParameters:
             object.__setattr__(self, spec.field, coerce_mv_value(spec.name, getattr(self, spec.field)))
 
     def __hash__(self) -> int:
-        # the generated hash would fail on the dict fields (generator_fallback_kw, feed_in_cases)
+        # the generated hash would fail on the dict fields (link_max_length_m)
         return hash(json.dumps({name: _json_value(getattr(self, name)) for name in _FIELD_SPECS}, sort_keys=True))
 
     # ------------------------------------------------------------------ construction
@@ -307,11 +294,6 @@ class MvParameters:
         """The nominal voltages the districts of the variant can have: ``(20.0, 10.0)`` with ``auto``, else one."""
         return (AUTO_BASE_KV, AUTO_DENSE_KV) if self.auto_voltage else (float(self.vn_kv),)
 
-    @property
-    def active_cases(self) -> tuple[str, ...]:
-        """The electrical planning cases selected by this variant."""
-        return CASES if self.include_generation else CASES[:3]
-
     def district_kv(self, density_mva_km2: float | None) -> float:
         """The nominal voltage of a district with the given installed density in MVA/km² (DESIGN §4.6).
 
@@ -402,12 +384,13 @@ class MvParameters:
         """The MV variant snapshot: JSON-native, lower_snake_case keys, resolved types, no NaN.
 
         Layout: ``schema``, ``mv_stage_version`` and the groups ``voltage``, ``loading``, ``sources``,
-        ``routing``, ``settlements``, ``topology``, ``equipment``, ``loads``, ``generation``, ``cases``, ``taps``
+        ``routing``, ``settlements``, ``topology``, ``equipment``, ``loads``, ``taps``
         and ``coupling`` (see the ``group`` and ``key`` of each :class:`~pylovo.mv_grid.options.Spec`). The
         variant id and comment are not part of it (they are columns of ``pylovo.mv_variant``). ``equipment``
         holds the resolved types of the base voltage (``cable``, ``overhead``, ``hv_mv_types``) and, with
         ``MV_NOMINAL_VOLTAGE_KV`` auto, those of the 10 kV districts (``cable_10kv``, ``overhead_10kv``,
-        ``hv_mv_types_10kv``).
+        ``hv_mv_types_10kv``). The fixed rules (:data:`FIXED_RULES`) and the fixed values of the removed options
+        (:data:`~pylovo.version_snapshot.MV_REMOVED`) are written as well.
         """
         snapshot: dict[str, Any] = {"schema": SNAPSHOT_SCHEMA, "mv_stage_version": MV_STAGE_VERSION}
         for spec in _SNAPSHOT_SPECS:
@@ -421,7 +404,10 @@ class MvParameters:
                 _place(snapshot, (*path[:-1], path[-1] + suffix), value)
         for path, value in FIXED_RULES.items():
             _place(snapshot, path, value)
-        _place(snapshot, ("taps", "rule"), "centre_load_feed_in" if self.include_generation else "load_only")
+        # the method each removed option is fixed to: tells this variant apart from older ones without the path
+        for path, value in MV_REMOVED.items():
+            if value is not UNKNOWN:
+                _place(snapshot, path, value)
         return snapshot
 
 

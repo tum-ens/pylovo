@@ -1,4 +1,4 @@
-"""Topology of one MV supply district: rings with their open points, rural stubs, dedicated feeders and generators.
+"""Topology of one MV supply district: rings with their open points, rural stubs and dedicated feeders.
 
 This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
 :class:`~pylovo.mv_grid.model.TopologyPlan` (DESIGN §4.2, §4.5, §4.7):
@@ -16,17 +16,14 @@ This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
    (street) of the busbar becomes one radial line.
 4. **Dedicated customers** (``connection_hint = 'dedicated'``): a 2-leg feeder from the busbar, leg 2 normally open
    at the customer, parallel cables by load.
-5. **MV generators**, in decreasing power: a dedicated feeder (``connection_hint = 'dedicated'`` or above
-   ``dedicated_feeder_kw``, or no line within ``generator_max_tee_m``), a loop-in into an urban ring segment within
-   ``loop_in_max_offset_m``, else a T-off from the nearest line.
-6. The **normally-open point** of every ring at its voltage balance, only at a switchgear node
+5. The **normally-open point** of every ring at its voltage balance, only at a switchgear node
    (:func:`pylovo.mv_grid.rings.check_ring` on explicit sections, joints included).
-7. **Geometries** along the run-graph pieces (straight only for bridges and connectors), and the line types: a line
+6. **Geometries** along the run-graph pieces (straight only for bridges and connectors), and the line types: a line
    is an overhead line where its route runs on OSM MV lines and a cable elsewhere, ``cable``, ``overhead`` or
    ``mixed`` (length-weighted r and x, the smaller ampacity).
 
-All length limits (``stub_max_length_m``, ``generator_max_tee_m``) hold for the true route length: with
-``osm_line_cost_factor`` below 1, routes are chosen by their cost, but a stub, T-off or radial is accepted by its
+All length limits (``stub_max_length_m``) hold for the true route length: with ``osm_line_cost_factor`` below 1,
+routes are chosen by their cost, but a stub or radial is accepted by its
 length.
 
 The plan is always built from its *decisions* (ring orders, stubs, T-offs, feeders), so the repair functions
@@ -71,7 +68,6 @@ from pylovo.mv_grid.model import (
 
 INSTALLED_COLUMNS: tuple[str, ...] = ("inst_res", "inst_com", "inst_pub", "inst_unk")
 UNIT_COLUMNS: tuple[str, ...] = ("units_res", "units_com", "units_pub", "units_unk")
-GENERATION_COLUMNS: tuple[str, ...] = ("gen_solar_kw", "gen_wind_kw", "gen_other_kw")
 #: Node kinds with a load (station statistics or the fixed customer load).
 LOAD_KINDS: tuple[str, ...] = ("station", "customer")
 #: Shortest stored line (no zero-impedance lines between co-located nodes).
@@ -99,7 +95,7 @@ def _coincidence():
 def terminal_rows(inp: DistrictInput) -> np.ndarray:
     """Row positions of the terminals of a district: the busbar first, then every connected node by ``mv_node_id``.
 
-    Terminals are the busbar, the stations, the MV customers and the MV generators; nodes with
+    Terminals are the busbar, the stations and the MV customers; nodes with
     ``connection_hint = 'excluded'`` are not terminals.
 
     Raises:
@@ -199,8 +195,6 @@ def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any,
         row = int(row)
         if ctx.kind[row] == "customer" and ctx.hint[row] == "dedicated":
             dec.structs.append(_Struct(dec.next_ring_id(), "dedicated", [row]))
-    generators = [int(r) for r in ctx.terminals[1:] if ctx.kind[int(r)] == "generator"]
-    _decide_generators(ctx, dec, generators)
     plan = _materialize(ctx, dec)
     plan.diagnostics["satellites"] = satellites
     return plan
@@ -253,7 +247,7 @@ def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, 
                ring_id: int) -> TopologyPlan:
     """Split ring ``ring_id``: re-solve its stations and customers (its stubs included) with at most half of its
     weighted members per ring, ``(w + w_max) / 2`` (``ceil(k / 2)`` members when all weigh the same; ``savings`` with
-    local search), and rebuild stubs, radials and the connections of the generators that hung on it.
+    local search), and rebuild its stubs and radials.
 
     The first new ring keeps ``ring_id``; the others get new ids. A ring with fewer than two members is returned
     unchanged. Line parallels of the plan are kept where the new lines use the same street pieces.
@@ -267,11 +261,8 @@ def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, 
     cap = (sum(weights) + max(weights)) / 2.0
     stub_rows = [row for row, rid in dec.stubs if rid == ring_id]
     ring_rows = [r for r in struct.rows if ctx.kind[r] in LOAD_KINDS] + stub_rows
-    generator_rows = [r for r in struct.rows if ctx.kind[r] == "generator"]
-    generator_rows += [r for r in dec.tees if plan.node_ring.get(int(ctx.keys[r])) == ring_id]
     dec.structs = [s for s in dec.structs if s.ring_id != ring_id]
     dec.stubs = [(row, rid) for row, rid in dec.stubs if rid != ring_id]
-    dec.tees = [r for r in dec.tees if r not in generator_rows]
     candidates = np.array(sorted(ctx.t_of_row[r] for r in ring_rows), dtype=np.int64)
     capped = _CappedEvaluator(ev, cap, ctx)
     result = _solvers().solve(capped, model.dist_m, candidates, rounds=ctx.p.local_search_rounds,
@@ -294,40 +285,6 @@ def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, 
             dec.structs.append(_Struct(rid, "ring", [row]))
     _decide_stubs(ctx, dec, new_ids)
     _decide_radials(ctx, dec, new_ids)
-    _decide_generators(ctx, dec, generator_rows)
-    return _materialize(ctx, dec, old=plan)
-
-
-def convert_to_dedicated(inp: DistrictInput, rg: RunGraph, model: DistanceModel, plan: TopologyPlan,
-                         node_key: int) -> TopologyPlan:
-    """Give node ``node_key`` its own feeder from the busbar.
-
-    A loop-in or T-off generator gets a dedicated generator feeder (the feed-in repair of DESIGN §5.4); a customer
-    gets a 2-leg dedicated feeder. A node that already has its own feeder is returned unchanged.
-
-    Raises:
-        ValueError: If ``node_key`` is not a generator or customer of the plan.
-    """
-    ctx = _context(inp, rg, model)
-    row = ctx.row_of_key.get(int(node_key))
-    if row is None or ctx.kind[row] not in ("generator", "customer"):
-        raise ValueError(f"node {node_key} is not a generator or MV customer of district {inp.mv_grid_id}")
-    dec = _decisions_from_plan(ctx, plan)
-    if any(s.kind in ("dedicated", "generator") and s.rows == [row] for s in dec.structs):
-        return plan
-    for s in dec.structs:
-        if row in s.rows:
-            s.rows.remove(row)
-    dec.structs = [s for s in dec.structs if s.rows]
-    dec.stubs = [(r, rid) for r, rid in dec.stubs if r != row]
-    dec.tees = [r for r in dec.tees if r != row]
-    alive = {s.ring_id for s in dec.structs}
-    orphans = [r for r, rid in dec.stubs if rid not in alive]
-    if orphans:                                     # the stubs of a removed ring form a ring of their own
-        dec.stubs = [(r, rid) for r, rid in dec.stubs if rid in alive]
-        dec.structs.append(_Struct(dec.next_ring_id(), "ring", orphans))
-    kind = "generator" if ctx.kind[row] == "generator" else "dedicated"
-    dec.structs.append(_Struct(dec.next_ring_id(), kind, [row]))
     return _materialize(ctx, dec, old=plan)
 
 
@@ -436,7 +393,6 @@ class _Ctx:
         self.inst = _numbers(nodes, INSTALLED_COLUMNS) * loads[:, None]
         self.units = _numbers(nodes, UNIT_COLUMNS) * loads[:, None]
         self.fixed = _numbers(nodes, ("p_fixed_kw",))[:, 0] * loads
-        self.gen_kw = _numbers(nodes, GENERATION_COLUMNS).sum(axis=1)
         self.vertex = np.asarray(rg.terminal_vertex, dtype=np.int64)
         self.vertex_xy = np.asarray(rg.vertex_xy, dtype=float)
         self.terminals = np.asarray(model.terminals, dtype=np.int64)
@@ -693,18 +649,17 @@ class _Attach:
 # ============================================================================================ helpers: decisions
 @dataclass
 class _Struct:
-    """One feeder structure: a ring, a busbar radial, a dedicated customer feeder or a generator feeder."""
+    """One feeder structure: a ring, a busbar radial or a dedicated customer feeder."""
 
     ring_id: int
-    kind: str                              # ring | radial | dedicated | generator
-    rows: list[int]                        # ring order from the A exit (loop-in generators included); one row else
+    kind: str                              # ring | radial | dedicated
+    rows: list[int]                        # ring order from the A exit; one row else
 
 
 @dataclass
 class _Decisions:
     structs: list[_Struct] = field(default_factory=list)
     stubs: list[tuple[int, int]] = field(default_factory=list)   # (row, ring_id), parents before children
-    tees: list[int] = field(default_factory=list)                  # generator rows, decreasing power
     flags: dict[int, list[str]] = field(default_factory=dict)      # node key -> flags
 
     def next_ring_id(self) -> int:
@@ -756,8 +711,6 @@ def _decisions_from_plan(ctx: _Ctx, plan: TopologyPlan) -> _Decisions:
     lines_order = {line.to_key: n for n, line in enumerate(plan.lines)}
     stub_keys.sort(key=lambda k: (order.get(k, len(order)), lines_order.get(k, 0), k))
     dec.stubs = [(ctx.row_of_key[k], int(plan.node_ring[k])) for k in stub_keys]
-    tees = [ctx.row_of_key[k] for k, role in plan.node_role.items() if role == "tee"]
-    dec.tees = sorted(tees, key=lambda r: (-ctx.gen_kw[r], ctx.key(r)))
     return dec
 
 
@@ -803,7 +756,7 @@ def _stub_trial(ctx: _Ctx, struct: _Struct, rows: list[int], stubs: list[int], r
     spur = float(att.dist)
     if not (spur > p.stub_min_offset_m and saving > spur):
         return False, spur, saving
-    net.attach(row, att, "stub")
+    net.attach(row, att)
     check = net.ring_check(struct.ring_id)
     return bool(check.feasible), spur, saving
 
@@ -833,7 +786,7 @@ def _attach_satellites(ctx: _Ctx, dec: _Decisions) -> dict[str, int]:
         if struct is not None and struct.kind in ("ring", "radial"):
             stub = net.stub_attachment(row, struct.ring_id)
             if stub is not None:
-                net.attach(row, stub, "stub")
+                net.attach(row, stub)
                 if struct.kind != "ring" or net.ring_check(struct.ring_id).feasible:
                     dec.stubs.append((row, struct.ring_id))
                     stats["stub"] += 1
@@ -894,45 +847,6 @@ def _decide_radials(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None
             struct.kind = "radial"
 
 
-def _decide_generators(ctx: _Ctx, dec: _Decisions, rows: Sequence[int]) -> None:
-    """Step 5: dedicated feeder, loop-in or T-off for each generator row, in decreasing power.
-
-    Skip laying out the current plan when there are no generators; load-only districts have nothing to add here.
-    """
-    p = ctx.p
-    order = sorted({int(r) for r in rows}, key=lambda r: (-ctx.gen_kw[r], ctx.key(r)))
-    if not order:
-        return
-    net = _layout(ctx, dec)
-    for row in order:
-        if ctx.hint[row] == "dedicated" or ctx.gen_kw[row] > p.dedicated_feeder_kw:
-            dec.structs.append(_Struct(dec.next_ring_id(), "generator", [row]))
-            continue
-        att = net.nearest(row, p.generator_max_tee_m, net.searchable())
-        if att is None:
-            dec.structs.append(_Struct(dec.next_ring_id(), "generator", [row]))
-            dec.flag(ctx, row, "no_line_within_tee_limit")
-            continue
-        if ctx.urban[row]:
-            ring_lines = [i for s in net.structs.values() if s.kind == "ring" for i in net.chain[s.ring_id]]
-            near = net.nearest(row, p.loop_in_max_offset_m, ring_lines)
-            if near is not None and near.dist <= p.loop_in_max_offset_m:
-                struct, at = net.locate_link(near.line)
-                trial = _Network(ctx)
-                trial_rows = struct.rows[:at] + [row] + struct.rows[at:]
-                trial.add_structure(_Struct(struct.ring_id, "ring", trial_rows))
-                stubs_ok = all(trial.add_stub(r, struct.ring_id, enforce=False)
-                               for r, rid in dec.stubs if rid == struct.ring_id)
-                if stubs_ok and trial.ring_check(struct.ring_id).feasible:
-                    struct.rows = trial_rows
-                    net = _layout(ctx, dec)
-                    continue
-                dec.flag(ctx, row, "loop_in_infeasible")
-        dec.tees.append(row)
-        net.add_tee(row, att)
-    dec.tees.sort(key=lambda r: (-ctx.gen_kw[r], ctx.key(r)))
-
-
 # ============================================================================================ helpers: network
 class _Network:
     """The lines of a district while it is laid out from its decisions."""
@@ -942,12 +856,12 @@ class _Network:
         self.lines: list[_Line] = []
         self.structs: dict[int, _Struct] = {}
         self.chain: dict[int, list[int]] = {}          # ring/radial id -> main line indices from the busbar
-        self.feeder_lines: dict[int, list[int]] = {}   # dedicated/generator id -> its lines
+        self.feeder_lines: dict[int, list[int]] = {}   # dedicated feeder id -> its lines
         self.chain_of_line: dict[int, int] = {}
         self.parent: dict[int, int] = {}               # stub, T-off and tree-joint key -> parent key
         self.depth: dict[int, float] = {}              # stub tree length from the attachment on the main path
         self.tree_of: dict[int, int] = {}              # stub key / tree joint key -> tree id
-        self.role: dict[int, str] = {}                 # stub | tee | joint
+        self.role: dict[int, str] = {}                 # stub | joint
         self.node_ring: dict[int, int] = {}
         self.joint_xy: dict[int, tuple[float, float]] = {}
         self.flags: dict[int, list[str]] = {}
@@ -1007,26 +921,20 @@ class _Network:
             self.node_ring[ctx.key(struct.rows[0])] = rid
         else:
             row = struct.rows[0]
-            generator = struct.kind == "generator"
-            line = self.link(bb, row, "generator" if generator else "dedicated", rid)
+            line = self.link(bb, row, "dedicated", rid)
             line.searchable = False
-            line.parallel = self._feeder_parallel(row, line.kind, generator)
-            legs = [line]
-            if not generator:
-                line.exit = "a"
-                legs.append(dataclasses.replace(line, exit="b", normally_open=True, open_at=ctx.key(row)))
+            line.parallel = self._feeder_parallel(row, line.kind)
+            line.exit = "a"
+            legs = [line, dataclasses.replace(line, exit="b", normally_open=True, open_at=ctx.key(row))]
             self.feeder_lines[rid] = [self.add_line(leg) for leg in legs]
             self.node_ring[ctx.key(row)] = rid
 
-    def _feeder_parallel(self, row: int, kind: str, generator: bool) -> int:
-        """Parallel cables of a dedicated feeder: by the customer load at the planning utilization, by the
-        generator's apparent power at 100 %; capped by ``max_parallel_cables`` (flag ``dedicated_overload``)."""
+    def _feeder_parallel(self, row: int, kind: str) -> int:
+        """Parallel cables of a dedicated feeder by the customer load at the planning utilization; capped by
+        ``max_parallel_cables`` (flag ``dedicated_overload``)."""
         ctx, p = self.ctx, self.ctx.p
         s_th = math.sqrt(3.0) * ctx.vn_kv * ctx.section_values(kind, 1.0, 0.5)[2] * 1000.0
-        if generator:
-            need = ctx.gen_kw[row] / p.mv_gen_cos_phi / s_th
-        else:
-            need = ctx.fixed[row] / ctx.pf / (p.line_utilization * s_th)
+        need = ctx.fixed[row] / ctx.pf / (p.line_utilization * s_th)
         n = max(1, math.ceil(need - 1e-9))
         if n > p.max_parallel_cables:
             self.flag(ctx.key(row), "dedicated_overload")
@@ -1075,8 +983,8 @@ class _Network:
                 self.tree_of[joint] = self.tree_of[line.b]
         return joint
 
-    def attach(self, row: int, att: _Attach, role: str, kind: str | None = None) -> None:
-        """Connect node ``row`` at the attachment point with a stub (``role`` stub) or T-off (``generator``)."""
+    def attach(self, row: int, att: _Attach) -> None:
+        """Connect node ``row`` at the attachment point with a stub."""
         ctx = self.ctx
         line = self.lines[att.line]
         key = ctx.key(row)
@@ -1095,16 +1003,15 @@ class _Network:
             new_route = _street(ctx, verts, cum)
         else:
             new_route = _span(anchor_xy, ctx.xy[row], route.detour)
-        new_kind = kind or line.kind
+        new_kind = line.kind
         if new_route.verts is not None:
             new_kind = line_kind(_route_overhead_m(ctx, new_route), new_route.length)
-        self.add_line(_Line(anchor, key, new_route, new_kind, role, line.ring_id))
+        self.add_line(_Line(anchor, key, new_route, new_kind, "stub", line.ring_id))
         self.parent[key] = anchor
         self.node_ring[key] = line.ring_id
-        self.role[key] = "stub" if role == "stub" else "tee"
+        self.role[key] = "stub"
         self.depth[key] = self.depth.get(anchor, 0.0) + new_route.length
-        if role == "stub":
-            self.tree_of[key] = self.tree_of.get(anchor, key)
+        self.tree_of[key] = self.tree_of.get(anchor, key)
 
     # ------------------------------------------------------------------ searching
     def searchable(self) -> list[int]:
@@ -1216,33 +1123,8 @@ class _Network:
             if att is None:
                 return False
             self.flag(self.ctx.key(row), "stub_limit")
-        self.attach(row, att, "stub")
+        self.attach(row, att)
         return True
-
-    def add_tee(self, row: int, att: _Attach | None = None) -> bool:
-        """Attach generator ``row`` as a T-off at the nearest line within ``generator_max_tee_m``."""
-        ctx, p = self.ctx, self.ctx.p
-        if att is None:
-            att = self.nearest(row, p.generator_max_tee_m, self.searchable())
-            if att is None:
-                return False
-        line = self.lines[att.line]
-        if line.route.verts is None:
-            self.attach(row, att, "generator", kind=line.kind)
-            return True
-        self.attach(row, att, "generator")                # the kind follows the T-off's route
-        return True
-
-    def locate_link(self, i: int) -> tuple[_Struct, int]:
-        """The ring of chain line ``i`` and the index in its rows where a node inserted on that line goes."""
-        rid = self.chain_of_line[i]
-        struct = self.structs[rid]
-        keys = self.chain_keys(rid)
-        q = self.chain[rid].index(i)
-        member_keys = {self.ctx.key(r): n for n, r in enumerate(struct.rows)}
-        while q > 0 and keys[q] not in member_keys:
-            q -= 1
-        return struct, (member_keys[keys[q]] + 1 if keys[q] in member_keys else 0)
 
     # ------------------------------------------------------------------ rings
     def chain_keys(self, ring_id: int) -> list[int]:
@@ -1257,24 +1139,13 @@ class _Network:
 
 
 def _layout(ctx: _Ctx, dec: _Decisions) -> _Network:
-    """Lay out all decisions: structures, stubs (in build order), T-offs (in decreasing power).
-
-    A T-off without a line within ``generator_max_tee_m`` becomes a dedicated generator feeder (flag
-    ``tee_fallback``); the decisions are updated accordingly.
-    """
+    """Lay out all decisions: structures, then stubs (in build order)."""
     net = _Network(ctx)
     for struct in sorted(dec.structs, key=lambda s: s.ring_id):
         net.add_structure(struct)
     for row, rid in dec.stubs:
         if not net.add_stub(row, rid, enforce=False):
             net.flag(ctx.key(row), "stub_unattached")
-    for row in list(dec.tees):
-        if not net.add_tee(row):
-            dec.tees.remove(row)
-            struct = _Struct(dec.next_ring_id(), "generator", [row])
-            dec.structs.append(struct)
-            net.add_structure(struct)
-            dec.flag(ctx, row, "tee_fallback")
     return net
 
 
@@ -1298,7 +1169,7 @@ def _below(key: int, kids: dict[int, list[int]]) -> list[int]:
 
 def _ring_check(ctx: _Ctx, pos_keys: Sequence[int], sections: Sequence[tuple[float, str, int]],
                 kids: dict[int, list[int]], relaxed: bool = False) -> RingCheck:
-    """:func:`pylovo.mv_grid.rings.check_ring` for explicit ring positions (joints and loop-ins included); the
+    """:func:`pylovo.mv_grid.rings.check_ring` for explicit ring positions (joints included); the
     loads of stubs and T-offs are added to the position they hang on."""
     k = len(pos_keys)
     inst, units, fixed = np.zeros((k, 4)), np.zeros((k, 4)), np.zeros(k)
@@ -1454,7 +1325,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
                 if key < 0:
                     node_role[key] = "joint"
                 else:
-                    node_role[key] = "loop_in" if ctx.kind[ctx.row_of_key[key]] == "generator" else "ring"
+                    node_role[key] = "ring"
             for j, i in enumerate(chain):
                 emit(i, _chain_feeder(j, m, nop, fa, fb))
             if not check.feasible:
@@ -1488,7 +1359,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
                                       feeder + 1 if len(legs) > 1 else None))
             feeder += len(legs)
         for i, line in enumerate(net.lines):
-            if line.ring_id == rid and i not in net.chain_of_line and line.role in ("stub", "generator") \
+            if line.ring_id == rid and i not in net.chain_of_line and line.role == "stub" \
                     and line.searchable:
                 emit(i, node_feeder.get(line.b, node_feeder.get(line.a)))
     for key, role in net.role.items():
@@ -1512,10 +1383,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
         "n_rings": sum(r.kind == "ring" for r in rings_out),
         "n_radials": sum(r.kind == "radial" for r in rings_out),
         "n_dedicated_customers": sum(r.kind == "dedicated" for r in rings_out),
-        "n_generator_feeders": sum(r.kind == "generator" for r in rings_out),
         "n_stub_nodes": sum(role == "stub" for role in node_role.values()),
-        "n_tee_generators": sum(role == "tee" for role in node_role.values()),
-        "n_loop_in_generators": sum(role == "loop_in" for role in node_role.values()),
         "n_joints": len(net.joint_xy),
         "n_excluded": sum(role == "excluded" for role in node_role.values()),
         "infeasible_rings": {int(k): v for k, v in infeasible.items()},

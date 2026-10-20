@@ -39,8 +39,8 @@ Examples:
   pylovo-mv list --version mv1
   pylovo-mv delete --version mv1 --variant d0
 
-  # Stored net of one MV grid as pandapower JSON (feed-in case)
-  pylovo-mv export --version mv1 --variant d1 --grid 12 --output grid_12.json --case feed_in_pv
+  # Stored net of one MV grid as pandapower JSON, (n-1) case a: lines of exit a out, normally-open switches closed
+  pylovo-mv export --version mv1 --variant d1 --grid 12 --output grid_12.json --case n1a
 
   # HV boundary for a coupling with eTraGo: eTraGo 110 kV bus, P and Q per HV/MV substation
   pylovo-mv boundary --version mv1 --variant d1 --output boundary.csv
@@ -208,10 +208,11 @@ def _list(args: argparse.Namespace) -> int:
         stale_text = {True: ", stale", None: ", stale unknown"}.get(stale, "")
         electrical_violations = row.get("n_electrical_violations", 0)
         violation_text = f"{electrical_violations} violation{'s' if electrical_violations != 1 else ''}"
-        generation_mode = "generation included" if bool(row.get("include_generation", True)) else "load-only"
+        retired = row.get("retired") or []
+        retired_text = f", retired options {', '.join(retired)}" if retired else ""
         print(f"{'✓' if ok else '✗'} {row['version_id']}/{row['mv_variant_id']}: generation {row['status']}, "
-              f"{row['n_plz']} PLZ, {row['n_grids']} grids ({row['n_done']} done, {row['n_failed']} failed), "
-              f"{generation_mode}; electrical: {row.get('n_electrical_pass', 0)} pass, "
+              f"{row['n_plz']} PLZ, {row['n_grids']} grids ({row['n_done']} done, {row['n_failed']} failed)"
+              f"{retired_text}; electrical: {row.get('n_electrical_pass', 0)} pass, "
               f"{violation_text}, "
               f"{row.get('n_electrical_not_checked', 0)} not checked, "
               f"{km_text}{stale_text} - {row.get('mv_variant_comment') or ''}")

@@ -7,8 +7,8 @@ ring where a ring of another district (fed by another HV/MV substation, at the s
 cost-optimal plan of single districts lacks:
 
 1. **Candidates** (:func:`tie_candidates`): the switchgear members of the open rings of the done districts, i.e.
-   the stations and MV customers looped into a ring. Joints, stub nodes, generators, dedicated feeders and busbar
-   radials never hold a tie.
+   the stations and MV customers looped into a ring. Joints, stub nodes, dedicated feeders and busbar radials never
+   hold a tie.
 2. **Distances** (:func:`plan_ties`): pairs of candidates of different districts with the same nominal voltage
    within ``tie_max_length_m`` (Euclidean pre-filter) get their street distance on one run graph of the routing
    graph (split at the attachment points, with connectors, without island bridges) from a Dijkstra limited to

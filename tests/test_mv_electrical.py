@@ -41,7 +41,7 @@ def _lv(reference: float | None = 0.96) -> LvVersionParameters:
 
 def _row(kind: str, x: float, y: float, **values) -> dict:
     row = {column: 0.0 for column in NODE_COLUMNS}
-    row.update(kind=kind, connection_hint={"busbar": "busbar", "customer": "ring", "generator": "tee"}.get(kind, "ring"),
+    row.update(kind=kind, connection_hint="busbar" if kind == "busbar" else "ring",
                x=x, y=y, attach_edge_id=-1, attach_fraction=0.0, attach_offset_m=0.0, bridged=False,
                settlement_id=-1, urban=False, plz=0, plz_settlement_type=0, gen_level="", sn_kva=math.nan,
                grid_result_id=math.nan, lv_design_source_vm_pu=math.nan, lv_max_drop_pu=math.nan)
@@ -60,7 +60,7 @@ class Builder:
     """Synthetic district: nodes, lines and rings of a TopologyPlan built step by step."""
 
     def __init__(self, params: MvParameters | None = None, lv: LvVersionParameters | None = None):
-        self.params = params or MvParameters(include_generation=True)
+        self.params = params or MvParameters()
         self.lv = lv or _lv()
         self.rows: dict[int, dict] = {BUSBAR: _row("busbar", X0, Y0)}
         self.lines: list[LinePlan] = []
@@ -167,17 +167,6 @@ class Builder:
         self.role[key], self.ring_of[key], self.feeder[key] = "dedicated", ring_id, feeder
         return key, ring_id
 
-    def tee_generator(self, ring_id: int, position: int, solar_kw: float = 0.0, wind_kw: float = 0.0) -> int:
-        ring = next(r for r in self.rings if r.ring_id == ring_id)
-        parent = ring.members[position - 1]
-        px, py = self.xy(parent)
-        key = self.add_node(_row("generator", px + 300.0, py + 300.0, gen_solar_kw=solar_kw, gen_wind_kw=wind_kw,
-                                 gen_level="mv"))
-        self.line(parent, key, "generator", ring_id, feeder=self.feeder[parent])
-        self.role[key], self.ring_of[key], self.feeder[key] = "tee", ring_id, self.feeder[parent]
-        self.stub_parent[key] = parent
-        return key
-
     def tie(self, a: int, b: int) -> LinePlan:
         return self.line(a, b, "tie", None, normally_open=True, open_at=b)
 
@@ -205,13 +194,9 @@ def _full_district(**kwargs) -> tuple[Builder, DistrictInput, TopologyPlan, dict
     r2 = b.ring(4, angle_deg=90.0)
     joint, stub = b.stub_on(r1, 1)
     customer, rd = b.dedicated_customer(1500.0)
-    gen = b.tee_generator(r2, 1, wind_kw=2000.0, solar_kw=500.0)
-    pv_station = b.rings[r1 - 1].members[-1]
-    b.rows[pv_station].update(gen_solar_kw=300.0, gen_level="lv")
     b.tie(b.rings[r2 - 1].members[-1], BUSBAR)
     inp, plan = b.build()
-    return b, inp, plan, dict(r1=r1, r2=r2, joint=joint, stub=stub, customer=customer, rd=rd, gen=gen,
-                              pv_station=pv_station)
+    return b, inp, plan, dict(r1=r1, r2=r2, joint=joint, stub=stub, customer=customer, rd=rd)
 
 
 # ---------------------------------------------------------------------------------------------- design net
@@ -222,7 +207,7 @@ def test_design_net_shape_names_and_columns():
     assert len(net.bus) == n_nodes
     assert net.bus.at[0, "name"] == f"MV busbar {SUBSTATION}" and net.bus.at[0, "type"] == "b"
     assert net.bus["node_key"].tolist()[0] == BUSBAR
-    assert set(net.bus["kind"]) == {"busbar", "station", "customer", "generator", "joint"}
+    assert set(net.bus["kind"]) == {"busbar", "station", "customer", "joint"}
     assert net.bus.loc[net.bus["node_key"] == ids["joint"], "name"].item() == f"MV node {ids['joint']}"
     assert np.isnan(net.bus.loc[net.bus["node_key"] == ids["joint"], "mv_node_id"].item())
     lon, lat = json.loads(net.bus.at[0, "geo"])["coordinates"]
@@ -260,16 +245,7 @@ def test_design_net_shape_names_and_columns():
     assert f"MV customer {ids['customer']}" in set(net.load["name"])
     assert "Station 1000" in set(net.load["name"])
     assert net.load.loc[net.load["node_key"] == ids["customer"], "p_mw"].item() == pytest.approx(1.5)
-
-    # sgens: generator by group (wind + solar), LV PV of one station; scaling 0, under-excited MV generator
-    sgen = net.sgen
-    assert len(sgen) == 3 and (sgen["scaling"] == 0).all()
-    gen_rows = sgen[sgen["node_key"] == ids["gen"]].set_index("technology_group")
-    assert set(gen_rows.index) == {"wind", "solar"} and (gen_rows["level"] == "mv").all()
-    assert gen_rows.at["wind", "q_mvar"] == pytest.approx(-2.0 * math.tan(math.acos(0.95)))
-    pv = sgen[sgen["node_key"] == ids["pv_station"]]
-    assert pv["level"].item() == "lv" and pv["q_mvar"].item() == 0.0
-    assert pv["name"].item().startswith("LV generation ")
+    assert net.sgen.empty
 
 
 def test_design_net_line_kinds_and_errors():
@@ -335,7 +311,7 @@ def test_case_net_per_case():
     original = copy.deepcopy(net)
 
     load = electrical.case_net(net, "load", params)
-    assert (load.sgen["scaling"] == 0).all() and not load.switch["closed"].any() and load.line["in_service"].all()
+    assert not load.switch["closed"].any() and load.line["in_service"].all()
     assert np.allclose(load.load["p_mw"], net.load["p_normal_mw"])
 
     for case, out in (("n1a", "a"), ("n1b", "b")):
@@ -344,16 +320,6 @@ def test_case_net_per_case():
         assert set(n1.line.index[~n1.line["in_service"]]) == set(n1.line.index[n1.line["exit"] == out])
         assert (~n1.line["in_service"]).sum() == len(plan.rings) - 0  # one exit per ring and per 2-leg feeder
         assert np.allclose(n1.load["p_mw"], net.load["p_n1_mw"])
-        assert (n1.sgen["scaling"] == 0).all()
-
-    wind = electrical.case_net(net, "feed_in_wind", params)
-    assert np.allclose(wind.load["p_mw"], 0.1 * net.load["p_normal_mw"])
-    assert np.allclose(wind.load["q_mvar"], 0.123 * net.load["q_normal_mvar"])
-    scaling = dict(zip(wind.sgen["technology_group"], wind.sgen["scaling"]))
-    assert scaling == {"wind": 1.0, "solar": 0.8}
-    assert not wind.switch["closed"].any() and wind.line["in_service"].all()
-    pv = electrical.case_net(net, "feed_in_pv", params)
-    assert dict(zip(pv.sgen["technology_group"], pv.sgen["scaling"])) == {"wind": 0.85, "solar": 0.95}
 
     edge = electrical.case_net(net, "load", params, busbar_vm_pu=1.005)
     assert edge.ext_grid.at[0, "vm_pu"] == pytest.approx(1.005)
@@ -368,7 +334,7 @@ def test_run_cases_converge_and_n1_feeds_each_ring_from_one_side():
     b, inp, plan, ids = _full_district()
     net = electrical.build_design_net(inp, plan)
     cases = electrical.run_cases(net, inp, plan)
-    assert set(cases) == {"load", "n1a", "n1b", "feed_in_wind", "feed_in_pv"}
+    assert set(cases) == {"load", "n1a", "n1b"}
     assert all(result.converged for result in cases.values())
     assert cases["load"].vm_pu.index[0] == BUSBAR and cases["load"].vm_pu.iloc[0] == pytest.approx(1.02)
     assert len(cases["load"].vm_pu) == len(net.bus)
@@ -385,14 +351,11 @@ def test_run_cases_converge_and_n1_feeds_each_ring_from_one_side():
         assert result.vm_pu.notna().all()
     # load case: the slack carries the coincident loads of the feeders (plus losses)
     assert cases["load"].slack_p_mw == pytest.approx(net.load["p_mw"].sum(), rel=0.02)
-    # feed-in: the wind park and the PV push power back
-    assert cases["feed_in_wind"].slack_p_mw < 0
     violations = electrical.check(cases, inp, plan)
     assert violations == []
     assert electrical.power_flow_status(cases, violations) == "converged"
     metrics = electrical.case_metrics(cases)
     assert metrics["load_converged"] and 0 < metrics["max_voltage_drop_percent"] < 5
-    assert metrics["peak_feed_in_mw"] > 0
     assert metrics["max_line_loading_n1_percent"] >= metrics["max_line_loading_percent"]
     json.dumps(metrics)   # JSON-native
 
@@ -408,9 +371,9 @@ def test_long_heavy_ring_violates_voltage():
     assert electrical.power_flow_status(cases, violations) == "voltage_violation"
 
 
-def _result(case: str, vm: dict[int, float], loading: dict[int, float] | None = None, converged: bool = True,
-            slack: tuple[float, float] = (0.0, 0.0)) -> CaseResult:
-    return CaseResult(case, converged, pd.Series(vm, dtype=float), pd.Series(loading or {}, dtype=float), *slack)
+def _result(case: str, vm: dict[int, float], loading: dict[int, float] | None = None, converged: bool = True
+            ) -> CaseResult:
+    return CaseResult(case, converged, pd.Series(vm, dtype=float), pd.Series(loading or {}, dtype=float), 0.0, 0.0)
 
 
 def test_check_criteria_and_status():
@@ -424,24 +387,22 @@ def test_check_criteria_and_status():
         "load": _result("load", {**base, m[2]: 0.969, m[3]: 0.9701}, {0: 60.5, 1: 59.9}),
         "n1a": _result("n1a", {**base, stub: 0.90, m[4]: 0.919}, {0: 0.0, 2: 101.0}),
         "n1b": _result("n1b", base, {1: 99.0}),
-        "feed_in_wind": _result("feed_in_wind", {**base, m[0]: 1.0401, m[2]: 1.0399}),
-        "feed_in_pv": _result("feed_in_pv", base, converged=False),
     }
     violations = electrical.check(cases, inp, plan)
     found = {(v.case, v.kind, v.element, v.key) for v in violations}
     assert found == {("load", "voltage_low", "bus", m[2]), ("load", "loading", "line", 0),
-                     ("n1a", "voltage_low", "bus", m[4]), ("n1a", "loading", "line", 2),
-                     ("feed_in_wind", "voltage_high", "bus", m[0]), ("feed_in_pv", "not_converged", "bus", BUSBAR)}
+                     ("n1a", "voltage_low", "bus", m[4]), ("n1a", "loading", "line", 2)}
     low = next(v for v in violations if v.case == "load" and v.kind == "voltage_low")
     assert low.limit == pytest.approx(0.97) and low.ring_id == r
     assert next(v for v in violations if v.case == "n1a" and v.kind == "voltage_low").limit == pytest.approx(0.92)
-    assert next(v for v in violations if v.kind == "voltage_high").limit == pytest.approx(1.04)
-    assert electrical.power_flow_status(cases, violations) == "not_converged"
-    del cases["feed_in_pv"]
-    violations = electrical.check(cases, inp, plan)
     assert electrical.power_flow_status(cases, violations) == "voltage_violation"
     only_loading = [v for v in violations if v.kind == "loading"]
     assert electrical.power_flow_status(cases, only_loading) == "loading_violation"
+    # a case that does not converge is one violation at the busbar
+    failed = {**cases, "n1b": _result("n1b", base, converged=False)}
+    violations = electrical.check(failed, inp, plan)
+    assert ("n1b", "not_converged", "bus", BUSBAR) in {(v.case, v.kind, v.element, v.key) for v in violations}
+    assert electrical.power_flow_status(failed, violations) == "not_converged"
     # an unsupplied node (NaN) is no violation but is counted
     cases = {"load": _result("load", {**base, m[0]: math.nan})}
     assert electrical.check(cases, inp, plan) == []
@@ -450,7 +411,7 @@ def test_check_criteria_and_status():
 
 # ---------------------------------------------------------------------------------------------- repair
 class FakeTopology:
-    """Stubs of topology.move_nop, split_ring, convert_to_dedicated and add_parallel that record their calls."""
+    """Stubs of topology.move_nop, split_ring, upgrade_lines and add_parallel that record their calls."""
 
     def __init__(self, moved: bool = True):
         self.moved = moved
@@ -469,12 +430,6 @@ class FakeTopology:
         rings += [dataclasses.replace(ring, members=ring.members[:half]),
                   RingPlan(new_id, "ring", ring.members[half:], None, None)]
         return dataclasses.replace(plan, rings=rings)
-
-    def convert_to_dedicated(self, inp, rg, model, plan, node_key):
-        self.calls.append(("convert_to_dedicated", node_key))
-        roles = dict(plan.node_role)
-        roles[node_key] = "dedicated"
-        return dataclasses.replace(plan, node_role=roles)
 
     def upgrade_lines(self, plan, line_keys, vn_kv, needed_ka=None):
         self.calls.append(("upgrade_lines", tuple(line_keys)))
@@ -503,22 +458,6 @@ def fake_topology(monkeypatch):
 
 def _violation(case, kind, element, key, ring_id=None, value=0.0, limit=0.0):
     return Violation(case, kind, element, key, value, limit, ring_id)
-
-
-def test_repair_converts_the_tee_generator_of_the_feeder(fake_topology):
-    fake = fake_topology()
-    b, inp, plan, ids = _full_district()
-    ring = next(r for r in plan.rings if r.ring_id == ids["r2"])
-    rise = _violation("feed_in_wind", "voltage_high", "bus", ring.members[0], ids["r2"], 1.05, 1.04)
-    pv_rise = _violation("feed_in_pv", "voltage_high", "bus", ids["pv_station"], ids["r1"], 1.05, 1.04)
-    new_plan, actions = electrical.repair(inp, None, None, None, plan, [rise, pv_rise])
-    assert fake.calls == [("convert_to_dedicated", ids["gen"])]
-    assert [a["action"] for a in actions] == ["convert_to_dedicated"]
-    assert actions[0]["node_key"] == ids["gen"] and actions[0]["case"] == "feed_in_wind"
-    reports = new_plan.diagnostics["repair_reports"]
-    assert [r["action"] for r in reports] == ["lv_pv_rise"] and reports[0]["key"] == ids["pv_station"]
-    json.dumps(actions)
-    json.dumps(new_plan.diagnostics)
 
 
 def test_repair_voltage_ladder_moves_the_nop_then_splits_then_adds_parallel(fake_topology):
@@ -613,24 +552,6 @@ def test_repair_upgrades_the_path_at_once_when_the_nop_cannot_move(fake_topology
     assert plan.diagnostics["repair_stage"] == {"1": 1}
 
 
-def test_repair_feed_in_upgrades_the_path_before_converting_the_generator(fake_topology):
-    fake = fake_topology()
-    b = Builder()
-    r = b.ring(6, kind="overhead", set_exits=True)
-    gen = b.tee_generator(r, 2, wind_kw=3000.0)
-    inp, plan = b.build()
-    rise = _violation("feed_in_wind", "voltage_high", "bus", gen, r, 1.05, 1.04)
-    overhead = [k for k in electrical.path_lines(plan, BUSBAR, gen, "feed_in_wind")
-                if next(line for line in plan.lines if line.key == k).kind == "overhead"]
-    plan, actions = electrical.repair(inp, None, None, None, plan, [rise])
-    assert [a["action"] for a in actions] == ["upgrade"] and actions[0]["line_keys"] == overhead
-    for _ in range(2):
-        plan, actions = electrical.repair(inp, None, None, None, plan, [rise])
-    assert set(_types_of(plan, overhead)) == {"243-AL1/39-ST1A 20.0"}
-    plan, actions = electrical.repair(inp, None, None, None, plan, [rise])      # largest conductors: convert
-    assert [a["action"] for a in actions] == ["convert_to_dedicated"] and actions[0]["node_key"] == gen
-
-
 def test_repair_splits_at_once_when_the_nop_cannot_move(fake_topology):
     fake = fake_topology(moved=False)
     b = Builder()
@@ -686,16 +607,10 @@ def test_size_substation_on_district_statistics():
     inp, plan = b.build()
     s_load = electrical.district_load_kw(inp, plan) / 1000.0 / 0.95
     assert 4.0 < s_load < 25.0
-    cases = {"feed_in_wind": _result("feed_in_wind", {}, slack=(-3.0, 1.0)),
-             "feed_in_pv": _result("feed_in_pv", {}, converged=False)}
-    assert electrical.size_substation(inp, plan, cases) == (2, 25.0, "sized")
-    assert electrical.substation_loads(inp, plan, cases) == pytest.approx((s_load, math.hypot(3.0, 1.0)))
-    cases["feed_in_wind"] = _result("feed_in_wind", {}, slack=(-30.0, 0.0))
-    assert electrical.size_substation(inp, plan, cases) == (2, 31.5, "sized")
-    cases["feed_in_wind"] = _result("feed_in_wind", {}, slack=(-70.0, 0.0))
-    assert electrical.size_substation(inp, plan, cases) == (3, 63.0, "large_substation")
+    assert electrical.substation_load(inp, plan) == pytest.approx(s_load)
+    assert electrical.size_substation(inp, plan) == (2, 25.0, "sized")
     inp_osm = dataclasses.replace(inp, known_units_mva=(40.0, 40.0))
-    assert electrical.size_substation(inp_osm, plan, {}) == (2, 40.0, "osm_rating")
+    assert electrical.size_substation(inp_osm, plan) == (2, 40.0, "osm_rating")
 
 
 @pytest.mark.parametrize("unit_mva, households", [(25.0, 80.0), (31.5, 400.0), (20.0, 200.0)])
@@ -738,15 +653,13 @@ def _budget_district(lv=None, **station_values):
     return inp, plan, plan.rings[0].members
 
 
-def _budget_cases(vm_load: dict, vm_feed: dict) -> dict:
+def _budget_cases(vm_load: dict) -> dict:
     return {"load": _result("load", {BUSBAR: 1.02, **vm_load}),
             "n1a": _result("n1a", {BUSBAR: 1.02, **vm_load}),
-            "n1b": _result("n1b", {BUSBAR: 1.02, **vm_load}),
-            "feed_in_wind": _result("feed_in_wind", {BUSBAR: 1.02, **vm_feed}),
-            "feed_in_pv": _result("feed_in_pv", {BUSBAR: 1.02, **vm_feed})}
+            "n1b": _result("n1b", {BUSBAR: 1.02, **vm_load})}
 
 
-def _margins(inp, budget_key, cases, loads):
+def _margins(inp, budget_key, cases):
     """Brute force of the tap rule for one station (reference implementation of DESIGN §5.6)."""
     p = inp.params
     row = inp.nodes.loc[budget_key]
@@ -755,52 +668,36 @@ def _margins(inp, budget_key, cases, loads):
     k = 1 / (1 + taps * p.mvlv_tap_step_percent / 100)
     d_t = row["lv_design_source_vm_pu"] - lv_ref
     lv_bus = (cases["load"].vm_pu[budget_key] - p.busbar_band_pu) * k - d_t
-    vk, vkr = electrical.station_transformer(row["sn_kva"])
-    vkx = math.sqrt(vk ** 2 - vkr ** 2)
-    rise = max(((row["gen_solar_kw"] * f["solar"] - f["load_p"] * loads.at[budget_key, "p_kw"]) * vkr
-                - f["load_q"] * loads.at[budget_key, "q_kvar"] * vkx) / row["sn_kva"] / 100
-               for f in p.feed_in_cases.values())
-    v_high = max(cases[c].vm_pu[budget_key] for c in ("feed_in_wind", "feed_in_pv")) + p.busbar_band_pu
-    lv_feed = v_high * k + rise
-    return taps, lv_bus - (lv_ref - p.lv_design_tolerance_pu), p.lv_feed_in_max_pu - lv_feed, lv_bus, lv_feed
+    return taps, lv_bus - (lv_ref - p.lv_design_tolerance_pu), lv_bus
 
 
-def test_station_budget_near_busbar_keeps_tap_zero_and_centres():
+def test_station_budget_near_busbar_keeps_tap_zero():
     inp, plan, (s1, s2) = _budget_district()
-    cases = _budget_cases({s1: 1.019, s2: 1.0185}, {s1: 1.021, s2: 1.0205})
+    cases = _budget_cases({s1: 1.019, s2: 1.0185})
     budgets = electrical.station_budgets(inp, plan, cases)
     assert set(budgets) == {s1, s2}
     budget = budgets[s1]
     assert budget.tap_pos == 0 and not budget.band_conflict and not budget.tap_limit
-    loads = electrical.node_loads(inp, plan)
-    taps, low, high, lv_bus, lv_feed = _margins(inp, s1, cases, loads)
-    best = np.minimum(low, high)
-    assert best[list(taps).index(budget.tap_pos)] == pytest.approx(best.max())
+    taps, low, lv_bus = _margins(inp, s1, cases)
+    assert low[list(taps).index(0)] >= 0
     assert budget.lv_busbar_vm_pu == pytest.approx(lv_bus[list(taps).index(0)])
-    assert budget.lv_busbar_vm_feed_in_pu == pytest.approx(lv_feed[list(taps).index(0)])
     assert budget.lv_min_vm_pu == pytest.approx(budget.lv_busbar_vm_pu - 0.05)
-    assert budget.vm_load_pu == 1.019 and budget.vm_feed_in_pu == 1.021 and budget.vm_n1_pu == 1.019
+    assert budget.vm_load_pu == 1.019 and budget.vm_n1_pu == 1.019
+    assert math.isnan(budget.vm_feed_in_pu) and math.isnan(budget.lv_busbar_vm_feed_in_pu)   # no feed-in case
 
 
-def test_station_budget_far_rural_pv_station_has_a_band_conflict():
-    inp, plan, (s1, s2) = _budget_district(gen_solar_kw=600.0, gen_level="lv", lv_design_source_vm_pu=0.985)
-    cases = _budget_cases({s1: 0.973, s2: 0.972}, {s1: 1.039, s2: 1.038})
+def test_station_budget_far_station_raises_the_tap_up_to_the_tap_limit():
+    inp, plan, (s1, s2) = _budget_district(lv_design_source_vm_pu=0.985)
+    cases = _budget_cases({s1: 0.973, s2: 0.972})
     budget = electrical.station_budgets(inp, plan, cases)[s1]
-    assert budget.band_conflict
-    loads = electrical.node_loads(inp, plan)
-    taps, low, high, lv_bus, lv_feed = _margins(inp, s1, cases, loads)
-    score = np.minimum(low, high)
+    taps, low, lv_bus = _margins(inp, s1, cases)
     best = list(taps).index(budget.tap_pos)
-    assert score[best] == pytest.approx(score.max()) and score.max() < 0
-    assert budget.tap_limit == bool(low[best] < 0)
-    assert budget.lv_busbar_vm_feed_in_pu == pytest.approx(lv_feed[best])
-    assert budget.lv_busbar_vm_feed_in_pu > 1.07                                  # the PV pushes the busbar up
-    # the same station without PV and nearer to the busbar has no conflict
-    inp2, plan2, (u1, u2) = _budget_district(lv_design_source_vm_pu=0.985)
-    near = _budget_cases({u1: 1.01, u2: 1.01}, {u1: 1.022, u2: 1.022})
-    assert not electrical.station_budgets(inp2, plan2, near)[u1].band_conflict
+    feasible = [int(t) for t, margin in zip(taps, low) if margin >= 0]
+    assert budget.tap_pos == min(feasible, key=lambda t: (abs(t), t)) == -2    # tap 0 and -1 miss the design point
+    assert not budget.band_conflict and not budget.tap_limit
+    assert budget.lv_busbar_vm_pu == pytest.approx(lv_bus[best])
     # a station that needs more than the tap range at the design point hits the tap limit
-    cases = _budget_cases({s1: 0.935, s2: 0.935}, {s1: 0.95, s2: 0.95})
+    cases = _budget_cases({s1: 0.935, s2: 0.935})
     budget = electrical.station_budgets(inp, plan, cases)[s1]
     assert budget.tap_limit and budget.band_conflict and budget.tap_pos == -2
 
@@ -819,7 +716,7 @@ def test_station_budget_of_an_upsized_station_scales_the_transformer_drop():
     """A station upsized in the MV model (sn_kva 630 for an LV grid with 400 kVA) keeps the stored requirement of
     its LV grid, but its transformer drop at the LV design load shrinks: the LV busbar is higher."""
     inp, plan, (s1, s2) = _budget_district(lv_design_source_vm_pu=0.975)
-    cases = _budget_cases({s1: 1.0, s2: 1.0}, {s1: 1.02, s2: 1.02})
+    cases = _budget_cases({s1: 1.0, s2: 1.0})
     before = electrical.station_budgets(inp, plan, cases)[s1]
     inp.nodes.loc[s1, ["sn_kva", "lv_sn_kva"]] = [630.0, 400.0]
     after = electrical.station_budgets(inp, plan, cases)[s1]
@@ -831,18 +728,18 @@ def test_station_budget_of_an_upsized_station_scales_the_transformer_drop():
 def test_station_budget_skips_and_flags():
     inp, plan, (s1, s2) = _budget_district()
     inp.nodes.loc[s2, "lv_design_source_vm_pu"] = math.nan
-    cases = _budget_cases({s1: 1.019, s2: 1.0185}, {s1: 1.021, s2: 1.0205})
+    cases = _budget_cases({s1: 1.019, s2: 1.0185})
     budgets = electrical.station_budgets(inp, plan, cases)
     assert set(budgets) == {s1}
     flags = electrical.node_flags(inp, plan, cases, budgets)
     assert flags.get(s2) == ["no_lv_requirement"] and s1 not in flags
-    # without a feed-in result: the tap closest to 0 that meets the design point, NaN feed-in values
+    # with the load case only: the same tap, no (n-1) voltage
     partial = {"load": cases["load"]}
     budget = electrical.station_budgets(inp, plan, partial)[s1]
-    assert budget.tap_pos == 0 and math.isnan(budget.lv_busbar_vm_feed_in_pu)
+    assert budget.tap_pos == 0 and math.isnan(budget.vm_n1_pu)
     # LV versions without a reference voltage get no budgets
     inp_none, plan_none, (t1, _) = _budget_district(lv=_lv(None))
-    cases = _budget_cases({t1: 1.019}, {t1: 1.021})
+    cases = _budget_cases({t1: 1.019})
     assert electrical.station_budgets(inp_none, plan_none, cases) == {}
     assert electrical.node_flags(inp_none, plan_none, cases, {})[t1] == ["no_lv_reference"]
 
@@ -863,7 +760,7 @@ def test_mv_oberrhein_cases_reproduce_the_pandapower_load_case():
     import pandapower.topology as top
 
     net = pn.mv_oberrhein()
-    params = MvParameters(include_generation=True)
+    params = MvParameters()
     load = electrical.case_net(net, "load", params)
     pp.runpp(load)
     vm = load.res_bus.vm_pu[load.bus.vn_kv < 60]
@@ -875,7 +772,7 @@ def test_mv_oberrhein_cases_reproduce_the_pandapower_load_case():
     closed = top.create_nxgraph(electrical.case_net(net, "load", params), respect_switches=False,
                                 include_trafos=False)
     assert closed.number_of_edges() > closed.number_of_nodes() - nx.number_connected_components(closed)
-    for case in ("n1a", "feed_in_wind", "feed_in_pv"):
+    for case in ("n1a", "n1b"):
         current = electrical.case_net(net, case, params)
         assert electrical._runpp(current), case
 
@@ -888,16 +785,19 @@ def test_end_to_end_design_net_is_deterministic():
         pd.testing.assert_series_equal(first[case].vm_pu, second[case].vm_pu)
 
 
-def test_load_only_electrical_cases_ignore_stored_generation():
-    b = Builder(MvParameters(include_generation=False))
+def test_electrical_cases_ignore_stored_generation():
+    b = Builder()
     b.ring(2, gen_solar_kw=250.0)
     inp, plan = b.build()
     net = electrical.build_design_net(inp, plan)
     assert net.sgen.empty
     cases = electrical.run_cases(net, inp, plan)
-    assert tuple(cases) == inp.params.active_cases == ("load", "n1a", "n1b")
-    assert electrical.substation_loads(inp, plan, cases)[1] == 0.0
-    with pytest.raises(ValueError, match="was not requested"):
+    assert tuple(cases) == ("load", "n1a", "n1b")
+    # static generators of a net (e.g. of merged LV nets) are switched off in every case
+    pp.create_sgen(net, int(net.bus.index[-1]), p_mw=0.5)
+    for case in cases:
+        assert (electrical.case_net(net, case, inp.params).sgen["scaling"] == 0).all(), case
+    with pytest.raises(ValueError, match="unknown MV case"):
         electrical.case_net(net, "feed_in_pv", inp.params)
 
 
@@ -915,7 +815,7 @@ def test_unconnected_station_is_unsupplied_not_a_crash():
     assert electrical.node_flags(inp, plan, cases, electrical.station_budgets(inp, plan, cases))[station] == [
         "unsupplied", "not_n1_secure"]
     assert electrical.station_budgets(inp, plan, cases) == {}
-    units, unit_mva, sizing = electrical.size_substation(inp, plan, cases)
+    units, unit_mva, sizing = electrical.size_substation(inp, plan)
     stored, tap = electrical.build_stored_net(net, units, unit_mva, inp)
     assert (units, unit_mva, sizing) == (2, 25.0, "sized") and abs(tap) <= 2
 
@@ -923,15 +823,10 @@ def test_unconnected_station_is_unsupplied_not_a_crash():
 def test_repair_falls_back_to_exit_cables_when_a_split_changes_nothing(fake_topology):
     fake = fake_topology(moved=False)
     fake.split_ring = lambda inp, rg, model, ev, plan, ring_id: (fake.calls.append(("split_ring", ring_id)), plan)[1]
-    fake.convert_to_dedicated = lambda inp, rg, model, plan, key: (fake.calls.append(("convert", key)), plan)[1]
     b = Builder()
     r = b.ring(6, set_exits=True)
-    gen = b.tee_generator(r, 1, wind_kw=3000.0)
     inp, plan = b.build()
     low = _violation("load", "voltage_low", "bus", plan.rings[0].members[-1], r, 0.96, 0.97)
-    rise = _violation("feed_in_wind", "voltage_high", "bus", gen, r, 1.05, 1.04)
     plan, actions = electrical.repair(inp, None, None, None, plan, [low])
     assert [c[0] for c in fake.calls] == ["move_nop", "split_ring", "add_parallel"]
     assert [a["action"] for a in actions] == ["parallel"] and plan.diagnostics["repair_stage"] == {"1": 3}
-    plan, actions = electrical.repair(inp, None, None, None, dataclasses.replace(plan, diagnostics={}), [rise])
-    assert actions == [] and plan.diagnostics["repair_reports"][0]["action"] == "unresolved_feed_in"

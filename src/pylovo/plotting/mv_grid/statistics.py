@@ -476,8 +476,7 @@ def _tap_colors(taps: Sequence[int]) -> dict[int, Any]:
 def plot_voltage_budget(nodes: Any, ax: Optional[plt.Axes] = None, figsize: Tuple[float, float] = (12, 6),
                         busbar_vm_pu: float = 1.02, busbar_band_pu: float = 0.015, tap_step_percent: float = 2.5,
                         lv_reference_vm_pu: float = 0.96, lv_design_tolerance_pu: float = 0.002,
-                        lv_min_limit_pu: float = 0.90, lv_feed_in_max_pu: float = 1.07,
-                        title: Optional[str] = None) -> Figure:
+                        lv_min_limit_pu: float = 0.90, title: Optional[str] = None) -> Figure:
     """Voltage budget per station, from the HV/MV busbar to the lowest LV voltage (station budgets of the stage).
 
     Every station is one line through the stages busbar setpoint, lower edge of the OLTC band, MV node in the load
@@ -485,8 +484,7 @@ def plot_voltage_budget(nodes: Any, ax: Optional[plt.Axes] = None, figsize: Tupl
     the LV side by ``tap_step_percent`` per step), LV busbar (``lv_busbar_vm_pu``) and lowest LV voltage
     (``lv_min_vm_pu``). Lines are coloured by tap position, band conflicts red. The requirement of the LV net (the
     MV-side voltage that puts its busbar at the LV reference, ``lv_design_source_vm_pu``) is a black dash at the
-    tap stage; the LV busbar in feed-in (``lv_busbar_vm_feed_in_pu``) is a separate last stage. Red dashes mark
-    the limits ``lv_reference_vm_pu - lv_design_tolerance_pu``, ``lv_min_limit_pu`` and ``lv_feed_in_max_pu``.
+    tap stage. Red dashes mark the limits ``lv_reference_vm_pu - lv_design_tolerance_pu`` and ``lv_min_limit_pu``.
 
     Args:
         nodes: MV nodes (``mv_node`` columns); only stations with ``vm_load_pu`` and ``lv_busbar_vm_pu`` are drawn.
@@ -498,7 +496,6 @@ def plot_voltage_budget(nodes: Any, ax: Optional[plt.Axes] = None, figsize: Tupl
         lv_reference_vm_pu: LV busbar reference of the LV version (``LV_REFERENCE_VOLTAGE_PU``).
         lv_design_tolerance_pu: Tolerance below the LV reference (``lv_design_tolerance_pu``).
         lv_min_limit_pu: Lowest admissible LV voltage (DIN EN 50160).
-        lv_feed_in_max_pu: Highest LV busbar voltage in feed-in (``lv_feed_in_max_pu``).
         title: Plot title.
 
     Returns:
@@ -527,7 +524,7 @@ def plot_voltage_budget(nodes: Any, ax: Optional[plt.Axes] = None, figsize: Tupl
     chain = np.column_stack([np.full(len(frame), busbar_vm_pu), np.full(len(frame), busbar_vm_pu - busbar_band_pu),
                              v_low, after_tap, lv_bus, lv_min])
     stages = ["busbar\nsetpoint", "lower edge of\nthe OLTC band", "MV node\n(load case)", "after the\nMV/LV tap",
-              "LV busbar", "lowest LV\nvoltage", "LV busbar\n(feed-in)"]
+              "LV busbar", "lowest LV\nvoltage"]
     taps = sorted(set(tap))
     tap_color = _tap_colors(taps)
     fig, ax = _figure(ax, figsize)
@@ -549,14 +546,8 @@ def plot_voltage_budget(nodes: Any, ax: Optional[plt.Axes] = None, figsize: Tupl
         if not req.empty:
             ax.scatter(np.full(len(req), 3.15), req, marker="_", s=60, color="black", linewidths=1.0, alpha=0.6,
                        zorder=5)
-    if "lv_busbar_vm_feed_in_pu" in frame.columns:
-        feed = pd.to_numeric(frame["lv_busbar_vm_feed_in_pu"], errors="coerce")
-        ok = feed.notna().to_numpy()
-        colors = ["#d62728" if c else tap_color[int(t)] for t, c in zip(tap, conflict)]
-        ax.scatter(np.full(int(ok.sum()), 6.0) + np.linspace(-0.12, 0.12, int(ok.sum())), feed[ok],
-                   c=[c for c, o in zip(colors, ok) if o], s=14, zorder=4, edgecolors="none")
     for x, y, text in ((4, lv_reference_vm_pu - lv_design_tolerance_pu, "LV reference"),
-                       (5, lv_min_limit_pu, "LV limit"), (6, lv_feed_in_max_pu, "feed-in limit")):
+                       (5, lv_min_limit_pu, "LV limit")):
         ax.plot([x - 0.3, x + 0.3], [y, y], color="#d62728", linestyle="--", linewidth=1.4, zorder=6)
         ax.annotate(f"{text} {y:.3f}", (x + 0.3, y), xytext=(2, 0), textcoords="offset points", fontsize=7,
                     va="center", color="#d62728")

@@ -72,7 +72,7 @@ class Spec:
             of the numbers in a ``mapping``, or of the length of a ``str``.
         group: Group of the MV variant snapshot; empty = not in the snapshot.
         source: Source of the default, or the reason for it.
-        key: Key inside the snapshot group; empty = the field name, ``*`` = the value is the whole group.
+        key: Key inside the snapshot group; empty = the field name.
     """
 
     name: str
@@ -90,8 +90,6 @@ class Spec:
         """Path of the value in the MV variant snapshot; empty if it is not in the snapshot."""
         if not self.group:
             return ()
-        if self.key == "*":
-            return (self.group,)
         return (self.group, self.key or self.field)
 
 
@@ -102,8 +100,6 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="as VERSION_ID; the key of pylovo.mv_variant together with the LV version"),
     Spec("MV_VARIANT_COMMENT", "comment", "default", "str",
          source="as VERSION_COMMENT; stored once with a new MV variant"),
-    Spec("MV_INCLUDE_GENERATION", "include_generation", False, "bool", group="generation",
-         source="false: plan loads and (n-1) only, without MaStR; true: include generators and feed-in cases"),
     Spec("MV_NOMINAL_VOLTAGE_KV", "vn_kv", AUTO_VOLTAGE, "voltage", choices=(20.0, 10.0), group="voltage",
          source="auto: 10 kV in districts with an installed density of at least mv_10kv_min_density_mva_km2, else "
                 "20 kV (dense city grids run at 10 kV, rural grids at 20 kV, Harnisch 2016); the stored LV station "
@@ -137,8 +133,6 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="OLTC control band at the MV busbar, Harnisch 2016 (± 1.5 %)"),
     _constant("max_drop_n1_percent", 10.0, "float", "voltage", bounds=(0.5, 30.0),
               source="(n-1): ring fed from one side; Ding0; SimBench"),
-    _constant("max_rise_percent", 2.0, "float", "voltage", bounds=(0.1, 20.0),
-              source="generation-driven rise, VDE-AR-N 4110 (dena 2012 p. 91)"),
     _constant("mv_10kv_min_density_mva_km2", 5.0, "float", "voltage", bounds=_POSITIVE,
               source="MV_NOMINAL_VOLTAGE_KV auto: districts whose installed capacity lies mostly in municipalities "
                      "with at least this installed MV/LV capacity per km² of their area in the planning region "
@@ -149,7 +143,7 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
                      "3.4"),
     # loading
     _constant("n1_utilization", 1.0, "float", "loading", bounds=(0.1, 2.0),
-              source="lines in the (n-1) and feed-in cases, dena 2012"),
+              source="lines in the (n-1) cases, dena 2012"),
     _constant("hv_mv_n1_utilization", 1.0, "float", "loading", bounds=(0.1, 2.0),
               source="HV/MV transformers with one unit out, dena 2012"),
     # topology
@@ -170,10 +164,6 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
                      "2018) and 4 km up to 0.5 MVA (derived rule, decision of 2026-10-19)"),
     _constant("stub_min_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,
               source="only nodes more than this off the ring become stubs; Amme et al. 2018"),
-    _constant("loop_in_max_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,
-              source="generators looped in when the re-route is at most this long, Amme et al. 2018"),
-    _constant("generator_max_tee_m", 5000.0, "float", "topology", bounds=_POSITIVE,
-              source="longest generator T-off before a dedicated feeder [assumption]"),
     _constant("tie_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
               source="normally-open ties to a neighbouring district [assumption]"),
     _constant("link_max_length_m", {"rural": 1000.0, "semi_urban": 750.0, "urban": 500.0}, "mapping", "topology",
@@ -212,22 +202,6 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="a small MV customer hangs on the busbar of its nearest MV/LV station only within this "
                      "straight-line distance (pylovo's default MAX_GREENFIELD_TRAFO_DISTANCE), else it keeps an own "
                      "MV node (flag remote_small_customer); null: no limit"),
-    # generation
-    _constant("generator_lv_side_kw", 200.0, "float", "generation", key="lv_side_kw", bounds=_POSITIVE,
-              source="eGon-data MV/LV threshold: MaStR units at MV/LV level above it are own MV nodes"),
-    _constant("generator_fallback_kw", {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0}, "mapping",
-              "generation", key="fallback_kw", bounds=_POSITIVE,
-              source="eGon-data voltage-level thresholds for MaStR units without a voltage level"),
-    _constant("mv_gen_cos_phi", 0.95, "float", "generation", bounds=(0.5, 1.0),
-              source="MV generators under-excited, VDE-AR-N 4110 practice [assumption]"),
-    _constant("lv_pv_cos_phi", 1.0, "float", "generation", bounds=(0.5, 1.0),
-              source="LV-side generation; 0.95 as VDE-AR-N 4105 cos phi(P) sensitivity"),
-    # cases (SimBench study cases lW and lPV: load and generation scaling factors)
-    _constant("feed_in_cases",
-              {"feed_in_wind": {"load_p": 0.1, "load_q": 0.123, "wind": 1.0, "solar": 0.8, "other": 1.0},
-               "feed_in_pv": {"load_p": 0.1, "load_q": 0.123, "wind": 0.85, "solar": 0.95, "other": 1.0}},
-              "mapping", "cases", key="*", bounds=(0.0, 1.0),
-              source="SimBench study cases lW and lPV"),
     # equipment
     _constant("hv_mv_sizes_mva", (25.0, 31.5, 40.0, 63.0), "float_tuple", "equipment", key="hv_mv_types",
               bounds=(1.0, 1000.0), source="Meinecke 2019; Harnisch 2016 (31.5 MVA interpolated)"),
@@ -292,8 +266,6 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="highest MV/LV tap position"),
     _constant("lv_design_tolerance_pu", 0.002, "float", "taps", bounds=(0.0, 0.1),
               source="tolerance of the LV busbar below LV_REFERENCE_VOLTAGE_PU of the LV version"),
-    _constant("lv_feed_in_max_pu", 1.07, "float", "taps", bounds=(1.0, 1.2),
-              source="highest LV busbar voltage in feed-in: 1.10 - 0.03 (VDE-AR-N 4105 share)"),
 )
 
 #: The ``MV_*`` keys of ``config_generation.yaml`` by name.
@@ -311,6 +283,7 @@ REMOVED_YAML_KEYS: dict[str, Any] = {
     "MV_STUBS": "rural",
     "MV_OVERHEAD_LINES": "osm",
     "MV_INTERCONNECTION": "ties",
+    "MV_INCLUDE_GENERATION": False,
 }
 
 #: YAML keys that ``--set`` does not change, with the option to use instead.

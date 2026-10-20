@@ -9,24 +9,21 @@ topology changes of the repair loop come from :mod:`pylovo.mv_grid.topology`, im
 **Nets.** The *design net* (:func:`build_design_net`) has one bus per node key of the plan (the HV/MV busbar first,
 then the nodes of ``DistrictInput.nodes``, then the joints), an ideal slack at the busbar (``busbar_vm_pu``, the
 HV/MV OLTC setpoint), one line per planned circuit (ties excepted), one open load-break switch per normally-open
-line, one load per station and MV customer, and one static generator per node and technology group with
-generation. With an ideal busbar the rings are electrically independent, so the (n-1) cases of all rings run in two
+line and one load per station and MV customer. With an ideal busbar the rings are electrically independent, so the (n-1) cases of all rings run in two
 flows (``n1a``: every A exit out, ``n1b``: every B exit out). The *stored net* (:func:`build_stored_net`) adds the
 HV side and the HV/MV transformers with a fixed OLTC tap, so a plain ``pp.runpp`` reproduces the load case.
 
 **Custom columns** (read by :func:`case_net`, the metrics and the persistence):
 
 - ``bus``: ``node_key`` (plan key: ``mv_node_id`` > 0 or joint key < 0; NaN for the HV bus of the stored net),
-  ``mv_node_id`` (NaN for joints until persistence), ``kind`` (``busbar``, ``station``, ``customer``,
-  ``generator``, ``joint``; ``hv_busbar`` for the HV bus);
+  ``mv_node_id`` (NaN for joints until persistence), ``kind`` (``busbar``, ``station``, ``customer``, ``joint``;
+  ``hv_busbar`` for the HV bus);
 - ``line``: ``line_key``, ``mv_line_id``, ``role``, ``kind`` (``cable``, ``overhead``, ``mixed``), ``ring_id``,
   ``feeder_id``, ``std_type_name``, ``exit`` (``a`` or ``b``: the line is out of service in ``n1a`` or ``n1b``;
   ring exits and the two legs of a dedicated customer feeder), ``cable_km``, ``overhead_km``;
 - ``switch``: ``normally_open``, ``line_key``;
 - ``load``: ``node_key``, ``grid_result_id``, ``p_normal_mw``, ``q_normal_mvar`` (normal case, half-ring feeder
-  scaling), ``p_n1_mw``, ``q_n1_mvar`` (whole-ring feeder scaling);
-- ``sgen``: ``node_key``, ``grid_result_id``, ``technology_group`` (``solar``, ``wind``, ``other``), ``level``
-  (``mv``, ``lv``), ``cos_phi`` (under-excited: ``q_mvar = -p_mw * tan(arccos(cos_phi))``).
+  scaling), ``p_n1_mw``, ``q_n1_mvar`` (whole-ring feeder scaling).
 """
 from __future__ import annotations
 
@@ -61,11 +58,8 @@ from pylovo.mv_grid.model import (
 
 logger = logging.getLogger(__name__)
 
-#: Technology groups of the generation columns ``gen_<group>_kw`` (keys of the feed-in case factors).
-GENERATION_GROUPS: tuple[str, ...] = ("solar", "wind", "other")
-#: The (n-1) cases and the feed-in cases of :data:`~pylovo.mv_grid.model.CASES`.
+#: The (n-1) cases of :data:`~pylovo.mv_grid.model.CASES`.
 N1_CASES: tuple[str, ...] = ("n1a", "n1b")
-FEED_IN_CASES: tuple[str, ...] = ("feed_in_wind", "feed_in_pv")
 #: Exit (``line.exit``) that is out of service in each (n-1) case.
 N1_EXIT: dict[str, str] = {"n1a": "a", "n1b": "b"}
 #: Tap corrections of the OLTC loop of :func:`build_stored_net` after the first flow.
@@ -81,7 +75,7 @@ STATION_TRANSFORMERS: tuple[tuple[float, float, float], ...] = ((250.0, 6.0, 1.4
 #: Comparison tolerance of the criteria (p.u. for voltages, percent for loadings).
 TOLERANCE: float = 1e-6
 #: Node roles whose node has no (n-1) requirement (DESIGN §5.3).
-NOT_N1_ROLES: frozenset[str] = frozenset({"stub", "tee"})
+NOT_N1_ROLES: frozenset[str] = frozenset({"stub"})
 #: Ring kinds (``RingPlan.kind``) that are (n-1) secure.
 N1_SECURE_KINDS: frozenset[str] = frozenset({"ring", "dedicated"})
 
@@ -227,7 +221,7 @@ def _ring_exits(plan: TopologyPlan, busbar: int) -> dict[int, str]:
 def n1_nodes(inp: DistrictInput, plan: TopologyPlan) -> set[int]:
     """Node keys with an (n-1) requirement: the path members of rings and 2-leg dedicated feeders.
 
-    Stub and T-off nodes, busbar radials and generator feeders have none (DESIGN §5.3).
+    Stub nodes and busbar radials have none (DESIGN §5.3).
     """
     out: set[int] = set()
     for ring in plan.rings:
@@ -335,32 +329,6 @@ def district_load_kw(inp: DistrictInput, plan: TopologyPlan | None = None) -> fl
     return coincidence.pooled_kw(installed, units, fixed, inp.lv.g())
 
 
-def _generation_rows(inp: DistrictInput, keys: Sequence[int]) -> list[dict[str, Any]]:
-    """One static generator per node and technology group with generation (MV generators and LV-side sums)."""
-    params = inp.params
-    if not params.include_generation:
-        return []
-    nodes = inp.nodes
-    rows = []
-    for key in keys:
-        if key not in nodes.index:
-            continue
-        row = nodes.loc[key]
-        is_mv = row["kind"] == "generator"
-        level = "mv" if is_mv else "lv"
-        cos_phi = params.mv_gen_cos_phi if is_mv else params.lv_pv_cos_phi
-        name = f"Generator {_label(nodes, key, 'mastr_connection_id')}" if is_mv else \
-            f"LV generation {_label(nodes, key, 'grid_result_id')}"
-        for group in GENERATION_GROUPS:
-            kw = _value(row, f"gen_{group}_kw")
-            if kw <= 0:
-                continue
-            rows.append({"node_key": key, "name": name, "p_mw": kw / 1000.0,
-                         "q_mvar": -kw / 1000.0 * _tan_phi(cos_phi), "technology_group": group, "level": level,
-                         "cos_phi": float(cos_phi), "grid_result_id": _value(row, "grid_result_id", math.nan)})
-    return rows
-
-
 # ---------------------------------------------------------------------------------------------- design net
 def _line_type(name: str, types: tuple[LineType, LineType], cache: dict[str, LineType]) -> LineType:
     """The type of a name: the district's cable or overhead type (resolved values of the variant), else pandapower."""
@@ -426,8 +394,7 @@ def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFA
 
     Returns:
         A pandapower net with the custom columns of the module docstring: ext_grid ``vm_pu = busbar_vm_pu`` at
-        the busbar, normally-open line switches open, loads at the normal-case values, static generators at
-        ``scaling = 0``.
+        the busbar, normally-open line switches open, loads at the normal-case values.
 
     Raises:
         ValueError: If a line refers to a node key without a bus (unknown or excluded node).
@@ -535,18 +502,6 @@ def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFA
         _set_column(net.load, "q_normal_mvar", load_index, q_mvar, "float64")
         _set_column(net.load, "p_n1_mw", load_index, loads["p_n1_kw"].to_numpy() / 1000.0, "float64")
         _set_column(net.load, "q_n1_mvar", load_index, loads["q_n1_kvar"].to_numpy() / 1000.0, "float64")
-
-    generation = _generation_rows(inp, keys[1:])
-    if generation:
-        frame = pd.DataFrame(generation)
-        sgen_index = pp.create_sgens(net, buses=[bus_of[int(k)] for k in frame["node_key"]],
-                                     p_mw=frame["p_mw"].to_numpy(), q_mvar=frame["q_mvar"].to_numpy(),
-                                     name=frame["name"].tolist(), scaling=0.0, index=list(range(len(frame))))
-        _set_column(net.sgen, "node_key", sgen_index, frame["node_key"].astype(int).tolist(), "int64")
-        _set_column(net.sgen, "grid_result_id", sgen_index, frame["grid_result_id"].tolist(), "float64")
-        _set_column(net.sgen, "technology_group", sgen_index, frame["technology_group"].tolist(), "object")
-        _set_column(net.sgen, "level", sgen_index, frame["level"].tolist(), "object")
-        _set_column(net.sgen, "cos_phi", sgen_index, frame["cos_phi"].tolist(), "float64")
     return net
 
 
@@ -562,20 +517,19 @@ def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: flo
              ) -> pp.pandapowerNet:
     """A copy of ``net`` set to one snapshot case (DESIGN §5.2); shared by the main path and ``couple``.
 
-    - ``load``: normal loads, no generation, normal topology (normally-open switches open);
-    - ``n1a`` / ``n1b``: (n-1) loads (``p_n1_mw``, ``q_n1_mvar``), no generation, every line with ``exit`` ``a`` /
-      ``b`` out of service and every normally-open switch closed;
-    - ``feed_in_wind`` / ``feed_in_pv``: loads times ``load_p`` and ``load_q``, generation scaled per technology
-      group by ``params.feed_in_cases``, normal topology.
+    - ``load``: normal loads, normal topology (normally-open switches open);
+    - ``n1a`` / ``n1b``: (n-1) loads (``p_n1_mw``, ``q_n1_mvar``), every line with ``exit`` ``a`` / ``b`` out of
+      service and every normally-open switch closed.
 
-    Apply it to the base net (design, stored or coupled), not to a case net: rows without the custom base
-    columns take their current ``p_mw`` and ``q_mvar`` as the normal values, rows without ``technology_group``
-    count as ``other``, switches without ``normally_open`` and lines without ``exit`` keep their state.
+    Static generators of the net (e.g. in LV nets) are switched off (``scaling = 0``). Apply it to the base net
+    (design, stored or coupled), not to a case net: rows without the custom base columns take their current
+    ``p_mw`` and ``q_mvar`` as the normal values, switches without ``normally_open`` and lines without ``exit``
+    keep their state.
 
     Args:
         net: The base net.
         case: One of :data:`~pylovo.mv_grid.model.CASES`.
-        params: The MV parameters (``busbar_vm_pu``, ``feed_in_cases``).
+        params: The MV parameters (``busbar_vm_pu``).
         busbar_vm_pu: Setpoint of the ext_grid at the MV busbar (bus ``kind`` ``busbar``; default
             ``params.busbar_vm_pu``). An ext_grid on the HV side (stored net) keeps its setpoint.
 
@@ -584,8 +538,6 @@ def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: flo
     """
     if case not in CASES:
         raise ValueError(f"unknown MV case {case!r}, expected one of {', '.join(CASES)}")
-    if case not in params.active_cases:
-        raise ValueError(f"case {case!r} was not requested; available cases: {', '.join(params.active_cases)}")
     out = copy.deepcopy(net)
     setpoint = float(params.busbar_vm_pu if busbar_vm_pu is None else busbar_vm_pu)
     if len(out.ext_grid) and "kind" in out.bus.columns:
@@ -600,23 +552,10 @@ def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: flo
         if case in N1_CASES:
             load["p_mw"] = _column(load, "p_n1_mw", base_p)
             load["q_mvar"] = _column(load, "q_n1_mvar", base_q)
-        elif case in FEED_IN_CASES:
-            factors = params.feed_in_cases[case]
-            load["p_mw"] = base_p * float(factors["load_p"])
-            load["q_mvar"] = base_q * float(factors["load_q"])
         else:
             load["p_mw"], load["q_mvar"] = base_p, base_q
-
-    sgen = out.sgen
-    if len(sgen):
-        if case in FEED_IN_CASES:
-            factors = params.feed_in_cases[case]
-            groups = sgen["technology_group"] if "technology_group" in sgen.columns else \
-                pd.Series("other", index=sgen.index)
-            sgen["scaling"] = [float(factors.get(g if g in GENERATION_GROUPS else "other", factors["other"]))
-                               for g in groups]
-        else:
-            sgen["scaling"] = 0.0
+    if len(out.sgen):
+        out.sgen["scaling"] = 0.0
 
     line = out.line
     if len(line) and "exit" in line.columns:
@@ -661,13 +600,14 @@ def _case_result(net: pp.pandapowerNet, case: str, converged: bool) -> CaseResul
 
 
 def run_cases(net: pp.pandapowerNet, inp: DistrictInput, plan: TopologyPlan) -> dict[str, CaseResult]:
-    """Run the variant's requested cases on copies of the design net (non-convergence is a result).
+    """Run the cases of :data:`~pylovo.mv_grid.model.CASES` on copies of the design net (non-convergence is a
+    result).
 
     ``CaseResult.vm_pu`` is indexed by node key with the busbar first, ``loading_percent`` by line key (0 for lines
     out of service); a case that does not converge has NaN values and NaN slack powers.
     """
     results: dict[str, CaseResult] = {}
-    for case in inp.params.active_cases:
+    for case in CASES:
         current = case_net(net, case, inp.params)
         converged = _runpp(current)
         if not converged:
@@ -684,7 +624,6 @@ def check(cases: Mapping[str, CaseResult], inp: DistrictInput, plan: TopologyPla
       ``loading <= 100 · MV_LINE_PLANNING_UTILIZATION``;
     - ``n1a``, ``n1b``: nodes with an (n-1) requirement (:func:`n1_nodes`) ``vm >= busbar_vm_pu -
       max_drop_n1_percent/100``; lines ``loading <= 100 · n1_utilization``;
-    - feed-in cases: every MV node ``vm - busbar_vm_pu <= max_rise_percent/100``; lines ``<= 100 · n1_utilization``;
     - a case that did not converge is one ``not_converged`` violation at the busbar.
 
     Unsupplied nodes (NaN voltage) are no violation; :func:`case_metrics` counts them.
@@ -696,7 +635,7 @@ def check(cases: Mapping[str, CaseResult], inp: DistrictInput, plan: TopologyPla
     node_ring = {int(k): int(v) for k, v in plan.node_ring.items() if v is not None}
     line_ring = {int(line.key): (None if line.ring_id is None else int(line.ring_id)) for line in plan.lines}
     violations: list[Violation] = []
-    for case in params.active_cases:
+    for case in CASES:
         result = cases.get(case)
         if result is None:
             continue
@@ -709,13 +648,9 @@ def check(cases: Mapping[str, CaseResult], inp: DistrictInput, plan: TopologyPla
             limit, kind = v0 - params.max_drop_percent / 100.0, "voltage_low"
             bad = vm[vm < limit - TOLERANCE]
             line_limit = 100.0 * params.line_utilization
-        elif case in N1_CASES:
+        else:
             limit, kind = v0 - params.max_drop_n1_percent / 100.0, "voltage_low"
             bad = vm[(vm < limit - TOLERANCE) & vm.index.isin(list(secure))]
-            line_limit = 100.0 * params.n1_utilization
-        else:
-            limit, kind = v0 + params.max_rise_percent / 100.0, "voltage_high"
-            bad = vm[vm > limit + TOLERANCE]
             line_limit = 100.0 * params.n1_utilization
         for key, value in sorted(bad.items()):
             violations.append(Violation(case, kind, "bus", int(key), float(value), float(limit),
@@ -748,14 +683,11 @@ def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
 
     Per case ``<case>_converged``, ``<case>_min_vm_pu``, ``<case>_max_vm_pu``, ``<case>_max_loading_percent``,
     ``<case>_slack_p_mw``, ``<case>_slack_q_mvar``, ``<case>_unsupplied_nodes``; and ``max_voltage_drop_percent``
-    (load case), ``max_voltage_drop_n1_percent``, ``max_voltage_rise_percent``, ``max_line_loading_percent``,
-    ``max_line_loading_n1_percent``, ``max_line_loading_feed_in_percent`` and ``peak_feed_in_mw`` (largest reverse
-    flow into the HV grid of the feed-in cases, 0 without reverse flow). Drops and rises are relative to the busbar
-    voltage of the case (the first entry of ``vm_pu``).
+    (load case), ``max_voltage_drop_n1_percent``, ``max_line_loading_percent`` and ``max_line_loading_n1_percent``.
+    Drops are relative to the busbar voltage of the case (the first entry of ``vm_pu``).
     """
     out: dict[str, Any] = {}
     drop: dict[str, float] = {}
-    rise: dict[str, float] = {}
     loading: dict[str, float] = {}
     for case, result in cases.items():
         vm = result.vm_pu
@@ -772,7 +704,6 @@ def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
         out[f"{case}_unsupplied_nodes"] = int((~np.isfinite(values)).sum()) if result.converged else None
         if result.converged and len(finite) and np.isfinite(values[0]):
             drop[case] = 100.0 * (values[0] - finite.min())
-            rise[case] = 100.0 * (finite.max() - values[0])
         if result.converged and len(load_finite):
             loading[case] = float(load_finite.max())
 
@@ -782,12 +713,8 @@ def case_metrics(cases: Mapping[str, CaseResult]) -> dict:
 
     out["max_voltage_drop_percent"] = _max(["load"], drop)
     out["max_voltage_drop_n1_percent"] = _max(N1_CASES, drop)
-    out["max_voltage_rise_percent"] = _max(FEED_IN_CASES, rise)
     out["max_line_loading_percent"] = _max(["load"], loading)
     out["max_line_loading_n1_percent"] = _max(N1_CASES, loading)
-    out["max_line_loading_feed_in_percent"] = _max(FEED_IN_CASES, loading)
-    reverse = [-cases[c].slack_p_mw for c in FEED_IN_CASES if c in cases and cases[c].converged]
-    out["peak_feed_in_mw"] = _finite(max(0.0, max(reverse))) if reverse else None
     return out
 
 
@@ -812,14 +739,7 @@ def _record(round_no: int, name: str, violation: Violation | None, **extra: Any)
 
 def _member_count(inp: DistrictInput, members: Sequence[int]) -> int:
     nodes = inp.nodes
-    return sum(1 for m in members if int(m) in nodes.index and nodes.at[int(m), "kind"] in
-               ("station", "customer", "generator"))
-
-
-def _generator_power(inp: DistrictInput, key: int, case: str) -> float:
-    row = inp.nodes.loc[key]
-    factors = inp.params.feed_in_cases.get(case, {})
-    return sum(_value(row, f"gen_{g}_kw") * float(factors.get(g, 1.0)) for g in GENERATION_GROUPS)
+    return sum(1 for m in members if int(m) in nodes.index and nodes.at[int(m), "kind"] in ("station", "customer"))
 
 
 def _parallel(plan: TopologyPlan) -> dict[int, int]:
@@ -836,7 +756,7 @@ def _signature(plan: TopologyPlan) -> tuple:
 
 def path_lines(plan: TopologyPlan, busbar: int, target: int, case: str) -> list[int]:
     """Keys of the lines from the busbar to node ``target`` in the switching state of ``case``: the normally-open
-    lines open in normal operation (``load``, feed-in cases), closed in ``n1a``/``n1b`` with the A or B exits out.
+    lines open in normal operation (``load``), closed in ``n1a``/``n1b`` with the A or B exits out.
     Empty if ``target`` is not reached."""
     out = N1_EXIT.get(case)
     exits = _ring_exits(plan, busbar) if out is not None else {}
@@ -892,14 +812,10 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     2. Loading (``load``, ``n1*``) on a section of ring r: the smallest conductor that carries the current within
        the limit; at the largest conductor, split the ring if the section is a busbar exit and the ring has at least
        4 members, else ``parallel`` + 1 (up to ``max_parallel_cables``).
-    3. Loading or voltage on a dedicated feeder, a generator feeder or a busbar radial: larger conductors (the
-       overloaded line, or all lines of the feeder for voltage), then ``parallel`` + 1 on its lines (up to the cap),
-       else the report ``dedicated_overload``.
-    4. Rise or loading in a feed-in case on a ring feeder: larger conductors on the path to the node (or on the
-       overloaded line); at the largest conductors, convert the T-off or loop-in MV generator with the largest
-       feed-in to a dedicated feeder (``topology.convert_to_dedicated``), one per feeder; without such a generator
-       the report ``lv_pv_rise`` (rise or loading driven by LV-side generation).
-    5. ``not_converged``: report, the topology is kept.
+    3. Loading or voltage on a dedicated feeder or a busbar radial: larger conductors (the overloaded line, or all
+       lines of the feeder for voltage), then ``parallel`` + 1 on its lines (up to the cap), else the report
+       ``dedicated_overload``.
+    4. ``not_converged``: report, the topology is kept.
 
     Args:
         inp, rg, model, ev: Passed to the topology functions (district input, run graph, distance model, ring
@@ -925,7 +841,6 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     keys = bus_keys(inp, plan)
     rings = {int(r.ring_id): r for r in plan.rings}
     lines = {int(line.key): line for line in plan.lines}
-    normal = _components(keys, busbar, _net_lines(plan), include_open=False)
     n1 = _components(keys, busbar, _net_lines(plan), include_open=True)
     ring_of_component = _component_rings(plan, n1)
     exits = _ring_exits(plan, busbar)
@@ -948,7 +863,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     def feeder_kind(ring_id: int | None, line: LinePlan | None = None) -> str:
         if ring_id is not None and ring_id in rings:
             return rings[ring_id].kind
-        if line is not None and line.role in ("dedicated", "generator"):
+        if line is not None and line.role == "dedicated":
             return line.role
         return "radial"
 
@@ -956,7 +871,6 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     ring_voltage: dict[int, Violation] = {}
     ring_loading: dict[int, list[tuple[int, Violation]]] = {}
     feeder_lines: dict[int, Violation] = {}           # ring id (non-ring feeders) -> first violation
-    feed_in: dict[int, Violation] = {}                 # normal component -> first feed-in violation
     reports: list[dict] = []
     for v in violations:
         if v.kind == "not_converged":
@@ -971,15 +885,6 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
                 continue
             ring_id = v.ring_id if v.ring_id is not None else ring_of_line(line)
         kind = feeder_kind(ring_id, line)
-        if v.case in FEED_IN_CASES and kind == "ring":
-            if v.element == "bus":
-                label = normal.get(int(v.key))
-            else:
-                ends = [int(k) for k in (line.from_key, line.to_key) if int(k) != busbar]
-                label = normal.get(ends[0]) if ends else None
-            if label is not None:
-                feed_in.setdefault(label, v)
-            continue
         if kind == "ring":
             if v.element == "bus":
                 ring_voltage.setdefault(int(ring_id), v)
@@ -993,7 +898,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     touched: set[int] = set()
     upgrade_requests: list[tuple[list[int], int | None, Violation, str, dict[int, float] | None]] = []
     parallel_requests: list[tuple[list[int], int | None, Violation, str]] = []
-    structural: list[tuple[str, Any, Violation]] = []   # ("move_nop" | "split_ring", ring_id) or ("convert", key)
+    structural: list[tuple[str, Any, Violation]] = []   # ("move_nop" | "split_ring", ring_id)
 
     def upgradable(keys: Iterable[int], current: TopologyPlan | None = None) -> list[int]:
         by_key = lines if current is None else {int(line.key): line for line in current.lines}
@@ -1053,7 +958,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
             parallel_requests.append(([k for k, _ in items], ring_id, items[0][1], "loading"))
         touched.add(ring_id)
 
-    # 3. dedicated feeders, generator feeders and busbar radials
+    # 3. dedicated feeders and busbar radials
     for ring_id, v in sorted(feeder_lines.items()):
         if ring_id in touched:
             continue
@@ -1069,29 +974,6 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
                                      larger if v.element == "line" else None))
             continue
         parallel_requests.append((keys_of_feeder, ring_id, v, "dedicated"))
-
-    # 4. feed-in: convert the largest T-off or loop-in generator of the feeder (one per feeder)
-    for label, v in sorted(feed_in.items()):
-        members = sorted(k for k, lab in normal.items() if lab == label)
-        ring_id = next((r for r in (ring_of_node(k) for k in members) if r is not None), None)
-        if ring_id is not None and ring_id in touched:
-            continue
-        if v.element == "bus":
-            larger = {k: None for k in upgradable(path_lines(plan, busbar, int(v.key), v.case))}
-        else:
-            larger = {int(v.key): needed_ka(int(v.key), v)} if upgradable([int(v.key)]) else {}
-        if larger:
-            upgrade_requests.append((list(larger), ring_id, v, "feed_in", larger if v.element == "line" else None))
-            if ring_id is not None:
-                touched.add(ring_id)
-            continue
-        generators = [k for k in members if k in inp.nodes.index and inp.nodes.at[k, "kind"] == "generator"
-                      and plan.node_role.get(k) in ("tee", "loop_in")]
-        if not generators:
-            reports.append(_record(round_no, "lv_pv_rise", v, ring_id=ring_id))
-            continue
-        key = max(generators, key=lambda k: (_generator_power(inp, k, v.case), -k))
-        structural.append(("convert_to_dedicated", key, v))
 
     # ---- apply: larger conductors and parallel cables first (line keys stay valid), then the structural changes
     actions: list[dict] = []
@@ -1171,14 +1053,6 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
             else:
                 stage.pop(target, None)
             actions.append(_record(round_no, "split_ring", v, ring_id=target, new_ring_ids=sorted(new_ids - ring_ids)))
-        elif name == "convert_to_dedicated":
-            before = _signature(plan)
-            new_plan = topology.convert_to_dedicated(inp, rg, model, plan, target)
-            if _signature(new_plan) == before:  # the generator already has its own feeder
-                reports.append(_record(round_no, "unresolved_feed_in", v, node_key=target))
-                continue
-            plan = new_plan
-            actions.append(_record(round_no, "convert_to_dedicated", v, node_key=target))
 
     plan.diagnostics["repair_round"] = round_no
     plan.diagnostics["repair_stage"] = {str(k): v for k, v in sorted(stage.items())}
@@ -1187,29 +1061,21 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
 
 
 # ---------------------------------------------------------------------------------------------- HV/MV sizing
-def substation_loads(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, CaseResult]
-                     ) -> tuple[float, float]:
-    """``(S_load, S_feed)`` in MVA: the district load by the category law over cos φ, and the largest slack ``|S|`` of
-    the converged feed-in cases (0 if none converged)."""
-    s_load = district_load_kw(inp, plan) / 1000.0 / float(inp.lv.power_factor)
-    feeds = [math.hypot(cases[c].slack_p_mw, cases[c].slack_q_mvar) for c in FEED_IN_CASES
-             if c in cases and cases[c].converged]
-    return s_load, (max(feeds) if feeds else 0.0)
+def substation_load(inp: DistrictInput, plan: TopologyPlan) -> float:
+    """``S_load`` in MVA: the district load by the category law over cos φ."""
+    return district_load_kw(inp, plan) / 1000.0 / float(inp.lv.power_factor)
 
 
-def size_substation(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, CaseResult]
-                    ) -> tuple[int, float, str]:
+def size_substation(inp: DistrictInput, plan: TopologyPlan) -> tuple[int, float, str]:
     """``(units, unit_mva, sizing)`` of the HV/MV transformers (DESIGN §4.6, ``equipment.size_hv_mv``).
 
-    ``S_load`` is the coincident load of all district nodes (never the sum of feeder heads), ``S_feed`` the largest
-    ``|S|`` at the busbar in the feed-in cases; OSM ratings of the substation (``inp.known_units_mva``) win when two or
-    more are known.
+    ``S_load`` is the coincident load of all district nodes (never the sum of feeder heads); known ratings of the
+    substation (``inp.known_units_mva``) win when two or more are known.
     """
     params = inp.params
-    s_load, s_feed = substation_loads(inp, plan, cases)
-    units, unit_mva, sizing = equipment.size_hv_mv(s_load, s_feed, tuple(params.hv_mv_sizes_mva),
-                                                       int(params.hv_mv_units), float(params.hv_mv_n1_utilization),
-                                                       tuple(inp.known_units_mva))
+    units, unit_mva, sizing = equipment.size_hv_mv(substation_load(inp, plan), tuple(params.hv_mv_sizes_mva),
+                                                   int(params.hv_mv_units), float(params.hv_mv_n1_utilization),
+                                                   tuple(inp.known_units_mva))
     return int(units), float(unit_mva), str(sizing)
 
 
@@ -1311,29 +1177,6 @@ def station_drop_ratio(lv_sn_kva: float, sn_kva: float, power_factor: float) -> 
     return drop(sn_kva) / drop(lv_sn_kva)
 
 
-def _transformer_rise(row: pd.Series, p_kw: float, q_kvar: float, params: Any) -> float:
-    """Voltage rise (p.u.) over the station transformer in the feed-in cases (reverse flow), the largest case.
-
-    ``((Σ_g P_gen,g · f_g − load_p · P_load) · vkr − (load_q · Q_load + tan φ_LV · Σ_g P_gen,g · f_g) · vkx) / S_n /
-    100`` (DESIGN §5.6; the second Q term is 0 at the default LV cos φ 1).
-    """
-    sn = _value(row, "sn_kva")
-    if sn <= 0:
-        return 0.0
-    vk, vkr = station_transformer(sn)
-    vkx = math.sqrt(max(vk * vk - vkr * vkr, 0.0))
-    tan_phi = _tan_phi(params.lv_pv_cos_phi)
-    gen = {g: _value(row, f"gen_{g}_kw") for g in GENERATION_GROUPS}
-    rises = []
-    for case in FEED_IN_CASES:
-        factors = params.feed_in_cases[case]
-        p_gen = sum(gen[g] * float(factors[g]) for g in GENERATION_GROUPS)
-        p = p_gen - float(factors["load_p"]) * p_kw
-        q = float(factors["load_q"]) * q_kvar + tan_phi * p_gen
-        rises.append((p * vkr - q * vkx) / sn / 100.0)
-    return max(rises)
-
-
 def _vm(cases: Mapping[str, CaseResult], names: Sequence[str], how: str) -> pd.Series:
     series = [cases[c].vm_pu for c in names if c in cases and cases[c].converged]
     if not series:
@@ -1350,19 +1193,15 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
     at ``lv_reference_voltage_pu`` at its own coincident load, tap 0)::
 
         dT         = r - lv_ref
-        V_low      = vm_load - busbar_band_pu              V_high = max(vm_feed_in) + busbar_band_pu
+        V_low      = vm_load - busbar_band_pu
         k(t)       = 1 / (1 + t · mvlv_tap_step_percent / 100)
-        lv_bus(t)  = V_low · k(t) - dT                     lv_feed(t) = V_high · k(t) + rise_T
-        margin_low(t)  = lv_bus(t) - (lv_ref - lv_design_tolerance_pu)
-        margin_high(t) = lv_feed_in_max_pu - lv_feed(t)
-        t* = argmax min(margin_low, margin_high) over [mvlv_tap_min, mvlv_tap_max]; ties: the tap closest to 0
-        band_conflict = min(margin_low(t*), margin_high(t*)) < 0;  tap_limit = margin_low(t*) < 0
+        lv_bus(t)  = V_low · k(t) - dT
+        margin_low(t) = lv_bus(t) - (lv_ref - lv_design_tolerance_pu)
+        t* = the tap closest to 0 with margin_low(t) >= 0 over [mvlv_tap_min, mvlv_tap_max], else the most raising
+        band_conflict = tap_limit = margin_low(t*) < 0
 
-    ``rise_T`` is the reverse-flow rise over the station transformer (:func:`station_transformer` values, the
-    station's normal-case load and its LV-side generation). A station upsized in the MV model for its
-    station-busbar customers (``sn_kva`` above ``lv_sn_kva``) scales ``dT`` by :func:`station_drop_ratio`.
-    Without a converged feed-in case the tap is the one closest to 0 that meets the LV design point (else the most
-    raising one) and the feed-in values are NaN.
+    A station upsized in the MV model for its station-busbar customers (``sn_kva`` above ``lv_sn_kva``) scales
+    ``dT`` by :func:`station_drop_ratio`. The feed-in values of the budget are NaN.
 
     Stations are skipped (no entry) when the LV version has no ``lv_reference_voltage_pu``, the station has no
     stored requirement, or the load case gives it no voltage (not converged or unsupplied); :func:`node_flags`
@@ -1377,10 +1216,8 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
     stations = [k for k in keys[1:] if k in inp.nodes.index and inp.nodes.at[k, "kind"] == "station"]
     if not stations:
         return {}
-    loads = node_loads(inp, plan)
     vm_load = load.vm_pu
     vm_n1 = _vm(cases, N1_CASES, "min")
-    vm_feed = _vm(cases, FEED_IN_CASES, "max")
     taps = np.arange(int(params.mvlv_tap_min), int(params.mvlv_tap_max) + 1)
     k = 1.0 / (1.0 + taps * float(params.mvlv_tap_step_percent) / 100.0)
     order = sorted(range(len(taps)), key=lambda i: (abs(int(taps[i])), int(taps[i])))
@@ -1398,31 +1235,19 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
         d_t = (r - float(lv_ref)) * ratio
         lv_bus = (v_load - band) * k - d_t
         margin_low = lv_bus - floor
-        v_feed = float(vm_feed.get(key, math.nan)) if len(vm_feed) else math.nan
-        if math.isfinite(v_feed):
-            p_kw = float(loads.at[key, "p_kw"]) if key in loads.index else 0.0
-            q_kvar = float(loads.at[key, "q_kvar"]) if key in loads.index else 0.0
-            lv_feed = (v_feed + band) * k + _transformer_rise(row, p_kw, q_kvar, params)
-            margin_high = float(params.lv_feed_in_max_pu) - lv_feed
-            score = np.minimum(margin_low, margin_high)
-            best_score = max(score)
-            best = next(i for i in order if score[i] >= best_score - 1e-12)
-        else:
-            lv_feed = np.full(len(taps), math.nan)
-            margin_high = np.full(len(taps), math.inf)
-            feasible = [i for i in order if margin_low[i] >= 0]
-            best = feasible[0] if feasible else int(np.argmax(margin_low))
+        feasible = [i for i in order if margin_low[i] >= 0]
+        best = feasible[0] if feasible else int(np.argmax(margin_low))
         lv_max_drop = _value(row, "lv_max_drop_pu", math.nan)
         budgets[key] = StationBudget(
             node_key=int(key),
             vm_load_pu=v_load,
             vm_n1_pu=float(vm_n1.get(key, math.nan)) if len(vm_n1) else math.nan,
-            vm_feed_in_pu=v_feed,
+            vm_feed_in_pu=math.nan,
             tap_pos=int(taps[best]),
             lv_busbar_vm_pu=float(lv_bus[best]),
             lv_min_vm_pu=float(lv_bus[best] - lv_max_drop) if math.isfinite(lv_max_drop) else math.nan,
-            lv_busbar_vm_feed_in_pu=float(lv_feed[best]),
-            band_conflict=bool(min(margin_low[best], margin_high[best]) < 0),
+            lv_busbar_vm_feed_in_pu=math.nan,
+            band_conflict=bool(margin_low[best] < 0),
             tap_limit=bool(margin_low[best] < 0),
         )
     return budgets
@@ -1433,7 +1258,7 @@ def node_flags(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, CaseR
     """Electrical flags per node key with a bus (for ``mv_node.flags``); nodes without flags are left out.
 
     ``unsupplied`` (no load-case voltage although the case converged), ``not_n1_secure`` (stations and customers
-    without an (n-1) requirement: stubs, T-offs, radials), ``band_conflict``, ``tap_limit``, and for stations
+    without an (n-1) requirement: stubs, radials), ``band_conflict``, ``tap_limit``, and for stations
     without a budget ``no_lv_reference`` or ``no_lv_requirement``.
     """
     flags: dict[int, list[str]] = {}

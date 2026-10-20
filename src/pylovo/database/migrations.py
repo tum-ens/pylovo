@@ -449,17 +449,16 @@ def percentage_checks(cur: cursor) -> None:
     """)
 
 
-#: CREATE_QUERIES entries of the MV stage, in foreign-key order: the MV input tables of the LV stage
-#: and the MaStR import, the routing graph, the MV result tables and the comparison view.
+#: CREATE_QUERIES entries of the MV stage, in foreign-key order: the MV input table of the LV stage,
+#: the routing graph, the MV result tables and the comparison view.
 MV_GRID_OBJECTS: tuple[str, ...] = (
-    "mv_customers", "mastr_units", "mastr_postcode_aggregates", "mv_graph", "mv_graph_vertex",
-    "mv_graph_edge", "mv_graph_settlement", "mv_variant", "mv_substation", "mv_grid", "mv_node",
-    "mv_line", "mv_ring", "mv_variant_stats",
+    "mv_customers", "mv_graph", "mv_graph_vertex", "mv_graph_edge", "mv_graph_settlement", "mv_variant",
+    "mv_substation", "mv_grid", "mv_node", "mv_line", "mv_ring", "mv_variant_stats",
 )
 
 
 def mv_grids(cur: cursor) -> None:
-    """Create the MV stage tables and view (and mv_customers, mastr_*) on schemas set up before them.
+    """Create the MV stage tables and view (and mv_customers) on schemas set up before them.
 
     A no-op on a fresh or current schema: the baseline created them already (IF NOT EXISTS, OR REPLACE).
     The migration exists for the ledger gate of ensure_grid_persistence_schema.

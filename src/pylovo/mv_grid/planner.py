@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib
 import time
-from dataclasses import replace
 from types import ModuleType
 from typing import Any
 
@@ -30,7 +29,6 @@ PLANNING_MODULES: tuple[str, ...] = ("graph", "topology", "rings", "solvers", "e
 
 _INSTALLED = ("inst_res", "inst_com", "inst_pub", "inst_unk")
 _UNITS = ("units_res", "units_com", "units_pub", "units_unk")
-_FEED_IN_CASES = ("feed_in_wind", "feed_in_pv")
 
 
 def _module(name: str) -> ModuleType:
@@ -73,18 +71,11 @@ def merged_node_flags(*sources: dict | None) -> dict[int, list[str]]:
     return {key: flags for key, flags in merged.items() if flags}
 
 
-def _peak_feed_in_mw(cases: dict) -> float:
-    """Largest reverse flow (MW from MV to HV) of the converged feed-in cases (0 without reverse flow)."""
-    values = [-float(case.slack_p_mw) for name, case in cases.items()
-              if name in _FEED_IN_CASES and case is not None and case.converged and np.isfinite(case.slack_p_mw)]
-    return max([0.0, *values])
-
-
 def plan_district(inp: DistrictInput) -> DistrictPlan:
     """Plan one HV/MV supply district (DESIGN §4.8).
 
     Steps: run graph (§3.8) → terminals and distance model (§4.2) → ring evaluator (§4.3) → solver with local
-    search (§4.4) → topology with stubs, dedicated feeders, generators, open points and geometry (§4.5, §4.7) →
+    search (§4.4) → topology with stubs, dedicated feeders, open points and geometry (§4.5, §4.7) →
     pandapower cases, criteria and up to ``repair_rounds`` repair rounds, always re-evaluated after a repair
     (§5.1–§5.4) → HV/MV sizing on the district statistics (§4.6) → stored net with the OLTC tap (§5.5) → station
     voltage budgets (§5.6) → metrics.
@@ -109,13 +100,6 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     graph, topology, rings, solvers, electrical, metrics = (
         _module(name) for name in ("graph", "topology", "rings", "solvers", "electrical", "metrics"))
     params = inp.params
-    if not params.include_generation:
-        nodes = inp.nodes.loc[inp.nodes["kind"].astype(str) != "generator"].copy()
-        for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
-            if column in nodes.columns:
-                nodes[column] = 0.0
-        inp = replace(inp, nodes=nodes)
-
     rg = graph.build_run_graph(inp.edges, inp.nodes, long_connector_m=params.long_connector_m,
                                bridge_detour=params.bridge_detour, exit_radius_m=params.busbar_exit_radius_m,
                                osm_cost_factor=params.osm_line_cost_factor)              # §3.8
@@ -141,7 +125,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
         repairs.extend({**action, "round": rounds_used} if isinstance(action, dict) else
                        {"action": str(action), "round": rounds_used} for action in actions)
 
-    units, unit_mva, sizing = electrical.size_substation(inp, plan, cases)              # §4.6
+    units, unit_mva, sizing = electrical.size_substation(inp, plan)                     # §4.6
     stored, tap = electrical.build_stored_net(net, units, unit_mva, inp)                # §5.5
     budgets = electrical.station_budgets(inp, plan, cases)                               # §5.6
     status = electrical.power_flow_status(cases, violations)
@@ -183,8 +167,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     return DistrictPlan(
         topology=plan, hv_mv_units=int(units), hv_mv_unit_mva=float(unit_mva), hv_mv_sizing=str(sizing),
         oltc_tap=int(tap), cases=cases, violations=list(violations), repairs=repairs, budgets=budgets, net=stored,
-        metrics=district_metrics, power_flow_status=str(status), peak_load_mw=float(peak_load_mw),
-        peak_feed_in_mw=_peak_feed_in_mw(cases))
+        metrics=district_metrics, power_flow_status=str(status), peak_load_mw=float(peak_load_mw))
 
 
 def plan_tables(inp: DistrictInput, plan: TopologyPlan) -> tuple[pd.DataFrame, pd.DataFrame]:

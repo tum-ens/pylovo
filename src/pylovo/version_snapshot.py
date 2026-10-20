@@ -91,6 +91,19 @@ MV_REMOVED: dict[tuple[str, ...], Any] = {
     ("sources", "municipal_site_max_offset_m"): UNKNOWN,
     ("routing", "crowfly_detour"): UNKNOWN,
     ("routing", "overhead_detour"): UNKNOWN,
+    # generation (MaStR generators, LV-side generation and the feed-in cases)
+    ("generation", "include_generation"): False,
+    ("generation", "include_storage"): UNKNOWN,
+    ("generation", "lv_side_kw"): UNKNOWN,
+    ("generation", "fallback_kw"): UNKNOWN,
+    ("generation", "mv_gen_cos_phi"): UNKNOWN,
+    ("generation", "lv_pv_cos_phi"): UNKNOWN,
+    ("cases",): UNKNOWN,
+    ("voltage", "max_rise_percent"): UNKNOWN,
+    ("topology", "loop_in_max_offset_m"): UNKNOWN,
+    ("topology", "generator_max_tee_m"): UNKNOWN,
+    ("taps", "lv_feed_in_max_pu"): UNKNOWN,
+    ("coupling", "lv_pv_at"): UNKNOWN,
 }
 
 

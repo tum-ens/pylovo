@@ -9,8 +9,8 @@
 2. **Variant:** the parameter snapshot is checked first (no write), then the routing graph is built or reused
    (own commit), then the variant is registered once (``new``, ``resume`` or ``grow``, union semantics of the PLZ
    set, DESIGN §2.5).
-3. **Region** (one transaction): HV/MV substations, MV nodes (stations with their load statistics and LV-side
-   generation, MV customers, MV generators, busbars), their attachment to the routing graph, the supply areas and
+3. **Region** (one transaction): HV/MV substations, MV nodes (stations with their load statistics, MV customers,
+   busbars), their attachment to the routing graph, the supply areas and
    one pending ``mv_grid`` per supplying substation with its Voronoi-cell polygon and its nominal voltage (with
    ``MV_NOMINAL_VOLTAGE_KV`` auto 10 kV from an installed density of ``mv_10kv_min_density_mva_km2``, else
    20 kV). Skipped when a run resumes.
@@ -50,7 +50,7 @@ RESERVED_GB: float = 2.0
 #: Default upper bound of the district workers (``min(4, N_JOBS)``).
 DEFAULT_MAX_JOBS: int = 4
 
-_KINDS_WITH_GRID = ("station", "customer", "generator")
+_KINDS_WITH_GRID = ("station", "customer")
 
 
 def _module(name: str) -> ModuleType:
@@ -336,31 +336,9 @@ def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger:
     return frame.reset_index(drop=True)
 
 
-def _generator_split(locations: pd.DataFrame, params: MvParameters) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """Masks of the MaStR connection points: own MV node, LV side, HV (excluded); DESIGN §3.6.
-
-    The ``treatment`` of ``inputs.aggregate_locations`` (``node``, ``lv_side``, ``excluded``) decides; without it
-    the ``voltage_class`` does (``hv``, ``hvmv``, ``mv``, ``mvlv``, ``lv``): an ``mvlv`` point above
-    ``generator_lv_side_kw`` is an own MV node, else it is LV side.
-    """
-    if "treatment" in locations.columns:
-        treatment = locations["treatment"].astype(object)
-        return treatment.eq("node"), treatment.eq("lv_side"), treatment.eq("excluded")
-    cls = locations["voltage_class"].astype(object) if "voltage_class" in locations.columns \
-        else pd.Series("mv", index=locations.index)
-    kw = sum(pd.to_numeric(locations[c], errors="coerce").fillna(0.0)
-             for c in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw") if c in locations.columns)
-    if isinstance(kw, int):          # no power columns
-        kw = pd.Series(0.0, index=locations.index)
-    node = cls.isin(["mv", "hvmv"]) | (cls.eq("mvlv") & (kw > params.generator_lv_side_kw))
-    lv_side = cls.eq("lv") | (cls.eq("mvlv") & ~(kw > params.generator_lv_side_kw))
-    return node, lv_side, cls.eq("hv")
-
-
-def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes, sites: pd.DataFrame,
-               params: MvParameters, lv: LvVersionParameters, logger: logging.Logger,
-               warnings: list[str]) -> pd.DataFrame:
-    """The ``mv_node`` rows of the region: stations, MV customers, MV generators and busbars (DESIGN §3.4–§3.6)."""
+def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], sites: pd.DataFrame, params: MvParameters,
+               lv: LvVersionParameters, logger: logging.Logger) -> pd.DataFrame:
+    """The ``mv_node`` rows of the region: stations, MV customers and busbars (DESIGN §3.4–§3.5)."""
     inputs = _module("inputs")
     station_nodes = dbc.station_nodes(version_id, plz)
     stats = dbc.station_load_stats(version_id, plz)
@@ -374,42 +352,14 @@ def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], region_wkb: bytes,
             rel = ((own.loc[both] - stored.loc[both]).abs() / stored.loc[both].abs().clip(lower=1e-9)).max()
             (logger.warning if rel > 1e-6 else logger.info)(
                 f"Station peaks vs pandapower_load: largest relative difference {rel:.2e}")
-    # MaStR is only required for a variant that actually plans generation.
-    generators = pd.DataFrame()
-    if params.include_generation:
-        units = dbc.mastr_units_in_region(region_wkb)
-        locations = inputs.aggregate_locations(units, params).reset_index(drop=True)
-        node_mask, lv_mask, hv_mask = _generator_split(locations, params)
-        if hv_mask.any():
-            logger.info(f"{int(hv_mask.sum())} MaStR connection points at HV level are not modelled")
-        lv_points = locations[lv_mask].copy()
-        lv_points["key"] = np.arange(len(lv_points), dtype=np.int64)
-        targets = dbc.lv_side_targets(version_id, lv_points)
-        aggregates = dbc.mastr_postcode_aggregates(plz)
-        counts = dbc.station_building_counts(version_id, plz)
-        generation = inputs.distribute_lv_generation(stations, targets, aggregates, counts)
-        if generation is not None and len(generation):
-            if "grid_result_id" not in generation.columns:
-                generation = generation.rename_axis("grid_result_id").reset_index()
-            gen = generation.groupby("grid_result_id")[[c for c in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw")
-                                                        if c in generation.columns]].sum()
-            stations = stations.drop(columns=[c for c in gen.columns if c in stations.columns])
-            stations = stations.merge(gen, left_on="grid_result_id", right_index=True, how="left")
-        generators = locations[node_mask].reset_index(drop=True)
-    for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
-        stations[column] = (pd.to_numeric(stations[column], errors="coerce").fillna(0.0)
-                            if params.include_generation and column in stations.columns else 0.0)
     customers = inputs.customer_table(dbc.mv_customer_rows(version_id, plz, lv), lv, params)
     stations, customers = inputs.busbar_customers(stations, customers, params)
     stations = inputs.upsize_busbar_stations(stations, lv)
     customers.attrs["n_upsized_stations"] = stations.attrs.get("n_upsized", 0)
     logger.info(inputs.describe_customers(customers.attrs, params))
-    rows = inputs.node_rows(stations, customers, generators, sites, params).reset_index(drop=True)
+    rows = inputs.node_rows(stations, customers, sites).reset_index(drop=True)
     if not rows["kind"].eq("busbar").any():          # the busbar rows are part of node_rows; never go without them
         rows = pd.concat([_busbar_rows(sites), rows], ignore_index=True)
-    if not params.include_generation:
-        for column in ("gen_solar_kw", "gen_wind_kw", "gen_other_kw"):
-            rows[column] = 0.0
     return rows
 
 
@@ -536,7 +486,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     sites = _substation_sites(dbc, region_wkb, params, logger, warnings)
     sites["substation_id"] = dbc.insert_substations(version_id, variant_id, sites)
     # nodes
-    rows = _node_rows(dbc, version_id, plz, region_wkb, sites, params, lv, logger, warnings)
+    rows = _node_rows(dbc, version_id, plz, sites, params, lv, logger)
     rows["mv_node_id"] = dbc.insert_nodes(version_id, variant_id, rows)
     # attachment to the routing graph (one KNN query for all nodes and busbars)
     attach = dbc.attach_points(graph_id, pd.DataFrame({"key": rows["mv_node_id"].to_numpy(),
@@ -563,7 +513,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     # supply areas
     nodes = dbc.variant_node_table(version_id, variant_id)
     members = nodes[nodes["kind"].isin(_KINDS_WITH_GRID)]
-    # every node gets a district; generators and excluded nodes (HV customers) do not count for the capacity
+    # every node gets a district; excluded nodes (HV customers) do not count for the capacity
     if len(members):
         owner, bridged, overloaded = _assign_supply_areas(dbc, graph_id, members, usable, params, lv, logger)
     else:
@@ -589,8 +539,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
                            graph_id, region_wkb, pd.to_numeric(members["attach_edge_id"], errors="coerce"))
     kinds = members["kind"].value_counts().to_dict()
     logger.info(f"Region: {len(sites)} substations ({len(grids)} supplying), "
-                f"{kinds.get('station', 0)} stations, {kinds.get('customer', 0)} customers, "
-                f"{kinds.get('generator', 0)} generators")
+                f"{kinds.get('station', 0)} stations, {kinds.get('customer', 0)} customers")
     return {"n_sites": len(sites), "n_grids": len(grids), "kinds": kinds}
 
 
@@ -656,8 +605,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
                 start: float) -> MvRunSummary:
     variant_id = params.variant_id
     warnings: list[str] = []
-    logger.info(f"MV planning cases: {', '.join(params.active_cases)}"
-                + (" (generation included)" if params.include_generation else " (load-only)"))
+    logger.info(f"MV planning cases: {', '.join(CASES)} (load-only)")
     # 1. PLZ
     requested = None if plz_list is None else sorted({int(p) for p in plz_list})
     used = [int(p) for p in dbc.generated_plz(version_id, requested)]
@@ -857,13 +805,12 @@ def _summary(version_id: str, variant_id: str, status: str, requested: list[int]
         plz_missing=list(missing), grids_total=int(totals.get("grids_total", 0)),
         grids_done=int(totals.get("grids_done", 0)), grids_failed=int(totals.get("grids_failed", 0)),
         grids_pending=int(totals.get("grids_pending", 0)), n_stations=int(totals.get("n_stations", 0)),
-        n_customers=int(totals.get("n_customers", 0)), n_generators=int(totals.get("n_generators", 0)),
+        n_customers=int(totals.get("n_customers", 0)),
         circuit_km=float(totals.get("circuit_km", 0.0)), cable_share=float(totals.get("cable_share", 0.0)),
         n_violation_grids=int(totals.get("n_violation_grids", 0)),
         n_band_conflicts=int(totals.get("n_band_conflicts", 0)), warnings=list(warnings),
         elapsed_s=time.time() - start, demand=dict(demand or {}), ties=dict(ties or {}), voltages=voltages,
-        active_cases=params.active_cases if params is not None else CASES, osm_coverage=dict(osm_coverage or {}),
-        links=dict(links or {}))
+        osm_coverage=dict(osm_coverage or {}), links=dict(links or {}))
 
 
 # ---------------------------------------------------------------------------------------------- export
@@ -891,9 +838,6 @@ def export_net(version_id: str, variant_id: str, mv_grid_id: int, output: Path, 
         if row is None:
             raise LookupError(f"MV variant {variant_id} of version {version_id} does not exist")
         params = MvParameters.from_snapshot(variant_id, row.get("mv_variant_comment") or "", row["mv_parameters"])
-        if case not in params.active_cases:
-            raise ValueError(f"case {case!r} was not requested for MV variant {variant_id}; "
-                             f"available cases: {', '.join(params.active_cases)}")
         _, grid = dbc.load_district_nodes(mv_grid_id)
         if grid["version_id"] != version_id or grid["mv_variant_id"] != variant_id:
             raise LookupError(f"MV grid {mv_grid_id} does not belong to variant {variant_id} of version {version_id}")

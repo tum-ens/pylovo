@@ -77,7 +77,6 @@ COUPLED_COLUMNS: tuple[str, ...] = (
 )
 #: ``load_stats`` keys and the NODE_COLUMNS suffix of each consumer category.
 _CATEGORY_SUFFIX: dict[str, str] = {"Residential": "res", "Commercial": "com", "Public": "pub", "Unknown": "unk"}
-_FEED_IN_CASES = ("feed_in_wind", "feed_in_pv")
 _N1_CASES = ("n1a", "n1b")
 _VIOLATION_STATUSES = ("voltage_violation", "loading_violation", "not_converged")
 
@@ -841,7 +840,7 @@ class MvResultMixin(BaseMixin):
                 _py_int(topo.node_feeder.get(key)), _py_int(topo.node_ring.get(key)),
                 _py_int(topo.node_position.get(key)), _py_int(key_to_id.get(topo.stub_parent.get(key))
                                                               if key in topo.stub_parent else None),
-                vm_of(key, ("load",), "min"), vm_of(key, _N1_CASES, "min"), vm_of(key, _FEED_IN_CASES, "max"),
+                vm_of(key, ("load",), "min"), vm_of(key, _N1_CASES, "min"), None,     # no feed-in case
                 None if budget is None else int(budget.tap_pos),
                 None if budget is None else _py_float(budget.lv_busbar_vm_pu),
                 None if budget is None else _py_float(budget.lv_min_vm_pu),
@@ -889,7 +888,7 @@ class MvResultMixin(BaseMixin):
                                                                 else None),
                 float(ln.bridge_m or 0.0), bool(ln.normally_open),
                 None if ln.open_at_key is None else key_to_id.get(ln.open_at_key),
-                loading_of(ln.key, ("load",)), loading_of(ln.key, _N1_CASES), loading_of(ln.key, _FEED_IN_CASES),
+                loading_of(ln.key, ("load",)), loading_of(ln.key, _N1_CASES), None,  # no feed-in case
                 None if geom is None else geom.wkb,
             ))
         if line_values:
@@ -960,14 +959,14 @@ class MvResultMixin(BaseMixin):
         self.cur.execute(
             """SELECT count(*), count(*) FILTER (WHERE status = 'done'), count(*) FILTER (WHERE status = 'failed'),
                        count(*) FILTER (WHERE status = 'pending'),
-                       COALESCE(sum(n_stations), 0), COALESCE(sum(n_customers), 0), COALESCE(sum(n_generators), 0),
-                       COALESCE(sum(circuit_km), 0), COALESCE(sum(cable_km), 0),
+                       COALESCE(sum(n_stations), 0), COALESCE(sum(n_customers), 0), COALESCE(sum(circuit_km), 0),
+                       COALESCE(sum(cable_km), 0),
                        count(*) FILTER (WHERE power_flow_status = ANY(%s)), COALESCE(sum(n_band_conflicts), 0)
                 FROM pylovo.mv_grid WHERE version_id = %s AND mv_variant_id = %s""",
             (list(_VIOLATION_STATUSES), version_id, variant_id))
         row = self.cur.fetchone()
         keys = ("grids_total", "grids_done", "grids_failed", "grids_pending", "n_stations", "n_customers",
-                "n_generators", "circuit_km", "cable_km", "n_violation_grids", "n_band_conflicts")
+                "circuit_km", "cable_km", "n_violation_grids", "n_band_conflicts")
         out = {k: (float(v) if k in ("circuit_km", "cable_km") else int(v)) for k, v in zip(keys, row)}
         out["cable_share"] = out["cable_km"] / out["circuit_km"] if out["circuit_km"] > 0 else 0.0
         self.cur.execute(
@@ -1019,18 +1018,17 @@ class MvResultMixin(BaseMixin):
             raise
 
     def list_variants(self, version_id: str | None) -> pd.DataFrame:
-        """The MV variants with generation mode/status, electrical outcome counts, km and a ``stale`` flag.
+        """The MV variants with status, electrical outcome counts, km, ``retired`` options and a ``stale`` flag.
 
-        ``stale`` is True when the LV fingerprint of the variant's PLZ (``MvInputMixin.lv_fingerprint``) differs
-        from the one stored at creation (load edits, deleted or regenerated LV grids), None when it cannot be
-        computed.
+        ``retired`` lists the removed options a variant used (``version_snapshot.removed_differences``): such a
+        variant stays readable but is not resumed or coupled. ``stale`` is True when the LV fingerprint of the
+        variant's PLZ (``MvInputMixin.lv_fingerprint``) differs from the one stored at creation (load edits,
+        deleted or regenerated LV grids), None when it cannot be computed.
         """
         where = "WHERE v.version_id = %(v)s" if version_id is not None else ""
         self.cur.execute(
             f"""SELECT v.version_id, v.mv_variant_id, v.mv_variant_comment, v.status,
-                       COALESCE((v.mv_parameters #>> '{{generation,include_generation}}')::boolean, TRUE)
-                           AS include_generation,
-                       v.plz_list, v.graph_id,
+                       v.mv_parameters, v.plz_list, v.graph_id,
                        v.lv_fingerprint, v.created_at, v.finished_at,
                        COALESCE(s.n_grids, 0) AS n_grids, COALESCE(s.n_done, 0) AS n_done,
                        COALESCE(s.n_failed, 0) AS n_failed, s.n_stations, s.circuit_km, s.cable_share,
@@ -1057,9 +1055,15 @@ class MvResultMixin(BaseMixin):
         df = pd.DataFrame(self.cur.fetchall(), columns=names)
         if df.empty:
             df["n_plz"] = pd.Series(dtype=int)
+            df["retired"] = pd.Series(dtype=object)
             df["stale"] = pd.Series(dtype=object)
-            return df
+            return df.drop(columns="mv_parameters")
+        from pylovo.version_snapshot import MV_ADDED_LATER, MV_REMOVED, removed_differences
+
         df["n_plz"] = df["plz_list"].map(lambda p: len(p or []))
+        df["retired"] = df.pop("mv_parameters").map(
+            lambda p: removed_differences(json.loads(p) if isinstance(p, str) else dict(p or {}), MV_REMOVED,
+                                          MV_ADDED_LATER))
         stale = []
         for record in df.to_dict("records"):
             stored = record["lv_fingerprint"]
@@ -1473,7 +1477,6 @@ def _grid_values(plan: "DistrictPlan", stored: Mapping[int, dict], busbar_vm: fl
     non_busbar = [k for k in stored if k not in busbars] + list(topo.joints)
     vm_min = _series_extreme(vm, ("load",), "min", non_busbar)
     vm_n1 = _series_extreme(vm, _N1_CASES, "min", non_busbar)
-    vm_feed = _series_extreme(vm, _FEED_IN_CASES, "max", non_busbar)
     budgets = list((plan.budgets or {}).values())
     return {
         "power_flow_status": plan.power_flow_status,
@@ -1498,10 +1501,10 @@ def _grid_values(plan: "DistrictPlan", stored: Mapping[int, dict], busbar_vm: fl
         "bridge_km": sum(ln.bridge_m or 0.0 for ln in circuits) / 1000.0,
         "max_voltage_drop_percent": None if busbar_vm is None or vm_min is None else 100.0 * (busbar_vm - vm_min),
         "max_voltage_drop_n1_percent": None if busbar_vm is None or vm_n1 is None else 100.0 * (busbar_vm - vm_n1),
-        "max_voltage_rise_percent": None if busbar_vm is None or vm_feed is None else 100.0 * (vm_feed - busbar_vm),
+        "max_voltage_rise_percent": None,                                     # no feed-in case
         "max_line_loading_percent": _series_extreme(loading, ("load",), "max"),
         "max_line_loading_n1_percent": _series_extreme(loading, _N1_CASES, "max"),
-        "max_line_loading_feed_in_percent": _series_extreme(loading, _FEED_IN_CASES, "max"),
+        "max_line_loading_feed_in_percent": None,
         "n_band_conflicts": sum(1 for b in budgets if b.band_conflict),
         "n_tap_limit": sum(1 for b in budgets if b.tap_limit),
         "metrics": _dumps({**metrics, "route_km": route_km, "circuit_km": circuit_km,

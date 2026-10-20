@@ -42,7 +42,7 @@ within their grid; dependent elements are deleted before buses.
 
 Reference and input tables are not versioned: ``postcode``, ``transformers``,
 ``consumer_categories`` (synchronised with the configuration at every run), ``municipal_register``,
-the MaStR import ``mastr_units`` and ``mastr_postcode_aggregates``, the MV routing graphs
+the MV routing graphs
 ``mv_graph*`` and, in the file-based mode, ``res``, ``oth``, ``ways`` and ``ags_log``.
 
 Result tables in short

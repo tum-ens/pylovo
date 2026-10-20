@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 def summary(status: str = "done") -> MvRunSummary:
     return MvRunSummary("mv1", "d0", status, [1], [1], [], 1, 1 if status == "done" else 0,
-                        0 if status == "done" else 1, 0, 3, 0, 0, 1.5, 0.6, 0, 0, [], 2.0)
+                        0 if status == "done" else 1, 0, 3, 0, 1.5, 0.6, 0, 0, [], 2.0)
 
 
 @pytest.fixture()
@@ -144,10 +144,11 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     rows = pd.DataFrame([
         {"version_id": "mv1", "mv_variant_id": "d0", "mv_variant_comment": "base", "status": "done", "n_plz": 2,
          "n_grids": 3, "n_done": 3, "n_failed": 0, "n_electrical_pass": 2, "n_electrical_violations": 1,
-         "n_electrical_not_checked": 0, "include_generation": False, "circuit_km": 120.4, "stale": False},
+         "n_electrical_not_checked": 0, "retired": [], "circuit_km": 120.4, "stale": False},
         {"version_id": "mv1", "mv_variant_id": "d1", "mv_variant_comment": "real", "status": "partial", "n_plz": 2,
          "n_grids": 3, "n_done": 2, "n_failed": 1, "n_electrical_pass": 0, "n_electrical_violations": 1,
-         "n_electrical_not_checked": 2, "include_generation": True, "circuit_km": None, "stale": True},
+         "n_electrical_not_checked": 2, "retired": ["generation.include_generation"], "circuit_km": None,
+         "stale": True},
     ])
     client = FakeClient(delete_variants=lambda v, ids: deleted.append((v, ids)) or 2,
                         list_variants=lambda v: rows)
@@ -157,10 +158,11 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     out = capsys.readouterr().out.splitlines()
     assert deleted == [("mv1", ["d0", "d1"])]
     assert out[0] == "✓ Deleted 2 MV variants of version mv1 (d0, d1)"
-    assert out[1].startswith("✓ mv1/d0: generation done, 2 PLZ, 3 grids (3 done, 0 failed), "
-                             "load-only; electrical: 2 pass, 1 violation, 0 not checked, 120 km")
+    assert out[1].startswith("✓ mv1/d0: generation done, 2 PLZ, 3 grids (3 done, 0 failed); "
+                             "electrical: 2 pass, 1 violation, 0 not checked, 120 km")
     assert out[2].startswith("✗ mv1/d1: generation partial")
-    assert "generation included; electrical: 0 pass, 1 violation, 2 not checked" in out[2] and ", stale" in out[2]
+    assert ("(2 done, 1 failed), retired options generation.include_generation; electrical: 0 pass, 1 violation, "
+            "2 not checked") in out[2] and ", stale" in out[2]
 
 
 def test_couple_and_coupled_export_delegate_to_the_coupling_module(monkeypatch, capsys, tmp_path):

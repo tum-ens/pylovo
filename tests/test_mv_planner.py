@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import dataclasses
 import sys
 import types
 
@@ -72,8 +71,8 @@ def ring_topology(nop: int = 12) -> TopologyPlan:
                         node_position={11: 1, 12: 2, 13: 3}, stub_parent={}, diagnostics={})
 
 
-def case(name: str, slack_p: float = 1.0) -> CaseResult:
-    return CaseResult(name, True, pd.Series({10: 1.02, 11: 1.01}), pd.Series({0: 10.0}), slack_p, 0.1)
+def case(name: str) -> CaseResult:
+    return CaseResult(name, True, pd.Series({10: 1.02, 11: 1.01}), pd.Series({0: 10.0}), 1.0, 0.1)
 
 
 @pytest.fixture()
@@ -106,8 +105,7 @@ def fakes(monkeypatch):
     t.build_plan = lambda inp, rg, model, ev, routes: (calls.append(f"plan:{routes}") or ring_topology())
     e.build_design_net = lambda inp, plan: (calls.append("net") or f"net-{plan.rings[0].nop_key}")
     e.run_cases = lambda net, inp, plan: (calls.append(f"cases:{net}") or {
-        "load": case("load"), "n1a": case("n1a"), "n1b": case("n1b"),
-        "feed_in_wind": case("feed_in_wind", -3.0), "feed_in_pv": case("feed_in_pv", -1.5)})
+        "load": case("load"), "n1a": case("n1a"), "n1b": case("n1b")})
 
     def check(cases, inp, plan):
         calls.append("check")
@@ -119,7 +117,7 @@ def fakes(monkeypatch):
         return (ring_topology(nop=11) if actions else plan), actions
 
     e.check, e.repair = check, repair
-    e.size_substation = lambda inp, plan, cases: (calls.append("size") or (2, 25.0, "sized"))
+    e.size_substation = lambda inp, plan: (calls.append("size") or (2, 25.0, "sized"))
     e.build_stored_net = lambda net, units, mva, inp: (calls.append(f"stored:{net}:{units}:{mva:g}") or ("stored", -2))
     e.station_budgets = lambda inp, plan, cases: (calls.append("budgets") or {})
     e.node_flags = lambda inp, plan, cases, budgets: {12: ["band_conflict"], 11: []}
@@ -138,7 +136,7 @@ def test_plan_district_composes_the_steps(fakes):
     calls, state = fakes
     params = MvParameters(local_search_rounds=7, neighbours=9, ls_time_guard_s=30.0,
                           long_connector_m=250.0, bridge_detour=1.4)
-    plan = planner.plan_district(small_input(params.replace(include_generation=True)))
+    plan = planner.plan_district(small_input(params))
     assert isinstance(plan, DistrictPlan)
     assert calls == ["run_graph:250:1.4", "terminals", "distances", "evaluator", "solve:7:9:30",
                      "plan:[[1, 2, 3]]", "net", "cases:net-12", "check", "size", "stored:net-12:2:25", "budgets",
@@ -147,7 +145,7 @@ def test_plan_district_composes_the_steps(fakes):
     assert plan.net == "stored" and plan.power_flow_status == "converged" and plan.repairs == []
     # district peak: law on the summed statistics of the planned nodes + fixed customer loads (excluded node out)
     assert plan.peak_load_mw == pytest.approx((100.0 * 0.07 + 50.0 * 0.5 + 200.0) / 1000.0)
-    assert plan.peak_feed_in_mw == 3.0
+    assert plan.peak_feed_in_mw == 0.0                                              # no feed-in case
     m = plan.metrics
     assert m["n_stations"] == 2 and m["n_customers"] == 1 and m["n_rings"] == 1 and m["n_nops"] == 1
     assert m["min_vm_load_pu"] == 1.01 and m["ls_gain_percent"] == 20.0 and m["length_final_m"] == 400.0
@@ -223,7 +221,7 @@ REAL = ("graph", "topology", "rings", "solvers", "electrical", "coincidence", "e
 
 
 def synthetic_district() -> DistrictInput:
-    """Grid streets (200 m blocks), 30 stations, 2 customers, 1 dedicated customer, 2 generators, one island."""
+    """Grid streets (200 m blocks), 30 stations, 2 customers, 1 dedicated customer, one island."""
     n = 7
     vertex = {}
     xy = []
@@ -265,14 +263,8 @@ def synthetic_district() -> DistrictInput:
         rows.append({"mv_node_id": 200 + k, "kind": "customer", "connection_hint": hint, "p_fixed_kw": kw,
                      "x": float(xy_arr[src[e - 1] - 1][0]), "y": float(xy_arr[src[e - 1] - 1][1]) + 30.0,
                      "attach_edge_id": e, "attach_fraction": 0.0, "attach_offset_m": 30.0, "sn_kva": np.nan})
-    for k, kw in enumerate([800.0, 2500.0]):
-        e = horizontal[(13 * k + 5) % len(horizontal)]
-        rows.append({"mv_node_id": 300 + k, "kind": "generator", "connection_hint": "tee", "gen_level": "mv",
-                     "gen_solar_kw": kw, "x": float(xy_arr[dst[e - 1] - 1][0]),
-                     "y": float(xy_arr[dst[e - 1] - 1][1]) - 50.0, "attach_edge_id": e, "attach_fraction": 1.0,
-                     "attach_offset_m": 50.0, "sn_kva": np.nan})
     return DistrictInput(mv_grid_id=1, substation_id=1, vn_kv=20.0, nodes=node_table(rows), edges=edges,
-                         params=MvParameters(stub_min_offset_m=1e9, include_generation=True),   # no stubs
+                         params=MvParameters(stub_min_offset_m=1e9),   # no stubs
                          lv=LV, known_units_mva=(),
                          edge_geometry=lambda ids: {int(i): geoms[int(i)] for i in ids})
 
@@ -293,19 +285,6 @@ def test_plan_district_end_to_end_on_a_synthetic_district():
     assert plan.metrics["bridged_nodes"] == [100]   # the island station
     again = planner.plan_district(synthetic_district())
     assert [r.members for r in again.topology.rings] == [r.members for r in topo.rings]   # deterministic
-
-
-@pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),
-                    reason="needs every planning module (WP3-WP10)")
-def test_load_only_planner_omits_generator_nodes_before_routing():
-    source = synthetic_district()
-    assert source.nodes.loc[[300, 301], "kind"].eq("generator").all()
-    assert source.nodes["gen_solar_kw"].sum() > 0
-    result = planner.plan_district(dataclasses.replace(source, params=source.params.replace(include_generation=False)))
-    assert set(result.cases) == {"load", "n1a", "n1b"}
-    assert 300 not in result.topology.node_role and 301 not in result.topology.node_role
-    assert not result.net.sgen.size and result.peak_feed_in_mw == 0.0
-    assert source.nodes.loc[[300, 301], "kind"].eq("generator").all()   # caller input stays intact
 
 
 @pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),

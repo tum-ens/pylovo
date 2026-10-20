@@ -52,7 +52,7 @@ class DatabaseClient(
     * ``UtilsMixin``: PLZ working tables, transactions and shared lookups.
     * ``LoadEditMixin``: manual load edits of stored grids and their audit table (:mod:`pylovo.load_editing`).
     * ``MvGraphMixin``: the persistent MV routing graph with settlement flags (MV stage).
-    * ``MvSourceMixin``: OSM, eGon and MaStR inputs of the MV stage.
+    * ``MvSourceMixin``: OSM and eGon inputs of the MV stage.
     * ``MvInputMixin``: LV results of a version as MV inputs (stations, loads, MV customers).
     * ``MvResultMixin``: MV variants and their results (substations, grids, nodes, lines, rings).
 

@@ -40,22 +40,6 @@ def test_worker_count_caps_by_jobs_pending_and_memory(monkeypatch):
     assert stage.mem_available_gb.__name__ == "<lambda>"
 
 
-def test_generator_split_follows_the_level_rules():
-    locations = pd.DataFrame({"voltage_class": ["hv", "hvmv", "mv", "mvlv", "mvlv", "lv"],
-                              "gen_solar_kw": [9000.0, 8000.0, 500.0, 150.0, 300.0, 30.0],
-                              "gen_wind_kw": [0.0, 0.0, 0.0, 60.0, 0.0, 0.0]})
-    node, lv_side, hv = stage._generator_split(locations, MvParameters())
-    assert node.tolist() == [False, True, True, True, True, False]      # mvlv 210 kW > 200: own MV node
-    assert lv_side.tolist() == [False, False, False, False, False, True]
-    assert hv.tolist() == [True, False, False, False, False, False]
-    locations.loc[3, "gen_wind_kw"] = 0.0                                # mvlv 150 kW: LV side
-    node, lv_side, _ = stage._generator_split(locations, MvParameters())
-    assert node[3] == False and lv_side[3] == True  # noqa: E712
-    locations["treatment"] = ["excluded", "node", "node", "lv_side", "node", "lv_side"]   # inputs decides first
-    node, lv_side, hv = stage._generator_split(locations, MvParameters())
-    assert node.tolist() == [False, True, True, False, True, False] and hv.tolist()[0] is True
-
-
 def test_attachment_moves_unmapped_customers_to_the_street():
     rows = pd.DataFrame({"mv_node_id": [1, 2, 3, 4], "kind": ["busbar", "station", "customer", "customer"],
                          "mapped_station": [None, None, False, True], "x": [0.0, 1.0, 2.0, 3.0],
@@ -94,7 +78,7 @@ class FakeDb:
         self.generated, self.busy, self.mode = list(generated), list(busy), mode
         self.stored_plz, self.region_built, self.lock = stored_plz, region_built, lock
         self.totals = totals or {"grids_total": 2, "grids_done": 2, "grids_failed": 0, "grids_pending": 0,
-                                 "n_stations": 30, "n_customers": 1, "n_generators": 2, "circuit_km": 12.0,
+                                 "n_stations": 30, "n_customers": 1, "circuit_km": 12.0,
                                  "cable_share": 0.7, "n_violation_grids": 0, "n_band_conflicts": 3}
         self.finished = None
         self.closed = False
@@ -411,7 +395,7 @@ def test_districts_run_in_process_largest_first(monkeypatch):
 
 # ---------------------------------------------------------------------------------------------- region step
 class RegionDb:
-    """Fake client for the region step: ids from 1, three sites, two stations, a customer, a generator."""
+    """Fake client for the region step: ids from 1, three sites, two stations and a customer."""
 
     def __init__(self):
         self.calls: dict[str, list] = {}
@@ -443,19 +427,6 @@ class RegionDb:
     def pandapower_load_check(self, version_id, plz):
         return pd.DataFrame({"grid_result_id": [7, 8], "p_kw": [10.0, 20.0]})
 
-    def mastr_units_in_region(self, region):
-        return pd.DataFrame()
-
-    def lv_side_targets(self, version_id, points):
-        self._record("lv_side_targets", points.copy())
-        return points.assign(grid_result_id=7)
-
-    def mastr_postcode_aggregates(self, plz):
-        return pd.DataFrame()
-
-    def station_building_counts(self, version_id, plz):
-        return pd.DataFrame()
-
     def mv_customer_rows(self, version_id, plz, lv):
         return pd.DataFrame()
 
@@ -464,7 +435,7 @@ class RegionDb:
         return np.arange(101, 101 + len(rows))
 
     def attach_points(self, graph_id, points):
-        offsets = {101: 50.0, 102: 2500.0, 103: 10.0, 104: 0.0, 105: 0.0, 106: 40.0, 107: 30.0}
+        offsets = {101: 50.0, 102: 2500.0, 103: 10.0, 104: 0.0, 105: 0.0, 106: 40.0}
         keys = points["key"].to_numpy()
         return pd.DataFrame({"key": pd.array(keys, dtype="Int64"), "edge_id": pd.array(keys + 1000, dtype="Int64"),
                              "component": 1, "in_settlement": True,
@@ -527,7 +498,7 @@ def region_modules(monkeypatch):
     inputs = types.ModuleType("pylovo.mv_grid.inputs")
     inputs.station_table = lambda st, stats, lv: pd.DataFrame({
         "kind": "station", "connection_hint": "ring", "grid_result_id": [7, 8], "x": [10.0, 20.0], "y": 0.0,
-        "p_own_kw": [10.0, 20.0], "gen_solar_kw": 0.0, "sn_kva": [400.0, 630.0]})
+        "p_own_kw": [10.0, 20.0], "sn_kva": [400.0, 630.0]})
     inputs.customer_table = lambda rows, lv, params: pd.DataFrame({
         "kind": ["customer"], "connection_hint": ["ring"], "x": [30.0], "y": [40.0], "mapped_station": [False],
         "installed_kw": [950.0]})
@@ -546,23 +517,11 @@ def region_modules(monkeypatch):
 
     inputs.upsize_busbar_stations = upsize
     inputs.describe_customers = lambda attrs, params: f"MV customers, {attrs.get('n_upsized_stations')} upsized"
-    inputs.aggregate_locations = lambda units, params: pd.DataFrame({
-        "mastr_connection_id": ["SEL1", "SEL2", "SEL3"], "x": [50.0, 60.0, 70.0], "y": 0.0,
-        "gen_solar_kw": [800.0, 30.0, 50000.0], "treatment": ["node", "lv_side", "excluded"]})
-
-    def distribute(stations, targets, aggregates, counts):
-        recorded["targets"] = targets
-        return pd.DataFrame({"grid_result_id": [7, 8], "gen_solar_kw": [30.0, 0.0], "gen_wind_kw": 0.0,
-                             "gen_other_kw": 0.0})
-
-    inputs.distribute_lv_generation = distribute
-
-    def node_rows(stations, customers, generators, sites_frame, params):
-        recorded["stations"], recorded["generators"] = stations, generators
+    def node_rows(stations, customers, sites_frame):
+        recorded["stations"] = stations
         busbars = pd.DataFrame({"kind": "busbar", "connection_hint": "busbar",
                                 "substation_id": sites_frame["substation_id"], "x": sites_frame["x"], "y": 0.0})
-        gens = generators.assign(kind="generator", connection_hint="tee")
-        return pd.concat([busbars, stations, customers, gens], ignore_index=True)
+        return pd.concat([busbars, stations, customers], ignore_index=True)
 
     inputs.node_rows = node_rows
     from pylovo.mv_grid import districts as real_districts
@@ -577,7 +536,7 @@ def region_modules(monkeypatch):
     def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity):
         recorded["nodes"] = nodes
         return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), overloaded=[0],
-                                     bridged=np.array([False, True, False, False]))
+                                     bridged=np.array([False, True, False]))
 
     districts.routed_assignment = routed
     graph = types.ModuleType("pylovo.mv_grid.graph")
@@ -591,15 +550,12 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     db = RegionDb()
     warnings: list[str] = []
     info = stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1",
-                              MvParameters(include_generation=True), LV, stage.logging.getLogger("t"), warnings)
-    # LV-side points go to lv_side_targets; only treatment 'node' becomes a generator node
-    assert db.calls["lv_side_targets"][0][0]["mastr_connection_id"].tolist() == ["SEL2"]
-    assert region_modules["generators"]["mastr_connection_id"].tolist() == ["SEL1"]
-    assert region_modules["stations"]["gen_solar_kw"].tolist() == [30.0, 0.0]
+                              MvParameters(), LV, stage.logging.getLogger("t"), warnings)
+    assert region_modules["stations"]["grid_result_id"].tolist() == [7, 8]
     assert region_modules["split"] == 1                                   # the small customers are split off
     assert region_modules["upsize_lv"] is LV                              # then overloaded stations are upsized
     nodes = db.inserted_nodes
-    assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer", "generator"]
+    assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
 
 
     # the customer moves to its street transfer point
@@ -613,11 +569,11 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert region_modules["sites"]["substation_id"].tolist() == [11, 13]
     assert {"edge_source", "edge_target", "edge_length_m", "attach_edge_id"} <= set(region_modules["sites"].columns)
     assert region_modules["sites"]["edge_source"].tolist() == [11010, 11030]    # edges 1101, 1103
-    assert region_modules["nodes"]["kind"].tolist() == ["station", "station", "customer", "generator"]
+    assert region_modules["nodes"]["kind"].tolist() == ["station", "station", "customer"]
     assert db.calls["create_grids"] == [([11], 20.0)]
     grids = db.calls["set_node_grids"][0][0]
-    assert grids["mv_node_id"].tolist() == [104, 105, 106, 107] and grids["mv_grid_id"].tolist() == [900] * 4
-    assert grids["bridged"].tolist() == [False, True, False, False]
+    assert grids["mv_node_id"].tolist() == [104, 105, 106] and grids["mv_grid_id"].tolist() == [900] * 3
+    assert grids["bridged"].tolist() == [False, True, False]
     assert db.calls["write_grid_areas"] == [([1, 2],)]
     # nominal voltage of the district: (400 + 630 kVA + 950 kW / 0.95) / 0.25 km² = 8.12 MVA/km² -> 10 kV (auto)
     voltages, records = db.calls["set_grid_voltages"][0]
@@ -627,30 +583,8 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert db.calls["municipality_areas"] == [(["09000001"],)]
     assert records[900]["scope"] == "municipality" and records[900]["dense_share"] == pytest.approx(1.0)
     assert (records[900]["n_stations"], records[900]["n_customers"]) == (2, 1)
-    assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1, "generator": 1}}
+    assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1}}
     assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])
-
-
-def test_region_step_load_only_never_reads_mastr(region_modules, monkeypatch):
-    db = RegionDb()
-
-    def routed(csr, vertex_index, edge_len, sites, nodes, g, pf, capacity):
-        return types.SimpleNamespace(site_of_node=np.zeros(len(nodes), dtype=np.int64), overloaded=[],
-                                     bridged=np.zeros(len(nodes), dtype=bool))
-
-    monkeypatch.setattr(sys.modules["pylovo.mv_grid.districts"], "routed_assignment", routed)
-
-    def unexpected(*args, **kwargs):
-        raise AssertionError("load-only MV planning accessed MaStR")
-
-    for name in ("mastr_units_in_region", "lv_side_targets", "mastr_postcode_aggregates",
-                 "station_building_counts"):
-        setattr(db, name, unexpected)
-    stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1", MvParameters(), LV,
-                       stage.logging.getLogger("t"), [])
-    assert db.inserted_nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
-    assert region_modules["generators"].empty
-    assert (region_modules["stations"][["gen_solar_kw", "gen_wind_kw", "gen_other_kw"]] == 0).all().all()
 
 
 # ---------------------------------------------------------------------------------------------- OSM coverage

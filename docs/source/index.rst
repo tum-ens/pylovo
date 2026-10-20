@@ -32,9 +32,8 @@ GIS data.
   are frozen in the database; generation is deterministic for a given configuration.
 * **Scales from one postcode to many** -- ``pylovo-generate`` accepts postcodes (PLZ) or
   municipalities (AGS) and runs postcodes in parallel.
-* **Medium-voltage grids** -- an optional MV stage connects the stations of an LV version, the MV
-  customers and the MaStR generators to the HV/MV substations of the region with open rings along
-  the streets and checks them with pandapower (:doc:`concepts/mv_grids`).
+* **Medium-voltage grids** -- an optional MV stage connects the stations of an LV version and the MV
+  customers to the HV/MV substations of the region with open rings along the streets and checks them with pandapower (:doc:`concepts/mv_grids`).
 * **Analysis and visualisation** -- key figures per postcode and per grid, QGIS templates,
   CSV export, plotting helpers, and the GridPlanner browser UI on top of pylovo's HTTP API
   (:doc:`user_guide/browser_ui`).

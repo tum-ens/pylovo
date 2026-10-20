@@ -160,7 +160,7 @@ def test_thermal_rating_and_parallel_circuits():
     assert equipment.parallel_count(5.5, cable, 0.6, 2) == (1, False)                   # dedicated feeder limit
     assert equipment.parallel_count(10.0, cable, 0.6, 2) == (2, False)
     assert equipment.parallel_count(20.0, cable, 0.6, 2) == (2, True)                   # flag dedicated_overload
-    assert equipment.parallel_count(equipment.thermal_mva(cable), cable, 1.0, 2) == (1, False)   # feed-in at 100 %
+    assert equipment.parallel_count(equipment.thermal_mva(cable), cable, 1.0, 2) == (1, False)   # exactly at 100 %
     assert equipment.parallel_count(0.0, cable, 0.6, 2) == (1, False)
     assert equipment.parallel_count(math.nan, cable, 0.6, 2) == (1, False)
     default = equipment.line_type("NA2XS2Y 1x150 RM/25 12/20 kV")
@@ -232,34 +232,32 @@ def test_hv_mv_std_type_works_in_a_pandapower_net():
 
 # ---------------------------------------------------------------------------------------------- sizing
 def test_hv_mv_sizing_examples():
-    assert equipment.size_hv_mv(10.0, 0.0, SIZES, 2, 1.0) == (2, 25.0, "sized")
-    assert equipment.size_hv_mv(30.0, 0.0, SIZES, 2, 1.0) == (2, 31.5, "sized")
-    assert equipment.size_hv_mv(70.0, 0.0, SIZES, 2, 1.0) == (3, 63.0, "large_substation")
-    assert equipment.size_hv_mv(10.0, 0.0, SIZES, 2, 1.0, known_units_mva=(40.0, 40.0)) == (2, 40.0, "osm_rating")
+    assert equipment.size_hv_mv(10.0, SIZES, 2, 1.0) == (2, 25.0, "sized")
+    assert equipment.size_hv_mv(30.0, SIZES, 2, 1.0) == (2, 31.5, "sized")
+    assert equipment.size_hv_mv(70.0, SIZES, 2, 1.0) == (3, 63.0, "large_substation")
+    assert equipment.size_hv_mv(10.0, SIZES, 2, 1.0, known_units_mva=(40.0, 40.0)) == (2, 40.0, "osm_rating")
 
 
 def test_hv_mv_sizing_rules():
-    assert equipment.size_hv_mv(10.0, 30.0, SIZES, 2, 1.0) == (2, 31.5, "sized")         # feed-in decides
-    assert equipment.size_hv_mv(25.0, 0.0, SIZES, 2, 1.0) == (2, 25.0, "sized")          # exactly (n-1) secure
-    assert equipment.size_hv_mv(25.0, 0.0, SIZES, 2, 0.8) == (2, 31.5, "sized")
-    assert equipment.size_hv_mv(70.0, 0.0, SIZES, 3, 1.0) == (3, 40.0, "sized")
-    assert equipment.size_hv_mv(126.0, 0.0, SIZES, 2, 1.0) == (3, 63.0, "large_substation")
-    assert equipment.size_hv_mv(127.0, 0.0, SIZES, 2, 1.0) == (4, 63.0, "large_substation")
-    assert equipment.size_hv_mv(30.0, 0.0, SIZES, 1, 1.0) == (1, 31.5, "sized")          # one unit: no reserve
-    assert equipment.size_hv_mv(70.0, 0.0, SIZES, 1, 1.0) == (2, 63.0, "large_substation")
-    assert equipment.size_hv_mv(0.0, 0.0, SIZES, 2, 1.0) == (2, 25.0, "sized")
-    assert equipment.size_hv_mv(30.0, math.nan, [63.0, 25.0], 2, 1.0) == (2, 63.0, "sized")   # unknown feed-in
-    assert equipment.size_hv_mv(30.0, None, SIZES, 2, 1.0) == (2, 31.5, "sized")
+    assert equipment.size_hv_mv(25.0, SIZES, 2, 1.0) == (2, 25.0, "sized")          # exactly (n-1) secure
+    assert equipment.size_hv_mv(25.0, SIZES, 2, 0.8) == (2, 31.5, "sized")
+    assert equipment.size_hv_mv(70.0, SIZES, 3, 1.0) == (3, 40.0, "sized")
+    assert equipment.size_hv_mv(126.0, SIZES, 2, 1.0) == (3, 63.0, "large_substation")
+    assert equipment.size_hv_mv(127.0, SIZES, 2, 1.0) == (4, 63.0, "large_substation")
+    assert equipment.size_hv_mv(30.0, SIZES, 1, 1.0) == (1, 31.5, "sized")          # one unit: no reserve
+    assert equipment.size_hv_mv(70.0, SIZES, 1, 1.0) == (2, 63.0, "large_substation")
+    assert equipment.size_hv_mv(0.0, SIZES, 2, 1.0) == (2, 25.0, "sized")
+    assert equipment.size_hv_mv(30.0, [63.0, 25.0], 2, 1.0) == (2, 63.0, "sized")       # sizes in any order
     # known ratings: two or more are kept as built (the smallest one counts), a single one is not enough
-    assert equipment.size_hv_mv(60.0, 0.0, SIZES, 2, 1.0, (40.0, 63.0, 40.0)) == (3, 40.0, "osm_rating")
-    assert equipment.size_hv_mv(30.0, 0.0, SIZES, 2, 1.0, (40.0,)) == (2, 31.5, "sized")
-    assert equipment.size_hv_mv(30.0, 0.0, SIZES, 2, 1.0, (40.0, None, math.nan, 0.0)) == (2, 31.5, "sized")
+    assert equipment.size_hv_mv(60.0, SIZES, 2, 1.0, (40.0, 63.0, 40.0)) == (3, 40.0, "osm_rating")
+    assert equipment.size_hv_mv(30.0, SIZES, 2, 1.0, (40.0,)) == (2, 31.5, "sized")
+    assert equipment.size_hv_mv(30.0, SIZES, 2, 1.0, (40.0, None, math.nan, 0.0)) == (2, 31.5, "sized")
     with pytest.raises(ValueError, match="at least one positive transformer size"):
-        equipment.size_hv_mv(10.0, 0.0, (), 2, 1.0)
+        equipment.size_hv_mv(10.0, (), 2, 1.0)
     with pytest.raises(ValueError, match="units >= 1"):
-        equipment.size_hv_mv(10.0, 0.0, SIZES, 0, 1.0)
+        equipment.size_hv_mv(10.0, SIZES, 0, 1.0)
     with pytest.raises(ValueError, match="positive utilization"):
-        equipment.size_hv_mv(10.0, 0.0, SIZES, 2, 0.0)
+        equipment.size_hv_mv(10.0, SIZES, 2, 0.0)
 
 
 def test_hv_mv_type_records_are_json_native():

@@ -19,20 +19,22 @@ if TYPE_CHECKING:
     from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters
 
 CATEGORIES: tuple[str, ...] = ("Residential", "Commercial", "Public", "Unknown")   # order of every stats array
-CASES: tuple[str, ...] = ("load", "n1a", "n1b", "feed_in_wind", "feed_in_pv")
+CASES: tuple[str, ...] = ("load", "n1a", "n1b")       # the planning cases: load and the two (n-1) cases
+#: Node kinds and line roles of the stored results; ``generator`` only in variants planned with generation (an older
+#: MV stage, kept on the branch feature/mv-backup).
 NODE_KINDS = ("busbar", "station", "customer", "generator", "joint")
 LINE_ROLES = ("ring", "stub", "dedicated", "generator", "tie", "link")
 LINE_KINDS = ("cable", "overhead", "mixed")
-MEMBER_KINDS: tuple[str, ...] = ("station", "customer", "generator")   # ring members (the member cap counts them)
+MEMBER_KINDS: tuple[str, ...] = ("station", "customer")   # ring members (the member cap counts them)
 
 #: Columns of DistrictInput.nodes (index = mv_node_id, busbar row first).
 NODE_COLUMNS: tuple[str, ...] = (
-    "kind", "connection_hint",            # connection_hint: busbar | ring | dedicated | tee | excluded
+    "kind", "connection_hint",            # connection_hint: busbar | ring | dedicated | excluded
     "x", "y", "attach_edge_id", "attach_fraction", "attach_offset_m", "bridged",
     "settlement_id", "urban", "plz", "plz_settlement_type",
     "inst_res", "units_res", "inst_com", "units_com", "inst_pub", "units_pub", "inst_unk", "units_unk",
     "p_fixed_kw",                         # customers: g_c * installed; 0 otherwise
-    "gen_solar_kw", "gen_wind_kw", "gen_other_kw", "gen_level",   # gen_level: mv | lv (LV-side aggregate) | ''
+    "gen_solar_kw", "gen_wind_kw", "gen_other_kw", "gen_level",   # 0 and '' (no generation is planned)
     "sn_kva", "grid_result_id", "lv_design_source_vm_pu", "lv_max_drop_pu",
     "lv_sn_kva",                          # station rating of its LV grid; sn_kva is larger for an upsized station
 )
@@ -248,11 +250,11 @@ class LinePlan:
 
 @dataclass
 class RingPlan:
-    """One planned ring, dedicated feeder, generator feeder or busbar radial."""
+    """One planned ring, dedicated feeder or busbar radial."""
 
     ring_id: int
-    kind: str                              # ring | dedicated | generator | radial
-    members: list[int]                     # node keys from the A exit, joints and loop-in generators included
+    kind: str                              # ring | dedicated | radial
+    members: list[int]                     # node keys from the A exit, joints included
     nop_key: int | None
     check: RingCheck | None
     feeder_a: int | None = None
@@ -266,7 +268,7 @@ class TopologyPlan:
     rings: list[RingPlan]
     lines: list[LinePlan]
     joints: dict[int, tuple[float, float]] # temp key (< 0) -> (x, y)
-    node_role: dict[int, str]              # key -> busbar | ring | stub | dedicated | tee | loop_in | joint | excluded
+    node_role: dict[int, str]              # key -> busbar | ring | stub | dedicated | joint | excluded
     node_feeder: dict[int, int]
     node_ring: dict[int, int]
     node_position: dict[int, int]
@@ -332,7 +334,7 @@ class DistrictPlan:
     metrics: dict
     power_flow_status: str                 # converged | voltage_violation | loading_violation | not_converged
     peak_load_mw: float
-    peak_feed_in_mw: float
+    peak_feed_in_mw: float = 0.0           # no feed-in case is planned (column kept for stored variants)
 
 
 @dataclass
@@ -470,7 +472,6 @@ class MvRunSummary:
     grids_pending: int
     n_stations: int
     n_customers: int
-    n_generators: int
     circuit_km: float
     cable_share: float
     n_violation_grids: int
@@ -480,7 +481,6 @@ class MvRunSummary:
     demand: dict = field(default_factory=dict)
     ties: dict = field(default_factory=dict)
     voltages: dict = field(default_factory=dict)
-    active_cases: tuple[str, ...] = CASES
     osm_coverage: dict = field(default_factory=dict)
     links: dict = field(default_factory=dict)
 
@@ -492,13 +492,12 @@ class MvRunSummary:
             counts.append(f"{self.grids_failed} failed")
         if self.grids_pending:
             counts.append(f"{self.grids_pending} pending")
-        mode = "generation included" if any(case.startswith("feed_in_") for case in self.active_cases) else "load-only"
         lines = [
             f"{mark} MV variant {self.variant_id} of version {self.version_id}: {self.grids_total} grids "
             f"({', '.join(counts)}), {self.n_stations:,} stations, {self.n_customers:,} customers, "
-            f"{self.n_generators:,} generators, {self.circuit_km:,.0f} km (cable {100 * self.cable_share:.0f} %), "
+            f"{self.circuit_km:,.0f} km (cable {100 * self.cable_share:.0f} %), "
             f"{self.n_violation_grids:,} grids with violations, {self.n_band_conflicts:,} band conflicts, "
-            f"{self.elapsed_s:,.0f} s, {mode} planning"
+            f"{self.elapsed_s:,.0f} s"
         ]
         if self.plz_missing:
             lines.append(f"✗ {len(self.plz_missing)} requested PLZ have no LV grids in version {self.version_id}: "

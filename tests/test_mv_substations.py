@@ -426,32 +426,3 @@ def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):
     missing = _client(_egon_responder({}))
     with pytest.raises(MvStageError, match="no eGon-data table egon_hvmv_substation"):
         missing.egon_substations(b"region", 5000)
-
-
-def test_mastr_readers(schemas):
-    client = _client(lambda text, params: [("SEE1", "SEL1", "wind", None, 3000.0, "Mittelspannung", 1.0, 2.0)])
-    units = client.mastr_units_in_region(memoryview(b"region"))
-    text, params = client.cur.calls[0]
-    assert "FROM pylovo.mastr_units u" in text and "technology IS DISTINCT FROM 'storage'" in text
-    assert "ST_Within(u.geom, ST_GeomFromWKB(%(region)s, 25832))" in text and "net_power_kw > 0" in text
-    assert params == {"region": b"region"}
-    assert tuple(units.columns) == source_mixin.MASTR_UNIT_COLUMNS and units["net_power_kw"].dtype == float
-
-    client = _client(lambda text, params: [("01234", "solar", 12, 345.6, 0.5), ("99998", "wind", 1, 50.0, 1.0)])
-    aggregates = client.mastr_postcode_aggregates([99998, 1234, 99998])
-    text, params = client.cur.calls[0]
-    assert params == {"plz_text": ["01234", "99998"]}
-    assert "lpad(p.plz::text, 5, '0') = a.postcode" in text
-    assert tuple(aggregates.columns) == source_mixin.MASTR_AGGREGATE_COLUMNS
-    assert aggregates["plz"].tolist() == [1234, 99998] and aggregates["area_ratio"].tolist() == [0.5, 1.0]
-    assert len(_client(lambda text, params: []).mastr_postcode_aggregates([])) == 0
-
-
-def test_mastr_available(schemas):
-    def respond(count):
-        return lambda text, params: [(True,)] if "to_regclass" in text else [(count,)]
-    assert _client(respond(1234)).mastr_available() == (True, "1234 units")
-    ok, reason = _client(respond(0)).mastr_available()
-    assert not ok and "pylovo-import mastr" in reason
-    ok, reason = _client(lambda text, params: [(False,)]).mastr_available()
-    assert not ok and "pylovo-setup" in reason
