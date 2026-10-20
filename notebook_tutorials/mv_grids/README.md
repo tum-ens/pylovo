@@ -6,30 +6,33 @@ transactions. MV grids are generated on the command line (`0_mv_generation.ipynb
 
 | Notebook | Content |
 | --- | --- |
-| `0_mv_generation.ipynb` | How to run the MV stage: `pylovo-mv generate/couple/list/delete/export/graph`, `--set`, the `pylovo-generate --mv` hook, the MV parameters and constants, the variant matrix; lists the MV variants of a version, their parameter differences and run summaries, the QA tables of the routing graph and the result readers. |
+| `0_mv_generation.ipynb` | How to run the MV stage: `pylovo-mv generate/couple/list/delete/export/graph`, the two configuration files and `--set`, the `pylovo-generate --mv` hook, the MV parameters and constants, examples of variants; lists the MV variants of a version, the parameter differences and run summaries of its done variants, the QA tables of the routing graph and the result readers. |
 | `1_mv_results_overview.ipynb` | A compact run and electrical health table, region and district maps, one ring, and key distributions for one selected variant. Set `show_details=True` for the full region, area-class, district, repair, and voltage-budget detail. |
-| `2_mv_variant_comparison.ipynb` | The variants of one LV version against a reference variant: parameter differences, side-by-side metrics and their change, distributions with Wasserstein distances, paired districts, ring membership (adjusted Rand index), and sections on the solver, routing, sources, realism features and equipment; side-by-side maps; the same variant on two LV versions (station sets). |
+| `2_mv_variant_comparison.ipynb` | The variants of one LV version against a reference variant: parameter differences, side-by-side metrics and their change, distributions with Wasserstein distances, paired districts, ring membership (adjusted Rand index), and sections on the local search, routing, substation sites, stubs and links, and equipment; side-by-side maps; the same variant on two LV versions (station sets). |
 | `3_mv_plausibility.ipynb` | Literature ranges (`mv_validation.LITERATURE_RANGES`) as traffic lights per area class, circuit km per km² and cable share of the region, eGon-data MV grid districts (area, substation match), Ding0 2023 grids of the same districts, the demand anchor, earth-fault currents and the pandapower net `mv_oberrhein` through the same metric code. |
-| `4_mv_lv_coupling.ipynb` | Results of `pylovo-mv couple`: LV busbar voltages at the design point against the LV reference, analytic budget against the coupled LV nets, lowest LV voltage and feed-in, band conflicts and taps, the merged operating point, LV grids left out of the merged flow and station-busbar customers. |
+| `4_mv_lv_coupling.ipynb` | Results of `pylovo-mv couple`: LV busbar voltages at the design point against the LV reference, analytic budget against the coupled LV nets, lowest LV voltage, band conflicts and taps, the merged operating point, LV grids with coupling issues and station-busbar customers. |
 
 `circuit_km` counts installed parallel circuits (`length_km × parallel`); `route_km` counts each routed line
 once. Ring and feeder distances remain geometric paths. The region-clipped inventory includes ties, while
-district inventory reports ties separately. Load-only variants omit generation topology and feed-in checks, so
-their shorter networks cannot be read as equal-service improvements over generation-enabled variants.
+district inventory reports ties separately.
 
 ## Parameters
 
 Every notebook starts with a cell tagged `parameters`:
 
-- `version_id`: the LV version (this review checkout defaults to `"mv2"`; `None` uses `VERSION_ID` of `config/config_generation_lv.yaml`);
-- `variants`: the MV variants. In notebooks 1, 3, and 4, `None` selects `load1`, then `d1`, then the first available variant. In notebooks 0 and 2, `None` selects all variants. An explicit list is kept as selected;
+- `version_id`: the LV version (here `"mv2"`, an LV version of the MV test database; `None` uses `VERSION_ID` of `config/config_generation_lv.yaml`);
+- `variants`: the MV variants. In notebooks 1, 3 and 4, `None` selects the default variant: `MV_VARIANT_ID` of
+  `config/config_generation_mv.yaml` if the version has this variant, else the newest done variant that is not
+  retired. In notebook 2, `None` selects all done variants that are not retired (notebook 0 lists these as well).
+  An explicit list is kept as selected;
 - `show_details` (notebook 1): include the full tables and additional diagnostic figures (default: `False`);
 - `map_variants` (notebook 1): variants for every map and district/ring detail; `None` means the selected variants and `[]` suppresses those figures;
-- `reference` (notebook 2): `None` prefers `load1`, then `d1`; an explicit id must be in `variants`;
+- `reference` (notebook 2): `None` takes the default variant if it is selected, else the first selected variant;
+  an explicit id must be in `variants`;
 - `regions`, `plz`: region filter. The planning region of a variant is the union of its PLZ polygons; groups of
   PLZ more than 5 km apart are region parts, numbered by area (1 = largest). A district belongs to the part nearest
   to its substation. `regions` keeps the districts of some parts, `plz` the districts with nodes in some PLZ;
-- `dbname`: the expected database name of the `.env` (this review checkout uses `"infdb_mv"`; the notebook stops if it differs); `repo_root`: the
+- `dbname`: the expected database name of the `.env` (here `"infdb_mv"`, the MV test database; the notebook stops if it differs, `None` skips the check); `repo_root`: the
   repository root (default: two levels above the notebook);
 - notebook-specific ones: `grid_id` (district of the detail maps in the first mapped variant), `basemap` (OpenStreetMap tiles, needs internet
   access), `reference`, `compare_versions` and `compare_variant` (notebook 2), `complete_only`, `ding0_dir` and
@@ -60,9 +63,8 @@ also need an explicit `repo_root`.
 
 - pylovo with the `notebooks` extra (`uv sync --extra notebooks`), see `../README.md` for the kernel.
 - A `.env` that points to a database with MV variants (`pylovo-mv list --version <version>`).
-- The default `MV_INCLUDE_GENERATION=false` needs no MaStR import. Set it to `true` under a separate variant id
-  to plan generator connections and request the feed-in cases. Older snapshots without this field retain the
-  historical generation-enabled meaning.
+- Older variants that used an option the MV stage no longer has are `retired` in `pylovo-mv list`. The notebooks
+  never select them by default; an explicit selection reads their stored results as they are.
 - `4_mv_lv_coupling.ipynb`: coupling results (`pylovo-mv couple --version <version> --variant <variant>`).
 - `3_mv_plausibility.ipynb`: the eGon-data tables `egon_hvmv_substation` and `egon_mv_grid_district`
   (populated in `pylovo` or available in the opendata schema) and, for the Ding0 comparison, the Ding0 2023 MV grids

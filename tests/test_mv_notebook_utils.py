@@ -1,9 +1,11 @@
-"""Focused checks for the read-only MV notebook's planning-scope interpretation."""
+"""Focused checks for the read-only MV notebook helpers: variant selection, planning cases and parameter tables."""
 
 import sys
 from pathlib import Path
 
 import pandas as pd
+
+from pylovo import config_loader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "notebook_tutorials" / "mv_grids"))
 import mv_notebook_utils as mvu
@@ -21,33 +23,55 @@ def _variant(parameters):
     )
 
 
-def test_case_table_only_includes_requested_load_only_cases():
-    variant = _variant({"generation": {"include_generation": False}})
-    table = mvu.case_table(variant)
+class FakeClient:
+    """``list_variants`` of a version with a current, a newer current, a retired and a partial variant."""
+
+    def __init__(self):
+        self.conn = self
+
+    def list_variants(self, version):
+        assert version == "mv2"
+        return pd.DataFrame({
+            "mv_variant_id": ["d1", "load8", "load9", "run"],
+            "status": ["done", "done", "done", "partial"],
+            "retired": [["generation.include_generation"], [], [], []],
+            "created_at": pd.to_datetime(["2026-10-21", "2026-10-19", "2026-10-20", "2026-10-22"]),
+            "finished_at": pd.to_datetime(["2026-10-21", "2026-10-19", "2026-10-20", None]),
+        })
+
+    def rollback(self):
+        pass
+
+
+def test_case_table_has_the_planning_cases_only():
+    table = mvu.case_table(_variant({"generation": {"include_generation": True}}))
     assert list(table["case"]) == ["load", "n1a", "n1b"]
     assert list(table["converged"]) == [True, True, False]
 
 
-def test_missing_historical_scope_keeps_five_cases():
-    variant = _variant({})
-    assert variant.include_generation is True
-    assert set(mvu.case_table(variant)["case"]) == {
-        "load", "n1a", "n1b", "feed_in_wind", "feed_in_pv",
-    }
+def test_default_variant_is_the_configured_one_if_it_exists(monkeypatch):
+    monkeypatch.setattr(config_loader, "MV_VARIANT_ID", "load8")
+    assert mvu.resolve(FakeClient(), "mv2")[1] == ["load8"]
 
 
-def test_preferred_variant_falls_back_without_replacing_explicit_choice():
-    class FakeClient:
-        def __init__(self):
-            self.conn = self
+def test_default_variant_else_the_newest_done_variant_that_is_not_retired(monkeypatch):
+    monkeypatch.setattr(config_loader, "MV_VARIANT_ID", "absent")
+    assert mvu.resolve(FakeClient(), "mv2")[1] == ["load9"]
 
-        def list_variants(self, version):
-            assert version == "mv2"
-            return pd.DataFrame({"mv_variant_id": ["d0", "d1"]})
 
-        def rollback(self):
-            pass
+def test_current_selection_and_explicit_choice(monkeypatch, capsys):
+    monkeypatch.setattr(config_loader, "MV_VARIANT_ID", "absent")
+    assert mvu.resolve(FakeClient(), "mv2", select="current")[1] == ["load8", "load9"]
+    assert mvu.resolve(FakeClient(), "mv2", variants=["d1", "x"])[1] == ["d1"]
+    out = capsys.readouterr().out
+    assert "not in version mv2: x" in out
+    assert "d1: older variant" in out
 
-    dbc = FakeClient()
-    assert mvu.resolve(dbc, "mv2", default_variant=("load1", "d1"))[1] == ["d1"]
-    assert mvu.resolve(dbc, "mv2", variants=["d0"], default_variant=("load1", "d1"))[1] == ["d0"]
+
+def test_variant_parameters_leave_out_removed_options():
+    snapshot = {"generation": {"include_generation": False, "lv_pv_cos_phi": 0.95},
+                "cases": {"feed_in_pv": {"pv": 1.0}}, "topology": {"solver": "savings", "stub_max_kva": 1000.0},
+                "voltage": {"max_rise_percent": 2.0, "busbar_vm_pu": 1.02}}
+    assert mvu.variant_parameters(snapshot) == {"topology.stub_max_kva": 1000.0, "voltage.busbar_vm_pu": 1.02}
+    assert mvu.dimension_of("topology.stub_max_kva") == "stubs and links"
+    assert mvu.dimension_of("topology.local_search_rounds") == "solver"

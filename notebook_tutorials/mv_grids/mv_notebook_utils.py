@@ -4,20 +4,26 @@ The notebooks change to the repository root first and import this module afterwa
 that pylovo reads the ``.env`` and ``config/`` of this checkout. Every function only reads from the database:
 the client of :func:`read_only_client` runs read-only transactions.
 
-- :func:`read_only_client`, :func:`resolve`: the database client, the LV version and the MV variants to analyse.
+- :func:`read_only_client`, :func:`resolve`, :func:`default_variant`, :func:`current_variants`: the database client,
+  the LV version and the MV variants to analyse.
 - :func:`region_parts`, :func:`load_variant`: the parts of the planning region (separate groups of PLZ) and the
   results of one MV variant (:class:`Variant`) with the region part of every district and the region filter.
 - :func:`district_table`, :func:`ring_table`, :func:`summary_table`, :func:`case_table`, :func:`clipped_table`,
   :func:`demand_anchors`: tables per district, ring, variant/region/area class and power-flow case, the circuit
   length per km² clipped to the region and the demand anchor.
-- :func:`flat_parameters`, :func:`parameter_table`, :func:`dimension_of`: the parameter snapshots of variants.
-- :func:`plot_ring_map`, :func:`region_layers`, :func:`plot_generic_grid`: maps coloured per ring.
+- :func:`flat_parameters`, :func:`variant_parameters`, :func:`parameter_table`, :func:`dimension_of`: the parameter
+  snapshots of variants.
+- :func:`plot_ring_map`, :func:`region_layers`, :func:`plot_generic_grid`: maps coloured per ring;
+  :func:`plot_voltage_budget`: the voltage budget of the stations.
 - :func:`pretty`, :func:`show_blocks`: tables for display; :func:`match_district`, :func:`district_pairs`:
   districts of two variants with the same substation.
 - Benchmarks: :func:`generic_tables`, :func:`grid_metrics`, :func:`generic_rings_and_feeders` (the generic metric
   code of :mod:`pylovo.mv_grid.metrics`), :func:`literature_table` and :func:`traffic_light_table`,
-  :func:`egon_comparison`, :func:`read_ding0_district`, :func:`earth_fault_table`.
+  :func:`egon_districts`, :func:`egon_comparison`, :func:`read_ding0_district`, :func:`earth_fault_table`.
 - Electrical details: :func:`repairs_table`, :func:`flag_counts`, :func:`coupling_table`, :func:`coupling_left_out`.
+
+Older stored variants that used an option the MV stage no longer has are "retired" (column ``retired`` of
+``pylovo-mv list``). They are never selected by default, but an explicit selection reads them as stored.
 """
 from __future__ import annotations
 
@@ -34,12 +40,10 @@ READ_ONLY_OPTIONS = "-c search_path=pylovo,public -c default_transaction_read_on
 REGION_GAP_M = 5000.0
 #: Parameter groups of the variant snapshot that define the comparisons of the variant notebook (first match).
 DIMENSIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("planning scope", ("generation.include_generation",)),
-    ("solver", ("topology.solver", "topology.local_search_rounds", "topology.neighbours", "topology.ls_time_guard_s")),
+    ("solver", ("topology.local_search_rounds", "topology.neighbours", "topology.ls_time_guard_s")),
     ("routing", ("routing.",)),
     ("sources", ("sources.",)),
-    ("realism", ("topology.stubs", "topology.overhead_lines", "topology.interconnection", "topology.stub_",
-                 "topology.tie_")),
+    ("stubs and links", ("topology.stub_", "topology.link_", "topology.tie_")),
     ("equipment and rules", ("",)),
 )
 
@@ -65,37 +69,74 @@ def read_only_client() -> Any:
     return dbc
 
 
+def _retired(listing: pd.DataFrame) -> pd.Series:
+    """The removed options each variant of a listing used (column ``retired``; an empty list for a current one)."""
+    return listing["retired"].map(lambda r: list(r) if isinstance(r, (list, tuple, np.ndarray)) else [])
+
+
+def current_variants(listing: pd.DataFrame) -> list[str]:
+    """The done variants of a version listing (``pylovo-mv list``) that are not retired, in listing order."""
+    current = (listing["status"] == "done") & (_retired(listing).map(len) == 0)
+    return [str(v) for v in listing.loc[current, "mv_variant_id"]]
+
+
+def default_variant(listing: pd.DataFrame) -> str | None:
+    """The default MV variant of a version listing (``pylovo-mv list``).
+
+    ``MV_VARIANT_ID`` of ``config/config_generation_mv.yaml`` if the version has this variant, else the newest done
+    variant that is not retired (latest ``finished_at``). None if there is neither.
+    """
+    from pylovo import config_loader
+
+    configured = str(config_loader.MV_VARIANT_ID)
+    if configured in set(listing["mv_variant_id"].astype(str)):
+        return configured
+    current = listing[listing["mv_variant_id"].astype(str).isin(current_variants(listing))]
+    if current.empty:
+        return None
+    newest = current.sort_values(["finished_at", "created_at"], ascending=False, na_position="last")
+    return str(newest["mv_variant_id"].iloc[0])
+
+
 def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | None = None,
-            default_variant: str | Sequence[str] | None = None
-            ) -> tuple[str, list[str], pd.DataFrame]:
+            select: str = "default") -> tuple[str, list[str], pd.DataFrame]:
     """The LV version and MV variants to analyse, and the variant listing of the version (``pylovo-mv list``).
 
     Args:
         dbc: Database client.
         version_id: LV version; None: ``VERSION_ID`` of ``config/config_generation_lv.yaml``.
-        variants: MV variants; None: all variants of the version unless ``default_variant`` is set.
-            Unknown ids are reported and dropped.
-        default_variant: Preferred id or ordered ids when variants are omitted; otherwise the first available.
+        variants: MV variants; None: selected by ``select``. Unknown ids are reported and dropped.
+        select: The selection when ``variants`` is None: ``"default"`` the one variant of :func:`default_variant`,
+            ``"current"`` all done variants that are not retired (:func:`current_variants`).
 
     Returns:
         ``(version_id, variants, listing)``.
     """
     from pylovo import config_loader
 
+    if select not in ("default", "current"):
+        raise ValueError(f"select must be 'default' or 'current', got {select!r}")
     version = str(version_id or config_loader.VERSION_ID)
     listing = dbc.list_variants(version)
     _end(dbc)
     available = [str(v) for v in listing["mv_variant_id"]]
-    if variants is None:
-        preferred = ([default_variant] if isinstance(default_variant, str) else list(default_variant or []))
-        chosen = [next((name for name in preferred if name in available), available[0])] if available and preferred else available
+    if variants is None and select == "current":
+        chosen = current_variants(listing)
+    elif variants is None:
+        default = default_variant(listing)
+        chosen = [default] if default else []
     else:
         chosen = [str(v) for v in variants if str(v) in available]
         missing = [str(v) for v in variants if str(v) not in available]
         if missing:
             print(f"MV variants not in version {version}: {', '.join(missing)}")
+    retired = dict(zip(available, _retired(listing)))
+    for name in chosen:
+        if retired.get(name):
+            print(f"{name}: older variant with options the MV stage no longer has ({', '.join(retired[name])}); "
+                  "its stored results are read as they are.")
     if not chosen:
-        print(f"Version {version} has no MV variants to analyse; run pylovo-mv generate first.")
+        print(f"Version {version} has no done MV variant to analyse; run pylovo-mv generate first or set variants.")
     return version, chosen, listing
 
 
@@ -166,19 +207,6 @@ class Variant:
     def summary(self) -> dict:
         """The run summary of the variant (``mv_variant.summary``)."""
         return self.row.get("summary") or {}
-
-    @property
-    def include_generation(self) -> bool:
-        """Whether generation was modeled. Historical snapshots without the switch used the full model."""
-        return bool(self.snapshot("generation.include_generation", True))
-
-    @property
-    def active_cases(self) -> tuple[str, ...]:
-        """The MV cases of this variant: the planning cases, plus the feed-in cases of an older variant planned with
-        generation (the MV stage no longer has them)."""
-        from pylovo.mv_grid.model import CASES
-
-        return tuple(CASES) + (("feed_in_wind", "feed_in_pv") if self.include_generation else ())
 
     def snapshot(self, path: str, default: Any = None) -> Any:
         """One value of the parameter snapshot by dotted path, e.g. ``"taps.lv_design_tolerance_pu"``."""
@@ -289,8 +317,7 @@ def district_table(v: Variant) -> pd.DataFrame:
     busbar = pd.DataFrame([_busbar_customers(s) for s in stations["load_stats"]], columns=["n", "kw"],
                           index=stations.index)
     busbar["mv_grid_id"] = stations["mv_grid_id"]
-    gen = nodes[nodes["kind"] == "generator"]
-    loads = nodes[nodes["kind"].isin(["station", "customer", "generator"])]
+    loads = nodes[nodes["kind"].isin(["station", "customer"])]
     ties = lines[lines["role"] == "tie"].copy()
     installed = lines[lines["role"] != "tie"].copy()
     for frame in (installed, ties):
@@ -322,8 +349,7 @@ def district_table(v: Variant) -> pd.DataFrame:
         "complete": g["complete"].astype("boolean"), "substation_in_region": in_region,
         "area_km2": g["area_km2"], "vn_kv": g["vn_kv"],
         "hv_mv_units": g["hv_mv_transformers"], "hv_mv_unit_mva": g["hv_mv_transformer_mva"],
-        "peak_load_mw": g["peak_load_mw"], "peak_feed_in_mw": g["peak_feed_in_mw"],
-        "sum_station_mva": g["sum_station_kva"] / 1000.0,
+        "peak_load_mw": g["peak_load_mw"], "sum_station_mva": g["sum_station_kva"] / 1000.0,
         "n_stations": g["n_stations"], "n_customers": g["n_customers"],
         "n_busbar_customers": busbar.groupby(busbar["mv_grid_id"].astype(int))["n"].sum().reindex(g.index)
         .fillna(0).astype(int),
@@ -331,16 +357,9 @@ def district_table(v: Variant) -> pd.DataFrame:
         .fillna(0.0) / 1000.0,
         "customer_mw": per_grid(nodes[nodes["kind"] == "customer"], "p_own_kw", "sum").fillna(0.0) / 1000.0,
         "n_dedicated_customers": count(nodes[(nodes["kind"] == "customer") & (nodes["connection"] == "dedicated")]),
-        "n_generators": g["n_generators"],
-        "generator_mw": (per_grid(gen, "gen_solar_kw", "sum").fillna(0.0) + per_grid(gen, "gen_wind_kw", "sum")
-                         .fillna(0.0) + per_grid(gen, "gen_other_kw", "sum").fillna(0.0)) / 1000.0,
-        "gen_loop_in": count(gen[gen["connection"] == "loop_in"]),
-        "gen_tee": count(gen[gen["connection"] == "tee"]),
-        "gen_dedicated": count(gen[gen["connection"] == "dedicated"]),
         "n_joints": g["n_joints"],
         "n_rings": feeders["ring"].reindex(g.index, fill_value=0) if "ring" in feeders else 0,
         "n_dedicated_feeders": feeders["dedicated"].reindex(g.index, fill_value=0) if "dedicated" in feeders else 0,
-        "n_generator_feeders": feeders["generator"].reindex(g.index, fill_value=0) if "generator" in feeders else 0,
         "n_radial_feeders": feeders["radial"].reindex(g.index, fill_value=0) if "radial" in feeders else 0,
         "n_stub_nodes": g["n_stub_nodes"], "n_feeder_bays": g["n_feeder_bays"],
         "n_nops": count(nops), "n_ties": count(ties),
@@ -361,20 +380,16 @@ def district_table(v: Variant) -> pd.DataFrame:
         "n1_secure_share": metrics.map(lambda m: m.get("n1_secure_share")).astype(float),
         "max_loading_percent": g["max_line_loading_percent"],
         "max_loading_n1_percent": g["max_line_loading_n1_percent"],
-        "max_loading_feed_in_percent": g["max_line_loading_feed_in_percent"],
         "max_drop_percent": g["max_voltage_drop_percent"],
         "max_drop_n1_percent": g["max_voltage_drop_n1_percent"],
-        "max_rise_percent": g["max_voltage_rise_percent"],
         "min_vm_load_pu": per_grid(loads, "vm_load_pu", "min"),
         "min_vm_n1_pu": per_grid(loads, "vm_n1_pu", "min"),
-        "max_vm_feed_in_pu": per_grid(loads, "vm_feed_in_pu", "max"),
         "hv_mv_loading_n1_percent": metrics.map(lambda m: m.get("hv_mv_loading_n1_percent")).astype(float),
         "n_repairs": repairs.map(len),
         "repairs": repairs.map(lambda r: ", ".join(f"{k} {n}" for k, n in
                                                    sorted(Counter(x.get("action") for x in r).items()))),
         "n_band_conflicts": g["n_band_conflicts"], "n_tap_limit": g["n_tap_limit"],
         "n_tap_nonzero": count(stations[pd.to_numeric(stations["mv_lv_tap_pos"], errors="coerce").fillna(0) != 0]),
-        "solver": metrics.map(lambda m: m.get("solver")),
         "length_savings_m": metrics.map(lambda m: m.get("length_savings_m")).astype(float),
         "length_final_m": metrics.map(lambda m: m.get("length_final_m")).astype(float),
         "solver_gain_percent": metrics.map(lambda m: m.get("solver_gain_percent")).astype(float),
@@ -400,13 +415,10 @@ def ring_table(v: Variant) -> pd.DataFrame:
 
 
 _SUMS = ("n_stations", "n_customers", "customer_mw", "n_dedicated_customers", "n_busbar_customers",
-         "busbar_customer_mw", "n_generators", "generator_mw", "gen_loop_in",
-         "gen_tee", "gen_dedicated", "n_rings", "n_dedicated_feeders", "n_generator_feeders", "n_radial_feeders",
-         "n_stub_nodes", "n_feeder_bays", "n_nops", "n_ties", "tie_km", "route_km", "circuit_km", "cable_km", "overhead_km",
-         "trench_km", "area_km2", "peak_load_mw", "n_repairs", "n_band_conflicts", "n_tap_limit", "n_tap_nonzero",
-         "runtime_s")
-_MAXES = ("max_loading_percent", "max_loading_n1_percent", "max_loading_feed_in_percent", "max_drop_percent",
-          "max_drop_n1_percent", "max_rise_percent", "max_vm_feed_in_pu")
+         "busbar_customer_mw", "n_rings", "n_dedicated_feeders", "n_radial_feeders", "n_stub_nodes", "n_feeder_bays",
+         "n_nops", "n_ties", "tie_km", "route_km", "circuit_km", "cable_km", "overhead_km", "trench_km", "area_km2",
+         "peak_load_mw", "n_repairs", "n_band_conflicts", "n_tap_limit", "n_tap_nonzero", "runtime_s")
+_MAXES = ("max_loading_percent", "max_loading_n1_percent", "max_drop_percent", "max_drop_n1_percent")
 _MINS = ("min_vm_load_pu", "min_vm_n1_pu")
 
 
@@ -559,10 +571,21 @@ def flat_parameters(snapshot: Mapping[str, Any], prefix: str = "") -> dict[str, 
     return out
 
 
+def variant_parameters(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """The parameter snapshot of an MV variant as ``{dotted path: value}`` (:func:`flat_parameters`) without the
+    paths of the options the MV stage no longer has (``pylovo.version_snapshot.MV_REMOVED``)."""
+    from pylovo.version_snapshot import MV_REMOVED
+
+    removed = tuple(".".join(path) for path in MV_REMOVED)
+    return {k: x for k, x in flat_parameters(snapshot).items()
+            if not any(k == r or k.startswith(r + ".") for r in removed)}
+
+
 def parameter_table(variants: Sequence[Variant], only_differences: bool = True) -> pd.DataFrame:
-    """Parameters of several variants side by side (rows: dotted snapshot paths, columns: variant labels)."""
+    """Parameters of several variants side by side (rows: dotted snapshot paths of :func:`variant_parameters`,
+    columns: variant labels)."""
     flat = {v.label: {k: (str(x) if isinstance(x, (list, tuple)) else x)
-                      for k, x in flat_parameters(v.params).items()} for v in variants}
+                      for k, x in variant_parameters(v.params).items()} for v in variants}
     table = pd.DataFrame(flat)
     if only_differences and len(table.columns) > 1:
         table = table[table.astype(str).nunique(axis=1) > 1]
@@ -663,6 +686,20 @@ def plot_ring_map(v: Variant, regions: Sequence[int] | None = None, ax: Any = No
     return fig
 
 
+def plot_voltage_budget(v: Variant, lv_reference_vm_pu: float, lv_min_limit_pu: float = 0.90,
+                        title: str | None = None) -> Any:
+    """The voltage budget of the stations of a variant (:func:`pylovo.plotting.mv_grid.plot_voltage_budget`) with
+    the busbar, tap and tolerance values of its snapshot, from the HV/MV busbar to the lowest LV voltage."""
+    from pylovo.plotting import mv_grid as mvplot
+
+    return mvplot.plot_voltage_budget(
+        v.nodes, busbar_vm_pu=v.snapshot("voltage.busbar_vm_pu", 1.02),
+        busbar_band_pu=v.snapshot("voltage.busbar_band_pu", 0.015),
+        tap_step_percent=v.snapshot("taps.step_percent", 2.5), lv_reference_vm_pu=lv_reference_vm_pu,
+        lv_design_tolerance_pu=v.snapshot("taps.lv_design_tolerance_pu", 0.002), lv_min_limit_pu=lv_min_limit_pu,
+        title=title)
+
+
 def add_basemap(ax: Any, crs: Any) -> None:
     """OpenStreetMap tiles under a map (needs internet access; a failure is a warning)."""
     import warnings
@@ -730,10 +767,9 @@ def plot_generic_grid(nodes: pd.DataFrame, lines: pd.DataFrame, ax: Any = None, 
 #: Row blocks of the summary tables (columns of :func:`summary_table`), shown by :func:`show_blocks`.
 BLOCKS: dict[str, list[str]] = {
     "Districts": ["n_districts", "n_done", "n_failed", "n_complete", "n_without_violation", "area_km2"],
-    "Supply points and generators": ["n_stations", "n_customers", "customer_mw", "n_dedicated_customers",
-                                     "n_busbar_customers", "busbar_customer_mw", "customer_share", "n_generators",
-                                     "generator_mw", "gen_loop_in", "gen_tee", "gen_dedicated"],
-    "Rings and feeders": ["n_rings", "n_dedicated_feeders", "n_generator_feeders", "n_radial_feeders",
+    "Supply points": ["n_stations", "n_customers", "customer_mw", "n_dedicated_customers", "n_busbar_customers",
+                      "busbar_customer_mw", "customer_share"],
+    "Rings and feeders": ["n_rings", "n_dedicated_feeders", "n_radial_feeders",
                           "n_feeder_bays", "feeders_per_substation", "n_nops", "n_stub_nodes", "n_ties", "tie_km",
                           "ring_members_mean", "ring_members_median", "ring_members_max", "stations_per_ring",
                           "half_ring_km_mean", "half_ring_km_median", "half_ring_km_max", "ring_km_mean",
@@ -741,9 +777,8 @@ BLOCKS: dict[str, list[str]] = {
     "Lengths": ["route_km", "circuit_km", "cable_km", "overhead_km", "cable_share", "trench_km", "km_per_station",
                 "km_per_supply_point", "km_per_km2_cells", "km_per_km2", "circuit_km_per_substation",
                 "supply_points_per_substation"],
-    "Loading and voltage": ["peak_load_mw", "max_loading_percent", "max_loading_n1_percent",
-                            "max_loading_feed_in_percent", "max_drop_percent", "max_drop_n1_percent",
-                            "max_rise_percent", "min_vm_load_pu", "min_vm_n1_pu", "max_vm_feed_in_pu"],
+    "Loading and voltage": ["peak_load_mw", "max_loading_percent", "max_loading_n1_percent", "max_drop_percent",
+                            "max_drop_n1_percent", "min_vm_load_pu", "min_vm_n1_pu"],
     "Repairs, band conflicts and taps": ["n_repairs", "n_band_conflicts", "n_tap_limit", "n_tap_nonzero"],
     "Demand anchor": ["kw_per_inhabitant", "population"],
     "Runtime": ["runtime_s"],
@@ -768,7 +803,7 @@ def _fmt(value: Any, name: str = "") -> str:
             return f"{x:.4f}"
         if "share" in name or name.startswith("ari"):
             return f"{x:.3f}"
-        if x.is_integer() and (name.startswith(("n_", "gen_")) or name in ("population",)):
+        if x.is_integer() and (name.startswith("n_") or name == "population"):
             return f"{int(x):,}"
         a = abs(x)
         if a >= 100:
@@ -864,18 +899,38 @@ def selected_region(v: Variant) -> Any:
     return shapely.union_all(parts.geometry.to_numpy())
 
 
-def egon_id(substations: pd.DataFrame) -> pd.Series:
-    """The eGon-data bus id of every substation: ``egon_bus_id`` (OSM site matched within ``egon_match_m``), or
-    the id in ``source_ids`` (``egon/<bus_id>``) of eGon substations."""
-    def one(bus: Any, sources: Any) -> Any:
-        if pd.notna(bus):
-            return int(bus)
-        for source in sources if isinstance(sources, (list, tuple, np.ndarray)) else []:
-            if isinstance(source, str) and source.startswith("egon/"):
-                return int(source.split("/", 1)[1])
-        return pd.NA
-    return pd.Series([one(b, s) for b, s in zip(substations["egon_bus_id"], substations["source_ids"])],
-                     index=substations.index, dtype="Int64")
+def egon_districts(dbc: Any, region_wkb: bytes) -> pd.DataFrame:
+    """The eGon-data MV grid districts that intersect a region: ``bus_id`` and ``geom_wkb`` (whole polygons as
+    MultiPolygon WKB in ``TARGET_EPSG``), sorted by ``bus_id``.
+
+    Reads ``pylovo.egon_mv_grid_district`` if it has rows, else the copy in ``INFDB_OPENDATA_SCHEMA``.
+
+    Raises:
+        LookupError: If neither table exists with rows.
+    """
+    from psycopg2 import sql
+
+    from pylovo.config_loader import INFDB_OPENDATA_SCHEMA, TARGET_EPSG
+
+    for schema in ("pylovo", INFDB_OPENDATA_SCHEMA):
+        if not schema:
+            continue
+        dbc.cur.execute("SELECT c IS NOT NULL AND has_table_privilege(c, 'SELECT') "
+                        "FROM (SELECT to_regclass(%s) AS c) AS r", (f"{schema}.egon_mv_grid_district",))
+        if not dbc.cur.fetchone()[0]:
+            continue
+        table = sql.Identifier(schema, "egon_mv_grid_district")
+        dbc.cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(table))
+        if not dbc.cur.fetchone()[0]:
+            continue
+        dbc.cur.execute(sql.SQL(
+            "SELECT bus_id::bigint, ST_AsBinary(ST_Multi(ST_Transform(geom, {epsg}))) FROM {table} "
+            "WHERE ST_Intersects(ST_Transform(geom, {epsg}), ST_GeomFromWKB(%s, {epsg})) ORDER BY bus_id"
+        ).format(table=table, epsg=sql.Literal(int(TARGET_EPSG))), (bytes(region_wkb),))
+        rows = dbc.cur.fetchall()
+        return pd.DataFrame({"bus_id": [int(r[0]) for r in rows], "geom_wkb": [bytes(r[1]) for r in rows]})
+    raise LookupError("no eGon-data MV grid districts: pylovo.egon_mv_grid_district and the copy in "
+                      "INFDB_OPENDATA_SCHEMA are missing or empty")
 
 
 def egon_comparison(dbc: Any, v: Variant) -> Any:
@@ -883,7 +938,8 @@ def egon_comparison(dbc: Any, v: Variant) -> Any:
 
     Returns:
         GeoDataFrame (eGon polygons, ``TARGET_EPSG``) with ``bus_id``, ``area_km2``, ``share_in_region``,
-        ``mv_grid_ids`` (districts whose substation matches the eGon substation), ``district_km2`` (their cells),
+        ``mv_grid_ids`` (districts whose substation matches the eGon substation: ``egon_bus_id``, the eGon-data
+        substation within ``egon_match_m`` of the OSM site), ``district_km2`` (their cells),
         ``iou`` (cells against the eGon polygon inside the region) and ``substation_distance_m`` (eGon substation
         to the nearest substation of the variant); ``attrs["substations"]``: the eGon-data substations within 5 km
         of the region (``bus_id``, ``x``, ``y``).
@@ -892,7 +948,7 @@ def egon_comparison(dbc: Any, v: Variant) -> Any:
     import shapely
 
     region = selected_region(v)
-    rows = dbc.egon_districts(shapely.to_wkb(region))
+    rows = egon_districts(dbc, shapely.to_wkb(region))
     subs = dbc.egon_substations(shapely.to_wkb(region), 5000.0)
     _end(dbc)
     egon = gpd.GeoDataFrame({"bus_id": rows["bus_id"].astype(int)},
@@ -900,7 +956,7 @@ def egon_comparison(dbc: Any, v: Variant) -> Any:
     egon["area_km2"] = egon.area / 1e6
     inside = egon.geometry.intersection(region)
     egon["share_in_region"] = inside.area / egon.area
-    ours = v.substations.assign(egon_id=egon_id(v.substations))
+    ours = v.substations.assign(egon_id=pd.to_numeric(v.substations["egon_bus_id"], errors="coerce").astype("Int64"))
     grid_of_sub = v.grids.groupby("substation_id")["mv_grid_id"].apply(lambda s: [int(x) for x in s])
     cells = v.grids.set_index("mv_grid_id").geometry
     ids, km2, iou = [], [], []
@@ -945,8 +1001,7 @@ def read_ding0_district(folder: Any, epsg: int | None = None) -> dict:
 
 #: Columns of :func:`grid_metrics` (keys of :func:`pylovo.mv_grid.metrics.topology_metrics`).
 GRID_METRICS: tuple[str, ...] = (
-    "n_busbars", "n_stations", "n_customers", "n_generators", "n_rings", "n_two_leg", "n_radial", "n_nops", "n_ties",
-    "tie_km",
+    "n_busbars", "n_stations", "n_customers", "n_rings", "n_two_leg", "n_radial", "n_nops", "n_ties", "tie_km",
     "circuit_km", "cable_km", "overhead_km", "cable_share", "km_per_station", "km_per_supply_point",
     "ring_members_mean", "ring_members_max", "ring_km_mean", "feeder_km_mean", "feeder_km_max",
     "feeder_supply_points_mean", "feeders_per_substation", "station_spacing_m", "n1_secure_share", "stub_share",
@@ -1097,20 +1152,19 @@ def flag_counts(v: Variant) -> pd.Series:
 
 
 #: Lists of station node ids in ``mv_grid.metrics['coupling']``.
-COUPLING_LISTS: tuple[str, ...] = ("not_merged", "lv_stored_not_converged", "design_not_converged",
-                                   "feed_in_not_converged", "no_budget", "no_mv_bus", "not_coupled",
-                                   "unknown_lv_grid", "lv_error")
+COUPLING_LISTS: tuple[str, ...] = ("not_merged", "lv_stored_not_converged", "design_not_converged", "no_budget",
+                                   "no_mv_bus", "not_coupled", "unknown_lv_grid", "lv_error")
 
 
 def coupling_table(v: Variant) -> pd.DataFrame:
-    """The coupling diagnostics of every district (``mv_grid.metrics['coupling']``, flattened); list entries
-    become counts (``n_<list>``)."""
+    """The coupling diagnostics of every district (``mv_grid.metrics['coupling']``, flattened without its lists);
+    the lists of :data:`COUPLING_LISTS` become counts (``n_<list>``)."""
     rows = []
     for gid, status, m in zip(v.grids["mv_grid_id"], v.grids["coupled_status"], v.grids["metrics"]):
         coupling = (m or {}).get("coupling") if isinstance(m, Mapping) else None
         if not isinstance(coupling, Mapping):
             continue
-        flat = flat_parameters({k: x for k, x in coupling.items() if k not in COUPLING_LISTS})
+        flat = flat_parameters({k: x for k, x in coupling.items() if not isinstance(x, list)})
         flat.update({f"n_{k}": len(coupling.get(k) or []) for k in COUPLING_LISTS})
         rows.append({"variant": v.label, "mv_grid_id": int(gid), "coupled_status": status, **flat})
     return pd.DataFrame(rows)
@@ -1150,8 +1204,8 @@ def line_record(v: Variant, kind: str, vn_kv: float) -> dict:
 
 
 def earth_fault_table(v: Variant, districts: pd.DataFrame) -> pd.DataFrame:
-    """Capacitive earth-fault current per district (:func:`pylovo.analysis.mv_validation.earth_fault_current_a`) with the
-    earth capacitance of the variant's conductors at the district voltage (module defaults where unknown)."""
+    """Capacitive earth-fault current per district (:func:`pylovo.analysis.mv_validation.earth_fault_current_a`)
+    with the earth capacitance of the variant's conductors at the district voltage (module defaults where unknown)."""
     from pylovo.analysis import mv_validation
 
     rows = []
@@ -1167,13 +1221,15 @@ def earth_fault_table(v: Variant, districts: pd.DataFrame) -> pd.DataFrame:
 
 
 def case_table(v: Variant) -> pd.DataFrame:
-    """One row per district and requested MV-only power-flow case of the
+    """One row per district and planning case (``pylovo.mv_grid.model.CASES``: load, n1a, n1b) of the MV-only
     district net after the repairs (``mv_grid.metrics``): ``converged``, ``min_vm_pu``, ``max_vm_pu``,
     ``max_loading_percent``, ``slack_p_mw`` and ``unsupplied_nodes``."""
+    from pylovo.mv_grid.model import CASES
+
     rows = []
     for gid, m in zip(v.grids["mv_grid_id"], v.grids["metrics"]):
         m = m if isinstance(m, Mapping) else {}
-        for case in v.active_cases:
+        for case in CASES:
             rows.append({"variant": v.label, "mv_grid_id": int(gid), "case": case,
                          **{k: m.get(f"{case}_{k}") for k in ("converged", "min_vm_pu", "max_vm_pu",
                                                               "max_loading_percent", "slack_p_mw",
