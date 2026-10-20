@@ -17,6 +17,37 @@ from pylovo.config_loader import (
 )
 
 
+#: InfDB road classes (``klasse``) as pylovo's integer ``clazz``; unknown classes become 99.
+KLASSE_TO_CLAZZ = {
+    "Bundesautobahn": 11,
+    "Bundesstraße": 13,
+    "Landesstraße, Staatsstraße": 15,
+    "Kreisstraße": 21,
+    "Gemeindestraße": 41,
+    "Nicht öffentliche Straße": 51,
+    "Wirtschaftsweg": 71,
+    "Hauptwirtschaftsweg": 71,
+    "Rad- und Fußweg": 72,
+    "Radweg": 81,
+    "Fußweg": 91,
+    "connection_line": 110,
+}
+DEFAULT_CLAZZ = 99
+
+
+def _clazz_case_sql() -> str:
+    """The SQL ``CASE`` that maps ``btrim(klasse)`` to ``clazz``."""
+    when_clauses = "\n".join(
+        f"WHEN '{k.replace(chr(39), chr(39) * 2)}' THEN {int(v)}" for k, v in KLASSE_TO_CLAZZ.items()
+    )
+    return f"""
+            (CASE btrim(klasse)
+                {when_clauses}
+                ELSE {int(DEFAULT_CLAZZ)}
+            END)::int
+        """
+
+
 class InfdbClient:
     """Connection to InfDB, the source of buildings, ways and postcodes when ``USE_INFDB=True``.
 
@@ -200,37 +231,7 @@ class InfdbClient:
             ValueError: If the PLZ has no ways.
         """
 
-        klasse_to_clazz = {
-            "Bundesautobahn": 11,
-            "Bundesstraße": 13,
-            "Landesstraße, Staatsstraße": 15,
-            "Kreisstraße": 21,
-            "Gemeindestraße": 41,
-            "Nicht öffentliche Straße": 51,
-            "Wirtschaftsweg": 71,
-            "Hauptwirtschaftsweg": 71,
-            "Rad- und Fußweg": 72,
-            "Radweg": 81,
-            "Fußweg": 91,
-            "connection_line": 110,
-        }
-        default_clazz = 99
-
-        def _sql_literal(s: str) -> str:
-            return s.replace("'", "''")
-
-        when_clauses = "\n".join(
-            f"WHEN '{_sql_literal(k)}' THEN {int(v)}"
-            for k, v in klasse_to_clazz.items()
-        )
-
-        case_expr = f"""
-            (CASE btrim(klasse)
-                {when_clauses}
-                ELSE {int(default_clazz)}
-            END)::int
-        """
-
+        case_expr = _clazz_case_sql()
         ways_per_connection = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
         connection_lines = sql.Identifier(INFDB_SOURCE_SCHEMA, "connection_lines").as_string(self.cur)
         query = f"""
@@ -278,6 +279,110 @@ class InfdbClient:
             raise ValueError("No ways found in remote DB intersecting the given PLZ geometry")
 
         return ways
+
+    def source_srid(self, table: str, schema: str | None = None) -> int:
+        """SRID of the geometries of an InfDB table, read from a row (``geometry_columns`` may say 0)."""
+        cache = self.__dict__.setdefault("_srid_cache", {})
+        key = (schema or INFDB_SOURCE_SCHEMA, table)
+        if key not in cache:
+            query = sql.SQL("SELECT ST_SRID(geom) FROM {t} WHERE geom IS NOT NULL LIMIT 1").format(
+                t=sql.Identifier(*key))
+            with self.conn:
+                self.cur.execute(query)
+                row = self.cur.fetchone()
+            cache[key] = int(row[0]) if row and row[0] else 0
+        return cache[key]
+
+    def fetch_neighboring_ways(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float,
+                        first_way_id: int) -> list:
+        """Return the street segments of other PLZ within ``ring_m`` of a PLZ polygon (its neighboring streets).
+
+        Rows have the layout of :meth:`fetch_ways_from_infdb` and way ids continuing after
+        ``first_way_id``. Only ``ways_per_connection`` is read (no house connection lines of other
+        PLZ); segments are whole source rows found through the geometry index, and segments with
+        ``postcode`` NULL count as other PLZ.
+
+        Args:
+            plz: The PLZ whose own ways are loaded separately.
+            polygon_wkb: The PLZ polygon as WKB.
+            polygon_srid: SRID of ``polygon_wkb``.
+            ring_m: Width of the strip around the PLZ in metres.
+            first_way_id: Largest way id of the own ways; the ids of the neighboring ways follow it.
+        """
+        ways = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
+        srid = self.source_srid("ways_per_connection")
+        query = f"""
+            WITH area AS (
+                SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g
+            ), base AS (
+                SELECT
+                    {_clazz_case_sql()} AS clazz,
+                    NULL::bigint AS source,
+                    NULL::bigint AS target,
+                    w.length_geo AS cost,
+                    w.length_geo AS reverse_cost,
+                    w.geom,
+                    ('ways_per_connection:' || w.id::text) AS remote_id
+                FROM {ways} w, area a
+                WHERE w.postcode IS DISTINCT FROM %(plz)s
+                  AND w.geom && ST_Expand(a.g, %(ring)s)
+                  AND ST_DWithin(w.geom, a.g, %(ring)s)
+            )
+            SELECT b.clazz, b.source, b.target, b.cost, b.reverse_cost, b.geom,
+                   (row_number() OVER (ORDER BY b.remote_id))::bigint + %(offset)s AS way_id
+            FROM base b
+            WHERE b.clazz != 72
+        """
+        params = {"poly": polygon_wkb, "poly_srid": int(polygon_srid), "srid": srid or int(polygon_srid),
+                  "plz": int(plz), "ring": float(ring_m), "offset": int(first_way_id)}
+        with self.conn:
+            self.cur.execute(query, params)
+            return self.cur.fetchall()
+
+    def fetch_scope_wkb(self, polygon_wkb: bytes, polygon_srid: int, distance_m: float) -> bytes | None:
+        """Union of the import scope (``INFDB_OPENDATA_SCHEMA.scope``) near a region, as WKB in ``polygon_srid``.
+
+        Returns ``None`` if the InfDB has no scope table or no scope row is near the region.
+        """
+        with self.conn:
+            self.cur.execute("SELECT to_regclass(%s)", (f"{INFDB_OPENDATA_SCHEMA}.scope",))
+            if self.cur.fetchone()[0] is None:
+                return None
+        srid = self.source_srid("scope", INFDB_OPENDATA_SCHEMA)
+        query = sql.SQL("""
+            WITH area AS (
+                SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g
+            )
+            SELECT ST_AsBinary(ST_Transform(ST_Union(s.geom), %(poly_srid)s))
+            FROM {scope} s, area a
+            WHERE s.geom && ST_Expand(a.g, %(d)s) AND ST_DWithin(s.geom, a.g, %(d)s)
+        """).format(scope=sql.Identifier(INFDB_OPENDATA_SCHEMA, "scope"))
+        with self.conn:
+            self.cur.execute(query, {"poly": polygon_wkb, "poly_srid": int(polygon_srid),
+                                     "srid": srid or int(polygon_srid), "d": float(distance_m)})
+            row = self.cur.fetchone()
+        return bytes(row[0]) if row and row[0] is not None else None
+
+    def fetch_street_length_km(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float
+                               ) -> tuple[float, float]:
+        """Street length inside a PLZ polygon and in the ring of ``ring_m`` around it (other PLZ only), in km."""
+        ways = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
+        srid = self.source_srid("ways_per_connection")
+        query = f"""
+            WITH area AS (
+                SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g
+            )
+            SELECT COALESCE(SUM(ST_Length(ST_Intersection(w.geom, a.g))), 0) / 1000.0,
+                   COALESCE(SUM(ST_Length(w.geom)) FILTER (WHERE w.postcode IS DISTINCT FROM %(plz)s
+                                                          AND NOT ST_Within(w.geom, a.g)), 0) / 1000.0
+            FROM {ways} w, area a
+            WHERE w.geom && ST_Expand(a.g, %(ring)s) AND ST_DWithin(w.geom, a.g, %(ring)s)
+        """
+        with self.conn:
+            self.cur.execute(query, {"poly": polygon_wkb, "poly_srid": int(polygon_srid),
+                                     "srid": srid or int(polygon_srid), "plz": int(plz), "ring": float(ring_m)})
+            inside, ring = self.cur.fetchone()
+        return float(inside), float(ring)
     
     def fetch_postcode_from_infdb(self, plz: int) -> tuple | None:
         """Return ``(plz, note, qkm, population, geom)`` of one PLZ from ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.

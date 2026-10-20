@@ -43,6 +43,11 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("cable_dimensioning", "max_parallel_feeder_cables"): UNKNOWN,
     ("cable_dimensioning", "house_connection"): "joint",
     ("cable_dimensioning", "cabinet_spacing_m"): UNKNOWN,
+    # Before ROUTE_ACROSS_POSTCODE_BORDERS every PLZ routed over its own streets only.
+    ("postcode_border", "route_across_postcode_borders"): False,
+    ("postcode_border", "neighboring_street_width_m"): None,
+    ("postcode_border", "neighboring_street_margin_m"): None,
+    ("postcode_border", "rule_revision"): None,
 }
 
 #: The same for the MV variant snapshots (``MvParameters.to_snapshot``): a path added to that snapshot later, with

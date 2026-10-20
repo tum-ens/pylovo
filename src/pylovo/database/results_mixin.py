@@ -2,6 +2,7 @@
 
 from psycopg2 import sql
 
+from pylovo import postcode_border
 from pylovo.config_loader import VERSION_ID
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
 
@@ -62,9 +63,48 @@ class ResultsMixin(BaseMixin):
                 WHERE peak_load_in_kw != 0 AND peak_load_in_kw != -1;""").format(buildings=buildings_table)
         self.cur.execute(query, {"v": VERSION_ID})
 
+        # Routing across postcode borders saves only the ways touching the PLZ (the routing graph also held the
+        # neighboring streets); split parts lose every marker column, so the filter is geometric.
+        own_ways_filter = sql.SQL("""
+                WHERE ST_Intersects(geom, (SELECT geom FROM pylovo.postcode_result
+                                           WHERE version_id = %(v)s AND postcode_result_plz = %(p)s))""") \
+            if postcode_border.enabled() else sql.SQL("")
         query = sql.SQL("""INSERT INTO pylovo.ways_result
                         SELECT %(v)s as version_id, clazz, source, target, cost, reverse_cost, geom, way_id,
-                %(p)s as plz FROM {ways};""").format(ways=ways_table)
+                %(p)s as plz FROM {ways}{own_ways_filter};""").format(ways=ways_table, own_ways_filter=own_ways_filter)
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz})
+        self.save_building_exclusions(plz)
+
+    def save_building_exclusions(self, plz: int) -> None:
+        """Record every loaded building of the PLZ that is in no grid, with the reason, in ``building_exclusion``.
+
+        Removed rows come from ``excluded_tem`` (written by the removal steps). Rows still in
+        ``buildings_tem`` but not saved are MV-direct (``peak_load_in_kw = 0``), in a street
+        component that was dropped (no kcid) or not clustered. Must run after the buildings were
+        saved. Does not commit.
+
+        Args:
+            plz: Postcode of the working tables.
+        """
+        excluded = sql.Identifier("pg_temp", plz_table_name("excluded_tem", plz))
+        buildings = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
+        query = sql.SQL("""
+            INSERT INTO pylovo.building_exclusion (version_id, objectid, plz, reason)
+            SELECT %(v)s, objectid, %(p)s, reason
+            FROM {excluded}
+            WHERE objectid IS NOT NULL
+            UNION ALL
+            SELECT %(v)s, bt.objectid, %(p)s,
+                   CASE WHEN bt.peak_load_in_kw = 0 THEN 'mv_direct'
+                        WHEN bt.kcid IS NULL THEN 'isolated_component'
+                        ELSE 'not_clustered' END
+            FROM {buildings} bt
+            WHERE bt.objectid IS NOT NULL
+              AND bt.peak_load_in_kw IS DISTINCT FROM -1
+              AND bt.type IS DISTINCT FROM 'Transformer'
+              AND NOT EXISTS (SELECT 1 FROM pylovo.buildings_result br
+                              WHERE br.version_id = %(v)s AND br.objectid = bt.objectid)
+            ON CONFLICT (version_id, objectid) DO NOTHING;""").format(excluded=excluded, buildings=buildings)
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
 
     def delete_plz_from_all_tables(self, plz: int, version_id: str) -> None:

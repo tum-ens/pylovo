@@ -486,6 +486,14 @@ def mv_display_geometry(cur: cursor) -> None:
                         f"geometry({kind},{int(TARGET_EPSG)})")
 
 
+def building_exclusion(cur: cursor) -> None:
+    """Create the table of buildings left out of the grids (the baseline creates it on new schemas)."""
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.database.config_table_structure import CREATE_QUERIES
+
+    cur.execute(CREATE_QUERIES["building_exclusion"])
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -500,6 +508,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0008_percentage_checks", percentage_checks),
     ("0009_mv_grids", mv_grids),
     ("0010_mv_display_geometry", mv_display_geometry),
+    ("0011_building_exclusion", building_exclusion),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

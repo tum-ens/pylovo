@@ -463,9 +463,23 @@ Clustering
        ``USE_OPEN_TRANSFORMER_POSITIONS`` is off, i.e. only a few hand-placed stations without
        the OSM and LoD2 candidates.
      - ✓
+   * - ``ROUTE_ACROSS_POSTCODE_BORDERS``
+     - ``True``
+     - A PLZ also routes over the InfDB streets of its neighboring PLZ within
+       ``MAX_BROWNFIELD_TRAFO_DISTANCE`` / 2 + 100 m outside its polygon, so a route may pass
+       through the neighboring PLZ. Buildings and existing stations stay per PLZ; only the ways
+       touching the PLZ are saved to ``ways_result``. The strip holds every brownfield route up to
+       ``MAX_BROWNFIELD_TRAFO_DISTANCE`` whose ends lie in the PLZ (any route of length L lies within
+       L/2 of one of its ends); longer greenfield routes are not guaranteed. A configuration
+       without the key keeps the PLZ graph (``False``); with file input (``USE_INFDB=False``) the
+       switch has no effect.
+     - ✓
 
 Ratings of candidates count only for the sources that are switched on: a rated candidate of a
 disabled source never sizes a station.
+
+``ROUTE_ACROSS_POSTCODE_BORDERS`` is recorded in the version snapshot with its effective values (width
+of the neighboring streets and a rule revision); versions stored before it require ``False``.
 
 .. note::
 

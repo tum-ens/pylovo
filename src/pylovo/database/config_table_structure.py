@@ -1068,6 +1068,23 @@ CREATE_QUERIES = {
     CREATE INDEX IF NOT EXISTS idx_ways_result_version_plz
     ON pylovo.ways_result (version_id, plz)
     """,
+    # Buildings of a generated PLZ that are in no grid, with the step that left them out
+    # (see ResultsMixin.save_tables). Together with buildings_result it accounts for every loaded building.
+    "building_exclusion": """
+    CREATE TABLE IF NOT EXISTS pylovo.building_exclusion (
+        version_id varchar(10) NOT NULL,
+        objectid text NOT NULL,
+        plz integer NOT NULL,
+        reason varchar(40) NOT NULL,
+        CONSTRAINT pk_building_exclusion PRIMARY KEY (version_id, objectid),
+        CONSTRAINT fk_building_exclusion_version_id_plz
+            FOREIGN KEY (version_id, plz)
+            REFERENCES pylovo.postcode_result (version_id, postcode_result_plz)
+            ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_building_exclusion_version_plz
+    ON pylovo.building_exclusion (version_id, plz)
+    """,
     "plz_parameters": """
     CREATE TABLE IF NOT EXISTS pylovo.plz_parameters (
         version_id varchar(10) NOT NULL,
@@ -1233,6 +1250,12 @@ TEMP_CREATE_QUERIES = {
         geom geometry(LineString,{TARGET_EPSG}),
         way_id integer,
         plz integer
+    )""",
+    # Buildings removed from buildings_tem during generation, with the reason; saved to building_exclusion.
+    "excluded_tem": """CREATE TEMP TABLE IF NOT EXISTS excluded_tem
+    (
+        objectid text,
+        reason varchar(40)
     )""",
 }
 

@@ -45,6 +45,9 @@ DESCRIPTIONS = {
                        "per building, settlement type).",
     "grid_result": "One row per generated grid (version, plz, kcid, bcid): transformer rating, power-flow status, "
                    "planning and solved voltage-drop diagnostics and the pandapower net as JSON (``grid``).",
+    "building_exclusion": "Loaded buildings of a generated postcode that are in no grid, with the step that left "
+                          "them out; with buildings_result it accounts for every loaded building "
+                          "(``pylovo-analyze --coverage``).",
     "ways_result": "Street segments of the processed routing graph of a postcode, including connection lines.",
     "plz_parameters": "PLZ-level key figures written by ``pylovo-analyze`` (or ``ANALYZE_GRIDS``), stored as JSON "
                       "per transformer size.",
@@ -231,6 +234,7 @@ ZONES = [
         ["version", "postcode", "transformers"],
         ["equipment_data", "postcode_result", "ways_result"],
         ["consumer_categories", "grid_result", "plz_parameters"],
+        [None, "building_exclusion", None],
     ]),
     ("Per-grid results: every table references grid_result.grid_result_id (ON DELETE CASCADE)", 0.2, [
         ["buildings_result", "clustering_parameters", "transformer_positions"],
@@ -430,7 +434,8 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
                                         "municipal_register", "transformers", "mastr_units",
                                         "mastr_postcode_aggregates", "mv_graph", "mv_graph_vertex", "mv_graph_edge",
                                         "mv_graph_settlement", "ags_log", "res", "oth", "ways"]),
-        ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "buildings_result",
+        ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "building_exclusion",
+                           "buildings_result",
                            "transformer_positions", "lines_result", "lines_result_helper", "lines_result_cache",
                            "split_points", "pandapower_bus", "pandapower_line", "pandapower_trafo",
                            "pandapower_load", "clustering_parameters", "load_edit"]),

@@ -184,8 +184,9 @@ def test_mv_grid_objects_exist_in_dict_order_and_cover_the_mv_stage():
 
 
 def test_migration_0009_runs_the_mv_ddl_in_order():
-    assert MIGRATION_NAMES[-2] == "0009_mv_grids"
-    assert POST_SCHEMA_MIGRATIONS[-2] == ("0009_mv_grids", mv_grids)
+    names = [name for name, _ in POST_SCHEMA_MIGRATIONS]
+    assert names[names.index("0009_mv_grids") + 1] == "0010_mv_display_geometry"
+    assert dict(POST_SCHEMA_MIGRATIONS)["0009_mv_grids"] is mv_grids and "0009_mv_grids" in MIGRATION_NAMES
 
     class Cursor:
         def __init__(self):
@@ -312,8 +313,8 @@ def test_migration_0010_adds_the_display_geometry_to_existing_tables():
     from pylovo.config_loader import TARGET_EPSG
     from pylovo.database.migrations import mv_display_geometry
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0010_mv_display_geometry", mv_display_geometry)
-    assert MIGRATION_NAMES[-1] == "0010_mv_display_geometry"
+    assert dict(POST_SCHEMA_MIGRATIONS)["0010_mv_display_geometry"] is mv_display_geometry
+    assert "0010_mv_display_geometry" in MIGRATION_NAMES
 
     class Cursor:
         def __init__(self, existing):

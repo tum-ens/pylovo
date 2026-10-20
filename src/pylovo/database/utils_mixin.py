@@ -131,6 +131,27 @@ class UtilsMixin(BaseMixin):
             return None
         return int(result[0])
 
+    def get_postcode_polygon_wkb(self, plz: int) -> bytes:
+        """Return the polygon of a PLZ in ``TARGET_EPSG`` as WKB (``postcode_result`` of the version, else ``postcode``).
+
+        Raises:
+            ValueError: If the PLZ has no polygon.
+        """
+        query = """SELECT ST_AsBinary(geom) FROM (
+                       SELECT geom, 0 AS rank FROM pylovo.postcode_result
+                       WHERE version_id = %(v)s AND postcode_result_plz = %(p)s
+                       UNION ALL
+                       SELECT geom, 1 FROM pylovo.postcode WHERE plz = %(p)s
+                   ) polygons
+                   WHERE geom IS NOT NULL
+                   ORDER BY rank
+                   LIMIT 1;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": int(plz)})
+        row = self.cur.fetchone()
+        if row is None:
+            raise ValueError(f"PLZ {plz} has no polygon")
+        return bytes(row[0])
+
     def get_list_from_plz(self, plz: int) -> list:
         """Return the ``(kcid, bcid)`` pairs of all grids of ``plz`` in the configured version."""
         query = """SELECT DISTINCT kcid, bcid
@@ -144,15 +165,25 @@ class UtilsMixin(BaseMixin):
         return cluster_list
 
     def delete_transformers_from_buildings_tem(self, vertices: list) -> None:
-        """
-        Deletes selected transformers from buildings_tem
-        :param vertices:
-        :return:
+        """Delete the rows of ``buildings_tem`` at the given vertices.
+
+        Used for unused transformers and for the street components with at most one consumer;
+        a consumer deleted with such a component is recorded in ``excluded_tem`` as ``isolated_component``.
+
+        Args:
+            vertices: Vertex IDs.
         """
         query = """
-                DELETE
-                FROM buildings_tem
-                WHERE vertice_id IN %(v)s;"""
+                WITH deleted AS (
+                    DELETE
+                    FROM buildings_tem
+                    WHERE vertice_id IN %(v)s
+                    RETURNING objectid, type, peak_load_in_kw
+                )
+                INSERT INTO excluded_tem (objectid, reason)
+                SELECT objectid, 'isolated_component'
+                FROM deleted
+                WHERE type IS DISTINCT FROM 'Transformer' AND peak_load_in_kw IS DISTINCT FROM -1;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
     def get_consumer_categories(self):
