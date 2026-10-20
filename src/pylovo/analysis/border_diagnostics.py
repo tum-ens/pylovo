@@ -1,8 +1,8 @@
 """Postcode-border and data-edge diagnostics of a version (read-only).
 
 Per PLZ: the share of its polygon inside the InfDB import scope (``scope_share``), the share of the
-halo ring around it inside the scope (``context_share``) and the street length inside the polygon
-and in the ring. The two shares differ: a PLZ can lie fully inside the scope while its
+ring of neighboring streets around it inside the scope (``context_share``) and the street length inside
+the polygon and in the ring. The two shares differ: a PLZ can lie fully inside the scope while its
 surroundings were never imported.
 
 Per grid: the number of buildings and the distance from its buildings to the nearest PLZ border of
@@ -35,17 +35,17 @@ _BORDER_TOLERANCE_M = 2.0
 _MIN_SEGMENT_M = 2 * _BORDER_TOLERANCE_M + 1.0
 
 
-def postcode_context(dbc, inf_dbc, plz_list: list[int], halo_m: float | None = None) -> pd.DataFrame:
+def postcode_context(dbc, inf_dbc, plz_list: list[int], ring_m: float | None = None) -> pd.DataFrame:
     """Scope and street context of each PLZ (see the module docstring)."""
-    halo_m = postcode_border.halo_width_m() if halo_m is None else float(halo_m)
+    ring_m = postcode_border.neighboring_street_width_m() if ring_m is None else float(ring_m)
     rows = []
     for plz in plz_list:
         polygon_wkb = dbc.get_postcode_polygon_wkb(plz)
         polygon = shapely_wkb.loads(polygon_wkb)
-        ring = polygon.buffer(halo_m).difference(polygon)
-        scope_wkb = inf_dbc.fetch_scope_wkb(polygon_wkb, TARGET_EPSG, halo_m)
+        ring = polygon.buffer(ring_m).difference(polygon)
+        scope_wkb = inf_dbc.fetch_scope_wkb(polygon_wkb, TARGET_EPSG, ring_m)
         scope = shapely_wkb.loads(scope_wkb) if scope_wkb else None
-        inside_km, ring_km = inf_dbc.fetch_street_length_km(plz, polygon_wkb, TARGET_EPSG, halo_m)
+        inside_km, ring_km = inf_dbc.fetch_street_length_km(plz, polygon_wkb, TARGET_EPSG, ring_m)
         rows.append({
             "plz": int(plz),
             "area_km2": polygon.area / 1e6,

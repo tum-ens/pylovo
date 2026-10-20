@@ -63,15 +63,15 @@ class ResultsMixin(BaseMixin):
                 WHERE peak_load_in_kw != 0 AND peak_load_in_kw != -1;""").format(buildings=buildings_table)
         self.cur.execute(query, {"v": VERSION_ID})
 
-        # With a street halo only the ways touching the PLZ are saved (the routing graph also held the
-        # neighbouring streets); split parts lose every marker column, so the filter is geometric.
-        halo_filter = sql.SQL("""
+        # Routing across postcode borders saves only the ways touching the PLZ (the routing graph also held the
+        # neighboring streets); split parts lose every marker column, so the filter is geometric.
+        own_ways_filter = sql.SQL("""
                 WHERE ST_Intersects(geom, (SELECT geom FROM pylovo.postcode_result
                                            WHERE version_id = %(v)s AND postcode_result_plz = %(p)s))""") \
-            if postcode_border.halo_enabled() else sql.SQL("")
+            if postcode_border.enabled() else sql.SQL("")
         query = sql.SQL("""INSERT INTO pylovo.ways_result
                         SELECT %(v)s as version_id, clazz, source, target, cost, reverse_cost, geom, way_id,
-                %(p)s as plz FROM {ways}{halo_filter};""").format(ways=ways_table, halo_filter=halo_filter)
+                %(p)s as plz FROM {ways}{own_ways_filter};""").format(ways=ways_table, own_ways_filter=own_ways_filter)
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
         self.save_building_exclusions(plz)
 

@@ -1,4 +1,4 @@
-"""Border kinds, the border summary, the halo width and the snapshot of the border mode (no database)."""
+"""Border kinds, the border summary, the width of the neighboring streets and their snapshot (no database)."""
 
 import pandas as pd
 from shapely.geometry import box
@@ -27,17 +27,18 @@ def test_summary_counts_small_grids_near_each_border():
     assert summary["small_grids_near_generated_border"] == 1 and summary["small_grids_near_open_border"] == 1
 
 
-def test_the_halo_holds_every_brownfield_route_and_is_off_by_default():
-    assert postcode_border.halo_width_m() == postcode_border.MAX_BROWNFIELD_TRAFO_DISTANCE / 2 + 100
-    assert postcode_border.snapshot("off") == {"mode": "off", "halo_m": None, "halo_margin_m": None,
-                                               "rule_revision": None}
-    assert not postcode_border.halo_enabled("off") and postcode_border.halo_enabled("halo")
+def test_the_neighboring_streets_hold_every_brownfield_route():
+    assert postcode_border.neighboring_street_width_m() == postcode_border.MAX_BROWNFIELD_TRAFO_DISTANCE / 2 + 100
+    assert postcode_border.snapshot(False) == {"route_across_postcode_borders": False,
+                                               "neighboring_street_width_m": None,
+                                               "neighboring_street_margin_m": None, "rule_revision": None}
+    assert postcode_border.snapshot(True)["neighboring_street_width_m"] == postcode_border.neighboring_street_width_m()
 
 
-def test_versions_stored_before_the_border_mode_stay_valid_only_with_the_mode_off():
+def test_versions_stored_before_the_switch_stay_valid_only_without_routing_across_borders():
     stored = {"transformer_placement": {"max_brownfield_trafo_distance": 1000}}
-    expected_off = {**stored, "postcode_border": postcode_border.snapshot("off")}
-    expected_halo = {**stored, "postcode_border": postcode_border.snapshot("halo")}
+    expected_off = {**stored, "postcode_border": postcode_border.snapshot(False)}
+    expected_on = {**stored, "postcode_border": postcode_border.snapshot(True)}
     assert compare_snapshots(stored, expected_off) == ([], [])
-    differences, _ = compare_snapshots(stored, expected_halo)
-    assert "postcode_border.mode" in differences
+    differences, _ = compare_snapshots(stored, expected_on)
+    assert "postcode_border.route_across_postcode_borders" in differences

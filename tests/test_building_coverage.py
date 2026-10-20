@@ -15,7 +15,7 @@ def test_every_source_building_gets_exactly_one_status():
                              "e": "postcode_not_generated", "x": "not_in_source"}
 
 
-def test_a_transferred_or_halo_rescued_building_counts_where_it_is_generated():
+def test_a_building_generated_in_another_plz_counts_where_it_is_generated():
     eligible = pd.DataFrame({"objectid": ["a"], "home_plz": [1], "households": [1]})
     generated = pd.DataFrame({"objectid": ["a"], "grid_plz": [2], "grid_result_id": [10]})
     buildings = classify(eligible, generated, pd.DataFrame(columns=["objectid", "plz", "reason"]), {1, 2})

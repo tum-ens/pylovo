@@ -385,17 +385,12 @@ USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSIT
 USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
 USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_MANUAL_TRANSFORMER_POSITIONS", False)
-# Postcode borders (see pylovo.postcode_border): "off", or "halo" to route over the InfDB streets outside
-# the PLZ. "transfer" (border buildings generated in the PLZ of their station) is not implemented yet.
-_postcode_border_mode = CONFIG_GENERATION.get("POSTCODE_BORDER_MODE", "off")
-# YAML 1.1 reads an unquoted off as false
-POSTCODE_BORDER_MODE = "off" if _postcode_border_mode is False else str(_postcode_border_mode)
-if POSTCODE_BORDER_MODE not in ("off", "halo", "transfer"):
-    raise ValueError(f"POSTCODE_BORDER_MODE must be 'off', 'halo' or 'transfer', got {POSTCODE_BORDER_MODE!r}")
-if POSTCODE_BORDER_MODE == "transfer":
-    raise ValueError("POSTCODE_BORDER_MODE 'transfer' is not implemented yet; use 'off' or 'halo'")
-if POSTCODE_BORDER_MODE != "off" and not USE_INFDB:
-    raise ValueError("POSTCODE_BORDER_MODE needs USE_INFDB=True (the halo streets come from the InfDB)")
+# Postcode borders (see pylovo.postcode_border): a PLZ also routes over the InfDB streets of its neighboring PLZ
+ROUTE_ACROSS_POSTCODE_BORDERS = CONFIG_GENERATION.get("ROUTE_ACROSS_POSTCODE_BORDERS", False)
+if not isinstance(ROUTE_ACROSS_POSTCODE_BORDERS, bool):
+    raise ValueError(f"ROUTE_ACROSS_POSTCODE_BORDERS must be true or false, got {ROUTE_ACROSS_POSTCODE_BORDERS!r}")
+if ROUTE_ACROSS_POSTCODE_BORDERS and not USE_INFDB:
+    raise ValueError("ROUTE_ACROSS_POSTCODE_BORDERS needs USE_INFDB=True (the neighboring streets come from the InfDB)")
 
 # Station voltage of the validation power flow (pylovo.station_voltage). Missing keys keep the
 # behaviour from before they existed: MV side at 1.0 p.u., neutral tap.

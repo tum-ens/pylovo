@@ -1,4 +1,4 @@
-"""Opt-in PostGIS fixtures for the halo and exclusion SQL; run only on a disposable database.
+"""Opt-in PostGIS fixtures for the neighboring-street and exclusion SQL; run only on a disposable database.
 
     PYLOVO_FIXTURE_DB="host=127.0.0.1 port=55440 dbname=pylovo_fixture user=sandbox password=sandbox" \\
         pytest tests/test_postgis_fixtures.py
@@ -69,13 +69,13 @@ def test_saving_keeps_own_ways_and_records_every_left_out_building(tem, monkeypa
                     (PLZ,))
     tem.copy_postcode_result_table(PLZ)
     way(tem, 1, "LINESTRING(10 10, 90 10)")              # own
-    way(tem, 2, "LINESTRING(150 10, 190 10)")            # halo, split part without any marker column
+    way(tem, 2, "LINESTRING(150 10, 190 10)")            # neighboring street, split part without any marker column
     tem.cur.execute("UPDATE ways_tem SET source = way_id, target = way_id + 100")
     building(tem, "isolated", 50, 50)
     tem.cur.execute("UPDATE buildings_tem SET vertice_id = 7 WHERE objectid = 'isolated'")
     tem.delete_transformers_from_buildings_tem([7])
     building(tem, "mv", 20, 20, peak=0.0)
-    monkeypatch.setattr(postcode_border, "halo_enabled", lambda mode=None: True)
+    monkeypatch.setattr(postcode_border, "enabled", lambda: True)
     tem.save_tables(PLZ)
     tem.cur.execute("SELECT way_id FROM pylovo.ways_result WHERE version_id = %s AND plz = %s", (VERSION_ID, PLZ))
     assert [row[0] for row in tem.cur.fetchall()] == [1]

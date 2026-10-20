@@ -293,9 +293,9 @@ class InfdbClient:
             cache[key] = int(row[0]) if row and row[0] else 0
         return cache[key]
 
-    def fetch_halo_ways(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float,
+    def fetch_neighboring_ways(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float,
                         first_way_id: int) -> list:
-        """Return the street segments of other PLZ within ``ring_m`` of a PLZ polygon (the halo).
+        """Return the street segments of other PLZ within ``ring_m`` of a PLZ polygon (its neighboring streets).
 
         Rows have the layout of :meth:`fetch_ways_from_infdb` and way ids continuing after
         ``first_way_id``. Only ``ways_per_connection`` is read (no house connection lines of other
@@ -306,8 +306,8 @@ class InfdbClient:
             plz: The PLZ whose own ways are loaded separately.
             polygon_wkb: The PLZ polygon as WKB.
             polygon_srid: SRID of ``polygon_wkb``.
-            ring_m: Halo width in metres.
-            first_way_id: Largest way id of the own ways; the halo ids follow it.
+            ring_m: Width of the strip around the PLZ in metres.
+            first_way_id: Largest way id of the own ways; the ids of the neighboring ways follow it.
         """
         ways = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
         srid = self.source_srid("ways_per_connection")

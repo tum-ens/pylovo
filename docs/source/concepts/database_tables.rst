@@ -519,7 +519,7 @@ Foreign key (version_id, transformer_equipment_name) references ``equipment_data
 ~~~~~~~~~~~~~~~
 
 Street segments of the processed routing graph of a postcode, including connection lines. With
-``POSTCODE_BORDER_MODE: "halo"`` only the segments touching the postcode are stored (the routing graph
+``ROUTE_ACROSS_POSTCODE_BORDERS`` only the segments touching the postcode are stored (the routing graph
 also held the streets around it).
 
 Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.

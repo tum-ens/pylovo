@@ -129,7 +129,7 @@ USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer position
 USE_MANUAL_TRANSFORMER_POSITIONS: False # Include the positions placed in the UI (manual/...) even when USE_OPEN_TRANSFORMER_POSITIONS is False
 
 ## Postcode borders
-POSTCODE_BORDER_MODE: "off" # "off", or "halo": route over the InfDB streets within MAX_BROWNFIELD_TRAFO_DISTANCE/2 + 100 m outside the PLZ (stations and buildings stay per PLZ)
+ROUTE_ACROSS_POSTCODE_BORDERS: False # Also route over the InfDB streets of the neighboring PLZ within MAX_BROWNFIELD_TRAFO_DISTANCE/2 + 100 m outside the PLZ (stations and buildings stay per PLZ)
 
 # =============================================================================
 # Equipment data configuration

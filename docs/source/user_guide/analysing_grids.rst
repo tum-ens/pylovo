@@ -214,7 +214,7 @@ database:
 
 ``--border-diagnostics``
     Per PLZ the share of its polygon inside the InfDB import scope (``scope_share``), the share of
-    the halo ring around it inside the scope (``context_share``) and the street length inside and in
+    the ring of neighboring streets around it inside the scope (``context_share``) and the street length inside and in
     the ring: a PLZ can lie inside the scope while its surroundings were never imported. Per grid
     the number of buildings and the distance to the nearest PLZ border with a generated neighbour,
     with a neighbour without results (open) and without a neighbouring PLZ (outer), and to the edge

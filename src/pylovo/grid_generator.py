@@ -514,13 +514,14 @@ class GridGenerator:
         """
         if USE_INFDB:
             ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
-            if postcode_border.halo_enabled():
-                halo_rows = self.inf_dbc.fetch_halo_ways(
+            if postcode_border.enabled():
+                width_m = postcode_border.neighboring_street_width_m()
+                neighboring_rows = self.inf_dbc.fetch_neighboring_ways(
                     self.plz, self.dbc.get_postcode_polygon_wkb(self.plz), TARGET_EPSG,
-                    postcode_border.halo_width_m(), first_way_id=max(int(row[-1]) for row in ways_rows))
+                    width_m, first_way_id=max(int(row[-1]) for row in ways_rows))
                 self.logger.info(
-                    f"Halo: {len(halo_rows)} ways of other PLZ within {postcode_border.halo_width_m():.0f} m added")
-                ways_rows = list(ways_rows) + list(halo_rows)
+                    f"Neighboring streets: {len(neighboring_rows)} ways of other PLZ within {width_m:.0f} m added")
+                ways_rows = list(ways_rows) + list(neighboring_rows)
             ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows, self.plz)
         else:
             ways_count = self.dbc.set_ways_tem_table(self.plz)
