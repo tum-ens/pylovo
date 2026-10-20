@@ -21,7 +21,7 @@ their shorter networks cannot be read as equal-service improvements over generat
 
 Every notebook starts with a cell tagged `parameters`:
 
-- `version_id`: the LV version (this review checkout defaults to `"mv2"`; `None` uses `VERSION_ID` of `config/config_generation.yaml`);
+- `version_id`: the LV version (this review checkout defaults to `"mv2"`; `None` uses `VERSION_ID` of `config/config_generation_lv.yaml`);
 - `variants`: the MV variants. In notebooks 1, 3, and 4, `None` selects `load1`, then `d1`, then the first available variant. In notebooks 0 and 2, `None` selects all variants. An explicit list is kept as selected;
 - `show_details` (notebook 1): include the full tables and additional diagnostic figures (default: `False`);
 - `map_variants` (notebook 1): variants for every map and district/ring detail; `None` means the selected variants and `[]` suppresses those figures;

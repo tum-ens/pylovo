@@ -3,7 +3,7 @@
 Requires a pylovo database with the demo region PLZ 85653 and the grid versions
 created by ``docs/scripts/make_demo_versions.py``; ``plot_contextily`` downloads
 OpenStreetMap tiles and therefore needs internet access. Run from the repository
-root (``config/config_generation.yaml`` must have ``VERSION_ID: "1"``)::
+root (``config/config_generation_lv.yaml`` must have ``VERSION_ID: "1"``)::
 
     uv run python docs/scripts/plot_pylovo_examples.py
 

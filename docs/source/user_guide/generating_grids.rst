@@ -2,7 +2,7 @@ Generating grids
 ================
 
 ``pylovo-generate`` runs the pipeline of :doc:`../concepts/pipeline` for every selected postcode
-area and stores the grids under the ``VERSION_ID`` of ``config/config_generation.yaml``.
+area and stores the grids under the ``VERSION_ID`` of ``config/config_generation_lv.yaml``.
 
 .. code-block:: bash
 
@@ -21,7 +21,7 @@ Workflow with versions
 
 #. Choose a new numeric ``VERSION_ID`` (for example ``2`` after ``1``; at most 10 characters)
    and describe it in ``VERSION_COMMENT``.
-#. Change the parameters in ``config/config_generation.yaml`` (and, if needed, the power-flow
+#. Change the parameters in ``config/config_generation_lv.yaml`` (and, if needed, the power-flow
    limits in ``config_analysis.yaml``).
 #. Run ``pylovo-generate``. The first run stores the parameter snapshot of the version; later runs
    with the same ``VERSION_ID`` must use the same parameters (:ref:`versions`).

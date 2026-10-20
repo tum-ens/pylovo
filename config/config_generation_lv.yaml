@@ -1,3 +1,5 @@
+# Configuration of the LV grids (pylovo-generate). The MV stage has its own file, config_generation_mv.yaml.
+
 # =============================================================================
 # EXECUTION CONFIGURATION
 # =============================================================================
@@ -170,32 +172,3 @@ CONSUMER_CONNECTION_CABLES:
 - {name: NAYY_4_185, max_i_a: 313, r_mohm_per_km: 164, x_mohm_per_km: 80, z_mohm_per_km: 181, cost_eur: 38, typ: Cable}
 - {name: NAYY_4_240, max_i_a: 357, r_mohm_per_km: 127, x_mohm_per_km: 80, z_mohm_per_km: 150, cost_eur: 45, typ: Cable}
 - {name: NAYY_4_300, max_i_a: 425, r_mohm_per_km: 100, x_mohm_per_km: 80, z_mohm_per_km: 128, cost_eur: 58, typ: Cable}
-
-# =============================================================================
-# MEDIUM-VOLTAGE (MV) GRIDS
-# =============================================================================
-# The MV stage connects the LV stations of a version (one MV node per LV grid), the MV customers and the MV
-# generators to HV/MV substations with open rings. It never changes the LV grids. Its parameters are stored per
-# MV variant (pylovo.mv_variant), not in the snapshot of VERSION_ID. Which loads are MV customers is decided by
-# MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW above, an LV-version parameter. In the MV stage, MV customer halls count one
-# storey and customers below 200 kW own peak hang on the busbar of the nearest station within 1 km (constants
-# customer_hall_min_footprint_m2, customer_min_mv_kw and busbar_customer_max_m, changeable with pylovo-mv generate
-# --set); a station they overload gets the next rating of the LV catalogue in the MV model.
-
-# Run the MV stage after the LV grids in pylovo-generate (pylovo-generate --mv / --no-mv override it)
-MV_GRID_GENERATION: False
-# MV variant of the LV version (1 to 10 characters); a changed MV parameter needs a new MV_VARIANT_ID
-MV_VARIANT_ID: "1"
-MV_VARIANT_COMMENT: default # Stored with a new MV variant
-# MV nominal voltage in kV: auto (10 kV in districts whose installed capacity lies mostly in municipalities with at least 5 MVA/km² installed MV/LV capacity, constant mv_10kv_min_density_mva_km2, else 20 kV), 20 or 10; the stored LV station transformers are 20/0.4 kV
-MV_NOMINAL_VOLTAGE_KV: auto
-# Most ring members (stations and MV customers) in one open ring; rural members count half (rural rings hold 40), stub stations do not count
-MV_MAX_STATIONS_PER_RING: 20
-# Standard MV cable, a pandapower line type (null: NA2XS2Y 1x240 RM/25 at 10 or 20 kV)
-MV_STANDARD_CABLE: null
-# Overhead line type where a line runs on an MV overhead line of OpenStreetMap (null: 122-AL1/20-ST1A at 10 or 20 kV)
-MV_OVERHEAD_LINE: null
-# Planned current per ampacity of MV lines in normal operation; the (n-1) case may use 1.0
-MV_LINE_PLANNING_UTILIZATION: 0.6
-# MV share of the voltage band in normal operation, from the HV/MV busbar (1.02 p.u.) to every station
-MV_MAX_VOLTAGE_DROP_PERCENT: 5

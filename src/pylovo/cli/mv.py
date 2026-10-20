@@ -29,8 +29,8 @@ from pylovo.mv_grid.options import parse_assignment
 
 EPILOG = """
 Examples:
-  # MV grids for two PLZ of LV version mv1, MV variant d0 with cable rings only
-  pylovo-mv generate --version mv1 --plz 80803 80802 --variant d0 --set MV_STUBS=none MV_OVERHEAD_LINES=none
+  # MV grids for two PLZ of LV version mv1, MV variant d0 with at most 15 stations per ring
+  pylovo-mv generate --version mv1 --plz 80803 80802 --variant d0 --set MV_MAX_STATIONS_PER_RING=15
 
   # All generated PLZ of a version with the configured MV variant, four workers
   pylovo-mv generate --version mv1 --all --jobs 4
@@ -48,8 +48,8 @@ Examples:
   # Display geometry (lanes, busbar circles) of variants built before it existed
   pylovo-mv display --version mv1 --variant d1 d2
 
---set takes MV_* keys of config_generation.yaml (not MV_GRID_GENERATION, MV_VARIANT_ID, MV_VARIANT_COMMENT) and the
-constants of pylovo.mv_grid.options.CONSTANTS, e.g. --set MV_RING_SOLVER=sweep local_search_rounds=0.
+--set takes the MV_* keys of config_generation_mv.yaml except MV_GRID_GENERATION, MV_VARIANT_ID and MV_VARIANT_COMMENT,
+e.g. --set MV_LINE_PLANNING_UTILIZATION=0.5.
 """
 
 
@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--variant", help="MV variant id (default MV_VARIANT_ID)")
     gen.add_argument("--comment", help="comment of a new MV variant (default MV_VARIANT_COMMENT)")
     gen.add_argument("--set", dest="assignments", type=_set_value, action="extend", nargs="+", default=[],
-                     metavar="KEY=VALUE", help="MV parameter (MV_* key or constant name) of this variant")
+                     metavar="KEY=VALUE", help="MV_* key of config_generation_mv.yaml for this variant")
     parallelism = gen.add_mutually_exclusive_group()
     parallelism.add_argument("--parallel", dest="parallel", action="store_true", default=None,
                              help="plan the districts in worker processes (default PARALLEL)")

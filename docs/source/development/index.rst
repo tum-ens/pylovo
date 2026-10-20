@@ -13,7 +13,7 @@ Project layout
 .. code-block:: text
 
    pylovo/
-   |-- config/                   YAML configuration (config_generation.yaml, config_analysis.yaml, ...)
+   |-- config/                   YAML configuration (config_generation_lv.yaml, config_generation_mv.yaml, ...)
    |-- data/                     input data shipped with the repository
    |   |-- municipal_register/   Gemeindeverzeichnis and RegioStaR tables
    |   |-- transformer_data/     Overpass queries, fetched and processed transformer GeoJSON

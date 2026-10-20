@@ -1,6 +1,6 @@
 """Parameters of one MV variant and the values the MV stage reads from the snapshot of the LV version.
 
-:class:`MvParameters` holds every MV parameter: the ``MV_*`` keys of ``config_generation.yaml``
+:class:`MvParameters` holds every MV parameter: the ``MV_*`` keys of ``config_generation_mv.yaml``
 (:data:`~pylovo.mv_grid.options.YAML_KEYS`) and the constants (:data:`~pylovo.mv_grid.options.CONSTANTS`), one field
 each. The stage code receives this object and never reads ``MV_*`` constants itself; only
 :meth:`MvParameters.from_config` reads :mod:`pylovo.config_loader`. Its snapshot (:meth:`MvParameters.to_snapshot`)
@@ -111,7 +111,7 @@ def _c(name: str) -> Any:
 class MvParameters:
     """All parameters of one MV variant; every value is checked and coerced on construction.
 
-    The first fields are the ``MV_*`` keys of ``config_generation.yaml`` (YAML key in the comment), the others the
+    The first fields are the ``MV_*`` keys of ``config_generation_mv.yaml`` (YAML key in the comment), the others the
     constants of :data:`~pylovo.mv_grid.options.CONSTANTS` under their own names. Create it with
     :meth:`from_config`, :meth:`from_raw` (YAML keys and constant names), :meth:`from_snapshot` or the
     constructor (field names), and derive variants with :meth:`replace` or :meth:`replace_raw`.
@@ -275,7 +275,7 @@ class MvParameters:
         return new
 
     def replace_raw(self, raw: Mapping[str, Any]) -> "MvParameters":
-        """A copy with some parameters changed by YAML key or constant name (the names of ``--set``)."""
+        """A copy with some parameters changed by YAML key or constant name (``--set`` passes YAML keys)."""
         return self.replace(**_fields_from_raw(raw))
 
     # ------------------------------------------------------------------ nominal voltage

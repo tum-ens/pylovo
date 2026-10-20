@@ -18,7 +18,7 @@ uv run --extra api pylovo-api        # http://127.0.0.1:8765/api/health, API doc
 ```
 
 `pylovo-api` (or `uv run python -m pylovo_api`) starts in your pylovo checkout: it looks for
-`config/config_generation.yaml` in `--root DIR`, `$PYLOVO_ROOT`, the current directory and its
+`config/config_generation_lv.yaml` in `--root DIR`, `$PYLOVO_ROOT`, the current directory and its
 parents, and the checkout the package was installed from, and switches to that directory (every
 job runs there, exactly like the CLI). The database is the one in the project's `.env`, or in the
 environment variables `DBNAME`, `DBUSER`, `PASSWORD`, `HOST`, `PORT` when there is no `.env`

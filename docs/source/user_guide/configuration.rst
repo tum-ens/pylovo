@@ -4,7 +4,7 @@ Configuration
 pylovo is configured with two kinds of files:
 
 * ``.env`` in the repository root -- database connection, input mode and coordinate system;
-* ``config/*.yaml`` -- all grid generation parameters (``config_generation.yaml``) and the
+* ``config/*.yaml`` -- all grid generation parameters (``config_generation_lv.yaml``) and the
   post-processing settings (``config_analysis.yaml``).
 
 Both are read once, when :mod:`pylovo.config_loader` is imported. A running process does not
@@ -100,9 +100,12 @@ Each YAML file is taken from the first of these locations that contains it:
    ``./.pylovo/``,
 #. ``config/`` of the source checkout that contains the package.
 
-All four files ``config_generation.yaml``, ``config_analysis.yaml``,
+The files ``config_generation_lv.yaml`` (the LV grids), ``config_analysis.yaml``,
 ``config_classification.yaml`` and ``config_clustering.yaml`` must exist. The last two belong to
-the classification module and do not influence grid generation.
+the classification module and do not influence grid generation. ``config_generation_mv.yaml`` (the
+MV stage) is read from the directory of ``config_generation_lv.yaml``; without it, the MV stage
+takes its shipped values. The former single file ``config_generation.yaml`` is still read in place
+of ``config_generation_lv.yaml``, with its ``MV_*`` keys.
 
 .. _versions:
 
@@ -130,8 +133,8 @@ The ``MV_*`` keys of the MV stage are not part of this snapshot. The MV stage st
 constants, once per MV variant of a version in ``pylovo.mv_variant.mv_parameters``, and a changed
 MV parameter needs a new ``MV_VARIANT_ID`` instead of a new ``VERSION_ID`` (:ref:`mv-variants`).
 
-``config_generation.yaml``
---------------------------
+``config_generation_lv.yaml``
+-----------------------------
 
 Execution
 ~~~~~~~~~
@@ -550,12 +553,14 @@ Cable rows have the fields ``name``, ``max_i_a`` (ampacity in A), ``r_mohm_per_k
 
 .. _mv-configuration:
 
-MV grids
-~~~~~~~~
+``config_generation_mv.yaml``
+-----------------------------
 
-The last section of ``config_generation.yaml`` configures the MV stage (:doc:`mv_grids`). Its keys
+``config_generation_mv.yaml`` configures the MV stage (:doc:`mv_grids`). Its keys
 are stored per MV variant, not in the snapshot of ``VERSION_ID``, and ``pylovo-mv generate --set``
-changes them for one variant. A missing key takes its shipped value. The :ref:`MV parameter
+changes them for one variant. A missing key takes its shipped value. ``MV_*`` keys in the LV file
+(as in the former ``config_generation.yaml``) are still read; a key in both files needs the same
+value. The :ref:`MV parameter
 reference <mv-parameters>` lists the keys with their shipped values, meanings and sources, together
 with the constants of the stage.
 

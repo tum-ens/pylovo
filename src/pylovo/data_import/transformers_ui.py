@@ -177,7 +177,7 @@ class TransformerMapUI:
 
         @self.app.route('/api/transformer-capacities')
         def get_transformer_capacities():
-            """List the transformer ratings defined in config_generation.yaml."""
+            """List the transformer ratings defined in config_generation_lv.yaml."""
             try:
                 return _ok(capacities=get_transformer_capacity_options())
             except Exception as e:

@@ -64,7 +64,7 @@ def pipeline() -> None:
     inputs = [
         ("Buildings, streets, postcodes", "InfDB schemas basedata and\nopendata, or files in data/"),
         ("Transformer candidates", "pylovo.transformers: OSM,\nLoD2 stations, DSO CSV, manual"),
-        ("Configuration", "config_generation.yaml controls\nevery step; new parameters\nneed a new VERSION_ID"),
+        ("Configuration", "config_generation_lv.yaml controls\nevery step; new parameters\nneed a new VERSION_ID"),
     ]
     for index, (title, body) in enumerate(inputs):
         x = left + index * (in_w + gap)
@@ -124,7 +124,7 @@ def architecture() -> None:
     _box(ax, left, band_top - band_h, right - left, band_h, fill=INPUT_FILL, edge="#e7b89f")
     _text(ax, left + 0.12, band_top - 0.09, "config_loader", size=8.4, weight="bold")
     _text(ax, left + 1.3, band_top - 0.1,
-          "config/config_generation.yaml, config/config_analysis.yaml and .env (database, USE_INFDB, TARGET_EPSG);\n"
+          "config/config_generation_lv.yaml, config/config_analysis.yaml and .env (database, USE_INFDB, TARGET_EPSG);\n"
           "read once at import and used by all layers below",
           size=7.4, color=st.INK_SECONDARY)
 

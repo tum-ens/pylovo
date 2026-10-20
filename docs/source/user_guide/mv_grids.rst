@@ -197,7 +197,7 @@ Running the MV stage
 After the LV grids
 ~~~~~~~~~~~~~~~~~~
 
-With ``MV_GRID_GENERATION: True`` in ``config_generation.yaml``, or with ``--mv``,
+With ``MV_GRID_GENERATION: True`` in ``config_generation_mv.yaml``, or with ``--mv``,
 ``pylovo-generate`` runs the MV stage once after all postcodes of the call, for the configured MV
 variant and the postcodes of the call. ``--no-mv`` skips it. The LV grids of every postcode are
 committed first, so a failing MV stage never undoes them. If the MV stage does not end ``done``,
@@ -301,10 +301,10 @@ transformer types and the version of the stage code (``mv_stage_version``). The 
 not part of the snapshot of the LV version, so MV variants never require a new ``VERSION_ID``.
 
 ``--set KEY=VALUE`` changes a parameter for one variant. KEY is an ``MV_*`` key of
-``config_generation.yaml`` (except ``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and
-``MV_VARIANT_COMMENT``) or a constant of :ref:`mv-parameters`. VALUE is read as YAML (``null``,
-numbers, lists like ``[25, 40, 63]``, mappings like ``{lv: 100, mvlv: 200, mv: 5500, hvmv: 20000}``)
-and checked against the rules of the parameter. A value with spaces needs quotes in the shell:
+``config_generation_mv.yaml`` (except ``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and
+``MV_VARIANT_COMMENT``). VALUE is read as YAML (``null``, numbers, text) and checked against the
+rules of the key. A value with spaces needs quotes in the shell. The constants of
+:ref:`mv-parameters` are changed in Python with ``MvParameters.replace``.
 
 .. list-table:: Examples of variants
    :header-rows: 1
@@ -313,28 +313,16 @@ and checked against the rules of the parameter. A value with spaces needs quotes
 
    * - Question
      - ``--set``
-   * - Cable rings only
-     - ``MV_STUBS=none MV_OVERHEAD_LINES=none MV_INTERCONNECTION=none``
-   * - Straight lines × 1.3, as in Ding0
-     - ``MV_ROUTING=crowfly``
-   * - Sweep instead of savings
-     - ``MV_RING_SOLVER=sweep``
-   * - Value of the local search
-     - ``local_search_rounds=0``
-   * - eGon-data substations and districts
-     - ``MV_SUBSTATIONS=egon MV_SUPPLY_AREAS=egon``
-   * - Heavier conductors
-     - ``"MV_STANDARD_CABLE=NA2XS2Y 1x240 RM/25 12/20 kV" "MV_OVERHEAD_LINE=122-AL1/20-ST1A 20.0"``
    * - Smaller rings
      - ``MV_MAX_STATIONS_PER_RING=15``
    * - SimBench line utilisation
      - ``MV_LINE_PLANNING_UTILIZATION=0.5``
    * - One voltage for all supply areas
      - ``MV_NOMINAL_VOLTAGE_KV=20``
-   * - LV-side PV with cos φ 0.95
-     - ``lv_pv_cos_phi=0.95``
-   * - Every MV customer with a node of its own, no hall rule
-     - ``customer_hall_min_footprint_m2=null customer_min_mv_kw=0``
+   * - A narrower standard cable
+     - ``"MV_STANDARD_CABLE=NA2XS2Y 1x150 RM/25 12/20 kV"``
+   * - A smaller MV share of the voltage band
+     - ``MV_MAX_VOLTAGE_DROP_PERCENT=4``
 
 A later run of the same variant compares its parameters with the snapshot. Different parameters
 stop the run with ``MV parameters differ from the stored snapshot of MV variant <id> of version
@@ -698,8 +686,8 @@ Parameter reference
 ``MV_*`` keys
 ~~~~~~~~~~~~~
 
-The ``MV_*`` keys are the last section of ``config_generation.yaml``. A missing key takes its shipped
-value, so older configuration files keep working.
+The ``MV_*`` keys are in ``config_generation_mv.yaml``. A missing key takes its shipped value, so
+older configuration files keep working.
 
 .. list-table::
    :header-rows: 1

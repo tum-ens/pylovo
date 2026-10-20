@@ -39,7 +39,7 @@ Which candidates are used
    :widths: 40 60
    :class: fixed-table
 
-   * - Setting in ``config_generation.yaml``
+   * - Setting in ``config_generation_lv.yaml``
      - Candidates used as grid roots
    * - ``USE_OPEN_TRANSFORMER_POSITIONS: True``
      - OSM, LoD2 and manual candidates (everything that is not a DSO row)

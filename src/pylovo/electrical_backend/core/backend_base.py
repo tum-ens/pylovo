@@ -3,7 +3,7 @@
 Grid generation (``GridGenerator`` and ``CableInstaller``) describes every network
 element with a backend-agnostic spec from :mod:`.specs` (``BusSpec``, ``LineSpec``,
 ...). A backend translates these specs into calls of its simulation engine, so the
-engine can be switched with ``ELECTRICAL_BACKEND`` in ``config_generation.yaml``
+engine can be switched with ``ELECTRICAL_BACKEND`` in ``config_generation_lv.yaml``
 without touching the generation algorithm.
 
 A backend must:

@@ -1,9 +1,10 @@
 """MV stage parameters: the ``MV_*`` YAML keys, the constants and their coercion rules.
 
-* :data:`YAML_KEYS`: the ``MV_*`` keys of ``config_generation.yaml``. :mod:`pylovo.config_loader` reads each of
-  them with :func:`coerce_mv_value`; a missing key takes its default (the shipped value).
+* :data:`YAML_KEYS`: the ``MV_*`` keys of ``config_generation_mv.yaml``. :mod:`pylovo.config_loader` reads each of
+  them with :func:`coerce_mv_value`; a missing key takes its default (the shipped value). ``pylovo-mv generate
+  --set KEY=VALUE`` changes them per variant.
 * :data:`CONSTANTS`: the constants of the stage. They are not YAML keys, but they are part of the snapshot of an MV
-  variant and can be changed per variant with ``pylovo-mv generate --set name=value`` or
+  variant; research code changes them with
   :meth:`MvParameters.replace <pylovo.mv_grid.parameters.MvParameters.replace>`.
 
 Each parameter is described by a :class:`Spec`; :class:`~pylovo.mv_grid.parameters.MvParameters` has one field per
@@ -268,7 +269,7 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="tolerance of the LV busbar below LV_REFERENCE_VOLTAGE_PU of the LV version"),
 )
 
-#: The ``MV_*`` keys of ``config_generation.yaml`` by name.
+#: The ``MV_*`` keys of ``config_generation_mv.yaml`` by name.
 YAML_KEYS: dict[str, Spec] = {spec.name: spec for spec in _YAML_SPECS}
 #: The constants of the MV stage by name (= their field name in MvParameters).
 CONSTANTS: dict[str, Spec] = {spec.name: spec for spec in _CONSTANT_SPECS}
@@ -446,7 +447,8 @@ def check_removed_keys(config: Mapping[str, Any]) -> None:
 def parse_assignment(text: str) -> tuple[str, Any]:
     """Parse one ``--set`` argument ``KEY=VALUE`` into the name and its coerced value.
 
-    KEY is an ``MV_*`` YAML key (except :data:`NOT_SETTABLE`) or a constant name. VALUE is read with
+    KEY is an ``MV_*`` YAML key, except :data:`NOT_SETTABLE` (the constants are changed in Python with
+    :meth:`MvParameters.replace <pylovo.mv_grid.parameters.MvParameters.replace>`). VALUE is read with
     ``yaml.safe_load`` (``null``, numbers, ``[25, 40]``, ``{lv: 100, ...}``; plain text stays text) and then coerced
     with :func:`coerce_mv_value`.
 
@@ -459,7 +461,16 @@ def parse_assignment(text: str) -> tuple[str, Any]:
         raise ValueError(f"--set takes KEY=VALUE, got {text!r}")
     if name in NOT_SETTABLE:
         raise ValueError(f"{name} cannot be changed with --set: {NOT_SETTABLE[name]}")
-    spec_of(name)
+    if name in REMOVED_YAML_KEYS:
+        raise ValueError(f"{name} is no longer supported: the MV stage always uses {REMOVED_YAML_KEYS[name]!r} (the "
+                         f"branch feature/mv-backup keeps the alternatives)")
+    if name in CONSTANTS:
+        raise ValueError(f"{name} is a constant of the MV stage, not a key of config_generation_mv.yaml: change it in "
+                         f"Python with MvParameters.replace")
+    if name not in YAML_KEYS:
+        close = difflib.get_close_matches(name, [key for key in YAML_KEYS if key not in NOT_SETTABLE], n=3)
+        hint = f" (did you mean {', '.join(close)}?)" if close else ""
+        raise ValueError(f"unknown MV key {name!r}{hint}")
     try:
         value = yaml.safe_load(raw)
     except yaml.YAMLError as exc:

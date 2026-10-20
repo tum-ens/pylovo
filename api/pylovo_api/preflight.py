@@ -53,17 +53,17 @@ class SnapshotError(RuntimeError):
 
 
 def _config_key(text: str | None) -> str:
-    digest = hashlib.sha256()
+    digest, name = hashlib.sha256(), paths().config_file.name
     for path in sorted(paths().config_dir.glob("*")):
         if path.is_file() and not path.name.endswith(".bak"):
             digest.update(path.name.encode())
-            content = text.encode() if text is not None and path.name == "config_generation.yaml" else path.read_bytes()
+            content = text.encode() if text is not None and path.name == name else path.read_bytes()
             digest.update(hashlib.sha256(content).digest())
     return digest.hexdigest()
 
 
 def config_snapshot(text: str | None = None) -> dict[str, Any]:
-    """Generation-parameter snapshot of the saved config, or of ``text`` as config_generation.yaml.
+    """Generation-parameter snapshot of the saved config, or of ``text`` as its LV configuration file.
 
     Returns:
         ``{"version_id", "version_comment", "snapshot"}``.
@@ -91,7 +91,7 @@ def _build_snapshot(key: str, text: str | None) -> dict[str, Any]:
     try:
         shutil.copytree(paths().config_dir, work / "config", ignore=shutil.ignore_patterns("*.bak", "backups"))
         if text is not None:
-            (work / "config" / "config_generation.yaml").write_text(text, encoding="utf-8")
+            (work / "config" / paths().config_file.name).write_text(text, encoding="utf-8")
         proc = subprocess.run([sys.executable, "-c", _PROBE], cwd=work, capture_output=True, text=True,
                               timeout=180, check=False)
     except subprocess.TimeoutExpired as exc:
@@ -193,7 +193,7 @@ def check(text: str | None = None, base_version_id: str | None = None) -> dict[s
     """Pre-flight of the saved config (or of a candidate ``text``) for its own VERSION_ID.
 
     Args:
-        text: Candidate ``config_generation.yaml``; ``None`` checks the saved file.
+        text: Candidate ``config_generation_lv.yaml``; ``None`` checks the saved file.
         base_version_id: Version to describe the candidate against (for the comment of a new
             version). Default: the config's own version if it exists, else the version the
             saved config points at, else the newest version.

@@ -73,7 +73,7 @@ def status() -> dict[str, Any]:
     info: dict[str, Any] = {"settings": None, "connected": False}
     try:
         info["settings"] = db.settings()
-    except Exception as exc:  # noqa: BLE001 - e.g. a config_generation.yaml pylovo rejects
+    except Exception as exc:  # noqa: BLE001 - e.g. a configuration pylovo rejects
         info["error"] = f"pylovo cannot load its configuration: {type(exc).__name__}: {exc}"
         info["config_error"] = True
         return info

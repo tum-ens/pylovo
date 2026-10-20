@@ -20,7 +20,7 @@ Starting the API
    uv sync --extra api
    uv run --extra api pylovo-api      # http://127.0.0.1:8765/api/health, API docs at /docs
 
-``pylovo-api`` looks for ``config/config_generation.yaml`` in ``--root DIR``, ``$PYLOVO_ROOT``,
+``pylovo-api`` looks for ``config/config_generation_lv.yaml`` in ``--root DIR``, ``$PYLOVO_ROOT``,
 the current directory and its parents, and the checkout the package was installed from. The
 database is the one in the project's ``.env`` (or in the environment variables ``DBNAME``,
 ``DBUSER``, ``PASSWORD``, ``HOST`` and ``PORT``), exactly as for the command line. Other options:
@@ -92,7 +92,7 @@ into warnings.
 Configuration editing
 ---------------------
 
-The API edits ``config/config_generation.yaml`` either as text or through a form of the key
+The API edits ``config/config_generation_lv.yaml`` either as text or through a form of the key
 generation parameters (the help texts are the YAML comments). Form edits rewrite only the changed
 keys, so comments and layout stay. Every save can be previewed as a diff, validates the YAML and
 imports ``pylovo.config_loader`` against a temporary copy (this catches every error pylovo itself

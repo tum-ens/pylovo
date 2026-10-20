@@ -92,7 +92,7 @@ def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
 # --------------------------------------------------------------------------- sandbox database
 def _as_the_sandbox_was_generated(project):
     """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU and the 5 % / 1 % design limits: use the values they had."""
-    path = project / "config" / "config_generation.yaml"
+    path = project / "config" / "config_generation_lv.yaml"
     text = path.read_text()
     for key, value in (("LV_REFERENCE_VOLTAGE_PU", "null"), ("MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT", "8"),
                        ("MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", "3")):

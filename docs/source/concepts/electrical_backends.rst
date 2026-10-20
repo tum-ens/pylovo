@@ -11,7 +11,7 @@ specification (:class:`~pylovo.electrical_backend.core.specs.BusSpec`,
 :class:`~pylovo.electrical_backend.core.backend_base.IElectricalBackend` translates them into its
 own model, solves the power flow and exports the grid.
 
-``ELECTRICAL_BACKEND`` in ``config_generation.yaml`` selects the backend; backends are created by
+``ELECTRICAL_BACKEND`` in ``config_generation_lv.yaml`` selects the backend; backends are created by
 :func:`~pylovo.electrical_backend.factory.create_backend` and new ones can be registered with
 :func:`~pylovo.electrical_backend.factory.register_backend`.
 

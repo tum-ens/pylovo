@@ -1,0 +1,40 @@
+# =============================================================================
+# MEDIUM-VOLTAGE (MV) GRIDS
+# =============================================================================
+# The MV stage (pylovo-mv, or pylovo-generate --mv) plans the MV grids of a stored LV version. Every LV grid is one MV
+# node at its station, and the MV customers of the LV stage (MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW in
+# config_generation_lv.yaml) are MV nodes as well; one below 200 kW own peak (a large hall counts one storey) is
+# connected to the busbar of the nearest station within 1 km instead. Each HV/MV substation of OpenStreetMap supplies
+# the nodes nearest to it along the streets. The stage joins these nodes in open rings along the streets, connects
+# remote stations by stubs, adds normally-open links and ties as reserve, and checks the normal and the (n-1) cases
+# with pandapower. It never changes the LV grids.
+#
+# These keys are stored per MV variant (table pylovo.mv_variant), not in the snapshot of VERSION_ID. The fixed rules
+# and constants of the stage (pylovo.mv_grid.options) are stored with them. A variant is only continued with the same
+# parameters, so a changed key needs a new MV_VARIANT_ID.
+
+# Run the MV stage after the LV grids in pylovo-generate (pylovo-generate --mv / --no-mv override it)
+MV_GRID_GENERATION: False
+# Name of the MV variant (1 to 10 characters); one LV version can hold several MV variants
+MV_VARIANT_ID: "1"
+MV_VARIANT_COMMENT: default # Stored with a new MV variant
+# Nominal voltage in kV: 20, 10 or auto. auto plans a supply area at 10 kV when most of its installed MV/LV capacity
+# lies in municipalities with at least 5 MVA/km² (dense cities), else at 20 kV. The LV station transformers are stored
+# as 20/0.4 kV; pylovo-mv couple gives the stations of 10 kV areas 10/0.4 kV transformers.
+MV_NOMINAL_VOLTAGE_KV: auto
+# Most ring members (stations and MV customers) in one open ring. A rural member counts half, so a rural ring holds up
+# to twice as many; stations on stubs do not count.
+MV_MAX_STATIONS_PER_RING: 20
+# Cable type laid on new MV lines, a pandapower line type name (null: NA2XS2Y 1x240 RM/25 at 20 or 10 kV). An
+# overloaded line gets the next larger cable of the pandapower catalogue.
+MV_STANDARD_CABLE: null
+# Overhead line type where a planned line follows an MV overhead line mapped in OpenStreetMap; all other lines are
+# cables (null: 122-AL1/20-ST1A at 20 or 10 kV)
+MV_OVERHEAD_LINE: null
+# Planned current per ampacity of an MV line in normal operation. 0.6 keeps the reserve to supply the other half of
+# the ring when one ring end fails: in that (n-1) case lines may be loaded to 100 %.
+MV_LINE_PLANNING_UTILIZATION: 0.6
+# Voltage drop allowed in the MV grid in normal operation, in % of the nominal voltage, from the HV/MV busbar (held at
+# 1.02 p.u.) to every station: the MV share of the voltage band of DIN EN 50160 (the LV share is in
+# config_generation_lv.yaml)
+MV_MAX_VOLTAGE_DROP_PERCENT: 5

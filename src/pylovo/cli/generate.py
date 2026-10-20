@@ -5,7 +5,7 @@
 - One or more AGS: :func:`create_grids_for_ags` generates all PLZ of the municipalities.
 
 With ``USE_INFDB=False`` the building shapefiles are imported first (see
-:mod:`pylovo.data_import.import_buildings`). ``ANALYZE_GRIDS`` in ``config_generation.yaml``
+:mod:`pylovo.data_import.import_buildings`). ``ANALYZE_GRIDS`` in ``config_generation_lv.yaml``
 controls whether the basic analysis runs after generation.
 
 With ``MV_GRID_GENERATION: True`` (or ``--mv``) the MV stage (:func:`pylovo.mv_grid.stage.run_mv_stage`)
@@ -178,7 +178,7 @@ For more information, see the README: https://github.com/tum-ens/pylovo
                           help='Do not run the MV stage')
 
     args = parser.parse_args(argv)
-    # PARALLEL in config_generation.yaml is the default; the flags override it
+    # PARALLEL in config_generation_lv.yaml is the default; the flags override it
     parallel = PARALLEL if args.parallel is None else args.parallel
     run_mv = MV_GRID_GENERATION if args.mv is None else args.mv
     if run_mv:   # before the LV grids, not after them

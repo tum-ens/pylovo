@@ -139,7 +139,7 @@ def test_service_utilization_of_older_snapshots():
 ])
 def test_cable_utilization_key_and_its_former_name(tmp_path, keys, expected):
     shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
-    config = tmp_path / "config" / "config_generation.yaml"
+    config = tmp_path / "config" / "config_generation_lv.yaml"
     text = "".join(line for line in config.read_text().splitlines(keepends=True)
                    if not line.startswith(("CABLE_PLANNING_UTILIZATION:", "FEEDER_PLANNING_UTILIZATION:")))
     config.write_text(text.rstrip("\n") + "\n" + keys)

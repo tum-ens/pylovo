@@ -181,7 +181,7 @@ the other postcodes.
 Configuration editor
 --------------------
 
-The *Config* panel edits ``config/config_generation.yaml``. It has a form for the key generation
+The *Config* panel edits ``config/config_generation_lv.yaml``. It has a form for the key generation
 parameters, with the YAML comments as help texts, and a YAML editor for everything else. Form
 edits rewrite only the changed keys, so comments and layout stay. *Review & save* shows the diff
 and validates the file with pylovo's own loader, which catches every error pylovo itself would

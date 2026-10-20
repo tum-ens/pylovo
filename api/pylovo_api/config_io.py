@@ -1,4 +1,4 @@
-"""Reading, validating and saving ``config/config_generation.yaml``.
+"""Reading, validating and saving ``config/config_generation_lv.yaml`` (or the former ``config_generation.yaml``).
 
 ``pylovo.config_loader`` freezes all values when it is imported, so the UI never uses it for
 display: every request reads the YAML file fresh. Saving always
@@ -106,7 +106,7 @@ def sha(text: str) -> str:
 
 
 def read_config() -> ConfigSnapshot:
-    """Read ``config_generation.yaml`` fresh from disk."""
+    """Read the configuration file fresh from disk."""
     path = paths().config_file
     text = path.read_text(encoding="utf-8")
     try:
@@ -310,7 +310,7 @@ def _pylovo_import_check(text: str) -> list[dict]:
     config_dir = work / "config"
     try:
         shutil.copytree(paths().config_dir, config_dir, ignore=shutil.ignore_patterns("*.bak", "backups"))
-        (config_dir / "config_generation.yaml").write_text(text, encoding="utf-8")
+        (config_dir / paths().config_file.name).write_text(text, encoding="utf-8")
         probe = "import pylovo.config_loader as c; print('pylovo accepted VERSION_ID', repr(c.VERSION_ID))"
         proc = subprocess.run([sys.executable, "-c", probe], cwd=work, capture_output=True, text=True, timeout=120,
                               check=False)
@@ -349,8 +349,9 @@ def validate_text(text: str, deep: bool = True) -> tuple[dict[str, Any], list[di
 
 def diff(old: str, new: str) -> str:
     """Unified diff between the saved and the candidate configuration."""
+    name = paths().config_file.name
     return "".join(difflib.unified_diff([ln + "\n" for ln in old.splitlines()], [ln + "\n" for ln in new.splitlines()],
-                                        "config_generation.yaml (saved)", "config_generation.yaml (new)", n=2))
+                                        f"{name} (saved)", f"{name} (new)", n=2))
 
 
 # --------------------------------------------------------------------------- saving
@@ -378,7 +379,8 @@ def save_text(text: str, base_sha: str | None) -> dict[str, Any]:
     """
     current = read_config()
     if base_sha and base_sha != current.sha:
-        raise ConfigError("config_generation.yaml was changed on disk since you opened it. Reload and re-apply your edits.",
+        raise ConfigError(f"{paths().config_file.name} was changed on disk since you opened it. Reload and re-apply "
+                          "your edits.",
                           [{"level": "error", "message": "The file changed on disk (conflict).", "conflict": True}])
     if text == current.text:
         return {"saved": False, "backup": None, "sha": current.sha, "issues": []}

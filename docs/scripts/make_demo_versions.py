@@ -6,7 +6,7 @@ and the demo region in the InfDB-shaped ``basedata``/``opendata`` schemas.
 
 Three versions are generated with ``pylovo-generate --plz 85653``:
 
-* the version in ``config/config_generation.yaml`` as it is (default, greenfield);
+* the version in ``config/config_generation_lv.yaml`` as it is (default, greenfield);
 * ``docs_bf``: the same configuration with ``USE_OPEN_TRANSFORMER_POSITIONS: True``
   (brownfield: existing OSM/LoD2 transformer positions are used);
 * ``docs_km``: the same configuration with ``MAX_BUILDINGS_PER_KCID: 150`` so that
@@ -33,7 +33,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEMO_PLZ = 85653
 
-#: Version id -> configuration overrides (on top of config/config_generation.yaml).
+#: Version id -> configuration overrides (on top of config/config_generation_lv.yaml).
 DEMO_VERSIONS: dict[str, dict] = {
     "docs_bf": {
         "VERSION_COMMENT": "docs demo: brownfield with open transformer positions",
@@ -76,13 +76,13 @@ def main() -> None:
     if not args.skip_default:
         _run_generate(REPO_ROOT, args.plz)
 
-    base_config = yaml.safe_load((REPO_ROOT / "config" / "config_generation.yaml").read_text(encoding="utf-8"))
+    base_config = yaml.safe_load((REPO_ROOT / "config" / "config_generation_lv.yaml").read_text(encoding="utf-8"))
     for version_id, overrides in DEMO_VERSIONS.items():
         with tempfile.TemporaryDirectory(prefix=f"pylovo_{version_id}_") as tmp:
             workdir = Path(tmp)
             shutil.copytree(REPO_ROOT / "config", workdir / "config")
             config = dict(base_config, VERSION_ID=version_id, **overrides)
-            with open(workdir / "config" / "config_generation.yaml", "w", encoding="utf-8") as handle:
+            with open(workdir / "config" / "config_generation_lv.yaml", "w", encoding="utf-8") as handle:
                 yaml.safe_dump(config, handle, sort_keys=False, allow_unicode=True)
             _run_generate(workdir, args.plz)
 

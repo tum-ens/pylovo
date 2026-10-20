@@ -65,7 +65,7 @@ Set up the schema ``pylovo`` and generate grids (run the commands from the repos
    uv run pylovo-analyze --plz 80803 --all   # key figures
 
 ``pylovo-setup reset --database NAME`` explicitly deletes all PyLovo results; normal setup migrates in place. The
-grid parameters are in ``config/config_generation.yaml``; use a new ``VERSION_ID`` when you change
+grid parameters are in ``config/config_generation_lv.yaml``; use a new ``VERSION_ID`` when you change
 them. All commands and options are described in the
 `command-line reference <https://pylovo.readthedocs.io/en/latest/user_guide/cli.html>`_.
 

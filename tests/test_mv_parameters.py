@@ -251,17 +251,14 @@ def test_parse_assignment():
         "MV_STANDARD_CABLE", "NA2XS2Y 1x150 RM/25 12/20 kV")
     assert parse_assignment("MV_OVERHEAD_LINE=70-AL1/11-ST1A 20.0") == ("MV_OVERHEAD_LINE", "70-AL1/11-ST1A 20.0")
     assert parse_assignment("MV_STANDARD_CABLE=null") == ("MV_STANDARD_CABLE", None)
-    assert parse_assignment(" local_search_rounds = 0") == ("local_search_rounds", 0)
-    assert parse_assignment("hv_mv_sizes_mva=[40, 25]") == ("hv_mv_sizes_mva", (25.0, 40.0))
+    assert parse_assignment(" MV_LINE_PLANNING_UTILIZATION = 0.5") == ("MV_LINE_PLANNING_UTILIZATION", 0.5)
     assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=10") == ("MV_NOMINAL_VOLTAGE_KV", 10.0)
     assert parse_assignment("MV_NOMINAL_VOLTAGE_KV=auto") == ("MV_NOMINAL_VOLTAGE_KV", "auto")
-    assert parse_assignment("mv_10kv_min_density_mva_km2=0.1") == ("mv_10kv_min_density_mva_km2", 0.1)
-    assert parse_assignment("link_max_length_m={rural: 1000, semi_urban: 750, urban: 400}")[1]["urban"] == 400.0
-    assert parse_assignment("customer_min_mv_kw=300") == ("customer_min_mv_kw", 300.0)
-    assert parse_assignment("customer_hall_min_footprint_m2=1500") == ("customer_hall_min_footprint_m2", 1500.0)
-    assert parse_assignment("customer_hall_min_footprint_m2=null") == ("customer_hall_min_footprint_m2", None)
-    assert parse_assignment("busbar_customer_max_m=500") == ("busbar_customer_max_m", 500.0)
-    assert parse_assignment("busbar_customer_max_m=null") == ("busbar_customer_max_m", None)
+    # the constants are changed in Python (MvParameters.replace), with the same coercion
+    assert coerce_mv_value("hv_mv_sizes_mva", [40, 25]) == (25.0, 40.0)
+    assert coerce_mv_value("link_max_length_m", {"rural": 1000, "semi_urban": 750, "urban": 400})["urban"] == 400.0
+    assert coerce_mv_value("customer_hall_min_footprint_m2", None) is None
+    assert MvParameters().replace_raw({"customer_min_mv_kw": 300}).customer_min_mv_kw == 300.0
 
 
 @pytest.mark.parametrize("text, message", [
@@ -270,11 +267,12 @@ def test_parse_assignment():
     ("MV_VARIANT_ID=d2", "use --variant"),
     ("MV_VARIANT_COMMENT=x", "use --comment"),
     ("MV_GRID_GENERATION=True", "pylovo-generate --mv"),
-    ("MV_STUBS=none", "unknown MV parameter"),
-    ("MV_INCLUDE_GENERATION=true", "unknown MV parameter"),
-    ("lv_pv_cos_phi=0.95", "unknown MV parameter"),
+    ("MV_STUBS=none", "MV_STUBS is no longer supported: the MV stage always uses 'rural'"),
+    ("MV_INCLUDE_GENERATION=true", "MV_INCLUDE_GENERATION is no longer supported"),
+    ("lv_pv_cos_phi=0.95", "unknown MV key"),
+    ("local_search_rounds=0", "local_search_rounds is a constant of the MV stage"),
     ("MV_MAX_STATIONS_PER_RING=many", "MV_MAX_STATIONS_PER_RING must be an integer"),
-    ("local_search_rounds=[1", "not a valid YAML value"),
+    ("MV_MAX_STATIONS_PER_RING=[1", "not a valid YAML value"),
 ])
 def test_parse_assignment_rejects(text, message):
     with pytest.raises(ValueError, match=re.escape(message)):

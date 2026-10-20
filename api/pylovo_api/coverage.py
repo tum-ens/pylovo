@@ -185,7 +185,7 @@ _flag_cache: dict[str, Any] = {}
 def read_flags(config_file: Path | None = None) -> dict[str, bool]:
     """``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`` / ``RESIDENTIAL_ONLY_GENERATION`` of the current config.
 
-    Read from ``config_generation.yaml`` at request time (cached by mtime), because the gate must
+    Read from the LV configuration file at request time (cached by mtime), because the gate must
     follow config edits without a restart. A file that does not parse falls back to the values
     ``pylovo.config_loader`` loaded, instead of silently turning both filters off.
     """

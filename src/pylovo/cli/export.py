@@ -2,7 +2,7 @@
 
 Each export writes a line table and a bus table with WKT geometries (see
 :mod:`pylovo.plotting.gis_preparation.io_geodata`) for the ``VERSION_ID`` of
-``config_generation.yaml``.
+``config_generation_lv.yaml``.
 """
 import argparse
 import os

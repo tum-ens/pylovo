@@ -1,4 +1,4 @@
-"""Transformer ratings from ``config_generation.yaml`` (``TRANSFORMERS``) for the transformer UI."""
+"""Transformer ratings from ``config_generation_lv.yaml`` (``TRANSFORMERS``) for the transformer UI."""
 
 from typing import Dict, List
 

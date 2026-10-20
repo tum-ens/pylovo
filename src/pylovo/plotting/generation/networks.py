@@ -6,7 +6,7 @@
 - :func:`draw_tree_network`, :func:`draw_tree_network_spacing`, :func:`draw_radial_network`:
   networkx tree layouts of the grid topology (root: bus 1, the MV bus of pylovo grids).
 
-Grids are read for the ``VERSION_ID`` of ``config_generation.yaml``. Needs the ``plots`` extra;
+Grids are read for the ``VERSION_ID`` of ``config_generation_lv.yaml``. Needs the ``plots`` extra;
 :func:`plot_with_generic_coordinates` additionally needs ``python-igraph``.
 """
 

@@ -72,7 +72,7 @@ def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | N
 
     Args:
         dbc: Database client.
-        version_id: LV version; None: ``VERSION_ID`` of ``config/config_generation.yaml``.
+        version_id: LV version; None: ``VERSION_ID`` of ``config/config_generation_lv.yaml``.
         variants: MV variants; None: all variants of the version unless ``default_variant`` is set.
             Unknown ids are reported and dropped.
         default_variant: Preferred id or ordered ids when variants are omitted; otherwise the first available.

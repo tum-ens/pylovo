@@ -19,7 +19,7 @@ pylovo connects to an unexpected database
    The database is not reachable with the settings in ``.env``: check host, port, password and,
    for remote databases, the SSH tunnel.
 
-``FileNotFoundError: Config file 'config_generation.yaml' not found in any search location``
+``FileNotFoundError: Config file 'config_generation_lv.yaml' not found in any search location``
    Run the command from the repository root or set ``PYLOVO_CONFIG_DIR``
    (:ref:`config-file-lookup`).
 

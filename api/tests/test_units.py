@@ -10,7 +10,7 @@ from pylovo_api.jobs import JobManager, classify_line
 
 
 def test_form_edit_keeps_comments_and_layout(client, project):
-    text = (project / "config" / "config_generation.yaml").read_text()
+    text = (project / "config" / "config_generation_lv.yaml").read_text()
     values = yaml.safe_load(text)
     unchanged = config_io.set_top_level_values(text, {k: values[k] for k in config_io.FORM_FIELDS if k in values})
     assert unchanged == text
@@ -21,6 +21,14 @@ def test_form_edit_keeps_comments_and_layout(client, project):
     assert parsed["TRANSFORMER_MAPPING"] == {1: [100], 2: [250, 400], 3: [630]}
     assert "# Change version if you changed any grid parameters" in new
     assert len(new.splitlines()) == len(text.splitlines())  # only the changed lines were rewritten
+
+
+def test_a_project_with_the_former_config_name_is_edited_in_place(project):
+    from pylovo_api.settings import Paths, find_project_root
+
+    (project / "config" / "config_generation_lv.yaml").rename(project / "config" / "config_generation.yaml")
+    assert find_project_root(project) == project.resolve()
+    assert Paths(project).config_file == project / "config" / "config_generation.yaml"
 
 
 def test_validation_reports_yaml_and_pylovo_errors():
@@ -49,13 +57,13 @@ def test_config_save_requires_confirm_and_makes_a_backup(client, project):
     saved = client.post("/api/config/values", json=body | {"confirm": True}).json()
     assert saved["saved"] and saved["backup"]
     assert (project / ".pylovo-api" / "config-backups" / saved["backup"]).exists()
-    assert "VERSION_COMMENT: ui test" in (project / "config" / "config_generation.yaml").read_text()
+    assert "VERSION_COMMENT: ui test" in (project / "config" / "config_generation_lv.yaml").read_text()
     # a stale base hash is a conflict
     stale = client.post("/api/config/values", json={"changes": {"VERSION_COMMENT": "x"}, "base_sha": state["sha"], "confirm": True})
     assert stale.status_code == 409
     restored = client.post("/api/config/restore", json={"name": saved["backup"], "confirm": True}).json()
     assert restored["saved"]
-    assert "VERSION_COMMENT: default" in (project / "config" / "config_generation.yaml").read_text()
+    assert "VERSION_COMMENT: default" in (project / "config" / "config_generation_lv.yaml").read_text()
 
 
 def test_topology_labels_feeders_and_distances():

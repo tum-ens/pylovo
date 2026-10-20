@@ -4,7 +4,8 @@ Importing this module (which every pylovo module does, directly or through
 ``import pylovo``) reads
 
 * the database connection and path settings from a ``.env`` file, and
-* the four YAML files ``config_generation.yaml``, ``config_analysis.yaml``,
+* the YAML files ``config_generation_lv.yaml`` (the LV grids; its former name ``config_generation.yaml`` is still
+  read), ``config_generation_mv.yaml`` (the MV stage, from the same directory), ``config_analysis.yaml``,
   ``config_classification.yaml`` and ``config_clustering.yaml``,
 
 and exposes their entries as module-level constants (``VERSION_ID``, ``VN``,
@@ -30,6 +31,7 @@ of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``, the
 """
 
 import os
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -82,29 +84,25 @@ def get_config_search_paths():
     return search_paths
 
 
-def load_yaml_config(filename: str):
-    """Load a YAML configuration file from the first search path that contains it.
+def find_config_file(*filenames: str) -> Path:
+    """Return the config file of the first search path that contains one of ``filenames`` (the first of them).
 
     Args:
-        filename: Name of the config file (e.g., "config_generation.yaml")
-
-    Returns:
-        Loaded configuration dictionary
+        filenames: Names of the config file, e.g. ``"config_generation_lv.yaml", "config_generation.yaml"``
 
     Raises:
         FileNotFoundError: If no search path (see :func:`get_config_search_paths`)
-            contains the file.
+            contains one of the files.
     """
-    # Try user-defined locations
     for search_path in get_config_search_paths():
-        config_file = search_path / filename
-        if config_file.exists():
-            with open(config_file, "r", encoding="utf-8") as file:
-                return yaml.safe_load(file)
+        for filename in filenames:
+            config_file = search_path / filename
+            if config_file.exists():
+                return config_file
 
     # Config not found - provide helpful error message
     raise FileNotFoundError(
-        f"Config file '{filename}' not found in any search location.\n"
+        f"Config file '{' or '.join(filenames)}' not found in any search location.\n"
         f"Searched: {[str(p) for p in get_config_search_paths()]}\n\n"
         f"To get started:\n"
         f"1. Clone the repository: git clone https://github.com/tum-ens/pylovo.git\n"
@@ -113,6 +111,24 @@ def load_yaml_config(filename: str):
         f"4. Edit configs in config/ directory\n"
         f"5. Run: pylovo-setup\n"
     )
+
+
+def read_yaml(path: Path) -> dict:
+    """Read one YAML configuration file (an empty file gives an empty dictionary)."""
+    with open(path, "r", encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}
+
+
+def load_yaml_config(filename: str):
+    """Load a YAML configuration file from the first search path that contains it (:func:`find_config_file`).
+
+    Args:
+        filename: Name of the config file (e.g., "config_analysis.yaml")
+
+    Returns:
+        Loaded configuration dictionary
+    """
+    return read_yaml(find_config_file(filename))
 
 
 def get_required_env_var(var_name: str, description: str) -> str:
@@ -154,7 +170,7 @@ def get_int_env_var(var_name: str, default: int) -> int:
         raise ValueError(f"Environment variable '{var_name}' must be an integer, got: {value}") from exc
 
 def _consumer_categories_from_config(config_generation: dict, peak_load_household) -> pd.DataFrame:
-    """Build and validate the consumer category table of ``config_generation.yaml``.
+    """Build and validate the consumer category table of ``config_generation_lv.yaml``.
 
     A ``peak_load`` given as the string ``PEAK_LOAD_HOUSEHOLD`` is replaced by that
     value; ``null`` peak loads (categories sized per m2) become NaN.
@@ -197,7 +213,18 @@ load_dotenv(find_dotenv(), override=True)
 # Current working directory at import time (not the package location).
 PROJECT_ROOT = Path.cwd()
 
-CONFIG_GENERATION = load_yaml_config("config_generation.yaml")
+#: The configuration of the LV grids, then its name from before the MV keys moved to their own file.
+GENERATION_CONFIG_FILES: tuple[str, ...] = ("config_generation_lv.yaml", "config_generation.yaml")
+#: The configuration of the MV stage, read from the directory of the LV configuration.
+GENERATION_MV_CONFIG_FILE = "config_generation_mv.yaml"
+CONFIG_GENERATION_FILE = find_config_file(*GENERATION_CONFIG_FILES)
+if (CONFIG_GENERATION_FILE.name != GENERATION_CONFIG_FILES[-1]
+        and (CONFIG_GENERATION_FILE.parent / GENERATION_CONFIG_FILES[-1]).exists()):
+    warnings.warn(f"{CONFIG_GENERATION_FILE.parent / GENERATION_CONFIG_FILES[-1]} is not read: "
+                  f"{CONFIG_GENERATION_FILE.name} in the same folder replaces it", stacklevel=1)
+CONFIG_GENERATION = read_yaml(CONFIG_GENERATION_FILE)
+CONFIG_GENERATION_MV_FILE = CONFIG_GENERATION_FILE.parent / GENERATION_MV_CONFIG_FILE
+CONFIG_GENERATION_MV = read_yaml(CONFIG_GENERATION_MV_FILE) if CONFIG_GENERATION_MV_FILE.exists() else {}
 CONFIG_ANALYSIS = load_yaml_config("config_analysis.yaml")
 CONFIG_CLASSIFICATION = load_yaml_config("config_classification.yaml")
 CONFIG_CLUSTERING = load_yaml_config("config_clustering.yaml")
@@ -427,15 +454,35 @@ CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS = CONFIG_GENERATION.get("CONNECTION_P
 K_MEANS_SEED = CONFIG_GENERATION["K_MEANS_SEED"]
 
 # =============================================================================
-# MEDIUM-VOLTAGE (MV) GRID CONFIGURATION (from CONFIG_GENERATION)
+# MEDIUM-VOLTAGE (MV) GRID CONFIGURATION (from CONFIG_GENERATION_MV)
 # =============================================================================
 # Not in the snapshot of VERSION_ID: the MV stage stores them per MV variant (pylovo.mv_variant), and only
 # pylovo.mv_grid.parameters.MvParameters.from_config reads them. Rules and defaults: pylovo.mv_grid.options;
-# a missing key takes the shipped value, so configurations without these keys keep importing.
+# a missing key takes the shipped value, so configurations without these keys keep importing. The MV_* keys of the
+# MV stage in the LV file (as in the former config_generation.yaml) are still read.
+
+
+def _mv_config(lv: dict, mv: dict) -> dict:
+    """The MV stage keys of both files; a key may be in both only with the same value."""
+    names = set(_mv_options.YAML_KEYS) | set(_mv_options.REMOVED_YAML_KEYS)
+    for key in mv:
+        if key not in names:
+            raise ValueError(f"{key} is no key of the MV stage (the LV keys belong in {CONFIG_GENERATION_FILE.name}): "
+                             f"{GENERATION_MV_CONFIG_FILE} holds only {', '.join(_mv_options.YAML_KEYS)}")
+    config = {key: value for key, value in lv.items() if key in names}
+    for key, value in mv.items():
+        if key in config and config[key] != value:
+            raise ValueError(f"{key} is set in {CONFIG_GENERATION_FILE.name} and in {GENERATION_MV_CONFIG_FILE} with "
+                             f"different values; keep it in {GENERATION_MV_CONFIG_FILE} only")
+        config[key] = value
+    return config
+
+
+CONFIG_MV = _mv_config(CONFIG_GENERATION, CONFIG_GENERATION_MV)
 
 
 def _mv_value(key: str):
-    return _mv_options.coerce_mv_value(key, CONFIG_GENERATION.get(key, _mv_options.YAML_KEYS[key].default))
+    return _mv_options.coerce_mv_value(key, CONFIG_MV.get(key, _mv_options.YAML_KEYS[key].default))
 
 
 # Execution flag (in no snapshot): run the MV stage after the LV grids in pylovo-generate (--mv / --no-mv)
@@ -448,7 +495,7 @@ MV_STANDARD_CABLE = _mv_value("MV_STANDARD_CABLE")
 MV_OVERHEAD_LINE = _mv_value("MV_OVERHEAD_LINE")
 MV_LINE_PLANNING_UTILIZATION = _mv_value("MV_LINE_PLANNING_UTILIZATION")
 MV_MAX_VOLTAGE_DROP_PERCENT = _mv_value("MV_MAX_VOLTAGE_DROP_PERCENT")
-_mv_options.check_removed_keys(CONFIG_GENERATION)
+_mv_options.check_removed_keys(CONFIG_MV)
 
 # =============================================================================
 # ANALYSIS CONFIGURATION (from CONFIG_ANALYSIS)

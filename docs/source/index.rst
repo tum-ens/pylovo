@@ -59,7 +59,7 @@ GIS data.
       :link: user_guide/configuration
       :link-type: doc
 
-      Every key of ``config_generation.yaml``, ``config_analysis.yaml`` and ``.env``.
+      Every key of ``config_generation_lv.yaml``, ``config_generation_mv.yaml``, ``config_analysis.yaml`` and ``.env``.
 
    .. grid-item-card:: Command-line reference
       :link: user_guide/cli

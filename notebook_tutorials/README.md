@@ -70,8 +70,8 @@ stored outputs.
   uv run pylovo-generate --plz 85653
   ```
 
-  Grids are read for the `VERSION_ID` of `config/config_generation.yaml`. `4_basic_plotting.ipynb`
-  also needs the PLZ analysis (`ANALYZE_GRIDS: True` in `config/config_generation.yaml`, or
+  Grids are read for the `VERSION_ID` of `config/config_generation_lv.yaml`. `4_basic_plotting.ipynb`
+  also needs the PLZ analysis (`ANALYZE_GRIDS: True` in `config/config_generation_lv.yaml`, or
   `uv run pylovo-analyze --plz 85653`).
 - Internet access for the basemap tiles of the map plots (OpenStreetMap) and for plotly.js,
   which the interactive plots load from a CDN.

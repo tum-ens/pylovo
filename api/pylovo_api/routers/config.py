@@ -1,4 +1,4 @@
-"""``config_generation.yaml``: form values, raw editor, validation, backups."""
+"""``config_generation_lv.yaml``: form values, raw editor, validation, backups."""
 from __future__ import annotations
 
 from typing import Any
@@ -65,7 +65,8 @@ def validate(body: TextBody) -> dict:
 def save(body: TextBody) -> dict:
     """Overwrite the file with a validated text; the old file is kept as a backup."""
     if not body.confirm:
-        raise HTTPException(400, "Saving overwrites config_generation.yaml; send confirm=true after reviewing the diff.")
+        raise HTTPException(400, f"Saving overwrites {config_io.paths().config_file.name}; send confirm=true after "
+                                 "reviewing the diff.")
     try:
         result = config_io.save_text(body.text, body.base_sha)
     except config_io.ConfigError as exc:

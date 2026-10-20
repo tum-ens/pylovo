@@ -21,7 +21,7 @@ see :ref:`file-based-input`. All settings are listed under :ref:`env-variables`.
 2. Review the configuration
 ---------------------------
 
-Check ``VERSION_ID`` and ``VERSION_COMMENT`` in ``config/config_generation.yaml``. Use a new
+Check ``VERSION_ID`` and ``VERSION_COMMENT`` in ``config/config_generation_lv.yaml``. Use a new
 number whenever you change generation parameters (:ref:`versions`).
 
 3. Set up the pylovo schema

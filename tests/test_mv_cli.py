@@ -64,11 +64,11 @@ def test_parser_regions_and_options():
     assert args.case == "load" and args.coupled is False
 
 
-def test_set_takes_yaml_keys_and_constants():
+def test_set_takes_yaml_keys():
     parser = cli.build_parser()
     args = parser.parse_args(["generate", "--version", "mv1", "--all", "--set", "MV_MAX_STATIONS_PER_RING=15",
-                              "local_search_rounds=0", "--set", "MV_STANDARD_CABLE=NA2XS2Y 1x150 RM/25 12/20 kV"])
-    assert args.assignments == [("MV_MAX_STATIONS_PER_RING", 15), ("local_search_rounds", 0),
+                              "MV_LINE_PLANNING_UTILIZATION=0.5", "--set", "MV_STANDARD_CABLE=NA2XS2Y 1x150 RM/25 12/20 kV"])
+    assert args.assignments == [("MV_MAX_STATIONS_PER_RING", 15), ("MV_LINE_PLANNING_UTILIZATION", 0.5),
                                 ("MV_STANDARD_CABLE", "NA2XS2Y 1x150 RM/25 12/20 kV")]
 
 
@@ -77,10 +77,12 @@ def test_set_takes_yaml_keys_and_constants():
     ("MV_VARIANT_ID=x", "use --variant"),
     ("MV_VARIANT_COMMENT=x", "use --comment"),
     ("MV_MAX_STATIONS_PER_RING=many", "MV_MAX_STATIONS_PER_RING must be an integer"),
-    ("stub_max_kwa=3", "did you mean stub_max_kva"),
+    ("MV_MAX_STATION_PER_RING=3", "did you mean MV_MAX_STATIONS_PER_RING"),
+    ("stub_max_kva=3", "stub_max_kva is a constant of the MV stage"),
+    ("MV_STUBS=none", "MV_STUBS is no longer supported"),
     ("MV_MAX_STATIONS_PER_RING", "KEY=VALUE"),
 ])
-def test_set_rejects_execution_keys_and_bad_values(assignment, message, capsys):
+def test_set_rejects_execution_keys_constants_and_bad_values(assignment, message, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.build_parser().parse_args(["generate", "--version", "mv1", "--all", "--set", assignment])
     assert exc.value.code == 2
@@ -97,12 +99,13 @@ def test_generate_runs_the_stage_with_the_variant(monkeypatch, capsys, no_grid_g
 
     monkeypatch.setattr(stage, "run_mv_stage", fake_run)
     cli.main(["generate", "--version", "mv1", "--plz", "80803", "80802", "80803", "--variant", "d0",
-              "--comment", "cable rings", "--set", "MV_MAX_STATIONS_PER_RING=15", "local_search_rounds=0", "--no-parallel",
+              "--comment", "cable rings", "--set", "MV_MAX_STATIONS_PER_RING=15", "MV_LINE_PLANNING_UTILIZATION=0.5",
+              "--no-parallel",
               "--jobs", "2", "--replace"])
     (version_id, plz_list, params, kwargs), = calls
     assert version_id == "mv1" and plz_list == [80802, 80803]
-    assert (params.variant_id, params.comment, params.max_stations_per_ring, params.local_search_rounds) == (
-        "d0", "cable rings", 15, 0)
+    assert (params.variant_id, params.comment, params.max_stations_per_ring, params.line_utilization) == (
+        "d0", "cable rings", 15, 0.5)
     assert kwargs == {"parallel": False, "jobs": 2, "replace": True}
     out = capsys.readouterr().out.splitlines()
     assert out and all(line.startswith(("✓", "✗")) for line in out)

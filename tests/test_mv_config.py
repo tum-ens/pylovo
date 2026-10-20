@@ -1,4 +1,4 @@
-"""The ``MV_*`` keys of ``config_generation.yaml`` and their loader block in ``pylovo.config_loader``.
+"""The ``MV_*`` keys of ``config_generation_mv.yaml`` and their loader block in ``pylovo.config_loader``.
 
 The import tests run ``import pylovo.config_loader`` in a subprocess against a temporary copy of ``config/``
 (the pattern of ``tests/test_generation_config.py``); none of them opens a database connection.
@@ -23,7 +23,7 @@ PROBE = ("import pylovo.config_loader as c; "
 
 
 def shipped_text() -> str:
-    return (CONFIG / "config_generation.yaml").read_text(encoding="utf-8")
+    return (CONFIG / "config_generation_mv.yaml").read_text(encoding="utf-8")
 
 
 def test_shipped_values_equal_the_defaults():
@@ -44,7 +44,9 @@ def test_every_key_has_its_help_text_directly_above_or_inline():
         if key in YAML_KEYS:
             assert lines[i - 1].startswith("# ") or " # " in line, key
     keys = [line.split(":", 1)[0] for line in lines if line[:1].isupper() and ":" in line]
-    assert keys[-len(YAML_KEYS):] == list(YAML_KEYS)          # the last section, in the order of YAML_KEYS
+    assert keys == list(YAML_KEYS)                            # only the MV keys, in the order of YAML_KEYS
+    lv_keys = (CONFIG / "config_generation_lv.yaml").read_text(encoding="utf-8").splitlines()
+    assert not any(line.split(":", 1)[0] in YAML_KEYS for line in lv_keys)
 
 
 def test_loader_exposes_the_keys():
@@ -56,11 +58,13 @@ def test_loader_exposes_the_keys():
     assert names == {*YAML_KEYS, "MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"}     # the latter is an LV-version key
 
 
-def run_probe(tmp_path: Path, replace: dict[str, str | None]) -> subprocess.CompletedProcess:
-    """Import the loader with ``config_generation.yaml`` changed: key -> new line (None drops the key line; a key
-    that is not in the file is appended)."""
-    shutil.copytree(CONFIG, tmp_path / "config")
-    path = tmp_path / "config" / "config_generation.yaml"
+def run_probe(tmp_path: Path, replace: dict[str, str | None], file: str = "config_generation_mv.yaml"
+              ) -> subprocess.CompletedProcess:
+    """Import the loader with ``file`` of ``config/`` changed: key -> new line (None drops the key line; a key that
+    is not in the file is appended)."""
+    if not (tmp_path / "config").exists():
+        shutil.copytree(CONFIG, tmp_path / "config")
+    path = tmp_path / "config" / file
     out, seen = [], set()
     for line in path.read_text(encoding="utf-8").splitlines():
         key = line.split(":", 1)[0]
@@ -79,6 +83,39 @@ def test_a_config_without_mv_keys_imports_with_the_defaults(tmp_path):
     proc = run_probe(tmp_path, {name: None for name in YAML_KEYS})
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.split() == ["False", "1", "auto", "20", "0.6", "None", "True"]
+
+
+def test_mv_keys_of_the_lv_file_are_still_read(tmp_path):
+    """An older configuration has the MV keys in config_generation.yaml (now config_generation_lv.yaml)."""
+    shutil.copytree(CONFIG, tmp_path / "config")
+    (tmp_path / "config" / "config_generation_mv.yaml").unlink()
+    (tmp_path / "config" / "config_generation_lv.yaml").rename(tmp_path / "config" / "config_generation.yaml")
+    proc = run_probe(tmp_path, {"MV_VARIANT_ID": "7", "MV_MAX_STATIONS_PER_RING": "15"}, file="config_generation.yaml")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.split()[:4] == ["False", "7", "auto", "15"]
+
+
+def test_the_former_file_next_to_the_lv_file_is_reported_as_not_read(tmp_path):
+    shutil.copytree(CONFIG, tmp_path / "config")
+    shutil.copy(tmp_path / "config" / "config_generation_lv.yaml", tmp_path / "config" / "config_generation.yaml")
+    proc = run_probe(tmp_path, {})
+    assert proc.returncode == 0, proc.stderr
+    assert "config_generation.yaml is not read: config_generation_lv.yaml in the same folder replaces it" in proc.stderr
+
+
+def test_a_key_in_both_files_needs_the_same_value(tmp_path):
+    same = run_probe(tmp_path, {"MV_MAX_STATIONS_PER_RING": "20"}, file="config_generation_lv.yaml")
+    assert same.returncode == 0, same.stderr
+    other = run_probe(tmp_path, {"MV_MAX_STATIONS_PER_RING": "15"}, file="config_generation_lv.yaml")
+    assert other.returncode != 0
+    assert ("MV_MAX_STATIONS_PER_RING is set in config_generation_lv.yaml and in config_generation_mv.yaml with "
+            "different values") in other.stderr
+
+
+def test_the_mv_file_holds_only_mv_keys(tmp_path):
+    proc = run_probe(tmp_path, {"MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW": "200"})
+    assert proc.returncode != 0
+    assert "MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW is no key of the MV stage" in proc.stderr
 
 
 def test_valid_values_are_coerced(tmp_path):

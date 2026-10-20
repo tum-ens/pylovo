@@ -11,12 +11,20 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-CONFIG_FILE = "config_generation.yaml"
+#: The configuration the UI edits (the LV grids), then its name from before the MV keys moved to
+#: ``config_generation_mv.yaml``; the first one that exists is used.
+CONFIG_FILES = ("config_generation_lv.yaml", "config_generation.yaml")
+CONFIG_FILE = CONFIG_FILES[0]
 STATE_DIR_NAME = ".pylovo-api"
 
 
+def _config_file(config_dir: Path) -> Path:
+    """The configuration file of a ``config/`` directory (:data:`CONFIG_FILES`; the first name if none exists)."""
+    return next((config_dir / name for name in CONFIG_FILES if (config_dir / name).is_file()), config_dir / CONFIG_FILE)
+
+
 def _is_project_root(path: Path) -> bool:
-    return (path / "config" / CONFIG_FILE).is_file()
+    return _config_file(path / "config").is_file()
 
 
 def find_project_root(explicit: str | os.PathLike | None = None) -> Path:
@@ -26,7 +34,8 @@ def find_project_root(explicit: str | os.PathLike | None = None) -> Path:
     directory and its parents, and finally the source checkout this package lives in.
 
     Raises:
-        FileNotFoundError: If no directory with ``config/config_generation.yaml`` is found.
+        FileNotFoundError: If no directory with ``config/config_generation_lv.yaml`` (or the former
+            ``config/config_generation.yaml``) is found.
     """
     if explicit:
         path = Path(explicit).expanduser().resolve()
@@ -60,7 +69,7 @@ class Paths:
 
     @property
     def config_file(self) -> Path:
-        return self.config_dir / CONFIG_FILE
+        return _config_file(self.config_dir)
 
     @property
     def state_dir(self) -> Path:
