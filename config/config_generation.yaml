@@ -26,7 +26,7 @@ CONSUMER_CATEGORIES:
   - {consumer_category_id: 1, definition: Commercial, peak_load: null, yearly_consumption: null, peak_load_per_m2: 79.00, yearly_consumption_per_m2: 245.70, sim_factor: 0.50}
   - {consumer_category_id: 2, definition: Public, peak_load: null, yearly_consumption: null, peak_load_per_m2: 29.00, yearly_consumption_per_m2: 155.70, sim_factor: 0.60}
   - {consumer_category_id: 3, definition: Residential, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
-  - {consumer_category_id: 4, definition: Unknown, peak_load: null, yearly_consumption: null, peak_load_per_m2: 29.00, yearly_consumption_per_m2: 155.70, sim_factor: 0.60}
+  - {consumer_category_id: 4, definition: Unknown, peak_load: null, yearly_consumption: null, peak_load_per_m2: 0.00, yearly_consumption_per_m2: 0.00, sim_factor: 0.60}
 
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
@@ -76,7 +76,7 @@ MAX_PARALLEL_FEEDER_CABLES: 4
 
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 
-FEEDER_SPLIT_MAX_CURRENT_KA: 0.850
+FEEDER_SPLIT_MAX_CURRENT_KA: 0.4
 
 # Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a high value.
 MIN_SHARED_PREFIX_LENGTH_M: 50
@@ -101,9 +101,9 @@ URBAN_MAX_BUILDING_DISTANCE: 29 # Maximum average distance between buildings for
 
 ### Transformer mapping: Settlement Type (1=low/rural,2=medium/semi-urban,3=high/urban) -> Allowed Transformer Capacities (s_max_kva)
 TRANSFORMER_MAPPING:
-  1: [100, 160, 250, 400]
-  2: [250, 400, 630]
-  3: [400, 630, 800]
+  1: [250, 400]
+  2: [400, 630]
+  3: [400, 630]
 
 # =============================================================================
 # Clustering PARAMETERS
@@ -116,10 +116,10 @@ K_MEANS_SEED: 3329829316 # k-means integer seed to ensure deterministic behavior
 ## Greenfield
 MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Mean maximum distance from a greenfield transformer to any cluster connection point
 MAX_GREENFIELD_TRAFO_DISTANCE_STD: 250 # Per-cluster spread of that limit (normal, clipped to +/- 2 std); 0 = fixed limit
-GREENFIELD_TRAFO_POSITION_TOLERANCE: 1.0 # Random station among positions costing at most (1 + tolerance) x the optimum; 0 = optimal
-MERGE_GREENFIELD_CLUSTERS: False # Merge neighboring greenfield clusters as posprocessing step; with existing stations, clusters still small afterwards join the nearest station within MAX_BROWNFIELD_TRAFO_DISTANCE
-GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [400] # Select transformer capacities for merging
-GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null # Merge a pair only if its smaller cluster has at most this many buildings; null = any size
+GREENFIELD_TRAFO_POSITION_TOLERANCE: 0.3 # Random station among positions costing at most (1 + tolerance) x the optimum; 0 = optimal
+MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters as posprocessing step; with existing stations, clusters still small afterwards join the nearest station within MAX_BROWNFIELD_TRAFO_DISTANCE
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [250, 400, 630] # Select transformer capacities for merging
+GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: 4 # Merge a pair only if its smaller cluster has at most this many buildings; null = any size
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
