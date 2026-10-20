@@ -4,7 +4,7 @@ This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
 :class:`~pylovo.mv_grid.model.TopologyPlan` (DESIGN §4.2, §4.5, §4.7):
 
 1. **Rings** from the solver, each link routed along the run graph or as a straight span (:func:`distance_model`).
-   The busbar legs always follow the run graph as cables.
+   The busbar legs always follow the run graph: as cables, or with ``MV_OVERHEAD_LINES`` osm partly on OSM MV lines.
 2. **Rural stubs** (``MV_STUBS: rural``): a rural station or MV customer leaves its ring for a T-off when that saves
    more ring length than the T-off costs (``saving > spur``, ``spur > stub_min_offset_m``), the stub tree stays
    within ``stub_max_kva`` and within the length of its load (``stub_max_length_m``, and load x length at most
@@ -127,8 +127,9 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
     an overhead line and takes the straight span (``overhead_detour`` × straight) where that is shorter than the
     street path; with crowfly every link is a straight span of ``crowfly_detour`` × straight.
 
-    The **busbar legs** (links from or to the busbar) are cables and, with street routing, follow the run graph:
-    feeders leave HV/MV substations as cables in shared trenches, not as straight overhead spokes.
+    The **busbar legs** (links from or to the busbar) never become straight spans: with street routing they follow the
+    run graph, as cables in shared trenches rather than straight overhead spokes. With ``MV_OVERHEAD_LINES`` osm they
+    are treated like every other link, overhead where their route runs on OSM MV lines.
 
     With ``MV_OVERHEAD_LINES`` osm (and street routing) there are no straight spans and no settlement rule: every link
     follows the run graph, and its overhead length is the part of the route on OSM MV lines (``overhead_m``,

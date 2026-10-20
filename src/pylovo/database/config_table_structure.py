@@ -558,7 +558,7 @@ CREATE_QUERIES = {
         voltage_class varchar(8),                        -- generator: mv | mvlv | hvmv (after the level rules)
         technology varchar(32),                          -- generator: technology mix label, e.g. 'wind' or 'solar+other'
         plz integer,
-        plz_settlement_type integer,                     -- postcode_result.settlement_type (comparison only)
+        plz_settlement_type integer,                     -- postcode_result.settlement_type (reach of the links)
         settlement_id bigint,                            -- settlement of the attach edge (NULL: open field)
         area_class varchar(8),                           -- urban | rural
         station_source varchar(24),                      -- greenfield | osm | lod2 | dso | manual | brownfield_unlinked | lv_bus_fallback | external
@@ -619,7 +619,7 @@ CREATE_QUERIES = {
         mv_grid_id bigint NOT NULL,                      -- owning grid (ties: grid of from_node)
         from_node bigint NOT NULL,
         to_node bigint NOT NULL,
-        role varchar(16) NOT NULL,                       -- ring | stub | dedicated | generator | tie
+        role varchar(16) NOT NULL,                       -- ring | stub | dedicated | generator | tie | link
         kind varchar(8) NOT NULL,                        -- cable | overhead | mixed
         feeder_id integer,
         ring_id integer,
