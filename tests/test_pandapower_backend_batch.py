@@ -126,3 +126,27 @@ def test_queued_buses_answer_lookups_and_unknown_elements_fail_at_once():
         with pytest.raises(PandapowerBackendError, match="Unknown standard line type"):
             backend.create_component(LineSpec(name="x", bus1="a", bus2="a", cable_name="NAYY_4_999"))
         assert list(backend.net.bus.name) == ["a"]  # reading net creates the queued elements
+
+
+def test_lines_shorter_than_a_metre_get_one_metre_and_the_flow_converges():
+    """Two buses at one point give a line of a few micrometres (an LV net of 2026-10-19 had 8e-9 km)."""
+    backend = PandapowerBackend(logger=logging.getLogger("short-line-test"))
+    backend.initialize_circuit(name="PLZ1_kcid1_bcid1", source_bus="MVbus 1", primary_kv=20.0)
+    backend.register_cable_types(CABLES)
+    buses, grid, nodes, consumers, loads, feeders, services = _specs()
+    feeders[1] = LineSpec(name="Line to 2", bus1="Connection Nodebus 1", bus2="Connection Nodebus 2",
+                          cable_name="NAYY_4_150", length_km=8e-12, parallel=1)
+    with backend.batch():
+        for spec in buses + grid + nodes:
+            backend.create_component(spec)
+        for consumer, load in zip(consumers, loads):
+            backend.create_component(consumer)
+            backend.create_component(load)
+        for spec in feeders + services:
+            backend.create_component(spec)
+    net = backend.net
+    from pylovo.electrical_backend.pandapower.backend import MIN_LINE_KM
+    assert net.line.loc[net.line["name"] == "Line to 2", "length_km"].item() == MIN_LINE_KM
+    assert net.line.loc[net.line["name"] == "Line to 1", "length_km"].item() == pytest.approx(0.03)
+    pp.runpp(net)
+    assert net.converged

@@ -221,7 +221,7 @@ Loads and general grid settings
        drops.
      - ✓
    * - ``CONSUMER_CATEGORIES``
-     - 3 rows
+     - 4 rows
      - Electrical load categories, see below.
      - ✓
    * - ``VN``
@@ -271,7 +271,7 @@ Loads and general grid settings
        ``FEEDER_STANDARD_CABLE``.
      - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
-     - ``0.850``
+     - ``0.4``
      - Topology parameter: maximum coincident current (kA) while connection points are grouped
        into one planned branch. Not a cable limit.
      - ✓
@@ -327,7 +327,8 @@ Loads and general grid settings
    * - ``consumer_category_id``
      - Integer key of the category.
    * - ``definition``
-     - Category name. The load model uses ``Residential``, ``Commercial`` and ``Public``.
+     - Category name. The load model uses ``Residential``, ``Commercial``, ``Public`` and ``Unknown``
+       (buildings of unknown use; the shipped 0 W/m² gives them no load, so they stay out of the grids).
    * - ``peak_load``
      - Installed peak per load unit in kW (residential: per household).
    * - ``peak_load_per_m2``
@@ -369,9 +370,9 @@ Transformer placement and settlement type
      - Mean distance (m) at or below which the distance score is fully urban.
      - ✓
    * - ``TRANSFORMER_MAPPING``
-     - ``1: [100, 160, 250, 400]``
-       ``2: [250, 400, 630]``
-       ``3: [400, 630, 800]``
+     - ``1: [250, 400]``
+       ``2: [400, 630]``
+       ``3: [400, 630]``
      - Transformer ratings (kVA) allowed per settlement type (1 rural, 2 semi-urban, 3 urban).
        Every rating must exist in ``TRANSFORMERS``.
      - ✓
@@ -409,7 +410,7 @@ Clustering
        to ±2 standard deviations; ``0`` uses one fixed limit.
      - ✓
    * - ``GREENFIELD_TRAFO_POSITION_TOLERANCE``
-     - ``1.0``
+     - ``0.3``
      - The greenfield station is drawn at random among the feasible positions whose
        load-weighted distance is at most (1 + tolerance) times the optimum; ``0`` takes the
        optimum.
@@ -420,7 +421,7 @@ Clustering
        above *P* / 0.8. Used for sizing and for splitting clusters.
      - ✓
    * - ``MERGE_GREENFIELD_CLUSTERS``
-     - ``False``
+     - ``True``
      - After splitting, merge neighbouring greenfield clusters if the merged cluster still fits
        one transformer of the ratings below and the distance limit. Where existing
        (brownfield) stations are used, a greenfield cluster that still has at most
@@ -429,11 +430,11 @@ Clustering
        station's rating (a few buildings at the edge of its area). Needs a building limit.
      - ✓
    * - ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``
-     - ``[400]``
+     - ``[250, 400, 630]``
      - Ratings (kVA) allowed for merged clusters.
      - ✓
    * - ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``
-     - ``null``
+     - ``4``
      - Merge a pair only if its smaller cluster has at most this many loaded buildings: small
        fragments of the split join their nearest feasible neighbour, larger clusters stay as
        split. ``null`` merges clusters of any size.
