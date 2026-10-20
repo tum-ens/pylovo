@@ -1,7 +1,8 @@
 """Read-only database access of the viewer.
 
-Every transaction is read-only (psycopg2 ``readonly=True``, i.e. ``BEGIN READ ONLY``) and gets a
-statement timeout, so the viewer cannot change the database even by mistake. Connections are
+Every connection starts read-only (``default_transaction_read_only=on`` in its startup options),
+every transaction is read-only as well (psycopg2 ``readonly=True``, i.e. ``BEGIN READ ONLY``) and gets
+a statement timeout, so the viewer cannot change the database even by mistake. Connections are
 pooled; a connection that broke (for example after a database restart) is dropped and the query is
 retried once on a fresh one.
 """
@@ -19,6 +20,7 @@ import psycopg2.pool
 from pylovo_viewer.settings import Settings
 
 APPLICATION_NAME = "pylovo-viewer"
+READ_ONLY_OPTIONS = "-c default_transaction_read_only=on"
 
 
 class DatabaseError(RuntimeError):
@@ -39,7 +41,7 @@ class Database:
         self._pool = psycopg2.pool.ThreadedConnectionPool(
             0, max_connections, dbname=settings.dbname, user=settings.user, password=settings.password,
             host=settings.host, port=settings.port, connect_timeout=connect_timeout_s,
-            application_name=APPLICATION_NAME)
+            application_name=APPLICATION_NAME, options=READ_ONLY_OPTIONS)
         self._slots = threading.BoundedSemaphore(max_connections)   # the pool raises instead of waiting
 
     @contextmanager

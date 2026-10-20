@@ -3,9 +3,10 @@ Map viewer
 
 ``pylovo-viewer`` shows the database of your ``.env`` as an interactive map in the browser: the
 German high-voltage grid, the MV grids of an MV run and the LV grids of a version. It is the quick
-alternative to the QGIS templates (:doc:`exporting_visualising`). It only reads: every query runs in
-a read-only transaction, and the viewer never creates, migrates or resets anything. For setup,
-generation and editing use GridPlanner (:doc:`browser_ui`).
+alternative to the QGIS templates (:doc:`exporting_visualising`). It only reads: its connections
+start read-only (``default_transaction_read_only``), every query runs in a read-only transaction, and
+the viewer never creates, migrates or resets anything. For setup, generation and editing use
+GridPlanner (:doc:`browser_ui`).
 
 .. figure:: /images/viewer/viewer-detail.png
    :alt: The map viewer with LV grids coloured by grid and one selected feeder section
