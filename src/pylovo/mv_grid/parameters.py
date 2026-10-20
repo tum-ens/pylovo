@@ -572,8 +572,9 @@ class LvVersionParameters:
 
         Raises:
             MvStageError: If the snapshot is missing, has no sim factor for one of the four consumer categories,
-                no positive peak load per m² for one of the non-residential categories, no valid power factor or
-                MV-direct threshold, or another electrical backend than pandapower.
+                no peak load per m² of at least 0 for one of the non-residential categories (0 W/m² gives no LV load,
+                so such buildings are no MV customers), no valid power factor or MV-direct threshold, or another
+                electrical backend than pandapower.
         """
         if gp is None:
             raise MvStageError(f"LV version {version_id} has no generation parameter snapshot "
@@ -596,7 +597,7 @@ class LvVersionParameters:
         if missing:
             raise MvStageError(f"the snapshot of LV version {version_id} has no peak load per m² for "
                                f"{', '.join(missing)} (load_calculation.consumer_categories)")
-        peak_load_per_m2 = {c: _number(per_m2[c], f"peak load per m² of {c}", version_id, low=0.0, low_open=True)
+        peak_load_per_m2 = {c: _number(per_m2[c], f"peak load per m² of {c}", version_id, low=0.0)
                             for c in NONRESIDENTIAL_CATEGORIES}
         power_factor = _number(load.get("default_power_factor"), "default power factor", version_id,
                                low=0.0, high=1.0, low_open=True)

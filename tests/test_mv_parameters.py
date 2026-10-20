@@ -669,7 +669,7 @@ def test_lv_parameters_fallbacks(lv_snapshot, caplog):
     (lambda s: s["cable_dimensioning"].pop("mv_direct_connection_load_threshold_kw"), "MV-direct connection"),
     (lambda s: [c.update(peak_load_per_m2=None) for c in s["load_calculation"]["consumer_categories"]
                 if c["definition"] == "Commercial"], "no peak load per m² for Commercial"),
-    (lambda s: [c.update(peak_load_per_m2=0.0) for c in s["load_calculation"]["consumer_categories"]
+    (lambda s: [c.update(peak_load_per_m2=-1.0) for c in s["load_calculation"]["consumer_categories"]
                 if c["definition"] == "Public"], "peak load per m² of Public"),
     (lambda s: s.update(electrical_backend="opendss"), "pandapower backend"),
     (lambda s: s["power_flow_assessment"].update(lv_reference_voltage_pu="0.96"), "LV reference voltage"),
@@ -679,6 +679,15 @@ def test_lv_parameters_reject_incomplete_snapshots(lv_snapshot, change, message)
     change(snapshot)
     with pytest.raises(MvStageError, match=re.escape(message)):
         LvVersionParameters.from_generation_parameters("v", snapshot)
+
+
+def test_lv_parameters_accept_a_category_without_load(lv_snapshot):
+    """A category at 0 W/m² (e.g. Unknown in the shipped configuration) gives no LV load, so no MV customers."""
+    snapshot = copy.deepcopy(lv_snapshot)
+    for category in snapshot["load_calculation"]["consumer_categories"]:
+        if category["definition"] == "Unknown":
+            category["peak_load_per_m2"] = 0.0
+    assert LvVersionParameters.from_generation_parameters("v", snapshot).peak_load_per_m2["Unknown"] == 0.0
 
 
 def test_lv_station_ratings_by_settlement_type():
