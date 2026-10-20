@@ -101,9 +101,9 @@ def record(item) -> dict:
 #: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
-    "schema": 1, "mv_stage_version": 10,
+    "schema": 1, "mv_stage_version": 11,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
-                "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 8.0},
+                "max_drop_n1_percent": 10.0, "max_rise_percent": 2.0, "mv_10kv_min_density_mva_km2": 5.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
     "sources": {"substations": "osm", "supply_areas": "routed", "region_buffer_m": 5000.0,
                 "substation_merge_m": 75.0, "substation_drop_m": 150.0, "ehv_partner_m": 1000.0,
@@ -463,8 +463,8 @@ def test_older_fixed_voltage_snapshots_take_the_legacy_threshold(equipment):
     assert "cable_10kv" not in older["equipment"]
     rebuilt = MvParameters.from_snapshot("d1", "old", older)
     assert rebuilt.vn_kv == 20.0 and rebuilt.mv_10kv_min_density_mva_km2 == 8.0 and rebuilt.voltages == (20.0,)
-    assert compare_snapshots(older, json_round_trip(MvParameters(vn_kv=20).to_snapshot()),
-                             added_later=MV_ADDED_LATER) == ([], [])
+    legacy = MvParameters(vn_kv=20, mv_10kv_min_density_mva_km2=8.0)      # the default was 8.0 before stage 11
+    assert compare_snapshots(older, json_round_trip(legacy.to_snapshot()), added_later=MV_ADDED_LATER) == ([], [])
     differences, _ = compare_snapshots(older, json_round_trip(MvParameters().to_snapshot()),
                                        added_later=MV_ADDED_LATER)
     assert "voltage.vn_kv" in differences and "equipment.cable_10kv.name" in differences

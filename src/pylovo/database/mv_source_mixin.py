@@ -266,6 +266,25 @@ class MvSourceMixin(BaseMixin):
         rows = [(*row[:10], _wkb(row[10]), row[11], row[12] if len(row) > 12 else None) for row in self.cur.fetchall()]
         return _frame(rows, OSM_CANDIDATE_COLUMNS, floats=("x", "y", "area_m2"), bools=("in_plant",))
 
+    def municipality_areas(self, ags: Sequence[str], region_wkb: bytes) -> dict[str, float]:
+        """The area (km²) of each municipality inside the planning region (``INFDB_OPENDATA_SCHEMA.scope``).
+
+        Args:
+            ags: Municipality keys (AGS, text).
+            region_wkb: The planning region (WKB, ``TARGET_EPSG``).
+
+        Returns:
+            ``{ags: km²}`` for the keys found in ``scope``.
+        """
+        if not len(ags):
+            return {}
+        query = sql.SQL("""SELECT s.ags::text, ST_Area(ST_Intersection(ST_Transform(s.geom, {epsg}),
+                                                                    ST_GeomFromWKB(%(region)s, {epsg}))) / 1e6
+                           FROM {schema}.scope s WHERE s.ags::text = ANY(%(ags)s)""").format(
+            schema=_schema(INFDB_OPENDATA_SCHEMA, "INFDB_OPENDATA_SCHEMA"), epsg=sql.Literal(TARGET_EPSG))
+        self.cur.execute(query, {"region": _wkb(region_wkb), "ags": [str(a) for a in ags]})
+        return {str(a): float(km2) for a, km2 in self.cur.fetchall() if km2 is not None}
+
     def osm_power_objects(self, region_wkb: bytes) -> pd.DataFrame:
         """The ``power=substation``, ``power=transformer`` and ``power=pole`` features and the ``transformer_tower``
         buildings of the OSM schema within 1 km of the planning region (the inputs of

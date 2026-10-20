@@ -702,21 +702,31 @@ Nominal voltage
 
 The common nominal voltage of rural MV grids in Germany is 20 kV (Harnisch et al. 2016), and the
 SimBench benchmark grids use 10 kV for the urban grid and 20 kV for the others (SimBench
-documentation). With ``MV_NOMINAL_VOLTAGE_KV: auto`` (default), each supply area gets its voltage
-from its installed MV/LV capacity per area,
+documentation). The MV voltage is a decision of the grid operator for its whole grid: a city
+utility runs 10 kV also in its parks and outskirts. With ``MV_NOMINAL_VOLTAGE_KV: auto`` (default),
+the stage therefore looks at the installed MV/LV capacity per area of each municipality,
 
 .. math::
 
    \rho = \frac{\sum S_\mathrm{station} + \sum P_\mathrm{customer} / 0.95}{A},
 
 with the station ratings of the MV model (an upsized station with its larger rating, which covers
-its busbar customers), the own peaks of the MV customer nodes after the hall rule (without HV
-customers) and the area :math:`A` of the supply area polygon. A supply area with :math:`\rho` of at
-least ``mv_10kv_min_density_mva_km2`` (8 MVA/km²) gets 10 kV, every other one 20 kV. The threshold
-comes from the structural data that DSOs publish under § 23c EnWG (2025): a large-city 10 kV DSO
-has about 8.1 MVA of MV/LV capacity per km² of its whole area, large Bavarian 20 kV DSOs 0.3 to
-0.6 MVA/km². It is a whole-area value and not calibrated on supply areas. The values ``20`` and
-``10`` fix the voltage of all supply areas instead.
+its busbar customers) and the own peaks of the MV customer nodes after the hall rule (without HV
+customers) of all nodes on the municipality's streets, and the area :math:`A` of the municipality
+inside the planning region, so that a municipality at the region border is not diluted by its
+uncovered part. A supply area gets 10 kV when at least half of its installed capacity lies in
+municipalities with :math:`\rho` of at least ``mv_10kv_min_density_mva_km2`` (5 MVA/km²), every
+other one 20 kV.
+
+The threshold comes from the structural data that DSOs publish under § 23c EnWG (2025): a
+large-city 10 kV DSO has about 8.1 MVA of MV/LV capacity per km² of its whole area, large Bavarian
+20 kV DSOs 0.3 to 0.6 MVA/km². The stations of pylovo hold about 0.6 of the real capacity (2.3 of
+3.9 GVA in the large city), so the large city comes to 8.6 MVA/km² in pylovo, while the densest
+towns of the Bavarian test regions, which are 20 kV grids, come to 2.5 to 3.4 MVA/km². The 5
+MVA/km² lies between them; it is not calibrated on supply areas. Deciding by the supply area's own
+density instead (the rule before stage version 11) gave 20 kV to most supply areas of the large
+city, in its parks and outskirts. The values ``20`` and ``10`` fix the voltage of all supply areas
+instead.
 
 Every voltage-dependent part follows the supply area: the line and HV/MV transformer types, the
 ring check, the nets and the ties, which connect supply areas of the same voltage only. The stored

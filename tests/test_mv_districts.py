@@ -357,8 +357,8 @@ def test_installed_density_counts_station_ratings_and_customer_peaks():
 @pytest.mark.parametrize("density, expected", [
     (7.999, 20.0), (8.0, 10.0), (8.12, 10.0), (0.3, 20.0), (np.nan, 20.0), (None, 20.0)])
 def test_auto_voltage_takes_ten_kv_from_the_threshold_on(density, expected):
-    assert PARAMS.auto_voltage and PARAMS.mv_10kv_min_density_mva_km2 == 8.0
-    assert PARAMS.district_kv(density) == expected
+    assert PARAMS.auto_voltage and PARAMS.mv_10kv_min_density_mva_km2 == 5.0
+    assert PARAMS.replace(mv_10kv_min_density_mva_km2=8.0).district_kv(density) == expected
     assert MvParameters(vn_kv=20).district_kv(density) == 20.0                 # a fixed voltage ignores the density
     assert MvParameters(vn_kv=10).district_kv(density) == 10.0
 
@@ -375,8 +375,44 @@ def test_district_voltages_on_both_sides_of_the_threshold():
     assert fixed["vn_kv"].to_dict() == {1: 20.0, 2: 20.0}
     record = districts.voltage_record(auto.loc[1], PARAMS)
     assert record == {"rule": "auto", "vn_kv": 10.0, "density_mva_km2": pytest.approx(8.12),
-                      "threshold_mva_km2": 8.0, "station_kva": 1030.0, "customer_kva": pytest.approx(1000.0),
+                      "threshold_mva_km2": 5.0, "station_kva": 1030.0, "customer_kva": pytest.approx(1000.0),
                       "area_km2": 0.25, "n_stations": 2, "n_customers": 1}
     assert districts.voltage_record(fixed.loc[2], PARAMS.replace(vn_kv=20.0))["rule"] == "fixed"
     text = districts.describe_voltages(auto, PARAMS)
-    assert "auto, 10 kV from 8 MVA/km²" in text and "1 at 20 kV, 1 at 10 kV" in text
+    assert "auto, 10 kV from 5 MVA/km²" in text and "1 at 20 kV, 1 at 10 kV" in text
+
+
+def _municipal_nodes() -> pd.DataFrame:
+    """The nodes of :func:`_density_nodes` in two municipalities: district 1 and the station without a district in
+    the city "A", district 2 in "B" except its 190 kW customer, which lies in "A"."""
+    return _density_nodes().assign(ags=["A", "A", "A", "B", "A", "B", "B", "A"])
+
+
+def test_municipal_density_counts_every_node_of_the_municipality():
+    table = districts.municipal_density(_municipal_nodes(), {"A": 0.5, "B": 2.0, "C": 0.0})
+    assert table.index.tolist() == ["A", "B", "C"]
+    assert list(table.columns) == list(districts.MUNICIPAL_DENSITY_COLUMNS)
+    # A: 630 + 400 + 400 kVA (also the station without a district) + (950 + 190) kW / 0.95; B: 250 kVA only
+    assert table.loc["A", "installed_mva"] == pytest.approx(1.43 + 1.2)
+    assert table.loc["A", "density_mva_km2"] == pytest.approx(2.63 / 0.5)
+    assert table.loc["B", "density_mva_km2"] == pytest.approx(0.25 / 2.0)    # no HV customer, no generator
+    assert np.isnan(table.loc["C", "density_mva_km2"])
+
+
+def test_dense_share_and_municipal_voltages():
+    nodes = _municipal_nodes()
+    munis = districts.municipal_density(nodes, {"A": 0.5, "B": 2.0})
+    share = districts.dense_share(nodes, munis, 5.0)                       # A (5.26) is dense, B (0.13) not
+    assert share.index.tolist() == [1, 2]
+    assert share[1] == pytest.approx(1.0)
+    assert share[2] == pytest.approx(200.0 / 450.0)                        # 200 of 250 + 200 kVA lie in A
+    density = districts.installed_density(nodes, {1: 4.0, 2: 0.05})    # own cells: 0.51 and 9.0 MVA/km²
+    table = districts.district_voltages(density, PARAMS, share)
+    assert table["vn_kv"].to_dict() == {1: 10.0, 2: 20.0}                  # by the municipality, not the cell
+    assert districts.district_voltages(density, PARAMS)["vn_kv"].to_dict() == {1: 20.0, 2: 10.0}   # by the cell
+    record = districts.voltage_record(table.loc[1], PARAMS)
+    assert record["scope"] == "municipality" and record["dense_share"] == pytest.approx(1.0)
+    assert "scope" not in districts.voltage_record(districts.district_voltages(density, PARAMS).loc[1], PARAMS)
+    fixed = districts.district_voltages(density, PARAMS.replace(vn_kv=20.0), share)
+    assert fixed["vn_kv"].to_dict() == {1: 20.0, 2: 20.0}
+    assert "in the municipality" in districts.describe_voltages(table, PARAMS)

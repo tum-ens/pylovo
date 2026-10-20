@@ -582,33 +582,132 @@ def installed_density(nodes: pd.DataFrame, areas_km2: Mapping[int, float]) -> pd
     return out[list(DENSITY_COLUMNS)]
 
 
-def district_voltages(density: pd.DataFrame, params: "MvParameters") -> pd.DataFrame:
-    """The nominal voltage of every district (``params.district_kv`` of its installed density).
+#: Columns of :func:`municipal_density`.
+MUNICIPAL_DENSITY_COLUMNS: tuple[str, ...] = ("installed_mva", "area_km2", "density_mva_km2")
 
-    With ``MV_NOMINAL_VOLTAGE_KV`` auto: 10 kV at a density of at least ``mv_10kv_min_density_mva_km2``, else
-    20 kV (also for a district without a finite density); otherwise the fixed voltage.
+
+def node_installed_kva(nodes: pd.DataFrame) -> pd.Series:
+    """The installed MV/LV capacity of every node as :func:`installed_density` counts it (kVA): a station its
+    rating ``sn_kva``, an MV customer its corrected own peak ``installed_kw`` over :data:`DENSITY_CUSTOMER_COS_PHI`;
+    HV customers (``connection_hint`` excluded), generators and other kinds 0."""
+    frame = pd.DataFrame(nodes)
+    kind = frame["kind"].astype(object) if "kind" in frame.columns else pd.Series(None, index=frame.index)
+    hint = frame["connection_hint"].astype(object) if "connection_hint" in frame.columns \
+        else pd.Series(None, index=frame.index)
+
+    def numbers(column: str) -> pd.Series:
+        if column not in frame.columns:
+            return pd.Series(0.0, index=frame.index)
+        values = pd.to_numeric(frame[column], errors="coerce")
+        return values.where(np.isfinite(values) & (values > 0), 0.0)
+
+    station = kind.eq("station")
+    customer = kind.eq("customer") & ~hint.eq("excluded")
+    return (numbers("sn_kva").where(station, 0.0)
+            + (numbers("installed_kw") / DENSITY_CUSTOMER_COS_PHI).where(customer, 0.0)).astype(float)
+
+
+def municipal_density(nodes: pd.DataFrame, areas_km2: Mapping[str, float]) -> pd.DataFrame:
+    """The installed MV/LV capacity per km² of each municipality (AGS) of the planning region.
+
+    All nodes of a municipality count (:func:`node_installed_kva`, whatever their district), over the municipality's
+    area inside the planning region, so that a municipality at the region border is not diluted by its uncovered part.
+
+    Args:
+        nodes: Node rows with ``ags`` (the municipality of the node's street edge; missing: not counted) and the
+            columns of :func:`node_installed_kva`.
+        areas_km2: Area of each municipality inside the planning region in km².
 
     Returns:
-        ``density`` with the column ``vn_kv``.
+        Index ``ags`` (every municipality of ``areas_km2`` or ``nodes``, sorted), :data:`MUNICIPAL_DENSITY_COLUMNS`
+        (``density_mva_km2`` NaN without a positive finite area).
+    """
+    frame = pd.DataFrame(nodes)
+    ags = frame["ags"].astype(object) if "ags" in frame.columns else pd.Series(None, index=frame.index)
+    known = ags.notna()
+    kva = node_installed_kva(frame)[known]
+    keys = sorted({str(a) for a in areas_km2} | {str(a) for a in ags[known]})
+    out = pd.DataFrame(index=pd.Index(keys, name="ags", dtype=object))
+    out["installed_mva"] = (kva.groupby(ags[known].astype(str)).sum() / 1000.0).reindex(out.index, fill_value=0.0)
+    area = pd.Series({str(a): float(v) if v is not None else np.nan for a, v in areas_km2.items()}, dtype=float)
+    out["area_km2"] = area.reindex(out.index).astype(float)
+    valid = np.isfinite(out["area_km2"]) & (out["area_km2"] > 0)
+    out["density_mva_km2"] = (out["installed_mva"] / out["area_km2"].where(valid)).astype(float)
+    return out[list(MUNICIPAL_DENSITY_COLUMNS)]
+
+
+def dense_share(nodes: pd.DataFrame, municipalities: pd.DataFrame, threshold_mva_km2: float) -> pd.Series:
+    """The share of each district's installed capacity that lies in municipalities with an installed density of at
+    least ``threshold_mva_km2`` (:func:`municipal_density`); NaN for a district without installed capacity.
+
+    Args:
+        nodes: Node rows with ``mv_grid_id`` (NaN: not assigned), ``ags`` and the columns of :func:`node_installed_kva`.
+        municipalities: :func:`municipal_density`.
+        threshold_mva_km2: ``mv_10kv_min_density_mva_km2``.
+
+    Returns:
+        Index ``mv_grid_id`` (the districts of ``nodes``, ascending), the share 0 to 1.
+    """
+    frame = pd.DataFrame(nodes)
+    grid = pd.to_numeric(frame["mv_grid_id"], errors="coerce")
+    dense = set(municipalities.index[municipalities["density_mva_km2"] >= float(threshold_mva_km2)].astype(str))
+    kva = node_installed_kva(frame)
+    in_dense = frame["ags"].astype(object).map(lambda a: a is not None and str(a) in dense) \
+        if "ags" in frame.columns else pd.Series(False, index=frame.index)
+    keep = grid.notna()
+    key = grid[keep].astype(np.int64)
+    total = kva[keep].groupby(key).sum()
+    part = kva[keep].where(in_dense[keep].astype(bool), 0.0).groupby(key).sum()
+    share = (part / total.where(total > 0)).astype(float)
+    share.index = share.index.rename("mv_grid_id")
+    return share.sort_index()
+
+
+def district_voltages(density: pd.DataFrame, params: "MvParameters",
+                      share: pd.Series | None = None) -> pd.DataFrame:
+    """The nominal voltage of every district.
+
+    With ``MV_NOMINAL_VOLTAGE_KV`` auto and the municipal ``share`` (:func:`dense_share`): 10 kV when at least half
+    of the district's installed capacity lies in municipalities with an installed density of at least
+    ``mv_10kv_min_density_mva_km2``, else 20 kV. The MV voltage is a decision of the grid operator for its whole
+    grid (a city utility runs 10 kV also in its parks and outskirts), so the rule looks at the municipality, not at
+    the district's own cell. Without ``share`` (or for a district without one): ``params.district_kv`` of the
+    district's own density (the rule before stage version 11). A fixed voltage applies to every district.
+
+    Returns:
+        ``density`` with the columns ``dense_share`` (NaN without ``share``) and ``vn_kv``.
     """
     out = pd.DataFrame(density).copy()
-    out["vn_kv"] = [params.district_kv(d) for d in out["density_mva_km2"]]
+    out["dense_share"] = share.reindex(out.index).astype(float) if share is not None else np.nan
+    voltages = []
+    for d, s in zip(out["density_mva_km2"], out["dense_share"]):
+        if params.auto_voltage and share is not None and np.isfinite(s):
+            voltages.append(params.district_kv(float(params.mv_10kv_min_density_mva_km2) if s >= 0.5 else 0.0))
+        else:
+            voltages.append(params.district_kv(d))
+    out["vn_kv"] = voltages
     return out
 
 
 def voltage_record(row: Mapping[str, Any], params: "MvParameters") -> dict:
     """The ``mv_grid.metrics['voltage_level']`` entry of a district (JSON-native): ``rule`` (``auto`` or
-    ``fixed``), ``vn_kv``, ``density_mva_km2``, ``threshold_mva_km2`` and the parts of the density."""
+    ``fixed``), ``vn_kv``, ``density_mva_km2``, ``threshold_mva_km2`` and the parts of the density; with the
+    municipal rule also ``scope`` (``municipality``) and ``dense_share``."""
     def number(value: Any) -> float | None:
         value = float(value)
         return value if np.isfinite(value) else None
 
-    return {"rule": "auto" if params.auto_voltage else "fixed", "vn_kv": float(row["vn_kv"]),
+    share = row.get("dense_share") if hasattr(row, "get") else None
+    record = {"rule": "auto" if params.auto_voltage else "fixed", "vn_kv": float(row["vn_kv"]),
             "density_mva_km2": number(row["density_mva_km2"]),
             "threshold_mva_km2": float(params.mv_10kv_min_density_mva_km2),
             "station_kva": number(row["station_kva"]), "customer_kva": number(row["customer_kva"]),
             "area_km2": number(row["area_km2"]), "n_stations": int(row["n_stations"]),
             "n_customers": int(row["n_customers"])}
+    if share is not None and np.isfinite(float(share)):
+        record["scope"] = "municipality"
+        record["dense_share"] = float(share)
+    return record
 
 
 def describe_voltages(table: pd.DataFrame, params: "MvParameters") -> str:
@@ -618,7 +717,9 @@ def describe_voltages(table: pd.DataFrame, params: "MvParameters") -> str:
     density = table["density_mva_km2"].astype(float)
     counts = table["vn_kv"].astype(float).value_counts()
     parts = [f"{int(counts[vn])} at {vn:g} kV" for vn in sorted(counts.index, reverse=True)]
-    rule = (f"auto, 10 kV from {params.mv_10kv_min_density_mva_km2:g} MVA/km²" if params.auto_voltage
+    municipal = "dense_share" in table.columns and table["dense_share"].notna().any()
+    scope = " in the municipality" if municipal else ""
+    rule = (f"auto, 10 kV from {params.mv_10kv_min_density_mva_km2:g} MVA/km²{scope}" if params.auto_voltage
             else f"fixed {float(params.vn_kv):g} kV")
     text = f"Nominal voltage ({rule}): {len(table)} districts, {', '.join(parts)}"
     if density.notna().any():

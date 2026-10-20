@@ -505,6 +505,10 @@ class RegionDb:
     def grid_areas(self, version_id, variant_id):
         return {900: 0.25}
 
+    def municipality_areas(self, ags, region_wkb):
+        self._record("municipality_areas", list(ags))
+        return {"09000001": 0.25}
+
     def set_grid_voltages(self, version_id, variant_id, voltages, records):
         self._record("set_grid_voltages", voltages.copy(), records)
 
@@ -565,7 +569,8 @@ def region_modules(monkeypatch):
     from pylovo.mv_grid import districts as real_districts
 
     districts = types.ModuleType("pylovo.mv_grid.districts")
-    for name in ("installed_density", "district_voltages", "voltage_record", "describe_voltages"):
+    for name in ("installed_density", "district_voltages", "voltage_record", "describe_voltages",
+                 "municipal_density", "dense_share", "node_installed_kva"):
         setattr(districts, name, getattr(real_districts, name))
     districts.site_capacity_mva = lambda sites, params: (recorded.__setitem__("sites", sites) or np.full(len(sites),
                                                                                                          63.0))
@@ -625,7 +630,10 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     # nominal voltage of the district: (400 + 630 kVA + 950 kW / 0.95) / 0.25 km² = 8.12 MVA/km² -> 10 kV (auto)
     voltages, records = db.calls["set_grid_voltages"][0]
     assert voltages.loc[900, "density_mva_km2"] == pytest.approx(8.12) and voltages.loc[900, "vn_kv"] == 10.0
-    assert records[900]["rule"] == "auto" and records[900]["threshold_mva_km2"] == 8.0
+    assert records[900]["rule"] == "auto" and records[900]["threshold_mva_km2"] == 5.0
+    # the municipality of the nodes' street edges holds all of the district's capacity: 8.12 MVA/km² -> dense
+    assert db.calls["municipality_areas"] == [(["09000001"],)]
+    assert records[900]["scope"] == "municipality" and records[900]["dense_share"] == pytest.approx(1.0)
     assert (records[900]["n_stations"], records[900]["n_customers"]) == (2, 1)
     assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1, "generator": 1}}
     assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])

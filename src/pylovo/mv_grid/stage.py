@@ -522,12 +522,16 @@ def _assign_supply_areas(dbc: Any, graph_id: str, nodes: pd.DataFrame, sites: pd
 
 def _set_district_voltages(dbc: Any, version_id: str, variant_id: str, rows: pd.DataFrame,
                            grid_of_node: dict[int, int | None], params: MvParameters,
-                           logger: logging.Logger) -> pd.DataFrame:
+                           logger: logging.Logger, graph_id: str | None = None, region_wkb: bytes | None = None,
+                           attach_edge: pd.Series | None = None) -> pd.DataFrame:
     """The nominal voltage of every district from its installed density (``MV_NOMINAL_VOLTAGE_KV``, DESIGN §4.6).
 
     Runs after the district areas are written: ``districts.installed_density`` of the station ratings and MV
     customer peaks of each district over its area, ``districts.district_voltages`` by the variant's rule; sets
-    ``mv_grid.vn_kv`` and ``mv_grid.metrics['voltage_level']`` (caller commits).
+    ``mv_grid.vn_kv`` and ``mv_grid.metrics['voltage_level']`` (caller commits). With ``auto`` and the routing graph
+    (``graph_id``, ``region_wkb``, ``attach_edge``), each node takes the municipality of its street edge, and a
+    district gets 10 kV when most of its installed capacity lies in municipalities of at least the threshold density
+    (``districts.municipal_density``, ``districts.dense_share``).
 
     Args:
         rows: The node rows of the region with ``mv_node_id`` (``kind``, ``connection_hint``, ``sn_kva``,
@@ -542,8 +546,20 @@ def _set_district_voltages(dbc: Any, version_id: str, variant_id: str, rows: pd.
                           for column in ("mv_node_id", "kind", "connection_hint", "sn_kva", "installed_kw")})
     nodes["mv_grid_id"] = [grid_of_node.get(int(k)) for k in nodes["mv_node_id"]]
     nodes["mv_grid_id"] = pd.to_numeric(nodes["mv_grid_id"], errors="coerce")
+    share = None
+    if params.auto_voltage and graph_id is not None and region_wkb is not None and attach_edge is not None:
+        ags_of_edge = dbc.edge_municipalities(graph_id)
+        nodes["ags"] = nodes["mv_node_id"].map(attach_edge).map(ags_of_edge)
+        ags = sorted({str(a) for a in nodes["ags"].dropna()})
+        municipalities = districts.municipal_density(nodes, dbc.municipality_areas(ags, region_wkb))
+        share = districts.dense_share(nodes, municipalities, params.mv_10kv_min_density_mva_km2)
+        above = municipalities["density_mva_km2"] >= params.mv_10kv_min_density_mva_km2
+        dense = ", ".join(f"{a} ({d:.2f})" for a, d in municipalities.loc[above, "density_mva_km2"].items())
+        below = municipalities.loc[~above, "density_mva_km2"].max()
+        logger.info(f"Municipalities at or above {params.mv_10kv_min_density_mva_km2:g} MVA/km² installed: "
+                    f"{dense or 'none'}; highest below: {below:.2f} MVA/km²")
     table = districts.district_voltages(districts.installed_density(nodes, dbc.grid_areas(version_id, variant_id)),
-                                        params)
+                                        params, share)
     dbc.set_grid_voltages(version_id, variant_id, table,
                           {int(g): districts.voltage_record(row, params) for g, row in table.iterrows()})
     logger.info(districts.describe_voltages(table, params))
@@ -608,7 +624,8 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
         warnings.append(f"{unassigned} MV nodes were assigned to no HV/MV substation")
     dbc.write_grid_areas(version_id, variant_id, plz)
     _set_district_voltages(dbc, version_id, variant_id, rows,
-                           dict(zip(members.index.to_numpy(dtype=np.int64).tolist(), grid_of_node)), params, logger)
+                           dict(zip(members.index.to_numpy(dtype=np.int64).tolist(), grid_of_node)), params, logger,
+                           graph_id, region_wkb, pd.to_numeric(members["attach_edge_id"], errors="coerce"))
     kinds = members["kind"].value_counts().to_dict()
     logger.info(f"Region: {len(sites)} substations ({len(grids)} supplying), "
                 f"{kinds.get('station', 0)} stations, {kinds.get('customer', 0)} customers, "

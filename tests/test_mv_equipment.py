@@ -112,7 +112,7 @@ def test_auto_voltage_resolves_the_types_of_both_voltages():
     with pytest.raises(ValueError, match="has no 10 kV districts"):
         MvParameters(vn_kv=20).cable_at(10.0)
     snapshot = json.loads(json.dumps(heavier.to_snapshot()))
-    assert snapshot["voltage"]["vn_kv"] == "auto" and snapshot["voltage"]["mv_10kv_min_density_mva_km2"] == 8.0
+    assert snapshot["voltage"]["vn_kv"] == "auto" and snapshot["voltage"]["mv_10kv_min_density_mva_km2"] == 5.0
     assert snapshot["equipment"]["cable_10kv"]["name"] == "NA2XS2Y 1x240 RM/25 6/10 kV"
     assert {t["vn_lv_kv"] for t in snapshot["equipment"]["hv_mv_types_10kv"]} == {10.0}
     rebuilt = MvParameters.from_snapshot("1", "default", snapshot)

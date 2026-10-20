@@ -723,9 +723,10 @@ value, so older configuration files keep working.
        peak load and N-1 only; no MaStR query or generator-driven feeder is required.
    * - ``MV_NOMINAL_VOLTAGE_KV``
      - ``auto``
-     - ``auto``: 10 kV for supply areas with at least ``mv_10kv_min_density_mva_km2`` of installed
-       MV/LV capacity per km², else 20 kV (§ 23c EnWG structural data; Harnisch et al. 2016).
-       ``20`` or ``10``: one voltage for all supply areas.
+     - ``auto``: 10 kV for supply areas whose installed capacity lies mostly in municipalities with
+       at least ``mv_10kv_min_density_mva_km2`` of installed MV/LV capacity per km², else 20 kV (§ 23c
+       EnWG structural data; Harnisch et al. 2016). ``20`` or ``10``: one voltage for all supply
+       areas.
    * - ``MV_SUBSTATIONS``
      - ``osm``
      - HV/MV substations from OpenStreetMap (Hülk et al. 2017), or ``egon`` from eGon-data.
@@ -808,9 +809,10 @@ routing graph and the settlements are part of the graph id, so a change builds a
      - 2.0
      - Voltage rise limit in the feed-in cases (VDE-AR-N 4110, dena 2012).
    * - ``mv_10kv_min_density_mva_km2``
-     - 8.0
-     - Installed MV/LV capacity per km² from which ``auto`` gives 10 kV (§ 23c EnWG structural data,
-       not calibrated on supply areas).
+     - 5.0
+     - Installed MV/LV capacity per km² of a municipality (its area inside the planning region) from
+       which ``auto`` gives 10 kV to the supply areas that have most of their capacity there (§ 23c
+       EnWG structural data, not calibrated on supply areas; :ref:`mv-voltage-level`).
    * - ``n1_utilization``
      - 1.0
      - Line loading limit in the (n-1) and feed-in cases (dena 2012).

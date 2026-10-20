@@ -38,7 +38,9 @@ import yaml
 #: reach of its ends), and stub ends take links to another feeder (``link_stub_ends``).
 #: 10: HV/MV substations inside thermal or heating plants are kept, and ``substation=transmission`` without a voltage tag
 #: counts as HV (OSM substation filter).
-MV_STAGE_VERSION: int = 10
+#: 11: ``MV_NOMINAL_VOLTAGE_KV`` auto by municipality: a district gets 10 kV when most of its installed capacity lies in
+#: municipalities of at least ``mv_10kv_min_density_mva_km2`` (now 5 MVA/km²), not by its own cell.
+MV_STAGE_VERSION: int = 11
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
@@ -158,11 +160,14 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="(n-1): ring fed from one side; Ding0; SimBench"),
     _constant("max_rise_percent", 2.0, "float", "voltage", bounds=(0.1, 20.0),
               source="generation-driven rise, VDE-AR-N 4110 (dena 2012 p. 91)"),
-    _constant("mv_10kv_min_density_mva_km2", 8.0, "float", "voltage", bounds=_POSITIVE,
-              source="MV_NOMINAL_VOLTAGE_KV auto: districts with at least this installed MV/LV capacity per km² "
-                     "(station ratings plus MV customer peaks / 0.95) are 10 kV, the others 20 kV. Structural data "
-                     "of § 23c EnWG (2025): a large-city 10 kV DSO has about 8.1 MVA MV/LV capacity per km² of its "
-                     "whole area, large Bavarian 20 kV DSOs 0.3 to 0.6 MVA/km²; not calibrated on district data"),
+    _constant("mv_10kv_min_density_mva_km2", 5.0, "float", "voltage", bounds=_POSITIVE,
+              source="MV_NOMINAL_VOLTAGE_KV auto: districts whose installed capacity lies mostly in municipalities "
+                     "with at least this installed MV/LV capacity per km² of their area in the planning region "
+                     "(station ratings plus MV customer peaks / 0.95) are 10 kV, the others 20 kV. § 23c EnWG (2025): "
+                     "a large-city 10 kV DSO has 8.1 MVA/km² of real capacity, large Bavarian 20 kV DSOs 0.3 to 0.6. "
+                     "pylovo installs about 0.6 of the real capacity (2.3 of 3.9 GVA in the large city), so the large "
+                     "city comes to 8.6 MVA/km² and the densest towns of the Bavarian test regions (20 kV) to 2.5 to "
+                     "3.4"),
     # loading
     _constant("n1_utilization", 1.0, "float", "loading", bounds=(0.1, 2.0),
               source="lines in the (n-1) and feed-in cases, dena 2012"),
