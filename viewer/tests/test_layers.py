@@ -10,7 +10,7 @@ import pytest
 from pylovo_viewer.catalog import Catalog
 from pylovo_viewer.layers import GROUPS, LayerService, Query, build_layers, feature_collection
 
-SCOPES = {"version", "view", "run", "bbox", "file"}
+SCOPES = {"version", "view", "run", "file"}
 
 
 @pytest.fixture()
@@ -28,7 +28,7 @@ def test_registry():
         assert layer.parent is None or layer.parent in ids
         if layer.scope != "file":
             assert "AS fid" in layer.sql and "AS geometry" in layer.sql
-        if layer.scope in ("view", "bbox"):
+        if layer.scope == "view":
             assert "{env}" in layer.sql
 
 
@@ -49,7 +49,6 @@ def test_view_filter_and_station_mv_data(service, fake_db):
     ("mv_stations", Query(), "needs version"),
     ("lv_cables", Query(version="v1"), "needs bbox"),
     ("mv_lines", Query(version="v1"), "needs mv"),
-    ("mastr", Query(), "needs bbox"),
 ])
 def test_missing_parameters(service, layer, query, message):
     with pytest.raises(ValueError, match=message):
@@ -62,7 +61,7 @@ def test_availability(service):
     assert layers["mv_lines"]["reason"] == "no table pylovo.mv_line in this database"
     assert "not downloaded yet" in layers["hv_lines"]["reason"]
     assert layers["lv_cabinets"]["parent"] == "lv_cables" and layers["mv_stations"]["with_run"]
-    assert [g["id"] for g in service.groups()] == ["regions", "hv", "mv", "lv", "generation"]
+    assert [g["id"] for g in service.groups()] == ["regions", "hv", "mv", "lv"]
     assert layers["hv_substations"]["groups"] == ["hv", "mv"] and layers["mv_stations"]["groups"] == ["mv", "lv"]
 
 

@@ -2,10 +2,10 @@ Map viewer
 ==========
 
 ``pylovo-viewer`` shows the database of your ``.env`` as an interactive map in the browser: the
-German high-voltage grid, the MV grids of an MV run, the LV grids of a version and the generating
-units. It is the quick alternative to the QGIS templates (:doc:`exporting_visualising`). It only
-reads: every query runs in a read-only transaction, and the viewer never creates, migrates or resets
-anything. For setup, generation and editing use GridPlanner (:doc:`browser_ui`).
+German high-voltage grid, the MV grids of an MV run and the LV grids of a version. It is the quick
+alternative to the QGIS templates (:doc:`exporting_visualising`). It only reads: every query runs in
+a read-only transaction, and the viewer never creates, migrates or resets anything. For setup,
+generation and editing use GridPlanner (:doc:`browser_ui`).
 
 .. figure:: /images/viewer/viewer-detail.png
    :alt: The map viewer with LV grids coloured by grid and one selected feeder section
@@ -58,8 +58,8 @@ Working with the map
 **Version and MV run.** The top bar selects the LV version and, if the version has MV results, the
 MV run (:doc:`mv_grids`). The newest ones are preselected.
 
-**One switch per level.** The *Layers* tab has one switch each for the HV grid, the MV grids, the LV
-grids and the generation. The arrow next to a level opens its single layers, their colour modes and
+**One switch per level.** The *Layers* tab has one switch each for the HV grid, the MV grids and the
+LV grids. The arrow next to a level opens its single layers, their colour modes and
 an *i* with each layer's source. LV cables and buildings appear when you zoom in (from zoom 13).
 
 **Regions.** Click a postcode or an MV supply area on the map, pick one in the *Regions* tab, or
@@ -156,9 +156,6 @@ reason, so one viewer works with any pylovo database.
        ``pylovo.buildings_result``, for the map view from zoom 13. Feeders are numbered from the
        station along the cables, 1 being the longest. From zoom 15 an arrow at each cabinet marks
        the cable that supplies it.
-   * - Generation
-     - MaStR units
-     - ``pylovo.mastr_units`` (``pylovo-import mastr``) by technology or grid level.
 
 Grids, supply areas and rings are coloured so that neighbours never share a colour. Voltage levels
 use the usual grid-map colours, 380 kV red, 220 kV green and 110 kV violet, each with its own line

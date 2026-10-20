@@ -324,20 +324,6 @@ export const STYLES = {
         ['Height', o.height ? `${f.num(o.height, 1)} m · ${f.num(o.floors)} floors` : '–'], ['Feeder', o.feeder ? `#${o.feeder}` : '–'],
         ['Grid', o.grid], ...(o.mv_direct ? [['Connection', 'directly to MV']] : [])] }),
   },
-  mastr: {
-    modes: { technology: { label: 'Technology', scheme: () => ({ type: 'match', prop: 'technology', entries: [
-      ['solar', pal().cat[1], 'Solar'], ['wind', pal().cat[0], 'Wind'], ['biomass', pal().cat[2], 'Biomass']],
-      fallback: [pal().ink.neutral, 'Other (hydro, storage, combustion, ...)'] }) },
-    level: { label: 'Grid level', scheme: () => ({ type: 'match', prop: 'level', entries: [
-      [['LV', 'MV/LV'], pal().cat[0], 'LV and MV/LV station'], [['MV', 'HV/MV'], pal().cat[1], 'MV and HV/MV substation'],
-      [['HV', 'EHV'], pal().cat[2], 'HV and EHV']], fallback: [pal().ink.neutral, 'Unknown'] }) } },
-    layers: ({ id, colour, p }) => [{ id, type: 'circle', paint: {
-      'circle-radius': ['interpolate', ['linear'], ['sqrt', ['coalesce', ['get', 'kw'], 0]], 0, 2.2, 10, 4, 32, 7, 100, 12],
-      'circle-color': colour, 'circle-opacity': 0.85, 'circle-stroke-color': p.surface, 'circle-stroke-width': 1 } }],
-    extraLegend: () => [{ kind: 'note', label: 'Circle area grows with the net power' }],
-    facts: (o) => ({ title: `${o.technology || 'Unit'} · ${f.kw(o.kw)}`, subtitle: o.fid, rows: [['Grid level', o.level || '–'],
-      ['Commissioned', o.year || '–'], ['Status', o.status || '–']] }),
-  },
 };
 
 function theme3(p, light, dark) {

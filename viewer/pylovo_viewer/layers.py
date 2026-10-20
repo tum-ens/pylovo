@@ -1,6 +1,6 @@
 """The map layers: what each one shows, where its data comes from and how it is filtered.
 
-Layers are grouped by voltage level, plus regions and generation. A substation belongs to both of
+Layers are grouped by voltage level, plus the regions. A substation belongs to both of
 its levels: HV/MV substations to the HV and the MV grids, MV/LV substations to the MV and the LV
 grids. It stays one layer, listed in both, so it looks the same whichever level shows it. Every
 layer is one :class:`Layer` with a SELECT that returns ``fid``, ``geometry`` (GeoJSON text in
@@ -15,7 +15,6 @@ Scopes (which request parameters a layer needs):
   add their MV data when an MV run is given).
 * ``view``: LV detail (cables, cabinets, buildings) of one version in the map view (``bbox``).
 * ``run``: one MV run (``version`` + ``mv``).
-* ``bbox``: the map view, independent of the version (MaStR units).
 * ``file``: the downloaded eTraGo grid (``pylovo-viewer fetch etrago``).
 """
 from __future__ import annotations
@@ -42,16 +41,8 @@ GROUPS = {
     "hv": ("HV grid", "110-380 kV lines (eTraGo) and the HV/MV substations", True),
     "mv": ("MV grids", "MV lines, substations and supply areas of the MV run", True),
     "lv": ("LV grids", "Grid areas and MV/LV substations; cables and buildings when zoomed in", True),
-    "generation": ("Generation", "Generating units and storage of the Marktstammdatenregister", False),
 }
 DROP = {"geom", "centroid", "footprint", "geometry", "geo", "net", "grid"}   # never sent as attributes
-
-MASTR_LEVEL_SQL = """CASE WHEN m.voltage_level ILIKE 'Niederspannung%%' THEN 'LV'
-                          WHEN m.voltage_level ILIKE '%%Mittelspannung/Niederspannung%%' THEN 'MV/LV'
-                          WHEN m.voltage_level ILIKE 'Mittelspannung%%' THEN 'MV'
-                          WHEN m.voltage_level ILIKE '%%Hochspannung/Mittelspannung%%' THEN 'HV/MV'
-                          WHEN m.voltage_level ILIKE 'Hochspannung%%' THEN 'HV'
-                          WHEN m.voltage_level ILIKE '%%Höchstspannung%%' THEN 'EHV' END"""
 
 # The MV data of an MV/LV substation in the selected MV run (left out without MV tables or run).
 STATION_MV_JOIN = """LEFT JOIN pylovo.mv_node n ON n.version_id = g.version_id AND n.mv_variant_id = %(mv)s
@@ -322,16 +313,6 @@ def build_layers() -> list[Layer]:
                       FROM pylovo.buildings_result b WHERE b.version_id = %(version)s AND b.geom && {in_view}""",
               detail="SELECT * FROM pylovo.buildings_result WHERE version_id = %(version)s AND objectid = %(fid)s",
               requires=("pylovo.buildings_result",), min_zoom=13, post=("grid_slots", "building_feeders")),
-        # ------------------------------------------------------------------------------ generation
-        Layer("mastr", "generation", "MaStR units",
-              "Generating units and storage from the Marktstammdatenregister, by technology and grid level.",
-              "point", "bbox", "pylovo.mastr_units",
-              sql=f"""SELECT m.mastr_id AS fid, m.technology, {num("m.net_power_kw", 1)} AS kw, {MASTR_LEVEL_SQL} AS level,
-                             m.status, extract(year FROM m.commissioning_date)::int AS year, {geo("m.geom")} AS geometry
-                      FROM pylovo.mastr_units m WHERE m.geom && {in_view}""",
-              detail="SELECT * FROM pylovo.mastr_units WHERE mastr_id = %(fid)s",
-              requires=("pylovo.mastr_units",), rows=("pylovo.mastr_units",), min_zoom=11,
-              attribution="Marktstammdatenregister (dl-de/by-2-0)"),
     ]
 
 
@@ -436,8 +417,7 @@ class LayerService:
 
     # -------------------------------------------------------------------------------------- data
     def _check(self, layer: Layer, q: Query) -> None:
-        needs = {"version": ("version",), "view": ("version", "bbox"), "run": ("version", "mv"),
-                 "bbox": ("bbox",)}.get(layer.scope, ())
+        needs = {"version": ("version",), "view": ("version", "bbox"), "run": ("version", "mv")}.get(layer.scope, ())
         missing = [name for name in needs if getattr(q, name) is None]
         if missing:
             raise ValueError(f"layer {layer.id} needs {', '.join(missing)}")

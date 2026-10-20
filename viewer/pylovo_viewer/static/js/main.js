@@ -224,8 +224,6 @@ createApp({
           return need(this.version, 'Choose a version') || zoomed() || { version: this.version, bbox: bbox() };
         case 'run':
           return need(this.version && this.mv, 'No MV run for this version') || { version: this.version, mv: this.mv };
-        case 'bbox':
-          return zoomed() || { bbox: bbox() };
         default:
           return {};
       }
@@ -369,7 +367,7 @@ createApp({
       this.zoom = view.zoom;
       this.tooltip = null;
       clearTimeout(this.moveTimer);
-      this.moveTimer = setTimeout(() => { this.reload(['view', 'bbox']); this.refreshLod2(); this.saveHash(); }, 250);
+      this.moveTimer = setTimeout(() => { this.reload(['view']); this.refreshLod2(); this.saveHash(); }, 250);
     },
     facts(hit) {
       const style = STYLES[hit.layer];

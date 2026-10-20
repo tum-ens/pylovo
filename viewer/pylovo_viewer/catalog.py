@@ -52,10 +52,9 @@ class Catalog:
     def row_checks(self) -> list[str]:
         """Tables whose emptiness decides whether a layer is offered."""
         s = self.db.settings
-        return ["pylovo.version", "pylovo.mv_variant", "pylovo.transformer_classified", "pylovo.mastr_units",
-                "pylovo.mv_customers", "citydb.feature", f"{s.osm_schema}.infrastructure_line",
-                f"{s.osm_schema}.infrastructure_polygon", f"{s.opendata_schema}.egon_hvmv_substation",
-                f"{s.opendata_schema}.egon_mv_grid_district"]
+        return ["pylovo.version", "pylovo.mv_variant", "pylovo.transformer_classified", "pylovo.mv_customers",
+                "citydb.feature", f"{s.osm_schema}.infrastructure_line", f"{s.osm_schema}.infrastructure_polygon",
+                f"{s.opendata_schema}.egon_hvmv_substation", f"{s.opendata_schema}.egon_mv_grid_district"]
 
     def has(self, table: str, *columns: str) -> bool:
         cols = self.columns.get(table)
