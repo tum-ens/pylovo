@@ -430,6 +430,12 @@ Clustering
      - ``1000``
      - Maximum routed distance (m) between an existing transformer and a building assigned to it.
      - ✓
+   * - ``BROWNFIELD_NEAREST_ONLY``
+     - ``False``
+     - A building joins only its nearest existing station. When that station is full, the
+       building gets a greenfield station instead of joining a farther existing station that still
+       has capacity, so existing stations do not reach far beyond their own area.
+     - ✓
    * - ``USE_OPEN_TRANSFORMER_POSITIONS``
      - ``False``
      - Use open transformer positions (OSM, LoD2 stations, manual edits) from
@@ -452,11 +458,12 @@ disabled source never sizes a station.
 .. note::
 
    ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``,
-   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` and ``USE_MANUAL_TRANSFORMER_POSITIONS`` were added
-   to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
+   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS`` and
+   ``BROWNFIELD_NEAREST_ONLY`` were added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
    accepts the current values of the first two with a warning (the values used for the existing
-   grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null`` and
-   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, the behaviour before these keys existed.
+   grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null``,
+   ``USE_MANUAL_TRANSFORMER_POSITIONS: False`` and ``BROWNFIELD_NEAREST_ONLY: False``, the behaviour
+   before these keys existed.
 
 Station voltage
 ~~~~~~~~~~~~~~~

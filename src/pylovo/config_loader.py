@@ -379,6 +379,8 @@ GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION.get("GREENFIELD_TR
 # GRID GENERATION PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
+# A building joins only its nearest existing station; when that one is full it is left for greenfield.
+BROWNFIELD_NEAREST_ONLY = bool(CONFIG_GENERATION.get("BROWNFIELD_NEAREST_ONLY", False))
 USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSITIONS", False)
 USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)

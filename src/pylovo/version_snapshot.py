@@ -24,6 +24,8 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     # These config keys existed before they were recorded: the value used is not known.
     ("transformer_placement", "merge_greenfield_clusters"): UNKNOWN,
     ("transformer_placement", "greenfield_cluster_merge_transformer_kva"): UNKNOWN,
+    # Before this switch existed, a building could join any existing station with capacity in reach.
+    ("transformer_placement", "brownfield_nearest_only"): False,
     # Before the size limit existed, merged clusters could have any size.
     ("transformer_placement", "greenfield_cluster_merge_max_buildings"): None,
     # Before the feeder utilization existed, feeder cables were sized at their full ampacity.
