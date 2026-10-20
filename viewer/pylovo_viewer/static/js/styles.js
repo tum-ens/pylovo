@@ -135,8 +135,8 @@ export const STYLES = {
         ['mixed', pal().cat[2], 'Cable and overhead line (overhead parts dashed)']],
         fallback: [pal().ink.neutral, 'Other'] }) },
       role: { label: 'Role', scheme: () => ({ type: 'match', prop: 'role', entries: [
-        ['ring', pal().cat[0], 'Open ring'], ['stub', pal().cat[2], 'Stub (T-off)'], ['dedicated', pal().cat[1], 'Dedicated feeder'],
-        ['generator', pal().ink.secondary, 'Generator connection']], fallback: [pal().ink.neutral, 'Other'] }) },
+        ['ring', pal().cat[0], 'Open ring'], ['stub', pal().cat[2], 'Stub (T-off)'], ['dedicated', pal().cat[1], 'Dedicated feeder']],
+        fallback: [pal().ink.neutral, 'Other'] }) },
       loading: { label: 'Loading (load case)', scheme: () => loading('loading', 'Line loading, load case') },
       loading_n1: { label: 'Loading (n-1)', scheme: () => loading('loading_n1', 'Line loading, n-1 case') },
       area: { label: 'Supply area', scheme: () => slot() } },
@@ -175,7 +175,6 @@ export const STYLES = {
       ['Parallel', o.parallel > 1 ? `${o.parallel}×` : '1'],
       ['Ring / feeder', o.ring === null || o.ring === undefined ? '–' : `${o.ring} / ${o.feeder ?? '–'}`],
       ['Loading (load case)', f.pct(o.loading)], ['Loading (n-1)', f.pct(o.loading_n1)],
-      ...(o.loading_feed_in !== null && o.loading_feed_in !== undefined ? [['Loading (feed-in)', f.pct(o.loading_feed_in)]] : []),
       ['Supply area', o.area],
       // a clicked line stands for its ring (see main.js)
       ...(o.ring_lines ? [['Ring with stubs', `${f.num(o.ring_lines)} lines · ${f.km(o.ring_km)} + ${f.km(o.stub_km)} stubs`],

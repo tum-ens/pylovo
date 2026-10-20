@@ -39,7 +39,7 @@ def mv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any] | None:
     params = q.params()
     head = db.one(f"""
         SELECT count(*) AS areas, sum(n_stations) AS stations, sum(n_customers) AS customers,
-               sum(n_generators) AS generators, sum(n_rings) AS rings, {num("sum(peak_load_mw)", 1)} AS peak_mw,
+               sum(n_rings) AS rings, {num("sum(peak_load_mw)", 1)} AS peak_mw,
                count(*) FILTER (WHERE vn_kv = 10) AS areas_10kv, count(*) FILTER (WHERE vn_kv = 20) AS areas_20kv,
                count(*) FILTER (WHERE NOT complete) AS incomplete,
                {num("max(max_line_loading_percent)", 1)} AS max_loading,
