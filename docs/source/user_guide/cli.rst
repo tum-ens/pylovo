@@ -81,23 +81,28 @@ pylovo-mv
 
 .. code-block:: text
 
-   pylovo-mv [-h] {generate,couple,delete,list,graph,export} ...
+   pylovo-mv [-h] {generate,couple,delete,list,graph,export,boundary,display} ...
 
 Generates and manages the MV grids of stored LV versions (:doc:`mv_grids`). Every subcommand takes
 the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuration is not used.
 
 ``pylovo-mv generate --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [OPTIONS]``
    Run the MV stage for one MV variant of the version. The options are ``--variant``,
-   ``--comment``, ``--set KEY=VALUE ...`` (``MV_*`` keys and constants of this variant,
-   :ref:`mv-variants`), ``--parallel`` or ``--no-parallel``, ``--jobs`` and ``--replace``.
+   ``--comment``, ``--set KEY=VALUE ...`` (``MV_*`` keys of this variant, :ref:`mv-variants`),
+   ``--parallel`` or ``--no-parallel``, ``--jobs`` and ``--replace``.
 ``pylovo-mv couple --version VERSION --variant VARIANT [--grid GRIDS ...] [--jobs JOBS] [--no-merged]``
    Check the done MV grids with the stored LV grids and solve the merged MV and LV operating point.
 ``pylovo-mv list [--version VERSION]``
-   List the MV variants with status, postcodes, grids, length and stale flag.
+   List the MV variants with status, postcodes, grids, retired options, length and stale flag.
 ``pylovo-mv delete --version VERSION [--variant VARIANTS ...]``
    Delete MV variants with all their results (all variants of the version without ``--variant``).
 ``pylovo-mv export --version VERSION --variant VARIANT --grid GRID --output OUTPUT [--case CASE] [--coupled]``
-   Write the pandapower net of one MV grid to a JSON file.
+   Write the pandapower net of one MV grid (case ``load``, ``n1a`` or ``n1b``) to a JSON file.
+``pylovo-mv boundary --version VERSION --variant VARIANT --output OUTPUT``
+   Write the HV boundary of a variant (eTraGo 110 kV bus, P and Q per HV/MV substation) to a CSV
+   file.
+``pylovo-mv display --version VERSION --variant VARIANT [VARIANT ...]``
+   Store the display geometry of variants again.
 ``pylovo-mv graph --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [--qa]``
    Build or reuse the MV routing graph of the postcodes and print its quality tables.
 
@@ -106,8 +111,8 @@ coupling is done, and 1 otherwise.
 
 .. code-block:: bash
 
-   pylovo-mv generate --version 1 --all --variant d0 --set MV_STUBS=none MV_OVERHEAD_LINES=none
-   pylovo-mv couple --version 1 --variant d0
+   pylovo-mv generate --version 1 --all --variant r15 --set MV_MAX_STATIONS_PER_RING=15
+   pylovo-mv couple --version 1 --variant r15
    pylovo-mv list --version 1
 
 pylovo-analyze

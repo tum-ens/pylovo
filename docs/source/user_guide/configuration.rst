@@ -70,8 +70,8 @@ same name.
    * - ``INFDB_OSM_SCHEMA``
      - ``osm``
      - Schema of the InfDB OSM layers (``infrastructure_point``, ``infrastructure_polygon``,
-       ``tags``, ``landuse_polygon``), read by the MV stage for the HV/MV substations and the
-       built-up land use (:doc:`mv_grids`).
+       ``infrastructure_line``, ``tags``, ``landuse_polygon``), read by the MV stage for the HV/MV
+       substations, the MV overhead lines and the built-up land use (:doc:`mv_grids`).
    * - ``TARGET_EPSG``
      - ``25832``
      - Projected CRS (metres) of all geometries stored by pylovo. Choose it before the first
@@ -560,9 +560,8 @@ Cable rows have the fields ``name``, ``max_i_a`` (ampacity in A), ``r_mohm_per_k
 are stored per MV variant, not in the snapshot of ``VERSION_ID``, and ``pylovo-mv generate --set``
 changes them for one variant. A missing key takes its shipped value. ``MV_*`` keys in the LV file
 (as in the former ``config_generation.yaml``) are still read; a key in both files needs the same
-value. The :ref:`MV parameter
-reference <mv-parameters>` lists the keys with their shipped values, meanings and sources, together
-with the constants of the stage.
+value. :doc:`mv_parameters` lists the keys with their shipped values, meanings and sources,
+together with the constants of the stage, which are changed in Python only.
 
 ``config_analysis.yaml``
 ------------------------

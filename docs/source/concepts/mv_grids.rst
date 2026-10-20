@@ -4,15 +4,15 @@ Medium-voltage grids
 The MV stage connects the stations of a generated LV version to the HV/MV substations of its region
 with medium-voltage (MV) grids. Every LV grid of the version becomes one MV node at its station.
 The large non-residential consumers that the LV stage leaves to the MV grid (MV customers)
-are added as further nodes. By default, the stage plans for normal load and N-1 only.
-``MV_INCLUDE_GENERATION: true`` adds MaStR generator nodes, LV-side generation and feed-in cases
-for an explicit generation-enabled variant. The stage plans open rings along the streets, sizes the lines and the HV/MV transformers and
-checks the result with pandapower power flows. It reads the stored LV results and never changes
-the LV grids. Its parameters belong to an *MV variant* of the LV version, so several MV designs of
-one LV version can be stored and compared.
+are added as further nodes. The stage plans open rings along the streets, sizes the lines and the
+HV/MV transformers and checks the result with pandapower power flows for the peak load and the
+(n-1) cases. It reads the stored LV results and never changes the LV grids. Its parameters belong
+to an *MV variant* of the LV version, so several MV designs of one LV version can be stored and
+compared.
 
 This page describes the method. :doc:`../user_guide/mv_grids` explains how to run the stage, which
-inputs it needs and where it stores the results, and lists every parameter.
+inputs it needs and where it stores the results. :doc:`../user_guide/mv_parameters` lists every
+parameter.
 
 The stage is implemented from scratch in :mod:`pylovo.mv_grid`. It follows published planning
 methods and rules, in particular the open-ring model of Ding0 (Amme et al. 2018) and the substation
@@ -26,22 +26,32 @@ For one MV variant of an LV version, :func:`~pylovo.mv_grid.stage.run_mv_stage` 
 
 #. Read the LV results of the requested postcodes: one node per LV grid with its load statistics,
    the MV customers and the stored LV voltage requirement of every station.
-#. Build or reuse the routing graph of the region from the regional street graph of InfDB, with a
-   settlement flag for every street edge (:ref:`mv-routing-graph`).
-#. Select the HV/MV substations from OpenStreetMap or eGon-data (:ref:`mv-substations`) and add the
-   MV generators of MaStR only when generation is enabled (:ref:`mv-generators`).
-#. Attach all nodes and substations to the routing graph, split the region into supply areas, one
-   per substation (:ref:`mv-supply-areas`), and give each supply area its nominal voltage
-   (:ref:`mv-voltage-level`).
+#. Build or reuse the routing graph of the region from the regional street graph of InfDB and the
+   MV overhead lines of OpenStreetMap, with a settlement flag for every street edge
+   (:ref:`mv-routing-graph`).
+#. Select the HV/MV substations from OpenStreetMap and match each one to its 110 kV bus in the
+   eGon-data grid model (:ref:`mv-substations`).
+#. Attach all nodes and substations to the routing graph, give every node to the substation that it
+   reaches first along the streets (:ref:`mv-supply-areas`), and give each supply area its nominal
+   voltage (:ref:`mv-voltage-level`).
 #. Plan every supply area on its own, in parallel worker processes: rings with normally-open
-   points, rural stubs, feeders of large customers, line types, three load/N-1 power-flow
-   cases (five including feed-in when generation is enabled), a repair loop, the HV/MV transformers and the voltage budget of every station
-   (:ref:`mv-rings` to :ref:`mv-voltage-budget`).
+   points, rural stubs and satellites, feeders of large customers, line types, the load case and
+   the two (n-1) cases, a repair loop, the HV/MV transformers and the voltage budget of every
+   station (:ref:`mv-rings` to :ref:`mv-voltage-budget`).
 #. Add normally-open ties between the rings of neighbouring supply areas (:ref:`mv-ties`) and
-   store the run summary.
+   normally-open links between the rings of one supply area (:ref:`mv-links`), and store the run
+   summary.
 
 The command ``pylovo-mv couple`` can afterwards solve the MV grids together with the stored LV
 grids (:ref:`mv-coupling`).
+
+.. note::
+
+   The stage has one method for every step. The alternative methods of earlier development
+   versions (other substation sources and supply areas, straight-line routing, a sweep solver,
+   other rules for overhead lines, stubs and ties) and the planning of MV generators with feed-in
+   cases are kept on the branch ``feature/mv-backup``. Its file ``MV_ALTERNATIVES.md`` explains
+   them.
 
 Terms
 -----
@@ -70,21 +80,26 @@ Open ring
 Half-ring (feeder)
    The part of a ring between one exit and the normally-open point.
 Normally-open point (NOP)
-   The open switch of a ring. It sits in the ring panel of a station, an MV customer or a looped-in
-   generator, never at a T-joint, which has no switchgear.
+   The open switch of a ring. It sits in the ring panel of a station or an MV customer, never at a
+   T-joint, which has no switchgear.
 Ring member
-   A station, MV customer or looped-in generator on the main path of a ring.
-   ``MV_MAX_STATIONS_PER_RING`` limits the members. An urban member counts 1, a rural member
-   1 / ``rural_ring_factor`` (½), so rural rings hold up to twice as many members. Joints and stub
-   nodes do not count.
+   A station or MV customer on the main path of a ring. ``MV_MAX_STATIONS_PER_RING`` limits the
+   members. An urban member counts 1, a rural member 1 / ``rural_ring_factor`` (½), so rural rings
+   hold up to twice as many members. Joints and stub nodes do not count.
 Stub (T-off)
    A radial branch from a joint on a ring to a rural node. A stub has no (n-1) reserve.
+Satellite
+   A rural station outside every settlement or alone in its settlement, such as a farm. Satellites
+   are connected after the rings are solved, by a stub where the limits allow it.
 Busbar radial
    One radial line from the busbar to a single small rural node.
 Dedicated feeder
-   A feeder of its own from the busbar to one large MV customer (two legs) or one large generator.
+   A feeder of its own from the busbar to one large MV customer, with two legs.
 Tie
    A normally-open line between the rings of two supply areas.
+Link
+   A normally-open line between two rings of one supply area, or from the end of a stub to another
+   feeder.
 MV variant
    One set of MV parameters for one LV version (``pylovo.mv_variant``).
 
@@ -120,11 +135,11 @@ ring or a supply area) follows pylovo's coincidence law on the summed statistics
 where :math:`I_c(F)` and :math:`N_c(F)` are the installed peak and the load units of category
 :math:`c` summed over the stations of :math:`F`, :math:`g_c` is the sim factor of the category in
 the snapshot of the LV version and :math:`P_{\mathrm{fixed},i}` are the fixed loads of the MV
-customers, including those at station busbars (:ref:`mv-customers`). For a single station this is the design load of its LV grid (``p_own_kw``). The station
-peaks are never added, because their sum ignores the coincidence between the stations and
-overstates the load of a ring or a substation. The law is not monotonic in the non-residential
-terms (:doc:`grid_dimensioning`), so every section load is computed and none is inferred from a
-neighbouring section.
+customers, including those at station busbars (:ref:`mv-customers`). For a single station this is
+the design load of its LV grid (``p_own_kw``). The station peaks are never added, because their sum
+ignores the coincidence between the stations and overstates the load of a ring or a substation. The
+law is not monotonic in the non-residential terms (:doc:`grid_dimensioning`), so every section load
+is computed and none is inferred from a neighbouring section.
 
 In the power flows, the coincident load of a feeder is distributed over its stations in proportion
 to their installed load per category, as in the validation snapshot of the LV stage
@@ -196,82 +211,26 @@ eGon-data. A customer whose building contains an enabled transformer candidate o
 moved to the nearest point of the street (flag ``transfer_point``), because its private cable to the
 building is not part of the MV grid.
 
-.. _mv-generators:
-
-Generators from MaStR
-~~~~~~~~~~~~~~~~~~~~~
-
-The generators come from ``pylovo.mastr_units``, the units in operation with coordinates of the
-MaStR import (:doc:`../user_guide/mv_grids`). Storage units take part in no case. The units are
-grouped per grid connection point, i.e. per MaStR location (``LokationMastrNummer``), so one wind or
-PV park is one connection point. Units of one location more than 1 km apart (single linkage) form
-separate points (flag ``location_split``). A point gets the power-weighted position of its units and
-their net power per group (solar, wind, other).
-
-The connection voltage level (``Spannungsebene``) is entered in the MaStR by the grid operator for
-each location. The highest level of the units of a point decides how it is modelled. Without a
-known level, the installed power decides with the thresholds of eGon-data
-(``generator_fallback_kw``):
-
-.. list-table::
-   :header-rows: 1
-   :widths: 40 12 18 30
-   :class: fixed-table
-
-   * - ``Spannungsebene``
-     - Class
-     - Without a level: up to
-     - Modelled as
-   * - Höchstspannung, Hochspannung, Umspannebene Höchstspannung/Hochspannung
-     - ``hv``
-     - (above 20 MW)
-     - not modelled (counted in the log)
-   * - Umspannebene Hochspannung/Mittelspannung
-     - ``hvmv``
-     - 20 MW
-     - MV node with a dedicated feeder
-   * - Mittelspannung
-     - ``mv``
-     - 5.5 MW
-     - MV node
-   * - Umspannebene Mittelspannung/Niederspannung
-     - ``mvlv``
-     - 200 kW
-     - MV node above ``generator_lv_side_kw`` (200 kW), else LV side
-   * - Niederspannung ...
-     - ``lv``
-     - 100 kW
-     - LV side
-
-LV-side generation belongs to a station: to the LV grid of the nearest building of the version
-within 100 m, else to the nearest station within 2 km. Otherwise it is dropped with a warning. Units
-without coordinates (mostly small rooftop PV, ``pylovo.mastr_postcode_aggregates``) are split over
-the stations of their postcode in proportion to the number of buildings per station, since rooftop
-PV follows the buildings. Their power is scaled with the share of the postcode area inside the
-imported postcode polygons. The MV model represents the LV-side generation of a station by static
-generators at its node. How MV generator nodes are connected is described in :ref:`mv-topology`.
-
 .. _mv-substations:
 
 HV/MV substations
 -----------------
 
-With ``MV_SUBSTATIONS: osm`` (default), the substations come from the current OpenStreetMap data in
-the InfDB (``INFDB_OSM_SCHEMA``): every ``power=substation`` node, way or relation within
-``region_buffer_m`` (5 km) of the planning region, which is the union of the requested postcode
-polygons. Substations outside the region are needed, because they supply its border areas. The
-filter follows Hülk et al. (2017, Table 1), adapted. A candidate is kept if its ``voltage`` tag
-holds 110 kV or 60 kV and none of these rules applies. A ``substation=transmission`` footprint
-without any voltage tag also counts as HV, because some city utilities tag their 110 kV
-substations so and leave out the voltage (a point needs the voltage tag).
+The substations come from the current OpenStreetMap data in the InfDB (``INFDB_OSM_SCHEMA``):
+every ``power=substation`` node, way or relation within ``region_buffer_m`` (5 km) of the planning
+region, which is the union of the requested postcode polygons. Substations outside the region are
+needed, because they supply its border areas. The filter follows Hülk et al. (2017, Table 1),
+adapted. A candidate is kept if its ``voltage`` tag holds 110 kV or 60 kV and none of these rules
+applies. A ``substation=transmission`` footprint without any voltage tag also counts as HV, because
+some city utilities tag their 110 kV substations so and leave out the voltage (a point needs the
+voltage tag).
 
 #. ``substation`` is ``traction``, ``transition``, ``converter``, ``generation``, ``industrial`` or
    ``minor_distribution``. A ``transmission`` tag with 110 kV is kept, because many HV/MV
    substations of distribution grids are tagged so.
 #. ``frequency`` holds 16.7 Hz or 0 (railway or DC).
-#. The operator is a railway operator (DB Energie, Deutsche Bahn, DB Netz, Bahnstrom), the name
-   marks a railway substation (Unterwerk, Bahnstrom, Umformerwerk, Umrichter), or a ``railway`` tag
-   is set.
+#. The operator is a railway operator, the name marks a railway substation (Unterwerk, Bahnstrom,
+   Umformerwerk, Umrichter), or a ``railway`` tag is set.
 #. The candidate lies inside a ``power=plant`` or ``power=generator`` polygon (the substation of a
    power plant or PV park), unless a plant or generator within 100 m is a thermal plant
    (``plant:source`` gas, coal, oil, biomass, biogas, waste, lignite or diesel) or a heating plant
@@ -284,19 +243,20 @@ point inside its largest footprint polygon. An extra-high-voltage site (220 kV o
 tagged MV level is dropped if an HV/MV site lies within ``ehv_partner_m`` (1 km), else it is kept
 with the flag ``ehv_uncertain``. Of two sites closer than ``substation_drop_m`` (150 m), the one
 with the smaller footprint is dropped. The MV level of a site is rarely tagged, so the nominal
-voltage comes from the rule of :ref:`mv-voltage-level`.
+voltage comes from the rule of :ref:`mv-voltage-level`. Without any HV/MV substation near the
+region, the stage stops.
 
-Each OSM site gets the nearest eGon-data HV/MV substation within ``egon_match_m`` (300 m) as a
-cross-check (``mv_substation.egon_bus_id``). A site without one gets the flag ``no_egon_bus``. The
-eGon bus id of an HV/MV substation is the id of its 110 kV bus in the eTraGo grid model of
-eGon-data, so it links the MV grid to the HV grid (``pylovo-mv boundary``). With
-``MV_SUBSTATIONS: egon``, the eGon-data substations themselves are the sites, since eGon-data has
-filtered and aggregated them already.
+Each site is matched to the nearest eGon-data HV/MV substation within ``egon_match_m`` (300 m),
+measured from its footprint or its point (``mv_substation.egon_bus_id``). The eGon bus id of an
+HV/MV substation is the id of its 110 kV bus in the eTraGo grid model of eGon-data, so it links the
+MV grid to the HV grid (``pylovo-mv boundary``). A site without a match gets the flag
+``no_egon_bus``. Without the eGon-data table ``egon_hvmv_substation`` the match is skipped with a
+warning, and no site has a bus.
 
 A substation whose busbar lies more than ``substation_max_attach_m`` (2 km) from the routing graph
 supplies nothing (flag ``long_attach``). A substation that supplies no node gets no MV grid (flag
-``no_nodes``) but stays in ``mv_substation``. Transformer ratings mapped in OSM are not read in the
-current version, so every substation is sized by the rule of :ref:`mv-equipment`.
+``no_nodes``) but stays in ``mv_substation``. Transformer ratings mapped in OSM are not read, so
+every substation is sized by the rule of :ref:`mv-equipment`.
 
 .. _mv-supply-areas:
 
@@ -326,47 +286,19 @@ and for metrics per km².
 How they are formed
 ~~~~~~~~~~~~~~~~~~~
 
-All rules start from the *street distance*: the distance along the routing graph from the busbar of
-a substation to a node. With ``MV_SUPPLY_AREAS: routed`` (default), every node goes to the
-substation that it reaches first along the streets. This is a Voronoi partition on the street graph
-instead of the plane. Since a node on the shortest path to a node of a substation belongs to the
-same substation, the supply areas stay connected along the streets.
+Every node goes to the substation whose busbar it reaches first along the routing graph, the one
+with the shortest *street distance*. This is a Voronoi partition on the street graph instead of
+the plane. Since a node on the shortest path to a node of
+a substation belongs to the same substation, the supply areas stay connected along the streets.
+The OSM MV lines of the routing graph take no part in this assignment.
 
 No rule moves load because of the capacity of a substation. The coincident load of each substation
 (stations and MV customers of its area, divided by the power factor) is compared with its (n-1)
 capacity, (``hv_mv_units`` - 1) units of the largest of ``hv_mv_sizes_mva`` (63 MVA with the
-defaults). A substation above it gets the flag ``over_capacity`` and more transformer units
-(:ref:`mv-equipment`). Earlier versions handed the outer nodes of an overloaded substation to its
-neighbours (``rebalance_max_iter`` above 0, routed areas only). Because the area-based loads of the
-LV stage are high, this moved whole towns to substations 8 to 10 km away. Against the data of two
-DSOs, the feeders of the checked town then started at three substations instead of its own one,
-with a median supply path of 8.4 km against 2.7 km real. Without the rebalancing, the town hangs on
-its own substation with a median supply path of 2.8 km, so it is off by default. Generators and HV
-customers are assigned by the same rules but do not count for the capacity. A node without any
-street path to a substation goes to the nearest substation in straight line (column
-``mv_node.bridged``).
-
-With ``MV_SUPPLY_AREAS: municipal``, municipalities stay whole, as in the MV grid districts of
-open_eGo and Ding0 (Hülk et al. 2017), applied to street distances instead of Voronoi polygons:
-
-#. A municipality with exactly one substation is supplied by that substation.
-#. A municipality with several substations is split among them by the street distance to these
-   substations alone.
-#. A municipality without a substation goes as a whole to the substation that is nearest along the
-   streets to the largest part of its coincident load.
-
-The municipality of a node is the one of its street edge (``ways_per_junction.ags``). A substation
-belongs to the municipality of its street edge if it lies within ``municipal_site_max_offset_m``
-(250 m) of it, else to none. Nodes without a municipality go to their nearest substation. Hülk et
-al. argue that concessions for MV grids were mostly awarded per municipality. On the test regions
-the rule was not closer to the DSO data than the routed areas, and it was 4.7 % longer: a city whose
-other substations lie in neighbouring municipalities goes as a whole onto the one substation that
-OpenStreetMap maps inside it (155 MW on one site), and whole municipalities without a substation
-get long feeders.
-
-With ``MV_SUPPLY_AREAS: egon``, which needs ``MV_SUBSTATIONS: egon``, a node goes to the eGon-data
-MV grid district that contains it (else to the nearest one), and the depot is the eGon substation
-with the same bus id.
+defaults). A substation above it keeps its load and gets the flag ``over_capacity`` and more
+transformer units (:ref:`mv-equipment`). HV customers are assigned by the same rule but do not
+count for the capacity. A node without any street path to a substation goes to the nearest
+substation in straight line (column ``mv_node.bridged``).
 
 Polygon and completeness
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -406,15 +338,15 @@ built once in the database and stored in ``pylovo.mv_graph``, ``mv_graph_vertex`
    alone decide.
 #. Connected settlement edges form one settlement. A settlement with at least
    ``urban_min_buildings`` (1,000) address buildings, about a small town, is urban.
-#. With ``MV_OVERHEAD_LINES: osm`` (default), the MV overhead lines mapped in OpenStreetMap
-   (``<INFDB_OSM_SCHEMA>.infrastructure_line`` with ``tags``) become edges of the graph as well.
-   A way counts if it is a ``line`` or ``minor_line`` in service with an MV voltage (above 1 kV and
-   below 60 kV, also on shared towers with 110 kV), or a ``minor_line`` without a voltage tag that
-   is not an LV line. In the test regions, untagged ``minor_line`` ways were 98 % MV by length.
-   An OSM line and a street are split where they cross, so the crossing is a common vertex. A line
-   is split where a branch line ends on it, and each loose end gets a straight connector to the
-   nearest street point within ``osm_line_snap_m`` (100 m). OSM edges are never in a settlement,
-   never the attachment edge of a node and not part of the supply-area routing.
+#. The MV overhead lines mapped in OpenStreetMap (``<INFDB_OSM_SCHEMA>.infrastructure_line`` with
+   ``tags``) become edges of the graph as well. A way counts if it is a ``line`` or ``minor_line``
+   in service with an MV voltage (above 1 kV and below 60 kV, also on shared towers with 110 kV),
+   or a ``minor_line`` without a voltage tag that is not an LV line. In the test regions, untagged
+   ``minor_line`` ways were 98 % MV by length. An OSM line and a street are split where they cross,
+   so the crossing is a common vertex. A line is split where a branch line ends on it, and each
+   loose end gets a straight connector to the nearest street point within ``osm_line_snap_m``
+   (100 m). OSM edges are never in a settlement, never the attachment edge of a node and not part
+   of the supply-area routing. Without these OSM tables the graph holds the streets only.
 
 The graph id is a hash of the municipalities, the build parameters and a fingerprint of the source
 rows. A graph is therefore reused by every variant with the same inputs, and a changed source gives
@@ -430,11 +362,11 @@ District graph
 Each supply area is routed on a subgraph: the edges within ``subgraph_buffer_m`` (2 km, at least
 the largest attachment offset plus 100 m) of the convex hull of its nodes, plus all attachment
 edges. The edges are split at the attachment points. A node more than 0.5 m off the street, such as
-a brownfield station, a substation busbar or a generator, gets a straight connector to its street
-point. Connectors longer than ``long_connector_m`` (300 m) count ``bridge_detour`` (1.3) times
-their length. Graph islands with nodes but without the busbar are joined by straight bridges
-between their closest vertices (also 1.3 times their length, column ``mv_node.bridged``) instead of
-losing their nodes. Distances and paths come from SciPy's Dijkstra on this graph.
+a brownfield station or a substation busbar, gets a straight connector to its street point.
+Connectors longer than ``long_connector_m`` (300 m) count ``bridge_detour`` (1.3) times their
+length. Graph islands with nodes but without the busbar are joined by straight bridges between
+their closest vertices (also 1.3 times their length, column ``mv_node.bridged``) instead of losing
+their nodes. Distances and paths come from SciPy's Dijkstra on this graph.
 
 .. _mv-rings:
 
@@ -448,13 +380,13 @@ Line lengths and kinds
 ~~~~~~~~~~~~~~~~~~~~~~
 
 The planner first computes the design length of every possible link between two nodes of a supply
-area. With ``MV_ROUTING: street`` (default) it is the street distance on the district graph.
-Meinecke et al. (2019) state that urban MV grids use cables only, while rural grids mix overhead
-lines and cables. With ``MV_OVERHEAD_LINES: osm`` (default), every link follows the routing graph,
-and a line is an overhead line where its route runs on an OSM MV line and a cable elsewhere. A
-line with both parts is a mixed line, with length-weighted resistance and reactance and the smaller
-ampacity of its parts. The overhead lines are therefore real corridors, and no line is overhead
-where OSM maps none. Where the OSM layer is incomplete, the overhead length is a lower bound.
+area: its street distance on the district graph. Meinecke et al. (2019) state that urban MV grids
+use cables only, while rural grids mix overhead lines and cables. Every link follows the routing
+graph, and a line is an overhead line where its route runs on an OSM MV line and a cable elsewhere.
+A line with both parts is a mixed line, with length-weighted resistance and reactance and the
+smaller ampacity of its parts. The overhead lines are therefore real corridors, and no line is
+overhead where OSM maps none. Where the OSM layer is incomplete, the overhead length is a lower
+bound.
 
 An existing overhead corridor needs no new trench, so an OSM line costs ``osm_line_cost_factor``
 (0.7) times its length when routes and rings are planned. Routes and rings then follow the
@@ -466,25 +398,12 @@ where it was the shortest way between two consecutive ring members. In the test 
 With 0.5 it gave 1,789 km, and several rings shared one OSM line. A real line carries one or two
 circuits, and the planner does not limit the circuits per corridor.
 
-With ``MV_OVERHEAD_LINES: rural``, a link is an overhead line if its two ends are not in the same
-settlement and neither end is urban (two open-field ends count as different settlements). An
-overhead line then takes a straight span with angle poles, ``overhead_detour`` (1.1) times the
-straight distance, where this is shorter than the street path. Otherwise it follows the street.
-All other links are cables along the streets. Straight spans are synthetic and do not follow real
-corridors.
-
-With ``MV_OVERHEAD_LINES: rural``, the busbar legs are always cables along the streets: the links
-from the busbar to the first and last member of a ring and to a radial or dedicated node. With
-``osm`` they follow the routing graph like every link and become overhead only on an OSM line.
-Feeders leave HV/MV substations as cables
-in shared trenches, so legs in the same direction share their streets near the substation instead
-of fanning out as straight overhead spans. The busbar is joined by straight cable connectors to
-every street vertex within ``busbar_exit_radius_m`` (200 m), so the feeders can leave the
-substation in several directions.
-
-With ``MV_ROUTING: crowfly``, every link is a straight span of ``crowfly_detour`` (1.3) times the
-straight distance, as in the first version of Ding0 (Amme et al. 2018). The overhead rule still
-decides the kind. This variant serves as a comparison with straight-line models.
+The busbar legs, the links from the busbar to the first and last member of a ring and to a radial
+or dedicated node, follow the routing graph like every link and become overhead only on an OSM
+line. Near the substation the feeders run as cables in shared trenches: legs in the same direction
+share their streets instead of fanning out as straight spans. The busbar is joined by straight
+cable connectors to every street vertex within ``busbar_exit_radius_m`` (200 m), so the feeders
+can leave the substation in several directions.
 
 Ring check and normally-open point
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -519,58 +438,50 @@ closed ring is fed from the other exit. A ring is feasible if
 The normally-open point is placed at the voltage balance of the two halves (Klabunde et al. 2022):
 among the allowed open sections, the one with the smallest :math:`\max(\Delta u_A, \Delta u_B)` is
 chosen, ties broken by the smaller difference of the half loads. The switch sits in the ring panel
-of a station, MV customer or looped-in generator next to the open section, never at a T-joint.
+of a station or MV customer next to the open section, never at a T-joint.
 
 The check is analytic and neglects cable charging. pandapower verifies the planned grid afterwards
 (:ref:`mv-electrical`). The member cap of 20 follows Ding0 (Amme et al. 2018), and Kreutmayr
 (2023) reports 5 to 30 stations per ring for a large-city grid. The planning guidelines of dena
 (2012), Harnisch et al. (2016) and Wintzek et al. (2021) load MV lines with at most 60 % in normal
-operation, which keeps the reserve for (n-1) operation. SimBench uses 50 % (Meinecke et al. 2019). The half-ring limit of 28 km is the
-value of the Ding0 configuration.
+operation, which keeps the reserve for (n-1) operation. SimBench uses 50 % (Meinecke et al. 2019).
+The half-ring limit of 28 km is the value of the Ding0 configuration.
 
-Ring solvers
-~~~~~~~~~~~~
+Ring solver
+~~~~~~~~~~~
 
 Forming the rings of a supply area is a capacitated vehicle routing problem: the busbar is the
 depot, the ring members are the customers and the ring check replaces the vehicle capacity. The
-objective of every solver is the total ring length, both busbar sections included.
-``MV_RING_SOLVER`` selects the construction:
-
-``savings`` (default)
-   Parallel Clarke-Wright savings (Clarke and Wright 1964). Every candidate starts as a ring of its
-   own. Pairs are merged in the order of their saving :math:`d_{0i} + d_{0j} - d_{ij}` when both
-   are ring ends and the ring check accepts the merged ring. Above 800 candidates, only the pairs of
-   the 40 nearest neighbours of every node are considered.
-``sweep``
-   The sweep heuristic (Gillett and Miller 1974) as a baseline. The nodes are ordered by their
-   angle around the busbar and fill one ring after the other until a ring becomes infeasible. Eight
-   start angles are tried and the shortest result is kept.
+objective is the total ring length, both busbar sections included. The rings are built by the
+parallel Clarke-Wright savings (Clarke and Wright 1964). Every candidate starts as a ring of its
+own. Pairs are merged in the order of their saving :math:`d_{0i} + d_{0j} - d_{ij}` when both are
+ring ends and the ring check accepts the merged ring. Above 800 candidates, only the pairs of the
+40 nearest neighbours of every node are considered.
 
 A granular local search follows the construction (Toth and Vigo 2003; Bräysy and Gendreau 2005).
 For every node and each of its ``neighbours`` (15) nearest nodes, the moves relocate, exchange,
 2-opt*, 2-opt and Or-opt are tried. The first move that shortens the total length by more than 1 m
 and keeps every changed ring feasible is applied. The search stops after a pass without a move or
 after ``local_search_rounds`` (50) passes, and ``0`` switches it off. A wall-clock guard of
-``ls_time_guard_s`` (120 s) stops it early and is flagged in the metrics. The solvers use no random
-numbers and break ties by index, so a run is reproducible unless the guard stops it.
+``ls_time_guard_s`` (120 s) stops it early and is flagged in the metrics. The solver uses no random
+numbers and breaks ties by index, so a run is reproducible unless the guard stops it.
 
 .. _mv-topology:
 
 From rings to lines
 ~~~~~~~~~~~~~~~~~~~
 
-The planner turns the rings into lines in this order: rings first, then stubs, large customers and
-generators.
+The planner turns the rings into lines in this order: rings first, then stubs, satellites, busbar
+radials and the feeders of large customers.
 
-#. Rings follow their street paths or straight spans.
-#. With ``MV_STUBS: rural`` (default), a rural station or MV customer leaves its ring for a stub
-   (T-off) from the nearest point of the shortened ring if (a) the T-off is longer than
-   ``stub_min_offset_m`` (100 m), (b) leaving the ring saves more ring length than the T-off costs,
-   (c) the stub tree carries at most ``stub_max_kva`` (1 MVA, coincident), (d) every node of the
-   tree lies within the stub length of that load in true route length (the routing cost of OSM lines
-   does not count here, as for busbar radials and generator T-offs), and (e) the shortened ring
-   stays feasible. Later stubs may hang on earlier ones (stub trees). Urban nodes always stay in the
-   ring.
+#. Rings follow their routes on the district graph.
+#. A rural station or MV customer leaves its ring for a stub (T-off) from the nearest point of the
+   shortened ring if (a) the T-off is longer than ``stub_min_offset_m`` (100 m), (b) leaving the
+   ring saves more ring length than the T-off costs, (c) the stub tree carries at most
+   ``stub_max_kva`` (1 MVA, coincident), (d) every node of the tree lies within the stub length of
+   that load in true route length (the routing cost of OSM lines does not count here, as for
+   busbar radials), and (e) the shortened ring stays feasible. Later stubs may hang on earlier ones
+   (stub trees). Urban nodes always stay in the ring.
 
    The stub length shrinks with the load: at most ``stub_max_length_m`` (4 km), and load times
    length at most ``stub_max_kva_km`` (2 MVA·km), so 4 km up to 0.5 MVA, 2.5 km at 0.8 MVA and 2 km
@@ -582,30 +493,22 @@ generators.
    al. (2019) found load stubs of 2 to 4 km in real grids, longer for smaller loads. The product rule
    joins these numbers; it is a derived planning rule, not a published one. Harnisch et al. (2016)
    connect stations more than about 100 m off the trunk as stubs.
-#. Also with ``MV_STUBS: rural``, the *satellites*, rural stations outside every settlement or alone
-   in their settlement such as farms and hamlets, are not part of the ring problem, as the
-   satellites of Ding0 (Amme et al. 2018). After the rings are solved, they are connected from the
-   one nearest to the busbar outwards. Each hangs on a stub from the nearest line within the stub
-   limits above, if its ring stays feasible. Otherwise it goes into the ring where it adds the least
-   length and the ring stays feasible (flag ``satellite_in_ring``), else into a ring of its own
-   (flag ``satellite_own_ring``). In a supply area where every candidate would be a satellite, none
-   is.
-#. A rural ring with a single node of at most 1 MVA within the stub length of its load (street
-   distance) of the busbar becomes a busbar radial.
+#. The *satellites*, rural stations outside every settlement or alone in their settlement such as
+   farms and hamlets, are not part of the ring problem, as the satellites of Ding0 (Amme et al.
+   2018). After the rings are solved, they are connected from the one nearest to the busbar
+   outwards. Each hangs on a stub from the nearest line within the stub limits above, if its ring
+   stays feasible. Otherwise it goes into the ring where it adds the least length and the ring stays
+   feasible (flag ``satellite_in_ring``), else into a ring of its own (flag
+   ``satellite_own_ring``). In a supply area where every candidate would be a satellite, none is.
+#. A rural ring with a single node of at most 1 MVA within the stub length of its load (route
+   length) of the busbar becomes a busbar radial.
 #. A customer above 5.5 MW gets a dedicated feeder with two legs from the busbar along the same
    route. Leg 2 is open at the customer, so the two legs together are (n-1) secure. Each leg gets as
    many parallel cables as the load needs at ``MV_LINE_PLANNING_UTILIZATION``, at most
    ``max_parallel_cables`` (2). Beyond that the customer is flagged ``dedicated_overload``.
-#. The generators are connected in the order of decreasing power. A generator of class ``hvmv`` or
-   above ``dedicated_feeder_kw`` gets a dedicated feeder from the busbar, with parallel cables for
-   its apparent power at the full ampacity. Any other generator connects to the nearest point of a
-   line within ``generator_max_tee_m`` (5 km). An urban generator within ``loop_in_max_offset_m``
-   (100 m) of a ring is looped into the ring if the ring stays feasible. All others get a T-off
-   whose kind follows the overhead rule. A generator without a line within 5 km gets a dedicated
-   feeder.
-#. The normally-open points of the final rings are placed, with the joints and looped-in
-   generators as explicit positions.
-#. The geometries follow the street pieces or are straight spans. Every line is at least 1 m long.
+#. The normally-open points of the final rings are placed, with the joints as explicit positions.
+#. The geometries follow the pieces of the district graph. Only the connectors to nodes off the
+   street and the bridges between graph islands are straight. Every line is at least 1 m long.
 
 .. _mv-ties:
 
@@ -615,14 +518,14 @@ Ties between supply areas
 The ring model plans each supply area on its own. Real MV grids, however, have more connections:
 cross-ties, several infeeds and support stations, which ring models of single districts lack
 (Dubielzig 2022). In a survey of German DSOs, Weisenstein and Wellßow (2021) found that most MV
-grids are meshed but operated open. With ``MV_INTERCONNECTION: ties`` (default), the stage
-therefore adds normally-open ties to the rings of neighbouring substations after all supply areas
-are planned:
+grids are meshed but operated open. The stage therefore adds normally-open ties to the rings of
+neighbouring substations after all supply areas are planned:
 
 #. The candidates are the stations and MV customers looped into the rings of done supply areas.
 #. Pairs of candidates of different supply areas with the same nominal voltage within
    ``tie_max_length_m`` (2 km) along the streets are taken in the order of their length, at most
-   one tie per ring. The overhead rule decides the kind and the route of a tie.
+   one tie per ring. A tie follows the routing graph and is an overhead line where its route runs
+   on an OSM MV line.
 #. A tie belongs to the supply area with the lower ``mv_grid_id`` and is open at the other end.
 
 Ties carry no flow in any checked case. They are not part of the district nets, of ``circuit_km``
@@ -643,10 +546,9 @@ Real MV grids also join neighbouring rings of the same substation. Many stations
 cable to a station of another ring, so that a station can be resupplied in more ways than along its
 own ring, and many loops of the meshed grid run between rings instead of through the busbar. Many
 rural stations at the end of a stub have a second cable to a station of another feeder, so that
-they keep a second infeed. In the two DSO grids checked on 2026-10-19, a fifth to a third of the
-stations had three or more MV cables, and a tenth to a seventh were stub ends with one cable. The
-rings of the stage have no such cables. With ``MV_INTERCONNECTION: ties``, the stage therefore adds
-normally-open links after the ties:
+they keep a second infeed. In two real DSO grids, a fifth to a third of the stations had three or
+more MV cables, and a tenth to a seventh were stub ends with one cable. The rings of the stage have
+no such cables, so the stage adds normally-open links after the ties:
 
 #. **Between rings:** pairs of ring members (the candidates of the ties) of different rings of the
    same supply area within their reach along the streets, in true length, are taken in the order
@@ -759,13 +661,13 @@ types:
      - NA2XS2Y 1x240 RM/25 6/10 kV: 0.122 / 0.105 Ω/km, 456 nF/km, 416 A
      - 122-AL1/20-ST1A 10.0: 0.2376 / 0.323 Ω/km, 410 A
 
-These thicker starting types are the selected planning defaults. The former 150 mm² cable and
-48-AL1 overhead types remain available through explicit configuration and in historical snapshots. A configured type must be a pandapower line type of the right kind and
-voltage. With ``MV_NOMINAL_VOLTAGE_KV: auto`` it stands for its conductor, and the 10 kV supply
-areas use the same conductor with 6/10 kV insulation or the ``10.0`` overhead type. The resolved
-values are stored in the variant snapshot, so a stored variant does not change when pandapower's
-type tables change. Larger conductors and parallel cables are used only for dedicated feeders and
-as repair measures (:ref:`mv-repair`), at most ``max_parallel_cables`` (2) parallel cables.
+Another type can be configured, for example the narrower NA2XS2Y 1x150 RM/25 cable. It must be a
+pandapower line type of the right kind and voltage. With ``MV_NOMINAL_VOLTAGE_KV: auto`` it stands
+for its conductor, and the 10 kV supply areas use the same conductor with 6/10 kV insulation or
+the ``10.0`` overhead type. The resolved values are stored in the variant snapshot, so a stored
+variant does not change when pandapower's type tables change. Dedicated feeders get parallel cables
+for their load. Otherwise, larger conductors and parallel cables are used only as repair measures
+(:ref:`mv-repair`), at most ``max_parallel_cables`` (2) parallel cables.
 
 HV/MV transformers
 ~~~~~~~~~~~~~~~~~~
@@ -773,13 +675,12 @@ HV/MV transformers
 Each substation gets ``hv_mv_units`` (2) transformers of one rating from ``hv_mv_sizes_mva`` (25,
 31.5, 40 and 63 MVA). Harnisch et al. (2016) describe two transformers per substation, each sized
 for the peak with the other one out of service. The rating is the smallest one for which the
-remaining unit carries the larger of the coincident load and the largest feed-in of the supply area
-at ``hv_mv_n1_utilization`` (100 %). The normal loading then stays at or below 50 %. The load is the
-coincidence law over all nodes of the supply area, divided by the power factor, and never the sum
-of the feeder heads, which would overstate it. If even 63 MVA is too small, the substation gets as
-many 63 MVA units as the peak needs plus one in reserve (``large_substation``). pandapower has no
-31.5 MVA type, so it is interpolated between 25 and 40 MVA and marked ``interpolated`` in the
-snapshot.
+remaining unit carries the coincident load of the supply area at ``hv_mv_n1_utilization``
+(100 %). The normal loading then stays at or below 50 %. The load is the coincidence law over all
+nodes of the supply area, divided by the power factor, and never the sum of the feeder heads, which
+would overstate it. If even 63 MVA is too small, the substation gets as many 63 MVA units as the
+peak needs plus one in reserve (``large_substation``). pandapower has no 31.5 MVA type, so it is
+interpolated between 25 and 40 MVA and marked ``interpolated`` in the snapshot.
 
 .. _mv-electrical:
 
@@ -793,46 +694,28 @@ Every supply area is checked with pandapower. The MV net is built directly, beca
 backend of the LV stage is fixed to 20/0.4 kV. The design net has an ideal slack at the MV busbar
 at ``busbar_vm_pu`` (1.02 p.u.), the setpoint of the on-load tap changer (OLTC) of the HV/MV
 transformers (Harnisch et al. 2016: 102.5 ± 1.5 %, Wintzek et al. 2021: 102 ± 2 %). Stations and
-MV customers are loads, MV generators and the LV-side generation of the stations are static
-generators. With an ideal busbar the rings are electrically independent, so the (n-1) cases of all
-rings run in two power flows. Default load-only variants run ``load``, ``n1a`` and ``n1b``.
-Generation-enabled variants also run ``feed_in_wind`` and ``feed_in_pv``. The cases follow the
-SimBench study cases hL, n1, lW and lPV (Meinecke et al. 2020):
+MV customers are loads. With an ideal busbar the rings are electrically independent, so the (n-1)
+cases of all rings run in two power flows. The stage runs three cases, after the SimBench study
+cases hL and n1 (Meinecke et al. 2020):
 
 .. list-table::
    :header-rows: 1
-   :widths: 17 23 24 36
+   :widths: 17 33 50
    :class: fixed-table
 
    * - Case
-     - Loads P / Q
-     - Wind / PV / other
+     - Loads
      - Topology
    * - ``load``
-     - 1 / 1 (half-ring coincidence)
-     - 0 / 0 / 0
+     - peak, half-ring coincidence
      - normal operation, open points open
    * - ``n1a``
-     - 1 / 1 (ring coincidence)
-     - 0 / 0 / 0
+     - peak, ring coincidence
      - exit A of every ring and leg 1 of every dedicated feeder out of service, all open points
        closed
    * - ``n1b``
-     - 1 / 1 (ring coincidence)
-     - 0 / 0 / 0
+     - peak, ring coincidence
      - exit B of every ring and leg 2 out of service, all open points closed
-   * - ``feed_in_wind``
-     - 0.1 / 0.123
-     - 1.0 / 0.8 / 1.0
-     - normal operation
-   * - ``feed_in_pv``
-     - 0.1 / 0.123
-     - 0.85 / 0.95 / 1.0
-     - normal operation
-
-MV generators run at ``mv_gen_cos_phi`` (0.95) under-excited, an assumption that follows common
-practice under VDE-AR-N 4110 and lowers the voltage rise. The LV-side generation runs at
-``lv_pv_cos_phi`` (1.0).
 
 Criteria
 ~~~~~~~~
@@ -851,20 +734,16 @@ Criteria
    * - Voltage of every node with an (n-1) reserve
      - at least ``busbar_vm_pu`` minus ``max_drop_n1_percent`` (0.92 p.u.)
      - ``n1a``, ``n1b``
-   * - Voltage of every MV node
-     - at most ``busbar_vm_pu`` plus ``max_rise_percent`` (1.04 p.u.)
-     - ``feed_in_wind``, ``feed_in_pv``
    * - Line loading
      - at most ``MV_LINE_PLANNING_UTILIZATION`` (60 %)
      - ``load``
    * - Line loading
      - at most ``n1_utilization`` (100 %)
-     - ``n1a``, ``n1b`` and the feed-in cases
+     - ``n1a``, ``n1b``
 
-The MV share of the voltage band in normal operation (5 %) and the generation-driven rise of 2 %
-follow Harnisch et al. (2016), SimBench and Ding0. The 2 % rise is the limit of VDE-AR-N 4110 (dena
-2012). Nodes on stubs, T-offs, busbar radials and generator feeders have no (n-1) requirement. The
-stations and customers among them are flagged ``not_n1_secure``.
+The MV share of the voltage band in normal operation (5 %) follows Harnisch et al. (2016),
+SimBench and Ding0. Nodes on stubs and busbar radials have no (n-1) requirement. The stations and
+customers among them are flagged ``not_n1_secure``.
 
 .. _mv-repair:
 
@@ -889,29 +768,22 @@ types only overhead lines can grow; the cables then get parallel cables.
    * - Voltage on a ring (``load``, ``n1a``, ``n1b``)
      - Move the open point to its best position. If it is there already, the next larger conductor
        on every line of the path from the busbar to the node in that case, round by round while a
-       line can grow. Then split the ring: its members are solved again with at most half of them
-       per ring. As a last step, one more parallel cable on both exits.
+       line can grow. Then split the ring: its members are solved again with at most about half of
+       them per ring. As a last step, one more parallel cable on both exits.
    * - Loading of a ring section
      - A conductor that carries the current. At the largest conductor, split the ring if the section
        is a busbar exit and the ring has at least 4 members, else one more parallel cable, up to
        ``max_parallel_cables``.
-   * - Loading or voltage on a dedicated feeder, generator feeder or busbar radial
+   * - Loading or voltage on a dedicated feeder or busbar radial
      - Larger conductors (the overloaded line, or every line of the feeder for voltage), then one
        more parallel cable, else the report ``dedicated_overload``.
-   * - Rise or loading in a feed-in case on a ring feeder
-     - Larger conductors on the path to the node (or on the overloaded line). At the largest
-       conductors, give the T-off or looped-in generator with the largest feed-in a dedicated
-       feeder (one per feeder and round); without such a generator, the report ``lv_pv_rise``.
    * - A case does not converge
      - Report, the topology is kept.
 
-Rises caused by LV-side PV get larger conductors but no further measures. Real grids also keep them
-within the band by measures that the model does not represent, such as cos φ(P) control of the
-inverters and regulated MV/LV transformers. A supply area is stored with its remaining violations,
-as the LV stage stores its grids, and ``mv_grid.power_flow_status`` is ``converged``,
-``voltage_violation``, ``loading_violation`` or ``not_converged``. The repair actions are kept in
-``mv_grid.repairs`` (``upgrade`` with the new types, ``parallel``, ``move_nop``, ``split_ring``,
-``convert_to_dedicated``).
+A supply area is stored with its remaining violations, as the LV stage stores its grids, and
+``mv_grid.power_flow_status`` is ``converged``, ``voltage_violation``, ``loading_violation`` or
+``not_converged``. The repair actions are kept in ``mv_grid.repairs`` (``upgrade`` with the new
+types, ``parallel``, ``move_nop``, ``split_ring``).
 
 Stored net and OLTC
 ~~~~~~~~~~~~~~~~~~~
@@ -920,6 +792,7 @@ The stored net of a supply area (``mv_grid.net``, pandapower JSON) adds the HV s
 net: a 110 kV bus with an external grid at 1.0 p.u. and the sized HV/MV transformers. Their OLTC tap
 (±9 steps of 1.5 %) is fixed at the position that brings the MV busbar near 1.02 p.u. in the load
 case. A plain power flow of the stored net therefore reproduces the load case without a controller.
+The HV bus carries the eTraGo bus id of its substation in the column ``etrago_bus_id``.
 
 .. _mv-voltage-budget:
 
@@ -929,77 +802,65 @@ Voltage budget and MV/LV taps
 pylovo designs each LV grid for an LV busbar voltage of ``LV_REFERENCE_VOLTAGE_PU`` (0.96 p.u.) at
 its own station-coincident load (:ref:`validation-snapshot`). The stored LV net keeps the MV-side
 voltage :math:`r` that achieves this with a neutral tap, and the MV grid has to deliver it. The
-off-load tap of an MV/LV transformer (±2 steps of 2.5 %) can shift the LV side, but one tap must
-serve both the load and the feed-in extreme. The stage therefore chooses one tap :math:`t` per
-station from the MV voltages of the cases:
+off-load tap of an MV/LV transformer (±2 steps of 2.5 %) can shift the LV side. The stage chooses
+one tap :math:`t` per station from the MV voltage of the station in the load case:
 
 .. math::
 
    \Delta_T &= r - v_\mathrm{ref}, \qquad k(t) = \frac{1}{1 + t\,s}, \\
    v_\mathrm{LV}(t) &= (v_\mathrm{load} - b)\,k(t) - \Delta_T, \qquad
-   v_\mathrm{LV,feed}(t) = (v_\mathrm{feed} + b)\,k(t) + \Delta v_T, \\
-   m_\mathrm{low}(t) &= v_\mathrm{LV}(t) - (v_\mathrm{ref} - \varepsilon), \qquad
-   m_\mathrm{high}(t) = v_\mathrm{max} - v_\mathrm{LV,feed}(t).
+   m(t) = v_\mathrm{LV}(t) - (v_\mathrm{ref} - \varepsilon).
 
 Here :math:`\Delta_T` is the drop over the station transformer at the LV design load (scaled to the
 larger rating of an upsized station), :math:`s` is the tap step (``mvlv_tap_step_percent``, 2.5 %)
 and :math:`t < 0` raises the LV side. :math:`v_\mathrm{load}` is the MV voltage of the station in
-the load case and :math:`v_\mathrm{feed}` the higher one of the two feed-in cases. The busbar band
-:math:`b` (``busbar_band_pu``, 0.015) puts the busbar at the lower edge of the OLTC band in the load
-case and at the upper edge in feed-in. :math:`\Delta v_T` is the rise over the station transformer
-under reverse flow. :math:`\varepsilon` (``lv_design_tolerance_pu``, 0.002) is a small tolerance
-below the reference, and :math:`v_\mathrm{max}` (``lv_feed_in_max_pu``, 1.07 p.u.) is the upper
-band limit of 1.10 p.u. minus the 3 % rise that VDE-AR-N 4105 allows inside the LV grid.
+the load case. The busbar band :math:`b` (``busbar_band_pu``, 0.015) puts the busbar at the lower
+edge of the OLTC band. :math:`\varepsilon` (``lv_design_tolerance_pu``, 0.002) is a small tolerance
+below the reference.
 
-The tap :math:`t^*` maximises :math:`\min(m_\mathrm{low}, m_\mathrm{high})` from ``mvlv_tap_min``
-to ``mvlv_tap_max`` (-2 to +2), which centres the LV busbar between the load and the feed-in bound.
-Ties go to the tap closest to 0. A station has a ``band_conflict`` if even :math:`t^*` leaves a
-negative margin, and ``tap_limit`` if the load-side margin is negative. A typical case is a distant
-rural station with much PV, whose load case needs a raising tap and whose feed-in case needs a
-lowering one. The results are stored per station in ``mv_node``: ``mv_lv_tap_pos``,
-``lv_busbar_vm_pu``, ``lv_min_vm_pu`` (the LV busbar voltage minus the largest drop inside the
-stored LV grid) and ``lv_busbar_vm_feed_in_pu``. The budget superposes the MV voltages and the
-stored LV designs, and ``pylovo-mv couple`` verifies it with the LV nets.
+The tap :math:`t^*` is the one closest to 0 with :math:`m(t) \ge 0`, from ``mvlv_tap_min`` to
+``mvlv_tap_max`` (-2 to +2): the neutral tap where it suffices, else the smallest raising tap. If no
+tap reaches the reference, :math:`t^*` is the most raising tap, and the station gets the flags
+``band_conflict`` and ``tap_limit``. The results are stored per station in ``mv_node``:
+``mv_lv_tap_pos``, ``lv_busbar_vm_pu`` and ``lv_min_vm_pu`` (the LV busbar voltage minus the
+largest drop inside the stored LV grid). The budget superposes the MV voltages and the stored LV
+designs, and ``pylovo-mv couple`` verifies it with the LV nets.
 
 .. _mv-coupling:
 
 Coupling with the LV grids
 --------------------------
 
-Load-only variants check the LV design point and merged load case. Feed-in fields are not requested;
-empty values do not imply a failed check or a feed-in acceptance result. The feed-in descriptions
-below apply when ``MV_INCLUDE_GENERATION`` is enabled.
-
 ``pylovo-mv couple`` checks the voltage budget with the stored LV nets and computes the operating
 point of the joint MV and LV grid of every done supply area. It runs after ``pylovo-mv generate``
 and never changes the MV or LV grids:
 
-#. The design-point check takes one LV net at a time. A copy of the stored LV net includes its own
-   loads and fixed station-busbar customer loads with the LV version's power factor. These loads, the
-   tap :math:`t^*` and the MV voltage :math:`v_\mathrm{load} - b` at its station gives
-   ``coupled_lv_busbar_vm_pu`` and ``coupled_lv_min_vm_pu``. The feed-in cases (MV voltage
-   :math:`v_\mathrm{feed} + b`, loads scaled by the case factors, the LV-side generation of the
-   station at the LV busbar) give ``coupled_lv_busbar_vm_feed_in_pu`` and ``coupled_lv_max_vm_pu``.
-   These values are the verdict for the LV grids, because each LV grid is designed for its own
-   peak.
+#. The design-point check takes one LV net at a time. A copy of the stored LV net with its own
+   loads, the fixed loads of its station-busbar customers (with the power factor of the LV
+   version), the tap :math:`t^*` and the MV voltage :math:`v_\mathrm{load} - b` at its station
+   gives ``coupled_lv_busbar_vm_pu`` and ``coupled_lv_min_vm_pu``. These values are the verdict for
+   the LV grids, because each LV grid is designed for its own peak.
 #. The merged operating point joins all LV nets of a supply area under its MV net. Each station
    transformer hangs on its MV node, the MV station loads are removed and the busbar customers
    become fixed loads at the LV busbar. The LV loads are scaled per MV feeder and consumer category
    with pylovo's law, so the feeder heads carry the loads of the MV design. The busbar is an ideal
-   slack at the lower band edge (load) or the upper band edge (feed-in). The result per station is
+   slack at the lower band edge, and the HV side is left out. The result per station is
    ``coupled_op_lv_busbar_vm_pu``. The difference of the MV voltages to the MV-only net is stored
    as a consistency check in ``mv_grid.metrics['coupling']``.
 
 In 10 kV supply areas the LV transformers are re-typed to 10 kV on their MV side, and a station
 upsized for its busbar customers gets the larger transformer. Every LV net is merged, also one
-whose own check does not converge; the supply area is then ``partial``. Lines shorter than 1 m get
-1 m, because stored LV nets can hold lines of a few micrometres that stop Newton-Raphson, and a
-failed Newton-Raphson is repeated with Iwamoto damping. The merged net is not stored, but
-``pylovo-mv export --coupled`` rebuilds it for one supply area.
+whose own check does not converge. Lines shorter than 1 m get 1 m, because stored LV nets can hold
+lines of a few micrometres that stop Newton-Raphson, and a failed Newton-Raphson is repeated with
+Iwamoto damping. The merged net is not stored, but ``pylovo-mv export --coupled`` rebuilds it for
+one supply area.
 
-Missing voltage budgets and failed or skipped design/feed-in checks also produce ``partial`` when
-using ``--no-merged``. Completion describes the checks performed, not compliance with voltage limits.
-Previously stored coupling results are unchanged until ``pylovo-mv couple`` is run again.
+A supply area is ``partial`` when a station with an LV grid could not be coupled, has no voltage
+budget or has a skipped or non-converging design-point check (also with ``--no-merged``), or when
+the merged power flow does not converge. The status describes the checks performed, not
+compliance with voltage limits. Stored coupling results stay unchanged until ``pylovo-mv couple``
+is run again. A retired variant, planned with an option that the stage no longer has, is not
+coupled (:ref:`mv-variants`).
 
 .. _mv-osm-coverage:
 
@@ -1040,22 +901,22 @@ Limitations
   from fewer substations or from one outside it. In one checked rural DSO area, five substations
   of the stage supply the stations that the DSO feeds from one infeed. Open data do not tell which
   substation feeds which area, so rural supply paths can be shorter than real ones.
+* The stage plans for load only. MV generators, the PV of the LV grids and reverse power flows are
+  neither planned nor checked, so the results say nothing about the feed-in that a grid can take.
 * There is no short-circuit check: short-circuit power, the reach of the protection at feeder ends
-  and the earth-fault compensation are not checked. The plausibility notebook only estimates the
-  earth-fault current from the cable length.
+  and the earth-fault compensation are not checked. :mod:`pylovo.analysis.mv_validation` only
+  estimates the earth-fault current from the cable and overhead length.
 * The non-residential loads are area-based: floor areas times specific peaks per m² of the LV
   stage. Large sites can dominate dense supply areas and fill their substations, and the hall rule
   and the station-busbar customers reduce this effect only in part. Non-residential buildings that
   contain a transformer candidate are removed by the LV stage before loads exist and never become
   MV customers.
-* The checks use five snapshot cases and no time series.
+* The checks use three snapshot cases (the peak load and both (n-1) directions) and no time series.
 * One cable and one overhead type are planned per voltage. The repair loop upgrades conductors up
   to the largest pandapower type, adds parallel cables and splits rings; long rural feeders forced to
   10 kV can still keep voltage violations. Transformer ratings mapped in OSM are not read.
-* With ``MV_OVERHEAD_LINES: osm`` the overhead lines exist only where OpenStreetMap maps them. Their
-  use depends on the completeness of the OSM layer, which varies by district, and MV cables are
-  hardly mapped. With ``rural``, a straight span between two non-urban ends can cross a
-  settlement.
+* The overhead lines exist only where OpenStreetMap maps them. Their use depends on the completeness
+  of the OSM layer, which varies by district, and MV cables are hardly mapped.
 * The LV grids are not changed. The stage chooses MV/LV taps and upsizes stations in the MV model
   only, but it does not reinforce LV grids.
 * Streets outside the municipalities of the routing graph are missing, and supply areas cut by the
@@ -1090,14 +951,12 @@ Methods and models:
 * I. Cußmann et al. (2024), final report of the eGon project,
   `doi:10.5281/zenodo.10677901 <https://doi.org/10.5281/zenodo.10677901>`_, and the eGon-data
   pipeline (`github.com/openego/eGon-data <https://github.com/openego/eGon-data>`_). Thresholds of
-  the voltage levels, HV/MV substations and MV grid districts.
+  the voltage levels and the HV/MV substations with their eTraGo buses.
 * F. Klabunde, C. Reinhold and B. Engel (2022), *Regionsabhängige Energiesystemanalysen auf Basis
   einer datengesteuerten Verteilnetzmodellierung*, 17. Symposium Energieinnovation, Graz. Open
   point at the voltage balance.
 * G. Clarke and J. W. Wright (1964), Scheduling of vehicles from a central depot to a number of
   delivery points, *Operations Research* 12(4), 568–581.
-* B. E. Gillett and L. R. Miller (1974), A heuristic algorithm for the vehicle-dispatch problem,
-  *Operations Research* 22(2), 340–349.
 * P. Toth and D. Vigo (2003), The granular tabu search and its application to the vehicle-routing
   problem, *INFORMS Journal on Computing* 15(4), 333–346.
 * O. Bräysy and M. Gendreau (2005), Vehicle routing problem with time windows, part I: route
@@ -1131,6 +990,5 @@ Planning principles and statistics:
 
 Data:
 
-* Bundesnetzagentur, `Marktstammdatenregister <https://www.marktstammdatenregister.de>`_ (MaStR),
-  licence dl-de/by-2-0, downloaded with `open-mastr <https://open-mastr.readthedocs.io>`_.
 * OpenStreetMap contributors, power and land-use data (ODbL), imported into the InfDB.
+* eGon-data HV/MV substations with their eTraGo bus ids (see Cußmann et al. 2024 above).

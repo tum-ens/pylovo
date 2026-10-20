@@ -116,10 +116,10 @@ with ``pylovo-delete networks`` deletes the MV variants that contain it. Migrati
      - One MV grid per supply area: status, nominal voltage, polygon, counts, lengths, voltage and
        loading extremes, metrics, repairs and the stored pandapower net (``net``).
    * - ``mv_node``
-     - Busbars, stations (``grid_result_id``), MV customers, MV generators and joints with loads,
-       connection, MV voltages, voltage budget, MV/LV tap and coupling results.
+     - Busbars, stations (``grid_result_id``), MV customers and joints with loads, connection, MV
+       voltages, voltage budget, MV/LV tap and coupling results.
    * - ``mv_line``
-     - Ring, stub, dedicated, generator and tie lines with kind, type, lengths and loadings.
+     - Ring, stub, dedicated, tie and link lines with kind, type, lengths and loadings.
    * - ``mv_ring``
      - One row per ring or feeder with members, lengths, loads, open point and extremes.
    * - ``mv_graph``, ``mv_graph_vertex``, ``mv_graph_edge``, ``mv_graph_settlement``

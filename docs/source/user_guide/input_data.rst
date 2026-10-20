@@ -61,7 +61,7 @@ to ``TARGET_EPSG``.
 
 The MV stage reads further inputs: the regional street graph
 ``<INFDB_SOURCE_SCHEMA>.ways_per_junction``, the OSM power and land-use layers of
-``INFDB_OSM_SCHEMA`` and, optionally, eGon-data tables
+``INFDB_OSM_SCHEMA`` and, optionally, the eGon-data HV/MV substations
 (:ref:`mv-prerequisites`).
 
 Buildings

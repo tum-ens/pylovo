@@ -54,11 +54,11 @@ and the variants; ``notebook_tutorials/mv_grids/README.md`` describes all parame
      - Tables per variant, area class and supply area; maps of the supply areas and rings;
        distributions of ring sizes, lengths, loadings, voltages and MV/LV taps.
    * - ``2_mv_variant_comparison.ipynb``
-     - Variants against a reference variant (solver, routing, sources, equipment) and the same
-       variant on two LV versions.
+     - Variants against a reference variant (parameter differences, metrics, distributions, ring
+       membership) and the same variant on two LV versions.
    * - ``3_mv_plausibility.ipynb``
-     - Metrics against literature ranges, eGon-data districts, Ding0 grids, the demand anchor and
-       earth-fault currents.
+     - Metrics against literature ranges and Ding0 grids, the demand anchor and earth-fault
+       currents (:mod:`pylovo.analysis.mv_validation`).
    * - ``4_mv_lv_coupling.ipynb``
      - Results of ``pylovo-mv couple``: LV busbar voltages, band conflicts, taps and the merged
        operating point.

@@ -4,13 +4,12 @@ MV grids
 The MV stage adds medium-voltage (MV) grids to a generated LV version: open rings from the HV/MV
 substations of the region to the stations of the LV grids and the MV customers
 (:doc:`../concepts/mv_grids`). This page shows how to prepare its inputs, run it, compare MV
-variants and read the results. The stage runs on the command line and from Python. The HTTP API and
-the GridPlanner UI do not offer it yet.
+variants and read the results. :doc:`mv_parameters` lists every parameter. The stage runs on the
+command line and from Python. The HTTP API and the GridPlanner UI do not offer it yet.
 
-The default workflow plans for peak load and N-1, like the LV-first workflow. It uses 240 mm² cable
-and 122-AL1 overhead conductors. Generation is optional: ``MV_INCLUDE_GENERATION: true`` adds
-generator inputs, connections and feed-in checks in a separate variant. Load-only results do not
-claim feed-in acceptance.
+The stage plans for the peak load and the (n-1) cases, like the LV-first workflow. It uses
+NA2XS2Y 1x240 cables and 122-AL1 overhead conductors. It plans no generation, so its results say
+nothing about the feed-in that a grid can take.
 
 .. _mv-prerequisites:
 
@@ -31,18 +30,15 @@ Prerequisites
    * - Migration ``0009_mv_grids``
      - The MV tables
      - ``pylovo-setup`` (:ref:`mv-schema`)
-   * - MaStR units (generation-enabled variants only)
-     - MV generators and LV-side generation
-     - ``pylovo-import mastr`` (:ref:`mv-mastr-import`)
    * - OSM power data in InfDB
-     - HV/MV substations, built-up land use
+     - HV/MV substations, MV overhead lines, built-up land use
      - Schema ``INFDB_OSM_SCHEMA`` (:ref:`mv-osm-data`)
    * - Regional street graph of InfDB
      - Routing graph and settlements
      - ``<INFDB_SOURCE_SCHEMA>.ways_per_junction`` and ``.buildings``
-   * - eGon-data tables (optional)
-     - ``MV_SUBSTATIONS: egon``, ``MV_SUPPLY_AREAS: egon``, cross-check of the substations
-     - ``egon_hvmv_substation`` and ``egon_mv_grid_district`` (:ref:`mv-egon-data`)
+   * - eGon-data HV/MV substations (optional)
+     - The eTraGo 110 kV bus of every substation (``pylovo-mv boundary``)
+     - ``egon_hvmv_substation`` (:ref:`mv-egon-data`)
    * - Municipal register
      - Population of the demand anchor in the run summary
      - Loaded by ``pylovo-setup``
@@ -90,54 +86,14 @@ Until the migration is recorded, ``pylovo-generate`` and ``pylovo-mv`` stop with
 no generation is running, because the new foreign keys to ``grid_result`` wait for running
 transactions.
 
-.. _mv-mastr-import:
-
-MaStR import (optional)
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Load-only planning does not query or require MaStR data. With ``MV_INCLUDE_GENERATION: true``,
-the generators come from the Marktstammdatenregister (MaStR) of the Bundesnetzagentur. Its bulk
-export is downloaded and parsed with `open-mastr <https://open-mastr.readthedocs.io>`_, a separate
-tool that writes an SQLite file and is not a dependency of pylovo:
-
-.. code-block:: bash
-
-   uv run --no-project --with open-mastr python -c "from open_mastr import Mastr; \
-       Mastr().download(data=['wind', 'solar', 'biomass', 'hydro', 'gsgk', 'combustion', 'storage', 'grid', 'location'])"
-   uv run pylovo-import mastr --sqlite ~/.open-MaStR/data/sqlite/open-mastr.db
-
-``pylovo-import mastr [--sqlite SQLITE] [--margin-m MARGIN_M]`` reads the SQLite file (default
-``~/.open-MaStR/data/sqlite/open-mastr.db``) and replaces two tables:
-
-* ``pylovo.mastr_units``: the units in operation with coordinates inside the extent of
-  ``pylovo.postcode`` plus ``--margin-m`` (default 5,000 m), with technology, net power and the
-  connection voltage level (``Spannungsebene``) of their grid connection point,
-* ``pylovo.mastr_postcode_aggregates``: the units in operation without coordinates (mostly small
-  rooftop PV), summed per postcode and technology.
-
-The tables are not versioned. A new import changes the inputs of MV variants built afterwards but
-not the stored ones. Without an import the tables are empty, and the stage plans the MV grids
-without generators.
-
-.. note::
-
-   open-mastr 1.x stops on the solar and combustion units of the MaStR bulk export in version
-   26.2, because some catalogue fields of these units hold several values. Until open-mastr reads
-   this export, these units have to be written into the tables ``solar_extended`` and
-   ``combustion_extended`` of the SQLite file by other means, for example with a separate XML
-   parser. ``pylovo-import mastr`` only reads the SQLite file and skips a technology whose table is
-   missing.
-
-The MaStR data are published under the licence dl-de/by-2-0 (attribution: Bundesnetzagentur,
-Marktstammdatenregister).
-
 .. _mv-osm-data:
 
 OSM power data
 ~~~~~~~~~~~~~~
 
-The HV/MV substations come from the OpenStreetMap layers that the InfDB OSM importer writes into the
-schema ``INFDB_OSM_SCHEMA`` of ``.env`` (default ``osm``, :ref:`env-variables`):
+The HV/MV substations and the MV overhead lines come from the OpenStreetMap layers that the InfDB
+OSM importer writes into the schema ``INFDB_OSM_SCHEMA`` of ``.env`` (default ``osm``,
+:ref:`env-variables`):
 
 .. list-table::
    :header-rows: 1
@@ -149,15 +105,17 @@ schema ``INFDB_OSM_SCHEMA`` of ``.env`` (default ``osm``, :ref:`env-variables`):
    * - ``infrastructure_point``, ``infrastructure_polygon``
      - Features with ``osm_type = 'power'``: substations (``osm_subtype = 'substation'``), plants
        and generators (excluded substations) and transformers.
+   * - ``infrastructure_line`` (optional)
+     - The MV overhead lines (``line`` and ``minor_line``) of the routing graph. Without it every
+       MV line is a cable.
    * - ``tags``
      - The OSM tags (``voltage``, ``substation``, ``frequency``, ``operator``, ``name``,
-       ``railway``) as ``jsonb``, joined by ``geom_type`` and ``osm_id``.
+       ``railway`` and the tags of the lines) as ``jsonb``, joined by ``geom_type`` and ``osm_id``.
    * - ``landuse_polygon`` (optional)
      - Built-up land use (residential, commercial, industrial, retail) of the settlement flags.
        Without it the settlements come from address buildings only (warning).
 
-Without OSM substations near the region, the stage stops. ``MV_SUBSTATIONS: egon`` uses the
-eGon-data substations instead.
+Without OSM substations near the region, the stage stops.
 
 .. _mv-egon-data:
 
@@ -165,16 +123,17 @@ eGon-data (optional)
 ~~~~~~~~~~~~~~~~~~~~
 
 The eGon-data HV/MV substations (``egon_hvmv_substation``: ``bus_id``, ``voltage``, ``osm_id``,
-``geom``) and MV grid districts (``egon_mv_grid_district``: ``bus_id``, ``geom``) are read from the
-schema ``pylovo`` if they exist there and hold rows, else from ``INFDB_OPENDATA_SCHEMA``. They are
-needed for ``MV_SUBSTATIONS: egon`` and ``MV_SUPPLY_AREAS: egon``. Without them, the default variant
-runs and only the eGon cross-check of the OSM substations is skipped (warning). pylovo has no
-importer for these tables yet. Copy them from the eGon-data database or the Open Energy Platform.
+``geom``) are read from the schema ``pylovo`` if the table exists there and holds rows, else from
+``INFDB_OPENDATA_SCHEMA``. Every OSM site gets the bus id of the nearest one within
+``egon_match_m`` (300 m), which is the id of its 110 kV bus in the eTraGo grid model
+(``pylovo-mv boundary``). Without the table the stage runs, the match is skipped (warning) and no
+substation has a bus. pylovo has no importer for this table yet. Copy it from the eGon-data
+database or the Open Energy Platform.
 
 The eGon substations are processed OSM-derived records. Keep the source release and the typed OSM
 identifiers when comparing them with another grid dataset. The stored ``egon_bus_id`` of an OSM
-site is a spatial cross-check; it does not establish an electrical connection to an external HV
-network. Its distance is measured to the station footprint where available, otherwise to its point.
+site is a spatial match; it does not establish an electrical connection to an external HV network.
+Its distance is measured to the station footprint where available, otherwise to its point.
 
 Quick start
 -----------
@@ -187,9 +146,7 @@ Quick start
 
 ``pylovo-generate --mv`` runs the MV stage for the MV variant of the configuration
 (``MV_VARIANT_ID``, default ``1``) of ``VERSION_ID``. Further variants of the same LV version are
-built with ``pylovo-mv generate`` (:ref:`mv-variants`). To opt into generation, prepare MaStR data
-and create another variant with ``--set MV_INCLUDE_GENERATION=true``. Existing snapshots without
-this flag retain their original generation-enabled behavior.
+built with ``pylovo-mv generate`` (:ref:`mv-variants`).
 
 Running the MV stage
 --------------------
@@ -226,7 +183,7 @@ On a stored LV version
 ``--comment COMMENT``
    Comment stored with a new variant (default ``MV_VARIANT_COMMENT``).
 ``--set KEY=VALUE [KEY=VALUE ...]``
-   Parameters of this variant that differ from the configuration (:ref:`mv-variants`).
+   ``MV_*`` keys of this variant that differ from the configuration (:ref:`mv-variants`).
 ``--parallel`` / ``--no-parallel``
    Plan the supply areas in worker processes or one after the other in the main process (default
    ``PARALLEL``).
@@ -238,8 +195,8 @@ On a stored LV version
 
 .. code-block:: bash
 
-   uv run pylovo-mv generate --version 1 --all --variant d0 --comment "cable rings" \
-       --set MV_STUBS=none MV_OVERHEAD_LINES=none MV_INTERCONNECTION=none
+   uv run pylovo-mv generate --version 1 --all --variant r15 --comment "15 ring members" \
+       --set MV_MAX_STATIONS_PER_RING=15
    uv run pylovo-mv generate --version 1 --ags 09162000 --jobs 2
 
 Every output line starts with ✓ or ✗. The first line names the database, the version and the
@@ -247,9 +204,9 @@ variant. The summary at the end has this form (``<...>`` stands for the values o
 
 .. code-block:: text
 
-   ✓ MV stage on <DBNAME>@<HOST>:<PORT>, version 1, variant d0
-   ✓ MV variant d0 of version 1: <n> grids (<n> done), <n> stations, <n> customers, <n> generators, <km> km (cable <share> %), <n> grids with violations, <n> band conflicts, <s> s
-   ✓ Nominal voltage auto (10 kV from 8 MVA/km² installed): <n> at 20 kV
+   ✓ MV stage on <DBNAME>@<HOST>:<PORT>, version 1, variant r15
+   ✓ MV variant r15 of version 1: <n> grids (<n> done), <n> stations, <n> customers, <km> km (cable <share> %), <n> grids with violations, <n> band conflicts, <s> s
+   ✓ Nominal voltage auto (10 kV from 5 MVA/km² installed): <n> at 20 kV
    ✓ Ties: none (no rings of different districts of the same voltage within 2 km)
    ✓ Links: <n> normally-open links between rings, <km> km, <n> of <n> rings, <share> % of the supply points with a third cable, <n> ring pairs joined twice
    ✓ Demand anchor: <kW> kW per inhabitant (<MW> MW coincident, <n> inhabitants of <n> PLZ; MV customers ...)
@@ -285,9 +242,10 @@ The command-line tools call :func:`pylovo.mv_grid.stage.run_mv_stage`:
    summary = run_mv_stage("1", [80803, 80802], params, parallel=True, jobs=2)
    print(summary.describe())
 
-``plz_list=None`` takes every postcode with LV grids of the version. :class:`~pylovo.mv_grid.parameters.MvParameters`
-checks every value on construction. ``replace`` takes field names, ``replace_raw`` the names of
-``--set``.
+``plz_list=None`` takes every postcode with LV grids of the version.
+:class:`~pylovo.mv_grid.parameters.MvParameters` checks every value on construction. ``replace``
+takes field names, ``replace_raw`` the ``MV_*`` keys and the constant names. The constants of the
+stage are changed this way only (:doc:`mv_parameters`).
 
 .. _mv-variants:
 
@@ -304,7 +262,7 @@ not part of the snapshot of the LV version, so MV variants never require a new `
 ``config_generation_mv.yaml`` (except ``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and
 ``MV_VARIANT_COMMENT``). VALUE is read as YAML (``null``, numbers, text) and checked against the
 rules of the key. A value with spaces needs quotes in the shell. The constants of
-:ref:`mv-parameters` are changed in Python with ``MvParameters.replace``.
+:doc:`mv_parameters` are changed in Python with ``MvParameters.replace``.
 
 .. list-table:: Examples of variants
    :header-rows: 1
@@ -340,10 +298,15 @@ A variant stored by an older version of the stage code can still be read, couple
 but not resumed: its ``mv_stage_version`` differs. Build it again with ``--replace`` or under a new
 variant id.
 
+A variant planned by an earlier version of the stage with an option that the stage no longer has
+(for example another ring solver, other supply areas or generators with feed-in cases) is
+*retired*. ``pylovo-mv list`` names these options. Its results stay readable, and ``pylovo-mv
+export`` writes its stored nets, but it cannot be resumed, coupled or exported coupled.
+
 A variant becomes stale when the LV results of its postcodes change after it was built, for example
 by load edits, deleted or regenerated grids. ``pylovo-mv list`` compares a fingerprint of the LV
-results (number of grids, grid ids, newest load edit, number of MV customers) with the one stored
-at creation and marks such variants ``stale``. Rebuild them with ``--replace``.
+results of its postcodes (number of grids, grid ids, newest load edit, number of MV customers) with
+the one stored at creation and marks such variants ``stale``. Rebuild them with ``--replace``.
 
 ``pylovo-mv delete`` deletes variants with all their results. ``pylovo-delete networks --plz PLZ
 --version VERSION`` also deletes the MV variants of that version that contain the postcode, because
@@ -366,9 +329,8 @@ and LV operating point (:ref:`mv-coupling`). ``--grid`` selects MV grids (defaul
 ``--jobs`` sets the workers (default 2, about 1 GB of memory each) and ``--no-merged`` runs only the
 design-point check. The results are the ``coupled_*`` columns of ``mv_node``,
 ``mv_grid.coupled_status`` (``done``, ``partial`` or ``failed``) and ``mv_grid.metrics['coupling']``.
-``couple`` takes the same lock as ``generate`` and can be run again at any time. For load-only
-variants, it checks the LV design point and the merged load case; feed-in checks are not requested
-and their empty results are not counted as failures.
+``couple`` takes the same lock as ``generate`` and can be run again at any time. It refuses a
+retired variant.
 
 pylovo-mv list
 ~~~~~~~~~~~~~~
@@ -377,11 +339,11 @@ pylovo-mv list
 
    pylovo-mv list [--version VERSION]
 
-One line per variant: generation status, number of postcodes, grids done and failed, electrical
-pass/violation/unchecked counts, stored line length, the stale flag and the comment. The check mark
-describes generation completion; it does not certify electrical compliance. Non-converging power flows
-count among electrical failures. Electrical acceptance refers to the cases requested by that variant.
-Circuit lengths count parallel circuits individually; route lengths count each modeled line once.
+One line per variant: generation status, number of postcodes, grids done and failed, the retired
+options if any, electrical pass/violation/unchecked counts, stored line length, the stale flag and
+the comment. The check mark describes generation completion; it does not certify electrical
+compliance. Non-converging power flows count among electrical failures. Circuit lengths count
+parallel circuits individually; route lengths count each modeled line once.
 
 pylovo-mv delete
 ~~~~~~~~~~~~~~~~
@@ -399,10 +361,10 @@ pylovo-mv export
 .. code-block:: text
 
    pylovo-mv export --version VERSION --variant VARIANT --grid GRID --output OUTPUT
-                    [--case {load,n1a,n1b,feed_in_wind,feed_in_pv}] [--coupled]
+                    [--case {load,n1a,n1b}] [--coupled]
 
 Writes the stored pandapower net of one MV grid to a JSON file. ``load`` (default) is the stored
-net with the HV side, the fixed OLTC tap and the results of the load case. Any other case is
+net with the HV side, the fixed OLTC tap and the results of the load case. ``n1a`` and ``n1b`` are
 applied to a copy and solved before writing. ``--coupled`` writes the merged MV and LV net of the
 supply area instead.
 
@@ -496,27 +458,26 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
    * - ``mv_variant``
      - One row per MV variant: parameter snapshot, postcodes, routing graph, status (``running``,
        ``done``, ``partial``, ``failed``), LV fingerprint and the run summary (``summary``, with the
-       ties and the demand anchor).
+       ties, the links and the demand anchor).
    * - ``mv_substation``
      - HV/MV substations with busbar point, footprint, OSM tags, eGon match, sizing (number and
-       rating of the transformers), peak load and feed-in, loading, flags and the busbar circle
-       of the display geometry (``display_geom``).
+       rating of the transformers), peak load, loading, flags and the busbar circle of the display
+       geometry (``display_geom``).
    * - ``mv_grid``
      - One MV grid per supply area: status, nominal voltage, polygon and area, ``complete``,
        HV/MV transformers and OLTC tap, counts, circuit, cable, overhead and trench length, voltage
        and loading extremes per case, band conflicts, ``metrics``, ``repairs`` and the stored
        pandapower net (``net``).
    * - ``mv_node``
-     - Busbars, stations, MV customers, MV generators and joints with their loads, connection,
-       ring, feeder and position, MV voltages per case, voltage budget, MV/LV tap, coupling results
-       and flags.
+     - Busbars, stations, MV customers and joints with their loads, connection, ring, feeder and
+       position, MV voltages per case, voltage budget, MV/LV tap, coupling results and flags.
    * - ``mv_line``
-     - Lines with role (``ring``, ``stub``, ``dedicated``, ``generator``, ``tie``, ``link``), kind
-       (cable or overhead), standard type, parallel cables, lengths, normally-open flag, loadings per
-       case and the display geometry (``display_geom``).
+     - Lines with role (``ring``, ``stub``, ``dedicated``, ``tie``, ``link``), kind (cable, overhead
+       or mixed), standard type, parallel cables, lengths, normally-open flag, loadings per case and
+       the display geometry (``display_geom``).
    * - ``mv_ring``
-     - One row per ring, dedicated feeder, generator feeder or busbar radial: members, lengths of
-       the ring, the halves and the stubs, coincident loads, open point, drops and loadings.
+     - One row per ring, dedicated feeder or busbar radial: members, lengths of the ring, the halves
+       and the stubs, coincident loads, open point, drops and loadings.
    * - ``mv_variant_stats``
      - View with the sums per variant (grids by status, stations, rings, lengths, cable share, km per
        supply point, peak load, band conflicts).
@@ -524,15 +485,17 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
      - Routing graphs with settlement flags, shared by all variants with the same inputs.
    * - ``mv_customers``
      - MV customers written by the LV stage (per LV version).
-   * - ``mastr_units``, ``mastr_postcode_aggregates``
-     - MaStR import (not versioned).
+
+The columns about generation (``gen_*_kw``, the ``*feed_in*`` columns, ``n_generators``, the node
+kind and line role ``generator``) hold values only in retired variants planned with generators. The
+stage writes 0 or NULL there.
 
 The column ``connection`` of ``mv_node`` gives the result of the planning: ``busbar``, ``ring``,
-``stub``, ``dedicated``, ``tee`` (T-off generator), ``loop_in`` (looped-in generator), ``joint`` or
-``excluded`` (HV customers and nodes that could not be connected). ``connection_hint`` keeps the
-class decided before the planning. ``mv_grid.circuit_km``, ``cable_km`` and ``overhead_km`` count
-installed parallel circuits individually, including normally-open sections and excluding interdistrict
-ties. ``mv_grid.metrics['route_km']`` counts each modeled line once; it is not the union of shared
+``stub`` (also the node of a busbar radial), ``dedicated``, ``joint`` or ``excluded`` (HV customers
+and nodes that could not be connected). ``connection_hint`` keeps the class decided before the
+planning. ``mv_grid.circuit_km``, ``cable_km`` and ``overhead_km`` count installed parallel circuits
+individually, including normally-open sections and excluding interdistrict ties.
+``mv_grid.metrics['route_km']`` counts each modeled line once; it is not the union of shared
 trenches. ``mv_ring`` lengths and feeder/path distances remain unweighted geometric lengths.
 Regional inventory includes the installed ties and clips each circuit to the region.
 
@@ -581,27 +544,23 @@ important ones:
      - MV customer placed at a transformer candidate inside its building.
    * - ``lv_not_converged``, ``lv_voltage_violation``
      - Station whose LV grid did not converge or violates the voltage band.
-   * - ``location_split``
-     - Generator node of a MaStR location whose units lie more than 1 km apart.
+   * - ``satellite_in_ring``, ``satellite_own_ring``
+     - Satellite that fits no stub and went into a ring, or into a ring of its own.
    * - ``not_n1_secure``
-     - Station or customer without an (n-1) reserve (stub, T-off, busbar radial).
+     - Station or customer without an (n-1) reserve (stub, busbar radial).
    * - ``band_conflict``, ``tap_limit``
-     - No MV/LV tap keeps the LV busbar inside both bounds, or not the lower one
-       (:ref:`mv-voltage-budget`).
+     - No MV/LV tap brings the LV busbar up to its reference (:ref:`mv-voltage-budget`).
    * - ``no_lv_reference``, ``no_lv_requirement``
      - No voltage budget: the LV version has no ``LV_REFERENCE_VOLTAGE_PU``, or the LV net has no
        stored requirement.
    * - ``dedicated_overload``
-     - Customer or generator whose dedicated feeder would need more than ``max_parallel_cables``
-       parallel cables.
-   * - ``loop_in_infeasible``, ``tee_fallback``, ``no_line_within_tee_limit``
-     - Generator that could not be looped in, or got a dedicated feeder because no line was within
-       reach.
+     - Customer whose dedicated feeder would need more than ``max_parallel_cables`` parallel cables.
    * - ``unsupplied``, ``unconnected``
      - Node without a voltage in the load case, or without any line.
-   * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``
+   * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``, ``no_egon_bus``
      - Substation flags: extra-high-voltage site without an HV/MV partner, busbar too far from the
-       streets, load above the (n-1) capacity (more transformer units), no node assigned.
+       streets, load above the (n-1) capacity (more transformer units), no node assigned, no
+       eGon-data substation (eTraGo bus) within reach.
 
 SQL examples
 ~~~~~~~~~~~~
@@ -627,7 +586,7 @@ Supply areas of one variant:
           round(max_voltage_drop_percent::numeric, 2) AS max_drop_pct,
           round(max_line_loading_n1_percent::numeric, 1) AS max_loading_n1_pct
    FROM pylovo.mv_grid
-   WHERE version_id = '1' AND mv_variant_id = 'd0'
+   WHERE version_id = '1' AND mv_variant_id = 'r15'
    ORDER BY mv_grid_id;
 
 Stations with a band conflict and their voltage budget:
@@ -635,11 +594,11 @@ Stations with a band conflict and their voltage budget:
 .. code-block:: sql
 
    SELECT mv_node_id, grid_result_id, area_class, mv_lv_tap_pos,
-          round(vm_load_pu::numeric, 3) AS mv_load, round(vm_feed_in_pu::numeric, 3) AS mv_feed_in,
+          round(vm_load_pu::numeric, 3) AS mv_load, round(vm_n1_pu::numeric, 3) AS mv_n1,
           round(lv_busbar_vm_pu::numeric, 3) AS lv_busbar,
-          round(lv_busbar_vm_feed_in_pu::numeric, 3) AS lv_busbar_feed_in
+          round(lv_min_vm_pu::numeric, 3) AS lv_min
    FROM pylovo.mv_node
-   WHERE version_id = '1' AND mv_variant_id = 'd0' AND kind = 'station' AND band_conflict
+   WHERE version_id = '1' AND mv_variant_id = 'r15' AND kind = 'station' AND band_conflict
    ORDER BY mv_grid_id, mv_node_id;
 
 Python readers and plots
@@ -653,8 +612,8 @@ stored nets:
    from pylovo.database.database_client import DatabaseClient
 
    with DatabaseClient() as dbc:
-       layers = dbc.read_mv_layers("1", "d0")      # GeoDataFrames: nodes, lines, substations, grids, settlements
-       rings = dbc.read_mv_rings("1", "d0")
+       layers = dbc.read_mv_layers("1", "r15")     # GeoDataFrames: nodes, lines, substations, grids, settlements
+       rings = dbc.read_mv_rings("1", "r15")
        stats = dbc.read_variant_stats("1")         # the view mv_variant_stats
        net = dbc.read_mv_grid_net(12)              # stored pandapower net of MV grid 12
 
@@ -669,6 +628,14 @@ with literature ranges, voltage profiles, line loadings, voltage budgets and MV/
    fig = plot_mv_overview(layers)
    fig = plot_mv_grid_map(layers, 12, color_by="voltage")   # ring, kind, loading, voltage or tap
 
+:mod:`pylovo.mv_grid.metrics` computes the topology metrics of the stored grids
+(``topology_metrics``, ``feeder_table``, ``ring_table``) in a generic table format.
+:mod:`pylovo.analysis.mv_validation` holds the research tools on top of it, which the stage itself
+does not use: published ranges of MV grid metrics with traffic lights, readers of Ding0 grids and
+pandapower nets into the generic tables, metrics of a whole region, Wasserstein distances and the
+adjusted Rand index of the ring membership between variants, and the capacitive earth-fault
+current.
+
 Notebooks
 ~~~~~~~~~
 
@@ -678,399 +645,11 @@ variants, the plausibility against literature ranges and the results of ``pylovo
 :doc:`../getting_started/tutorials` lists them, and ``notebook_tutorials/mv_grids/README.md``
 explains their parameters and prerequisites.
 
-.. _mv-parameters:
+Parameters
+----------
 
-Parameter reference
--------------------
-
-``MV_*`` keys
-~~~~~~~~~~~~~
-
-The ``MV_*`` keys are in ``config_generation_mv.yaml``. A missing key takes its shipped value, so
-older configuration files keep working.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 12 58
-   :class: fixed-table
-
-   * - Key
-     - Shipped value
-     - Meaning and source
-   * - ``MV_GRID_GENERATION``
-     - ``False``
-     - Run the MV stage after the LV grids in ``pylovo-generate`` (``--mv`` and ``--no-mv``
-       override it). An execution flag, stored in no snapshot.
-   * - ``MV_VARIANT_ID``
-     - ``"1"``
-     - MV variant of the LV version (1 to 10 characters). A changed MV parameter needs a new id.
-   * - ``MV_VARIANT_COMMENT``
-     - ``default``
-     - Comment stored with a new MV variant.
-   * - ``MV_INCLUDE_GENERATION``
-     - ``False``
-     - Opt into MaStR generator connections, LV generation and feed-in cases. The default plans
-       peak load and N-1 only; no MaStR query or generator-driven feeder is required.
-   * - ``MV_NOMINAL_VOLTAGE_KV``
-     - ``auto``
-     - ``auto``: 10 kV for supply areas whose installed capacity lies mostly in municipalities with
-       at least ``mv_10kv_min_density_mva_km2`` of installed MV/LV capacity per km², else 20 kV (§ 23c
-       EnWG structural data; Harnisch et al. 2016). ``20`` or ``10``: one voltage for all supply
-       areas.
-   * - ``MV_SUBSTATIONS``
-     - ``osm``
-     - HV/MV substations from OpenStreetMap (Hülk et al. 2017), or ``egon`` from eGon-data.
-   * - ``MV_SUPPLY_AREAS``
-     - ``routed``
-     - The nearest substation along the streets; ``municipal``: whole municipalities on their own
-       substation, split among several, else on the substation nearest to most of their load (Hülk
-       et al. 2017, as Ding0); ``egon``: the eGon-data MV grid districts (needs
-       ``MV_SUBSTATIONS: egon``).
-   * - ``MV_ROUTING``
-     - ``street``
-     - Lines along streets and field paths, or ``crowfly``: straight lines × ``crowfly_detour``
-       (Ding0).
-   * - ``MV_RING_SOLVER``
-     - ``savings``
-     - Clarke-Wright savings with local search (Clarke and Wright 1964), or ``sweep``.
-   * - ``MV_MAX_STATIONS_PER_RING``
-     - ``20``
-     - Most ring members (stations, MV customers, looped-in generators) of one ring, 1 to 100 (Ding0;
-       5 to 30 in a large-city grid, Kreutmayr 2023).
-   * - ``MV_STUBS``
-     - ``rural``
-     - Isolated rural stations (satellites) and small rural loads off the ring hang on a T-off (at
-       most 1 MVA; 4 km up to 0.5 MVA, 2 km at 1 MVA), or ``none``: every node is looped in (Amme et
-       al. 2018; Harnisch et al. 2016; Tran et al. 2019).
-   * - ``MV_OVERHEAD_LINES``
-     - ``osm``
-     - Overhead lines only along the MV overhead lines mapped in OpenStreetMap, the rest cable;
-       ``rural``: links between rural settlements are straight overhead spans (Meinecke et al.
-       2019); ``none``: cables only.
-   * - ``MV_INTERCONNECTION``
-     - ``ties``
-     - Normally-open ties to rings of neighbouring substations within ``tie_max_length_m`` and
-       normally-open links inside the supply area of one substation within ``link_max_length_m``, or
-       ``none`` (Weisenstein and Wellßow 2021; Dubielzig 2022).
-   * - ``MV_STANDARD_CABLE``
-     - ``null``
-     - A pandapower cable type. ``null`` selects NA2XS2Y 1x240 RM/25 for the voltage.
-       Explicit types and frozen historical equipment remain authoritative.
-   * - ``MV_OVERHEAD_LINE``
-     - ``null``
-     - A pandapower overhead line type. ``null`` selects 122-AL1/20-ST1A for the voltage.
-   * - ``MV_LINE_PLANNING_UTILIZATION``
-     - ``0.6``
-     - Planned current per ampacity of MV lines in normal operation, 0.1 to 1.0 (dena 2012;
-       Harnisch et al. 2016; Wintzek et al. 2021; SimBench uses 0.5).
-   * - ``MV_MAX_VOLTAGE_DROP_PERCENT``
-     - ``5``
-     - MV share of the voltage band in normal operation, from the busbar to every node, 0.5 to 20
-       (Harnisch et al. 2016; SimBench; Ding0).
-
-Constants
-~~~~~~~~~
-
-The constants are no YAML keys. They are stored in the snapshot of every variant and can be changed
-per variant with ``--set name=value`` or :meth:`~pylovo.mv_grid.parameters.MvParameters.replace_raw`.
-:data:`pylovo.mv_grid.options.CONSTANTS` defines them with their bounds. The constants of the
-routing graph and the settlements are part of the graph id, so a change builds a new graph.
-
-.. list-table:: Voltage and loading
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``busbar_vm_pu``
-     - 1.02
-     - OLTC setpoint of the MV busbar in p.u. (Harnisch et al. 2016: 102.5 ± 1.5 %; Wintzek et al.
-       2021: 102 ± 2 %).
-   * - ``busbar_band_pu``
-     - 0.015
-     - Control band of the OLTC. The voltage budget puts the busbar at its edges (Harnisch et al.
-       2016).
-   * - ``max_drop_n1_percent``
-     - 10.0
-     - Voltage drop limit in (n-1) operation (Ding0; SimBench).
-   * - ``max_rise_percent``
-     - 2.0
-     - Voltage rise limit in the feed-in cases (VDE-AR-N 4110, dena 2012).
-   * - ``mv_10kv_min_density_mva_km2``
-     - 5.0
-     - Installed MV/LV capacity per km² of a municipality (its area inside the planning region) from
-       which ``auto`` gives 10 kV to the supply areas that have most of their capacity there (§ 23c
-       EnWG structural data, not calibrated on supply areas; :ref:`mv-voltage-level`).
-   * - ``n1_utilization``
-     - 1.0
-     - Line loading limit in the (n-1) and feed-in cases (dena 2012).
-   * - ``hv_mv_n1_utilization``
-     - 1.0
-     - Loading of the HV/MV transformers with one unit out, for their sizing and the capacity of the
-       supply areas (dena 2012).
-
-.. list-table:: Topology and solver
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``max_half_ring_length_m``
-     - 28000
-     - Longest half-ring in m (Ding0 configuration; ring length up to 60 km after FGH).
-   * - ``rural_ring_factor``
-     - 2
-     - Rural ring members count 1 / factor against ``MV_MAX_STATIONS_PER_RING``, so rural rings hold
-       40 members and urban rings 20 (rural feeders carry 11 to 28 supply points: SimBench;
-       Almomani and Witzmann 2024). 1 counts every member 1.
-   * - ``stub_max_kva``
-     - 1000
-     - Largest coincident load of a stub tree in kVA: the size of a typical mobile emergency
-       generator (Amme et al. 2018, after LEW and FGH 2008).
-   * - ``stub_max_length_m``
-     - 4000
-     - Longest stub tree in m: the upper end of the 2 to 4 km of load stubs in real grids (Tran et
-       al. 2019).
-   * - ``stub_max_kva_km``
-     - 2000
-     - Largest product of stub tree load (kVA) and length (km): 2 km at 1 MVA (Consentec 2006 after
-       Amme et al. 2018), 4 km up to 0.5 MVA. A derived rule: the energy not supplied after a stub
-       fault grows with both.
-   * - ``stub_min_offset_m``
-     - 100
-     - Only nodes more than this off the ring become stubs (Harnisch et al. 2016; Amme et al. 2018).
-   * - ``loop_in_max_offset_m``
-     - 100
-     - Urban generators within this distance of a ring are looped in (Amme et al. 2018).
-   * - ``generator_max_tee_m``
-     - 5000
-     - Longest generator T-off before a dedicated feeder (assumption).
-   * - ``tie_max_length_m``
-     - 2000
-     - Longest tie to a neighbouring supply area (assumption).
-   * - ``link_max_length_m``
-     - ``{rural: 1000, semi_urban: 750, urban: 500}``
-     - Reach of the normally-open links inside a supply area by the settlement type of the PLZ,
-       about three times the distance between neighbouring stations (assumption); a link takes the
-       shorter reach of its two ends, and one number applies to every type. Each node takes at most
-       one link, two rings at most two (:ref:`mv-links`).
-   * - ``link_stub_ends``
-     - True
-     - Each stub end may also take one link within its reach to a station of another feeder of its
-       supply area, a second infeed (:ref:`mv-links`).
-   * - ``local_search_rounds``
-     - 50
-     - Pass limit of the local search, 0 switches it off (Ding0 used 10 fixed rounds).
-   * - ``neighbours``
-     - 15
-     - Neighbour list length of the local search.
-   * - ``ls_time_guard_s``
-     - 120.0
-     - Wall-clock guard of the local search in s (flagged when hit).
-   * - ``repair_rounds``
-     - 8
-     - Rounds of the repair loop (an overhead line needs up to three rounds to reach the largest
-       conductor).
-
-.. list-table:: Loads
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``dedicated_feeder_kw``
-     - 5500
-     - MV customers and generators above this coincident load or power get a dedicated feeder
-       (eGon-data MV level up to 5.5 MW).
-   * - ``hv_customer_kw``
-     - 20000
-     - Customers above this coincident load are HV customers and not modelled (eGon-data HV/MV level
-       up to 20 MW).
-   * - ``customer_hall_min_footprint_m2``
-     - 2000
-     - Footprint from which an MV customer building counts one storey (hall rule, assumption).
-       ``null`` switches the rule off.
-   * - ``customer_min_mv_kw``
-     - 200
-     - Own peak below which an MV customer becomes a station-busbar customer (eGon-data: MV level
-       above 200 kW).
-   * - ``busbar_customer_max_m``
-     - 1000
-     - Largest straight-line distance of a station-busbar customer to its station (pylovo's default
-       ``MAX_GREENFIELD_TRAFO_DISTANCE``). ``null`` means no limit.
-
-.. list-table:: Generation and cases
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``generator_lv_side_kw``
-     - 200
-     - MaStR points at the MV/LV level above this power are MV nodes, the others LV side
-       (eGon-data).
-   * - ``generator_fallback_kw``
-     - mapping
-     - ``{lv: 100, mvlv: 200, mv: 5500, hvmv: 20000}``: upper power (kW) of each class for MaStR
-       points without a voltage level (eGon-data).
-   * - ``mv_gen_cos_phi``
-     - 0.95
-     - Power factor of MV generators, under-excited (assumption after VDE-AR-N 4110 practice).
-   * - ``lv_pv_cos_phi``
-     - 1.0
-     - Power factor of the LV-side generation. 0.95 is a sensitivity for cos φ(P) control after
-       VDE-AR-N 4105.
-   * - ``feed_in_cases``
-     - mapping
-     - ``feed_in_wind``: loads 0.1 / 0.123, wind 1.0, PV 0.8, other 1.0. ``feed_in_pv``: loads
-       0.1 / 0.123, wind 0.85, PV 0.95, other 1.0 (SimBench study cases lW and lPV).
-
-.. list-table:: Equipment
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``hv_mv_sizes_mva``
-     - ``[25, 31.5, 40, 63]``
-     - Ratings of the HV/MV transformers in MVA (Meinecke et al. 2019; 31.5 MVA interpolated).
-   * - ``hv_mv_units``
-     - 2
-     - HV/MV transformers per substation (Harnisch et al. 2016).
-   * - ``max_parallel_cables``
-     - 2
-     - Most parallel cables per circuit (dedicated feeders and repairs only).
-
-.. list-table:: Routing graph and settlements
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``crowfly_detour``
-     - 1.3
-     - Detour factor of straight lines with ``MV_ROUTING: crowfly`` (Ding0, after detour factors of
-       1.1 to 1.5).
-   * - ``overhead_detour``
-     - 1.1
-     - Detour factor of straight overhead spans with angle poles (assumption).
-   * - ``bridge_detour``
-     - 1.3
-     - Detour factor of bridges between graph islands and of long connectors.
-   * - ``long_connector_m``
-     - 300
-     - Connectors from a node to the street above this length count ``bridge_detour`` times and are
-       logged.
-   * - ``osm_line_snap_m``
-     - 100
-     - ``MV_OVERHEAD_LINES: osm``: a loose end of an OSM MV line joins the nearest street point
-       within this distance by a straight cable connector (assumption).
-   * - ``osm_line_cost_factor``
-     - 0.7
-     - ``MV_OVERHEAD_LINES: osm``: routing cost of an OSM MV line per m of its length, so that routes
-       and rings follow the existing corridors (assumption; 1: no preference). Lengths and checks use
-       the true lengths.
-   * - ``busbar_exit_radius_m``
-     - 200
-     - The busbar gets straight cable connectors to every street vertex within this distance, so the
-       feeders leave the substation in several directions (assumption). 0: only the attachment of
-       the substation.
-   * - ``graph_excluded_klasse``
-     - ``[Bundesautobahn]``
-     - Street classes (``klasse``) left out of the graph: no MV lines along motorways.
-   * - ``graph_snap_tolerance_m``
-     - 0.25
-     - Edge ends within this distance are one vertex.
-   * - ``subgraph_buffer_m``
-     - 2000
-     - Buffer of the district graph around the nodes of a supply area.
-   * - ``region_buffer_m``
-     - 5000
-     - Search buffer for substations and for the municipalities of the routing graph.
-   * - ``settlement_buffer_m``
-     - 50
-     - Address buildings within this distance count for a street edge.
-   * - ``settlement_spacing_m``
-     - 100
-     - Street length per address building below which an edge is in a settlement.
-   * - ``settlement_min_buildings``
-     - 2
-     - Fewest address buildings of a settlement edge.
-   * - ``urban_min_buildings``
-     - 1000
-     - Settlements with at least this many address buildings are urban (about a small town).
-   * - ``settlement_polygon_buffer_m``
-     - 75
-     - Buffer of the settlement polygons around their edges (maps).
-
-.. list-table:: Substations and supply areas
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``substation_merge_m``
-     - 75
-     - Substation candidates closer than this form one site (Hülk et al. 2017).
-   * - ``substation_drop_m``
-     - 150
-     - Of two sites closer than this, the smaller one is dropped.
-   * - ``ehv_partner_m``
-     - 1000
-     - An extra-high-voltage site without MV tag is dropped when an HV/MV site lies within this
-       distance.
-   * - ``substation_max_attach_m``
-     - 2000
-     - Longest connection of a substation busbar to the street graph.
-   * - ``egon_match_m``
-     - 300
-     - Distance of the eGon-data cross-check of the OSM sites.
-   * - ``rebalance_step_m``
-     - 500
-     - Weight step of the capacity rebalancing of routed supply areas.
-   * - ``rebalance_max_iter``
-     - 0
-     - Most weight raises of the rebalancing of routed supply areas; 0: none, a substation above
-       its (n-1) capacity keeps its load and gets more transformer units.
-   * - ``municipal_site_max_offset_m``
-     - 250
-     - A substation belongs to the municipality of its street edge within this distance (municipal
-       supply areas), else to none.
-
-.. list-table:: MV/LV taps
-   :header-rows: 1
-   :widths: 32 12 56
-   :class: fixed-table
-
-   * - Constant
-     - Default
-     - Meaning and source
-   * - ``mvlv_tap_step_percent``
-     - 2.5
-     - Off-load tap step of the MV/LV transformers (pandapower and SimBench types).
-   * - ``mvlv_tap_min``, ``mvlv_tap_max``
-     - -2, 2
-     - Lowest and highest MV/LV tap position.
-   * - ``lv_design_tolerance_pu``
-     - 0.002
-     - Tolerance of the LV busbar below ``LV_REFERENCE_VOLTAGE_PU`` of the LV version.
-   * - ``lv_feed_in_max_pu``
-     - 1.07
-     - Highest LV busbar voltage in feed-in: 1.10 minus the 3 % LV share of VDE-AR-N 4105.
+The ``MV_*`` keys of ``config_generation_mv.yaml`` and the constants of the stage, with their
+shipped values, meanings and sources, are listed in :doc:`mv_parameters`.
 
 .. _mv-troubleshooting:
 
@@ -1088,11 +667,16 @@ Troubleshooting
 ``another MV run of variant <id> of version <version> is active``
    A ``generate`` or ``couple`` of the same variant is running.
 ``MV parameters differ from the stored snapshot of MV variant <id> ...``
-   The variant exists with other parameters: use another ``--variant``, or delete it
-   (``pylovo-mv delete`` or ``--replace``).
-``MV_SUPPLY_AREAS egon needs MV_SUBSTATIONS egon ...``
-   The eGon-data districts belong to the eGon-data substations, so set both.
-``no HV/MV substations within 5 km of the region; check INFDB_OSM_SCHEMA or use MV_SUBSTATIONS=egon``
+   The variant exists with other parameters, an older stage version or a retired option: use
+   another ``--variant``, or delete it (``pylovo-mv delete`` or ``--replace``).
+``MV variant <id> of version <version> was planned with options this code no longer has (...)``
+   The variant is retired (:ref:`mv-variants`). Its stored results stay readable, but it cannot be
+   coupled. Plan it again under a new variant id.
+``<KEY> ... is no longer supported: the MV stage always uses ...``
+   The configuration or ``--set`` names an option that the stage no longer has. Remove the key.
+``... is a constant of the MV stage, not a key of config_generation_mv.yaml``
+   ``--set`` takes only ``MV_*`` keys. Change a constant in Python (:doc:`mv_parameters`).
+``no HV/MV substations within 5 km of the region; check INFDB_OSM_SCHEMA``
    The OSM schema is missing or empty, or the region has no substation nearby (:ref:`mv-osm-data`).
 ``the MV stage needs LV grids of the pandapower backend``
    The LV version was generated with another electrical backend.

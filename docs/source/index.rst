@@ -118,6 +118,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    user_guide/region_selection
    user_guide/generating_grids
    user_guide/mv_grids
+   user_guide/mv_parameters
    user_guide/analysing_grids
    user_guide/applications
    user_guide/exporting_visualising
