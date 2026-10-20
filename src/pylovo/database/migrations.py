@@ -9,8 +9,6 @@ from collections.abc import Callable
 
 from psycopg2.extensions import cursor
 
-from pylovo.database.config_table_structure import CREATE_QUERIES
-
 
 def drop_rebuilt_views(cur: cursor) -> None:
     """Drop, without CASCADE, only the views that the baseline must rebuild.
@@ -453,6 +451,9 @@ def percentage_checks(cur: cursor) -> None:
 
 def building_exclusion(cur: cursor) -> None:
     """Create the table of buildings left out of the grids (the baseline creates it on new schemas)."""
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.database.config_table_structure import CREATE_QUERIES
+
     cur.execute(CREATE_QUERIES["building_exclusion"])
 
 
