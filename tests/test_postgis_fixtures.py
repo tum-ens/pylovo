@@ -63,7 +63,10 @@ def building(db, objectid, x, y, half=5.0, peak=10.0):
 def test_saving_keeps_own_ways_and_records_every_left_out_building(tem, monkeypatch):
     from pylovo.config_loader import VERSION_ID
 
-    tem.insert_version_if_not_exists()
+    # inside the test transaction: insert_version_if_not_exists would commit a snapshot that a later
+    # configuration contradicts
+    tem.cur.execute("""INSERT INTO pylovo.version (version_id, version_comment)
+                       VALUES (%s, 'fixture') ON CONFLICT DO NOTHING""", (VERSION_ID,))
     tem.cur.execute("""INSERT INTO pylovo.postcode (plz, geom)
                        VALUES (%s, ST_Multi(ST_MakeEnvelope(0, 0, 100, 100, 25832))) ON CONFLICT (plz) DO NOTHING""",
                     (PLZ,))
