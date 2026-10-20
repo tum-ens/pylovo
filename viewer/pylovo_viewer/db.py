@@ -27,6 +27,10 @@ class DatabaseError(RuntimeError):
     """The database cannot be reached, or a query failed."""
 
 
+class SchemaError(DatabaseError):
+    """A query needs a table or column that the database does not have (an older or partial pylovo schema)."""
+
+
 def first_line(exc: BaseException) -> str:
     return (str(exc).strip().splitlines() or [type(exc).__name__])[0]
 
@@ -75,6 +79,8 @@ class Database:
                     return list(cur.fetchall()) if cur.description else []
             except psycopg2.errors.QueryCanceled as exc:
                 raise DatabaseError(f"the query took longer than {self.statement_timeout_ms // 1000} s") from exc
+            except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn) as exc:
+                raise SchemaError(first_line(exc)) from exc
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
                 if attempt == 1 and getattr(exc, "pgcode", None) is None:
                     continue   # connection-level failure (no SQLSTATE): try a fresh connection

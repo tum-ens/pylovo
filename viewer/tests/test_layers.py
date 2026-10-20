@@ -130,7 +130,7 @@ def test_overhead_parts_of_mixed_lines(service, fake_db):
 
 def test_mv_layers_and_figures_read_no_generation_results(service, fake_db):
     # older variants still hold generator lines and feed-in loadings: their lines are drawn, those results are not read
-    service.catalog.columns["pylovo.mv_grid"] = {"mv_grid_id": "int8"}
+    service.catalog.columns["pylovo.mv_grid"] = service.catalog.columns["pylovo.mv_line"] = {"mv_grid_id": "int8"}
     fake_db.calls.clear()
     summary.mv(fake_db, service.catalog, Query(version="v1", mv="d1"))
     sqls = [sql for sql, _ in fake_db.calls] + [layer.sql for layer in build_layers()]

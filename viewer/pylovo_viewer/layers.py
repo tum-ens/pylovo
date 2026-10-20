@@ -529,7 +529,10 @@ class LayerService:
             row["ring_slot"] = slots.get((row.get("area"), row.get("ring")))
 
     def feeder_maps(self, grids: set[int]) -> dict[int, tuple[dict[int, int], dict[int, int]]]:
-        """``grid -> (feeder per cable id, feeder per vertex)``, cached per grid."""
+        """``grid -> (feeder per cable id, feeder per vertex)``, cached per grid (none without the cable cache)."""
+        if not self.catalog.has("pylovo.lines_result_cache", "from_bus", "to_bus", "length_km") \
+                or not self.catalog.has("pylovo.grid_result", "ont_vertice_id"):
+            return {}
         out, todo = {}, []
         for grid in grids:
             cached = self._feeders.get(grid)

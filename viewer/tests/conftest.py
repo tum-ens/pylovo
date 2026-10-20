@@ -31,9 +31,13 @@ class FakeDB:
                                  source_schema="basedata")
         self.calls: list[tuple[str, Any]] = []
         self.rows: dict[str, list[dict[str, Any]]] = {}
+        self.errors: dict[str, Exception] = {}   # raised for a query that contains the key
 
     def query(self, sql: str, params: Any = None) -> list[dict[str, Any]]:
         self.calls.append((sql, params))
+        for marker, error in self.errors.items():
+            if marker in sql:
+                raise error
         if "information_schema.columns" in sql:
             return [{"t": t, "c": c, "u": "geometry" if c in GEOMETRY else "text"} for t, cols in TABLES.items()
                     for c in cols]

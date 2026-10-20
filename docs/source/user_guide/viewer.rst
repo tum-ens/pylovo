@@ -110,7 +110,9 @@ Every substation belongs to both of its levels: the HV/MV substations to the HV 
 the MV/LV substations to the MV and the LV grids. It is one layer listed in both, so it looks the
 same whichever level shows it. Substations are drawn as transformer symbols, the HV/MV ones larger
 and framed. A layer whose tables are missing or empty in the database is greyed out with the
-reason, so one viewer works with any pylovo database.
+reason, so one viewer works with any pylovo database. A database without MV variants (or without
+the MV tables of an older schema) shows the LV grids and the MV/LV substations, and the MV level
+says so.
 
 .. list-table::
    :header-rows: 1

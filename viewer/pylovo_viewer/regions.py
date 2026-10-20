@@ -79,22 +79,34 @@ def versions(db: Database, catalog: Catalog) -> list[dict[str, Any]]:
     return rows
 
 
-def postcodes(db: Database, version: str) -> list[dict[str, Any]]:
+def postcodes(db: Database, catalog: Catalog, version: str) -> list[dict[str, Any]]:
     """Postcodes of a version with name, number of grids and bounds, sorted by postcode."""
+    register = catalog.has("pylovo.municipal_register", "plz", "name_city", "pop")
     return db.query(f"""
-        SELECT pr.postcode_result_plz AS plz, COALESCE(m.name_city, p.note) AS name, pr.settlement_type AS settlement,
+        SELECT pr.postcode_result_plz AS plz, {"COALESCE(m.name_city, p.note)" if register else "p.note"} AS name,
+               pr.settlement_type AS settlement,
                (SELECT count(*) FROM pylovo.grid_result g WHERE g.version_id = pr.version_id
                   AND g.plz = pr.postcode_result_plz) AS grids,
                (SELECT {BOUNDS} FROM (SELECT ST_Transform(ST_Envelope(pr.geom), 4326) AS e) b) AS bounds
         FROM pylovo.postcode_result pr
         LEFT JOIN pylovo.postcode p ON p.plz = pr.postcode_result_plz
-        LEFT JOIN LATERAL (SELECT name_city FROM pylovo.municipal_register mr WHERE mr.plz = pr.postcode_result_plz
-                           ORDER BY mr.pop DESC NULLS LAST LIMIT 1) m ON true
+        {MUNICIPAL_NAME if register else ""}
         WHERE pr.version_id = %s ORDER BY pr.postcode_result_plz""", (version,))
 
 
-def areas(db: Database, version: str, mv: str) -> list[dict[str, Any]]:
-    """MV supply areas of a run with their substation name and bounds."""
+MUNICIPAL_NAME = """LEFT JOIN LATERAL (SELECT name_city FROM pylovo.municipal_register mr WHERE mr.plz = pr.postcode_result_plz
+                           ORDER BY mr.pop DESC NULLS LAST LIMIT 1) m ON true"""
+
+
+def has_mv(catalog: Catalog) -> bool:
+    """Whether the database has the MV result tables that supply areas need (pylovo schema migration 0009)."""
+    return catalog.has("pylovo.mv_grid") and catalog.has("pylovo.mv_substation")
+
+
+def areas(db: Database, catalog: Catalog, version: str, mv: str) -> list[dict[str, Any]]:
+    """MV supply areas of a run with their substation name and bounds (none without MV tables)."""
+    if not has_mv(catalog):
+        return []
     return db.query(f"""
         SELECT g.mv_grid_id AS area, s.name AS substation, g.vn_kv, g.n_stations AS stations, g.complete,
                (SELECT {BOUNDS} FROM (SELECT ST_Transform(ST_Envelope(g.geom), 4326) AS e) b) AS bounds
@@ -102,10 +114,14 @@ def areas(db: Database, version: str, mv: str) -> list[dict[str, Any]]:
         WHERE g.version_id = %s AND g.mv_variant_id = %s ORDER BY g.mv_grid_id""", (version, mv))
 
 
-def bounds(db: Database, version: str | None, mv: str | None = None, plz: int | None = None,
+def bounds(db: Database, catalog: Catalog, version: str | None, mv: str | None = None, plz: int | None = None,
            area: int | None = None, grid: int | None = None) -> list[float] | None:
     """Bounds of a region, or of the whole version / MV run when no region is given."""
     params = {"version": version, "mv": mv, "plz": plz, "area": area, "grid": grid}
+    if not has_mv(catalog):   # no MV tables: no supply area, and the version gives the extent
+        if area is not None:
+            return None
+        mv = None
     if grid is not None:
         return _bounds(db, """SELECT geom FROM pylovo.buildings_result WHERE grid_result_id = %(grid)s
                               UNION ALL SELECT geom FROM pylovo.transformer_positions WHERE grid_result_id = %(grid)s""",
@@ -163,7 +179,7 @@ def search(db: Database, catalog: Catalog, text: str, version: str | None, mv: s
             hits.append({"kind": "grid", "label": f"Grid {row['grid_result_id']}",
                          "detail": f"PLZ {row['plz']} · {row['kcid']}/{row['bcid']} · {row['kva']} kVA",
                          "grid": row["grid_result_id"]})
-    if version and mv and catalog.has("pylovo.mv_grid"):
+    if version and mv and has_mv(catalog):
         area = re.fullmatch(r"(?:area\s*)?#?(\d+)", text, re.IGNORECASE)
         rows = db.query("""SELECT g.mv_grid_id, s.name FROM pylovo.mv_grid g
                            LEFT JOIN pylovo.mv_substation s ON s.substation_id = g.substation_id

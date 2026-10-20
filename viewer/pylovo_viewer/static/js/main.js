@@ -36,7 +36,7 @@ const inside = (a, b) => b && a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[
 createApp({
   data() {
     return {
-      fatal: null, info: null, meta: [], groupMeta: [], lod2Available: false, versions: [],
+      fatal: null, info: null, meta: [], groupMeta: [], lod2Available: false, mvVariants: false, versions: [],
       version: null, mv: null, region: null, layers: {}, groups: {}, zoom: 5,
       theme: stored('theme', 'auto'), basemap: 'osm', d3: true,
       tab: 'layers', panel: true, legendOpen: true, help: false,
@@ -115,7 +115,8 @@ createApp({
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.applyTheme());
     try {
       const [info, catalog, versions] = await Promise.all([getJson('/api/info'), getJson('/api/catalog'), getJson('/api/versions')]);
-      Object.assign(this, { info, meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2, versions });
+      Object.assign(this, { info, meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2,
+        mvVariants: catalog.mv_variants, versions });
     } catch (err) {
       this.fatal = err.message;
       return;
@@ -279,6 +280,7 @@ createApp({
     },
     groupNote(g) {
       if (!g.available) return g.reason;
+      if (g.id === 'mv' && !this.mvVariants) return 'No MV variants in this database';
       if (!this.groups[g.id]?.on) return g.description;
       const loading = g.layers.some((m) => this.layers[m.id]?.status === 'loading');
       const waiting = g.layers.filter((m) => this.visible(m.id) && this.layers[m.id]?.status === 'wait');
@@ -517,7 +519,8 @@ createApp({
     async refreshAll() {
       try {
         const catalog = await getJson('/api/catalog', { refresh: 1 });
-        Object.assign(this, { meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2, versions: await getJson('/api/versions') });
+        Object.assign(this, { meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2,
+          mvVariants: catalog.mv_variants, versions: await getJson('/api/versions') });
         for (const m of this.meta) {
           this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
           this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });

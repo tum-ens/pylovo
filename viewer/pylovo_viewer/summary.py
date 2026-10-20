@@ -8,12 +8,19 @@ from pylovo_viewer.db import Database
 from pylovo_viewer.layers import REGION_GRIDS, Query, num
 
 
-def lv(db: Database, q: Query) -> dict[str, Any]:
+def lv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any]:
     """Grids, buildings, load, cable lengths and stations by size."""
     region = q.region()
     grids = REGION_GRIDS[region] if region else \
         "SELECT grid_result_id FROM pylovo.grid_result WHERE version_id = %(version)s"
     params = q.params()
+    if catalog.has("pylovo.lines_result_cache", "grid_result_id", "length_km", "parallel", "feeder_section_id"):
+        cables = f"""(SELECT {num("sum(c.length_km * COALESCE(c.parallel, 1))", 1)} FROM pylovo.lines_result_cache c
+                       WHERE c.grid_result_id IN (SELECT * FROM g) AND c.feeder_section_id IS NOT NULL) AS feeder_km,
+                     (SELECT {num("sum(c.length_km * COALESCE(c.parallel, 1))", 1)} FROM pylovo.lines_result_cache c
+                       WHERE c.grid_result_id IN (SELECT * FROM g) AND c.feeder_section_id IS NULL) AS service_km"""
+    else:   # an older schema without feeder sections: no cable lengths
+        cables = "NULL AS feeder_km, NULL AS service_km"
     head = db.one(f"""
         WITH g AS ({grids})
         SELECT (SELECT count(*) FROM g) AS grids,
@@ -22,10 +29,7 @@ def lv(db: Database, q: Query) -> dict[str, Any]:
                  WHERE b.grid_result_id IN (SELECT * FROM g)) AS households,
                (SELECT {num("sum(b.peak_load_in_kw) / 1000", 2)} FROM pylovo.buildings_result b
                  WHERE b.grid_result_id IN (SELECT * FROM g)) AS peak_mw,
-               (SELECT {num("sum(c.length_km * COALESCE(c.parallel, 1))", 1)} FROM pylovo.lines_result_cache c
-                 WHERE c.grid_result_id IN (SELECT * FROM g) AND c.feeder_section_id IS NOT NULL) AS feeder_km,
-               (SELECT {num("sum(c.length_km * COALESCE(c.parallel, 1))", 1)} FROM pylovo.lines_result_cache c
-                 WHERE c.grid_result_id IN (SELECT * FROM g) AND c.feeder_section_id IS NULL) AS service_km""", params)
+               {cables}""", params)
     sizes = db.query(f"""SELECT transformer_rated_power AS kva, count(*) AS n FROM pylovo.grid_result
                          WHERE grid_result_id IN ({grids}) GROUP BY 1 ORDER BY 1""", params)
     return {**(head or {}), "stations_by_kva": sizes}
@@ -33,7 +37,7 @@ def lv(db: Database, q: Query) -> dict[str, Any]:
 
 def mv(db: Database, catalog: Catalog, q: Query) -> dict[str, Any] | None:
     """Supply areas, rings, stations, circuit length by kind, ties, links and open points."""
-    if q.mv is None or not catalog.has("pylovo.mv_grid"):
+    if q.mv is None or not catalog.has("pylovo.mv_grid") or not catalog.has("pylovo.mv_line"):
         return None
     area = "AND mv_grid_id = %(area)s" if q.area is not None else ""
     params = q.params()

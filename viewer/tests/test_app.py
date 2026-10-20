@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 from pylovo_viewer.app import create_app, parse_bbox
+from pylovo_viewer.db import SchemaError
 
 
 @pytest.fixture()
@@ -48,6 +49,28 @@ def test_catalog_refresh(client):
     catalog = client.get("/api/catalog?refresh=1").json()
     assert {layer["id"] for layer in catalog["layers"] if layer["available"]} >= {"lv_cables", "mv_stations", "postcodes"}
     assert catalog["groups"][1]["title"] == "HV grid"
+
+
+def test_database_without_mv_tables(client, fake_db):
+    # the fake database has LV tables only (no migration 0009, no municipal register): the MV requests answer empty
+    catalog = client.get("/api/catalog").json()
+    layers = {layer["id"]: layer for layer in catalog["layers"]}
+    assert catalog["mv_variants"] is False and layers["lv_cables"]["available"]
+    assert layers["mv_areas"]["reason"] == "no table pylovo.mv_grid in this database"
+    calls = len(fake_db.calls)
+    assert client.get("/api/areas?version=v1&mv=d1").json() == []
+    assert client.get("/api/bounds?version=v1&mv=d1&area=3").json() == {"bounds": None}
+    assert client.get("/api/summary?version=v1&mv=d1").json()["mv"] is None
+    client.get("/api/postcodes?version=v1")
+    client.get("/api/search?q=Bahnhof&version=v1&mv=d1")
+    sqls = " ".join(sql for sql, _ in fake_db.calls[calls:])
+    assert "mv_grid" not in sqls and "mv_line" not in sqls and "municipal_register" not in sqls
+
+
+def test_missing_column_is_not_a_server_error(client, fake_db):
+    fake_db.errors = {"FROM pylovo.lines_result_cache c WHERE": SchemaError('column c.to_bus does not exist')}
+    response = client.get("/api/layer/lv_cables?version=v1&bbox=11,48,11.1,48.1")
+    assert response.status_code == 409 and response.json()["detail"] == "not in this database: column c.to_bus does not exist"
 
 
 @pytest.mark.parametrize("text, expected", [

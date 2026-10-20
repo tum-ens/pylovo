@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pylovo_viewer import __version__, regions, summary
 from pylovo_viewer.catalog import Catalog
-from pylovo_viewer.db import Database, DatabaseError
+from pylovo_viewer.db import Database, DatabaseError, SchemaError
 from pylovo_viewer.layers import LRU, LayerService, Query, to_json
 from pylovo_viewer.settings import Settings
 
@@ -84,6 +84,10 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
     def unavailable(_: Request, exc: Unavailable) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=409)
 
+    @app.exception_handler(SchemaError)
+    def schema_error(_: Request, exc: SchemaError) -> JSONResponse:
+        return JSONResponse({"detail": f"not in this database: {exc}"}, status_code=409)
+
     @app.exception_handler(DatabaseError)
     def database_error(_: Request, exc: DatabaseError) -> JSONResponse:
         return JSONResponse({"detail": f"database: {exc}"}, status_code=503)
@@ -115,7 +119,8 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
             service.clear()
             cache.clear()
         return send_json(request, {"groups": service.groups(), "layers": service.describe(),
-                                   "lod2": catalog.citydb_classes is not None})
+                                   "lod2": catalog.citydb_classes is not None,
+                                   "mv_variants": bool(catalog.has_rows.get("pylovo.mv_variant"))})
 
     @app.get("/api/versions")
     def versions(request: Request) -> Response:
@@ -123,16 +128,16 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
 
     @app.get("/api/postcodes")
     def postcodes(request: Request, version: str) -> Response:
-        return send_json(request, regions.postcodes(db, version))
+        return send_json(request, regions.postcodes(db, catalog, version))
 
     @app.get("/api/areas")
     def areas(request: Request, version: str, mv: str) -> Response:
-        return send_json(request, regions.areas(db, version, mv))
+        return send_json(request, regions.areas(db, catalog, version, mv))
 
     @app.get("/api/bounds")
     def bounds(request: Request, version: str | None = None, mv: str | None = None, plz: int | None = None,
                area: int | None = None, grid: int | None = None) -> Response:
-        return send_json(request, {"bounds": regions.bounds(db, version, mv, plz, area, grid)})
+        return send_json(request, {"bounds": regions.bounds(db, catalog, version, mv, plz, area, grid)})
 
     @app.get("/api/search")
     def search(request: Request, q: str = Param("", max_length=100), version: str | None = None,
@@ -171,7 +176,7 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None) -
                     area: int | None = None, grid: int | None = None) -> Response:
         q = query(version, mv, plz, area, grid)
         lv_q = q if q.region() != "area" or q.mv else Query(version=version)
-        return send_json(request, {"lv": summary.lv(db, lv_q) if catalog.has("pylovo.grid_result") else None,
+        return send_json(request, {"lv": summary.lv(db, catalog, lv_q) if catalog.has("pylovo.grid_result") else None,
                                    "mv": summary.mv(db, catalog, q)})
 
     @app.get("/api/lod2")
