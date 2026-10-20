@@ -1322,27 +1322,6 @@ class MvResultMixin(BaseMixin):
             self.conn.rollback()
             raise
 
-    def read_ties(self, version_id: str, variant_id: str) -> pd.DataFrame:
-        """The normally-open ties of a variant with the district and ring of both ends (no geometry).
-
-        Returns:
-            One row per tie, ordered by ``mv_line_id``: ``mv_line_id``, ``from_grid`` (= ``mv_grid_id``),
-            ``from_node``, ``from_ring``, ``to_grid``, ``to_node``, ``to_ring``, ``kind``, ``std_type``,
-            ``length_km``, ``cable_km``, ``overhead_km``, ``straight_km``, ``geom_km``, ``normally_open`` and
-            ``open_at_node``.
-        """
-        self.cur.execute(
-            """SELECT l.mv_line_id, l.mv_grid_id AS from_grid, l.from_node, a.ring_id AS from_ring,
-                      b.mv_grid_id AS to_grid, l.to_node, b.ring_id AS to_ring, l.kind, l.std_type, l.length_km,
-                      l.cable_km, l.overhead_km, l.straight_km, ST_Length(l.geom) / 1000.0 AS geom_km,
-                      l.normally_open, l.open_at_node
-               FROM pylovo.mv_line l
-               JOIN pylovo.mv_node a ON a.mv_node_id = l.from_node
-               JOIN pylovo.mv_node b ON b.mv_node_id = l.to_node
-               WHERE l.version_id = %s AND l.mv_variant_id = %s AND l.role = 'tie'
-               ORDER BY l.mv_line_id""", (version_id, variant_id))
-        return pd.DataFrame(self.cur.fetchall(), columns=[d[0] for d in self.cur.description])
-
     def display_input(self, version_id: str, variant_id: str) -> tuple[list, dict[int, tuple[float, float]]]:
         """The lines of a variant for :func:`pylovo.mv_grid.display.layout` and its busbar nodes (id -> x, y).
 

@@ -1003,10 +1003,3 @@ def node_rows(stations: pd.DataFrame, customers: pd.DataFrame, generators: pd.Da
         rows["customer_objectid"] = rows["customer_objectid"].astype(object).where(rows["customer_objectid"].notna(),
                                                                                    None)
     return rows.reset_index(drop=True)
-
-
-def summary_counts(rows: pd.DataFrame) -> Mapping[str, int]:
-    """Node counts per kind and connection hint (for logs and acceptance checks)."""
-    if not len(rows):
-        return {}
-    return {f"{k}/{h}": int(n) for (k, h), n in rows.groupby(["kind", "connection_hint"]).size().items()}

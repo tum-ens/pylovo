@@ -18,8 +18,7 @@ adapted:
    :func:`egon_sites` turns the eGon substations into sites for ``MV_SUBSTATIONS: egon``.
 
 :func:`select_osm_sites` runs steps 1 and 2 with the parameters of an MV variant; :func:`sites_frame` gives the
-sites as a table (columns of ``pylovo.mv_substation``). Optional transformer ratings of the OSM footprints are
-parsed by :func:`site_ratings` and :func:`known_units_mva`.
+sites as a table (columns of ``pylovo.mv_substation``).
 
 Pure: no database, configuration or plotting import. Coordinates are in ``TARGET_EPSG`` (metres).
 """
@@ -78,7 +77,6 @@ SITE_COLUMNS: tuple[str, ...] = ("source", "source_ids", "name", "operator", "vo
 
 _NUMBER = r"(\d+(?:\.\d+)?)"
 _VOLTAGE_PART = re.compile(rf"^{_NUMBER}\s*(kv|v)?$")
-_RATING_PART = re.compile(rf"^{_NUMBER}\s*(mva|kva|va|mw|kw)?$")
 _SEPARATORS = re.compile(r"[;/|]")
 _DECIMAL_COMMA = re.compile(r"(?<=\d),(?=\d{1,2}(?!\d))")
 
@@ -152,31 +150,6 @@ def parse_voltages(text: str | None) -> set[int]:
         if value >= 1.0:
             voltages.add(int(round(value)))
     return voltages
-
-
-def parse_rating_mva(text: str | None) -> float | None:
-    """The rated power (MVA) of an OSM ``rating`` tag of a transformer.
-
-    Accepts ``40 MVA``, ``40MVA``, ``31,5 MVA``, ``40000 kVA`` and ``VA`` (``MW``/``kW`` are read as MVA/kVA). A
-    number without unit is in MVA below 1,000, in kVA below 1,000,000 and in VA above. A tag with several values
-    (``31.5 MVA;40 MVA``, cooling stages) gives the largest.
-
-    Returns:
-        The rating in MVA, or None if the tag is missing or holds no positive number.
-    """
-    ratings = []
-    for value, unit in _number_parts(text, _RATING_PART):
-        if unit in ("mva", "mw"):
-            mva = value
-        elif unit in ("kva", "kw"):
-            mva = value / 1e3
-        elif unit == "va":
-            mva = value / 1e6
-        else:
-            mva = value if value < 1e3 else (value / 1e3 if value < 1e6 else value / 1e6)
-        if mva > 0:
-            ratings.append(mva)
-    return max(ratings) if ratings else None
 
 
 # ---------------------------------------------------------------------------------------------- filter rules
@@ -518,19 +491,6 @@ def match_egon(sites: Sequence[Site], egon: pd.DataFrame, max_m: float) -> list[
     return matches
 
 
-def unmatched_egon(sites: Sequence[Site], egon: pd.DataFrame, max_m: float) -> list[int]:
-    """The ``bus_id`` of the eGon substations without a site within ``max_m`` (for the cross-check summary)."""
-    if egon is None or len(egon) == 0:
-        return []
-    points, bus_ids = _egon_points(egon)
-    if not len(sites):
-        return sorted(int(b) for b in bus_ids)
-    geoms = np.array([site.geometry() for site in sites], dtype=object)
-    tree = STRtree(geoms)
-    return sorted(int(bus) for point, bus in zip(points, bus_ids)
-                  if not len(tree.query(point, predicate="dwithin", distance=float(max_m))))
-
-
 def egon_sites(egon: pd.DataFrame) -> list[Site]:
     """The eGon-data HV/MV substations as sites (for ``MV_SUBSTATIONS: egon``), sorted by ``bus_id``.
 
@@ -568,7 +528,7 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         matches: The result of :func:`match_egon` (``egon_bus_id``, ``egon_distance_m``); None leaves them empty.
             With matches, a site without one gets the flag ``no_egon_bus``: it has no bus in the eGon-data grid
             model, whose HV/MV bus ids are the 110 kV buses of eTraGo.
-        ratings: OSM transformer ratings per site (:func:`site_ratings`); None or an empty entry gives None.
+        ratings: Known transformer ratings per site (MVA, ``osm_ratings_mva``); None or an empty entry gives None.
     """
     n = len(sites)
     if matches is not None and len(matches) != n:
@@ -606,33 +566,3 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
 
 
 # ---------------------------------------------------------------------------------------------- ratings (P2)
-def site_ratings(rows: pd.DataFrame, n_sites: int) -> list[tuple[float, ...]]:
-    """The ratings (MVA) of the HV/MV transformers mapped in each site's footprint.
-
-    A transformer counts if its highest tagged voltage is an HV level (110 kV or 60 kV; a 220/110 kV unit does
-    not) and its ``rating`` parses (:func:`parse_rating_mva`).
-
-    Args:
-        rows: Rows of :meth:`MvSourceMixin.osm_transformer_ratings` (``site_index``, ``voltage``, ``rating``).
-        n_sites: Number of sites (length of the result).
-
-    Returns:
-        Sorted ratings per site index (empty tuples where none is mapped).
-    """
-    ratings: list[list[float]] = [[] for _ in range(n_sites)]
-    if rows is not None:
-        for row in rows.to_dict("records"):
-            voltages = parse_voltages(row.get("voltage"))
-            if not voltages or max(voltages) not in HV_LEVELS_V:
-                continue
-            mva = parse_rating_mva(row.get("rating"))
-            index = int(row["site_index"])
-            if mva is not None and 0 <= index < n_sites:
-                ratings[index].append(mva)
-    return [tuple(sorted(r)) for r in ratings]
-
-
-def known_units_mva(ratings: Sequence[float]) -> tuple[float, ...]:
-    """The known HV/MV units of a substation: its OSM ratings if at least two units carry one, else ``()``."""
-    values = sorted(float(r) for r in ratings if r is not None and float(r) > 0)
-    return tuple(values) if len(values) >= 2 else ()

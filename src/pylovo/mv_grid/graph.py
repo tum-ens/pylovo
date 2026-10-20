@@ -4,13 +4,13 @@ The persistent regional graph (``pylovo.mv_graph_edge``, built by
 :class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`) is used in two forms:
 
 * **Region CSR** (:func:`region_csr`) for the supply areas: an additively weighted graph Voronoi
-  (:func:`weighted_owner`, :func:`terminal_owner`) assigns every vertex and terminal to the HV/MV substation with the
-  smallest ``weight + street distance``. Cells are contiguous along shortest paths by construction.
+  (:func:`weighted_owner`) assigns every vertex to the HV/MV substation with the smallest ``weight + street
+  distance``; :mod:`pylovo.mv_grid.districts` places the nodes on it. Cells are contiguous along shortest paths by
+  construction.
 * **Run graph** of one district (:func:`build_run_graph`): the district subgraph split at the attachment points of
   its terminals, with straight connectors for terminals off the street and straight bridges joining islands to the
-  busbar's component. Distances (:func:`terminal_distances`), vertex paths (:func:`segment_paths`,
-  :func:`vertex_paths`), geometries (:func:`path_geometry`) and the trench length (:func:`trench_km`) are computed on
-  it with SciPy.
+  busbar's component. Distances (:func:`terminal_distances`), vertex paths (:func:`vertex_paths`), geometries
+  (:func:`path_geometry`) and the trench length (:func:`trench_km`) are computed on it with SciPy.
 
 Conventions: lengths in m; graph vertex and edge ids are int64 and never truncated; unreachable pairs have the
 distance ``inf`` (never 0) and every requested terminal is kept; the CSR matrices are undirected and keep the minimum
@@ -145,81 +145,6 @@ def weighted_owner(csr: Any, site_u: np.ndarray, site_v: np.ndarray, site_cost_u
     dist, _pred, sources = dijkstra(aug, directed=False, indices=dummy, min_only=True, return_predecessors=True)
     site = np.where(sources[:n] >= n, sources[:n] - n, -1).astype(np.int64)
     return dist[:n], site
-
-
-def same_edge_costs(terminal_edge: np.ndarray, terminal_fraction: np.ndarray, terminal_offset: np.ndarray,
-                    edge_length_m: np.ndarray, site_edge: np.ndarray, site_fraction: np.ndarray,
-                    site_offset: np.ndarray, weights_m: np.ndarray) -> np.ndarray:
-    """Direct weighted cost between terminals and sites attached to the same edge (``inf`` elsewhere).
-
-    The vertex distances of :func:`weighted_owner` reach a terminal only through the ends of its edge; a site on the
-    same edge reaches it directly: ``w_s + o_s + |f_t - f_s| x L + o_t``. Pass the result to :func:`terminal_owner`
-    as ``direct_cost``.
-
-    Returns:
-        ``(n_terminals, n_sites)`` array.
-    """
-    t_edge = np.asarray(terminal_edge, dtype=np.float64)[:, None]
-    s_edge = np.asarray(site_edge, dtype=np.float64)[None, :]
-    cost = (np.asarray(weights_m, dtype=np.float64)[None, :] + np.asarray(site_offset, dtype=np.float64)[None, :]
-            + np.abs(np.asarray(terminal_fraction, dtype=np.float64)[:, None]
-                     - np.asarray(site_fraction, dtype=np.float64)[None, :])
-            * np.asarray(edge_length_m, dtype=np.float64)[:, None]
-            + np.asarray(terminal_offset, dtype=np.float64)[:, None])
-    same = (t_edge == s_edge) & np.isfinite(t_edge) & np.isfinite(s_edge)
-    return np.where(same, cost, np.inf)
-
-
-def terminal_owner(dist: np.ndarray, site: np.ndarray, u: np.ndarray, v: np.ndarray, cost_u: np.ndarray,
-                   cost_v: np.ndarray, *, direct_cost: np.ndarray | None = None) -> np.ndarray:
-    """Owning site of every terminal attached to an edge ``(u, v)`` of the region graph.
-
-    A terminal is reached through the cheaper end of its edge: ``dist[u] + cost_u`` or ``dist[v] + cost_v`` (costs
-    = the part of the edge up to that end plus the offset). Ties go to the lower site index.
-
-    Args:
-        dist: Weighted distance per CSR row (:func:`weighted_owner`).
-        site: Site per CSR row (:func:`weighted_owner`).
-        u: CSR row of the first end of each terminal's edge (-1: not attached).
-        v: CSR row of the second end (-1: not attached).
-        cost_u: Cost from ``u`` to the terminal.
-        cost_v: Cost from ``v`` to the terminal.
-        direct_cost: Optional ``(n_terminals, n_sites)`` costs of sites on the terminal's own edge
-            (:func:`same_edge_costs`); a cheaper direct cost wins.
-
-    Returns:
-        Site index per terminal, -1 where no site is reachable (the caller falls back to the Euclidean nearest site
-        and flags the terminal as bridged).
-    """
-    u = np.asarray(u, dtype=np.int64)
-    v = np.asarray(v, dtype=np.int64)
-    dist = np.asarray(dist, dtype=np.float64)
-    site = np.asarray(site, dtype=np.int64)
-    n = len(u)
-    cand_cost = np.full((n, 2), np.inf)
-    cand_site = np.full((n, 2), -1, dtype=np.int64)
-    for k, (ends, cost) in enumerate(((u, np.asarray(cost_u, dtype=np.float64)),
-                                      (v, np.asarray(cost_v, dtype=np.float64)))):
-        ok = ends >= 0
-        cand_site[ok, k] = site[ends[ok]]
-        cand_cost[ok, k] = np.where(cand_site[ok, k] >= 0, dist[ends[ok]] + cost[ok], np.inf)
-    if direct_cost is not None and np.size(direct_cost):
-        direct = np.asarray(direct_cost, dtype=np.float64).reshape(n, -1)
-        best_direct = np.argmin(direct, axis=1)           # first minimum: lowest site index
-        cand_cost = np.column_stack([cand_cost, direct[np.arange(n), best_direct]])
-        cand_site = np.column_stack([cand_site, np.where(np.isfinite(direct[np.arange(n), best_direct]),
-                                                         best_direct, -1)])
-    # lowest cost, then lowest site index
-    big = np.iinfo(np.int64).max
-    order_site = np.where(cand_site >= 0, cand_site, big)
-    owner = np.full(n, -1, dtype=np.int64)
-    for i in range(n):
-        finite = np.isfinite(cand_cost[i])
-        if not finite.any():
-            continue
-        best = min(zip(cand_cost[i][finite], order_site[i][finite]))
-        owner[i] = best[1]
-    return owner
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -604,36 +529,10 @@ def vertex_paths(rg: RunGraph, pairs: Sequence[tuple[int, int]], *,
     return out
 
 
-def segment_paths(rg: RunGraph, pairs: Sequence[tuple[int, int]], *,
-                  chunk: int = 64) -> dict[tuple[int, int], list[int]]:
-    """Shortest vertex paths between node rows (the terminal vertices of the rows).
-
-    Args:
-        rg: Run graph.
-        pairs: ``(row_i, row_j)`` pairs, e.g. the consecutive members of the final rings.
-        chunk: Source vertices per Dijkstra call.
-
-    Returns:
-        ``{(row_i, row_j): [vertex, ...]}`` from the vertex of ``row_i`` to the vertex of ``row_j`` (``[]`` if
-        unreachable).
-    """
-    pairs = [(int(i), int(j)) for i, j in pairs]
-    vertex = {(i, j): (int(rg.terminal_vertex[i]), int(rg.terminal_vertex[j])) for i, j in pairs}
-    paths = vertex_paths(rg, list(set(vertex.values())), chunk=chunk)
-    return {pair: list(paths[vertex[pair]]) for pair in pairs}
-
-
 def path_pieces(rg: RunGraph, vertex_path: Sequence[int]) -> list[int]:
     """Run-graph piece ids along a vertex path (the minimum-weight piece of every consecutive vertex pair)."""
     path = [int(p) for p in vertex_path]
     return [rg.pair_piece[(min(a, b), max(a, b))] for a, b in zip(path[:-1], path[1:])]
-
-
-def pieces_length(rg: RunGraph, pieces: Sequence[int]) -> float:
-    """Total cost (m) of a list of pieces (the street distance of the path they form)."""
-    if not len(pieces):
-        return 0.0
-    return float(rg.pieces["length_m"].to_numpy()[np.asarray(pieces, dtype=np.int64)].sum())
 
 
 def path_geometry(rg: RunGraph, pieces: Sequence[int], edge_geoms: Mapping[int, Any], *,
@@ -715,35 +614,6 @@ def path_geometry(rg: RunGraph, pieces: Sequence[int], edge_geoms: Mapping[int, 
     if len(coords) == 1:
         coords = np.vstack([coords, coords])
     return LineString(coords)
-
-
-def dijkstra_limited(rg: RunGraph, source_row: int, limit_m: float, *,
-                     return_predecessors: bool = False) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-    """Distances from one node row to every run-graph vertex within ``limit_m`` (``inf`` beyond), for stub and tee
-    searches.
-
-    Args:
-        rg: Run graph.
-        source_row: Node row whose terminal vertex is the source.
-        limit_m: Search radius along the graph.
-        return_predecessors: Also return the predecessor array (-9999 where none), to rebuild a path with
-            :func:`path_to`.
-
-    Returns:
-        ``(n_vertices,)`` distances, or ``(distances, predecessors)``.
-    """
-    source = int(rg.terminal_vertex[int(source_row)])
-    if return_predecessors:
-        dist, pred = dijkstra(rg.csr, directed=False, indices=source, limit=float(limit_m), return_predecessors=True)
-        return dist, pred
-    return dijkstra(rg.csr, directed=False, indices=source, limit=float(limit_m))
-
-
-def path_to(predecessors: np.ndarray, source_vertex: int, target_vertex: int) -> list[int]:
-    """Vertex path from ``source_vertex`` to ``target_vertex`` from a single-source predecessor array ([] if none)."""
-    if int(source_vertex) == int(target_vertex):
-        return [int(source_vertex)]
-    return _walk(np.asarray(predecessors), int(source_vertex), int(target_vertex))
 
 
 def trench_km(rg: RunGraph, piece_lists: Sequence[Sequence[int]]) -> tuple[float, int]:

@@ -1213,29 +1213,6 @@ def size_substation(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
     return int(units), float(unit_mva), str(sizing)
 
 
-def substation_metrics(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, CaseResult], units: int,
-                       unit_mva: float) -> dict:
-    """Peak load and feed-in of the district and the HV/MV transformer loadings (``mv_substation`` columns).
-
-    ``loading_n0_percent = S_load / (n · sn)`` and ``loading_n1_percent = S_load / ((n - 1) · sn)`` (DESIGN
-    §4.6); ``loading_n1_sizing_percent = max(S_load, S_feed) / ((n - 1) · sn)`` is the sizing criterion. The (n-1)
-    values are None for a single unit.
-    """
-    s_load, s_feed = substation_loads(inp, plan, cases)
-    reverse = [-cases[c].slack_p_mw for c in FEED_IN_CASES if c in cases and cases[c].converged]
-    capacity = units * unit_mva
-    return {
-        "peak_load_mw": district_load_kw(inp, plan) / 1000.0,
-        "peak_feed_in_mw": max(0.0, max(reverse)) if reverse else None,
-        "s_load_mva": s_load,
-        "s_feed_mva": s_feed,
-        "loading_n0_percent": 100.0 * s_load / capacity if capacity > 0 else None,
-        "loading_n1_percent": 100.0 * s_load / ((units - 1) * unit_mva) if units > 1 and unit_mva > 0 else None,
-        "loading_n1_sizing_percent": (100.0 * max(s_load, s_feed) / ((units - 1) * unit_mva)
-                                      if units > 1 and unit_mva > 0 else None),
-    }
-
-
 def _hv_mv_type(params: Any, vn_kv: float, unit_mva: float) -> HvMvType:
     """The HV/MV transformer type of a rating for the district's voltage (``110/20 kV`` or ``110/10 kV``): from the
     variant's types, else ``equipment.hv_mv_types``, else the nearest type with the rating replaced (no-load losses

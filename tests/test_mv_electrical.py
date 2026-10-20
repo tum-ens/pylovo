@@ -696,14 +696,6 @@ def test_size_substation_on_district_statistics():
     assert electrical.size_substation(inp, plan, cases) == (3, 63.0, "large_substation")
     inp_osm = dataclasses.replace(inp, known_units_mva=(40.0, 40.0))
     assert electrical.size_substation(inp_osm, plan, {}) == (2, 40.0, "osm_rating")
-    metrics = electrical.substation_metrics(inp, plan, {}, 2, 25.0)
-    assert metrics["loading_n0_percent"] == pytest.approx(100 * s_load / 50.0)
-    assert metrics["loading_n1_percent"] == pytest.approx(100 * s_load / 25.0)
-    feed = {"feed_in_wind": _result("feed_in_wind", {}, slack=(-30.0, 0.0))}
-    metrics = electrical.substation_metrics(inp, plan, feed, 2, 31.5)
-    assert metrics["loading_n1_percent"] == pytest.approx(100 * s_load / 31.5)
-    assert metrics["loading_n1_sizing_percent"] == pytest.approx(100 * 30.0 / 31.5)
-    assert metrics["peak_feed_in_mw"] == pytest.approx(30.0)
 
 
 @pytest.mark.parametrize("unit_mva, households", [(25.0, 80.0), (31.5, 400.0), (20.0, 200.0)])

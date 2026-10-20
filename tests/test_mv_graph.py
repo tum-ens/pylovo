@@ -153,24 +153,6 @@ def test_weighted_owner_without_sites_and_negative_costs():
         graph.weighted_owner(csr, np.array([0]), np.array([1]), np.array([-1.0]), np.array([1.0]), np.array([0.0]))
 
 
-def test_terminal_owner_cheaper_end_ties_unreachable_and_same_edge():
-    dist = np.array([0.0, 10.0, 10.0, np.inf])
-    site = np.array([0, 0, 1, -1])
-    # terminal 0 between rows 1 and 2: 10 + 5 (site 0) vs 10 + 5 (site 1) -> tie, lower site index
-    # terminal 1: only reachable through row 2 -> site 1; terminal 2: row 3 has no site, not attached otherwise
-    owner = graph.terminal_owner(dist, site, np.array([1, 3, 3]), np.array([2, 2, -1]), np.array([5.0, 1.0, 1.0]),
-                                 np.array([5.0, 1.0, 1.0]))
-    np.testing.assert_array_equal(owner, [0, 1, -1])
-    # same edge: site 1 sits on the terminal's edge 7 next to it and wins against the vertex route
-    direct = graph.same_edge_costs(np.array([7.0, 8.0, np.nan]), np.array([0.5, 0.5, 0.5]), np.array([1.0, 1.0, 1.0]),
-                                   np.array([100.0, 100.0, 100.0]), np.array([9.0, 7.0]), np.array([0.2, 0.45]),
-                                   np.array([2.0, 2.0]), np.array([0.0, 0.0]))
-    assert direct[0, 1] == pytest.approx(2.0 + 5.0 + 1.0) and np.isinf(direct[0, 0]) and np.isinf(direct[1:]).all()
-    owner = graph.terminal_owner(dist, site, np.array([1, 3, 3]), np.array([2, 2, -1]), np.array([5.0, 1.0, 1.0]),
-                                 np.array([5.0, 1.0, 1.0]), direct_cost=direct)
-    np.testing.assert_array_equal(owner, [1, 1, -1])
-
-
 # ----------------------------------------------------------------------------------------------------- run graph
 LINE = {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (200.0, 0.0)}
 
@@ -321,6 +303,13 @@ def test_distances_keep_every_terminal_and_use_inf():
     assert graph.terminal_distances(rg, []).shape == (0, 0)
 
 
+def _row_paths(rg, pairs):
+    """Vertex paths between node rows (their terminal vertices) with graph.vertex_paths."""
+    vertex = {(i, j): (int(rg.terminal_vertex[i]), int(rg.terminal_vertex[j])) for i, j in pairs}
+    paths = graph.vertex_paths(rg, list(set(vertex.values())))
+    return {pair: list(paths[vertex[pair]]) for pair in pairs}
+
+
 def test_parallel_edges_keep_the_minimum_piece():
     coords = {1: (0.0, 0.0), 2: (30.0, 0.0)}
     edges = _edge_set([(11, 1, 2, 50.0), (12, 1, 2, 30.0), (13, 2, 1, 40.0)], coords)
@@ -332,7 +321,7 @@ def test_parallel_edges_keep_the_minimum_piece():
     assert graph.terminal_distances(rg, [0, 1])[0, 1] == 30.0
     piece = rg.pair_piece[(0, 1)]
     assert rg.pieces.loc[piece, "edge_id"] == 12
-    assert graph.path_pieces(rg, graph.segment_paths(rg, [(0, 1)])[(0, 1)]) == [piece]
+    assert graph.path_pieces(rg, _row_paths(rg, [(0, 1)])[(0, 1)]) == [piece]
 
 
 def _random_district(rng, n_vertices=30, n_terminals=12):
@@ -401,11 +390,11 @@ def test_path_geometry_is_continuous_and_its_length_equals_the_distance():
     rows = list(range(len(nodes)))
     d = graph.terminal_distances(rg, rows)
     pairs = [(0, j) for j in rows[1:]] + [(3, 5), (5, 3)]
-    paths = graph.segment_paths(rg, pairs)
+    paths = _row_paths(rg, pairs)
     for (i, j), path in paths.items():
         assert path[0] == rg.terminal_vertex[i] and path[-1] == rg.terminal_vertex[j]
         pieces = graph.path_pieces(rg, path)
-        assert graph.pieces_length(rg, pieces) == pytest.approx(d[i, j], rel=1e-9)
+        assert float(rg.pieces["length_m"].to_numpy()[pieces].sum()) == pytest.approx(d[i, j], rel=1e-9)
         line = graph.path_geometry(rg, pieces, geoms, start_vertex=path[0])
         assert line.length == pytest.approx(d[i, j], rel=1e-6, abs=1e-6)
         start, end = np.asarray(line.coords[0]), np.asarray(line.coords[-1])
@@ -425,7 +414,7 @@ def test_path_geometry_is_continuous_and_its_length_equals_the_distance():
     assert graph.path_geometry(rg, [], geoms, start_vertex=0).length == 0.0
 
 
-def test_segment_paths_dijkstra_limited_and_path_to():
+def test_vertex_paths_between_node_rows():
     edges = _edge_set([(11, 1, 2), (12, 2, 3)], LINE)
     nodes = _nodes([
         {"kind": "busbar", "x": 0.0, "y": 0.0, "attach_edge_id": 11, "attach_fraction": 0.0, "attach_offset_m": 0},
@@ -433,15 +422,10 @@ def test_segment_paths_dijkstra_limited_and_path_to():
         {"x": 200.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 1.0, "attach_offset_m": 0.0},
     ])
     rg = graph.build_run_graph(edges, nodes)
-    paths = graph.segment_paths(rg, [(0, 2), (2, 0), (1, 1)])
+    paths = _row_paths(rg, [(0, 2), (2, 0), (1, 1)])
     assert paths[(0, 2)] == [0, 1, rg.terminal_vertex[1], 2]
     assert paths[(2, 0)] == paths[(0, 2)][::-1]
     assert paths[(1, 1)] == [rg.terminal_vertex[1]]
-    dist = graph.dijkstra_limited(rg, 0, 120.0)
-    assert dist.shape == (rg.n_vertices,) and dist[1] == 100.0 and np.isinf(dist[2])
-    dist, pred = graph.dijkstra_limited(rg, 2, 1e9, return_predecessors=True)
-    assert graph.path_to(pred, rg.terminal_vertex[2], 0) == paths[(2, 0)]
-    assert graph.path_to(pred, 2, 2) == [2]
 
 
 def test_trench_counts_shared_pieces_once():
@@ -452,7 +436,7 @@ def test_trench_counts_shared_pieces_once():
         {"x": 200.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 1.0, "attach_offset_m": 0.0},
     ])
     rg = graph.build_run_graph(edges, nodes)
-    paths = graph.segment_paths(rg, [(0, 1), (0, 2), (1, 2)])
+    paths = _row_paths(rg, [(0, 1), (0, 2), (1, 2)])
     circuits = [graph.path_pieces(rg, paths[p]) for p in [(0, 1), (0, 2), (1, 2)]]
     km, most = graph.trench_km(rg, circuits)
     assert km == pytest.approx((100.0 + 100.0 + 30.0) / 1000.0)

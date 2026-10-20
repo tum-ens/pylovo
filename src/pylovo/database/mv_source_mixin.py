@@ -1,9 +1,8 @@
 """Queries of the external MV inputs: OSM power features, eGon-data tables and the MaStR units.
 
 Reads HV/MV substation candidates and their tags from the OSM schema of InfDB (``INFDB_OSM_SCHEMA``), the
-ratings of the transformers mapped inside their footprints, the eGon-data HV/MV substations and MV grid
-districts (``pylovo.egon_*`` if populated, else the copies in ``INFDB_OPENDATA_SCHEMA``), and
-the generating units of ``pylovo.mastr_units`` and ``pylovo.mastr_postcode_aggregates``
+eGon-data HV/MV substations and MV grid districts (``pylovo.egon_*`` if populated, else the copies in
+``INFDB_OPENDATA_SCHEMA``), and the generating units of ``pylovo.mastr_units`` and ``pylovo.mastr_postcode_aggregates``
 (``pylovo-import mastr``). The rules that turn these rows into MV inputs are pure functions of
 :mod:`pylovo.mv_grid.substations` and :mod:`pylovo.mv_grid.inputs`.
 
@@ -24,8 +23,6 @@ from pylovo.database.base_mixin import BaseMixin
 #: Columns of :meth:`MvSourceMixin.osm_substation_candidates` (= ``substations.CANDIDATE_COLUMNS``).
 OSM_CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_tag", "frequency", "operator", "name",
                                           "railway", "x", "y", "area_m2", "footprint_wkb", "in_plant", "plant")
-#: Columns of :meth:`MvSourceMixin.osm_transformer_ratings`.
-OSM_RATING_COLUMNS: tuple[str, ...] = ("site_index", "source_id", "voltage", "rating")
 #: Columns of :meth:`MvSourceMixin.egon_substations`.
 EGON_SUBSTATION_COLUMNS: tuple[str, ...] = ("bus_id", "voltage", "osm_id", "x", "y")
 #: Columns of :meth:`MvSourceMixin.egon_districts`.
@@ -85,30 +82,6 @@ FROM pts c
 LEFT JOIN {osm}.tags t ON t.geom_type = c.gt AND t.osm_id = c.tag_id
 WHERE ST_DWithin(c.pt, ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s)
 ORDER BY c.source_id;
-""")
-
-# power=transformer features (points, ways, relations) within margin_m of each given footprint, with their tags.
-_OSM_RATINGS_SQL = sql.SQL("""
-WITH fp AS (
-    SELECT (u.ord - 1)::integer AS site_index, ST_GeomFromWKB(u.wkb, {epsg}) AS geom
-    FROM unnest(%(footprints)s::bytea[]) WITH ORDINALITY AS u(wkb, ord)
-    WHERE u.wkb IS NOT NULL
-),
-tr AS (
-    SELECT 'N'::char(1) AS gt, p.osm_id AS tag_id, 'node/' || p.osm_id AS source_id, p.geom
-    FROM {osm}.infrastructure_point p
-    WHERE p.osm_type = 'power' AND p.osm_subtype = 'transformer'
-    UNION ALL
-    SELECT CASE WHEN g.osm_id < 0 THEN 'R' ELSE 'W' END::char(1), abs(g.osm_id),
-           CASE WHEN g.osm_id < 0 THEN 'relation/' || -g.osm_id ELSE 'way/' || g.osm_id END, g.geom
-    FROM {osm}.infrastructure_polygon g
-    WHERE g.osm_type = 'power' AND g.osm_subtype = 'transformer'
-)
-SELECT f.site_index, tr.source_id, t.tags->>'voltage' AS voltage, t.tags->>'rating' AS rating
-FROM fp f
-JOIN tr ON ST_DWithin(ST_Transform(tr.geom, {epsg}), f.geom, %(margin_m)s)
-LEFT JOIN {osm}.tags t ON t.geom_type = tr.gt AND t.osm_id = tr.tag_id
-ORDER BY f.site_index, tr.source_id;
 """)
 
 # power=substation and power=transformer features, power=pole nodes, and transformer-tower buildings inside the
@@ -314,30 +287,6 @@ class MvSourceMixin(BaseMixin):
                                         epsg=sql.Literal(TARGET_EPSG))
         self.cur.execute(query, {"region": _wkb(region_wkb)})
         return _frame([(t, _wkb(g)) for t, g in self.cur.fetchall()], OSM_LANDUSE_COLUMNS)
-
-    def osm_transformer_ratings(self, footprints_wkb: Sequence[bytes | None], margin_m: float = 10.0
-                                ) -> pd.DataFrame:
-        """The ``power=transformer`` features within ``margin_m`` of each footprint, with their voltage and rating.
-
-        Args:
-            footprints_wkb: Footprints (WKB, ``TARGET_EPSG``) of the sites; None for a site without one.
-            margin_m: Distance around a footprint in which a transformer counts (10 m).
-
-        Returns:
-            Columns of :data:`OSM_RATING_COLUMNS`: ``site_index`` (position in ``footprints_wkb``), the transformer's
-            ``source_id`` and its raw ``voltage`` and ``rating`` tags (see
-            :func:`~pylovo.mv_grid.substations.site_ratings`).
-
-        Raises:
-            MvStageError: If ``INFDB_OSM_SCHEMA`` is not set.
-        """
-        footprints = [_wkb(fp) for fp in footprints_wkb]
-        if not any(fp is not None for fp in footprints):
-            return _frame([], OSM_RATING_COLUMNS, ints=("site_index",))
-        query = _OSM_RATINGS_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
-                                        epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"footprints": footprints, "margin_m": float(margin_m)})
-        return _frame(self.cur.fetchall(), OSM_RATING_COLUMNS, ints=("site_index",))
 
     # ------------------------------------------------------------------ eGon
     def _egon_table(self, table: str) -> tuple[str, sql.Identifier] | None:

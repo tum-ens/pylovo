@@ -25,14 +25,10 @@ from pylovo.mv_grid.substations import (
     classify_candidate,
     egon_sites,
     filter_candidates,
-    known_units_mva,
     match_egon,
-    parse_rating_mva,
     parse_voltages,
     select_osm_sites,
-    site_ratings,
     sites_frame,
-    unmatched_egon,
 )
 
 MERGE_M, DROP_M, EHV_M = 75.0, 150.0, 1000.0
@@ -82,25 +78,6 @@ def frame(*rows: dict) -> pd.DataFrame:
 ])
 def test_voltage_tags_are_read_in_volts(text, expected):
     assert parse_voltages(text) == expected
-
-
-@pytest.mark.parametrize("text, expected", [
-    ("40 MVA", 40.0),
-    ("40MVA", 40.0),
-    ("31,5 MVA", 31.5),
-    ("31.5 MVA;40 MVA", 40.0),               # cooling stages: the largest
-    ("40000 kVA", 40.0),
-    ("63000000 VA", 63.0),
-    ("80", 80.0),                            # bare number below 1000: MVA
-    ("40000", 40.0),                         # bare number below 1e6: kVA
-    ("25 MW", 25.0),
-    ("abc", None),
-    ("0 MVA", None),
-    (None, None),
-])
-def test_transformer_ratings_are_read_in_mva(text, expected):
-    result = parse_rating_mva(text)
-    assert result == (pytest.approx(expected) if expected is not None else None)
 
 
 # ---------------------------------------------------------------------------------------------- filter rules
@@ -308,8 +285,6 @@ def test_each_site_gets_the_nearest_egon_substation_within_300_m():
     assert match_egon(_sites(), EGON, 300.0) == [(8, 200.0), (None, None), (10, 100.0), (7, 0.0)]
     assert match_egon(_sites(), EGON.iloc[0:0], 300.0) == [(None, None)] * 4
     assert match_egon([], EGON, 300.0) == []
-    assert unmatched_egon(_sites(), EGON, 300.0) == [9]
-    assert unmatched_egon([], EGON, 300.0) == [7, 8, 9, 10, 11]
 
 
 def test_egon_substations_become_sites():
@@ -343,19 +318,6 @@ def test_sites_frame_has_the_substation_columns():
     assert list(sites_frame([]).columns) == list(SITE_COLUMNS)
     with pytest.raises(ValueError, match="matches"):
         sites_frame(sites, region, [(None, None)])
-
-
-def test_ratings_of_hv_mv_transformers_only_count_as_known_units():
-    rows = pd.DataFrame({
-        "site_index": [0, 0, 0, 0, 1, 2],
-        "voltage": ["110000;20000", "110000;20000", "220000;110000", None, "110000", "110000;20000"],
-        "rating": ["40 MVA", "40MVA", "200 MVA", "63 MVA", "31,5 MVA", "n/a"],
-    })
-    ratings = site_ratings(rows, 3)
-    assert ratings == [(40.0, 40.0), (31.5,), ()]
-    assert known_units_mva(ratings[0]) == (40.0, 40.0)
-    assert known_units_mva(ratings[1]) == ()
-    assert site_ratings(rows.iloc[0:0], 2) == [(), ()]
 
 
 # ---------------------------------------------------------------------------------------------- mixin SQL
@@ -436,21 +398,7 @@ def test_osm_queries_need_the_osm_schema(schemas, monkeypatch):
     client = _client(lambda text, params: [])
     with pytest.raises(MvStageError, match="INFDB_OSM_SCHEMA"):
         client.osm_substation_candidates(b"x", 5000)
-    with pytest.raises(MvStageError, match="INFDB_OSM_SCHEMA"):
-        client.osm_transformer_ratings([b"x"])
     assert client.cur.calls == []
-
-
-def test_transformer_ratings_keep_the_site_positions(schemas):
-    client = _client(lambda text, params: [(1, "node/9", "110000;20000", "40 MVA")])
-    result = client.osm_transformer_ratings([None, memoryview(b"ab"), None])
-    text, params = client.cur.calls[0]
-    assert "unnest(%(footprints)s::bytea[]) WITH ORDINALITY" in text and "osm_subtype = 'transformer'" in text
-    assert params == {"footprints": [None, b"ab", None], "margin_m": 10.0}
-    assert tuple(result.columns) == source_mixin.OSM_RATING_COLUMNS
-    assert site_ratings(result, 3) == [(), (40.0,), ()]
-    nothing = _client(lambda text, params: [])
-    assert len(nothing.osm_transformer_ratings([None, None])) == 0 and nothing.cur.calls == []
 
 
 def _egon_responder(present: dict[str, bool], rows: list | None = None):

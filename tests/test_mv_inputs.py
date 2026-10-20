@@ -567,8 +567,6 @@ def test_node_rows_order_hints_and_columns():
     assert all(isinstance(f, list) for f in rows["flags"])
     assert rows["x"].notna().all() and rows["y"].notna().all()
     assert not rows.loc[rows["kind"] == "customer", "mapped_station"].any()
-    summary = inputs.summary_counts(rows)
-    assert summary["customer/dedicated"] == 1 and summary["generator/tee"] == 1
 
 
 def test_node_rows_without_sites_or_nodes():
