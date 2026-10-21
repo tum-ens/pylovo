@@ -9,7 +9,6 @@
 log/*.txt
 results
 docs/build
-validations_new
 validations
 .idea
 .ruff_cache

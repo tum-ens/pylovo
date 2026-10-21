@@ -169,6 +169,10 @@ cython_debug/
 /.pylovo-api/
 validations/metrics/*
 validations/grid_comparison/*
-validations_new/metrics/*
+### Confidential validation artefacts of a local validations directory (never committed)
+validations/**/*.png
+validations/**/*.pdf
+validations/**/*.svg
+validations/**/*.json
 
 *.pdf
