@@ -158,3 +158,19 @@ def test_a_split_does_not_pass_a_parallel_cable_between_exits_that_end_at_joints
     plan, _ = topology.add_parallel(plan, [exit_a.key], max_parallel=2)
     after = split(plan, inputs, 31)
     assert exit_line(after, 11, "a").parallel == 2 and exit_line(after, 21, "a").parallel == 1
+
+
+def test_a_split_of_a_ring_with_stubs_halves_all_nodes_it_solves_again():
+    """Three rural ring members and five stub stations: the cap of the split is half of all eight nodes."""
+    d = District()
+    d.street(*[(x, 0) for x in range(0, 4001, 500)])
+    d.node(BUSBAR, "busbar", 0, 0, urban=False)
+    for i, x in enumerate((1000, 2000, 3000, 4000)):
+        d.node(11 + i, "station", x, 0, urban=False)
+    for i, x in enumerate((1500, 2500, 3500, 500)):
+        d.street((x, 0), (x, 300))
+        d.node(21 + i, "station", x, 300, urban=False)
+    plan, inputs = plan_with_routes(d, [[24, 11, 21, 12, 22, 13, 23, 14]])
+    assert [r.kind for r in plan.rings] == ["ring"] and sum(role == "stub" for role in plan.node_role.values()) >= 4
+    after = split(plan, inputs, 11)
+    assert len(after.rings) == 2                       # two halves (both short enough for busbar radials here)

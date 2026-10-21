@@ -257,10 +257,10 @@ def split_ring(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, 
     struct = next((s for s in dec.structs if s.ring_id == ring_id and s.kind == "ring"), None)
     if struct is None or len(struct.rows) < 2:
         return plan
-    weights = [float(ctx.cap_weight[r]) for r in struct.rows] or [1.0]
-    cap = (sum(weights) + max(weights)) / 2.0
     stub_rows = [row for row, rid in dec.stubs if rid == ring_id]
     ring_rows = [r for r in struct.rows if ctx.kind[r] in LOAD_KINDS] + stub_rows
+    weights = [float(ctx.cap_weight[r]) for r in ring_rows] or [1.0]       # of every node that is solved again
+    cap = (sum(weights) + max(weights)) / 2.0
     dec.structs = [s for s in dec.structs if s.ring_id != ring_id]
     dec.stubs = [(row, rid) for row, rid in dec.stubs if rid != ring_id]
     candidates = np.array(sorted(ctx.t_of_row[r] for r in ring_rows), dtype=np.int64)
