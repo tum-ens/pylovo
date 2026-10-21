@@ -41,6 +41,12 @@ The municipal register is filled by ``pylovo-setup`` from the Gemeindeverzeichni
 (:ref:`env-variables`). A PLZ can belong to several municipalities and a
 municipality has several PLZ; the register holds one row per (PLZ, AGS) pair.
 
+The RegioStaR table is the reference of 2020 (``ReferenzGebietsstand2020``). A municipality that was
+merged or renamed since has no class there: five (PLZ, AGS) pairs of the shipped files. They stay in the
+register, so ``--plz`` and ``--ags`` resolve them, with empty (NULL) ``fed_state``, ``regio7`` and
+``regio5`` and the municipality name of the PLZ assignment file. The classification does not draw
+PLZ without a class (:doc:`classification`).
+
 .. note::
 
    Postcode areas and municipal boundaries do not match exactly. ``--ags`` generates complete

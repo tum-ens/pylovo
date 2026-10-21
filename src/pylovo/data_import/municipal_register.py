@@ -152,14 +152,20 @@ def join_regiostar_plz(plz_pop: pd.DataFrame, plz_ags: pd.DataFrame, regiostar: 
         regiostar: RegioStaR table from :func:`import_regiostar`.
 
     Returns:
-        One row per (PLZ, AGS) with RegioStaR classes and the PLZ population density.
+        One row per (PLZ, AGS) with RegioStaR classes and the PLZ population density. RegioStaR is the
+        reference of 2020: a municipality that changed since has no row there. It keeps its (PLZ, AGS) pair,
+        so that ``--plz`` and ``--ags`` find it; ``fed_state``, ``regio7`` and ``regio5`` stay empty
+        (``NA``, NULL in the table) and ``name_city`` is taken from the PLZ assignment file.
     """
     plz_pop_ags = plz_pop.merge(plz_ags, left_on="plz", right_on="plz")
-    plz_pop_ags_regio = plz_pop_ags.merge(regiostar, left_on="ags", right_on="mun_code")
+    plz_pop_ags_regio = plz_pop_ags.merge(regiostar, left_on="ags", right_on="mun_code", how="left")
+    plz_pop_ags_regio["name_city"] = plz_pop_ags_regio["name_city"].fillna(plz_pop_ags_regio["ort"])
     plz_pop_ags_regio = plz_pop_ags_regio.drop(
         columns=["note", "ort", "landkreis", "bundesland", "mun_code", "pop", "area", "pop_den"])
     plz_pop_ags_regio = plz_pop_ags_regio.rename(columns={"population": "pop", "qkm": "area"})
     plz_pop_ags_regio["pop_den"] = plz_pop_ags_regio["pop"] / plz_pop_ags_regio["area"]
+    for column in ("fed_state", "regio7", "regio5"):    # nullable integers for the municipalities without a class
+        plz_pop_ags_regio[column] = plz_pop_ags_regio[column].astype("Int64")
     return plz_pop_ags_regio
 
 
