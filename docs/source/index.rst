@@ -34,6 +34,8 @@ GIS data.
   municipalities (AGS) and runs postcodes in parallel.
 * **Medium-voltage grids** -- an optional MV stage connects the stations of an LV version and the MV
   customers to the HV/MV substations of the region with open rings along the streets and checks them with pandapower (:doc:`concepts/mv_grids`).
+* **Grid classification** -- group the grids of a region into representative grid types with
+  ``pylovo-classify`` (:doc:`user_guide/classification`).
 * **Analysis and visualisation** -- key figures per postcode and per grid, QGIS templates,
   CSV export, plotting helpers, and the GridPlanner browser UI on top of pylovo's HTTP API
   (:doc:`user_guide/browser_ui`).
@@ -65,7 +67,8 @@ GIS data.
       :link: user_guide/cli
       :link-type: doc
 
-      ``pylovo-setup``, ``-generate``, ``-mv``, ``-analyze``, ``-import``, ``-export``, ``-delete``.
+      ``pylovo-setup``, ``-generate``, ``-mv``, ``-analyze``, ``-classify``, ``-import``, ``-export``,
+      ``-delete`` and ``pylovo-api``.
 
    .. grid-item-card:: How grids are generated
       :link: concepts/pipeline
@@ -120,6 +123,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    user_guide/mv_grids
    user_guide/mv_parameters
    user_guide/analysing_grids
+   user_guide/classification
    user_guide/applications
    user_guide/exporting_visualising
    user_guide/browser_ui

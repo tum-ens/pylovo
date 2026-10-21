@@ -3,7 +3,8 @@ API reference
 
 The reference below is generated from the docstrings in ``src/pylovo`` with sphinx-autoapi. It
 covers the grid generation, database, import, analysis, plotting and command-line modules; the
-modules of the classification and validation workflows are left out.
+modules of the classification and validation workflows are left out (the classification is described
+in :doc:`user_guide/classification`).
 
 Entry points for most tasks:
 

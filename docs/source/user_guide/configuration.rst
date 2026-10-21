@@ -102,7 +102,7 @@ Each YAML file is taken from the first of these locations that contains it:
 
 The files ``config_generation_lv.yaml`` (the LV grids), ``config_analysis.yaml``,
 ``config_classification.yaml`` and ``config_clustering.yaml`` must exist. The last two belong to
-the classification module and do not influence grid generation. ``config_generation_mv.yaml`` (the
+the classification module (:doc:`classification`) and do not influence grid generation. ``config_generation_mv.yaml`` (the
 MV stage) is read from the directory of ``config_generation_lv.yaml``; without it, the MV stage
 takes its shipped values. The former single file ``config_generation.yaml`` is still read in place
 of ``config_generation_lv.yaml``, with its ``MV_*`` keys.

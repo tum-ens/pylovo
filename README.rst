@@ -33,7 +33,13 @@ Key features
   and service voltage-drop limits, power-flow check with stored diagnostics.
 * **Reproducible versions** -- every run belongs to a ``VERSION_ID`` whose parameters are frozen in
   the database.
+* **Medium-voltage grids** -- an optional stage plans the MV grid of an LV version: open rings along
+  the streets from the HV/MV substations, checked with pandapower in the load case and both (n-1)
+  cases (``pylovo-mv``, ``pylovo-generate --mv``).
 * **From one postcode to many** -- regions by postcode (PLZ) or municipality (AGS), parallel runs.
+* **Grid classification** -- group the generated grids into representative grid types
+  (``pylovo-classify``, see the
+  `classification guide <https://pylovo.readthedocs.io/en/latest/user_guide/classification.html>`_).
 * **Analysis and visualisation** -- key figures per postcode and grid, QGIS templates, CSV and
   pandapower JSON export, plotting helpers, and the GridPlanner browser UI on top of an HTTP API.
 

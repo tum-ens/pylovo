@@ -29,7 +29,8 @@ streets and transformers are derived from OpenStreetMap. Map data © OpenStreetM
 
 The classification notebooks need a classification data set of many postcode areas (sample
 set, generated and analysed grids, clustering parameters), which `pylovo-classify` creates; see
-the classification documentation. Their stored outputs come from an earlier classification run.
+the user guide page [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html)
+(`docs/source/user_guide/classification.rst`). Their stored outputs come from an earlier classification run.
 In the order of the classification workflow:
 
 1. `sampling/`: the sample set of postcode areas (`analyse_sampling_results.ipynb`).
