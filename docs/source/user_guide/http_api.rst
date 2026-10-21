@@ -133,8 +133,8 @@ keys, so comments and layout stay. Every save can be previewed as a diff, valida
 imports ``pylovo.config_loader`` against a temporary copy (this catches every error pylovo itself
 would raise), refuses to overwrite a file that changed on disk, and keeps a backup that can be
 restored. A save is refused (409) while a database-writing job runs, because a job reads the
-configuration when it starts and its workers may read it again. Remember to change ``VERSION_ID`` when you change generation parameters
-(:doc:`generating_grids`).
+configuration when it starts and its workers may read it again. Remember to change ``VERSION_ID``
+when you change generation parameters (:doc:`generating_grids`).
 
 Statistics and grid details
 ---------------------------

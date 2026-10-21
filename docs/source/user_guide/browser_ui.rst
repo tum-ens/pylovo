@@ -137,10 +137,11 @@ Workflow
        grid map, the grid inspector with diagnostics, an on-demand power flow and load editing.
      - ``pylovo-delete``, ``pylovo-export``
 
-Only one database-writing job runs at a time, and direct edits of transformers or loads are
-refused while one runs. Cancelling a job that writes to the database asks for a confirmation that
-says what the cancellation leaves behind. Job logs survive a restart; they are kept in
-``state/pylovo/api/`` of GridPlanner.
+Only one database-writing job runs at a time, and direct edits of transformers, loads or the
+configuration are refused while one runs. Cancelling a job that writes to the database asks for a
+confirmation that says what the cancellation leaves behind. Job logs survive a restart (a job that
+was still running when the server stopped is listed as *interrupted*); the newest 60 jobs are
+kept in ``state/pylovo/api/`` of GridPlanner.
 
 .. figure:: /images/ui/gridplanner-generate.png
    :alt: Generate step with the version of the next run, the per-PLZ pre-check and the job log
