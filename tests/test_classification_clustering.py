@@ -8,6 +8,7 @@ from pylovo.classification.clustering.clustering_algorithms import (
     gmm_tied_clustering,
     kmeans_clustering,
     reindex_cluster_indices,
+    representatives_in_clusters,
 )
 
 PARAMS = ["no_house_connections", "vsw_per_branch", "avg_trafo_dis"]
@@ -82,12 +83,38 @@ def test_more_clusters_than_grids_is_rejected(algorithm):
         algorithm(synthetic_clustering_parameters().head(3), PARAMS, 4)
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-02: the grid closest to a GMM mean can belong to another component; "
-                                       "renumbering then loses a cluster id and gives two representatives to one cluster")
-def test_gmm_representative_may_lie_in_another_component():
+def test_gmm_representative_lies_in_its_own_component():
+    """CLASSIF-02: with seed 12 the grid closest to the mean of component 5 belongs to component 0."""
     df = heavy_tailed(168, seed=12)
     out, reps = gmm_tied_clustering(df, ["a", "b", "c"], 6)
     assert_consistent(out, reps, 6)
+
+
+@pytest.mark.parametrize("algorithm", ALGORITHMS, ids=lambda f: f.__name__)
+@pytest.mark.parametrize("seed", range(20))
+def test_representatives_are_consistent_on_heavy_tailed_data(algorithm, seed):
+    df = heavy_tailed(60, seed)
+    out, reps = algorithm(df, ["a", "b", "c"], 4)
+    assert_consistent(out, reps, 4)
+
+
+def test_representative_is_searched_among_the_members_of_the_cluster():
+    X = np.array([[2.0], [0.4], [3.0], [3.2]])
+    labels = np.array([0, 1, 1, 1])
+    # the grid closest to the center of cluster 0 (0.5) is grid 1, but that one belongs to cluster 1
+    assert list(representatives_in_clusters(X, labels, np.array([[0.5], [3.0]]))) == [0, 2]
+
+
+def test_empty_cluster_is_reported():
+    with pytest.raises(ValueError, match="Cluster 1 contains no grid"):
+        representatives_in_clusters(np.array([[0.0], [1.0]]), np.array([0, 0]), np.array([[0.0], [1.0]]))
+
+
+def test_clusters_with_equal_households_keep_their_order():
+    n = 40
+    df = pd.DataFrame({"clusters": np.arange(n), "no_households": [100, 100, 100, 50] * 10})
+    out, _ = reindex_cluster_indices(df.copy(), df)
+    assert list(out["clusters"]) == list(df["no_households"].rank(method="first").astype(int) - 1)
 
 
 def test_gmm_mismatch_exists_in_default_setting():
