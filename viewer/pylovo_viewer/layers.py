@@ -376,6 +376,7 @@ class LayerService:
         self.layers = {layer.id: layer for layer in build_layers()}
         self._slots = LRU(64)
         self._feeders = LRU(20_000)
+        self._overhead = LRU(16)   # overhead parts of mixed MV lines per run (their query takes about 0.5 s)
 
     # ------------------------------------------------------------------------------ availability
     def unavailable(self, layer: Layer) -> str | None:
@@ -413,6 +414,7 @@ class LayerService:
     def clear(self) -> None:
         self._slots.clear()
         self._feeders.clear()
+        self._overhead.clear()
 
     # -------------------------------------------------------------------------------------- data
     def _check(self, layer: Layer, q: Query) -> None:
@@ -617,11 +619,14 @@ class LayerService:
                 or not self.catalog.has("pylovo.mv_variant", "graph_id"):
             return
         display = "l.display_geom" if self.catalog.has("pylovo.mv_line", "display_geom") else "NULL::geometry"
-        parts = {r["id"]: r["geometry"] for r in self.db.query(OVERHEAD_PARTS.replace("{display}", display),
-                                                               q.params())}
+        key = (q.version, q.mv, display)
+        parts = self._overhead.get(key)
+        if parts is None:
+            parts = self._overhead.put(key, {r["id"]: json.loads(r["geometry"])["coordinates"] for r in self.db.query(
+                OVERHEAD_PARTS.replace("{display}", display), q.params()) if r["geometry"]})
         for row in mixed:
-            if parts.get(row["fid"]):
-                row["overhead"] = json.loads(parts[row["fid"]])["coordinates"]
+            if row["fid"] in parts:
+                row["overhead"] = parts[row["fid"]]
 
     def _building_feeders(self, rows: list[dict[str, Any]], q: Query) -> None:
         maps = self.feeder_maps({row["grid"] for row in rows if row.get("grid") is not None})

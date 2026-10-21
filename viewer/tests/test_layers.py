@@ -122,6 +122,10 @@ def test_overhead_parts_of_mixed_lines(service, fake_db):
     service._overhead_parts(rows, Query(version="v1", mv="d1"))
     assert rows[0]["overhead"] == [[[11, 48], [11.001, 48]]] and "overhead" not in rows[1] and "overhead" not in rows[2]
     assert fake_db.calls[-1][1]["mv"] == "d1"
+    calls = len(fake_db.calls)
+    again = [{"fid": 1, "kind": "mixed"}]
+    service._overhead_parts(again, Query(version="v1", mv="d1"))           # the run's parts are cached
+    assert again[0]["overhead"] == [[[11, 48], [11.001, 48]]] and len(fake_db.calls) == calls
     assert "NULL::geometry IS NULL" in fake_db.calls[-1][0]                # no display geometry: the stored route
     service.catalog.columns["pylovo.mv_line"] = {"display_geom": "geometry"}
     service._overhead_parts([{"fid": 1, "kind": "mixed"}], Query(version="v1", mv="d1"))
