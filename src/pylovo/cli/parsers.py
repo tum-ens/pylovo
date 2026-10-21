@@ -91,18 +91,38 @@ def classify_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pylovo-classify",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Interactive classification of the generated grids into representative grid types.",
+        description="Classification of the generated grids into representative grid types. The questions are asked "
+                    "on the terminal unless an option answers them, so a run can also be scripted.",
         epilog=(
-            "The pipeline asks questions on the terminal and then:\n"
+            "The pipeline then:\n"
             "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml),\n"
             "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
-            "  3. selects the clustering parameters and numbers of clusters (asked or computed) and writes\n"
+            "  3. selects the clustering parameters and numbers of clusters (asked, given or computed) and writes\n"
             "     them to config/config_clustering.yaml together with the answer on additional filtering,\n"
-            "  4. clusters the grids that the filters of config/config_clustering.yaml leave and writes\n"
-            "     pylovo.transformer_classified.\n"
-            "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected."
+            "  4. clusters the grids that the filters of config/config_clustering.yaml leave, writes\n"
+            "     pylovo.transformer_classified and prints the grids per stage.\n"
+            "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected.\n\n"
+            "Example without questions:\n"
+            "  pylovo-classify --no-additional-filtering --restrict-to-generated --manual \\\n"
+            "      --parameters no_branches,avg_trafo_dis --clusters 4,5"
         ),
     )
+    parser.add_argument("--additional-filtering", action=argparse.BooleanOptionalAction, default=None,
+                        help="also filter the grids below the four lower thresholds (default: ask)")
+    parser.add_argument("--restrict-to-generated", action=argparse.BooleanOptionalAction, default=None,
+                        help="sample only PLZ that already have grids (postcode_result) for VERSION_ID, so nothing "
+                             "is generated (default: ask)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--auto", action="store_true",
+                      help="compute the clustering parameters and the numbers of clusters (default: ask)")
+    mode.add_argument("--manual", action="store_true",
+                      help="take the clustering parameters and the numbers of clusters from --parameters and "
+                           "--clusters (default: ask)")
+    parser.add_argument("--parameters", metavar="NAME[,NAME...]",
+                        help="with --manual: clustering parameters, comma-separated (columns of clustering_parameters)")
+    parser.add_argument("--clusters", metavar="KMEANS,GMM",
+                        help="with --manual: number of clusters of k-means and of the GMM, both from "
+                             "NO_OF_CLUSTERS_ALLOWED")
     return parser
 
 def analyze_parser() -> argparse.ArgumentParser:

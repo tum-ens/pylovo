@@ -1,5 +1,6 @@
-"""Command-line entry point ``pylovo-classify``: interactive grid classification pipeline."""
+"""Command-line entry point ``pylovo-classify``: grid classification pipeline, interactive or scripted with options."""
 import argparse
+import re
 import sys
 
 import yaml
@@ -47,9 +48,14 @@ CONFIG_CLUSTERING_PATH = _config_file("config_clustering.yaml")
 
 
 def _parse_args() -> argparse.Namespace:
-    """Parse the command line; the pipeline itself takes no options."""
+    """Parse the command line. Every option answers one question of the pipeline; unanswered ones are asked."""
     parser = parsers.classify_parser()
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.manual and not (args.parameters and args.clusters):
+        parser.error("--manual needs --parameters and --clusters")
+    if (args.parameters or args.clusters) and not args.manual:
+        parser.error("--parameters and --clusters need --manual")
+    return args
 
 
 def load_yaml(filepath):
@@ -58,10 +64,72 @@ def load_yaml(filepath):
         return yaml.safe_load(file)
 
 
+def _dump_key(key, value) -> str:
+    """Return ``key: value`` as YAML text, a list as a block sequence."""
+    return yaml.dump({key: value}, default_flow_style=False, sort_keys=False)
+
+
+def _replace_key_text(text: str, key: str, value) -> str:
+    """Replace the value of the top-level ``key`` in YAML ``text``.
+
+    The comment on the key line and the indentation of a block sequence stay. Comments between the items of a
+    replaced list are lost.
+    """
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines) if re.match(rf"{re.escape(key)}\s*:", line)), None)
+    if start is None:
+        raise ValueError(f"Key {key!r} is not a plain top-level key of the file.")
+    last = start
+    items = []
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if re.match(r"-(\s|$)", stripped):  # an item of the block sequence that is the value
+            last = i
+            items.append(lines[i])
+        elif stripped and not stripped.startswith("#"):  # the next key
+            break
+    comment = re.search(r"\s+#.*$", lines[start].split(":", 1)[1].rstrip("\r\n"))
+    indent = re.match(r"\s*", items[0]).group() if items else ""
+    new_lines = _dump_key(key, value).splitlines(keepends=True)
+    new_lines[0] = new_lines[0].rstrip("\n") + (comment.group() if comment else "") + "\n"
+    new_lines[1:] = [indent + line for line in new_lines[1:]]
+    lines[start:last + 1] = new_lines
+    return "".join(lines)
+
+
 def save_yaml(filepath, data):
-    """Save a YAML file."""
-    with open(filepath, "w", encoding="utf-8") as file:
-        yaml.dump(data, file, default_flow_style=False, sort_keys=False)
+    """Write the values of ``data`` to a YAML file and change nothing else.
+
+    Only the text of the top-level keys whose value differs is rewritten, so comments, key order and formatting stay.
+    A key that is not in the file yet is appended. Values are scalars or lists of scalars without `` #``.
+
+    Args:
+        filepath: The YAML file.
+        data: Key-value pairs, usually the loaded content with some values changed.
+
+    Raises:
+        ValueError: If a changed key is not a plain top-level key, or the file holds other values than ``data``
+            after the edit (a layout this edit does not support). The file is not written then.
+    """
+    with open(filepath, "r", encoding="utf-8") as file:
+        original = file.read()
+    current = yaml.safe_load(original) or {}
+    text = original
+    for key, value in data.items():
+        if key not in current:
+            text += ("" if not text or text.endswith("\n") else "\n") + _dump_key(key, value)
+        elif current[key] != value:
+            text = _replace_key_text(text, key, value)
+    try:
+        saved = yaml.safe_load(text) or {}
+    except yaml.YAMLError:
+        saved = {}
+    if any(saved.get(key) != value for key, value in data.items()):
+        raise ValueError(f"Cannot update {filepath} in place: unsupported layout of a changed key. "
+                         "Edit the file by hand.")
+    if text != original:
+        with open(filepath, "w", encoding="utf-8") as file:
+            file.write(text)
 
 
 def _ask(prompt: str) -> str:
@@ -69,7 +137,8 @@ def _ask(prompt: str) -> str:
     try:
         return input(prompt).strip()
     except EOFError:
-        sys.exit("\nNo more input (standard input is closed), stopping.")
+        sys.exit("\nNo more input (standard input is closed), stopping. "
+                 "The options of 'pylovo-classify --help' answer the questions without input.")
 
 
 def ask_yes_no(question: str) -> bool:
@@ -83,87 +152,87 @@ def ask_yes_no(question: str) -> bool:
         print("Invalid input. Please enter 'yes' or 'no'.")
 
 
+def parse_parameter_names(text: str) -> list:
+    """Split a comma-separated list of clustering parameters and check the names.
+
+    Raises:
+        ValueError: If the list is empty or a name is not a column of the parameter table.
+    """
+    allowed = [name for name in CLUSTERING_PARAMETERS if name not in IDENTIFIER_COLUMNS]
+    params = [param.strip() for param in text.split(",") if param.strip()]
+    unknown = [param for param in params if param not in allowed]
+    if not params:
+        raise ValueError("Please enter at least one parameter.")
+    if unknown:
+        raise ValueError(f"Unknown parameter(s): {', '.join(unknown)}. Allowed: {', '.join(allowed)}.")
+    return params
+
+
 def get_custom_clustering_parameters():
     """Gets custom clustering parameters from user input; the names must be columns of the parameter table."""
-    allowed = [name for name in CLUSTERING_PARAMETERS if name not in IDENTIFIER_COLUMNS]
     while True:
         user_input = _ask("\nPlease enter desired clustering parameters (comma-separated). "
                           "For example: no_branches,max_no_of_households_of_a_branch,avg_trafo_dis\n> ")
-        params = [param.strip() for param in user_input.split(",") if param.strip()]
-        unknown = [param for param in params if param not in allowed]
-        if not params:
-            print("Invalid input. Please enter at least one parameter.")
-        elif unknown:
-            print(f"Invalid input. Unknown parameter(s): {', '.join(unknown)}. Allowed: {', '.join(allowed)}.")
-        else:
-            return params
+        try:
+            return parse_parameter_names(user_input)
+        except ValueError as exc:
+            print(f"Invalid input. {exc}")
+
+
+def _allowed_cluster_numbers() -> list:
+    """Return NO_OF_CLUSTERS_ALLOWED of config_classification.yaml."""
+    allowed_values = load_yaml(CONFIG_CLASSIFICATION_PATH).get("NO_OF_CLUSTERS_ALLOWED", [])
+    if not allowed_values:
+        print("Warning: NO_OF_CLUSTERS_ALLOWED is missing or empty in config_classification.yaml. Defaulting to [3, 4, 5, 6, 7].")
+        allowed_values = [3, 4, 5, 6, 7]  # Fallback in case the value is missing
+    return allowed_values
+
+
+def parse_cluster_numbers(text: str, allowed_values: list) -> list:
+    """Split two comma-separated cluster numbers (k-means, GMM) and check them against the allowed values.
+
+    Raises:
+        ValueError: If they are not exactly two integers from ``allowed_values``.
+    """
+    try:
+        values = [int(num.strip()) for num in text.split(",") if num.strip()]
+    except ValueError:
+        raise ValueError("Please enter numeric values only.") from None
+    if len(values) != 2:
+        raise ValueError("Please enter exactly 2 integer values separated by commas.")
+    if not all(val in allowed_values for val in values):
+        raise ValueError(f"All values must be in NO_OF_CLUSTERS_ALLOWED {allowed_values}.")
+    return values
 
 
 def get_custom_cluster_numbers():
     """Gets custom cluster numbers for KMeans and GMM from user input while ensuring valid ranges."""
-
-    # Load allowed cluster values from config_classification.yaml
-    config_classification = load_yaml(CONFIG_CLASSIFICATION_PATH)
-    allowed_values = config_classification.get("NO_OF_CLUSTERS_ALLOWED", [])
-
-    if not allowed_values:
-        print("Warning: NO_OF_CLUSTERS_ALLOWED is missing or empty in config_classification.yaml. Defaulting to [3, 4, 5, 6, 7].")
-        allowed_values = [3, 4, 5, 6, 7]  # Fallback in case the value is missing
-
-    # Convert to a set for quick lookup
-    allowed_values_set = set(allowed_values)
-    min_val, max_val = min(allowed_values), max(allowed_values)
-
+    allowed_values = _allowed_cluster_numbers()
     while True:
         user_input = _ask(f"\nPlease enter desired number of clusters for KMeans and GMM "
                           f"(comma-separated, allowed: {allowed_values}). "
                           f"For example: 4,5\n> ")
         try:
-            values = [int(num.strip()) for num in user_input.split(",") if num.strip()]
-
-            # Check if exactly 2 values are provided
-            if len(values) != 2:
-                print("Invalid input. Please enter exactly 2 integer values separated by commas.")
-                continue
-
-            # Check if all values are within the allowed range
-            if all(val in allowed_values_set for val in values):
-                return values
-
-            print(f"Invalid input. All values must be within the allowed range {min_val}-{max_val}. Try again.")
-
-        except ValueError:
-            print("Invalid input. Please enter numeric values only.")
+            return parse_cluster_numbers(user_input, allowed_values)
+        except ValueError as exc:
+            print(f"Invalid input. {exc}")
 
 
-def update_list_of_clustering_parameters(additional_filtering: bool | None = None) -> list:
-    """Runs get_parameters_for_clustering and updates LIST_OF_CLUSTERING_PARAMETERS in config_clustering.yaml.
-
-    Args:
-        additional_filtering: Also leave out the grids below the four lower thresholds.
-
-    Returns:
-        list: The selected clustering parameters.
-    """
-    params = get_parameters_for_clustering(additional_filtering)
-
-    # Update YAML file
-    config = load_yaml(CONFIG_CLUSTERING_PATH)
-    config["LIST_OF_CLUSTERING_PARAMETERS"] = params
-    save_yaml(CONFIG_CLUSTERING_PATH, config)
-    print("LIST_OF_CLUSTERING_PARAMETERS updated in config_clustering.yaml")
-    return params
-
-
-def update_number_of_clusters(list_of_clustering_parameters: list | None = None, additional_filtering: bool | None = None):
-    """Runs get_no_clusters_for_clustering and updates cluster numbers in config_clustering.yaml.
+def select_number_of_clusters(list_of_clustering_parameters: list | None = None,
+                              additional_filtering: bool | None = None) -> dict:
+    """Run get_no_clusters_for_clustering, print the Calinski-Harabasz table and return the chosen numbers.
 
     Args:
         list_of_clustering_parameters: Parameters to evaluate the CH index on;
             ``None`` uses LIST_OF_CLUSTERING_PARAMETERS loaded at start-up.
         additional_filtering: Also leave out the grids below the four lower thresholds.
+
+    Returns:
+        dict: ``N_CLUSTERS_KMEANS`` and ``N_CLUSTERS_GMM``, the best numbers of k-means and of the tied GMM.
     """
     df_no_clusters = get_no_clusters_for_clustering(list_of_clustering_parameters, additional_filtering)
+    print("Calinski-Harabasz index at the best number of clusters of each algorithm (higher is better):")
+    print(df_no_clusters.to_string(index=False))
     config = load_yaml(CONFIG_CLUSTERING_PATH)
 
     def get_no_clusters_from_df(algo_names: list[str], fallback_key: str) -> int:
@@ -179,24 +248,27 @@ def update_number_of_clusters(list_of_clustering_parameters: list | None = None,
         )
         return fallback
 
-    # Define the direct mapping from algorithm names to YAML keys
     cluster_counts = {
         "N_CLUSTERS_KMEANS": get_no_clusters_from_df(["kmeans", "KMeans"], "N_CLUSTERS_KMEANS"),
         "N_CLUSTERS_GMM": get_no_clusters_from_df(["GMM tied", "gmm_tied", "gmm tied"], "N_CLUSTERS_GMM"),
     }
-
-    # Update YAML configuration with extracted values
-    config.update(cluster_counts)
-
-    # Save updated YAML file
-    save_yaml(CONFIG_CLUSTERING_PATH, config)
-    print("Number of clusters updated in config_clustering.yaml")
+    print("Selected number of clusters: " + ", ".join(f"{key}={value}" for key, value in cluster_counts.items()))
+    return cluster_counts
 
 
 def main():
-    """Run the interactive classification pipeline (see ``pylovo-classify --help``)."""
-    _parse_args()
+    """Run the classification pipeline (see ``pylovo-classify --help``)."""
+    args = _parse_args()
     print("Running classification pipeline...")
+
+    # Check the scripted values first: a typo must not cost the hours of a run.
+    scripted = None
+    if args.manual:
+        try:
+            scripted = (parse_parameter_names(args.parameters),
+                        parse_cluster_numbers(args.clusters, _allowed_cluster_numbers()))
+        except ValueError as exc:
+            sys.exit(f"pylovo-classify: {exc}")
 
     # Step 1: Ensure user has configured `config_classification.yaml`; an existing version is rejected
     # before any question is asked.
@@ -208,49 +280,53 @@ def main():
                  f"{CONFIG_CLASSIFICATION_PATH} (or delete the old one with 'pylovo-delete classification').")
 
     # Step 2: Ask user if they want to apply additional filtering then Run prepare_data_for_clustering.py
-    apply_additional_filtering = ask_yes_no("Do you want to apply additional filtering on top of the default filters?")
-    sample_from_postcode_result_only = ask_yes_no(
-        "Do you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID?"
-    )
+    apply_additional_filtering = args.additional_filtering
+    if apply_additional_filtering is None:
+        apply_additional_filtering = ask_yes_no(
+            "Do you want to apply additional filtering on top of the default filters?")
+    sample_from_postcode_result_only = args.restrict_to_generated
+    if sample_from_postcode_result_only is None:
+        sample_from_postcode_result_only = ask_yes_no(
+            "Do you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID?")
 
     print("\nRunning prepare_data_for_clustering.py...")
     plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only)
 
-    # The filters are applied when the grids are read: the answer belongs to the configuration of this classification.
-    config = load_yaml(CONFIG_CLUSTERING_PATH)
-    config["ADDITIONAL_FILTERING"] = apply_additional_filtering
-    save_yaml(CONFIG_CLUSTERING_PATH, config)
-
-    # Step 3: Ask user for manual input or automatic assignment
-    if ask_yes_no("Do you prefer to assign clustering parameters and number of clusters? "
-                  "Otherwise, optimal values will be calculated and assigned accordingly."):
-        # User wants to enter clustering parameters manually
-        clustering_parameters = get_custom_clustering_parameters()
-        cluster_numbers = get_custom_cluster_numbers()
-
-        # Update YAML file manually
-        config = load_yaml(CONFIG_CLUSTERING_PATH)
-        config["LIST_OF_CLUSTERING_PARAMETERS"] = clustering_parameters
-        config["N_CLUSTERS_KMEANS"], config["N_CLUSTERS_GMM"] = cluster_numbers
-        save_yaml(CONFIG_CLUSTERING_PATH, config)
-
-        print("\nManually assigned clustering parameters and number of clusters updated in config_clustering.yaml")
+    # Step 3: Manual input or automatic assignment
+    manual = args.manual or (not args.auto and ask_yes_no(
+        "Do you prefer to assign clustering parameters and number of clusters? "
+        "Otherwise, optimal values will be calculated and assigned accordingly."))
+    if manual:
+        if scripted is None:
+            clustering_parameters = get_custom_clustering_parameters()
+            cluster_numbers = get_custom_cluster_numbers()
+        else:
+            clustering_parameters, cluster_numbers = scripted
+        cluster_counts = dict(zip(("N_CLUSTERS_KMEANS", "N_CLUSTERS_GMM"), cluster_numbers))
     else:
-        # Step 4: Automatically update clustering parameters and cluster numbers
+        # Step 4: Automatically select clustering parameters and cluster numbers
         print("\nGetting parameters for clustering...")
-        clustering_parameters = update_list_of_clustering_parameters(apply_additional_filtering)
+        clustering_parameters = get_parameters_for_clustering(apply_additional_filtering)
+        print(f"Selected clustering parameters: {', '.join(clustering_parameters)}")
 
         print("\nGetting number of clusters for clustering...")
-        update_number_of_clusters(clustering_parameters, apply_additional_filtering)
+        cluster_counts = select_number_of_clusters(clustering_parameters, apply_additional_filtering)
+
+    # The filters are applied when the grids are read: the answer belongs to the configuration of this classification.
+    config = load_yaml(CONFIG_CLUSTERING_PATH)
+    config["LIST_OF_CLUSTERING_PARAMETERS"] = clustering_parameters
+    config.update(cluster_counts)
+    config["ADDITIONAL_FILTERING"] = apply_additional_filtering
+    save_yaml(CONFIG_CLUSTERING_PATH, config)
+    print("\nClustering parameters, number of clusters and the filter choice written to config_clustering.yaml")
 
     # Step 5: Run apply_clustering_for_visualisation.py with the values just written;
     # pylovo.config_loader still holds the values loaded at start-up.
     print("\nRunning apply_clustering_for_visualisation.py...")
-    config = load_yaml(CONFIG_CLUSTERING_PATH)
     apply_clustering_for_visualisation(
-        list_of_clustering_parameters=config["LIST_OF_CLUSTERING_PARAMETERS"],
-        n_clusters_kmeans=config["N_CLUSTERS_KMEANS"],
-        n_clusters_gmm=config["N_CLUSTERS_GMM"],
+        list_of_clustering_parameters=clustering_parameters,
+        n_clusters_kmeans=cluster_counts["N_CLUSTERS_KMEANS"],
+        n_clusters_gmm=cluster_counts["N_CLUSTERS_GMM"],
         additional_filtering=apply_additional_filtering,
     )
 
@@ -260,4 +336,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
