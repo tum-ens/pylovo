@@ -78,7 +78,10 @@ transformers themselves are removed, and candidates inside MV-supplied buildings
 The street segments of the postcode are copied to ``ways_tem_<plz>``. With InfDB they already
 contain a connection line from every building centroid to its street; pylovo adds connection
 lines for the transformers and splits the street segments at their foot points. In the file-based
-mode pylovo splits intersecting streets and creates the building connection lines itself.
+mode pylovo splits intersecting streets and creates the building connection lines itself. With
+``ROUTE_ACROSS_POSTCODE_BORDERS`` (InfDB mode) the street graph also holds the streets of the
+neighbouring postcodes within a strip outside the polygon, so a route may pass through a neighbouring
+postcode; buildings and stations stay per postcode.
 
 pgRouting then builds the routing graph (``pgr_extractVertices``; endpoints snapped to a 10⁻⁶
 grid) with the segment length in metres as cost. Every building gets two vertices:
@@ -136,8 +139,9 @@ to the transformer unless that transformer would exceed its capacity, which is i
 without a known rating, the largest rating allowed for the settlement type. Transformers without
 buildings are dropped. Each remaining transformer forms a cluster with a negative ``bcid`` (-1,
 -2, ...) and keeps its known rating or gets the smallest allowed rating above the planned load.
-Connection points that no transformer could take are clustered greenfield; a single remaining
-consumer is dropped.
+With ``BROWNFIELD_NEAREST_ONLY`` a connection point joins only its nearest transformer. Connection
+points that no transformer could take are clustered greenfield; a single remaining connection point
+gets its own greenfield grid.
 
 **Greenfield** (all remaining connection points). A routed distance matrix between the connection
 points (Dijkstra on the ``ways_tem`` street graph with SciPy, the same distances as
@@ -156,7 +160,9 @@ the largest rating is rated in multiples of 630 kVA (parallel units). With
 ``MERGE_GREENFIELD_CLUSTERS``, neighbouring clusters are merged afterwards if the merged cluster
 still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and the distance limit; with
 ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` only pairs whose smaller cluster has at most that many
-buildings, so small fragments join a neighbour while larger clusters stay as split. The
+buildings, so small fragments join a neighbour while larger clusters stay as split. Where existing
+stations are used, a greenfield cluster that still has at most that many buildings joins the nearest
+existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE``, without checking its rating again. The
 clusters are numbered 1, 2, ... in the order of their smallest vertex id, so equal partitions get
 equal ids.
 
@@ -191,8 +197,9 @@ Phase 4: design
 
 Each grid is built in its own electrical backend by a
 :class:`~pylovo.cable_installer.CableInstaller`: MV bus (20 kV) with external grid, transformer,
-LV bus, one connection bus per street vertex on the routes and one consumer bus with one load per
-category for every supplied building (:doc:`electrical_backends`).
+LV bus, one connection bus per connection point of the grid (the street-side end of a building
+connection) and one consumer bus with one load per category for every supplied building
+(:doc:`electrical_backends`).
 
 The feeder topology is planned before any cable is chosen
 (:func:`~pylovo.feeder_planning.plan_feeder_branches`):
@@ -214,7 +221,7 @@ it (:func:`~pylovo.feeder_planning.size_feeder_tree`). Service cables run in a s
 facade and are sized for the building's own load. The complete method is described in :doc:`grid_dimensioning`.
 
 pylovo also writes GIS helper geometries: ``split_points`` at branching nodes and offset copies of
-lines where several feeders share a street (``lines_result_helper``, ``lines_result_view``).
+lines where several feeders share a street (``lines_result_helper``, ``lines_result_cache``).
 
 .. figure:: /images/generation/step6_grids_by_cable.png
    :alt: Generated grids with feeders coloured by cable cross-section and thin service connections
