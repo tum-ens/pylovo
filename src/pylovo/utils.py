@@ -11,6 +11,7 @@
 
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -31,6 +32,10 @@ PYLOVO_USER_AGENT = "pylovo (https://github.com/tum-ens/pylovo)"
 # (connect, read) timeout in seconds. The read timeout is longer than the
 # server-side [timeout:500] of the queries in data/transformer_data/overpass_queries.
 OVERPASS_TIMEOUT_S = (30, 600)
+# An overloaded server answers with these statuses: ask again after a pause that doubles every time.
+OVERPASS_RETRY_STATUS = (429, 504)
+OVERPASS_ATTEMPTS = 3
+OVERPASS_RETRY_PAUSE_S = 30
 
 
 def get_user_data_dir() -> Path:
@@ -438,6 +443,7 @@ def query_overpass_for_geojson(overpass_url: str, query: str) -> dict:
 
     The query is sent as a form-encoded POST (long queries do not fit into a URL)
     with a descriptive User-Agent, which the public Overpass instances require.
+    An overloaded server (HTTP 429 or 504) is asked again up to :data:`OVERPASS_ATTEMPTS` times.
 
     Args:
         overpass_url: Overpass API interpreter URL,
@@ -449,20 +455,31 @@ def query_overpass_for_geojson(overpass_url: str, query: str) -> dict:
 
     Raises:
         requests.HTTPError: If the server answers with an error status
-            (for example 429 or 504 when it is overloaded).
+            (after the last attempt for 429 or 504).
         requests.Timeout: If the server does not answer within
             :data:`OVERPASS_TIMEOUT_S`.
+        RuntimeError: If the answer carries a ``remark``: the server ran into its time or
+            memory limit and the result is incomplete.
     """
-    response = requests.post(
-        overpass_url,
-        data={"data": query},
-        headers={"User-Agent": PYLOVO_USER_AGENT},
-        timeout=OVERPASS_TIMEOUT_S,
-    )
+    for attempt in range(1, OVERPASS_ATTEMPTS + 1):
+        response = requests.post(
+            overpass_url,
+            data={"data": query},
+            headers={"User-Agent": PYLOVO_USER_AGENT},
+            timeout=OVERPASS_TIMEOUT_S,
+        )
+        if response.status_code not in OVERPASS_RETRY_STATUS or attempt == OVERPASS_ATTEMPTS:
+            break
+        pause = OVERPASS_RETRY_PAUSE_S * 2 ** (attempt - 1)
+        print(f"Overpass answered HTTP {response.status_code} (attempt {attempt} of {OVERPASS_ATTEMPTS}), "
+              f"trying again in {pause} s")
+        time.sleep(pause)
     response.raise_for_status()
 
     # convert JSON data to GeoJSON format
     osmjson = response.json()
+    if osmjson.get("remark"):
+        raise RuntimeError(f"Overpass did not finish the query: {osmjson['remark']}")
     geojson = osmjson_to_geojson(osmjson)
 
     return geojson
