@@ -174,3 +174,12 @@ def test_a_split_of_a_ring_with_stubs_halves_all_nodes_it_solves_again():
     assert [r.kind for r in plan.rings] == ["ring"] and sum(role == "stub" for role in plan.node_role.values()) >= 4
     after = split(plan, inputs, 11)
     assert len(after.rings) == 2                       # two halves (both short enough for busbar radials here)
+
+
+def test_the_ring_check_of_a_rebuilt_ring_uses_its_larger_conductor():
+    plan, inputs = plan_with_routes(three_rings(overhead=True), [[11, 12], [21, 22], [31, 32]])
+    exit_a = exit_line(plan, 11, "a")
+    plan, _ = topology.upgrade_lines(plan, [exit_a.key], 20.0)
+    before = next(r for r in plan.rings if 11 in r.members).check
+    after = next(r for r in split(plan, inputs, 31).rings if 11 in r.members).check
+    assert after.drop_a + after.drop_b < before.drop_a + before.drop_b - 1e-9   # the stored check was the old one

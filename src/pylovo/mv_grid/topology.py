@@ -217,8 +217,8 @@ def move_nop(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, pl
         return plan, False
     pos_keys = list(ring.members)
     kids = _children(plan.stub_parent)
-    sections = [(plan.lines[i].length_m, plan.lines[i].kind, plan.lines[i].parallel, plan.lines[i].overhead_m)
-                for i in chain]
+    sections = [(plan.lines[i].length_m, plan.lines[i].kind, plan.lines[i].parallel, plan.lines[i].overhead_m,
+                 plan.lines[i].std_type) for i in chain]
     m, nop, check = _choose_nop(ctx, pos_keys, sections, kids)
     current_m = next((j for j, i in enumerate(chain) if plan.lines[i].normally_open), None)
     current_nop = pos_keys.index(ring.nop_key) + 1 if ring.nop_key in pos_keys else None
@@ -465,14 +465,25 @@ class _Ctx:
     def line_type(self, kind: str):
         return self.cable if kind == "cable" else self.overhead
 
-    def section_values(self, kind: str, length: float, overhead_m: float) -> tuple[float, float, float]:
+    def section_values(self, kind: str, length: float, overhead_m: float,
+                       std_type: str | None = None) -> tuple[float, float, float]:
         """r and x in Ohm/km and the ampacity in kA of one circuit of a line; a mixed line is length-weighted with
-        the smaller ampacity of its parts (as :func:`pylovo.mv_grid.equipment.mixed_parameters`)."""
+        the smaller ampacity of its parts (as :func:`pylovo.mv_grid.equipment.mixed_parameters`). ``std_type`` is
+        the conductor of the line (``'<cable> + <overhead>'`` for a mixed line; None: the district's types), so an
+        upgraded line counts with its larger conductor."""
+        cable, overhead = self.cable, self.overhead
+        if std_type and std_type != self.std_type(kind):
+            parts = [equipment.line_type(part.strip()) for part in std_type.split(" + ")]
+            if kind == "mixed":
+                cable, overhead = parts
+            elif kind == "cable":
+                cable = parts[0]
+            else:
+                overhead = parts[0]
         if kind != "mixed":
-            lt = self.line_type(kind)
+            lt = cable if kind == "cable" else overhead
             return float(lt.r_ohm_per_km), float(lt.x_ohm_per_km), float(lt.max_i_ka)
         share = min(1.0, max(0.0, float(overhead_m) / float(length))) if length > 0 else 0.0
-        cable, overhead = self.cable, self.overhead
         return (share * overhead.r_ohm_per_km + (1.0 - share) * cable.r_ohm_per_km,
                 share * overhead.x_ohm_per_km + (1.0 - share) * cable.x_ohm_per_km,
                 float(min(cable.max_i_ka, overhead.max_i_ka)))
@@ -1134,7 +1145,7 @@ class _Network:
     def ring_check(self, ring_id: int, relaxed: bool = False) -> RingCheck:
         keys = self.chain_keys(ring_id)[1:-1]
         sections = [(self.lines[i].route.length, self.lines[i].kind, self.lines[i].parallel,
-                     self.overhead_m(self.lines[i])) for i in self.chain[ring_id]]
+                     self.overhead_m(self.lines[i]), self.lines[i].std_type) for i in self.chain[ring_id]]
         return _ring_check(self.ctx, keys, sections, _children(self.parent), relaxed)
 
 
@@ -1184,8 +1195,8 @@ def _ring_check(ctx: _Ctx, pos_keys: Sequence[int], sections: Sequence[tuple[flo
         member[j] = key > 0 and ctx.kind[ctx.row_of_key[key]] in MEMBER_KINDS
         weight[j] = ctx.cap_weight[ctx.row_of_key[key]] if key > 0 else 0.0
     length = np.array([max(MIN_LINE_M, s[0]) for s in sections], dtype=float)
-    values = np.array([ctx.section_values(s[1], s[0], s[3] if len(s) > 3 else 0.0) for s in sections],
-                      dtype=float).reshape(-1, 3)
+    values = np.array([ctx.section_values(s[1], s[0], s[3] if len(s) > 3 else 0.0, s[4] if len(s) > 4 else None)
+                       for s in sections], dtype=float).reshape(-1, 3)
     parallel = np.array([max(1, int(s[2])) for s in sections], dtype=float)
     r = values[:, 0] / parallel
     x = values[:, 1] / parallel
@@ -1310,7 +1321,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
             chain = net.chain[rid]
             pos_keys = net.chain_keys(rid)[1:-1]
             sections = [(net.lines[i].route.length, net.lines[i].kind, net.lines[i].parallel,
-                         net.overhead_m(net.lines[i])) for i in chain]
+                         net.overhead_m(net.lines[i]), net.lines[i].std_type) for i in chain]
             m, nop, check = _choose_nop(ctx, pos_keys, sections, kids)
             net.lines[chain[m]].normally_open = True
             net.lines[chain[m]].open_at = pos_keys[nop - 1]
