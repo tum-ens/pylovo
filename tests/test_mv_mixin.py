@@ -202,12 +202,22 @@ def test_reset_region_and_delete_variants_are_version_scoped():
 
     client = make_client([("DELETE FROM pylovo.mv_variant", ([], [], 2))])
     assert client.delete_variants("mv1", ["d0", "d1"]) == 2
-    sql, params = client.cur.statements[0]
+    sql, params = client.cur.statements[1]
     assert "mv_variant_id = ANY(%s)" in sql and params == ("mv1", ["d0", "d1"])
     client = make_client([("DELETE FROM pylovo.mv_variant", ([], [], 5))])
     assert client.delete_variants("mv1", None) == 5
-    assert client.cur.statements[0] == ("DELETE FROM pylovo.mv_variant WHERE version_id = %s", ("mv1",))
+    assert client.cur.statements[1] == ("DELETE FROM pylovo.mv_variant WHERE version_id = %s", ("mv1",))
     assert client.conn.commits == 1
+
+
+def test_delete_variants_refuses_a_variant_that_is_being_generated():
+    client = make_client([("pg_try_advisory_xact_lock", (["version_id", "mv_variant_id"], [("mv1", "d1")], 1))])
+    with pytest.raises(RuntimeError, match="MV variant\\(s\\) mv1/d1 are being generated or coupled"):
+        client.delete_variants("mv1", ["d0", "d1"])
+    lock_sql, params = client.cur.statements[0]
+    assert "pg_try_advisory_xact_lock(907362, hashtext(version_id || '/' || mv_variant_id))" in lock_sql
+    assert "mv_variant_id = ANY(%s)" in lock_sql and params == ("mv1", ["d0", "d1"])
+    assert not client.cur.sql("DELETE FROM") and client.conn.rollbacks == 1 and client.conn.commits == 0
 
 
 # ---------------------------------------------------------------------------------------------- region writes

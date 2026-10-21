@@ -249,7 +249,7 @@ def test_plz_delete_removes_the_mv_variants_of_the_plz_first(caplog):
             calls.append((" ".join(query.split()), params))
 
         def fetchall(self):
-            return [("d1",), ("d0",)]
+            return [] if "pg_try_advisory_xact_lock" in calls[-1][0] else [("d1",), ("d0",)]
 
     class Connection:
         def commit(self):
@@ -267,7 +267,9 @@ def test_plz_delete_removes_the_mv_variants_of_the_plz_first(caplog):
     with caplog.at_level(logging.INFO, logger="mv-schema-test"):
         client.delete_plz_from_all_tables("12345", "z1")
 
-    query, params = calls[0]
+    assert "pg_try_advisory_xact_lock(907362, hashtext(version_id || '/' || mv_variant_id))" in calls[0][0]
+    assert "%(p)s = ANY(plz_list)" in calls[0][0] and calls[0][1] == {"v": "z1", "p": 12345}
+    query, params = calls[1]
     assert query == ("DELETE FROM pylovo.mv_variant WHERE version_id = %(v)s AND %(p)s = ANY(plz_list) "
                      "RETURNING mv_variant_id;")
     assert params == {"v": "z1", "p": 12345}

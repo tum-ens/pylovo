@@ -34,6 +34,24 @@ if TYPE_CHECKING:   # imported lazily at run time: an LV-only run never loads th
 
 #: Advisory lock key of a running MV variant (next to 907360 setup and 907361 PLZ generation).
 VARIANT_LOCK_KEY = 907362
+#: The MV variants selected by ``{where}`` whose variant lock another session holds (a running ``pylovo-mv generate``
+#: or ``couple``). The free locks stay taken to the end of the transaction, so no run starts before a delete commits.
+BUSY_VARIANTS_SQL = ("SELECT version_id, mv_variant_id FROM pylovo.mv_variant WHERE {where} AND NOT "
+                     f"pg_try_advisory_xact_lock({VARIANT_LOCK_KEY}, hashtext(version_id || '/' || mv_variant_id)) "
+                     "ORDER BY version_id, mv_variant_id")
+
+
+def refuse_busy_variants(cur: Any, where: str, params: Any) -> None:
+    """Stop a delete of the MV variants selected by ``where`` while one of them is generated or coupled.
+
+    Raises:
+        RuntimeError: Another session holds the lock of a selected variant (:data:`BUSY_VARIANTS_SQL`).
+    """
+    cur.execute(BUSY_VARIANTS_SQL.format(where=where), params)
+    busy = [f"{version}/{variant}" for version, variant in cur.fetchall()]
+    if busy:
+        raise RuntimeError(f"MV variant(s) {', '.join(busy)} are being generated or coupled right now; delete them "
+                           "when the run has finished")
 
 #: Columns of ``pylovo.mv_node`` that :meth:`MvResultMixin.insert_nodes` writes when the rows have them.
 NODE_INSERT_COLUMNS: tuple[str, ...] = (
@@ -1005,13 +1023,18 @@ class MvResultMixin(BaseMixin):
 
         Returns:
             The number of deleted variants.
+
+        Raises:
+            RuntimeError: A variant is being generated or coupled by another session; nothing is deleted.
         """
         try:
             if variant_ids:
-                self.cur.execute("DELETE FROM pylovo.mv_variant WHERE version_id = %s AND mv_variant_id = ANY(%s)",
-                                 (version_id, [str(v) for v in variant_ids]))
+                where = "version_id = %s AND mv_variant_id = ANY(%s)"
+                params = (version_id, [str(v) for v in variant_ids])
             else:
-                self.cur.execute("DELETE FROM pylovo.mv_variant WHERE version_id = %s", (version_id,))
+                where, params = "version_id = %s", (version_id,)
+            refuse_busy_variants(self.cur, where, params)
+            self.cur.execute(f"DELETE FROM pylovo.mv_variant WHERE {where}", params)
             count = int(self.cur.rowcount)
             self.conn.commit()
             return count

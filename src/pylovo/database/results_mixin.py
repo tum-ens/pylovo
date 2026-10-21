@@ -5,6 +5,7 @@ from psycopg2 import sql
 from pylovo import postcode_border
 from pylovo.config_loader import VERSION_ID
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
+from pylovo.database.mv_result_mixin import refuse_busy_variants
 
 
 class ResultsMixin(BaseMixin):
@@ -119,7 +120,11 @@ class ResultsMixin(BaseMixin):
         Args:
             plz: Postcode to delete.
             version_id: Version whose results are deleted.
+
+        Raises:
+            RuntimeError: One of these MV variants is being generated or coupled; nothing is deleted.
         """
+        refuse_busy_variants(self.cur, "version_id = %(v)s AND %(p)s = ANY(plz_list)", {"v": version_id, "p": int(plz)})
         self.cur.execute(
             "DELETE FROM pylovo.mv_variant WHERE version_id = %(v)s AND %(p)s = ANY(plz_list) "
             "RETURNING mv_variant_id;",
@@ -157,6 +162,7 @@ class ResultsMixin(BaseMixin):
 
         Raises:
             ValueError: If ``version_ids`` is empty or a version does not exist; nothing is deleted then.
+            RuntimeError: An MV variant of the versions is being generated or coupled; nothing is deleted.
         """
         if not version_ids:
             raise ValueError("At least one version ID must be provided.")
@@ -170,6 +176,9 @@ class ResultsMixin(BaseMixin):
         if missing_versions:
             missing = ", ".join(missing_versions)
             raise ValueError(f"Version(s) not found in database: {missing}")
+        self.cur.execute("SELECT to_regclass('pylovo.mv_variant') IS NOT NULL")
+        if self.cur.fetchone()[0]:   # a schema before migration 0009 has no MV variants
+            refuse_busy_variants(self.cur, "version_id = ANY(%(versions)s)", {"versions": version_ids})
 
         # Every result table references pylovo.version (directly or through postcode_result or
         # grid_result) with ON DELETE CASCADE.
