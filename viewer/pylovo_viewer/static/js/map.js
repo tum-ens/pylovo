@@ -170,7 +170,8 @@ export class MapView {
 
   addSublayers(id) {
     const layer = this.layers[id];
-    const hide = id === 'lv_buildings' && this.lod2Hide?.length ? ['!', ['in', ['get', 'fid'], ['literal', this.lod2Hide]]] : null;
+    // a match finds the id by lookup, an 'in' would scan the list (up to 5,000 ids) for every building
+    const hide = id === 'lv_buildings' && this.lod2Hide?.length ? ['match', ['get', 'fid'], this.lod2Hide, false, true] : null;
     const defs = mapLayers(id, layer.mode, this.d3, hide);
     const before = this.beforeId(id);
     for (const def of defs) {
