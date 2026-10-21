@@ -3,10 +3,9 @@
 The persistent regional graph (``pylovo.mv_graph_edge``, built by
 :class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`) is used in two forms:
 
-* **Region CSR** (:func:`region_csr`) for the supply areas: an additively weighted graph Voronoi
-  (:func:`weighted_owner`) assigns every vertex to the HV/MV substation with the smallest ``weight + street
-  distance``; :mod:`pylovo.mv_grid.districts` places the nodes on it. Cells are contiguous along shortest paths by
-  construction.
+* **Region CSR** (:func:`region_csr`) for the supply areas: a graph Voronoi (:func:`graph_voronoi`) assigns every
+  vertex to the HV/MV substation nearest along the streets; :mod:`pylovo.mv_grid.districts` places the nodes on it.
+  Cells are contiguous along shortest paths by construction.
 * **Run graph** of one district (:func:`build_run_graph`): the district subgraph split at the attachment points of
   its terminals, with straight connectors for terminals off the street and straight bridges joining islands to the
   busbar's component. Distances (:func:`terminal_distances`), vertex paths (:func:`vertex_paths`), geometries
@@ -94,14 +93,14 @@ def region_csr(source: np.ndarray, target: np.ndarray,
     return csr, {int(x): i for i, x in enumerate(vertices.tolist())}
 
 
-def weighted_owner(csr: Any, site_u: np.ndarray, site_v: np.ndarray, site_cost_u: np.ndarray,
-                   site_cost_v: np.ndarray, weights_m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Additively weighted graph Voronoi: the nearest site of every vertex by ``weight + street distance``.
+def graph_voronoi(csr: Any, site_u: np.ndarray, site_v: np.ndarray, site_cost_u: np.ndarray,
+                  site_cost_v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Graph Voronoi: the nearest site of every vertex by street distance.
 
     Every site ``s`` becomes a dummy vertex joined to both ends of its attachment edge with the costs
-    ``weights_m[s] + site_cost_u[s]`` and ``weights_m[s] + site_cost_v[s]`` (offset plus the part of the edge up to
-    that end). One multi-source Dijkstra (``min_only``) gives every vertex its owner. A vertex on the shortest path
-    from a site to one of its vertices belongs to the same site, so the cells are contiguous.
+    ``site_cost_u[s]`` and ``site_cost_v[s]`` (offset plus the part of the edge up to that end). One multi-source
+    Dijkstra (``min_only``) gives every vertex its owner. A vertex on the shortest path from a site to one of its
+    vertices belongs to the same site, so the cells are contiguous.
 
     Args:
         csr: Region CSR (:func:`region_csr`).
@@ -109,26 +108,24 @@ def weighted_owner(csr: Any, site_u: np.ndarray, site_v: np.ndarray, site_cost_u
         site_v: CSR row of the second end (-1: not attached).
         site_cost_u: Cost from the site to ``site_u`` (offset + fraction x edge length).
         site_cost_v: Cost from the site to ``site_v`` (offset + (1 - fraction) x edge length).
-        weights_m: Additive weight per site (>= 0), raised by the capacity rebalancing.
 
     Returns:
-        ``(dist, site)`` per CSR row: the weighted distance to the owning site (``inf`` if none is reachable) and the
-        site index (-1 if none).
+        ``(dist, site)`` per CSR row: the distance to the owning site (``inf`` if none is reachable) and the site
+        index (-1 if none).
 
     Raises:
-        ValueError: If a cost or weight is negative or the arrays differ in length.
+        ValueError: If a cost is negative or the arrays differ in length.
     """
     n = csr.shape[0]
     site_u = np.asarray(site_u, dtype=np.int64)
     site_v = np.asarray(site_v, dtype=np.int64)
     cost_u = np.asarray(site_cost_u, dtype=np.float64)
     cost_v = np.asarray(site_cost_v, dtype=np.float64)
-    weights = np.asarray(weights_m, dtype=np.float64)
     n_sites = len(site_u)
-    if not (len(site_v) == len(cost_u) == len(cost_v) == len(weights) == n_sites):
+    if not (len(site_v) == len(cost_u) == len(cost_v) == n_sites):
         raise ValueError("site arrays differ in length")
-    if (cost_u < 0).any() or (cost_v < 0).any() or (weights < 0).any():
-        raise ValueError("site costs and weights must be non-negative")
+    if (cost_u < 0).any() or (cost_v < 0).any():
+        raise ValueError("site costs must be non-negative")
     if n_sites == 0:
         return np.full(n, np.inf), np.full(n, -1, dtype=np.int64)
     coo = csr.tocoo()
@@ -140,7 +137,7 @@ def weighted_owner(csr: Any, site_u: np.ndarray, site_v: np.ndarray, site_cost_u
         ok = ends >= 0
         rows.append(ends[ok])
         cols.append(dummy[ok])
-        data.append(weights[ok] + cost[ok])
+        data.append(cost[ok])
     aug, _ = _undirected_csr(np.concatenate(rows), np.concatenate(cols), np.concatenate(data), n + n_sites)
     dist, _pred, sources = dijkstra(aug, directed=False, indices=dummy, min_only=True, return_predecessors=True)
     site = np.where(sources[:n] >= n, sources[:n] - n, -1).astype(np.int64)

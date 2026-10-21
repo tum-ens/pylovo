@@ -104,7 +104,7 @@ def _random_graph(rng, n=40, extra=60):
     return edges, rng.uniform(10.0, 200.0, len(edges))
 
 
-def test_weighted_owner_matches_brute_force_and_is_contiguous():
+def test_graph_voronoi_matches_brute_force_and_is_contiguous():
     rng = np.random.default_rng(7)
     edges, length = _random_graph(rng)
     source = np.array([e[0] for e in edges]) * 10 + 100        # graph vertex ids differ from the CSR rows
@@ -115,17 +115,16 @@ def test_weighted_owner_matches_brute_force_and_is_contiguous():
     site_edges = rng.choice(len(edges), n_sites, replace=False)
     f = rng.uniform(0.1, 0.9, n_sites)
     o = rng.uniform(0.0, 50.0, n_sites)
-    w = np.array([0.0, 120.0, 0.0, 40.0])
     su = np.array([index[int(source[e])] for e in site_edges])
     sv = np.array([index[int(target[e])] for e in site_edges])
     cu = o + f * length[site_edges]
     cv = o + (1 - f) * length[site_edges]
-    dist, site = graph.weighted_owner(csr, su, sv, cu, cv, w)
+    dist, site = graph.graph_voronoi(csr, su, sv, cu, cv)
     ref = np.full((n_sites, csr.shape[0]), np.inf)
     for s in range(n_sites):
         du, dv = _dijkstra(adj, su[s]), _dijkstra(adj, sv[s])
         for x in range(csr.shape[0]):
-            ref[s, x] = w[s] + min(cu[s] + du.get(x, np.inf), cv[s] + dv.get(x, np.inf))
+            ref[s, x] = min(cu[s] + du.get(x, np.inf), cv[s] + dv.get(x, np.inf))
     np.testing.assert_allclose(dist, ref.min(axis=0), rtol=1e-12)
     np.testing.assert_array_equal(site, ref.argmin(axis=0))
     # contiguity: the vertices of every cell are connected through vertices of the same cell
@@ -140,17 +139,14 @@ def test_weighted_owner_matches_brute_force_and_is_contiguous():
                     reached.add(nxt)
                     stack.append(nxt)
         assert reached == owned
-    # a larger weight never grows a cell
-    _, site_heavy = graph.weighted_owner(csr, su, sv, cu, cv, w + np.array([500.0, 0, 0, 0]))
-    assert set(np.flatnonzero(site_heavy == 0)) <= set(np.flatnonzero(site == 0))
 
 
-def test_weighted_owner_without_sites_and_negative_costs():
+def test_graph_voronoi_without_sites_and_negative_costs():
     csr, _ = graph.region_csr(np.array([1]), np.array([2]), np.array([5.0]))
-    dist, site = graph.weighted_owner(csr, np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0))
+    dist, site = graph.graph_voronoi(csr, np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0))
     assert np.isinf(dist).all() and (site == -1).all()
     with pytest.raises(ValueError, match="non-negative"):
-        graph.weighted_owner(csr, np.array([0]), np.array([1]), np.array([-1.0]), np.array([1.0]), np.array([0.0]))
+        graph.graph_voronoi(csr, np.array([0]), np.array([1]), np.array([-1.0]), np.array([1.0]))
 
 
 # ----------------------------------------------------------------------------------------------------- run graph

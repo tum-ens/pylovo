@@ -21,7 +21,7 @@ G = np.array([0.07, 0.5, 0.6, 0.6])
 PARAMS = MvParameters()
 
 
-def _fake_weighted_owner(csr, site_u, site_v, site_cost_u, site_cost_v, weights_m):
+def _fake_graph_voronoi(csr, site_u, site_v, site_cost_u, site_cost_v):
     """Brute force: one Dijkstra per site on the graph plus its dummy vertex; ties go to the lower site index."""
     n = csr.shape[0]
     n_sites = len(site_u)
@@ -33,7 +33,7 @@ def _fake_weighted_owner(csr, site_u, site_v, site_cost_u, site_cost_v, weights_
             if end >= 0:
                 rows.append(int(end))
                 cols.append(n)
-                data.append(float(weights_m[s] + cost))
+                data.append(float(cost))
         aug = scipy.sparse.csr_matrix((data, (rows, cols)), shape=(n + 1, n + 1))
         dist[s] = dijkstra(aug, directed=False, indices=n)[:n]
     best = dist.min(axis=0)
@@ -43,7 +43,7 @@ def _fake_weighted_owner(csr, site_u, site_v, site_cost_u, site_cost_v, weights_
 
 @pytest.fixture(autouse=True)
 def fake_graph(monkeypatch):
-    fake = types.SimpleNamespace(weighted_owner=_fake_weighted_owner)
+    fake = types.SimpleNamespace(graph_voronoi=_fake_graph_voronoi)
     monkeypatch.setattr(districts, "_graph", lambda: fake)
     return fake
 
@@ -197,8 +197,8 @@ def test_routed_assignment_with_the_graph_module(monkeypatch):
         graph = importlib.import_module("pylovo.mv_grid.graph")
     except ImportError:
         pytest.skip("pylovo.mv_grid.graph is not available")
-    if not hasattr(graph, "weighted_owner") or not hasattr(graph, "region_csr"):
-        pytest.skip("pylovo.mv_grid.graph has no weighted_owner")
+    if not hasattr(graph, "graph_voronoi") or not hasattr(graph, "region_csr"):
+        pytest.skip("pylovo.mv_grid.graph has no graph_voronoi")
     rng = np.random.default_rng(7)
     side = 12
     ids = np.arange(side * side).reshape(side, side) + 500

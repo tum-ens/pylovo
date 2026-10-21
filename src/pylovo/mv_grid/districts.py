@@ -1,8 +1,8 @@
 """Supply areas of the HV/MV substations (pure: numpy, pandas, SciPy and shapely; no database or configuration).
 
 DESIGN §4.1. :func:`routed_assignment` gives every MV node (station, customer) to the HV/MV substation
-(site) nearest along the regional street graph, a graph Voronoi (:func:`pylovo.mv_grid.graph.weighted_owner` with
-zero weights). Cells are contiguous along shortest paths. The sites above their (n-1) capacity are reported (flag
+(site) nearest along the regional street graph, a graph Voronoi (:func:`pylovo.mv_grid.graph.graph_voronoi`). Cells
+are contiguous along shortest paths. The sites above their (n-1) capacity are reported (flag
 ``over_capacity``) and keep their load: the sizing gives such a site more transformer units. Nodes without a street
 path to any site go to the Euclidean nearest site and are reported as ``bridged``.
 
@@ -176,18 +176,17 @@ def _same_edge(node_edge: np.ndarray, node_geo: np.ndarray, site_edge: np.ndarra
             np.asarray(pair_cost, dtype=np.float64))
 
 
-def _direct(n: int, pair_node: np.ndarray, pair_site: np.ndarray, pair_cost: np.ndarray, weights: np.ndarray
+def _direct(n: int, pair_node: np.ndarray, pair_site: np.ndarray, pair_cost: np.ndarray
             ) -> tuple[np.ndarray, np.ndarray]:
-    """Cheapest weighted same-edge cost and its site per node (ties: lower site index)."""
+    """Cheapest same-edge cost and its site per node (ties: lower site index)."""
     cost = np.full(n, np.inf)
     site = np.full(n, -1, dtype=np.int64)
     if len(pair_node):
-        weighted = pair_cost + weights[pair_site]
-        order = np.lexsort((pair_site, weighted, pair_node))
+        order = np.lexsort((pair_site, pair_cost, pair_node))
         first = np.ones(len(order), dtype=bool)
         first[1:] = pair_node[order][1:] != pair_node[order][:-1]
         chosen = order[first]
-        cost[pair_node[chosen]] = weighted[chosen]
+        cost[pair_node[chosen]] = pair_cost[chosen]
         site[pair_node[chosen]] = pair_site[chosen]
     return cost, site
 
@@ -252,30 +251,23 @@ class _Routed:
     def n_sites(self) -> int:
         return len(self.site_u)
 
-    def owner(self, weights: np.ndarray, active: np.ndarray | None = None
-              ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """``(site, weighted distance, bridged)`` per node by ``weight + street distance`` among the ``active``
-        sites (bool per site; default all). A node without a street path to an active site goes to the Euclidean
-        nearest active site (``bridged``)."""
+    def owner(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(site, street distance, bridged)`` per node: the site nearest along the streets. A node without a
+        street path to any site goes to the Euclidean nearest site (``bridged``)."""
         n = len(self.node_u)
-        active = np.ones(self.n_sites, dtype=bool) if active is None else np.asarray(active, dtype=bool)
-        if self.n_sites and active.any():
-            site_u = np.where(active, self.site_u, -1)
-            site_v = np.where(active, self.site_v, -1)
-            dist, site = _graph().weighted_owner(self.csr, site_u, site_v, self.site_cost_u, self.site_cost_v,
-                                                 weights)
+        if self.n_sites:
+            dist, site = _graph().graph_voronoi(self.csr, self.site_u, self.site_v, self.site_cost_u,
+                                                self.site_cost_v)
             dist = np.asarray(dist, dtype=np.float64)
             site = np.asarray(site, dtype=np.int64)
         else:
             dist = np.full(self.csr.shape[0], np.inf)
             site = np.full(self.csr.shape[0], -1, dtype=np.int64)
-        keep = active[self.pair_site] if len(self.pair_site) else np.zeros(0, dtype=bool)
-        direct_cost, direct_site = _direct(n, self.pair_node[keep], self.pair_site[keep], self.pair_cost[keep],
-                                           weights)
+        direct_cost, direct_site = _direct(n, self.pair_node, self.pair_site, self.pair_cost)
         owner, distance = _owner(dist, site, self.node_u, self.node_v, self.node_cost_u, self.node_cost_v,
                                  direct_cost, direct_site)
         bridged = owner < 0
-        nearest = _nearest_site(self.node_xy, np.where(active[:, None], self.site_xy, np.nan))
+        nearest = _nearest_site(self.node_xy, self.site_xy)
         return np.where(bridged, nearest, owner), distance, bridged
 
     def loads(self, owner: np.ndarray) -> np.ndarray:
@@ -365,7 +357,7 @@ def routed_assignment(csr, vertex_index: dict[int, int], edge_len: Mapping[int, 
     """
     capacity = _check_capacity(capacity_mva, len(sites))
     problem = _routed_problem(csr, vertex_index, edge_len, sites, nodes, g, power_factor)
-    owner, distance, bridged = problem.owner(np.zeros(problem.n_sites, dtype=np.float64))
+    owner, distance, bridged = problem.owner()
     load = problem.loads(owner)
     overloaded = [int(s) for s in np.flatnonzero(load > capacity * (1.0 + 1e-12))]
     _log_result(overloaded, load, capacity, bridged)
