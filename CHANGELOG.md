@@ -46,6 +46,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - CI workflow `tests.yml` (unit tests with the `api` and `plots` extras); pytest collects `tests` and `api/tests` by default
 - Unit tests of the classification, the CLI entry points, the packaging, the data directory and the MV, API and LV fixes of the release review
 - User guide page on the classification (`user_guide/classification`)
+- Wheel installs work outside a checkout: the wheel and the sdist contain the default configuration and the reference data (municipal register, Overpass queries, processed OSM transformers) as the last fallback, and `.env` is also looked up in the working directory
+- `pylovo-classify` options that answer its questions (`--additional-filtering`, `--restrict-to-generated`, `--auto` or `--manual` with `--parameters` and `--clusters`), so a classification can run without a terminal; the run ends with the number of grids per stage and warns about grids it lost
+- `ADDITIONAL_FILTERING` in `config_clustering.yaml`: the answer on the additional filtering, read by the classification readers
+- `pylovo-mv prune-graphs`: delete the MV routing graphs that no variant references
+- Migration `0013_schema_cleanup` (run `pylovo-setup`): drops the unused table `grid_parameters`, the MaStR tables of databases migrated with the former `0009` and renames the v0.8.0 key names of `lines_result_cache`
+- A warning for keys of `config_generation_lv.yaml`, `config_analysis.yaml`, `config_classification.yaml` and `config_clustering.yaml` that nothing reads, with the closest known name (the MV file refuses unknown keys as before)
 
 ### Changed
 - `config/config_generation.yaml` is now `config/config_generation_lv.yaml` (the LV grids), and the MV stage has its own `config/config_generation_mv.yaml` in the same directory. A `config_generation.yaml` is still read in place of `config_generation_lv.yaml`, with its `MV_*` keys; an `MV_*` key in both files needs the same value. `pylovo-api` edits whichever of the two LV files exists
@@ -84,7 +90,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `pylovo-delete networks --plz PLZ --version VERSION` also deletes the MV variants of the version that contain the postcode, because an MV grid spans several postcodes
 - `version_snapshot.compare_snapshots` takes an optional `added_later` mapping. The MV variant snapshots use `MV_ADDED_LATER`
 - `PYLOVO_DATA_DIR` applies to all input data (transformer data, municipal register, postcode CSV); `requires-python` is `>=3.12,<3.14`; shapely, networkx and tqdm (and starlette, pydantic in `api`) are declared, `xlrd` is removed, `contextily` needs 1.7.0; the SQL files of the ways preprocessing are part of the wheel and sdist
-- `SWF_BUS_TYPE_CONFIG` is now `DSO_BUS_TYPE_CONFIG` (bus naming of a DSO grid export)
 - `VERSION_ID` is read as text and must be 1 to 10 characters of `[A-Za-z0-9_.-]`; the generation config is checked at load (`sim_factor` in 0..1, cable ampacities above 0, `TRANSFORMER_MAPPING` ratings in `TRANSFORMERS`); a lone former `config_generation.yaml`, or one that hides the current files, gives a warning
 - `pylovo-analyze` exits 1 for postcodes without grids and reports already analysed ones as skipped; `pylovo-export` reports postcodes without grids and exits 1 when nothing was exported; both warn about options the chosen mode ignores
 - `pylovo-classify` asks for two cluster numbers (k-means, GMM; `N_CLUSTERS_KMEDOID` is removed), accepts y/yes/n/no, validates parameter names, checks the classification version before the questions and stops with a hint when the `plots` extra is missing; the version is registered only after the sample is drawn
@@ -97,16 +102,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Migration `0012_indexes`: indexes for the `way_id` lookup, the per-grid bus foreign keys of the pandapower tables and `postcode_result_plz`; redundant indexes and the leftover v0.8.0 function `generate_building_way_connection_candidates_infdb()` are dropped. Run `pylovo-setup` once
 - `pylovo-setup` refuses PostgreSQL servers older than 15 before changing anything; a migration that meets violating rows stops with a message naming the migration
 - `pylovo-generate` exits with 4 when the run finished but postcodes failed or got no grids (before: 0) and names them in one line; with `--mv` the MV stage runs only for the postcodes with LV grids; `pylovo-api` counts such a generate job as succeeded
-
-### Deprecated
-- `pylovo-import transformers-ui` (Flask transformer map): use the transformer editor of the GridPlanner UI (on `pylovo-api`); Flask moved to the extra `legacy-ui`
+- `pylovo-delete` and `pylovo-mv delete` show the database and what they delete and ask you to type the database name; `--yes` skips the question and is needed without a terminal (they stop with exit 1 and delete nothing otherwise); `pylovo-api` passes `--yes`
+- Versions are deleted with `pylovo-delete version --version ...` only (the top-level `--version` of `pylovo-delete` is removed); `pylovo-mv delete` exits 1 when no variant matches
+- `--help` and usage errors of the `pylovo-*` commands work without `.env` and configuration files: the console scripts parse the command line before they load the configuration (run `uv sync` once after updating), and `import pylovo` imports its classes on first use
+- The version snapshot records `USE_INFDB`, `TARGET_EPSG` and `INFDB_SOURCE_SCHEMA`; a version stored with other input settings refuses further postcodes (older snapshots without them stay usable)
+- Development status `Production/Stable`; the licence is declared as the SPDX expression `MIT`
+- `pylovo-setup` reprojects the shipped OSM transformers (EPSG:25832) for another `TARGET_EPSG` instead of downloading them again
+- File-based input (`USE_INFDB: False`): the buildings of a single PLZ are not imported when an AGS of it has no shapefile; the input data page documents `postcode.csv`, the building shapefiles and the osm2po table
+- `pylovo-import transformers-ui` (the Flask transformer map) is a supported browser editor again: it checks the PLZ, escapes ids and messages and loads Leaflet with integrity hashes
+- `pylovo-import transformers-osm` prints how many transformers it added and skipped and exits 1 on `ogr2ogr` errors other than duplicate keys
+- The DSO CSV import and the API preview refuse coordinates outside EPSG:4326 (longitude beyond ±180, latitude beyond ±90) with their row numbers
+- The municipal register keeps the five (PLZ, AGS) pairs without a RegioStaR 2020 row, with empty RegioStaR classes (an existing register is kept until it is imported again)
+- A postcode that gets no grid keeps its `postcode_result`, `building_exclusion` and `mv_customers` rows instead of rolling them back, so its buildings are accounted for; a rerun reports it as empty. A postcode with a single loaded building gets a grid, and a settlement metric that cannot be calculated counts as rural instead of failing the postcode
+- Buildings above the MV-direct threshold that contain a transformer candidate (customer substations) are stored as MV customers before they leave the LV input; buildings with a candidate are recorded as `mv_direct`, `unloaded` or `duplicate` instead of `overlaps_transformer` where that applies
+- The greenfield merge checks a merged cluster against its own drawn distance limit, as the split and the placement do (this changes merged grids, so regenerate with a new `VERSION_ID` to compare)
+- A transformer within 0.1 m of a street is placed on that street instead of being linked to a farther street
+- The LoD2 station candidates are written only for runs with open or manual transformer positions, in a short transaction before the postcode
+- The classification sample is drawn with a generator seeded by `CLASSIFICATION_VERSION` from the register sorted by PLZ and AGS, so a draw can be repeated (samples differ from earlier unseeded draws)
+- The classification filters (`THRESHOLD_*`, households per building, additional filtering) are applied when the grids of a classification are read, scoped to its sample set; `clustering_parameters.filtered` is no longer used, so classifications that share grids no longer change each other's selection
+- Step 7 of the classification replaces the rows of the classification in one transaction, so it can be repeated; `pylovo-classify` keeps the comments of `config_clustering.yaml` when it writes the chosen values
+- The threshold helper of the classification averages the four filter parameters over cluster 0 of one classification
+- Clustering parameters: the path impedance (`resistance`, `reactance`, `ratio`, `vsw_per_branch`, `max_vsw_of_a_branch`) divides each line by its parallel cables, `cable_length_km` is the installed length (length x parallel), `house_distance_km` is computed over the consumer buses, `no_households` counts the households of the residential loads, and `simultaneous_peak_load_mw` comes from the grid's own loads. Existing versions keep their values until they are analysed again
+- The comparison metrics of grids without pylovo bus names use the neutral `GENERIC_BUS_TYPE_CONFIG` (the house connections are the load buses); the naming patterns of an export are passed as `bus_type_config`
+- `pylovo-analyze --coverage` also exits 3 for buildings that are both in a grid and recorded as left out; `--border-diagnostics` uses one 10 m tolerance for the neighbour search and the shared border
+- The pandapower and plotly plot helpers return their figure without writing `temp-plot.html` or opening a browser; the transformer map colours stations by their full rating like the charts
+- MV stage version 14: the station voltage budget carries the station-busbar customers in the transformer drop; a busbar radial is kept only when its stubs stay within the stub length of the tree load; links and ties take the shortest route when the cheapest one exceeds their reach; `mv_grid.peak_load_mw` is the load of the HV/MV sizing; OSM voltage tags are read by one parser
+- MV variants of an older MV stage version are read-only: `pylovo-mv list`, `display` and `export` work, while `generate` (resume or growth), `couple` and `export --coupled` refuse them; a resumed variant whose LV results changed since it was built gives a warning
+- `pylovo-api`: the job record is written when the process starts, jobs of a stopped server are marked `interrupted`, and a job that ignores SIGTERM at shutdown is killed; the files of the last 60 jobs are kept and uploads older than 24 hours are deleted; transformer and configuration edits hold the writer lease (409 while a writer job runs); the Host allow-list also applies when the API binds all interfaces
+- The `pylovo-api` image is built without the `plots` extra, runs as an unprivileged user and has a health check; its compose file refuses missing bind sources
+- CONTRIBUTING describes the actual practice (topic branches from `dev`, one topic per commit, one-line messages); `CITATION.cff` describes release 1.0.0
 
 ### Removed
 - `pylovo-validate` (`compare-grids`), `pylovo.analysis.synthetic_metric_export` and `validations/grid_comparison`, superseded by `validations_new`
 - The double-transformer comparison in the greenfield clustering (it could never win), `pylovo.analysis.powerflow_calculation` and `ParameterCalculator.count_consumers` (no callers)
-- Unused configuration constants (`COLORS`, `PLOT_DEFAULTS`, `REGIOSTAR7_DICT`, `TUMPalette2`, `TUMPalette3`), `GRACEFUL_SHUTDOWN_TIMEOUT`, `utils.reset_log_directory`, `drop_orphaned_plz_temp_tables`, the `double_trans` parameter and the leftovers of the removed MV options
+- Unused configuration constants (`COLORS`, `PLOT_DEFAULTS`, `REGIOSTAR7_DICT`, `TUMPalette2`, `TUMPalette3`), `GRACEFUL_SHUTDOWN_TIMEOUT`, `utils.reset_log_directory`, `drop_orphaned_plz_temp_tables` and the `double_trans` parameter
 - The orphan module `pylovo.analysis.validation_helpers` (Excel export) and with it the direct dependencies `tqdm` and `xlsxwriter`; `MvInputMixin.lost_station_overlap_customers` and `TransformerUiMixin.delete_transformer_position_trafo_ui` (no callers); unused module constants and parameters of internal functions
 - The OpenDSS backend (`ELECTRICAL_BACKEND: opendss`) and the equipment classes only it used: `altdss` was never installable through an extra, bus names with blanks gave an all-zero power flow, parallel cables were ignored and its output could not be read by the analysis, the API or the MV stage. `ELECTRICAL_BACKEND` keeps the value `pandapower`; `register_backend` stays the extension point
+- `DatabaseConstructor.reset_schema` (use `pylovo-setup reset`), `transformer_sources.any_source`, the unused backend methods `set_bus_coordinates`, `set_bus_zone` and `cleanup`, `ParameterCalculator.calculate_household_path_impedance_proxy` and `ParameterCalculator.lookup_simultaneous_peak_load`, `pylovo.plotting.validation.get_trafo_dicts`, the classification module `filter_grids`, the `DatabaseCommunication.apply_*` filter methods and the `additional_filtering` argument of `prepare_data_for_clustering`
+- Repository content that nothing reads: copies of the municipal-register CSVs, the stale EPSG:3035 and raw transformer files, `trafos.qgz`, `data/grid_examples`, the embedded plotly.js bundles of the notebook outputs, personal metadata of the QGIS projects and spreadsheets, the GitLab templates and `AGENTS.md`
 
 ### Fixed
 - MV circuit inventory counts each installed parallel circuit; route, ring and feeder distances remain geometric lengths
@@ -135,6 +168,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - MV repair loop (MV stage version 13): a ring split copied parallel cables and larger conductors onto unrelated lines that shared a trench piece or a busbar end with a repaired line; the split capped its rings by the ring members only and left their stubs without reserve; open points were chosen with the base conductor instead of the upgraded one; a station rating outside pylovo's lists was split into 630 kVA units in `couple`. Only variants with repairs change; build older variants again with `--replace` or under a new id
 - LV generation is reproducible: the existing transformers of a k-means cluster, their connection lines and the brownfield fill are processed in vertex order, so brownfield grids keep their `bcid` and `way_id` from run to run (before, the negative `bcid` were assigned in the physical row order); ties of routed distances and of the connection point of a building are broken by vertex id; the `plz_parameters` lists follow the grid order and `cable_length` is summed in a fixed order. With the default configuration the grids are unchanged; brownfield grids can differ from earlier versions in tie cases, so use a new `VERSION_ID` for comparisons
 - Two transformers at one point gave two brownfield grids and a failed postcode (`UNIQUE(osm_id, version_id)`); a station loaded exactly to the largest rating raised `IndexError`; street segments that collapse in the 1 µm snap are deleted before the routing topology; a k-means cluster whose dimensioning is skipped no longer blocks the following clusters
+- Load edits and their undo keep `pylovo.mv_customers` in step when the MV-direct part of a building crosses the threshold; the diagnostics caches of `pylovo-api` follow the grids, the generation parameters and the active load edits
+- File-based input: the street-crossing splitter repeats its passes over the current ways until no crossing is left
 
 
 
