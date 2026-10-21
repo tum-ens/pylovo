@@ -47,7 +47,12 @@ import yaml
 #: line, caps its rings by all the nodes it solves again (stubs included), and ring checks and open points use the
 #: upgraded conductors; ``pylovo-mv couple`` splits a station rating outside pylovo's lists into units of
 #: ``rating / units``.
-MV_STAGE_VERSION: int = 13
+#: 14: the voltage budget carries the station-busbar customers in the MV/LV transformer drop, a busbar radial keeps
+#: its stubs within the stub length of the tree load, links and ties take the shortest route when the cheapest one
+#: (OSM-discounted) exceeds their reach, ``peak_load_mw`` is the load of the HV/MV sizing (without unconnected nodes),
+#: and one parser reads the OSM voltage tags of lines and substations (``20000/400``, ``20_kv``, ``20``: 20 kV); the
+#: snapshot no longer records the options removed before.
+MV_STAGE_VERSION: int = 14
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
