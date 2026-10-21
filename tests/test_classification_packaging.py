@@ -97,13 +97,11 @@ def test_classification_notebooks_use_existing_pylovo_api():
     assert not {k: v for k, v in problems.items() if v}
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-13: 2_0_kmeans_representative_grids.ipynb plots six representative grids, the shipped config has four")
-def test_kmeans_notebook_does_not_index_more_grids_than_the_shipped_config_has():
+def test_kmeans_notebook_plots_every_cluster_instead_of_hard_coded_positions():
+    """CLASSIF-13: the notebook indexed six representative grids, but the number of k-means clusters is 3 to 7."""
     import json
-
-    from pylovo.config_loader import N_CLUSTERS_KMEANS
 
     nb = json.loads((REPO / "notebook_tutorials/classification/clustering/2_0_kmeans_representative_grids.ipynb").read_text())
     code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
-    highest = max(int(i) for i in re.findall(r"representative_networks\.iloc\[(\d+)\]", code))
-    assert highest < N_CLUSTERS_KMEANS
+    assert not re.findall(r"representative_networks\.iloc\[\d+\]", code)
+    assert "representative_networks.iterrows()" in code
