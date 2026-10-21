@@ -517,7 +517,9 @@ Ratings of candidates count only for the sources that are switched on: a rated c
 disabled source never sizes a station.
 
 ``ROUTE_ACROSS_POSTCODE_BORDERS`` is recorded in the version snapshot with its effective values (width
-of the neighboring streets and a rule revision); versions stored before it require ``False``.
+of the neighboring streets and a rule revision); versions stored before it require ``False``. Rule revision 2 also
+loads the connection lines of a PLZ's buildings that the InfDB files under a neighboring postcode; a version of
+revision 1 is not extended.
 
 .. note::
 

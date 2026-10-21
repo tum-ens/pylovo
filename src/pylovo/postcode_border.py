@@ -10,8 +10,10 @@ from pylovo.config_loader import MAX_BROWNFIELD_TRAFO_DISTANCE, ROUTE_ACROSS_POS
 
 #: Added to half the brownfield distance; covers geometric noise and short connection lines.
 NEIGHBORING_STREET_MARGIN_M = 100.0
-#: Version of the rule, recorded in the version snapshot.
-RULE_REVISION = 1
+#: Version of the rule, recorded in the version snapshot, so a version is not extended with grids of another rule.
+#: 1: routing over the streets of the neighboring PLZ. 2: a PLZ also loads the connection lines of its buildings that
+#: the InfDB files under a neighboring postcode.
+RULE_REVISION = 2
 
 
 def neighboring_street_width_m() -> float:

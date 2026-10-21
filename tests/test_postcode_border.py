@@ -40,6 +40,14 @@ def test_the_neighboring_streets_hold_every_brownfield_route():
                                                "neighboring_street_width_m": None,
                                                "neighboring_street_margin_m": None, "rule_revision": None}
     assert postcode_border.snapshot(True)["neighboring_street_width_m"] == postcode_border.neighboring_street_width_m()
+    assert postcode_border.snapshot(True)["rule_revision"] == 2   # 2: connection lines of border buildings
+
+
+def test_a_version_of_the_first_border_rule_is_not_extended():
+    """Rule 2 loads the connection lines filed under a neighboring postcode: grids of rule 1 must not be mixed in."""
+    stored = {"postcode_border": {**postcode_border.snapshot(True), "rule_revision": 1}}
+    differences, _ = compare_snapshots(stored, {"postcode_border": postcode_border.snapshot(True)})
+    assert differences
 
 
 def test_versions_stored_before_the_switch_stay_valid_only_without_routing_across_borders():
