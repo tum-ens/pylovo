@@ -269,23 +269,12 @@ def test_partial_and_failed_runs(run):
 
 def test_ties_are_planned_by_default(run, monkeypatch):
     seen = []
-    monkeypatch.setattr(stage, "_plan_ties", lambda dbc, v, var, graph_id, params, logger, warnings: seen.append(
+    monkeypatch.setattr(stage, "_plan_ties", lambda dbc, v, var, graph_id, params, logger: seen.append(
         (v, var, graph_id)))
-    monkeypatch.setattr(stage, "_plan_links", lambda dbc, v, var, graph_id, params, logger, warnings: seen.append(
+    monkeypatch.setattr(stage, "_plan_links", lambda dbc, v, var, graph_id, params, logger: seen.append(
         ("links", var)))
     run(FakeDb(), plz=(1,), params=MvParameters(variant_id="d0"))
     assert seen == [("mv1", "d0", "g123"), ("links", "d0")]               # the links follow the ties
-
-
-def test_ties_are_skipped_without_the_module(monkeypatch):
-    monkeypatch.setitem(sys.modules, "pylovo.mv_grid.interconnection", None)
-    db = FakeDb()
-    monkeypatch.setattr(stage, "_database_client", lambda log_file: db)
-    params = MvParameters(variant_id="d0")
-    monkeypatch.setattr(stage, "_region_step", lambda *a, **k: {})
-    monkeypatch.setattr(stage, "_run_districts", lambda *a, **k: None)
-    summary = stage.run_mv_stage("mv1", [1], params, log_file="log/log.txt")
-    assert summary.warnings[0] == "ties not implemented in this build: the tie step was skipped"
 
 
 # ---------------------------------------------------------------------------------------------- workers

@@ -23,7 +23,7 @@
    and the final status ``done``, ``partial`` or ``failed``.
 
 The planning modules (``graph``, ``substations``, ``inputs``, ``districts``, ...) are imported when they are used,
-so this module imports quickly and a missing optional module (ties, coupling) only disables its step.
+so this module imports quickly.
 """
 from __future__ import annotations
 
@@ -653,8 +653,8 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
         # 5. post
-        ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger, warnings)
-        links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger, warnings)
+        ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger)
+        links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger)
         display_geometry(dbc, version_id, variant_id, logger)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
@@ -677,39 +677,30 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
 
 
 def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
-               logger: logging.Logger, warnings: list[str]) -> dict | None:
+               logger: logging.Logger) -> dict:
     """Plan and store the normally-open ties between the districts (post step, DESIGN §4.5).
 
     The ties of the variant are always planned anew from its done districts (a resumed run replaces them).
 
     Returns:
         The tie summary of :func:`pylovo.mv_grid.interconnection.tie_summary` (stored as
-        ``mv_variant.summary['ties']``), or None when the module is missing.
+        ``mv_variant.summary['ties']``).
     """
-    try:
-        interconnection = _module("interconnection")
-    except ImportError:
-        message = "ties not implemented in this build: the tie step was skipped"
-        logger.warning(message)
-        warnings.append(message)
-        return None
+    interconnection = _module("interconnection")
     summary = interconnection.plan_and_save_ties(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_ties(summary))
     return summary
 
 
 def _plan_links(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
-                logger: logging.Logger, warnings: list[str]) -> dict | None:
+                logger: logging.Logger) -> dict:
     """Plan and store the normally-open links between the rings of each district (post step after the ties).
 
     Returns:
         The link summary of :func:`pylovo.mv_grid.interconnection.link_summary` (stored as
-        ``mv_variant.summary['links']``), or None when the module is missing.
+        ``mv_variant.summary['links']``).
     """
-    try:
-        interconnection = _module("interconnection")
-    except ImportError:
-        return None
+    interconnection = _module("interconnection")
     summary = interconnection.plan_and_save_links(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_links(summary))
     return summary
