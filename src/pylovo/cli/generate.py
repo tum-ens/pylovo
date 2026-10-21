@@ -11,9 +11,14 @@ controls whether the basic analysis runs after generation.
 With ``MV_GRID_GENERATION: True`` (or ``--mv``) the MV stage (:func:`pylovo.mv_grid.stage.run_mv_stage`)
 runs once after all PLZ of the call, for the configured MV variant of ``VERSION_ID``. The LV grids are
 committed per PLZ first, so an MV failure never undoes them; an MV stage that does not end ``done`` exits
-with code 1. The MV modules are imported only when the stage runs.
+with code 1. The MV stage runs for the PLZ that have LV grids. The MV modules are imported only when the stage runs.
+
+Exit codes: 0 if every PLZ has LV grids (generated now or before), 1 after an error (including an MV stage that
+does not end ``done``), 2 for wrong arguments and :data:`EXIT_PLZ_NOT_GENERATED` if the run finished but some PLZ
+failed or have no grids (named in one summary line; the reasons are in the log).
 """
 import argparse
+import sys
 import time
 from typing import TYPE_CHECKING
 
@@ -24,20 +29,25 @@ import pylovo.database.database_client as dbc
 from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, USE_INFDB, VERSION_ID
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
 from pylovo.data_import.region_resolver import resolve_regions
-from pylovo.grid_generator import GridGenerator
+from pylovo.grid_generator import GenerationOutcome, GridGenerator
+
+#: Exit code of a run that finished but left PLZ failed or without grids (1 stays "crashed", 2 "wrong arguments",
+#: 3 is the code of ``pylovo-analyze --coverage``). ``pylovo-api`` counts such a generate job as succeeded.
+EXIT_PLZ_NOT_GENERATED = 4
+_NOT_GENERATED = (GenerationOutcome.FAILED, GenerationOutcome.EMPTY)
 
 if TYPE_CHECKING:
     from pylovo.mv_grid.parameters import MvParameters
 
 
-def create_grid_single_plz(plz: int) -> list[int]:
+def create_grid_single_plz(plz: int) -> dict[int, GenerationOutcome]:
     """Generate the grids of one PLZ.
 
     Args:
         plz: Postal code to generate grids for.
 
     Returns:
-        ``[plz]`` (the PLZ of the call, for the MV stage).
+        ``{plz: outcome}`` (the PLZ of the call, with what became of it).
     """
     print(f"Creating grid for single PLZ: {plz}")
     gg = GridGenerator(plz=plz)
@@ -45,18 +55,18 @@ def create_grid_single_plz(plz: int) -> list[int]:
     if not USE_INFDB:
         import_buildings_for_single_plz(gg)
 
-    gg.generate_grid_for_single_plz(plz=plz, analyze_grids=ANALYZE_GRIDS)
-    return [int(plz)]
+    outcome = gg.generate_grid_for_single_plz(plz=plz, analyze_grids=ANALYZE_GRIDS)
+    return {int(plz): outcome}
 
 
-def _generate_plz_list(plz_list: list[int], parallel: bool) -> None:
-    """Generate the grids of several PLZ with one grid generator."""
+def _generate_plz_list(plz_list: list[int], parallel: bool) -> dict[int, GenerationOutcome]:
+    """Generate the grids of several PLZ with one grid generator and return the outcome of every PLZ."""
     gg = GridGenerator()
     df_plz = pd.DataFrame({"plz": plz_list})
-    gg.generate_grid_for_multiple_plz(df_plz=df_plz, analyze_grids=ANALYZE_GRIDS, parallel=parallel)
+    return gg.generate_grid_for_multiple_plz(df_plz=df_plz, analyze_grids=ANALYZE_GRIDS, parallel=parallel)
 
 
-def create_grid_multiple_plz(plz_list: list, parallel: bool = True) -> list[int]:
+def create_grid_multiple_plz(plz_list: list, parallel: bool = True) -> dict[int, GenerationOutcome]:
     """Generate the grids of several PLZ.
 
     Args:
@@ -64,7 +74,7 @@ def create_grid_multiple_plz(plz_list: list, parallel: bool = True) -> list[int]
         parallel: Generate the PLZ in parallel worker processes.
 
     Returns:
-        The PLZ of the call (for the MV stage).
+        The outcome of every PLZ of the call.
     """
     print(f"Creating grids for multiple PLZ: {plz_list}")
     plz_list = [int(p) for p in plz_list]
@@ -74,11 +84,10 @@ def create_grid_multiple_plz(plz_list: list, parallel: bool = True) -> list[int]
             _, df_plz_ags = resolve_regions(dbc_client, plz=plz_list)
             import_buildings_for_multiple_plz(df_plz_ags, dbc_client=dbc_client)
 
-    _generate_plz_list(plz_list, parallel)
-    return plz_list
+    return _generate_plz_list(plz_list, parallel)
 
 
-def create_grids_for_ags(ags_list: list, parallel: bool = True) -> list[int]:
+def create_grids_for_ags(ags_list: list, parallel: bool = True) -> dict[int, GenerationOutcome]:
     """Generate the grids of all PLZ that belong to the given municipalities.
 
     Args:
@@ -86,7 +95,7 @@ def create_grids_for_ags(ags_list: list, parallel: bool = True) -> list[int]:
         parallel: Generate the PLZ in parallel worker processes.
 
     Returns:
-        The PLZ of the municipalities (for the MV stage).
+        The outcome of every PLZ of the municipalities.
 
     Raises:
         ValueError: If an AGS is not in the municipal register.
@@ -97,8 +106,7 @@ def create_grids_for_ags(ags_list: list, parallel: bool = True) -> list[int]:
         if not USE_INFDB:
             import_buildings_for_multiple_plz(df_plz_ags, dbc_client=dbc_client)
 
-    _generate_plz_list(plz_list, parallel)
-    return plz_list
+    return _generate_plz_list(plz_list, parallel)
 
 
 def run_mv_stage_after_lv(plz_list: list[int], parallel: bool, params: "MvParameters") -> None:
@@ -206,11 +214,11 @@ For more information, see the README: https://github.com/tum-ens/pylovo
     try:
         if args.plz:
             if len(args.plz) == 1:
-                plz_list = create_grid_single_plz(args.plz[0])
+                outcomes = create_grid_single_plz(args.plz[0])
             else:
-                plz_list = create_grid_multiple_plz(args.plz, parallel=parallel)
+                outcomes = create_grid_multiple_plz(args.plz, parallel=parallel)
         else:
-            plz_list = create_grids_for_ags(args.ags, parallel=parallel)
+            outcomes = create_grids_for_ags(args.ags, parallel=parallel)
     except Exception as e:
         print("=" * 60)
         print(f"Error occurred during grid creation: {str(e)}")
@@ -219,8 +227,18 @@ For more information, see the README: https://github.com/tum-ens/pylovo
         minutes, seconds = divmod(time.time() - start_time, 60)
         print(f"Elapsed Time: {int(minutes)} minutes and {seconds:.2f} seconds")
 
+    not_generated = {plz: outcome for plz, outcome in outcomes.items() if outcome in _NOT_GENERATED}
+    if not_generated:
+        listed = ", ".join(f"{plz} ({outcome.value})" for plz, outcome in sorted(not_generated.items()))
+        print(f"✗ {len(not_generated)} of {len(outcomes)} PLZ not generated: {listed}")
     if run_mv:
-        run_mv_stage_after_lv(plz_list, parallel, mv_params)
+        with_grids = sorted(set(outcomes) - set(not_generated))
+        if with_grids:
+            run_mv_stage_after_lv(with_grids, parallel, mv_params)
+        else:
+            print("MV stage skipped: no PLZ of this run has LV grids")
+    if not_generated:
+        sys.exit(EXIT_PLZ_NOT_GENERATED)
 
 
 if __name__ == "__main__":

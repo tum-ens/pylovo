@@ -236,8 +236,9 @@ def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):
 # ---------------------------------------------------------------------------------------------- pylovo-generate
 def test_generate_hook_runs_only_with_mv(monkeypatch, config_params):
     hook = []
-    monkeypatch.setattr(generate, "create_grid_multiple_plz", lambda plz, parallel=True: sorted(plz))
-    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: [plz])
+    monkeypatch.setattr(generate, "create_grid_multiple_plz",
+                        lambda plz, parallel=True: {p: grid_generator.GenerationOutcome.GENERATED for p in plz})
+    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: {plz: grid_generator.GenerationOutcome.GENERATED})
     monkeypatch.setattr(generate, "run_mv_stage_after_lv", lambda plz, parallel, params: hook.append((plz, parallel)))
     monkeypatch.setattr(generate, "MV_GRID_GENERATION", False)
     generate.main(["--plz", "80803", "80802", "--mv", "--no-parallel"])
@@ -296,7 +297,8 @@ def test_lv_only_runs_do_not_import_the_mv_stage():
     code = (
         "import sys\n"
         "from pylovo.cli import generate\n"
-        "generate.create_grid_multiple_plz = lambda plz_list, parallel=True: list(plz_list)\n"
+        "from pylovo.grid_generator import GenerationOutcome\n"
+        "generate.create_grid_multiple_plz = lambda plz_list, parallel=True: {p: GenerationOutcome.GENERATED for p in plz_list}\n"
         "generate.MV_GRID_GENERATION = False\n"
         "generate.main(['--plz', '1', '2', '--no-mv'])\n"
         "generate.main(['--plz', '1', '2'])\n"
@@ -367,7 +369,8 @@ def test_source_data_of_another_database_stop_the_mv_stage_before_any_grid(monke
     monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", True)
     monkeypatch.setattr(config_loader, "INFDB_DBNAME", "central_infdb")
     lv = []
-    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: lv.append(plz) or [plz])
+    monkeypatch.setattr(generate, "create_grid_single_plz",
+                        lambda plz: lv.append(plz) or {plz: grid_generator.GenerationOutcome.GENERATED})
     with pytest.raises(SystemExit) as stopped:
         generate.main(["--plz", "80803", "--mv"])
     assert stopped.value.code == 1 and lv == []                          # no LV grids before the MV stage fails
