@@ -510,6 +510,18 @@ BASE_ANSWERS = [
 ]
 
 
+def test_prune_graphs_deletes_the_unreferenced_graphs_under_their_build_lock():
+    client = _client([(r"FROM pg_locks", [(0,)]), (r"DELETE FROM pylovo\.mv_graph g", [("g2",), ("g1",)])])
+    assert client.prune_graphs() == ["g1", "g2"] and client.conn.commits == 1
+    text, params = client.cur.statements[-1]
+    assert "NOT EXISTS (SELECT 1 FROM pylovo.mv_variant v WHERE v.graph_id = g.graph_id)" in text
+    assert "pg_try_advisory_xact_lock(%(key)s, hashtext(g.graph_id))" in text and params == {"key": 907363}
+    busy = _client([(r"FROM pg_locks", [(1,)])])                        # an MV run holds a variant lock
+    with pytest.raises(RuntimeError, match="an MV run .* is active"):
+        busy.prune_graphs()
+    assert busy.conn.rollbacks == 1 and not any("DELETE" in text for text, _ in busy.cur.statements)
+
+
 def test_edges_sql_inlines_a_validated_graph_id():
     text = edges_sql(GRAPH_ID)
     assert f"WHERE graph_id = '{GRAPH_ID}'" in text and "FROM pylovo.mv_graph_edge" in text

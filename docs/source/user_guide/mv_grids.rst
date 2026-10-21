@@ -312,7 +312,8 @@ read the new LV results, while the stored ones keep the old.
 --version VERSION`` also deletes the MV variants of that version that contain the postcode, because
 an MV grid spans several postcodes. ``pylovo-delete version --version VERSION`` deletes everything of the
 version, the MV variants included. The routing graphs are kept, because other variants may use
-them.
+them. ``pylovo-mv prune-graphs`` deletes the graphs that no variant references. It refuses to run
+while an MV run (``generate`` or ``couple``) is active.
 
 Other commands
 --------------
@@ -444,6 +445,19 @@ prints its id. ``--qa`` prints the quality tables: a summary (edges, vertices, c
 the largest component, settlement share), the length per street class, the components, the vertex
 degrees and the settlements. ``generate`` builds the graph by itself, so this command is only
 needed to inspect a graph.
+
+pylovo-mv prune-graphs
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+   pylovo-mv prune-graphs
+
+Deletes the routing graphs that no variant references, with their vertices, edges and
+settlements, and prints their ids. Deleting variants keeps their graphs, and every change of the
+InfDB rows or of a graph parameter builds another graph. The command refuses while a ``generate``
+or ``couple`` runs, because ``generate`` builds or reuses its graph before it registers the
+variant. A pruned graph is built again when a variant needs it.
 
 Results
 -------

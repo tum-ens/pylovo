@@ -7,6 +7,7 @@ Subcommands:
 - ``delete``: delete MV variants of a version.
 - ``list``: list the MV variants (status, PLZ, grids, km, stale, the MV stage version of an older variant).
 - ``graph``: build or reuse the MV routing graph of a region and print its QA tables.
+- ``prune-graphs``: delete the routing graphs that no MV variant references.
 - ``export``: write the stored pandapower net of one MV grid to a JSON file.
 - ``boundary``: write the HV boundary of a variant (one row per supplying HV/MV substation with its eTraGo 110 kV bus,
   load-case P and Q, HV/MV transformers and their loading) to a CSV file.
@@ -38,6 +39,9 @@ Examples:
   # Status of the MV variants of a version, then delete one
   pylovo-mv list --version mv1
   pylovo-mv delete --version mv1 --variant d0
+
+  # Routing graphs that no MV variant uses any more (they are kept when variants are deleted)
+  pylovo-mv prune-graphs
 
   # Stored net of one MV grid as pandapower JSON, (n-1) case a: lines of exit a out, normally-open switches closed
   pylovo-mv export --version mv1 --variant d1 --grid 12 --output grid_12.json --case n1a
@@ -111,6 +115,8 @@ def build_parser() -> argparse.ArgumentParser:
     graph.add_argument("--version", required=True)
     _add_region(graph)
     graph.add_argument("--qa", action="store_true", help="print the QA tables of the graph")
+
+    sub.add_parser("prune-graphs", help="delete the routing graphs that no MV variant references")
 
     export = sub.add_parser("export", help="write the stored pandapower net of one MV grid to JSON")
     export.add_argument("--version", required=True)
@@ -257,6 +263,15 @@ def _graph(args: argparse.Namespace) -> int:
     return 0
 
 
+def _prune_graphs(args: argparse.Namespace) -> int:
+    with _database_client() as dbc:
+        dbc.ensure_grid_persistence_schema()
+        deleted = dbc.prune_graphs()
+    print(f"✓ Deleted {len(deleted)} MV routing graph{'s' if len(deleted) != 1 else ''} that no variant references"
+          + (f": {', '.join(deleted)}" if deleted else ""))
+    return 0
+
+
 def _export(args: argparse.Namespace) -> int:
     if args.coupled:
         from pylovo.mv_grid import coupling
@@ -306,7 +321,7 @@ def _display(args: argparse.Namespace) -> int:
 
 
 _COMMANDS = {"generate": _generate, "couple": _couple, "delete": _delete, "list": _list, "graph": _graph,
-             "export": _export, "boundary": _boundary, "display": _display}
+             "prune-graphs": _prune_graphs, "export": _export, "boundary": _boundary, "display": _display}
 
 
 def main(argv: list[str] | None = None) -> None:

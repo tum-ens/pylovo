@@ -124,6 +124,8 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
    Store the display geometry of variants again.
 ``pylovo-mv graph --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [--qa]``
    Build or reuse the MV routing graph of the postcodes and print its quality tables.
+``pylovo-mv prune-graphs``
+   Delete the MV routing graphs that no MV variant references.
 
 Every output line starts with ✓ or ✗. The exit code is 0 when the command, the variant or the
 coupling is done, and 1 otherwise.

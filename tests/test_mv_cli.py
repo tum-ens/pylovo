@@ -179,6 +179,17 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
             "2 not checked") in out[2] and ", stale" in out[2]
 
 
+def test_prune_graphs_reports_the_deleted_graphs(monkeypatch, capsys):
+    deleted = [["g1", "g2"], []]
+    client = FakeClient(ensure_grid_persistence_schema=lambda: None, prune_graphs=lambda: deleted.pop(0))
+    monkeypatch.setattr(cli, "_database_client", lambda: client)
+    cli.main(["prune-graphs"])
+    cli.main(["prune-graphs"])
+    assert capsys.readouterr().out.splitlines() == [
+        "✓ Deleted 2 MV routing graphs that no variant references: g1, g2",
+        "✓ Deleted 0 MV routing graphs that no variant references"]
+
+
 def test_a_variant_of_an_older_stage_version_is_displayed(monkeypatch, capsys):
     import shapely
 

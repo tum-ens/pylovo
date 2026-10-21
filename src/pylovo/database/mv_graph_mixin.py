@@ -107,6 +107,14 @@ BUILDINGS_FINGERPRINT_SQL = sql.SQL("""
 GRAPH_EXISTS_SQL = "SELECT 1 FROM pylovo.mv_graph WHERE graph_id = %(g)s"
 
 LOCK_SQL = "SELECT pg_advisory_xact_lock(%(key)s, hashtext(%(g)s))"
+#: Sessions that hold the lock of an MV variant (key 907362 of ``MvResultMixin.try_lock_variant``): an MV run.
+ACTIVE_MV_RUNS_SQL = ("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted AND classid = 907362 "
+                      "AND objsubid = 2 AND pid <> pg_backend_pid()")
+#: The routing graphs that no MV variant references, each under its build lock (a graph being built is kept).
+PRUNE_GRAPHS_SQL = """DELETE FROM pylovo.mv_graph g
+    WHERE NOT EXISTS (SELECT 1 FROM pylovo.mv_variant v WHERE v.graph_id = g.graph_id)
+      AND pg_try_advisory_xact_lock(%(key)s, hashtext(g.graph_id))
+    RETURNING g.graph_id"""
 
 DROP_BUILD_TEMP_SQL = ("DROP TABLE IF EXISTS pg_temp.mvg_src, pg_temp.mvg_end, pg_temp.mvg_vert, pg_temp.mvg_bld, "
                        "pg_temp.mvg_cut, pg_temp.mvg_split, pg_temp.mvg_lu, pg_temp.mvg_osm, pg_temp.mvg_conn")
@@ -623,6 +631,34 @@ class MvGraphMixin(BaseMixin):
                 lines = f"{int(n)}:{int(km)}:{'' if top is None else top}"
             text += f"|osm_lines {lines}"
         return text
+
+    def prune_graphs(self) -> list[str]:
+        """Delete the routing graphs that no MV variant references, with their vertices, edges and settlements;
+        commits.
+
+        A graph is shared by every variant with the same inputs and kept when variants are deleted. This removes
+        the ones left over. Each graph is deleted under its build lock (``pg_try_advisory_xact_lock(907363,
+        hashtext(graph_id))``); nothing is deleted while an MV run holds a variant lock, because ``pylovo-mv
+        generate`` builds or reuses its graph before it registers the variant.
+
+        Returns:
+            The ids of the deleted graphs, sorted.
+
+        Raises:
+            RuntimeError: An MV run (``pylovo-mv generate`` or ``couple``) is active.
+        """
+        try:
+            self.cur.execute(ACTIVE_MV_RUNS_SQL)
+            if int(self.cur.fetchone()[0]):
+                raise RuntimeError("an MV run (pylovo-mv generate or couple) is active: prune the routing graphs "
+                                   "when it has finished")
+            self.cur.execute(PRUNE_GRAPHS_SQL, {"key": GRAPH_LOCK_KEY})
+            deleted = sorted(str(row[0]) for row in self.cur.fetchall())
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            raise
+        return deleted
 
     def ensure_graph(self, region_wkb: bytes, params: "MvParameters") -> str:
         """Return the id of the routing graph of a planning region, building and committing it if it is missing.
