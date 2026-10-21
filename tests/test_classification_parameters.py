@@ -81,9 +81,15 @@ def test_nan_parameter_is_rejected(fake_dc):
         get_params.get_parameters_for_clustering()
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-19: tiny or degenerate samples crash the factor analysis with an opaque ValueError")
-def test_small_sample_from_one_archetype_is_handled(fake_dc):
-    fake_dc.frame = fake_dc.frame.head(8)
+def test_failing_factor_analysis_names_the_sample_and_the_way_out(fake_dc):
+    fake_dc.frame = fake_dc.frame.head(8)  # one archetype: the transformer rating is the same in every grid
+    with pytest.raises(ValueError, match=r"Automatic parameter selection failed for 8 grids and \d+ parameters") as exc:
+        get_params.get_parameters_for_clustering()
+    assert "LIST_OF_CLUSTERING_PARAMETERS" in str(exc.value) and exc.value.__cause__ is not None
+
+
+def test_small_sample_that_can_be_analysed_is_not_rejected(fake_dc):
+    fake_dc.frame = fake_dc.frame.sample(16, random_state=0).reset_index(drop=True)
     assert get_params.get_parameters_for_clustering()
 
 

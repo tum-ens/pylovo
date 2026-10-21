@@ -23,6 +23,10 @@ def get_parameters_for_clustering() -> list:
 
     Returns:
         list: Names of the selected parameters (one per factor).
+
+    Raises:
+        ValueError: If the factor analysis fails, e.g. for a very small sample or a parameter that is the
+            same in every grid.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -38,20 +42,27 @@ def get_parameters_for_clustering() -> list:
         if collinear_cols:
             df = df.drop(columns=collinear_cols)
 
-        # Create factor analysis object and perform factor analysis
-        fa = FactorAnalyzer()
         try:
-            fa.fit(df)
-        except np.linalg.LinAlgError:
-            # Fallback when the correlation matrix is still singular due to numerical issues.
-            fa = FactorAnalyzer(use_smc=False)
-            fa.fit(df)
+            # Create factor analysis object and perform factor analysis
+            fa = FactorAnalyzer()
+            try:
+                fa.fit(df)
+            except np.linalg.LinAlgError:
+                # Fallback when the correlation matrix is still singular due to numerical issues.
+                fa = FactorAnalyzer(use_smc=False)
+                fa.fit(df)
 
-        # The number of eigenvalues larger than 1 is the appropriate number of factors.
-        ev = fa.get_eigenvalues()
-        no_of_factors = max(int((ev[0] > 1).sum()), 1)
+            # The number of eigenvalues larger than 1 is the appropriate number of factors.
+            ev = fa.get_eigenvalues()
+            no_of_factors = max(int((ev[0] > 1).sum()), 1)
 
-        return select_clustering_parameters(df_plz_parameters=df, n_comps=no_of_factors)
+            return select_clustering_parameters(df_plz_parameters=df, n_comps=no_of_factors)
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            raise ValueError(
+                f"Automatic parameter selection failed for {len(df)} grids and {df.shape[1]} parameters: {exc}. "
+                "A very small sample or a parameter that is the same in every grid cannot be analysed. "
+                "Use a larger sample (N_SAMPLES) or set LIST_OF_CLUSTERING_PARAMETERS in config_clustering.yaml."
+            ) from exc
 
 
 def main():
