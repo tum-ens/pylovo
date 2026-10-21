@@ -5,7 +5,7 @@ A diagnostic of the input data, not of the plan; the planning never reads it. It
 the stage can be trusted in a region: the overhead lines on OSM corridors and the
 brownfield station candidates of the LV stage. Babli et al. (2025) compare mapped stations with an estimate per
 land-use class; here the stations of the variant take the place of the estimate. Against the station sites of two
-DSOs (2026-10-19), the ratio of mapped to planned stations per settlement class tracked the true share of mapped
+DSOs, the ratio of mapped to planned stations per settlement class tracked the true share of mapped
 stations within 2 points where the planned count was right, and overstated it by 5 to 9 points elsewhere.
 
 * **Station sites** (:func:`station_objects`): ``power=substation`` features that are no site of a higher level (no

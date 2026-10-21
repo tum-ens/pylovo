@@ -3,7 +3,7 @@
 The MV overhead lines mapped in OpenStreetMap become edges of the routing graph
 (:class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`), and an MV line is an overhead line exactly where its route
 runs on them. :func:`is_mv_overhead_line` decides which ways of the OSM power layer count. The rules come from a
-review of the OSM power lines of the test regions (2026-10-16), where untagged ``minor_line`` ways were 98 % MV
+review of the OSM power lines of the test regions, where untagged ``minor_line`` ways were 98 % MV
 by length, MV cables were hardly mapped and LV lines were rare:
 
 * the way is an overhead line (``power=line`` or ``power=minor_line``) in service: no lifecycle prefix on the power
