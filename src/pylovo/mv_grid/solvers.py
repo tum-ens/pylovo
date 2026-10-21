@@ -18,8 +18,8 @@ Implemented from the published methods, no Ding0 code:
 the wall-clock guard of the local search can make a result timing dependent, and it is flagged when it stops the
 search. ``dist_m`` is assumed symmetric (undirected rings); ``inf`` marks an unreachable pair.
 
-Rings whose single node is infeasible on its own (too heavy, too far, unreachable) stay singletons; the topology
-build flags them (``infeasible_singleton``).
+Rings whose single node is infeasible on its own (too heavy, too far, unreachable) stay singletons; the solver
+counts the infeasible rings (``solver_infeasible_rings``).
 """
 from __future__ import annotations
 

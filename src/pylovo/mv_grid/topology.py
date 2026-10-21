@@ -783,11 +783,11 @@ def _attach_satellites(ctx: _Ctx, dec: _Decisions) -> dict[str, int]:
         att = net.nearest(row, ctx.p.stub_max_length_m, net.searchable())
         struct = None if att is None else next((s for s in dec.structs
                                                  if s.ring_id == net.lines[att.line].ring_id), None)
-        if struct is not None and struct.kind in ("ring", "radial"):
+        if struct is not None and struct.kind == "ring":         # radials are decided after the satellites
             stub = net.stub_attachment(row, struct.ring_id)
             if stub is not None:
                 net.attach(row, stub)
-                if struct.kind != "ring" or net.ring_check(struct.ring_id).feasible:
+                if net.ring_check(struct.ring_id).feasible:
                     dec.stubs.append((row, struct.ring_id))
                     stats["stub"] += 1
                     continue
@@ -1287,7 +1287,6 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
     node_position: dict[int, int] = {}
     stub_parent: dict[int, int] = {}
     kids = _children(net.parent)
-    infeasible: dict[int, str | None] = {}
     feeder = 0
 
     def emit(i: int, feeder_id: int) -> None:
@@ -1328,8 +1327,6 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
                     node_role[key] = "ring"
             for j, i in enumerate(chain):
                 emit(i, _chain_feeder(j, m, nop, fa, fb))
-            if not check.feasible:
-                infeasible[rid] = check.reason
             rings_out.append(RingPlan(rid, "ring", list(pos_keys), pos_keys[nop - 1], check, fa, fb))
         elif struct.kind == "radial":
             chain = net.chain[rid]
@@ -1386,7 +1383,6 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
         "n_stub_nodes": sum(role == "stub" for role in node_role.values()),
         "n_joints": len(net.joint_xy),
         "n_excluded": sum(role == "excluded" for role in node_role.values()),
-        "infeasible_rings": {int(k): v for k, v in infeasible.items()},
         "street_straight_ratio": (sum(line.length_m for line in lines_out) / straight_total
                                   if straight_total > 0 else None),
         "node_flags": {int(k): v for k, v in flags.items() if v},
