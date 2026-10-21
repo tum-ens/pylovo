@@ -34,7 +34,7 @@ def calculator(rows) -> ParameterCalculator:
 
 
 def test_lists_per_transformer_size_follow_the_grid_key():
-    instance = calculator([(250, 40, 80, 1.5), (250, 12, 30, 0.7), (400, 55, 99, 2.0)])
+    instance = calculator([(250, 40, 80), (250, 12, 30), (400, 55, 99)])
     instance.analyze_basic_parameters_for_plz(91301)
     query = instance.dbc.cur.statements[0]
     # grids of one size would otherwise come in the physical row order of the database

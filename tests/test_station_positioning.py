@@ -62,6 +62,9 @@ class Street(ClusteringMixin):
     def get_buildings_from_kcid(self, kcid):
         return self.buildings
 
+    def delete_isolated_building(self, plz, kcid):
+        self.written.append(("delete unassigned", kcid))
+
     def get_consumer_categories(self):
         return CONSUMERS
 
@@ -155,7 +158,7 @@ def test_connection_points_without_a_routed_distance_are_skipped_with_a_warning(
     with caplog.at_level(logging.WARNING, logger=LOGGER.name):
         generator_with(street).dimension_bcid_for_kcid(80803, 4)
 
-    assert street.written == []
+    assert street.written == [("delete unassigned", 4)]                 # so the kcid is not picked again
     assert any("Skipped BCID dimensioning" in message for message in caplog.messages)
 
 
@@ -361,8 +364,6 @@ class FixedLoads:
         return 252.0 * len(consumers)
 
 
-@pytest.mark.xfail(strict=True, raises=IndexError,
-                   reason="LVGEN-03: a station loaded exactly to the largest rating raises IndexError in the brownfield fill")
 def test_a_station_loaded_exactly_to_its_largest_rating_does_not_fail_the_plz(monkeypatch):
     monkeypatch.setattr(grid_generator, "BROWNFIELD_NEAREST_ONLY", False)
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
