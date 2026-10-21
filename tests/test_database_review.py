@@ -416,7 +416,7 @@ def test_reset_refuses_to_drop_external_dependents():
         db.conn.commit()
         try:
             with pytest.raises(RuntimeError, match=r"outside pylovo \(.*pylovo_review_external\.version_view"):
-                DatabaseConstructor(db).reset_schema()
+                DatabaseConstructor(db).move_schema_to_backup()     # the first step of pylovo-setup reset
             db.cur.execute("SELECT to_regclass('pylovo.version')")
             assert db.cur.fetchone()[0] is not None
             db.cur.execute("SELECT to_regclass('pylovo_review_external.version_view')")
@@ -521,7 +521,7 @@ def test_legacy_building_columns_and_key_migrate_without_reset():
             """)
             assert "(version_id, objectid)" in db.cur.fetchone()[0]
             constructor.migrate_schema()
-            constructor.reset_schema()
+            constructor.drop_backup(constructor.move_schema_to_backup())     # what pylovo-setup reset does
             db.cur.execute("SELECT to_regnamespace('pylovo')")
             assert db.cur.fetchone() == (None,)
             db.cur.execute(

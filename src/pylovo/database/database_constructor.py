@@ -127,7 +127,7 @@ class DatabaseConstructor:
         """Create one table of ``CREATE_QUERIES``, or all of them, and commit.
 
         Also creates the extensions ``postgis`` and ``pgRouting`` in schema ``public`` on the first
-        call (never in ``pylovo``, which ``reset_schema`` drops). With
+        call (never in ``pylovo``, which a reset drops). With
         ``table_name="all"`` the queries run in the order of ``CREATE_QUERIES``; with
         ``USE_INFDB=True`` the file-based input tables (``INFDB_OPTIONAL_TABLES``) are skipped.
 
@@ -637,10 +637,6 @@ class DatabaseConstructor:
             print(error_msg)
             self.dbc.conn.rollback()
             raise
-
-    def reset_schema(self):
-        """Drop only the PyLovo schema, aborting if another schema would lose objects."""
-        self._drop_schema_guarded("pylovo")
 
     def _drop_schema_guarded(self, schema: str, dry_run: bool = False) -> None:
         """Drop ``schema`` with CASCADE, aborting if another schema would lose objects.

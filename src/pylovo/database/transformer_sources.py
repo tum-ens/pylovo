@@ -37,7 +37,3 @@ def source_params(include_dso: bool, include_open: bool, include_manual: bool) -
     return {"include_dso": bool(include_dso), "include_open": bool(include_open),
             "include_manual": bool(include_manual)}
 
-
-def any_source(include_dso: bool, include_open: bool, include_manual: bool) -> bool:
-    """True if at least one source of existing transformer positions is enabled."""
-    return bool(include_dso or include_open or include_manual)

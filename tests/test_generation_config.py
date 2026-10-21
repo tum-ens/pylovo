@@ -128,10 +128,10 @@ def test_station_rating_counts_parallel_units(parallel, expected):
 
 
 def test_transformer_source_predicate():
-    from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, any_source, source_params
+    from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
 
     assert source_params(True, False, 1) == {"include_dso": True, "include_open": False, "include_manual": True}
-    assert not any_source(False, False, False) and any_source(False, False, True)
+    assert not any(source_params(False, False, False).values()) and any(source_params(False, False, True).values())
     for name in ("include_dso", "include_open", "include_manual"):
         assert f"%({name})s" in SOURCE_ENABLED_SQL
     assert "manual/%%" in SOURCE_ENABLED_SQL and "dso/%%" in SOURCE_ENABLED_SQL

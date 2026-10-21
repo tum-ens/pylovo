@@ -93,3 +93,12 @@ def test_yes_skips_the_question(monkeypatch, reset_calls):
     monkeypatch.setattr(setup, "confirm_schema_reset", lambda *args: pytest.fail("--yes must not ask"))
     setup.main(["reset", "--database", "sandbox", "--yes"])
     assert reset_calls == [True]
+
+
+def test_the_only_reset_is_the_one_of_pylovo_setup_with_its_backup():
+    from pylovo.database import transformer_sources
+    from pylovo.database.database_constructor import DatabaseConstructor
+
+    assert not hasattr(DatabaseConstructor, "reset_schema")      # it dropped the schema without a backup
+    assert hasattr(DatabaseConstructor, "move_schema_to_backup") and hasattr(DatabaseConstructor, "drop_backup")
+    assert not hasattr(transformer_sources, "any_source")
