@@ -501,9 +501,6 @@ class GridGenerator:
         self.logger.info(
             f"Removed {removed_transformer_buildings} transformer-evidence buildings from buildings_tem consumer input"
         )
-        self.dbc.count_indoor_transformers()
-        self.dbc.drop_indoor_transformers()
-        self.logger.info("Indoor transformers removed from buildings_tem table")
 
     def prepare_ways(self):
         """

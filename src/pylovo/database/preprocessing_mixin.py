@@ -1144,33 +1144,6 @@ class PreprocessingMixin(BaseMixin):
         return int(self.cur.fetchone()[0])
 
 
-    def count_indoor_transformers(self) -> None:
-        """Log (debug level) how many transformer rows ``drop_indoor_transformers`` will delete."""
-        query = """WITH union_table (ungeom) AS
-                                (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
-                   SELECT COUNT(*)
-                   FROM buildings_tem
-                   WHERE ST_Within(centroid, (SELECT ungeom FROM union_table))
-                     AND type = 'Transformer';"""
-        self.cur.execute(query)
-        count = self.cur.fetchone()[0]
-        self.logger.debug(f"{count} indoor transformers will be deleted")
-
-    def drop_indoor_transformers(self) -> None:
-        """Delete transformer rows whose centroid lies inside a zero-load building.
-
-        Buildings without load were deleted by ``set_building_peak_load``; the zero-load rows
-        left at this point are buildings whose whole load was moved to the MV grid by
-        ``update_too_large_consumers_to_zero``.
-        """
-        query = """WITH union_table (ungeom) AS
-                                (SELECT ST_Union(geom) FROM buildings_tem WHERE peak_load_in_kw = 0)
-                   DELETE
-                   FROM buildings_tem
-                   WHERE ST_Within(centroid, (SELECT ungeom FROM union_table))
-                     AND type = 'Transformer';"""
-        self.cur.execute(query)   
-
     def set_ways_tem_table_infdb(self, ways_data: list[tuple]) -> int:
         """Insert the InfDB ways into ``ways_tem`` (``USE_INFDB=True``).
 

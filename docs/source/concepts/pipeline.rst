@@ -67,7 +67,7 @@ If ``USE_OPEN_TRANSFORMER_POSITIONS``, ``USE_DSO_TRANSFORMER_POSITIONS`` or
 ``USE_MANUAL_TRANSFORMER_POSITIONS`` is set, the selected
 candidates inside the postcode polygon are added to the building table as points of type
 ``Transformer`` (:doc:`../user_guide/transformer_data`). Building rows that represent the
-transformers themselves are removed, and candidates inside MV-supplied buildings are dropped.
+transformers themselves are removed.
 
 .. figure:: /images/generation/step1_inputs.png
    :alt: Buildings coloured by use, street network and five transformer candidates
