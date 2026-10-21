@@ -133,7 +133,9 @@ The functions read the grid of the active ``VERSION_ID``.
        :func:`~pylovo.plotting.generation.networks.draw_tree_network_spacing`,
        :func:`~pylovo.plotting.generation.networks.draw_radial_network`
      - Tree and radial drawings of a networkx graph of the grid
-       (``pandapower.topology.create_nxgraph(net)``); node colours from ``NETWORK_COLORS``.
+       (``pandapower.topology.create_nxgraph(net)``); node colours from ``NETWORK_COLORS``. They
+       return the matplotlib figure and do not call ``plt.show()``: in a notebook assign the result
+       (``fig = ...``), in a script close the figure when it is saved.
    * - :func:`~pylovo.plotting.generation.networks.draw_tree_network_with_spacing_from_grid_id`
      - Reads a grid and draws it with :func:`~pylovo.plotting.generation.networks.draw_tree_network_spacing`.
 

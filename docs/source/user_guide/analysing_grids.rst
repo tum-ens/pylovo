@@ -205,8 +205,10 @@ database:
     in any PLZ), ``excluded`` with the step that left it out (``pylovo.building_exclusion``: e.g.
     ``mv_direct``, ``no_connection_point``, ``isolated_component``, ``unloaded``,
     ``transformer_evidence``), ``postcode_not_generated`` (its PLZ has no results) or ``missing``.
+    A ``buildings_result`` or ``building_exclusion`` row without a source building is reported as
+    ``not_in_source``, a building that is both in a grid and excluded as ``generated_and_excluded``.
     If any building is missing, the command prints their number and exits with code 3; a
-    complete run exits with 0. The reports are written either way.
+    complete run exits with 0 (only ``missing`` counts). The reports are written either way.
 
 ``--border-diagnostics``
     Per PLZ the share of its polygon inside the InfDB import scope (``scope_share``), the share of
@@ -214,5 +216,9 @@ database:
     the ring: a PLZ can lie inside the scope while its surroundings were never imported. Per grid
     the number of buildings and the distance to the nearest PLZ border with a generated neighbour,
     with a neighbour without results (open) and without a neighbouring PLZ (outer), and to the edge
-    of the import scope. These are diagnostics: report flagged and unflagged grids side by side.
+    of the import scope. The street length of the ring counts only the parts of the streets of
+    other PLZ that lie in the ring. Without a scope table in the InfDB, ``scope_share`` and
+    ``context_share`` are empty in the CSV and ``null`` in ``diagnostics_<version>.json``; a PLZ
+    without a polygon in ``pylovo.postcode`` stops the command. These are diagnostics: report
+    flagged and unflagged grids side by side.
 
