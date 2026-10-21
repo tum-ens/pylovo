@@ -17,6 +17,7 @@ from psycopg2 import sql
 
 from pylovo.config_loader import INFDB_OPENDATA_SCHEMA, INFDB_OSM_SCHEMA, TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
+from pylovo.database.mv_graph_mixin import SRID_SQL
 
 #: Columns of :meth:`MvSourceMixin.osm_substation_candidates` (= ``substations.CANDIDATE_COLUMNS``).
 OSM_CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_tag", "frequency", "operator", "name",
@@ -31,22 +32,28 @@ OSM_LANDUSE_COLUMNS: tuple[str, ...] = ("osm_type", "geom_wkb")
 
 #: The eGon-data table of the HV/MV substations (their bus ids are the 110 kV buses of eTraGo).
 EGON_SUBSTATION_TABLE: str = "egon_hvmv_substation"
+#: Margin (m) of the box of the GiST prefilter of the OSM queries (:func:`_search_box`) beyond the reach of their exact
+#: test: it covers the difference between a transformed box and the transformed region, so results stay exact.
+SEARCH_BOX_MARGIN_M: float = 1000.0
 
 # power=substation features (points, ways, relations) of the OSM schema with their tags, inside the search buffer
-# of the planning region. The tags join uses (geom_type, osm_id): node, way and relation ids can collide. The
-# plant test and the region test use the source geometries so that the GiST indexes of the OSM layers are used.
+# of the planning region. The tags join uses (geom_type, osm_id): node, way and relation ids can collide. Every OSM
+# layer is first filtered in its own SRID (``geom && box``, GiST index) by the search box of the region (or of the
+# candidate for the plants within 100 m), then tested exactly in TARGET_EPSG.
 _OSM_CANDIDATES_SQL = sql.SQL("""
 WITH cand AS (
     SELECT 'N'::char(1) AS gt, p.osm_id AS tag_id, 'node/' || p.osm_id AS source_id,
            p.name AS f_name, p.operator AS f_operator, p.geom AS pt_src, NULL::geometry AS fp_src
     FROM {osm}.infrastructure_point p
     WHERE p.osm_type = 'power' AND p.osm_subtype = 'substation'
+      AND p.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(point_srid)s)
     UNION ALL
     SELECT CASE WHEN g.osm_id < 0 THEN 'R' ELSE 'W' END::char(1), abs(g.osm_id),
            CASE WHEN g.osm_id < 0 THEN 'relation/' || -g.osm_id ELSE 'way/' || g.osm_id END,
            g.name, g.operator, ST_PointOnSurface(g.geom), g.geom
     FROM {osm}.infrastructure_polygon g
     WHERE g.osm_type = 'power' AND g.osm_subtype = 'substation'
+      AND g.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(polygon_srid)s)
 ),
 pts AS (
     SELECT c.*, ST_Transform(c.pt_src, {epsg}) AS pt, ST_Multi(ST_Transform(c.fp_src, {epsg})) AS fp
@@ -67,6 +74,7 @@ SELECT c.source_id, t.tags->>'voltage' AS voltage, t.tags->>'substation' AS subs
         LEFT JOIN {osm}.tags pt ON pt.geom_type = CASE WHEN pl.osm_id < 0 THEN 'R' ELSE 'W' END
                                AND pt.osm_id = abs(pl.osm_id)
         WHERE pl.osm_type = 'power' AND pl.osm_subtype IN ('plant', 'generator')
+          AND pl.geom && ST_Transform(ST_Expand(c.pt, 100.0 + %(margin_m)s), %(polygon_srid)s)
           AND ST_DWithin(ST_Transform(pl.geom, {epsg}), c.pt, 100)) AS plant
 FROM pts c
 LEFT JOIN {osm}.tags t ON t.geom_type = c.gt AND t.osm_id = c.tag_id
@@ -76,25 +84,28 @@ ORDER BY c.source_id;
 
 # power=substation and power=transformer features, power=pole nodes, and transformer-tower buildings inside the
 # planning region (plus 1 km for the HV/MV sites at its edge), with their tags (pylovo.mv_grid.osm_coverage tells the
-# MV/LV stations from the sites of a higher level).
+# MV/LV stations from the sites of a higher level). Prefiltered in the source SRIDs as the candidates.
 _OSM_OBJECTS_SQL = sql.SQL("""
 WITH obj AS (
     SELECT 'N'::char(1) AS gt, p.osm_id AS tag_id, 'node/' || p.osm_id AS source_id, p.osm_subtype AS kind,
            p.geom AS src, 0.0::double precision AS area_src
     FROM {osm}.infrastructure_point p
     WHERE p.osm_type = 'power' AND p.osm_subtype IN ('substation', 'transformer', 'pole')
+      AND p.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(point_srid)s)
     UNION ALL
     SELECT CASE WHEN g.osm_id < 0 THEN 'R' ELSE 'W' END::char(1), abs(g.osm_id),
            CASE WHEN g.osm_id < 0 THEN 'relation/' || -g.osm_id ELSE 'way/' || g.osm_id END, g.osm_subtype,
            ST_PointOnSurface(g.geom), ST_Area(ST_Transform(g.geom, {epsg}))
     FROM {osm}.infrastructure_polygon g
     WHERE g.osm_type = 'power' AND g.osm_subtype IN ('substation', 'transformer')
+      AND g.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(polygon_srid)s)
     UNION ALL
     SELECT CASE WHEN b.osm_id < 0 THEN 'R' ELSE 'W' END::char(1), abs(b.osm_id),
            CASE WHEN b.osm_id < 0 THEN 'relation/' || -b.osm_id ELSE 'way/' || b.osm_id END, 'transformer_tower',
            ST_PointOnSurface(b.geom), ST_Area(ST_Transform(b.geom, {epsg}))
     FROM {osm}.building_polygon b
     WHERE b.osm_subtype = 'transformer_tower'
+      AND b.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(building_srid)s)
 ),
 pts AS (SELECT o.*, ST_Transform(o.src, {epsg}) AS pt FROM obj o)
 SELECT o.source_id, o.kind, t.tags::text AS tags, ST_X(o.pt) AS x, ST_Y(o.pt) AS y, o.area_src AS area_m2
@@ -104,12 +115,13 @@ WHERE ST_DWithin(o.pt, ST_GeomFromWKB(%(region)s, {epsg}), 1000.0)
 ORDER BY o.source_id;
 """)
 
-# OSM land-use polygons clipped to the planning region.
+# OSM land-use polygons clipped to the planning region (prefiltered in the source SRID as the candidates).
 _OSM_LANDUSE_SQL = sql.SQL("""
 WITH r AS (SELECT ST_GeomFromWKB(%(region)s, {epsg}) AS g)
 SELECT l.osm_type, ST_AsBinary(ST_Intersection(ST_MakeValid(ST_Transform(l.geom, {epsg})), r.g))
 FROM {osm}.landuse_polygon l, r
-WHERE ST_Intersects(ST_Transform(l.geom, {epsg}), r.g)
+WHERE l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(landuse_srid)s)
+  AND ST_Intersects(ST_Transform(l.geom, {epsg}), r.g)
 ORDER BY l.osm_id;
 """)
 
@@ -156,6 +168,17 @@ def _na(value: Any) -> Any:
     return value
 
 
+def _search_box(region_wkb: bytes, reach_m: float) -> bytes:
+    """The prefilter box of an OSM query (WKB, ``TARGET_EPSG``): the bounding box of the region widened by the reach of
+    the exact test and :data:`SEARCH_BOX_MARGIN_M`, with a vertex every 1 km, so that its outline still bounds the
+    reach of the region after the transformation into the SRID of an OSM layer."""
+    import shapely
+
+    x0, y0, x1, y1 = shapely.from_wkb(region_wkb).bounds
+    pad = float(reach_m) + SEARCH_BOX_MARGIN_M
+    return shapely.to_wkb(shapely.segmentize(shapely.box(x0 - pad, y0 - pad, x1 + pad, y1 + pad), 1000.0))
+
+
 def _frame(rows: list[tuple], columns: Sequence[str], floats: Sequence[str] = (), ints: Sequence[str] = (),
            bools: Sequence[str] = ()) -> pd.DataFrame:
     frame = pd.DataFrame([tuple(row) for row in rows], columns=list(columns))
@@ -170,6 +193,12 @@ def _frame(rows: list[tuple], columns: Sequence[str], floats: Sequence[str] = ()
 
 class MvSourceMixin(BaseMixin):
     """Read the OSM and eGon-data inputs of the MV stage."""
+
+    def _osm_srid(self, table: str) -> int:
+        """The SRID of the geometries of an OSM layer (``TARGET_EPSG`` without geometries), for the prefilters."""
+        self.cur.execute(SRID_SQL.format(table=sql.Identifier(INFDB_OSM_SCHEMA, table)))
+        row = self.cur.fetchone()
+        return int(row[0]) if row and row[0] else int(TARGET_EPSG)
 
     # ------------------------------------------------------------------ OSM
     def osm_substation_candidates(self, region_wkb: bytes, buffer_m: float) -> pd.DataFrame:
@@ -197,7 +226,10 @@ class MvSourceMixin(BaseMixin):
         """
         query = _OSM_CANDIDATES_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
                                            epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m)})
+        self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m),
+                                 "box": _search_box(_wkb(region_wkb), buffer_m), "margin_m": SEARCH_BOX_MARGIN_M,
+                                 "point_srid": self._osm_srid("infrastructure_point"),
+                                 "polygon_srid": self._osm_srid("infrastructure_polygon")})
         rows = [(*row[:10], _wkb(row[10]), row[11], row[12] if len(row) > 12 else None) for row in self.cur.fetchall()]
         return _frame(rows, OSM_CANDIDATE_COLUMNS, floats=("x", "y", "area_m2"), bools=("in_plant",))
 
@@ -235,7 +267,10 @@ class MvSourceMixin(BaseMixin):
         """
         query = _OSM_OBJECTS_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
                                         epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb)})
+        self.cur.execute(query, {"region": _wkb(region_wkb), "box": _search_box(_wkb(region_wkb), 1000.0),
+                                 "point_srid": self._osm_srid("infrastructure_point"),
+                                 "polygon_srid": self._osm_srid("infrastructure_polygon"),
+                                 "building_srid": self._osm_srid("building_polygon")})
         return _frame(self.cur.fetchall(), OSM_OBJECT_COLUMNS, floats=("x", "y", "area_m2"))
 
     def osm_landuse(self, region_wkb: bytes) -> pd.DataFrame:
@@ -247,7 +282,8 @@ class MvSourceMixin(BaseMixin):
         """
         query = _OSM_LANDUSE_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
                                         epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb)})
+        self.cur.execute(query, {"region": _wkb(region_wkb), "box": _search_box(_wkb(region_wkb), 0.0),
+                                 "landuse_srid": self._osm_srid("landuse_polygon")})
         return _frame([(t, _wkb(g)) for t, g in self.cur.fetchall()], OSM_LANDUSE_COLUMNS)
 
     # ------------------------------------------------------------------ eGon

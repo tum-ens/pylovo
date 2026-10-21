@@ -361,16 +361,25 @@ def test_osm_candidates_query_the_osm_schema_and_return_bytes(schemas):
     footprint = _square(0, 0, 10)
     row = ("way/1", "110000;20000", None, "50", "Netz", "UW", None, 1.0, 2.0, 400.0, memoryview(footprint), True,
            "solar:pv")
-    client = _client(lambda text, params: [row])
+    client = _client(lambda text, params: [(4326,)] if text.startswith("SELECT ST_SRID") else [row])
     region = shapely.to_wkb(shapely.box(0, 0, 10, 10))
     result = client.osm_substation_candidates(memoryview(region), 5000)
-    text, params = client.cur.calls[0]
+    assert [t for t, _ in client.cur.calls[:2]] == [f'SELECT ST_SRID(geom) FROM "osm_x"."{table}" WHERE geom IS NOT '
+                                                    "NULL LIMIT 1" for table in ("infrastructure_point",
+                                                                                 "infrastructure_polygon")]
+    text, params = client.cur.calls[-1]
     for needle in ('"osm_x".infrastructure_point', '"osm_x".infrastructure_polygon', '"osm_x".tags',
                    "t.geom_type = c.gt AND t.osm_id = c.tag_id", "osm_subtype IN ('plant', 'generator')",
-                   "ST_DWithin(c.pt, ST_GeomFromWKB(%(region)s, 25832), %(buffer_m)s)", "'relation/' ||"):
+                   "ST_DWithin(c.pt, ST_GeomFromWKB(%(region)s, 25832), %(buffer_m)s)", "'relation/' ||",
+                   "p.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(point_srid)s)",
+                   "g.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(polygon_srid)s)"):
         assert needle in text
-    assert params == {"region": region, "buffer_m": 5000.0}
-    assert isinstance(params["region"], bytes)
+    assert params["region"] == region and params["buffer_m"] == 5000.0 and isinstance(params["region"], bytes)
+    assert params["point_srid"] == params["polygon_srid"] == 4326
+    # the prefilter box holds the region widened by the buffer and the margin, with a vertex every 1 km at most
+    box = shapely.from_wkb(params["box"])
+    assert box.bounds == (-6000.0, -6000.0, 6010.0, 6010.0)
+    assert shapely.get_num_coordinates(box) > 4 * 12
     assert tuple(result.columns) == CANDIDATE_COLUMNS == source_mixin.OSM_CANDIDATE_COLUMNS
     assert result["footprint_wkb"].iloc[0] == footprint and isinstance(result["footprint_wkb"].iloc[0], bytes)
     assert result["in_plant"].dtype == bool and result["x"].dtype == float
@@ -378,6 +387,30 @@ def test_osm_candidates_query_the_osm_schema_and_return_bytes(schemas):
 
     empty = _client(lambda text, params: []).osm_substation_candidates(region, 5000)
     assert tuple(empty.columns) == CANDIDATE_COLUMNS and len(empty) == 0
+
+
+def test_osm_objects_and_landuse_are_prefiltered_in_the_srid_of_each_layer(schemas):
+    srids = {"infrastructure_point": 4326, "infrastructure_polygon": 3857, "building_polygon": 4258,
+             "landuse_polygon": 31468}
+
+    def respond(text, params):
+        table = next((t for t in srids if f'"osm_x"."{t}"' in text), None)
+        return [(srids[table],)] if text.startswith("SELECT ST_SRID") else []
+
+    region = shapely.to_wkb(shapely.box(0, 0, 10, 10))
+    client = _client(respond)
+    client.osm_power_objects(region)
+    text, params = client.cur.calls[-1]
+    for alias, key in (("p", "point_srid"), ("g", "polygon_srid"), ("b", "building_srid")):
+        assert f"{alias}.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %({key})s)" in text
+    assert (params["point_srid"], params["polygon_srid"], params["building_srid"]) == (4326, 3857, 4258)
+    assert shapely.from_wkb(params["box"]).bounds == (-2000.0, -2000.0, 2010.0, 2010.0)    # 1 km reach + margin
+    client = _client(respond)
+    client.osm_landuse(region)
+    text, params = client.cur.calls[-1]
+    assert "l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(landuse_srid)s)" in text
+    assert params["landuse_srid"] == 31468 and shapely.from_wkb(params["box"]).bounds == (-1000.0, -1000.0, 1010.0,
+                                                                                          1010.0)
 
 
 def test_osm_queries_need_the_osm_schema(schemas, monkeypatch):
