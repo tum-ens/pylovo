@@ -35,9 +35,10 @@ def get_network_info_for_plotting(df_network_info: pd.Series) -> Tuple[int, int,
         df_network_info: Row (e.g. of a representative-grid table) with ``plz``, ``kcid``, ``bcid``.
 
     Returns:
-        Tuple ``(plz, kcid, bcid)``; ``kcid`` and ``bcid`` as int, ``plz`` unchanged.
+        Tuple ``(plz, kcid, bcid)`` as plain ints; the values of a DataFrame row are ``numpy.int64``,
+        which psycopg2 cannot adapt when the grid is read from the database.
     """
-    plz = df_network_info['plz']
+    plz = int(df_network_info['plz'])
     kcid = int(df_network_info['kcid'])
     bcid = int(df_network_info['bcid'])
     return plz, kcid, bcid
