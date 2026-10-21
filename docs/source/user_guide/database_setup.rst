@@ -13,8 +13,8 @@ rows before committing new foreign keys and checks.
    ``uv run pylovo-setup reset --database NAME``. Check ``HOST``, ``PORT`` and
    ``DBNAME`` in ``.env`` first. Without ``--yes`` you must type the configured
    database name. Reset refuses to remove extensions in ``pylovo`` and refuses
-   while objects of other schemas depend on it (for example GridExpand views or
-   its foreign key to ``grid_result``). It renames the schema to
+   while objects of other schemas depend on it (for example views or foreign keys
+   of other tools on ``grid_result``). It renames the schema to
    ``pylovo_backup_<UTC time>``, builds a new one and drops the backup once the
    rebuild is complete. If the rebuild fails or is cancelled, it drops the new
    schema and renames the backup back, so the previous data is kept. A backup
