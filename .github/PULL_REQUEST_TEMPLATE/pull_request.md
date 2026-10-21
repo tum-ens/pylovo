@@ -1,6 +1,6 @@
 <!-- .github/PULL_REQUEST_TEMPLATE/pull_request.md -->
 
-## 🔀 Merge Request
+## 🔀 Pull Request
 
 ### TL;DR
 Put a brief summary of the change here (max 5 sentences). Clearly state what was fixed, added, or changed.
