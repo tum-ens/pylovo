@@ -130,6 +130,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Coverage accounting reports exclusion rows without a source building as `not_in_source`; the border diagnostics count only the ring part of neighbouring streets, write `null` instead of `NaN` and stop with a message for a PLZ without polygon
 - `register_cable_types` of the pandapower backend accepts cable names without a trailing cross-section; the LV plot functions return their figures without `plt.show()`, and `plot_load_and_voltage_distribution(ax=)` takes two axes
 - MV notebooks default to the configured database and use the `python3` kernel; docstrings no longer cite unpublished design notes
+- `pylovo-api` with `USE_EXTERNAL_BASEDATA`: the region input check, `/api/status` and the LoD2 view read the InfDB through the `INFDB_*` connection; before, every postcode was reported as blocked because the InfDB schemas were looked up in the pylovo database
+
 
 
 ## [0.7.0] - 2026-05-11

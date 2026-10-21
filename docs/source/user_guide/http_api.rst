@@ -84,10 +84,12 @@ pylovo would import (the same filters as ``pylovo-generate``, including
 residential building, street segments and connection lines. Postcodes whose check has not
 finished yet are reported as *not verified*. Existing results always stay readable, analysable
 and exportable, and the server refuses to generate a blocked PLZ unless it is included
-explicitly. The check reads the InfDB tables through the pylovo connection, so it needs the InfDB
-schemas in the database of ``DBNAME``: with ``USE_EXTERNAL_BASEDATA`` and the InfDB in another
-database, every postcode is reported as blocked and a generation job needs ``include_blocked``.
-The command line is not affected (:ref:`env-variables`).
+explicitly. With ``USE_EXTERNAL_BASEDATA`` the check, ``/api/status`` (``infdb_buildings``) and the
+3D view of the LoD2 buildings read the InfDB through a second read-only connection built from the
+``INFDB_*`` settings, without startup options and with the settings of each transaction, so it also
+works through PgBouncer (:ref:`env-variables`); ``/api/status`` then shows
+``settings.use_external_basedata``, ``settings.infdb_target`` and, when the InfDB cannot be reached,
+``infdb_error``.
 
 On a large InfDB the check runs in the background per municipality key, using the indexes the
 InfDB schema creates; postcodes that are asked for are checked first. The results are cached in
