@@ -10,7 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 
 from pylovo_api import config_io, db, gate, queries
 from pylovo_api.deps import config_version_id, coverage, jobs, require_confirm
@@ -19,6 +19,21 @@ from pylovo_api.routers.transformers import upload_path
 from pylovo_api.settings import paths
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+def _argument(value: str) -> str:
+    """A text that goes into a command line: stripped, not empty, no NUL byte or lone surrogate, not an option."""
+    value = value.strip()
+    if not value or value.startswith("-") or "\x00" in value:
+        raise ValueError("must not be empty, start with '-' or contain a NUL byte")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("must be valid Unicode text") from exc
+    return value
+
+
+Argument = Annotated[str, AfterValidator(_argument)]
 
 
 class GenerateBody(BaseModel):
@@ -40,13 +55,13 @@ class ResetBody(BaseModel):
 
 
 class DeleteVersionsBody(BaseModel):
-    version_ids: list[str] = Field(min_length=1)
+    version_ids: list[Argument] = Field(min_length=1)
     confirm: str | None = None
 
 
 class DeleteNetworksBody(BaseModel):
     plz: int
-    version_id: str
+    version_id: Argument
     confirm: str | None = None
 
 
@@ -65,6 +80,11 @@ class DsoImportBody(BaseModel):
     source: str | None = Field(None, max_length=60)
     replace_source: bool = False
     confirm: str | None = None
+
+    @field_validator("source")
+    @classmethod
+    def _source(cls, value: str | None) -> str | None:
+        return _argument(value) if value and value.strip() else None   # blank = no source
 
 
 def _start(request: Request, kind: str, title: str, argv: list[str], writes_db: bool = True,
@@ -179,7 +199,7 @@ def reset(body: ResetBody, request: Request) -> dict:
 @router.post("/delete-versions", status_code=202)
 def delete_versions(body: DeleteVersionsBody, request: Request) -> dict:
     """``pylovo-delete --version <ids>``: removes all results of these versions."""
-    ids = [v.strip() for v in body.version_ids if v.strip()]
+    ids = body.version_ids
     require_confirm(body.confirm, " ".join(ids), "delete these versions")
     return _start(request, "delete", f"Delete version {' '.join(ids)}",
                   pylovo_command("pylovo-delete", "--version", *ids), params={"version_ids": ids})

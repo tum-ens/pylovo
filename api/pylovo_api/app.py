@@ -88,11 +88,14 @@ def create_app(root: Path, allowed_hosts: set[str] | None = None, allow_any_host
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError):
-        # Python's json module accepts NaN/Infinity in request bodies; the default handler echoes the
-        # input in its 422 answer and then fails to encode it (500). Echo such numbers as text.
+        # Python's json module accepts NaN/Infinity and lone surrogates ("\ud800") in request bodies; the
+        # default handler echoes the input in its 422 answer and then fails to encode it (500). Echo
+        # such numbers as text and such strings with the surrogates escaped.
         def finite(value):
             if isinstance(value, float) and not math.isfinite(value):
                 return str(value)
+            if isinstance(value, str):
+                return value.encode("utf-8", "backslashreplace").decode("utf-8")
             if isinstance(value, dict):
                 return {k: finite(v) for k, v in value.items()}
             if isinstance(value, (list, tuple)):

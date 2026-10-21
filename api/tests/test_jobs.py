@@ -56,3 +56,31 @@ def test_the_pipe_of_a_finished_job_is_closed(manager, monkeypatch):
     wait(job)
     assert job.status == "succeeded" and len(started) == 1
     assert started[0].stdout.closed
+
+
+# --------------------------------------------------------------------------- arguments at the routes
+def test_job_routes_refuse_arguments_a_command_cannot_receive(client, monkeypatch):
+    from pylovo_api.routers import jobs as jobs_router
+
+    started = []
+    monkeypatch.setattr(jobs_router, "_start", lambda request, kind, title, argv, **kw: started.append(argv) or {})
+    json_header = {"Content-Type": "application/json"}
+    for path, raw in (
+            ("delete-networks", '{"plz": 80803, "version_id": "a\\u0000b", "confirm": "a\\u0000b/80803"}'),
+            ("delete-networks", '{"plz": 80803, "version_id": "\\ud800", "confirm": "x/80803"}'),
+            ("delete-networks", '{"plz": 80803, "version_id": "-h", "confirm": "-h/80803"}'),
+            ("delete-versions", '{"version_ids": ["1", "-h"], "confirm": "1 -h"}'),
+            ("delete-versions", '{"version_ids": ["  "], "confirm": ""}'),
+            ("delete-versions", '{"version_ids": [], "confirm": ""}'),
+            ("import-dso", '{"upload_id": "0123456789ab", "source": "a\\u0000b"}')):
+        assert client.post(f"/api/jobs/{path}", content=raw, headers=json_header).status_code == 422, (path, raw)
+    assert started == []
+    ok = client.post("/api/jobs/delete-versions", json={"version_ids": [" 1 ", "2"], "confirm": "1 2"})
+    assert ok.status_code == 202 and started[-1][-3:] == ["--version", "1", "2"]
+
+
+def test_a_blank_dso_source_means_no_source():
+    from pylovo_api.routers.jobs import DsoImportBody
+
+    assert DsoImportBody(upload_id="0123456789ab", source="  ").source is None
+    assert DsoImportBody(upload_id="0123456789ab", source=" Netz 1 ").source == "Netz 1"
