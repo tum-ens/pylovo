@@ -2,7 +2,6 @@
 /data/buildings/*
 /data/ways/ways_public_2po_4pgr.sql
 /data/postcode.csv
-/validation/grid_comparison/metrics/*
 
 # Keep default transformers for bavaria in git - ignore other generated input files
 /data/transformer_data/fetched_trafos/*
@@ -169,8 +168,6 @@ cython_debug/
 
 # pylovo-api working files: config backups, uploads, job logs, exports
 /.pylovo-api/
-validations/metrics/*
-validations/grid_comparison/*
 validations_new/metrics/*
 
 *.pdf
