@@ -832,7 +832,8 @@ class GridGenerator:
         The load-constrained hierarchical split prevents oversized transformer
         areas. This conservative pass only recombines already valid neighboring
         clusters when the merged area still fits a configured single transformer
-        and satisfies the existing greenfield distance limit. With
+        and satisfies its own greenfield distance limit (the per-cluster draw of
+        ``greenfield_distance_limit`` that the split and the station placement use). With
         ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` a pair is only merged if its
         smaller cluster has at most that many loaded buildings, so small
         fragments join a neighbour while larger clusters stay as split.
@@ -900,7 +901,7 @@ class GridGenerator:
                         combined_vertices,
                         dist_mat,
                         vid2localid,
-                        MAX_GREENFIELD_TRAFO_DISTANCE,
+                        self.dbc.greenfield_distance_limit(combined_vertices, MAX_GREENFIELD_TRAFO_DISTANCE),
                     ):
                         continue
 
