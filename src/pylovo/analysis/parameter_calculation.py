@@ -1657,14 +1657,18 @@ class ParameterCalculator:
     # -------------------------------------------------------------------------
 
     def analyze_basic_parameters_for_plz(self, plz: int):
-        """Aggregate basic counts per transformer size across all grids of a PLZ."""
+        """Aggregate basic counts per transformer size across all grids of a PLZ.
+
+        The lists per transformer size follow the grid key (``kcid``, ``bcid``), so they do not
+        depend on the physical row order of the database.
+        """
         load_count_dict = {}
         bus_count_dict = {}
         trafo_dict = {}
 
         query = """
             WITH grid_scope AS (
-                SELECT grid_result_id
+                SELECT grid_result_id, kcid, bcid
                 FROM pylovo.grid_result
                 WHERE version_id = %(v)s
                   AND plz = %(p)s
@@ -1696,7 +1700,7 @@ class ParameterCalculator:
             LEFT JOIN bus_counts bc
               ON bc.grid_result_id = gs.grid_result_id
             WHERE pt.sn_mva IS NOT NULL
-            ORDER BY capacity
+            ORDER BY capacity, gs.kcid, gs.bcid
         """
         self.dbc.cur.execute(query, {"v": VERSION_ID, "p": plz})
         rows = self.dbc.cur.fetchall()
@@ -1728,11 +1732,16 @@ class ParameterCalculator:
         )
 
     def analyze_cable_lengths_for_plz(self, plz: int):
-        """Sum cable lengths per standard type across all grids of a PLZ."""
+        """Sum cable lengths per standard type across all grids of a PLZ.
+
+        The sum runs in the order of the grid key and line index: a float sum in another order
+        differs in the last digit between databases.
+        """
         query = """
             SELECT
                 pl.std_type,
-                COALESCE(SUM(COALESCE(pl.parallel, 1) * COALESCE(pl.length_km, 0.0)), 0.0) AS cable_length
+                COALESCE(SUM(COALESCE(pl.parallel, 1) * COALESCE(pl.length_km, 0.0)
+                             ORDER BY gr.kcid, gr.bcid, pl.pp_index), 0.0) AS cable_length
             FROM pylovo.pandapower_line pl
             JOIN pylovo.grid_result gr
               ON gr.grid_result_id = pl.grid_result_id
