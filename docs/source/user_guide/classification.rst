@@ -36,13 +36,15 @@ At a glance
      - ``clustering_parameters``
    * - 5
      - Implausible grids filtered, applied each time the grids are read in steps 6 and 7.
-     - ``config_clustering.yaml`` (``ADDITIONAL_FILTERING`` and the thresholds), nothing in the database
+     - ``config_clustering.yaml`` (``ADDITIONAL_FILTERING`` and the thresholds), the choice also in
+       ``classification_version`` (step 7), nothing per grid
    * - 6
      - Clustering parameters chosen with a factor analysis, number of clusters chosen with the Calinski-Harabasz index.
-     - ``config_clustering.yaml``
+     - ``config_clustering.yaml``, ``classification_version`` (step 7)
    * - 7
      - Grids clustered, representative grids chosen, result written.
-     - ``transformer_classified``, ``transformer_classified_with_grid``
+     - ``transformer_classified``, ``transformer_classified_with_grid``, the choices of steps 5 and 6 in
+       ``classification_version``
 
 Steps 1 to 4 run in ``prepare_data_for_clustering``, step 7 in ``apply_clustering_for_visualisation``. A summary of
 the grids per stage closes the run (:ref:`classification-summary`).
@@ -115,9 +117,9 @@ it writes and keeps the comments and everything else in the file.
      - Number of clusters of the two algorithms. ``pylovo-classify`` writes them.
    * - ``ADDITIONAL_FILTERING``
      - ``true`` or ``false`` (shipped ``false``, also when the key is missing). Whether the four lower thresholds below
-       filter grids as well. The filters are applied each time the grids are read, so the notebooks and the Python
-       functions need the value of the classification they look at. ``pylovo-classify`` writes the answer to its
-       first question.
+       filter grids as well. The filters are applied each time the grids are read. Step 7 stores the choice with the
+       classification, and the notebooks and the Python functions read the stored value. ``pylovo-classify`` writes
+       the answer to its first question.
    * - ``THRESHOLD_MAX_TRAFO_DIS``
      - Always applied: grids with a path from the transformer to a house connection longer than this value (km)
        are filtered. Shipped ``2.5``.
@@ -183,7 +185,8 @@ If standard input is closed while a question is open, the command stops with a m
 
 The automatic path prints the selected parameters, the Calinski-Harabasz table (best number of clusters per
 algorithm with its index) and the chosen numbers. The parameters, the numbers and ``ADDITIONAL_FILTERING`` are written
-to ``config/config_clustering.yaml`` and handed to the clustering step directly. Only these values are edited in
+to ``config/config_clustering.yaml`` (a record of the last run) and handed to the clustering step directly, which
+stores them with the classification in ``classification_version``. Only these values are edited in
 the file, comments and the rest stay. A layout that this edit cannot handle (a changed key with a mapping as value) is
 reported and the file is left alone.
 
@@ -232,7 +235,8 @@ The pool is limited to the federal state of ``CLASSIFICATION_REGION`` (not for `
   bins. Every PLZ is drawn without replacement with the probability *share of its bin / PLZ in the bin*, so the
   sample reproduces the density distribution of the class.
 
-The result is stored in ``classification_version`` (id, comment, region, time) and ``sample_set`` (PLZ, AGS and
+The result is stored in ``classification_version`` (id, comment, region, time, later the choices of step 7) and
+``sample_set`` (PLZ, AGS and
 the bin data). The version is registered only after the draw succeeded: if a class has fewer PLZ than its quota,
 the run stops with a message and stores nothing.
 
@@ -313,7 +317,9 @@ dependency.
 
 The result is written to ``pylovo.transformer_classified`` with the position of the transformer of every grid. The rows
 of the classification are deleted and inserted in one transaction, so the step can be repeated with other parameters or
-numbers, and a failing write keeps the previous result:
+numbers, and a failing write keeps the previous result. The same transaction stores the parameters, the numbers of
+clusters and ``additional_filtering`` of the run in ``classification_version`` (columns ``list_of_clustering_parameters``,
+``n_clusters_kmeans``, ``n_clusters_gmm`` and ``additional_filtering``):
 
 .. list-table::
    :header-rows: 1
@@ -421,7 +427,9 @@ Use the steps from Python
 -------------------------
 
 The command is a thin layer over these functions. They read the configuration constants once at import.
-``additional_filtering=None`` (the default) means ``ADDITIONAL_FILTERING`` of ``config_clustering.yaml``:
+``None`` (the default of ``additional_filtering`` and of the step 7 values) means the value stored with the
+classification ``CLASSIFICATION_VERSION``; a classification without stored values (clustered before migration
+``0014_classification_choices``, or not clustered yet) uses those of ``config_clustering.yaml``:
 
 .. code-block:: python
 
@@ -439,7 +447,8 @@ The command is a thin layer over these functions. They read the configuration co
    report_grid_counts(additional_filtering=False, plz_without_grids=removed)     # the summary
 
 ``DatabaseCommunication.get_clustering_parameters_for_classification_version(additional_filtering)`` returns the grids
-that enter the clustering. ``kmeans_clustering`` and ``gmm_tied_clustering`` in
+that enter the clustering, and ``DatabaseCommunication.get_classification_choices()`` the parameters, the numbers of
+clusters and ``additional_filtering`` of the classification (the clustering notebooks use both). ``kmeans_clustering`` and ``gmm_tied_clustering`` in
 ``pylovo.classification.clustering.clustering_algorithms`` cluster any data frame with the key figures and return the
 clustered frame and the representative grids.
 
@@ -447,7 +456,8 @@ Repeat or delete a classification
 ---------------------------------
 
 To cluster again with other parameters, numbers of clusters or filters under the same id, run steps 6 and 7 once more
-from Python (see above). Step 7 replaces the rows of the classification in one transaction. ``pylovo-classify``
+from Python (see above). Step 7 replaces the rows of the classification and its stored choices in one transaction.
+``pylovo-classify``
 itself always starts a new classification and rejects an existing id.
 
 .. code-block:: bash
@@ -462,9 +472,12 @@ Things to know
 --------------
 
 * The sample is reproducible (seed and sorted register, see step 1). ``sample_set`` remains the record of it.
-* The filters are applied when the grids are read and nothing is stored. The notebooks and the Python functions use
-  ``ADDITIONAL_FILTERING`` of ``config_clustering.yaml``, which holds the choice of the last ``pylovo-classify`` run:
-  set it to the value of the classification you look at.
+* The filters are applied when the grids are read and nothing is stored per grid. The notebooks and the Python
+  functions use the parameters, the numbers of clusters and the filter choice stored with the classification they look
+  at, so a later run with other choices does not change them. Classifications clustered before migration
+  ``0014_classification_choices`` have none stored and use ``config_clustering.yaml``, which holds the choices of the
+  last ``pylovo-classify`` run: set it to the values of that classification, or repeat step 7 with them, which stores
+  them.
 * Step 7 can be repeated per classification id (see above).
 * The lower filter thresholds come from grids of pylovo 0.8.0 and are not re-derived for the current generator
   (:ref:`classification-thresholds`).

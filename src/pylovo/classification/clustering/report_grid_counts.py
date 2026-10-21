@@ -74,13 +74,16 @@ def report_grid_counts(additional_filtering: bool | None = None, plz_without_gri
     and a mismatch with the result table are warnings, the filters are listed per rule.
 
     Args:
-        additional_filtering: Whether the lower thresholds apply. ``None`` uses ``ADDITIONAL_FILTERING``.
+        additional_filtering: Whether the lower thresholds apply. ``None`` uses the choice of the classification
+            (``DatabaseCommunication.get_classification_choices``).
         plz_without_grids: The PLZ that ``prepare_data_for_clustering`` removed from the sample set.
 
     Returns:
         dict: The counts of :func:`summarize_grid_counts`.
     """
     dc = DatabaseCommunication()
+    if additional_filtering is None:
+        additional_filtering = dc.get_classification_choices()["additional_filtering"]
     grids = dc.get_grid_status_of_sample_set(additional_filtering)
     counts, warnings = summarize_grid_counts(grids, list(filter_reasons(additional_filtering)), plz_without_grids)
     rows = [("PLZ drawn", counts["plz_drawn"]), ("PLZ in the sample set", counts["plz_in_sample"]),

@@ -23,7 +23,7 @@ def get_parameters_for_clustering(additional_filtering: bool | None = None) -> l
 
     Args:
         additional_filtering: Also leave out the grids below the four lower thresholds.
-            ``None`` uses ``ADDITIONAL_FILTERING``.
+            ``None`` uses the choice of the classification (``DatabaseCommunication.get_classification_choices``).
 
     Returns:
         list: Names of the selected parameters (one per factor).

@@ -312,7 +312,8 @@ def main():
         print("\nGetting number of clusters for clustering...")
         cluster_counts = select_number_of_clusters(clustering_parameters, apply_additional_filtering)
 
-    # The filters are applied when the grids are read: the answer belongs to the configuration of this classification.
+    # The configuration records the choices of the last run; step 7 stores them with the classification, where the
+    # readers take them from.
     config = load_yaml(CONFIG_CLUSTERING_PATH)
     config["LIST_OF_CLUSTERING_PARAMETERS"] = clustering_parameters
     config.update(cluster_counts)

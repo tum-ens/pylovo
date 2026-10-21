@@ -18,7 +18,7 @@ def get_no_clusters_for_clustering(
         list_of_clustering_parameters: Columns used for clustering. Defaults to
             ``LIST_OF_CLUSTERING_PARAMETERS`` as loaded at start-up.
         additional_filtering: Also leave out the grids below the four lower thresholds.
-            ``None`` uses ``ADDITIONAL_FILTERING``.
+            ``None`` uses the choice of the classification (``DatabaseCommunication.get_classification_choices``).
 
     Returns:
         pd.DataFrame: Columns ``algorithm``, ``no_clusters`` and ``ch_index``.

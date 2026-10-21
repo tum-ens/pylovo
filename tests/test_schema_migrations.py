@@ -132,8 +132,8 @@ def test_migration_0013_drops_the_unused_tables_and_renames_the_line_cache_keys_
     """A fresh setup has none of the three tables and the key names ``lines_result_cache_*``; an old schema must match."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, schema_cleanup
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0013_schema_cleanup", schema_cleanup)
-    assert MIGRATION_NAMES[-1] == "0013_schema_cleanup" and MIGRATION_NAMES.count("0013_schema_cleanup") == 1
+    assert dict(POST_SCHEMA_MIGRATIONS)["0013_schema_cleanup"] is schema_cleanup
+    assert MIGRATION_NAMES.count("0013_schema_cleanup") == 1
     conn = Connection()
     schema_cleanup(Cursor(conn))
     sql = " ".join(" ".join(conn.log).split())
@@ -144,3 +144,21 @@ def test_migration_0013_drops_the_unused_tables_and_renames_the_line_cache_keys_
     assert "'lines_result_cache_' || substr(old_name.conname, length('lines_result_view_') + 1)" in sql
     assert sql.endswith("ALTER SEQUENCE IF EXISTS pylovo.lines_result_view_id_seq RENAME TO lines_result_cache_id_seq;")
     assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row
+
+
+def test_migration_0014_appends_the_classification_choices_of_a_fresh_setup():
+    """A fresh setup creates the four columns with the table, an older schema gets them appended: same names, types, order."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, classification_choices
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0014_classification_choices", classification_choices)
+    assert MIGRATION_NAMES[-1] == "0014_classification_choices"
+    assert MIGRATION_NAMES.count("0014_classification_choices") == 1
+    conn = Connection()
+    classification_choices(Cursor(conn))
+    sql = " ".join(conn.log)
+    added = re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) ([\w\[\]]+)", sql)
+    fresh = re.findall(r"^\s*(\w+) ([\w\[\]]+),$", CREATE_QUERIES["classification_version"], re.M)
+    assert added == fresh[-4:] == [("list_of_clustering_parameters", "text[]"), ("n_clusters_kmeans", "integer"),
+                                   ("n_clusters_gmm", "integer"), ("additional_filtering", "boolean")]
+    assert sql.startswith("ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS")
+    assert len(conn.log) == 1                                # one statement: it commits with its ledger row

@@ -75,3 +75,13 @@ def test_report_prints_the_stages_and_logs_every_warning(dc, monkeypatch, capsys
         assert label in printed
     assert counts["grids"] == 9 and counts["plz_drawn"] == 6
     assert len(messages) == 4 and {level for level, _ in messages} == {"WARNING"}
+
+
+def test_report_without_an_argument_lists_the_filters_of_the_stored_choice(dc, monkeypatch):
+    """The labels and the status columns must both follow the choice stored with the classification."""
+    monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", False)
+    dc.dbc.cur.fetchone_values = [(["no_branches"], 4, 4, True)] * 2
+    dc.dbc.logger = logging.getLogger("classification-report-stored-test")
+    monkeypatch.setattr(report, "DatabaseCommunication", lambda: dc)
+    counts = report.report_grid_counts()
+    assert f"avg_trafo_dis < {dcm.THRESHOLD_AVG_TRAFO_DIS}" in counts["filtered_by"]

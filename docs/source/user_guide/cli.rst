@@ -184,8 +184,9 @@ Runs the classification of :doc:`classification`: it draws the sample set of ``C
 analyses the sample grids, chooses the clustering parameters and the numbers of clusters, clusters the grids that the
 filters leave, writes ``pylovo.transformer_classified`` and prints the grids per stage. It asks three yes/no
 questions (``y`` and ``n`` are accepted) unless an option answers them, so a run can be scripted. It needs the
-plotting extra (``uv run --extra plots pylovo-classify``) and writes the chosen parameters, numbers of clusters and
-the filter choice to ``config/config_clustering.yaml``, keeping the comments of that file.
+plotting extra (``uv run --extra plots pylovo-classify``). It stores the chosen parameters, numbers of clusters and
+the filter choice with the classification (``classification_version``) and also writes them to
+``config/config_clustering.yaml`` as a record of the last run, keeping the comments of that file.
 
 ``--additional-filtering``, ``--no-additional-filtering``
    Also filter the grids below the four lower thresholds, or not. Default: ask.

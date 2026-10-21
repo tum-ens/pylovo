@@ -65,6 +65,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0011_building_exclusion",
             "0012_indexes",
             "0013_schema_cleanup",
+            "0014_classification_choices",
         ]
         db.cur.execute("""
             SELECT conname, convalidated

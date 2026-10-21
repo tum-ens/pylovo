@@ -33,11 +33,27 @@ def test_a_missing_value_never_filters(dc):
 
 
 def test_reading_without_an_argument_follows_the_config(dc, monkeypatch):
+    """Without a stored choice (clustered before migration 0014, here no row) the configuration applies."""
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
     assert kept(dc.get_clustering_parameters_for_classification_version()) == ADDITIONAL_KEPT
     assert kept(dc.get_clustering_parameters_for_classification_version(False)) == DEFAULT_KEPT
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", False)
     assert kept(dc.get_clustering_parameters_for_classification_version()) == DEFAULT_KEPT
+
+
+@pytest.mark.parametrize("reader", ["get_clustering_parameters_for_classification_version",
+                                    "municipal_register_with_clustering_parameters_for_classification_version"])
+def test_reading_without_an_argument_follows_the_choice_stored_with_the_classification(dc, monkeypatch, reader):
+    """A later run writes its ADDITIONAL_FILTERING to the configuration: the grids of this classification stay."""
+    def read(stored):
+        dc.dbc.cur.fetchone_values = [(["no_branches"], 4, 4, stored)]
+        return kept(getattr(dc, reader)())
+
+    monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
+    assert read(False) == DEFAULT_KEPT
+    monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", False)
+    assert read(True) == ADDITIONAL_KEPT
+    assert read(None) == DEFAULT_KEPT
 
 
 def test_the_register_reader_applies_the_same_filters(dc):

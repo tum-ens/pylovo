@@ -49,6 +49,11 @@ CREATE_QUERIES = {
         classification_version_comment varchar, 
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         classification_region varchar,
+        -- the choices of step 7 (classification.rst); NULL for classifications clustered before 0014
+        list_of_clustering_parameters text[],
+        n_clusters_kmeans integer,
+        n_clusters_gmm integer,
+        additional_filtering boolean,
         CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
     )
     """,

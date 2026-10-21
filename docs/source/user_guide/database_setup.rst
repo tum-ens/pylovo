@@ -85,7 +85,10 @@ v0.8.0 whose SQL file is gone. On a large database it can take a while. Migratio
 databases that ran an earlier version of ``0009_mv_grids``, which imported MaStR data) and
 ``grid_parameters`` (no code writes it), together with their rows, and renames the primary key and the
 identity sequence of ``lines_result_cache`` to the names of a fresh setup (a database set up by v0.8.0
-keeps the names ``lines_result_view_*``). A database that an
+keeps the names ``lines_result_view_*``). Migration ``0014_classification_choices`` adds the columns
+``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm`` and ``additional_filtering`` to
+``classification_version``, where step 7 of the classification stores its choices. Classifications made before keep
+NULL there and use ``config_clustering.yaml`` (:doc:`classification`). A database that an
 earlier version set up needs one ``pylovo-setup`` run before generating: until all migrations are
 recorded, ``pylovo-generate`` stops with ``PyLovo schema has pending migrations (...); run
 pylovo-setup first``.

@@ -32,6 +32,9 @@ LOWER_FILTER_THRESHOLDS = {
     "no_households": THRESHOLD_NO_HOUSEHOLDS,
 }
 
+# Columns of ``classification_version`` that store the choices of step 7, in the order of ``config_clustering.yaml``.
+CLASSIFICATION_CHOICES = ("list_of_clustering_parameters", "n_clusters_kmeans", "n_clusters_gmm", "additional_filtering")
+
 # Values of the placeholders in the conditions of ``filter_reasons``.
 FILTER_PARAMETERS = {
     "max_trafo_dis": THRESHOLD_MAX_TRAFO_DIS,
@@ -80,8 +83,10 @@ class DatabaseCommunication:
     Note:
         The grids that enter the clustering are selected when they are read: the readers apply the filters
         of :func:`filter_reasons` to the key figures of the sampled grids of ``VERSION_ID``. Nothing is
-        stored, so classifications that share grids do not influence each other and an earlier run leaves
-        no trace. The column ``clustering_parameters.filtered`` is no longer used.
+        stored per grid, so classifications that share grids do not influence each other. The column
+        ``clustering_parameters.filtered`` is no longer used. Step 7 stores the parameters, the numbers of
+        clusters and the filter choice with the classification, and ``None`` arguments default to them
+        (:meth:`get_classification_choices`).
     """
 
     def __init__(self):
@@ -94,6 +99,30 @@ class DatabaseCommunication:
         self.dbc.conn.close()
         print("Database connection closed.")
 
+    def get_classification_choices(self) -> dict:
+        """Return the choices that ``CLASSIFICATION_VERSION`` was clustered with.
+
+        Step 7 stores them in ``classification_version``. A classification without stored choices (clustered
+        before migration ``0014_classification_choices``, or not clustered yet) gets the values of
+        ``config_clustering.yaml``, which hold the choices of the last ``pylovo-classify`` run.
+
+        Returns:
+            dict: ``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm`` and
+            ``additional_filtering``.
+        """
+        self.dbc.cur.execute(f"SELECT {', '.join(CLASSIFICATION_CHOICES)} FROM pylovo.classification_version "
+                             "WHERE classification_id = %(c)s", {"c": CLASSIFICATION_VERSION})
+        stored = self.dbc.cur.fetchone() or (None,) * len(CLASSIFICATION_CHOICES)
+        configured = (LIST_OF_CLUSTERING_PARAMETERS, N_CLUSTERS_KMEANS, N_CLUSTERS_GMM, ADDITIONAL_FILTERING)
+        return {name: default if value is None else value
+                for name, value, default in zip(CLASSIFICATION_CHOICES, stored, configured)}
+
+    def _additional_filtering(self, additional_filtering: bool | None) -> bool:
+        """Return ``additional_filtering``, ``None`` replaced by the choice of the classification."""
+        if additional_filtering is None:
+            return self.get_classification_choices()["additional_filtering"]
+        return additional_filtering
+
     def get_clustering_parameters_for_classification_version(self, additional_filtering: bool | None = None) -> pd.DataFrame:
         """Return the unfiltered clustering parameters of all grids in the sample set.
 
@@ -103,7 +132,7 @@ class DatabaseCommunication:
 
         Args:
             additional_filtering: Also leave out the grids below the four lower thresholds.
-                ``None`` uses ``ADDITIONAL_FILTERING``.
+                ``None`` uses the choice of the classification (:meth:`get_classification_choices`).
 
         Returns:
             pd.DataFrame: One row per grid with the ``CLUSTERING_PARAMETERS`` columns, ordered by
@@ -120,7 +149,7 @@ class DatabaseCommunication:
                     SELECT version_id, plz, kcid, bcid, cp.*
                     FROM pylovo.clustering_parameters cp 
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
-                    WHERE gr.version_id = %(v)s AND {_keep_condition(additional_filtering)}
+                    WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
                 )
                 SELECT c.* 
                 FROM clustering c
@@ -142,7 +171,7 @@ class DatabaseCommunication:
 
         Args:
             additional_filtering: Also leave out the grids below the four lower thresholds.
-                ``None`` uses ``ADDITIONAL_FILTERING``.
+                ``None`` uses the choice of the classification (:meth:`get_classification_choices`).
 
         Returns:
             pd.DataFrame: One row per grid.
@@ -158,7 +187,7 @@ class DatabaseCommunication:
                     SELECT version_id, plz, kcid, bcid, cp.*
                     FROM pylovo.clustering_parameters cp 
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
-                    WHERE gr.version_id = %(v)s AND {_keep_condition(additional_filtering)}
+                    WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
                 )
                 SELECT c.*, p.pop, p.area, p.lat, p.lon, p.ags, p.name_city, p.regio7, p.regio5, p.pop_den
                 FROM clustering c
@@ -179,12 +208,13 @@ class DatabaseCommunication:
         boolean column per filter of :func:`filter_reasons`, named by its label.
 
         Args:
-            additional_filtering: Also check the four lower thresholds. ``None`` uses ``ADDITIONAL_FILTERING``.
+            additional_filtering: Also check the four lower thresholds. ``None`` uses the choice of the
+                classification (:meth:`get_classification_choices`).
 
         Returns:
             pd.DataFrame: The status, ordered by ``plz``, ``kcid`` and ``bcid``.
         """
-        reasons = filter_reasons(additional_filtering)
+        reasons = filter_reasons(self._additional_filtering(additional_filtering))
         flags = "".join(f",\n                       COALESCE(({condition}), false) AS filter_{i}"
                         for i, condition in enumerate(reasons.values()))
         query = f"""
@@ -221,23 +251,25 @@ class DatabaseCommunication:
         the cluster of each algorithm and whether the grid is the representative
         of its cluster. The KMedoids columns stay empty. The rows of
         ``CLASSIFICATION_VERSION`` are replaced in one transaction, so the step can be repeated
-        and a failing write keeps the previous result. The defaults below are the
-        values of ``config_clustering.yaml`` at import time.
+        and a failing write keeps the previous result. The same transaction stores the four
+        values used in ``classification_version``. ``None`` uses the stored value of the
+        classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is stored).
 
         Args:
-            list_of_clustering_parameters: Columns used for clustering. Defaults to
-                ``LIST_OF_CLUSTERING_PARAMETERS``.
-            n_clusters_kmeans: Number of k-means clusters. Defaults to ``N_CLUSTERS_KMEANS``.
-            n_clusters_gmm: Number of GMM components. Defaults to ``N_CLUSTERS_GMM``.
+            list_of_clustering_parameters: Columns used for clustering.
+            n_clusters_kmeans: Number of k-means clusters.
+            n_clusters_gmm: Number of GMM components.
             additional_filtering: Also leave out the grids below the four lower thresholds.
-                Defaults to ``ADDITIONAL_FILTERING``.
         """
+        choices = self.get_classification_choices()
         if list_of_clustering_parameters is None:
-            list_of_clustering_parameters = LIST_OF_CLUSTERING_PARAMETERS
+            list_of_clustering_parameters = choices["list_of_clustering_parameters"]
         if n_clusters_kmeans is None:
-            n_clusters_kmeans = N_CLUSTERS_KMEANS
+            n_clusters_kmeans = choices["n_clusters_kmeans"]
         if n_clusters_gmm is None:
-            n_clusters_gmm = N_CLUSTERS_GMM
+            n_clusters_gmm = choices["n_clusters_gmm"]
+        if additional_filtering is None:
+            additional_filtering = choices["additional_filtering"]
 
         # retrieve clustering parameters
         df_parameters_of_grids = self.get_clustering_parameters_for_classification_version(additional_filtering)
@@ -311,12 +343,21 @@ class DatabaseCommunication:
         # add classification id
         df_transformers_classified['classification_id'] = CLASSIFICATION_VERSION
         # write transformer data with cluster info to database: replace this classification's rows in one transaction
+        # and store the choices of the result with the classification
         with self.dbc.sqla_engine.begin() as connection:
             connection.execute(text("DELETE FROM pylovo.transformer_classified WHERE classification_id = :c"),
                                {"c": CLASSIFICATION_VERSION})
             df_transformers_classified.to_sql(name='transformer_classified', con=connection, if_exists='append',
                                               index=False,
                                               dtype={'geom': Geometry(geometry_type='POINT', srid=TARGET_EPSG)})
+            connection.execute(
+                text("UPDATE pylovo.classification_version SET "
+                     + ", ".join(f"{name} = :{name}" for name in CLASSIFICATION_CHOICES)
+                     + " WHERE classification_id = :c"),
+                {"c": CLASSIFICATION_VERSION,
+                 "list_of_clustering_parameters": [str(name) for name in list_of_clustering_parameters],
+                 "n_clusters_kmeans": int(n_clusters_kmeans), "n_clusters_gmm": int(n_clusters_gmm),
+                 "additional_filtering": bool(additional_filtering)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)
         self.dbc.conn.commit()

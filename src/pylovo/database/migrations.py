@@ -562,6 +562,23 @@ def schema_cleanup(cur: cursor) -> None:
     """)
 
 
+def classification_choices(cur: cursor) -> None:
+    """Add the columns for the choices a classification was clustered with to ``classification_version``.
+
+    Step 7 of the classification stores the clustering parameters, the numbers of clusters of k-means and the
+    tied GMM and the filter choice there, and the readers default to them: ``config_clustering.yaml`` holds only
+    the choices of the last run. Classifications clustered before keep NULL (the configuration applies to them).
+    A no-op on a fresh schema.
+    """
+    cur.execute("""
+        ALTER TABLE pylovo.classification_version
+            ADD COLUMN IF NOT EXISTS list_of_clustering_parameters text[],
+            ADD COLUMN IF NOT EXISTS n_clusters_kmeans integer,
+            ADD COLUMN IF NOT EXISTS n_clusters_gmm integer,
+            ADD COLUMN IF NOT EXISTS additional_filtering boolean;
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -579,6 +596,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0011_building_exclusion", building_exclusion),
     ("0012_indexes", indexes_and_cleanup),
     ("0013_schema_cleanup", schema_cleanup),
+    ("0014_classification_choices", classification_choices),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (
