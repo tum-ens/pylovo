@@ -229,9 +229,35 @@ def test_borders_are_classified_by_the_neighbour_across_them():
     polygons = {1: box(0, 0, 1000, 1000), 2: box(1000, 0, 2000, 1000), 3: box(0, 1000, 1000, 2000)}
     kinds = border_kinds(polygons, [1], generated={2})
 
-    assert kinds["generated"].length == pytest.approx(1000, abs=5)    # east: neighbour 2 has results
-    assert kinds["open"].length == pytest.approx(1000, abs=5)         # north: neighbour 3 has none
-    assert kinds["outer"].length == pytest.approx(2000, abs=5)        # west and south: no neighbour at all
+    stubs = 2 * border_diagnostics.BORDER_TOLERANCE_M                # pieces of the edges that meet a shared border
+    assert kinds["generated"].length == pytest.approx(1000, abs=stubs)    # east: neighbour 2 has results
+    assert kinds["open"].length == pytest.approx(1000, abs=stubs)         # north: neighbour 3 has none
+    assert kinds["outer"].length == pytest.approx(2000, abs=stubs)        # west and south: no neighbour at all
+
+
+@pytest.mark.parametrize("gap_m", [2.5, 5.0, 9.5])
+def test_a_gap_of_a_few_metres_between_two_plz_is_still_a_shared_border(gap_m):
+    kinds = border_kinds({1: box(0, 0, 1000, 1000), 2: box(1000 + gap_m, 0, 2000, 1000)}, [1], generated={2})
+
+    stubs = 2 * border_diagnostics.BORDER_TOLERANCE_M
+    assert kinds["generated"].length == pytest.approx(1000, abs=stubs)
+    assert kinds["outer"].length == pytest.approx(3000, abs=stubs) and kinds["open"].is_empty
+
+
+def test_a_wider_gap_is_an_outer_border_and_the_neighbours_are_searched_with_the_same_distance():
+    kinds = border_kinds({1: box(0, 0, 1000, 1000), 2: box(1012, 0, 2000, 1000)}, [1], generated={2})
+    assert kinds["generated"].is_empty and kinds["outer"].length == pytest.approx(4000)
+
+    class Cursor:
+        def execute(self, query, params):
+            self.params = params
+
+        def fetchall(self):
+            return []
+
+    dbc = type("Database", (), {"cur": Cursor()})()
+    border_diagnostics._postcode_polygons(dbc, [80331])
+    assert dbc.cur.params["d"] == border_diagnostics.BORDER_TOLERANCE_M
 
 
 def test_a_plz_without_a_polygon_is_reported_with_its_number():
@@ -253,10 +279,11 @@ def test_each_grid_gets_its_distances_to_the_borders_of_every_kind_and_to_the_sc
 
     assert dbc.cur.executed[0][1] == ("9",)
     east, middle = grids.iloc[0], grids.iloc[1]
-    # distances are exact to a few metres: the borders carry 2 m stubs of the matching tolerance at their corners
-    assert east["generated_border_m"] == pytest.approx(10, abs=3) and east["open_border_m"] == pytest.approx(500, abs=3)
-    assert east["outer_border_m"] == pytest.approx(500, abs=3) and east["scope_edge_m"] == pytest.approx(110, abs=3)
-    assert middle["outer_border_m"] == pytest.approx(200, abs=3) and middle["scope_edge_m"] == pytest.approx(300, abs=3)
+    # distances are exact to the border tolerance: the borders carry stubs of up to 10 m at their corners
+    tol = border_diagnostics.BORDER_TOLERANCE_M
+    assert east["generated_border_m"] == pytest.approx(10, abs=tol) and east["open_border_m"] == pytest.approx(500, abs=tol)
+    assert east["outer_border_m"] == pytest.approx(500, abs=tol) and east["scope_edge_m"] == pytest.approx(110, abs=tol)
+    assert middle["outer_border_m"] == pytest.approx(200, abs=tol) and middle["scope_edge_m"] == pytest.approx(300, abs=tol)
     assert grids["small"].tolist() == [True, False]                    # up to 4 buildings is a small grid
     assert summarize(grids) == {
         "grids": 2, "buildings": 9, "small_grids": 1, "small_grid_buildings": 3,

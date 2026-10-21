@@ -236,8 +236,9 @@ database:
     the ring: a PLZ can lie inside the scope while its surroundings were never imported. Per grid
     the number of buildings and the distance to the nearest PLZ border with a generated neighbour,
     with a neighbour without results (open) and without a neighbouring PLZ (outer), and to the edge
-    of the import scope. The street length of the ring counts only the parts of the streets of
-    other PLZ that lie in the ring. Without a scope table in the InfDB, ``scope_share`` and
+    of the import scope. Two PLZ whose polygons are at most 10 m apart are neighbours, so a small
+    gap between the polygons still counts as a shared border. The street length of the ring counts
+    only the parts of the streets of other PLZ that lie in the ring. Without a scope table in the InfDB, ``scope_share`` and
     ``context_share`` are empty in the CSV and ``null`` in ``diagnostics_<version>.json``; a PLZ
     without a polygon in ``pylovo.postcode`` stops the command. These are diagnostics: report
     flagged and unflagged grids side by side.

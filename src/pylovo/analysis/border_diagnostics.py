@@ -12,6 +12,11 @@ each kind, and to the edge of the import scope:
 * ``open``: border with a PLZ without results in the version,
 * ``outer``: border without a neighbouring PLZ in ``pylovo.postcode``.
 
+Two PLZ are neighbours when their polygons are at most ``BORDER_TOLERANCE_M`` (10 m) apart: the same
+distance selects the neighbouring polygons and matches the shared border, so a gap of a few metres between
+two PLZ polygons still counts as a shared border. A shared border can include pieces of up to this length
+of the edges that meet it at its ends.
+
 These are diagnostics. Report flagged and unflagged grids side by side; do not use them to hide grids.
 """
 from __future__ import annotations
@@ -29,10 +34,11 @@ from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 SMALL_GRID_MAX_BUILDINGS = 4
 #: A grid is "near" a border or edge within this distance.
 NEAR_M = 250.0
-#: Tolerance when matching the borders of two neighbouring PLZ polygons.
-_BORDER_TOLERANCE_M = 2.0
+#: Maximum distance of two neighbouring PLZ polygons: the search distance of the neighbours and the
+#: tolerance of their shared border.
+BORDER_TOLERANCE_M = 10.0
 #: Shared border parts shorter than this are corner stubs of the tolerance zone.
-_MIN_SEGMENT_M = 2 * _BORDER_TOLERANCE_M + 1.0
+_MIN_SEGMENT_M = 2 * BORDER_TOLERANCE_M + 1.0
 
 
 def postcode_context(dbc, inf_dbc, plz_list: list[int], ring_m: float | None = None) -> pd.DataFrame:
@@ -57,7 +63,7 @@ def postcode_context(dbc, inf_dbc, plz_list: list[int], ring_m: float | None = N
     return pd.DataFrame(rows)
 
 
-def _postcode_polygons(dbc, plz_list: list[int], distance_m: float = 10.0) -> dict[int, shapely.Geometry]:
+def _postcode_polygons(dbc, plz_list: list[int], distance_m: float = BORDER_TOLERANCE_M) -> dict[int, shapely.Geometry]:
     """Polygons of ``plz_list`` and of every PLZ within ``distance_m`` of them (from ``pylovo.postcode``)."""
     dbc.cur.execute(
         """WITH own AS (SELECT ST_Union(geom) AS g FROM pylovo.postcode WHERE plz = ANY(%(p)s))
@@ -80,7 +86,7 @@ def border_kinds(polygons: dict[int, shapely.Geometry], plz_list: list[int], gen
         for other, polygon in polygons.items():
             if other == plz:
                 continue
-            zone = polygon.buffer(_BORDER_TOLERANCE_M)
+            zone = polygon.buffer(BORDER_TOLERANCE_M)
             if not zone.intersects(boundary):
                 continue
             # the tolerance zone also catches stubs of the edges that meet the shared border at its ends
