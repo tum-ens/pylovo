@@ -125,7 +125,9 @@ each grid, at the transformer-coincident operating point, and stores the solved 
 grid. The API reads this *generation check* for four criteria: solver converged, voltage band
 (``POWER_FLOW_VOLTAGE_LIMITS``), cables at most 100 % loaded, and transformer loading against the
 planning utilisation. The *on-demand power flow* reruns the same stored operating point,
-optionally scaled, and writes nothing; at ×1 it reproduces the generation check.
+optionally scaled, and writes nothing; at ×1 it reproduces the generation check. At most two
+on-demand power flows run at a time: a request that finds no free slot within 30 s is refused with
+503 and a ``Retry-After`` header.
 
 **Cable cabinets.** pylovo's feeder split points are reported as cable cabinets with their number
 of outgoing cables, never at the station busbar. They are named K1 … Kn by cable distance from the
