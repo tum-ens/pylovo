@@ -192,7 +192,7 @@ def build_layers() -> list[Layer]:
                              {num("l.length_km", 3)} AS length_km, {num("l.cable_km", 3)} AS cable_km,
                              {num("l.overhead_km", 3)} AS overhead_km, l.normally_open AS open,
                              {num("l.loading_load_percent", 1)} AS loading, {num("l.loading_n1_percent", 1)} AS loading_n1,
-                             {geo("ST_Simplify({line_geom}, 0.3)")} AS geometry
+                             {geo("ST_Simplify({line_geom}, 0.5)")} AS geometry
                       FROM pylovo.mv_line l WHERE {run('l')}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts")),

@@ -104,10 +104,10 @@ def test_feeder_section(service, fake_db):
 def test_mv_lines_draw_their_display_geometry_where_the_database_has_one(service, fake_db):
     lines, opens = service.layers["mv_lines"], service.layers["mv_open_points"]
     q = Query(version="v1", mv="d1")
-    assert "ST_Simplify(l.geom, 0.3)" in service.sql(lines, q) and "{" not in service.sql(opens, q)
+    assert "ST_Simplify(l.geom, 0.5)" in service.sql(lines, q) and "{" not in service.sql(opens, q)
     assert service.unavailable(service.layers["hv_busbars"]) == "no table pylovo.mv_substation in this database"
     service.catalog.columns["pylovo.mv_line"] = {"display_geom": "geometry", "geom": "geometry"}
-    assert "ST_Simplify(COALESCE(l.display_geom, l.geom), 0.3)" in service.sql(lines, q)
+    assert "ST_Simplify(COALESCE(l.display_geom, l.geom), 0.5)" in service.sql(lines, q)
     assert "ST_LineInterpolatePoint(COALESCE(l.display_geom, l.geom)" in service.sql(opens, q)
 
 
