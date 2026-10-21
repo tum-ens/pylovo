@@ -187,7 +187,7 @@ def district_input(dbc: Any, version_id: str, variant_id: str, mv_grid_id: int, 
     hv_bus = grid.get("egon_bus_id")
     inp = DistrictInput(mv_grid_id=int(mv_grid_id), substation_id=int(grid["substation_id"]),
                         vn_kv=float(grid["vn_kv"]), nodes=nodes, edges=edges, params=params, lv=lv,
-                        edge_geometry=edge_geometry, settlement_geoms={},
+                        edge_geometry=edge_geometry,
                         hv_bus_id=int(hv_bus) if hv_bus is not None and not pd.isna(hv_bus) else None)
     return inp, requirements
 

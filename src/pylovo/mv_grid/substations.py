@@ -211,11 +211,10 @@ def filter_candidates(rows: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------------------------- sites
 @dataclass
 class Site:
-    """One HV/MV substation site (busbar) made of one or more merged candidates, or of one eGon substation.
+    """One HV/MV substation site (busbar) made of one or more merged OSM candidates.
 
     Attributes:
-        source_ids: Sorted ids of the merged features: ``node/<id>``, ``way/<id>``, ``relation/<id>`` or
-            ``egon/<bus_id>``.
+        source_ids: Sorted ids of the merged features: ``node/<id>``, ``way/<id>`` or ``relation/<id>``.
         x: Busbar point (``TARGET_EPSG``): the representative point of the largest footprint polygon, else the
             mean of the candidate points.
         y: See ``x``.
@@ -246,11 +245,6 @@ class Site:
     def key(self) -> str:
         """The first source id (identifies the site in logs and tie-breaks)."""
         return self.source_ids[0] if self.source_ids else ""
-
-    @property
-    def source(self) -> str:
-        """``egon`` for an eGon substation, else ``osm`` (the ``source`` column of ``pylovo.mv_substation``)."""
-        return "egon" if self.key.startswith("egon/") else "osm"
 
     def point(self) -> shapely.Point:
         """The busbar point."""
@@ -515,7 +509,7 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         in_region = [None] * n
     egon = list(matches) if matches is not None else [(None, None)] * n
     frame = pd.DataFrame({
-        "source": [site.source for site in sites],
+        "source": ["osm"] * n,
         "source_ids": [list(site.source_ids) for site in sites],
         "name": [site.name for site in sites],
         "operator": [site.operator for site in sites],
@@ -534,6 +528,3 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         "footprint_wkb": [site.footprint_wkb for site in sites],
     }, columns=list(SITE_COLUMNS))
     return frame
-
-
-# ---------------------------------------------------------------------------------------------- ratings (P2)

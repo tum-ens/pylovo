@@ -153,7 +153,7 @@ def test_candidates_within_75_m_merge_into_one_site():
     assert site.name == "Big" and site.operator == "Netz A"
     assert site.voltage_tag == "110000|110000;20000"
     assert site.max_v == 110000 and site.mv_tagged and site.flags == []
-    assert site.source == "osm" and site.key == "node/5"
+    assert site.key == "node/5"
 
 
 def test_merging_is_transitive():
