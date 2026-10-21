@@ -16,10 +16,9 @@ Project layout
    pylovo/
    |-- config/                   YAML configuration (config_generation_lv.yaml, config_generation_mv.yaml, ...)
    |-- data/                     input data shipped with the repository
-   |   |-- municipal_register/   Gemeindeverzeichnis and RegioStaR tables
-   |   |-- transformer_data/     Overpass queries, fetched and processed transformer GeoJSON
-   |   |-- buildings/, ways/     file-based input (not in git)
-   |   `-- grid_examples/        reference grids (Kerber, SimBench, pylovo examples)
+   |   |-- municipal_register/   Gemeindeverzeichnis and RegioStaR tables (xlsx)
+   |   |-- transformer_data/     Overpass queries and the processed OSM transformers of Bavaria (EPSG 25832)
+   |   `-- buildings/, ways/     file-based input (not in git)
    |-- docs/
    |   |-- source/               this documentation (Sphinx)
    |   `-- scripts/              scripts that create the figures
@@ -48,6 +47,13 @@ Project layout
    |   `-- utils.py              load model, logging
    |-- pyproject.toml            package metadata, dependencies, extras, console scripts
    `-- CHANGELOG.md
+
+The wheel carries ``config/`` and the reference data of ``data/`` (municipal register, Overpass queries,
+processed transformers) in the folder ``pylovo/_defaults``: ``pyproject.toml`` maps them there with hatch's
+``force-include`` and lists them for the sdist, so they exist only once, in the repository. An editable
+install reads the checkout directly. A new reference file has to be added to both lists. To check a
+build, run ``uv build``, install the wheel into a fresh virtual environment and run
+``pylovo-setup --help`` from an empty directory that holds only a ``.env`` (:ref:`install-wheel`).
 
 Code conventions
 ----------------
