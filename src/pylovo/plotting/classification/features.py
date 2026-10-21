@@ -16,7 +16,7 @@ from matplotlib.figure import Figure
 from sklearn.decomposition import FactorAnalysis, PCA
 from sklearn.preprocessing import StandardScaler
 
-from pylovo.config_loader import ACCESS_TOKEN_PLOTLY, TUMPalette1
+from pylovo.config_loader import TUMPalette1
 
 
 def plot_correlation_matrix(corr: pd.DataFrame, ax: Optional[plt.Axes] = None, figsize: Tuple[int, int] = (9, 9),
@@ -79,19 +79,16 @@ def plot_samples_on_map(df_samples: pd.DataFrame) -> None:
     """
     Plot PLZ samples on an interactive plotly map.
 
-    The Mapbox style ``light`` needs ``ACCESS_TOKEN_PLOTLY`` in the ``.env`` file;
-    without a token the map background stays empty.
+    The background tiles (``carto-positron``) are loaded from the internet and need no access token.
 
     Args:
         df_samples: DataFrame containing sample data with 'lat', 'lon', and 'regio7' columns.
     """
-    if ACCESS_TOKEN_PLOTLY:
-        px.set_mapbox_access_token(ACCESS_TOKEN_PLOTLY)
     df_samples = df_samples.copy()
     df_samples['regio7_str'] = df_samples['regio7'].astype("str")
-    fig = px.scatter_mapbox(df_samples, lat="lat", lon="lon", color="regio7_str", size="regio7", size_max=10, zoom=7)
+    fig = px.scatter_map(df_samples, lat="lat", lon="lon", color="regio7_str", size="regio7", size_max=10, zoom=7,
+                         map_style="carto-positron")
     fig.update_layout(width=1000, height=900, margin={"r": 5, "t": 0, "l": 5, "b": 0})
-    fig.update_layout(mapbox_style="light")
     fig.show()
 
 
