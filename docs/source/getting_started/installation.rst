@@ -88,8 +88,8 @@ Optional dependency groups (extras):
 .. note::
 
    pylovo reads ``config/*.yaml`` from the current working directory and writes logs to
-   ``log/`` and downloaded data to ``data/`` relative to it. Run all commands from the
-   repository root. See :ref:`config-file-lookup` for the other search locations.
+   ``log/`` relative to it. Input data and downloaded data are in the data directory (``data/``,
+   or ``PYLOVO_DATA_DIR``). Run all commands from the repository root. See :ref:`config-file-lookup` for the other search locations.
 
 Without uv, a virtual environment with pip works as well:
 

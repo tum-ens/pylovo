@@ -184,13 +184,13 @@ This mode does not read InfDB schemas. Without InfDB the inputs are files in the
 
    * - File
      - Content
-   * - ``data/postcode.csv``
+   * - ``postcode.csv``
      - Postcode polygons for ``pylovo.postcode`` (loaded by ``pylovo-setup``; the column
        ``einwohner`` is renamed to ``population``).
-   * - ``data/ways/ways_public_2po_4pgr.sql``
+   * - ``ways/ways_public_2po_4pgr.sql``
      - Street network as SQL dump created with osm2po (loaded by ``pylovo-setup`` into
        ``pylovo.ways``).
-   * - ``data/buildings/*.shp``
+   * - ``buildings/*.shp``
      - Building shapefiles per municipality. The file name must contain the AGS and ``Res``
        (residential) or ``Oth`` (other buildings), for example ``Res_9162000.shp`` and
        ``Oth_9162000.shp``.
@@ -219,5 +219,5 @@ supported by these instructions):
 #. In ``osm2po.config`` set ``tilesize=x``, comment out ``.default.wtr.finalMask = car``, keep
    only ``ferry`` commented out in the way-type section, and keep the SQL writer line active.
 #. Run ``java -Xmx1g -jar osm2po-core-5.3.6-signed.jar prefix=public path/to/extract.pbf``.
-#. Copy the resulting ``public_2po_4pgr.sql`` to ``data/ways/ways_public_2po_4pgr.sql`` and run
-   ``pylovo-setup``.
+#. Copy the resulting ``public_2po_4pgr.sql`` to ``ways/ways_public_2po_4pgr.sql`` in the data
+   directory and run ``pylovo-setup``.

@@ -36,8 +36,9 @@ How regions are resolved
      - Same, plus the import of the building shapefiles of the AGS.
 
 The municipal register is filled by ``pylovo-setup`` from the Gemeindeverzeichnis
-(``data/municipal_register/gemeindeverzeichnis``) and the RegioStaR table
-(``data/municipal_register/regiostar``). A PLZ can belong to several municipalities and a
+(``municipal_register/gemeindeverzeichnis`` of the data directory) and the RegioStaR table
+(``municipal_register/regiostar``). The data directory is ``data/``, or ``PYLOVO_DATA_DIR``
+(:ref:`env-variables`). A PLZ can belong to several municipalities and a
 municipality has several PLZ; the register holds one row per (PLZ, AGS) pair.
 
 .. note::
