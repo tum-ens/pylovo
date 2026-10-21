@@ -37,7 +37,7 @@ from sklearn.metrics.pairwise import haversine_distances
 import pylovo.database.database_client as dbc
 from pylovo.analysis.grid_analysis import compute_clustering_metrics
 from pylovo import utils
-from pylovo.config_loader import CLASSIFICATION_VERSION, PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
+from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +251,6 @@ class ParameterCalculator:
         except Exception as e:
             self.dbc.logger.error(f"Error during analysis for PLZ {self.plz}: {e}")
             self.dbc.logger.info(f"Skipped PLZ {self.plz} due to analysis error.")
-            self.dbc.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), self.plz)
             raise
 
     def analyze_grid_parameters_for_plz(self, plz: int = None):

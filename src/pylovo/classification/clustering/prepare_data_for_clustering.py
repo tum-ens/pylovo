@@ -11,8 +11,8 @@ from pylovo.classification.clustering.filter_grids import apply_filter_to_grids
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz
 from pylovo.classification.sampling.sample import get_sample_set, create_sample_set
-from pylovo.config_loader import USE_INFDB
-from pylovo.grid_generator import GridGenerator
+from pylovo.config_loader import CLASSIFICATION_VERSION, USE_INFDB
+from pylovo.grid_generator import GenerationOutcome, GridGenerator
 
 
 def prepare_data_for_clustering(
@@ -24,6 +24,7 @@ def prepare_data_for_clustering(
     Creates the sample set of ``CLASSIFICATION_VERSION``, imports the building
     shapefiles (only with ``USE_INFDB=False``), generates and analyses the grids of all sampled PLZ, computes the clustering
     parameters and applies the filters. This can take hours for a full sample set.
+    A PLZ for which no grids could be generated is removed from the sample set.
 
     Args:
         additional_filtering: Also apply the lower thresholds of the four
@@ -49,8 +50,19 @@ def prepare_data_for_clustering(
     # this takes around a quarter of an hour for a grid and might take a whole day for an entire set.
     start_time = time.time()
     gg = GridGenerator()
-    gg.generate_grid_for_multiple_plz(df_plz=samples, analyze_grids=True)
+    outcomes = gg.generate_grid_for_multiple_plz(df_plz=samples, analyze_grids=True)
     print("--- %s seconds for step 3: grid generation---" % (time.time() - start_time))
+
+    # A PLZ without grids is no part of this classification: remove it from the stored sample as well.
+    without_grids = [plz for plz, outcome in outcomes.items()
+                     if outcome in (GenerationOutcome.FAILED, GenerationOutcome.EMPTY)]
+    if without_grids:
+        print(f"No grids for PLZ {sorted(without_grids)}: removed from the sample set of classification "
+              f"{CLASSIFICATION_VERSION}")
+        with dbc.DatabaseClient() as dbc_client:
+            for plz in without_grids:
+                dbc_client.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), plz)
+        samples = samples[~samples['plz'].isin(without_grids)]
 
     # %% 4. calculate grid parameters
     start_time = time.time()

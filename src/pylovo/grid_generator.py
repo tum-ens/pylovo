@@ -36,7 +36,6 @@ from pylovo.config_loader import (
     BROWNFIELD_NEAREST_ONLY,
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
-    CLASSIFICATION_VERSION,
     CONFIG_EQUIPMENT_DATA,
     CONFIG_GENERATION,
     CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
@@ -178,12 +177,6 @@ class GridGenerator:
             self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
             self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
             self.dbc.rollback_changes()
-            try:
-                self.dbc.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), self.plz)
-            except Exception as cleanup_error:
-                self.logger.warning(
-                    f"Failed to remove PLZ {self.plz} from the sample set after generation error: {cleanup_error}"
-                )
             traceback.print_exc()
         finally:
             # Always clean up temporary tables, even if there was an error.

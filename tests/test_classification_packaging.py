@@ -15,7 +15,6 @@ CLASSIFICATION_FILES = [*sorted((SRC / "classification").rglob("*.py")), SRC / "
                         *sorted((SRC / "plotting" / "classification").rglob("*.py"))]
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-03: generation and analysis delete rows of the configured classification's sample set")
 def test_generation_and_analysis_do_not_touch_the_sample_set():
     for name in ("grid_generator.py", "analysis/parameter_calculation.py"):
         assert "delete_plz_from_sample_set_table" not in (SRC / name).read_text()
