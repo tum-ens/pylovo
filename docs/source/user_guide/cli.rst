@@ -201,8 +201,8 @@ the filter choice with the classification (``classification_version``) and also 
 ``--clusters KMEANS,GMM``
    With ``--manual``: the number of clusters of k-means and of the GMM, both from ``NO_OF_CLUSTERS_ALLOWED``.
 
-The names and numbers are checked before anything runs, and an inconsistent combination of options is a usage error
-(exit code 2). A closed standard input with an open question stops the command with a message.
+The names and numbers are checked before anything runs: a wrong name or number and an inconsistent combination of
+options are usage errors (exit code 2). An existing ``CLASSIFICATION_VERSION`` stops the command with exit code 1. A closed standard input with an open question stops the command with a message.
 
 pylovo-import
 -------------

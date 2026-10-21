@@ -48,13 +48,23 @@ CONFIG_CLUSTERING_PATH = _config_file("config_clustering.yaml")
 
 
 def _parse_args() -> argparse.Namespace:
-    """Parse the command line. Every option answers one question of the pipeline; unanswered ones are asked."""
+    """Parse the command line. Every option answers one question of the pipeline; unanswered ones are asked.
+
+    The values of ``--parameters`` and ``--clusters`` are checked here, so a typo ends the command with a usage
+    error (exit code 2) before the hours of a run. With ``--manual`` they are returned as lists.
+    """
     parser = parsers.classify_parser()
     args = parser.parse_args()
     if args.manual and not (args.parameters and args.clusters):
         parser.error("--manual needs --parameters and --clusters")
     if (args.parameters or args.clusters) and not args.manual:
         parser.error("--parameters and --clusters need --manual")
+    if args.manual:
+        try:
+            args.parameters = parse_parameter_names(args.parameters)
+            args.clusters = parse_cluster_numbers(args.clusters, _allowed_cluster_numbers())
+        except ValueError as exc:
+            parser.error(str(exc))
     return args
 
 
@@ -261,15 +271,6 @@ def main():
     args = _parse_args()
     print("Running classification pipeline...")
 
-    # Check the scripted values first: a typo must not cost the hours of a run.
-    scripted = None
-    if args.manual:
-        try:
-            scripted = (parse_parameter_names(args.parameters),
-                        parse_cluster_numbers(args.clusters, _allowed_cluster_numbers()))
-        except ValueError as exc:
-            sys.exit(f"pylovo-classify: {exc}")
-
     # Step 1: Ensure user has configured `config_classification.yaml`; an existing version is rejected
     # before any question is asked.
     config_classification = load_yaml(CONFIG_CLASSIFICATION_PATH)
@@ -297,11 +298,11 @@ def main():
         "Do you prefer to assign clustering parameters and number of clusters? "
         "Otherwise, optimal values will be calculated and assigned accordingly."))
     if manual:
-        if scripted is None:
+        if args.manual:
+            clustering_parameters, cluster_numbers = args.parameters, args.clusters
+        else:
             clustering_parameters = get_custom_clustering_parameters()
             cluster_numbers = get_custom_cluster_numbers()
-        else:
-            clustering_parameters, cluster_numbers = scripted
         cluster_counts = dict(zip(("N_CLUSTERS_KMEANS", "N_CLUSTERS_GMM"), cluster_numbers))
     else:
         # Step 4: Automatically select clustering parameters and cluster numbers

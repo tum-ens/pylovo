@@ -328,12 +328,13 @@ def test_options_answer_only_their_question(monkeypatch, pipeline):
     (["--parameters", "no_branches", "--clusters", "a,b"], "numeric"),
     (["--parameters", "plz", "--clusters", "4,5"], "Unknown parameter(s): plz"),
 ])
-def test_scripted_values_are_checked_before_anything_runs(monkeypatch, pipeline, flags, message):
-    """A typo must stop the command before the version check and the hours of grid generation."""
+def test_scripted_values_are_checked_before_anything_runs(monkeypatch, pipeline, capsys, flags, message):
+    """A typo must stop the command before the version check and the hours of grid generation: a usage error."""
     monkeypatch.setattr(cl, "classification_version_exists", no_question)
     with pytest.raises(SystemExit) as exc:
         run_with(monkeypatch, "--manual", *flags)
-    assert message in str(exc.value) and "prepare" not in pipeline
+    err = capsys.readouterr().err
+    assert exc.value.code == 2 and message in err and "usage: pylovo-classify" in err and "prepare" not in pipeline
 
 
 @pytest.mark.parametrize("flags, message", [
