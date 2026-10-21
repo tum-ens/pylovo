@@ -98,7 +98,7 @@ except ValueError:
 # --------------------------------------------------------------------------- filter rules
 # InfdbClient.fetch_buildings_from_infdb (consumer candidates, optional address filter).
 STATION_USE_ID = "31001_2523"
-CAND_SQL = ("b.building_use IN ('Commercial', 'Public', 'Residential', 'Mixed') "
+CAND_SQL = ("b.building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown') "
             "AND COALESCE(b.building_use_id, '') <> '31001_2523'")
 ADDR_SQL = "COALESCE(b.street, '') <> '' AND COALESCE(b.house_number, '') <> ''"
 # PreprocessingMixin.remove_non_residential_buildings_from_buildings_tem keeps exactly these rows

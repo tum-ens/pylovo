@@ -15,7 +15,7 @@ relations of the InfDB schemas (see :mod:`pylovo.infdb.infdb_client`):
 :func:`write_source_data` creates exactly these (the columns pylovo and its API read) and fills them with a
 made-up town: postcode 99001 (a street grid with apartment blocks, mixed buildings with shops, a school, a
 plant large enough for an MV connection, single-family houses, a LoD2 transformer station, a garage without
-address and a cycle path), the neighbouring village 99002 (one street across the postcode border) and
+address, a building of unknown use and a cycle path), the neighbouring village 99002 (one street across the postcode border) and
 99003, a postcode that only :func:`write_municipal_register` knows (no polygon, no buildings). Everything
 is computed from the tables below (no randomness, no geodata files), in EPSG:25832 in the open North Sea west
 of Heligoland, so no real building or OSM transformer lies near it.
@@ -75,6 +75,7 @@ KINDS = {
     "PLANT": Kind(50, 30, 2, 0, "Commercial", "31001_2100", None, nonresidential_floors=2),  # 3000 m2: MV-direct
     "STATION": Kind(4, 3, 1, 0, "Commercial", "31001_2523", None, nonresidential_floors=1, address=False),
     "GARAGE": Kind(6, 6, 1, 0, "Residential", "31001_2463", None, nonresidential_floors=1, address=False),
+    "UNKNOWN": Kind(12, 10, 1, 0, "Unknown", "31001_9998", None, nonresidential_floors=1),  # use not classified
 }
 
 #: street, side (+1 left of the street direction, -1 right), first position along the street, kinds in order
@@ -95,6 +96,7 @@ ROWS = [
     ("Hauptstraße", -1, 1020, ["SFH", "SFH", "SFH", "SFH", "SHOP", "SFH", "SFH"]),
     ("Dorfstraße", +1, 30, ["SFH"] * 10),
     ("Dorfstraße", -1, 30, ["SFH"] * 10),
+    ("Ostgasse", +1, 30, ["UNKNOWN"]),
 ]
 GAP = 8.0             # metres between neighbouring buildings
 SETBACK = 6.0         # metres from the street centre line to the building front

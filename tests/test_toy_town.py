@@ -68,7 +68,10 @@ def test_every_building_is_accounted_for(q, postcodes, tmp_path):
     assert accounted(q, "1") == accounted(q, "2") == accounted(q, "3")
     reasons = {(v, r): n for v, r, n in q("""SELECT version_id, reason, count(*) FROM pylovo.building_exclusion
                                              GROUP BY 1, 2""")}
-    assert reasons == {("1", "mv_direct"): 1, ("2", "mv_direct"): 1, ("3", "residential_only"): 6}
+    # the plant is MV-direct and the building of unknown use has no load; residential-only leaves out both, the four
+    # shops and the school
+    assert reasons == {("1", "mv_direct"): 1, ("1", "unloaded"): 1, ("2", "mv_direct"): 1, ("2", "unloaded"): 1,
+                       ("3", "residential_only"): 7}
     # residential-only leaves out exactly the buildings without a residential part
     residential_only = q("""SELECT count(*) FROM pylovo.buildings_result r JOIN pylovo.building_exclusion e
                                 USING (objectid)
