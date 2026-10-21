@@ -305,13 +305,17 @@ def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys
     checked = []
     client = FakeClient(ensure_grid_persistence_schema=lambda: checked.append(True))
     monkeypatch.setattr(cli, "_database_client", lambda: client)
-    monkeypatch.setattr(stage, "display_geometry", lambda dbc, v, var, logger: {"d1": 12, "d2": None}[var])
+    stored = {"d1": (12, 2), "d2": None, "d3": (0, 1), "d4": (0, 0)}       # d3: no shared route, d4: no lines
+    monkeypatch.setattr(stage, "display_geometry", lambda dbc, v, var, logger: stored[var])
     with pytest.raises(SystemExit) as exc:
-        cli.main(["display", "--version", "mv1", "--variant", "d1", "d2"])
+        cli.main(["display", "--version", "mv1", "--variant", "d1", "d2", "d3", "d4"])
     assert exc.value.code == 1 and checked == [True]
     out = capsys.readouterr().out.splitlines()
-    assert out == ["✓ MV variant d1 of version mv1: 12 lines with display geometry",
-                   "✗ MV variant d2 of version mv1: no display geometry (no lines, or an error)"]
+    assert out == ["✓ MV variant d1 of version mv1: 12 lines in lanes, 2 busbar circles",
+                   "✗ MV variant d2 of version mv1: no display geometry (no lines, or an error)",
+                   "✓ MV variant d3 of version mv1: 0 lines in lanes, 1 busbar circles",
+                   "✗ MV variant d4 of version mv1: no display geometry (no lines, or an error)"]
+    cli.main(["display", "--version", "mv1", "--variant", "d3"])           # no line in a lane is no failure
 
 
 def test_source_data_of_another_database_stop_the_mv_stage_before_any_grid(monkeypatch, capsys, no_grid_generator,

@@ -711,11 +711,13 @@ def _plan_links(dbc: Any, version_id: str, variant_id: str, graph_id: str, param
     return summary
 
 
-def display_geometry(dbc: Any, version_id: str, variant_id: str, logger: logging.Logger) -> int | None:
+def display_geometry(dbc: Any, version_id: str, variant_id: str,
+                     logger: logging.Logger) -> tuple[int, int] | None:
     """Store the display geometry of a variant's lines and busbar circles (``display.layout``); logged.
 
     For maps only: an error is logged, rolled back and leaves the display geometry empty (readers then draw
-    ``geom``). Returns the number of lines with a display geometry, or None after an error.
+    ``geom``). Returns the number of lines with a display geometry (lines that share a route) and of busbar
+    circles, or None after an error.
     """
     try:
         lines, busbars = dbc.display_input(version_id, variant_id)
@@ -727,7 +729,7 @@ def display_geometry(dbc: Any, version_id: str, variant_id: str, logger: logging
         return None
     logger.info(f"Display geometry: {len(result.lines)} of {len(lines)} lines in lanes, "
                 f"{len(result.busbars)} busbar circles")
-    return len(result.lines)
+    return len(result.lines), len(result.busbars)
 
 
 def _demand_anchor(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int], lv: LvVersionParameters,

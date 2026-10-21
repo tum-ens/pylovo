@@ -666,7 +666,7 @@ def test_display_geometry_is_stored_and_its_errors_only_logged():
     import logging
 
     db = DisplayDb()
-    assert stage.display_geometry(db, "mv1", "d1", logging.getLogger("t")) == 2
+    assert stage.display_geometry(db, "mv1", "d1", logging.getLogger("t")) == (2, 1)
     assert db.saved == ("mv1", "d1", [1, 2], [10])
     failing = DisplayDb(fail=True)
     assert stage.display_geometry(failing, "mv1", "d1", logging.getLogger("t")) is None

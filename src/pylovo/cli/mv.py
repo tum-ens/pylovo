@@ -280,12 +280,13 @@ def _display(args: argparse.Namespace) -> int:
     with _database_client() as dbc:
         dbc.ensure_grid_persistence_schema()
         for variant in args.variants:
-            lanes = stage.display_geometry(dbc, args.version, variant, logging.getLogger(__name__))
-            if not lanes:
+            stored = stage.display_geometry(dbc, args.version, variant, logging.getLogger(__name__))
+            if stored is None or not any(stored):
                 print(f"✗ MV variant {variant} of version {args.version}: no display geometry (no lines, or an error)")
                 failed += 1
             else:
-                print(f"✓ MV variant {variant} of version {args.version}: {lanes} lines with display geometry")
+                print(f"✓ MV variant {variant} of version {args.version}: {stored[0]} lines in lanes, "
+                      f"{stored[1]} busbar circles")
     return 1 if failed else 0
 
 
