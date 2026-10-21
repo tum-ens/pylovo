@@ -1,6 +1,7 @@
 """Packaging metadata of pyproject.toml against the files the code loads and the modules it imports."""
 import ast
 import importlib.metadata
+import re
 import sys
 import tomllib
 from fnmatch import fnmatch
@@ -82,3 +83,20 @@ def test_pytest_runs_both_test_folders_and_shows_the_skip_reasons():
     options = PYPROJECT["tool"]["pytest"]["ini_options"]
     assert options["testpaths"] == ["tests", "api/tests"]
     assert "-ra" in options["addopts"].split()
+
+
+def env_example_names():
+    return set(re.findall(r"^#?\s*([A-Z][A-Z0-9_]+)\s*=", (ROOT / ".env.example").read_text(encoding="utf-8"), re.M))
+
+
+def test_env_example_documents_only_variables_the_code_reads():
+    source = "\n".join(path.read_text(encoding="utf-8") for folder in ("src", "api/pylovo_api")
+                       for path in (ROOT / folder).rglob("*.py"))
+    assert sorted(name for name in env_example_names() if f'"{name}"' not in source) == []
+
+
+def test_env_example_documents_every_variable_of_the_config_loader():
+    source = (ROOT / "src" / "pylovo" / "config_loader.py").read_text(encoding="utf-8")
+    read = set(re.findall(r'(?:getenv|get_required_env_var|get_int_env_var)\(\s*"([A-Z][A-Z0-9_]*)"', source))
+    assert read
+    assert sorted(read - env_example_names()) == []

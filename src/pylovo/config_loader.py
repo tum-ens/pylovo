@@ -270,9 +270,6 @@ else:
     INFDB_OPENDATA_SCHEMA = None
     INFDB_OSM_SCHEMA = None
 
-# Validation Data Path
-GRID_DATA_PATH = os.getenv("GRID_DATA_PATH")
-
 # Geospatial CRS configuration
 TARGET_EPSG = get_int_env_var("TARGET_EPSG", 25832)
 
