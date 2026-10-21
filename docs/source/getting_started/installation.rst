@@ -18,14 +18,16 @@ Requirements
    * - Operating system
      - Linux (Ubuntu) or Windows with WSL2. The commands below assume a Unix shell.
    * - Python
-     - 3.12 or newer (``requires-python = ">=3.12"``), managed with
-       `uv <https://docs.astral.sh/uv/>`_.
+     - 3.12 or 3.13 (``requires-python = ">=3.12,<3.14"``: numba, which pylovo pins, has no wheels
+       for 3.14 yet), managed with `uv <https://docs.astral.sh/uv/>`_.
    * - PostgreSQL
-     - With the extensions `PostGIS <https://postgis.net/>`_ and
-       `pgRouting <https://pgrouting.org/>`_ installed on the server. pylovo uses
-       ``pgr_extractVertices``, ``pgr_dijkstra``, ``pgr_dijkstraCost`` and
-       ``pgr_dijkstraCostMatrix``. The development sandbox runs PostgreSQL 17, PostGIS 3.6 and
-       pgRouting 4.0.
+     - PostgreSQL 15 or newer, with the extensions `PostGIS <https://postgis.net/>`_ and
+       `pgRouting <https://pgrouting.org/>`_ 3.8 or newer installed on the server. The schema uses
+       foreign keys with ``ON DELETE SET NULL (column)``, which older servers reject, so
+       ``pylovo-setup`` checks the server version before it changes anything. pylovo calls
+       ``pgr_extractVertices``, ``pgr_dijkstra``, ``pgr_dijkstraCost``, ``pgr_dijkstraCostMatrix``
+       and ``pgr_connectedComponents``. It is tested with PostgreSQL 17.10, PostGIS 3.6.4 and
+       pgRouting 4.0.1.
    * - GDAL (``ogr2ogr``)
      - Required by ``pylovo-setup``: the transformer GeoJSON is loaded with ``ogr2ogr``, and so
        are building shapefiles in the file-based mode. On Ubuntu: ``sudo apt install gdal-bin``.
@@ -62,8 +64,11 @@ Optional dependency groups (extras):
      - Adds
      - Needed for
    * - ``plots``
-     - matplotlib, plotly, seaborn, contextily, ipywidgets, nbformat
-     - :mod:`pylovo.plotting`, the tutorial notebooks
+     - matplotlib, plotly, seaborn, contextily, ipywidgets, nbformat, igraph
+     - :mod:`pylovo.plotting` and ``pylovo-classify`` (:doc:`../user_guide/classification`)
+   * - ``notebooks``
+     - The ``plots`` extra, ipykernel, nbclient, jinja2
+     - The tutorial notebooks (:doc:`tutorials`)
    * - ``docs``
      - Sphinx, furo, sphinx-autoapi, sphinx-copybutton, sphinx-design
      - Building this documentation
@@ -71,11 +76,14 @@ Optional dependency groups (extras):
      - FastAPI, uvicorn, python-multipart, httpx
      - ``pylovo-api`` (:doc:`../user_guide/http_api`) for the GridPlanner
        :doc:`../user_guide/browser_ui`
+   * - ``legacy-ui``
+     - Flask
+     - The deprecated ``pylovo-import transformers-ui``
 
 .. code-block:: bash
 
    uv sync --extra plots            # one extra
-   uv sync --all-extras             # everything
+   uv sync --all-extras             # everything, including the deprecated legacy-ui
 
 .. note::
 
@@ -87,7 +95,7 @@ Without uv, a virtual environment with pip works as well:
 
 .. code-block:: bash
 
-   python3.12 -m venv .venv
+   python3.12 -m venv .venv      # or python3.13
    source .venv/bin/activate
    pip install -e ".[plots]"
 
@@ -98,8 +106,9 @@ pylovo writes into the schema ``pylovo`` of one PostgreSQL database. With InfDB 
 InfDB database itself: pylovo reads the InfDB schemas (``basedata``, ``opendata``) and writes
 its own schema next to them, using the same connection settings.
 
-#. Create or choose the database and a user that may create schemas and tables in it.
-#. Make sure PostGIS and pgRouting are available. ``pylovo-setup`` creates missing extensions in
+#. Create or choose the database (PostgreSQL 15 or newer) and a user that may create schemas and
+   tables in it.
+#. Make sure PostGIS and pgRouting (3.8 or newer) are available. ``pylovo-setup`` creates missing extensions in
    the schema ``public``; you can also create them yourself beforehand:
 
    .. code-block:: sql

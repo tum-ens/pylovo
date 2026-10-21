@@ -125,8 +125,8 @@ The functions read the grid of the active ``VERSION_ID``.
    * - :func:`~pylovo.plotting.generation.networks.plot_grid_on_map`
      - The same on an OpenStreetMap basemap (returns the figure).
    * - :func:`~pylovo.plotting.generation.networks.plot_with_generic_coordinates`
-     - The net with generic tree coordinates (requires the package ``igraph``, which is not part
-       of the ``plots`` extra).
+     - The net with generic tree coordinates (requires the package ``igraph``, which is part of
+       the ``plots`` extra).
    * - :func:`~pylovo.plotting.generation.networks.draw_tree_network`,
        :func:`~pylovo.plotting.generation.networks.draw_tree_network_spacing`,
        :func:`~pylovo.plotting.generation.networks.draw_radial_network`

@@ -57,7 +57,9 @@ Running setup
    uv run pylovo-setup reset --database NAME
    uv run pylovo-setup reset --database NAME --yes  # explicit scripted reset
 
-Setup creates PostGIS and pgRouting in ``public`` if needed, creates missing
+Setup first checks that the server runs PostgreSQL 15 or newer (the schema uses foreign
+keys with ``ON DELETE SET NULL (column)``) and stops before any change otherwise. It
+creates PostGIS and pgRouting in ``public`` if needed, creates missing
 tables and applies pending migrations. It then imports every reference table
 that is still empty: transformer candidates, postcode data (and the street
 network with ``USE_INFDB=False``) and the municipal register. Tables that have
