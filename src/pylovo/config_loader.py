@@ -26,8 +26,8 @@ YAML lookup:
     repository root (or from a directory with its own ``config/``).
 
 ``PROJECT_ROOT`` is the current working directory at import time, not the location
-of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``, the
-``CSV_FILE_LIST`` entries) are resolved against it as well.
+of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``) are resolved
+against it as well.
 """
 
 import os
@@ -531,14 +531,6 @@ THRESHOLD_AVG_TRAFO_DIS = CONFIG_CLUSTERING["THRESHOLD_AVG_TRAFO_DIS"]
 THRESHOLD_NO_HOUSE_CONNECTIONS = CONFIG_CLUSTERING["THRESHOLD_NO_HOUSE_CONNECTIONS"]
 THRESHOLD_VSW_PER_BRANCH = CONFIG_CLUSTERING["THRESHOLD_VSW_PER_BRANCH"]
 THRESHOLD_NO_HOUSEHOLDS = CONFIG_CLUSTERING["THRESHOLD_NO_HOUSEHOLDS"]
-
-# =============================================================================
-# DATA IMPORT CONFIGURATION (only relevant without InfDB)
-# =============================================================================
-# Paths are relative to the current working directory.
-CSV_FILE_LIST = [
-    {"path": os.path.join("data", "postcode.csv"), "table_name": "postcode"},
-]
 
 # =============================================================================
 # PLOTTING CONFIGURATION (from CONFIG_ANALYSIS)

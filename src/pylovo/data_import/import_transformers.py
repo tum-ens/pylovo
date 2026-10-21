@@ -1,7 +1,8 @@
 """Fetch OSM transformers from the Overpass API and filter them to LV substations.
 
-Files are read from and written to ``<project root>/data/transformer_data`` where the project
-root is ``$PYLOVO_ROOT`` or the current working directory:
+Files are read from and written to ``transformer_data`` in the data directory
+(:func:`pylovo.utils.get_user_data_dir`: ``$PYLOVO_DATA_DIR``, else ``$PYLOVO_ROOT/data``, else
+``./data``), which is looked up at every call:
 
 - ``overpass_queries/``: Overpass query templates (``$relation_id$`` is replaced).
 - ``fetched_trafos/<relation_id>_{substations,shopping_mall}.geojson``: raw query results.
@@ -17,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.config_loader import TARGET_EPSG
-from pylovo.utils import query_overpass_for_geojson
+from pylovo.utils import get_user_data_dir, query_overpass_for_geojson
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 RELATION_ID_BASE = 3600000000  # Overpass area id = 3600000000 + OSM relation id; do not change
@@ -33,38 +34,24 @@ VOLTAGE_THRESHOLD = 110000  # V; transformers tagged with this voltage or more a
 EPSG = TARGET_EPSG
 
 
-def _get_project_root() -> str:
-    """Return ``$PYLOVO_ROOT`` if set, otherwise the current working directory."""
-    pylovo_root = os.getenv("PYLOVO_ROOT")
-    if pylovo_root:
-        return pylovo_root
-    return os.getcwd()
-
-
-PROJECT_ROOT = _get_project_root()
-SUBSTATIONS_QUERY_PATH = os.path.join(PROJECT_ROOT, "data", "transformer_data", "overpass_queries", "substations_query.txt")
-SHOPPING_MALL_QUERY_PATH = os.path.join(PROJECT_ROOT, "data", "transformer_data", "overpass_queries", "shopping_mall_query.txt")
+def _transformer_data_dir() -> Path:
+    """Return the ``transformer_data`` folder of the data directory."""
+    return get_user_data_dir() / "transformer_data"
 
 
 def get_substations_geojson_path(relation_id: int) -> str:
     """Return the path of the raw substation/transformer GeoJSON of an OSM relation."""
-    return os.path.join(PROJECT_ROOT, "data", "transformer_data", "fetched_trafos", f"{relation_id}_substations.geojson")
+    return str(_transformer_data_dir() / "fetched_trafos" / f"{relation_id}_substations.geojson")
 
 
 def get_shopping_mall_geojson_path(relation_id: int) -> str:
     """Return the path of the raw shopping-mall GeoJSON of an OSM relation."""
-    return os.path.join(PROJECT_ROOT, "data", "transformer_data", "fetched_trafos", f"{relation_id}_shopping_mall.geojson")
+    return str(_transformer_data_dir() / "fetched_trafos" / f"{relation_id}_shopping_mall.geojson")
 
 
 def get_trafos_processed_target_geojson_path(relation_id: int) -> str:
     """Return the path of the processed transformer GeoJSON (in ``TARGET_EPSG``) of an OSM relation."""
-    return os.path.join(
-        PROJECT_ROOT,
-        "data",
-        "transformer_data",
-        "processed_trafos",
-        f"{relation_id}_trafos_processed_{TARGET_EPSG}.geojson",
-    )
+    return str(_transformer_data_dir() / "processed_trafos" / f"{relation_id}_trafos_processed_{TARGET_EPSG}.geojson")
 
 
 def fetch_trafos(relation_id: int) -> None:
@@ -76,9 +63,10 @@ def fetch_trafos(relation_id: int) -> None:
     Args:
         relation_id: OSM relation id of the area.
     """
-    with open(SUBSTATIONS_QUERY_PATH, "r") as f:
+    queries_dir = _transformer_data_dir() / "overpass_queries"
+    with open(queries_dir / "substations_query.txt", "r") as f:
         overpass_query_substations = f.read()
-    with open(SHOPPING_MALL_QUERY_PATH, "r") as f:
+    with open(queries_dir / "shopping_mall_query.txt", "r") as f:
         overpass_query_mall = f.read()
 
     area_id = str(RELATION_ID_BASE + relation_id)
@@ -177,7 +165,7 @@ def process_trafos(relation_id: int) -> None:
     if "@id" in gdf_substations:
         gdf_substations = gdf_substations.drop('@id', axis=1)
 
-    processed_dir = Path(PROJECT_ROOT) / "data" / "transformer_data" / "processed_trafos"
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    processed_path = Path(get_trafos_processed_target_geojson_path(relation_id))
+    processed_path.parent.mkdir(parents=True, exist_ok=True)
 
-    gdf_substations.to_file(get_trafos_processed_target_geojson_path(relation_id), driver='GeoJSON')
+    gdf_substations.to_file(processed_path, driver='GeoJSON')

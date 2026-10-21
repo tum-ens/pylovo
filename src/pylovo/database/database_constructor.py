@@ -405,7 +405,7 @@ class DatabaseConstructor:
 
         Args:
             csv_file_list: Dicts with ``path`` and optionally ``table_name`` (default: file stem),
-                normally ``CSV_FILE_LIST``.
+                normally the ``postcode.csv`` of the data directory.
 
         Raises:
             FileNotFoundError: If a file does not exist.

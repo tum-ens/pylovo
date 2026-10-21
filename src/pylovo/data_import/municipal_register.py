@@ -1,6 +1,7 @@
 """Build the ``municipal_register`` table (PLZ, AGS, population, RegioStaR classes).
 
-The register joins three files in ``data/municipal_register``:
+The register joins three files in ``data/municipal_register`` (``$PYLOVO_DATA_DIR/municipal_register``
+if ``PYLOVO_DATA_DIR`` is set):
 
 - ``gemeindeverzeichnis/plz_einwohner.xlsx``: population and area per PLZ,
 - ``gemeindeverzeichnis/zuordnung_plz_ort.xlsx``: PLZ to AGS mapping
@@ -14,6 +15,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 import pylovo.database.database_client as dbc
+from pylovo.utils import get_user_data_dir
 
 
 def _get_repo_root() -> Path:
@@ -37,6 +39,16 @@ def _get_repo_root() -> Path:
     return Path.cwd()
 
 
+def _get_register_dir() -> Path:
+    """Return the ``municipal_register`` folder.
+
+    ``$PYLOVO_DATA_DIR`` wins if it is set, otherwise it is ``data/`` of :func:`_get_repo_root`.
+    """
+    if os.getenv("PYLOVO_DATA_DIR"):
+        return get_user_data_dir() / "municipal_register"
+    return _get_repo_root() / "data" / "municipal_register"
+
+
 REGISTER_FILES = (
     "regiostar/regiostar.xlsx",
     "gemeindeverzeichnis/plz_einwohner.xlsx",
@@ -46,18 +58,17 @@ REGISTER_FILES = (
 
 def missing_input_files() -> list[str]:
     """Return the paths of the register source files that do not exist."""
-    root = _get_repo_root() / "data" / "municipal_register"
+    root = _get_register_dir()
     return [str(root / name) for name in REGISTER_FILES if not (root / name).exists()]
 
 
 def _get_data_file_path(relative_path: str) -> str:
-    """Return the path of a file in ``data/municipal_register``.
+    """Return the path of a file in the ``municipal_register`` folder (:func:`_get_register_dir`).
 
     Raises:
         FileNotFoundError: If the file does not exist (with setup hints).
     """
-    repo_root = _get_repo_root()
-    file_path = repo_root / "data" / "municipal_register" / relative_path
+    file_path = _get_register_dir() / relative_path
     if not file_path.exists():
         raise FileNotFoundError(
             f"Municipal data file not found: {file_path}\n\n"
@@ -65,7 +76,8 @@ def _get_data_file_path(relative_path: str) -> str:
             f"1. Clone full repo: git clone https://github.com/tum-ens/pylovo.git\n"
             f"2. Docker/pip install: Set PYLOVO_ROOT environment variable to your project directory\n"
             f"   Example: export PYLOVO_ROOT=/app\n"
-            f"   Then ensure data/ directory exists at $PYLOVO_ROOT/data/"
+            f"   Then ensure data/ directory exists at $PYLOVO_ROOT/data/\n"
+            f"3. Or set PYLOVO_DATA_DIR to a directory that contains municipal_register/"
         )
     return str(file_path)
 

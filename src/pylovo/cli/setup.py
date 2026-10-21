@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pylovo import utils
-from pylovo.config_loader import CSV_FILE_LIST, DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
+from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
 from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
 from pylovo.database.database_constructor import DatabaseConstructor
 from pylovo.utils import get_user_data_dir
@@ -94,8 +94,10 @@ def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
                                 lambda: [problem] if (problem := sgc.infdb_postcodes_problem()) else []))
     else:
         # File-based data path: postcode CSV plus the OSM ways table.
-        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode", lambda: sgc.csv_to_db(CSV_FILE_LIST),
-                                lambda: _missing([Path(f["path"]) for f in CSV_FILE_LIST])))
+        postcode_csv = get_user_data_dir() / "postcode.csv"
+        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode",
+                                lambda: sgc.csv_to_db([{"path": postcode_csv, "table_name": "postcode"}]),
+                                lambda: _missing([postcode_csv])))
         steps.append(ImportStep("POPULATE public_2po_4pgr AND THE ways TABLE (~30 min)", "ways", ways,
                                 lambda: _missing([get_user_data_dir() / "ways" / "ways_public_2po_4pgr.sql"])))
     # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
