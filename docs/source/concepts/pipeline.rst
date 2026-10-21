@@ -83,11 +83,16 @@ transformers themselves are removed.
 
 The street segments of the postcode are copied to ``ways_tem_<plz>``. With InfDB they already
 contain a connection line from every building centroid to its street; pylovo adds connection
-lines for the transformers and splits the street segments at their foot points. In the file-based
+lines for the transformers and splits the street segments at their foot points. The connection
+lines of a postcode are those filed under it and those that start at one of its buildings: the
+InfDB may file the line of a building near a postcode border under the neighbouring postcode,
+usually because it ends on a street there. In the file-based
 mode pylovo splits intersecting streets and creates the building connection lines itself. With
 ``ROUTE_ACROSS_POSTCODE_BORDERS`` (InfDB mode) the street graph also holds the streets of the
 neighbouring postcodes within a strip outside the polygon, so a route may pass through a neighbouring
-postcode; buildings and stations stay per postcode.
+postcode and a building whose connection line ends on a neighbouring street is connected there;
+buildings and stations stay per postcode. Without it such a line ends unconnected and its building is usually
+left out as ``isolated_component``.
 
 pgRouting then builds the routing graph (``pgr_extractVertices``; endpoints snapped to a 10⁻⁶
 grid) with the segment length in metres as cost. Every building gets two vertices:

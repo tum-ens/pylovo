@@ -503,9 +503,12 @@ Clustering
      - A PLZ also routes over the InfDB streets of its neighboring PLZ within
        ``MAX_BROWNFIELD_TRAFO_DISTANCE`` / 2 + 100 m outside its polygon, so a route may pass
        through the neighboring PLZ. Buildings and existing stations stay per PLZ; only the ways
-       touching the PLZ are saved to ``ways_result``. The strip holds every brownfield route up to
-       ``MAX_BROWNFIELD_TRAFO_DISTANCE`` whose ends lie in the PLZ (any route of length L lies within
-       L/2 of one of its ends); longer greenfield routes are not guaranteed. A configuration
+       touching the PLZ are saved to ``ways_result``. A building whose InfDB connection line ends on
+       a neighboring street (such lines are often filed under the neighboring postcode) is connected
+       there; without the switch it is usually left out as ``isolated_component``. The strip holds
+       every brownfield route up to ``MAX_BROWNFIELD_TRAFO_DISTANCE`` whose ends lie in the PLZ
+       (any route of length L lies within L/2 of one of its ends); longer greenfield routes are not
+       guaranteed. A configuration
        without the key keeps the PLZ graph (``False``); with file input (``USE_INFDB=False``) the
        switch has no effect.
      - ✓
