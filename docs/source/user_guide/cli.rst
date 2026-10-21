@@ -172,14 +172,32 @@ pylovo-classify
 
 .. code-block:: text
 
-   pylovo-classify [-h]
+   pylovo-classify [-h] [--additional-filtering | --no-additional-filtering]
+                   [--restrict-to-generated | --no-restrict-to-generated]
+                   [--auto | --manual] [--parameters NAME[,NAME...]] [--clusters KMEANS,GMM]
 
-Runs the classification of :doc:`classification` interactively: it draws the sample set of
-``CLASSIFICATION_VERSION``, generates and analyses the sample grids, filters them, chooses the
-clustering parameters and the numbers of clusters, clusters the grids and writes
-``pylovo.transformer_classified``. It takes no options and asks three yes/no questions (``y`` and
-``n`` are accepted). It needs the plotting extra (``uv run --extra plots pylovo-classify``) and
-writes the chosen parameters and numbers of clusters to ``config/config_clustering.yaml``.
+Runs the classification of :doc:`classification`: it draws the sample set of ``CLASSIFICATION_VERSION``, generates and
+analyses the sample grids, chooses the clustering parameters and the numbers of clusters, clusters the grids that the
+filters leave, writes ``pylovo.transformer_classified`` and prints the grids per stage. It asks three yes/no
+questions (``y`` and ``n`` are accepted) unless an option answers them, so a run can be scripted. It needs the
+plotting extra (``uv run --extra plots pylovo-classify``) and writes the chosen parameters, numbers of clusters and
+the filter choice to ``config/config_clustering.yaml``, keeping the comments of that file.
+
+``--additional-filtering``, ``--no-additional-filtering``
+   Also filter the grids below the four lower thresholds, or not. Default: ask.
+``--restrict-to-generated``, ``--no-restrict-to-generated``
+   Sample only PLZ that already have grids (``postcode_result``) for ``VERSION_ID``, or any PLZ of the region. Default: ask.
+``--auto``
+   Compute the clustering parameters and the numbers of clusters.
+``--manual``
+   Use ``--parameters`` and ``--clusters``. ``--auto`` and ``--manual`` exclude each other, without either the command asks.
+``--parameters NAME[,NAME...]``
+   With ``--manual``: the columns of ``clustering_parameters`` to cluster on, comma-separated.
+``--clusters KMEANS,GMM``
+   With ``--manual``: the number of clusters of k-means and of the GMM, both from ``NO_OF_CLUSTERS_ALLOWED``.
+
+The names and numbers are checked before anything runs, and an inconsistent combination of options is a usage error
+(exit code 2). A closed standard input with an open question stops the command with a message.
 
 pylovo-import
 -------------

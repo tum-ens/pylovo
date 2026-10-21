@@ -35,8 +35,8 @@ At a glance
      - Key figures per grid (:doc:`analysing_grids`).
      - ``clustering_parameters``
    * - 5
-     - Implausible grids marked as filtered.
-     - ``clustering_parameters.filtered``
+     - Implausible grids filtered, applied each time the grids are read in steps 6 and 7.
+     - ``config_clustering.yaml`` (``ADDITIONAL_FILTERING`` and the thresholds), nothing in the database
    * - 6
      - Clustering parameters chosen with a factor analysis, number of clusters chosen with the Calinski-Harabasz index.
      - ``config_clustering.yaml``
@@ -44,7 +44,8 @@ At a glance
      - Grids clustered, representative grids chosen, result written.
      - ``transformer_classified``, ``transformer_classified_with_grid``
 
-Steps 1 to 5 run in ``prepare_data_for_clustering``, step 7 in ``apply_clustering_for_visualisation``.
+Steps 1 to 4 run in ``prepare_data_for_clustering``, step 7 in ``apply_clustering_for_visualisation``. A summary of
+the grids per stage closes the run (:ref:`classification-summary`).
 
 Before you start
 ----------------
@@ -69,7 +70,8 @@ Configuration
 -------------
 
 Both files are looked up like the other YAML files (:ref:`config-file-lookup`), normally in ``./config``. Their
-values are read at import, so a changed value needs a new Python process.
+values are read at import, so a changed value needs a new Python process. ``pylovo-classify`` edits only the values
+it writes and keeps the comments and everything else in the file.
 
 ``config_classification.yaml``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -111,6 +113,11 @@ values are read at import, so a changed value needs a new Python process.
      - Columns of ``clustering_parameters`` that the clustering uses. ``pylovo-classify`` writes it.
    * - ``N_CLUSTERS_KMEANS``, ``N_CLUSTERS_GMM``
      - Number of clusters of the two algorithms. ``pylovo-classify`` writes them.
+   * - ``ADDITIONAL_FILTERING``
+     - ``true`` or ``false`` (shipped ``false``, also when the key is missing). Whether the four lower thresholds below
+       filter grids as well. The filters are applied each time the grids are read, so the notebooks and the Python
+       functions need the value of the classification they look at. ``pylovo-classify`` writes the answer to its
+       first question.
    * - ``THRESHOLD_MAX_TRAFO_DIS``
      - Always applied: grids with a path from the transformer to a house connection longer than this value (km)
        are filtered. Shipped ``2.5``.
@@ -120,8 +127,9 @@ values are read at import, so a changed value needs a new Python process.
    * - ``THRESHOLD_AVG_TRAFO_DIS``, ``THRESHOLD_NO_HOUSE_CONNECTIONS``, ``THRESHOLD_VSW_PER_BRANCH``,
        ``THRESHOLD_NO_HOUSEHOLDS``
      - Lower bounds, applied only with additional filtering. A grid below any of them is filtered. They remove the
-       small filling grids at the edge of a PLZ. The shipped values (0.115, 14.332, 0.258, 35.316) are the means
-       of k-means cluster 0 of an earlier run.
+       small filling grids at the edge of a PLZ. The shipped values (0.115, 14.332, 0.258, 35.316) are the means of
+       the four parameters over k-means cluster 0 of one classification over 100 PLZ that clustered with exactly these
+       four parameters, on grids of pylovo 0.8.0. The generator has changed since (:ref:`classification-thresholds`).
    * - ``CLUSTERING_PARAMETERS``
      - All columns that are read from the database. Leave it unchanged.
 
@@ -135,28 +143,49 @@ repository root:
 
    uv run --extra plots pylovo-classify
 
-The command takes no options. It first checks that the classification version is new, then asks three
-questions and runs without further input. Answer ``yes`` or ``no`` (``y`` and ``n`` work as well, any other
-answer is asked again):
+Without options the command first checks that the classification version is new, then asks three questions and runs
+without further input. Answer ``yes`` or ``no`` (``y`` and ``n`` work as well, any other answer is asked again).
+Every question has an option, so a run can be scripted:
 
 .. list-table::
    :header-rows: 1
-   :widths: 46 54
+   :widths: 36 28 36
    :class: fixed-table
 
    * - Question
+     - Option
      - Effect
    * - Apply additional filtering on top of the default filters?
-     - *yes* adds the four lower thresholds to the filter of step 5.
+     - ``--additional-filtering``, ``--no-additional-filtering``
+     - *yes* adds the four lower thresholds to the filters of steps 6 and 7. The answer is written as
+       ``ADDITIONAL_FILTERING``.
    * - Restrict sampling to PLZ present in postcode_result for the configured ``VERSION_ID``?
+     - ``--restrict-to-generated``, ``--no-restrict-to-generated``
      - *yes* draws only PLZ that already have grids, so step 3 generates nothing.
    * - Assign clustering parameters and number of clusters yourself?
-     - *no*: both are computed (steps 6a and 6b). *yes*: you enter the parameter names, comma-separated (columns
-       of ``clustering_parameters``, without the identifiers ``version_id``, ``plz``, ``bcid`` and ``kcid``), and two
-       cluster numbers from ``NO_OF_CLUSTERS_ALLOWED``, the first for k-means and the second for the GMM.
+     - ``--auto``, or ``--manual`` with ``--parameters`` and ``--clusters``
+     - *no* or ``--auto``: both are computed (steps 6a and 6b). *yes* or ``--manual``: the parameter names,
+       comma-separated (columns of ``clustering_parameters``, without the identifiers ``version_id``, ``plz``,
+       ``bcid`` and ``kcid``), and two cluster numbers from ``NO_OF_CLUSTERS_ALLOWED``, the first for k-means and the
+       second for the GMM. The question asks for them, the options take ``--parameters NAME[,NAME...]`` and
+       ``--clusters KMEANS,GMM``.
 
-The chosen parameters and cluster numbers are written to ``config/config_clustering.yaml`` and handed to the
-clustering step directly. The file is rewritten as a whole, so comments in it are lost.
+An option answers only its own question and the others are still asked. A run without any question:
+
+.. code-block:: bash
+
+   uv run --extra plots pylovo-classify --no-additional-filtering --restrict-to-generated \
+       --manual --parameters no_branches,avg_trafo_dis --clusters 4,5
+
+``--manual`` needs ``--parameters`` and ``--clusters`` (they need ``--manual``), and ``--auto`` and ``--manual`` exclude
+each other. The names and numbers are checked at the start, so a typo stops the command before the hours of a run.
+If standard input is closed while a question is open, the command stops with a message that points to the options.
+
+The automatic path prints the selected parameters, the Calinski-Harabasz table (best number of clusters per
+algorithm with its index) and the chosen numbers. The parameters, the numbers and ``ADDITIONAL_FILTERING`` are written
+to ``config/config_clustering.yaml`` and handed to the clustering step directly. Only these values are edited in
+the file, comments and the rest stay. A layout that this edit cannot handle (a changed key with a mapping as value) is
+reported and the file is left alone.
 
 The run stops before the first question with ``Classification version N already exists. Set a new
 CLASSIFICATION_VERSION in ... (or delete the old one with 'pylovo-delete classification').`` if the id is taken.
@@ -192,7 +221,7 @@ Digital and Transport (BMDV):
    * - 77
      - Ländliche Region, kleinstädtischer, dörflicher Raum
 
-The register has one row per PLZ and municipality. A PLZ that spans several municipalities keeps its first row.
+The register has one row per PLZ and municipality. A PLZ that spans several municipalities keeps the row with the lowest AGS.
 The pool is limited to the federal state of ``CLASSIFICATION_REGION`` (not for ``Germany``) and, if you answered
 *yes*, to PLZ with a ``postcode_result`` of ``VERSION_ID``.
 
@@ -205,8 +234,13 @@ The pool is limited to the federal state of ``CLASSIFICATION_REGION`` (not for `
 
 The result is stored in ``classification_version`` (id, comment, region, time) and ``sample_set`` (PLZ, AGS and
 the bin data). The version is registered only after the draw succeeded: if a class has fewer PLZ than its quota,
-the run stops with a message and stores nothing. The draw is random and not seeded, so ``sample_set`` is the only
-record of the sample.
+the run stops with a message and stores nothing.
+
+The draw is reproducible. The register is sorted by PLZ and AGS and the generator is seeded with
+``CLASSIFICATION_VERSION`` (a non-negative integer), so the same version, ``N_SAMPLES``, region and register (and,
+with the restriction, the same ``postcode_result``) draw the same PLZ with the same NumPy version, which does not
+guarantee the stream of its generators across versions. Another version number gives another sample. ``sample_set``
+remains the record of the sample.
 
 Steps 2 and 3: buildings and grids
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -226,16 +260,20 @@ Steps 4 and 5: key figures and filter
 
 Step 4 computes one row of ``clustering_parameters`` for every grid of every sampled PLZ
 (``ParameterCalculator.analyze_grid_parameters_for_plz``, columns in :doc:`analysing_grids`). Grids that already
-have a row are skipped. A PLZ without PLZ analysis and a grid whose calculation fails are logged and skipped.
+have a row are skipped. A PLZ without PLZ analysis and a grid whose calculation fails are logged and skipped, and the
+summary at the end counts them (:ref:`classification-summary`).
 
-Step 5 sets ``clustering_parameters.filtered``:
+Step 5 stores nothing. The filters are applied each time the grids are read, by steps 6 and 7 and by the notebooks, to
+the grids of the sampled PLZ and of ``VERSION_ID``. A grid is left out if
 
-* ``true`` for grids with ``max_trafo_dis > THRESHOLD_MAX_TRAFO_DIS``,
-* ``true`` for grids with a building of more than ``THRESHOLD_HOUSEHOLDS_PER_BUILDING`` households,
-* with additional filtering also ``true`` for grids below one of the four lower thresholds,
-* ``false`` for all other grids that have no flag yet.
+* ``max_trafo_dis > THRESHOLD_MAX_TRAFO_DIS``,
+* it has a building with more than ``THRESHOLD_HOUSEHOLDS_PER_BUILDING`` households, or
+* with ``ADDITIONAL_FILTERING`` it is below one of the four lower thresholds.
 
-Only grids with ``filtered = false`` of the sampled PLZ and of ``VERSION_ID`` enter steps 6 and 7.
+A key figure that is missing never filters a grid. The result depends only on the current key figures, the sample set
+and the two YAML files, never on earlier runs, and classifications that share grids can use different filters. This
+replaced a flag ``clustering_parameters.filtered`` that was set for the grids of all versions and classifications and
+never reset. The column still exists in the table and is no longer used.
 
 Step 6a: clustering parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -261,7 +299,7 @@ Step 6b: number of clusters
 
 The Calinski-Harabasz index (higher is better) is computed for the numbers in ``NO_OF_CLUSTERS_ALLOWED`` for
 k-means and for four GMM covariance types (full, diagonal, tied, spherical). The best number of ``kmeans`` becomes
-``N_CLUSTERS_KMEANS`` and the best of ``gmm_tied`` becomes ``N_CLUSTERS_GMM``. A line plot is drawn but not saved.
+``N_CLUSTERS_KMEANS`` and the best of ``gmm_tied`` becomes ``N_CLUSTERS_GMM``. A line plot is drawn but not saved, and the table of the best number per algorithm with its index is printed.
 The notebooks ``1_CH_index`` and ``2_DB_index`` compare the Calinski-Harabasz and the Davies-Bouldin index.
 
 Step 7: clustering and result
@@ -273,7 +311,9 @@ closest to the cluster centre. The clusters are numbered by the number of househ
 cluster 0 has the smallest representative. K-medoids was removed to avoid the ``scikit-learn-extra``
 dependency.
 
-The result is appended to ``pylovo.transformer_classified`` with the position of the transformer of every grid:
+The result is written to ``pylovo.transformer_classified`` with the position of the transformer of every grid. The rows
+of the classification are deleted and inserted in one transaction, so the step can be repeated with other parameters or
+numbers, and a failing write keeps the previous result:
 
 .. list-table::
    :header-rows: 1
@@ -296,6 +336,35 @@ The result is appended to ``pylovo.transformer_classified`` with the position of
 The materialized view ``pylovo.transformer_classified_with_grid`` adds ``version_id``, ``plz``, ``kcid``,
 ``bcid``, the transformer rating and its equipment to every row and is refreshed after the write. Add it as a
 layer in QGIS, filter on ``classification_id`` and colour by ``kmeans_clusters`` or ``gmm_clusters``.
+
+.. _classification-summary:
+
+Summary of the run
+~~~~~~~~~~~~~~~~~~
+
+At the end of the run ``report_grid_counts`` prints from the database how many grids every stage kept:
+
+.. code-block:: text
+
+   Grids of classification 9001 (VERSION_ID v1)
+     PLZ drawn                 12
+     PLZ in the sample set     11
+     Grids of these PLZ       231
+     Grids with key figures    93
+     Grids filtered            10
+       by max_trafo_dis > 2.5  10
+     Grids clustered           83
+
+and logs a ``WARNING`` for every loss that the filters do not explain:
+
+* sampled PLZ that have no grids and were removed from the sample set (step 3),
+* sampled PLZ without any grid for ``VERSION_ID``,
+* grids without key figures, split into grids of PLZ without PLZ analysis (run ``pylovo-analyze --plz <plz>``) and
+  grids whose calculation failed (details in ``log/log.txt``),
+* a mismatch between the grids that pass the filters and the grids in ``transformer_classified``.
+
+Filtered grids are listed per rule (a grid can match several) and are no warning, they are the intended filter. The
+run still ends with "Classification process completed successfully!" when grids were lost, so read the summary.
 
 Look at the result
 ------------------
@@ -351,7 +420,8 @@ extra, and their stored outputs come from an earlier run on an older pylovo vers
 Use the steps from Python
 -------------------------
 
-The command is a thin layer over these functions. They read the configuration constants once at import:
+The command is a thin layer over these functions. They read the configuration constants once at import.
+``additional_filtering=None`` (the default) means ``ADDITIONAL_FILTERING`` of ``config_clustering.yaml``:
 
 .. code-block:: python
 
@@ -359,18 +429,26 @@ The command is a thin layer over these functions. They read the configuration co
    from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
    from pylovo.classification.clustering.get_no_clusters_for_clustering import get_no_clusters_for_clustering
    from pylovo.classification.clustering.apply_clustering_for_visualisation import apply_clustering_for_visualisation
+   from pylovo.classification.clustering.report_grid_counts import report_grid_counts
 
-   prepare_data_for_clustering(additional_filtering=False, sample_from_postcode_result_only=True)  # steps 1-5
-   parameters = get_parameters_for_clustering()                # step 6a: list of column names
-   best = get_no_clusters_for_clustering(parameters)           # step 6b: algorithm, no_clusters, ch_index
-   apply_clustering_for_visualisation(                         # step 7
-       list_of_clustering_parameters=parameters, n_clusters_kmeans=5, n_clusters_gmm=4)
+   removed = prepare_data_for_clustering(sample_from_postcode_result_only=True)  # steps 1-4, returns the PLZ left out
+   parameters = get_parameters_for_clustering(additional_filtering=False)        # step 6a: list of column names
+   best = get_no_clusters_for_clustering(parameters, additional_filtering=False) # step 6b: algorithm, no_clusters, ch_index
+   apply_clustering_for_visualisation(                                           # step 7, replaces an existing result
+       list_of_clustering_parameters=parameters, n_clusters_kmeans=5, n_clusters_gmm=4, additional_filtering=False)
+   report_grid_counts(additional_filtering=False, plz_without_grids=removed)     # the summary
 
-``kmeans_clustering`` and ``gmm_tied_clustering`` in ``pylovo.classification.clustering.clustering_algorithms`` cluster any data
-frame with the key figures and return the clustered frame and the representative grids.
+``DatabaseCommunication.get_clustering_parameters_for_classification_version(additional_filtering)`` returns the grids
+that enter the clustering. ``kmeans_clustering`` and ``gmm_tied_clustering`` in
+``pylovo.classification.clustering.clustering_algorithms`` cluster any data frame with the key figures and return the
+clustered frame and the representative grids.
 
 Repeat or delete a classification
 ---------------------------------
+
+To cluster again with other parameters, numbers of clusters or filters under the same id, run steps 6 and 7 once more
+from Python (see above). Step 7 replaces the rows of the classification in one transaction. ``pylovo-classify``
+itself always starts a new classification and rejects an existing id.
 
 .. code-block:: bash
 
@@ -378,22 +456,43 @@ Repeat or delete a classification
 
 removes the classification with its sample set and its result (``ON DELETE CASCADE``) and refreshes the
 materialized view ``transformer_classified_with_grid``. The id is the integer ``CLASSIFICATION_VERSION``, and an
-unknown id is reported. The grids and their key figures stay. To cluster again with other parameters or numbers under the same id, delete the rows of
-the result and run step 7 once more:
-
-.. code-block:: sql
-
-   DELETE FROM pylovo.transformer_classified WHERE classification_id = 1;
+unknown id is reported. The grids and their key figures stay.
 
 Things to know
 --------------
 
-* The sample is drawn without a seed. Keep ``sample_set`` (or the database) as the record of the classification.
-* ``clustering_parameters.filtered`` belongs to the grid, not to the classification. The filter statements touch the grids of all
-  versions, and a flag is never reset, so a grid that an earlier run filtered stays filtered.
-* Step 7 writes once per classification id (see above for repeating it).
-* The lower filter thresholds come from an earlier run and are not re-derived for the current generator.
-  ``pylovo.classification.utils.get_average_values_clustering_parameters`` recomputes cluster means.
+* The sample is reproducible (seed and sorted register, see step 1). ``sample_set`` remains the record of it.
+* The filters are applied when the grids are read and nothing is stored. The notebooks and the Python functions use
+  ``ADDITIONAL_FILTERING`` of ``config_clustering.yaml``, which holds the choice of the last ``pylovo-classify`` run:
+  set it to the value of the classification you look at.
+* Step 7 can be repeated per classification id (see above).
+* The lower filter thresholds come from grids of pylovo 0.8.0 and are not re-derived for the current generator
+  (:ref:`classification-thresholds`).
+
+.. _classification-thresholds:
+
+The lower filter thresholds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The shipped values (0.115, 14.332, 0.258 and 35.316) are the means of ``avg_trafo_dis``, ``no_house_connections``,
+``vsw_per_branch`` and ``no_households`` over k-means cluster 0 of one classification over 100 PLZ. That
+classification clustered with exactly these four parameters and without additional filtering, on grids of pylovo 0.8.0.
+Cluster 0 is the cluster whose representative grid has the fewest households, the small filling grids. The generator
+has changed since (transformer sizing, cable catalogue, connection aggregation) and those grids are not stored, so a
+classification of today's grids gives other values. To derive them again, classify with the four parameters and
+without additional filtering and run the helper on that classification:
+
+.. code-block:: bash
+
+   uv run --extra plots pylovo-classify --no-additional-filtering --restrict-to-generated \
+       --manual --parameters avg_trafo_dis,no_house_connections,vsw_per_branch,no_households --clusters 4,4
+   uv run --extra plots python -m pylovo.classification.utils.get_average_values_clustering_parameters \
+       --classification-id 2
+
+It prints the four means as ``THRESHOLD_*`` lines for ``config_clustering.yaml`` and notes when
+``LIST_OF_CLUSTERING_PARAMETERS`` of the configuration is another list, because cluster 0 depends on the clustering
+parameters. An earlier version of the helper averaged ``LIST_OF_CLUSTERING_PARAMETERS`` (three parameters in the
+shipped file, without ``no_households``) over cluster 0 of all classifications and could not give the shipped values.
 
 Troubleshooting
 ---------------
@@ -417,8 +516,8 @@ Troubleshooting
      - Too few or degenerate grids, or a missing value in a key figure. Use a larger sample or enter parameters yourself.
    * - ``KeyError`` in step 7
      - A name in ``LIST_OF_CLUSTERING_PARAMETERS`` is not a column of ``clustering_parameters``.
-   * - Duplicate key error when writing ``transformer_classified``
-     - The classification already has a result. Delete it first (see above).
    * - Fewer grids than expected
-     - PLZ without grids or without PLZ analysis are skipped, failing grids are only logged. Check ``log/log.txt``
-       and the counts in ``grid_result``, ``plz_parameters`` and ``clustering_parameters``.
+     - Read the summary at the end of the run: it names the PLZ without grids or without PLZ analysis and the grids
+       whose calculation failed (warnings, details in ``log/log.txt``) and counts the grids per filter.
+   * - ``pylovo-classify: Unknown parameter(s): ...`` or ``All values must be in NO_OF_CLUSTERS_ALLOWED``
+     - A value of ``--parameters`` or ``--clusters`` is wrong. The command checks them before anything runs.
