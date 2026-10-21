@@ -55,8 +55,9 @@ Before you start
 * The input data of the region cover the PLZ of the sample (:doc:`input_data`). A PLZ whose generation fails,
   for example because the data do not cover it, is logged, skipped and removed from the sample set.
 * The plotting extra is installed: ``uv sync --extra plots``. The clustering helpers import matplotlib, seaborn
-  and plotly, so without the extra ``pylovo-classify`` stops at the start and asks for it. The notebooks need
-  ``--extra notebooks``. ``factor-analyzer`` and scikit-learn are core dependencies.
+  and plotly, so without the extra ``pylovo-classify`` stops at the start with a message that names the
+  missing package and the extra. The notebooks need ``--extra notebooks``. ``factor-analyzer`` and
+  scikit-learn are core dependencies.
 * The grids come from the ``VERSION_ID`` of ``config_generation_lv.yaml`` (:ref:`versions`). Its configuration
   must still match the stored snapshot, otherwise step 3 stops with ``Generation parameters differ from the
   stored snapshot``.
@@ -92,8 +93,8 @@ values are read at import, so a changed value needs a new Python process.
    * - ``NO_OF_CLUSTERS_ALLOWED``
      - Cluster numbers that the Calinski-Harabasz index compares and that manual input accepts
        (shipped ``[3, 4, 5, 6, 7]``).
-   * - ``REGION_DICT``, ``REGIOSTAR7_DICT``, ``REGIO7_REGIO5_GEM_DICT``
-     - Lookup tables (federal states, the seven RegioStaR classes, mapping to the five RegioStaR Gem classes).
+   * - ``REGION_DICT``, ``REGIO7_REGIO5_GEM_DICT``
+     - Lookup tables (federal states, mapping of the seven RegioStaR classes to the five RegioStaR Gem classes).
        Leave them unchanged.
 
 ``config_clustering.yaml``
@@ -110,8 +111,6 @@ values are read at import, so a changed value needs a new Python process.
      - Columns of ``clustering_parameters`` that the clustering uses. ``pylovo-classify`` writes it.
    * - ``N_CLUSTERS_KMEANS``, ``N_CLUSTERS_GMM``
      - Number of clusters of the two algorithms. ``pylovo-classify`` writes them.
-   * - ``N_CLUSTERS_KMEDOID``
-     - Not used any more (k-medoids was removed). The key must still exist in the file.
    * - ``THRESHOLD_MAX_TRAFO_DIS``
      - Always applied: grids with a path from the transformer to a house connection longer than this value (km)
        are filtered. Shipped ``2.5``.
@@ -136,8 +135,9 @@ repository root:
 
    uv run --extra plots pylovo-classify
 
-The command takes no options. It asks three questions and then runs without further input. Answer ``yes`` or
-``no`` (``y`` and ``n`` work as well):
+The command takes no options. It first checks that the classification version is new, then asks three
+questions and runs without further input. Answer ``yes`` or ``no`` (``y`` and ``n`` work as well, any other
+answer is asked again):
 
 .. list-table::
    :header-rows: 1
@@ -151,14 +151,15 @@ The command takes no options. It asks three questions and then runs without furt
    * - Restrict sampling to PLZ present in postcode_result for the configured ``VERSION_ID``?
      - *yes* draws only PLZ that already have grids, so step 3 generates nothing.
    * - Assign clustering parameters and number of clusters yourself?
-     - *no*: both are computed (steps 6a and 6b). *yes*: you enter the parameter names, comma-separated, and
-       three cluster numbers from ``NO_OF_CLUSTERS_ALLOWED``. The prompt still says "KMedoid, KMeans, and GMM",
-       so the first number is ignored. The second is used for k-means, the third for the GMM.
+     - *no*: both are computed (steps 6a and 6b). *yes*: you enter the parameter names, comma-separated (columns
+       of ``clustering_parameters``, without the identifiers ``version_id``, ``plz``, ``bcid`` and ``kcid``), and two
+       cluster numbers from ``NO_OF_CLUSTERS_ALLOWED``, the first for k-means and the second for the GMM.
 
 The chosen parameters and cluster numbers are written to ``config/config_clustering.yaml`` and handed to the
 clustering step directly. The file is rewritten as a whole, so comments in it are lost.
 
-The run stops immediately with ``Classification version: N already exists. Create a new one.`` if the id is taken.
+The run stops before the first question with ``Classification version N already exists. Set a new
+CLASSIFICATION_VERSION in ... (or delete the old one with 'pylovo-delete classification').`` if the id is taken.
 
 How the steps work
 ------------------
@@ -203,7 +204,9 @@ The pool is limited to the federal state of ``CLASSIFICATION_REGION`` (not for `
   sample reproduces the density distribution of the class.
 
 The result is stored in ``classification_version`` (id, comment, region, time) and ``sample_set`` (PLZ, AGS and
-the bin data). The draw is random and not seeded, so ``sample_set`` is the only record of the sample.
+the bin data). The version is registered only after the draw succeeded: if a class has fewer PLZ than its quota,
+the run stops with a message and stores nothing. The draw is random and not seeded, so ``sample_set`` is the only
+record of the sample.
 
 Steps 2 and 3: buildings and grids
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -215,7 +218,8 @@ Then ``GridGenerator.generate_grid_for_multiple_plz`` generates the grids of the
 does (:doc:`generating_grids`), in parallel worker processes (``N_JOBS_PERCENT`` of the CPU cores, independent of
 ``PARALLEL``) and with the PLZ analysis (``analyze_grids=True``). A PLZ that already has grids for ``VERSION_ID``
 is kept as it is and not analysed again, so grids that were generated without ``ANALYZE_GRIDS`` need
-``pylovo-analyze --plz <plz>`` before.
+``pylovo-analyze --plz <plz>`` before. A PLZ for which no grids could be generated is logged and removed from
+the sample set of this classification.
 
 Steps 4 and 5: key figures and filter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -248,8 +252,9 @@ Many key figures are strongly correlated, so the clustering uses a few independe
 
 The names are printed and written to ``LIST_OF_CLUSTERING_PARAMETERS``. You can overrule them: the notebook
 ``1_0_factor_analysis`` shows the loadings, and other considerations may decide. The shipped list is
-``no_house_connections``, ``vsw_per_branch`` and ``avg_trafo_dis``. It needs enough grids: a handful of grids
-from one PLZ makes the factor analysis fail.
+``no_house_connections``, ``vsw_per_branch`` and ``avg_trafo_dis``. It needs enough grids. If the factor analysis
+fails (a very small sample, or a parameter that is the same in every grid), the command stops with a message that
+names the number of grids and parameters: use a larger sample (``N_SAMPLES``) or enter the parameters yourself.
 
 Step 6b: number of clusters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -372,8 +377,8 @@ Repeat or delete a classification
    uv run pylovo-delete classification --version 1
 
 removes the classification with its sample set and its result (``ON DELETE CASCADE``) and refreshes the
-materialized view ``transformer_classified_with_grid``. The id is the integer ``CLASSIFICATION_VERSION``. The grids
-and their key figures stay. To cluster again with other parameters or numbers under the same id, delete the rows of
+materialized view ``transformer_classified_with_grid``. The id is the integer ``CLASSIFICATION_VERSION``, and an
+unknown id is reported. The grids and their key figures stay. To cluster again with other parameters or numbers under the same id, delete the rows of
 the result and run step 7 once more:
 
 .. code-block:: sql
@@ -387,12 +392,6 @@ Things to know
 * ``clustering_parameters.filtered`` belongs to the grid, not to the classification. The filter statements touch the grids of all
   versions, and a flag is never reset, so a grid that an earlier run filtered stays filtered.
 * Step 7 writes once per classification id (see above for repeating it).
-* A failing PLZ is removed from the sample set of the configured ``CLASSIFICATION_VERSION`` by every generation or
-  analysis run, not only by the classification.
-* The classification version is registered before the draw. If the draw fails (unknown region name, a class with
-  fewer PLZ than its quota), delete the version before the next try.
-* The representative grid is the grid closest to the cluster centre. With strongly overlapping Gaussian components that grid can
-  belong to another cluster. Check that every cluster id from 0 to k-1 has exactly one representative.
 * The lower filter thresholds come from an earlier run and are not re-derived for the current generator.
   ``pylovo.classification.utils.get_average_values_clustering_parameters`` recomputes cluster means.
 
@@ -406,16 +405,15 @@ Troubleshooting
 
    * - Message or symptom
      - Cause and remedy
-   * - ``pylovo-classify`` stops at the start and asks for the plotting extra
-     - Install it: ``uv sync --extra plots``.
-   * - ``Classification version: N already exists. Create a new one.``
+   * - ``pylovo-classify needs the plotting packages of the 'plots' extra``
+     - Install it: ``uv sync --extra plots``, or start the command with ``uv run --extra plots pylovo-classify``.
+   * - ``Classification version N already exists. Set a new CLASSIFICATION_VERSION in ...``
      - Set a new id in ``config_classification.yaml`` or run ``pylovo-delete classification --version N``.
    * - ``Generation parameters differ from the stored snapshot``
      - The generation configuration changed since ``VERSION_ID`` was created (:ref:`versions`).
-   * - ``Cannot take a larger sample than population when 'replace=False'``
-     - A class quota exceeds the PLZ of that class. Lower ``N_SAMPLES`` or widen the pool. Delete the half-created
-       version first.
-   * - ``array must not contain infs or NaNs`` or ``Input X contains NaN`` in step 6
+   * - ``RegioStaR class <c>: <n> PLZ requested but only <m> available``
+     - A class quota exceeds the PLZ of that class. Lower ``N_SAMPLES`` or widen the pool. Nothing was stored.
+   * - ``Automatic parameter selection failed for <n> grids and <k> parameters``
      - Too few or degenerate grids, or a missing value in a key figure. Use a larger sample or enter parameters yourself.
    * - ``KeyError`` in step 7
      - A name in ``LIST_OF_CLUSTERING_PARAMETERS`` is not a column of ``clustering_parameters``.
