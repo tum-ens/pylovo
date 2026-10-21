@@ -159,7 +159,9 @@ postcode that is already analysed is skipped.
    Postcode key figures followed by the per-grid key figures.
 ``--coverage``
    Account for every source building of the postcodes (in a grid, left out with a reason, or
-   missing) and write CSV and JSON reports. Exits with 3 if any building is missing.
+   missing) and write CSV and JSON reports. Exits with 3 if any building is missing or both in a
+   grid and recorded as left out; stored buildings without a source building (``not_in_source``)
+   do not fail it (:doc:`analysing_grids`).
 ``--border-diagnostics``
    Report the postcode-border and data-edge context of the postcodes and their grids.
 ``--version-id VERSION_ID``, ``--output OUTPUT``

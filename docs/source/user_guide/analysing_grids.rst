@@ -223,8 +223,12 @@ database:
     A PLZ that got no grid at all still stores the exclusions of its buildings.
     A ``buildings_result`` or ``building_exclusion`` row without a source building is reported as
     ``not_in_source``, a building that is both in a grid and excluded as ``generated_and_excluded``.
-    If any building is missing, the command prints their number and exits with code 3; a
-    complete run exits with 0 (only ``missing`` counts). The reports are written either way.
+    If any building is ``missing`` or ``generated_and_excluded`` (inconsistent records of the
+    version), the command prints their number and exits with code 3. ``not_in_source`` and
+    ``postcode_not_generated`` do not fail the command: stored rows without a source building
+    appear when the source data or its filters changed after the generation (for example for a
+    version generated with an older pylovo), and failed or empty PLZ are reported by
+    ``pylovo-generate`` (exit 4). The reports are written either way.
 
 ``--border-diagnostics``
     Per PLZ the share of its polygon inside the InfDB import scope (``scope_share``), the share of

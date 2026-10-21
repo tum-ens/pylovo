@@ -189,6 +189,24 @@ def test_the_coverage_option_exits_with_three_only_when_source_buildings_are_mis
 
 
 # --- border diagnostics ---------------------------------------------------------------------------------------------------
+@pytest.mark.parametrize("status, fails", [("missing", True), ("generated_and_excluded", True),
+                                          ("not_in_source", False), ("postcode_not_generated", False)])
+def test_missing_and_inconsistent_buildings_fail_the_coverage_but_rows_without_source_do_not(
+        monkeypatch, clients, tmp_path, capsys, status, fails):
+    buildings = pd.DataFrame({"objectid": ["A", "B"], "status": ["generated", status], "reason": [None, None]})
+    monkeypatch.setattr(coverage, "reconcile_coverage", lambda *args: (buildings, pd.DataFrame({"buildings": [2]})))
+    monkeypatch.setattr(sys, "argv", ["pylovo-analyze", "--plz", "80331", "--coverage", "--output", str(tmp_path)])
+
+    assert analyze.run_diagnostics([80331], True, False, "9", tmp_path) == int(fails)
+    if fails:
+        with pytest.raises(SystemExit) as stopped:
+            analyze.main()
+        assert stopped.value.code == analyze.EXIT_INCOMPLETE
+    else:
+        analyze.main()
+    assert ("no source building" in capsys.readouterr().err) == (status == "not_in_source")
+
+
 def test_the_postcode_context_gives_the_scope_shares_and_the_street_lengths():
     polygon = box(0, 0, 1000, 1000)
     infdb = Infdb(scope=box(-5000, -5000, 500, 5000), streets=(1.5, 0.5))

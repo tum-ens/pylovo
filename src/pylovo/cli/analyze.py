@@ -17,8 +17,13 @@ from pylovo.cli import parsers
 from pylovo.cli.parsers import DEFAULT_OUTPUT
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 
-#: Exit code of ``--coverage`` when source buildings are missing.
+#: Exit code of ``--coverage`` when buildings have a failing status (:data:`FAILING_COVERAGE_STATUSES`).
 EXIT_INCOMPLETE = 3
+#: Statuses that fail ``--coverage``: source buildings in no grid and not recorded as left out (``missing``), and
+#: buildings in a grid that are also recorded as left out (inconsistent records of the version). Stored rows
+#: without a source building (``not_in_source``: the source data or its filters changed after the generation)
+#: and PLZ without results (``postcode_not_generated``) are reported but do not fail.
+FAILING_COVERAGE_STATUSES = ("missing", "generated_and_excluded")
 
 
 def analyze_plz(plz: int) -> bool:
@@ -53,7 +58,11 @@ def analyze_grid(plz: int) -> bool:
 
 def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_id: str | None,
                     output: Path) -> int:
-    """Write the coverage and/or border reports of ``plz_list`` to ``output``; return the number of missing buildings."""
+    """Write the coverage and/or border reports of ``plz_list`` to ``output``.
+
+    Returns:
+        The number of buildings with a status in :data:`FAILING_COVERAGE_STATUSES` (0 without ``coverage``).
+    """
     from pylovo.analysis import border_diagnostics
     from pylovo.analysis.coverage import coverage_totals, reconcile_coverage
     from pylovo.config_loader import VERSION_ID
@@ -63,7 +72,7 @@ def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_i
     version_id = version_id or VERSION_ID
     output.mkdir(parents=True, exist_ok=True)
     report = {"version_id": version_id, "plz": plz_list}
-    missing = 0
+    failing = not_in_source = 0
     with DatabaseClient() as dbc:
         inf_dbc = InfdbClient()
         try:
@@ -72,7 +81,8 @@ def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_i
                 buildings.to_csv(output / f"coverage_buildings_{version_id}.csv", index=False)
                 summary.to_csv(output / f"coverage_summary_{version_id}.csv", index=False)
                 report["coverage"] = coverage_totals(buildings)
-                missing = int(report["coverage"].get("missing", 0))
+                failing = sum(int(report["coverage"].get(status, 0)) for status in FAILING_COVERAGE_STATUSES)
+                not_in_source = int(report["coverage"].get("not_in_source", 0))
             if border:
                 context = border_diagnostics.postcode_context(dbc, inf_dbc, plz_list)
                 grids = border_diagnostics.grid_edges(dbc, inf_dbc, plz_list, version_id)
@@ -88,7 +98,10 @@ def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_i
         json.dumps(report, indent=2, default=str, allow_nan=False) + "\n")
     print(json.dumps({key: value for key, value in report.items() if key != "postcodes"}, indent=2, default=str,
                      allow_nan=False))
-    return missing
+    if not_in_source:
+        print(f"Note: {not_in_source} stored buildings have no source building (the source data or its filters "
+              "changed after the generation); they do not fail the coverage", file=sys.stderr)
+    return failing
 
 
 def ignored_options(args: argparse.Namespace) -> list[str]:
@@ -116,10 +129,11 @@ def main():
 
     try:
         if args.coverage or args.border_diagnostics:
-            missing = run_diagnostics(args.plz, args.coverage, args.border_diagnostics, args.version_id,
+            failing = run_diagnostics(args.plz, args.coverage, args.border_diagnostics, args.version_id,
                                       Path(args.output))
-            if missing:
-                print(f"✗ {missing} source buildings are neither in a grid nor recorded as left out")
+            if failing:
+                print(f"✗ {failing} buildings are missing (in no grid and not recorded as left out) or both in a "
+                      "grid and recorded as left out")
                 sys.exit(EXIT_INCOMPLETE)
             return
         plz_analysis = args.all or not args.per_grid     # --all: the PLZ analysis, then per grid

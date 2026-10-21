@@ -6,10 +6,12 @@ same filters). A building is
 * ``generated``: in ``buildings_result`` of the version (in any PLZ's grid),
 * ``excluded``: in ``building_exclusion`` with the step that left it out,
 * ``postcode_not_generated``: its PLZ has no results in the version (failed or not run; a PLZ without grids keeps its exclusions),
-* ``missing``: none of these, which a complete run must not have.
+* ``missing``: none of these, which a complete run must not have,
+* ``generated_and_excluded``: in a grid and in ``building_exclusion``, which a consistent version must not have.
 
 Rows of ``buildings_result``/``building_exclusion`` without an eligible source building are reported as
-``not_in_source`` (the source changed or the filters differ).
+``not_in_source`` (the source changed or the filters differ). ``pylovo-analyze --coverage`` fails (exit 3) on
+``missing`` and ``generated_and_excluded`` only.
 """
 from __future__ import annotations
 

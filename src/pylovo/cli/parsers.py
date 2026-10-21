@@ -158,7 +158,8 @@ Examples:
     parser.add_argument(
         "--coverage",
         action="store_true",
-        help="Account for every source building (in a grid, left out with a reason, or missing); exit 3 if any is missing"
+        help="Account for every source building (in a grid, left out with a reason, or missing); exit 3 if any is "
+             "missing or both in a grid and recorded as left out"
     )
 
     parser.add_argument(
