@@ -66,7 +66,7 @@ BEGIN
         ON temp_transformer_connection_candidates_infdb USING GIST (connection_point);
 
     -- Insert transformer connection lines. If close to endpoints, no split is needed.
-    FOR r IN SELECT * FROM temp_transformer_connection_candidates_infdb
+    FOR r IN SELECT * FROM temp_transformer_connection_candidates_infdb ORDER BY objectid
     LOOP
         IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
             final_geom := ST_MakeLine(r.centroid, ST_StartPoint(r.old_geom));
@@ -96,7 +96,7 @@ BEGIN
     GROUP BY old_way_id, old_geom;
 
     -- Split ways at transformer connection points.
-    FOR s IN SELECT * FROM grouped_splits LOOP
+    FOR s IN SELECT * FROM grouped_splits ORDER BY old_way_id LOOP
         DELETE FROM ways_tem WHERE way_id = s.old_way_id;
 
         FOR part IN SELECT * FROM split_way_at_connection_points(s.old_geom, s.connection_points)
