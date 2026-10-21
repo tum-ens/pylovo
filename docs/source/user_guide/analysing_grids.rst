@@ -164,7 +164,8 @@ One row per grid (``grid_result_id``), computed by
    * - ``cable_length_km``, ``cable_len_per_house``
      - Installed cable length in km (``length_km`` × ``parallel``) and length per consumer.
    * - ``max_power_mw``, ``simultaneous_peak_load_mw``
-     - Installed power and coincident peak load of the grid.
+     - Installed power and coincident peak load of the grid in MW, the latter from the grid's own
+       loads with the formula of ``sim_peak_load_per_trafo``.
    * - ``resistance``, ``reactance``, ``ratio``, ``vsw_per_branch``, ``max_vsw_of_a_branch``
      - Path-impedance proxies weighted with household equivalents
        (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_impedance_metrics`);

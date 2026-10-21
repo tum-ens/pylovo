@@ -105,7 +105,7 @@ def test_clustering_metrics_of_a_pylovo_grid():
     assert metrics["transformer_mva"] == pytest.approx(0.4)
     # routed distances from the busbar to the four consumers, in km: 0.160, 0.162, 0.171, 0.173
     assert metrics["max_trafo_dis"] == pytest.approx(0.173) and metrics["avg_trafo_dis"] == pytest.approx(0.1665)
-    assert metrics["simultaneous_peak_load_mw"] == 0.0           # no per-transformer statistics of the PLZ yet
+    assert metrics["simultaneous_peak_load_mw"] == pytest.approx(coincident(4, 68.0) / 1000)    # the grid's own loads
     assert metrics["ratio"] == pytest.approx(metrics["resistance"] / metrics["reactance"])
     assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"])         # one branch
 
@@ -247,23 +247,13 @@ def test_a_cable_distribution_cabinet_is_expanded_into_its_outgoing_feeders():
     assert feeders(net, bus, bus_type_config=cabinet_config, expand_kvs=False) == 1
 
 
-# --- the lookup of the coincident peak load in the lists of the PLZ ----------------------------------------------------
-def lists(distances_m, loads_kw, size="400"):
-    return [{}, {}, {size: loads_kw}, {size: distances_m}, {size: [0.0] * len(distances_m)}]
-
-
-def test_the_peak_load_is_looked_up_by_station_rating_and_maximum_distance():
-    pc = calculator(lists([120.0, 173.0, 240.0], [20.0, 27.0, 35.0]))
-    assert pc.lookup_simultaneous_peak_load(0.4, 0.173) == pytest.approx(0.027)      # kW in the list, MW returned
-    assert pc.lookup_simultaneous_peak_load(0.4, 0.150) == 0.0                       # no grid with that distance
-    assert pc.lookup_simultaneous_peak_load(0.63, 0.173) == 0.0                      # no bucket of that rating
-
-
-def test_without_a_plz_the_peak_load_lookup_returns_zero_and_warns(caplog):
-    pc = calculator(lists([173.0], [27.0]), plz=None)
-    with caplog.at_level(logging.WARNING, logger=LOGGER.name):
-        assert pc.lookup_simultaneous_peak_load(0.4, 0.173) == 0.0
-    assert any("calculator.plz is unset" in message for message in caplog.messages)
+# --- the coincident peak load of a grid ---------------------------------------------------------------------------------
+def test_the_coincident_peak_load_applies_the_simultaneity_per_category():
+    net, pc = build(), calculator()
+    assert pc.calculate_simultaneous_peak_load(net) == pytest.approx(coincident(4, 68.0))       # kW
+    pp.create_load(net, net.load.at[net.load.index[0], "bus"], 0.005, max_p_mw=0.02, category="Commercial",
+                   load_units=1.0)                                                   # one shop: its full 20 kW
+    assert pc.calculate_simultaneous_peak_load(net) == pytest.approx(coincident(4, 68.0) + 20.0)
 
 
 # --- the per-transformer analysis of a PLZ, on nets stored as JSON and read back -----------------------------------------
@@ -319,21 +309,19 @@ def test_a_grid_that_cannot_be_read_or_has_no_loads_is_left_out_of_the_lists():
     assert inserted["loads"] == {"400": [pytest.approx(coincident(4, 68.0))]}
 
 
-def test_a_grid_is_looked_up_in_the_lists_of_its_own_rating_and_distance():
+def test_the_peak_load_of_a_grid_is_its_entry_in_the_per_transformer_lists():
     stored = {(1, i): build(kva=400, load_kw=17.0 + i) for i in (1, 2, 3)}
     for (_, i), net in stored.items():
         net.line["length_km"] = net.line["length_km"] * (1 + 0.37 * i)               # different distances
     inserted = analyse(stored)
-    data = [{}, {}, inserted["loads"], inserted["max"], inserted["avg"]]
 
-    for (kcid, bcid), net in stored.items():
+    for position, (kcid, bcid) in enumerate(stored):
         reloaded = Client(stored).read_net_db(1, kcid, bcid)
-        peak = compute_clustering_metrics(calculator(data), reloaded)["simultaneous_peak_load_mw"]
+        peak = compute_clustering_metrics(calculator(), reloaded)["simultaneous_peak_load_mw"]
         assert peak == pytest.approx(coincident(4, 4 * (17.0 + bcid)) / 1000)
+        assert peak * 1000 == pytest.approx(inserted["loads"]["400"][position])
 
 
-@pytest.mark.xfail(strict=True, reason="ANALYSIS-10: two grids of one PLZ with the same rating and maximum distance "
-                                       "get the peak load of the first one (exact float lookup, first match wins)")
 def test_two_grids_with_equal_rating_and_distance_but_different_loads_get_their_own_peak_load():
     small, large = build(), build(load_kw=51.0)                                      # the same geometry, 3 x the load
     inserted = analyse({(1, 1): small, (1, 2): large})

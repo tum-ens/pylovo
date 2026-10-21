@@ -268,7 +268,7 @@ class ParameterCalculator:
             ``"not_analysed"`` if the PLZ-level parameters are missing (nothing is done), else ``"analysed"``.
 
         Note:
-            Ensures PLZ-level metrics exist first (used for per-PLZ lookups).
+            Runs only after the PLZ-level analysis (:meth:`analyze_parameters_for_plz`).
         """
         if plz is None:
             raise ValueError("analyze_grid_parameters_for_plz requires an explicit PLZ value.")
@@ -797,48 +797,25 @@ class ParameterCalculator:
     # Shared Lookups And Single-Grid Accessors
     # -------------------------------------------------------------------------
 
-    def lookup_simultaneous_peak_load(self, transformer_mva: float, max_trafo_dis: float) -> float:
-        """Lookup coincident peak load for a transformer size and max path distance.
+    def calculate_simultaneous_peak_load(self, pandapower_net: pp.pandapowerNet) -> float:
+        """Coincident peak load of a grid in kW: simultaneity per consumer category, then summed.
 
-        Args:
-            transformer_mva (float): Transformer rating in MVA.
-            max_trafo_dis (float): Maximum distance from transformer to any load in km.
-
-        Returns:
-            float: Simultaneous peak load in MW.
+        Per category (Residential, Commercial, Public) ``utils.category_simultaneous_load`` of the
+        installed power (``max_p_mw``) and the number of units (``load_units``: households of
+        residential loads, one per non-residential load) with the ``SIM_FACTOR`` of the category.
         """
-        if self.plz is None:
-            self.dbc.logger.warning(
-                "Skipping simultaneous peak-load lookup because calculator.plz is unset. "
-                f"Returning 0.0 for {self._calculator_context()}."
-            )
-            return 0.0
-
-        data_list, _, _ = self.dbc.read_per_trafo_dict(self.plz)
-        transformer_type_str = str(int(round(transformer_mva * 1000)))
-        max_trafo_distance_list = data_list[3].get(transformer_type_str, [])
-
-        if not max_trafo_distance_list:
-            self.dbc.logger.debug(
-                "No transformer-distance lookup bucket found for transformer %s kVA in PLZ %s.",
-                transformer_type_str,
-                self.plz,
-            )
-            return 0.0
-
-        target_dist = max_trafo_dis * 1000
-        if target_dist in max_trafo_distance_list:
-            sim_load_index = max_trafo_distance_list.index(target_dist)
-            simultaneous_peak_load_mw = data_list[2][transformer_type_str][sim_load_index] / 1000
-            return simultaneous_peak_load_mw
-
-        self.dbc.logger.debug(
-            "No simultaneous peak-load match for transformer %s kVA at %.2f m in PLZ %s.",
-            transformer_type_str,
-            target_dist,
-            self.plz,
-        )
-        return 0.0
+        loads = self._categorised_loads(pandapower_net)
+        sim_peak_load = 0.0
+        for cat in ("Residential", "Commercial", "Public"):
+            load_subset = loads[loads["analysis_category"] == cat]
+            category_count = load_subset["load_units"].sum()
+            if category_count > 0:
+                sim_peak_load += utils.category_simultaneous_load(
+                    installed_power=load_subset["max_p_mw"].sum() * 1000.0,
+                    load_count=category_count,
+                    sim_factor=SIM_FACTOR.get(cat, 1.0)
+                )
+        return sim_peak_load
 
     def get_transformer_power(self, pandapower_net: pp.pandapowerNet) -> float:
         """Return the station rating in MVA for a grid with exactly one LV transformer element.
@@ -1804,20 +1781,7 @@ class ParameterCalculator:
             except Exception:
                 continue
 
-            loads = self._categorised_loads(net)
-
-            # Coincident peak load: simultaneity per category, then summed.
-            sim_peak_load = 0.0
-            for cat in ("Residential", "Commercial", "Public"):
-                load_subset = loads[loads["analysis_category"] == cat]
-                category_count = load_subset["load_units"].sum()
-                sum_load = load_subset["max_p_mw"].sum() * 1000.0
-                if category_count > 0:
-                    sim_peak_load += utils.category_simultaneous_load(
-                        installed_power=sum_load,
-                        load_count=category_count,
-                        sim_factor=SIM_FACTOR.get(cat, 1.0)
-                    )
+            sim_peak_load = self.calculate_simultaneous_peak_load(net)
 
             if trafo_distance_to_buses_km:
                 avg_distance_m = (sum(trafo_distance_to_buses_km) / len(trafo_distance_to_buses_km)) * 1000.0

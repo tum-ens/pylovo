@@ -260,8 +260,9 @@ def compute_comparison_parameters(
 def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandapowerNet) -> Dict[str, Any]:
     """Compute the clustering parameter set of one synthetic LV grid.
 
-    ``simultaneous_peak_load_mw`` is looked up in the PLZ-level transformer statistics of
-    ``calculator.plz``; it is 0.0 if the PLZ analysis has not run or has no matching entry.
+    ``simultaneous_peak_load_mw`` is the coincident peak load of the grid's own loads, with the
+    formula of the PLZ-level transformer statistics
+    (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_simultaneous_peak_load`).
 
     Args:
         calculator: Calculator with the PLZ context of the grid.
@@ -293,7 +294,7 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
 
     transformer_mva = calculator.get_transformer_power(net)
     house_distance_km = calculator.calculate_average_house_distance(net)
-    simultaneous_peak_load_mw = calculator.lookup_simultaneous_peak_load(transformer_mva, max_trafo_dis)
+    simultaneous_peak_load_mw = calculator.calculate_simultaneous_peak_load(net) / 1000.0
 
     (
         max_no_of_households_of_a_branch,
