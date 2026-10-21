@@ -2,7 +2,6 @@
 (once every planning module is present) a synthetic district end to end."""
 from __future__ import annotations
 
-import importlib.util
 import sys
 import types
 
@@ -217,7 +216,6 @@ def test_planner_is_pure():
 
 
 # ---------------------------------------------------------------------------------------------- end to end
-REAL = ("graph", "topology", "rings", "solvers", "electrical", "coincidence", "equipment")
 
 
 def synthetic_district() -> DistrictInput:
@@ -269,8 +267,6 @@ def synthetic_district() -> DistrictInput:
                          edge_geometry=lambda ids: {int(i): geoms[int(i)] for i in ids})
 
 
-@pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),
-                    reason="needs every planning module (WP3-WP10)")
 def test_plan_district_end_to_end_on_a_synthetic_district():
     inp = synthetic_district()
     plan = planner.plan_district(inp)
@@ -287,8 +283,6 @@ def test_plan_district_end_to_end_on_a_synthetic_district():
     assert [r.members for r in again.topology.rings] == [r.members for r in topo.rings]   # deterministic
 
 
-@pytest.mark.skipif(any(importlib.util.find_spec(f"pylovo.mv_grid.{m}") is None for m in REAL),
-                    reason="needs every planning module (WP3-WP10)")
 def test_a_ten_kv_district_of_an_auto_variant_uses_its_own_types():
     """MV_NOMINAL_VOLTAGE_KV auto: the district voltage decides the cables, the nets and the HV/MV transformers."""
     import dataclasses

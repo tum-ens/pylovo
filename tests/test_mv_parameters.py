@@ -560,10 +560,6 @@ def test_from_config_reads_the_shipped_defaults(equipment, monkeypatch):
 
 def test_snapshot_with_the_pandapower_types():
     """With the real equipment module: the default types (the most used German MV conductors) and the round trip."""
-    try:
-        import pylovo.mv_grid.equipment  # noqa: F401
-    except Exception as exc:          # not there yet (or not importable)
-        pytest.skip(f"pylovo.mv_grid.equipment not available: {exc!r}")
     params = MvParameters()
     cable, overhead = params.cable, params.overhead
     assert cable.name == "NA2XS2Y 1x240 RM/25 12/20 kV" and cable.kind == "cable"

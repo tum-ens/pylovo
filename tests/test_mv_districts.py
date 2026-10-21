@@ -1,7 +1,7 @@
 """MV supply areas (pylovo.mv_grid.districts): routed assignment, overload report and the nominal voltage.
 
 DB-free. The weighted graph Voronoi of pylovo.mv_grid.graph is replaced by a small brute-force fake with the
-same contract (one Dijkstra per site); one test compares with the real module when it is importable.
+same contract (one Dijkstra per site); one test compares with the real module.
 """
 from __future__ import annotations
 
@@ -193,12 +193,7 @@ def test_input_checks():
 
 
 def test_routed_assignment_with_the_graph_module(monkeypatch):
-    try:
-        graph = importlib.import_module("pylovo.mv_grid.graph")
-    except ImportError:
-        pytest.skip("pylovo.mv_grid.graph is not available")
-    if not hasattr(graph, "graph_voronoi") or not hasattr(graph, "region_csr"):
-        pytest.skip("pylovo.mv_grid.graph has no graph_voronoi")
+    graph = importlib.import_module("pylovo.mv_grid.graph")
     rng = np.random.default_rng(7)
     side = 12
     ids = np.arange(side * side).reshape(side, side) + 500

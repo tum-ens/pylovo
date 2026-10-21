@@ -354,7 +354,8 @@ def test_drops_agree_with_pandapower_on_a_20_kv_ring():
     """A 10-station 20 kV ring of the standard cable: the analytic drops and currents of the normal case and of
     both (n-1) cases are within 0.2 percentage points of a pandapower power flow (busbar at 1.02 p.u., cable
     charging included). Additive loads, so both sides see the same section loads."""
-    pp = pytest.importorskip("pandapower")
+    import pandapower as pp
+
     rng = np.random.default_rng(42)
     k, pf = 10, 0.95
     loads = rng.uniform(500.0, 1300.0, k)                         # kW, about 9 MW per ring

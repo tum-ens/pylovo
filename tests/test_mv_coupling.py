@@ -7,7 +7,6 @@ import importlib
 import json
 import math
 import sys
-import time
 
 import numpy as np
 import pandapower as pp
@@ -324,15 +323,21 @@ def _lv_bus_voltages(net: pp.pandapowerNet, gid: int) -> np.ndarray:
     return net.res_bus.loc[rows, "vm_pu"].to_numpy()
 
 
-def test_forty_lv_nets_merge_fast_and_equal_separate_lv_flows():
+def test_forty_lv_nets_are_merged_in_bulk_and_equal_separate_lv_flows(monkeypatch):
     lv_nets = {gid: make_lv_net(gid, households=20 + gid % 7 * 5, commercial_kw=40.0 + gid % 5 * 15)
                for gid in range(1, 41)}
     inp, plan = make_district(lv_nets, [list(range(1, 21)), list(range(21, 41))], spacing=150.0)
     design = electrical.build_design_net(inp, plan)
     frames = frames_for(design, lv_nets)
-    start = time.perf_counter()
-    net = coupling.couple_lv_nets(design, frames, inp.vn_kv)
-    assert time.perf_counter() - start < 1.0
+    created = []
+    with monkeypatch.context() as patch:   # a bulk concat creates no element one by one (which was the slow way)
+        for name in ("create_bus", "create_buses", "create_line", "create_line_from_parameters", "create_lines",
+                     "create_transformer", "create_transformer_from_parameters", "create_load", "create_loads"):
+            patch.setattr(pp, name, lambda *args, _name=name, **kwargs: created.append(_name))
+        net = coupling.couple_lv_nets(design, frames, inp.vn_kv)
+    assert created == []
+    assert len(net.bus) == len(design.bus) + sum(len(lv_net.bus) - 1 for lv_net in lv_nets.values())
+    assert len(net.trafo) == len(design.trafo) + len(lv_nets)
     coupling.set_lv_taps(net, {gid: (-1 if gid % 3 == 0 else 0) for gid in lv_nets})
     pp.runpp(net)
     assert net.converged
