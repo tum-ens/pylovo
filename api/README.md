@@ -1,16 +1,16 @@
 # pylovo-api
 
-`pylovo-api` is the headless HTTP API of pylovo (FastAPI). It covers the whole workflow except
-classification and the MV stage: set up the database, pick regions, prepare transformer data, edit
-the generation config, generate grids and inspect the results (statistics, grid detail,
-diagnostics, power flow, load editing). Long or database-writing steps run the existing
-`pylovo-*` commands as background jobs with live logs. The MV stage is a command-line workflow
-(`pylovo-mv`, `config_generation_mv.yaml`): a generation job passes `--no-mv`, so
+`pylovo-api` is the headless HTTP API of pylovo (FastAPI) for browser clients and scripts. It covers
+the whole workflow except classification and the MV stage: set up the database, pick regions,
+prepare transformer data, edit the generation config, generate grids and inspect the results
+(statistics, grid detail, diagnostics, power flow, load editing). Long or database-writing steps run
+the existing `pylovo-*` commands as background jobs with live logs. The MV stage is a command-line
+workflow (`pylovo-mv`, `config_generation_mv.yaml`): a generation job passes `--no-mv`, so
 `MV_GRID_GENERATION` has no effect on runs started through the API.
 
-**The browser UI lives in GridPlanner.** GridPlanner serves the UI and puts this API behind a
-reverse proxy (`/pylovo/api/*` → `pylovo-api:/api/*`). pylovo itself serves no page, no static
-files and no plugins.
+`pylovo-api` serves no page, no static files and no plugins: a browser client comes from its own
+server, usually next to this API behind a reverse proxy (see below). The read-only map viewer
+`pylovo-viewer` (`viewer/`) is a separate server that reads the database itself.
 
 ## Run it
 
@@ -93,7 +93,7 @@ user management.
 
 ## Contract
 
-The GridPlanner UI relies on this API. The rules:
+Clients rely on this API. The rules:
 
 * **Routes are stable.** Paths, methods, parameters and response shapes stay as they are,
   including the `X-Pylovo-UI` header, the `Host` allowlist, the Server-Sent Events of
@@ -102,7 +102,7 @@ The GridPlanner UI relies on this API. The rules:
   `{"ok": true, "service": "pylovo-api", "api": 2, "version": "<pylovo version>", "revision": "<git sha or null>"}`.
   `api` is the contract version `API_VERSION` in `pylovo_api/__init__.py` (also `info.version` of
   the schema; 2 at the time of writing). Bump it only for breaking changes (a removed or renamed route, parameter or
-  response field, a new required parameter); the UI refuses API versions it does not know.
+  response field, a new required parameter); a client can refuse an API version it does not know.
   `revision` is `$PYLOVO_REVISION` or `git rev-parse HEAD` of the checkout.
 * **`api/openapi.json`** is the committed OpenAPI snapshot (FastAPI's schema with sorted keys).
   After changing a route, rewrite it and commit it with the change:
@@ -209,8 +209,7 @@ PYLOVO_API_TEST_DATABASE=<sandbox db> uv run --extra api --extra plots pytest  #
 ```
 
 The database tests only run when the variable names the database of the project's `.env` (use a
-sandbox: they insert and delete a manual transformer and apply and undo load edits). The browser
-tests (static JS checks, Playwright walk-throughs) live in GridPlanner.
+sandbox: they insert and delete a manual transformer and apply and undo load edits).
 
 ## Known limitations
 

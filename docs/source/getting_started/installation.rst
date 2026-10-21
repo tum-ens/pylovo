@@ -74,8 +74,7 @@ Optional dependency groups (extras):
      - Building this documentation
    * - ``api``
      - FastAPI, uvicorn, python-multipart, httpx
-     - ``pylovo-api`` (:doc:`../user_guide/http_api`) for the GridPlanner
-       :doc:`../user_guide/browser_ui`
+     - ``pylovo-api`` (:doc:`../user_guide/http_api`), the HTTP API for browser clients and scripts
    * - ``legacy-ui``
      - Flask
      - The browser map ``pylovo-import transformers-ui`` for checking and editing transformer positions

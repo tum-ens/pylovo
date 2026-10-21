@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> None:
     """Parse arguments, switch to the project root and run the web server."""
     parser = argparse.ArgumentParser(
         prog="pylovo-api",
-        description="Headless HTTP API for pylovo (used by the GridPlanner UI): set up the database, prepare "
+        description="Headless HTTP API of pylovo for browser clients and scripts: set up the database, prepare "
                     "transformer data, edit the generation config, generate grids and inspect the results.",
         epilog="The API can drop database schemas and delete results. It binds to 127.0.0.1 by default; "
                "only use --host 0.0.0.0 on a trusted network. Requests need a Host name of localhost, the --host "

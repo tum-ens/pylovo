@@ -40,7 +40,7 @@ the reasons are in the log (``Skipped PLZ <plz> due to generation error.``, :doc
    * - ``pylovo-delete``
      - Delete versions, postcodes, transformer candidates or classifications.
    * - ``pylovo-api``
-     - Start the HTTP API of the GridPlanner UI (:doc:`http_api`).
+     - Start the headless HTTP API for browser clients and scripts (:doc:`http_api`).
 
 pylovo-setup
 ------------
@@ -318,8 +318,8 @@ pylovo-api
 
    pylovo-api [-h] [--host HOST] [--port PORT] [--root ROOT] [--log-level LEVEL] [--allowed-host HOST]
 
-Starts the headless HTTP API that the GridPlanner UI uses (:doc:`http_api`). It needs the extra
-``api``. It runs the other commands as jobs, so it has no generation options of its own.
+Starts the headless HTTP API of pylovo for browser clients and scripts (:doc:`http_api`). It needs
+the extra ``api``. It runs the other commands as jobs, so it has no generation options of its own.
 
 ``--host HOST``, ``--port PORT``
    Interface and port to bind (default ``127.0.0.1`` and ``8765``). ``0.0.0.0`` or ``::`` makes the API

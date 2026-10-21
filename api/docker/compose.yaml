@@ -1,8 +1,7 @@
 # Run pylovo-api in a container next to an existing database (e.g. InfDB):
 #   PYLOVO_REVISION=$(git rev-parse HEAD) docker compose -f api/docker/compose.yaml up --build
 # Then check http://127.0.0.1:18765/api/health. The API uses the .env, config/ and data/ of this
-# checkout; the browser UI is GridPlanner's. PYLOVO_REVISION is what /api/health reports as the
-# revision (without it: null).
+# checkout. PYLOVO_REVISION is what /api/health reports as the revision (without it: null).
 #
 # The mounted files and folders must exist before the first start: a `.env` with the database
 # settings (cp .env.example .env, then edit it) and `mkdir -p .pylovo-api log`. Otherwise compose

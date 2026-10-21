@@ -1,6 +1,6 @@
 """The OpenAPI contract snapshot ``api/openapi.json``.
 
-The GridPlanner UI relies on the routes, parameters and response shapes of this API. The
+Clients rely on the routes, parameters and response shapes of this API. The
 snapshot is FastAPI's schema with sorted keys, so a change of the API shows up as a readable
 diff: ``api/tests/test_openapi.py`` fails when the app differs from it, and CI runs
 ``oasdiff breaking`` of a pull request's snapshot against the base branch's snapshot.

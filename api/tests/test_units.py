@@ -149,7 +149,7 @@ def test_guards(client):
     assert bare.get("/api/config", headers={"host": "evil.example"}).status_code == 421
     assert client.post("/api/jobs/reset", json={"confirm": "wrong"}).status_code == 400
     assert client.post("/api/jobs/delete-versions", json={"version_ids": ["1"], "confirm": "2"}).status_code == 400
-    # headless: the browser UI (page, static files, plugin list) lives in GridPlanner
+    # headless: pylovo-api serves no page, no static files and no plugin list
     for path in ("/", "/static/js/main.js", "/popout.html", "/api/plugins"):
         assert bare.get(path).status_code == 404, path
 

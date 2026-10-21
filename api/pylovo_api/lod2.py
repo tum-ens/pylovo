@@ -1,6 +1,6 @@
 """LoD2 building models of one grid from the InfDB ``citydb`` schema (3DCityDB v5), as a mesh.
 
-The Grid inspector can show the buildings of the selected grid as their LoD2 models. The
+A client can show the buildings of a grid as their LoD2 models. The
 buildings are linked by ``objectid`` (``pylovo.buildings_result.objectid`` =
 ``citydb.feature.objectid`` of the Building feature). Each building's roof and wall surfaces
 (the ``boundary`` features and their ``lod2MultiSurface`` in ``citydb.geometry_data``) are
@@ -9,8 +9,10 @@ data, or a database without ``citydb``, simply give an empty mesh: the map then 
 buildings in 2D as usual.
 
 Coordinates: x and y in EPSG:3857 metres relative to ``origin``; z in metres above the
-building's lowest ground point (the map has no terrain). The browser turns them into
-MapLibre's mercator units (``js/panels/map_lod2.js`` of the GridPlanner UI).
+building's lowest ground point (the map has no terrain). A client turns them into MapLibre's
+mercator units: x and y divided by the circumference of the EPSG:3857 sphere (y flipped, mercator y
+grows southwards), z times the mercator units per metre at ``origin`` (``pylovo-viewer`` does this
+in ``static/js/lod2.js``).
 """
 from __future__ import annotations
 

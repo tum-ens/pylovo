@@ -1,16 +1,18 @@
 HTTP API
 ========
 
-``pylovo-api`` is a headless HTTP API (FastAPI) for the whole pylovo workflow except
-classification and the MV stage: set up the database, select regions, prepare transformer data and
-the configuration, generate grids, and read statistics, grid details, diagnostics and power flows.
+``pylovo-api`` is the headless HTTP API of pylovo (FastAPI) for browser clients and scripts. It
+covers the whole pylovo workflow except classification and the MV stage: set up the database,
+select regions, prepare transformer data and the configuration, generate grids, and read
+statistics, grid details, diagnostics and power flows.
 Long-running and database-writing steps run the existing ``pylovo-*`` commands of :doc:`cli` as
 background jobs whose logs can be followed live, so the API does exactly what the command line
 does.
 
-The browser UI that uses this API lives in the GridPlanner repository (:doc:`browser_ui`).
-GridPlanner serves the UI and puts the API behind a reverse proxy (``/pylovo/api/*`` to ``/api/*``
-of ``pylovo-api``); pylovo itself serves no web page.
+pylovo itself serves no web page through the API. A browser client is served by its own web server,
+which usually forwards the requests of the page to ``pylovo-api`` (reverse proxy, see below). To look
+at generated grids on a map, use the read-only map viewer (:doc:`viewer`), a separate server that
+reads the database itself.
 
 Starting the API
 ----------------
@@ -69,11 +71,11 @@ error if one is missing. Set ``PYLOVO_REVISION=$(git rev-parse HEAD)`` for the c
 Contract
 --------
 
-The GridPlanner UI relies on the routes, parameters and response shapes of the API; they stay
-stable. ``GET /api/health`` answers without database access with the service name, the contract
+Clients rely on the routes, parameters and response shapes of the API; they stay stable.
+``GET /api/health`` answers without database access with the service name, the contract
 version ``api``, the pylovo package version and the git revision of the running code. The
-contract version is increased only for breaking changes, and the UI refuses versions it does not
-know. The committed OpenAPI snapshot ``api/openapi.json`` is checked by a unit test and, on pull
+contract version is increased only for breaking changes, so a client can refuse a version it does
+not know. The committed OpenAPI snapshot ``api/openapi.json`` is checked by a unit test and, on pull
 requests, by ``oasdiff breaking`` against the base branch (see ``api/README.md``).
 
 Jobs

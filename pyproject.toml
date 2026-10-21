@@ -90,7 +90,7 @@ legacy-ui = [
     "flask>=3.1.2,<4.0.0",
 ]
 api = [
-    # Headless HTTP API (pylovo-api) for the GridPlanner UI: web server, job runner with live logs, CSV upload
+    # Headless HTTP API (pylovo-api) for browser clients and scripts: web server, job runner with live logs, CSV upload
     "fastapi>=0.115.0",
     "starlette>=1.7",
     "pydantic>=2.13",

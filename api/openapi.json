@@ -849,7 +849,7 @@
     }
   },
   "info": {
-    "description": "HTTP API of the pylovo workflow (database, regions, data, generation, results) for the GridPlanner UI.",
+    "description": "Headless HTTP API of pylovo for browser clients and scripts: database setup, regions, data, transformer editing, configuration, generation, analysis and export jobs, results, load editing and diagnostics.",
     "title": "pylovo-api",
     "version": "2"
   },

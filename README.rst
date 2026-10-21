@@ -111,10 +111,10 @@ expansion steps on the same grids. See the
 HTTP API
 --------
 
-``pylovo-api`` offers the same steps as a headless HTTP API: database setup, region selection,
-transformer editing and imports, configuration, generation jobs with live logs, statistics, grid
-details, diagnostics and an on-demand power flow. GridPlanner uses it; ``api/README.md`` lists the
-endpoints.
+``pylovo-api`` is the headless HTTP API of pylovo for browser clients and scripts: database setup,
+regions, input data, transformer editing, configuration, generation, analysis and export jobs with
+live logs, results (statistics, grid details, power flow), load editing and diagnostics.
+``api/README.md`` lists the endpoints.
 
 .. code-block:: bash
 

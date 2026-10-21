@@ -70,8 +70,8 @@ jobs:
           base_api=$(jq -r .info.version "$RUNNER_TEMP/base-openapi.json")
           head_api=$(jq -r .info.version api/openapi.json)
           if [[ "$base_api" =~ ^[0-9]+$ && "$head_api" =~ ^[0-9]+$ ]] && [ "$head_api" -gt "$base_api" ]; then
-            echo "::warning::Breaking API changes with API_VERSION $base_api -> $head_api: the GridPlanner UI must support the new version."
+            echo "::warning::Breaking API changes with API_VERSION $base_api -> $head_api: API clients must support the new version."
           else
-            echo "::error::Breaking API changes (above) without increasing API_VERSION in api/pylovo_api/__init__.py (now $head_api). Keep the old routes and fields, or bump the version and update the UI."
+            echo "::error::Breaking API changes (above) without increasing API_VERSION in api/pylovo_api/__init__.py (now $head_api). Keep the old routes and fields, or bump the version and update the API clients."
             exit 1
           fi

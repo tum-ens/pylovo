@@ -1,5 +1,5 @@
 # Build the pylovo image with the headless HTTP API pylovo-api (api/docker/Dockerfile) and publish
-# it to GHCR as ghcr.io/<owner>/pylovo. GridPlanner pulls it (see its .env.example).
+# it to GHCR as ghcr.io/<owner>/pylovo.
 #   push to main / dev / develop / feature/**  -> tag = branch name with / -> - (feature/x -> feature-x);
 #                                                 main also gets `latest`
 #   push of a version tag vX.Y.Z                -> X.Y.Z and X.Y
