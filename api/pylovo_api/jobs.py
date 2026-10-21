@@ -236,16 +236,23 @@ class JobManager:
         return job
 
     def cancel(self, job_id: str) -> Job | None:
-        """Ask a running job to stop (SIGINT, then SIGTERM and SIGKILL if it does not react)."""
+        """Ask a running job to stop (SIGINT, then SIGTERM and SIGKILL if it does not react).
+
+        A job whose process does not exist yet is not started.
+        """
         job = self.get(job_id)
         if not job or not job.active:
             return job
-        job.cancel_requested = True
-        proc = job._proc
+        with self._lock:  # ``_run`` publishes the process under the same lock: one of the two sees the other
+            job.cancel_requested = True
+            proc = job._proc
         if proc and proc.poll() is None:
-            self._append(job, "Cancellation requested by the user …", "warning")
-            threading.Thread(target=self._escalate, args=(proc,), daemon=True).start()
+            self._stop(job, proc)
         return job
+
+    def _stop(self, job: Job, proc: subprocess.Popen) -> None:
+        self._append(job, "Cancellation requested by the user …", "warning")
+        threading.Thread(target=self._escalate, args=(proc,), daemon=True).start()
 
     def shutdown(self, wait_s: float = 3.0) -> None:
         """Stop all running jobs when the server exits and record them as cancelled."""
@@ -267,19 +274,27 @@ class JobManager:
         self._append(job, f"$ {job.summary()['command']}", "command")
         status, code = "failed", None
         try:
-            with subprocess.Popen(
-                job.argv, cwd=self.cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
-                start_new_session=(os.name == "posix"),
-            ) as proc:  # leaving the block closes the pipe
-                job._proc = proc
-                job.pid = proc.pid
-                for raw in proc.stdout:
-                    self._append(job, raw.rstrip("\r\n"))
-                code = proc.wait()
-            # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
-            # shows such runs as "succeeded" with an error count instead of hiding the errors.
-            status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
+            if job.cancel_requested:  # cancelled before there was a process to stop
+                self._append(job, "Cancelled before the command was started.", "warning")
+                status = "cancelled"
+            else:
+                with subprocess.Popen(
+                    job.argv, cwd=self.cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
+                    start_new_session=(os.name == "posix"),
+                ) as proc:  # leaving the block closes the pipe
+                    with self._lock:
+                        job._proc = proc
+                        cancelled = job.cancel_requested  # cancel() came in while the process was being created
+                    job.pid = proc.pid
+                    if cancelled:
+                        self._stop(job, proc)
+                    for raw in proc.stdout:
+                        self._append(job, raw.rstrip("\r\n"))
+                    code = proc.wait()
+                # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
+                # shows such runs as "succeeded" with an error count instead of hiding the errors.
+                status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
         except Exception as exc:  # noqa: BLE001 - a job must end whatever happens: it holds the writer lock
             # e.g. OSError (no such program) or ValueError (an argument with a NUL byte or a lone surrogate)
             self._append(job, f"Could not run the command: {type(exc).__name__}: {exc}", "error")

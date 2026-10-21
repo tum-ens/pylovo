@@ -84,3 +84,35 @@ def test_a_blank_dso_source_means_no_source():
 
     assert DsoImportBody(upload_id="0123456789ab", source="  ").source is None
     assert DsoImportBody(upload_id="0123456789ab", source=" Netz 1 ").source == "Netz 1"
+
+
+# --------------------------------------------------------------------------- cancel
+def test_cancel_before_the_process_exists_prevents_the_start(manager, tmp_path):
+    from pylovo_api.jobs import Job
+
+    marker = tmp_path / "ran.txt"
+    job = Job(id="early", kind="test", title="early", writes_db=True, status="queued",
+              argv=[sys.executable, "-c", f"open({str(marker)!r}, 'w')"])
+    manager._jobs[job.id] = job
+    manager.cancel(job.id)  # no process yet: nothing to signal
+    manager._run(job)  # the job thread of start() comes after the cancel
+    assert job.status == "cancelled" and job.exit_code is None and not marker.exists()
+    assert manager.running_writer() is None
+
+
+def test_cancel_while_the_process_is_being_created_stops_it(manager, monkeypatch):
+    popen = subprocess.Popen
+    procs = []
+
+    def popen_then_cancel(*args, **kwargs):
+        procs.append(popen(*args, **kwargs))
+        manager.cancel(manager.list()[0].id)  # the job has no process yet: cancel() finds nothing to stop
+        return procs[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", popen_then_cancel)
+    job = manager.start("test", "sleeper", [sys.executable, "-c", "import time; time.sleep(20)"])
+    try:
+        wait(job, 10)
+        assert job.status == "cancelled"
+    finally:
+        procs[0].kill()
