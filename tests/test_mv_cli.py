@@ -234,11 +234,11 @@ def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):
 
 
 # ---------------------------------------------------------------------------------------------- pylovo-generate
-def test_generate_hook_runs_only_with_mv(monkeypatch):
+def test_generate_hook_runs_only_with_mv(monkeypatch, config_params):
     hook = []
     monkeypatch.setattr(generate, "create_grid_multiple_plz", lambda plz, parallel=True: sorted(plz))
     monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: [plz])
-    monkeypatch.setattr(generate, "run_mv_stage_after_lv", lambda plz, parallel: hook.append((plz, parallel)))
+    monkeypatch.setattr(generate, "run_mv_stage_after_lv", lambda plz, parallel, params: hook.append((plz, parallel)))
     monkeypatch.setattr(generate, "MV_GRID_GENERATION", False)
     generate.main(["--plz", "80803", "80802", "--mv", "--no-parallel"])
     generate.main(["--plz", "80803", "--no-mv"])
@@ -254,14 +254,15 @@ def test_generate_hook_runs_only_with_mv(monkeypatch):
 
 def test_generate_hook_runs_the_configured_variant(monkeypatch, capsys, config_params):
     calls = []
+    params = MvParameters()
     monkeypatch.setattr(stage, "run_mv_stage", lambda *a, **k: calls.append((a, k)) or summary("done"))
-    generate.run_mv_stage_after_lv([80803], True)
+    generate.run_mv_stage_after_lv([80803], True, params)
     (args, kwargs), = calls
-    assert args[0] == generate.VERSION_ID and args[1] == [80803] and isinstance(args[2], MvParameters)
+    assert args[0] == generate.VERSION_ID and args[1] == [80803] and args[2] is params
     assert kwargs == {"parallel": True, "jobs": min(4, generate.N_JOBS)}
     monkeypatch.setattr(stage, "run_mv_stage", lambda *a, **k: summary("failed"))
     with pytest.raises(SystemExit) as exc:
-        generate.run_mv_stage_after_lv([80803], True)
+        generate.run_mv_stage_after_lv([80803], True, params)
     assert exc.value.code == 1
 
     def broken(*a, **k):
@@ -269,8 +270,24 @@ def test_generate_hook_runs_the_configured_variant(monkeypatch, capsys, config_p
 
     monkeypatch.setattr(stage, "run_mv_stage", broken)
     with pytest.raises(RuntimeError):
-        generate.run_mv_stage_after_lv([80803], True)
+        generate.run_mv_stage_after_lv([80803], True, params)
     assert "MV stage failed: no substations" in capsys.readouterr().out
+
+
+def test_a_bad_mv_parameter_stops_pylovo_generate_before_the_lv_grids(monkeypatch, capsys):
+    from pylovo import config_loader
+
+    def bad_config(cls):
+        raise ValueError("MV_STANDARD_CABLE must name a pandapower cable line type for 20 kV, got 'NA2XS2Y typo'")
+
+    lv = []
+    monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", False)
+    monkeypatch.setattr(MvParameters, "from_config", classmethod(bad_config))
+    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: lv.append(plz) or [plz])
+    with pytest.raises(SystemExit) as stopped:
+        generate.main(["--plz", "80803", "--mv"])
+    assert stopped.value.code == 1 and lv == []
+    assert "MV stage cannot run: MV_STANDARD_CABLE must name" in capsys.readouterr().out
 
 
 def test_lv_only_runs_do_not_import_the_mv_stage():

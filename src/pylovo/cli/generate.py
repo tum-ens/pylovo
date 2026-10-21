@@ -15,6 +15,7 @@ with code 1. The MV modules are imported only when the stage runs.
 """
 import argparse
 import time
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -24,6 +25,9 @@ from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARA
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
 from pylovo.data_import.region_resolver import resolve_regions
 from pylovo.grid_generator import GridGenerator
+
+if TYPE_CHECKING:
+    from pylovo.mv_grid.parameters import MvParameters
 
 
 def create_grid_single_plz(plz: int) -> list[int]:
@@ -97,19 +101,20 @@ def create_grids_for_ags(ags_list: list, parallel: bool = True) -> list[int]:
     return plz_list
 
 
-def run_mv_stage_after_lv(plz_list: list[int], parallel: bool) -> None:
+def run_mv_stage_after_lv(plz_list: list[int], parallel: bool, params: "MvParameters") -> None:
     """Run the MV stage for the configured MV variant of ``VERSION_ID`` on the PLZ of this call.
+
+    Args:
+        params: The configured MV variant (``MvParameters.from_config``, resolved before the LV generation).
 
     Raises:
         SystemExit: With code 1 if the MV stage does not end ``done`` (the LV grids stay committed).
         Exception: Any error of the MV stage, after printing it.
     """
     try:
-        from pylovo.mv_grid.parameters import MvParameters   # lazy: no MV import cost for LV-only runs
-        from pylovo.mv_grid.stage import run_mv_stage
+        from pylovo.mv_grid.stage import run_mv_stage   # lazy: no MV import cost for LV-only runs
 
-        summary = run_mv_stage(VERSION_ID, plz_list, MvParameters.from_config(), parallel=parallel,
-                               jobs=min(4, N_JOBS))
+        summary = run_mv_stage(VERSION_ID, plz_list, params, parallel=parallel, jobs=min(4, N_JOBS))
         print(summary.describe())
         if summary.status != "done":
             raise SystemExit(1)                           # LV is committed; an incomplete MV stage is an error
@@ -181,12 +186,14 @@ For more information, see the README: https://github.com/tum-ens/pylovo
     # PARALLEL in config_generation_lv.yaml is the default; the flags override it
     parallel = PARALLEL if args.parallel is None else args.parallel
     run_mv = MV_GRID_GENERATION if args.mv is None else args.mv
+    mv_params = None
     if run_mv:   # before the LV grids, not after them
-        from pylovo.mv_grid.parameters import MvStageError, require_local_source_data
+        from pylovo.mv_grid.parameters import MvParameters, MvStageError, require_local_source_data
 
         try:
             require_local_source_data(config_loader)
-        except MvStageError as exc:
+            mv_params = MvParameters.from_config()   # resolves the line and transformer types (pandapower)
+        except (MvStageError, ValueError) as exc:
             print(f"MV stage cannot run: {exc}")
             raise SystemExit(1)
 
@@ -211,7 +218,7 @@ For more information, see the README: https://github.com/tum-ens/pylovo
         print(f"Elapsed Time: {int(minutes)} minutes and {seconds:.2f} seconds")
 
     if run_mv:
-        run_mv_stage_after_lv(plz_list, parallel)
+        run_mv_stage_after_lv(plz_list, parallel, mv_params)
 
 
 if __name__ == "__main__":
