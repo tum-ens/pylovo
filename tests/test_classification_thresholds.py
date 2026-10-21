@@ -20,7 +20,7 @@ def cluster_0_frame(values: dict) -> pd.DataFrame:
     return frame
 
 
-def run_main(monkeypatch, capsys, frame, argv=()):
+def run_main(monkeypatch, capsys, frame, argv=(), clusters=None):
     seen = {}
 
     def fake_read(classification_id=None):
@@ -28,6 +28,8 @@ def run_main(monkeypatch, capsys, frame, argv=()):
         return frame
 
     monkeypatch.setattr(avg, "get_clustering_parameters_for_kmeans_cluster_0", fake_read)
+    monkeypatch.setattr(avg, "get_clustering_parameters_by_kmeans_cluster",
+                        lambda classification_id=None: frame.assign(kmeans_clusters=0) if clusters is None else clusters)
     monkeypatch.setattr(sys, "argv", ["prog", *argv])
     avg.main()
     return seen, capsys.readouterr().out
@@ -95,3 +97,16 @@ def test_only_cluster_0_of_one_classification_is_read(monkeypatch):
 def test_an_unknown_classification_stops_with_a_message(monkeypatch, capsys):
     with pytest.raises(SystemExit, match="no grids in k-means cluster 0"):
         run_main(monkeypatch, capsys, pd.DataFrame(columns=FOUR), ["--classification-id", "99"])
+
+
+def test_the_means_of_every_cluster_show_whether_cluster_0_holds_the_small_grids(monkeypatch, capsys):
+    """On 1.0.0 grids cluster 0 (fewest households of the representative) can be a cluster of long rural grids."""
+    long_rural = {"avg_trafo_dis": 0.45, "no_house_connections": 22.0, "vsw_per_branch": 0.41, "no_households": 28.0}
+    small = {"avg_trafo_dis": 0.115, "no_house_connections": 18.0, "vsw_per_branch": 0.2, "no_households": 39.0}
+    clusters = pd.concat([cluster_0_frame(long_rural).assign(kmeans_clusters=0),
+                          pd.concat([cluster_0_frame(small)] * 2).assign(kmeans_clusters=1)])
+    _, out = run_main(monkeypatch, capsys, cluster_0_frame(long_rural), clusters=clusters)
+    table = avg.cluster_means(clusters, FOUR)
+    assert table.loc[0, "grids"] == 2 and table.loc[1, "grids"] == 4
+    assert table.loc[1, FOUR].to_dict() == small and table.loc[0, "avg_trafo_dis"] == 0.45
+    assert "Means of every k-means cluster" in out and table.to_string() in out

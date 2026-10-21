@@ -2,7 +2,8 @@
 
 Run it after a classification without additional filtering: ``python -m
 pylovo.classification.utils.get_average_values_clustering_parameters [--classification-id N]``. It prints the
-four ``THRESHOLD_*`` values of ``config_clustering.yaml`` that the additional filtering uses.
+four ``THRESHOLD_*`` values of ``config_clustering.yaml`` that the additional filtering uses, and the means of every
+k-means cluster, so you can check that cluster 0 holds the small filling grids.
 """
 import argparse
 import sys
@@ -60,6 +61,43 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
         return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
 
 
+def get_clustering_parameters_by_kmeans_cluster(classification_id: int | None = None) -> pd.DataFrame:
+    """Get the clustering parameters of all grids of one classification with their k-means cluster.
+
+    Args:
+        classification_id: The classification. ``None`` uses ``CLASSIFICATION_VERSION``.
+
+    Returns:
+        pd.DataFrame: Clustering parameters with the k-means cluster in the column ``kmeans_clusters``.
+    """
+    query = """
+        SELECT tc.kmeans_clusters, cp.*
+        FROM pylovo.clustering_parameters cp
+        JOIN pylovo.transformer_classified tc ON tc.grid_result_id = cp.grid_result_id
+        WHERE tc.classification_id = %(c)s;
+    """
+    if classification_id is None:
+        classification_id = CLASSIFICATION_VERSION
+    with DatabaseClient() as dbc:
+        return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
+
+
+def cluster_means(df: pd.DataFrame, parameters: list) -> pd.DataFrame:
+    """Number of grids and mean of each parameter per k-means cluster, rounded to 3 decimals.
+
+    Args:
+        df: Clustering parameters with the column ``kmeans_clusters``.
+        parameters: Parameter names to average.
+
+    Returns:
+        pd.DataFrame: One row per cluster: ``grids`` and the means of ``parameters``.
+    """
+    clusters = df.groupby("kmeans_clusters")
+    table = clusters[parameters].mean().round(3)
+    table.insert(0, "grids", clusters.size())
+    return table
+
+
 def calculate_average_clustering_parameters(df: pd.DataFrame, parameters: list) -> dict:
     """Calculate the average values for the given clustering parameters.
 
@@ -95,6 +133,11 @@ def main():
           f"{args.classification_id}:")
     for parameter, avg in averages.items():
         print(f"THRESHOLD_{parameter.upper()}: {avg}")
+    clusters = get_clustering_parameters_by_kmeans_cluster(args.classification_id)
+    if not clusters.empty:
+        print("Means of every k-means cluster. Cluster 0 is not always the cluster of the small filling grids (short "
+              "avg_trafo_dis); use the means of that cluster:")
+        print(cluster_means(clusters, list(LOWER_FILTER_THRESHOLDS)).to_string())
     if set(LIST_OF_CLUSTERING_PARAMETERS) != set(LOWER_FILTER_THRESHOLDS):
         print("Note: cluster 0 depends on the parameters of the clustering. The shipped values come from a clustering "
               f"with {', '.join(LOWER_FILTER_THRESHOLDS)}, the configuration has {', '.join(LIST_OF_CLUSTERING_PARAMETERS)}.")

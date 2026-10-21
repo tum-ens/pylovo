@@ -505,7 +505,8 @@ parameters and without additional filtering and run the helper on that classific
    uv run --extra plots python -m pylovo.classification.utils.get_average_values_clustering_parameters \
        --classification-id 2
 
-It prints the four means as ``THRESHOLD_*`` lines for ``config_clustering.yaml`` and notes when
+It prints the four means as ``THRESHOLD_*`` lines for ``config_clustering.yaml``, below them the number of grids and
+the means of every k-means cluster, so you can see which cluster holds the small filling grids, and it notes when
 ``LIST_OF_CLUSTERING_PARAMETERS`` of the configuration is another list, because cluster 0 depends on the clustering
 parameters. An earlier version of the helper averaged ``LIST_OF_CLUSTERING_PARAMETERS`` (three parameters in the
 shipped file, without ``no_households``) over cluster 0 of all classifications and could not give the shipped values.
