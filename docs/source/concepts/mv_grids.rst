@@ -771,8 +771,9 @@ types only overhead lines can grow; the cables then get parallel cables.
    * - Voltage on a ring (``load``, ``n1a``, ``n1b``)
      - Move the open point to its best position. If it is there already, the next larger conductor
        on every line of the path from the busbar to the node in that case, round by round while a
-       line can grow. Then split the ring: its members are solved again with at most about half of
-       them per ring. As a last step, one more parallel cable on both exits.
+       line can grow. Then split the ring: its members and the stations on its stubs are solved
+       again with at most about half of them per ring. As a last step, one more parallel cable on
+       both exits.
    * - Loading of a ring section
      - A conductor that carries the current. At the largest conductor, split the ring if the section
        is a busbar exit and the ring has at least 4 members, else one more parallel cable, up to
@@ -786,7 +787,9 @@ types only overhead lines can grow; the cables then get parallel cables.
 A supply area is stored with its remaining violations, as the LV stage stores its grids, and
 ``mv_grid.power_flow_status`` is ``converged``, ``voltage_violation``, ``loading_violation`` or
 ``not_converged``. The repair actions are kept in ``mv_grid.repairs`` (``upgrade`` with the new
-types, ``parallel``, ``move_nop``, ``split_ring``).
+types, ``parallel``, ``move_nop``, ``split_ring``). After a split, the parallel cables and larger
+conductors of earlier rounds stay only on the new lines that run on the repaired line, and the ring
+checks and open points use the upgraded conductors.
 
 Stored net and OLTC
 ~~~~~~~~~~~~~~~~~~~

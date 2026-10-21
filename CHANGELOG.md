@@ -132,6 +132,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - MV notebooks default to the configured database and use the `python3` kernel; docstrings no longer cite unpublished design notes
 - `pylovo-api` with `USE_EXTERNAL_BASEDATA`: the region input check, `/api/status` and the LoD2 view read the InfDB through the `INFDB_*` connection; before, every postcode was reported as blocked because the InfDB schemas were looked up in the pylovo database
 - The average house distance of the grid analysis (`house_distance_km`, a default clustering parameter) passed (lon, lat) to the haversine distance, which expects (lat, lon): distances along a parallel were 1/cos(latitude) too long (about 1.5 at 48° N). Analyse grids again to update `clustering_parameters`
+- MV repair loop (MV stage version 13): a ring split copied parallel cables and larger conductors onto unrelated lines that shared a trench piece or a busbar end with a repaired line; the split capped its rings by the ring members only and left their stubs without reserve; open points were chosen with the base conductor instead of the upgraded one; a station rating outside pylovo's lists was split into 630 kVA units in `couple`. Only variants with repairs change; build older variants again with `--replace` or under a new id
 
 
 
