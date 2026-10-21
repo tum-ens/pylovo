@@ -240,6 +240,8 @@ export class MapView {
   }
 
   setLod2Hide(ids) {
+    const same = (a, b) => (a?.length || 0) === (b?.length || 0) && (a || []).every((x, i) => x === b[i]);
+    if (same(ids, this.lod2Hide)) return;   // re-adding the layer would rebuild all its tiles
     this.lod2Hide = ids;
     if (this.layers.lv_buildings?.visible && this.d3) { this.removeSublayers('lv_buildings'); this.addSublayers('lv_buildings'); }
   }
