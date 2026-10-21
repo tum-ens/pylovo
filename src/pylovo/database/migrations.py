@@ -530,6 +530,38 @@ def indexes_and_cleanup(cur: cursor) -> None:
     """)
 
 
+def schema_cleanup(cur: cursor) -> None:
+    """Drop three tables that no code uses and give the line cache the key names of a fresh setup.
+
+    Dropped: ``mastr_units`` and ``mastr_postcode_aggregates`` (databases that ran the earlier body of
+    ``0009_mv_grids`` with the MaStR import, which stays on ``feature/mv-backup``) and ``grid_parameters``
+    (nothing writes it). Their rows are deleted.
+    Renamed: the line cache was the table ``lines_result_view`` in v0.8.0 and kept the names of its primary
+    key (and its index), its NOT NULL constraints (PostgreSQL 18) and its identity sequence.
+    A no-op on a fresh schema.
+    """
+    cur.execute("""
+        DROP TABLE IF EXISTS pylovo.mastr_postcode_aggregates, pylovo.mastr_units, pylovo.grid_parameters;
+        DO $$
+        DECLARE
+            old_name record;
+        BEGIN
+            IF to_regclass('pylovo.lines_result_cache') IS NOT NULL THEN
+                FOR old_name IN
+                    SELECT conname FROM pg_constraint
+                    WHERE conrelid = 'pylovo.lines_result_cache'::regclass
+                      AND starts_with(conname, 'lines_result_view_')
+                LOOP
+                    EXECUTE format('ALTER TABLE pylovo.lines_result_cache RENAME CONSTRAINT %I TO %I',
+                                   old_name.conname,
+                                   'lines_result_cache_' || substr(old_name.conname, length('lines_result_view_') + 1));
+                END LOOP;
+            END IF;
+        END $$;
+        ALTER SEQUENCE IF EXISTS pylovo.lines_result_view_id_seq RENAME TO lines_result_cache_id_seq;
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -546,6 +578,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0010_mv_display_geometry", mv_display_geometry),
     ("0011_building_exclusion", building_exclusion),
     ("0012_indexes", indexes_and_cleanup),
+    ("0013_schema_cleanup", schema_cleanup),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

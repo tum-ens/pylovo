@@ -103,8 +103,7 @@ def test_migration_0012_leaves_migrated_schemas_with_the_indexes_of_a_fresh_setu
     """A fresh setup runs the baseline and then every migration, an old schema the same: both must match."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, indexes_and_cleanup
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0012_indexes", indexes_and_cleanup)
-    assert MIGRATION_NAMES[-1] == "0012_indexes"
+    assert dict(POST_SCHEMA_MIGRATIONS)["0012_indexes"] is indexes_and_cleanup and "0012_indexes" in MIGRATION_NAMES
     statements = _statements(indexes_and_cleanup)
     created = _indexes(statements)
     dropped = {m.group(1) for m in (re.fullmatch(r"DROP INDEX IF EXISTS pylovo\.(\w+)", s) for s in statements) if m}
@@ -127,3 +126,21 @@ def test_deferred_bus_keys_and_lookups_over_all_versions_have_a_leading_index():
     assert all((table, tuple(c.strip() for c in columns.split(","))) in leading for table, columns in keys)
     assert ("ways_result", ("way_id",)) in leading  # SELECT MAX(way_id) FROM pylovo.ways_result, every PLZ
     assert ("postcode_result", ("postcode_result_plz",)) in leading
+
+
+def test_migration_0013_drops_the_unused_tables_and_renames_the_line_cache_keys_of_v080():
+    """A fresh setup has none of the three tables and the key names ``lines_result_cache_*``; an old schema must match."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, schema_cleanup
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0013_schema_cleanup", schema_cleanup)
+    assert MIGRATION_NAMES[-1] == "0013_schema_cleanup" and MIGRATION_NAMES.count("0013_schema_cleanup") == 1
+    conn = Connection()
+    schema_cleanup(Cursor(conn))
+    sql = " ".join(" ".join(conn.log).split())
+    dropped = ("mastr_postcode_aggregates", "mastr_units", "grid_parameters")
+    assert f"DROP TABLE IF EXISTS {', '.join('pylovo.' + table for table in dropped)};" in sql
+    assert not set(dropped) & CREATE_QUERIES.keys()          # the baseline of every setup does not create them again
+    assert "starts_with(conname, 'lines_result_view_')" in sql and "RENAME CONSTRAINT %I TO %I" in sql
+    assert "'lines_result_cache_' || substr(old_name.conname, length('lines_result_view_') + 1)" in sql
+    assert sql.endswith("ALTER SEQUENCE IF EXISTS pylovo.lines_result_view_id_seq RENAME TO lines_result_cache_id_seq;")
+    assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row

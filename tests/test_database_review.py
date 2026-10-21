@@ -64,6 +64,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0010_mv_display_geometry",
             "0011_building_exclusion",
             "0012_indexes",
+            "0013_schema_cleanup",
         ]
         db.cur.execute("""
             SELECT conname, convalidated

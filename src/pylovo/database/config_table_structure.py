@@ -747,22 +747,6 @@ CREATE_QUERIES = {
             ON DELETE CASCADE
     )
     """,
-    "grid_parameters": """CREATE TABLE IF NOT EXISTS pylovo.grid_parameters (
-        grid_result_id bigint PRIMARY KEY,
-        power_flow_status varchar(32),
-        feeder_lines integer,
-        buildings_per_feeder double precision,
-        graph_length double precision,
-        avg_trafo_distance double precision,
-        max_trafo_distance double precision,
-        transformer_mva double precision,
-        graph_resistance double precision,
-        CONSTRAINT fk_grid_parameters_grid_result
-            FOREIGN KEY (grid_result_id)
-            REFERENCES pylovo.grid_result (grid_result_id)
-            ON DELETE CASCADE
-    )
-    """,
     "pandapower_bus": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_bus (
         pandapower_bus_id SERIAL PRIMARY KEY,

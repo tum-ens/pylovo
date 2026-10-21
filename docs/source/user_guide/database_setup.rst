@@ -80,7 +80,12 @@ database-backed tests and performance comparisons on an isolated database, never
 InfDB.
 
 Migration ``0012_indexes`` adds and drops indexes of the result tables and drops a function of
-v0.8.0 whose SQL file is gone. On a large database it can take a while. A database that an
+v0.8.0 whose SQL file is gone. On a large database it can take a while. Migration
+``0013_schema_cleanup`` deletes the tables ``mastr_units`` and ``mastr_postcode_aggregates`` (left by
+databases that ran an earlier version of ``0009_mv_grids``, which imported MaStR data) and
+``grid_parameters`` (no code writes it), together with their rows, and renames the primary key and the
+identity sequence of ``lines_result_cache`` to the names of a fresh setup (a database set up by v0.8.0
+keeps the names ``lines_result_view_*``). A database that an
 earlier version set up needs one ``pylovo-setup`` run before generating: until all migrations are
 recorded, ``pylovo-generate`` stops with ``PyLovo schema has pending migrations (...); run
 pylovo-setup first``.

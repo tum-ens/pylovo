@@ -29,8 +29,7 @@ CONSTRUCTOR_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "database_co
 RST_OUTPUT = st.REPO_ROOT / "docs" / "source" / "concepts" / "database_tables.rst"
 
 #: Tables and views that belong to classification or validation workflows.
-EXCLUDED = {"classification_version", "sample_set", "transformer_classified", "transformer_classified_with_grid",
-            "grid_parameters"}
+EXCLUDED = {"classification_version", "sample_set", "transformer_classified", "transformer_classified_with_grid"}
 
 DESCRIPTIONS = {
     "version": "One row per ``VERSION_ID`` with its comment and the frozen generation-parameter snapshot "
