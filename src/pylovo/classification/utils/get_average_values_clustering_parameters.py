@@ -1,57 +1,59 @@
-"""Average clustering parameters of k-means cluster 0 (the source of the lower filter thresholds).
+"""Derive the lower filter thresholds from k-means cluster 0 of one classification.
 
-Run as a script after a classification: ``python -m
-pylovo.classification.utils.get_average_values_clustering_parameters``.
+Run it after a classification without additional filtering: ``python -m
+pylovo.classification.utils.get_average_values_clustering_parameters [--classification-id N]``. It prints the
+four ``THRESHOLD_*`` values of ``config_clustering.yaml`` that the additional filtering uses.
 """
+import argparse
+import sys
+
 import pandas as pd
 
-from pylovo.config_loader import LIST_OF_CLUSTERING_PARAMETERS
+from pylovo.classification.database_communication.database_communication import LOWER_FILTER_THRESHOLDS
+from pylovo.config_loader import CLASSIFICATION_VERSION, LIST_OF_CLUSTERING_PARAMETERS
 from pylovo.database.database_client import DatabaseClient
 
 
-def get_clustering_parameters_for_kmeans_cluster_0() -> pd.DataFrame:
-    """Get clustering parameters for entries assigned to cluster 0 in transformer_classified.
+def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None = None) -> pd.DataFrame:
+    """Get the clustering parameters of the grids in k-means cluster 0 of one classification.
 
     Allocation of buildings to a transformer within predefined system boundaries (postcodes)
     can lead to isolated building clusters, depending on the greenfield or brownfield placement
     assumptions. As a consequence, some unrealistically small grids might be generated.
 
-    Cluster 0 consists of filling grids that mainly arise due to these methodological
-    limitations. To address this, additional filtering steps are applied in the clustering
-    methodology.
-
-    The current clustering algorithm is applied to grids within 100 postcodes. The selected
-    clustering parameters are:
+    Cluster 0 is the cluster whose representative grid has the fewest households. It consists of
+    these filling grids, which the additional filtering removes. The thresholds are the means of
+    the four parameters of ``LOWER_FILTER_THRESHOLDS`` over cluster 0 of one classification that
+    clustered with exactly these four parameters and without additional filtering:
 
     - avg_trafo_dis
     - no_house_connections
     - vsw_per_branch
     - no_households
 
-    The average values of these parameters for entries in Cluster 0 are the
-    ``THRESHOLD_*`` values in ``config_clustering.yaml``:
+    The shipped values (0.115, 14.332, 0.258 and 35.316) come from one such classification over 100
+    postcodes on grids of pylovo 0.8.0. That generator has changed since (transformer sizing, cable
+    catalogue, connection aggregation), and its grids are not stored, so a classification of
+    today's grids gives other values. An earlier version of this helper averaged the parameters of
+    ``LIST_OF_CLUSTERING_PARAMETERS`` (three in the shipped file, without ``no_households``) over
+    cluster 0 of all classifications, which cannot reproduce them.
 
-    - avg_trafo_dis: 0.115
-    - no_house_connections: 14.332
-    - vsw_per_branch: 0.258
-    - no_households: 35.316
+    Args:
+        classification_id: The classification. ``None`` uses ``CLASSIFICATION_VERSION``.
 
     Returns:
-        pd.DataFrame: Clustering parameters of all grids in k-means cluster 0 (all versions
-        and classification ids).
+        pd.DataFrame: Clustering parameters of the grids in k-means cluster 0 of that classification.
     """
     query = """
         SELECT cp.*
         FROM pylovo.clustering_parameters cp
-        JOIN (
-            SELECT DISTINCT grid_result_id
-            FROM pylovo.transformer_classified
-            WHERE kmeans_clusters = 0
-        ) tc
-        ON cp.grid_result_id = tc.grid_result_id;
+        JOIN pylovo.transformer_classified tc ON tc.grid_result_id = cp.grid_result_id
+        WHERE tc.classification_id = %(c)s AND tc.kmeans_clusters = 0;
     """
+    if classification_id is None:
+        classification_id = CLASSIFICATION_VERSION
     with DatabaseClient() as dbc:
-        return pd.read_sql_query(query, con=dbc.sqla_engine)
+        return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
 
 
 def calculate_average_clustering_parameters(df: pd.DataFrame, parameters: list) -> dict:
@@ -73,16 +75,25 @@ def calculate_average_clustering_parameters(df: pd.DataFrame, parameters: list) 
 
 
 def main():
-    # Get all clustering parameters
-    df_clustering_parameters = get_clustering_parameters_for_kmeans_cluster_0()
+    parser = argparse.ArgumentParser(
+        description="Print the lower filter thresholds as the means of k-means cluster 0 of one classification.")
+    parser.add_argument("--classification-id", type=int, default=CLASSIFICATION_VERSION,
+                        help="classification to read (default: CLASSIFICATION_VERSION of the configuration)")
+    args = parser.parse_args()
 
-    # Calculate average values using LIST_OF_CLUSTERING_PARAMETERS
-    averages = calculate_average_clustering_parameters(df_clustering_parameters, LIST_OF_CLUSTERING_PARAMETERS)
+    df_clustering_parameters = get_clustering_parameters_for_kmeans_cluster_0(args.classification_id)
+    if df_clustering_parameters.empty:
+        sys.exit(f"Classification {args.classification_id} has no grids in k-means cluster 0 "
+                 "(unknown id, or not classified yet).")
+    averages = calculate_average_clustering_parameters(df_clustering_parameters, list(LOWER_FILTER_THRESHOLDS))
 
-    # Print the average values
-    print("Average Clustering Parameter Values:")
-    for param, avg in averages.items():
-        print(f"{param}: {avg}")
+    print(f"Means over {len(df_clustering_parameters)} grids of k-means cluster 0 of classification "
+          f"{args.classification_id}:")
+    for parameter, avg in averages.items():
+        print(f"THRESHOLD_{parameter.upper()}: {avg}")
+    if set(LIST_OF_CLUSTERING_PARAMETERS) != set(LOWER_FILTER_THRESHOLDS):
+        print("Note: cluster 0 depends on the parameters of the clustering. The shipped values come from a clustering "
+              f"with {', '.join(LOWER_FILTER_THRESHOLDS)}, the configuration has {', '.join(LIST_OF_CLUSTERING_PARAMETERS)}.")
 
 
 if __name__ == "__main__":
