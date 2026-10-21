@@ -1418,51 +1418,39 @@ def _bridge_m(ctx: _Ctx, route: _Route) -> float:
     return float(steps[flags].sum())
 
 
+def _runs_on(own: set[int], a: int, b: int, old: LinePlan) -> bool:
+    """Whether a new line (street pieces ``own``, ends ``a`` and ``b``) runs on the old line: all its street pieces
+    lie on it (e.g. a part of it cut off by a new joint), or, without street pieces, it joins the same two nodes."""
+    if own:
+        return own <= {p for p in old.pieces if p >= 0}
+    return a > 0 and b > 0 and {a, b} == {old.from_key, old.to_key}
+
+
 def _keep_parallels(net: _Network, pieces: dict[int, list[int]], old: TopologyPlan) -> None:
-    """Keep the parallel cables of the old plan on lines of the same role that use the same street pieces (or join
-    the same nodes)."""
-    by_piece: dict[tuple[str, int], int] = {}
-    by_ends: dict[tuple[str, frozenset], int] = {}
-    for line in old.lines:
-        if line.parallel <= 1:
-            continue
-        for piece in line.pieces:
-            by_piece[(line.role, piece)] = max(by_piece.get((line.role, piece), 1), line.parallel)
-        ends = frozenset(k for k in (line.from_key, line.to_key) if k > 0)
-        by_ends[(line.role, ends)] = max(by_ends.get((line.role, ends), 1), line.parallel)
-    if not by_piece and not by_ends:
+    """Keep the parallel cables of the old plan on the new lines of the same role that run on the line that got them
+    (:func:`_runs_on`); lines that only share a trench piece or an end with it keep their own."""
+    repaired = [line for line in old.lines if line.parallel > 1]
+    if not repaired:
         return
     for i, line in enumerate(net.lines):
-        keep = [by_piece.get((line.role, piece), 1) for piece in pieces[i] if piece >= 0]
-        keep.append(by_ends.get((line.role, frozenset(k for k in (line.a, line.b) if k > 0)), 1))
-        line.parallel = max(line.parallel, *keep)
+        own = {p for p in pieces[i] if p >= 0}
+        for o in repaired:
+            if o.role == line.role and _runs_on(own, line.a, line.b, o):
+                line.parallel = max(line.parallel, o.parallel)
 
 
 def _keep_types(ctx: _Ctx, net: _Network, pieces: dict[int, list[int]], old: TopologyPlan) -> None:
-    """Keep the upgraded conductors of the old plan on lines of the same role and kind that use the same street
-    pieces (or join the same nodes); of several, the largest."""
-    by_piece: dict[tuple[str, str, int], str] = {}
-    by_ends: dict[tuple[str, str, frozenset], str] = {}
-
-    def larger(current: str | None, name: str) -> str:
-        return name if current is None or equipment.type_rank(name) > equipment.type_rank(current) else current
-
-    for line in old.lines:
-        if not line.std_type or line.std_type == ctx.std_type(line.kind):
-            continue
-        for piece in line.pieces:
-            key = (line.role, line.kind, piece)
-            by_piece[key] = larger(by_piece.get(key), line.std_type)
-        ends = (line.role, line.kind, frozenset(k for k in (line.from_key, line.to_key) if k > 0))
-        by_ends[ends] = larger(by_ends.get(ends), line.std_type)
-    if not by_piece and not by_ends:
+    """Keep the upgraded conductors of the old plan on the new lines of the same role and kind that run on the line
+    that got them (:func:`_runs_on`); of several, the largest."""
+    upgraded = [line for line in old.lines if line.std_type and line.std_type != ctx.std_type(line.kind)]
+    if not upgraded:
         return
     for i, line in enumerate(net.lines):
-        found = [by_piece.get((line.role, line.kind, piece)) for piece in pieces[i] if piece >= 0]
-        found.append(by_ends.get((line.role, line.kind, frozenset(k for k in (line.a, line.b) if k > 0))))
-        for name in found:
-            if name is not None:
-                line.std_type = larger(line.std_type, name)
+        own = {p for p in pieces[i] if p >= 0}
+        for o in upgraded:
+            if o.role == line.role and o.kind == line.kind and _runs_on(own, line.a, line.b, o) and (
+                    line.std_type is None or equipment.type_rank(o.std_type) > equipment.type_rank(line.std_type)):
+                line.std_type = o.std_type
 
 
 def _edge_geometries(ctx: _Ctx, pieces: dict[int, list[int]]) -> dict[int, Any]:
