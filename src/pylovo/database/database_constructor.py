@@ -159,12 +159,27 @@ class DatabaseConstructor:
                 "See config_table_structure.py"
             )
 
+    def check_server_version(self) -> None:
+        """Refuse servers older than PostgreSQL 15: the schema uses ``ON DELETE SET NULL (column)``.
+
+        Raises:
+            RuntimeError: If the server is older than PostgreSQL 15.
+        """
+        with self.dbc.conn.cursor() as cur:
+            cur.execute("SELECT current_setting('server_version_num')::integer, current_setting('server_version')")
+            number, version = cur.fetchone()
+        if number < 150000:
+            raise RuntimeError(f"pylovo needs PostgreSQL 15 or newer, the server runs PostgreSQL {version}. "
+                               "Nothing was changed.")
+
     def migrate_schema(self) -> None:
         """Install the baseline and apply each outstanding migration exactly once.
 
         A session advisory lock serializes concurrent setup processes. A migration
         and its ledger row commit together; failure leaves that step unapplied.
+        The server version is checked before any change.
         """
+        self.check_server_version()
         with self.dbc.conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s, %s)", SETUP_LOCK)
         self.dbc.conn.commit()
