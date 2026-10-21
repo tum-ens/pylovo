@@ -1,13 +1,18 @@
 """Command-line entry point ``pylovo-classify``: interactive grid classification pipeline."""
 import argparse
+import sys
 
 import yaml
 
-from pylovo.config_loader import get_config_search_paths
+from pylovo.config_loader import CLUSTERING_PARAMETERS, get_config_search_paths
 from pylovo.classification.clustering.apply_clustering_for_visualisation import apply_clustering_for_visualisation
 from pylovo.classification.clustering.get_no_clusters_for_clustering import get_no_clusters_for_clustering
 from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
 from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
+from pylovo.classification.sampling.sample import classification_version_exists
+
+# Columns of the clustering parameter table that identify a grid; they cannot be clustered.
+IDENTIFIER_COLUMNS = ("version_id", "plz", "bcid", "kcid")
 
 
 def _config_file(filename: str) -> str:
@@ -60,25 +65,39 @@ def save_yaml(filepath, data):
         yaml.dump(data, file, default_flow_style=False, sort_keys=False)
 
 
-def get_user_confirmation():
-    """Asks the user if they want to manually assign clustering parameters."""
+def _ask(prompt: str) -> str:
+    """Read one answer from the terminal; a closed standard input ends the run with a message."""
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        sys.exit("\nNo more input (standard input is closed), stopping.")
+
+
+def ask_yes_no(question: str) -> bool:
+    """Ask a yes/no question until the answer is y, yes, n or no (any case)."""
     while True:
-        user_input = input("\nDo you prefer to assign clustering parameters and number of clusters? "
-                           "Otherwise, optimal values will be calculated and assigned accordingly. (yes/no): ").strip().lower()
-        if user_input in ["yes", "no"]:
-            return user_input == "yes"
+        answer = _ask(f"\n{question} (yes/no): ").lower()
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
         print("Invalid input. Please enter 'yes' or 'no'.")
 
 
 def get_custom_clustering_parameters():
-    """Gets custom clustering parameters from user input."""
+    """Gets custom clustering parameters from user input; the names must be columns of the parameter table."""
+    allowed = [name for name in CLUSTERING_PARAMETERS if name not in IDENTIFIER_COLUMNS]
     while True:
-        user_input = input("\nPlease enter desired clustering parameters (comma-separated). "
-                           "For example: no_branches,max_no_of_households_of_a_branch,avg_trafo_dis\n> ").strip()
+        user_input = _ask("\nPlease enter desired clustering parameters (comma-separated). "
+                          "For example: no_branches,max_no_of_households_of_a_branch,avg_trafo_dis\n> ")
         params = [param.strip() for param in user_input.split(",") if param.strip()]
-        if params:
+        unknown = [param for param in params if param not in allowed]
+        if not params:
+            print("Invalid input. Please enter at least one parameter.")
+        elif unknown:
+            print(f"Invalid input. Unknown parameter(s): {', '.join(unknown)}. Allowed: {', '.join(allowed)}.")
+        else:
             return params
-        print("Invalid input. Please enter at least one parameter.")
 
 
 def get_custom_cluster_numbers():
@@ -97,9 +116,9 @@ def get_custom_cluster_numbers():
     min_val, max_val = min(allowed_values), max(allowed_values)
 
     while True:
-        user_input = input(f"\nPlease enter desired number of clusters for KMeans and GMM "
-                           f"(comma-separated, allowed: {allowed_values}). "
-                           f"For example: 4,5\n> ").strip()
+        user_input = _ask(f"\nPlease enter desired number of clusters for KMeans and GMM "
+                          f"(comma-separated, allowed: {allowed_values}). "
+                          f"For example: 4,5\n> ")
         try:
             values = [int(num.strip()) for num in user_input.split(",") if num.strip()]
 
@@ -176,18 +195,20 @@ def main():
     _parse_args()
     print("Running classification pipeline...")
 
-    # Step 1: Ensure user has configured `config_classification.yaml`
+    # Step 1: Ensure user has configured `config_classification.yaml`; an existing version is rejected
+    # before any question is asked.
     config_classification = load_yaml(CONFIG_CLASSIFICATION_PATH)
-    print(f"Using classification version: {config_classification['CLASSIFICATION_VERSION']}")
+    version = config_classification['CLASSIFICATION_VERSION']
+    print(f"Using classification version: {version}")
+    if classification_version_exists():
+        sys.exit(f"Classification version {version} already exists. Set a new CLASSIFICATION_VERSION in "
+                 f"{CONFIG_CLASSIFICATION_PATH} (or delete the old one with 'pylovo-delete classification').")
 
     # Step 2: Ask user if they want to apply additional filtering then Run prepare_data_for_clustering.py
-    user_input = input("\nDo you want to apply additional filtering on top of the default filters? (yes/no): ").strip().lower()
-    apply_additional_filtering = user_input == "yes"
-
-    user_input = input(
-        "\nDo you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID? (yes/no): "
-    ).strip().lower()
-    sample_from_postcode_result_only = user_input == "yes"
+    apply_additional_filtering = ask_yes_no("Do you want to apply additional filtering on top of the default filters?")
+    sample_from_postcode_result_only = ask_yes_no(
+        "Do you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID?"
+    )
 
     print("\nRunning prepare_data_for_clustering.py...")
     prepare_data_for_clustering(
@@ -196,7 +217,8 @@ def main():
     )
 
     # Step 3: Ask user for manual input or automatic assignment
-    if get_user_confirmation():
+    if ask_yes_no("Do you prefer to assign clustering parameters and number of clusters? "
+                  "Otherwise, optimal values will be calculated and assigned accordingly."):
         # User wants to enter clustering parameters manually
         clustering_parameters = get_custom_clustering_parameters()
         cluster_numbers = get_custom_cluster_numbers()
