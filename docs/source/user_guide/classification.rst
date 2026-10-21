@@ -8,8 +8,8 @@ the grids with k-means and a Gaussian mixture model. For every cluster it names 
 representative. The result is stored per transformer position in ``pylovo.transformer_classified``
 and can be shown in QGIS.
 
-The classification is a separate workflow. Grid generation does not need it, and the browser UI does
-not cover it (:doc:`browser_ui`).
+The classification is a separate workflow. Grid generation does not need it, and the HTTP API does
+not cover it (:doc:`http_api`).
 
 At a glance
 -----------

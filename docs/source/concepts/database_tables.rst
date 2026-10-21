@@ -1683,7 +1683,7 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
 ``load_edit``
 ~~~~~~~~~~~~~
 
-Audit rows of manual load edits made in the browser UI (``pylovo.load_editing``): the changed inputs, the building, loads and pandapower net before the edit (for the exact undo) and the removed analysis rows. Append-only; an undo stamps ``undone_at``.
+Audit rows of manual load edits made through the HTTP API (``pylovo.load_editing``): the changed inputs, the building, loads and pandapower net before the edit (for the exact undo) and the removed analysis rows. Append-only; an undo stamps ``undone_at``.
 
 Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id, grid_result_id), ON DELETE CASCADE.
 

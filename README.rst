@@ -15,11 +15,11 @@ all equipment with coincidence factors and voltage-drop limits, and checks every
 power flow. The grids are stored as `pandapower <https://www.pandapower.org/>`_ networks and as
 GIS tables in PostgreSQL/PostGIS.
 
-.. figure:: docs/source/images/ui/gridplanner-3d-feeders.png
-    :alt: A generated grid in the GridPlanner browser UI in 3D, cables and buildings coloured by feeder
+.. figure:: docs/source/images/viewer/viewer-detail.png
+    :alt: Generated LV grids in pylovo-viewer in 3D, cables and buildings coloured by grid, one feeder section selected
 
-    A generated grid in the GridPlanner browser UI: cables and 3D buildings coloured by feeder
-    (demo region 85653 from OpenStreetMap data with synthetic LoD2 models).
+    Generated LV grids in pylovo-viewer: cables and 3D buildings coloured by grid, one feeder section
+    selected (MV test region from open data; map data © OpenStreetMap contributors, ODbL).
 
 Key features
 ------------
@@ -40,8 +40,10 @@ Key features
 * **Grid classification** -- group the generated grids into representative grid types
   (``pylovo-classify``, see the
   `classification guide <https://pylovo.readthedocs.io/en/latest/user_guide/classification.html>`_).
-* **Analysis and visualisation** -- key figures per postcode and grid, QGIS templates, CSV and
-  pandapower JSON export, plotting helpers, and the GridPlanner browser UI on top of an HTTP API.
+* **Analysis and visualisation** -- key figures per postcode and grid, the read-only map viewer
+  ``pylovo-viewer`` (see the `map viewer guide
+  <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_), QGIS templates, CSV and
+  pandapower JSON export, plotting helpers, and a headless HTTP API for browser clients and scripts.
 
 The shipped data cover Bavaria; other regions need the corresponding InfDB data and transformer
 download.
@@ -92,21 +94,6 @@ click, colour modes, a legend, key figures and 3D LoD2 buildings. It only reads 
 
    uv sync --extra viewer
    uv run --extra viewer pylovo-viewer       # http://127.0.0.1:8770/
-
-Browser UI (GridPlanner)
-------------------------
-
-GridPlanner is the browser UI for pylovo: database setup, region selection, transformer editing
-and imports, configuration, generation jobs with live logs, statistics, a grid inspector with
-diagnostics and an on-demand power flow, 3D buildings and load editing. It lives in its own
-repository and runs pylovo as a container image with the HTTP API below; GridExpand can add grid
-expansion steps on the same grids. See the
-`browser UI guide <https://pylovo.readthedocs.io/en/latest/user_guide/browser_ui.html>`_.
-
-.. code-block:: bash
-
-   ./gridplanner init --without-gridexpand   # in a GridPlanner checkout: asks for the database
-   ./gridplanner up                          # http://127.0.0.1:18780/
 
 HTTP API
 --------

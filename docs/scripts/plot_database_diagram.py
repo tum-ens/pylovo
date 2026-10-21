@@ -71,7 +71,7 @@ DESCRIPTIONS = {
     "pandapower_load": "Loads of the validation snapshot per consumer and category, including the service design "
                        "load and installed peak (``max_p_mw``).",
     "clustering_parameters": "Per-grid key figures written by ``pylovo-analyze --per-grid``.",
-    "load_edit": "Audit rows of manual load edits made in the browser UI (``pylovo.load_editing``): the changed "
+    "load_edit": "Audit rows of manual load edits made through the HTTP API (``pylovo.load_editing``): the changed "
                  "inputs, the building, loads and pandapower net before the edit (for the exact undo) and the "
                  "removed analysis rows. Append-only; an undo stamps ``undone_at``.",
     "ags_log": "AGS codes whose building files were imported (file-based mode).",

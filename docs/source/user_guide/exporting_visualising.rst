@@ -103,9 +103,9 @@ pandapower:
            pp.to_json(net, f"grid_85653_{kcid}_{bcid}.json")
 
 Alternatively, ``SAVE_GRID_FOLDER: True`` writes the JSON files during generation
-(:doc:`generating_grids`). The :doc:`browser_ui` offers a download button per grid. The MV grids
-of the MV stage are stored in ``pylovo.mv_grid.net`` and written with ``pylovo-mv export``
-(:doc:`mv_grids`).
+(:doc:`generating_grids`). The :doc:`http_api` serves the network of a grid as a download
+(``GET /api/grids/{id}/pandapower.json``). The MV grids of the MV stage are stored in
+``pylovo.mv_grid.net`` and written with ``pylovo-mv export`` (:doc:`mv_grids`).
 
 Plotting helpers
 ----------------

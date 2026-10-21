@@ -5,7 +5,8 @@ The MV stage adds medium-voltage (MV) grids to a generated LV version: open ring
 substations of the region to the stations of the LV grids and the MV customers
 (:doc:`../concepts/mv_grids`). This page shows how to prepare its inputs, run it, compare MV
 variants and read the results. :doc:`mv_parameters` lists every parameter. The stage runs on the
-command line and from Python. The HTTP API and the GridPlanner UI do not offer it yet.
+command line and from Python. The HTTP API does not offer it yet. The map viewer shows its results
+(:doc:`viewer`).
 
 The stage plans for the peak load and the (n-1) cases, like the LV-first workflow. It uses
 NA2XS2Y 1x240 cables and 122-AL1 overhead conductors. It plans no generation, so its results say

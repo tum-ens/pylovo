@@ -5,18 +5,17 @@ Detailed low-voltage grid data are often unavailable for regional energy studies
 (PYthon tool for LOw-VOltage distribution grid generation) turns open building, street and
 transformer data into geographically located synthetic grids for German postcode areas. These
 models make it possible to explore local network constraints, future demand and grid planning
-questions across many places. Results can be explored in the browser with GridPlanner
-(:doc:`user_guide/browser_ui`) and used as `pandapower <https://www.pandapower.org/>`_ networks or
-GIS data.
+questions across many places. Results can be explored in the browser with the read-only map viewer
+``pylovo-viewer`` (:doc:`user_guide/viewer`) and used as `pandapower <https://www.pandapower.org/>`_
+networks or GIS data.
 
-.. figure:: /images/ui/gridplanner-3d-feeders.png
-   :alt: One generated grid in the GridPlanner UI in 3D, cables and buildings coloured by feeder
+.. figure:: /images/viewer/viewer-detail.png
+   :alt: Generated LV grids in pylovo-viewer in 3D, cables and buildings coloured by grid, one feeder section selected
    :width: 100%
 
-   Explore generated grids in the :doc:`user_guide/browser_ui`: one grid of the demo region 85653
-   (Aying) with its feeders and 3D buildings. Demo extract derived from OpenStreetMap with
-   synthetic LoD2 models; map data © OpenStreetMap contributors (ODbL), basemap OpenFreeMap /
-   OpenMapTiles.
+   Explore generated grids in the :doc:`user_guide/viewer`: the LV grids of one postcode with cables
+   and 3D buildings coloured by grid and one selected feeder section. MV test region from open
+   data; map data © OpenStreetMap contributors (ODbL).
 
 .. rubric:: Key features
 
@@ -38,7 +37,7 @@ GIS data.
   ``pylovo-classify`` (:doc:`user_guide/classification`).
 * **Analysis and visualisation** -- key figures per postcode and per grid, the read-only map
   viewer ``pylovo-viewer`` (:doc:`user_guide/viewer`), QGIS templates, CSV export, plotting
-  helpers, and the GridPlanner browser UI on top of pylovo's HTTP API (:doc:`user_guide/browser_ui`).
+  helpers, and a headless HTTP API for browser clients and scripts (:doc:`user_guide/http_api`).
 
 .. rubric:: Where to start
 
@@ -127,7 +126,6 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    user_guide/applications
    user_guide/exporting_visualising
    user_guide/viewer
-   user_guide/browser_ui
    user_guide/http_api
    user_guide/cli
    user_guide/troubleshooting

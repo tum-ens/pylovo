@@ -49,12 +49,18 @@ More regions, municipalities and parallel runs are covered in
 5. Look at the results
 ----------------------
 
+The read-only map viewer shows the database of your ``.env`` as a map in the browser
+(:doc:`../user_guide/viewer`):
+
+.. code-block:: bash
+
+   uv run --extra viewer pylovo-viewer       # http://127.0.0.1:8770/, opens the browser
+
 Open the :download:`basic-grid notebook
 <../../../notebook_tutorials/grid_generation/0_basic_grid_generation.ipynb>` for a guided look
-at the stored grids and one pandapower network. For maps and statistics, open the
+at the stored grids and one pandapower network. For maps and statistics in Python, open the
 :download:`statistics notebook
-<../../../notebook_tutorials/grid_generation/4_basic_plotting.ipynb>` or use the GridPlanner
-:doc:`../user_guide/browser_ui`. The notebooks use the
+<../../../notebook_tutorials/grid_generation/4_basic_plotting.ipynb>`. The notebooks use the
 database configured in ``.env``; change their ``plz`` parameter to ``80803``. Install the
 notebook environment with ``uv sync --extra notebooks`` if needed (:doc:`tutorials`).
 
