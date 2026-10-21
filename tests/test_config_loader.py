@@ -1,10 +1,16 @@
 """Checks of the generation configuration at load time (no database)."""
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from pylovo import config_loader
-from pylovo.config_loader import _check_cable_ampacities, _check_transformer_mapping, _consumer_categories_from_config
+from pylovo.config_loader import (_check_cable_ampacities, _check_transformer_mapping, _consumer_categories_from_config,
+                                  _version_id)
 
 
 def categories(sim_factor) -> dict:
@@ -58,3 +64,25 @@ def test_the_shipped_configuration_passes_its_checks():
     _check_cable_ampacities(config_loader.CONSUMER_CONNECTION_CABLES, "CONSUMER_CONNECTION_CABLES")
     _check_transformer_mapping(config_loader.TRANSFORMER_MAPPING, config_loader.TRANSFORMERS)
     assert config_loader.SIM_FACTOR["Residential"] == 0.07
+
+
+@pytest.mark.parametrize("value, expected", [("1", "1"), (2, "2"), ("a5", "a5"), ("a2-all", "a2-all"), ("v1.0_x", "v1.0_x"),
+                                              ("0123456789", "0123456789")])
+def test_version_id_is_text(value, expected):
+    assert _version_id(value) == expected
+
+
+@pytest.mark.parametrize("value", [None, True, 1.5, [1], "", "12345678901", "a b", "a/b", "ä"])
+def test_invalid_version_ids_are_refused_with_the_key_named(value):
+    with pytest.raises(ValueError, match="VERSION_ID must be"):
+        _version_id(value)
+
+
+def test_an_unquoted_numeric_version_id_loads_as_text(tmp_path):
+    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
+    config = tmp_path / "config" / "config_generation_lv.yaml"
+    config.write_text(config.read_text().replace('VERSION_ID: "1"', "VERSION_ID: 2", 1))
+    proc = subprocess.run([sys.executable, "-c", "import pylovo.config_loader as c; print(repr(c.VERSION_ID))"],
+                          cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip().splitlines()[-1] == "'2'"

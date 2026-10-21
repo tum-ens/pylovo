@@ -31,6 +31,7 @@ against it as well.
 """
 
 import os
+import re
 import warnings
 from pathlib import Path
 
@@ -207,6 +208,21 @@ def _consumer_categories_from_config(config_generation: dict, peak_load_househol
     return categories
 
 
+def _version_id(value) -> str:
+    """The ``VERSION_ID`` of ``config_generation_lv.yaml`` as text (``VERSION_ID: 2`` is accepted as ``"2"``).
+
+    Raises:
+        ValueError: If it is not a text or whole number of 1 to 10 letters, digits, ``_``, ``.`` or ``-``
+            (the ``version_id`` columns hold 10 characters; the rule of ``MV_VARIANT_ID``).
+    """
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError(f"VERSION_ID must be a text (quote it in YAML), got {value!r}")
+    text = str(value)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,10}", text):
+        raise ValueError(f"VERSION_ID must be 1 to 10 letters, digits, '_', '.' or '-', got {text!r}")
+    return text
+
+
 def _check_cable_ampacities(cables: pd.DataFrame, key: str) -> None:
     """Raise ValueError unless every cable of the catalogue ``key`` has a ``max_i_a`` above 0.
 
@@ -328,7 +344,7 @@ EXCLUDE_BUILDINGS_WITHOUT_ADDRESS = CONFIG_GENERATION.get("EXCLUDE_BUILDINGS_WIT
 # GRID GENERATION CONFIGURATION (from CONFIG_GENERATION)
 # =============================================================================
 # Version information
-VERSION_ID = CONFIG_GENERATION["VERSION_ID"]
+VERSION_ID = _version_id(CONFIG_GENERATION["VERSION_ID"])
 VERSION_COMMENT = CONFIG_GENERATION["VERSION_COMMENT"]
 
 # Load calculation parameters
