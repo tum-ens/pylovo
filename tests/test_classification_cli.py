@@ -1,0 +1,117 @@
+"""The interactive ``pylovo-classify`` flow with scripted answers, temporary config copies and stubbed pipeline steps."""
+import shutil
+import sys
+from pathlib import Path
+
+import pandas as pd
+import pytest
+import yaml
+
+pytest.importorskip("matplotlib")  # pylovo-classify imports the plotting stack (extra "plots")
+pytest.importorskip("seaborn")
+pytest.importorskip("plotly")
+
+import pylovo.cli.classify as cl  # noqa: E402
+
+REPO_CONFIG = Path(cl.CONFIG_CLUSTERING_PATH).parent
+
+
+@pytest.fixture()
+def config_copy(tmp_path, monkeypatch):
+    """Work on copies: save_yaml rewrites the config files."""
+    for name in ("config_classification.yaml", "config_clustering.yaml"):
+        shutil.copy(REPO_CONFIG / name, tmp_path / name)
+    monkeypatch.setattr(cl, "CONFIG_CLASSIFICATION_PATH", str(tmp_path / "config_classification.yaml"))
+    monkeypatch.setattr(cl, "CONFIG_CLUSTERING_PATH", str(tmp_path / "config_clustering.yaml"))
+    return tmp_path
+
+
+def answers(monkeypatch, *values):
+    queue = iter(values)
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(queue))
+
+
+@pytest.fixture()
+def pipeline(monkeypatch, config_copy):
+    """Stub the long-running steps and record what the CLI hands to them."""
+    calls = {}
+    monkeypatch.setattr(sys, "argv", ["pylovo-classify"])
+    monkeypatch.setattr(cl, "prepare_data_for_clustering", lambda **kw: calls.__setitem__("prepare", kw))
+    monkeypatch.setattr(cl, "get_parameters_for_clustering", lambda: ["no_branches", "avg_trafo_dis"])
+    monkeypatch.setattr(cl, "get_no_clusters_for_clustering",
+                        lambda params=None: pd.DataFrame({"algorithm": ["kmeans", "gmm_full", "gmm_tied"],
+                                                          "no_clusters": [5, 3, 6], "ch_index": [1.0, 1.0, 1.0]}))
+    monkeypatch.setattr(cl, "apply_clustering_for_visualisation", lambda **kw: calls.__setitem__("apply", kw))
+    calls["config"] = config_copy / "config_clustering.yaml"
+    return calls
+
+
+def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatch, pipeline, capsys):
+    answers(monkeypatch, "yes", "no", "no")
+    cl.main()
+    assert pipeline["prepare"] == {"additional_filtering": True, "sample_from_postcode_result_only": False}
+    assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
+                                 "n_clusters_kmeans": 5, "n_clusters_gmm": 6}
+    saved = yaml.safe_load(pipeline["config"].read_text())
+    assert saved["LIST_OF_CLUSTERING_PARAMETERS"] == ["no_branches", "avg_trafo_dis"]
+    assert (saved["N_CLUSTERS_KMEANS"], saved["N_CLUSTERS_GMM"]) == (5, 6)
+    assert "CLUSTERING_PARAMETERS" in saved and "THRESHOLD_MAX_TRAFO_DIS" in saved, "other keys survive the rewrite"
+    assert "no cluster recommendation found for ['KMedoids'" in capsys.readouterr().out, "stale KMedoid warning (CLASSIF-09)"
+
+
+def test_manual_path_takes_parameters_and_three_cluster_numbers(monkeypatch, pipeline):
+    answers(monkeypatch, "no", "yes", "yes", "no_branches, max_no_of_households_of_a_branch", "3,4,5")
+    cl.main()
+    assert pipeline["prepare"] == {"additional_filtering": False, "sample_from_postcode_result_only": True}
+    assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "max_no_of_households_of_a_branch"],
+                                 "n_clusters_kmeans": 4, "n_clusters_gmm": 5}
+    assert yaml.safe_load(pipeline["config"].read_text())["N_CLUSTERS_KMEDOID"] == 3, "first number is the removed KMedoids"
+
+
+def test_confirmation_loops_until_yes_or_no(monkeypatch, capsys):
+    answers(monkeypatch, "maybe", "", "YES ")
+    assert cl.get_user_confirmation() is True
+    assert capsys.readouterr().out.count("Invalid input") == 2
+
+
+def test_custom_cluster_numbers_validation(monkeypatch, config_copy, capsys):
+    answers(monkeypatch, "4,5", "4,5,9", "a,b,c", "3,4,7")
+    assert cl.get_custom_cluster_numbers() == [3, 4, 7]
+    assert capsys.readouterr().out.count("Invalid input") == 3
+
+
+def test_custom_parameters_reject_empty_input(monkeypatch, capsys):
+    answers(monkeypatch, " , ", "a,b")
+    assert cl.get_custom_clustering_parameters() == ["a", "b"]
+
+
+def test_config_file_is_the_first_match_of_the_search_paths(tmp_path, monkeypatch):
+    first, second = tmp_path / "one", tmp_path / "two"
+    for folder in (first, second):
+        folder.mkdir()
+        (folder / "x.yaml").write_text("a: 1")
+    monkeypatch.setattr(cl, "get_config_search_paths", lambda: [tmp_path / "missing", first, second])
+    assert cl._config_file("x.yaml") == str(first / "x.yaml")
+    with pytest.raises(FileNotFoundError):
+        cl._config_file("absent.yaml")
+
+
+def test_help_exits_cleanly(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["pylovo-classify", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        cl.main()
+    assert exc.value.code == 0 and "usage: pylovo-classify" in capsys.readouterr().out
+
+
+@pytest.mark.xfail(strict=True, reason="CLASSIF-10: parameter names are not validated, a typo is written to the config")
+def test_unknown_parameter_names_are_rejected(monkeypatch):
+    answers(monkeypatch, "no_branchs,avg_trafo_dis", "no_branches,avg_trafo_dis")
+    assert cl.get_custom_clustering_parameters() == ["no_branches", "avg_trafo_dis"]
+
+
+@pytest.mark.xfail(strict=True, reason="CLASSIF-10: save_yaml rewrites the file without the user's comments")
+def test_saving_the_config_keeps_comments(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text("# my note\nN_CLUSTERS_GMM: 4  # tied\n")
+    cl.save_yaml(path, cl.load_yaml(path))
+    assert "# my note" in path.read_text() and "# tied" in path.read_text()
