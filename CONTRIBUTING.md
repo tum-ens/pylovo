@@ -15,7 +15,6 @@
 To simplify authentication, consider setting up SSH keys for GitHub. Follow [GitHub's guide on connecting with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh) for instructions.
 
 ## Types of interaction
-This repository is following the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). <br>
 Please be self-reflective and always maintain a good culture of discussion and active participation.
 
 ### A. Use
@@ -45,7 +44,7 @@ The workflow for contributing to this project has been inspired by the workflow 
 ##### Branches and their purpose
 * main - holds the released versions (tagged `vX.Y.Z`)
 * dev - holds all current developments for the next release
-* see other types below
+* topic branches (`feature/...`, `fix/...`) - one topic each, created from `dev` and merged back into it by a pull request
 
 ### 1. Describe the issue on GitHub
 Create an issue in the [GitHub repository](https://github.com/tum-ens/pylovo/issues). 
@@ -55,39 +54,9 @@ Make a checklist for all needed steps if possible.
 The issue templates in `.github/ISSUE_TEMPLATE` guide you to ensure a consistent description.
 
 ### 2. Solve the issue locally
-There are two ways to create the branch:
-1. Create a new branch from the `dev` branch
-2. Create a new branch directly in GitHub from the issue
-
-#### Naming convention for branches
-Naming convention for branches: `type`/`issue-nr`-`short-description`
-
-##### `type`
-* feature - used for new features
-* bugfix - used for bug fixes
-* hotfix - used for quick fixes, should be branched from the `main` branch
-* release - used for preparing a new release, should be branched from the `dev` branch
-
-Note: The majority of the development will be done in `feature` branches.
-
-##### `issue-nr`
-The `issueNumber` should be taken from Step 1. Do not use the "#". 
-
-##### `short-description`
-Describe shortly what the branch is about. Usually, the title of the issue.
-
-##### Other hints
-- Separate type with `/` (slash)
-- Separate other words with `-` (minus)
-- Avoid using capital letters
-- Do not put your name to the branch name, it's a collaborative project
-- Branch names should be precise and informative
-
-Examples of branch names: `feature/42-add-new-ontology-class`, `feature/911-branch-naming-convention`, `hotfix/404-update-api`, `release/v1.0.0`
+Create a new branch from the `dev` branch and name it after its topic, for example `feature/mv-grids` for new functionality or `fix/lv-short-lines` for a bug fix. Do not put your name into the branch name, it's a collaborative project.
 
 #### 2.1. Create a new branch
-
-##### Option 1: Get the latest version of the `dev` branch
 1. Load the `dev` branch:
 ```bash
 git checkout dev
@@ -98,15 +67,10 @@ git checkout dev
 git pull
 ```
 
-3. Create a new feature branch:
+3. Create the new branch:
 ```bash
-git checkout -b feature/1314-my-feature
+git checkout -b feature/my-feature
 ```
-
-##### Option 2: Create a new branch directly in GitHub from the issue
-1. Click on `Create a branch` in the `Development` section of the issue.
-2. Choose the appropriate source branch (most of the time `dev`).
-3. Name the branch according to the naming convention.
 
 #### 2.2. Start editing the files
 - Divide your feature into small logical units
@@ -134,15 +98,11 @@ git commit filename.md
 ```
 
 Write a good `commit message`:
-- "If applied, this commit will ..."
-- Follow [existing conventions for commit messages](https://chris.beams.io/posts/git-commit)
-- Keep the subject line [shorter than 50 characters](https://chris.beams.io/posts/git-commit/#limit-50)
-- Do not commit more than a few changes at the time: [atomic commits](https://en.wikipedia.org/wiki/Atomic_commit)
-- Use [imperative mood](https://chris.beams.io/posts/git-commit/#imperative)
-- Do not end the commit message with a [period](https://chris.beams.io/posts/git-commit/#end) ~~.~~ 
-- Always end the commit message with the `issueNumber` including the "#"
+- One topic per commit ([atomic commits](https://en.wikipedia.org/wiki/Atomic_commit)).
+- One line in the [imperative mood](https://chris.beams.io/posts/git-commit/#imperative) that says what the commit changes ("If applied, this commit will ...").
+- No body and no period at the end.
 
-Examples of commit message: `Added function with some method #42` or `Update documentation for commit messages #1`
+Examples of commit messages: `List the existing transformers of a kcid once per vertex in vertex order` or `Record the house distance fix in the changelog`
 
 #### 2.4 Fix your latest commit message
 Do you want to improve your latest commit message? <br>
@@ -177,7 +137,7 @@ uv run --extra docs sphinx-build -W --keep-going -b html docs/source docs/build/
 Push your `local` branch on the remote server `origin`. <br>
 If your branch does not exist on the remote server yet, use:
 ```bash
-git push --set-upstream origin feature/1314-my-feature
+git push --set-upstream origin feature/my-feature
 ```
 
 Then push regularly with:
@@ -187,9 +147,7 @@ git push
 
 ### 5. Open a pull request (PR)
 Open a [pull request](https://github.com/tum-ens/pylovo/pulls) on GitHub with the pull request template of `.github/PULL_REQUEST_TEMPLATE`. <br>
-The PR should be directed: `base: dev` <- `compare: feature/1314-my-feature`. <br>
-Add the line `Closes #<issue-number>` in the description of your PR.
-When it is merged, it automatically closes the issue. <br>
+The PR goes into `dev`: `base: dev` <- `compare: feature/my-feature`. <br>
 Assign a reviewer and get in contact. The CI builds the documentation, runs the unit tests and checks the HTTP API contract (`api/openapi.json`, see `api/README.md`).
 
 #### 5.1. Let someone else review your PR

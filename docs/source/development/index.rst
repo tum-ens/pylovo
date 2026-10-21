@@ -1,11 +1,12 @@
 Development
 ===========
 
-Contributions are welcome. The workflow (issues, branch names, pull requests, reviews and
+Contributions are welcome. The workflow (issues, branches, commits, pull requests, reviews and
 releases) is described in `CONTRIBUTING.md <https://github.com/tum-ens/pylovo/blob/main/CONTRIBUTING.md>`_.
-In short: open an issue, work on a branch ``feature/<issue>-<description>`` (or ``bugfix/...``)
-from ``dev``, add an entry to ``CHANGELOG.md`` under *Unreleased* and open a pull request
-into ``dev``. ``main`` holds the released versions (tagged ``vX.Y.Z``).
+In short: open an issue, work on a topic branch (``feature/<description>`` or ``fix/<description>``)
+from ``dev``, make one commit per topic with a one-line message in the imperative mood, add an
+entry to ``CHANGELOG.md`` under *Unreleased* and open a pull request into ``dev``. ``main`` holds
+the released versions (tagged ``vX.Y.Z``).
 
 Project layout
 --------------
