@@ -160,7 +160,7 @@ class IElectricalBackend(ABC):
             y: Y coordinate
 
         Note:
-            No-op for backends without geodata support (e.g., OpenDSS)
+            No-op for backends without geodata support
         """
 
     @abstractmethod
@@ -173,7 +173,7 @@ class IElectricalBackend(ABC):
             zone: Zone identifier string
 
         Note:
-            No-op for backends without zone support (e.g., OpenDSS)
+            No-op for backends without zone support
         """
 
     # =========================================================================
@@ -202,5 +202,5 @@ class IElectricalBackend(ABC):
             rating_mva: Rated power in MVA
 
         Note:
-            No-op for backends that set rating at creation (e.g., OpenDSS)
+            No-op for backends that set rating at creation
         """

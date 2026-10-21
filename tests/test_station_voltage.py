@@ -63,7 +63,7 @@ def test_a_second_run_on_the_stored_state_reproduces_the_result():
 
 
 class _PlainBackend:
-    """A backend without the station-voltage methods (like the OpenDSS backend)."""
+    """A backend without the station-voltage methods (like a minimal custom backend)."""
 
     def __init__(self):
         self.solved = 0

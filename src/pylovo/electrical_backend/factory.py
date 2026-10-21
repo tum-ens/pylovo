@@ -7,7 +7,7 @@ This module provides:
     - Backend instantiation via create_backend()
 
 Backends are registered with lazy imports to avoid loading heavy dependencies
-(pandapower, altdss) until actually needed.
+(pandapower) until actually needed.
 
 Usage:
     from pylovo.electrical_backend import create_backend
@@ -15,8 +15,9 @@ Usage:
     # Create default (pandapower) backend
     backend = create_backend()
 
-    # Create specific backend
-    backend = create_backend("opendss", logger=my_logger)
+    # Register and create another backend
+    register_backend("mine", MyBackend)
+    backend = create_backend("mine", logger=my_logger)
 """
 
 from typing import Callable, Dict, Iterable, Optional
@@ -83,16 +84,8 @@ def _pandapower_ctor(logger: Optional[object]) -> IElectricalBackend:
     return PandapowerBackend(logger=logger)
 
 
-def _opendss_ctor(logger: Optional[object]) -> IElectricalBackend:
-    """Lazy constructor for OpenDSSBackend."""
-    from .opendss.backend import OpenDSSBackend
-
-    return OpenDSSBackend(logger=logger)
-
-
-# Register built-in backends
+# Register the built-in backend
 register_backend("pandapower", _pandapower_ctor)
-register_backend("opendss", _opendss_ctor)
 
 
 # =============================================================================
@@ -107,7 +100,7 @@ def create_backend(
     Create a backend instance by name.
 
     Args:
-        backend_name: Name of backend ("pandapower" or "opendss")
+        backend_name: Name of a registered backend (``"pandapower"`` ships)
         logger: Optional logger instance
 
     Returns:

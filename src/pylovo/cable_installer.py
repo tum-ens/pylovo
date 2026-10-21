@@ -131,8 +131,8 @@ class CableInstaller:
     def _build_cable_dataframe(cables: list) -> pd.DataFrame:
         """Build cable DataFrame from database tuples.
 
-        Normalizes cable names to underscore format (e.g., "NAYY_4_120")
-        which is compatible with both pandapower and OpenDSS backends.
+        Normalizes cable names to underscore format (e.g., "NAYY_4_120"), the names
+        under which the backend registers its line types.
 
         Args:
             cables: List of tuples (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)
