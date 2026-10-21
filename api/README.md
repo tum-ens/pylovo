@@ -204,12 +204,15 @@ api/
 ## Tests
 
 ```bash
-uv run --extra api --extra plots pytest                                       # tests and api/tests, no database needed
-PYLOVO_API_TEST_DATABASE=<sandbox db> uv run --extra api --extra plots pytest  # + database tests
+uv run --extra api --extra plots pytest                                                  # tests and api/tests, no database needed
+PYLOVO_API_TEST_DATABASE=<test db> uv run --extra api --extra plots pytest api/tests      # + database tests
 ```
 
-The database tests only run when the variable names the database of the project's `.env` (use a
-sandbox: they insert and delete a manual transformer and apply and undo load edits).
+The database tests only run when the variable names the database pylovo's configuration (`.env` or
+environment) points to. Use the toy-town test database built by `tests/db/build_test_database.py`
+(section "Tests" of the development guide, `docs/source/development/index.rst`); the CI builds it and runs
+these tests. They derive their expectations from that database and they write: they insert and delete a
+manual transformer and apply and undo load edits.
 
 ## Known limitations
 

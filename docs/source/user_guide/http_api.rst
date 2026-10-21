@@ -236,4 +236,5 @@ More
 
 ``api/README.md`` lists the endpoints by router and describes the architecture, the contract
 rules and the tests. The tests in ``api/tests`` use the FastAPI test client; database tests only
-run against a database you name explicitly (``PYLOVO_API_TEST_DATABASE``).
+run against a database you name explicitly (``PYLOVO_API_TEST_DATABASE``), the toy-town test database
+described in :doc:`../development/index`.

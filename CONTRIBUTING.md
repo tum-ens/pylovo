@@ -125,7 +125,7 @@ The unit tests need no database. Run them with:
 ```bash
 uv run --extra api --extra plots pytest
 ```
-This collects `tests` and `api/tests` and lists the reason of every skipped test. Tests that need a database are skipped unless you name a disposable database for them. Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
+This collects `tests` and `api/tests` and lists the reason of every skipped test. Tests that need a database are skipped unless you name a disposable database for them (the toy-town test database, see "Tests" in the development guide `docs/source/development/index.rst`). Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
 
 3.3. **Documentation build**:
 Build the documentation with warnings as errors, as the CI does:
@@ -148,7 +148,7 @@ git push
 ### 5. Open a pull request (PR)
 Open a [pull request](https://github.com/tum-ens/pylovo/pulls) on GitHub with the pull request template of `.github/PULL_REQUEST_TEMPLATE`. <br>
 The PR goes into `dev`: `base: dev` <- `compare: feature/my-feature`. <br>
-Assign a reviewer and get in contact. The CI builds the documentation, runs the unit tests and checks the HTTP API contract (`api/openapi.json`, see `api/README.md`).
+Assign a reviewer and get in contact. The CI builds the documentation, runs the unit tests and the database tests (on the toy-town test database) and checks the HTTP API contract (`api/openapi.json`, see `api/README.md`).
 
 #### 5.1. Let someone else review your PR
 Assign one reviewer or a user group and get into contact.

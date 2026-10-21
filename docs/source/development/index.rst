@@ -27,6 +27,7 @@ Project layout
    |-- notebook_tutorials/       Jupyter notebooks
    |-- QGIS/                     QGIS project templates
    |-- tests/                    unit tests (no database needed; database tests are opt-in)
+   |   `-- db/                   the toy-town test database (builder and build script)
    |-- .github/                  CI workflows (documentation, tests, API contract, image), issue and PR templates
    |-- src/pylovo/               the Python package
    |   |-- cli/                  pylovo-* commands (setup, generate, mv, analyze, classify, import, export, delete)
@@ -69,21 +70,8 @@ Code conventions
   that influence the result belong into the version snapshot
   (``PreprocessingMixin._generation_parameters_snapshot``).
 
-Testing with a sandbox database
--------------------------------
-
-Use a disposable database for schema and generation tests. The explicit
-``pylovo-setup reset --database NAME`` command drops the PyLovo schema. Use a disposable PostgreSQL server with PostGIS and pgRouting, for example a local
-container, and a separate ``.env``:
-
-#. Start the sandbox database and create PostGIS and pgRouting in ``public``.
-#. Load InfDB-shaped test data (schemas ``basedata`` and ``opendata``) for a small postcode, or use
-   the file-based mode.
-#. Point ``.env`` to the sandbox (check with ``grep -E '^(HOST|PORT|DBNAME)' .env``), run
-   ``pylovo-setup`` and ``pylovo-generate --plz <plz>``.
-#. For behaviour-preserving changes, generate the same postcode before and after the change and
-   compare ``grid_result``, ``buildings_result``, ``lines_result`` and the ``pandapower_*`` tables;
-   generation is deterministic for a fixed configuration.
+Tests
+-----
 
 Quick checks without a database:
 
@@ -92,15 +80,81 @@ Quick checks without a database:
    uvx ruff check src
    uv run python -m compileall -q src
 
-The unit tests in ``tests`` and ``api/tests`` need no database; tests that need one are skipped
-unless you name a disposable database for them. The HTTP API has an OpenAPI contract snapshot
-``api/openapi.json`` (see ``api/README.md``). On pull requests the CI builds the documentation, runs the
-tests and checks the contract:
+The unit tests in ``tests`` and ``api/tests`` need no database. The HTTP API has an OpenAPI contract
+snapshot ``api/openapi.json`` (see ``api/README.md``). On pull requests the CI builds the documentation,
+runs the unit tests, runs the database tests on the toy-town test database (below) and checks the contract:
 
 .. code-block:: bash
 
    uv run --extra api --extra plots pytest
    uv run --extra api python api/scripts/export_openapi.py   # after changing a route
+
+Database tests
+~~~~~~~~~~~~~~
+
+The tests that need a database are opt-in: each group runs only when its variable is set and is
+skipped with the reason otherwise.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 27 33
+   :class: fixed-table
+
+   * - Tests
+     - Variable
+     - Database
+   * - ``tests/test_toy_town.py``: end-to-end smoke test of the generation (reads)
+     - ``PYLOVO_TOY_TOWN_DATABASE`` = database name
+     - the toy-town test database; the name must be the database pylovo's configuration points to
+   * - ``api/tests`` marked ``requires_db``: regions, results, diagnostics, load editing (writes)
+     - ``PYLOVO_API_TEST_DATABASE`` = database name
+     - the same
+   * - ``tests/test_postgis_fixtures.py``: SQL of the postcode border and the left-out buildings
+     - ``PYLOVO_FIXTURE_DB`` = libpq connection string
+     - an empty database with PostGIS and pgRouting available
+   * - ``tests/test_database_review.py``: migrations, locks and schema checks
+     - ``PYLOVO_REVIEW_TEST_DSN`` = libpq connection string
+     - an empty database; the role needs ``CREATEDB`` and may create PostGIS and pgRouting
+
+**The toy town.** ``tests/db/toy_town.py`` writes a made-up town into the InfDB source relations that
+pylovo reads (``basedata.buildings``, ``ways_per_connection``, ``connection_lines``,
+``classify_building_use`` and ``opendata.postcodes_germany``): postcode 99001 with a street grid,
+apartment blocks, mixed buildings with shops, a school, a plant above the MV-direct threshold,
+single-family houses, a LoD2 transformer station and a cycle path, the neighbouring village 99002 and
+99003, a postcode without a polygon. The data are synthetic (no geodata files) and lie in the North Sea,
+far from real buildings and OSM transformers. ``tests/db/build_test_database.py`` writes the toy town into
+an empty database and runs ``pylovo-setup``, ``pylovo-generate`` and ``pylovo-analyze --per-grid`` for three
+versions: ``1`` with the ``config/`` of the checkout, ``2`` with the existing transformer positions
+(``USE_OPEN_TRANSFORMER_POSITIONS``) and ``3`` residential-only. It takes less than a minute. The API
+tests derive their expectations from this database; they write (a manual transformer, load edits that
+are undone again), but they can be repeated on the same database.
+
+Locally, with the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 3.8) and GDAL's ``ogr2ogr``
+installed (``pylovo-setup`` needs it):
+
+.. code-block:: bash
+
+   docker run -d --name pylovo-test-db -p 127.0.0.1:55432:5432 \
+       -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=pylovo_test pgrouting/pgrouting:17-3.5-3.8.0
+   docker exec pylovo-test-db psql -U postgres -c "CREATE DATABASE pylovo_fixture" -c "CREATE DATABASE pylovo_review"
+   export DBNAME=pylovo_test DBUSER=postgres PASSWORD=postgres HOST=127.0.0.1 PORT=55432
+   uv run --extra api --extra plots python tests/db/build_test_database.py --database pylovo_test
+   PYLOVO_TOY_TOWN_DATABASE=pylovo_test PYLOVO_API_TEST_DATABASE=pylovo_test \
+   PYLOVO_FIXTURE_DB="host=127.0.0.1 port=55432 dbname=pylovo_fixture user=postgres password=postgres" \
+   PYLOVO_REVIEW_TEST_DSN="host=127.0.0.1 port=55432 dbname=pylovo_review user=postgres password=postgres" \
+       uv run --extra api --extra plots pytest tests/test_toy_town.py tests/test_postgis_fixtures.py \
+       tests/test_database_review.py api/tests
+   docker rm -f pylovo-test-db   # start again from scratch
+
+pylovo reads ``.env`` with ``override=True``: a ``.env`` in the checkout replaces the exported variables.
+Then put the test database into ``.env`` instead (and switch it back afterwards). The build script refuses
+to run unless ``--database`` names the database the configuration points to, and it refuses a database
+that already has the ``pylovo`` or the ``basedata`` schema; drop and create the database to build it again.
+
+For behaviour-preserving changes of the generation, generate the same postcode before and after the change
+in a disposable database and compare ``grid_result``, ``buildings_result``, ``lines_result`` and the
+``pandapower_*`` tables; generation is deterministic for a fixed configuration.
+``pylovo-setup reset --database NAME`` drops the pylovo schema of a database.
 
 Building the documentation
 --------------------------
