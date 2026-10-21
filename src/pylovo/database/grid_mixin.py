@@ -1,15 +1,11 @@
 """Routing queries for cable installation and the line tables of generated grids."""
 
-import warnings
-
 from psycopg2 import sql
 from psycopg2.extras import execute_values
 from shapely.geometry import LineString
 
 from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin, plz_table_name
-
-warnings.simplefilter(action='ignore', category=UserWarning)
 
 # Visualisation helper geometry of a line ``lr``: its offset curve (subquery ``offset_geom`` of
 # _offset_line_lateral_sql), oriented like the line and extended to the line's own end points so

@@ -2,7 +2,6 @@
 
 import json
 import re
-import warnings
 from typing import Any
 
 import geopandas as gpd
@@ -15,8 +14,6 @@ from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
 from pylovo.database.migrations import pending_migrations
 from pylovo.electrical_backend.pandapower.backend import empty_network
-
-warnings.simplefilter(action="ignore", category=UserWarning)
 
 
 class AnalysisMixin(BaseMixin):

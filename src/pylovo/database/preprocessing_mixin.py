@@ -2,7 +2,6 @@
 buildings, transformers and ways in the working tables ``buildings_tem`` and ``ways_tem``."""
 
 import json
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -64,8 +63,6 @@ from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.transformer_sources import IS_DSO_TRANSFORMER_SQL as _IS_DSO_TRANSFORMER_SQL
 from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
 from pylovo.version_snapshot import compare_snapshots
-
-warnings.simplefilter(action='ignore', category=UserWarning)
 
 
 class PreprocessingMixin(BaseMixin):

@@ -21,7 +21,8 @@ from pylovo.database.results_mixin import ResultsMixin
 from pylovo.database.transformer_ui_mixin import TransformerUiMixin
 from pylovo.database.utils_mixin import UtilsMixin
 
-warnings.simplefilter(action='ignore', category=UserWarning)
+# pandas warns at every read_sql_query on a psycopg2 connection, which the mixins use; every other UserWarning stays visible
+warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy connectable", category=UserWarning)
 
 
 class DatabaseClient(

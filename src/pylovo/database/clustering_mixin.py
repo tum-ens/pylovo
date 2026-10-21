@@ -5,7 +5,6 @@ import hashlib
 import heapq
 import math
 import time
-import warnings
 from typing import Optional, Union
 
 import numpy as np
@@ -29,8 +28,6 @@ from pylovo.config_loader import (
 )
 from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin
 from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
-
-warnings.simplefilter(action='ignore', category=UserWarning)
 
 # Street distances between the distinct connection points of the loaded buildings of one kcid;
 # {bcid_filter} selects one building cluster (the kcid matrix itself: street_distance_matrix).

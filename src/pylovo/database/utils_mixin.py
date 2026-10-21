@@ -1,6 +1,5 @@
 """PLZ working tables, transaction helpers and small lookups shared by the other mixins."""
 
-import warnings
 import re
 
 import psycopg2 as psy
@@ -11,8 +10,6 @@ from psycopg2 import sql
 from pylovo.config_loader import MUNICIPAL_REGISTER, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.config_table_structure import REFRESH_QUERIES, TEMP_CREATE_QUERIES
-
-warnings.simplefilter(action='ignore', category=UserWarning)
 
 
 class UtilsMixin(BaseMixin):
