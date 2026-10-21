@@ -20,7 +20,8 @@ Workflow with versions
 ----------------------
 
 #. Choose a new ``VERSION_ID`` (for example ``"2"`` after ``"1"``) and describe it in
-   ``VERSION_COMMENT``. Quote it in YAML and use 1 to 10 letters, digits, ``_``, ``.`` or ``-``.
+   ``VERSION_COMMENT``. It is 1 to 10 letters, digits, ``_``, ``.`` or ``-``. Quote it in YAML as the
+   shipped file does: a plain ``2`` is read as ``"2"`` as well, but ``1.0`` is refused.
 #. Change the parameters in ``config/config_generation_lv.yaml`` (and, if needed, the power-flow
    limits in ``config_analysis.yaml``).
 #. Run ``pylovo-generate``. The first run stores the parameter snapshot of the version; later runs

@@ -134,8 +134,9 @@ snapshot and stops with
 
 if anything differs. The column **Snapshot** in the tables below marks the keys that are part of
 the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``: use 1 to 10 letters, digits, ``_``,
-``.`` or ``-``, and quote it in YAML (``VERSION_ID: "2"``). pylovo stops at the start for any other
-value.
+``.`` or ``-``. pylovo reads it as text (``VERSION_ID: 2`` is the version ``"2"``) and stops at the
+start for any other value. Quote an id that YAML would read as another type: ``1.0`` is refused,
+``"1.0"`` is the text.
 
 A postcode that already has grids in the active version is skipped
 (``Grid for the postcode area ... has already been generated``). Delete the old grids first
@@ -559,6 +560,10 @@ Cable rows have the fields ``name``, ``max_i_a`` (ampacity in A), ``r_mohm_per_k
   per name with both roles (``grid_role`` ``feeder,consumer_connection``), so both entries must
   have identical values. Different values stop the generation.
 
+pylovo checks the equipment and the load factors when it loads the configuration: every cable needs a
+``max_i_a`` above 0, every rating of ``TRANSFORMER_MAPPING`` must be defined in ``TRANSFORMERS``, and
+every ``sim_factor`` must be a number from 0 to 1. Otherwise the command stops at the start.
+
 .. _mv-configuration:
 
 ``config_generation_mv.yaml``
@@ -594,8 +599,8 @@ together with the constants of the stage, which are changed in Python only.
      - Colours per transformer rating (kVA) for statistics plots.
      -
    * - ``PALETTES``
-     - TUM colours
-     - Colour palettes; ``TUMPalette`` becomes the seaborn default palette if seaborn is
+     - ``TUMPalette``, ``TUMPalette1``
+     - TUM colour palettes; ``TUMPalette`` becomes the seaborn default palette if seaborn is
        installed.
      -
    * - ``NETWORK_COLORS``
