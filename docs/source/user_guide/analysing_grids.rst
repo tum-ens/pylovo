@@ -32,8 +32,8 @@ terminal backbone branches after pruning service stubs.
    * - ``max_trafo_distance`` (km)
      - Longest such path; useful for identifying grids with a distant feeder endpoint.
    * - ``transformer_mva`` (MVA)
-     - Rating of one transformer unit. For stations with parallel units, this is not the sum of
-       their ratings.
+     - Rating of the transformer station: the unit rating times the number of parallel units
+       (0.8 MVA for two 400 kVA units).
    * - ``graph_resistance`` (Ω)
      - Aggregate routed-line resistance proxy over the feeder backbone. It sums the equivalent
        resistance of segments, accounting for parallel conductors; it is not an end-to-end
@@ -127,12 +127,6 @@ station of two parallel units counts with its total rating (800 for 2 × 400 kVA
    * - ``max_distance_per_trafo``, ``avg_distance_per_trafo``
      - Per rating: lists with the maximum and mean path length (m) from the LV bus to the loads.
 
-.. note::
-
-   The rating key is the rating of a single transformer unit (``sn_mva`` of the pandapower
-   transformer). Grids with two parallel units, such as 800 kVA built from 2 × 400 kVA, are
-   therefore counted under 400.
-
 Per-grid key figures (``clustering_parameters``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -160,7 +154,8 @@ One row per grid (``grid_result_id``), computed by
    * - ``house_distance_km``
      - Median of the mean distance of each consumer to its four nearest neighbours.
    * - ``transformer_mva``, ``osm_trafo``
-     - Rating of one transformer unit; ``osm_trafo`` is true for brownfield grids (``bcid`` < 0).
+     - Rating of the transformer station in MVA (``sn_mva`` × ``parallel``); ``osm_trafo`` is true
+       for brownfield grids (``bcid`` < 0).
    * - ``max_trafo_dis``, ``avg_trafo_dis``
      - Maximum and mean path length (km) from the transformer to the consumers.
    * - ``cable_length_km``, ``cable_len_per_house``
@@ -210,7 +205,8 @@ database:
     in any PLZ), ``excluded`` with the step that left it out (``pylovo.building_exclusion``: e.g.
     ``mv_direct``, ``no_connection_point``, ``isolated_component``, ``unloaded``,
     ``transformer_evidence``), ``postcode_not_generated`` (its PLZ has no results) or ``missing``.
-    A complete run has no missing building; the command then exits with 3.
+    If any building is missing, the command prints their number and exits with code 3; a
+    complete run exits with 0. The reports are written either way.
 
 ``--border-diagnostics``
     Per PLZ the share of its polygon inside the InfDB import scope (``scope_share``), the share of

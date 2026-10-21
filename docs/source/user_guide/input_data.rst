@@ -41,10 +41,10 @@ With ``USE_INFDB=True`` pylovo reads these tables from the database configured i
 
    * - Table
      - Purpose
-   * - ``basedata.buildings``
+   * - ``<INFDB_SOURCE_SCHEMA>.buildings``
      - Building geometry, use, households, floor areas, postcode and address attributes. The
        postcode column selects buildings for a run.
-   * - ``basedata.classify_building_use(text)``
+   * - ``<INFDB_SOURCE_SCHEMA>.classify_building_use(text)``
      - Classifies mixed-use building functions as Commercial or Public.
    * - ``<INFDB_SOURCE_SCHEMA>.ways_per_connection``
      - Prepared street segments and their postcode assignment.
@@ -54,10 +54,9 @@ With ``USE_INFDB=True`` pylovo reads these tables from the database configured i
      - Postcode polygons and regional attributes.
 
 The default source schema is ``basedata`` and the default open-data schema is ``opendata``.
-Building selection currently uses ``basedata.buildings`` and
-``basedata.classify_building_use`` directly; changing ``INFDB_SOURCE_SCHEMA`` alone does not
-move those two dependencies. All source geometries need a defined SRID; pylovo transforms them
-to ``TARGET_EPSG``.
+Buildings, the function ``classify_building_use`` and the street tables are read from
+``INFDB_SOURCE_SCHEMA``. All source geometries need a defined SRID; pylovo transforms them to
+``TARGET_EPSG``.
 
 The MV stage reads further inputs: the regional street graph
 ``<INFDB_SOURCE_SCHEMA>.ways_per_junction``, the OSM power and land-use layers of
@@ -70,7 +69,7 @@ Buildings
 Selection
 ~~~~~~~~~
 
-From ``basedata.buildings`` pylovo takes the buildings of the postcode whose ``building_use`` is
+From ``<INFDB_SOURCE_SCHEMA>.buildings`` pylovo takes the buildings of the postcode whose ``building_use`` is
 ``Residential``, ``Commercial``, ``Public`` or ``Mixed``. Further rules:
 
 * Buildings with function code ``31001_2523`` (transformer stations in LoD2) are not consumers;
