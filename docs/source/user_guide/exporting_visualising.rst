@@ -183,3 +183,35 @@ the same functions. The maps in :doc:`../concepts/pipeline` are made from the re
 
 The MV grids have their own maps and statistics plots in :mod:`pylovo.plotting.mv_grid`, which
 draw the layers of ``DatabaseClient.read_mv_layers`` (:doc:`mv_grids`).
+
+Validation plots
+~~~~~~~~~~~~~~~~
+
+:mod:`pylovo.plotting.validation` holds plots to check generated grids and to compare them with other
+grids; pylovo itself does not call them. The postcode plots read the results of the active
+``VERSION_ID``, the power-flow plots take a net after ``pandapower.runpp``, and the comparison plots a
+metrics table with one row per grid and a ``source`` column (for example the results of
+:func:`~pylovo.analysis.grid_analysis.compute_comparison_parameters` for synthetic and other grids).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 44 56
+   :class: fixed-table
+
+   * - Module
+     - Output
+   * - :mod:`~pylovo.plotting.validation.metric_validation`: ``plot_pie_of_trafo_cables``,
+       ``plot_hist_trafos``, ``plot_boxplot_plz``, ``plot_cable_length_of_types``
+     - Station ratings, cable types and the per-transformer key figures of a postcode
+       (``plz_parameters``, :doc:`analysing_grids`), matplotlib.
+   * - :mod:`~pylovo.plotting.validation.metric_validation`: ``plot_comparison_distribution_plotly``,
+       ``plot_comparison_histogram_plotly``, ``plot_comparison_scatter_plotly``
+     - One metric per source as box, violin or strip plot or as histograms, or two metrics against
+       each other, plotly; the source colours come from ``pylovo.plotting.utils.COLOR_MAP``.
+   * - :mod:`~pylovo.plotting.validation.geo_validation`: ``plot_trafo_on_map``,
+       ``plot_grid_on_map_plotly``
+     - The stations of a postcode coloured by their rating (``PLOT_COLOR_DICT``), or one grid, on a
+       map, plotly.
+   * - :mod:`~pylovo.plotting.validation.powerflow_validation`
+     - Histograms and profiles of the loads, bus voltages and line loadings of solved nets,
+       matplotlib.

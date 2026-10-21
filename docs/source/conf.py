@@ -61,11 +61,10 @@ autoapi_options = [
     "show-inheritance",
     "show-module-summary",
 ]
-# The classification and validation modules are not part of this documentation.
+# The classification modules are not part of this documentation.
 autoapi_ignore = [
     "*/classification/*",
     "*/plotting/classification/*",
-    "*/plotting/validation/*",
     "*/cli/classify.py",
     "*/__pycache__/*",
 ]

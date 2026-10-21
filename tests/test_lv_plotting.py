@@ -23,6 +23,7 @@ import pandapower as pp  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 
 from pylovo.plotting.generation import networks  # noqa: E402
+from pylovo.plotting.utils import COLOR_MAP  # noqa: E402
 from pylovo.plotting.validation import geo_validation, metric_validation, powerflow_validation  # noqa: E402
 
 
@@ -175,3 +176,46 @@ def test_the_plotly_maps_return_the_figure_without_a_file_or_a_browser(monkeypat
     GridClient.net = _grid_net()
     monkeypatch.setattr(geo_validation, "DatabaseClient", GridClient)
     assert isinstance(getattr(geo_validation, plot)(*args), go.Figure)
+
+
+# --- smoke tests of the comparison and power-flow plots (pylovo itself does not call them) ------------------------------
+def _metrics():
+    return pd.DataFrame({"source": ["Real", "Synthetic v1"] * 5, "graph_length": [0.1 * i for i in range(10)],
+                         "feeder_lines": list(range(1, 11)), "grid_result_id": list(range(10))})
+
+
+@pytest.mark.parametrize("plot_type", ["box", "violin", "strip"])
+def test_the_comparison_distribution_plot_draws_each_source_in_its_colour(plot_type):
+    fig = metric_validation.plot_comparison_distribution_plotly(_metrics(), "graph_length", plot_type=plot_type)
+    assert {trace.name: trace.marker.color for trace in fig.data} == {
+        "Real": COLOR_MAP["Real"], "Synthetic v1": COLOR_MAP["Synthetic v1"]}
+
+
+def test_the_comparison_histogram_and_scatter_plot_draw_each_source_in_its_colour():
+    for fig in (metric_validation.plot_comparison_histogram_plotly(_metrics(), "graph_length"),
+                metric_validation.plot_comparison_scatter_plotly(_metrics(), "feeder_lines", "graph_length")):
+        assert {trace.name: trace.marker.color for trace in fig.data} == {
+            "Real": COLOR_MAP["Real"], "Synthetic v1": COLOR_MAP["Synthetic v1"]}
+
+
+def test_the_comparison_plots_annotate_an_empty_table_and_refuse_an_unknown_plot_type():
+    empty = pd.DataFrame()
+    for fig in (metric_validation.plot_comparison_distribution_plotly(empty, "x"),
+                metric_validation.plot_comparison_histogram_plotly(empty, "x"),
+                metric_validation.plot_comparison_scatter_plotly(empty, "x", "y")):
+        assert fig.layout.annotations[0].text == "No Data Available"
+    with pytest.raises(ValueError, match="Unknown plot_type"):
+        metric_validation.plot_comparison_distribution_plotly(_metrics(), "graph_length", plot_type="pie")
+
+
+def test_the_power_flow_plots_of_a_solved_net_return_their_figures():
+    import pandapower.networks as pn
+
+    net = pn.example_simple()
+    pp.runpp(net)
+    figures = [powerflow_validation.plot_load_and_voltage_distribution(net),
+               powerflow_validation.plot_voltage_profile(net),
+               powerflow_validation.plot_line_loading_distribution(net),
+               powerflow_validation.plot_all_voltages_for_plz(net.res_bus[["vm_pu"]])]
+    assert all(isinstance(fig, Figure) for fig in figures)
+    assert sorted(plt.get_fignums()) == sorted(fig.number for fig in figures)          # one new figure each
