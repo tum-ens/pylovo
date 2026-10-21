@@ -88,20 +88,29 @@ def save_geodata_as_csv(
     df_plz: pd.DataFrame,
     data_path_lines: str,
     data_path_bus: str
-) -> None:
+) -> list[int]:
     """Write the lines and buses of all grids of several PLZ to two CSV files.
 
     Args:
         df_plz: DataFrame with a ``plz`` column.
         data_path_lines: Output path of the line CSV.
         data_path_bus: Output path of the bus CSV.
+
+    Returns:
+        The PLZ without grids, which are left out. If that is every PLZ, no file is written
+        (an earlier export stays).
     """
-    line_frames, bus_frames = [], []
+    line_frames, bus_frames, without_grids = [], [], []
     for plz in df_plz['plz']:
         print(f"Saving geodata of plz: {plz} to csv.")
         gdf_line, gdf_bus = get_bus_line_geo_for_plz(plz)
+        if gdf_bus.empty:     # every grid has buses
+            without_grids.append(plz)
+            continue
         line_frames.append(gdf_line)
         bus_frames.append(gdf_bus)
 
-    _concat(line_frames).to_csv(data_path_lines)
-    _concat(bus_frames).to_csv(data_path_bus)
+    if line_frames:
+        _concat(line_frames).to_csv(data_path_lines)
+        _concat(bus_frames).to_csv(data_path_bus)
+    return without_grids

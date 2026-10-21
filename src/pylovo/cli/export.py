@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pylovo.config_loader import PROJECT_ROOT
+from pylovo.config_loader import PROJECT_ROOT, VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.gis_preparation.io_geodata import get_bus_line_geo_for_network, save_geodata_as_csv
 
@@ -34,22 +34,30 @@ def _print_paths(line_datapath: str, bus_datapath: str) -> None:
     print(f"  Buses: {bus_datapath}")
 
 
-def export_plz(plz_list: list[int], output_dir: str | None = None):
+def export_plz(plz_list: list[int], output_dir: str | None = None) -> list[int]:
     """Export all grids of one or several PLZ.
 
     Args:
         plz_list: Postal codes to export.
         output_dir: Target directory (default ``QGIS/`` in the working directory). The files are
             called ``*_single_grid.csv`` for one PLZ and ``*_multiple_grids.csv`` otherwise.
+
+    Returns:
+        The PLZ without grids in ``VERSION_ID``, which are not exported.
     """
     suffix = "single_grid" if len(plz_list) == 1 else "multiple_grids"
     line_datapath, bus_datapath = _output_paths(output_dir, suffix)
 
     df_plz = pd.DataFrame(plz_list, columns=['plz'])
-    save_geodata_as_csv(df_plz=df_plz, data_path_lines=line_datapath, data_path_bus=bus_datapath)
+    without_grids = save_geodata_as_csv(df_plz=df_plz, data_path_lines=line_datapath, data_path_bus=bus_datapath)
 
-    print(f"✓ Exported geodata for PLZ: {plz_list}")
-    _print_paths(line_datapath, bus_datapath)
+    for plz in without_grids:
+        print(f"✗ PLZ {plz} has no grids in version {VERSION_ID}: nothing exported for it")
+    exported = [plz for plz in plz_list if plz not in without_grids]
+    if exported:
+        print(f"✓ Exported geodata for PLZ: {exported}")
+        _print_paths(line_datapath, bus_datapath)
+    return without_grids
 
 
 def export_grid(plz: int, kcid: int, bcid: int, output_dir: str | None = None):
@@ -136,8 +144,9 @@ Examples:
     try:
         if args.grid:
             export_grid(args.plz[0], args.kcid, args.bcid, args.output)
-        else:
-            export_plz(args.plz, args.output)
+        elif len(export_plz(args.plz, args.output)) == len(args.plz):
+            print("✗ Nothing exported: none of the PLZ has grids")
+            sys.exit(1)
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback
