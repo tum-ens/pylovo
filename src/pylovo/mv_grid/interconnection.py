@@ -84,8 +84,7 @@ TIE_FLAGS: tuple[str, ...] = ("incomplete_district", "substation_outside_region"
 #: Columns of the tie table of :func:`plan_ties`.
 TIE_COLUMNS: tuple[str, ...] = (
     "from_node", "to_node", "from_grid", "to_grid", "from_ring", "to_ring", "from_feeder", "to_feeder", "kind",
-    "straight", "length_m", "street_m", "straight_m", "cable_m", "overhead_m", "parallel", "std_type", "flags",
-    "geometry",
+    "length_m", "street_m", "straight_m", "cable_m", "overhead_m", "parallel", "std_type", "flags", "geometry",
 )
 #: Columns of the table of :func:`takeover_checks`.
 TAKEOVER_COLUMNS: tuple[str, ...] = (
@@ -390,7 +389,7 @@ def _line_table(m: dict, ends: Sequence[tuple[int, int, int]], grids: pd.DataFra
         out.append({
             "from_node": int(ids[f]), "to_node": int(ids[t]), "from_grid": int(grid[f]), "to_grid": int(grid[t]),
             "from_ring": int(m["ring"][f]), "to_ring": int(m["ring"][t]), "from_feeder": int(m["feeder"][f]),
-            "to_feeder": int(m["feeder"][t]), "kind": kind, "straight": False,
+            "to_feeder": int(m["feeder"][t]), "kind": kind,
             "length_m": float(length[p]), "street_m": float(street[p]), "straight_m": float(m["straight_m"][p]),
             "cable_m": float(length[p]) - overhead_m, "overhead_m": overhead_m, "parallel": 1,
             "std_type": std_type, "flags": flags(int(grid[f]), int(grid[t])), "geometry": geometry,
@@ -417,9 +416,9 @@ def plan_ties(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params: 
     Returns:
         One row per tie (:data:`TIE_COLUMNS`), sorted by ``from_grid``, ``from_ring``: the ends (``from_node`` in the
         district with the lower ``mv_grid_id``, open at ``to_node``), their districts, rings and feeders, ``kind``
-        (cable or overhead), ``straight`` (straight span), ``length_m`` (the circuit length: street path, or
-        detour x straight), ``street_m``, ``straight_m``, ``cable_m``, ``overhead_m``, ``std_type``, ``flags`` (list)
-        and ``geometry`` (shapely LineString from ``from_node`` to ``to_node``).
+        (cable, overhead or mixed), ``length_m`` (the circuit length: the true length of the route), ``street_m``,
+        ``straight_m``, ``cable_m``, ``overhead_m``, ``std_type``, ``flags`` (list) and ``geometry`` (shapely
+        LineString from ``from_node`` to ``to_node``).
     """
     limit = float(params.tie_max_length_m)
     cand = tie_candidates(nodes, grids)

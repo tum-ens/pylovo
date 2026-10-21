@@ -271,7 +271,7 @@ def test_ties_follow_the_streets_as_cables_without_osm_lines():
     a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
     b = node(21, 2, 0, 1000.0, y=0.0, edge=3, fraction=1.0)
     tie = ic.plan_ties(nodes_frame(a, b), grids, detour, PARAMS).iloc[0]
-    assert tie["kind"] == "cable" and not tie["straight"] and tie["length_m"] == pytest.approx(1800.0)
+    assert tie["kind"] == "cable" and tie["length_m"] == pytest.approx(1800.0)
     assert tie["std_type"] == PARAMS.cable.name and tie["geometry"].length == pytest.approx(1800.0)
     assert tie["straight_m"] == pytest.approx(1000.0) and tie["overhead_m"] == 0.0
 
@@ -288,7 +288,7 @@ def test_osm_ties_are_overhead_on_osm_lines():
     b = node(21, 2, 0, 1000.0, y=0.0, edge=3, fraction=1.0)
     osm = PARAMS
     tie = ic.plan_ties(nodes_frame(a, b), grids, detour, osm).iloc[0]
-    assert tie["kind"] == "mixed" and not tie["straight"] and tie["length_m"] == pytest.approx(1800.0)
+    assert tie["kind"] == "mixed" and tie["length_m"] == pytest.approx(1800.0)
     assert tie["overhead_m"] == pytest.approx(1000.0) and tie["cable_m"] == pytest.approx(800.0)
     assert tie["std_type"] == f"{osm.cable.name} + {osm.overhead.name}"
     streets = dataclasses.replace(detour, overhead=None)
@@ -372,7 +372,7 @@ def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0, vn_kv
 
 def tie_row(**changes) -> dict:
     row = {"from_node": 102, "to_node": 202, "from_grid": 1, "to_grid": 2, "from_ring": 0, "to_ring": 0,
-           "from_feeder": 0, "to_feeder": 0, "kind": "cable", "straight": False, "length_m": 800.0,
+           "from_feeder": 0, "to_feeder": 0, "kind": "cable", "length_m": 800.0,
            "street_m": 800.0, "straight_m": 700.0, "cable_m": 800.0, "overhead_m": 0.0, "parallel": 1,
            "std_type": PARAMS.cable.name, "flags": [], "geometry": shapely.LineString([(0, 0), (700, 0)])}
     row.update(changes)
