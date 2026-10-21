@@ -3,7 +3,9 @@
 The shapefiles are expected in ``<user data dir>/buildings`` (see
 :func:`pylovo.utils.get_user_data_dir`). A file belongs to an AGS if the AGS appears in its name,
 and it goes into the table ``res`` or ``oth`` if its name contains ``Res`` or ``Oth``. Imported
-AGS are recorded in ``ags_log`` so that they are not imported twice.
+AGS are recorded in ``ags_log`` so that they are not imported twice. The grids of one PLZ are only built
+from complete buildings: :func:`import_buildings_for_single_plz` imports nothing unless every AGS of the PLZ
+that is not imported yet has a shapefile.
 """
 import glob
 import os
@@ -53,7 +55,8 @@ def import_buildings_for_single_plz(gg):
             database client and logger are used.
 
     Raises:
-        FileNotFoundError: If no shapefile matches the AGS that still need to be imported.
+        FileNotFoundError: If an AGS that still needs to be imported has no shapefile. Nothing is imported
+            then (neither the other AGS nor an entry of ``ags_log``), so a repeated call behaves the same.
     """
     dbc_client = gg.dbc
     _, df_plz_ags = resolve_regions(dbc_client, plz=int(gg.plz))
@@ -72,9 +75,11 @@ def import_buildings_for_single_plz(gg):
     gg.logger.info(f"Buildings for these AGS are not in the database and will be added: {ags_to_import}")
 
     files_to_add = _find_building_shapefiles(ags_to_import)
-    if not files_to_add:
+    without_file = [ags for ags in ags_to_import if not any(_file_matches_ags(file, ags) for file in files_to_add)]
+    if without_file:
         raise FileNotFoundError(
-            f"No shapefiles found for AGS {ags_to_import} in {get_user_data_dir() / 'buildings'}"
+            f"No shapefiles found for AGS {without_file} in {get_user_data_dir() / 'buildings'}: nothing was "
+            f"imported, because PLZ {int(gg.plz)} would be generated from a part of its buildings"
         )
 
     _import_shapefiles(files_to_add, ags_to_import, dbc_client)

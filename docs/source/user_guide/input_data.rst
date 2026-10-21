@@ -198,7 +198,12 @@ This mode does not read InfDB schemas. Without InfDB the inputs are files in the
 Buildings are imported when a postcode is generated: pylovo looks up the AGS of the postcode in
 ``pylovo.municipal_register``, imports the matching shapefiles with ``ogr2ogr`` into the tables
 ``res`` and ``oth`` and records the AGS in ``ags_log`` so that it is imported only once. A
-postcode can span several municipalities; all of them are imported. Buildings are assigned to
+postcode can span several municipalities; all of them are imported. When you generate one postcode
+(``pylovo-generate --plz <plz>``), every AGS of it that is not in ``ags_log`` yet needs a shapefile: if one has
+none, pylovo stops with a ``FileNotFoundError`` that names the AGS and the folder, before it imports
+anything, so you can add the files and run again. With several postcodes or ``--ags``, AGS without a
+file are skipped and tried again at the next run; the grids then contain only the buildings that were
+imported. Buildings are assigned to
 the postcode by their centroid, streets by intersection with the postcode polygon. In this mode
 pylovo creates the building connection lines itself (functions ``segment_intersecting_ways``
 and ``generate_building_to_way_connections``).
