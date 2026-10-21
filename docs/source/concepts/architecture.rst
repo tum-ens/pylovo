@@ -23,7 +23,9 @@ Modules
    * - Module
      - Responsibility
    * - :mod:`pylovo.cli`
-     - Entry points of the ``pylovo-*`` commands; parse arguments and call the workflows.
+     - Entry points of the ``pylovo-*`` commands; parse arguments and call the workflows. The parsers
+       (:mod:`pylovo.cli.parsers`) import nothing of pylovo, so :mod:`pylovo.cli.launch` answers
+       ``--help`` before the configuration is loaded.
    * - :mod:`pylovo.config_loader`
      - Reads ``.env`` and ``config/*.yaml`` and exposes all settings as module constants
        (``VERSION_ID``, ``TRANSFORMERS``, ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, ...).

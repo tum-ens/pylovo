@@ -9,7 +9,7 @@ Connection and configuration
 
 ``ValueError: Missing required environment variable: DBNAME``
    No ``.env`` was found or it lacks the variable. Create ``.env`` in the repository root
-   (:ref:`env-variables`).
+   (:ref:`env-variables`). ``--help`` of every command works without it.
 
 pylovo connects to an unexpected database
    ``.env`` overrides environment variables. Check the file that pylovo finds (the first ``.env``
