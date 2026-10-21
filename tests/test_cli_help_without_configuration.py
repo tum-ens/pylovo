@@ -52,7 +52,7 @@ def test_every_launcher_entry_runs_the_main_of_a_command_module(function):
     assert callable(importlib.import_module(f"pylovo.cli.{function}").main)
 
 
-def test_the_arguments_are_parsed_before_the_command_module_is_imported(monkeypatch):
+def test_the_arguments_are_parsed_before_the_command_module_is_imported(monkeypatch, capsys):
     imported = []
     command = type("Command", (), {"main": staticmethod(lambda: imported.append("main"))})
     monkeypatch.setattr(importlib, "import_module", lambda name: imported.append(name) or command)
@@ -61,6 +61,10 @@ def test_the_arguments_are_parsed_before_the_command_module_is_imported(monkeypa
     with pytest.raises(SystemExit) as refused:
         launch.delete()
     assert refused.value.code == 2 and imported == []
+
+    monkeypatch.setattr(sys, "argv", ["pylovo-delete"])               # no command: the help, without the module
+    launch.delete()
+    assert imported == [] and "usage: pylovo-delete" in capsys.readouterr().out
 
     monkeypatch.setattr(sys, "argv", ["pylovo-delete", "transformers"])
     launch.delete()

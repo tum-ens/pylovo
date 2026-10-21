@@ -12,7 +12,10 @@ from pylovo.cli import parsers
 
 
 def _launch(parser: Callable, module: str) -> None:
-    parser().parse_args()
+    arguments = parser()
+    if getattr(arguments.parse_args(), "command", "") is None:   # pylovo-delete and pylovo-import: the help
+        arguments.print_help()
+        return
     importlib.import_module(module).main()
 
 

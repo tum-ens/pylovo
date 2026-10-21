@@ -4,8 +4,8 @@ Command-line reference
 pylovo installs these commands (``[project.scripts]`` in ``pyproject.toml``). Run them from the
 repository root, either with ``uv run <command>`` or in the activated environment. All of them
 read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`), after they have read their
-arguments: ``--help`` and wrong arguments are answered without a ``.env`` and without configuration
-files.
+arguments: ``--help``, the help that ``pylovo-delete`` and ``pylovo-import`` show without a command,
+and wrong arguments are answered without a ``.env`` and without configuration files.
 
 Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset or delete, an MV
 stage that does not end ``done``, ``pylovo-analyze`` for a postcode without grids and
