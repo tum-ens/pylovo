@@ -29,7 +29,9 @@ def test_only_requests_to_this_machine(fake_db, tmp_path):
 
 
 def test_page_and_info(client):
-    assert "pylovo viewer" in client.get("/").text
+    page = client.get("/").text
+    assert "pylovo viewer" in page
+    assert "fonts.googleapis.com" not in page          # no web font: the page sends nothing to a font service
     info = client.get("/api/info").json()
     assert info["read_only"] is True and info["database"]["dbname"] == "fake"
     assert "password" not in json.dumps(info) and "secret" not in json.dumps(info)

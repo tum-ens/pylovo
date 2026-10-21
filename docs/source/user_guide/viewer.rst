@@ -214,11 +214,12 @@ Data and limits
 * The server keeps loaded data in memory. After a new generation or MV run, the reload button in
   the top bar reads everything from the database again.
 * The browser needs internet access: it loads MapLibre GL JS 6.11.2 and Vue 3.5.43 from
-  ``cdn.jsdelivr.net`` (exact versions), the Inter font from Google Fonts (``fonts.googleapis.com``),
-  the basemaps and the fonts of the map labels from OpenFreeMap (``tiles.openfreemap.org``, Streets by
-  default) and, for the *OpenStreetMap* basemap, the tiles of ``tile.openstreetmap.org``. The server
-  and the database need no internet. Offline the page stays empty because the map library cannot
-  load. If only the basemap tiles are blocked, the data layers still work with *Basemap: No basemap*.
+  ``cdn.jsdelivr.net`` (exact versions), the basemaps and the fonts of the map labels from OpenFreeMap
+  (``tiles.openfreemap.org``, Streets by default) and, for the *OpenStreetMap* basemap, the tiles of
+  ``tile.openstreetmap.org``. The page text uses the system font (Inter where it is installed); no web
+  font is loaded. The server and the database need no internet. Offline the page stays empty because
+  the map library cannot load. If only the basemap tiles are blocked, the data layers still work with
+  *Basemap: No basemap*.
 * ``pylovo-viewer fetch etrago`` downloads from the Open Energy Platform (``openenergyplatform.org``)
   once; the map then reads the file in ``--data-dir``.
 * LoD2 models need WebGL2; without it the buildings stay extruded footprints.
