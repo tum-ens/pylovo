@@ -1260,6 +1260,7 @@ class PreprocessingMixin(BaseMixin):
            ``ways_tem_<plz>_vertices_pgr``.
         2. ``source`` and ``target`` of every edge are set to the vertex at its start and end point.
 
+        The edges are snapped to a 1e-6 m grid first; an edge that collapses in the snap is deleted.
         The vertices table is exposed to the session as the temporary view ``ways_tem_vertices_pgr``.
 
         Args:
@@ -1276,6 +1277,13 @@ class PreprocessingMixin(BaseMixin):
             UPDATE {edges}
             SET geom = ST_SnapToGrid(geom, 0.000001)
             WHERE geom IS NOT NULL;
+        """).format(edges=edges))
+
+        # An edge shorter than the grid collapses (NULL or EMPTY geometry) and has no end points to link:
+        # it would keep a NULL source and target, which pgRouting rejects.
+        self.cur.execute(sql.SQL("""
+            DELETE FROM {edges}
+            WHERE geom IS NULL OR ST_IsEmpty(geom);
         """).format(edges=edges))
 
         # Ensure source and target columns exist on the edge table
