@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any, Iterator, Sequence
 import pandas as pd
 from psycopg2 import sql
 
-from pylovo.config_loader import INFDB_SOURCE_SCHEMA, TARGET_EPSG
+from pylovo.config_loader import TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
-from pylovo.database.transformer_sources import IS_DSO_TRANSFORMER_SQL, SOURCE_ENABLED_SQL, source_params
+from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
 
 if TYPE_CHECKING:   # imported lazily at run time: an LV-only run never loads the MV stage or pandapower here
     import pandapower as pp
@@ -156,21 +156,6 @@ LEFT JOIN (SELECT plz, max(pop) AS pop, max(area) AS area_km2 FROM pylovo.munici
 LEFT JOIN pylovo.postcode p ON p.plz = q.plz
 ORDER BY q.plz
 """
-
-_LOST_OVERLAP_SQL = sql.SQL("""
-SELECT b.objectid::text AS objectid, b.postcode, b.building_use,
-       COALESCE(b.nonresidential_floor_area,
-                COALESCE(b.floor_area, ST_Area(ST_Transform(b.geom, {epsg}))) * COALESCE(b.floor_number, 1)) AS area_m2
-FROM {buildings} b
-WHERE b.postcode = ANY(%(plz)s) AND COALESCE(b.residential_floor_area, 0) <= 0
-  AND b.building_use IN ('Commercial', 'Public', 'Unknown', 'Mixed')
-  AND EXISTS (SELECT 1 FROM pylovo.transformers t
-              WHERE ST_Intersects(t.geom, ST_Transform(b.geom, {epsg})) AND NOT {is_dso})
-  AND NOT EXISTS (SELECT 1 FROM pylovo.mv_customers m WHERE m.version_id = %(v)s AND m.objectid = b.objectid::text)
-  AND NOT EXISTS (SELECT 1 FROM pylovo.buildings_result br
-                  WHERE br.version_id = %(v)s AND br.objectid = b.objectid::text)
-ORDER BY b.objectid
-""")
 
 
 def _ints(values: Sequence[Any] | None) -> list[int]:
@@ -440,44 +425,6 @@ class MvInputMixin(BaseMixin):
         for column in ("pop", "area_km2", "polygon_km2"):
             frame[column] = pd.to_numeric(frame[column], errors="coerce").astype(float)
         return frame
-
-    def lost_station_overlap_customers(self, version_id: str, plz_list: Sequence[int],
-                                       lv: "LvVersionParameters") -> pd.DataFrame:
-        """Large non-residential buildings the LV stage removed because a station candidate lies inside them.
-
-        Diagnostic of the station-overlap loss (DESIGN §2.6, §3.5; notebook 3): pure non-residential source
-        buildings of the PLZ with a non-DSO candidate inside, neither in ``buildings_result`` nor in
-        ``mv_customers`` of the version, whose installed load by the LV formulas (non-residential floor area, else
-        footprint x floors, times the W/m² of the LV snapshot's consumer categories; ``Mixed`` counted as
-        Commercial) exceeds the version's MV-direct threshold.
-
-        Returns:
-            Columns ``objectid``, ``postcode``, ``building_use``, ``category``, ``area_m2``, ``installed_kw``,
-            ``p_kw`` (``g_c x installed``), sorted by ``installed_kw`` descending.
-        """
-        columns = ["objectid", "postcode", "building_use", "category", "area_m2", "installed_kw", "p_kw"]
-        plz = _ints(plz_list)
-        if not plz or not INFDB_SOURCE_SCHEMA:
-            return pd.DataFrame(columns=columns)
-        snapshot = self.lv_snapshot(version_id) or {}
-        per_m2 = {str(rec.get("definition")): rec.get("peak_load_per_m2")
-                  for rec in (snapshot.get("load_calculation") or {}).get("consumer_categories") or []
-                  if isinstance(rec, dict)}
-        query = _LOST_OVERLAP_SQL.format(epsg=sql.Literal(int(TARGET_EPSG)),
-                                         buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"),
-                                         is_dso=sql.SQL(IS_DSO_TRANSFORMER_SQL))
-        self.cur.execute(query, {"v": version_id, "plz": plz})
-        frame = pd.DataFrame(self.cur.fetchall(), columns=["objectid", "postcode", "building_use", "area_m2"])
-        if not len(frame):
-            return pd.DataFrame(columns=columns)
-        frame["category"] = frame["building_use"].map(lambda u: "Commercial" if u == "Mixed" else u)
-        w_per_m2 = frame["category"].map(lambda c: float(per_m2.get(c) or 0.0))
-        frame["area_m2"] = pd.to_numeric(frame["area_m2"], errors="coerce").fillna(0.0)
-        frame["installed_kw"] = frame["area_m2"] * w_per_m2 / 1000.0
-        frame["p_kw"] = frame["installed_kw"] * frame["category"].map(lambda c: float(lv.sim_factor.get(c, 0.0)))
-        frame = frame[frame["installed_kw"] > lv.mv_direct_threshold_kw]
-        return frame.sort_values(["installed_kw", "objectid"], ascending=[False, True])[columns] \
-            .reset_index(drop=True)
 
     # ------------------------------------------------------------------------------------------ staleness
     def lv_fingerprint(self, version_id: str, plz_list: Sequence[int]) -> dict:

@@ -101,24 +101,6 @@ class TransformerUiMixin(BaseMixin):
 
         return osm_id
 
-    def delete_transformer_position_trafo_ui(self, grid_result_id: int) -> bool:
-        """Delete the transformer position of one generated grid and commit.
-
-        Only the ``transformer_positions`` row is removed; the ``grid_result`` row stays.
-
-        Args:
-            grid_result_id: Grid whose transformer position is deleted.
-
-        Returns:
-            True if a row was deleted.
-        """
-        delete_query = "DELETE FROM pylovo.transformer_positions WHERE grid_result_id = %(grid_result_id)s"
-        self.cur.execute(delete_query, {"grid_result_id": grid_result_id})
-        deleted = self.cur.rowcount > 0
-        if deleted:
-            self.conn.commit()
-        return deleted
-
     def delete_transformer_by_osm_id_trafo_ui(self, osm_id: str) -> bool:
         """Delete a raw transformer and commit.
 
