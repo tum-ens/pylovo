@@ -96,9 +96,6 @@ def test_every_source_building_gets_one_status_and_the_queries_are_scoped_to_the
     assert dbc.cur.executed[0][1] == {"v": "9", "p": [80331, 80333]}
 
 
-@pytest.mark.xfail(strict=True, reason="NEW (ANALYSIS-24 follow-up): classify merges building_exclusion with how='left', so an "
-                                       "exclusion row without a source building is dropped, not reported as not_in_source "
-                                       "as the module docstring says")
 def test_an_exclusion_row_without_a_source_building_is_reported_as_not_in_source():
     eligible = pd.DataFrame({"objectid": ["A"], "home_plz": [1], "households": [1]})
     generated = pd.DataFrame({"objectid": ["A"], "grid_plz": [1], "grid_result_id": [10]})
@@ -127,7 +124,8 @@ def clients(monkeypatch):
             return False
 
     monkeypatch.setattr("pylovo.database.database_client.DatabaseClient", Client)
-    monkeypatch.setattr("pylovo.infdb.infdb_client.InfdbClient", lambda *args, **kwargs: object())
+    monkeypatch.setattr("pylovo.infdb.infdb_client.InfdbClient",
+                        lambda *args, **kwargs: type("Infdb", (), {"close": lambda self: None})())
 
 
 def fake_coverage(missing):
@@ -218,8 +216,6 @@ def test_borders_are_classified_by_the_neighbour_across_them():
     assert kinds["outer"].length == pytest.approx(2000, abs=5)        # west and south: no neighbour at all
 
 
-@pytest.mark.xfail(strict=True, raises=KeyError,
-                   reason="ANALYSIS-17: a PLZ without polygon in pylovo.postcode raises a bare KeyError instead of a clear error")
 def test_a_plz_without_a_polygon_is_reported_with_its_number():
     with pytest.raises(ValueError, match="99999"):
         border_kinds({1: box(0, 0, 100, 100)}, [99999], generated=set())
