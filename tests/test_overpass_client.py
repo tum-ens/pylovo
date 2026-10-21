@@ -81,12 +81,11 @@ def test_other_errors_are_not_retried(server, status):
 def test_a_truncated_download_is_never_written_to_the_raw_files(server, tmp_path, monkeypatch):
     from pylovo.data_import import import_transformers
 
-    queries = tmp_path / "queries"
+    queries = tmp_path / "overpass_queries"
     queries.mkdir()
-    (queries / "substations.txt").write_text("area($relation_id$)")
-    (queries / "mall.txt").write_text("area($relation_id$)")
-    monkeypatch.setattr(import_transformers, "SUBSTATIONS_QUERY_PATH", str(queries / "substations.txt"))
-    monkeypatch.setattr(import_transformers, "SHOPPING_MALL_QUERY_PATH", str(queries / "mall.txt"))
+    (queries / "substations_query.txt").write_text("area($relation_id$)")
+    (queries / "shopping_mall_query.txt").write_text("area($relation_id$)")
+    monkeypatch.setattr(import_transformers, "_transformer_data_dir", lambda: tmp_path)
     monkeypatch.setattr(import_transformers, "get_substations_geojson_path", lambda relation_id: str(tmp_path / "s.geojson"))
     monkeypatch.setattr(import_transformers, "get_shopping_mall_geojson_path", lambda relation_id: str(tmp_path / "m.geojson"))
     server.queue = [Response(200, {"elements": [NODE]}),
