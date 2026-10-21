@@ -105,12 +105,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The double-transformer comparison in the greenfield clustering (it could never win), `pylovo.analysis.powerflow_calculation` and `ParameterCalculator.count_consumers` (no callers)
 - Unused configuration constants (`COLORS`, `PLOT_DEFAULTS`, `REGIOSTAR7_DICT`, `TUMPalette2`, `TUMPalette3`), `GRACEFUL_SHUTDOWN_TIMEOUT`, `utils.reset_log_directory`, `drop_orphaned_plz_temp_tables`, the `double_trans` parameter and the leftovers of the removed MV options
 - The orphan module `pylovo.analysis.validation_helpers` (Excel export) and with it the direct dependencies `tqdm` and `xlsxwriter`; `MvInputMixin.lost_station_overlap_customers` and `TransformerUiMixin.delete_transformer_position_trafo_ui` (no callers); unused module constants and parameters of internal functions
+- The OpenDSS backend (`ELECTRICAL_BACKEND: opendss`) and the equipment classes only it used: `altdss` was never installable through an extra, bus names with blanks gave an all-zero power flow, parallel cables were ignored and its output could not be read by the analysis, the API or the MV stage. `ELECTRICAL_BACKEND` keeps the value `pandapower`; `register_backend` stays the extension point
 
 ### Fixed
 - MV circuit inventory counts each installed parallel circuit; route, ring and feeder distances remain geometric lengths
 - MV/LV coupling includes station-busbar customer loads in its design-point checks and reports incomplete checks as partial
 - MV maps accept string node identifiers, and ring labels remain valid after ring identifiers develop gaps
-- pandapower LV lines get a minimum length of 1 m, as in the OpenDSS backend: buses at one point gave lines of a few micrometres whose power flow did not converge (2 of 4,589 grids of a test version)
+- pandapower LV lines get a minimum length of 1 m: buses at one point gave lines of a few micrometres whose power flow did not converge (2 of 4,589 grids of a test version)
 - Overpass and OSM tile requests send an identifying User-Agent (Overpass answered HTTP 406)
 - `pylovo-import transformers-osm` (called a non-existent method; failed for small areas), `pylovo-delete transformers` (TRUNCATE rejected by a foreign key), `pylovo-export` with kcid/bcid 0 or negative ids, `pylovo-validate --help`, `pylovo-classify --help`
 - int16 overflow of vertex ids in brownfield assignment; aborted transactions in several database helpers
