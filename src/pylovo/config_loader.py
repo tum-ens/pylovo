@@ -176,8 +176,8 @@ def _consumer_categories_from_config(config_generation: dict, peak_load_househol
     value; ``null`` peak loads (categories sized per m2) become NaN.
 
     Raises:
-        ValueError: If ``definition`` or ``sim_factor`` is missing or a definition
-            occurs twice.
+        ValueError: If ``definition`` or ``sim_factor`` is missing, a definition
+            occurs twice or a ``sim_factor`` is not a number from 0 to 1 (``null`` is NaN).
     """
     categories = pd.DataFrame(config_generation["CONSUMER_CATEGORIES"])
     if not categories.empty and "peak_load" in categories.columns:
@@ -200,7 +200,35 @@ def _consumer_categories_from_config(config_generation: dict, peak_load_househol
         ].tolist()
         raise ValueError(f"Duplicate consumer category definitions: {duplicate_definitions}")
     categories["sim_factor"] = pd.to_numeric(categories["sim_factor"], errors="raise")
+    invalid = ~categories["sim_factor"].between(0, 1)       # NaN and infinity are outside, too
+    if invalid.any():
+        raise ValueError("CONSUMER_CATEGORIES: sim_factor must be a number from 0 to 1, check "
+                         f"{categories.loc[invalid, 'definition'].tolist()}")
     return categories
+
+
+def _check_cable_ampacities(cables: pd.DataFrame, key: str) -> None:
+    """Raise ValueError unless every cable of the catalogue ``key`` has a ``max_i_a`` above 0.
+
+    The cable sizing searches the cable that carries the design current; without an ampacity above 0 it never ends.
+    """
+    if "max_i_a" not in cables.columns:
+        raise ValueError(f"{key}: max_i_a is missing")
+    valid = pd.to_numeric(cables["max_i_a"], errors="coerce") > 0
+    if not valid.all():
+        raise ValueError(f"{key}: max_i_a must be a number above 0, check {cables.loc[~valid, 'name'].tolist()}")
+
+
+def _check_transformer_mapping(mapping: dict, transformers: pd.DataFrame) -> None:
+    """Raise ValueError unless every settlement type of ``TRANSFORMER_MAPPING`` lists ratings of ``TRANSFORMERS``."""
+    defined = set(transformers["s_max_kva"])
+    for settlement_type, ratings in mapping.items():
+        if not isinstance(ratings, (list, tuple)) or not ratings:
+            raise ValueError(f"TRANSFORMER_MAPPING[{settlement_type}] must be a list of ratings in kVA, got {ratings!r}")
+        unknown = [rating for rating in ratings if rating not in defined]
+        if unknown:
+            raise ValueError(f"TRANSFORMER_MAPPING[{settlement_type}] lists {unknown} kVA, "
+                             f"which TRANSFORMERS does not define ({sorted(defined)})")
 
 
 # =============================================================================
@@ -318,6 +346,8 @@ FEEDER_CABLES = pd.DataFrame(CONFIG_GENERATION["FEEDER_CABLES"])
 FEEDER_CABLES["grid_role"] = "feeder"
 CONSUMER_CONNECTION_CABLES = pd.DataFrame(CONFIG_GENERATION["CONSUMER_CONNECTION_CABLES"])
 CONSUMER_CONNECTION_CABLES["grid_role"] = "consumer_connection"
+_check_cable_ampacities(FEEDER_CABLES, "FEEDER_CABLES")
+_check_cable_ampacities(CONSUMER_CONNECTION_CABLES, "CONSUMER_CONNECTION_CABLES")
 
 # Derived combined equipment table for database storage and shared consumers.
 CONFIG_EQUIPMENT_DATA = pd.concat(
@@ -398,6 +428,7 @@ TRANSFORMER_MAPPING = CONFIG_GENERATION.get("TRANSFORMER_MAPPING", {
     2: [250, 400, 630],
     3: [250, 400, 630]
 })
+_check_transformer_mapping(TRANSFORMER_MAPPING, TRANSFORMERS)
 # CALIBRATION (temp): planned coincident load / rated power of a catalogue transformer.
 # 1.0 sizes and splits at the full rating (previous behaviour).
 TRANSFORMER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("TRANSFORMER_PLANNING_UTILIZATION", 1.0))
