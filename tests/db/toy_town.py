@@ -232,13 +232,18 @@ CREATE FUNCTION {src}.classify_building_use(building_use_id text) RETURNS text
 CREATE TABLE {od}.postcodes_germany (
     plz integer PRIMARY KEY, note text, qkm double precision, einwohner integer,
     geom geometry(MultiPolygon, {srid}));
+-- as in the InfDB: the municipality keys are indexed, the postcodes are not
+CREATE INDEX ON {src}.buildings (gemeindeschluessel);
+CREATE INDEX ON {src}.ways_per_connection (ags);
+CREATE INDEX ON {src}.connection_lines (ags);
 """
 
 
 def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str = "opendata") -> dict:
     """Create the InfDB source relations in ``source_schema`` and ``opendata_schema`` and fill them.
 
-    The source schema must not exist yet; PostGIS must be installed. Nothing is committed.
+    The source schema must not exist yet; PostGIS must be installed. The tables get the municipality-key
+    indexes of the InfDB and are analyzed. Nothing is committed.
 
     Returns:
         Counts of the written rows.
@@ -284,6 +289,10 @@ def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str
         table("postcodes_germany", opendata_schema)),
         [(plz, f"{plz} {name}", (x1 - x0) * (y1 - y0) / 1e6, population[plz], _box(x0, y0, x1, y1))
          for plz, (name, x0, y0, x1, y1) in POSTCODES.items()])
+    # planner statistics now, as on a loaded InfDB (the API's coverage engine reads reltuples)
+    cur.execute(sql.SQL("ANALYZE {}, {}, {}, {}").format(
+        table("buildings"), table("ways_per_connection"), table("connection_lines"),
+        table("postcodes_germany", opendata_schema)))
     return {"buildings": len(rows), "connection_lines": len(lines), "street_segments": len(ways),
             "postcodes": len(POSTCODES)}
 
