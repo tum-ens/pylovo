@@ -493,6 +493,43 @@ def building_exclusion(cur: cursor) -> None:
     cur.execute(CREATE_QUERIES["building_exclusion"])
 
 
+def indexes_and_cleanup(cur: cursor) -> None:
+    """Index the deferred bus keys and two unfiltered lookups, drop redundant indexes and a removed function.
+
+    New: ``(grid_result_id, <bus column>)`` for the five deferred pandapower bus FKs (checked per deleted
+    bus at commit), ``ways_result (way_id)`` for ``MAX(way_id)`` and ``postcode_result (postcode_result_plz)``.
+    Dropped: bus-only indexes that no query uses (bus numbers repeat in every grid) and ``grid_result_id``
+    indexes that lead a unique index of the same table. The function
+    ``generate_building_way_connection_candidates_infdb`` of v0.8.0 lost its SQL file.
+    """
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_from_bus
+            ON pylovo.pandapower_line (grid_result_id, from_bus);
+        CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_to_bus
+            ON pylovo.pandapower_line (grid_result_id, to_bus);
+        CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_bus
+            ON pylovo.pandapower_load (grid_result_id, bus);
+        CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_hv_bus
+            ON pylovo.pandapower_trafo (grid_result_id, hv_bus);
+        CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_lv_bus
+            ON pylovo.pandapower_trafo (grid_result_id, lv_bus);
+        CREATE INDEX IF NOT EXISTS idx_ways_result_way_id
+            ON pylovo.ways_result (way_id);
+        CREATE INDEX IF NOT EXISTS idx_postcode_result_plz
+            ON pylovo.postcode_result (postcode_result_plz);
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_line_from_to_bus;
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_load_bus;
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_trafo_hv_lv_bus;
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_bus_grid_result_id;
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_line_grid_result_id;
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_load_grid_result_id;
+        DROP INDEX IF EXISTS pylovo.idx_pandapower_trafo_grid_result_id;
+        DROP INDEX IF EXISTS pylovo.idx_split_points_grid_result_id;
+        DROP INDEX IF EXISTS pylovo.idx_lines_result_grid_result_id;
+        DROP FUNCTION IF EXISTS pylovo.generate_building_way_connection_candidates_infdb();
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -508,6 +545,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0009_mv_grids", mv_grids),
     ("0010_mv_display_geometry", mv_display_geometry),
     ("0011_building_exclusion", building_exclusion),
+    ("0012_indexes", indexes_and_cleanup),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

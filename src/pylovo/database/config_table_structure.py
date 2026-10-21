@@ -81,7 +81,10 @@ CREATE_QUERIES = {
             FOREIGN KEY (postcode_result_plz)
             REFERENCES pylovo.postcode (plz)
             ON DELETE CASCADE
-    )
+    );
+    -- Backs the ON DELETE CASCADE from postcode and the lookups of a PLZ across versions (API).
+    CREATE INDEX IF NOT EXISTS idx_postcode_result_plz
+    ON pylovo.postcode_result (postcode_result_plz)
     """,
     "grid_result": """
     CREATE TABLE IF NOT EXISTS pylovo.grid_result (
@@ -140,8 +143,6 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_lines_result_grid_result_id
-    ON pylovo.lines_result (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_grid_section_id
     ON pylovo.lines_result (grid_result_id, feeder_section_id)
     """,
@@ -189,8 +190,6 @@ CREATE_QUERIES = {
         CONSTRAINT uq_split_points_grid_bus
             UNIQUE (grid_result_id, split_bus)
     );
-    CREATE INDEX IF NOT EXISTS idx_split_points_grid_result_id
-    ON pylovo.split_points (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_split_points_geom
     ON pylovo.split_points USING gist (geom)
     """,
@@ -783,8 +782,6 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_bus_grid_result_id
-    ON pylovo.pandapower_bus (grid_result_id);
     """,
     "pandapower_line": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_line (
@@ -822,10 +819,11 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
                ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_id
-    ON pylovo.pandapower_line (grid_result_id);
-    CREATE INDEX IF NOT EXISTS idx_pandapower_line_from_to_bus
-    ON pylovo.pandapower_line (from_bus, to_bus);
+    -- Back the deferred bus FKs of migration 0003, checked for every deleted bus.
+    CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_from_bus
+    ON pylovo.pandapower_line (grid_result_id, from_bus);
+    CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_to_bus
+    ON pylovo.pandapower_line (grid_result_id, to_bus);
     """,
     "pandapower_trafo": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_trafo (
@@ -859,10 +857,11 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_id
-    ON pylovo.pandapower_trafo (grid_result_id);
-    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_hv_lv_bus
-    ON pylovo.pandapower_trafo (hv_bus, lv_bus);
+    -- Back the deferred bus FKs of migration 0003, checked for every deleted bus.
+    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_hv_bus
+    ON pylovo.pandapower_trafo (grid_result_id, hv_bus);
+    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_lv_bus
+    ON pylovo.pandapower_trafo (grid_result_id, lv_bus);
     """,
     "pandapower_load": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_load (
@@ -895,10 +894,9 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_id
-    ON pylovo.pandapower_load (grid_result_id);
-    CREATE INDEX IF NOT EXISTS idx_pandapower_load_bus
-    ON pylovo.pandapower_load (bus);
+    -- Backs the deferred bus FK of migration 0003, checked for every deleted bus.
+    CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_bus
+    ON pylovo.pandapower_load (grid_result_id, bus);
     """,
     # Audit rows of manual load edits (pylovo.load_editing, pylovo-api). Append-only: an undo only
     # stamps undone_at. before_net keeps the previous grid_result.grid verbatim for the exact undo.
@@ -1042,7 +1040,10 @@ CREATE_QUERIES = {
     );
     -- Backs the ON DELETE CASCADE from postcode_result.
     CREATE INDEX IF NOT EXISTS idx_ways_result_version_plz
-    ON pylovo.ways_result (version_id, plz)
+    ON pylovo.ways_result (version_id, plz);
+    -- MAX(way_id) over all versions, read for every PLZ (set_ways_tem_table_infdb).
+    CREATE INDEX IF NOT EXISTS idx_ways_result_way_id
+    ON pylovo.ways_result (way_id)
     """,
     # Buildings of a generated PLZ that are in no grid, with the step that left them out
     # (see ResultsMixin.save_tables). Together with buildings_result it accounts for every loaded building.
