@@ -497,8 +497,11 @@ radials and the feeders of large customers.
    stays feasible. Otherwise it goes into the ring where it adds the least length and the ring stays
    feasible (flag ``satellite_in_ring``), else into a ring of its own (flag
    ``satellite_own_ring``). In a supply area where every candidate would be a satellite, none is.
-#. A rural ring with a single node of at most 1 MVA within the stub length of its load (route
-   length) of the busbar becomes a busbar radial.
+#. A rural ring with a single node becomes a busbar radial if the node and the stubs on its ring
+   form one stub tree within the stub limits: their coincident load is at most 1 MVA, and the node
+   and every stub lie within the stub length of that load from the busbar (route length, a stub
+   counted at the radial length plus its depth). A radial has no reserve, so its stubs count as
+   part of it.
 #. A customer above 5.5 MW gets a dedicated feeder with two legs from the busbar along the same
    route. Leg 2 is open at the customer, so the two legs together are (n-1) secure. Each leg gets as
    many parallel cables as the load needs at ``MV_LINE_PLANNING_UTILIZATION``, at most

@@ -639,6 +639,26 @@ def test_the_radial_limit_applies_to_the_true_length_on_osm_lines(limit_m, radia
     assert (ring_of(plan, 41).kind == "radial") == radial
 
 
+def test_a_busbar_radial_keeps_its_stubs_within_the_stub_length_of_the_tree_load():
+    """R: a rural MV customer (900 kW) 1.9 km south of the busbar, alone on its ring; S: a farm 1.5 km west of R
+    (a satellite) on a stub from R's ring. As a busbar radial, S would lie 3.4 km from the busbar on a feeder
+    without reserve, beyond the stub length of the tree load (about 2.1 km): R keeps its two-cable ring."""
+    d = District()
+    d.street((0, 0), (500, 0), settlement=2)
+    d.street((0, 0), (0, -1900))
+    d.street((0, -1900), (-1500, -1900))
+    d.node(BUSBAR, "busbar", 0, 0, hint="busbar")
+    d.node(5, "station", 500, 0, urban=True, settlement=2)
+    d.node(7, "customer", 0, -1900, p_fixed_kw=900.0)
+    d.node(8, "station", -1500, -1900)
+    plan, (inp, *_) = plan_of(d, [[5], [7]])
+    assert_plan_valid(plan, inp)
+    assert plan.node_role[8] == "stub" and plan.stub_parent[8] == 7 and ring_of(plan, 7).kind == "ring"
+    d.nodes = [n for n in d.nodes if n["key"] != 8]          # R alone lies within the stub length of its load
+    plan, (inp, *_) = plan_of(d, [[5], [7]])
+    assert ring_of(plan, 7).kind == "radial"
+
+
 def test_a_station_on_the_way_stays_in_the_ring():
     d = loop_district()
     d.nodes[2].update(x=2000.0, y=0.0)                     # D on the loop street itself

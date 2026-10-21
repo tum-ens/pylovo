@@ -843,19 +843,34 @@ def _cheapest_insertion(ctx: _Ctx, dec: _Decisions, row: int) -> tuple[_Struct, 
 
 
 def _decide_radials(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None:
-    """Step 3: small rural single-member rings near the busbar become busbar radials."""
+    """Step 3: small rural single-member rings near the busbar become busbar radials.
+
+    A radial has no reserve, so the node and the stubs on its ring form one stub tree: its coincident load at most
+    ``stub_max_kva`` and every node of the tree within the stub length of that load from the busbar, a stub at the
+    radial length plus its depth on the radial (a bound: it may branch off before the node).
+    """
     p = ctx.p
+    lengths = ctx.model.length_m if ctx.model.length_m is not None else ctx.model.street_m
     for struct in dec.structs:
         if struct.ring_id not in set(ring_ids) or struct.kind != "ring" or len(struct.rows) != 1:
             continue
         row = struct.rows[0]
         if ctx.urban[row] or ctx.kind[row] not in LOAD_KINDS:
             continue
-        tree = [row] + [r for r, rid in dec.stubs if rid == struct.ring_id]
-        lengths = ctx.model.length_m if ctx.model.length_m is not None else ctx.model.street_m
-        load = ctx.coincident_kva(tree)
-        if load <= p.stub_max_kva and lengths[0, ctx.t_of_row[row]] <= ctx.stub_limit_m(load):
-            struct.kind = "radial"
+        stubs = [r for r, rid in dec.stubs if rid == struct.ring_id]
+        load = ctx.coincident_kva([row] + stubs)
+        limit = ctx.stub_limit_m(load)
+        reach = float(lengths[0, ctx.t_of_row[row]])
+        if load > p.stub_max_kva or reach > limit:
+            continue
+        if stubs:
+            net = _Network(ctx)
+            net.add_structure(_Struct(struct.ring_id, "radial", [row]))
+            for stub in stubs:
+                net.add_stub(stub, struct.ring_id, enforce=False)
+            if reach + max(net.depth.get(ctx.key(r), math.inf) for r in stubs) > limit:
+                continue
+        struct.kind = "radial"
 
 
 # ============================================================================================ helpers: network
