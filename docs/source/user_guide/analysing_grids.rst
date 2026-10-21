@@ -160,12 +160,17 @@ One row per grid (``grid_result_id``), computed by
    * - ``max_trafo_dis``, ``avg_trafo_dis``
      - Maximum and mean path length (km) from the transformer to the consumers.
    * - ``cable_length_km``, ``cable_len_per_house``
-     - Total cable length and length per consumer.
+     - Installed cable length in km (``length_km`` × ``parallel``) and length per consumer.
    * - ``max_power_mw``, ``simultaneous_peak_load_mw``
      - Installed power and coincident peak load of the grid.
    * - ``resistance``, ``reactance``, ``ratio``, ``vsw_per_branch``, ``max_vsw_of_a_branch``
      - Path-impedance proxies weighted with household equivalents
-       (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_impedance_metrics`).
+       (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_impedance_metrics`);
+       the resistance and reactance of a line are divided by its number of parallel cables.
+
+Cable lengths are installed lengths: a line of ``parallel`` cables counts ``length_km`` ×
+``parallel``, in ``plz_parameters.cable_length`` and in ``cable_length_km`` alike. Only the
+``graph_length`` of the comparison metrics counts each route once.
 
 Working with the pandapower nets
 --------------------------------

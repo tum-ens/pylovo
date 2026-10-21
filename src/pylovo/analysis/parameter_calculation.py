@@ -938,7 +938,9 @@ class ParameterCalculator:
         return kept_indices
 
     def calculate_cable_length(self, pandapower_net: pp.pandapowerNet, only_in_service: bool = False) -> float:
-        """Total circuit length in km across line elements.
+        """Installed cable length in km: ``length_km x parallel`` summed over the lines.
+
+        A line of two parallel cables counts twice its route length, as in ``plz_parameters.cable_length``.
 
         Args:
             pandapower_net (pp.pandapowerNet): The grid model.
@@ -949,7 +951,12 @@ class ParameterCalculator:
             return 0.0
         if only_in_service and "in_service" in line_df.columns:
             line_df = line_df[line_df["in_service"]]
-        return line_df["length_km"].sum()
+        parallel = (
+            pd.to_numeric(line_df["parallel"], errors="coerce").fillna(1.0).replace(0, 1.0)
+            if "parallel" in line_df.columns
+            else 1.0
+        )
+        return float((line_df["length_km"] * parallel).sum())
 
     def calculate_graph_length(
         self,
@@ -1337,9 +1344,12 @@ class ParameterCalculator:
                 resistance_per_km = float(line_data.get("r_ohm_per_km", 0.0) or 0.0)
                 reactance_per_km = float(line_data.get("x_ohm_per_km", 0.0) or 0.0)
                 sim_factor = float(line_data.get("sim_factor_cumulated", 1.0) or 1.0) if apply_simultaneity else 1.0
+                # parallel cables of one line divide its impedance (as in calculate_graph_resistance)
+                parallel = float(line_data.get("parallel", 1) or 1)
+                parallel = parallel if parallel > 0 else 1.0        # NaN or 0: one cable
 
-                path_resistance += length_km * resistance_per_km * sim_factor
-                path_reactance += length_km * reactance_per_km
+                path_resistance += length_km * resistance_per_km / parallel * sim_factor
+                path_reactance += length_km * reactance_per_km / parallel
 
             records.append({
                 "branch": branch,
@@ -1375,7 +1385,8 @@ class ParameterCalculator:
 
         Returns maximum household equivalents per branch, total resistance, total
         reactance, the resistance-to-reactance ratio, and the maximum branch
-        resistance proxy.
+        resistance proxy. The resistance and reactance of a line are divided by its
+        number of parallel cables.
         """
         load_table = self._prepare_legacy_impedance_loads(pandapower_net)
         if load_table.empty or "max_p_mw" not in load_table.columns:

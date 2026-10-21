@@ -135,18 +135,20 @@ def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_buse
     assert pc.calculate_average_house_distance(net) == pytest.approx(0.3)            # 300 m
 
 
-def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simultaneity():
-    net = build()
+@pytest.mark.parametrize("parallel", [1, 2])
+def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simultaneity(parallel):
+    net = build(parallel_feeder=parallel)
     pc = calculator()
+    cables = {"f0": parallel, "f1": parallel}                                       # parallel cables divide R and X
     households = 68.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD
     weight = 17.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD                                # household equivalents per consumer
     behind = {"f0": 4, "f1": 2, "f2": 2, "s": 1}                                    # households behind each cable
     factor = {name: coincident(count, 1.0) for name, count in behind.items()}      # sim_factor_cumulated of the line
     length = {"f0": 0.1, "f1": 0.05, "f2": 0.06, "s21": 0.01, "s22": 0.012, "s23": 0.011, "s24": 0.013}
     paths = {"s21": ("f0", "f1"), "s22": ("f0", "f1"), "s23": ("f0", "f2"), "s24": ("f0", "f2")}
-    resistance = sum(weight * (sum(length[c] * R * factor[c] for c in cables) + length[s] * R * factor["s"])
-                     for s, cables in paths.items())
-    reactance = sum(weight * sum(length[c] * X for c in (*cables, s)) for s, cables in paths.items())
+    resistance = sum(weight * (sum(length[c] * R / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * R * factor["s"])
+                     for s, feeders in paths.items())
+    reactance = sum(weight * sum(length[c] * X / cables.get(c, 1) for c in (*feeders, s)) for s, feeders in paths.items())
 
     max_branch, total_r, total_x, ratio, max_branch_r = pc.calculate_impedance_metrics(
         net, top.create_nxgraph(net, respect_switches=True))
@@ -164,10 +166,11 @@ def test_graph_length_and_resistance_describe_the_backbone_unless_service_lines_
     assert pc.calculate_graph_length(net, with_service_lines=True) == pytest.approx(0.256)
     assert pc.calculate_graph_resistance(net) == pytest.approx(0.1 * R)
     assert pc.calculate_graph_resistance(net, with_service_lines=True) == pytest.approx(0.256 * R)
-    # parallel cables divide the resistance of their section; the cable length counts each route once
+    # parallel cables divide the resistance of their section; the cable length is the installed length (x parallel)
     doubled = build(parallel_feeder=2)
     assert pc.calculate_graph_resistance(doubled) == pytest.approx(0.1 * R / 2)
-    assert pc.calculate_cable_length(doubled) == pytest.approx(0.256)
+    assert pc.calculate_graph_length(doubled) == pytest.approx(0.1)
+    assert pc.calculate_cable_length(doubled) == pytest.approx(0.256 + 0.1 + 0.05)
 
 
 def test_the_cable_length_can_be_restricted_to_lines_in_service():
