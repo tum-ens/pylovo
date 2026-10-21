@@ -158,7 +158,8 @@ class UtilsMixin(BaseMixin):
         """Delete the rows of ``buildings_tem`` at the given vertices.
 
         Used for unused transformers and for the street components with at most one consumer;
-        a consumer deleted with such a component is recorded in ``excluded_tem`` as ``isolated_component``.
+        a consumer deleted with such a component is recorded in ``excluded_tem`` as ``isolated_component``
+        (``mv_direct`` if its whole load was moved to the MV grid, as in ``delete_isolated_building``).
 
         Args:
             vertices: Vertex IDs.
@@ -171,7 +172,7 @@ class UtilsMixin(BaseMixin):
                     RETURNING objectid, type, peak_load_in_kw
                 )
                 INSERT INTO excluded_tem (objectid, reason)
-                SELECT objectid, 'isolated_component'
+                SELECT objectid, CASE WHEN peak_load_in_kw = 0 THEN 'mv_direct' ELSE 'isolated_component' END
                 FROM deleted
                 WHERE type IS DISTINCT FROM 'Transformer' AND peak_load_in_kw IS DISTINCT FROM -1;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})

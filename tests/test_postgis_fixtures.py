@@ -75,7 +75,8 @@ def test_saving_keeps_own_ways_and_records_every_left_out_building(tem, monkeypa
     way(tem, 2, "LINESTRING(150 10, 190 10)")            # neighboring street, split part without any marker column
     tem.cur.execute("UPDATE ways_tem SET source = way_id, target = way_id + 100")
     building(tem, "isolated", 50, 50)
-    tem.cur.execute("UPDATE buildings_tem SET vertice_id = 7 WHERE objectid = 'isolated'")
+    building(tem, "mv_dropped", 60, 60, peak=0.0)      # MV-direct building in the same dropped component
+    tem.cur.execute("UPDATE buildings_tem SET vertice_id = 7 WHERE objectid IN ('isolated', 'mv_dropped')")
     tem.delete_transformers_from_buildings_tem([7])
     building(tem, "mv", 20, 20, peak=0.0)
     monkeypatch.setattr(postcode_border, "enabled", lambda: True)
@@ -84,4 +85,4 @@ def test_saving_keeps_own_ways_and_records_every_left_out_building(tem, monkeypa
     assert [row[0] for row in tem.cur.fetchall()] == [1]
     tem.cur.execute("""SELECT objectid, reason FROM pylovo.building_exclusion
                        WHERE version_id = %s AND plz = %s ORDER BY objectid""", (VERSION_ID, PLZ))
-    assert tem.cur.fetchall() == [("isolated", "isolated_component"), ("mv", "mv_direct")]
+    assert tem.cur.fetchall() == [("isolated", "isolated_component"), ("mv", "mv_direct"), ("mv_dropped", "mv_direct")]
