@@ -33,6 +33,9 @@ def classify(eligible: pd.DataFrame, generated: pd.DataFrame, excluded: pd.DataF
              postcodes_with_results: set[int]) -> pd.DataFrame:
     """One row per eligible or stored building with its ``status`` (and ``reason`` for exclusions).
 
+    A building in ``generated`` or ``excluded`` that is not in ``eligible`` has the status ``not_in_source``; an
+    exclusion keeps its ``reason`` and its PLZ in ``excluded_plz``.
+
     Args:
         eligible: ``objectid``, ``home_plz``, ``households`` of the source buildings.
         generated: ``objectid``, ``grid_plz``, ``grid_result_id`` from ``buildings_result``.
@@ -40,7 +43,7 @@ def classify(eligible: pd.DataFrame, generated: pd.DataFrame, excluded: pd.DataF
         postcodes_with_results: PLZ with a ``postcode_result`` row in the version.
     """
     frame = eligible.merge(generated, on="objectid", how="outer", indicator="_generated")
-    frame = frame.merge(excluded.rename(columns={"plz": "excluded_plz"}), on="objectid", how="left")
+    frame = frame.merge(excluded.rename(columns={"plz": "excluded_plz"}), on="objectid", how="outer")
     in_source = frame["home_plz"].notna()
     is_generated = frame["_generated"].isin(["both", "right_only"])
     is_excluded = frame["reason"].notna()
