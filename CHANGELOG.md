@@ -104,6 +104,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `pylovo-validate` (`compare-grids`), `pylovo.analysis.synthetic_metric_export` and `validations/grid_comparison`, superseded by `validations_new`
 - The double-transformer comparison in the greenfield clustering (it could never win), `pylovo.analysis.powerflow_calculation` and `ParameterCalculator.count_consumers` (no callers)
 - Unused configuration constants (`COLORS`, `PLOT_DEFAULTS`, `REGIOSTAR7_DICT`, `TUMPalette2`, `TUMPalette3`), `GRACEFUL_SHUTDOWN_TIMEOUT`, `utils.reset_log_directory`, `drop_orphaned_plz_temp_tables`, the `double_trans` parameter and the leftovers of the removed MV options
+- The orphan module `pylovo.analysis.validation_helpers` (Excel export) and with it the direct dependencies `tqdm` and `xlsxwriter`; `MvInputMixin.lost_station_overlap_customers` and `TransformerUiMixin.delete_transformer_position_trafo_ui` (no callers); unused module constants and parameters of internal functions
 
 ### Fixed
 - MV circuit inventory counts each installed parallel circuit; route, ring and feeder distances remain geometric lengths
@@ -124,6 +125,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - MV stage: a failed extension of a variant could be resumed as current with its old region; a failed coupling kept the old coupled values
 - `pylovo-api`: a job whose command could not start stayed running and kept the writer lock; a job cancelled before its process existed still ran; an SSE `Last-Event-ID` with non-ASCII digits gave 500; `##` section comments leaked into the config form help
 - Docs: PDF build (missing LaTeX characters), schema reference and diagram show the migrated constraints, CLI reference, installation requirements (PostgreSQL 15, pgRouting 3.8, Python 3.12/3.13), CONTRIBUTING for GitHub
+- Coverage accounting reports exclusion rows without a source building as `not_in_source`; the border diagnostics count only the ring part of neighbouring streets, write `null` instead of `NaN` and stop with a message for a PLZ without polygon
+- `register_cable_types` of the pandapower backend accepts cable names without a trailing cross-section; the LV plot functions return their figures without `plt.show()`, and `plot_load_and_voltage_distribution(ax=)` takes two axes
+- MV notebooks default to the configured database and use the `python3` kernel; docstrings no longer cite unpublished design notes
+
 
 ## [0.7.0] - 2026-05-11
 ### Changed
