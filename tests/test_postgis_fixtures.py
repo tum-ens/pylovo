@@ -138,3 +138,50 @@ def test_crossing_ways_are_split_once_at_every_crossing(tem):
         "LINESTRING(0 0,10 0)", "LINESTRING(10 0,20 0)", "LINESTRING(20 0,30 0)",
         "LINESTRING(10 -5,10 0)", "LINESTRING(10 0,10 5)", "LINESTRING(20 -5,20 0)", "LINESTRING(20 0,20 5)",
     ])
+
+
+def test_a_plz_loads_the_connection_lines_of_its_buildings_whatever_postcode_they_are_filed_under(client, monkeypatch):
+    import pylovo.infdb.infdb_client as infdb_client
+    from psycopg2.extensions import parse_dsn
+
+    schema = "pylovo_fixture_infdb"
+    cur = client.cur
+    cur.execute(f"""DROP SCHEMA IF EXISTS {schema} CASCADE;
+                    CREATE SCHEMA {schema};
+                    CREATE TABLE {schema}.buildings (objectid text, postcode integer, building_use text,
+                                                     building_use_id text, street text, house_number text,
+                                                     geom geometry, centroid geometry);
+                    CREATE TABLE {schema}.ways_per_connection (id text, klasse text, length_geo double precision,
+                                                               postcode integer, geom geometry);
+                    CREATE TABLE {schema}.connection_lines (id text, klasse text, length_geo double precision,
+                                                            postcode integer, geom geometry);""")
+    # building at x with its line to the street y = 0, filed under line_plz; the line length tells the lines apart
+    for objectid, plz, x, line_plz, length in (("own", PLZ, 10, PLZ, 1), ("border", PLZ, 20, 99002, 2),
+                                               ("twin", PLZ, 20, None, None),     # same centroid as "border"
+                                               ("shed", PLZ, 25, 99002, 5),       # no address: not loaded
+                                               ("neighbour", 99002, 30, PLZ, 3), ("far", 99002, 40, 99002, 4)):
+        point = f"ST_SetSRID(ST_MakePoint({x}, 20), 25832)"
+        address = (None, None) if objectid == "shed" else ("Hauptstraße", str(x))
+        cur.execute(f"""INSERT INTO {schema}.buildings
+                        VALUES (%s, %s, 'Residential', '31001_1000', %s, %s, ST_Buffer({point}, 5), {point})""",
+                    (objectid, plz, *address))
+        if length:
+            cur.execute(f"""INSERT INTO {schema}.connection_lines VALUES (%s, 'connection_line', %s, %s,
+                            ST_MakeLine({point}, ST_SetSRID(ST_MakePoint({x}, 0), 25832)))""", (objectid, length, line_plz))
+    cur.execute(f"""INSERT INTO {schema}.ways_per_connection
+                    VALUES ('street', 'Gemeindestraße', 50, %s, ST_GeomFromText('LINESTRING(0 0, 50 0)', 25832))""", (PLZ,))
+    client.commit_changes()
+    monkeypatch.setattr(infdb_client, "INFDB_SOURCE_SCHEMA", schema)
+    monkeypatch.setattr(infdb_client, "EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", True)
+    params = parse_dsn(DSN)
+    infdb = infdb_client.InfdbClient(dbname=params["dbname"], user=params.get("user"), pw=params.get("password", ""),
+                                     host=params.get("host"), port=int(params.get("port", 5432)))
+    try:
+        rows = infdb.fetch_ways_from_infdb(PLZ)
+    finally:
+        infdb.close()
+        cur.execute(f"DROP SCHEMA {schema} CASCADE")
+        client.commit_changes()
+    # own and border building (once, though two buildings share its centroid), not the shed that is not loaded;
+    # a neighbour's line filed under the PLZ stays as before, the neighbour's own line does not come
+    assert sorted((clazz, cost) for clazz, _, _, cost, *_ in rows) == [(41, 50), (110, 1), (110, 2), (110, 3)]

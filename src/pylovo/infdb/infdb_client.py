@@ -48,6 +48,18 @@ def _clazz_case_sql() -> str:
         """
 
 
+def _consumer_buildings_sql() -> str:
+    """The SQL condition on ``buildings`` columns that selects the buildings generation loads as consumers."""
+    condition = ("building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown') "
+                 "AND COALESCE(building_use_id, '') != '31001_2523'")
+    if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
+        # Outbuildings (sheds, garages, barns) carry no address of their own and are
+        # almost never separate grid customers. An import restricted to a reviewed
+        # building allowlist must not apply this filter.
+        condition += " AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''"
+    return condition
+
+
 class InfdbClient:
     """Connection to InfDB, the source of buildings, ways and postcodes when ``USE_INFDB=True``.
 
@@ -164,15 +176,10 @@ class InfdbClient:
                 COALESCE(building_type, building_use) AS type
             FROM {buildings}
             WHERE postcode = %(p)s
-            AND building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown')
-            AND COALESCE(building_use_id, '') != '31001_2523'
+            AND {consumers}
         """).format(classify=sql.Identifier(INFDB_SOURCE_SCHEMA, "classify_building_use"),
-                    buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"))
-        if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
-            # Outbuildings (sheds, garages, barns) carry no address of their own and are
-            # almost never separate grid customers. An import restricted to a reviewed
-            # building allowlist must not apply this filter.
-            query += sql.SQL(" AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''")
+                    buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"),
+                    consumers=sql.SQL(_consumer_buildings_sql()))
         with self.conn:
             self.cur.execute(query, {"p": plz})
             buildings = self.cur.fetchall()
@@ -217,7 +224,13 @@ class InfdbClient:
            later); the text ``id`` -> a generated integer ``way_id``.
         3. **Two source tables.** The street segments (``ways_per_connection``, split at the
            building connections) and the building connection lines (``connection_lines``) are
-           combined with ``UNION ALL``.
+           combined with ``UNION ALL``. The connection lines are those filed under the PLZ and
+           those that start at the centroid of a building that :meth:`fetch_buildings_from_infdb`
+           loads but are filed under another postcode: the InfDB may file the line of a building
+           near a PLZ border under the neighbouring postcode. Such a line usually ends on a
+           street of that neighbour, which is part of the graph with
+           ``ROUTE_ACROSS_POSTCODE_BORDERS``; without it the line ends unconnected and its
+           building is usually left out as an isolated component.
         4. **Way ids.** ``way_id`` is ``row_number() OVER (ORDER BY remote_id)``, where
            ``remote_id`` is a stable key derived from the source id, so it starts at 1 for every
            PLZ. ``PreprocessingMixin.set_ways_tem_table_infdb`` offsets it by the largest
@@ -237,6 +250,7 @@ class InfdbClient:
         case_expr = _clazz_case_sql()
         ways_per_connection = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
         connection_lines = sql.Identifier(INFDB_SOURCE_SCHEMA, "connection_lines").as_string(self.cur)
+        buildings = sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings").as_string(self.cur)
         query = f"""
             WITH base AS (
                 SELECT
@@ -262,6 +276,30 @@ class InfdbClient:
                     ('connection_lines:' || id::text) AS remote_id
                 FROM {connection_lines}
                 WHERE postcode = %(plz)s
+
+                UNION ALL
+
+                SELECT
+                    {case_expr} AS clazz,
+                    NULL::bigint AS source,
+                    NULL::bigint AS target,
+                    length_geo AS cost,
+                    length_geo AS reverse_cost,
+                    geom,
+                    ('connection_lines:' || id::text) AS remote_id
+                FROM (
+                    -- lines of the PLZ's consumer buildings filed under another postcode; a line starts
+                    -- at its building's centroid (the tolerance that puts a building on its vertex)
+                    SELECT DISTINCT l.id, l.klasse, l.length_geo, l.geom
+                    FROM (
+                        SELECT COALESCE(centroid, ST_Centroid(geom)) AS c
+                        FROM {buildings}
+                        WHERE postcode = %(plz)s AND {_consumer_buildings_sql()}
+                    ) bu
+                    JOIN {connection_lines} l
+                      ON l.geom && ST_Expand(bu.c, 1e-6) AND ST_DWithin(ST_StartPoint(l.geom), bu.c, 1e-6)
+                    WHERE l.postcode IS DISTINCT FROM %(plz)s
+                ) lines_of_buildings
             )
             SELECT
                 b.clazz,
@@ -302,7 +340,8 @@ class InfdbClient:
 
         Rows have the layout of :meth:`fetch_ways_from_infdb` and way ids continuing after
         ``first_way_id``. Only ``ways_per_connection`` is read (no house connection lines of other
-        PLZ); segments are whole source rows found through the geometry index, and segments with
+        PLZ; the lines of the PLZ's own consumer buildings come with :meth:`fetch_ways_from_infdb`,
+        whatever their postcode); segments are whole source rows found through the geometry index, and segments with
         ``postcode`` NULL count as other PLZ.
 
         Args:
