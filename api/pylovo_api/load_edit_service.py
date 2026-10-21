@@ -223,9 +223,15 @@ def annotate_overview(data: dict, version_id: str, plz: int) -> dict:
     return data
 
 
-# --------------------------------------------------------------------------- status and GIS view
+# --------------------------------------------------------------------------- status
 def status_info() -> dict[str, Any]:
-    """Report load-edit schema status; the building view reads current base rows."""
+    """The load-edit part of ``/api/status``: whether the audit table exists.
+
+    ``views_stale``, ``refreshing_views`` and ``refresh_error`` are constants (0, ``False``, ``None``). They
+    stay for clients written when the GIS view of the buildings was a materialized view; it is a regular
+    view now and always current. They go with ``POST /api/maintenance/refresh-views`` at the next
+    increase of ``API_VERSION``.
+    """
     info: dict[str, Any] = {
         "schema": "missing", "views_stale": 0,
         "refreshing_views": False, "refresh_error": None,

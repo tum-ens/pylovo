@@ -224,7 +224,6 @@ def refresh_views(request: Request) -> dict:
     return {"started": False, "current": True}
 
 
-
 def _exported_file(grid_result_id: int) -> str | None:
     """Path of a ``SAVE_GRID_FOLDER`` JSON file of the grid that is now outdated (it is not rewritten)."""
     try:

@@ -609,6 +609,20 @@ def test_request_models_reject_nan_infinity_and_extra_fields(client):
     assert res.status_code == 403
 
 
+def test_the_former_view_refresh_stays_a_constant_answer_for_old_clients(client, monkeypatch):
+    from pylovo_api import db, load_edit_service
+
+    def unreachable(**kwargs):
+        raise RuntimeError("no database")
+
+    monkeypatch.setattr(db, "cursor", unreachable)
+    info = load_edit_service.status_info()
+    assert info["schema"] == "missing" and info["views_stale"] == 0
+    assert info["refreshing_views"] is False and info["refresh_error"] is None
+    response = client.post("/api/maintenance/refresh-views", json={})
+    assert response.status_code == 202 and response.json() == {"started": False, "current": True}
+
+
 def test_csv_export_escapes_formulas():
     from pylovo_api.load_edit_service import csv_safe, history_csv
 

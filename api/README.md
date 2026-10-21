@@ -132,7 +132,7 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
 | `flow.py` | `GET /api/flow/generate-state` · `POST /api/flow/config-preflight` · `/regenerate` · `/reanalyse` · `/analyse-all` | per-PLZ state, saved config vs. the version's stored parameters, chained jobs |
 | `results.py` | `GET /api/versions` · `/versions/{id}` · `/versions/compare?a=&b=` · `/results/{version}/summary?plz=` · `/results/{version}/{plz}/map` · `/grids/{id}` · `/grids/{id}/pandapower.json` · `/grids/{id}/lod2`; `POST /api/grids/{id}/powerflow?load_scaling=` | versions and parameter diff, statistics, grids of a PLZ (GeoJSON), grid detail, pandapower download, LoD2 mesh, on-demand power flow |
 | `diagnostics.py` | `GET /api/grids/{id}/diagnostics` · `/results/{version}/diagnostics?plz=` · `/diagnostics/rules` | grid diagnostics of a grid or a PLZ, rule catalogue |
-| `load_edits.py` | `GET /api/grids/{id}/load-edit/{building,check}` · `POST /api/grids/{id}/load-edit/{preview,revert}` · `GET`/`POST /api/grids/{id}/load-edits` · `POST /api/grids/{id}/load-edits/undo-all` · `POST /api/load-edits/{id}/undo` · `GET /api/versions/{v}/load-edits?format=csv` · `POST /api/maintenance/refresh-views` | load editor: inputs, reproduction check, preview, apply, undo, history |
+| `load_edits.py` | `GET /api/grids/{id}/load-edit/{building,check}` · `POST /api/grids/{id}/load-edit/{preview,revert}` · `GET`/`POST /api/grids/{id}/load-edits` · `POST /api/grids/{id}/load-edits/undo-all` · `POST /api/load-edits/{id}/undo` · `GET /api/versions/{v}/load-edits?format=csv` · `POST /api/maintenance/refresh-views` (a stub: the building view is a regular view and always current) | load editor: inputs, reproduction check, preview, apply, undo, history |
 
 ## Behaviour
 
