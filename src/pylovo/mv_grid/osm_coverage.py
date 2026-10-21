@@ -77,8 +77,8 @@ def _tags(value: Any) -> dict:
 
 
 def _vmax(tags: Mapping[str, Any]) -> float | None:
-    volts = [v for v in parse_voltages(tags.get("voltage")) if v > 0]
-    return max(volts) if volts else None
+    volts = parse_voltages(tags.get("voltage"))
+    return float(max(volts)) if volts else None
 
 
 def _out_of_service(tags: Mapping[str, Any]) -> bool:

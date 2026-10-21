@@ -654,10 +654,12 @@ def test_osm_mv_lines_join_the_graph_at_crossings_branches_and_loose_ends(monkey
 def test_osm_line_classifier_keeps_mv_overhead_lines_in_service():
     from pylovo.mv_grid.osm_lines import is_mv_overhead_line, parse_voltages
 
-    assert parse_voltages("110000;20000") == [110000.0, 20000.0] and parse_voltages("20 kV") == [20000.0]
-    assert parse_voltages("medium") == [-1.0] and parse_voltages(None) == []
+    assert parse_voltages("110000;20000") == {110000, 20000} and parse_voltages("20 kV") == {20000}
+    assert parse_voltages("medium") == set() and parse_voltages(None) == set()
     keep = [("minor_line", {}), ("line", {"voltage": "20000"}), ("minor_line", {"voltage": "medium"}),
-            ("line", {"voltage": "110000;20000"}), ("minor_line", {"cables": "3"})]
+            ("line", {"voltage": "110000;20000"}), ("minor_line", {"cables": "3"}),
+            # read as by the HV/MV substation filter (one parser): 20 kV each
+            ("line", {"voltage": "20000/400"}), ("line", {"voltage": "20_kv"}), ("line", {"voltage": "20"})]
     drop = [("line", {}), ("cable", {"voltage": "20000"}), ("line", {"voltage": "110000"}),
             ("minor_line", {"voltage": "400"}), ("minor_line", {"cables": "4"}),
             ("minor_line", {"location": "underground"}), ("minor_line", {"line": "busbar"}),

@@ -64,6 +64,8 @@ def frame(*rows: dict) -> pd.DataFrame:
     ("110;20", {110000, 20000}),
     ("0.4", {400}),
     ("20000;400", {20000, 400}),             # LV value in volts next to a volts value, not 400 kV
+    ("20000/400", {20000, 400}),
+    ("20", {20000}),
     ("20000;0.4", {20000, 400}),
     ("110000;medium", {110000}),             # words are skipped
     ("10,5 kV", {10500}),                    # decimal comma

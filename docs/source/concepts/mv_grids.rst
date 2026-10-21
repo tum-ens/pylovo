@@ -338,7 +338,9 @@ built once in the database and stored in ``pylovo.mv_graph``, ``mv_graph_vertex`
 #. The MV overhead lines mapped in OpenStreetMap (``<INFDB_OSM_SCHEMA>.infrastructure_line`` with
    ``tags``) become edges of the graph as well. A way counts if it is a ``line`` or ``minor_line``
    in service with an MV voltage (above 1 kV and below 60 kV, also on shared towers with 110 kV),
-   or a ``minor_line`` without a voltage tag that is not an LV line. In the test regions, untagged
+   or a ``minor_line`` without a voltage tag that is not an LV line. The ``voltage`` tag is read as
+   in the HV/MV substation filter: a number below 1,000 without unit is in kV (``20``), unless it
+   stands next to a value in volts (``20000/400``). In the test regions, untagged
    ``minor_line`` ways were 98 % MV by length. An OSM line and a street are split where they cross,
    so the crossing is a common vertex. A line is split where a branch line ends on it, and each
    loose end gets a straight connector to the nearest street point within ``osm_line_snap_m``

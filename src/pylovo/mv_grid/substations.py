@@ -38,6 +38,7 @@ from scipy.sparse.csgraph import connected_components
 from shapely.errors import GEOSException
 from shapely.strtree import STRtree
 
+from pylovo.mv_grid.osm_lines import parse_voltages
 from pylovo.mv_grid.parameters import MvStageError
 
 if TYPE_CHECKING:   # pragma: no cover
@@ -73,12 +74,6 @@ SITE_COLUMNS: tuple[str, ...] = ("source", "source_ids", "name", "operator", "vo
                                  "egon_bus_id", "egon_distance_m", "in_region", "osm_ratings_mva", "flags", "x", "y",
                                  "area_m2", "footprint_wkb")
 
-_NUMBER = r"(\d+(?:\.\d+)?)"
-_VOLTAGE_PART = re.compile(rf"^{_NUMBER}\s*(kv|v)?$")
-_SEPARATORS = re.compile(r"[;/|]")
-_DECIMAL_COMMA = re.compile(r"(?<=\d),(?=\d{1,2}(?!\d))")
-
-
 # ---------------------------------------------------------------------------------------------- tag parsing
 def _missing(value: Any) -> bool:
     """True for None, NaN and pd.NA."""
@@ -110,44 +105,6 @@ def _flag(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("t", "true", "1", "yes")
     return bool(value)
-
-
-def _number_parts(text: str | None, pattern: re.Pattern) -> list[tuple[float, str | None]]:
-    """``(number, unit)`` of each part of a multi-valued OSM tag; parts that are no number are skipped."""
-    text = _text(text)
-    if text is None:
-        return []
-    parts: list[tuple[float, str | None]] = []
-    for chunk in _SEPARATORS.split(text.lower().replace("_", " ")):
-        chunk = _DECIMAL_COMMA.sub(".", chunk)   # '10,5 kV' is 10.5 kV, '110000,20000' two values
-        for part in chunk.split(","):
-            match = pattern.match(part.strip())
-            if match:
-                parts.append((float(match.group(1)), match.group(2)))
-    return parts
-
-
-def parse_voltages(text: str | None) -> set[int]:
-    """The voltages (V) of an OSM ``voltage`` tag.
-
-    The tag is split at ``;`` (also ``/``, ``|`` and a comma between values); each part is a number with an
-    optional unit ``V`` or ``kV`` (``110 kV``, ``110kV``, ``20_kv``). A number without unit is in volts if it is at
-    least 1,000. A smaller number is read as kV (``110`` is 110 kV, ``0.4`` is 400 V), except an integer next to a
-    value of at least 1,000 V in the same tag, which is an LV value in volts (``20000;400`` is 20 kV and 400 V).
-    Parts that are no number (``medium``, ``unknown``) are skipped.
-
-    Returns:
-        The distinct voltages in volts (empty if the tag is missing or holds no number).
-    """
-    parts = _number_parts(text, _VOLTAGE_PART)
-    volts_context = any(unit is None and value >= 1000 for value, unit in parts)
-    voltages: set[int] = set()
-    for value, unit in parts:
-        if unit == "kv" or (unit is None and value < 1000 and not (volts_context and value.is_integer())):
-            value *= 1000.0
-        if value >= 1.0:
-            voltages.add(int(round(value)))
-    return voltages
 
 
 # ---------------------------------------------------------------------------------------------- filter rules
