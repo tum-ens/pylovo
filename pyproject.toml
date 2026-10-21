@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]  # 1.27 reads the SPDX license expression (PEP 639)
 build-backend = "hatchling.build"
 [project]
 name = "pylovo"
@@ -7,6 +7,7 @@ version = "0.7.0"
 description = "Python tool for generating synthetic low-voltage distribution grids"
 readme = "README.rst"
 requires-python = ">=3.12,<3.14"
+license = "MIT"
 authors = [
     {name = "Beneharo Reveron Baecker", email = "beneharo.reveron-baecker@tum.de"},
 ]
@@ -22,9 +23,8 @@ keywords = [
 ]
 
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
 ]
 
