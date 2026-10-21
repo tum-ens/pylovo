@@ -156,9 +156,9 @@ def _load_chunk_with(cur, ids: list[int], light: bool) -> dict[int, dict]:
     for h in heads:
         groups.setdefault((h["version_id"], h["plz"]), set()).add(h["grid_result_id"])
     for (version_id, plz), members in groups.items():
-        for row in queries._grid_rows(version_id, [plz]):  # noqa: SLF001 - same KPI record as the inspector
-            if row["grid_result_id"] in members:
-                records[row["grid_result_id"]] = queries._grid_record(row)  # noqa: SLF001
+        # same KPI record as the inspector, computed for these grids only (not for the whole PLZ)
+        for row in queries._grid_rows(version_id, [plz], sorted(members), cur):  # noqa: SLF001
+            records[row["grid_result_id"]] = queries._grid_record(row)  # noqa: SLF001
 
     inputs: dict[int, dict] = {}
     for h in heads:

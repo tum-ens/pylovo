@@ -72,19 +72,23 @@ def cursor(readonly: bool = True, **kwargs) -> Iterator[psycopg2.extras.RealDict
         conn.close()
 
 
-def fetch_all(sql: str, params: Any = None) -> list[dict]:
-    """Run a read query and return all rows as dicts."""
-    with cursor() as cur:
-        cur.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
+def fetch_all(sql: str, params: Any = None, cur=None) -> list[dict]:
+    """Run a read query and return all rows as dicts (on ``cur`` if given, else on a connection of its own)."""
+    if cur is None:
+        with cursor() as own:
+            return fetch_all(sql, params, own)
+    cur.execute(sql, params)
+    return [dict(row) for row in cur.fetchall()]
 
 
-def fetch_one(sql: str, params: Any = None) -> dict | None:
-    """Run a read query and return the first row (or ``None``)."""
-    with cursor() as cur:
-        cur.execute(sql, params)
-        row = cur.fetchone()
-        return dict(row) if row else None
+def fetch_one(sql: str, params: Any = None, cur=None) -> dict | None:
+    """Run a read query and return the first row or ``None`` (on ``cur`` if given, else on a connection of its own)."""
+    if cur is None:
+        with cursor() as own:
+            return fetch_one(sql, params, own)
+    cur.execute(sql, params)
+    row = cur.fetchone()
+    return dict(row) if row else None
 
 
 def existing_tables(cur, schema: str = "pylovo") -> set[str]:

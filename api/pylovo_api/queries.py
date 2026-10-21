@@ -380,10 +380,9 @@ def versions() -> list[dict]:
     return attach_version_flags(rows)  # badges from generation_parameters (greenfield, sizes, …)
 
 
-def version_parameters(version_id: str) -> dict[str, Any] | None:
-    row = db.fetch_one("SELECT version_id, version_comment, created_at, generation_parameters FROM pylovo.version "
-                       "WHERE version_id = %s", (version_id,))
-    return row
+def version_parameters(version_id: str, cur=None) -> dict[str, Any] | None:
+    return db.fetch_one("SELECT version_id, version_comment, created_at, generation_parameters FROM pylovo.version "
+                        "WHERE version_id = %s", (version_id,), cur)
 
 
 def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
@@ -410,12 +409,16 @@ def compare_parameters(a: str, b: str) -> dict[str, Any]:
     return {"a": a, "b": b, "rows": rows, "differences": sum(r["differs"] for r in rows)}
 
 
-def _grid_rows(version_id: str, plz: list[int] | None) -> list[dict]:
+def _grid_rows(version_id: str, plz: list[int] | None, grid_ids: list[int] | None = None, cur=None) -> list[dict]:
+    """KPI rows of the grids of a version, of some PLZ and/or of the given grids only (``cur``: see :func:`db.fetch_all`)."""
     params: dict[str, Any] = {"v": version_id}
     where = "g.version_id = %(v)s"
     if plz:
         where += " AND g.plz = ANY(%(plz)s)"
         params["plz"] = plz
+    if grid_ids is not None:
+        where += " AND g.grid_result_id = ANY(%(ids)s)"
+        params["ids"] = list(grid_ids)
     return db.fetch_all(
         f"""
         WITH grids AS (SELECT g.* FROM pylovo.grid_result g WHERE {where}),
@@ -470,7 +473,7 @@ def _grid_rows(version_id: str, plz: list[int] | None) -> list[dict]:
         LEFT JOIN bs ON bs.grid_result_id = g.grid_result_id
         LEFT JOIN fd ON fd.grid_result_id = g.grid_result_id
         LEFT JOIN pylovo.clustering_parameters cp ON cp.grid_result_id = g.grid_result_id
-        ORDER BY g.plz, g.kcid, g.bcid""", params)
+        ORDER BY g.plz, g.kcid, g.bcid""", params, cur)
 
 
 def size_label(unit_mva: Any, units: Any, kva: Any) -> str:
@@ -606,8 +609,13 @@ def results_summary(version_id: str, plz: list[int] | None) -> dict[str, Any]:
 
 def overview_geojson(version_id: str, plz: int, offsets: bool = True) -> dict[str, Any]:
     """All grids of one PLZ: cables (with grid id), stations and building footprints."""
+    with db.cursor() as cur:  # one connection for all queries of the request
+        return _overview_geojson(cur, version_id, plz, offsets)
+
+
+def _overview_geojson(cur, version_id: str, plz: int, offsets: bool) -> dict[str, Any]:
     params = {"v": version_id, "plz": plz}
-    lines = db.fetch_all(_line_sql("g.version_id = %(v)s AND g.plz = %(plz)s", offsets), params)
+    lines = db.fetch_all(_line_sql("g.version_id = %(v)s AND g.plz = %(plz)s", offsets), params, cur)
     stations = db.fetch_all(
         """SELECT g.grid_result_id, g.kcid, g.bcid, g.transformer_rated_power AS kva, g.power_flow_status,
                   g.transformer_description AS description, tp.osm_id, tp.comment,
@@ -615,7 +623,7 @@ def overview_geojson(version_id: str, plz: int, offsets: bool = True) -> dict[st
                   (SELECT sum(COALESCE(t.parallel, 1)) FROM pylovo.pandapower_trafo t WHERE t.grid_result_id = g.grid_result_id) AS units,
                   ST_AsGeoJSON(ST_Transform(tp.geom, 4326), 6)::json AS geometry
            FROM pylovo.grid_result g JOIN pylovo.transformer_positions tp ON tp.grid_result_id = g.grid_result_id
-           WHERE g.version_id = %(v)s AND g.plz = %(plz)s ORDER BY g.kcid, g.bcid""", params)
+           WHERE g.version_id = %(v)s AND g.plz = %(plz)s ORDER BY g.kcid, g.bcid""", params, cur)
     for st in stations:  # "2 × 400 kVA" for a station with parallel units, as everywhere else
         st["size_label"] = size_label(st.pop("unit_mva"), st.pop("units"), st["kva"])
     buildings = db.fetch_all(
@@ -623,18 +631,18 @@ def overview_geojson(version_id: str, plz: int, offsets: bool = True) -> dict[st
                   br.street, br.house_number, br.building_use, round(br.height::numeric, 1)::float AS height,
                   ST_AsGeoJSON(ST_Transform(br.geom, 4326), 6)::json AS geometry
            FROM pylovo.buildings_result br JOIN pylovo.grid_result g ON g.grid_result_id = br.grid_result_id
-           WHERE g.version_id = %(v)s AND g.plz = %(plz)s""", params)
+           WHERE g.version_id = %(v)s AND g.plz = %(plz)s""", params, cur)
     bounds = db.fetch_one(
         """SELECT ST_XMin(e) minx, ST_YMin(e) miny, ST_XMax(e) maxx, ST_YMax(e) maxy FROM (
              SELECT ST_Transform(ST_SetSRID(ST_Extent(l.geom)::geometry, %(epsg)s), 4326) e
              FROM pylovo.lines_result l JOIN pylovo.grid_result g ON g.grid_result_id = l.grid_result_id
-             WHERE g.version_id = %(v)s AND g.plz = %(plz)s) s""", dict(params, epsg=epsg()))
+             WHERE g.version_id = %(v)s AND g.plz = %(plz)s) s""", dict(params, epsg=epsg()), cur)
     # cable distribution cabinets: pylovo's feeder split points (the station itself is excluded)
     splits = db.fetch_all(
         """SELECT sp.grid_result_id, sp.split_bus, sp.outgoing_count, sp.split_type,
                   ST_AsGeoJSON(ST_Transform(sp.geom, 4326), 6)::json AS geometry
            FROM pylovo.split_points sp JOIN pylovo.grid_result g ON g.grid_result_id = sp.grid_result_id
-           WHERE g.version_id = %(v)s AND g.plz = %(plz)s""", params)
+           WHERE g.version_id = %(v)s AND g.plz = %(plz)s""", params, cur)
     return {
         "lines": feature_collection(lines),
         "stations": feature_collection(stations, id_key="grid_result_id"),
@@ -669,13 +677,18 @@ def _line_sql(where: str, offsets: bool) -> str:
 
 def grid_detail(grid_result_id: int, offsets: bool = True) -> dict[str, Any] | None:
     """One grid: KPIs, GeoJSON layers (cables, buses, buildings, station) and tables."""
-    head = db.fetch_one("SELECT version_id, plz FROM pylovo.grid_result WHERE grid_result_id = %s", (grid_result_id,))
+    with db.cursor() as cur:  # one connection for all queries of the request
+        return _grid_detail(cur, grid_result_id, offsets)
+
+
+def _grid_detail(cur, grid_result_id: int, offsets: bool) -> dict[str, Any] | None:
+    head = db.fetch_one("SELECT version_id, plz FROM pylovo.grid_result WHERE grid_result_id = %s", (grid_result_id,),
+                        cur)
     if not head:
         return None
-    record = next((_grid_record(r) for r in _grid_rows(head["version_id"], [head["plz"]])
-                   if r["grid_result_id"] == grid_result_id), None)
+    record = next((_grid_record(r) for r in _grid_rows(head["version_id"], [head["plz"]], [grid_result_id], cur)), None)
     params = {"g": grid_result_id}
-    lines = db.fetch_all(_line_sql("l.grid_result_id = %(g)s", offsets), params)
+    lines = db.fetch_all(_line_sql("l.grid_result_id = %(g)s", offsets), params, cur)
     buses = db.fetch_all(
         """SELECT b.pp_index, b.name, b.vn_kv, b.zone,
                   ld.loads, ld.p_kw, ld.design_kw, ld.installed_kw, ld.load_units, ld.category,
@@ -686,21 +699,21 @@ def grid_detail(grid_result_id: int, offsets: bool = True) -> dict[str, Any] | N
                              round(sum(max_p_mw * 1000)::numeric, 2)::float AS installed_kw,
                              sum(load_units) AS load_units, string_agg(DISTINCT category, ', ') AS category
                       FROM pylovo.pandapower_load WHERE grid_result_id = %(g)s GROUP BY bus) ld ON ld.bus = b.pp_index
-           WHERE b.grid_result_id = %(g)s ORDER BY b.pp_index""", params)
+           WHERE b.grid_result_id = %(g)s ORDER BY b.pp_index""", params, cur)
     buildings = db.fetch_all(
         """SELECT br.objectid, br.type, br.households, round(br.peak_load_in_kw::numeric, 1)::float AS peak_kw,
                   br.street, br.house_number, br.building_use, round(br.height::numeric, 1)::float AS height,
                   br.floor_number, round(br.floor_area::numeric, 0)::float AS floor_area, br.vertice_id,
                   ST_AsGeoJSON(ST_Transform(br.geom, 4326), 6)::json AS geometry
-           FROM pylovo.buildings_result br WHERE br.grid_result_id = %(g)s""", params)
+           FROM pylovo.buildings_result br WHERE br.grid_result_id = %(g)s""", params, cur)
     trafo = db.fetch_all("SELECT pp_index, name, std_type, sn_mva, vn_hv_kv, vn_lv_kv, vk_percent, vkr_percent, "
-                         "parallel, hv_bus, lv_bus FROM pylovo.pandapower_trafo WHERE grid_result_id = %(g)s", params)
+                         "parallel, hv_bus, lv_bus FROM pylovo.pandapower_trafo WHERE grid_result_id = %(g)s", params, cur)
     station = db.fetch_one(
         """SELECT tp.osm_id, tp.comment, tp.osm, tp.lod2, ST_AsGeoJSON(ST_Transform(tp.geom, 4326), 6)::json AS geometry
-           FROM pylovo.transformer_positions tp WHERE tp.grid_result_id = %(g)s""", params)
+           FROM pylovo.transformer_positions tp WHERE tp.grid_result_id = %(g)s""", params, cur)
     splits = db.fetch_all(
         """SELECT split_bus, outgoing_count, split_type, ST_AsGeoJSON(ST_Transform(geom, 4326), 6)::json AS geometry
-           FROM pylovo.split_points WHERE grid_result_id = %(g)s""", params)
+           FROM pylovo.split_points WHERE grid_result_id = %(g)s""", params, cur)
 
     topo = topology.analyse(buses, [{**ln, "length_km": (ln["length_m"] or 0) / 1000} for ln in lines])
     by_vertex = {}
@@ -736,7 +749,7 @@ def grid_detail(grid_result_id: int, offsets: bool = True) -> dict[str, Any] | N
         "station": feature_collection([station]) if station else feature_collection([]),
         "trafo": trafo,
     }
-    gp = (version_parameters(head["version_id"]) or {}).get("generation_parameters")
+    gp = (version_parameters(head["version_id"], cur) or {}).get("generation_parameters")
     detail.update(grid_metrics.grid_extras(detail, record, grid_metrics.version_limits(gp)))
     return detail
 
