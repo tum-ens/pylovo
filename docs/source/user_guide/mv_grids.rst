@@ -354,10 +354,13 @@ pylovo-mv delete
 
 .. code-block:: text
 
-   pylovo-mv delete --version VERSION [--variant VARIANTS [VARIANTS ...]]
+   pylovo-mv delete --version VERSION [--variant VARIANTS [VARIANTS ...]] [--yes]
 
 Deletes the given variants of a version with all their results. Without ``--variant`` it deletes
 every MV variant of the version. It refuses while a ``generate`` or ``couple`` of one of them runs.
+Like ``pylovo-delete`` it shows the database and asks you to type its name; ``--yes`` skips the
+question and is required when stdin is not a terminal (otherwise nothing is deleted and the command
+exits with 1).
 
 pylovo-mv export
 ~~~~~~~~~~~~~~~~

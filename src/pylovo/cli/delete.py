@@ -3,6 +3,8 @@ import sys
 import traceback
 
 from pylovo.cli import parsers
+from pylovo.cli.confirm import confirm_deletion
+from pylovo.config_loader import DBNAME, HOST, PORT
 from pylovo.database.database_client import DatabaseClient
 
 
@@ -39,6 +41,20 @@ def delete_classification_version(classification_id: int):
     print(f"✓ Deleted classification version {classification_id}")
 
 
+def _scope(args) -> list[str]:
+    """What the command of ``args`` deletes, as shown in the confirmation."""
+    if args.command == "networks":
+        return [f"the grids and results of PLZ {args.plz} in version {args.version}, and the MV variants of that "
+                "version that contain the PLZ"]
+    if args.command == "version":
+        return [f"all grids and results in every PLZ, the equipment data, the parameter snapshot and the MV "
+                f"variants of version {', '.join(args.version_ids)}"]
+    if args.command == "transformers":
+        return ["ALL rows of pylovo.transformers, including the manual and DSO positions, which cannot be recreated "
+                "from the OSM files (generated grids keep their positions but lose the link to the transformer)"]
+    return [f"classification {args.version} with its sample set and results"]
+
+
 def main():
     """Entry point of ``pylovo-delete``."""
     parser = parsers.delete_parser()
@@ -47,6 +63,8 @@ def main():
     if not args.command:
         parser.print_help()
         return
+    if not args.yes and not confirm_deletion(_scope(args), DBNAME, HOST, PORT):
+        sys.exit(1)
 
     try:
         if args.command == "networks":

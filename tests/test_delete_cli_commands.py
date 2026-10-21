@@ -58,10 +58,10 @@ def run(monkeypatch, *args):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["version", "--version", "1"], ("versions", ["1"])),
-    (["version", "--version", "4", "5"], ("versions", ["4", "5"])),
-    (["networks", "--plz", "80803", "--version", "1"], ("networks", 80803, "1")),
-    (["transformers"], ("transformers",)),
+    (["version", "--version", "1", "--yes"], ("versions", ["1"])),
+    (["version", "--version", "4", "5", "--yes"], ("versions", ["4", "5"])),
+    (["networks", "--plz", "80803", "--version", "1", "--yes"], ("networks", 80803, "1")),
+    (["transformers", "--yes"], ("transformers",)),
 ])
 def test_each_command_calls_its_client_method_with_the_parsed_arguments(monkeypatch, calls, args, expected):
     run(monkeypatch, *args)
@@ -93,7 +93,7 @@ def test_without_arguments_the_help_is_shown_and_nothing_is_deleted(monkeypatch,
 def test_a_failing_delete_exits_with_one_and_still_closes_the_client(monkeypatch, calls, capsys, error):
     calls.client.error = error
     with pytest.raises(SystemExit) as failed:
-        run(monkeypatch, "version", "--version", "9")
+        run(monkeypatch, "version", "--version", "9", "--yes")
     assert failed.value.code == 1 and calls[-1] == "close"
     assert str(error) in capsys.readouterr().out
 

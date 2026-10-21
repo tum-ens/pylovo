@@ -156,7 +156,7 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     client = FakeClient(delete_variants=lambda v, ids: deleted.append((v, ids)) or 2,
                         list_variants=lambda v: rows, ensure_grid_persistence_schema=lambda: None)
     monkeypatch.setattr(cli, "_database_client", lambda: client)
-    cli.main(["delete", "--version", "mv1", "--variant", "d0", "d1"])
+    cli.main(["delete", "--version", "mv1", "--variant", "d0", "d1", "--yes"])
     cli.main(["list", "--version", "mv1"])
     out = capsys.readouterr().out.splitlines()
     assert deleted == [("mv1", ["d0", "d1"])]
@@ -337,7 +337,7 @@ def test_every_command_on_the_mv_tables_stops_with_pending_migrations(monkeypatc
     monkeypatch.setattr(cli, "_database_client", lambda: client)
     monkeypatch.setattr(stage, "_database_client", lambda log_file: client)
     monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", False)
-    for argv in (["delete", "--version", "mv1", "--variant", "d0"], ["list"], ["graph", "--version", "mv1", "--all"],
+    for argv in (["delete", "--version", "mv1", "--variant", "d0", "--yes"], ["list"], ["graph", "--version", "mv1", "--all"],
                  ["boundary", "--version", "mv1", "--variant", "d1", "--output", "b.csv"],
                  ["export", "--version", "mv1", "--variant", "d1", "--grid", "3", "--output", "g.json"]):
         with pytest.raises(SystemExit) as exc:

@@ -13,8 +13,8 @@ Subcommands:
 - ``display``: store the display geometry of variants again (lanes where lines share a route, busbar circles;
   :mod:`pylovo.mv_grid.display`), e.g. for variants built before it existed.
 
-Every output line starts with ✓ or ✗; the exit code is 0 when the command (the variant, the coupling) is done and
-1 otherwise. The command never constructs ``GridGenerator``: it works on stored LV versions with an explicit
+Every output line starts with ✓ or ✗ (except the question of ``delete``, which is only asked on a terminal); the
+exit code is 0 when the command (the variant, the coupling) is done and 1 otherwise. The command never constructs ``GridGenerator``: it works on stored LV versions with an explicit
 ``--version``.
 """
 from __future__ import annotations
@@ -101,6 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
     delete = sub.add_parser("delete", help="delete MV variants of a version (all without --variant)")
     delete.add_argument("--version", required=True)
     delete.add_argument("--variant", dest="variants", nargs="+", help="MV variant id(s)")
+    delete.add_argument("--yes", action="store_true",
+                        help="delete without asking for the confirmation (required when stdin is not a terminal)")
 
     listing = sub.add_parser("list", help="list the MV variants")
     listing.add_argument("--version", help="only this LV version")
@@ -187,10 +189,16 @@ def _couple(args: argparse.Namespace) -> int:
 
 
 def _delete(args: argparse.Namespace) -> int:
+    from pylovo.cli.confirm import confirm_deletion
+    from pylovo.config_loader import DBNAME, HOST, PORT
+
+    which = ", ".join(args.variants) if args.variants else "all"
+    if not args.yes and not confirm_deletion(
+            [f"the MV variants of version {args.version} ({which}) with all their results"], DBNAME, HOST, PORT):
+        return 1
     with _database_client() as dbc:
         dbc.ensure_grid_persistence_schema()
         count = dbc.delete_variants(args.version, args.variants)
-    which = ", ".join(args.variants) if args.variants else "all"
     print(f"✓ Deleted {count} MV variant{'s' if count != 1 else ''} of version {args.version} ({which})")
     return 0
 

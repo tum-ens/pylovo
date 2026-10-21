@@ -65,6 +65,6 @@ def test_classification_id_is_an_integer(monkeypatch, capsys):
     with pytest.raises(SystemExit) as invalid:
         delete.main()
     assert invalid.value.code == 2 and deleted == []
-    monkeypatch.setattr(sys, "argv", ["pylovo-delete", "classification", "--version", "1"])
+    monkeypatch.setattr(sys, "argv", ["pylovo-delete", "classification", "--version", "1", "--yes"])
     delete.main()
     assert deleted == [1] and "Deleted classification version 1" in capsys.readouterr().out

@@ -7,7 +7,7 @@ read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`), after they 
 arguments: ``--help`` and wrong arguments are answered without a ``.env`` and without configuration
 files.
 
-Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset, an MV
+Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset or delete, an MV
 stage that does not end ``done``, ``pylovo-analyze`` for a postcode without grids and
 ``pylovo-export`` when no postcode has grids), 2 for wrong arguments, 3 for
 ``pylovo-analyze --coverage`` when source buildings are missing, and 4 for ``pylovo-generate``
@@ -111,8 +111,10 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
    Check the done MV grids with the stored LV grids and solve the merged MV and LV operating point.
 ``pylovo-mv list [--version VERSION]``
    List the MV variants with status, postcodes, grids, retired options, length and stale flag.
-``pylovo-mv delete --version VERSION [--variant VARIANTS ...]``
+``pylovo-mv delete --version VERSION [--variant VARIANTS ...] [--yes]``
    Delete MV variants with all their results (all variants of the version without ``--variant``).
+   Asks you to type the database name first, like ``pylovo-delete``; ``--yes`` skips the question and
+   is required without a terminal on stdin.
 ``pylovo-mv export --version VERSION --variant VARIANT --grid GRID --output OUTPUT [--case CASE] [--coupled]``
    Write the pandapower net of one MV grid (case ``load``, ``n1a`` or ``n1b``) to a JSON file.
 ``pylovo-mv boundary --version VERSION --variant VARIANT --output OUTPUT``
@@ -238,23 +240,28 @@ pylovo-delete
 Deletes data from the database. Without arguments the help is shown. Deleting versions or
 postcodes cascades to all dependent result tables and refreshes the materialised views.
 
-``pylovo-delete version --version VERSION_ID [VERSION_ID ...]``
+Every command that deletes shows the database (host, port and name) and what it deletes, and asks
+you to type the database name, like ``pylovo-setup reset``. ``--yes`` skips the question. Without a
+terminal on stdin (a script, a job) and without ``--yes`` nothing is deleted and the command exits
+with 1. The HTTP API passes ``--yes`` after its own typed confirmation.
+
+``pylovo-delete version --version VERSION_ID [VERSION_ID ...] [--yes]``
    Delete one or more versions with all their grids in all postcodes, their equipment data and
    parameter snapshots. Unknown versions are reported and nothing is deleted. The option
    ``pylovo-delete --version`` of earlier releases is gone and names this subcommand in its error
    message.
 
-``pylovo-delete networks --plz PLZ --version VERSION``
+``pylovo-delete networks --plz PLZ --version VERSION [--yes]``
    Delete the grids of one postcode in one version (the version itself is kept). The MV variants
    of the version that contain the postcode are deleted as well, because an MV grid spans several
    postcodes.
 
-``pylovo-delete transformers``
+``pylovo-delete transformers [--yes]``
    Empty ``pylovo.transformers``, including the manual and DSO positions, which cannot be
    recreated from the OSM files. Generated grids keep their transformer positions but lose the
    link to the raw transformer (``osm_id`` becomes ``NULL``), see :doc:`transformer_data`.
 
-``pylovo-delete classification --version CLASSIFICATION_ID``
+``pylovo-delete classification --version CLASSIFICATION_ID [--yes]``
    Delete a classification with its sample set and result and refresh the view
    ``transformer_classified_with_grid`` (:doc:`classification`). The id is the integer
    ``CLASSIFICATION_VERSION``, not a ``VERSION_ID``; an unknown id is reported and nothing is deleted.
@@ -264,6 +271,7 @@ postcodes cascades to all dependent result tables and refreshes the materialised
    pylovo-delete version --version docs_bf docs_km
    pylovo-delete networks --plz 85653 --version 1
    pylovo-delete classification --version 1
+   pylovo-delete networks --plz 85653 --version 1 --yes    # in a script
 
 pylovo-api
 ----------

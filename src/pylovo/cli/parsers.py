@@ -184,7 +184,8 @@ def delete_parser() -> argparse.ArgumentParser:
     """The ``pylovo-delete`` argument parser."""
     parser = argparse.ArgumentParser(
         prog="pylovo-delete",
-        description="Delete various pylovo data from database",
+        description="Delete various pylovo data from database. Every command shows the database and asks you to type "
+                    "its name before it deletes; --yes skips the question (needed when stdin is not a terminal).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -203,16 +204,23 @@ Examples:
   # Delete classification version data
   pylovo-delete classification --version 1
 
+  # Delete without the question (scripts)
+  pylovo-delete networks --plz 80803 --version 1 --yes
+
 For more information, see: https://github.com/tum-ens/pylovo
         """
     )
     parser.add_argument("--version", nargs="*", action=_VersionOptionRemoved, help=argparse.SUPPRESS)
+    confirmation = argparse.ArgumentParser(add_help=False)
+    confirmation.add_argument("--yes", action="store_true",
+                              help="delete without asking for the confirmation (required when stdin is not a terminal)")
 
     subparsers = parser.add_subparsers(dest="command", help="Delete operation to perform", required=False)
 
     # Subcommand: networks
     networks_parser = subparsers.add_parser(
         "networks",
+        parents=[confirmation],
         help="Delete networks for a specific PLZ and version",
         description="Delete all generated grid networks for a specific postal code and version ID"
     )
@@ -224,6 +232,7 @@ For more information, see: https://github.com/tum-ens/pylovo
     # Subcommand: version
     version_parser = subparsers.add_parser(
         "version",
+        parents=[confirmation],
         help="Delete all networks for a version across all PLZ",
         description="Delete all generated grid networks for a specific version across all postal codes"
     )
@@ -233,13 +242,16 @@ For more information, see: https://github.com/tum-ens/pylovo
     # Subcommand: transformers
     subparsers.add_parser(
         "transformers",
+        parents=[confirmation],
         help="Delete all transformers",
-        description="Delete all transformer data"
+        description="Delete all rows of the transformer table, including the manual and DSO positions, which "
+                    "cannot be recreated from the OSM files"
     )
 
     # Subcommand: classification
     class_parser = subparsers.add_parser(
         "classification",
+        parents=[confirmation],
         help="Delete classification version data",
         description="Delete all data associated with a specific classification version"
     )

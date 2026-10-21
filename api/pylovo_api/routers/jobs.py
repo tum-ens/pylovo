@@ -203,7 +203,7 @@ def delete_versions(body: DeleteVersionsBody, request: Request) -> dict:
     ids = body.version_ids
     require_confirm(body.confirm, " ".join(ids), "delete these versions")
     return _start(request, "delete", f"Delete version {' '.join(ids)}",
-                  pylovo_command("pylovo-delete", "version", "--version", *ids), params={"version_ids": ids})
+                  pylovo_command("pylovo-delete", "version", "--version", *ids, "--yes"), params={"version_ids": ids})
 
 
 @router.post("/delete-networks", status_code=202)
@@ -211,7 +211,7 @@ def delete_networks(body: DeleteNetworksBody, request: Request) -> dict:
     """``pylovo-delete networks --plz <plz> --version <id>``"""
     require_confirm(body.confirm, f"{body.version_id}/{body.plz}", "delete the grids of this PLZ")
     return _start(request, "delete", f"Delete grids · {body.plz} · v{body.version_id}",
-                  pylovo_command("pylovo-delete", "networks", "--plz", str(body.plz), "--version", body.version_id),
+                  pylovo_command("pylovo-delete", "networks", "--plz", str(body.plz), "--version", body.version_id, "--yes"),
                   params={"plz": body.plz, "version_id": body.version_id})
 
 

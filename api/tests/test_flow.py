@@ -182,3 +182,4 @@ def test_generate_and_regenerate_jobs_never_run_the_mv_stage(client, monkeypatch
     assert "--no-mv" in generate_argv and "--no-mv" in parallel_argv and "--mv" not in generate_argv
     delete_step, generate_step = chain.split(regenerate_argv[3:])
     assert "--no-mv" in generate_step and "--no-mv" not in delete_step
+    assert delete_step[-1] == "--yes"        # the route asked for the typed confirmation itself
