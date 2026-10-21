@@ -1,9 +1,9 @@
 ### Chosen directories/files to ignore
+/validations
 /AGENTS.md
 /data/buildings/*
 /data/ways/ways_public_2po_4pgr.sql
 /data/postcode.csv
-/validation/grid_comparison/metrics/*
 
 # Keep the processed transformers of Bavaria (EPSG 25832) in git - ignore the generated files (raw downloads, other CRS)
 /data/transformer_data/fetched_trafos/*
@@ -167,12 +167,5 @@ cython_debug/
 
 # pylovo-api working files: config backups, uploads, job logs, exports
 /.pylovo-api/
-validations/metrics/*
-validations/grid_comparison/*
-### Confidential validation artefacts of a local validations directory (never committed)
-validations/**/*.png
-validations/**/*.pdf
-validations/**/*.svg
-validations/**/*.json
 
 *.pdf
