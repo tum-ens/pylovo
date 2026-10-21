@@ -14,8 +14,8 @@ networks or GIS data.
    :width: 100%
 
    Explore generated grids in the :doc:`user_guide/viewer`: the LV grids of one postcode with cables
-   and 3D buildings coloured by grid and one selected feeder section. MV test region from open
-   data; map data © OpenStreetMap contributors (ODbL).
+   and 3D buildings coloured by grid and one selected feeder section. Test region from open data;
+   basemap OpenFreeMap © OpenMapTiles, map data © OpenStreetMap contributors (ODbL).
 
 .. rubric:: Key features
 

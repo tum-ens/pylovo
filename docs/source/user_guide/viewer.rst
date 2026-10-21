@@ -12,10 +12,11 @@ commands (:doc:`cli`).
    :alt: The map viewer with LV grids coloured by grid and one selected feeder section
    :width: 100%
 
-   LV grids of one postcode in the default view: areas, cables and buildings coloured by grid and
-   the MV/LV substations as transformer symbols. A click on a cable selects its feeder section
-   (yellow), and the inspector shows the section and the cable's database row. MV test region from open data; map data © OpenStreetMap contributors
-   (ODbL).
+   LV grids of one postcode in the default view (3D, Streets basemap): areas, cables and buildings
+   coloured by grid and the MV/LV substations as transformer symbols. A click on a cable selects its
+   feeder section (yellow), and the inspector shows the section and the cable's database row. Test
+   region generated from open data; basemap OpenFreeMap © OpenMapTiles, map data © OpenStreetMap
+   contributors (ODbL).
 
 Start
 -----
@@ -109,11 +110,13 @@ modes, basemap and camera, so a view can be bookmarked or sent. Keys: ``/`` sear
 ``Esc`` close the inspector and then clear the region, ``?`` help.
 
 .. figure:: /images/viewer/viewer-lod2.png
-   :alt: LoD2 buildings of several grids in 3D, coloured by grid
+   :alt: Extruded buildings, cables and cable cabinets of several LV grids in 3D, coloured by grid
    :width: 100%
 
-   3D view with LoD2 buildings coloured by grid. Demo region 85653 (Aying) derived from
-   OpenStreetMap with synthetic LoD2 models.
+   The 3D view tilted further (right-button drag): buildings extruded by their height, cables, cable
+   cabinets and MV/LV substations of several grids, coloured by grid. The test database has no
+   ``citydb``, so the buildings are extruded footprints; with LoD2 data they show roofs and walls.
+   Basemap OpenFreeMap © OpenMapTiles, map data © OpenStreetMap contributors (ODbL).
 
 Layers
 ------
@@ -199,8 +202,9 @@ attribution.
    :alt: MV supply areas, rings and substations of a test region with the eTraGo high-voltage grid
    :width: 100%
 
-   MV supply areas, rings and HV/MV substations of an MV run in a test region, with the eTraGo
-   110, 220 and 380 kV lines. Map data © OpenStreetMap contributors (ODbL), eGon-data eTraGo grid.
+   MV supply areas, rings and HV/MV substations of an MV run in a test region generated from open
+   data, with the eTraGo 110, 220 and 380 kV lines (LV level switched off). Basemap OpenFreeMap
+   © OpenMapTiles, map data © OpenStreetMap contributors (ODbL), eGon-data eTraGo grid.
 
 Data and limits
 ---------------

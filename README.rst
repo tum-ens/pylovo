@@ -19,7 +19,8 @@ GIS tables in PostgreSQL/PostGIS.
     :alt: Generated LV grids in pylovo-viewer in 3D, cables and buildings coloured by grid, one feeder section selected
 
     Generated LV grids in pylovo-viewer: cables and 3D buildings coloured by grid, one feeder section
-    selected (MV test region from open data; map data © OpenStreetMap contributors, ODbL).
+    selected (test region from open data; basemap OpenFreeMap © OpenMapTiles, map data
+    © OpenStreetMap contributors, ODbL).
 
 Key features
 ------------
