@@ -240,5 +240,5 @@ def _exported_file(grid_result_id: int) -> str | None:
         path = Path(cl.RESULT_DIR, "grids", f"version_{row['version_id']}", str(row["plz"]),
                     f"kcid{row['kcid']}bcid{row['bcid']}.json")
         return str(path) if path.exists() else None
-    except Exception:  # noqa: BLE001 - informational only
+    except Exception:  # informational only
         return None

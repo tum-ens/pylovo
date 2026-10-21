@@ -39,7 +39,7 @@ def check(nb_path: Path) -> list[str]:
         if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("pylovo"):
             try:
                 mod = importlib.import_module(node.module)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 problems.append(f"import {node.module}: {type(exc).__name__}: {exc}")
                 continue
             for alias in node.names:
@@ -52,7 +52,7 @@ def check(nb_path: Path) -> list[str]:
                 if alias.name.startswith("pylovo"):
                     try:
                         importlib.import_module(alias.name)
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         problems.append(f"import {alias.name}: {type(exc).__name__}: {exc}")
 
     # variable -> class for "x = Cls(...)" and "with Cls(...) as x"

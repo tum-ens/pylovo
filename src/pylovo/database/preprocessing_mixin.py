@@ -399,7 +399,7 @@ class PreprocessingMixin(BaseMixin):
         WHERE plz ISNULL;"""
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
 
-    def set_buildings_table(self, buildings_data: list[tuple], plz: int = None) -> None:
+    def set_buildings_table(self, buildings_data: list[tuple], plz: int | None = None) -> None:
         """Insert InfDB buildings into ``buildings_tem`` (``USE_INFDB=True``).
 
         Args:
@@ -1151,7 +1151,7 @@ class PreprocessingMixin(BaseMixin):
                      AND type = 'Transformer';"""
         self.cur.execute(query)   
 
-    def set_ways_tem_table_infdb(self, ways_data: list[tuple], plz: int = None) -> int:
+    def set_ways_tem_table_infdb(self, ways_data: list[tuple], plz: int | None = None) -> int:
         """Insert the InfDB ways into ``ways_tem`` (``USE_INFDB=True``).
 
         Args:

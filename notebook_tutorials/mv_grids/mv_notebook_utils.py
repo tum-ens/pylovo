@@ -712,7 +712,7 @@ def add_basemap(ax: Any, crs: Any) -> None:
         cx.add_basemap(ax, crs=crs.to_string() if hasattr(crs, "to_string") else crs,
                        source=cx.providers.OpenStreetMap.Mapnik, headers=OSM_TILE_HEADERS,
                        attribution="Map data © OpenStreetMap contributors (ODbL)")
-    except Exception as exc:  # noqa: BLE001 - the map is still useful without tiles
+    except Exception as exc:  # the map is still useful without tiles
         warnings.warn(f"OpenStreetMap basemap not drawn: {exc}", stacklevel=2)
 
 

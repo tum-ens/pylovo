@@ -941,7 +941,7 @@ class ClusteringMixin(BaseMixin):
             f"old={transformer_rated_power} kVA -> new={new_transformer_rated_power} kVA)"
         )
 
-    def get_transformer_data(self, settlement_type: int = None) -> tuple[np.array, dict]:
+    def get_transformer_data(self, settlement_type: int | None = None) -> tuple[np.array, dict]:
         """Return the standard transformer capacities of a settlement type and their costs.
 
         Args:

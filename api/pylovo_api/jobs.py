@@ -280,7 +280,7 @@ class JobManager:
         self._append(job, f"$ {job.summary()['command']}", "command")
         try:
             code = self._execute(job, env)
-        except Exception as exc:  # noqa: BLE001 - a job must end whatever happens: it holds the writer lock
+        except Exception as exc:  # a job must end whatever happens: it holds the writer lock
             # e.g. OSError (no such program) or ValueError (an argument with a NUL byte or a lone surrogate)
             self._append(job, f"Could not run the command: {type(exc).__name__}: {exc}", "error")
             self._finish(job, "failed", None)
@@ -329,7 +329,7 @@ class JobManager:
         if self.on_finish:
             try:
                 self.on_finish(job)
-            except Exception:  # noqa: BLE001 - a listener must not break the job runner
+            except Exception:  # a listener must not break the job runner
                 log.exception("The finish hook failed for job %s", job.id)
 
     def _append(self, job: Job, text: str, level: str | None = None) -> None:

@@ -68,7 +68,7 @@ def citydb_classes() -> dict[str, int] | None:
             classes = {r["classname"]: int(r["id"]) for r in rows}
             if "Building" in classes:
                 value = classes
-    except Exception as exc:  # noqa: BLE001 - no citydb (or no rights): LoD2 is simply unavailable
+    except Exception as exc:  # no citydb (or no rights): LoD2 is simply unavailable
         log.info("citydb not usable for LoD2 buildings: %s", exc)
     with _schema_lock:
         _schema.update(checked_at=time.time(), value=value)
@@ -157,7 +157,7 @@ def build_mesh(surfaces: list[tuple[str, int, bytes]]) -> dict[str, Any]:
     for objectid, code, blob in surfaces:
         try:
             geom = wkb.loads(blob)
-        except Exception:  # noqa: BLE001 - a broken geometry is skipped, not fatal
+        except Exception:  # a broken geometry is skipped, not fatal
             continue
         if not geom.has_z:
             continue

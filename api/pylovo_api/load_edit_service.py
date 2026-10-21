@@ -75,7 +75,7 @@ def cache():
 def client_label() -> str:
     try:
         user = getpass.getuser()
-    except Exception:  # noqa: BLE001
+    except Exception:
         user = "?"
     return f"pylovo-api {__version__} {user}@{socket.gethostname()}"
 
@@ -234,7 +234,7 @@ def status_info() -> dict[str, Any]:
         with db.cursor(timeout_s=3) as cur:
             if _table_exists(cur):
                 info["schema"] = "ok"
-    except Exception as exc:  # noqa: BLE001 - status must never fail
+    except Exception as exc:  # status must never fail
         info["error"] = f"{type(exc).__name__}: {exc}"
     return info
 

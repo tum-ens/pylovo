@@ -73,7 +73,7 @@ def status() -> dict[str, Any]:
     info: dict[str, Any] = {"settings": None, "connected": False}
     try:
         info["settings"] = db.settings()
-    except Exception as exc:  # noqa: BLE001 - e.g. a configuration pylovo rejects
+    except Exception as exc:  # e.g. a configuration pylovo rejects
         info["error"] = f"pylovo cannot load its configuration: {type(exc).__name__}: {exc}"
         info["config_error"] = True
         return info
@@ -129,7 +129,7 @@ def status() -> dict[str, Any]:
                     info["infdb_buildings"] = None
     except db.DatabaseUnavailable as exc:
         info["error"] = str(exc)
-    except Exception as exc:  # noqa: BLE001 - any database error is shown in the UI
+    except Exception as exc:  # any database error is shown in the UI
         info["error"] = f"{type(exc).__name__}: {exc}"
     return info
 
@@ -142,7 +142,7 @@ def version_exists(version_id: str) -> dict[str, Any]:
                       (SELECT array_agg(pr.postcode_result_plz ORDER BY pr.postcode_result_plz)
                          FROM pylovo.postcode_result pr WHERE pr.version_id = v.version_id) AS plz
                FROM pylovo.version v WHERE v.version_id = %s""", (str(version_id),))
-    except Exception:  # noqa: BLE001 - schema may be missing
+    except Exception:  # schema may be missing
         return {"exists": False}
     if not row:
         return {"exists": False}

@@ -80,7 +80,7 @@ def grid_lod2(grid_result_id: int, request: Request) -> Response:
     """
     try:
         blob = lod2.grid_lod2(grid_result_id)
-    except Exception as exc:  # noqa: BLE001 - the 3D view is optional; fall back to 2D
+    except Exception as exc:  # the 3D view is optional; fall back to 2D
         log.warning("LoD2 of grid %s could not be read: %s", grid_result_id, exc)
         blob = lod2.encode({"grid_result_id": grid_result_id, "available": False,
                             "reason": "the LoD2 data could not be read"})

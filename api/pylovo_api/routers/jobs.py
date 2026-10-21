@@ -282,9 +282,9 @@ def job_log(job_id: str, request: Request, after: int = 0, format: str = "json")
     """Log lines after a sequence number (``format=text`` downloads the whole log)."""
     job = _job(request, job_id)
     if format == "text":
-        if not job.active and job._log_path and job._log_path.is_file():  # noqa: SLF001
+        if not job.active and job._log_path and job._log_path.is_file():
             # the file has the whole log, the memory only its last lines
-            return FileResponse(job._log_path, media_type="text/plain; charset=utf-8",  # noqa: SLF001
+            return FileResponse(job._log_path, media_type="text/plain; charset=utf-8",
                                 filename=f"pylovo-job-{job.id}.log")
         text = "\n".join(line["text"] for line in job.lines) + "\n"
         return PlainTextResponse(text, headers={"Content-Disposition": f'attachment; filename="pylovo-job-{job.id}.log"'})

@@ -58,7 +58,7 @@ def run(grid_result_id: int, load_scaling: float = 1.0) -> dict[str, Any] | None
         error = None
         try:
             pp.runpp(net, algorithm="nr", init="auto")
-        except Exception as exc:  # noqa: BLE001 - reported to the user
+        except Exception as exc:  # reported to the user
             error = f"{type(exc).__name__}: {exc}"
     finally:
         _PF_LOCK.release()

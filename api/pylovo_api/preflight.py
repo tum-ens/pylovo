@@ -85,7 +85,7 @@ def _build_snapshot(key: str, text: str | None) -> dict[str, Any]:
     # config_loader needs them to import; the snapshot itself never connects).
     try:
         import pylovo.config_loader  # noqa: F401
-    except Exception:  # noqa: BLE001 - a broken saved file is reported by the probe below
+    except Exception:  # a broken saved file is reported by the probe below
         pass
     work = paths().tmp_dir / f"snapshot-{uuid.uuid4().hex[:8]}"
     try:
@@ -115,7 +115,7 @@ def _stored(version_id: str) -> dict[str, Any] | None:
     try:
         row = db.fetch_one("SELECT version_id, version_comment, generation_parameters FROM pylovo.version "
                            "WHERE version_id = %s", (str(version_id),))
-    except Exception:  # noqa: BLE001 - schema missing
+    except Exception:  # schema missing
         return None
     if row and isinstance(row.get("generation_parameters"), str):
         row["generation_parameters"] = json.loads(row["generation_parameters"])
@@ -149,7 +149,7 @@ def version_differences(stored: dict | None, snapshot: dict | None) -> tuple[lis
 def version_ids() -> list[str]:
     try:
         return [r["version_id"] for r in db.fetch_all("SELECT version_id FROM pylovo.version ORDER BY created_at")]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
 
 

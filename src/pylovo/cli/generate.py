@@ -197,7 +197,7 @@ For more information, see the README: https://github.com/tum-ens/pylovo
             mv_params = MvParameters.from_config()   # resolves the line and transformer types (pandapower)
         except (MvStageError, ValueError) as exc:
             print(f"MV stage cannot run: {exc}")
-            raise SystemExit(1)
+            raise SystemExit(1) from None
 
     print("Pylovo Grid Creation Script")
     print("=" * 60)

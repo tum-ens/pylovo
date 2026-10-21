@@ -375,7 +375,7 @@ class DatabaseConstructor:
                 retain their geometry and lose only their raw osm_id reference.
         """
         if clear_existing and self.table_exists(table_name="transformers"):
-            warnings.warn("transformers table is overwritten!")
+            warnings.warn("transformers table is overwritten!", stacklevel=2)
             with self.dbc.conn.cursor() as cur:
                 cur.execute("DELETE FROM pylovo.transformers WHERE osm IS TRUE;")
             self.dbc.conn.commit()
@@ -419,7 +419,7 @@ class DatabaseConstructor:
             table_name = file_dict.get("table_name", file_name)
 
             if self.table_exists(table_name=table_name):
-                warnings.warn(f"{table_name} table is overwritten!")
+                warnings.warn(f"{table_name} table is overwritten!", stacklevel=2)
                 with self.dbc.conn.cursor() as cur:
                     cur.execute(sql.SQL("DELETE FROM {}").format(sql.Identifier("pylovo", table_name)))
                     self.dbc.conn.commit()
@@ -472,7 +472,7 @@ class DatabaseConstructor:
             raise ValueError("No postcode data retrieved from InfDB")
 
         if self.table_exists(table_name="postcode"):
-            warnings.warn("postcode table is overwritten!")
+            warnings.warn("postcode table is overwritten!", stacklevel=2)
             with self.dbc.conn.cursor() as cur:
                 cur.execute("DELETE FROM pylovo.postcode")
                 self.dbc.conn.commit()

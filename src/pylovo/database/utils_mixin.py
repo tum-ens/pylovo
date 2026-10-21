@@ -180,7 +180,7 @@ class UtilsMixin(BaseMixin):
         """
         Returns: A dataframe with self-defined consumer categories and typical values
         """
-        query = f"""SELECT *
+        query = """SELECT *
                    FROM pylovo.consumer_categories"""
         cc_df = pd.read_sql_query(query, self.conn)
         cc_df.set_index("definition", drop=False, inplace=True)

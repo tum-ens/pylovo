@@ -560,12 +560,12 @@ class GridGenerator:
                 self._process_component_to_kcid(vertices)
         else:
             # No components found - issue warning
-            warnings.warn("No connected components found in ways_tem table")
+            warnings.warn("No connected components found in ways_tem table", stacklevel=2)
 
         # Verify clustering was successful for all buildings
         no_kmean_count = self.dbc.count_no_kmean_buildings()
         if no_kmean_count not in [0, None]:
-            warnings.warn(f"K-means clustering issue: {no_kmean_count} buildings not assigned to clusters")
+            warnings.warn(f"K-means clustering issue: {no_kmean_count} buildings not assigned to clusters", stacklevel=2)
 
     def _process_component_to_kcid(self, vertices, component_index=None):
         """Helper method to process components to kcid groups"""

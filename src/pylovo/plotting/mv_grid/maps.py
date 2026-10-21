@@ -314,7 +314,7 @@ def _add_basemap(ax: plt.Axes, crs: Any) -> None:
     try:
         cx.add_basemap(ax, crs=crs, source=cx.providers.OpenStreetMap.Mapnik, headers=OSM_TILE_HEADERS,
                        attribution=OSM_ATTRIBUTION)
-    except Exception as exc:   # noqa: BLE001 - the map is still useful without tiles
+    except Exception as exc:   # the map is still useful without tiles
         warnings.warn(f"OpenStreetMap basemap not drawn: {exc}", stacklevel=3)
 
 

@@ -2681,7 +2681,7 @@ def version_statistics(inputs: list[dict], gp: dict | None) -> dict:
     for inp in inputs:
         try:
             m = GridModel(inp, params, None)
-        except Exception:  # noqa: BLE001 - a broken grid does not spoil the statistics
+        except Exception:  # a broken grid does not spoil the statistics
             continue
         for info in m.feeders.values():
             if info["real"]:

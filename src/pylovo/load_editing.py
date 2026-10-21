@@ -815,7 +815,7 @@ def validate_operating_point(backend, min_vm_pu: float, max_vm_pu: float,
             if max_voltage_pu is not None and max_voltage_pu > max_vm_pu:
                 voltage_out_of_band = True
             result.status = "voltage_violation" if voltage_out_of_band else "converged"
-    except Exception as exc:  # noqa: BLE001 - save_net stores such grids as not_converged
+    except Exception as exc:  # save_net stores such grids as not_converged
         result.error = f"{type(exc).__name__}: {exc}"
     return result
 
@@ -946,7 +946,7 @@ def default_client_label(app: str = "pylovo") -> str:
     """``'<app> <os-user>@<host>'`` for the audit rows."""
     try:
         user = getpass.getuser()
-    except Exception:  # noqa: BLE001
+    except Exception:
         user = "?"
     return f"{app} {user}@{socket.gethostname()}"
 

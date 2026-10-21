@@ -127,13 +127,13 @@ def _warn_about_former_generation_config(config_file: Path, search_paths: list[P
     current, former = GENERATION_CONFIG_FILES
     if config_file.name == former:
         warnings.warn(f"{config_file} is the former name of {current}: rename it and move its MV_* keys to "
-                      f"{GENERATION_MV_CONFIG_FILE}")
+                      f"{GENERATION_MV_CONFIG_FILE}", stacklevel=2)
         hidden = [folder / name for folder in search_paths if folder.resolve() != config_file.parent.resolve()
                   for name in (current, GENERATION_MV_CONFIG_FILE) if (folder / name).exists()]
         if hidden:
-            warnings.warn(f"{config_file} is read first and hides {', '.join(str(path) for path in hidden)}")
+            warnings.warn(f"{config_file} is read first and hides {', '.join(str(path) for path in hidden)}", stacklevel=2)
     elif (config_file.parent / former).exists():
-        warnings.warn(f"{config_file.parent / former} is not read: {config_file.name} in the same folder replaces it")
+        warnings.warn(f"{config_file.parent / former} is not read: {config_file.name} in the same folder replaces it", stacklevel=2)
 
 
 def read_yaml(path: Path) -> dict:

@@ -31,7 +31,7 @@ class AnalysisMixin(BaseMixin):
             )
 
     def insert_plz_parameters(self, plz: int, trafo_string: str, load_count_string: str, bus_count_string: str):
-        update_query = f"""INSERT INTO pylovo.plz_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)
+        update_query = """INSERT INTO pylovo.plz_parameters (version_id, plz, trafo_num, load_count_per_trafo, bus_count_per_trafo)
                           VALUES (%s, %s, %s, %s,
                                   %s);"""  # TODO: check - should values be updated for same plz and version if analysis is started? And Add a column
         self.cur.execute(update_query, vars=(VERSION_ID, plz, trafo_string, load_count_string, bus_count_string), )

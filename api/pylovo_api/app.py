@@ -41,7 +41,7 @@ def create_app(root: Path, allowed_hosts: set[str] | None = None, allow_any_host
     # import on the next request.
     try:
         import pylovo.config_loader  # noqa: F401
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logging.getLogger("pylovo_api").warning("pylovo could not load its configuration: %s", exc)
 
     @asynccontextmanager

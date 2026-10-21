@@ -83,7 +83,7 @@ def threshold_overrides() -> dict[str, Any]:
 
         path: Path = paths().config_dir / "config_analysis.yaml"
         mtime = (str(path), path.stat().st_mtime)
-    except Exception:  # noqa: BLE001 - no project root or file: defaults apply
+    except Exception:  # no project root or file: defaults apply
         return {}
     if _overrides["mtime"] != mtime:
         value: dict[str, Any] = {}
@@ -94,7 +94,7 @@ def threshold_overrides() -> dict[str, Any]:
             block = raw.get("GRID_DIAGNOSTICS") or {}
             if isinstance(block, dict):
                 value = {str(k).lower(): v for k, v in block.items()}
-        except Exception:  # noqa: BLE001 - a broken file must not break the inspector
+        except Exception:  # a broken file must not break the inspector
             value = {}
         _overrides.update(mtime=mtime, value=value)
     return dict(_overrides["value"])
@@ -108,7 +108,7 @@ def _ext_grid_vm(raw: str | None) -> float:
         column = frame["columns"].index("vm_pu")
         value = float(frame["data"][0][column])
         return value if math.isfinite(value) else 1.0
-    except Exception:  # noqa: BLE001 - missing or unusual net: pylovo always uses 1.0
+    except Exception:  # missing or unusual net: pylovo always uses 1.0
         return 1.0
 
 
@@ -157,8 +157,8 @@ def _load_chunk_with(cur, ids: list[int], light: bool) -> dict[int, dict]:
         groups.setdefault((h["version_id"], h["plz"]), set()).add(h["grid_result_id"])
     for (version_id, plz), members in groups.items():
         # same KPI record as the inspector, computed for these grids only (not for the whole PLZ)
-        for row in queries._grid_rows(version_id, [plz], sorted(members), cur):  # noqa: SLF001
-            records[row["grid_result_id"]] = queries._grid_record(row)  # noqa: SLF001
+        for row in queries._grid_rows(version_id, [plz], sorted(members), cur):
+            records[row["grid_result_id"]] = queries._grid_record(row)
 
     inputs: dict[int, dict] = {}
     for h in heads:
@@ -272,7 +272,7 @@ def version_context(version_id: str, plz: int | None = None) -> dict:
         {"grid_result_id": r["grid_result_id"], "plz": r["plz"], "kcid": r["kcid"], "bcid": r["bcid"],
          "lon": r["lon"], "lat": r["lat"], "size_label": r["size_label"], "kva": r["kva"],
          "coincident_kw": r["coincident_kw"]}
-        for r in (queries._grid_record(row) for row in queries._grid_rows(str(version_id), None))  # noqa: SLF001
+        for r in (queries._grid_record(row) for row in queries._grid_rows(str(version_id), None))
         if r["lon"] is not None]
     _remember(_context_cache, key, context, 8)
     return context
@@ -342,7 +342,7 @@ def after_powerflow(result: dict) -> dict:
         gid = int(result["grid_result_id"])
         remember_powerflow(result)
         return grid_diagnostics(gid, float(result.get("load_scaling") or 1.0), pf=result) or {"error": "grid not found"}
-    except Exception as exc:  # noqa: BLE001 - reported next to the power flow
+    except Exception as exc:  # reported next to the power flow
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
@@ -368,7 +368,7 @@ def version_diagnostics(version_id: str, plz: list[int] | None = None) -> dict:
             continue
         try:
             result = diagnostics.diagnose(inp, gp, pf=None, context=context, thresholds=overrides)
-        except Exception as exc:  # noqa: BLE001 - one broken grid must not hide the others
+        except Exception as exc:  # one broken grid must not hide the others
             rows.append({"grid_result_id": g["grid_result_id"], "error": f"{type(exc).__name__}: {exc}"})
             continue
         rows.append(diagnostics.grid_summary(result))

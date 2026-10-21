@@ -215,7 +215,7 @@ class ParameterCalculator:
         consumer_mask = pandapower_net.bus["name"].fillna("").str.contains(self.consumer_bus_keyword, na=False)
         return pandapower_net.bus[consumer_mask].index.tolist()
 
-    def analyze_parameters_for_plz(self, plz: int = None) -> str:
+    def analyze_parameters_for_plz(self, plz: int | None = None) -> str:
         """Compute and store PLZ-wide parameters.
 
         Args:
@@ -258,7 +258,7 @@ class ParameterCalculator:
             self.dbc.logger.info(f"Skipped PLZ {self.plz} due to analysis error.")
             raise
 
-    def analyze_grid_parameters_for_plz(self, plz: int = None) -> str:
+    def analyze_grid_parameters_for_plz(self, plz: int | None = None) -> str:
         """Compute and store per-grid parameters for all grids of an analyzed PLZ.
 
         Args:
@@ -1144,7 +1144,7 @@ class ParameterCalculator:
 
         return self._resolve_default_root_bus(pandapower_net)
 
-    def calculate_trafo_distances_for_synthetic_grid(self, pandapower_net: pp.pandapowerNet, networkx_graph: nx.Graph, root_idx: int = None, leaves: List[int] = None) -> Tuple[float, float]:
+    def calculate_trafo_distances_for_synthetic_grid(self, pandapower_net: pp.pandapowerNet, networkx_graph: nx.Graph, root_idx: int | None = None, leaves: List[int] | None = None) -> Tuple[float, float]:
         """Calculate average and maximum weighted distances from the root to consumer buses.
 
         The preferred path is the synthetic consumer-bus naming convention. When

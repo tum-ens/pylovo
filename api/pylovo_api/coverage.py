@@ -210,7 +210,7 @@ def read_flags(config_file: Path | None = None) -> dict[str, bool]:
 
             return {"exclude_buildings_without_address": bool(cl.EXCLUDE_BUILDINGS_WITHOUT_ADDRESS),
                     "residential_only": bool(cl.RESIDENTIAL_ONLY_GENERATION)}
-        except Exception:  # noqa: BLE001 - config broken everywhere: pylovo-generate fails anyway
+        except Exception:  # config broken everywhere: pylovo-generate fails anyway
             return {"exclude_buildings_without_address": False, "residential_only": False}
 
 
@@ -408,7 +408,7 @@ class InputCoverage:
         if conn is not None:
             try:
                 conn.cancel()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         if self._thread:
             self._thread.join(wait_s)
@@ -847,7 +847,7 @@ class InputCoverage:
     def _generate_running(self) -> bool:
         try:
             job = self.jobs.running_writer() if self.jobs else None
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         return bool(job and getattr(job, "kind", None) == "generate")
 
@@ -878,7 +878,7 @@ class InputCoverage:
                 self._close()
                 self._stop.wait(backoff)
                 backoff = min(300.0, backoff * 2)
-            except Exception as exc:  # noqa: BLE001 - never let the worker die
+            except Exception as exc:  # never let the worker die
                 log.exception("coverage worker error")
                 self._fail(f"{type(exc).__name__}: {exc}")
                 self._close()
@@ -915,7 +915,7 @@ class InputCoverage:
         if conn is not None:
             try:
                 conn.close()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     def _query(self, sql: str, params: Any = None) -> list[tuple]:

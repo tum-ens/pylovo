@@ -62,7 +62,7 @@ def generate_state(plz: Annotated[list[int] | None, Query()] = None) -> dict:
     version_id = state.get("version_id") or str(config_io.current_values().get("VERSION_ID", ""))
     try:
         generated, analysed = _plz_state(version_id)
-    except Exception:  # noqa: BLE001 - schema missing: the Database step explains it
+    except Exception:  # schema missing: the Database step explains it
         generated, analysed = set(), set()
     wanted = set(plz or [])
     return state | {

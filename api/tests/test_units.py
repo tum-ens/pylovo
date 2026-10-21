@@ -91,7 +91,7 @@ def test_job_manager_runs_streams_and_blocks_second_writer(tmp_path):
     try:
         manager.start("test", "second", [sys.executable, "-c", "pass"])
         raise AssertionError("a second writing job must be refused")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         assert "still running" in str(exc)
     for _ in range(100):
         if not job.active:

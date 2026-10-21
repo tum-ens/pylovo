@@ -55,9 +55,9 @@ class TransformerUiMixin(BaseMixin):
         columns = [desc[0] for desc in self.cur.description]
         return [dict(zip(columns, row)) for row in self.cur.fetchall()]
 
-    def add_transformer_position_trafo_ui(self, plz: int, geom_wkt: str, osm_id: str = None,
-                                comment: str = "Manual", kcid: int = None, bcid: int = None,
-                                transformer_rated_power: int = None) -> str:
+    def add_transformer_position_trafo_ui(self, plz: int, geom_wkt: str, osm_id: str | None = None,
+                                comment: str = "Manual", kcid: int | None = None, bcid: int | None = None,
+                                transformer_rated_power: int | None = None) -> str:
         """Insert a manual transformer into ``pylovo.transformers`` and commit.
 
         Args:
