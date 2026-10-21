@@ -3,8 +3,13 @@ Command-line reference
 
 pylovo installs these commands (``[project.scripts]`` in ``pyproject.toml``). Run them from the
 repository root, either with ``uv run <command>`` or in the activated environment. All of them
-read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`) and return a non-zero exit code
-on errors.
+read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`).
+
+Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset and an
+MV stage that does not end ``done``), 2 for wrong arguments, and 3 for ``pylovo-analyze --coverage``
+when source buildings are missing. A postcode that fails inside ``pylovo-generate`` is logged
+and skipped, and the command still exits with 0: look for ``Skipped PLZ <plz> due to generation
+error.`` in the log (:doc:`troubleshooting`).
 
 .. list-table::
    :header-rows: 1
@@ -14,29 +19,36 @@ on errors.
    * - Command
      - Purpose
    * - ``pylovo-setup``
-     - Create the schema ``pylovo`` with reference data (**drops existing results**).
+     - Create the schema ``pylovo`` with reference data, or migrate an existing one in place.
+       Only ``reset`` drops existing results.
    * - ``pylovo-generate``
      - Generate grids for postcodes or municipalities.
    * - ``pylovo-mv``
      - Generate and manage the MV grids of a stored LV version (:doc:`mv_grids`).
    * - ``pylovo-analyze``
-     - Compute postcode and per-grid key figures.
+     - Compute postcode and per-grid key figures, and the coverage and border reports.
+   * - ``pylovo-classify``
+     - Group the generated grids into representative grid types (:doc:`classification`).
    * - ``pylovo-import``
      - Import transformer candidates (OSM, DSO CSV).
    * - ``pylovo-export``
      - Export grid buses and lines as CSV.
    * - ``pylovo-delete``
-     - Delete versions, postcodes or transformer candidates.
+     - Delete versions, postcodes, transformer candidates or classifications.
+   * - ``pylovo-api``
+     - Start the HTTP API of the GridPlanner UI (:doc:`http_api`).
 
 pylovo-setup
 ------------
 
 .. code-block:: text
 
-   pylovo-setup [-h] [{setup,reset}] [--database DATABASE] [--yes]
+   pylovo-setup [-h] [--database DATABASE] [--yes] [{setup,reset}]
 
 With no command, creates a new schema or migrates an existing one in place and
-imports every reference table that is still empty. Only ``reset --database NAME``
+imports every reference table that is still empty. The database server must run
+PostgreSQL 15 or newer, which the command checks before it changes anything
+(:doc:`../getting_started/installation`). Only ``reset --database NAME``
 deletes the PyLovo schema; the name must match ``DBNAME`` in ``.env``. Reset asks
 you to type the database name unless ``--yes`` is supplied; it keeps the previous
 schema as a backup until the rebuild is complete and restores it if the rebuild
@@ -120,26 +132,52 @@ pylovo-analyze
 
 .. code-block:: text
 
-   pylovo-analyze [-h] --plz PLZ [--per-grid] [--all]
+   pylovo-analyze [-h] --plz PLZ [PLZ ...] [--per-grid] [--all] [--coverage] [--border-diagnostics]
+                  [--version-id VERSION_ID] [--output OUTPUT]
 
-Computes key figures of the grids of one postcode in the active version
+Computes key figures of the grids of one or more postcodes in the active version
 (:doc:`analysing_grids`). Without further options only the postcode key figures
 (``plz_parameters``) are computed.
 
-``--plz PLZ``
-   Postcode to analyse (required).
+``--plz PLZ [PLZ ...]``
+   Postcodes to analyse (required).
 ``--per-grid``
    Compute the key figures of every grid (``clustering_parameters``); the postcode key figures
    must exist already.
 ``--all``
    Postcode key figures followed by the per-grid key figures.
+``--coverage``
+   Account for every source building of the postcodes (in a grid, left out with a reason, or
+   missing) and write CSV and JSON reports. Exits with 3 if any building is missing.
+``--border-diagnostics``
+   Report the postcode-border and data-edge context of the postcodes and their grids.
+``--version-id VERSION_ID``, ``--output OUTPUT``
+   Version (default ``VERSION_ID`` of the configuration) and directory (default
+   ``results/diagnostics``) of the two reports. They have no effect on the key figures, which
+   always use ``VERSION_ID`` of the configuration. ``--coverage`` and ``--border-diagnostics``
+   replace the key-figure calculation: do not combine them with ``--per-grid`` or ``--all``.
+   Details in :doc:`analysing_grids`.
+
+pylovo-classify
+---------------
+
+.. code-block:: text
+
+   pylovo-classify [-h]
+
+Runs the classification of :doc:`classification` interactively: it draws the sample set of
+``CLASSIFICATION_VERSION``, generates and analyses the sample grids, filters them, chooses the
+clustering parameters and the numbers of clusters, clusters the grids and writes
+``pylovo.transformer_classified``. It takes no options and asks three yes/no questions (``y`` and
+``n`` are accepted). It needs the plotting extra (``uv run --extra plots pylovo-classify``) and
+writes the chosen parameters and numbers of clusters to ``config/config_clustering.yaml``.
 
 pylovo-import
 -------------
 
 .. code-block:: text
 
-   pylovo-import [-h] {transformers-osm,transformers-dso-csv} ...
+   pylovo-import [-h] {transformers-osm,transformers-dso-csv,transformers-ui} ...
 
 Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
 
@@ -156,6 +194,10 @@ Imports data into the database (:doc:`transformer_data`). Without a subcommand t
    ``--replace-source``
       Delete the existing rows ``dso/<source>/...`` before the import.
 
+``pylovo-import transformers-ui``
+   Deprecated: the old Flask transformer map. It needs the extra ``legacy-ui``
+   (``uv sync --extra legacy-ui``); the transformer editor of GridPlanner covers all its features
+   (:doc:`browser_ui`).
 
 pylovo-export
 -------------
@@ -180,7 +222,7 @@ pylovo-delete
 
 .. code-block:: text
 
-   pylovo-delete [-h] [--version VERSION_ID [VERSION_ID ...]] {networks,version,transformers} ...
+   pylovo-delete [-h] [--version VERSION_ID [VERSION_ID ...]] {networks,version,transformers,classification} ...
 
 Deletes data from the database. Without arguments the help is shown. Deleting versions or
 postcodes cascades to all dependent result tables and refreshes the materialised views.
@@ -199,10 +241,41 @@ postcodes cascades to all dependent result tables and refreshes the materialised
    postcodes.
 
 ``pylovo-delete transformers``
-   Empty ``pylovo.transformers``. Refuses while generated grids still reference transformers
-   (see :doc:`transformer_data`).
+   Empty ``pylovo.transformers``, including the manual and DSO positions, which cannot be
+   recreated from the OSM files. Generated grids keep their transformer positions but lose the
+   link to the raw transformer (``osm_id`` becomes ``NULL``), see :doc:`transformer_data`.
+
+``pylovo-delete classification --version CLASSIFICATION_ID``
+   Delete a classification with its sample set and result and refresh the view
+   ``transformer_classified_with_grid`` (:doc:`classification`). The id is the integer
+   ``CLASSIFICATION_VERSION``, not a ``VERSION_ID``.
 
 .. code-block:: bash
 
    pylovo-delete --version docs_bf docs_km
    pylovo-delete networks --plz 85653 --version 1
+   pylovo-delete classification --version 1
+
+pylovo-api
+----------
+
+.. code-block:: text
+
+   pylovo-api [-h] [--host HOST] [--port PORT] [--root ROOT] [--log-level LEVEL] [--allowed-host HOST]
+
+Starts the headless HTTP API that the GridPlanner UI uses (:doc:`http_api`). It needs the extra
+``api``. It runs the other commands as jobs, so it has no generation options of its own.
+
+``--host HOST``, ``--port PORT``
+   Interface and port to bind (default ``127.0.0.1`` and ``8765``).
+``--root ROOT``
+   Project directory with ``config/`` (default: found automatically).
+``--log-level LEVEL``
+   uvicorn log level (``critical``, ``error``, ``warning``, ``info`` or ``debug``; default
+   ``warning``).
+``--allowed-host HOST``
+   Also accept this ``Host`` header, for example the host name of a reverse proxy (repeatable).
+
+.. code-block:: bash
+
+   uv run --extra api pylovo-api
