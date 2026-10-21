@@ -48,7 +48,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
     with client() as db:
         constructor = DatabaseConstructor(db)
         constructor.migrate_schema()
-        db.cur.execute("SELECT name FROM pylovo.schema_migrations ORDER BY name")
+        db.cur.execute("SELECT name FROM pylovo.schema_migrations ORDER BY name COLLATE \"C\"")
         assert [row[0] for row in db.cur.fetchall()] == [
             "0001_legacy_buildings",
             "0001a_line_cache_rename",
