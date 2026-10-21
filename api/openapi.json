@@ -879,7 +879,7 @@
         ]
       },
       "put": {
-        "description": "Overwrite the file with a validated text; the old file is kept as a backup.",
+        "description": "Overwrite the file with a validated text; the old file is kept as a backup.\n\nRefused with 409 while a database-writing job runs (and no job starts during the save): a job reads\nthe saved file when it starts, and its workers may read it again.",
         "operationId": "save_api_config_put",
         "requestBody": {
           "content": {
