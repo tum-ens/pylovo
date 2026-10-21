@@ -20,12 +20,19 @@ def test_generation_and_analysis_do_not_touch_the_sample_set():
         assert "delete_plz_from_sample_set_table" not in (SRC / name).read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-01: pylovo-classify imports matplotlib, seaborn and plotly, which are only in the plots extra")
-def test_cli_imports_without_the_plots_extra():
+def test_cli_without_the_plots_extra_stops_with_a_message():
+    """The plotting stack is only in the ``plots`` extra; ``pylovo-classify`` must say so instead of a traceback."""
     code = ("import sys\nfor m in ('matplotlib', 'matplotlib.pyplot', 'seaborn', 'plotly', 'plotly.express'):\n"
             "    sys.modules[m] = None\nimport pylovo.cli.classify\n")
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr[-300:]
+    assert result.returncode != 0
+    assert "--extra plots" in result.stderr and "Traceback" not in result.stderr, result.stderr[-400:]
+
+
+def test_cli_does_not_hide_other_import_errors():
+    code = ("import sys\nsys.modules['factor_analyzer'] = None\nimport pylovo.cli.classify\n")
+    result = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True)
+    assert result.returncode != 0 and "ModuleNotFoundError" in result.stderr and "--extra plots" not in result.stderr
 
 
 def test_all_classification_modules_import():

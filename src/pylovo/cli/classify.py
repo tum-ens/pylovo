@@ -5,11 +5,22 @@ import sys
 import yaml
 
 from pylovo.config_loader import CLUSTERING_PARAMETERS, get_config_search_paths
-from pylovo.classification.clustering.apply_clustering_for_visualisation import apply_clustering_for_visualisation
-from pylovo.classification.clustering.get_no_clusters_for_clustering import get_no_clusters_for_clustering
-from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
-from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
-from pylovo.classification.sampling.sample import classification_version_exists
+
+# Packages of the ``plots`` extra that the classification code imports.
+PLOTS_EXTRA_PACKAGES = ("matplotlib", "mpl_toolkits", "seaborn", "plotly")
+
+try:
+    from pylovo.classification.clustering.apply_clustering_for_visualisation import apply_clustering_for_visualisation
+    from pylovo.classification.clustering.get_no_clusters_for_clustering import get_no_clusters_for_clustering
+    from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
+    from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
+    from pylovo.classification.sampling.sample import classification_version_exists
+except ModuleNotFoundError as exc:
+    if (exc.name or "").split(".")[0] not in PLOTS_EXTRA_PACKAGES:
+        raise
+    sys.exit(f"pylovo-classify needs the plotting packages of the 'plots' extra ('{exc.name}' is missing). "
+             "Install them with 'uv sync --extra plots' (pip: 'pip install pylovo[plots]') "
+             "or start the command with 'uv run --extra plots pylovo-classify'.")
 
 # Columns of the clustering parameter table that identify a grid; they cannot be clustered.
 IDENTIFIER_COLUMNS = ("version_id", "plz", "bcid", "kcid")
