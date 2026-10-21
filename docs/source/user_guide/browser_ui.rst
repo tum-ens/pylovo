@@ -1,10 +1,10 @@
 Browser UI (GridPlanner)
 ========================
 
-GridPlanner is the browser UI for pylovo. It covers the whole workflow except classification:
-set up the database, select regions, prepare transformer data and the configuration, generate
-grids, and analyse them on the map with statistics, a grid inspector, an on-demand power flow,
-diagnostics, 3D buildings and load editing. Long-running and database-writing steps run the
+GridPlanner is the browser UI for pylovo. It covers the whole workflow except classification and
+the MV stage: set up the database, select regions, prepare transformer data and the configuration,
+generate grids, and analyse them on the map with statistics, a grid inspector, an on-demand power
+flow, diagnostics, 3D buildings and load editing. Long-running and database-writing steps run the
 ``pylovo-*`` commands of :doc:`cli` as background jobs whose logs are shown live, so the UI does
 exactly what the command line does.
 

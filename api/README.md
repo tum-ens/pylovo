@@ -1,10 +1,12 @@
 # pylovo-api
 
 `pylovo-api` is the headless HTTP API of pylovo (FastAPI). It covers the whole workflow except
-classification: set up the database, pick regions, prepare transformer data, edit the generation
-config, generate grids and inspect the results (statistics, grid detail, diagnostics, power flow,
-load editing). Long or database-writing steps run the existing `pylovo-*` commands as background
-jobs with live logs.
+classification and the MV stage: set up the database, pick regions, prepare transformer data, edit
+the generation config, generate grids and inspect the results (statistics, grid detail,
+diagnostics, power flow, load editing). Long or database-writing steps run the existing
+`pylovo-*` commands as background jobs with live logs. The MV stage is a command-line workflow
+(`pylovo-mv`, `config_generation_mv.yaml`): a generation job passes `--no-mv`, so
+`MV_GRID_GENERATION` has no effect on runs started through the API.
 
 **The browser UI lives in GridPlanner.** GridPlanner serves the UI and puts this API behind a
 reverse proxy (`/pylovo/api/*` → `pylovo-api:/api/*`). pylovo itself serves no page, no static
@@ -43,7 +45,7 @@ build argument `PYLOVO_REVISION`, which `/api/health` reports.
 
 ```bash
 docker build -f api/docker/Dockerfile --build-arg PYLOVO_REVISION=$(git rev-parse HEAD) -t pylovo .
-docker compose -f api/docker/compose.yaml up --build   # host networking, mounts .env, config/, data/, log/
+docker compose -f api/docker/compose.yaml up --build   # host networking, mounts .env, config/, data/, log/ and .pylovo-api/
 ```
 
 ## Security
@@ -55,8 +57,8 @@ user management.
   name, the `--host` value or an `--allowed-host` (DNS rebinding) with 421.
 * Every state-changing call (not `GET`/`HEAD`/`OPTIONS`) under `/api/` needs the header
   `X-Pylovo-UI: 1` (browsers only send it from same-origin scripts: CSRF protection), else 403.
-* Destructive actions need a typed confirmation (database name, version id, PLZ, DSO source)
-  that the server checks.
+* Destructive actions need a typed confirmation (database name, version id, PLZ, DSO source) or
+  an explicit `confirm` or `force` flag that the server checks.
 * Only one database-writing job runs at a time; direct edits (transformers, loads) are refused
   with 409 while one runs.
 
@@ -68,9 +70,9 @@ The GridPlanner UI relies on this API. The rules:
   including the `X-Pylovo-UI` header, the `Host` allowlist, the Server-Sent Events of
   `/api/jobs/{id}/events` and the file downloads.
 * **`GET /api/health`** (no database access) answers
-  `{"ok": true, "service": "pylovo-api", "api": 1, "version": "<pylovo version>", "revision": "<git sha or null>"}`.
+  `{"ok": true, "service": "pylovo-api", "api": 2, "version": "<pylovo version>", "revision": "<git sha or null>"}`.
   `api` is the contract version `API_VERSION` in `pylovo_api/__init__.py` (also `info.version` of
-  the schema). Bump it only for breaking changes (a removed or renamed route, parameter or
+  the schema; 2 at the time of writing). Bump it only for breaking changes (a removed or renamed route, parameter or
   response field, a new required parameter); the UI refuses API versions it does not know.
   `revision` is `$PYLOVO_REVISION` or `git rev-parse HEAD` of the checkout.
 * **`api/openapi.json`** is the committed OpenAPI snapshot (FastAPI's schema with sorted keys).
@@ -97,7 +99,7 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
 | `regions.py` | `GET /api/regions/search?q=` · `/available` · `/overview` · `/postcodes?bbox=&zoom=` · `/ags/{ags}` · `/{plz}` | PLZ / AGS / name search, PLZ with input data (paged), extent, postcode polygons (GeoJSON), PLZ of a municipality, PLZ details |
 | `transformers.py` | `GET /api/transformers?plz=`/`?bbox=` · `/capacities` · `/osm-relations?q=`; `POST /api/transformers` · `/bulk` · `/clear-capacities` · `/dso-csv/preview`; `PATCH`/`DELETE /api/transformers/{osm_id}` | candidates (GeoJSON), ratings, Nominatim lookup; add, bulk ratings, clear, DSO CSV upload; set rating, delete (`force=true` if a grid uses it) |
 | `config.py` | `GET`/`PUT /api/config` · `POST /api/config/validate` · `/values` · `/restore` · `GET /api/config/backups/{name}` | config text, form values and help; save validated text; form edits (`dry_run` for the diff); backups |
-| `jobs.py` | `POST /api/jobs/{setup,generate,analyze,delete-versions,delete-networks,export,import-osm,import-dso}` · `GET /api/jobs/generate/check` · `GET /api/jobs` · `/{id}` · `/{id}/log` · `/{id}/events` (SSE) · `/{id}/files[/{name}]` · `POST /api/jobs/{id}/cancel` | start a CLI job, check a generation beforehand, observe, stream, download exports, cancel |
+| `jobs.py` | `POST /api/jobs/{setup,reset,generate,analyze,delete-versions,delete-networks,export,import-osm,import-dso}` · `GET /api/jobs/generate/check` · `GET /api/jobs` · `/{id}` · `/{id}/log` · `/{id}/events` (SSE) · `/{id}/files[/{name}]` · `POST /api/jobs/{id}/cancel` | start a CLI job (`setup` is non-destructive; `reset` runs `pylovo-setup reset --database NAME --yes` after the typed confirmation of the database name), check a generation beforehand, observe, stream, download exports, cancel |
 | `flow.py` | `GET /api/flow/generate-state` · `POST /api/flow/config-preflight` · `/regenerate` · `/reanalyse` · `/analyse-all` | per-PLZ state, saved config vs. the version's stored parameters, chained jobs |
 | `results.py` | `GET /api/versions` · `/versions/{id}` · `/versions/compare?a=&b=` · `/results/{version}/summary?plz=` · `/results/{version}/{plz}/map` · `/grids/{id}` · `/grids/{id}/pandapower.json` · `/grids/{id}/lod2`; `POST /api/grids/{id}/powerflow?load_scaling=` | versions and parameter diff, statistics, grids of a PLZ (GeoJSON), grid detail, pandapower download, LoD2 mesh, on-demand power flow |
 | `diagnostics.py` | `GET /api/grids/{id}/diagnostics` · `/results/{version}/diagnostics?plz=` · `/diagnostics/rules` | grid diagnostics of a grid or a PLZ, rule catalogue |
@@ -172,8 +174,8 @@ tests (static JS checks, Playwright walk-throughs) live in GridPlanner.
 
 ## Known limitations
 
-* `pylovo-analyze` and `pylovo-export` always use the `VERSION_ID` of the config (the CLIs have no
-  version option).
+* The key figures of `pylovo-analyze` and `pylovo-export` always use the `VERSION_ID` of the config
+  (the CLIs have no version option for them).
 * Setup, generation and imports are exactly the CLI runs: a generation for a PLZ that already has
   grids of the config version is skipped by pylovo; regenerate (delete + generate) or use a new
   version instead (`/api/jobs/generate/check` reports this beforehand).

@@ -2,8 +2,8 @@ HTTP API
 ========
 
 ``pylovo-api`` is a headless HTTP API (FastAPI) for the whole pylovo workflow except
-classification: set up the database, select regions, prepare transformer data and the
-configuration, generate grids, and read statistics, grid details, diagnostics and power flows.
+classification and the MV stage: set up the database, select regions, prepare transformer data and
+the configuration, generate grids, and read statistics, grid details, diagnostics and power flows.
 Long-running and database-writing steps run the existing ``pylovo-*`` commands of :doc:`cli` as
 background jobs whose logs can be followed live, so the API does exactly what the command line
 does.
@@ -68,6 +68,10 @@ Server-Sent Events. Only one database-writing job runs at a time, and direct edi
 or loads are refused while one runs. Job logs survive a restart of the API
 (``.pylovo-api/jobs/`` in the project).
 
+A generation job never runs the MV stage: the API passes ``--no-mv``, so ``MV_GRID_GENERATION`` in
+``config_generation_mv.yaml`` has no effect on runs that the API starts. The MV stage is a
+command-line workflow (:doc:`mv_grids`).
+
 .. _http-api-region-check:
 
 Region input check
@@ -80,7 +84,10 @@ pylovo would import (the same filters as ``pylovo-generate``, including
 residential building, street segments and connection lines. Postcodes whose check has not
 finished yet are reported as *not verified*. Existing results always stay readable, analysable
 and exportable, and the server refuses to generate a blocked PLZ unless it is included
-explicitly.
+explicitly. The check reads the InfDB tables through the pylovo connection, so it needs the InfDB
+schemas in the database of ``DBNAME``: with ``USE_EXTERNAL_BASEDATA`` and the InfDB in another
+database, every postcode is reported as blocked and a generation job needs ``include_blocked``.
+The command line is not affected (:ref:`env-variables`).
 
 On a large InfDB the check runs in the background per municipality key, using the indexes the
 InfDB schema creates; postcodes that are asked for are checked first. The results are cached in
@@ -170,7 +177,8 @@ Diagnostics never write to the database.
 Editing loads
 -------------
 
-A building's input can be corrected: the households and the non-residential floor area and use.
+A building's input can be corrected: the households, the residential and non-residential floor
+area and the non-residential use.
 A preview shows the effect before anything is written: the building's peak load, the grid's
 coincident load (simultaneity is grouped per category over the whole grid, so other loads change
 slightly too) and the validation power flow before and after.
