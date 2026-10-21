@@ -13,7 +13,7 @@
 The functions take data frames with the column names of the MV tables (``pylovo.mv_node``, ``mv_line``,
 ``mv_grid``, ``mv_ring``, the view ``mv_variant_stats``) or of :mod:`pylovo.mv_grid.metrics`. The default limits
 are the shipped values of the MV stage (busbar 1.02 p.u., 5 % drop in normal operation, 10 % in (n-1), lines at 60 %
-in normal operation and 100 % in (n-1) and feed-in, MV/LV taps of 2.5 %); pass the values of a variant to change
+in normal operation and 100 % in (n-1), MV/LV taps of 2.5 %); pass the values of a variant to change
 them. Needs the ``plots`` extra. The functions return a matplotlib ``Figure`` and never call ``plt.show()``.
 """
 
@@ -99,13 +99,10 @@ _RANGE_COLORS = ("#2ca02c", "#9467bd", "#8c564b", "#e377c2", "#17becf", "#bcbd22
 _LOADING_COLUMNS = {
     "load": "loading_load_percent",
     "n1": "loading_n1_percent", "n1a": "loading_n1_percent", "n1b": "loading_n1_percent",
-    "feed_in": "loading_feed_in_percent", "feed_in_wind": "loading_feed_in_percent",
-    "feed_in_pv": "loading_feed_in_percent",
 }
 _LOADING_CASE_LABELS = {
     "loading_load_percent": "load case",
     "loading_n1_percent": "(n-1) cases",
-    "loading_feed_in_percent": "feed-in cases",
 }
 _PLAUSIBILITY_RATIO_LIMITS = (0.125, 8.0)
 _N1_COLORS = {"a": "#0b3c66", "b": "#9c4a00"}
@@ -401,20 +398,19 @@ def plot_loading_histogram(lines: pd.DataFrame, case: str = "load", ax: Optional
                            figsize: Tuple[float, float] = (10, 6), bins: int = 30, by: Optional[str] = None,
                            utilization: float = 0.6, n1_utilization: float = 1.0,
                            title: Optional[str] = None) -> Figure:
-    """Histogram of the line loadings of one case with the 60 % (normal) and 100 % ((n-1), feed-in) limits.
+    """Histogram of the line loadings of one case with the 60 % (normal) and 100 % ((n-1)) limits.
 
-    Ties are left out; normally-open lines are left out of the load and feed-in cases (they carry no current).
+    Ties are left out; normally-open lines are left out of the load case (they carry no current).
 
     Args:
-        lines: MV lines with ``loading_load_percent``, ``loading_n1_percent`` and ``loading_feed_in_percent``.
-        case: ``load``, ``n1`` (also ``n1a``, ``n1b``), ``feed_in`` (also ``feed_in_wind``, ``feed_in_pv``) or a
-            column name.
+        lines: MV lines with ``loading_load_percent`` and ``loading_n1_percent``.
+        case: ``load``, ``n1`` (also ``n1a``, ``n1b``) or a column name.
         ax: Axes to draw into; a new figure is created if None.
         figsize: Figure size in inches if a new figure is created.
         bins: Number of histogram bins.
         by: Optional grouping column (e.g. ``variant``): one step histogram per group.
         utilization: Planned utilization in normal operation (``MV_LINE_PLANNING_UTILIZATION``).
-        n1_utilization: Utilization limit in (n-1) and feed-in (``n1_utilization``).
+        n1_utilization: Utilization limit in (n-1) (``n1_utilization``).
         title: Plot title.
 
     Returns:
@@ -446,7 +442,7 @@ def plot_loading_histogram(lines: pd.DataFrame, case: str = "load", ax: Optional
     normal, high = 100 * utilization, 100 * n1_utilization
     add_limit_lines(ax, {
         normal: {"label": f"planning limit, normal operation ({normal:g} %)", "color": "#ff7f0e"},
-        high: {"label": f"(n-1) and feed-in limit ({high:g} %)", "color": "#d62728"},
+        high: {"label": f"(n-1) limit ({high:g} %)", "color": "#d62728"},
     }, orientation="vertical")
     limit = normal if column == "loading_load_percent" else high
     if len(finite):

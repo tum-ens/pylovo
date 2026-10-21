@@ -91,11 +91,8 @@ _MEMBER_KINDS = ("station", "customer", "generator")
 _LV_COLUMN_LABELS = {
     "lv_busbar_vm_pu": "LV busbar voltage at the LV design point (p.u.)",
     "lv_min_vm_pu": "Lowest LV voltage at the LV design point (p.u.)",
-    "lv_busbar_vm_feed_in_pu": "LV busbar voltage in feed-in (p.u.)",
     "coupled_lv_busbar_vm_pu": "LV busbar voltage, coupled design point (p.u.)",
     "coupled_lv_min_vm_pu": "Lowest LV voltage, coupled design point (p.u.)",
-    "coupled_lv_busbar_vm_feed_in_pu": "LV busbar voltage in feed-in, coupled (p.u.)",
-    "coupled_lv_max_vm_pu": "Highest LV voltage in feed-in, coupled (p.u.)",
     "coupled_op_lv_busbar_vm_pu": "LV busbar voltage, merged operating point (p.u.)",
 }
 
@@ -885,18 +882,17 @@ def plot_lv_busbar_voltage_map(layers: Mapping[str, Any], column: str = "lv_busb
                                title: Optional[str] = None) -> Figure:
     """Map of an LV-side voltage per station (voltage budget or ``couple`` result), band conflicts marked.
 
-    Stations are coloured by ``column`` (red is critical: low voltages for the load columns, high voltages for
-    the feed-in columns); stations with ``band_conflict`` get a red cross; MV lines are drawn grey.
+    Stations are coloured by ``column`` (red is critical: low voltages); stations with ``band_conflict`` get a red
+    cross; MV lines are drawn grey.
 
     Args:
         layers: Layers of ``read_mv_layers`` (see the module docstring).
-        column: Node column, e.g. ``lv_busbar_vm_pu``, ``lv_min_vm_pu``, ``lv_busbar_vm_feed_in_pu`` or a
-            ``coupled_*`` column.
+        column: Node column, e.g. ``lv_busbar_vm_pu``, ``lv_min_vm_pu`` or a ``coupled_*`` column.
         ax: Axes to draw into; a new figure is created if None.
         figsize: Figure size in inches if a new figure is created.
         mv_grid_id: Draw only this MV grid; None draws every grid of the layers.
         basemap: Add an OpenStreetMap basemap (skipped with a warning if the tiles cannot be loaded).
-        cmap: Colormap name; default ``RdYlGn`` (``RdYlGn_r`` for feed-in columns).
+        cmap: Colormap name; default ``RdYlGn``.
         vmin: Lower end of the colour scale (default: 2nd percentile).
         vmax: Upper end of the colour scale (default: 98th percentile).
         title: Plot title; default: column, station count and band conflicts.
@@ -924,13 +920,12 @@ def plot_lv_busbar_voltage_map(layers: Mapping[str, Any], column: str = "lv_busb
     values = pd.to_numeric(nodes[column], errors="coerce")
     stations = nodes[values.notna()]
     values = values[values.notna()]
-    feed_in = "feed_in" in column or column == "coupled_lv_max_vm_pu"
     if not values.empty:
         lo = float(np.nanpercentile(values, 2)) if vmin is None else vmin
         hi = float(np.nanpercentile(values, 98)) if vmax is None else vmax
         if hi <= lo:
             lo, hi = lo - 0.005, hi + 0.005
-        sc = ax.scatter(stations["x"], stations["y"], c=values, cmap=cmap or ("RdYlGn_r" if feed_in else "RdYlGn"),
+        sc = ax.scatter(stations["x"], stations["y"], c=values, cmap=cmap or "RdYlGn",
                         vmin=lo, vmax=hi, s=28, edgecolors="#333333", linewidths=0.3, zorder=5)
         fig.colorbar(sc, ax=ax, shrink=0.6, label=_LV_COLUMN_LABELS.get(column, f"{column} (p.u.)"))
     n_conflicts = 0

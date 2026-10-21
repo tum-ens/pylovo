@@ -257,7 +257,7 @@ def test_lv_busbar_voltage_map_marks_band_conflicts():
     ax = fig.axes[0]
     assert "band conflict" in _legend_labels(ax)
     assert ax.get_title().startswith("lv_busbar_vm_pu: 9 stations, 1 band conflicts")
-    fig = mvplot.plot_lv_busbar_voltage_map(_layers(), column="lv_busbar_vm_feed_in_pu", mv_grid_id=12)
+    fig = mvplot.plot_lv_busbar_voltage_map(_layers(), column="lv_min_vm_pu", mv_grid_id=12)
     assert "3 stations, 0 band conflicts" in fig.axes[0].get_title()
     with pytest.raises(ValueError, match="no column"):
         mvplot.plot_lv_busbar_voltage_map(_layers(), column="coupled_lv_busbar_vm_pu")
@@ -373,8 +373,7 @@ def test_voltage_profile_of_a_ring():
     assert by_label["(n-1) limit (10 % drop)"].get_ydata()[0] == pytest.approx(0.92)
 
 
-@pytest.mark.parametrize("case, column", [("load", "loading_load_percent"), ("n1a", "loading_n1_percent"),
-                                          ("feed_in_pv", "loading_feed_in_percent")])
+@pytest.mark.parametrize("case, column", [("load", "loading_load_percent"), ("n1a", "loading_n1_percent")])
 def test_loading_histogram_cases(case, column):
     lines = _layers()["lines"]
     fig = statistics.plot_loading_histogram(lines, case)
@@ -382,7 +381,9 @@ def test_loading_histogram_cases(case, column):
     box_text = ax.texts[0].get_text()
     n_expected = 15 if column == "loading_n1_percent" else 12     # ties never, normally-open lines only in (n-1)
     assert box_text.startswith(f"lines: {n_expected}\n")
-    assert {"planning limit, normal operation (60 %)", "(n-1) and feed-in limit (100 %)"} <= set(_legend_labels(ax))
+    assert {"planning limit, normal operation (60 %)", "(n-1) limit (100 %)"} <= set(_legend_labels(ax))
+    with pytest.raises(ValueError, match="no column 'feed_in'"):                 # no feed-in cases any more
+        statistics.plot_loading_histogram(lines.drop(columns="loading_feed_in_percent"), "feed_in")
 
 
 def test_loading_histogram_by_variant_and_errors():
