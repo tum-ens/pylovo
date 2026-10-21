@@ -1,0 +1,420 @@
+"""``ParameterCalculator`` and ``compute_clustering_metrics`` on in-memory pandapower nets built like pylovo builds them
+(real offline ``PandapowerBackend``, fake database client; no database).
+
+Net: LVbus 1 -f0 (100 m)- Connection Nodebus 10, which feeds 11 (f1, 50 m) and 12 (f2, 60 m); each of those has two
+17 kW households on service cables (10 to 13 m). Station 400 kVA.
+"""
+import json
+import logging
+import math
+
+import numpy as np
+import pandapower as pp
+import pandapower.topology as top
+import pandas as pd
+import pytest
+
+from pylovo.analysis import grid_analysis, parameter_calculation
+from pylovo.analysis.grid_analysis import compute_clustering_metrics
+from pylovo.analysis.parameter_calculation import ParameterCalculator, station_mva
+from pylovo.database.analysis_mixin import AnalysisMixin
+from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, create_backend
+
+LOGGER = logging.getLogger("parameter-calculator-test")
+CABLES = [("NAYY_4_150", 0.206, 0.080, 0.275, 20.0), ("NAYY_4_240", 0.125, 0.078, 0.357, 30.0)]
+LON, LAT = 11.5, 48.1
+R, X = 0.206, 0.080
+SIM_FACTOR = parameter_calculation.SIM_FACTOR["Residential"]
+
+
+def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0):
+    backend = create_backend("pandapower", logger=LOGGER)
+    backend.initialize_circuit("c", "MVbus 1", 20.0)
+    backend.register_cable_types(CABLES)
+    with backend.batch():
+        backend.create_component(BusSpec(name="LVbus 1", voltage_kv=0.4, coordinates=(LON, LAT)))
+        backend.create_component(BusSpec(name="MVbus 1", voltage_kv=20.0, coordinates=(LON, LAT + 1.5e-4)))
+        backend.create_component(ExtGridSpec(name="External grid", bus="MVbus 1", vm_pu=1))
+    backend.create_component(TransformerSpec(name="t", bus1="MVbus 1", bus2="LVbus 1", kva=kva, parallel=parallel_trafo))
+    with backend.batch():
+        for vertex, dx, dy in [(10, 0.0005, 0), (11, 0.001, 0.0002), (12, 0.001, -0.0002)]:
+            backend.create_component(BusSpec(name=f"Connection Nodebus {vertex}", voltage_kv=0.4,
+                                             coordinates=(LON + dx, LAT + dy)))
+        for vertex, dx, dy in [(21, 0.0012, 0.0003), (22, 0.0013, 0.0001), (23, 0.0012, -0.0003), (24, 0.0011, -0.0001)]:
+            backend.create_component(BusSpec(name=f"Consumer Nodebus {vertex}", voltage_kv=0.4,
+                                             coordinates=(LON + dx, LAT + dy), zone="Residential"))
+            backend.create_component(LoadSpec(name=f"Load {vertex} Residential", bus=f"Consumer Nodebus {vertex}", kw=3.0,
+                                              kvar=1.0, max_p_mw=load_kw * 1e-3, service_design_p_mw=0.01,
+                                              category="Residential", load_units=1.0, consumer_vertex=vertex))
+
+        def line(name, a, b, length, parallel=1):
+            backend.create_component(LineSpec(name=name, bus1=a, bus2=b, cable_name="NAYY_4_150", length_km=length,
+                                              parallel=parallel))
+
+        line("f0", "LVbus 1", "Connection Nodebus 10", 0.1, parallel_feeder)
+        line("f1", "Connection Nodebus 10", "Connection Nodebus 11", 0.05, parallel_feeder)
+        line("f2", "Connection Nodebus 10", "Connection Nodebus 12", 0.06)
+        line("s21", "Connection Nodebus 11", "Consumer Nodebus 21", 0.01)
+        line("s22", "Connection Nodebus 11", "Consumer Nodebus 22", 0.012)
+        line("s23", "Connection Nodebus 12", "Consumer Nodebus 23", 0.011)
+        line("s24", "Connection Nodebus 12", "Consumer Nodebus 24", 0.013)
+    return backend.net
+
+
+class Database:
+    """The lookups of the calculator: the per-PLZ lists of the per-transformer analysis (``data``)."""
+    logger = LOGGER
+
+    def __init__(self, data=None):
+        self.data = data if data is not None else [{}, {}, {}, {}, {}]
+
+    def read_per_trafo_dict(self, plz):
+        return self.data, [], {}
+
+
+def calculator(data=None, plz=1):
+    pc = object.__new__(ParameterCalculator)
+    pc.dbc, pc.version_id, pc.plz, pc.kcid, pc.bcid = Database(data), "1", plz, 1, 1
+    pc.lvbus_keyword, pc.consumer_bus_keyword, pc.connection_bus_keyword = "LVbus", "Consumer Nodebus", "Connection Nodebus"
+    return pc
+
+
+def coincident(households, installed_kw):
+    """Coincident load of residential households: installed x (g + (1 - g) n^(-3/4))."""
+    return installed_kw * (SIM_FACTOR + (1 - SIM_FACTOR) * households ** -0.75)
+
+
+def haversine_km(a, b):
+    (lon1, lat1), (lon2, lat2) = np.radians(a), np.radians(b)
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(h))
+
+
+def test_clustering_metrics_of_a_pylovo_grid():
+    net = build()
+    metrics = compute_clustering_metrics(calculator(), net)
+
+    peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
+    assert (metrics["no_connection_buses"], metrics["no_house_connections"], metrics["no_households"]) == (3, 4, 4)
+    assert metrics["no_branches"] == 1 and metrics["no_house_connections_per_branch"] == 4.0
+    assert metrics["max_power_mw"] == pytest.approx(0.068)
+    assert metrics["no_household_equ"] == pytest.approx(68.0 / peak)                 # installed kW over a household peak
+    assert metrics["no_households_per_branch"] == pytest.approx(68.0 / peak)
+    assert metrics["cable_length_km"] == pytest.approx(0.256)
+    assert metrics["cable_len_per_house"] == pytest.approx(0.256 / 4)
+    assert metrics["transformer_mva"] == pytest.approx(0.4)
+    # routed distances from the busbar to the four consumers, in km: 0.160, 0.162, 0.171, 0.173
+    assert metrics["max_trafo_dis"] == pytest.approx(0.173) and metrics["avg_trafo_dis"] == pytest.approx(0.1665)
+    assert metrics["simultaneous_peak_load_mw"] == 0.0           # no per-transformer statistics of the PLZ yet
+    assert metrics["ratio"] == pytest.approx(metrics["resistance"] / metrics["reactance"])
+    assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"])         # one branch
+
+
+@pytest.mark.xfail(strict=True, reason="NEW (related to ANALYSIS-09): calculate_average_house_distance passes (lon, lat) "
+                                       "to sklearn's haversine_distances, which expects (lat, lon): distances along a "
+                                       "parallel come out 1/cos(lat) = 1.5 times too long at 48 deg N")
+def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distance():
+    pc = calculator()
+    pair = pp.create_empty_network()
+    pp.create_bus(pair, 0.4, geodata=(LON, LAT))
+    pp.create_bus(pair, 0.4, geodata=(LON + 0.001, LAT))                             # 74 m east
+    assert pc.calculate_average_house_distance(pair) == pytest.approx(haversine_km((LON, LAT), (LON + 0.001, LAT)), rel=1e-4)
+
+    # the documented statistic: median over the buses of the mean distance to the four nearest buses
+    net = build()
+    points = [tuple(json.loads(geo)["coordinates"]) for geo in net.bus["geo"]]
+    means = [sum(sorted(haversine_km(point, other) for j, other in enumerate(points) if j != i)[:4]) / 4
+             for i, point in enumerate(points)]
+    assert pc.calculate_average_house_distance(net) == pytest.approx(float(np.median(means)), rel=1e-4)
+
+
+def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_buses():
+    pc = calculator()
+    net = pp.create_empty_network()
+    assert pc.calculate_average_house_distance(net) == 0.0                           # no geo column
+    pp.create_bus(net, 0.4, geodata=(500000.0, 5300000.0))
+    assert pc.calculate_average_house_distance(net) == 0.0                           # one bus
+    pp.create_bus(net, 0.4, geodata=(500300.0, 5300000.0))
+    assert pc.calculate_average_house_distance(net) == pytest.approx(0.3)            # 300 m
+
+
+def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simultaneity():
+    net = build()
+    pc = calculator()
+    households = 68.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD
+    weight = 17.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD                                # household equivalents per consumer
+    behind = {"f0": 4, "f1": 2, "f2": 2, "s": 1}                                    # households behind each cable
+    factor = {name: coincident(count, 1.0) for name, count in behind.items()}      # sim_factor_cumulated of the line
+    length = {"f0": 0.1, "f1": 0.05, "f2": 0.06, "s21": 0.01, "s22": 0.012, "s23": 0.011, "s24": 0.013}
+    paths = {"s21": ("f0", "f1"), "s22": ("f0", "f1"), "s23": ("f0", "f2"), "s24": ("f0", "f2")}
+    resistance = sum(weight * (sum(length[c] * R * factor[c] for c in cables) + length[s] * R * factor["s"])
+                     for s, cables in paths.items())
+    reactance = sum(weight * sum(length[c] * X for c in (*cables, s)) for s, cables in paths.items())
+
+    max_branch, total_r, total_x, ratio, max_branch_r = pc.calculate_impedance_metrics(
+        net, top.create_nxgraph(net, respect_switches=True))
+
+    assert (total_r, total_x) == (pytest.approx(resistance), pytest.approx(reactance))
+    assert ratio == pytest.approx(resistance / reactance)
+    assert max_branch == pytest.approx(households)       # every consumer hangs behind the one feeder f0
+    assert max_branch_r == pytest.approx(resistance)
+
+
+def test_graph_length_and_resistance_describe_the_backbone_unless_service_lines_are_asked_for():
+    net, pc = build(), calculator()
+    # service stubs and the terminal attachments with two consumers are not backbone: only the feeder f0 remains
+    assert pc.calculate_graph_length(net) == pytest.approx(0.1)
+    assert pc.calculate_graph_length(net, with_service_lines=True) == pytest.approx(0.256)
+    assert pc.calculate_graph_resistance(net) == pytest.approx(0.1 * R)
+    assert pc.calculate_graph_resistance(net, with_service_lines=True) == pytest.approx(0.256 * R)
+    # parallel cables divide the resistance of their section; the cable length counts each route once
+    doubled = build(parallel_feeder=2)
+    assert pc.calculate_graph_resistance(doubled) == pytest.approx(0.1 * R / 2)
+    assert pc.calculate_cable_length(doubled) == pytest.approx(0.256)
+
+
+def test_the_cable_length_can_be_restricted_to_lines_in_service():
+    net, pc = build(), calculator()
+    net.line.loc[net.line["name"] == "f2", "in_service"] = False
+    assert pc.calculate_cable_length(net) == pytest.approx(0.256)
+    assert pc.calculate_cable_length(net, only_in_service=True) == pytest.approx(0.256 - 0.06)
+
+
+def test_the_station_rating_counts_the_parallel_units_and_a_net_without_transformer_is_an_error():
+    pc = calculator()
+    assert station_mva(build(kva=400, parallel_trafo=2)) == pytest.approx(0.8)
+    assert pc.get_transformer_power(build(kva=630)) == pytest.approx(0.63)
+    net = build()
+    net.trafo.drop(net.trafo.index, inplace=True)
+    with pytest.raises(ValueError, match="No transformer found"):
+        pc.get_transformer_power(net)
+
+
+# --- counting feeders ----------------------------------------------------------------------------------------------
+def topology(*edges):
+    """A net with a station (MV bus, LVbus 1) and the given buses and 100 m lines; names are the bus names."""
+    net = pp.create_empty_network()
+    bus = {}
+
+    def get(name):
+        if name not in bus:
+            bus[name] = pp.create_bus(net, 20.0 if name == "MV" else 0.4, name=name)
+        return bus[name]
+
+    pp.create_transformer(net, get("MV"), get("LVbus 1"), std_type="0.4 MVA 20/0.4 kV")
+    for a, b in edges:
+        pp.create_line_from_parameters(net, get(a), get(b), 0.1, R, X, 0.0, 0.275)
+    return net, bus
+
+
+def feeders(net, bus, **options):
+    graph = top.create_nxgraph(net, respect_switches=True)
+    return calculator().count_feeders(net, graph, bus["LVbus 1"], uses_synthetic_naming=True, **options)
+
+
+@pytest.mark.parametrize("edges, expected", [
+    ([("LVbus 1", "Connection Nodebus 1"), ("Connection Nodebus 1", "Consumer Nodebus 1")], 1),
+    ([("LVbus 1", "Connection Nodebus 1"), ("Connection Nodebus 1", "Consumer Nodebus 1"),
+      ("LVbus 1", "Connection Nodebus 2"), ("Connection Nodebus 2", "Consumer Nodebus 2")], 2),
+    # houses connected directly at the busbar are no feeders, but a grid with downstream buses has at least one
+    ([("LVbus 1", "Consumer Nodebus 1"), ("LVbus 1", "Consumer Nodebus 2"), ("LVbus 1", "Consumer Nodebus 3")], 1),
+])
+def test_feeders_leave_the_busbar_and_houses_at_the_busbar_do_not_count(edges, expected):
+    net, bus = topology(*edges)
+    assert feeders(net, bus) == expected
+
+
+def test_a_cable_distribution_cabinet_is_expanded_into_its_outgoing_feeders():
+    cabinet_config = {"name_column": "name", "house_connection_pattern": "Consumer Nodebus", "kvs_pattern": "Cabinet"}
+    net, bus = topology(("LVbus 1", "Cabinet 1"), *[(f"Cabinet 1", f"Connection Nodebus {i}") for i in (1, 2, 3)],
+                        *[(f"Connection Nodebus {i}", f"Consumer Nodebus {i}") for i in (1, 2, 3)])
+    # the busbar has one neighbour, the cabinet: with expansion each outgoing cable is a feeder, without it the cabinet is one
+    assert feeders(net, bus, bus_type_config=cabinet_config) == 3
+    assert feeders(net, bus, bus_type_config=cabinet_config, expand_kvs=False) == 1
+
+
+# --- the lookup of the coincident peak load in the lists of the PLZ ----------------------------------------------------
+def lists(distances_m, loads_kw, size="400"):
+    return [{}, {}, {size: loads_kw}, {size: distances_m}, {size: [0.0] * len(distances_m)}]
+
+
+def test_the_peak_load_is_looked_up_by_station_rating_and_maximum_distance():
+    pc = calculator(lists([120.0, 173.0, 240.0], [20.0, 27.0, 35.0]))
+    assert pc.lookup_simultaneous_peak_load(0.4, 0.173) == pytest.approx(0.027)      # kW in the list, MW returned
+    assert pc.lookup_simultaneous_peak_load(0.4, 0.150) == 0.0                       # no grid with that distance
+    assert pc.lookup_simultaneous_peak_load(0.63, 0.173) == 0.0                      # no bucket of that rating
+
+
+def test_without_a_plz_the_peak_load_lookup_returns_zero_and_warns(caplog):
+    pc = calculator(lists([173.0], [27.0]), plz=None)
+    with caplog.at_level(logging.WARNING, logger=LOGGER.name):
+        assert pc.lookup_simultaneous_peak_load(0.4, 0.173) == 0.0
+    assert any("calculator.plz is unset" in message for message in caplog.messages)
+
+
+# --- the per-transformer analysis of a PLZ, on nets stored as JSON and read back -----------------------------------------
+class Cursor:
+    def __init__(self, store):
+        self.store, self.key = store, None
+
+    def execute(self, query, vars=None):
+        self.key = vars
+
+    def fetchall(self):
+        _, _, kcid, bcid = self.key
+        net = self.store.get((kcid, bcid))
+        return [] if net is None else [(json.loads(pp.to_json(net)),)]
+
+
+class Client(AnalysisMixin):
+    """``read_net_db`` of the real mixin on stored nets; collects what the analysis stores."""
+
+    def __init__(self, store):
+        self.store, self.cur, self.logger, self.inserted = store, Cursor(store), LOGGER, {}
+
+    def get_list_from_plz(self, plz):
+        return list(self.store) + [(9, 9)]                                           # (9, 9) was never stored
+
+    def insert_trafo_parameters(self, plz, loads, max_distances, avg_distances):
+        self.inserted = {"loads": json.loads(loads), "max": json.loads(max_distances), "avg": json.loads(avg_distances)}
+
+
+def analyse(store):
+    client = Client(store)
+    pc = calculator()
+    pc.dbc = client
+    pc.analyze_transformer_parameters_for_plz(1)
+    return client.inserted
+
+
+def test_the_per_transformer_analysis_groups_grids_by_station_rating_with_parallel_units_counted():
+    inserted = analyse({(1, 1): build(kva=400), (1, 2): build(kva=400, parallel_trafo=2), (1, 3): build(kva=630)})
+
+    # 4 x 17 kW households: coincident load in kW and the routed distances to the consumers in m
+    assert set(inserted["loads"]) == {"400", "800", "630"}
+    for key in ("400", "800", "630"):
+        assert inserted["loads"][key] == [pytest.approx(coincident(4, 68.0))]
+        assert inserted["max"][key] == [pytest.approx(173.0)] and inserted["avg"][key] == [pytest.approx(166.5)]
+
+
+def test_a_grid_that_cannot_be_read_or_has_no_loads_is_left_out_of_the_lists():
+    unloaded = build()
+    unloaded.load.drop(unloaded.load.index, inplace=True)
+    inserted = analyse({(1, 1): build(kva=400), (1, 2): unloaded})                   # (9, 9) cannot be read at all
+
+    assert inserted["loads"] == {"400": [pytest.approx(coincident(4, 68.0))]}
+
+
+def test_a_grid_is_looked_up_in_the_lists_of_its_own_rating_and_distance():
+    stored = {(1, i): build(kva=400, load_kw=17.0 + i) for i in (1, 2, 3)}
+    for (_, i), net in stored.items():
+        net.line["length_km"] = net.line["length_km"] * (1 + 0.37 * i)               # different distances
+    inserted = analyse(stored)
+    data = [{}, {}, inserted["loads"], inserted["max"], inserted["avg"]]
+
+    for (kcid, bcid), net in stored.items():
+        reloaded = Client(stored).read_net_db(1, kcid, bcid)
+        peak = compute_clustering_metrics(calculator(data), reloaded)["simultaneous_peak_load_mw"]
+        assert peak == pytest.approx(coincident(4, 4 * (17.0 + bcid)) / 1000)
+
+
+@pytest.mark.xfail(strict=True, reason="ANALYSIS-10: two grids of one PLZ with the same rating and maximum distance "
+                                       "get the peak load of the first one (exact float lookup, first match wins)")
+def test_two_grids_with_equal_rating_and_distance_but_different_loads_get_their_own_peak_load():
+    small, large = build(), build(load_kw=51.0)                                      # the same geometry, 3 x the load
+    inserted = analyse({(1, 1): small, (1, 2): large})
+    data = [{}, {}, inserted["loads"], inserted["max"], inserted["avg"]]
+
+    peak = compute_clustering_metrics(calculator(data), large)["simultaneous_peak_load_mw"]
+    assert peak == pytest.approx(coincident(4, 204.0) / 1000)
+
+
+# --- the workflows around it ---------------------------------------------------------------------------------------------
+class Workflow:
+    """The database side of ``analyze_parameters_for_plz`` and ``analyze_grid_parameters_for_plz``."""
+    logger = LOGGER
+
+    def __init__(self, generated=True, analyzed=False, grids=((1, 1), (1, 2), (1, 3)), done=()):
+        self.generated, self.analyzed, self.grids, self.done = generated, analyzed, list(grids), set(done)
+        self.events, self.conn = [], type("Conn", (), {"commit": lambda s: self.events.append("commit")})()
+
+    def is_grid_generated(self, plz):
+        return self.generated
+
+    def is_grid_analyzed(self, plz):
+        return self.analyzed
+
+    def get_list_from_plz(self, plz):
+        return self.grids
+
+    def has_clustering_parameters(self, plz, kcid, bcid):
+        return (kcid, bcid) in self.done
+
+    def delete_plz_from_sample_set_table(self, classification_id, plz):
+        self.events.append(("sample set cleared", plz))
+
+
+def workflow(dbc, monkeypatch, fail_on=None):
+    pc = calculator(plz=None)
+    pc.dbc = dbc
+    for name in ("analyze_basic_parameters_for_plz", "analyze_cable_lengths_for_plz",
+                 "analyze_transformer_parameters_for_plz"):
+        def step(plz, name=name):
+            dbc.events.append(name)
+            if name == fail_on:
+                raise RuntimeError("analysis failed")
+        monkeypatch.setattr(pc, name, step)
+
+    def single(bcid, kcid):
+        dbc.events.append(("grid", kcid, bcid))
+        if (kcid, bcid) == (1, 2):
+            raise ValueError("No transformer found")
+    monkeypatch.setattr(pc, "analyze_single_grid", single)
+    return pc
+
+
+def test_the_plz_analysis_runs_its_three_steps_and_commits_once(monkeypatch):
+    dbc = Workflow()
+    workflow(dbc, monkeypatch).analyze_parameters_for_plz(80803)
+    assert dbc.events == ["analyze_basic_parameters_for_plz", "analyze_cable_lengths_for_plz",
+                          "analyze_transformer_parameters_for_plz", "commit"]
+
+
+@pytest.mark.parametrize("state", [{"generated": False}, {"analyzed": True}])
+def test_a_plz_that_is_not_generated_or_already_analyzed_is_not_analyzed_again(monkeypatch, state):
+    dbc = Workflow(**state)
+    workflow(dbc, monkeypatch).analyze_parameters_for_plz(80803)
+    assert dbc.events == []
+
+
+def test_a_failing_step_clears_the_sample_set_of_the_plz_and_raises(monkeypatch):
+    dbc = Workflow()
+    with pytest.raises(RuntimeError, match="analysis failed"):
+        workflow(dbc, monkeypatch, fail_on="analyze_cable_lengths_for_plz").analyze_parameters_for_plz(80803)
+    assert dbc.events[-1] == ("sample set cleared", 80803) and "commit" not in dbc.events
+
+
+def test_the_per_grid_analysis_skips_stored_grids_and_goes_on_after_a_failing_one(monkeypatch):
+    dbc = Workflow(analyzed=True, done=[(1, 1)])
+    workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
+    assert dbc.events == [("grid", 1, 2), ("grid", 1, 3)]          # (1, 1) is stored, (1, 2) fails, (1, 3) is still done
+
+
+def test_the_per_grid_analysis_needs_the_plz_analysis_first(monkeypatch):
+    dbc = Workflow(analyzed=False)
+    workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
+    assert dbc.events == []
+
+
+def test_a_single_grid_is_stored_with_its_context_and_the_origin_of_its_transformer():
+    stored = []
+    pc = calculator(plz=80803)
+    pc.dbc = type("Dbc", (), {"logger": LOGGER, "read_net_db": lambda s, plz, kcid, bcid: build(),
+                              "read_per_trafo_dict": lambda s, plz: ([{}, {}, {}, {}, {}], [], {}),
+                              "insert_clustering_parameters": lambda s, params: stored.append(params)})()
+    pc.analyze_single_grid(-3, 7)       # a negative bcid is a grid around an existing (OSM) transformer
+    pc.analyze_single_grid(4, 7)
+
+    assert [(p["plz"], p["kcid"], p["bcid"], p["osm_trafo"], p["version_id"]) for p in stored] == [
+        (80803, 7, -3, True, "1"), (80803, 7, 4, False, "1")]
+    assert stored[0]["no_house_connections"] == 4
