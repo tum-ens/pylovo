@@ -152,9 +152,10 @@ def import_dso_transformers_csv(csv_path: str | Path, source: str | None = None,
     try:
         with client.conn.cursor() as cur:
             if replace_source:
+                # starts_with, not LIKE: "_" in a source token would match any character
                 cur.execute(
-                    "DELETE FROM pylovo.transformers WHERE osm_id LIKE %(prefix)s AND type = %(type)s;",
-                    {"prefix": f"dso/{source_token}/%", "type": DSO_TYPE},
+                    "DELETE FROM pylovo.transformers WHERE starts_with(osm_id, %(prefix)s) AND type = %(type)s;",
+                    {"prefix": f"dso/{source_token}/", "type": DSO_TYPE},
                 )
 
             cur.executemany(

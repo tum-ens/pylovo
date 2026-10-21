@@ -102,3 +102,61 @@ def test_every_problem_is_reported_in_one_message(tmp_path):
 def test_ids_that_look_like_missing_values_are_kept(tmp_path):
     df = read(tmp_path, "external_id,lon,lat\nNA,11.7,48.0\nnull,11.8,48.1\nNone,11.9,48.2\n")
     assert df["osm_id"].tolist() == ["dso/csv/NA", "dso/csv/null", "dso/csv/None"]
+
+
+class FakeClient:
+    """Records the statements of the import instead of sending them to a database."""
+    log: list = []
+
+    class conn:
+        @staticmethod
+        def commit():
+            FakeClient.log.append(("commit",))
+
+        @staticmethod
+        def rollback():
+            FakeClient.log.append(("rollback",))
+
+        @staticmethod
+        def cursor():
+            return FakeCursor()
+
+    def close(self):
+        pass
+
+
+class FakeCursor:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params=None):
+        FakeClient.log.append(("execute", " ".join(sql.split()), params))
+
+    def executemany(self, sql, rows):
+        FakeClient.log.append(("executemany", len(list(rows))))
+
+
+@pytest.fixture()
+def fake_client(monkeypatch):
+    FakeClient.log = []
+    monkeypatch.setattr(dso.dbc, "DatabaseClient", FakeClient)
+    return FakeClient
+
+
+@pytest.mark.parametrize("source, prefix", [("my_region", "dso/my_region/"), ("Aying", "dso/aying/"), ("ü", "dso/_/")])
+def test_replace_source_compares_the_prefix_literally_not_as_a_like_pattern(tmp_path, fake_client, source, prefix):
+    path = write(tmp_path, "external_id,lon,lat\nA,11.7,48.0\n")
+    assert dso.import_dso_transformers_csv(path, source=source, replace_source=True) == 1
+    delete = next(entry for entry in fake_client.log if entry[0] == "execute")
+    assert "LIKE" not in delete[1].upper() and "starts_with(osm_id, %(prefix)s)" in delete[1]
+    assert delete[2] == {"prefix": prefix, "type": "dso"}
+
+
+def test_a_refused_csv_changes_nothing(tmp_path, fake_client):
+    path = write(tmp_path, "external_id,lon,lat\nA,11.7,48.0\nA,11.8,48.1\n")
+    with pytest.raises(ValueError, match="duplicate external_id"):
+        dso.import_dso_transformers_csv(path, source="x", replace_source=True)
+    assert fake_client.log == []
