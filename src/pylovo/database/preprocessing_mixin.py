@@ -1354,13 +1354,22 @@ class PreprocessingMixin(BaseMixin):
         self.cur.execute(query)
 
         # Several edges can start at one vertex (buildings with one centroid, a centroid on a street
-        # vertex): the building's connection line (clazz 110) first, then the lowest way_id.
+        # vertex): the building's connection line (clazz 110) first, then the lowest way_id. A transformer
+        # without a connection line stands on the street: its connection point is its own vertex.
         query2 = """UPDATE buildings_tem b
-                    SET connection_point = (SELECT target
-                                            FROM ways_tem
-                                            WHERE source = b.vertice_id
-                                            ORDER BY clazz IS DISTINCT FROM 110, way_id
-                                            LIMIT 1)
+                    SET connection_point = CASE
+                            WHEN b.type = 'Transformer'
+                                THEN COALESCE((SELECT target
+                                               FROM ways_tem
+                                               WHERE source = b.vertice_id AND clazz = 110
+                                               ORDER BY way_id
+                                               LIMIT 1), b.vertice_id)
+                            ELSE (SELECT target
+                                  FROM ways_tem
+                                  WHERE source = b.vertice_id
+                                  ORDER BY clazz IS DISTINCT FROM 110, way_id
+                                  LIMIT 1)
+                        END
                     WHERE vertice_id IS NOT NULL
                       AND connection_point IS NULL;"""
         self.cur.execute(query2)

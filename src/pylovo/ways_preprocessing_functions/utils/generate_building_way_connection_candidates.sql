@@ -36,7 +36,8 @@ BEGIN
     WITH buildings AS (
         SELECT 
             objectid,           -- Unique building identifier
-            centroid            -- Geometric centroid point of the building
+            centroid,           -- Geometric centroid point of the building
+            COALESCE(type = 'Transformer', false) AS is_transformer
         FROM buildings_tem
         WHERE peak_load_in_kw <> 0  -- Only buildings with non-zero electrical load
     ),
@@ -47,6 +48,7 @@ BEGIN
         SELECT 
             b.objectid,                                      -- Building identifier
             b.centroid,                                      -- Building centroid point
+            b.is_transformer,
             w.way_id AS old_way_id,                       -- ID of the closest way
             w.geom AS old_geom,                           -- Geometry of the closest way
             ST_ShortestLine(b.centroid, w.geom) AS new_geom -- Shortest connection line from building to way
@@ -58,7 +60,9 @@ BEGIN
             FROM ways_tem w
             WHERE w.clazz != 110                          -- Exclude ways which are connection lines (from buildings to ways)
               AND ST_DWithin(b.centroid, w.geom, 2000)     -- Limit search to 2000 units radius
-              AND ST_Distance(b.centroid, w.geom) > 0.1    -- Exclude ways that are too close (avoid geometric errors)
+              -- A building does not connect to a way it stands on (avoid geometric errors); a transformer
+              -- on a way becomes its vertex (generate_building_to_way_connections)
+              AND (b.is_transformer OR ST_Distance(b.centroid, w.geom) > 0.1)
             ORDER BY b.centroid <-> w.geom                  -- Sort by distance using KNN operator (<->)
             LIMIT 1                                       -- Take only the closest way
         ) w ON TRUE                                       -- LATERAL join condition
@@ -71,6 +75,7 @@ BEGIN
         SELECT 
             c.objectid,                                           -- Building identifier
             c.centroid,                                           -- Building centroid point
+            c.is_transformer,
             c.old_way_id,                                       -- Connected way ID
             c.old_geom,                                         -- Connected way geometry
             c.new_geom,                                         -- Connection line geometry
@@ -84,6 +89,7 @@ BEGIN
     SELECT DISTINCT ON (objectid)                    -- Ensure one record per building
         objectid,              -- Building identifier
         centroid,              -- Building centroid point
+        is_transformer,        -- Transformer row (placed on a way within 0.1 m)
         new_geom,            -- Connection line from building to way
         old_way_id,          -- ID of way that will be connected to
         old_geom,            -- Geometry of way that will be connected to

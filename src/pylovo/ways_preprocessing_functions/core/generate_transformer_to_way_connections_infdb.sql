@@ -13,6 +13,8 @@
  * ------
  * - Adds transformer connection lines (clazz 110) to ways_tem
  * - Splits affected ways into segments (clazz 103)
+ * - A transformer within 0.1 m of its nearest way gets no connection line: its centroid moves onto
+ *   the way (an end point, or the point where the way is split), so it becomes a vertex of the way
  */
 
 CREATE OR REPLACE FUNCTION generate_transformer_to_way_connections_infdb() RETURNS void
@@ -46,8 +48,7 @@ BEGIN
             FROM ways_tem w
             WHERE w.clazz != 110
               AND ST_DWithin(t.centroid, w.geom, 2000)
-              AND ST_Distance(t.centroid, w.geom) > 0.1
-            ORDER BY t.centroid <-> w.geom
+            ORDER BY t.centroid <-> w.geom, w.way_id
             LIMIT 1
         ) w ON TRUE
     )
@@ -68,7 +69,23 @@ BEGIN
     -- Insert transformer connection lines. If close to endpoints, no split is needed.
     FOR r IN SELECT * FROM temp_transformer_connection_candidates_infdb ORDER BY objectid
     LOOP
-        IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
+        IF ST_Distance(r.centroid, r.old_geom) <= 0.1 THEN
+            -- The station stands on the way: no connection line, it becomes a vertex of the way.
+            IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
+                UPDATE buildings_tem SET centroid = ST_StartPoint(r.old_geom)
+                WHERE objectid = r.objectid AND type = 'Transformer';
+                DELETE FROM temp_transformer_connection_candidates_infdb WHERE objectid = r.objectid;
+            ELSIF ST_Distance(ST_EndPoint(r.old_geom), r.connection_point) < 0.1 THEN
+                UPDATE buildings_tem SET centroid = ST_EndPoint(r.old_geom)
+                WHERE objectid = r.objectid AND type = 'Transformer';
+                DELETE FROM temp_transformer_connection_candidates_infdb WHERE objectid = r.objectid;
+            ELSE
+                -- the way is split at the station below
+                UPDATE buildings_tem SET centroid = r.connection_point
+                WHERE objectid = r.objectid AND type = 'Transformer';
+            END IF;
+
+        ELSIF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
             final_geom := ST_MakeLine(r.centroid, ST_StartPoint(r.old_geom));
             PERFORM insert_way_segment(110, final_geom);
             DELETE FROM temp_transformer_connection_candidates_infdb
