@@ -1165,12 +1165,17 @@ class MvResultMixin(BaseMixin):
     def save_coupled_results(self, mv_grid_id: int, rows: pd.DataFrame, status: str, metrics: dict) -> None:
         """Store the results of ``pylovo-mv couple`` for one grid; commits.
 
+        The ``coupled_*`` values of an earlier coupling of the grid are cleared first, so a failed coupling (no
+        rows) leaves none next to ``coupled_status = 'failed'``.
+
         Args:
             rows: ``mv_node_id`` and any of the ``coupled_*`` columns of ``mv_node``.
             status: ``done``, ``partial`` or ``failed`` (``mv_grid.coupled_status``).
             metrics: Coupling diagnostics, stored as ``metrics.coupling`` of the grid.
         """
         try:
+            self.cur.execute(f"UPDATE pylovo.mv_node SET {', '.join(f'{c} = NULL' for c in COUPLED_COLUMNS)} "
+                             "WHERE mv_grid_id = %s", (int(mv_grid_id),))
             rows = pd.DataFrame(rows).reset_index(drop=True)
             columns = ["mv_node_id"] + [c for c in COUPLED_COLUMNS if c in rows.columns]
             if len(rows) and len(columns) > 1:

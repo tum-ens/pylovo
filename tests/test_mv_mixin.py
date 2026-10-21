@@ -569,6 +569,18 @@ def test_save_display_geometry_clears_the_variant_then_writes_lines_and_busbar_c
     assert client.conn.commits == 1
 
 
+def test_a_failed_coupling_clears_the_coupled_values_of_an_earlier_run():
+    client = make_client()
+    client.save_coupled_results(5, pd.DataFrame({"mv_node_id": []}), "failed", {"error": "LV net 7 is broken"})
+    texts = [text for text, _ in client.cur.statements]
+    clear = next(i for i, text in enumerate(texts) if text.startswith("UPDATE pylovo.mv_node SET"))
+    assert all(f"{c} = NULL" in texts[clear] for c in mixin.COUPLED_COLUMNS) and texts[clear].endswith(
+        "WHERE mv_grid_id = %s")
+    assert client.cur.statements[clear][1] == (5,)
+    assert clear < next(i for i, text in enumerate(texts) if "UPDATE pylovo.mv_grid" in text)
+    assert client.conn.commits == 1
+
+
 def test_lv_fingerprint_counts_only_the_active_load_edits_of_its_plz():
     """A load edit in another PLZ of the version does not mark the variant stale; an undone edit does."""
     from pylovo.database.mv_input_mixin import MvInputMixin
