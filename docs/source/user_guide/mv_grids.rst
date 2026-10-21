@@ -427,7 +427,9 @@ pylovo-mv display
    pylovo-mv display --version VERSION --variant VARIANT [VARIANT ...]
 
 Stores the display geometry of variants again (see `Display geometry`_), for example for
-variants built before it existed. ``generate`` stores it at the end of every run.
+variants built before it existed. ``generate`` stores it at the end of every run. For every variant
+the command prints the number of lines in lanes and of busbar circles; a variant without a shared
+route has no lines in lanes but still gets its busbar circles.
 
 pylovo-mv graph
 ~~~~~~~~~~~~~~~
