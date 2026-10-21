@@ -278,33 +278,37 @@ class JobManager:
         job.started_at = time.time()
         job.status = "running"
         self._append(job, f"$ {job.summary()['command']}", "command")
-        status, code = "failed", None
         try:
-            if job.cancel_requested:  # cancelled before there was a process to stop
-                self._append(job, "Cancelled before the command was started.", "warning")
-                status = "cancelled"
-            else:
-                with subprocess.Popen(
-                    job.argv, cwd=self.cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
-                    start_new_session=(os.name == "posix"),
-                ) as proc:  # leaving the block closes the pipe
-                    with self._lock:
-                        job._proc = proc
-                        cancelled = job.cancel_requested  # cancel() came in while the process was being created
-                    job.pid = proc.pid
-                    if cancelled:
-                        self._stop(job, proc)
-                    for raw in proc.stdout:
-                        self._append(job, raw.rstrip("\r\n"))
-                    code = proc.wait()
-                # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
-                # shows such runs as "succeeded" with an error count instead of hiding the errors.
-                status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
+            code = self._execute(job, env)
         except Exception as exc:  # noqa: BLE001 - a job must end whatever happens: it holds the writer lock
             # e.g. OSError (no such program) or ValueError (an argument with a NUL byte or a lone surrogate)
             self._append(job, f"Could not run the command: {type(exc).__name__}: {exc}", "error")
+            self._finish(job, "failed", None)
+            return
+        # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
+        # shows such runs as "succeeded" with an error count instead of hiding the errors.
+        status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
         self._finish(job, status, code)
+
+    def _execute(self, job: Job, env: dict[str, str]) -> int | None:
+        """Run the command of ``job`` and return its exit code (``None`` if it was cancelled before it was started)."""
+        if job.cancel_requested:  # cancelled before there was a process to stop
+            self._append(job, "Cancelled before the command was started.", "warning")
+            return None
+        with subprocess.Popen(
+            job.argv, cwd=self.cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
+            start_new_session=(os.name == "posix"),
+        ) as proc:  # leaving the block closes the pipe
+            with self._lock:
+                job._proc = proc
+                cancelled = job.cancel_requested  # cancel() came in while the process was being created
+            job.pid = proc.pid
+            if cancelled:
+                self._stop(job, proc)
+            for raw in proc.stdout:
+                self._append(job, raw.rstrip("\r\n"))
+            return proc.wait()
 
     def _finish(self, job: Job, status: str, code: int | None) -> None:
         job.exit_code = code
