@@ -36,9 +36,11 @@ dependencies = [
     "scipy>=1.13.1",
     # Core electrical grid generation
     "pandapower>=3.4.0,<4.0.0",
+    "networkx>=3.6",
     # "altdss>=0.2.0",
     # GIS & Geospatial
     "geopandas>=1.1.3,<1.2.0",
+    "shapely>=2.1",
     "geoalchemy2==0.17.1",
     "pyproj>=3.6.1,<4.0.0",
     "osm2geojson==0.2.6",
@@ -54,6 +56,7 @@ dependencies = [
     "python-dotenv>=1.0.1,<2.0.0",
     "requests>=2.32.3,<3.0.0",
     "openpyxl>=3.1.5,<4.0.0",
+    "tqdm>=4.67",
     "xlrd>=2.0.1,<3.0.0",  # Required for reading old .xls Excel files (not 2.x which only supports .xlsx)
     # Web UI components
     "xlsxwriter>=3.2.9",
@@ -94,6 +97,8 @@ legacy-ui = [
 api = [
     # Headless HTTP API (pylovo-api) for the GridPlanner UI: web server, job runner with live logs, CSV upload
     "fastapi>=0.115.0",
+    "starlette>=1.7",
+    "pydantic>=2.13",
     "uvicorn>=0.30.0",
     "python-multipart>=0.0.9",
     # Only needed by the FastAPI TestClient in api/tests
