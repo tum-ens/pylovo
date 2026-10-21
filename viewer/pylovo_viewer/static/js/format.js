@@ -1,4 +1,4 @@
-// Number formatting in the browser's locale, with units (adapted from the GridPlanner UI).
+// Number formatting in the browser's locale, with units.
 
 const cache = new Map();
 function fmt(opts) {

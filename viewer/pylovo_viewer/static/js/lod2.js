@@ -1,9 +1,9 @@
 // LoD2 building models of the selected region (citydb), drawn as a MapLibre custom 3D layer.
 //
-// Adapted from the GridPlanner map (ui/static/js/panels/map_lod2.js). The mesh format is
-// pylovo-api's (api/pylovo_api/lod2.py): positions in EPSG:3857 metres relative to `origin`, z in
-// metres above the building's ground. Roofs take the building's map colour, walls a light mix of it.
-// Buildings without LoD2 stay extruded footprints; a database without citydb gives an empty mesh.
+// The mesh format is pylovo-api's (api/pylovo_api/lod2.py): positions in EPSG:3857 metres relative to
+// `origin`, z in metres above the building's ground. Roofs take the building's map colour, walls a
+// light mix of it. Buildings without LoD2 stay extruded footprints; a database without citydb gives
+// an empty mesh.
 import * as maplibregl from 'maplibre-gl';
 import { getBuffer } from './api.js';
 

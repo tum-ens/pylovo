@@ -2,7 +2,7 @@
 
 Colour slots: grids, MV supply areas and rings are coloured from a small palette (8 slots) so that
 neighbours never share a colour. Items are taken in key order; each takes the lowest slot not used
-by its nearest already-coloured neighbours (the same rule as the GridPlanner map).
+by its nearest already-coloured neighbours.
 
 Feeders: every cable of an LV grid belongs to the feeder (outgoing cable) of the station that
 supplies it. The search starts at the station vertex (``grid_result.ont_vertice_id``) and walks

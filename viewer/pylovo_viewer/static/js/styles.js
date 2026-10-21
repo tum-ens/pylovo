@@ -5,7 +5,7 @@ import { LOADING_STOPS, VOLTAGE_STOPS, constant, expr, pal, slot, voltageLevels 
 import * as f from './format.js';
 import { arrowIcon, stationIcon } from './icons.js';
 
-// Line width that grows with the zoom (exponentially, like the GridPlanner map).
+// Line width that grows exponentially with the zoom: the base width times a factor per zoom stop.
 export function lw(base, mult = null, add = 0) {
   return ['interpolate', ['exponential', 1.6], ['zoom'],
     ...[[9, 0.22], [12, 0.4], [15, 1], [19, 3.2]].flatMap(([z, k]) => {
