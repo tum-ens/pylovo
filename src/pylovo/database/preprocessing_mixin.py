@@ -852,7 +852,8 @@ class PreprocessingMixin(BaseMixin):
 
         :meth:`update_too_large_consumers_to_zero` removes these components from the LV model; the
         MV stage connects them as MV customers. The residential part of a mixed building stays in
-        the LV grid and is only recorded here. Rerunning a PLZ replaces its rows.
+        the LV grid and is only recorded here. Rerunning a PLZ replaces its rows. Of several rows with
+        one ``objectid`` the one with the lowest ``id`` is kept, as in ``ResultsMixin.save_tables``.
 
         Args:
             plz: Postcode whose working table ``buildings_tem`` is read.
@@ -874,7 +875,7 @@ class PreprocessingMixin(BaseMixin):
                    residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid
             FROM buildings_tem
             WHERE nonresidential_mv_direct AND COALESCE(nonresidential_peak_load_in_kw, 0) > 0
-            ORDER BY objectid
+            ORDER BY objectid, id
             ON CONFLICT (version_id, objectid) DO NOTHING;""",
             params,
         )

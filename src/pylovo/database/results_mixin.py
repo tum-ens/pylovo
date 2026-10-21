@@ -30,10 +30,11 @@ class ResultsMixin(BaseMixin):
         ways_table = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz))
 
         # buildings_result is keyed by (version_id, objectid): keep one row per objectid
-        # (the working table holds a single PLZ) and delete the duplicates.
+        # (the working table holds a single PLZ), the one with the lowest id (ctid only breaks
+        # ties), and delete the duplicates.
         query = sql.SQL("""
                 DELETE
-                FROM {buildings} a USING (SELECT MIN(ctid) as ctid, objectid, plz
+                FROM {buildings} a USING (SELECT (array_agg(ctid ORDER BY id, ctid))[1] as ctid, objectid, plz
                                           FROM {buildings}
                                           GROUP BY (objectid, plz)
                                           HAVING COUNT(*) > 1) b
