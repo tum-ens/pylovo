@@ -1200,6 +1200,7 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
         raise ValueError(f"case must be one of {', '.join(CASES)}, got {case!r}")
     output = Path(output)
     with _database_client("log/log.txt") as dbc:
+        dbc.ensure_grid_persistence_schema()
         _, params, lv_json = _variant_inputs(dbc, version_id, variant_id)
         layers = dbc.read_mv_layers(version_id, variant_id, int(mv_grid_id))
         grids = _plain_frame(layers["grids"])

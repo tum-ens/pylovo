@@ -830,6 +830,7 @@ def export_net(version_id: str, variant_id: str, mv_grid_id: int, output: Path, 
         raise ValueError(f"case must be one of {', '.join(CASES)}, got {case!r}")
     output = Path(output)
     with _database_client("log/log.txt") as dbc:
+        dbc.ensure_grid_persistence_schema()
         row = dbc.variant_row(version_id, variant_id)
         if row is None:
             raise LookupError(f"MV variant {variant_id} of version {version_id} does not exist")

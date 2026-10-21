@@ -154,7 +154,7 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
          "stale": True},
     ])
     client = FakeClient(delete_variants=lambda v, ids: deleted.append((v, ids)) or 2,
-                        list_variants=lambda v: rows)
+                        list_variants=lambda v: rows, ensure_grid_persistence_schema=lambda: None)
     monkeypatch.setattr(cli, "_database_client", lambda: client)
     cli.main(["delete", "--version", "mv1", "--variant", "d0", "d1"])
     cli.main(["list", "--version", "mv1"])
@@ -211,7 +211,8 @@ def test_boundary_writes_one_row_per_substation(monkeypatch, capsys, tmp_path, n
          "loading_n0_percent": 12.0, "loading_n1_percent": 24.0, "lon": 11.6, "lat": 48.6},
     ])
     calls = []
-    client = FakeClient(hv_boundary=lambda v, x: calls.append((v, x)) or table, rollback_changes=lambda: None)
+    client = FakeClient(hv_boundary=lambda v, x: calls.append((v, x)) or table, rollback_changes=lambda: None,
+                        ensure_grid_persistence_schema=lambda: None)
     monkeypatch.setattr(cli, "_database_client", lambda: client)
     out_file = tmp_path / "b" / "boundary.csv"
     cli.main(["boundary", "--version", "mv1", "--variant", "d1", "--output", str(out_file)])
@@ -299,6 +300,30 @@ def test_pylovo_mv_script_is_registered():
     text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     assert 'pylovo-mv = "pylovo.cli.mv:main"' in text
     assert SimpleNamespace(main=cli.main).main is cli.main
+
+
+def test_every_command_on_the_mv_tables_stops_with_pending_migrations(monkeypatch, capsys, config_params):
+    from pylovo import config_loader
+
+    pending = "PyLovo schema has pending migrations (0009_mv_grids, 0010_mv_display_geometry); run pylovo-setup first"
+
+    def gate():
+        raise RuntimeError(pending)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the MV tables must not be read before the migration check")
+
+    client = FakeClient(ensure_grid_persistence_schema=gate, delete_variants=refuse, list_variants=refuse,
+                        generated_plz=refuse, hv_boundary=refuse)
+    monkeypatch.setattr(cli, "_database_client", lambda: client)
+    monkeypatch.setattr(stage, "_database_client", lambda log_file: client)
+    monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", False)
+    for argv in (["delete", "--version", "mv1", "--variant", "d0"], ["list"], ["graph", "--version", "mv1", "--all"],
+                 ["boundary", "--version", "mv1", "--variant", "d1", "--output", "b.csv"],
+                 ["export", "--version", "mv1", "--variant", "d1", "--grid", "3", "--output", "g.json"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(argv)
+        assert exc.value.code == 1 and capsys.readouterr().out.strip() == f"✗ {pending}", argv
 
 
 def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys):

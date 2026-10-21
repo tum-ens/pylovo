@@ -188,6 +188,7 @@ def _couple(args: argparse.Namespace) -> int:
 
 def _delete(args: argparse.Namespace) -> int:
     with _database_client() as dbc:
+        dbc.ensure_grid_persistence_schema()
         count = dbc.delete_variants(args.version, args.variants)
     which = ", ".join(args.variants) if args.variants else "all"
     print(f"✓ Deleted {count} MV variant{'s' if count != 1 else ''} of version {args.version} ({which})")
@@ -196,6 +197,7 @@ def _delete(args: argparse.Namespace) -> int:
 
 def _list(args: argparse.Namespace) -> int:
     with _database_client() as dbc:
+        dbc.ensure_grid_persistence_schema()
         df = dbc.list_variants(args.version)
     if df.empty:
         print("✓ No MV variants" + (f" of version {args.version}" if args.version else ""))
@@ -227,6 +229,7 @@ def _graph(args: argparse.Namespace) -> int:
     params = MvParameters.from_config()
     plz_list = _plz_of(args)
     with _database_client() as dbc:
+        dbc.ensure_grid_persistence_schema()
         plz = dbc.generated_plz(args.version, plz_list)
         if not plz:
             print(f"✗ none of the requested PLZ has LV grids in version {args.version}")
@@ -258,6 +261,7 @@ def _export(args: argparse.Namespace) -> int:
 
 def _boundary(args: argparse.Namespace) -> int:
     with _database_client() as dbc:
+        dbc.ensure_grid_persistence_schema()
         table = dbc.hv_boundary(args.version, args.variant)
         dbc.rollback_changes()
     if table.empty:
