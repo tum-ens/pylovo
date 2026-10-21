@@ -5,11 +5,12 @@ pylovo installs these commands (``[project.scripts]`` in ``pyproject.toml``). Ru
 repository root, either with ``uv run <command>`` or in the activated environment. All of them
 read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`).
 
-Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset and an
-MV stage that does not end ``done``), 2 for wrong arguments, and 3 for ``pylovo-analyze --coverage``
-when source buildings are missing. A postcode that fails inside ``pylovo-generate`` is logged
-and skipped, and the command still exits with 0: look for ``Skipped PLZ <plz> due to generation
-error.`` in the log (:doc:`troubleshooting`).
+Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset, an MV
+stage that does not end ``done``, and ``pylovo-analyze`` or ``pylovo-export`` for postcodes
+without grids), 2 for wrong arguments, and 3 for ``pylovo-analyze --coverage`` when source
+buildings are missing. A postcode that fails inside ``pylovo-generate`` is logged and skipped,
+and the command still exits with 0: look for ``Skipped PLZ <plz> due to generation error.`` in
+the log (:doc:`troubleshooting`).
 
 .. list-table::
    :header-rows: 1
@@ -78,8 +79,9 @@ combined. Several postcodes run in parallel when ``PARALLEL`` in the configurati
    other in the main process, whatever ``PARALLEL`` says.
 ``--mv`` / ``--no-mv``
    Run the MV stage after the LV grids of all postcodes, for the configured MV variant, or skip it,
-   whatever ``MV_GRID_GENERATION`` says (:doc:`mv_grids`). The command exits with code 1 if the MV
-   stage does not end ``done``; the LV grids stay stored.
+   whatever ``MV_GRID_GENERATION`` says (:doc:`mv_grids`). The MV parameters are checked before the
+   LV generation starts, so a wrong cable type stops the command at once. The command exits with
+   code 1 if the MV stage does not end ``done``; the LV grids stay stored.
 
 .. code-block:: bash
 
@@ -137,7 +139,9 @@ pylovo-analyze
 
 Computes key figures of the grids of one or more postcodes in the active version
 (:doc:`analysing_grids`). Without further options only the postcode key figures
-(``plz_parameters``) are computed.
+(``plz_parameters``) are computed. A postcode without grids in the version, or with a missing
+postcode analysis for ``--per-grid``, is reported with ✗ and the command exits with 1; a
+postcode that is already analysed is skipped.
 
 ``--plz PLZ [PLZ ...]``
    Postcodes to analyse (required).
@@ -156,7 +160,7 @@ Computes key figures of the grids of one or more postcodes in the active version
    ``results/diagnostics``) of the two reports. They have no effect on the key figures, which
    always use ``VERSION_ID`` of the configuration. ``--coverage`` and ``--border-diagnostics``
    replace the key-figure calculation: do not combine them with ``--per-grid`` or ``--all``.
-   Details in :doc:`analysing_grids`.
+   An option that the chosen mode ignores prints a warning. Details in :doc:`analysing_grids`.
 
 pylovo-classify
 ---------------
@@ -217,6 +221,10 @@ Writes buses and lines of the grids of the active version as CSV (:doc:`exportin
 ``--output OUTPUT``
    Output directory (default ``QGIS/`` in the working directory; existing files are overwritten).
 
+A postcode without grids in the active version is reported and skipped. If none of the postcodes has
+grids, nothing is written and the command exits with 1. ``--kcid`` and ``--bcid`` without ``--grid``
+are ignored with a warning.
+
 pylovo-delete
 -------------
 
@@ -248,7 +256,7 @@ postcodes cascades to all dependent result tables and refreshes the materialised
 ``pylovo-delete classification --version CLASSIFICATION_ID``
    Delete a classification with its sample set and result and refresh the view
    ``transformer_classified_with_grid`` (:doc:`classification`). The id is the integer
-   ``CLASSIFICATION_VERSION``, not a ``VERSION_ID``.
+   ``CLASSIFICATION_VERSION``, not a ``VERSION_ID``; an unknown id is reported and nothing is deleted.
 
 .. code-block:: bash
 
