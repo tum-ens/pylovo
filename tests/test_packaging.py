@@ -110,3 +110,8 @@ def test_tests_workflow_installs_the_extras_the_tests_import():
     assert "--locked" in command
     assert "--extra api" in command    # fastapi for api/tests
     assert "--extra plots" in command  # matplotlib for the MV plotting tests, which skip without it
+
+
+def test_citation_file_declares_a_cff_version_that_cffconvert_accepts():
+    citation = yaml.safe_load((ROOT / "CITATION.cff").read_text(encoding="utf-8"))
+    assert citation["cff-version"] == "1.2.0"  # 1.0.0 fails the validation of cffconvert and GitHub
