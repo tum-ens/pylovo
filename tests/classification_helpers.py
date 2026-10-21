@@ -209,3 +209,20 @@ def sqlite_read_sql_query(db: sqlite3.Connection):
         return real(re.sub(r"%\((\w+)\)s", r":\1", query), db, params=params)
 
     return read
+
+
+def make_sqlite_dc(monkeypatch):
+    """Return a ``DatabaseCommunication`` without connection whose queries run on the SQLite stand-in.
+
+    ``VERSION_ID`` is ``v1`` and ``CLASSIFICATION_VERSION`` 1; the database is ``dc.sqlite``.
+    """
+    import pylovo.classification.database_communication.database_communication as dcm
+
+    db = sqlite_classification_db()
+    monkeypatch.setattr(dcm.pd, "read_sql_query", sqlite_read_sql_query(db))
+    monkeypatch.setattr(dcm, "VERSION_ID", "v1")
+    monkeypatch.setattr(dcm, "CLASSIFICATION_VERSION", 1)
+    dc = object.__new__(dcm.DatabaseCommunication)  # skip __init__: no connection
+    dc.dbc = FakeDbc()
+    dc.sqlite = db
+    return dc

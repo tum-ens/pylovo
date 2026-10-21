@@ -2,7 +2,7 @@
 import pytest
 
 import pylovo.classification.database_communication.database_communication as dcm
-from classification_helpers import FakeDbc, sqlite_classification_db, sqlite_read_sql_query
+from classification_helpers import make_sqlite_dc
 
 # (plz, kcid, bcid) of the grids that classification 1 keeps: grid 2 is too long, grid 3 has a building with 200
 # households, grid 4 is the small filling grid, grid 6 has no max_trafo_dis (never filters)
@@ -12,14 +12,7 @@ ADDITIONAL_KEPT = {(80001, 1, 1), (80002, 1, 1), (80002, 1, 2)}
 
 @pytest.fixture()
 def dc(monkeypatch):
-    db = sqlite_classification_db()
-    monkeypatch.setattr(dcm.pd, "read_sql_query", sqlite_read_sql_query(db))
-    monkeypatch.setattr(dcm, "VERSION_ID", "v1")
-    monkeypatch.setattr(dcm, "CLASSIFICATION_VERSION", 1)
-    instance = object.__new__(dcm.DatabaseCommunication)  # skip __init__: no connection
-    instance.dbc = FakeDbc()
-    instance.sqlite = db
-    return instance
+    return make_sqlite_dc(monkeypatch)
 
 
 def kept(frame):

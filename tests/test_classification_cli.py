@@ -37,7 +37,8 @@ def pipeline(monkeypatch, config_copy):
     calls = {}
     monkeypatch.setattr(sys, "argv", ["pylovo-classify"])
     monkeypatch.setattr(cl, "classification_version_exists", lambda: False)
-    monkeypatch.setattr(cl, "prepare_data_for_clustering", lambda **kw: calls.__setitem__("prepare", kw))
+    monkeypatch.setattr(cl, "prepare_data_for_clustering", lambda **kw: calls.__setitem__("prepare", kw) or [80002])
+    monkeypatch.setattr(cl, "report_grid_counts", lambda **kw: calls.__setitem__("report", kw))
 
     def select_parameters(additional_filtering=None):
         calls["parameters_filtering"] = additional_filtering
@@ -62,6 +63,7 @@ def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatc
     assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
                                  "n_clusters_kmeans": 5, "n_clusters_gmm": 6, "additional_filtering": True}
     assert pipeline["parameters_filtering"] is True and pipeline["clusters_filtering"] is True
+    assert pipeline["report"] == {"additional_filtering": True, "plz_without_grids": [80002]}, "the summary closes the run"
     saved = yaml.safe_load(pipeline["config"].read_text())
     assert saved["LIST_OF_CLUSTERING_PARAMETERS"] == ["no_branches", "avg_trafo_dis"]
     assert (saved["N_CLUSTERS_KMEANS"], saved["N_CLUSTERS_GMM"]) == (5, 6)

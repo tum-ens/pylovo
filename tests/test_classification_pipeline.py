@@ -95,7 +95,7 @@ def pipeline(monkeypatch):
 
 
 def test_plz_without_grids_leave_the_sample_and_are_not_analysed(pipeline):
-    pdc.prepare_data_for_clustering()
+    assert pdc.prepare_data_for_clustering() == [80002, 80003], "the PLZ removed from the sample set"
     assert pipeline["generated"] == [80001, 80002, 80003, 80004]
     assert sorted(pipeline["deleted"]) == [("7", 80002), ("7", 80003)]
     assert pipeline["analysed"] == [80001, 80004], "an already generated PLZ stays in the sample"

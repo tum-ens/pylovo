@@ -169,6 +169,41 @@ class DatabaseCommunication:
         df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
         return df_query
 
+    def get_grid_status_of_sample_set(self, additional_filtering: bool | None = None) -> pd.DataFrame:
+        """Return what became of every grid of the sampled PLZ, for the summary of a classification run.
+
+        One row per grid of ``VERSION_ID`` in a PLZ of the sample set, or one row with an empty
+        ``grid_result_id`` for a sampled PLZ without grids. Columns: ``plz``, ``grid_result_id``,
+        ``plz_analysed`` (the PLZ has a ``plz_parameters`` row), ``analysed`` (the grid has key figures),
+        ``clustered`` (the grid is in ``transformer_classified`` of ``CLASSIFICATION_VERSION``) and one
+        boolean column per filter of :func:`filter_reasons`, named by its label.
+
+        Args:
+            additional_filtering: Also check the four lower thresholds. ``None`` uses ``ADDITIONAL_FILTERING``.
+
+        Returns:
+            pd.DataFrame: The status, ordered by ``plz``, ``kcid`` and ``bcid``.
+        """
+        reasons = filter_reasons(additional_filtering)
+        flags = "".join(f",\n                       COALESCE(({condition}), false) AS filter_{i}"
+                        for i, condition in enumerate(reasons.values()))
+        query = f"""
+                SELECT ss.plz, gr.grid_result_id,
+                       EXISTS (SELECT 1 FROM pylovo.plz_parameters pp
+                               WHERE pp.version_id = %(v)s AND pp.plz = ss.plz) AS plz_analysed,
+                       cp.grid_result_id IS NOT NULL AS analysed,
+                       tc.grid_result_id IS NOT NULL AS clustered{flags}
+                FROM pylovo.sample_set ss
+                LEFT JOIN pylovo.grid_result gr ON gr.plz = ss.plz AND gr.version_id = %(v)s
+                LEFT JOIN pylovo.clustering_parameters cp ON cp.grid_result_id = gr.grid_result_id
+                LEFT JOIN pylovo.transformer_classified tc
+                       ON tc.grid_result_id = gr.grid_result_id AND tc.classification_id = %(c)s
+                WHERE ss.classification_id = %(c)s
+                ORDER BY ss.plz, gr.kcid, gr.bcid;"""
+        params = {"v": VERSION_ID, "c": CLASSIFICATION_VERSION, **FILTER_PARAMETERS}
+        status = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
+        return status.rename(columns={f"filter_{i}": label for i, label in enumerate(reasons)})
+
     def create_wkt_element(self, geom):
         """Wrap a shapely geometry as ``WKTElement`` in ``TARGET_EPSG`` for writing with SQLAlchemy."""
         return WKTElement(geom.wkt, srid=TARGET_EPSG)

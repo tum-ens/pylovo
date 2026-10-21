@@ -14,7 +14,7 @@ from pylovo.config_loader import CLASSIFICATION_VERSION, USE_INFDB
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
 
 
-def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) -> None:
+def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) -> list:
     """Prepare the grid parameters of a new sample set for clustering.
 
     Creates the sample set of ``CLASSIFICATION_VERSION``, imports the building
@@ -26,6 +26,10 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) 
     Args:
         sample_from_postcode_result_only: Only sample PLZ that already have a
             ``postcode_result`` entry for ``VERSION_ID``.
+
+    Returns:
+        list: The PLZ that were removed from the sample set because no grids could be generated
+        (input of :func:`~pylovo.classification.clustering.report_grid_counts.report_grid_counts`).
     """
     # %% 1. create a sample set of PLZ for your classification
     # This takes a few seconds
@@ -66,6 +70,7 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) 
     for plz_index in samples['plz']:
         pc.analyze_grid_parameters_for_plz(plz=plz_index)
     print("--- %s seconds parameter calculation---" % (time.time() - start_time))
+    return sorted(int(plz) for plz in without_grids)
 
 
 def main():

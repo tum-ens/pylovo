@@ -41,7 +41,7 @@ def test_all_classification_modules_import():
     pytest.importorskip("plotly")
     code = "import " + ", ".join(
         ["pylovo.cli.classify", "pylovo.classification.sampling.sample",
-         "pylovo.classification.clustering.prepare_data_for_clustering",
+         "pylovo.classification.clustering.prepare_data_for_clustering", "pylovo.classification.clustering.report_grid_counts",
          "pylovo.classification.clustering.get_parameters_for_clustering",
          "pylovo.classification.clustering.get_no_clusters_for_clustering",
          "pylovo.classification.clustering.apply_clustering_for_visualisation",

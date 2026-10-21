@@ -15,6 +15,7 @@ try:
     from pylovo.classification.clustering.get_no_clusters_for_clustering import get_no_clusters_for_clustering
     from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
     from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
+    from pylovo.classification.clustering.report_grid_counts import report_grid_counts
     from pylovo.classification.sampling.sample import classification_version_exists
 except ModuleNotFoundError as exc:
     if (exc.name or "").split(".")[0] not in PLOTS_EXTRA_PACKAGES:
@@ -213,7 +214,7 @@ def main():
     )
 
     print("\nRunning prepare_data_for_clustering.py...")
-    prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only)
+    plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only)
 
     # The filters are applied when the grids are read: the answer belongs to the configuration of this classification.
     config = load_yaml(CONFIG_CLUSTERING_PATH)
@@ -253,6 +254,7 @@ def main():
         additional_filtering=apply_additional_filtering,
     )
 
+    report_grid_counts(additional_filtering=apply_additional_filtering, plz_without_grids=plz_without_grids)
     print("\nClassification process completed successfully!")
 
 
