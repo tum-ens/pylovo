@@ -91,7 +91,7 @@ tests and checks the contract:
 
 .. code-block:: bash
 
-   uv run --extra api pytest -q api/tests tests
+   uv run --extra api --extra plots pytest
    uv run --extra api python api/scripts/export_openapi.py   # after changing a route
 
 Building the documentation

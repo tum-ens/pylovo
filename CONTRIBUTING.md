@@ -163,9 +163,9 @@ uvx ruff check src
 3.2. **Tests**:
 The unit tests need no database. Run them with:
 ```bash
-uv run --extra api pytest -q tests api/tests
+uv run --extra api --extra plots pytest
 ```
-Tests that need a database are skipped unless you name a disposable database for them. Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
+This collects `tests` and `api/tests` and lists the reason of every skipped test. Tests that need a database are skipped unless you name a disposable database for them. Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
 
 3.3. **Documentation build**:
 Build the documentation with warnings as errors, as the CI does:

@@ -164,8 +164,8 @@ api/
 ## Tests
 
 ```bash
-uv run --extra api pytest -q api/tests tests                                  # no database needed
-PYLOVO_API_TEST_DATABASE=<sandbox db> uv run --extra api pytest -q api/tests  # + database tests
+uv run --extra api --extra plots pytest                                       # tests and api/tests, no database needed
+PYLOVO_API_TEST_DATABASE=<sandbox db> uv run --extra api --extra plots pytest  # + database tests
 ```
 
 The database tests only run when the variable names the database of the project's `.env` (use a
