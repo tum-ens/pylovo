@@ -34,3 +34,19 @@ def test_free_port():
         with pytest.raises(SystemExit, match="in use"):
             cli.free_port("127.0.0.1", busy)
     assert cli.free_port("127.0.0.1", busy) == busy
+
+
+@pytest.mark.parametrize(("host", "local_only"), [("127.0.0.1", True), ("localhost", True), ("0.0.0.0", False)])
+def test_local_only_follows_the_interface(monkeypatch, tmp_path, host, local_only):
+    uvicorn = pytest.importorskip("uvicorn")
+    from pylovo_viewer import app, db
+    env = tmp_path / ".env"
+    env.write_text("DBNAME=d\nDBUSER=u\nPASSWORD=p\nHOST=localhost\nPORT=5432\n")
+    seen = {}
+    monkeypatch.setattr(db.Database, "__init__", lambda self, settings: None)
+    monkeypatch.setattr(db.Database, "one", lambda self, sql: {"ok": 1})
+    monkeypatch.setattr(app, "create_app", lambda *args, **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(cli, "free_port", lambda host, wanted: 8770)
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: None)
+    cli.main(["--env", str(env), "--host", host, "--no-browser"])
+    assert seen["local_only"] is local_only

@@ -59,7 +59,8 @@ def test_the_list_follows_the_server(server, tmp_path):
 def test_requests_name_their_database(server, tmp_path):
     server.default.rows = {"AS origin": [{"fid": 1, "geometry": '{"type":"Point","coordinates":[11,48]}'}]}
     server.rows["infdb"] = {"AS origin": [{"fid": 2, "geometry": '{"type":"Point","coordinates":[12,49]}'}]}
-    client = TestClient(create_app(server.default.settings, tmp_path, db=server.default, connect=server.connect))
+    client = TestClient(create_app(server.default.settings, tmp_path, db=server.default, connect=server.connect),
+                        base_url="http://127.0.0.1:8770")
     assert client.get("/api/databases").json() == {"default": "infdb_mv", "databases": ["infdb_mv", "infdb", "infdb_test"]}
     fid = lambda url: [f["properties"]["fid"] for f in client.get(url).json()["features"]]   # noqa: E731
     assert fid("/api/layer/mv_stations?version=v1") == [1]

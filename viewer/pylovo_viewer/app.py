@@ -25,10 +25,17 @@ from pylovo_viewer.layers import Query, to_json
 from pylovo_viewer.settings import Settings
 
 STATIC = Path(__file__).parent / "static"
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 class Unavailable(RuntimeError):
     """The layer exists, but not in this database."""
+
+
+def host_name(header: str) -> str:
+    """The host of a ``Host`` header without its port (``[::1]:8770`` gives ``::1``)."""
+    name = header if header.endswith("]") else header.rsplit(":", 1)[0]
+    return name.strip("[]").lower()
 
 
 def parse_bbox(text: str | None) -> tuple[float, float, float, float] | None:
@@ -45,14 +52,24 @@ def parse_bbox(text: str | None) -> tuple[float, float, float, float] | None:
 
 
 def create_app(settings: Settings, data_dir: Path, db: Database | None = None,
-               connect: Callable[[Settings], Database] = Database) -> FastAPI:
+               connect: Callable[[Settings], Database] = Database, local_only: bool = True) -> FastAPI:
     """The app for the databases of the server in ``settings``; ``data_dir`` holds downloaded data (eTraGo).
 
     ``db`` is the connection to ``settings.dbname`` if already open; ``connect`` opens the others.
+    ``local_only`` answers only requests addressed to :data:`LOCAL_HOSTS`, so a web page cannot read the
+    viewer through a domain of its own that resolves to this machine (DNS rebinding).
     """
     sites = Sites(settings, data_dir, db=db, connect=connect)
     app = FastAPI(title="pylovo viewer", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.sites = sites
+
+    if local_only:
+        @app.middleware("http")
+        async def local_hosts_only(request: Request, call_next: Any) -> Response:
+            if host_name(request.headers.get("host", "")) not in LOCAL_HOSTS:
+                return JSONResponse({"detail": "the viewer answers only requests to 127.0.0.1 or localhost"},
+                                    status_code=403)
+            return await call_next(request)
 
     def site(name: str | None) -> Site:
         if name is not None and len(name) > 64:

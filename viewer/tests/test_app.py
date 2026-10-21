@@ -14,7 +14,18 @@ from pylovo_viewer.db import SchemaError
 
 @pytest.fixture()
 def client(fake_db, tmp_path) -> TestClient:
-    return TestClient(create_app(fake_db.settings, tmp_path, db=fake_db))
+    return TestClient(create_app(fake_db.settings, tmp_path, db=fake_db), base_url="http://127.0.0.1:8770")
+
+
+def test_only_requests_to_this_machine(fake_db, tmp_path):
+    local = TestClient(create_app(fake_db.settings, tmp_path, db=fake_db), base_url="http://127.0.0.1:8770")
+    for host in ("127.0.0.1:8770", "localhost:8770", "LOCALHOST", "[::1]:8770"):
+        assert local.get("/api/info", headers={"host": host}).status_code == 200
+    for host in ("attacker.example:8770", "127.0.0.1.attacker.example"):   # DNS rebinding
+        assert local.get("/api/info", headers={"host": host}).status_code == 403
+        assert local.get("/", headers={"host": host}).status_code == 403
+    shared = TestClient(create_app(fake_db.settings, tmp_path, db=fake_db, local_only=False))
+    assert shared.get("/api/info", headers={"host": "viewer.lan:8770"}).status_code == 200
 
 
 def test_page_and_info(client):

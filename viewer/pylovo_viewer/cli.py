@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> None:
         import uvicorn
     except ImportError:
         raise SystemExit("pylovo-viewer needs the 'viewer' extra: uv sync --extra viewer") from None
-    from pylovo_viewer.app import create_app
+    from pylovo_viewer.app import LOCAL_HOSTS, create_app
     from pylovo_viewer.db import Database, DatabaseError
     from pylovo_viewer.settings import SettingsError, find_env_file, load_settings
 
@@ -87,13 +87,13 @@ def main(argv: list[str] | None = None) -> None:
     db = Database(settings)
     try:
         db.one("SELECT 1")
-        app = create_app(settings, args.data_dir, db)
+        app = create_app(settings, args.data_dir, db, local_only=args.host in LOCAL_HOSTS)
     except DatabaseError as exc:
         raise SystemExit(f"pylovo-viewer: cannot use {settings.describe()} ({env_file}): {exc}") from None
     port = free_port(args.host, args.port)
     url = f"http://{'127.0.0.1' if args.host in ('0.0.0.0', '::') else args.host}:{port}/"
     print(f"pylovo viewer: {url}\n  database {settings.describe()} (read-only), settings from {env_file}", flush=True)
-    if args.host not in ("127.0.0.1", "localhost", "::1"):
+    if args.host not in LOCAL_HOSTS:
         print("  warning: listening beyond this machine; the viewer has no login", flush=True)
     if not args.no_browser and can_open_browser():
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
