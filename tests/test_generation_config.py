@@ -77,6 +77,36 @@ def test_added_later_keys_are_in_the_snapshot_of_this_code():
             node = node[key]
 
 
+def test_version_insert_runs_no_ddl():
+    """Each GridGenerator writes the version row; an ALTER TABLE there locks pylovo.version exclusively."""
+    import logging
+
+    from pylovo.database.preprocessing_mixin import PreprocessingMixin
+
+    class Cursor:
+        rowcount = 1
+
+        def __init__(self):
+            self.queries, self.stored = [], None
+
+        def execute(self, query, params=None):
+            self.queries.append(" ".join(query.split()))
+            if query.lstrip().startswith("INSERT"):
+                self.stored = params[2]
+
+        def fetchone(self):
+            return (self.stored,)
+
+    class Connection:
+        def commit(self):
+            pass
+
+    client = object.__new__(PreprocessingMixin)
+    client.cur, client.conn, client.logger = Cursor(), Connection(), logging.getLogger("version-insert-test")
+    client.insert_version_if_not_exists()
+    assert [query.split()[0] for query in client.cur.queries] == ["INSERT", "SELECT"]
+
+
 def two_unit_net(parallel: int) -> pp.pandapowerNet:
     net = pp.create_empty_network()
     hv, lv = pp.create_bus(net, 20), pp.create_bus(net, 0.4)

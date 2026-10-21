@@ -151,7 +151,6 @@ class PreprocessingMixin(BaseMixin):
                 sort_keys=True,
             )
 
-            self.cur.execute("ALTER TABLE pylovo.version ADD COLUMN IF NOT EXISTS generation_parameters jsonb;")
             insert_query = """
                 INSERT INTO pylovo.version (
                     version_id,
