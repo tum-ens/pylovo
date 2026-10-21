@@ -10,7 +10,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from starlette.concurrency import run_in_threadpool
 
 from pylovo_api import load_edit_service as svc
@@ -24,7 +24,7 @@ class Changes(BaseModel):
     """New input values of one building (only the fields that change)."""
 
     model_config = ConfigDict(extra="forbid")
-    households: int | None = None
+    households: StrictInt | None = None  # a whole number: no true, no "4", no 4.0
     residential_floor_area: float | None = Field(None, allow_inf_nan=False)
     nonresidential_floor_area: float | None = Field(None, allow_inf_nan=False)
     nonresidential_use: Literal["Commercial", "Public"] | None = None

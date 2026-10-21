@@ -340,6 +340,9 @@ def test_request_models_reject_nan_infinity_and_extra_fields(client):
     for raw in ('{"objectid": "a", "changes": {"nonresidential_floor_area": NaN}}',
                 '{"objectid": "a", "changes": {"residential_floor_area": Infinity}}',
                 '{"objectid": "a", "changes": {"households": 1.5}}',
+                '{"objectid": "a", "changes": {"households": true}}',
+                '{"objectid": "a", "changes": {"households": "4"}}',
+                '{"objectid": "a", "changes": {"households": 4.0}}',
                 '{"objectid": "a", "changes": {"households": 4}, "extra": 1}',
                 '{"objectid": "a", "changes": {"peak_load_in_kw": 4}}'):
         res = client.post("/api/grids/1/load-edit/preview", content=raw, headers={"Content-Type": "application/json"})
