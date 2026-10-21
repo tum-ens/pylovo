@@ -387,11 +387,11 @@ def test_a_plz_that_is_not_generated_or_already_analyzed_is_not_analyzed_again(m
     assert dbc.events == []
 
 
-def test_a_failing_step_clears_the_sample_set_of_the_plz_and_raises(monkeypatch):
+def test_a_failing_step_raises_without_touching_the_sample_set(monkeypatch):
     dbc = Workflow()
     with pytest.raises(RuntimeError, match="analysis failed"):
         workflow(dbc, monkeypatch, fail_on="analyze_cable_lengths_for_plz").analyze_parameters_for_plz(80803)
-    assert dbc.events[-1] == ("sample set cleared", 80803) and "commit" not in dbc.events
+    assert ("sample set cleared", 80803) not in dbc.events and "commit" not in dbc.events   # CLASSIF-03
 
 
 def test_the_per_grid_analysis_skips_stored_grids_and_goes_on_after_a_failing_one(monkeypatch):

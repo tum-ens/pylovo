@@ -275,8 +275,8 @@ class Kcids:
     def get_greenfield_bcids(self, plz, kcid):
         return self.bcids[kcid]
 
-    def update_transformer_rated_power(self, plz, kcid, bcid, note):
-        self.events.append(("rated", kcid, bcid, note))
+    def update_transformer_rated_power(self, plz, kcid, bcid):
+        self.events.append(("rated", kcid, bcid))
 
 
 def run_all(monkeypatch, remaining, merge=True):
@@ -297,8 +297,8 @@ def run_all(monkeypatch, remaining, merge=True):
 def test_a_kcid_without_stations_is_dimensioned_and_each_greenfield_bcid_is_positioned_and_rated(monkeypatch):
     events = run_all(monkeypatch, remaining=3)
 
-    assert events[:5] == [("dimension", 1), ("position", 1, 1), ("rated", 1, 1, 1), ("position", 1, 2),
-                          ("rated", 1, 2, 1)]
+    assert events[:5] == [("dimension", 1), ("position", 1, 1), ("rated", 1, 1), ("position", 1, 2),
+                          ("rated", 1, 2)]
 
 
 def test_existing_stations_fill_first_then_the_rest_gets_greenfield_stations(monkeypatch):
@@ -306,13 +306,13 @@ def test_existing_stations_fill_first_then_the_rest_gets_greenfield_stations(mon
 
     # brownfield bcids (negative) are not positioned again; small greenfield clusters may join a station
     assert events[5:] == [("brownfield", 2, [7, 8]), ("dimension", 2), ("merge", 2), ("position", 2, 1),
-                          ("rated", 2, 1, 1)]
+                          ("rated", 2, 1)]
 
 
 def test_without_remaining_buildings_the_isolated_one_is_deleted_and_nothing_is_dimensioned(monkeypatch):
     events = run_all(monkeypatch, remaining=0)
 
-    assert events[5:] == [("brownfield", 2, [7, 8]), ("delete isolated", 2), ("position", 2, 1), ("rated", 2, 1, 1)]
+    assert events[5:] == [("brownfield", 2, [7, 8]), ("delete isolated", 2), ("position", 2, 1), ("rated", 2, 1)]
 
 
 def test_the_merge_into_existing_stations_needs_the_merge_switch(monkeypatch):

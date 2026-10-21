@@ -102,6 +102,9 @@ class Cursor:
     def fetchall(self):
         return self.rows.pop(0) if self.rows else []
 
+    def fetchone(self):  # the MV schema probe of the version delete: the schema has MV tables
+        return (True,)
+
 
 def results_client(cursor):
     events = []
@@ -126,8 +129,10 @@ def test_deleting_versions_checks_that_all_exist_then_deletes_refreshes_and_comm
     client, events = results_client(Cursor(rows=[[("1",), ("2",)]], rowcount=2))
 
     assert client.delete_versions_from_all_tables(["1", "2"]) == 2
-    assert [event[0].split()[0] for event in events] == ["SELECT", "DELETE", "refresh", "commit"]
-    assert events[1] == ("DELETE FROM pylovo.version WHERE version_id = ANY(%(versions)s);", {"versions": ["1", "2"]})
+    # versions, MV schema probe, busy MV variants (none), then the delete
+    assert [event[0].split()[0] for event in events] == ["SELECT", "SELECT", "SELECT", "DELETE", "refresh", "commit"]
+    assert "pg_try_advisory_xact_lock" in events[2][0]
+    assert events[3] == ("DELETE FROM pylovo.version WHERE version_id = ANY(%(versions)s);", {"versions": ["1", "2"]})
 
 
 def test_deleting_a_missing_version_deletes_nothing():
@@ -146,11 +151,12 @@ def test_deleting_no_version_is_an_error_without_any_query():
 
 
 def test_deleting_a_plz_removes_its_mv_variants_first_and_commits_at_the_end():
-    client, events = results_client(Cursor(rows=[[("mv_a",), ("mv_b",)]]))
+    client, events = results_client(Cursor(rows=[[], [("mv_a",), ("mv_b",)]]))   # no busy variant, two deleted
 
     client.delete_plz_from_all_tables(80803, "1")
-    assert [table_of(event) for event in events[:-2]] == [
+    assert "pg_try_advisory_xact_lock" in events[0][0]                  # busy MV variants are refused first
+    assert [table_of(event) for event in events[1:-2]] == [
         "pylovo.mv_variant", "pylovo.ways_result", "pylovo.mv_customers", "pylovo.postcode_result"]
-    assert "RETURNING mv_variant_id" in events[0][0]
+    assert "RETURNING mv_variant_id" in events[1][0]
     assert events[-2:] == [("refresh",), ("commit",)]
     assert all(event[1] == {"v": "1", "p": 80803} for event in events[:-2])

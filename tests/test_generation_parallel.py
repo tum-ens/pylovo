@@ -71,8 +71,6 @@ def test_without_parallelism_the_plz_are_generated_one_after_the_other_and_the_v
     assert refreshed == [True] and set(result) == set(plz)
 
 
-@pytest.mark.xfail(strict=True, reason="LVGEN-01: a PLZ that failed inside a parallel worker is logged as completed and the "
-                                       "run as finished with no failed PLZ")
 def test_a_plz_that_failed_in_a_worker_is_not_reported_as_free_of_failures(monkeypatch, caplog):
     outcomes = {80331: GenerationOutcome.GENERATED, 80333: GenerationOutcome.FAILED}
     with caplog.at_level(logging.INFO, logger=LOGGER.name):

@@ -26,6 +26,7 @@ def calls(monkeypatch):
 
     def save_geodata_as_csv(df_plz, data_path_lines, data_path_bus):
         recorded.append(("plz export", df_plz["plz"].tolist(), data_path_lines, data_path_bus))
+        return []                                                   # the PLZ without grids
 
     def get_bus_line_geo_for_network(pandapower_net, plz):
         recorded.append(("geo", pandapower_net, plz))
