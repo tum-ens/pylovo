@@ -707,6 +707,23 @@ def test_station_drop_ratio_of_an_upsized_station():
     assert electrical.station_drop_ratio(630.0, 1260.0, 0.95) == pytest.approx(0.5)   # two units of the same type
     for lv_sn, sn in ((400.0, 400.0), (math.nan, 630.0), (0.0, 630.0), (400.0, math.nan)):
         assert electrical.station_drop_ratio(lv_sn, sn, 0.95) == 1.0
+    # station-busbar customers load the same transformer: the drop grows with (own + busbar) / own
+    assert electrical.station_drop_ratio(400.0, 400.0, 0.95, 300.0, 150.0) == pytest.approx(1.5)
+    assert electrical.station_drop_ratio(400.0, 630.0, 0.95, 300.0, 150.0) == pytest.approx(1.5 * expected)
+    assert electrical.station_drop_ratio(400.0, 400.0, 0.95, 0.0, 150.0) == 1.0
+
+
+def test_station_budget_takes_the_busbar_customers_into_the_transformer_drop():
+    inp, plan, (s1, s2) = _budget_district(lv_design_source_vm_pu=0.975)
+    cases = _budget_cases({s1: 1.0, s2: 1.0})
+    before = electrical.station_budgets(inp, plan, cases)[s1]
+    own = float(coincidence.coincident_kw(*(inp.nodes.loc[[s1], list(c)].to_numpy(dtype=float)
+                                            for c in (coincidence.INSTALLED_COLUMNS, coincidence.UNITS_COLUMNS)),
+                                          inp.lv.g())[0])
+    inp.nodes.loc[s1, "p_fixed_kw"] = 0.5 * own
+    after = electrical.station_budgets(inp, plan, cases)
+    assert before.lv_busbar_vm_pu - after[s1].lv_busbar_vm_pu == pytest.approx((0.975 - 0.96) * 0.5)
+    assert after[s2].lv_busbar_vm_pu == electrical.station_budgets(inp, plan, cases)[s2].lv_busbar_vm_pu
 
 
 def test_station_budget_of_an_upsized_station_scales_the_transformer_drop():

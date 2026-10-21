@@ -812,17 +812,19 @@ def test_run_coupling_in_a_fork_pool(fake_db, monkeypatch, tmp_path):
     assert {p.stem: json.loads(p.read_text())["status"] for p in out_dir.iterdir()} == {"3": "done", "5": "done"}
 
 
-def test_an_upsized_station_is_coupled_with_its_upsized_transformer():
+@pytest.mark.parametrize("busbar_kw", [0.0, 150.0])
+def test_an_upsized_station_is_coupled_with_its_upsized_transformer(busbar_kw):
     """A station that the MV model upsized for its station-busbar customers: couple replaces the 0.4 MVA transformer
-    of its LV net by the upsized one, and the analytic budget (transformer drop scaled) matches the coupled design
-    point."""
+    of its LV net by the upsized one, and the analytic budget (transformer drop scaled by the rating and by the load
+    of the busbar customers) matches the coupled design point."""
     lv_nets = {gid: make_lv_net(gid, households=60.0, commercial_kw=150.0) for gid in (1, 2, 3)}
     inp, plan = make_district(lv_nets, [[1, 2, 3]], spacing=400.0)
     key = 102
-    inp.nodes.loc[key, ["sn_kva", "lv_sn_kva"]] = [630.0, 400.0]
+    inp.nodes.loc[key, ["sn_kva", "lv_sn_kva", "p_fixed_kw"]] = [630.0, 400.0, busbar_kw]
     design, cases, budgets, stored = planned(inp, plan)
     stations = station_rows(inp, cases, budgets)
-    record = {"busbar_customers": {"n": 1, "kw": 0.0, "categories": {}, "lv_sn_kva": 400.0,
+    categories = {"Commercial": {"kw": busbar_kw}} if busbar_kw else {}
+    record = {"busbar_customers": {"n": 1, "kw": busbar_kw, "categories": categories, "lv_sn_kva": 400.0,
                                    "upsized_sn_kva": 630.0}}
     stations["load_stats"] = [json.dumps(record) if k == key else None for k in stations["mv_node_id"]]
     assert coupling.upsized_ratings(stations) == {2: 630.0}
@@ -833,10 +835,11 @@ def test_an_upsized_station_is_coupled_with_its_upsized_transformer():
     assert trafo["sn_mva"].tolist() == [0.63] and trafo["std_type"].tolist() == ["0.63 MVA 20/0.4 kV"]
     assert result.net.trafo.loc[result.net.trafo["grid_result_id"] == 1.0, "sn_mva"].tolist() == [0.4]
     rows = result.rows.set_index("mv_node_id")
-    assert abs(rows.at[key, "coupled_lv_busbar_vm_pu"] - budgets[key].lv_busbar_vm_pu) < 1e-3
+    # without the busbar customers in the drop, the 150 kW case was 7.5 mV too optimistic
+    assert abs(rows.at[key, "coupled_lv_busbar_vm_pu"] - budgets[key].lv_busbar_vm_pu) < (2e-3 if busbar_kw else 1e-3)
     # the budget without the scaled drop would miss the coupled design point by several mV
     plain = electrical.station_budgets(dataclasses.replace(inp, nodes=inp.nodes.assign(lv_sn_kva=630.0)), plan, cases)
-    assert rows.at[key, "coupled_lv_busbar_vm_pu"] - plain[key].lv_busbar_vm_pu > 3e-3
+    assert busbar_kw or rows.at[key, "coupled_lv_busbar_vm_pu"] - plain[key].lv_busbar_vm_pu > 3e-3
     upsized = coupling.upsize_station_transformer(lv_nets[2], 1260.0)
     assert upsized.trafo[["sn_mva", "parallel"]].values.tolist() == [[0.63, 2]] and lv_nets[2].trafo.at[0, "sn_mva"] == 0.4
 
@@ -881,6 +884,34 @@ def test_a_variant_of_another_stage_version_is_not_coupled(fake_db, tmp_path):
     with pytest.raises(MvStageError, match="planned with MV stage version"):
         coupling.export_coupled_net("t", "d1", 3, tmp_path / "old.json")
     assert "saved" not in state and not (tmp_path / "old.json").exists()
+
+
+def _lv_station_net(sn_kva: float, own_kw: float) -> pp.pandapowerNet:
+    net = pp.create_empty_network()
+    mv = pp.create_bus(net, 20.0, name="MVbus 1")
+    lv = pp.create_bus(net, 0.4, name="LVbus 1")
+    pp.create_ext_grid(net, mv, vm_pu=1.0)
+    pp.create_transformer(net, mv, lv, std_type=f"{sn_kva / 1000:g} MVA 20/0.4 kV")
+    pp.create_load(net, lv, p_mw=own_kw / 1000.0, q_mvar=own_kw / 1000.0 * math.tan(math.acos(0.95)))
+    return net
+
+
+@pytest.mark.parametrize("lv_kva, own_kw, busbar_kw, mv_kva", [(400, 300.0, 150.0, 630),    # upsized station
+                                                                (400, 250.0, 60.0, 400),     # not upsized
+                                                                (630, 500.0, 300.0, 1260)])  # two units
+def test_the_budget_drop_carries_the_busbar_customers_as_the_design_point_check(lv_kva, own_kw, busbar_kw, mv_kva):
+    """The analytic transformer drop (station_budgets) agrees with couple's design-point check, which adds the
+    station-busbar customers at the LV busbar of the station transformer."""
+    net, lv_ref = _lv_station_net(lv_kva, own_kw), 0.96
+    lo, hi = 0.9, 1.2                    # r: the MV voltage that puts LVbus 1 at lv_ref at tap 0 (the LV stage)
+    for _ in range(40):
+        net.ext_grid["vm_pu"] = mid = 0.5 * (lo + hi)
+        pp.runpp(net)
+        lo, hi = (mid, hi) if net.res_bus.at[1, "vm_pu"] < lv_ref else (lo, mid)
+    d_t = (0.5 * (lo + hi) - lv_ref) * electrical.station_drop_ratio(lv_kva, mv_kva, 0.95, own_kw, busbar_kw)
+    check_net = coupling.upsize_station_transformer(net, mv_kva) if mv_kva != lv_kva else net
+    check = coupling.design_point_check(check_net, 1.0, 0, busbar_loads={"Commercial": busbar_kw}, power_factor=0.95)
+    assert 1.0 - d_t == pytest.approx(check["coupled_lv_busbar_vm_pu"], abs=1e-3)
 
 
 def test_station_units_total_the_rating_as_pylovo_builds_them():

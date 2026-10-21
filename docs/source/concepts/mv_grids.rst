@@ -810,12 +810,17 @@ one tap :math:`t` per station from the MV voltage of the station in the load cas
 
 .. math::
 
-   \Delta_T &= r - v_\mathrm{ref}, \qquad k(t) = \frac{1}{1 + t\,s}, \\
+   \Delta_T &= (r - v_\mathrm{ref})\,\rho\,\frac{P_\mathrm{own} + P_\mathrm{bb}}{P_\mathrm{own}},
+   \qquad k(t) = \frac{1}{1 + t\,s}, \\
    v_\mathrm{LV}(t) &= (v_\mathrm{load} - b)\,k(t) - \Delta_T, \qquad
    m(t) = v_\mathrm{LV}(t) - (v_\mathrm{ref} - \varepsilon).
 
-Here :math:`\Delta_T` is the drop over the station transformer at the LV design load (scaled to the
-larger rating of an upsized station), :math:`s` is the tap step (``mvlv_tap_step_percent``, 2.5 %)
+Here :math:`\Delta_T` is the drop over the station transformer at the LV design load
+:math:`P_\mathrm{own}` (the coincident load of the LV grid, ``p_own_kw``), raised in proportion by the
+fixed load :math:`P_\mathrm{bb}` of the station-busbar customers on the same transformer, as
+``pylovo-mv couple`` adds them, and scaled by :math:`\rho`, the drop of the larger rating of an
+upsized station per drop of the rating of its LV grid at the same load (1 without upsizing).
+:math:`s` is the tap step (``mvlv_tap_step_percent``, 2.5 %)
 and :math:`t < 0` raises the LV side. :math:`v_\mathrm{load}` is the MV voltage of the station in
 the load case. The busbar band :math:`b` (``busbar_band_pu``, 0.015) puts the busbar at the lower
 edge of the OLTC band. :math:`\varepsilon` (``lv_design_tolerance_pu``, 0.002) is a small tolerance

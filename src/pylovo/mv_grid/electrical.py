@@ -1161,21 +1161,30 @@ def station_transformer(sn_kva: float) -> tuple[float, float]:
     return STATION_TRANSFORMERS[-1][1], STATION_TRANSFORMERS[-1][2]
 
 
-def station_drop_ratio(lv_sn_kva: float, sn_kva: float, power_factor: float) -> float:
-    """The transformer drop of a station with the rating ``sn_kva`` of the MV model per drop with the rating
-    ``lv_sn_kva`` of its LV grid, at the same load: ``(vkr cos φ + vkx sin φ) / S_n`` of the two ratings
-    (:func:`station_transformer`). It scales the stored LV requirement of a station upsized for its
-    station-busbar customers (``inputs.upsize_busbar_stations``); 1 without two positive ratings."""
+def station_drop_ratio(lv_sn_kva: float, sn_kva: float, power_factor: float, own_kw: float = 0.0,
+                       busbar_kw: float = 0.0) -> float:
+    """The transformer drop of a station in the MV model per drop of its LV grid at the LV design load.
+
+    The rating factor is the drop with the rating ``sn_kva`` of the MV model per drop with the rating ``lv_sn_kva``
+    of its LV grid at the same load, ``(vkr cos φ + vkx sin φ) / S_n`` of the two ratings
+    (:func:`station_transformer`); 1 without two positive, different ratings (a station upsized for its
+    station-busbar customers, ``inputs.upsize_busbar_stations``, has them). The load factor is
+    ``(own_kw + busbar_kw) / own_kw``: the station-busbar customers load the same transformer as the LV grid
+    (``own_kw``, its coincident load), as in ``pylovo-mv couple``; 1 without a positive ``own_kw``. The stored LV
+    requirement of the station is scaled by the product of both.
+    """
+    load = (own_kw + max(busbar_kw, 0.0)) / own_kw if math.isfinite(own_kw) and own_kw > 0 \
+        and math.isfinite(busbar_kw) else 1.0
     if not (math.isfinite(lv_sn_kva) and math.isfinite(sn_kva) and lv_sn_kva > 0 and sn_kva > 0) \
             or abs(sn_kva - lv_sn_kva) < 1e-9:
-        return 1.0
+        return load
     sin_phi = math.sqrt(max(1.0 - float(power_factor) ** 2, 0.0))
 
     def drop(rating: float) -> float:
         vk, vkr = station_transformer(rating)
         return (vkr * float(power_factor) + math.sqrt(max(vk * vk - vkr * vkr, 0.0)) * sin_phi) / rating
 
-    return drop(sn_kva) / drop(lv_sn_kva)
+    return drop(sn_kva) / drop(lv_sn_kva) * load
 
 
 def _vm(cases: Mapping[str, CaseResult], names: Sequence[str], how: str) -> pd.Series:
@@ -1193,7 +1202,7 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
     Per station with the stored LV requirement ``r = lv_design_source_vm_pu`` (the MV voltage that puts its LV busbar
     at ``lv_reference_voltage_pu`` at its own coincident load, tap 0)::
 
-        dT         = r - lv_ref
+        dT         = (r - lv_ref) · station_drop_ratio
         V_low      = vm_load - busbar_band_pu
         k(t)       = 1 / (1 + t · mvlv_tap_step_percent / 100)
         lv_bus(t)  = V_low · k(t) - dT
@@ -1201,8 +1210,9 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
         t* = the tap closest to 0 with margin_low(t) >= 0 over [mvlv_tap_min, mvlv_tap_max], else the most raising
         band_conflict = tap_limit = margin_low(t*) < 0
 
-    A station upsized in the MV model for its station-busbar customers (``sn_kva`` above ``lv_sn_kva``) scales
-    ``dT`` by :func:`station_drop_ratio`. The feed-in values of the budget are NaN.
+    ``dT`` is scaled by :func:`station_drop_ratio`: by the load of the station-busbar customers (``p_fixed_kw`` of
+    the station) on top of the coincident load of its LV grid, and by the larger rating of a station upsized for
+    them in the MV model (``sn_kva`` above ``lv_sn_kva``). The feed-in values of the budget are NaN.
 
     Stations are skipped (no entry) when the LV version has no ``lv_reference_voltage_pu``, the station has no
     stored requirement, or the load case gives it no voltage (not converged or unsupplied); :func:`node_flags`
@@ -1225,14 +1235,16 @@ def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, 
     band = float(params.busbar_band_pu)
     floor = float(lv_ref) - float(params.lv_design_tolerance_pu)
     budgets: dict[int, StationBudget] = {}
-    for key in stations:
+    installed, units, busbar_kw = _load_arrays(inp, stations)
+    own_kw = np.atleast_1d(coincidence.coincident_kw(installed, units, inp.lv.g()))
+    for i, key in enumerate(stations):
         row = inp.nodes.loc[key]
         r = _value(row, "lv_design_source_vm_pu", math.nan)
         v_load = float(vm_load.get(key, math.nan))
         if not (math.isfinite(r) and math.isfinite(v_load)):
             continue
         ratio = station_drop_ratio(_value(row, "lv_sn_kva", math.nan), _value(row, "sn_kva", math.nan),
-                                   float(inp.lv.power_factor))
+                                   float(inp.lv.power_factor), float(own_kw[i]), float(busbar_kw[i]))
         d_t = (r - float(lv_ref)) * ratio
         lv_bus = (v_load - band) * k - d_t
         margin_low = lv_bus - floor
