@@ -215,11 +215,15 @@ class ParameterCalculator:
         consumer_mask = pandapower_net.bus["name"].fillna("").str.contains(self.consumer_bus_keyword, na=False)
         return pandapower_net.bus[consumer_mask].index.tolist()
 
-    def analyze_parameters_for_plz(self, plz: int = None):
+    def analyze_parameters_for_plz(self, plz: int = None) -> str:
         """Compute and store PLZ-wide parameters.
 
         Args:
             plz (int): Postcode area ID
+
+        Returns:
+            ``"no_grids"`` if the PLZ has no grids for the ``VERSION_ID`` (nothing is done),
+            ``"already_analysed"`` if its parameters exist, else ``"analysed"``.
 
         Side effects:
             - Reads all nets of the PLZ from the database.
@@ -233,11 +237,11 @@ class ParameterCalculator:
         grid_generated = self.dbc.is_grid_generated(self.plz)
         if not grid_generated:
             self.dbc.logger.info(f"Grid for the postcode area {self.plz} is not generated, yet. Generate it first.")
-            return
+            return "no_grids"
         grid_analysed = self.dbc.is_grid_analyzed(self.plz)
         if grid_analysed:
             self.dbc.logger.info(f"Grid for the postcode area {self.plz} has already been analyzed.")
-            return
+            return "already_analysed"
 
         try:
             self.dbc.logger.info(f"PLZ {self.plz}: start basic result analysis")
@@ -248,16 +252,20 @@ class ParameterCalculator:
             self.analyze_transformer_parameters_for_plz(self.plz)
             self.dbc.logger.info(f"PLZ {self.plz}: result analysis finished")
             self.dbc.conn.commit()
+            return "analysed"
         except Exception as e:
             self.dbc.logger.error(f"Error during analysis for PLZ {self.plz}: {e}")
             self.dbc.logger.info(f"Skipped PLZ {self.plz} due to analysis error.")
             raise
 
-    def analyze_grid_parameters_for_plz(self, plz: int = None):
+    def analyze_grid_parameters_for_plz(self, plz: int = None) -> str:
         """Compute and store per-grid parameters for all grids of an analyzed PLZ.
 
         Args:
             plz (int): Postcode area ID
+
+        Returns:
+            ``"not_analysed"`` if the PLZ-level parameters are missing (nothing is done), else ``"analysed"``.
 
         Note:
             Ensures PLZ-level metrics exist first (used for per-PLZ lookups).
@@ -270,7 +278,7 @@ class ParameterCalculator:
         if not grid_analysed:
             self.dbc.logger.info(
                 f"PLZ parameters for the postcode area {self.plz} missing. Please run analyze_parameters_for_plz() first.")
-            return
+            return "not_analysed"
 
         cluster_list = self.dbc.get_list_from_plz(self.plz)
         total_grids = len(cluster_list)
@@ -296,6 +304,7 @@ class ParameterCalculator:
                 )
 
         print(f"Finished PLZ {self.plz}. Calculated new: {calculated}, Skipped existing: {skipped}.")
+        return "analysed"
 
     # -------------------------------------------------------------------------
     # Shared Comparison-Parameter Helpers

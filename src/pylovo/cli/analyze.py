@@ -19,18 +19,34 @@ from pylovo.analysis.parameter_calculation import ParameterCalculator
 EXIT_INCOMPLETE = 3
 
 
-def analyze_plz(plz: int):
-    """Calculate and store the PLZ-level parameters (skipped if they already exist)."""
-    pc = ParameterCalculator()
-    pc.analyze_parameters_for_plz(plz)
-    print(f"✓ Calculated parameters for PLZ {plz}")
+def analyze_plz(plz: int) -> bool:
+    """Calculate and store the PLZ-level parameters (skipped if they already exist).
+
+    Returns:
+        False if the PLZ has no grids, else True (also if it was analysed before).
+    """
+    status = ParameterCalculator().analyze_parameters_for_plz(plz)
+    if status == "no_grids":
+        print(f"✗ PLZ {plz} has no grids in the configured version: generate it first")
+    elif status == "already_analysed":
+        print(f"- PLZ {plz} is already analysed, skipped")
+    else:
+        print(f"✓ Calculated parameters for PLZ {plz}")
+    return status != "no_grids"
 
 
-def analyze_grid(plz: int):
-    """Calculate and store the clustering parameters of every grid of a PLZ (after :func:`analyze_plz`)."""
-    pc = ParameterCalculator()
-    pc.analyze_grid_parameters_for_plz(plz)
-    print(f"✓ Calculated parameters per grid for PLZ {plz}")
+def analyze_grid(plz: int) -> bool:
+    """Calculate and store the clustering parameters of every grid of a PLZ (after :func:`analyze_plz`).
+
+    Returns:
+        False if the PLZ-level parameters are missing (nothing was calculated), else True.
+    """
+    status = ParameterCalculator().analyze_grid_parameters_for_plz(plz)
+    if status == "not_analysed":
+        print(f"✗ PLZ {plz} is not analysed yet (or has no grids): run pylovo-analyze --plz {plz} first")
+    else:
+        print(f"✓ Calculated parameters per grid for PLZ {plz}")
+    return status != "not_analysed"
 
 
 def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_id: str | None,
@@ -142,14 +158,17 @@ Examples:
                 print(f"✗ {missing} source buildings are neither in a grid nor recorded as left out")
                 sys.exit(EXIT_INCOMPLETE)
             return
+        plz_analysis = args.all or not args.per_grid     # --all: the PLZ analysis, then per grid
+        grid_analysis = args.all or args.per_grid
+        failed = []
         for plz in args.plz:
-            if args.all:
-                analyze_plz(plz)
-                analyze_grid(plz)
-            elif args.per_grid:
-                analyze_grid(plz)
-            else:
-                analyze_plz(plz)
+            if plz_analysis and not analyze_plz(plz):
+                failed.append(plz)
+            elif grid_analysis and not analyze_grid(plz):
+                failed.append(plz)
+        if failed:
+            print(f"✗ Nothing was calculated for PLZ {failed}")
+            sys.exit(1)
 
     except Exception as e:
         print(f"✗ Error: {e}")
