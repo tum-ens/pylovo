@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional, Any
 
 import numpy as np
+import pandas as pd
 import pandapower as pp
 import plotly
 import pandapower.plotting.plotly as pp_plotly
@@ -33,6 +34,8 @@ if ACCESS_TOKEN_PLOTLY:
 def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
     """Plot the transformers of a PLZ on a map, colored by their size.
 
+    The size is the station rating ``sn_mva x parallel`` in kVA, as in ``plz_parameters``
+    and the charts of the PLZ: a station of two parallel 400 kVA units is 800 kVA.
     Colors come from ``PLOT_COLOR_DICT`` in ``config_analysis.yaml``; if a size is
     missing there, pandapower's default colors are used for all sizes.
 
@@ -56,8 +59,9 @@ def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
 
     grid_index = 1
     for net in nets:
-        for row in net.trafo[["sn_mva", "lv_bus"]].itertuples():
-            trafo_size = round(row.sn_mva * 1e3)
+        for row in net.trafo.itertuples():
+            parallel = getattr(row, "parallel", 1)
+            trafo_size = round(row.sn_mva * (max(1, int(parallel)) if pd.notna(parallel) else 1) * 1e3)
 
             # Extract bus coordinates
             trafo_geom = None

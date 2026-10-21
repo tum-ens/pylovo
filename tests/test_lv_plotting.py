@@ -19,8 +19,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
+import pandapower as pp  # noqa: E402
+
 from pylovo.plotting.generation import networks  # noqa: E402
-from pylovo.plotting.validation import metric_validation, powerflow_validation  # noqa: E402
+from pylovo.plotting.validation import geo_validation, metric_validation, powerflow_validation  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -101,3 +103,35 @@ def test_the_load_and_voltage_histograms_refuse_one_axes():
     _, ax = plt.subplots()
     with pytest.raises(ValueError, match="two axes"):
         powerflow_validation.plot_load_and_voltage_distribution(_net_with_results(), ax=ax)
+
+
+def _station_net(parallel=2):
+    """A stored grid with one station of ``parallel`` 400 kVA units at its LV bus."""
+    net = pp.create_empty_network()
+    mv, lv = pp.create_bus(net, 20.0, geodata=(11.5, 48.1)), pp.create_bus(net, 0.4, geodata=(11.5, 48.1))
+    pp.create_transformer(net, mv, lv, std_type="0.4 MVA 20/0.4 kV", parallel=parallel)
+    return net
+
+
+class GridClient(FakeClient):
+    """One stored grid per PLZ."""
+    net = None
+
+    def get_list_from_plz(self, plz):
+        return [(1, 1)]
+
+    def read_net_db(self, plz, kcid, bcid, **kwargs):
+        return self.net
+
+
+def test_the_transformer_map_colours_a_station_by_its_rating_like_the_charts(monkeypatch):
+    GridClient.net = _station_net(parallel=2)
+    drawn = {}
+    monkeypatch.setattr(geo_validation, "DatabaseClient", GridClient)
+    monkeypatch.setattr(geo_validation, "vlevel_plotly", lambda net_plot, **kwargs: drawn.update(net=net_plot, **kwargs))
+
+    geo_validation.plot_trafo_on_map(85653)
+
+    assert drawn["net"].bus["vn_kv"].tolist() == [800]                              # 2 x 400 kVA
+    assert drawn["net"].bus["name"].iloc[0].endswith("transformer: 800_kVA")
+    assert drawn["colors_dict"] is geo_validation.PLOT_COLOR_DICT                  # 800 kVA has a configured colour
