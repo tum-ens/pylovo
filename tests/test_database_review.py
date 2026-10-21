@@ -264,6 +264,8 @@ def test_equipment_catalogue_is_read_for_the_current_version_only(monkeypatch):
             )
         monkeypatch.setattr(grid_mixin, "VERSION_ID", current)
         monkeypatch.setattr(clustering_mixin, "VERSION_ID", current)
+        # Allows the other version's 160 kVA, so only the version filter keeps it out.
+        monkeypatch.setattr(clustering_mixin, "TRANSFORMER_MAPPING", {1: [100, 160, 250]})
 
         cables = db.fetch_cables()
         assert [(name, float(max_i_ka)) for name, _, _, max_i_ka, _ in cables] == [("NAYY_4_150", 0.27)]
