@@ -19,16 +19,20 @@ The CSV must use WGS84 coordinates (`EPSG:4326`) and contain these columns:
 
 | Column | Required | Description |
 | --- | --- | --- |
-| `external_id` | yes | Stable transformer id within the source dataset. |
+| `external_id` | yes | Stable transformer id within the source dataset. Read as text (leading zeros are kept), not empty and unique per source after the source label is normalised. |
 | `lon` | yes | Longitude in `EPSG:4326`. |
 | `lat` | yes | Latitude in `EPSG:4326`. |
-| `transformer_rated_power` | no | Transformer rating in kVA, if known. |
-| `source` | no | Short source label. Defaults to `csv`. Can be overridden with `--source`. |
+| `transformer_rated_power` | no | Transformer rating in kVA: empty (unknown) or a whole number above 0. |
+| `source` | no | Short source label. Defaults to `csv`, also for an empty cell. Can be overridden with `--source`. |
 
 Imported rows are stored with `type='dso'` and generated ids of the form
 `dso/<source>/<external_id>`. If `--source` is provided, it overrides the optional CSV `source` column for all rows. If `--replace-source` is provided, existing rows
-with the same `dso/<source>/...` prefix are deleted before importing the new
+whose id starts exactly with `dso/<source>/` are deleted before importing the new
 file. This is useful when re-importing corrected regional data.
+
+The import stops before it changes anything and names the CSV rows (the header is
+row 1) of every problem: an empty or repeated id, invalid coordinates, or a rating
+that is neither empty nor a whole number of kVA above 0.
 
 To use imported DSO transformer positions in generation, set:
 

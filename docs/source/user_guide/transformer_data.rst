@@ -105,6 +105,8 @@ Processing (:func:`pylovo.data_import.import_transformers.process_trafos`) remov
 #. transformers closer than ``MIN_DISTANCE_BETWEEN_TRAFOS`` (8 m) to another one,
 #. transformers inside the areas of the second query.
 
+If no transformer is left after these steps, the import stops with a message.
+
 The remaining centroids are written to
 ``transformer_data/processed_trafos/<relation-id>_trafos_processed_<TARGET_EPSG>.geojson``
 of the data directory and appended to ``pylovo.transformers``; the raw downloads are kept in
@@ -118,7 +120,10 @@ processed file for your ``TARGET_EPSG`` before the setup.
 .. note::
 
    Processing all transformers of a federal state takes a long time (30 to 50 minutes). The
-   Overpass API is a shared service; avoid repeated large downloads.
+   Overpass API is a shared service; avoid repeated large downloads. When the server answers with
+   HTTP 429 or 504, pylovo asks again (3 attempts, after 30 s and 60 s). An answer that carries a
+   ``remark`` means that the server ran into its time or memory limit and the result is incomplete:
+   the import stops with that remark and writes no files, so no truncated result is kept.
 
 DSO transformer positions from CSV
 ----------------------------------
@@ -136,7 +141,8 @@ coordinates:
      - Description
    * - ``external_id``
      - yes
-     - Stable id of the transformer in the source dataset.
+     - Stable id of the transformer in the source dataset. Read as text (leading zeros are kept),
+       not empty and unique per source after the source label is normalised.
    * - ``lon``
      - yes
      - Longitude (EPSG:4326).
@@ -145,10 +151,10 @@ coordinates:
      - Latitude (EPSG:4326).
    * - ``transformer_rated_power``
      - no
-     - Rating in kVA (a whole number above 0), if known.
+     - Rating in kVA: empty (unknown) or a whole number above 0.
    * - ``source``
      - no
-     - Short source label; default ``csv``.
+     - Short source label; default ``csv``, also for an empty cell.
 
 .. code-block:: text
 
@@ -162,12 +168,12 @@ coordinates:
 
 Rows are stored with ``type = 'dso'`` and ids ``dso/<source>/<external_id>`` (the source label is
 lower-cased; characters other than ``a-z``, ``0-9``, ``_``, ``.`` and ``-`` become ``_``). ``--source`` overrides the
-CSV column; ``--replace-source`` deletes all rows ``dso/<source>/...`` before the import, which
-is useful for corrected re-imports. All cells are read as text, so ids keep their leading zeros.
-The import stops and names the row numbers (the header is row 1) if a row has an empty or
-repeated id, invalid coordinates, or a rating that is neither empty nor a whole number of kVA above
-0. A row whose id already exists in the table from an earlier import is updated. Then enable the
-positions:
+CSV column; ``--replace-source`` deletes the existing rows whose id starts exactly with
+``dso/<source>/`` before the import, which is useful for corrected re-imports. All cells are read as
+text, so ids keep their leading zeros. The import stops before it changes anything and names the CSV
+rows (the header is row 1) of every problem: an empty or repeated id, invalid coordinates, or a
+rating that is neither empty nor a whole number of kVA above 0. A row whose id already exists in
+the table from an earlier import is updated. Then enable the positions:
 
 .. code-block:: yaml
 

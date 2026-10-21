@@ -48,8 +48,12 @@ Setup
    when no generation is running.
 
 The Overpass download fails (HTTP 429 or 504, or a timeout)
-   The public Overpass API limits and queues requests. Wait and retry, or use the processed
-   GeoJSON files that ship with the repository.
+   The public Overpass API limits and queues requests. pylovo asks again after 30 s and 60 s; if it
+   still fails, wait and retry, or use the processed GeoJSON files that ship with the repository.
+
+``Overpass did not finish the query: ...``
+   The server ran into its time or memory limit and the result would be incomplete. The import
+   stops and writes no files. Retry later or import a smaller area.
 
 Generation
 ----------
