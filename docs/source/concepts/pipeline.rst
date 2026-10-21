@@ -134,11 +134,13 @@ thus one per grid. Loads are compared as coincident peak loads (:doc:`grid_dimen
 
 **Brownfield** (k-means clusters with transformer candidates). The routed distances between all
 connection points and all transformers are computed (``pgr_dijkstraCost``). Pairs are processed
-from the shortest distance up to ``MAX_BROWNFIELD_TRAFO_DISTANCE``: a connection point is assigned
-to the transformer unless that transformer would exceed its capacity, which is its known rating or,
-without a known rating, the largest rating allowed for the settlement type. Transformers without
-buildings are dropped. Each remaining transformer forms a cluster with a negative ``bcid`` (-1,
--2, ...) and keeps its known rating or gets the smallest allowed rating above the planned load.
+from the shortest distance up to ``MAX_BROWNFIELD_TRAFO_DISTANCE`` (equal distances by connection
+point, then by transformer vertex): a connection point is assigned to the transformer unless the
+load would exceed its known rating or, without a known rating, reach the largest rating allowed for
+the settlement type. Transformers without buildings are dropped. Each remaining transformer forms a
+cluster with a negative ``bcid`` (-1, -2, ... in the order of the transformer vertex; transformers at
+one point form one cluster) and keeps its known rating or gets the smallest allowed rating above
+the planned load.
 With ``BROWNFIELD_NEAREST_ONLY`` a connection point joins only its nearest transformer. Connection
 points that no transformer could take are clustered greenfield; a single remaining connection point
 gets its own greenfield grid.

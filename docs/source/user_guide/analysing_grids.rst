@@ -119,7 +119,8 @@ station of two parallel units counts with its total rating (800 for 2 × 400 kVA
    * - ``cable_length``
      - Installed cable length in km per cable type (parallel cables counted separately).
    * - ``load_count_per_trafo``
-     - Per rating: list with the number of consumers of each grid.
+     - Per rating: list with the number of consumers of each grid (all lists of a rating in the
+       order of the grids, ``kcid`` then ``bcid``).
    * - ``bus_count_per_trafo``
      - Per rating: list with the number of buses of each grid.
    * - ``sim_peak_load_per_trafo``
