@@ -111,9 +111,10 @@ def create_list_of_shp_files(files_to_add):
     """
     ogr_ls_dict = []
     for file_path in files_to_add:
-        if "Oth" in file_path:
+        name = os.path.basename(file_path)      # the folders of the path do not decide
+        if "Oth" in name:
             table_name = "oth"
-        elif "Res" in file_path:
+        elif "Res" in name:
             table_name = "res"
         else:
             raise ValueError(f"Shapefile '{file_path}' cannot be assigned to 'res' or 'oth'.")
