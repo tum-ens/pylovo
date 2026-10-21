@@ -87,10 +87,6 @@ class IElectricalBackend(ABC):
         """
 
     @abstractmethod
-    def cleanup(self) -> None:
-        """Clean up resources and reset backend state."""
-
-    @abstractmethod
     def get_circuit_metrics(self) -> Dict[str, Any]:
         """
         Get key circuit metrics after solving.
@@ -143,37 +139,6 @@ class IElectricalBackend(ABC):
 
         Returns:
             Tuple of (x, y) coordinates, or None if not available
-        """
-
-    # =========================================================================
-    # Update Methods - Modify existing components
-    # =========================================================================
-
-    @abstractmethod
-    def set_bus_coordinates(self, bus_name: str, x: float, y: float) -> None:
-        """
-        Set bus geographic coordinates.
-
-        Args:
-            bus_name: Name of the bus
-            x: X coordinate
-            y: Y coordinate
-
-        Note:
-            No-op for backends without geodata support
-        """
-
-    @abstractmethod
-    def set_bus_zone(self, bus_name: str, zone: str) -> None:
-        """
-        Set bus zone attribute.
-
-        Args:
-            bus_name: Name of the bus
-            zone: Zone identifier string
-
-        Note:
-            No-op for backends without zone support
         """
 
     # =========================================================================

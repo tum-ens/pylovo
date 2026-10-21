@@ -1406,49 +1406,6 @@ class ParameterCalculator:
             result["max_branch_resistance"],
         )
 
-    def calculate_household_path_impedance_proxy(
-        self,
-        pandapower_net: pp.pandapowerNet,
-        networkx_graph: nx.Graph,
-        load_table: pd.DataFrame | None = None,
-    ) -> Dict[str, float]:
-        """Calculate the HH-only weighted mean path impedance proxy.
-
-        The caller may pass a pre-filtered load table to define which rows count
-        as households. This keeps dataset-specific HH filtering outside of the
-        shared ParameterCalculator path logic.
-        """
-        effective_load_table = pandapower_net.load if load_table is None else load_table
-        if effective_load_table.empty or "bus" not in effective_load_table.columns:
-            bus_weights = pd.DataFrame(columns=["consumer_bus", "path_weight"])
-        else:
-            # For the household path proxy, the path weight is simply the number
-            # of household load rows attached to each consumer bus.
-            bus_weights = effective_load_table.groupby("bus").size().reset_index(name="path_weight")
-            bus_weights["path_weight"] = bus_weights["path_weight"].astype(float)
-            bus_weights = bus_weights.rename(columns={"bus": "consumer_bus"})
-        line_table = self._build_impedance_line_table(pandapower_net)
-        result = self._calculate_path_impedance_summary(
-            pandapower_net,
-            networkx_graph,
-            bus_weights,
-            line_table,
-            apply_simultaneity=False,
-        )
-        total_reactance = result["total_reactance"]
-        total_weight = result["total_weight"]
-        resistance = result["total_resistance"] / total_weight if total_weight > 0 else 0.0
-        reactance = total_reactance / total_weight if total_weight > 0 else 0.0
-        ratio = result["total_resistance"] / total_reactance if total_reactance > 0 else 0.0
-        return {
-            "household_count": float(total_weight),
-            "max_households_of_a_branch": float(result["max_branch_weight"]),
-            "resistance": float(resistance),
-            "reactance": float(reactance),
-            "ratio": float(ratio),
-            "max_branch_resistance": float(result["max_branch_resistance"]),
-        }
-
     def _augment_line_table_with_simultaneity(
         self,
         net: pp.pandapowerNet,

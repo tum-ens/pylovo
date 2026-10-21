@@ -21,3 +21,14 @@ def test_a_registered_backend_is_created_by_name(monkeypatch):
     register_backend("Mine ", lambda logger: loggers.append(logger) or "my backend")
     assert create_backend("mine", logger="log") == "my backend" and loggers == ["log"]
     assert tuple(available_backends()) == ("mine", "pandapower")
+
+
+def test_the_backend_interface_asks_for_no_method_that_nothing_calls():
+    from pylovo.analysis.parameter_calculation import ParameterCalculator
+    from pylovo.electrical_backend.core.backend_base import IElectricalBackend
+    from pylovo.electrical_backend.pandapower.backend import PandapowerBackend
+
+    unused = {"cleanup", "set_bus_coordinates", "set_bus_zone"}
+    assert not unused & IElectricalBackend.__abstractmethods__
+    assert not any(hasattr(PandapowerBackend, name) for name in unused)
+    assert not hasattr(ParameterCalculator, "calculate_household_path_impedance_proxy")

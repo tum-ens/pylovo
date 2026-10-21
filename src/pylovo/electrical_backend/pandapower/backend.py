@@ -481,13 +481,6 @@ class PandapowerBackend(IElectricalBackend):
             self.logger.error(f"JSON export failed: {e}")
             raise PandapowerBackendError(f"JSON export failed: {e}") from e
 
-    def cleanup(self) -> None:
-        """Clean up network resources."""
-        if self._net:
-            self.net = None
-            self.logger.debug("Cleaned up network")
-        self._circuit_name = None
-
     # =========================================================================
     # Query Methods
     # =========================================================================
@@ -529,32 +522,6 @@ class PandapowerBackend(IElectricalBackend):
             coords = geo_data["coordinates"]
             return (float(coords[0]), float(coords[1]))
         return None
-
-    # =========================================================================
-    # Update Methods
-    # =========================================================================
-
-    def set_bus_coordinates(self, bus_name: str, x: float, y: float) -> None:
-        """Set bus geographic coordinates in GeoJSON format."""
-        if self.net is None:
-            return
-        try:
-            bus_idx = self._get_bus_index(bus_name)
-            geo_json = json.dumps({"coordinates": [x, y], "type": "Point"})
-            self.net.bus.at[bus_idx, "geo"] = geo_json
-            self._bus_coordinates.pop(bus_name, None)
-        except ValueError:
-            pass
-
-    def set_bus_zone(self, bus_name: str, zone: str) -> None:
-        """Set bus zone attribute."""
-        if self.net is None:
-            return
-        try:
-            bus_idx = self._get_bus_index(bus_name)
-            self.net.bus.at[bus_idx, "zone"] = zone
-        except ValueError:
-            pass
 
     def get_source_voltage(self) -> float:
         """Voltage of the (first) external grid in p.u."""
