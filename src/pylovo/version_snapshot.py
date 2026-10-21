@@ -48,6 +48,10 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("postcode_border", "neighboring_street_width_m"): None,
     ("postcode_border", "neighboring_street_margin_m"): None,
     ("postcode_border", "rule_revision"): None,
+    # The input data was not recorded: which data an older version was built from is not known.
+    ("input_data", "use_infdb"): UNKNOWN,
+    ("input_data", "target_epsg"): UNKNOWN,
+    ("input_data", "infdb_source_schema"): UNKNOWN,
 }
 
 #: The same for the MV variant snapshots (``MvParameters.to_snapshot``): a path added to that snapshot later, with

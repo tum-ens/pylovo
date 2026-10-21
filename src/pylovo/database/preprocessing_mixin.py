@@ -26,6 +26,7 @@ from pylovo.config_loader import (
     GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
     GREENFIELD_TRAFO_POSITION_TOLERANCE,
     HOUSE_CONNECTION,
+    INFDB_SOURCE_SCHEMA,
     K_MEANS_SEED,
     LV_REFERENCE_VOLTAGE_PU,
     BROWNFIELD_NEAREST_ONLY,
@@ -137,6 +138,12 @@ class PreprocessingMixin(BaseMixin):
                 "k_means_seed": K_MEANS_SEED,
             },
             "postcode_border": postcode_border.snapshot(),
+            # which data the grids are built from, not a parameter of the YAML files
+            "input_data": {
+                "use_infdb": USE_INFDB,
+                "target_epsg": TARGET_EPSG,
+                "infdb_source_schema": INFDB_SOURCE_SCHEMA,
+            },
         }
 
     def insert_version_if_not_exists(self):

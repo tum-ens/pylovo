@@ -48,7 +48,8 @@ same name.
    * - ``USE_INFDB``
      - ``True``
      - ``True``/``1``/``yes``: read buildings, streets and postcodes from the InfDB schemas in the
-       same database. Anything else: file-based mode (:ref:`file-based-input`).
+       same database. Anything else: file-based mode (:ref:`file-based-input`). Part of the version
+       snapshot.
    * - ``USE_EXTERNAL_BASEDATA``
      - ``False``
      - ``True``/``1``/``yes``: read the InfDB schemas from the database given by ``INFDB_DBNAME``,
@@ -63,7 +64,7 @@ same name.
    * - ``INFDB_SOURCE_SCHEMA``
      - ``basedata``
      - InfDB schema with ``buildings``, the function ``classify_building_use`` and the street
-       tables ``ways_per_connection`` and ``connection_lines``.
+       tables ``ways_per_connection`` and ``connection_lines``. Part of the version snapshot.
    * - ``INFDB_OPENDATA_SCHEMA``
      - ``opendata``
      - InfDB schema with ``postcodes_germany``.
@@ -75,7 +76,7 @@ same name.
    * - ``TARGET_EPSG``
      - ``25832``
      - Projected CRS (metres) of all geometries stored by pylovo. Choose it before the first
-       ``pylovo-setup``; the table definitions use it.
+       ``pylovo-setup``; the table definitions use it. Part of the version snapshot.
    * - ``PYLOVO_ROOT``
      - --
      - Optional project root for installations outside a checkout: ``$PYLOVO_ROOT/config`` is
@@ -144,6 +145,11 @@ the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``: use 1 to 10 letters, 
 ``.`` or ``-``. pylovo reads it as text (``VERSION_ID: 2`` is the version ``"2"``) and stops at the
 start for any other value. Quote an id that YAML would read as another type: ``1.0`` is refused,
 ``"1.0"`` is the text.
+
+The snapshot also records which data the grids are built from: ``USE_INFDB``, ``TARGET_EPSG`` and
+``INFDB_SOURCE_SCHEMA`` of the ``.env`` (``input_data`` in the snapshot). Changing one of them needs a
+new ``VERSION_ID`` as well. A version stored before these entries existed is not blocked: pylovo logs
+that the values used for its existing grids are not recorded.
 
 Versions that pylovo 0.x stored have a snapshot with other keys, so adding postcodes to such a
 version stops with the message above: generate those postcodes under a new ``VERSION_ID``.

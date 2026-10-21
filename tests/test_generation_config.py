@@ -6,6 +6,7 @@ configuration of this checkout, but none of them opens a database connection.
 from __future__ import annotations
 
 import copy
+import json
 import shutil
 import subprocess
 import sys
@@ -176,3 +177,42 @@ def test_cable_utilization_key_and_its_former_name(tmp_path, keys, expected):
     proc = subprocess.run([sys.executable, "-c", "import pylovo.config_loader as c; print(c.CABLE_PLANNING_UTILIZATION)"],
                           cwd=tmp_path, capture_output=True, text=True, check=False)
     assert expected in (proc.stdout if proc.returncode == 0 else proc.stderr)
+
+
+# --- the input data in the snapshot -----------------------------------------------------------------------------------
+INPUT_DATA = {"use_infdb": True, "target_epsg": 25832, "infdb_source_schema": "basedata"}
+
+
+def with_input_data(**changes) -> dict:
+    return {**snapshot(**NEW_KEYS), "input_data": {**INPUT_DATA, **changes}}
+
+
+def test_the_snapshot_records_the_input_data(monkeypatch):
+    from pylovo.database import preprocessing_mixin
+
+    monkeypatch.setattr(preprocessing_mixin, "USE_INFDB", False)
+    monkeypatch.setattr(preprocessing_mixin, "TARGET_EPSG", 25833)
+    monkeypatch.setattr(preprocessing_mixin, "INFDB_SOURCE_SCHEMA", None)
+    mixin = object.__new__(preprocessing_mixin.PreprocessingMixin)
+    monkeypatch.setattr(mixin, "_household_fallback_parameters", lambda: {}, raising=False)
+    recorded = mixin._generation_parameters_snapshot()
+    assert recorded["input_data"] == {"use_infdb": False, "target_epsg": 25833, "infdb_source_schema": None}
+    json.dumps(recorded, allow_nan=False)                         # it is stored as JSON
+
+
+def test_a_snapshot_stored_before_the_input_data_was_recorded_stays_usable():
+    differences, not_recorded = compare_snapshots(snapshot(**NEW_KEYS), with_input_data())
+    assert differences == []                                      # the version is not blocked ...
+    assert sorted(not_recorded) == ["input_data.infdb_source_schema", "input_data.target_epsg",
+                                    "input_data.use_infdb"]       # ... but the log says what is unknown
+
+
+def test_the_same_input_data_matches():
+    assert compare_snapshots(with_input_data(), copy.deepcopy(with_input_data())) == ([], [])
+
+
+@pytest.mark.parametrize("key, value", [("use_infdb", False), ("target_epsg", 25833),
+                                        ("infdb_source_schema", "basedata_copy")])
+def test_other_input_data_than_the_stored_blocks_the_version(key, value):
+    differences, _ = compare_snapshots(with_input_data(), with_input_data(**{key: value}))
+    assert differences == [f"input_data.{key}"]
