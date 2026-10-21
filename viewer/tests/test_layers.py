@@ -168,3 +168,11 @@ def test_attributes_skip_geometry_and_nets(service, fake_db):
     assert row == {"objectid": "X", "type": "SFH"}
     sql = fake_db.calls[-1][0]
     assert '"objectid"' in sql and '"geom"' not in sql and '"centroid"' not in sql and "*" not in sql
+
+
+def test_attribute_columns_are_quoted_identifiers(fake_db, tmp_path):
+    fake_db.tables = {"pylovo.split_points": ["split_point_id", 'odd"name', "geom"]}
+    fake_db.rows = {"FROM pylovo.split_points": [{"split_point_id": 7}]}
+    service = LayerService(fake_db, Catalog(fake_db), tmp_path)
+    assert service.feature("lv_cabinets", "7", Query()) == {"split_point_id": 7}
+    assert fake_db.calls[-1][0].startswith('SELECT "split_point_id", "odd""name" FROM pylovo.split_points')

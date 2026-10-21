@@ -479,7 +479,7 @@ class LayerService:
         prefix = f"{alias}." if alias else ""
         skip = DROP | self.catalog.geometry_columns(table)
         cols = [c for c in self.catalog.columns.get(table, {}) if c not in skip]
-        return ", ".join(f'{prefix}"{c}"' for c in cols) or "*"
+        return ", ".join(prefix + '"' + c.replace('"', '""') + '"' for c in cols) or "*"   # quoted identifiers
 
     # ------------------------------------------------------------------------ post-processing
     def grid_slots(self, version: str) -> dict[int, int]:
