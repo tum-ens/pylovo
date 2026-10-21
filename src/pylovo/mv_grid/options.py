@@ -45,7 +45,7 @@ import yaml
 #: routing cost would already have been within the limit.
 MV_STAGE_VERSION: int = 12
 
-KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "choice", "nullable_str", "float_tuple", "str_tuple",
+KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
 
 #: Keys of ``link_max_length_m`` by the settlement type of a PLZ (pylovo LV stage: 1 rural, 2 semi-urban, 3 urban).
@@ -68,7 +68,7 @@ class Spec:
             which is an execution flag and no parameter.
         default: Default in canonical form (the shipped value of a YAML key).
         kind: One of :data:`KINDS`.
-        choices: Allowed values of a ``choice``, or of a number (e.g. the nominal voltage).
+        choices: Allowed numbers of a ``voltage`` (the nominal voltages besides ``auto``).
         bounds: Inclusive lower and upper bound (``None`` = open) of a number, of the elements of a ``float_tuple``,
             of the numbers in a ``mapping``, or of the length of a ``str``.
         group: Group of the MV variant snapshot; empty = not in the snapshot.
@@ -119,9 +119,9 @@ _YAML_SPECS: tuple[Spec, ...] = (
 )
 
 
-def _constant(name: str, default: Any, kind: str, group: str, source: str, *, bounds=(None, None), key: str = "",
-              choices: tuple = ()) -> Spec:
-    return Spec(name, name, default, kind, choices=choices, bounds=bounds, group=group, source=source, key=key)
+def _constant(name: str, default: Any, kind: str, group: str, source: str, *, bounds=(None, None),
+              key: str = "") -> Spec:
+    return Spec(name, name, default, kind, bounds=bounds, group=group, source=source, key=key)
 
 
 _POSITIVE = (0.0, None)
@@ -375,8 +375,6 @@ def coerce_mv_value(name: str, value: Any) -> Any:
         _check_bounds(spec, result, value)
     elif kind == "float":
         result = _float(spec, value, value)
-        if spec.choices and result not in spec.choices:
-            raise _error(spec, "one of " + ", ".join(_fmt(c) for c in spec.choices), value)
     elif kind == "str":
         if isinstance(value, bool) or not isinstance(value, (str, int)):
             raise _error(spec, "a text (quote it in YAML)", value)
@@ -387,10 +385,6 @@ def coerce_mv_value(name: str, value: Any) -> Any:
                          else f"a text of at least {_fmt(low)} characters", value)
         if spec.name == "MV_VARIANT_ID" and not _ID_PATTERN.fullmatch(result):
             raise _error(spec, "made of letters, digits, '_', '.' and '-'", value)
-    elif kind == "choice":
-        if not isinstance(value, str) or value not in spec.choices:
-            raise _error(spec, "one of " + ", ".join(spec.choices), value)
-        result = value
     elif kind == "nullable_str":
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise _error(spec, "a name or null", value)
