@@ -937,7 +937,7 @@ class GridGenerator:
         visited from the shortest routed distance up (with ``BROWNFIELD_NEAREST_ONLY`` only the
         pairs of each consumer's nearest transformer); a consumer joins the
         transformer unless the coincident load would exceed the transformer's
-        imported rating or, without one, the largest allowed catalogue rating
+        imported rating or, without one, reach the largest allowed catalogue rating
         (after ``TRANSFORMER_PLANNING_UTILIZATION``). Every used transformer becomes a
         bcid with a negative id (-1, -2, ...) and keeps its imported rating or gets
         the smallest sufficient catalogue rating; unused transformers are removed.
@@ -988,8 +988,10 @@ class GridGenerator:
             sim_load = loads.simultaneous_peak_load(pre_result_dict[end_transformer_id])
 
             known = known_capacities.get(int(end_transformer_id))
+            # A catalogue rating must lie strictly above load / utilization (the rating pick below and the
+            # greenfield split say the same), so a load exactly at the largest rating already fills the station.
             if (float(sim_load) > known) if known is not None else (
-                    float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION > max(possible_transformers)):
+                    float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION >= max(possible_transformers)):
                 # Remove consumer and mark transformer as full
                 pre_result_dict[end_transformer_id].pop()
                 full_transformer_list.append(end_transformer_id)
