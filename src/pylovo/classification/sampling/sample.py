@@ -30,25 +30,20 @@ def _get_db_client() -> dbc.DatabaseClient:
     return _db_client
 
 
-def check_if_classification_version_exists() -> None:
-    """Register ``CLASSIFICATION_VERSION`` in ``pylovo.classification_version``.
-
-    Despite its name, the function also creates the entry (with
-    ``CLASSIFICATION_VERSION_COMMENT`` and ``CLASSIFICATION_REGION``) if it is new.
-
-    Raises:
-        Exception: If the classification version already exists.
-    """
-    db_client = _get_db_client()
-    cur = db_client.cur
+def classification_version_exists() -> bool:
+    """Return whether ``CLASSIFICATION_VERSION`` is already registered in ``pylovo.classification_version``."""
+    cur = _get_db_client().cur
     cur.execute(
         'SELECT COUNT(*) FROM pylovo.classification_version WHERE "classification_id" = %(c)s',
         {"c": CLASSIFICATION_VERSION},
     )
-    version_exists = cur.fetchone()[0]
-    if version_exists:
-        raise Exception(f"Classification version:  {CLASSIFICATION_VERSION} already exists. Create a new one.")
+    return bool(cur.fetchone()[0])
 
+
+def register_classification_version() -> None:
+    """Register ``CLASSIFICATION_VERSION`` with ``CLASSIFICATION_VERSION_COMMENT`` and ``CLASSIFICATION_REGION``."""
+    db_client = _get_db_client()
+    cur = db_client.cur
     cur.execute(
         """INSERT INTO pylovo.classification_version
                (classification_id, classification_version_comment, classification_region)
@@ -93,6 +88,11 @@ def get_samples_within_regiostar_class(reg_class, no_samples, regiostar_plz):
     """
     regiostar_i = regiostar_plz[regiostar_plz['regio7'] == reg_class].copy()
     len_i = len(regiostar_i)
+    if no_samples > len_i:
+        raise ValueError(
+            f"RegioStaR class {reg_class}: {no_samples} PLZ requested but only {len_i} available "
+            "(lower N_SAMPLES or enlarge the pool of PLZ)."
+        )
     if len_i < 100:
         no_bins = 5
     else:
@@ -168,8 +168,8 @@ def get_federal_state_id() -> int:
 def create_sample_set(restrict_to_postcode_result: bool = False):
     """Create the sample set of representative PLZ for ``CLASSIFICATION_REGION``.
 
-    Registers ``CLASSIFICATION_VERSION``, draws the sample from the municipal
-    register (Germany or one federal state) and writes it to ``pylovo.sample_set``.
+    Draws the sample from the municipal register (Germany or one federal state),
+    registers ``CLASSIFICATION_VERSION`` and writes the sample to ``pylovo.sample_set``.
 
     Args:
         restrict_to_postcode_result: Only sample PLZ that already have a
@@ -177,8 +177,10 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
 
     Raises:
         Exception: If ``CLASSIFICATION_VERSION`` already exists.
+        ValueError: If a RegioStaR class has fewer PLZ than its share of ``N_SAMPLES``.
     """
-    check_if_classification_version_exists()
+    if classification_version_exists():
+        raise Exception(f"Classification version:  {CLASSIFICATION_VERSION} already exists. Create a new one.")
     db_client = _get_db_client()
     regiostar_plz = db_client.get_municipal_register()
 
@@ -204,6 +206,9 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
     regiostar_samples_result = regiostar_samples_result.reset_index()
     regiostar_samples_result = regiostar_samples_result.rename(columns={'index': 'classification_id'})
     regiostar_samples_result['classification_id'] = CLASSIFICATION_VERSION
+
+    # Register the version only now: a failing draw leaves nothing behind. The sample rows refer to it.
+    register_classification_version()
     sample_set_to_db(regiostar_samples_result)
 
 

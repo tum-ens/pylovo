@@ -77,7 +77,7 @@ def test_class_sample_is_unique_sized_and_uses_valid_probabilities(monkeypatch):
 def test_class_with_fewer_grids_than_requested_raises():
     reg = register()
     n_class = int((reg["regio7"] == 71).sum())
-    with pytest.raises(ValueError, match="larger sample than population"):
+    with pytest.raises(ValueError, match=rf"{n_class + 1} PLZ requested but only {n_class} available"):
         sample.get_samples_within_regiostar_class(71, n_class + 1, reg)
 
 
@@ -145,16 +145,35 @@ def test_get_sample_set_columns_match_the_municipal_register_order():
     assert [c.strip().split(".")[-1] for c in select.split(",")] == MUNICIPAL_REGISTER
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-05: the classification version is committed before sampling can fail")
+def inserted_versions(client):
+    return [s for s in client.cur.executed if s[0].startswith("INSERT INTO pylovo.classification_version")]
+
+
 def test_failed_sampling_leaves_no_registered_version(monkeypatch, written):
     client = FakeClient(register())
     monkeypatch.setattr(sample, "_db_client", client)
     monkeypatch.setattr(sample, "CLASSIFICATION_REGION", "Bayern ")  # typo: not a key of REGION_DICT
     with pytest.raises(IndexError):
         sample.create_sample_set()
-    inserted = any(s[0].startswith("INSERT INTO pylovo.classification_version") for s in client.cur.executed)
-    deleted = any(s[0].startswith("DELETE FROM pylovo.classification_version") for s in client.cur.executed)
-    assert not inserted or deleted or client.conn.commits == 0
+    assert not inserted_versions(client) and client.conn.commits == 0 and not written
+
+
+def test_quota_above_the_number_of_plz_of_a_class_is_reported_before_anything_is_written(monkeypatch, written):
+    client = FakeClient(register())
+    monkeypatch.setattr(sample, "_db_client", client)
+    monkeypatch.setattr(sample, "N_SAMPLES", 1000)
+    with pytest.raises(ValueError, match="requested but only"):
+        sample.create_sample_set()
+    assert not inserted_versions(client) and client.conn.commits == 0 and not written
+
+
+def test_version_is_committed_before_the_sample_rows_that_refer_to_it(monkeypatch):
+    client = FakeClient(register())
+    monkeypatch.setattr(sample, "_db_client", client)
+    monkeypatch.setattr(pd.DataFrame, "to_sql", lambda self, *a, **k: client.conn.log.append("to_sql"))
+    monkeypatch.setattr(sample, "N_SAMPLES", 40)
+    sample.create_sample_set()
+    assert client.conn.log == ["commit", "to_sql", "commit"]
 
 
 @pytest.mark.xfail(strict=True, reason="CLASSIF-08: np.random.choice uses the global, unseeded generator")
