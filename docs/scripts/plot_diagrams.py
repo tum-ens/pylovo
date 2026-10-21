@@ -115,31 +115,24 @@ def pipeline() -> None:
 
 def architecture() -> None:
     """Module architecture: interfaces, workflows, engines, data access, storage."""
-    width, height = 8.0, 7.45
-    fig, ax = _canvas(width, height)
+    width = 8.0
     left, right = 0.2, width - 0.2
-    _text(ax, left, height - 0.15, "pylovo architecture", size=10.5, weight="bold")
-
-    band_top, band_h = height - 0.52, 0.5
-    _box(ax, left, band_top - band_h, right - left, band_h, fill=INPUT_FILL, edge="#e7b89f")
-    _text(ax, left + 0.12, band_top - 0.09, "config_loader", size=8.4, weight="bold")
-    _text(ax, left + 1.3, band_top - 0.1,
-          "config/config_generation_lv.yaml, config/config_analysis.yaml and .env (database, USE_INFDB, TARGET_EPSG);\n"
-          "read once at import and used by all layers below",
-          size=7.4, color=st.INK_SECONDARY)
 
     layers = [
         ("Interfaces", [
-            ("pylovo-* commands", "pylovo.cli: setup, generate,\nanalyze, import, export, delete"),
+            ("pylovo-* commands", "pylovo.cli: setup, generate, mv,\nanalyze, classify, import,\nexport, delete"),
             ("HTTP API", "api/ (pylovo-api), runs\nthe commands as jobs"),
             ("Python API, notebooks", "GridGenerator, DatabaseClient;\nnotebook_tutorials/"),
         ]),
         ("Workflows", [
             ("GridGenerator", "grid_generator.py:\npipeline per postcode"),
-            ("DatabaseConstructor", "database_constructor.py:\nschema and reference data"),
+            ("MV stage", "mv_grid/: rings, lines, HV/MV\ntransformers, coupling"),
+            ("Load editing", "load_editing.py: manual load\nedits with exact undo"),
             ("ParameterCalculator", "analysis/: postcode and\nper-grid key figures"),
-            ("Data import", "data_import/: OSM, DSO,\nmunicipal register, files"),
+            ("Classification", "classification/: sample PLZ,\ncluster grids into types"),
             ("Plotting, export", "plotting/: maps, graphs,\nGIS CSV export"),
+            ("DatabaseConstructor", "database_constructor.py:\nschema and reference data"),
+            ("Data import", "data_import/: OSM, DSO,\nmunicipal register, files"),
         ]),
         ("Engines", [
             ("Feeder planning", "feeder_planning.py: branches,\nsections, cable sizing"),
@@ -148,27 +141,53 @@ def architecture() -> None:
             ("Load model", "utils.py: load components,\ncoincidence factor"),
         ]),
         ("Data access", [
-            ("DatabaseClient", "database/: mixins Preprocessing,\nClustering, Grid, Analysis,\nResults, TransformerUi, Utils"),
+            ("DatabaseClient", "database/: mixins Preprocessing,\nClustering, Grid, Analysis, Results,\nTransformerUi, Utils, LoadEdit,\nMv: Graph, Source, Input, Result"),
             ("InfdbClient", "infdb/: buildings, streets,\npostcodes from InfDB"),
             ("SQL functions", "ways_preprocessing_functions/:\nsegments, connection lines"),
         ]),
         ("Storage", [
             ("PostgreSQL, PostGIS, pgRouting", "schema pylovo: inputs, versions, results"),
-            ("InfDB schemas (same database)", "basedata: buildings, ways; opendata: postcodes"),
+            ("InfDB schemas (same database)", "basedata: buildings, ways; opendata: postcodes;\nosm: substations, MV lines"),
         ]),
     ]
     label_w = 0.95
     span_left = left + label_w
-    row_h, row_gap, box_gap = 0.72, 0.2, 0.12
+    min_row_h, row_gap, box_gap = 0.72, 0.2, 0.12
+    band_h = 0.5
+
+    def split_rows(boxes):
+        """Rows of at most three boxes (two for four boxes)."""
+        per_row = {4: 2}.get(len(boxes), min(len(boxes), 3))
+        return per_row, [boxes[i:i + per_row] for i in range(0, len(boxes), per_row)]
+
+    def row_height(row):
+        """Height of a box row: the tallest body text, at least ``min_row_h``."""
+        return max(min_row_h, 0.31 + 0.137 * max(body.count("\n") + 1 for _, body in row))
+
+    # The canvas height follows from the rows of all layers: title and config band above, rows and gaps, margin.
+    layer_heights = [sum(row_height(row) for row in split_rows(boxes)[1]) + box_gap * (len(split_rows(boxes)[1]) - 1)
+                     for _, boxes in layers]
+    height = 0.52 + band_h + 0.25 + sum(layer_heights) + row_gap * (len(layers) - 1) + 0.1
+
+    fig, ax = _canvas(width, height)
+    _text(ax, left, height - 0.15, "pylovo architecture", size=10.5, weight="bold")
+
+    band_top = height - 0.52
+    _box(ax, left, band_top - band_h, right - left, band_h, fill=INPUT_FILL, edge="#e7b89f")
+    _text(ax, left + 0.12, band_top - 0.09, "config_loader", size=8.4, weight="bold")
+    _text(ax, left + 1.3, band_top - 0.1,
+          "config/config_generation_lv.yaml, config_generation_mv.yaml, config_analysis.yaml and .env\n"
+          "(database, USE_INFDB, TARGET_EPSG); read once at import and used by all layers below",
+          size=7.4, color=st.INK_SECONDARY)
+
     y = band_top - band_h - 0.25
-    for label, boxes in layers:
-        per_row = {4: 2, 5: 3, 6: 3}.get(len(boxes), len(boxes))
-        rows = [boxes[i:i + per_row] for i in range(0, len(boxes), per_row)]
-        layer_h = len(rows) * row_h + (len(rows) - 1) * box_gap
+    for (label, boxes), layer_h in zip(layers, layer_heights):
+        per_row, rows = split_rows(boxes)
         _text(ax, left, y - layer_h / 2, label, size=8.4, weight="bold", color=st.INK_SECONDARY, va="center")
-        for r, row in enumerate(rows):
+        by = y
+        for row in rows:
+            row_h = row_height(row)
             box_w = (right - span_left - (per_row - 1) * box_gap) / per_row
-            by = y - r * (row_h + box_gap)
             for index, (title, body) in enumerate(row):
                 x = span_left + index * (box_w + box_gap)
                 fill, edge = (ACCENT_FILL, ACCENT) if label in ("Workflows", "Engines") else (NEUTRAL_FILL, st.BASELINE)
@@ -177,6 +196,7 @@ def architecture() -> None:
                 _box(ax, x, by - row_h, box_w, row_h, fill=fill, edge=edge)
                 _text(ax, x + 0.1, by - 0.08, title, size=8.2, weight="bold")
                 _text(ax, x + 0.1, by - 0.29, body, size=7.3, color=st.INK_SECONDARY)
+            by -= row_h + box_gap
         y -= layer_h
         if label != "Storage":
             mid = span_left + (right - span_left) / 2

@@ -27,10 +27,15 @@ Modules
    * - :mod:`pylovo.config_loader`
      - Reads ``.env`` and ``config/*.yaml`` and exposes all settings as module constants
        (``VERSION_ID``, ``TRANSFORMERS``, ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, ...).
+   * - :mod:`pylovo.version_snapshot`
+     - Comparison of the stored generation-parameter snapshot of a version with the current
+       configuration (:ref:`versions`).
    * - :mod:`pylovo.grid_generator`
      - :class:`~pylovo.grid_generator.GridGenerator`: the generation pipeline for one postcode,
        sequential and parallel runs for many postcodes, building clustering, transformer placement
        and persistence of each grid.
+   * - :mod:`pylovo.postcode_border`
+     - Routing over the streets of the neighbouring postcodes (``ROUTE_ACROSS_POSTCODE_BORDERS``).
    * - :mod:`pylovo.feeder_planning`
      - Feeder topology and feeder cable sizing of one grid:
        :func:`~pylovo.feeder_planning.plan_feeder_branches` and
@@ -38,6 +43,9 @@ Modules
    * - :mod:`pylovo.cable_installer`
      - :class:`~pylovo.cable_installer.CableInstaller`: creates buses, transformer, loads and lines
        of one grid in the electrical backend and selects feeder and service cables.
+   * - :mod:`pylovo.station_voltage`
+     - Station voltage of the validation power flow: the LV busbar reference
+       (``LV_REFERENCE_VOLTAGE_PU``) and the MV-side voltage that follows from it.
    * - :mod:`pylovo.utils`
      - Load model (:func:`~pylovo.utils.build_load_components`,
        :func:`~pylovo.utils.simultaneous_peak_load` and :class:`~pylovo.utils.CoincidentLoads`,
@@ -63,9 +71,17 @@ Modules
        and the pure planning modules (substations, supply areas, routing graph, rings, solvers,
        topology, electrical checks, ties, coupling, metrics). The planner
        :func:`~pylovo.mv_grid.planner.plan_district` runs without a database.
+   * - :mod:`pylovo.load_editing`
+     - Manual load edits of a stored grid (households, floor areas, non-residential use): it
+       recomputes the loads and the validation power flow with the stored parameters of the
+       version, writes an audit row to ``load_edit`` and can undo the edit exactly. Used by
+       ``pylovo-api`` (:ref:`http-api-load-editing`).
    * - :mod:`pylovo.analysis`
      - :class:`~pylovo.analysis.parameter_calculation.ParameterCalculator` for postcode and
-       per-grid key figures, power-flow helpers.
+       per-grid key figures, coverage and border diagnostics, power-flow helpers.
+   * - ``pylovo.classification``
+     - Grid classification (``pylovo-classify``, :doc:`../user_guide/classification`): sampling,
+       clustering and its database interface. It is not part of the API reference.
    * - :mod:`pylovo.plotting`
      - Grid plots (:mod:`pylovo.plotting.generation`), GIS export helpers
        (:mod:`pylovo.plotting.gis_preparation`) and MV grid plots (:mod:`pylovo.plotting.mv_grid`).
@@ -105,6 +121,9 @@ SQLAlchemy engine with the search path ``pylovo, public``. Its methods are group
      - The ``*_trafo_ui`` methods of the transformer editors (view, add, delete, set ratings).
    * - :class:`~pylovo.database.utils_mixin.UtilsMixin`
      - Temporary tables, materialised views, consumer categories and the municipal register.
+   * - :class:`~pylovo.database.load_edit_mixin.LoadEditMixin`
+     - Manual load edits of stored grids with audit rows and exact undo (``load_edit``,
+       :mod:`pylovo.load_editing`).
    * - :class:`~pylovo.database.mv_graph_mixin.MvGraphMixin`
      - MV stage: build of the routing graph with settlement flags, attachment of points, district
        subgraphs and quality tables.
