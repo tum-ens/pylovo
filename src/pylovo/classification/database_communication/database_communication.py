@@ -52,7 +52,9 @@ class DatabaseCommunication:
         ``CLASSIFICATION_VERSION`` and with ``filtered = false`` are returned.
 
         Returns:
-            pd.DataFrame: One row per grid with the ``CLUSTERING_PARAMETERS`` columns.
+            pd.DataFrame: One row per grid with the ``CLUSTERING_PARAMETERS`` columns, ordered by
+            ``plz``, ``kcid`` and ``bcid``: the clusters depend on the row order, so it must not be
+            left to the database.
         """
         query = """
                 WITH plz_table(plz) AS (
@@ -69,7 +71,8 @@ class DatabaseCommunication:
                 SELECT c.* 
                 FROM clustering c
                 JOIN plz_table p
-                ON c.plz = p.plz;"""
+                ON c.plz = p.plz
+                ORDER BY c.plz, c.kcid, c.bcid;"""
         params = {"v": VERSION_ID, "c": CLASSIFICATION_VERSION}
         df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
         columns = CLUSTERING_PARAMETERS
@@ -79,7 +82,7 @@ class DatabaseCommunication:
     def municipal_register_with_clustering_parameters_for_classification_version(self) -> pd.DataFrame:
         """Return the clustering parameters of the sample set joined with municipal register data.
 
-        Same grid selection as :meth:`get_clustering_parameters_for_classification_version`,
+        Same grid selection and order as :meth:`get_clustering_parameters_for_classification_version`,
         plus population, area, coordinates, AGS, city name and RegioStaR classes of the PLZ.
 
         Returns:
@@ -101,7 +104,8 @@ class DatabaseCommunication:
                 SELECT c.*, p.pop, p.area, p.lat, p.lon, p.ags, p.name_city, p.regio7, p.regio5, p.pop_den
                 FROM clustering c
                 JOIN plz_table p
-                ON c.plz = p.plz;"""
+                ON c.plz = p.plz
+                ORDER BY c.plz, c.kcid, c.bcid;"""
         params = {"v": VERSION_ID, "c": CLASSIFICATION_VERSION}
         df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
         return df_query

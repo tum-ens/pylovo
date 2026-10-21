@@ -83,6 +83,18 @@ def test_clustering_parameters_are_returned_in_the_configured_columns(monkeypatc
     assert "cp.filtered = false" in " ".join(seen["query"].split())
 
 
+def test_both_clustering_queries_are_ordered_by_the_grid_key(monkeypatch):
+    """The clusters depend on the row order, which the database leaves unspecified without ORDER BY."""
+    queries = []
+    monkeypatch.setattr(dcm.pd, "read_sql_query", lambda query, con=None, params=None: queries.append(query) or synthetic_clustering_parameters())
+    dc = make_dc()
+    dc.get_clustering_parameters_for_classification_version()
+    dc.municipal_register_with_clustering_parameters_for_classification_version()
+    assert len(queries) == 2
+    for query in queries:
+        assert " ".join(query.split()).endswith("ORDER BY c.plz, c.kcid, c.bcid;")
+
+
 # ---------------------------------------------------------------------------------------- writing the result
 @pytest.fixture()
 def run_save(monkeypatch):
