@@ -133,6 +133,8 @@ def process_trafos(relation_id: int) -> None:
         gdf_substations = gdf_substations.drop(
             gdf_substations[gdf_substations['voltage'] >= VOLTAGE_THRESHOLD].index)
     _print_count("After step 3 (voltage)", gdf_substations)
+    if gdf_substations.empty:
+        raise ValueError(f"No transformer is left in relation {relation_id} after the filters of steps 1 to 3")
 
     # 4. transformers closer than MIN_DISTANCE_BETWEEN_TRAFOS: drop every row that has a close
     #    neighbour further down the table (upper triangle of the distance matrix)
