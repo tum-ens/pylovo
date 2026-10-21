@@ -53,8 +53,8 @@ Modules
        logging and small helpers.
    * - :mod:`pylovo.electrical_backend`
      - Backend interface :class:`~pylovo.electrical_backend.core.backend_base.IElectricalBackend`,
-       component specifications (``BusSpec``, ``LineSpec``, ...) and the pandapower and OpenDSS
-       implementations (:doc:`electrical_backends`).
+       component specifications (``BusSpec``, ``LineSpec``, ...) and the pandapower
+       implementation (:doc:`electrical_backends`).
    * - :mod:`pylovo.database`
      - :class:`~pylovo.database.database_client.DatabaseClient` (all SQL of the pipeline, composed of
        mixins), :class:`~pylovo.database.database_constructor.DatabaseConstructor` (setup) and the

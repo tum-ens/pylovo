@@ -214,8 +214,8 @@ Loads and general grid settings
      - Snapshot
    * - ``ELECTRICAL_BACKEND``
      - ``pandapower``
-     - Electrical model used to build and solve the grids: ``pandapower`` or ``opendss``
-       (work in progress, :doc:`../concepts/electrical_backends`).
+     - Electrical model used to build and solve the grids. Only ``pandapower`` ships; another backend
+       can be registered (:doc:`../concepts/electrical_backends`).
      - ✓
    * - ``RESIDENTIAL_ONLY_GENERATION``
      - ``False``
