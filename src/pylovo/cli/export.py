@@ -140,6 +140,9 @@ Examples:
             parser.error("--grid mode requires --kcid and --bcid")
         if len(args.plz) != 1:
             parser.error("--grid mode requires exactly one PLZ")
+    elif args.kcid is not None or args.bcid is not None:
+        print("Warning: --kcid and --bcid are ignored without --grid: all grids of the PLZ are exported",
+              file=sys.stderr)
 
     try:
         if args.grid:

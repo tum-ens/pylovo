@@ -69,3 +69,11 @@ def test_the_file_names_stay_those_of_the_qgis_templates(monkeypatch, capsys, tm
     for plz_args, suffix in ((["80331"], "single_grid"), (["80331", "80333"], "multiple_grids")):
         _, out = run(monkeypatch, capsys, [], "--plz", *plz_args, "--output", str(tmp_path))
         assert f"lines_{suffix}.csv" in out and f"bus_{suffix}.csv" in out
+
+
+def test_kcid_and_bcid_without_grid_are_reported_as_ignored(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(export, "save_geodata_as_csv", lambda df_plz, data_path_lines, data_path_bus: [])
+    monkeypatch.setattr(sys, "argv", ["pylovo-export", "--plz", "80331", "--kcid", "4", "--bcid", "30",
+                                      "--output", str(tmp_path)])
+    export.main()
+    assert "Warning: --kcid and --bcid are ignored without --grid" in capsys.readouterr().err

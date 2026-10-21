@@ -83,3 +83,31 @@ def test_an_already_analysed_plz_is_skipped_with_exit_0(monkeypatch, capsys):
 def test_per_grid_modes_fail_for_a_plz_without_grids(monkeypatch, capsys, option):
     code, out = run(monkeypatch, capsys, {80333: "no_grids"}, "--plz", "80333", option)
     assert code == 1 and "✓" not in out
+
+
+@pytest.mark.parametrize("argv, expected", [
+    (["--version-id", "2"], "--version-id is ignored"),
+    (["--output", "reports"], "--output is ignored"),
+    (["--coverage", "--all"], "--per-grid and --all are ignored"),
+    (["--border-diagnostics", "--per-grid"], "--per-grid and --all are ignored"),
+])
+def test_ignored_option_combinations_are_reported(monkeypatch, capsys, argv, expected):
+    monkeypatch.setattr(analyze, "run_diagnostics", lambda *args: 0)
+    monkeypatch.setattr(analyze, "ParameterCalculator", lambda: type(
+        "Fake", (), {"analyze_parameters_for_plz": lambda self, plz: "analysed"})())
+    monkeypatch.setattr(sys, "argv", ["pylovo-analyze", "--plz", "80331", *argv])
+    analyze.main()
+    assert f"Warning: {expected}" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv", [
+    [], ["--per-grid"], ["--all"], ["--coverage"], ["--border-diagnostics", "--version-id", "2", "--output", "reports"],
+])
+def test_valid_option_combinations_are_not_reported(monkeypatch, capsys, argv):
+    monkeypatch.setattr(analyze, "run_diagnostics", lambda *args: 0)
+    monkeypatch.setattr(analyze, "ParameterCalculator", lambda: type(
+        "Fake", (), {"analyze_parameters_for_plz": lambda self, plz: "analysed",
+                     "analyze_grid_parameters_for_plz": lambda self, plz: "analysed"})())
+    monkeypatch.setattr(sys, "argv", ["pylovo-analyze", "--plz", "80331", *argv])
+    analyze.main()
+    assert "Warning" not in capsys.readouterr().err

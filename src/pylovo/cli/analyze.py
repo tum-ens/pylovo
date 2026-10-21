@@ -17,6 +17,8 @@ from pylovo.analysis.parameter_calculation import ParameterCalculator
 
 #: Exit code of ``--coverage`` when source buildings are missing.
 EXIT_INCOMPLETE = 3
+#: Default of ``--output``.
+DEFAULT_OUTPUT = "results/diagnostics"
 
 
 def analyze_plz(plz: int) -> bool:
@@ -82,6 +84,21 @@ def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_i
     return missing
 
 
+def ignored_options(args: argparse.Namespace) -> list[str]:
+    """Describe the options that the chosen mode of ``pylovo-analyze`` ignores."""
+    if args.coverage or args.border_diagnostics:
+        if args.per_grid or args.all:
+            return ["--per-grid and --all are ignored: --coverage and --border-diagnostics run alone"]
+        return []
+    notes = []
+    if args.version_id is not None:
+        notes.append("--version-id is ignored without --coverage or --border-diagnostics "
+                     "(the analysis uses VERSION_ID of the configuration)")
+    if args.output != DEFAULT_OUTPUT:
+        notes.append("--output is ignored without --coverage or --border-diagnostics")
+    return notes
+
+
 def main():
     """Entry point of ``pylovo-analyze``."""
     parser = argparse.ArgumentParser(
@@ -132,7 +149,7 @@ Examples:
 
     parser.add_argument(
         "--output",
-        default="results/diagnostics",
+        default=DEFAULT_OUTPUT,
         help="Directory of the --coverage/--border-diagnostics reports"
     )
 
@@ -149,6 +166,8 @@ Examples:
     )
 
     args = parser.parse_args()
+    for note in ignored_options(args):
+        print(f"Warning: {note}", file=sys.stderr)
 
     try:
         if args.coverage or args.border_diagnostics:
