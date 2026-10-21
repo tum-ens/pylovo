@@ -412,6 +412,8 @@ class MvResultMixin(BaseMixin):
         """Insert the HV/MV substation sites of a variant.
 
         Args:
+            version_id: The LV version of the variant.
+            variant_id: The MV variant.
             sites: One row per site with ``x``, ``y`` (busbar point, TARGET_EPSG), ``source`` and ``source_ids``
                 (list of texts); optional ``name``, ``operator``, ``voltage_tag``, ``egon_bus_id``,
                 ``egon_distance_m``, ``in_region`` (default False), ``attach_edge_id``, ``attach_fraction``,
@@ -466,6 +468,8 @@ class MvResultMixin(BaseMixin):
         """Insert MV nodes of a variant.
 
         Args:
+            version_id: The LV version of the variant.
+            variant_id: The MV variant.
             rows: One row per node with ``kind``, ``connection_hint``, ``x``, ``y`` (TARGET_EPSG) and any of the
                 ``mv_node`` columns of :data:`NODE_INSERT_COLUMNS` (others are ignored). ``load_stats`` is a dict
                 ``{category: [installed_kw, units]}``, ``flags`` a list of texts.
@@ -651,6 +655,8 @@ class MvResultMixin(BaseMixin):
         """Set the nominal voltage of the districts and record its density rule (``MV_NOMINAL_VOLTAGE_KV``).
 
         Args:
+            version_id: The LV version of the variant.
+            variant_id: The MV variant.
             voltages: Index ``mv_grid_id``, column ``vn_kv`` (``pylovo.mv_grid.districts.district_voltages``).
             records: ``{mv_grid_id: entry}`` stored as ``mv_grid.metrics['voltage_level']`` (kept when the
                 district is saved, :meth:`save_district`).
@@ -772,6 +778,9 @@ class MvResultMixin(BaseMixin):
         counts, extremes, metrics, repairs, net) and the sizing columns of its substation.
 
         Args:
+            version_id: The LV version of the variant.
+            variant_id: The MV variant.
+            mv_grid_id: The district (``mv_grid.mv_grid_id``).
             plan: The district plan of :func:`pylovo.mv_grid.planner.plan_district`.
             runtime_s: Wall-clock time of the district (s).
             requirements: Stored LV requirement (``ext_grid.vm_pu``) per ``grid_result_id``, written to
@@ -1000,6 +1009,9 @@ class MvResultMixin(BaseMixin):
         """Store the run summary, the final status and ``finished_at`` of a variant; commits.
 
         Args:
+            version_id: The LV version of the variant.
+            variant_id: The MV variant.
+            summary: The run summary; its ``status`` becomes the status of the variant.
             extra: Further entries of the stored summary next to the fields of ``summary`` (e.g. ``ties``).
         """
         data = summary.to_dict()
@@ -1019,6 +1031,7 @@ class MvResultMixin(BaseMixin):
         """Delete MV variants of a version with all their results (cascade); commits.
 
         Args:
+            version_id: The LV version.
             variant_ids: The variants to delete; None or empty deletes every MV variant of the version.
 
         Returns:
@@ -1194,6 +1207,7 @@ class MvResultMixin(BaseMixin):
         rows) leaves none next to ``coupled_status = 'failed'``.
 
         Args:
+            mv_grid_id: The district whose nodes get the coupled values.
             rows: ``mv_node_id`` and any of the ``coupled_*`` columns of ``mv_node``.
             status: ``done``, ``partial`` or ``failed`` (``mv_grid.coupled_status``).
             metrics: Coupling diagnostics, stored as ``metrics.coupling`` of the grid.
@@ -1294,10 +1308,13 @@ class MvResultMixin(BaseMixin):
         ``mv_grid.metrics['ties']`` (``['links']``).
 
         Args:
+            version_id: The LV version of the variant.
+            variant_id: The MV variant.
             ties: Ties of :func:`pylovo.mv_grid.interconnection.plan_ties` (``from_node``, ``to_node``,
                 ``from_grid``, ``to_grid``, ``from_ring``, ``to_ring``, ``kind``, ``std_type``, ``length_m``,
                 ``cable_m``, ``overhead_m``, ``straight_m``, ``geometry``).
             grid_metrics: ``{mv_grid_id: entry}`` of :func:`pylovo.mv_grid.interconnection.grid_tie_metrics`.
+            role: ``tie`` (between districts) or ``link`` (inside a district).
 
         Returns:
             The number of stored ties.

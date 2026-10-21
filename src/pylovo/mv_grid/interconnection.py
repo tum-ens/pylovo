@@ -143,6 +143,7 @@ def stub_link_candidates(nodes: pd.DataFrame, grids: pd.DataFrame) -> pd.DataFra
 
     Args:
         nodes: As for :func:`tie_candidates`, with ``degree`` (MV lines at the node, without ties and links).
+        grids: One row per district, as for :func:`tie_candidates`.
 
     Returns:
         The rows sorted by ``mv_node_id``, with the column ``stub_end``: a stub node with one MV line.
@@ -778,6 +779,11 @@ def link_summary(links: pd.DataFrame, grids: pd.DataFrame, params: "MvParameters
     """The variant summary of the links inside the districts (``mv_variant.summary['links']``).
 
     Args:
+        links: The links of :func:`plan_links`.
+        grids: One row per district with ``status`` and the counts ``n_rings``, ``n_stations`` and ``n_customers``
+            (only done districts count).
+        params: The MV parameters of the variant; ``link_max_length_m`` and ``link_stub_ends`` are copied.
+        runtime_s: Wall-clock time of the link step (s), or None.
         stub_ends: The ``mv_node_id`` of all stub ends of the done districts, with ``link_stub_ends``.
 
     Returns:

@@ -447,6 +447,7 @@ def terminal_path_sums(rg: RunGraph, rows: Sequence[int], values: np.ndarray, *,
         rg: Run graph.
         rows: Node rows.
         values: One non-negative value per piece (e.g. its length, or its length on OSM MV lines).
+        chunk: Source vertices per Dijkstra call (see :func:`terminal_distances`).
     """
     rows = np.asarray(rows, dtype=np.int64)
     pieces = rg.pieces

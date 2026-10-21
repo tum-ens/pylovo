@@ -820,7 +820,9 @@ class ClusteringMixin(BaseMixin):
             plz: Postcode (only for log messages).
             kcid: K-means cluster ID.
             bcid: Building cluster ID.
-            include_dso, include_open, include_manual: Enabled sources; ``None`` uses the configuration.
+            include_dso: Use the DSO transformer positions; ``None`` uses the configuration.
+            include_open: Use the open (OSM) transformer positions; ``None`` uses the configuration.
+            include_manual: Use the manual transformer positions; ``None`` uses the configuration.
 
         Returns:
             The rated power in kVA, or ``None`` if no rated candidate of an enabled source intersects

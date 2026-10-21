@@ -819,8 +819,10 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
     4. ``not_converged``: report, the topology is kept.
 
     Args:
-        inp, rg, model, ev: Passed to the topology functions (district input, run graph, distance model, ring
-            evaluator).
+        inp: The district input.
+        rg: Its run graph.
+        model: Its distance model.
+        ev: The ring evaluator of the solver.
         plan: The current plan.
         violations: The violations of :func:`check` for ``plan``.
 

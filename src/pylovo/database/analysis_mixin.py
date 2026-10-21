@@ -96,6 +96,23 @@ class AnalysisMixin(BaseMixin):
             json_string: pandapower network as JSON (``pandapower.to_json``), or ``None``.
             transformer_description: Description of the installed transformer.
             power_flow_status: Outcome of the power-flow check.
+            ampacity_max_feeder_voltage_drop_percent: Largest planned feeder voltage drop (percent) with the
+                cables of the ampacity design.
+            selected_max_feeder_voltage_drop_percent: The same with the selected feeder cables.
+            feeder_voltage_drop_limit_met: Whether the selected feeder cables keep the end-to-end feeder limit.
+            ampacity_max_service_voltage_drop_percent: Largest planned service voltage drop (percent) with the
+                cables of the ampacity design.
+            selected_max_service_voltage_drop_percent: The same with the selected service cables.
+            service_voltage_drop_limit_met: Whether every service connection keeps its voltage-drop limit.
+            service_voltage_upgraded_count: Number of service cables that differ from the ampacity design because
+                of the voltage drop.
+            long_service_connection_count: Number of service connections flagged for review because of their
+                length.
+            max_total_design_voltage_drop_percent: Largest planned drop (percent) from the transformer to a consumer.
+            max_feeder_voltage_drop_pu: Largest feeder drop (p.u.) of the power flow, from the LV busbar to the
+                connection node of a service connection.
+            max_service_voltage_drop_pu: Largest drop (p.u.) of the power flow along a service connection.
+            max_total_lv_voltage_drop_pu: Largest drop (p.u.) of the power flow from the LV busbar to a consumer.
         """
         insert_query = ("""UPDATE pylovo.grid_result
                            SET grid = %s,

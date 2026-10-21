@@ -814,6 +814,10 @@ def export_net(version_id: str, variant_id: str, mv_grid_id: int, output: Path, 
     """Write the stored pandapower net of one MV grid to a JSON file (``pylovo-mv export``).
 
     Args:
+        version_id: The LV version.
+        variant_id: The MV variant.
+        mv_grid_id: The district.
+        output: The JSON file to write (its folder is created).
         case: ``load`` (the stored net with its load-case results), or another case of
             :data:`~pylovo.mv_grid.model.CASES`, applied with ``electrical.case_net`` and solved before writing.
 

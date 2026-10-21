@@ -105,6 +105,8 @@ def run_mv_stage_after_lv(plz_list: list[int], parallel: bool, params: "MvParame
     """Run the MV stage for the configured MV variant of ``VERSION_ID`` on the PLZ of this call.
 
     Args:
+        plz_list: The PLZ of this call.
+        parallel: Plan the districts in worker processes.
         params: The configured MV variant (``MvParameters.from_config``, resolved before the LV generation).
 
     Raises:
