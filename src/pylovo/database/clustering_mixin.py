@@ -577,11 +577,16 @@ class ClusteringMixin(BaseMixin):
         return kcid
 
     def get_included_transformers(self, kcid: int) -> list:
-        """Return the vertex IDs of the existing transformers inside a kcid."""
-        query = """SELECT vertice_id
+        """Return the vertex IDs of the existing transformers inside a kcid, each vertex once, ascending.
+
+        Candidates at one point (a double station imported as two rows) share a vertex and make one
+        station. The fixed order numbers the brownfield bcids (-1, -2, ...) the same in every run.
+        """
+        query = """SELECT DISTINCT vertice_id
                    FROM buildings_tem
                    WHERE kcid = %(k)s
-                     AND type = 'Transformer';"""
+                     AND type = 'Transformer'
+                   ORDER BY vertice_id;"""
         self.cur.execute(query, {"k": kcid})
         transformers_list = ([t[0] for t in data] if (data := self.cur.fetchall()) else [])
         return transformers_list
