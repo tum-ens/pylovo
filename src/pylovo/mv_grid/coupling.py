@@ -63,8 +63,6 @@ WORKER_GB: float = 1.0
 DEFAULT_JOBS: int = 2
 #: LV nets fetched per query (``MvInputMixin.iter_lv_nets``).
 LV_NET_CHUNK: int = 50
-#: Name of the LV busbar of a pylovo LV net (the low-voltage side of its station transformer).
-LV_BUSBAR_NAME: str = "LVbus 1"
 #: Tables of an LV net that the merge copies (:func:`lv_frames`).
 FRAME_TABLES: tuple[str, ...] = ("bus", "line", "trafo", "load")
 #: Bus references of the copied tables.

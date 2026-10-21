@@ -24,9 +24,6 @@ import pandas as pd
 
 from pylovo.mv_grid.model import DistrictInput, DistrictPlan, TopologyPlan
 
-#: Planning modules composed by :func:`plan_district` (imported on use).
-PLANNING_MODULES: tuple[str, ...] = ("graph", "topology", "rings", "solvers", "electrical", "metrics", "coincidence")
-
 _INSTALLED = ("inst_res", "inst_com", "inst_pub", "inst_unk")
 _UNITS = ("units_res", "units_com", "units_pub", "units_unk")
 

@@ -68,8 +68,6 @@ if TYPE_CHECKING:
 BUSBAR = 0
 #: Node kinds with switchgear: their ring panel may hold the normally-open switch (never a T-joint).
 SWITCHGEAR_KINDS: tuple[str, ...] = ("station", "customer")
-#: Reasons of an infeasible ring, in the order the rules are checked.
-REASONS: tuple[str, ...] = ("count", "unreachable", "no_nop", "length", "current", "drop", "n1_current", "n1_drop")
 #: Default number of memoised rings per evaluator (about 0.7 kB each; the memo is cleared when it is full).
 DEFAULT_CACHE_SIZE = 50_000
 

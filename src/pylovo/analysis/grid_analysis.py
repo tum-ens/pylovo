@@ -17,9 +17,6 @@ if TYPE_CHECKING:
     from pylovo.analysis.parameter_calculation import ParameterCalculator
 
 
-REAL_HOUSEHOLD_LOAD_TYPES = {"HH"}
-
-
 def _get_transformer_mva(net: pp.pandapowerNet) -> float:
     """Return the station rating in MVA of the first transformer in ``net.trafo``, or NaN if there is none.
 

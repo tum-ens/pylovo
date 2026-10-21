@@ -30,8 +30,6 @@ RELATION_ID = 2145268
 AREA_THRESHOLD = 60  # m²; larger substation polygons are HV/MV substations
 MIN_DISTANCE_BETWEEN_TRAFOS = 8  # m; of two closer transformers only the later one is kept
 VOLTAGE_THRESHOLD = 110000  # V; transformers tagged with this voltage or more are removed
-# Alias of TARGET_EPSG (set in .env) kept for importers; processing always uses TARGET_EPSG.
-EPSG = TARGET_EPSG
 
 
 def _transformer_data_dir() -> Path:

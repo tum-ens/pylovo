@@ -289,10 +289,6 @@ def split_visualization_edges(branches: list[FeederBranch], transformer_node: in
     return split_edges
 
 
-#: ``split_type`` of the cabinets in ``pylovo.split_points``.
-CABINET_KINDS = ("feeder_split_topology", "end_cabinet", "added_cabinet")
-
-
 @dataclass
 class CabinetPlan:
     """The cable distribution cabinets of one grid (``HOUSE_CONNECTION: cabinet``, result of :func:`plan_cabinets`).

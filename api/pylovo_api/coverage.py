@@ -90,7 +90,6 @@ except ValueError:
 
 # --------------------------------------------------------------------------- filter rules
 # InfdbClient.fetch_buildings_from_infdb (consumer candidates, optional address filter).
-CONSUMER_USES = ("Commercial", "Public", "Residential", "Mixed")
 STATION_USE_ID = "31001_2523"
 CAND_SQL = ("b.building_use IN ('Commercial', 'Public', 'Residential', 'Mixed') "
             "AND COALESCE(b.building_use_id, '') <> '31001_2523'")
@@ -98,7 +97,6 @@ ADDR_SQL = "COALESCE(b.street, '') <> '' AND COALESCE(b.house_number, '') <> ''"
 # PreprocessingMixin.remove_non_residential_buildings_from_buildings_tem keeps exactly these rows
 # (type = COALESCE(building_type, building_use) as selected by fetch_buildings_from_infdb);
 # calculate_avg_households_per_building uses the same rule.
-RESIDENTIAL_TYPES = ("SFH", "TH", "MFH", "AB")
 RES_SQL = ("(COALESCE(b.residential_floor_area, 0) > 0 "
            "OR COALESCE(b.building_type, b.building_use) IN ('SFH', 'TH', 'MFH', 'AB'))")
 # The raw-row part of the checks in PreprocessingMixin.set_building_peak_load that abort a PLZ.
@@ -109,7 +107,6 @@ BAD_SQL = ("(b.residential_floor_area < 0 OR b.nonresidential_floor_area < 0 "
            "AND abs(b.residential_floor_area + b.nonresidential_floor_area - b.floor_area * b.floor_number) > 0.01) "
            "OR (COALESCE(b.residential_floor_area, 0) > 0 AND b.households IS NOT NULL AND b.households <= 0))")
 # InfdbClient.fetch_ways_from_infdb drops klasse 'Rad- und Fußweg' (clazz 72) from both tables.
-EXCLUDED_KLASSE = "Rad- und Fußweg"
 WAY_SQL = "btrim(t.klasse) IS DISTINCT FROM 'Rad- und Fußweg'"
 RULES_HASH = hashlib.sha1("|".join((CAND_SQL, ADDR_SQL, RES_SQL, BAD_SQL, WAY_SQL)).encode()).hexdigest()[:12]
 

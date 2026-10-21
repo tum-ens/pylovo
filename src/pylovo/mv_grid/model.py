@@ -20,10 +20,6 @@ if TYPE_CHECKING:
 
 CATEGORIES: tuple[str, ...] = ("Residential", "Commercial", "Public", "Unknown")   # order of every stats array
 CASES: tuple[str, ...] = ("load", "n1a", "n1b")       # the planning cases: load and the two (n-1) cases
-#: Node kinds and line roles of the stored results; ``generator`` only in variants planned with generation (an older
-#: MV stage, kept on the branch feature/mv-backup).
-NODE_KINDS = ("busbar", "station", "customer", "generator", "joint")
-LINE_ROLES = ("ring", "stub", "dedicated", "generator", "tie", "link")
 LINE_KINDS = ("cable", "overhead", "mixed")
 MEMBER_KINDS: tuple[str, ...] = ("station", "customer")   # ring members (the member cap counts them)
 
@@ -228,7 +224,7 @@ class LinePlan:
     key: int                               # plan-local line key 0..n-1
     from_key: int                          # node key: mv_node_id (> 0) or a joint temp key (< 0)
     to_key: int
-    role: str                              # LINE_ROLES
+    role: str                              # ring, stub, dedicated, tie or link
     kind: str                              # LINE_KINDS
     feeder_id: int | None
     ring_id: int | None

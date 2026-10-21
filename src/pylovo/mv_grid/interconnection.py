@@ -79,8 +79,6 @@ _LOGGER = logging.getLogger(__name__)
 TIE_NODE_KINDS: tuple[str, ...] = ("station", "customer")
 #: Node connections of the links from stub ends (``link_stub_ends``): ring members and stub nodes.
 STUB_LINK_CONNECTIONS: tuple[str, ...] = ("ring", "stub")
-#: Flags of a tie (kept in ``mv_grid.metrics['ties']`` and counted in the variant summary).
-TIE_FLAGS: tuple[str, ...] = ("incomplete_district", "substation_outside_region")
 #: Columns of the tie table of :func:`plan_ties`.
 TIE_COLUMNS: tuple[str, ...] = (
     "from_node", "to_node", "from_grid", "to_grid", "from_ring", "to_ring", "from_feeder", "to_feeder", "kind",

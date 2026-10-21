@@ -68,8 +68,6 @@ _THERMAL_PLANT = re.compile(r"(^|\|)(gas|coal|oil|biomass|biogas|waste|lignite|d
 #: Reasons of :func:`classify_candidate` (``kept`` for a kept candidate).
 CANDIDATE_REASONS: tuple[str, ...] = ("kept", "no_hv", *(f"tag_{t}" for t in sorted(DROPPED_SUBSTATION_TAGS)),
                                       "frequency", "railway_operator", "railway_name", "railway_tag", "in_plant")
-#: Reasons of the site rules of :func:`aggregate`.
-SITE_DROP_REASONS: tuple[str, ...] = ("ehv_partner", "near_larger")
 #: Columns of :func:`sites_frame`.
 SITE_COLUMNS: tuple[str, ...] = ("source", "source_ids", "name", "operator", "voltage_tag", "max_v", "mv_tagged",
                                  "egon_bus_id", "egon_distance_m", "in_region", "osm_ratings_mva", "flags", "x", "y",
