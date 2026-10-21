@@ -5,6 +5,7 @@ Subcommands:
     transformers-dso-csv: add DSO transformer positions from a CSV file.
     transformers-ui: browser map for checking and editing transformer positions (needs the extra legacy-ui).
 """
+import json
 import sys
 import time
 
@@ -16,14 +17,25 @@ from pylovo.data_import.import_transformers import (
     process_trafos,
 )
 from pylovo.data_import.transformers_ui import run_transformers_ui
-from pylovo.database.database_constructor import DatabaseConstructor
+from pylovo.database.database_constructor import DUPLICATE_KEY_ERROR, DatabaseConstructor
+
+
+def _count_features(geojson_path) -> int:
+    """Return the number of features of a GeoJSON file."""
+    with open(geojson_path, encoding="utf-8") as file:
+        return len(json.load(file)["features"])
 
 
 def import_transformers_osm(relation_id: int):
     """Fetch, filter and import the transformers of an OSM relation (existing rows are kept).
 
+    Prints how many transformers were added and how many were skipped (their id exists already).
+
     Args:
         relation_id: OSM relation id of the area, e.g. 62464.
+
+    Raises:
+        RuntimeError: If ``ogr2ogr`` reported errors other than duplicate keys.
     """
     start_time = time.time()
 
@@ -38,10 +50,16 @@ def import_transformers_osm(relation_id: int):
     # Append to the transformers table; rows that already exist (same osm_id) are skipped.
     print("Loading transformers into database...")
     constructor = DatabaseConstructor()
-    constructor.ogr_to_db([{"path": out_file, "table_name": "transformers"}], skip_failures=True)
+    rows_before = constructor.row_count("transformers")
+    errors = constructor.ogr_to_db([{"path": out_file, "table_name": "transformers"}], skip_failures=True)
+    added = constructor.row_count("transformers") - rows_before
+    summary = f"added {added}, skipped {_count_features(out_file) - added}"
 
+    other_errors = [error for error in errors if DUPLICATE_KEY_ERROR not in error]
+    if other_errors:
+        raise RuntimeError(f"ogr2ogr reported errors other than duplicate keys ({summary}): " + " | ".join(other_errors))
     elapsed = time.time() - start_time
-    print(f"✓ Completed in {elapsed:.1f}s")
+    print(f"✓ Completed in {elapsed:.1f}s: {summary}")
 
 
 def import_transformers_dso_csv(csv_path: str, source: str | None, replace_source: bool):

@@ -43,6 +43,9 @@ from pylovo.utils import get_user_data_dir
 # Session advisory lock held by setup, migrations and resets (pg_advisory_lock key pair).
 SETUP_LOCK = (907360, 0)
 
+# The message of PostgreSQL that ogr2ogr passes on for a row whose key exists already.
+DUPLICATE_KEY_ERROR = "duplicate key value violates unique constraint"
+
 def _blocked_message(step: str, exc: psy.errors.DependentObjectsStillExist) -> str:
     """Name the database objects that keep a migration step from dropping or changing a view."""
     detail = "; ".join(line.strip() for line in (exc.diag.message_detail or "").splitlines() if line.strip())
@@ -109,6 +112,16 @@ class DatabaseConstructor:
     def table_is_empty_or_missing(self, table_name: str) -> bool:
         """Return whether ``pylovo.<table_name>`` does not exist yet or has no rows."""
         return not self.table_exists(table_name) or self.dbc.is_table_empty(table_name)
+
+    def row_count(self, table_name: str) -> int:
+        """Return the number of rows of ``pylovo.<table_name>`` (0 if the table does not exist)."""
+        if not self.table_exists(table_name):
+            return 0
+        with self.dbc.conn.cursor() as cur:
+            cur.execute(sql.SQL("SELECT count(*) FROM pylovo.{}").format(sql.Identifier(table_name)))
+            count = cur.fetchone()[0]
+        self.dbc.conn.commit()
+        return count
 
     def create_table(self, table_name):
         """Create one table of ``CREATE_QUERIES``, or all of them, and commit.
@@ -291,7 +304,7 @@ class DatabaseConstructor:
             if any(item is None for item in cur.fetchone()):
                 raise RuntimeError("PyLovo line cache or compatibility view is missing")
 
-    def ogr_to_db(self, ogr_file_list, skip_failures: bool = False):
+    def ogr_to_db(self, ogr_file_list, skip_failures: bool = False) -> list[str]:
         """Import geodata files into ``pylovo`` tables with ``ogr2ogr`` (GDAL).
 
         Used for the transformer GeoJSON and, with ``USE_INFDB=False``, for building
@@ -302,10 +315,15 @@ class DatabaseConstructor:
             ogr_file_list: Dicts with ``path`` and optionally ``table_name`` (default: file stem).
             skip_failures: Pass ``-skipfailures`` to ``ogr2ogr`` and print the distinct errors.
 
+        Returns:
+            The distinct error messages of the rows that ``ogr2ogr`` skipped (empty without
+            ``skip_failures``); :data:`DUPLICATE_KEY_ERROR` marks rows that exist already.
+
         Raises:
             FileNotFoundError: If a file does not exist.
             subprocess.CalledProcessError: If ``ogr2ogr`` fails.
         """
+        skipped_errors: set[str] = set()
         for file_dict in ogr_file_list:
             st = time.time()
             file_path = Path(file_dict["path"])
@@ -347,16 +365,18 @@ class DatabaseConstructor:
                 error_list = [e[e.find("ERROR: "):e.find("DETAIL: ")] for e in error_list]
                 error_list = [e.strip("\n") for e in error_list if "ERROR: " in e]
                 error_set = set(error_list)
+                skipped_errors |= error_set
 
                 if error_set:
                     print(f"Warning: Error(s) occurred while processing {file_name}:")
                 for error in error_set:
                     print("\t" + error)
-                    if "duplicate key value violates unique constraint" in error:
+                    if DUPLICATE_KEY_ERROR in error:
                         print("\tThis is likely due to importing already existing data.")
 
             et = time.time()
             print(f"{file_name} is successfully imported to db in {int(et - st)} s")
+        return sorted(skipped_errors)
 
     def transformers_to_db(self, clear_existing: bool = True):
         """Import the OSM transformers of ``RELATION_ID`` into ``pylovo.transformers`` and commit.
