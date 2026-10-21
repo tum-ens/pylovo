@@ -14,6 +14,7 @@ and voltage drops.
 from __future__ import annotations
 
 import time
+from itertools import pairwise
 
 import psycopg2
 import pytest
@@ -231,7 +232,7 @@ def test_cross_grid_analysis_restore(client, conn):
                       WHERE g.version_id = '1' AND EXISTS (SELECT 1 FROM pylovo.buildings_result b
                             WHERE b.grid_result_id = g.grid_result_id AND b.households > 1)
                       ORDER BY g.plz, g.grid_result_id""")
-    pairs = [(a, b) for a, b in zip(rows, rows[1:]) if a[1] == b[1]]
+    pairs = [(a, b) for a, b in pairwise(rows) if a[1] == b[1]]
     if not pairs:
         pytest.skip("no PLZ with two grids that have a multi-household building")
     (g1, plz), (g2, _) = pairs[0]

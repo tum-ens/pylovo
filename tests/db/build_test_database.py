@@ -20,8 +20,8 @@ or the InfDB source schema. It
 
 The commands run in a temporary directory with a copy of ``config/`` (logs and results stay out of the
 checkout), ``PYLOVO_ROOT`` points to the checkout for the reference data in ``data/``. It takes less than
-a minute. The tests that use the database are listed in the development guide (``docs/source/
-development/testing.rst``).
+a minute. The tests that use the database are listed in the development guide (section "Tests" of
+``docs/source/development/index.rst``).
 """
 from __future__ import annotations
 
@@ -69,6 +69,7 @@ def main(argv: list[str] | None = None) -> None:
 
     os.chdir(ROOT)  # the configuration is read relative to the working directory
     import psycopg2
+
     from pylovo import config_loader as cl
 
     if cl.DBNAME != args.database:

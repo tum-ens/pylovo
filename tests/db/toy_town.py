@@ -25,6 +25,7 @@ of Heligoland, so no real building or OSM transformer lies near it.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 SRID = 25832
 X0, Y0 = 400_000.0, 6_000_000.0   # origin of the local coordinates (metres)
@@ -190,7 +191,7 @@ def street_segments() -> list[tuple[str, str, tuple[float, float], tuple[float, 
         length = abs(bx - ax) + abs(by - ay)
         cuts = sorted({0.0, float(length), *_junctions(name), *feet.get(name, ())})
         dx, dy = (bx - ax) / length, (by - ay) / length
-        for t0, t1 in zip(cuts, cuts[1:]):
+        for t0, t1 in pairwise(cuts):
             segments.append((name, klasse, (ax + dx * t0, ay + dy * t0), (ax + dx * t1, ay + dy * t1)))
     return segments
 
@@ -252,7 +253,7 @@ def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str
 
     cur.execute(sql.SQL(SOURCE_DDL.replace("{srid}", str(SRID))).format(
         src=sql.Identifier(source_schema), od=sql.Identifier(opendata_schema)))
-    table = lambda name, schema=source_schema: sql.Identifier(schema, name)  # noqa: E731
+    table = lambda name, schema=source_schema: sql.Identifier(schema, name)
     population = {plz: 0 for plz in POSTCODES}
     rows, lines = [], []
     for i, b in enumerate(buildings(), start=1):

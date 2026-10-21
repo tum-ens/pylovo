@@ -5,7 +5,7 @@ pylovo's configuration (``.env`` or environment) points to::
 
     PYLOVO_API_TEST_DATABASE=<test db> uv run --extra api pytest api/tests
 
-Use the toy-town test database built by ``tests/db/build_test_database.py`` (see the testing page of the
+Use the toy-town test database built by ``tests/db/build_test_database.py`` (section "Tests" of the
 development guide). The tests derive their expectations from that database (any database with generated
 grids of versions 1 to 3, version 2 with existing transformer positions and version 3 residential-only,
 works), but they WRITE: the transformer test inserts and deletes a manual transformer, the load-edit tests
@@ -42,6 +42,7 @@ requires_db = pytest.mark.skipif(bool(_db_opt_in()), reason=_db_opt_in() or "")
 def conn():
     """Autocommit connection to the test database (search path ``pylovo, public``, exact float digits)."""
     import psycopg2
+
     from pylovo import config_loader as cl
 
     c = psycopg2.connect(dbname=cl.DBNAME, user=cl.DBUSER, password=cl.PASSWORD, host=cl.HOST, port=cl.PORT,
@@ -66,6 +67,7 @@ def region(conn) -> dict:
     postcode with the same first four digits but without a polygon (99003), which the region gate blocks.
     """
     from psycopg2 import sql
+
     from pylovo import config_loader as cl
 
     plz = q(conn, "SELECT min(plz) FROM pylovo.grid_result WHERE version_id = '1'")[0][0]

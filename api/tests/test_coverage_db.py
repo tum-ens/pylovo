@@ -64,6 +64,7 @@ def counters(cov: InputCoverage, table: str, plz: int) -> list[int]:
 
 def source_buildings(conn, plz: int) -> int:
     from psycopg2 import sql
+
     from pylovo import config_loader as cl
 
     query = sql.SQL("SELECT count(*) FROM {} WHERE postcode = %s").format(

@@ -2,7 +2,7 @@
 
     PYLOVO_TOY_TOWN_DATABASE=pylovo_test uv run pytest tests/test_toy_town.py
 
-Build the database first with ``tests/db/build_test_database.py`` (testing page of the development guide). The
+Build the database first with ``tests/db/build_test_database.py`` (section "Tests" of the development guide). The
 variable must name the database pylovo's configuration points to.
 """
 from __future__ import annotations
