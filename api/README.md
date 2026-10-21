@@ -108,7 +108,12 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
 ## Behaviour
 
 * **Jobs** run the `pylovo-*` command with the project root as working directory, stream its
-  output (Server-Sent Events) and can be cancelled. Job logs survive a restart.
+  output (Server-Sent Events) and can be cancelled. Job logs survive a restart. The record of a
+  job (`.pylovo-api/jobs/<id>.json`, with the pid of its process) is written when the process
+  starts and updated when it ends. A job that was still running when the server stopped or
+  crashed is `interrupted` after the next start; if its process still exists it stays `running`
+  (and blocks other writers) until it has ended, and can be cancelled. When the server exits,
+  running jobs get SIGTERM, and SIGKILL if they are still running after 3 s.
 * **Region input check** (`coverage.py`, `gate.py`): a PLZ can be generated only when it has a
   postcode polygon, at least two buildings pylovo would import (the filters of
   `pylovo-generate`), a residential building, street segments and connection lines. It runs per

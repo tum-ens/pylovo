@@ -6,18 +6,27 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
-from pylovo_api.jobs import JobManager
+from pylovo_api.jobs import JobConflict, JobManager
 
 
 def wait(job, seconds: float = 10.0) -> None:
     end = time.time() + seconds
     while job.active and time.time() < end:
         time.sleep(0.05)
+
+
+def until(condition, seconds: float = 10.0) -> None:
+    end = time.time() + seconds
+    while not condition() and time.time() < end:
+        time.sleep(0.05)
+    assert condition()
 
 
 @pytest.fixture()
@@ -220,3 +229,78 @@ def test_the_finish_hook_runs_after_the_job_has_ended_and_may_fail(manager):
 
 def test_the_region_gate_hears_about_finished_jobs(client):
     assert client.app.state.jobs.on_finish == client.app.state.coverage.on_job_finished
+
+
+# --------------------------------------------------------------------------- records, restarts, shutdown
+def write_record(jobs_dir, job_id, **over):
+    record = {"id": job_id, "kind": "generate", "title": "Generate grids", "argv": ["pylovo-generate"], "writes_db": True,
+              "params": {}, "status": "running", "created_at": time.time() - 100, "started_at": time.time() - 100,
+              "pid": None, "exit_code": None, "output_dir": None} | over
+    jobs_dir.mkdir(exist_ok=True)
+    (jobs_dir / f"{job_id}.json").write_text(json.dumps(record), encoding="utf-8")
+    (jobs_dir / f"{job_id}.log").write_text("$ pylovo-generate\nprogress: 1/2\n", encoding="utf-8")
+
+
+def test_the_record_of_a_job_exists_while_it_runs_and_holds_the_pid(manager):
+    job = manager.start("test", "slow", [sys.executable, "-c", "import time; time.sleep(30)"])
+    path = manager.jobs_dir / f"{job.id}.json"
+    until(lambda: path.exists())
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["status"] == "running" and record["pid"] == job.pid and record["finished_at"] is None
+    manager.cancel(job.id)
+    wait(job, 20)
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["status"] == "cancelled" and record["finished_at"] is not None  # updated at the end
+
+
+def test_a_job_that_was_running_when_the_server_died_is_marked_interrupted(tmp_path):
+    jobs_dir = tmp_path / "jobs"
+    for job_id, status in (("a1", "running"), ("a2", "queued")):
+        write_record(jobs_dir, job_id, status=status, pid=os.getpid())  # a pid that exists, but is not the job's process
+    manager = JobManager(cwd=tmp_path, jobs_dir=jobs_dir)
+    for job_id in ("a1", "a2"):
+        job = manager.get(job_id)
+        assert job.status == "interrupted" and not job.active and job.exit_code is None
+        assert job.finished_at is not None and job.finished_at <= time.time()
+        assert job.lines[-1]["text"].startswith("Job interrupted") and job.lines[-1]["level"] == "warning"
+        assert any("stopped while this job was running" in line["text"] for line in job.lines)
+        assert json.loads((jobs_dir / f"{job_id}.json").read_text(encoding="utf-8"))["status"] == "interrupted"
+    assert manager.running_writer() is None  # an interrupted job holds no writer lock
+    assert JobManager(cwd=tmp_path, jobs_dir=jobs_dir).get("a1").status == "interrupted"  # and stays so
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="the identity of a process is read from /proc")
+def test_a_job_whose_process_outlived_the_server_keeps_the_writer_lock_until_it_ends(tmp_path):
+    started = time.time()
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+    try:
+        write_record(tmp_path / "jobs", "b1", pid=proc.pid, started_at=started)
+        manager = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs")
+        job = manager.get("b1")
+        assert job.status == "running" and manager.running_writer() is job
+        with pytest.raises(JobConflict):
+            manager.start("delete", "second writer", [sys.executable, "-c", "pass"])
+        manager.cancel("b1")  # signals the process group of the job
+        wait(job, 20)
+        assert job.status == "cancelled" and manager.running_writer() is None
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="the identity of a process is read from /proc")
+def test_a_pid_that_belongs_to_another_process_is_not_taken_for_the_job(tmp_path):
+    write_record(tmp_path / "jobs", "c1", pid=os.getpid(), started_at=time.time() - 3600)  # this process started later
+    job = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs").get("c1")
+    assert job.status == "interrupted" and job._proc is None
+
+
+def test_shutdown_kills_a_job_that_ignores_sigterm(manager):
+    code = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print('ready', flush=True); time.sleep(60)"
+    job = manager.start("test", "stubborn", [sys.executable, "-c", code])
+    until(lambda: any(line["text"] == "ready" for line in job.lines))
+    pid = job.pid
+    manager.shutdown(wait_s=0.5)
+    assert job.status == "cancelled"
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)

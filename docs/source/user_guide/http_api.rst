@@ -66,7 +66,11 @@ Setup, generation, analysis, deletion, export and the transformer imports are jo
 the corresponding command with the project root as working directory and streams its output as
 Server-Sent Events. Only one database-writing job runs at a time, and direct edits of transformers
 or loads are refused while one runs. Job logs survive a restart of the API
-(``.pylovo-api/jobs/`` in the project).
+(``.pylovo-api/jobs/`` in the project). The record of a job is written when its process starts and
+updated when it ends. A job that was still running when the server stopped or crashed is shown as
+``interrupted`` after the next start. If its process still exists, the job stays ``running`` and
+blocks other writers until it has ended, and it can still be cancelled. When the server exits, running
+jobs get SIGTERM, and SIGKILL if they are still running after three seconds.
 
 A generation job never runs the MV stage: the API passes ``--no-mv``, so ``MV_GRID_GENERATION`` in
 ``config_generation_mv.yaml`` has no effect on runs that the API starts. The MV stage is a

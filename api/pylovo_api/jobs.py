@@ -82,6 +82,34 @@ def pylovo_command(script: str, *args: str) -> list[str]:
     return [sys.executable, "-m", SCRIPT_MODULES[script], *args]
 
 
+def _process_alive(pid: int | None, started_at: float | None) -> bool:
+    """Whether ``pid`` is still the process that started at ``started_at`` (a job of an earlier server run).
+
+    The start time guards against a pid that the system has given to another process meanwhile. It is
+    read from ``/proc``, so anywhere else (and for a zombie) the answer is ``False``.
+    """
+    if not pid or not started_at:
+        return False
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()  # after "pid (name)": state is field 3
+        boot = next(int(line.split()[1]) for line in Path("/proc/stat").read_text().splitlines() if line.startswith("btime"))
+        started = boot + int(fields[19]) / os.sysconf("SC_CLK_TCK")  # field 22: start time in clock ticks since boot
+    except (OSError, ValueError, IndexError, StopIteration):
+        return False
+    return fields[0] != "Z" and abs(started - started_at) < 5
+
+
+class _Orphan:
+    """The process of a job that an earlier pylovo-api run started: the part of ``Popen`` that cancel and shutdown use."""
+
+    def __init__(self, pid: int, started_at: float | None):
+        self.pid = pid
+        self.started_at = started_at
+
+    def poll(self) -> int | None:
+        return None if _process_alive(self.pid, self.started_at) else 0
+
+
 class JobConflict(RuntimeError):
     """Raised when a database-writing job is started while another one is running."""
 
@@ -97,7 +125,7 @@ class Job:
     writes_db: bool
     params: dict[str, Any] = field(default_factory=dict)
     output_dir: str | None = None
-    status: str = "queued"  # queued | running | succeeded | failed | cancelled
+    status: str = "queued"  # queued | running | succeeded | failed | cancelled | interrupted
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
@@ -264,15 +292,28 @@ class JobManager:
         self._append(job, "Cancellation requested by the user …", "warning")
         threading.Thread(target=self._escalate, args=(proc,), daemon=True).start()
 
-    def shutdown(self, wait_s: float = 3.0) -> None:
-        """Stop all running jobs when the server exits and record them as cancelled."""
+    def shutdown(self, wait_s: float = 3.0, kill_wait_s: float = 2.0) -> None:
+        """Stop all running jobs when the server exits and record them as cancelled.
+
+        A job gets SIGTERM; one that is still running after ``wait_s`` seconds gets SIGKILL, and the
+        jobs then have ``kill_wait_s`` seconds to write their final record.
+        """
         running = [j for j in self.list() if j.active and j._proc and j._proc.poll() is None]
         for job in running:
             job.cancel_requested = True
             self._append(job, "pylovo-api is shutting down: stopping the job", "warning")
             self._signal(job._proc, signal.SIGTERM)
-        deadline = time.time() + wait_s
-        while running and time.time() < deadline and any(j.active for j in running):
+        self._wait_until_ended(running, wait_s)
+        for job in running:
+            if job.active and job._proc and job._proc.poll() is None:
+                self._append(job, "The job did not stop after SIGTERM: killing it", "warning")
+                self._signal(job._proc, getattr(signal, "SIGKILL", signal.SIGTERM))
+        self._wait_until_ended(running, kill_wait_s)
+
+    @staticmethod
+    def _wait_until_ended(jobs: list[Job], seconds: float) -> None:
+        deadline = time.time() + seconds
+        while time.time() < deadline and any(j.active for j in jobs):
             time.sleep(0.1)
 
     # ------------------------------------------------------------------ internals
@@ -309,33 +350,38 @@ class JobManager:
                 job._proc = proc
                 cancelled = job.cancel_requested  # cancel() came in while the process was being created
             job.pid = proc.pid
+            self._write_record(job)  # a server that dies now leaves a "running" record with the pid, see _load_history
             if cancelled:
                 self._stop(job, proc)
             for raw in proc.stdout:
                 self._append(job, raw.rstrip("\r\n"))
             return proc.wait()
 
-    def _finish(self, job: Job, status: str, code: int | None) -> None:
+    def _finish(self, job: Job, status: str, code: int | None, finished_at: float | None = None) -> None:
         job.exit_code = code
-        job.finished_at = time.time()
+        job.finished_at = finished_at or time.time()
         job.status = status
         job_outcomes.finish(job)
         if status == "succeeded":
             job.progress = 1.0
-        label = {"succeeded": "success", "failed": "error", "cancelled": "warning"}[status]
+        label = {"succeeded": "success", "failed": "error", "cancelled": "warning", "interrupted": "warning"}[status]
         took = job.finished_at - (job.started_at or job.finished_at)
         self._append(job, f"Job {status} (exit code {code}) after {took:.1f} s", label)
         job._proc = None
-        try:
-            (self.jobs_dir / f"{job.id}.json").write_text(json.dumps(job.summary() | {"argv": job.argv, "output_dir": job.output_dir}),
-                                                         encoding="utf-8")
-        except OSError:
-            pass
+        self._write_record(job)
         if self.on_finish:
             try:
                 self.on_finish(job)
             except Exception:  # a listener must not break the job runner
                 log.exception("The finish hook failed for job %s", job.id)
+
+    def _write_record(self, job: Job) -> None:
+        """Write ``<id>.json``, the history record: when the process has started (status ``running``, with its pid) and at the end."""
+        try:
+            (self.jobs_dir / f"{job.id}.json").write_text(
+                json.dumps(job.summary() | {"argv": job.argv, "output_dir": job.output_dir, "pid": job.pid}), encoding="utf-8")
+        except OSError:
+            pass
 
     def _append(self, job: Job, text: str, level: str | None = None) -> None:
         if level is None:
@@ -419,15 +465,42 @@ class JobManager:
                           finished_at=meta.get("finished_at"), exit_code=meta.get("exit_code"),
                           progress=meta.get("progress"), phase=meta.get("phase"),
                           counts=meta.get("counts") or {"warning": 0, "error": 0},
-                          plz_outcomes=meta.get("plz_outcomes") or {})
+                          plz_outcomes=meta.get("plz_outcomes") or {}, pid=meta.get("pid"))
                 output_dir = meta.get("output_dir")
                 job.output_dir = output_dir if output_dir and Path(output_dir).is_dir() else None
                 log_path = self.jobs_dir / f"{job.id}.log"
                 if log_path.exists():
                     self._load_log(job, log_path)
+                job._log_path = log_path
                 self._jobs[job.id] = job
+                if job.active:
+                    self._adopt_or_interrupt(job, log_path)
             except (OSError, ValueError, KeyError):
                 continue
+
+    def _adopt_or_interrupt(self, job: Job, log_path: Path) -> None:
+        """Deal with a job that was still queued or running when an earlier pylovo-api run ended.
+
+        Nothing of this run follows its output. If its process still exists, the job stays running (and
+        keeps the writer lock, so no second writer starts) until the process has ended; it can be
+        cancelled. Otherwise it is recorded as interrupted.
+        """
+        if _process_alive(job.pid, job.started_at):
+            job._proc = _Orphan(job.pid, job.started_at)
+            self._append(job, "pylovo-api was restarted: the job is still running, but its output is no longer followed",
+                         "warning")
+            threading.Thread(target=self._watch_orphan, args=(job,), name=f"job-{job.id}", daemon=True).start()
+            return
+        ended = log_path.stat().st_mtime if log_path.exists() else None  # the last output is the last sign of life
+        self._append(job, "pylovo-api was stopped while this job was running: its process is gone and its result is unknown",
+                     "warning")
+        self._finish(job, "interrupted", None, finished_at=ended)
+
+    def _watch_orphan(self, job: Job) -> None:
+        while job._proc is not None and job._proc.poll() is None:
+            time.sleep(2)
+        self._append(job, "The process has ended: its exit code is unknown", "warning")
+        self._finish(job, "cancelled" if job.cancel_requested else "interrupted", None)
 
     @staticmethod
     def _load_log(job: Job, path: Path) -> None:
