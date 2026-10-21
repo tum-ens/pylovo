@@ -81,11 +81,18 @@ same name.
      - Optional project root for installations outside a checkout: ``$PYLOVO_ROOT/config`` is
        searched for configuration files and ``$PYLOVO_ROOT/data`` is used as data directory.
    * - ``PYLOVO_DATA_DIR``
-     - ``./data``
-     - Optional data directory for building shapefiles and the street SQL dump.
+     - ``$PYLOVO_ROOT/data``, else ``./data``
+     - Optional data directory with all input data: ``transformer_data/``, ``municipal_register/``
+       and, in the file-based mode, ``postcode.csv``, ``ways/`` and ``buildings/``. The municipal
+       register also finds the ``data/`` folder of the checkout.
    * - ``PYLOVO_CONFIG_DIR``
      - ``~/.config/pylovo``
-     - Optional directory with the YAML files (see :ref:`config-file-lookup`).
+     - Optional directory with the YAML files, searched after ``./config`` and
+       ``$PYLOVO_ROOT/config``. If it is set, ``~/.config/pylovo`` and ``./.pylovo`` are not
+       searched (see :ref:`config-file-lookup`).
+   * - ``ACCESS_TOKEN_PLOTLY``
+     - --
+     - Optional Mapbox access token for the map background of some plotly figures (plotting extra).
 
 .. _config-file-lookup:
 
@@ -105,7 +112,9 @@ The files ``config_generation_lv.yaml`` (the LV grids), ``config_analysis.yaml``
 the classification module (:doc:`classification`) and do not influence grid generation. ``config_generation_mv.yaml`` (the
 MV stage) is read from the directory of ``config_generation_lv.yaml``; without it, the MV stage
 takes its shipped values. The former single file ``config_generation.yaml`` is still read in place
-of ``config_generation_lv.yaml``, with its ``MV_*`` keys.
+of ``config_generation_lv.yaml``, with its ``MV_*`` keys. pylovo warns about it, and also when
+the former file hides ``config_generation_lv.yaml`` or ``config_generation_mv.yaml`` of a folder
+that is searched later.
 
 .. _versions:
 
@@ -124,7 +133,9 @@ snapshot and stops with
    grids with the changed configuration.
 
 if anything differs. The column **Snapshot** in the tables below marks the keys that are part of
-the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``, so use at most 10 characters.
+the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``: use 1 to 10 letters, digits, ``_``,
+``.`` or ``-``, and quote it in YAML (``VERSION_ID: "2"``). pylovo stops at the start for any other
+value.
 
 A postcode that already has grids in the active version is skipped
 (``Grid for the postcode area ... has already been generated``). Delete the old grids first
@@ -183,10 +194,6 @@ Execution
    * - ``RESULT_DIR``
      - ``results``
      - Output directory, relative to the working directory.
-     -
-   * - ``GRACEFUL_SHUTDOWN_TIMEOUT``
-     - not set (5)
-     - Optional: seconds to wait for running workers after :kbd:`Ctrl+C` in a parallel run.
      -
 
 Loads and general grid settings
@@ -340,7 +347,7 @@ Loads and general grid settings
    * - ``yearly_consumption``, ``yearly_consumption_per_m2``
      - Stored in ``pylovo.consumer_categories``; not used by the grid generation.
    * - ``sim_factor``
-     - Coincidence (simultaneity) factor *f* of the category, see
+     - Coincidence (simultaneity) factor *f* of the category, a number from 0 to 1, see
        :doc:`../concepts/grid_dimensioning`.
 
 Transformer placement and settlement type
@@ -586,20 +593,15 @@ together with the constants of the stage, which are changed in Python only.
      - rating → colour
      - Colours per transformer rating (kVA) for statistics plots.
      -
-   * - ``COLORS``, ``PALETTES``
+   * - ``PALETTES``
      - TUM colours
-     - Colour definitions; ``TUMPalette`` becomes the seaborn default palette if seaborn is
+     - Colour palettes; ``TUMPalette`` becomes the seaborn default palette if seaborn is
        installed.
      -
    * - ``NETWORK_COLORS``
      - three colours
      - Node colours of the graph plots (transformer, consumer, connection bus) in
        :mod:`pylovo.plotting.generation.networks`.
-     -
-   * - ``PLOT_DEFAULTS``
-     - figure size, DPI, fonts
-     - Loaded into ``DEFAULT_*`` constants of :mod:`pylovo.config_loader`; currently not used by
-       the plotting functions.
      -
    * - ``MUNICIPAL_REGISTER``
      - column list

@@ -19,8 +19,8 @@ area and stores the grids under the ``VERSION_ID`` of ``config/config_generation
 Workflow with versions
 ----------------------
 
-#. Choose a new numeric ``VERSION_ID`` (for example ``2`` after ``1``; at most 10 characters)
-   and describe it in ``VERSION_COMMENT``.
+#. Choose a new ``VERSION_ID`` (for example ``"2"`` after ``"1"``) and describe it in
+   ``VERSION_COMMENT``. Quote it in YAML and use 1 to 10 letters, digits, ``_``, ``.`` or ``-``.
 #. Change the parameters in ``config/config_generation_lv.yaml`` (and, if needed, the power-flow
    limits in ``config_analysis.yaml``).
 #. Run ``pylovo-generate``. The first run stores the parameter snapshot of the version; later runs
@@ -46,11 +46,13 @@ the postcodes run sequentially.
 * ``--no-parallel`` (or ``PARALLEL: False`` in the configuration) processes the postcodes one
   after the other in the main process, which is easier to debug; ``--parallel`` forces worker
   processes.
-* A failing postcode does not stop the others; a parallel run ends with a summary such as
-  ``Parallel grid generation finished with 1 failed PLZ: 80805``.
-* :kbd:`Ctrl+C` cancels pending postcodes and waits up to ``GRACEFUL_SHUTDOWN_TIMEOUT`` seconds
-  (default 5) for running ones. Temporary tables of interrupted postcodes are removed at the
-  next start.
+* A failing postcode does not stop the others. The run ends with a summary such as
+  ``Parallel grid generation finished with 1 failed PLZ: 80805`` (without worker processes:
+  ``Grid generation finished with 1 failed PLZ: 80805``) and the counts
+  ``Generation outcomes: generated=..., exists=..., empty=..., failed=...``. The command still
+  exits with 0.
+* :kbd:`Ctrl+C` cancels pending postcodes and waits for the running ones to finish. The working
+  tables of an interrupted postcode are session-local and disappear with their connection.
 * Every postcode is one database transaction: either all its grids are stored or none.
 
 Logs
