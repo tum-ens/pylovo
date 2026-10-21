@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/transformers", tags=["transformers"])
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 #: An uploaded DSO CSV is kept this long (the import job reads it when it starts); older ones are
-#: deleted at server start and with every new upload.
+#: deleted at server start, with every new upload and when an import asks for one.
 UPLOAD_MAX_AGE_H = 24
 
 
@@ -188,6 +188,7 @@ def prune_uploads() -> None:
 def _upload_path(upload_id: str):
     if not re.fullmatch(r"[0-9a-f]{12}", upload_id or ""):
         raise HTTPException(400, "Invalid upload id")
+    prune_uploads()
     path = paths().uploads_dir / f"{upload_id}.csv"
     if not path.exists():
         raise HTTPException(404, f"Upload not found: uploaded files are deleted after {UPLOAD_MAX_AGE_H} hours. "

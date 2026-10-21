@@ -164,8 +164,9 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
 * **Files** (all inside the project, ignored by git): `.pylovo-api/config-backups/` (the newest 50
   backups), `uploads/` (DSO CSVs, deleted after 24 hours), `jobs/` (records and logs of the newest
   60 jobs), `exports/` (the output of those jobs), `tmp/`, `cache/input-coverage.json`. The files
-  of older jobs are deleted when the server starts and when a job starts, old uploads at the start
-  and with every new upload (`HISTORY_LIMIT` in `jobs.py`, `UPLOAD_MAX_AGE_H` in `routers/transformers.py`).
+  of older jobs are deleted when the server starts and when a job starts, old uploads at the start,
+  with every new upload and when an import asks for one (`HISTORY_LIMIT` in `jobs.py`,
+  `UPLOAD_MAX_AGE_H` in `routers/transformers.py`).
 
 ## Architecture
 

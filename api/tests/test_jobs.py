@@ -352,3 +352,8 @@ def test_old_uploads_are_deleted_at_start_and_the_missing_upload_says_so(client,
     assert not old.exists() and new.exists()
     response = client.post("/api/jobs/import-dso", json={"upload_id": "a" * 12})
     assert response.status_code == 404 and "deleted after 24 hours" in response.json()["detail"]
+    stale = uploads / f"{'c' * 12}.csv"  # older than a day while the server runs: an import does not use it
+    stale.write_text("x", encoding="utf-8")
+    os.utime(stale, (aged, aged))
+    response = client.post("/api/jobs/import-dso", json={"upload_id": "c" * 12})
+    assert response.status_code == 404 and not stale.exists()
