@@ -79,7 +79,8 @@ From ``<INFDB_SOURCE_SCHEMA>.buildings`` pylovo takes the buildings of the postc
 * Non-residential buildings that overlap a transformer candidate are removed; so are duplicates
   and buildings without geometry or ``objectid``.
 * Buildings whose street-side connection point cannot be determined, and street components with
-  at most one building, are removed later in the pipeline (:doc:`../concepts/pipeline`).
+  at most one building, are removed later in the pipeline (:doc:`../concepts/pipeline`). A
+  postcode with a single building keeps it and gets one grid.
 
 Load components
 ~~~~~~~~~~~~~~~

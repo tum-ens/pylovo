@@ -114,7 +114,8 @@ Phase 2: partition
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The connected components of the street graph are computed (``pgr_connectedComponents``). A
-component with at most one building is removed together with its transformer candidates. A
+component with at most one building is removed together with its transformer candidates, except
+the component of a postcode with a single building: that building gets its own grid. A
 component with more than ``MAX_BUILDINGS_PER_KCID`` buildings is split with k-means on the building
 centroids into ⌈n / ``MAX_BUILDINGS_PER_KCID``⌉ clusters (seed ``K_MEANS_SEED``); every other
 component is one cluster. The result is the **k-means cluster id** ``kcid`` of every building. It

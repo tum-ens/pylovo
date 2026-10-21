@@ -564,16 +564,18 @@ class GridGenerator:
         component_ids = np.unique(component)
 
         if len(component_ids) > 0:
-            # Handle components based on number
+            # A PLZ with a single loaded building gets it as its own grid; otherwise a street component
+            # with one building is dropped. With one component, its building count is the PLZ's.
             if len(component_ids) > 1:
+                single_building_plz = self.dbc.count_connected_buildings(vertices) == 1
                 # Process multiple connected components
                 for i, component_id in enumerate(component_ids):
                     # 1-D selection: int() of the 1-element rows of a 2-D selection is deprecated in NumPy.
                     related_vertices = vertices[component == component_id]
-                    self._process_component_to_kcid(related_vertices, i)
+                    self._process_component_to_kcid(related_vertices, i, keep_single_building=single_building_plz)
             else:
                 # Process single connected component
-                self._process_component_to_kcid(vertices)
+                self._process_component_to_kcid(vertices, keep_single_building=True)
         else:
             # No components found - issue warning
             warnings.warn("No connected components found in ways_tem table", stacklevel=2)
@@ -583,11 +585,15 @@ class GridGenerator:
         if no_kmean_count not in [0, None]:
             warnings.warn(f"K-means clustering issue: {no_kmean_count} buildings not assigned to clusters", stacklevel=2)
 
-    def _process_component_to_kcid(self, vertices, component_index=None):
-        """Helper method to process components to kcid groups"""
+    def _process_component_to_kcid(self, vertices, component_index=None, keep_single_building=False):
+        """Helper method to process components to kcid groups.
+
+        A component without loaded buildings is removed with its ways and transformers, and so is a
+        component with one building unless ``keep_single_building`` (it is the only building of the PLZ).
+        """
         conn_building_count = self.dbc.count_connected_buildings(vertices)
 
-        if conn_building_count <= 1:
+        if conn_building_count == 0 or (conn_building_count == 1 and not keep_single_building):
             # Remove isolated or empty components
             self.dbc.delete_ways(vertices)
             self.dbc.delete_transformers_from_buildings_tem(vertices)
