@@ -110,7 +110,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     rounds_used = 0
     for round_ in range(params.repair_rounds + 1):
         net = electrical.build_design_net(inp, plan)                                     # re-evaluated after a repair
-        cases = electrical.run_cases(net, inp, plan)
+        cases = electrical.run_cases(net, inp)
         violations = electrical.check(cases, inp, plan)
         if not violations or round_ == params.repair_rounds:
             break

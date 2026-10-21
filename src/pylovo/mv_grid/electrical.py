@@ -600,7 +600,7 @@ def _case_result(net: pp.pandapowerNet, case: str, converged: bool) -> CaseResul
                       slack_q_mvar=slack_q)
 
 
-def run_cases(net: pp.pandapowerNet, inp: DistrictInput, plan: TopologyPlan) -> dict[str, CaseResult]:
+def run_cases(net: pp.pandapowerNet, inp: DistrictInput) -> dict[str, CaseResult]:
     """Run the cases of :data:`~pylovo.mv_grid.model.CASES` on copies of the design net (non-convergence is a
     result).
 

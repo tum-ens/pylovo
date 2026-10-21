@@ -332,7 +332,7 @@ def test_case_net_per_case():
 def test_run_cases_converge_and_n1_feeds_each_ring_from_one_side():
     b, inp, plan, ids = _full_district()
     net = electrical.build_design_net(inp, plan)
-    cases = electrical.run_cases(net, inp, plan)
+    cases = electrical.run_cases(net, inp)
     assert set(cases) == {"load", "n1a", "n1b"}
     assert all(result.converged for result in cases.values())
     assert cases["load"].vm_pu.index[0] == BUSBAR and cases["load"].vm_pu.iloc[0] == pytest.approx(1.02)
@@ -363,7 +363,7 @@ def test_long_heavy_ring_violates_voltage():
     b = Builder(MvParameters(cable_type="NA2XS2Y 1x240 RM/25 12/20 kV"))    # the hand value is for 1x240
     b.ring(10, spacing=6000.0, households=1500.0)       # about 9 MW per 30 km half: 5.4 % drop by hand
     inp, plan = b.build()
-    cases = electrical.run_cases(electrical.build_design_net(inp, plan), inp, plan)
+    cases = electrical.run_cases(electrical.build_design_net(inp, plan), inp)
     violations = electrical.check(cases, inp, plan)
     assert any(v.case == "load" and v.kind == "voltage_low" for v in violations)
     assert all(v.ring_id == 1 for v in violations if v.element == "bus")
@@ -776,8 +776,8 @@ def test_mv_oberrhein_cases_reproduce_the_pandapower_load_case():
 
 def test_end_to_end_design_net_is_deterministic():
     b, inp, plan, _ = _full_district()
-    first = electrical.run_cases(electrical.build_design_net(inp, plan), inp, plan)
-    second = electrical.run_cases(electrical.build_design_net(inp, plan), inp, plan)
+    first = electrical.run_cases(electrical.build_design_net(inp, plan), inp)
+    second = electrical.run_cases(electrical.build_design_net(inp, plan), inp)
     for case in first:
         pd.testing.assert_series_equal(first[case].vm_pu, second[case].vm_pu)
 
@@ -788,7 +788,7 @@ def test_electrical_cases_ignore_stored_generation():
     inp, plan = b.build()
     net = electrical.build_design_net(inp, plan)
     assert net.sgen.empty
-    cases = electrical.run_cases(net, inp, plan)
+    cases = electrical.run_cases(net, inp)
     assert tuple(cases) == ("load", "n1a", "n1b")
     # static generators of a net (e.g. of merged LV nets) are switched off in every case
     pp.create_sgen(net, int(net.bus.index[-1]), p_mw=0.5)
@@ -805,7 +805,7 @@ def test_unconnected_station_is_unsupplied_not_a_crash():
     inp, plan = b.build()
     net = electrical.build_design_net(inp, plan)
     assert len(net.bus) == 2 and len(net.line) == 0 and len(net.load) == 1
-    cases = electrical.run_cases(net, inp, plan)
+    cases = electrical.run_cases(net, inp)
     assert all(result.converged for result in cases.values())
     assert math.isnan(cases["load"].vm_pu[station])
     assert electrical.check(cases, inp, plan) == []

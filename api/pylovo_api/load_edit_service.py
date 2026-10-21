@@ -239,11 +239,6 @@ def status_info() -> dict[str, Any]:
     return info
 
 
-def views_stale(cur) -> int:
-    """The regular building view cannot lag behind its source rows."""
-    return 0
-
-
 # --------------------------------------------------------------------------- export
 CSV_COLUMNS = ("load_edit_id", "version_id", "plz", "kcid", "bcid", "grid_result_id", "objectid", "address", "action",
                "field", "old", "new", "reason", "status_before", "status_after", "db_user", "client", "created_at",

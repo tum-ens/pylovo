@@ -399,14 +399,14 @@ class PreprocessingMixin(BaseMixin):
         WHERE plz ISNULL;"""
         self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
 
-    def set_buildings_table(self, buildings_data: list[tuple], plz: int | None = None) -> None:
+    def set_buildings_table(self, buildings_data: list[tuple]) -> None:
         """Insert InfDB buildings into ``buildings_tem`` (``USE_INFDB=True``).
 
         Args:
             buildings_data: Rows in the column order of ``InfdbClient.fetch_buildings_from_infdb``
                 (``id``, ``feature_id``, ``objectid``, ..., ``geom``, ``centroid``, ...,
-                ``assigned_way_id``, ``type``); both geometries are transformed to ``TARGET_EPSG``.
-            plz: Unused; ``plz`` is set later by ``set_buildings_tem_plz``.
+                ``assigned_way_id``, ``type``); both geometries are transformed to ``TARGET_EPSG``. The ``plz`` of
+                the buildings is set later by ``set_buildings_tem_plz``.
         """
         insert_query = f"""
             INSERT INTO buildings_tem
@@ -1151,7 +1151,7 @@ class PreprocessingMixin(BaseMixin):
                      AND type = 'Transformer';"""
         self.cur.execute(query)   
 
-    def set_ways_tem_table_infdb(self, ways_data: list[tuple], plz: int | None = None) -> int:
+    def set_ways_tem_table_infdb(self, ways_data: list[tuple]) -> int:
         """Insert the InfDB ways into ``ways_tem`` (``USE_INFDB=True``).
 
         Args:
@@ -1160,7 +1160,6 @@ class PreprocessingMixin(BaseMixin):
                 ``way_id`` (numbered from 1 per PLZ) is offset by the largest ``way_id`` of
                 ``ways_result``, so sequential runs keep it unique. Parallel runs can still assign
                 the same ids, because ``ways_result`` only grows when a run commits.
-            plz: Unused.
 
         Returns:
             Number of rows in ``ways_tem`` afterwards.

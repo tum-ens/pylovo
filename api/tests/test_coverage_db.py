@@ -55,7 +55,7 @@ def test_building_filter_matches_the_library(engine, monkeypatch, require_addres
     client = DatabaseClient()
     try:
         client.create_temp_tables(PLZ)
-        client.set_buildings_table(rows, PLZ)
+        client.set_buildings_table(rows)
         removed = client.remove_non_residential_buildings_from_buildings_tem()
         assert len(rows) - removed == counts["residential"]
         ro = building_counts(counters(engine, "buildings"), flags | {"residential_only": True})

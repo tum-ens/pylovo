@@ -171,7 +171,7 @@ def make_district(lv_nets: dict[int, pp.pandapowerNet], rings: list[list[int]], 
 def planned(inp: DistrictInput, plan: TopologyPlan):
     """Design net, cases, budgets and the stored net (2 x 25 MVA) of a synthetic district."""
     design = electrical.build_design_net(inp, plan)
-    cases = electrical.run_cases(design, inp, plan)
+    cases = electrical.run_cases(design, inp)
     budgets = electrical.station_budgets(inp, plan, cases)
     stored, _ = electrical.build_stored_net(design, 2, 25.0, inp)
     return design, cases, budgets, stored

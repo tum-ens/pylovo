@@ -311,8 +311,7 @@ def _optional(dbc: Any, name: str, logger: logging.Logger, func, *args, **kwargs
         return None
 
 
-def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger: logging.Logger,
-                      warnings: list[str]) -> pd.DataFrame:
+def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger: logging.Logger) -> pd.DataFrame:
     """The HV/MV substation sites of the region from OSM, matched to the eGon-data substations (eTraGo buses), as a
     table for ``insert_substations``."""
     substations = _module("substations")
@@ -481,7 +480,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
                  warnings: list[str]) -> dict:
     """Write the substations, nodes, attachments, supply areas and grids of a variant (caller commits)."""
     # substations
-    sites = _substation_sites(dbc, region_wkb, params, logger, warnings)
+    sites = _substation_sites(dbc, region_wkb, params, logger)
     sites["substation_id"] = dbc.insert_substations(version_id, variant_id, sites)
     # nodes
     rows = _node_rows(dbc, version_id, plz, sites, params, lv, logger)

@@ -104,7 +104,7 @@ def fakes(monkeypatch):
     s.solve = solve
     t.build_plan = lambda inp, rg, model, ev, routes: (calls.append(f"plan:{routes}") or ring_topology())
     e.build_design_net = lambda inp, plan: (calls.append("net") or f"net-{plan.rings[0].nop_key}")
-    e.run_cases = lambda net, inp, plan: (calls.append(f"cases:{net}") or {
+    e.run_cases = lambda net, inp: (calls.append(f"cases:{net}") or {
         "load": case("load"), "n1a": case("n1a"), "n1b": case("n1b")})
 
     def check(cases, inp, plan):

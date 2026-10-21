@@ -35,7 +35,7 @@ class DatabaseCommunication:
         marked as ``filtered`` stays filtered when thresholds change later.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.dbc = dbc.DatabaseClient()
 
         print("Database connection is constructed. ")

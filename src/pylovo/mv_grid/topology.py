@@ -230,7 +230,7 @@ def move_nop(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, pl
             lines[i] = dataclasses.replace(lines[i], normally_open=False, open_at_key=None)
     lines[chain[m]] = dataclasses.replace(lines[chain[m]], normally_open=True, open_at_key=pos_keys[nop - 1])
     node_feeder = dict(plan.node_feeder)
-    feeders = _ring_feeders(pos_keys, m, nop, ring.feeder_a, ring.feeder_b, kids)
+    feeders = _ring_feeders(pos_keys, m, ring.feeder_a, ring.feeder_b, kids)
     node_feeder.update(feeders)
     for j, i in enumerate(chain):
         lines[i] = dataclasses.replace(lines[i], feeder_id=_chain_feeder(j, m, nop, ring.feeder_a, ring.feeder_b))
@@ -1241,7 +1241,7 @@ def _chain_feeder(j: int, m: int, nop: int, fa: int, fb: int) -> int:
     return fb if nop == m else fa
 
 
-def _ring_feeders(pos_keys: Sequence[int], m: int, nop: int, fa: int, fb: int,
+def _ring_feeders(pos_keys: Sequence[int], m: int, fa: int, fb: int,
                   kids: dict[int, list[int]]) -> dict[int, int]:
     out = {}
     for j, key in enumerate(pos_keys):
@@ -1275,7 +1275,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
     net = _layout(ctx, dec)
     pieces = {i: _route_pieces(ctx, line.route) for i, line in enumerate(net.lines)}
     if old is not None:
-        _keep_parallels(ctx, net, pieces, old)
+        _keep_parallels(net, pieces, old)
         _keep_types(ctx, net, pieces, old)
     geoms = _edge_geometries(ctx, pieces)
 
@@ -1316,7 +1316,7 @@ def _materialize(ctx: _Ctx, dec: _Decisions, old: TopologyPlan | None = None) ->
             net.lines[chain[m]].open_at = pos_keys[nop - 1]
             fa, fb = feeder, feeder + 1
             feeder += 2
-            feeders = _ring_feeders(pos_keys, m, nop, fa, fb, kids)
+            feeders = _ring_feeders(pos_keys, m, fa, fb, kids)
             node_feeder.update(feeders)
             for j, key in enumerate(pos_keys):
                 node_position[key] = j + 1
@@ -1418,7 +1418,7 @@ def _bridge_m(ctx: _Ctx, route: _Route) -> float:
     return float(steps[flags].sum())
 
 
-def _keep_parallels(ctx: _Ctx, net: _Network, pieces: dict[int, list[int]], old: TopologyPlan) -> None:
+def _keep_parallels(net: _Network, pieces: dict[int, list[int]], old: TopologyPlan) -> None:
     """Keep the parallel cables of the old plan on lines of the same role that use the same street pieces (or join
     the same nodes)."""
     by_piece: dict[tuple[str, int], int] = {}

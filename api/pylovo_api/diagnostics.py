@@ -311,7 +311,6 @@ class Params:
                                    "cable_dimensioning.feeder_split_max_current_ka"))
         self.mv_kw = float(pick("mv_threshold_kw", cd.get("mv_direct_connection_load_threshold_kw"),
                                 _FALLBACK["mv_threshold_kw"], "cable_dimensioning.mv_direct_connection_load_threshold_kw"))
-        self.shared_prefix_m = _f(cd.get("min_shared_prefix_length_m"))
         cables: dict[str, dict] = {}
         services: dict[str, dict] = {}
         for item in gp.get("equipment_data") or []:
@@ -321,7 +320,6 @@ class Params:
                      "r": _f(item.get("r_mohm_per_km"), 0.0) / 1000, "x": _f(item.get("x_mohm_per_km"), 0.0) / 1000}
             (cables if item.get("grid_role") == "feeder" else services)[item["name"]] = entry
         self.feeder_cables = sorted(cables.values(), key=lambda c: c["max_i_a"])
-        self.service_cables = services
         self.cable = {**services, **cables}
 
     def coincident_kw(self, cats: dict[str, list[float]]) -> float:
@@ -682,7 +680,6 @@ class GridModel:
         stored = _f(self.g.get("max_total_drop_pct"))
         worst_lin = max((lin.get(b, 0.0) for b in self.consumers), default=0.0)
         self.kappa = stored / worst_lin if stored and worst_lin > 1e-9 else 1.0
-        self.kappa_basis = "stored" if stored and worst_lin > 1e-9 else "unit"
         self.vm_pf = {int(k): _f(v) for k, v in (self.pf or {}).get("bus_vm_pu", {}).items()} if self.pf else {}
         hv = tr.get("hv_bus")
         if self.pf and hv is not None and self.vm_pf.get(hv) is not None and self.vm_pf.get(self.root) is not None:
@@ -777,9 +774,8 @@ class GridModel:
 class Findings:
     """Collects findings, de-duplicates them per id and links causes to symptoms."""
 
-    def __init__(self, model: GridModel, th: dict):
+    def __init__(self, model: GridModel):
         self.m = model
-        self.th = th
         self.items: dict[str, dict] = {}
 
     def add(self, rule: str, key: str, severity: str, title: str, message: str, *, metrics: dict | None = None,
@@ -1145,7 +1141,7 @@ def _rule_tr01(m: GridModel, F: Findings, th: dict) -> dict | None:
     return {"severity": severity}
 
 
-def _rule_de01(m: GridModel, F: Findings, th: dict, vt: dict[int, dict]) -> dict[int, dict]:
+def _rule_de01(m: GridModel, F: Findings, vt: dict[int, dict]) -> dict[int, dict]:
     p, g = m.p, m.g
     out: dict[int, dict] = {}
     if g.get("feeder_limit_met") is not False:
@@ -2517,13 +2513,13 @@ def diagnose(inputs: dict, gp: dict | None, pf: dict | None = None, context: dic
     th = effective_thresholds(thresholds)
     params = Params(gp)
     model = GridModel(inputs, params, pf)
-    F = Findings(model, th)
+    F = Findings(model)
     context = context or {}
 
     vt = _rule_vt01(model, F, th)
     ld01 = _rule_ld01(model, F, th, vt)
     _rule_tr01(model, F, th)
-    de01 = _rule_de01(model, F, th, vt)
+    de01 = _rule_de01(model, F, vt)
     de03 = _rule_de03(model, F, th)
     targets = _voltage_targets(model, vt, de03, th)
     vt02 = _rule_vt02(model, F, th, targets)

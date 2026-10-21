@@ -408,7 +408,7 @@ class GridGenerator:
                     f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
                 )
             buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
-            self.dbc.set_buildings_table(buildings_data, self.plz)
+            self.dbc.set_buildings_table(buildings_data)
         else:
             self.dbc.set_residential_buildings_table(self.plz)
             if not RESIDENTIAL_ONLY_GENERATION:
@@ -502,7 +502,7 @@ class GridGenerator:
                 self.logger.info(
                     f"Neighboring streets: {len(neighboring_rows)} ways of other PLZ within {width_m:.0f} m added")
                 ways_rows = list(ways_rows) + list(neighboring_rows)
-            ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows, self.plz)
+            ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows)
         else:
             ways_count = self.dbc.set_ways_tem_table(self.plz)
         self.logger.info(f"The ways_tem table filled with {ways_count} ways")
@@ -1551,9 +1551,6 @@ class GridGenerator:
                 for branch in branches if cabinet_plan is None else []:
                     material_length_by_cable_km, branch_service_diagnostics = (
                         installer.install_consumer_cables(
-                            self.plz,
-                            bcid,
-                            kcid,
                             list(branch.nodes),
                             ont_vertice,
                             vertices_dict,

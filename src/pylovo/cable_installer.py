@@ -461,8 +461,7 @@ class CableInstaller:
             "sizing_basis": "service_voltage_drop" if selected_cable != ampacity_cable else "ampacity",
         }
 
-    def install_consumer_cables(self, plz: int, bcid: int, kcid: int,
-                                branch_node_list: list,
+    def install_consumer_cables(self, branch_node_list: list,
                                 ont_vertice: int, vertices_dict: dict,
                                 service_design_load_per_consumer: dict,
                                 material_length_by_cable_km: dict,
@@ -476,9 +475,6 @@ class CableInstaller:
         transformer's own connection node the feeder cables are allowed as well.
 
         Args:
-            plz: Postcode.
-            bcid: Building cluster id.
-            kcid: K-means cluster id.
             branch_node_list: Connection nodes of the branch.
             ont_vertice: Transformer vertex.
             vertices_dict: Routed distance from the transformer per vertex; consumers

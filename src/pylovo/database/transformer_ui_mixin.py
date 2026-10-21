@@ -56,8 +56,8 @@ class TransformerUiMixin(BaseMixin):
         return [dict(zip(columns, row)) for row in self.cur.fetchall()]
 
     def add_transformer_position_trafo_ui(self, plz: int, geom_wkt: str, osm_id: str | None = None,
-                                comment: str = "Manual", kcid: int | None = None, bcid: int | None = None,
-                                transformer_rated_power: int | None = None) -> str:
+                                          comment: str = "Manual",
+                                          transformer_rated_power: int | None = None) -> str:
         """Insert a manual transformer into ``pylovo.transformers`` and commit.
 
         Args:
@@ -65,8 +65,6 @@ class TransformerUiMixin(BaseMixin):
             geom_wkt: Point geometry as WGS84 WKT.
             osm_id: Identifier of the new row; defaults to ``manual/<unix time in ms>``.
             comment: Stored in the ``type`` column.
-            kcid: Unused.
-            bcid: Unused.
             transformer_rated_power: Rated power in kVA, or ``None`` if unknown.
 
         Returns:
