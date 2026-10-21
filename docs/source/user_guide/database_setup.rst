@@ -42,8 +42,8 @@ the MV stage still needs the InfDB schemas in the pylovo database.
 File-based setup (USE_INFDB=False)
 ----------------------------------
 
-Prepare ``data/postcode.csv``, the osm2po street SQL dump and building
-shapefiles described in :ref:`file-based-input`. On a new schema, setup loads
+Prepare ``postcode.csv``, the osm2po street SQL dump and the building
+shapefiles in the data directory, as described in :ref:`file-based-input`. On a new schema, setup loads
 the postcode and street files; generation imports buildings by region.
 
 Running setup
@@ -70,11 +70,19 @@ register files) and stops with a list of what is missing. Finally
 it installs or updates the street preprocessing functions. OSM transformer
 import may fetch and process data if the processed GeoJSON is missing.
 
-A migration stops if existing rows violate a new constraint. Correct those
-rows in a reviewed data repair and rerun setup. A migration also stops, and
-names them, if views of other schemas depend on a view it has to rebuild.
-No migration marker is written for a failed step. Run database-backed tests and performance comparisons on
-an isolated database, never the active InfDB.
+A migration stops if existing rows violate a new constraint, with the message
+``Migration <name> stopped, nothing was changed: ... Repair or delete these rows, then run
+pylovo-setup again.`` It names the constraint or column. Correct those rows in a reviewed data
+repair and rerun setup. A migration also stops, and names them, if views of other schemas depend
+on a view it has to rebuild. No migration marker is written for a failed step. Run
+database-backed tests and performance comparisons on an isolated database, never the active
+InfDB.
+
+Migration ``0012_indexes`` adds and drops indexes of the result tables and drops a function of
+v0.8.0 whose SQL file is gone. On a large database it can take a while. A database that an
+earlier version set up needs one ``pylovo-setup`` run before generating: until all migrations are
+recorded, ``pylovo-generate`` stops with ``PyLovo schema has pending migrations (...); run
+pylovo-setup first``.
 
 Temporary tables and concurrency
 --------------------------------

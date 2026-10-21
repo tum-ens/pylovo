@@ -33,9 +33,13 @@ Setup
    pgRouting is missing or older than 3.8 on the database server. Install the pgRouting package
    for your PostgreSQL version and create the extension (:doc:`../getting_started/installation`).
 
-``pylovo needs PostgreSQL 15 or newer, server is ...``
-   The server is older than PostgreSQL 15. Use a newer server, for example a container, or
-   another database cluster (:doc:`../getting_started/installation`).
+``pylovo needs PostgreSQL 15 or newer, the server runs PostgreSQL ...``
+   The server is older than PostgreSQL 15. Nothing was changed. Use a newer server, for example a
+   container, or another database cluster (:doc:`../getting_started/installation`).
+
+``Migration <name> stopped, nothing was changed: ... Repair or delete these rows, then run pylovo-setup again.``
+   Existing rows violate a constraint that the migration adds. The message names it. Correct or
+   delete the rows and run ``pylovo-setup`` again (:doc:`database_setup`).
 
 ``PyLovo schema has pending migrations (...); run pylovo-setup first``
    The schema is older than the code, for example after an upgrade. Run ``uv run pylovo-setup``
@@ -86,8 +90,8 @@ A parallel run processes one postcode at a time
    ``N_JOBS_PERCENT`` of the CPU cores rounds to 1 worker. Increase ``N_JOBS_PERCENT``.
 
 A run was interrupted
-   Start it again: temporary tables are removed at the next start and postcodes that are already
-   complete are skipped.
+   Start it again: postcodes that are already complete are skipped, and the working tables of the
+   interrupted run are session-local and gone.
 
 Grids with ``voltage_violation`` or ``not_converged``
    The grids are stored anyway. ``voltage_violation`` means that the validation snapshot has bus
