@@ -2,16 +2,17 @@
 About the QGIS Project Templates:
 --------------------------------------
 
-This directory contains two QGIS project files that can be used as templates when accessing the pylovo database.
+This directory contains three QGIS project templates that can be used when accessing the pylovo database.
 
-*template_local_db.qgz* is for accessing a local database with default values (localhost, port 5432,
-dbname pylovo_db_local). It works out-of-the-box, but changing connection details of the database is cumbersome
-because every single layer has to be edited.
+*template_remote_db.qgz* (recommended) reads the current schemas (pylovo, basedata, opendata) through the PostgreSQL
+service ``infdb_postgres``. It relies on the .pg_service.conf file for the connection details, which makes it easy to
+change the connection to any local or remote database but needs the additional configuration described below.
 
-*template_remote_db.qgz* on the other hand relies on the .pg_service.conf file for connection details, which makes it
-easy to change the connection to any local or remote database but needs some additional configuration.
+*template_remote_db_expansion.qgz* is the same template with additional layers of an expansion-planning schema. It is not
+needed for pylovo itself.
 
-Apart from that, the two templates are identical.
+*template_local_db.qgz* is an older template with a fixed local connection (localhost, port 5432, dbname pylovo_db_local)
+and tables in the schema ``public``. It does not match the current schema.
 
 ------------------------------
 Add the Service Configuration:

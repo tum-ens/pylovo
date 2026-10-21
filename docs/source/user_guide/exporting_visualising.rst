@@ -35,14 +35,16 @@ Connect the remote template:
       password=your_password
       sslmode=disable
 
-   ``QGIS/.pg_service.conf`` is an example of the format; its section is called ``qwc_geodb``, so
-   rename the section or add a second one.
+   ``QGIS/.pg_service.conf`` is an example of the format; its section ``[infdb_postgres]`` is the
+   service the templates use, so adjust only the values.
 #. Open the template. Choose the version to display with the project variable ``version_id``
    (*Project → Properties → Variables*); the grid layers are filtered by it.
 
 The template contains the input layers (postcodes, transformer candidates, InfDB buildings,
-street segments and connection lines) and the grid layers (``transformer_positions_with_grid``,
-``lines_result_view``, ``split_points``, ``buildings_result``). Further project variables set
+street segments and connection lines), the grid layers (``transformer_positions_with_grid``,
+``lines_result_view``, ``split_points``, ``buildings_result``) and layers for the result of the
+classification (:doc:`classification`; the two k-medoid layers stay empty because k-medoids was
+removed). Further project variables set
 styles: ``building_border_thickness``, ``circle_diameter``, ``lines_thickness``,
 ``postcode_border_thickness`` and ``ways_thickness``. See ``QGIS/README.rst`` for details.
 
