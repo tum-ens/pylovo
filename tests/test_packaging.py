@@ -80,9 +80,9 @@ def test_requirements_txt_pins_the_locked_versions():
         "requirements.txt is stale: uv export --format requirements-txt --no-hashes --no-annotate --no-dev"
 
 
-def test_pytest_runs_both_test_folders_and_shows_the_skip_reasons():
+def test_pytest_runs_the_three_test_folders_and_shows_the_skip_reasons():
     options = PYPROJECT["tool"]["pytest"]["ini_options"]
-    assert options["testpaths"] == ["tests", "api/tests"]
+    assert options["testpaths"] == ["tests", "api/tests", "viewer/tests"]
     assert "-ra" in options["addopts"].split()
 
 
