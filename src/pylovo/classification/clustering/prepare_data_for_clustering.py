@@ -1,4 +1,4 @@
-"""Steps 1-5 of the classification: sample PLZ, import buildings, generate and analyse grids, filter.
+"""Steps 1-4 of the classification: sample PLZ, import buildings, generate and analyse grids.
 
 Configure the process in ``config/config_classification.yaml`` and
 ``config/config_clustering.yaml``; see also the classification documentation.
@@ -7,7 +7,6 @@ import time
 
 import pylovo.database.database_client as dbc
 
-from pylovo.classification.clustering.filter_grids import apply_filter_to_grids
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz
 from pylovo.classification.sampling.sample import get_sample_set, create_sample_set
@@ -15,20 +14,16 @@ from pylovo.config_loader import CLASSIFICATION_VERSION, USE_INFDB
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
 
 
-def prepare_data_for_clustering(
-    additional_filtering: bool = False,
-    sample_from_postcode_result_only: bool = False,
-) -> None:
+def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) -> None:
     """Prepare the grid parameters of a new sample set for clustering.
 
     Creates the sample set of ``CLASSIFICATION_VERSION``, imports the building
-    shapefiles (only with ``USE_INFDB=False``), generates and analyses the grids of all sampled PLZ, computes the clustering
-    parameters and applies the filters. This can take hours for a full sample set.
-    A PLZ for which no grids could be generated is removed from the sample set.
+    shapefiles (only with ``USE_INFDB=False``), generates and analyses the grids of all sampled PLZ and computes the
+    clustering parameters. This can take hours for a full sample set. A PLZ for which no grids could be generated
+    is removed from the sample set. The filters are not applied here: the readers of the clustering parameters
+    apply them (see ``DatabaseCommunication``).
 
     Args:
-        additional_filtering: Also apply the lower thresholds of the four
-            clustering parameters, see :func:`apply_filter_to_grids`.
         sample_from_postcode_result_only: Only sample PLZ that already have a
             ``postcode_result`` entry for ``VERSION_ID``.
     """
@@ -71,9 +66,6 @@ def prepare_data_for_clustering(
     for plz_index in samples['plz']:
         pc.analyze_grid_parameters_for_plz(plz=plz_index)
     print("--- %s seconds parameter calculation---" % (time.time() - start_time))
-
-    # %% 5. filter values
-    apply_filter_to_grids(additional_filtering=additional_filtering)
 
 
 def main():

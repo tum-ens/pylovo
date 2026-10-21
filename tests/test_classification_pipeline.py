@@ -1,4 +1,4 @@
-"""Steps 1-5 of the classification and the sample set: which PLZ stay in it (fakes, no database)."""
+"""Steps 1-4 of the classification and the sample set: which PLZ stay in it (fakes, no database)."""
 import logging
 
 import pandas as pd
@@ -60,7 +60,7 @@ def test_a_failing_analysis_leaves_the_sample_set_alone():
 @pytest.fixture()
 def pipeline(monkeypatch):
     """Run ``prepare_data_for_clustering`` on four sampled PLZ with scripted generation outcomes."""
-    record = {"deleted": [], "analysed": [], "filtered": []}
+    record = {"deleted": [], "analysed": []}
     samples = pd.DataFrame({"plz": [80001, 80002, 80003, 80004], "ags": [1, 2, 3, 4]})
     outcomes = {80001: GenerationOutcome.GENERATED, 80002: GenerationOutcome.FAILED,
                 80003: GenerationOutcome.EMPTY, 80004: GenerationOutcome.EXISTS}
@@ -91,13 +91,11 @@ def pipeline(monkeypatch):
     monkeypatch.setattr(pdc, "GridGenerator", FakeGenerator)
     monkeypatch.setattr(pdc, "ParameterCalculator", FakeParameterCalculator)
     monkeypatch.setattr(pdc.dbc, "DatabaseClient", FakeClient)
-    monkeypatch.setattr(pdc, "apply_filter_to_grids", lambda additional_filtering: record["filtered"].append(additional_filtering))
     return record
 
 
 def test_plz_without_grids_leave_the_sample_and_are_not_analysed(pipeline):
-    pdc.prepare_data_for_clustering(additional_filtering=True)
+    pdc.prepare_data_for_clustering()
     assert pipeline["generated"] == [80001, 80002, 80003, 80004]
     assert sorted(pipeline["deleted"]) == [("7", 80002), ("7", 80003)]
     assert pipeline["analysed"] == [80001, 80004], "an already generated PLZ stays in the sample"
-    assert pipeline["filtered"] == [True]

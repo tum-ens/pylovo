@@ -135,13 +135,16 @@ def get_custom_cluster_numbers():
             print("Invalid input. Please enter numeric values only.")
 
 
-def update_list_of_clustering_parameters() -> list:
+def update_list_of_clustering_parameters(additional_filtering: bool | None = None) -> list:
     """Runs get_parameters_for_clustering and updates LIST_OF_CLUSTERING_PARAMETERS in config_clustering.yaml.
+
+    Args:
+        additional_filtering: Also leave out the grids below the four lower thresholds.
 
     Returns:
         list: The selected clustering parameters.
     """
-    params = get_parameters_for_clustering()
+    params = get_parameters_for_clustering(additional_filtering)
 
     # Update YAML file
     config = load_yaml(CONFIG_CLUSTERING_PATH)
@@ -151,14 +154,15 @@ def update_list_of_clustering_parameters() -> list:
     return params
 
 
-def update_number_of_clusters(list_of_clustering_parameters: list | None = None):
+def update_number_of_clusters(list_of_clustering_parameters: list | None = None, additional_filtering: bool | None = None):
     """Runs get_no_clusters_for_clustering and updates cluster numbers in config_clustering.yaml.
 
     Args:
         list_of_clustering_parameters: Parameters to evaluate the CH index on;
             ``None`` uses LIST_OF_CLUSTERING_PARAMETERS loaded at start-up.
+        additional_filtering: Also leave out the grids below the four lower thresholds.
     """
-    df_no_clusters = get_no_clusters_for_clustering(list_of_clustering_parameters)
+    df_no_clusters = get_no_clusters_for_clustering(list_of_clustering_parameters, additional_filtering)
     config = load_yaml(CONFIG_CLUSTERING_PATH)
 
     def get_no_clusters_from_df(algo_names: list[str], fallback_key: str) -> int:
@@ -209,10 +213,12 @@ def main():
     )
 
     print("\nRunning prepare_data_for_clustering.py...")
-    prepare_data_for_clustering(
-        additional_filtering=apply_additional_filtering,
-        sample_from_postcode_result_only=sample_from_postcode_result_only,
-    )
+    prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only)
+
+    # The filters are applied when the grids are read: the answer belongs to the configuration of this classification.
+    config = load_yaml(CONFIG_CLUSTERING_PATH)
+    config["ADDITIONAL_FILTERING"] = apply_additional_filtering
+    save_yaml(CONFIG_CLUSTERING_PATH, config)
 
     # Step 3: Ask user for manual input or automatic assignment
     if ask_yes_no("Do you prefer to assign clustering parameters and number of clusters? "
@@ -231,10 +237,10 @@ def main():
     else:
         # Step 4: Automatically update clustering parameters and cluster numbers
         print("\nGetting parameters for clustering...")
-        clustering_parameters = update_list_of_clustering_parameters()
+        clustering_parameters = update_list_of_clustering_parameters(apply_additional_filtering)
 
         print("\nGetting number of clusters for clustering...")
-        update_number_of_clusters(clustering_parameters)
+        update_number_of_clusters(clustering_parameters, apply_additional_filtering)
 
     # Step 5: Run apply_clustering_for_visualisation.py with the values just written;
     # pylovo.config_loader still holds the values loaded at start-up.
@@ -244,6 +250,7 @@ def main():
         list_of_clustering_parameters=config["LIST_OF_CLUSTERING_PARAMETERS"],
         n_clusters_kmeans=config["N_CLUSTERS_KMEANS"],
         n_clusters_gmm=config["N_CLUSTERS_GMM"],
+        additional_filtering=apply_additional_filtering,
     )
 
     print("\nClassification process completed successfully!")

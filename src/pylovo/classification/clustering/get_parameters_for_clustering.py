@@ -14,12 +14,16 @@ EXCLUDED_COLUMNS = [
 ]
 
 
-def get_parameters_for_clustering() -> list:
+def get_parameters_for_clustering(additional_filtering: bool | None = None) -> list:
     """Return the clustering parameters for the active classification version.
 
     The number of factors is the number of eigenvalues above 1 (at least one).
     For each factor of the varimax-rotated factor analysis the parameter with the
     highest absolute loading is selected. Warnings are suppressed.
+
+    Args:
+        additional_filtering: Also leave out the grids below the four lower thresholds.
+            ``None`` uses ``ADDITIONAL_FILTERING``.
 
     Returns:
         list: Names of the selected parameters (one per factor).
@@ -32,7 +36,7 @@ def get_parameters_for_clustering() -> list:
         warnings.simplefilter("ignore")
         # get grid data
         dc = DatabaseCommunication()
-        df = dc.get_clustering_parameters_for_classification_version()
+        df = dc.get_clustering_parameters_for_classification_version(additional_filtering)
         df = df.drop(EXCLUDED_COLUMNS, axis=1)
 
         # Remove perfectly collinear features to avoid singular correlation matrices in factor analysis.

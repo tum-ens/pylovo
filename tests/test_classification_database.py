@@ -8,7 +8,6 @@ import pandas as pd
 import pytest
 from shapely.geometry import Point
 
-import pylovo.classification.clustering.filter_grids as filter_grids
 import pylovo.classification.database_communication.database_communication as dcm
 from classification_helpers import FakeDbc, ddl_columns, synthetic_clustering_parameters
 from pylovo.config_loader import CLUSTERING_PARAMETERS, MUNICIPAL_REGISTER
@@ -23,48 +22,64 @@ def make_dc() -> dcm.DatabaseCommunication:
     return dc
 
 
-# ---------------------------------------------------------------------------------------- filter statements
-def test_threshold_updates_use_the_configured_values():
-    dc = make_dc()
-    dc.apply_max_trafo_dis_threshold()
-    dc.apply_households_per_building_threshold()
-    dc.apply_list_of_clustering_parameters_thresholds()
-    dc.set_remaining_filter_values_false()
-    (q1, p1), (q2, p2), (q3, p3), (q4, p4) = dc.dbc.cur.executed
-    assert "UPDATE pylovo.clustering_parameters SET filtered = true WHERE max_trafo_dis > %(t)s" in q1
-    assert p1 == {"t": dcm.THRESHOLD_MAX_TRAFO_DIS}
-    assert "FROM pylovo.buildings_result WHERE households > %(h)s" in q2
-    assert p2 == {"h": dcm.THRESHOLD_HOUSEHOLDS_PER_BUILDING}
-    assert p3 == {"avg_trafo_dis": dcm.THRESHOLD_AVG_TRAFO_DIS, "no_house_connections": dcm.THRESHOLD_NO_HOUSE_CONNECTIONS,
-                  "vsw_per_branch": dcm.THRESHOLD_VSW_PER_BRANCH, "no_households": dcm.THRESHOLD_NO_HOUSEHOLDS}
-    assert q3.count(" OR ") == 3 and q3.count("<") == 4
-    assert "SET filtered = false WHERE filtered IS NULL" in q4 and p4 is None
-    assert dc.dbc.conn.commits == 4
+# ---------------------------------------------------------------------------------------- filter conditions
+READERS = ["get_clustering_parameters_for_classification_version",
+           "municipal_register_with_clustering_parameters_for_classification_version"]
+
+
+def capture_queries(monkeypatch):
+    seen = []
+
+    def fake_read(query, con=None, params=None):
+        seen.append((" ".join(query.split()), params))
+        return synthetic_clustering_parameters()
+
+    monkeypatch.setattr(dcm.pd, "read_sql_query", fake_read)
+    return seen
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_readers_apply_the_default_filters_with_the_configured_thresholds(monkeypatch, reader):
+    seen = capture_queries(monkeypatch)
+    getattr(make_dc(), reader)(False)
+    ((query, params),) = seen
+    assert "cp.max_trafo_dis > %(max_trafo_dis)s" in query
+    assert "br.households > %(households_per_building)s" in query
+    assert "avg_trafo_dis <" not in query, "the lower bounds belong to additional filtering"
+    assert params == {"v": dcm.VERSION_ID, "c": dcm.CLASSIFICATION_VERSION, **dcm.FILTER_PARAMETERS}
+    assert params["max_trafo_dis"] == dcm.THRESHOLD_MAX_TRAFO_DIS
+    assert params["households_per_building"] == dcm.THRESHOLD_HOUSEHOLDS_PER_BUILDING
+
+
+@pytest.mark.parametrize("reader", READERS)
+def test_readers_add_the_four_lower_bounds_with_additional_filtering(monkeypatch, reader):
+    seen = capture_queries(monkeypatch)
+    getattr(make_dc(), reader)(True)
+    ((query, params),) = seen
+    lower = {"avg_trafo_dis": dcm.THRESHOLD_AVG_TRAFO_DIS, "no_house_connections": dcm.THRESHOLD_NO_HOUSE_CONNECTIONS,
+             "vsw_per_branch": dcm.THRESHOLD_VSW_PER_BRANCH, "no_households": dcm.THRESHOLD_NO_HOUSEHOLDS}
+    assert dcm.LOWER_FILTER_THRESHOLDS == lower
+    for parameter, threshold in lower.items():
+        assert f"cp.{parameter} < %({parameter})s" in query and params[parameter] == threshold
+    assert query.count("NOT COALESCE((") == 6, "every condition is NULL-safe"
 
 
 @pytest.mark.parametrize("additional", [False, True])
-def test_filter_steps_run_in_order(monkeypatch, additional):
-    calls = []
-
-    class Recorder:
-        def __getattr__(self, name):
-            return lambda *a, **k: calls.append(name)
-
-    monkeypatch.setattr(filter_grids, "DatabaseCommunication", Recorder)
-    filter_grids.apply_filter_to_grids(additional_filtering=additional)
-    expected = ["apply_max_trafo_dis_threshold", "apply_households_per_building_threshold"]
-    expected += ["apply_list_of_clustering_parameters_thresholds"] if additional else []
-    assert calls == expected + ["set_remaining_filter_values_false"]
+def test_every_placeholder_of_the_filter_has_a_value(monkeypatch, additional):
+    seen = capture_queries(monkeypatch)
+    make_dc().get_clustering_parameters_for_classification_version(additional)
+    ((query, params),) = seen
+    assert set(re.findall(r"%\((\w+)\)s", query)) <= set(params)
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-04: the filter UPDATEs are not scoped to the grids of the classification")
-def test_filter_updates_are_scoped_to_the_classified_grids():
-    dc = make_dc()
-    dc.apply_max_trafo_dis_threshold()
-    dc.apply_households_per_building_threshold()
-    dc.apply_list_of_clustering_parameters_thresholds()
-    for query, _ in dc.dbc.cur.executed:
-        assert "version_id" in query or "sample_set" in query
+def test_the_filter_is_scoped_to_the_classified_grids_and_stores_nothing(monkeypatch):
+    """CLASSIF-04: no UPDATE of the grids of every version and classification any more, the flag is not read."""
+    seen = capture_queries(monkeypatch)
+    make_dc().get_clustering_parameters_for_classification_version(True)
+    ((query, _),) = seen
+    assert "FROM pylovo.sample_set WHERE classification_id= %(c)s" in query and "gr.version_id = %(v)s" in query
+    assert "cp.filtered" not in query
+    assert "UPDATE" not in inspect.getsource(dcm)
 
 
 # ---------------------------------------------------------------------------------------- reading parameters
@@ -79,8 +94,8 @@ def test_clustering_parameters_are_returned_in_the_configured_columns(monkeypatc
     monkeypatch.setattr(dcm.pd, "read_sql_query", fake_read)
     out = make_dc().get_clustering_parameters_for_classification_version()
     assert list(out.columns) == CLUSTERING_PARAMETERS
-    assert seen["params"] == {"v": dcm.VERSION_ID, "c": dcm.CLASSIFICATION_VERSION}
-    assert "cp.filtered = false" in " ".join(seen["query"].split())
+    assert seen["params"] == {"v": dcm.VERSION_ID, "c": dcm.CLASSIFICATION_VERSION, **dcm.FILTER_PARAMETERS}
+    assert "cp.filtered" not in " ".join(seen["query"].split())
 
 
 def test_both_clustering_queries_are_ordered_by_the_grid_key(monkeypatch):
@@ -116,7 +131,7 @@ def prepare_save(monkeypatch, fail=False):
     monkeypatch.setattr(dcm.gpd, "read_postgis", lambda *a, **k: positions.copy())
     monkeypatch.setattr(dcm.pd, "read_sql_query", lambda *a, **k: grid_result.copy())
     monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql)
-    dc.get_clustering_parameters_for_classification_version = lambda: df.copy()
+    dc.get_clustering_parameters_for_classification_version = lambda additional_filtering=None: df.copy()
     return dc, captured, df
 
 
@@ -204,7 +219,7 @@ def test_clustering_parameter_columns_exist_in_the_ddl():
     join_columns = {"version_id", "plz", "bcid", "kcid"}  # come from grid_result in the SELECT
     cols = table_columns("clustering_parameters")
     assert set(CLUSTERING_PARAMETERS) - join_columns <= cols
-    assert {"grid_result_id", "filtered"} <= cols
+    assert "grid_result_id" in cols
     assert {"version_id", "plz", "kcid", "bcid"} <= table_columns("grid_result")
     assert {"households", "grid_result_id"} <= table_columns("buildings_result")
     assert {"grid_result_id", "geom"} <= table_columns("transformer_positions")

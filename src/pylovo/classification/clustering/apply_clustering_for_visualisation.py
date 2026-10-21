@@ -10,6 +10,7 @@ def apply_clustering_for_visualisation(
     list_of_clustering_parameters: list | None = None,
     n_clusters_kmeans: int | None = None,
     n_clusters_gmm: int | None = None,
+    additional_filtering: bool | None = None,
 ) -> None:
     """Cluster the grids of the current classification version and write ``transformer_classified``.
 
@@ -22,12 +23,14 @@ def apply_clustering_for_visualisation(
         list_of_clustering_parameters: Columns used for clustering.
         n_clusters_kmeans: Number of k-means clusters.
         n_clusters_gmm: Number of GMM components.
+        additional_filtering: Also leave out the grids below the four lower thresholds.
     """
     dc = DatabaseCommunication()
     dc.save_transformers_with_classification_info(
         list_of_clustering_parameters=list_of_clustering_parameters,
         n_clusters_kmeans=n_clusters_kmeans,
         n_clusters_gmm=n_clusters_gmm,
+        additional_filtering=additional_filtering,
     )
 
 

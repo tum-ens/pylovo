@@ -1,6 +1,8 @@
 """Synthetic grid parameters, a fake cursor and a fake database client for the classification tests (no database, no network)."""
 from __future__ import annotations
 
+import re
+import sqlite3
 from contextlib import contextmanager
 
 import numpy as np
@@ -145,3 +147,65 @@ def ddl_columns(create_query: str) -> list[str]:
         if name.isidentifier() and name.upper() not in {"FOREIGN", "REFERENCES", "ON", "CONSTRAINT"}:
             columns.append(name)
     return columns
+
+
+# --------------------------------------------------------------------------------------- SQLite stand-in for the SQL
+SQLITE_TABLES = """
+ATTACH DATABASE ':memory:' AS pylovo;
+CREATE TABLE pylovo.grid_result (grid_result_id INTEGER, version_id TEXT, plz INTEGER, kcid INTEGER, bcid INTEGER);
+CREATE TABLE pylovo.clustering_parameters (grid_result_id INTEGER, no_households INTEGER, avg_trafo_dis REAL,
+    max_trafo_dis REAL, no_house_connections INTEGER, vsw_per_branch REAL, filtered INTEGER);
+CREATE TABLE pylovo.buildings_result (grid_result_id INTEGER, households INTEGER);
+CREATE TABLE pylovo.sample_set (classification_id INTEGER, plz INTEGER, ags INTEGER);
+CREATE TABLE pylovo.municipal_register (plz INTEGER, ags INTEGER, pop INTEGER, area REAL, lat REAL, lon REAL,
+    name_city TEXT, regio7 INTEGER, regio5 INTEGER, pop_den REAL);
+CREATE TABLE pylovo.plz_parameters (version_id TEXT, plz INTEGER);
+CREATE TABLE pylovo.transformer_classified (grid_result_id INTEGER, classification_id INTEGER);
+"""
+
+# grid_result_id -> (plz, kcid, bcid) of version "v1"
+SQLITE_GRIDS = {1: (80001, 1, 1), 2: (80001, 1, 2), 3: (80001, 1, 3), 4: (80001, 1, 4), 5: (80002, 1, 1),
+                6: (80002, 1, 2), 7: (80003, 1, 1), 8: (80003, 1, 2), 9: (80004, 1, 1)}
+
+# key figures (no_households, avg_trafo_dis, max_trafo_dis, no_house_connections, vsw_per_branch); grids 7 to 9 have none
+SQLITE_FIGURES = {
+    1: (100, 0.30, 1.0, 40, 0.50),   # normal
+    2: (100, 0.30, 3.0, 40, 0.50),   # transformer distance above the upper limit
+    3: (100, 0.30, 1.0, 40, 0.50),   # has a building with 200 households
+    4: (10, 0.05, 1.0, 5, 0.10),     # small filling grid, below all four lower bounds
+    5: (100, 0.30, 1.0, 40, 0.50),   # normal
+    6: (100, 0.30, None, 40, 0.50),  # no max_trafo_dis: a missing value never filters
+}
+
+
+def sqlite_classification_db() -> sqlite3.Connection:
+    """Return an in-memory SQLite database with the tables of the classification SQL (schema ``pylovo``).
+
+    Classification 1 samples PLZ 80001 to 80005, classification 2 only PLZ 80001. PLZ 80003 has grids without key
+    figures and no PLZ analysis, PLZ 80004 has a grid without key figures although its PLZ was analysed and PLZ
+    80005 has no grid. Classification 1 has a result for grids 1 and 5.
+    """
+    db = sqlite3.connect(":memory:")
+    db.executescript(SQLITE_TABLES)
+    for grid_id, (plz, kcid, bcid) in SQLITE_GRIDS.items():
+        db.execute("INSERT INTO pylovo.grid_result VALUES (?, 'v1', ?, ?, ?)", (grid_id, plz, kcid, bcid))
+    for grid_id, figures in SQLITE_FIGURES.items():
+        db.execute("INSERT INTO pylovo.clustering_parameters VALUES (?, ?, ?, ?, ?, ?, NULL)", (grid_id, *figures))
+    db.executemany("INSERT INTO pylovo.buildings_result VALUES (?, ?)", [(1, 3), (3, 200), (3, 4)])
+    db.executemany("INSERT INTO pylovo.sample_set VALUES (?, ?, ?)",
+                   [(1, plz, 9000000 + plz) for plz in range(80001, 80006)] + [(2, 80001, 9080001)])
+    db.executemany("INSERT INTO pylovo.municipal_register VALUES (?, ?, 5000, 10.0, 48.0, 11.0, 'town', 73, 53, 500.0)",
+                   [(plz, 9000000 + plz) for plz in range(80001, 80006)])
+    db.executemany("INSERT INTO pylovo.plz_parameters VALUES ('v1', ?)", [(80001,), (80002,), (80004,)])
+    db.executemany("INSERT INTO pylovo.transformer_classified VALUES (?, 1)", [(1,), (5,)])
+    return db
+
+
+def sqlite_read_sql_query(db: sqlite3.Connection):
+    """Return a ``pd.read_sql_query`` that runs the pyformat SQL of the classification code on ``db``."""
+    real = pd.read_sql_query
+
+    def read(query, con=None, params=None):
+        return real(re.sub(r"%\((\w+)\)s", r":\1", query), db, params=params)
+
+    return read

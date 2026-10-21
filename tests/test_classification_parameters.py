@@ -41,8 +41,10 @@ def _close_figures():
 
 class FakeDC:
     frame: pd.DataFrame
+    additional_filtering = "not read"
 
-    def get_clustering_parameters_for_classification_version(self):
+    def get_clustering_parameters_for_classification_version(self, additional_filtering=None):
+        FakeDC.additional_filtering = additional_filtering
         return FakeDC.frame.copy()
 
 
@@ -149,3 +151,14 @@ def test_algorithm_names_used_by_the_cli_exist_in_the_ch_table():
         names = set(plot_ch_index_for_clustering_algos(synthetic_clustering_parameters(), [3, 4], PARAMS)["algorithm"])
     assert {"kmeans", "gmm_tied"} <= names
     assert not names & {"KMedoids", "kmedoids", "kmedoid"}
+
+
+def test_the_filter_choice_reaches_the_reader_of_both_steps(fake_dc, monkeypatch):
+    get_params.get_parameters_for_clustering(True)
+    assert fake_dc.additional_filtering is True
+    get_params.get_parameters_for_clustering()
+    assert fake_dc.additional_filtering is None, "None means the value of config_clustering.yaml"
+    monkeypatch.setattr(get_no, "plot_ch_index_for_clustering_algos",
+                        lambda **kw: pd.DataFrame({"algorithm": ["kmeans"], "no_clusters": [4], "ch_index": [1.0]}))
+    get_no.get_no_clusters_for_clustering(["a"], additional_filtering=False)
+    assert fake_dc.additional_filtering is False

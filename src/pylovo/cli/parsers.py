@@ -96,10 +96,10 @@ def classify_parser() -> argparse.ArgumentParser:
             "The pipeline asks questions on the terminal and then:\n"
             "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml),\n"
             "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
-            "  3. filters the grids by the thresholds of config/config_clustering.yaml,\n"
-            "  4. selects the clustering parameters and numbers of clusters (asked or computed)\n"
-            "     and writes them to config/config_clustering.yaml,\n"
-            "  5. clusters the grids and writes pylovo.transformer_classified.\n"
+            "  3. selects the clustering parameters and numbers of clusters (asked or computed) and writes\n"
+            "     them to config/config_clustering.yaml together with the answer on additional filtering,\n"
+            "  4. clusters the grids that the filters of config/config_clustering.yaml leave and writes\n"
+            "     pylovo.transformer_classified.\n"
             "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected."
         ),
     )
