@@ -7,6 +7,7 @@ import tomllib
 from fnmatch import fnmatch
 from pathlib import Path
 
+import yaml
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
@@ -100,3 +101,12 @@ def test_env_example_documents_every_variable_of_the_config_loader():
     read = set(re.findall(r'(?:getenv|get_required_env_var|get_int_env_var)\(\s*"([A-Z][A-Z0-9_]*)"', source))
     assert read
     assert sorted(read - env_example_names()) == []
+
+
+def test_tests_workflow_installs_the_extras_the_tests_import():
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+    commands = [step["run"] for job in workflow["jobs"].values() for step in job["steps"] if "run" in step]
+    command = next(command for command in commands if "pytest" in command)
+    assert "--locked" in command
+    assert "--extra api" in command    # fastapi for api/tests
+    assert "--extra plots" in command  # matplotlib for the MV plotting tests, which skip without it
