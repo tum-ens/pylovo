@@ -114,7 +114,8 @@ Plotting
 --------
 
 The basemap of ``plot_contextily`` shows "Access blocked"
-   The OpenStreetMap tile servers require an identifying User-Agent; see the note in
+   The OpenStreetMap tile servers require an identifying User-Agent. pylovo sends one with
+   contextily 1.7 or newer: update the ``plots`` extra. For your own maps see the note in
    :doc:`exporting_visualising`.
 
 ``ModuleNotFoundError: No module named 'matplotlib'`` (or ``contextily``, ``plotly``)

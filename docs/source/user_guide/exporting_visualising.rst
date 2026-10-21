@@ -161,10 +161,12 @@ The functions read the grid of the active ``VERSION_ID``.
 
 .. note::
 
-   The OpenStreetMap tile servers reject requests without an identifying User-Agent. If the
-   basemap of ``plot_contextily`` shows "Access blocked", set one before plotting, for example
-   ``import contextily.tile; contextily.tile.USER_AGENT = "my-project/1.0 (contact@example.org)"``,
-   and keep the number of tile downloads small (`tile usage policy
+   The OpenStreetMap tile servers reject requests without an identifying User-Agent. The plotting
+   functions of pylovo send ``pylovo (https://github.com/tum-ens/pylovo)`` themselves, which needs
+   contextily 1.7 or newer (the ``plots`` extra installs it). For a basemap that you add with
+   contextily yourself, pass an identifying one, for example
+   ``cx.add_basemap(ax, headers={"User-Agent": "my-project/1.0 (contact@example.org)"})``, and keep
+   the number of tile downloads small (`tile usage policy
    <https://operations.osmfoundation.org/policies/tiles/>`_).
 
 For whole postcode areas, :mod:`pylovo.plotting.gis_preparation.io_geodata` returns the buses and
