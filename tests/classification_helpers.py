@@ -1,6 +1,8 @@
 """Synthetic grid parameters, a fake cursor and a fake database client for the classification tests (no database, no network)."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import numpy as np
 import pandas as pd
 
@@ -97,13 +99,34 @@ class FakeConnection:
         pass
 
 
+class FakeEngine:
+    """A SQLAlchemy engine whose ``begin()`` yields a connection; ``log`` records the order of the events."""
+
+    def __init__(self):
+        self.log: list[tuple] = []
+        self.connection = self
+
+    def execute(self, statement, params=None):
+        self.log.append(("execute", " ".join(str(statement).split()), params))
+
+    @contextmanager
+    def begin(self):
+        self.log.append(("begin",))
+        try:
+            yield self.connection
+        except BaseException:
+            self.log.append(("rollback",))
+            raise
+        self.log.append(("commit",))
+
+
 class FakeDbc:
     """Stands in for ``DatabaseClient`` (cursor, connection, engine, view refresh)."""
 
     def __init__(self, cur=None):
         self.cur = cur or FakeCursor()
         self.conn = FakeConnection()
-        self.sqla_engine = object()
+        self.sqla_engine = FakeEngine()
         self.refreshed = 0
 
     def refresh_materialized_views(self):

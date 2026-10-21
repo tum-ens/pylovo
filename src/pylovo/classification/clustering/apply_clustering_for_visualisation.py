@@ -13,6 +13,8 @@ def apply_clustering_for_visualisation(
 ) -> None:
     """Cluster the grids of the current classification version and write ``transformer_classified``.
 
+    An existing result of the classification is replaced, so the step can be repeated with other values.
+
     ``None`` uses the value of ``config_clustering.yaml`` loaded at start-up, see
     :meth:`DatabaseCommunication.save_transformers_with_classification_info`.
 

@@ -96,8 +96,8 @@ def test_both_clustering_queries_are_ordered_by_the_grid_key(monkeypatch):
 
 
 # ---------------------------------------------------------------------------------------- writing the result
-@pytest.fixture()
-def run_save(monkeypatch):
+def prepare_save(monkeypatch, fail=False):
+    """Fake the database around ``save_transformers_with_classification_info`` and return ``(dc, captured, df)``."""
     df = synthetic_clustering_parameters()
     positions = gpd.GeoDataFrame({"version_id": df["version_id"], "plz": df["plz"], "kcid": df["kcid"], "bcid": df["bcid"],
                                   "geom": [Point(11 + i * 1e-3, 48) for i in range(len(df))]}, geometry="geom")
@@ -105,14 +105,24 @@ def run_save(monkeypatch):
                                 "plz": df["plz"], "kcid": df["kcid"], "bcid": df["bcid"]})
     captured = {}
 
+    dc = make_dc()
+
     def fake_to_sql(self, name, con=None, **kw):
-        captured.update(name=name, frame=self.copy(), kw=kw)
+        captured.update(name=name, frame=self.copy(), kw=kw, con=con)
+        dc.dbc.sqla_engine.log.append(("to_sql",))
+        if fail:
+            raise RuntimeError("write failed")
 
     monkeypatch.setattr(dcm.gpd, "read_postgis", lambda *a, **k: positions.copy())
     monkeypatch.setattr(dcm.pd, "read_sql_query", lambda *a, **k: grid_result.copy())
     monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql)
-    dc = make_dc()
     dc.get_clustering_parameters_for_classification_version = lambda: df.copy()
+    return dc, captured, df
+
+
+@pytest.fixture()
+def run_save(monkeypatch):
+    dc, captured, df = prepare_save(monkeypatch)
     dc.save_transformers_with_classification_info(PARAMS, 4, 4)
     return dc, captured, df
 
@@ -125,6 +135,25 @@ def test_transformer_classified_frame_matches_the_table(run_save):
     assert len(frame) == len(df) and frame["grid_result_id"].is_unique
     assert (frame["classification_id"] == dcm.CLASSIFICATION_VERSION).all()
     assert frame["kmedoid_clusters"].isna().all() and not frame["kmedoid_representative_grid"].any()
+
+
+def test_a_repeated_run_replaces_the_rows_of_the_classification_in_one_transaction(run_save):
+    """The duplicate-key error of a second run is gone: the old rows are deleted in the transaction of the insert."""
+    dc, captured, _ = run_save
+    log = dc.dbc.sqla_engine.log
+    assert [entry[0] for entry in log] == ["begin", "execute", "to_sql", "commit"]
+    _, statement, params = log[1]
+    assert statement == "DELETE FROM pylovo.transformer_classified WHERE classification_id = :c"
+    assert params == {"c": dcm.CLASSIFICATION_VERSION}
+    assert captured["con"] is dc.dbc.sqla_engine.connection, "the insert uses the connection of the transaction"
+
+
+def test_a_failing_write_rolls_the_delete_back_and_leaves_the_view_alone(monkeypatch):
+    dc, _, _ = prepare_save(monkeypatch, fail=True)
+    with pytest.raises(RuntimeError, match="write failed"):
+        dc.save_transformers_with_classification_info(PARAMS, 4, 4)
+    assert [entry[0] for entry in dc.dbc.sqla_engine.log] == ["begin", "execute", "to_sql", "rollback"]
+    assert dc.dbc.refreshed == 0 and dc.dbc.conn.commits == 0
 
 
 def test_every_cluster_has_exactly_one_representative(run_save):

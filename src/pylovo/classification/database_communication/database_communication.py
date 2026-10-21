@@ -2,6 +2,7 @@
 import geopandas as gpd
 import pandas as pd
 from geoalchemy2 import Geometry, WKTElement
+from sqlalchemy import text
 import pylovo.database.database_client as dbc
 
 from pylovo.config_loader import (
@@ -120,11 +121,13 @@ class DatabaseCommunication:
         n_clusters_kmeans: int | None = None,
         n_clusters_gmm: int | None = None,
     ) -> None:
-        """Cluster the sample grids and append the result to ``pylovo.transformer_classified``.
+        """Cluster the sample grids and write the result to ``pylovo.transformer_classified``.
 
         Runs k-means and tied GMM and stores, per grid, the transformer position,
         the cluster of each algorithm and whether the grid is the representative
-        of its cluster. The KMedoids columns stay empty. The defaults below are the
+        of its cluster. The KMedoids columns stay empty. The rows of
+        ``CLASSIFICATION_VERSION`` are replaced in one transaction, so the step can be repeated
+        and a failing write keeps the previous result. The defaults below are the
         values of ``config_clustering.yaml`` at import time.
 
         Args:
@@ -211,10 +214,13 @@ class DatabaseCommunication:
 
         # add classification id
         df_transformers_classified['classification_id'] = CLASSIFICATION_VERSION
-        # write transformer data with cluster info to database
-        df_transformers_classified.to_sql(name='transformer_classified', con=self.dbc.sqla_engine,
-                                          if_exists='append',
-                                          index=False, dtype={'geom': Geometry(geometry_type='POINT', srid=TARGET_EPSG)})
+        # write transformer data with cluster info to database: replace this classification's rows in one transaction
+        with self.dbc.sqla_engine.begin() as connection:
+            connection.execute(text("DELETE FROM pylovo.transformer_classified WHERE classification_id = :c"),
+                               {"c": CLASSIFICATION_VERSION})
+            df_transformers_classified.to_sql(name='transformer_classified', con=connection, if_exists='append',
+                                              index=False,
+                                              dtype={'geom': Geometry(geometry_type='POINT', srid=TARGET_EPSG)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)
         self.dbc.conn.commit()
