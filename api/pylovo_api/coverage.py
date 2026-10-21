@@ -11,6 +11,11 @@ asks this module whether a PLZ can be generated. With ``USE_INFDB=True`` that ne
 * street segments in ``ways_per_connection`` and building connection lines in
   ``connection_lines`` (both resolved through ``search_path = INFDB_SOURCE_SCHEMA, public``).
 
+With ``USE_EXTERNAL_BASEDATA`` the InfDB is another database: the three tables, ``public.changelog`` and the
+postcode polygons are read through a second read-only connection built from the ``INFDB_*`` settings
+(:func:`pylovo_api.db.connect_source`: no startup options, so the search path and the timeouts are set per
+transaction), ``pylovo.*`` through the pylovo connection. Otherwise both are the one pylovo connection.
+
 **Performance on a real InfDB.** The InfDB tables have no index on ``postcode``, so a
 per-PLZ count is a full table scan. The InfDB DDL does index the municipality key
 (``basedata.buildings.gemeindeschluessel``, ``ways_per_connection.ags``,
@@ -52,6 +57,8 @@ from typing import Any
 import psycopg2
 import psycopg2.errors
 import yaml
+
+from pylovo_api import db
 
 log = logging.getLogger("pylovo_api.coverage")
 
@@ -378,6 +385,7 @@ class InputCoverage:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._conn = None
+        self._src = None                      # the connection of the InfDB tables: ``_conn`` unless the InfDB is another database
         self._last_seen = time.time()
         self._last_check = 0.0
         self._last_save = 0.0
@@ -401,8 +409,7 @@ class InputCoverage:
         """Cancel the running statement, save the cache and stop the worker."""
         self._stop.set()
         self._wake.set()
-        conn = self._conn
-        if conn is not None:
+        for conn in {id(c): c for c in (self._conn, self._src) if c is not None}.values():
             try:
                 conn.cancel()
             except Exception:
@@ -577,7 +584,7 @@ class InputCoverage:
         if missing:
             return result("no_source", missing=missing, tables=[self.tables[m].rel or TABLES[m]["rel"] for m in missing],
                           reasons={m: self.tables[m].reason for m in missing}, source_schema=self.settings.get(
-                              "infdb_source_schema"))
+                              "infdb_source_schema"), source_database=self.settings.get("infdb_target"))
         local = plz in self.local_bbox
         infdb_polygon = str(plz) in self.infdb_polygons or str(plz).zfill(5) in self.infdb_polygons
         if not local and not infdb_polygon:
@@ -853,7 +860,7 @@ class InputCoverage:
         backoff = 5.0
         while not self._stop.is_set():
             try:
-                if self._conn is None or self._conn.closed:
+                if self._conn is None or self._conn.closed or (self._src is not None and self._src.closed):
                     self._connect()
                 if not self.initialized:
                     self._initialize()
@@ -897,7 +904,8 @@ class InputCoverage:
         from pylovo import config_loader as cl
 
         self.settings = {"host": cl.HOST, "port": str(cl.PORT), "dbname": cl.DBNAME, "use_infdb": bool(cl.USE_INFDB),
-                         "infdb_source_schema": cl.INFDB_SOURCE_SCHEMA, "infdb_opendata_schema": cl.INFDB_OPENDATA_SCHEMA}
+                         "infdb_source_schema": cl.INFDB_SOURCE_SCHEMA, "infdb_opendata_schema": cl.INFDB_OPENDATA_SCHEMA,
+                         "infdb_target": db.settings()["infdb_target"]}
         self.mode = "infdb" if cl.USE_INFDB else "files"
         search_path = f"{cl.INFDB_SOURCE_SCHEMA},public" if cl.USE_INFDB and cl.INFDB_SOURCE_SCHEMA else "pylovo,public"
         options = (f"-c search_path={search_path} -c statement_timeout={CHUNK_TIMEOUT_MS} "
@@ -906,10 +914,12 @@ class InputCoverage:
                                 connect_timeout=5, application_name="pylovo-api-coverage", options=options.strip())
         conn.autocommit = True
         self._conn = conn
+        self._src = db.connect_source() if self.settings["infdb_target"] else conn  # raises OperationalError if unreachable
 
     def _close(self) -> None:
-        conn, self._conn = self._conn, None
-        if conn is not None:
+        conns = {id(c): c for c in (self._conn, self._src) if c is not None}.values()
+        self._conn = self._src = None
+        for conn in conns:
             try:
                 conn.close()
             except Exception:
@@ -920,12 +930,40 @@ class InputCoverage:
             cur.execute(sql, params)
             return cur.fetchall() if cur.description else []
 
+    def _source_query(self, sql: str, params: Any = None, timeout_ms: int | None = None) -> list[tuple]:
+        """A query on the InfDB tables; ``timeout_ms`` is the statement timeout of this statement only."""
+        if self._src is self._conn:  # the InfDB schemas are in the pylovo database: its connection and session options
+            if timeout_ms is None:
+                return self._query(sql, params)
+            with self._conn.cursor() as cur:
+                cur.execute("SET statement_timeout = %s", (timeout_ms,))
+                try:
+                    cur.execute(sql, params)
+                    return cur.fetchall()
+                finally:
+                    cur.execute("RESET statement_timeout")
+        try:  # another database: one read-only transaction per statement, the settings set with SET LOCAL
+            with self._src.cursor() as cur:
+                cur.execute("SET LOCAL search_path = %s, public; SET LOCAL statement_timeout = %s; "
+                            "SET LOCAL lock_timeout = %s", (self.settings["infdb_source_schema"],
+                                                            timeout_ms or CHUNK_TIMEOUT_MS, LOCK_TIMEOUT_MS))
+                cur.execute(sql, params)
+                rows = cur.fetchall() if cur.description else []
+            self._src.commit()
+            return rows
+        except Exception:
+            self._src.rollback()
+            raise
+
     def _signature(self) -> dict:
         s = self.settings
-        return {"format": FORMAT_VERSION, "mode": self.mode, "host": s.get("host"), "port": s.get("port"),
-                "dbname": s.get("dbname"), "source_schema": s.get("infdb_source_schema"),
-                "opendata_schema": s.get("infdb_opendata_schema"), "rules": RULES_HASH,
-                "data_dir": str(ui_data_dir(self.root)) if self.mode == "files" else None}
+        signature = {"format": FORMAT_VERSION, "mode": self.mode, "host": s.get("host"), "port": s.get("port"),
+                     "dbname": s.get("dbname"), "source_schema": s.get("infdb_source_schema"),
+                     "opendata_schema": s.get("infdb_opendata_schema"), "rules": RULES_HASH,
+                     "data_dir": str(ui_data_dir(self.root)) if self.mode == "files" else None}
+        if s.get("infdb_target"):  # counts of one InfDB must not be reused for another
+            signature["infdb_target"] = s["infdb_target"]
+        return signature
 
     def _initialize(self) -> None:
         cached = self._load() if self.mode == "infdb" else None
@@ -1024,7 +1062,7 @@ class InputCoverage:
     def _probe(self) -> dict[str, dict | None]:
         out: dict[str, dict | None] = {}
         for name, spec in TABLES.items():
-            rows = self._query(
+            rows = self._source_query(
                 """SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname), c.relname, c.reltuples::bigint,
                           pg_relation_size(c.oid), c.relfilenode, has_table_privilege(c.oid, 'SELECT'),
                           (SELECT json_object_agg(a.attname, format_type(a.atttypid, a.atttypmod)) FROM pg_attribute a
@@ -1091,11 +1129,12 @@ class InputCoverage:
         """EXPLAIN guard: the key enumeration and a chunk statement must not seq-scan the table."""
         rel = probe["rel"]
         try:
-            sample = [r[0] for r in self._query(f"SELECT {key_col}::text FROM {rel} WHERE {key_col} IS NOT NULL LIMIT 1")]
-            plans = [self._query("EXPLAIN (FORMAT JSON) " + _enumerate_sql(rel, key_col))[0][0]]
+            sample = [r[0] for r in self._source_query(
+                f"SELECT {key_col}::text FROM {rel} WHERE {key_col} IS NOT NULL LIMIT 1")]
+            plans = [self._source_query("EXPLAIN (FORMAT JSON) " + _enumerate_sql(rel, key_col))[0][0]]
             if sample:
                 sql = _chunk_sql(table, rel, key_col, probe["cols"][key_col], True)
-                plans.append(self._query("EXPLAIN (FORMAT JSON) " + sql, {"keys": sample * 3})[0][0])
+                plans.append(self._source_query("EXPLAIN (FORMAT JSON) " + sql, {"keys": sample * 3})[0][0])
         except psycopg2.Error as exc:
             log.warning("coverage: EXPLAIN of %s failed: %s", rel, exc)
             return False
@@ -1107,7 +1146,7 @@ class InputCoverage:
             if t.strategy != "ags":
                 continue
             try:
-                keys = {str(r[0]) for r in self._query(_enumerate_sql(t.rel, t.key_col))}
+                keys = {str(r[0]) for r in self._source_query(_enumerate_sql(t.rel, t.key_col))}
             except psycopg2.errors.QueryCanceled:
                 with self._cond:
                     t.error = "listing the municipality keys timed out"
@@ -1134,8 +1173,8 @@ class InputCoverage:
     def _read_changelog(self) -> None:
         """Requeue keys whose municipality has a new ``public.changelog`` row of its InfDB tool."""
         try:
-            present = self._query("SELECT to_regclass('public.changelog') IS NOT NULL")[0][0]
-            rows = self._query(
+            present = self._source_query("SELECT to_regclass('public.changelog') IS NOT NULL")[0][0]
+            rows = self._source_query(
                 """SELECT tool, ags::text, max(id), max(modified_at) FROM public.changelog
                    WHERE tool = ANY(%s) AND ags IS NOT NULL GROUP BY 1, 2""",
                 (sorted(set(CHANGELOG_TOOLS.values())),)) if present else []
@@ -1192,8 +1231,9 @@ class InputCoverage:
         if self.mode == "infdb" and od:
             rel = f'"{od}".postcodes_germany'
             try:
-                if self._query("SELECT to_regclass(%s) IS NOT NULL", (rel,))[0][0]:
-                    tokens["opendata"] = self._query(f"SELECT count(*) || ':' || max(plz) FROM {rel} WHERE geom IS NOT NULL")[0][0]
+                if self._source_query("SELECT to_regclass(%s) IS NOT NULL", (rel,))[0][0]:
+                    tokens["opendata"] = self._source_query(
+                        f"SELECT count(*) || ':' || max(plz) FROM {rel} WHERE geom IS NOT NULL")[0][0]
             except psycopg2.Error:
                 pass
         if self.mode == "files":
@@ -1210,7 +1250,7 @@ class InputCoverage:
             names[int(ags)] = name
         polygons: set[str] = set()
         if "opendata" in tokens:
-            polygons = {str(r[0]).strip() for r in self._query(
+            polygons = {str(r[0]).strip() for r in self._source_query(
                 f'SELECT plz FROM "{od}".postcodes_germany WHERE geom IS NOT NULL')}
         files = self._read_files(register) if self.mode == "files" else {}
         with self._cond:
@@ -1269,15 +1309,8 @@ class InputCoverage:
         sql = _chunk_sql(t.name, t.rel, t.key_col, t.key_type, not full)
         started = time.monotonic()
         try:
-            with self._conn.cursor() as cur:
-                if t.strategy == "full_large":
-                    cur.execute("SET statement_timeout = %s", (FULL_TIMEOUT_S * 1000,))
-                try:
-                    cur.execute(sql, {"keys": keys} if not full else None)
-                    rows = cur.fetchall()
-                finally:
-                    if t.strategy == "full_large":
-                        cur.execute("RESET statement_timeout")
+            rows = self._source_query(sql, {"keys": keys} if not full else None,
+                                      FULL_TIMEOUT_S * 1000 if t.strategy == "full_large" else None)
         except (psycopg2.errors.QueryCanceled, psycopg2.errors.LockNotAvailable,
                 psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as exc:
             self._batch_failed(t, keys, str(exc).strip().splitlines()[0])
@@ -1474,8 +1507,9 @@ def _finish(out: dict, flags: dict[str, bool]) -> dict:
         actions.append({"kind": "step", "step": "database", "label": "Open the Database step"})
     elif status == "no_source":
         tables = ", ".join(out.get("tables") or [])
-        reason = (f"InfDB input table {tables} not found or not readable (search_path "
-                  f"{out.get('source_schema')},public). Every PLZ is blocked.")
+        where = (f"database {out['source_database']}, schema {out.get('source_schema')}" if out.get("source_database")
+                 else f"search_path {out.get('source_schema')},public")
+        reason = f"InfDB input table {tables} not found or not readable ({where}). Every PLZ is blocked."
         actions.append({"kind": "step", "step": "database", "label": "Open the Database step"})
     elif status == "no_geometry":
         if out.get("files"):

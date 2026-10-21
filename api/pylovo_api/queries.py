@@ -116,17 +116,23 @@ def status() -> dict[str, Any]:
                                           and counts.get("municipal_register"))
             s = info["settings"]
             if s["use_infdb"] and s["infdb_source_schema"]:
-                cur.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (f"{s['infdb_source_schema']}.buildings",))
-                if cur.fetchone()["ok"]:
-                    cur.execute('SELECT GREATEST(reltuples, 0)::bigint AS n FROM pg_class WHERE oid = %s::regclass',
-                                (f"{s['infdb_source_schema']}.buildings",))
-                    estimate = cur.fetchone()["n"]
-                    if estimate < 200_000:
-                        cur.execute(f'SELECT count(*) AS n FROM "{s["infdb_source_schema"]}".buildings')
-                        estimate = cur.fetchone()["n"]
-                    info["infdb_buildings"] = estimate
-                else:
-                    info["infdb_buildings"] = None
+                try:
+                    with db.source_cursor(cur, timeout_s=3) as src:  # another database with USE_EXTERNAL_BASEDATA
+                        src.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (f"{s['infdb_source_schema']}.buildings",))
+                        if src.fetchone()["ok"]:
+                            src.execute('SELECT GREATEST(reltuples, 0)::bigint AS n FROM pg_class WHERE oid = %s::regclass',
+                                        (f"{s['infdb_source_schema']}.buildings",))
+                            estimate = src.fetchone()["n"]
+                            if estimate < 200_000:
+                                src.execute(f'SELECT count(*) AS n FROM "{s["infdb_source_schema"]}".buildings')
+                                estimate = src.fetchone()["n"]
+                            info["infdb_buildings"] = estimate
+                        else:
+                            info["infdb_buildings"] = None
+                except Exception as exc:  # noqa: BLE001
+                    if not s["use_external_basedata"]:
+                        raise
+                    info["infdb_buildings"], info["infdb_error"] = None, f"InfDB {s['infdb_target']}: {type(exc).__name__}: {exc}"
     except db.DatabaseUnavailable as exc:
         info["error"] = str(exc)
     except Exception as exc:  # any database error is shown in the UI

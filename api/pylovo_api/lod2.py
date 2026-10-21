@@ -58,16 +58,18 @@ def citydb_classes() -> dict[str, int] | None:
             return _schema["value"]
     value = None
     try:
-        row = db.fetch_one(
-            """SELECT to_regclass('citydb.feature') IS NOT NULL AND to_regclass('citydb.property') IS NOT NULL
-                      AND to_regclass('citydb.geometry_data') IS NOT NULL
-                      AND to_regclass('citydb.objectclass') IS NOT NULL AS ok""")
-        if row and row["ok"]:
-            rows = db.fetch_all("""SELECT classname, id FROM citydb.objectclass
-                                   WHERE classname IN ('Building', 'RoofSurface', 'WallSurface', 'GroundSurface')""")
-            classes = {r["classname"]: int(r["id"]) for r in rows}
-            if "Building" in classes:
-                value = classes
+        with db.source_cursor() as cur:  # the InfDB: another database with USE_EXTERNAL_BASEDATA
+            row = db.fetch_one(
+                """SELECT to_regclass('citydb.feature') IS NOT NULL AND to_regclass('citydb.property') IS NOT NULL
+                          AND to_regclass('citydb.geometry_data') IS NOT NULL
+                          AND to_regclass('citydb.objectclass') IS NOT NULL AS ok""", None, cur)
+            if row and row["ok"]:
+                rows = db.fetch_all("""SELECT classname, id FROM citydb.objectclass
+                                       WHERE classname IN ('Building', 'RoofSurface', 'WallSurface', 'GroundSurface')""",
+                                    None, cur)
+                classes = {r["classname"]: int(r["id"]) for r in rows}
+                if "Building" in classes:
+                    value = classes
     except Exception as exc:  # no citydb (or no rights): LoD2 is simply unavailable
         log.info("citydb not usable for LoD2 buildings: %s", exc)
     with _schema_lock:
@@ -91,14 +93,15 @@ def fetch_surfaces(objectids: list[str], classes: dict[str, int]) -> list[tuple[
         wanted[classes["GroundSurface"]] = 0
     if not wanted:
         return []
-    rows = db.fetch_all(
-        """SELECT b.objectid, s.objectclass_id AS cls, ST_AsBinary(ST_Transform(g.geometry, 3857)) AS geom
-           FROM citydb.feature b
-           JOIN citydb.property p ON p.feature_id = b.id AND p.name = 'boundary'
-           JOIN citydb.feature s ON s.id = p.val_feature_id AND s.objectclass_id = ANY(%(classes)s)
-           JOIN citydb.geometry_data g ON g.feature_id = s.id
-           WHERE b.objectid = ANY(%(ids)s) AND b.objectclass_id = %(building)s AND g.geometry IS NOT NULL""",
-        {"ids": objectids, "classes": list(wanted), "building": classes["Building"]})
+    with db.source_cursor() as cur:
+        rows = db.fetch_all(
+            """SELECT b.objectid, s.objectclass_id AS cls, ST_AsBinary(ST_Transform(g.geometry, 3857)) AS geom
+               FROM citydb.feature b
+               JOIN citydb.property p ON p.feature_id = b.id AND p.name = 'boundary'
+               JOIN citydb.feature s ON s.id = p.val_feature_id AND s.objectclass_id = ANY(%(classes)s)
+               JOIN citydb.geometry_data g ON g.feature_id = s.id
+               WHERE b.objectid = ANY(%(ids)s) AND b.objectclass_id = %(building)s AND g.geometry IS NOT NULL""",
+            {"ids": objectids, "classes": list(wanted), "building": classes["Building"]}, cur)
     return [(str(r["objectid"]), wanted[int(r["cls"])], bytes(r["geom"])) for r in rows]
 
 
@@ -239,7 +242,8 @@ def grid_lod2(grid_result_id: int) -> bytes:
     header: dict[str, Any] = {"grid_result_id": grid_result_id, "requested": len(objectids)}
     classes = citydb_classes()
     if classes is None:
-        blob = encode({**header, "available": False, "reason": "no citydb schema in this database"})
+        blob = encode({**header, "available": False,
+                       "reason": f"no citydb schema in {'the InfDB' if db.external_basedata() else 'this database'}"})
         return blob   # not cached: an import may add it
     mesh = build_mesh(fetch_surfaces(objectids[:MAX_BUILDINGS], classes))
     header.update(available=True, with_lod2=len(mesh["buildings"]), truncated=len(objectids) > MAX_BUILDINGS,

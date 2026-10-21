@@ -21,16 +21,32 @@ class DatabaseUnavailable(RuntimeError):
     """Raised when the configured database cannot be reached."""
 
 
-def settings() -> dict[str, Any]:
-    """Connection settings of the configured pylovo database (without the password)."""
+def external_basedata() -> bool:
+    """Whether the InfDB source schemas (``basedata``, ``opendata``, ``citydb``) are in another database than pylovo's.
+
+    That is ``USE_INFDB`` with ``USE_EXTERNAL_BASEDATA``; the other database is described by the ``INFDB_*`` settings.
+    """
     from pylovo import config_loader as cl
 
+    return bool(cl.USE_INFDB and cl.USE_EXTERNAL_BASEDATA)
+
+
+def settings() -> dict[str, Any]:
+    """Connection settings of the configured pylovo database (without the password).
+
+    ``use_external_basedata`` says that the InfDB is another database, ``infdb_target`` is then its ``host:port/dbname``.
+    """
+    from pylovo import config_loader as cl
+
+    external = external_basedata()
     return {
         "host": cl.HOST,
         "port": str(cl.PORT),
         "dbname": cl.DBNAME,
         "user": cl.DBUSER,
         "use_infdb": bool(cl.USE_INFDB),
+        "use_external_basedata": external,
+        "infdb_target": f"{cl.INFDB_HOST}:{cl.INFDB_PORT}/{cl.INFDB_DBNAME}" if external else None,
         "infdb_source_schema": cl.INFDB_SOURCE_SCHEMA,
         "infdb_opendata_schema": cl.INFDB_OPENDATA_SCHEMA,
         "target_epsg": int(cl.TARGET_EPSG),
@@ -55,6 +71,54 @@ def _connect(readonly: bool, timeout_s: int = 5, statement_timeout_ms: int = 120
         raise DatabaseUnavailable(str(exc).strip()) from exc
     conn.set_session(readonly=readonly)
     return conn
+
+
+def connect_source(timeout_s: int = 5):
+    """A read-only connection to the InfDB with the ``INFDB_*`` settings, made the way ``InfdbClient`` connects.
+
+    No startup ``options`` are sent (a PgBouncer older than 1.20 refuses them), so the search path and the
+    timeouts have to be set per transaction with ``SET LOCAL``. psycopg2 begins every transaction READ ONLY.
+
+    Raises:
+        psycopg2.OperationalError: If the InfDB cannot be reached.
+    """
+    from pylovo import config_loader as cl
+
+    conn = psycopg2.connect(dbname=cl.INFDB_DBNAME, user=cl.INFDB_USER, password=cl.INFDB_PASSWORD,
+                            host=cl.INFDB_HOST, port=cl.INFDB_PORT, connect_timeout=timeout_s)
+    conn.set_session(readonly=True)
+    return conn
+
+
+@contextmanager
+def source_cursor(cur=None, timeout_s: int = 5, statement_timeout_ms: int = 120_000) -> Iterator[psycopg2.extras.RealDictCursor]:
+    """Yield a dict cursor for reading the InfDB source schemas (``basedata``, ``opendata``, ``citydb``).
+
+    With the InfDB in the pylovo database that is ``cur`` (or a new :func:`cursor`). With
+    ``USE_EXTERNAL_BASEDATA`` it is a cursor on the InfDB (:func:`connect_source`) in one read-only
+    transaction with the source schema first on the search path; the pylovo connection is never used.
+    """
+    if not external_basedata():
+        if cur is not None:
+            yield cur
+        else:
+            with cursor(timeout_s=timeout_s, statement_timeout_ms=statement_timeout_ms) as own:
+                yield own
+        return
+    from pylovo import config_loader as cl
+
+    conn = connect_source(timeout_s)
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as source:
+            source.execute("SET LOCAL search_path = %s, public; SET LOCAL statement_timeout = %s",
+                           (cl.INFDB_SOURCE_SCHEMA, statement_timeout_ms))
+            yield source
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @contextmanager
