@@ -163,7 +163,8 @@ Conventions
 * **Configuration is frozen at import.** Settings are module constants; a changed YAML file takes
   effect in a new process.
 * **Working directory.** ``config/``, ``data/``, ``log/`` and ``results/`` are resolved relative to
-  the working directory; run the commands from the repository root.
+  the working directory; run the commands from the repository root (for a pip installation: the project
+  directory, with the packaged defaults as the last fallback, :ref:`install-wheel`).
 * **Coordinates.** Stored geometries use ``TARGET_EPSG`` (default EPSG:25832, metres); bus and line
   coordinates inside the pandapower nets are WGS84 (EPSG:4326).
 * **Identifiers.** A grid is ``(version_id, plz, kcid, bcid)`` and has a surrogate key

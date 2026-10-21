@@ -61,6 +61,11 @@ recommended setup the InfDB database with processed buildings and streets (see t
    uv sync                                   # add --extra plots for the plotting helpers
    cp .env.example .env                      # enter the database connection
 
+Without a checkout the wheel works as well: ``pip install pylovo`` into a virtual environment, put the ``.env`` into
+your project directory and run the commands from there. The wheel ships the default configuration and the reference
+data that the setup needs (see the
+`installation page <https://pylovo.readthedocs.io/en/latest/getting_started/installation.html#install-wheel>`_).
+
 Set up the schema ``pylovo`` and generate grids (run the commands from the repository root):
 
 .. code-block:: bash
