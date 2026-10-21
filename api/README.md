@@ -37,16 +37,26 @@ environment variables `DBNAME`, `DBUSER`, `PASSWORD`, `HOST`, `PORT` when there 
 ### In a container
 
 `api/docker/Dockerfile` builds the image `pylovo` (pylovo, GDAL and the API; no `.env`, no uv
-cache, no dev tools). Its default command is `pylovo-api --host 127.0.0.1 --port 18765`, so run it
-with host networking or override the command. CI (`.github/workflows/pylovo-image.yml`) publishes
+cache, no dev tools, no plotting packages: the `plots` extra is not installed because no module of
+the API or of its job commands imports them). Its default command is
+`pylovo-api --host 127.0.0.1 --port 18765`, so run it with host networking or override the command.
+The container runs as the unprivileged user `pylovo` (id 1000): mounted folders must be writable
+for that id (`user:` in compose or `docker run --user` for another owner). The image has a
+`HEALTHCHECK` that requests `/api/health` on port 18765. CI (`.github/workflows/pylovo-image.yml`) publishes
 `ghcr.io/<owner>/pylovo` with the tags `<branch>` (`feature/x` → `feature-x`), `X.Y.Z` and `X.Y`
 for version tags, `sha-<short>` and `latest` from the default branch; it passes the commit as
 build argument `PYLOVO_REVISION`, which `/api/health` reports.
 
 ```bash
 docker build -f api/docker/Dockerfile --build-arg PYLOVO_REVISION=$(git rev-parse HEAD) -t pylovo .
-docker compose -f api/docker/compose.yaml up --build   # host networking, mounts .env, config/, data/, log/ and .pylovo-api/
+PYLOVO_REVISION=$(git rev-parse HEAD) docker compose -f api/docker/compose.yaml up --build
 ```
+
+Compose uses host networking and mounts `.env` (read-only), `config/`, `data/`, `log/` and
+`.pylovo-api/` of the checkout. They must exist before the first start (`cp .env.example .env` and
+edit the database settings, `mkdir -p .pylovo-api`): otherwise compose stops with "bind source path
+does not exist" instead of creating root-owned folders that the container user cannot write to.
+`PYLOVO_REVISION` is the commit that `/api/health` reports (`null` without it).
 
 ## Security
 

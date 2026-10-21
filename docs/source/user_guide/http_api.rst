@@ -28,8 +28,14 @@ database is the one in the project's ``.env`` (or in the environment variables `
 ``--allowed-host`` (also ``PYLOVO_API_ALLOWED_HOSTS``) for the host name of a reverse proxy.
 
 The container image ``pylovo`` (``api/docker/Dockerfile``, published as
-``ghcr.io/tum-ens/pylovo``) contains pylovo, GDAL and the API and starts
-``pylovo-api --host 127.0.0.1 --port 18765``.
+``ghcr.io/tum-ens/pylovo``) contains pylovo, GDAL and the API (without the plotting packages of the
+extra ``plots``, which neither the API nor its job commands import) and starts
+``pylovo-api --host 127.0.0.1 --port 18765`` as the unprivileged user ``pylovo`` (id 1000), so
+mounted folders must be writable for that id. A health check requests ``/api/health``. With
+``docker compose -f api/docker/compose.yaml up --build`` the files and folders that compose mounts
+(``.env``, ``config/``, ``data/``, ``log/``, ``.pylovo-api/``) must exist; compose stops with an
+error if one is missing. Set ``PYLOVO_REVISION=$(git rev-parse HEAD)`` for the commit that
+``/api/health`` reports.
 
 .. warning::
 
