@@ -2,7 +2,9 @@
 Geographic validation plotting functions.
 
 This module contains functions for visualizing grid geometries and assets
-on geographic maps using pandapower's Plotly map plots.
+on geographic maps using pandapower's Plotly map plots. They return the figure
+and write no HTML file and open no browser (unless ``save_plots`` is set, which
+saves the transformer map without opening it).
 
 Note:
     With pandapower 3.4, ``on_map=True`` plots can fail for German grids with
@@ -94,13 +96,13 @@ def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
     colors_dict = PLOT_COLOR_DICT if sizes.issubset(PLOT_COLOR_DICT) else None
     # The bus geodata are WGS84 already; no projection argument (it only triggers a no-op convert_crs).
     with pandapower_on_map():
-        figure = vlevel_plotly(net_plot, on_map=True, colors_dict=colors_dict)
+        figure = vlevel_plotly(net_plot, on_map=True, colors_dict=colors_dict, filename=None, auto_open=False)
 
     if save_plots:
         savepath_folder = Path(RESULT_DIR, "figures", f"version_{VERSION_ID}", str(plz))
         savepath_folder.mkdir(parents=True, exist_ok=True)
         savepath_file = Path(savepath_folder, "trafo_on_map.html")
-        plotly.offline.plot(figure, filename=str(savepath_file))
+        plotly.offline.plot(figure, filename=str(savepath_file), auto_open=False)
 
     return figure
 
@@ -133,7 +135,7 @@ def plot_grid_on_map_plotly(
     # on_map=True enables the map background
     try:
         with pandapower_on_map():
-            fig = pp_plotly.simple_plotly(net, on_map=True)
+            fig = pp_plotly.simple_plotly(net, on_map=True, filename=None, auto_open=False)
         if title:
             fig.update_layout(title_text=title)
         return fig

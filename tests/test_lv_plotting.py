@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 import pandapower as pp  # noqa: E402
+import plotly.graph_objects as go  # noqa: E402
 
 from pylovo.plotting.generation import networks  # noqa: E402
 from pylovo.plotting.validation import geo_validation, metric_validation, powerflow_validation  # noqa: E402
@@ -135,3 +136,42 @@ def test_the_transformer_map_colours_a_station_by_its_rating_like_the_charts(mon
     assert drawn["net"].bus["vn_kv"].tolist() == [800]                              # 2 x 400 kVA
     assert drawn["net"].bus["name"].iloc[0].endswith("transformer: 800_kVA")
     assert drawn["colors_dict"] is geo_validation.PLOT_COLOR_DICT                  # 800 kVA has a configured colour
+
+
+def _grid_net():
+    """The station net with a feeder of two consumers."""
+    net = _station_net(parallel=1)
+    pp.create_ext_grid(net, 0)
+    previous = 1
+    for dx, dy in [(0.0005, 0.0), (0.001, 0.0002)]:
+        bus = pp.create_bus(net, 0.4, geodata=(11.5 + dx, 48.1 + dy))
+        pp.create_line(net, previous, bus, 0.05, "NAYY 4x150 SE")
+        pp.create_load(net, bus, 0.01)
+        previous = bus
+    return net
+
+
+@pytest.fixture
+def no_file_and_no_browser(monkeypatch, tmp_path):
+    """pandapower's plotly functions write temp-plot.html and open a browser outside a notebook by default."""
+    import webbrowser
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(webbrowser, "open", lambda *args, **kwargs: pytest.fail("a browser was opened"))
+    yield
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("plot", ["plot_simple_grid", "plot_grid_on_map", "plot_with_generic_coordinates"])
+def test_the_plotly_grid_plots_return_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser, plot):
+    if plot == "plot_with_generic_coordinates":
+        pytest.importorskip("igraph")
+    monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid: _grid_net())
+    assert isinstance(getattr(networks, plot)(85653, 1, 1), go.Figure)
+
+
+@pytest.mark.parametrize("plot, args", [("plot_trafo_on_map", (85653,)), ("plot_grid_on_map_plotly", (85653, 1, 1))])
+def test_the_plotly_maps_return_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser, plot, args):
+    GridClient.net = _grid_net()
+    monkeypatch.setattr(geo_validation, "DatabaseClient", GridClient)
+    assert isinstance(getattr(geo_validation, plot)(*args), go.Figure)

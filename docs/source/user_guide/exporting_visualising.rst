@@ -125,7 +125,7 @@ The functions read the grid of the active ``VERSION_ID``.
    * - :func:`~pylovo.plotting.generation.networks.plot_simple_grid`
      - Interactive plotly figure of the pandapower net with geographic coordinates.
    * - :func:`~pylovo.plotting.generation.networks.plot_grid_on_map`
-     - The same on an OpenStreetMap basemap (returns the figure).
+     - The same on an OpenStreetMap basemap.
    * - :func:`~pylovo.plotting.generation.networks.plot_with_generic_coordinates`
      - The net with generic tree coordinates (requires the package ``igraph``, which is part of
        the ``plots`` extra).
@@ -138,6 +138,10 @@ The functions read the grid of the active ``VERSION_ID``.
        (``fig = ...``), in a script close the figure when it is saved.
    * - :func:`~pylovo.plotting.generation.networks.draw_tree_network_with_spacing_from_grid_id`
      - Reads a grid and draws it with :func:`~pylovo.plotting.generation.networks.draw_tree_network_spacing`.
+
+The plotly functions return their figure; they write no HTML file and open no browser. A notebook
+shows the figure when the call is the last line of the cell, a script saves it with
+``fig.write_html("grid.html")``.
 
 .. code-block:: python
 

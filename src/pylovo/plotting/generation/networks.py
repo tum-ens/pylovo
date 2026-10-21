@@ -12,6 +12,9 @@ Grids are read for the ``VERSION_ID`` of ``config_generation_lv.yaml``. Needs th
 The matplotlib functions return their figure and never call ``plt.show()``. A notebook with the
 inline backend shows the open figure at the end of the cell (assign the result, ``fig = ...``, so
 that it is shown once), a script closes it with ``plt.close(fig)`` after saving.
+
+The plotly functions return their figure as well; they write no HTML file and open no browser. A
+notebook shows the figure as the value of the cell, a script saves it with ``fig.write_html(...)``.
 """
 
 import math
@@ -150,7 +153,7 @@ def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Op
     return fig
 
 
-def plot_with_generic_coordinates(plz: int, kcid: int, bcid: int) -> None:
+def plot_with_generic_coordinates(plz: int, kcid: int, bcid: int):
     """Plot one grid with generic (topology-based) coordinates instead of its geodata (plotly).
 
     Needs the optional package ``python-igraph`` (pandapower raises an ImportError without it).
@@ -159,6 +162,9 @@ def plot_with_generic_coordinates(plz: int, kcid: int, bcid: int) -> None:
         plz: Postal code.
         kcid: K-means cluster id.
         bcid: Building cluster id.
+
+    Returns:
+        The plotly figure.
     """
     net = read_net_with_grid_generator(plz, kcid, bcid)
 
@@ -171,19 +177,22 @@ def plot_with_generic_coordinates(plz: int, kcid: int, bcid: int) -> None:
     # pandapower >= 3 keeps the bus coordinates in net.bus["geo"] (geodata_table="bus").
     generic_net = create_generic_coordinates(net, library='igraph', respect_switches=False, overwrite=True,
         geodata_table='bus')
-    simple_plotly(generic_net, aspectratio=(1, 1))
+    return simple_plotly(generic_net, aspectratio=(1, 1), filename=None, auto_open=False)
 
 
-def plot_simple_grid(plz: int, kcid: int, bcid: int) -> None:
+def plot_simple_grid(plz: int, kcid: int, bcid: int):
     """Plot one grid with its geodata on a blank background (plotly).
 
     Args:
         plz: Postal code.
         kcid: K-means cluster id.
         bcid: Building cluster id.
+
+    Returns:
+        The plotly figure.
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid)
-    simple_plotly(net)
+    return simple_plotly(net, filename=None, auto_open=False)
 
 
 def plot_grid_on_map(plz: int, kcid: int, bcid: int):
@@ -204,7 +213,7 @@ def plot_grid_on_map(plz: int, kcid: int, bcid: int):
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid)
     with pandapower_on_map():
-        fig = simple_plotly(net, on_map=True, map_style="open-street-map")
+        fig = simple_plotly(net, on_map=True, map_style="open-street-map", filename=None, auto_open=False)
     return fig
 
 
