@@ -4,14 +4,15 @@
 # Collaborative Development
 
 ## Prerequisites
-- [GitLab](https://gitlab.com/) as a public repository. Please create an account.
+- [GitHub](https://github.com/tum-ens/pylovo) as the public repository. Please create an account.
 - [Git](https://git-scm.com/) for version control. [Git How To](https://githowto.com/) and [Git Cheat Sheet](https://training.github.com/downloads/github-git-cheat-sheet.pdf) provide an introduction into working with Git.
-- Development Environment Setup:
-  - Clone the repository and set up a virtual environment as described in the `README.md`.
-  - Install all necessary dependencies using `pip install -r requirements.txt`.
+- Development environment setup:
+  - Clone the repository and set up the environment with [uv](https://docs.astral.sh/uv/) as described in the `README.rst` and in the installation page of the documentation: `uv sync` (add the extras you need, for example `--extra plots --extra api --extra docs`).
+  - Copy `.env.example` to `.env` and enter the database connection. Never commit `.env`.
+  - Requirements: Linux or WSL2, Python 3.12 or 3.13, GDAL (`ogr2ogr`) and a PostgreSQL database (version 15 or newer) with PostGIS and pgRouting.
 
-### Optional: Setting Up SSH for GitLab
-To simplify authentication, consider setting up SSH keys for GitLab. Follow [GitLab’s SSH key setup guide](https://docs.gitlab.com/ee/user/ssh.html) for instructions.
+### Optional: Setting Up SSH for GitHub
+To simplify authentication, consider setting up SSH keys for GitHub. Follow [GitHub's guide on connecting with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh) for instructions.
 
 ## Types of interaction
 This repository is following the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). <br>
@@ -21,10 +22,9 @@ Please be self-reflective and always maintain a good culture of discussion and a
 Since the open license allows free use, no notification is required. 
 However, for the authors it is valuable information who uses the software for what purpose. 
 Indicators are `Watch`, `Fork` and `Starred` of the repository. 
-If you are a user, please add your name and details in [USERS.cff](USERS.cff).
 
 ### B. Comment
-You can give ideas, hints or report bugs in issues, in MR, at meetings or other channels. 
+You can give ideas, hints or report bugs in issues, in pull requests, at meetings or other channels. 
 This is no development but can be considered a notable contribution. 
 If you wish, add your name and details to [CITATION.cff](CITATION.cff).
 
@@ -43,21 +43,21 @@ Add your name and details to [CITATION.cff](CITATION.cff).
 The workflow for contributing to this project has been inspired by the workflow described by [Vincent Driessen](https://nvie.com/posts/a-successful-git-branching-model/).
 
 ##### Branches and their purpose
-* main - holds the current stable version
-* develop - holds all current developments
+* main - holds the released versions (tagged `vX.Y.Z`)
+* dev - holds all current developments for the next release
 * see other types below
 
-### 1. Describe the issue on GitLab
-Create [an issue](https://docs.gitlab.com/ee/user/project/issues/#create-an-issue) in the GitLab repository. 
+### 1. Describe the issue on GitHub
+Create an issue in the [GitHub repository](https://github.com/tum-ens/pylovo/issues). 
 The `issue title` describes the problem you will address.  <br>
 This is an important step as it forces one to think about the "issue".
 Make a checklist for all needed steps if possible.
-The issue templates guide you to ensure a consistent description.
+The issue templates in `.github/ISSUE_TEMPLATE` guide you to ensure a consistent description.
 
 ### 2. Solve the issue locally
 There are two ways to create the branch:
-1. Create a new branch from the `develop` branch
-2. Create a new branch directly in GitLab from the issue
+1. Create a new branch from the `dev` branch
+2. Create a new branch directly in GitHub from the issue
 
 #### Naming convention for branches
 Naming convention for branches: `type`/`issue-nr`-`short-description`
@@ -65,8 +65,8 @@ Naming convention for branches: `type`/`issue-nr`-`short-description`
 ##### `type`
 * feature - used for new features
 * bugfix - used for bug fixes
-* hotfix - used for quick fixes, should be branched from the release branch
-* release - used for preparing a new release, should be branched from the develop branch
+* hotfix - used for quick fixes, should be branched from the `main` branch
+* release - used for preparing a new release, should be branched from the `dev` branch
 
 Note: The majority of the development will be done in `feature` branches.
 
@@ -83,14 +83,14 @@ Describe shortly what the branch is about. Usually, the title of the issue.
 - Do not put your name to the branch name, it's a collaborative project
 - Branch names should be precise and informative
 
-Examples of branch names: `feature/42-add-new-ontology-class`, `feature/911-branch-naming-convention`, `hotfix/404-update-api`, `release/v0.10.0`
+Examples of branch names: `feature/42-add-new-ontology-class`, `feature/911-branch-naming-convention`, `hotfix/404-update-api`, `release/v1.0.0`
 
 #### 2.1. Create a new branch
 
-##### Option 1: Get the latest version of the `develop` branch
-1. Load the `develop branch`:
+##### Option 1: Get the latest version of the `dev` branch
+1. Load the `dev` branch:
 ```bash
-git checkout develop
+git checkout dev
 ```
 
 2. Update with the latest version:
@@ -103,9 +103,9 @@ git pull
 git checkout -b feature/1314-my-feature
 ```
 
-##### Option 2: Create a new branch directly in GitLab from the issue
-1. Click on the button `Create merge request` in the issue. Here you can either create a new branch or also create a merge request alongside with it (recommended).
-2. Choose the appropriate source branch (most of the time develop).
+##### Option 2: Create a new branch directly in GitHub from the issue
+1. Click on `Create a branch` in the `Development` section of the issue.
+2. Choose the appropriate source branch (most of the time `dev`).
 3. Name the branch according to the naming convention.
 
 #### 2.2. Start editing the files
@@ -152,50 +152,32 @@ Edit the commit message of your latest commit:
 git commit --amend
 ```
 
-### 3. Maintain code [TODO: apply in project]
+### 3. Maintain code
 
 3.1. **Code Quality and Linting**:
-To ensure consistency in code style and to prevent potential issues, it’s recommended to use linters and formatters. 
-- **Linting**: Use `flake8` to check for PEP 8 compliance and catch other common issues:
-   ```bash
-    pip install flake8
-    flake8 path/to/your/code  # Run flake8 to check for style issues
-    ```
-- **Code Formatting**: Use `black` oto automatically format your code according to PEP 8 standards.
-  ```bash
-  pip install black
-  black path/to/your/code  # Run black to automatically format code
-  ```
-- **Type Checking**: If applicable, use `mypy` to perform static type checking on your code:
-  ```bash
-  pip install mypy
-  mypy path/to/your/code  # Run mypy to check for type errors
-  ```
-3.2. **Pre-Commit Hooks**:
-To automate code quality checks before each commit, we use pre-commit hooks. These hooks ensure code adheres to the project’s standards, catching issues early in the development process.
-- **Pre-Commit**: To automate code quality checks, consider using pre-commit hooks. These hooks run checks before each commit to ensure code quality and style consistency.
-- **Installation**: Install pre-commit using pip:
-  ```bash
-  pip install pre-commit
-  ```
-   - **Setup**: If the repository includes a .pre-commit-config.yaml file, run the following command to install the hooks defined in the config file:
-  ```bash
-  pre-commit install
-  ```
-  - **Usage**: After installation, pre-commit will run automatically before each commit. If any issues are found, you will need to address them before the commit is accepted.
-  - **Customization**: To customize the pre-commit hooks, modify the .pre-commit-config.yaml file in the repository. This file defines the hooks to run and their configurations.
-  - **Manual Run**: To run the pre-commit checks manually, use the following command:
-  ```bash
-  pre-commit run --all-files
-  ```
-  **Note**: Pre-commit hooks may run linters, formatters, and other quality checks automatically on changed files when you commit, ensuring compliance without requiring manual intervention.
+To ensure consistency in code style and to prevent potential issues, check your code with [ruff](https://docs.astral.sh/ruff/) before you push:
+```bash
+uvx ruff check src
+```
 
+3.2. **Tests**:
+The unit tests need no database. Run them with:
+```bash
+uv run --extra api pytest -q tests api/tests
+```
+Tests that need a database are skipped unless you name a disposable database for them. Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
+
+3.3. **Documentation build**:
+Build the documentation with warnings as errors, as the CI does:
+```bash
+uv run --extra docs sphinx-build -W --keep-going -b html docs/source docs/build/html
+```
 
 ### 4. Push your commits
 Push your `local` branch on the remote server `origin`. <br>
 If your branch does not exist on the remote server yet, use:
 ```bash
-git push --set-upstream origin feature-1314-my-feature
+git push --set-upstream origin feature/1314-my-feature
 ```
 
 Then push regularly with:
@@ -203,36 +185,36 @@ Then push regularly with:
 git push
 ```
 
-### 5. Submit a merge request (MR)
-Follow the GitLab guide [Creating merge requests](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html). <br>
-The MR should be directed: `base: develop` <- `compare: feature-1-collaboration`. <br>
-Add the line `Close #<issue-number>` in the description of your MR.
-When it is merged, it [automatically closes](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically) the issue. <br>
-Assign a reviewer and get in contact.
+### 5. Open a pull request (PR)
+Open a [pull request](https://github.com/tum-ens/pylovo/pulls) on GitHub with the pull request template of `.github/PULL_REQUEST_TEMPLATE`. <br>
+The PR should be directed: `base: dev` <- `compare: feature/1314-my-feature`. <br>
+Add the line `Closes #<issue-number>` in the description of your PR.
+When it is merged, it automatically closes the issue. <br>
+Assign a reviewer and get in contact. The CI builds the documentation, runs the unit tests and checks the HTTP API contract (`api/openapi.json`, see `api/README.md`).
 
-#### 5.1. Let someone else review your MR
-Follow the GitLab guide [Merge request views](https://docs.gitlab.com/ee/user/project/merge_requests/reviews/). <br>
+#### 5.1. Let someone else review your PR
 Assign one reviewer or a user group and get into contact.
 
 If you are the reviewer:
 - Check the changes in all corresponding files.
 - Checkout the branch and run code.
 - Comment if you would like to change something (Use `Request changes`)
-- If all tests pass and all changes are good, `Approve` the MR. 
+- If all tests pass and all changes are good, `Approve` the PR. 
 - Leave a comment and some nice words!
 
-#### 5.2. Merge the MR and delete the feature branch
-Follow the GitLab guide [Merge methods](https://docs.gitlab.com/ee/user/project/merge_requests/methods/index.html).
+#### 5.2. Merge the PR and delete the feature branch
+Merge the PR into `dev` and delete the feature branch.
 
 ### 6. Close the issue
 Document the result in a few sentences and close the issue. <br>
 Check that all steps have been documented:
 
 - Issue title describes the problem you solved?
-- All commit messages are linked in the issue?
+- The PR is linked to the issue?
 - The branch was deleted?
 - Entry in CHANGELOG.md?
-- MR is closed?
+- Tests and the documentation build pass?
+- PR is merged?
 - Issue is closed?
 
 ## Coding Standards
@@ -243,17 +225,15 @@ To maintain consistency and readability, please follow the coding standards outl
 
 - **PEP 8**: All Python code should adhere to [PEP 8](https://www.python.org/dev/peps/pep-0008/) standards, which outline best practices for Python formatting, naming conventions, and structure. This includes:
   - Indentation (4 spaces per level).
-  - Line length (maximum 79 characters, or 72 characters for docstrings).
   - Naming conventions for variables, functions, and classes.
+  The code base does not enforce a line length.
   
-- **Linting Tools**: To help ensure compliance with PEP 8, use a linter such as `flake8` or `black`:
+- **Linting Tool**: To help ensure compliance, use [ruff](https://docs.astral.sh/ruff/):
   ```bash
-  pip install flake8
-  flake8 path/to/your/code  # Run flake8 to check for style issues
-  
-  # OR use black for auto-formatting
-  pip install black
-  black path/to/your/code  # Run black to automatically format code
+  uvx ruff check src
+  ```
+
+- **Keep it simple**: Prefer the simplest solution. Do not add abstractions or options that nobody asked for. Configuration parameters stay as simple as possible and are documented with their shipped value in `docs/source/user_guide/configuration.rst`.
 
 ### Documentation Style
 To ensure consistent and clear documentation, please follow the Google-style docstring format. 
@@ -380,25 +360,24 @@ Keeping documentation up-to-date is essential for ensuring other contributors an
 - **Main Documentation**: If your changes introduce new features or modify existing functionality, update the relevant sections in the documentation located in the docs/ folder.
   - **Writing Style**: Keep the writing clear, concise, and objective.
   - **Code Examples**: Include code examples where applicable to demonstrate usage.
-  - **Building Documentation**: If the project uses MkDocs or Sphinx, preview changes by building the documentation locally:
+  - **Building Documentation**: The documentation is built with Sphinx. Preview changes by building it locally, with warnings as errors as in the CI:
     ```bash
-    mkdocs serve  # For MkDocs
+    uv run --extra docs sphinx-build -W --keep-going -b html docs/source docs/build/html
     ```
-    ```bash
-    make html  # For Sphinx
-    ```
+  - **Figures**: The figures come from the scripts in `docs/scripts` and are committed (see the development page of the documentation).
 - **Docstrings**: Update or add docstrings to any new or modified functions, classes, or modules, following the Google-style guidelines in the Documentation Style section above.
 
 ### 2. Updating Changelog
 The `CHANGELOG.md` file keeps a record of significant changes to the project and helps users and contributors track updates. Please follow these conventions for maintaining the changelog:
 
 - **Entry Format**:
-  - Use the following structure for each new entry:
+  - New entries go under `## [Unreleased]`. At a release the maintainers move them to a section `## [X.Y.Z] - YYYY-MM-DD`.
+  - Use the following structure for each section:
     ```markdown
     ## [Version] - [YYYY-MM-DD]
     
     ### Added
-    - Brief description of the new feature, referencing the issue or merge request number if applicable.
+    - Brief description of the new feature, referencing the issue or pull request number if applicable.
     
     ### Changed
     - Description of any modifications to existing features.
@@ -409,21 +388,7 @@ The `CHANGELOG.md` file keeps a record of significant changes to the project and
     ### Removed
     - Deprecated features or removed functionality.
     ```
-- **Examples**:
-    - **New Feature**:
-        ```markdown
-        ## [1.0.0] - 2022-01-01
-        
-        ### Added
-        - Implemented new feature X (#42).
-        ```
-    - **Bug Fix**:
-        ```markdown
-        ## [1.0.1] - 2022-01-02
-        
-        ### Fixed
-        - Resolved issue with feature X not working correctly (#43).
-        ```
+  - Name configuration keys, commands and migrations exactly, and say what a user has to do after an upgrade.
 - **Semantic Versioning**: Follow [Semantic Versioning](https://semver.org/) guidelines when updating the version number. Increment the version based on the impact of the changes:
   - **Major**: Breaking changes or significant new features.
   - **Minor**: New features or enhancements that are backward-compatible.
