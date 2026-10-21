@@ -159,7 +159,7 @@ grid. However, a simple threshold gives many MV customers: with a threshold of 2
 for four cities, mainly because of the MV customers. Therefore, one threshold in the LV stage and
 two rules in the MV stage decide which customers become MV nodes:
 
-#. In the LV stage, a Commercial or Public load component above
+#. In the LV stage, a non-residential load component above
    ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` (200 kW installed, the boundary between the MV/LV
    station level and the MV level in eGon-data) leaves the LV grid, and the building is stored in
    ``pylovo.mv_customers``. The residential part of a mixed building stays in its LV grid. The
@@ -632,8 +632,11 @@ instead.
 
 Every voltage-dependent part follows the supply area: the line and HV/MV transformer types, the
 ring check, the nets and the ties, which connect supply areas of the same voltage only. The stored
-LV grids have 20/0.4 kV transformers. The voltage budget uses their impedances in percent, which
-hold for 10 kV as well, and ``pylovo-mv couple`` re-types them to 10 kV in 10 kV supply areas.
+LV grids have 20/0.4 kV transformers. The voltage budget keeps their impedances in percent also
+in 10 kV supply areas. pandapower's 10/0.4 kV standard types have a short-circuit voltage of about
+4 % instead of 6 %, so the budget is on the safe side: it expects a larger transformer drop than
+a real 10/0.4 kV unit would have. ``pylovo-mv couple`` re-types the stations of 10 kV supply areas
+to 10 kV.
 
 .. _mv-equipment:
 

@@ -27,8 +27,8 @@ Prerequisites
    * - Generated LV version
      - Stations, loads, MV customers, stored LV nets
      - ``pylovo-generate`` with the pandapower backend (:doc:`generating_grids`)
-   * - Migration ``0009_mv_grids``
-     - The MV tables
+   * - Migrations ``0009_mv_grids`` and ``0010_mv_display_geometry``
+     - The MV tables and the display geometry of MV lines and substations
      - ``pylovo-setup`` (:ref:`mv-schema`)
    * - OSM power data in InfDB
      - HV/MV substations, MV overhead lines, built-up land use
@@ -73,17 +73,18 @@ from the current configuration. Three properties of the version matter:
 Database schema
 ~~~~~~~~~~~~~~~
 
-The MV tables are created by migration ``0009_mv_grids`` (:doc:`../concepts/database_tables`). A new
-schema gets them with ``pylovo-setup``. A schema set up before needs one run of the
-non-destructive setup, which keeps all grids:
+The MV tables are created by the migrations ``0009_mv_grids`` and ``0010_mv_display_geometry``
+(:doc:`../concepts/database_tables`). A new schema gets them with ``pylovo-setup``. A schema set up
+before needs one run of the non-destructive setup, which keeps all grids:
 
 .. code-block:: bash
 
    uv run pylovo-setup
 
-Until the migration is recorded, ``pylovo-generate`` and ``pylovo-mv`` stop with
-``PyLovo schema has pending migrations (0009_mv_grids); run pylovo-setup first``. Run the setup when
-no generation is running, because the new foreign keys to ``grid_result`` wait for running
+Until every migration is recorded, ``pylovo-generate`` and the ``pylovo-mv`` commands that read the MV
+tables stop with ``PyLovo schema has pending migrations (0009_mv_grids, 0010_mv_display_geometry, ...);
+run pylovo-setup first``. The message lists all pending migrations, also those of the LV stage. Run the
+setup when no generation is running, because the new foreign keys to ``grid_result`` wait for running
 transactions.
 
 .. _mv-osm-data:
@@ -140,7 +141,7 @@ Quick start
 
 .. code-block:: bash
 
-   uv run pylovo-setup                                   # once: migration 0009_mv_grids
+   uv run pylovo-setup                                   # once: the migrations of the MV stage
    uv run pylovo-generate --plz 80803 80802 --mv         # LV grids, then the MV grids
    uv run pylovo-mv list --version 1                     # the MV variants of version 1
 
@@ -305,8 +306,10 @@ export`` writes its stored nets, but it cannot be resumed, coupled or exported c
 
 A variant becomes stale when the LV results of its postcodes change after it was built, for example
 by load edits, deleted or regenerated grids. ``pylovo-mv list`` compares a fingerprint of the LV
-results of its postcodes (number of grids, grid ids, newest load edit, number of MV customers) with
-the one stored at creation and marks such variants ``stale``. Rebuild them with ``--replace``.
+results of its postcodes (number of grids, grid ids, active load edits, number of MV customers) with
+the one stored at creation and marks such variants ``stale``. Undoing a load edit changes the active
+load edits, so it marks a variant that was built on the edited loads as stale. Rebuild them with
+``--replace``.
 
 ``pylovo-mv delete`` deletes variants with all their results. ``pylovo-delete networks --plz PLZ
 --version VERSION`` also deletes the MV variants of that version that contain the postcode, because
@@ -341,8 +344,9 @@ pylovo-mv list
 
 One line per variant: generation status, number of postcodes, grids done and failed, the retired
 options if any, electrical pass/violation/unchecked counts, stored line length, the stale flag and
-the comment. The check mark describes generation completion; it does not certify electrical
-compliance. Non-converging power flows count among electrical failures. Circuit lengths count
+the comment. The check mark (✓) means that the generation is done and the variant is not stale (an
+unknown stale flag keeps it); it does not certify electrical compliance. Non-converging power flows
+count among electrical failures. Circuit lengths count
 parallel circuits individually; route lengths count each modeled line once.
 
 pylovo-mv delete
@@ -353,7 +357,7 @@ pylovo-mv delete
    pylovo-mv delete --version VERSION [--variant VARIANTS [VARIANTS ...]]
 
 Deletes the given variants of a version with all their results. Without ``--variant`` it deletes
-every MV variant of the version.
+every MV variant of the version. It refuses while a ``generate`` or ``couple`` of one of them runs.
 
 pylovo-mv export
 ~~~~~~~~~~~~~~~~
@@ -656,8 +660,11 @@ shipped values, meanings and sources, are listed in :doc:`mv_parameters`.
 Troubleshooting
 ---------------
 
-``PyLovo schema has pending migrations (0009_mv_grids); run pylovo-setup first``
+``PyLovo schema has pending migrations (0009_mv_grids, 0010_mv_display_geometry, ...); run pylovo-setup first``
    Run the non-destructive ``pylovo-setup`` once (:ref:`mv-schema`).
+``MV variant(s) <version>/<variant> are being generated or coupled right now; delete them when the run has finished``
+   ``pylovo-mv delete`` and the ``pylovo-delete`` commands refuse to delete a variant, a postcode or a
+   version while a ``generate`` or ``couple`` of an affected variant runs. Wait for the run.
 ``the MV stage reads the InfDB source data on the pylovo connection, but USE_EXTERNAL_BASEDATA points to ...``
    The InfDB schemas are in another database (:ref:`mv-prerequisites`).
 ``none of the requested PLZ has LV grids in version <version>``

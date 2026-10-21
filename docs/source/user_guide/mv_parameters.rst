@@ -45,10 +45,10 @@ value stops pylovo when it reads the configuration.
      - Comment stored with a new MV variant.
    * - ``MV_NOMINAL_VOLTAGE_KV``
      - ``auto``
-     - ``auto``: 10 kV for supply areas whose installed capacity lies mostly in municipalities with
-       at least ``mv_10kv_min_density_mva_km2`` of installed MV/LV capacity per km², else 20 kV (§ 23c
-       EnWG structural data; Harnisch et al. 2016). ``20`` or ``10``: one voltage for all supply
-       areas.
+     - ``auto``: 10 kV for supply areas with at least half of their installed capacity in
+       municipalities that have at least ``mv_10kv_min_density_mva_km2`` of installed MV/LV capacity
+       per km², else 20 kV (§ 23c EnWG structural data; Harnisch et al. 2016). ``20`` or ``10``: one
+       voltage for all supply areas.
    * - ``MV_MAX_STATIONS_PER_RING``
      - ``20``
      - Most ring members (stations and MV customers) of one ring, 1 to 100. A rural member counts
@@ -112,7 +112,7 @@ routing graph and the settlements are also part of the graph id, so a change bui
    * - ``mv_10kv_min_density_mva_km2``
      - 5.0
      - Installed MV/LV capacity per km² of a municipality (its area inside the planning region) from
-       which ``auto`` gives 10 kV to the supply areas that have most of their capacity there (§ 23c
+       which ``auto`` gives 10 kV to the supply areas that have at least half of their capacity there (§ 23c
        EnWG structural data, not calibrated on supply areas; :ref:`mv-voltage-level`).
    * - ``n1_utilization``
      - 1.0

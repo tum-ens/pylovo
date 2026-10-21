@@ -96,8 +96,9 @@ MV stage tables in short
 The MV stage (:doc:`mv_grids`) writes its results per MV variant. Every result table carries
 ``version_id`` and ``mv_variant_id`` and references ``mv_variant`` with ``ON DELETE CASCADE``, so
 deleting a variant (``pylovo-mv delete``) or its version removes all its rows. Deleting a postcode
-with ``pylovo-delete networks`` deletes the MV variants that contain it. Migration
-``0009_mv_grids`` creates the tables on schemas set up before.
+with ``pylovo-delete networks`` deletes the MV variants that contain it. The migrations
+``0009_mv_grids`` and ``0010_mv_display_geometry`` create the tables and the display geometry columns
+on schemas set up before.
 
 .. list-table::
    :header-rows: 1
