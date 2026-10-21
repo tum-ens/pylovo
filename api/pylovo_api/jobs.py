@@ -265,25 +265,24 @@ class JobManager:
         job.started_at = time.time()
         job.status = "running"
         self._append(job, f"$ {job.summary()['command']}", "command")
+        status, code = "failed", None
         try:
-            proc = subprocess.Popen(
+            with subprocess.Popen(
                 job.argv, cwd=self.cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1,
                 start_new_session=(os.name == "posix"),
-            )
-        except OSError as exc:
-            self._append(job, f"Could not start the command: {exc}", "error")
-            self._finish(job, "failed", None)
-            return
-        job._proc = proc
-        job.pid = proc.pid
-        assert proc.stdout is not None
-        for raw in proc.stdout:
-            self._append(job, raw.rstrip("\r\n"))
-        code = proc.wait()
-        # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
-        # shows such runs as "succeeded" with an error count instead of hiding the errors.
-        status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
+            ) as proc:  # leaving the block closes the pipe
+                job._proc = proc
+                job.pid = proc.pid
+                for raw in proc.stdout:
+                    self._append(job, raw.rstrip("\r\n"))
+                code = proc.wait()
+            # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
+            # shows such runs as "succeeded" with an error count instead of hiding the errors.
+            status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
+        except Exception as exc:  # noqa: BLE001 - a job must end whatever happens: it holds the writer lock
+            # e.g. OSError (no such program) or ValueError (an argument with a NUL byte or a lone surrogate)
+            self._append(job, f"Could not run the command: {type(exc).__name__}: {exc}", "error")
         self._finish(job, status, code)
 
     def _finish(self, job: Job, status: str, code: int | None) -> None:
