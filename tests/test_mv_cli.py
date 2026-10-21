@@ -14,6 +14,7 @@ from pylovo.cli import generate
 from pylovo.cli import mv as cli
 from pylovo.mv_grid import stage
 from pylovo.mv_grid.model import MvRunSummary
+from pylovo.mv_grid.options import MV_STAGE_VERSION
 from pylovo.mv_grid.parameters import MvParameters, MvStageError, require_local_source_data
 
 REPO = Path(__file__).resolve().parents[1]
@@ -79,7 +80,7 @@ def test_set_takes_yaml_keys():
     ("MV_MAX_STATIONS_PER_RING=many", "MV_MAX_STATIONS_PER_RING must be an integer"),
     ("MV_MAX_STATION_PER_RING=3", "did you mean MV_MAX_STATIONS_PER_RING"),
     ("stub_max_kva=3", "stub_max_kva is a constant of the MV stage"),
-    ("MV_STUBS=none", "MV_STUBS is no longer supported"),
+    ("MV_STUBS=rural", "unknown MV key 'MV_STUBS'"),
     ("MV_MAX_STATIONS_PER_RING", "KEY=VALUE"),
 ])
 def test_set_rejects_execution_keys_constants_and_bad_values(assignment, message, capsys):
@@ -157,10 +158,10 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     rows = pd.DataFrame([
         {"version_id": "mv1", "mv_variant_id": "d0", "mv_variant_comment": "base", "status": "done", "n_plz": 2,
          "n_grids": 3, "n_done": 3, "n_failed": 0, "n_electrical_pass": 2, "n_electrical_violations": 1,
-         "n_electrical_not_checked": 0, "retired": [], "circuit_km": 120.4, "stale": False},
+         "n_electrical_not_checked": 0, "mv_stage_version": MV_STAGE_VERSION, "circuit_km": 120.4, "stale": False},
         {"version_id": "mv1", "mv_variant_id": "d1", "mv_variant_comment": "real", "status": "partial", "n_plz": 2,
          "n_grids": 3, "n_done": 2, "n_failed": 1, "n_electrical_pass": 0, "n_electrical_violations": 1,
-         "n_electrical_not_checked": 2, "retired": ["generation.include_generation"], "circuit_km": None,
+         "n_electrical_not_checked": 2, "mv_stage_version": 12, "circuit_km": None,
          "stale": True},
     ])
     client = FakeClient(delete_variants=lambda v, ids: deleted.append((v, ids)) or 2,
@@ -174,8 +175,25 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     assert out[1].startswith("✓ mv1/d0: generation done, 2 PLZ, 3 grids (3 done, 0 failed); "
                              "electrical: 2 pass, 1 violation, 0 not checked, 120 km")
     assert out[2].startswith("✗ mv1/d1: generation partial")
-    assert ("(2 done, 1 failed), retired options generation.include_generation; electrical: 0 pass, 1 violation, "
+    assert ("(2 done, 1 failed), MV stage version 12 (read only); electrical: 0 pass, 1 violation, "
             "2 not checked") in out[2] and ", stale" in out[2]
+
+
+def test_a_variant_of_an_older_stage_version_is_displayed(monkeypatch, capsys):
+    import shapely
+
+    from pylovo.mv_grid.display import DisplayLine
+
+    lines = [DisplayLine(1, shapely.LineString([(0, 0), (300, 0), (300, 200)]), 10, 11),
+             DisplayLine(2, shapely.LineString([(0, 0), (300, 0), (300, -200)]), 10, 12)]
+    saved = []
+    client = FakeClient(ensure_grid_persistence_schema=lambda: None, display_input=lambda v, var: (lines, {10: (0, 0)}),
+                        save_display_geometry=lambda v, var, done, busbars: saved.append((v, var, sorted(done))),
+                        variant_row=lambda v, var: {"mv_parameters": {"mv_stage_version": 12}})
+    monkeypatch.setattr(cli, "_database_client", lambda: client)
+    cli.main(["display", "--version", "mv1", "--variant", "d1"])
+    assert saved == [("mv1", "d1", [1, 2])]
+    assert capsys.readouterr().out.startswith("✓ MV variant d1 of version mv1: 2 lines in lanes")
 
 
 def test_couple_and_coupled_export_delegate_to_the_coupling_module(monkeypatch, capsys, tmp_path):

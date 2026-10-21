@@ -45,14 +45,6 @@ For one MV variant of an LV version, :func:`~pylovo.mv_grid.stage.run_mv_stage` 
 The command ``pylovo-mv couple`` can afterwards solve the MV grids together with the stored LV
 grids (:ref:`mv-coupling`).
 
-.. note::
-
-   The stage has one method for every step. The alternative methods of earlier development
-   versions (other substation sources and supply areas, straight-line routing, a sweep solver,
-   other rules for overhead lines, stubs and ties) and the planning of MV generators with feed-in
-   cases are kept on the branch ``feature/mv-backup``. Its file ``MV_ALTERNATIVES.md`` explains
-   them.
-
 Terms
 -----
 
@@ -870,8 +862,8 @@ A supply area is ``partial`` when a station with an LV grid could not be coupled
 budget or has a skipped or non-converging design-point check (also with ``--no-merged``), or when
 the merged power flow does not converge. The status describes the checks performed, not
 compliance with voltage limits. Stored coupling results stay unchanged until ``pylovo-mv couple``
-is run again. A retired variant, planned with an option that the stage no longer has, is not
-coupled (:ref:`mv-variants`).
+is run again. A variant planned by another version of the stage code is not coupled
+(:ref:`mv-variants`).
 
 .. _mv-osm-coverage:
 

@@ -295,14 +295,10 @@ parameters, the run depends on the postcodes and the routing graph:
 * A changed routing graph (changed InfDB rows or graph build) also plans every supply area again.
 * ``--replace`` deletes the variant and builds it from scratch.
 
-A variant stored by an older version of the stage code can still be read, coupled and exported,
-but not resumed: its ``mv_stage_version`` differs. Build it again with ``--replace`` or under a new
-variant id.
-
-A variant planned by an earlier version of the stage with an option that the stage no longer has
-(for example another ring solver, other supply areas or generators with feed-in cases) is
-*retired*. ``pylovo-mv list`` names these options. Its results stay readable, and ``pylovo-mv
-export`` writes its stored nets, but it cannot be resumed, coupled or exported coupled.
+A variant planned by another version of the stage code (``mv_stage_version`` of its snapshot) is
+listed, displayed and exported as stored, but ``generate`` neither resumes nor extends it, and
+``couple`` and ``export --coupled`` refuse it. ``pylovo-mv list`` names its stage version. Plan it
+again with ``--replace`` or under a new variant id.
 
 A variant becomes stale when the LV results of its postcodes change after it was built, for example
 by load edits, deleted or regenerated grids. ``pylovo-mv list`` compares a fingerprint of the LV
@@ -333,7 +329,7 @@ and LV operating point (:ref:`mv-coupling`). ``--grid`` selects MV grids (defaul
 design-point check. The results are the ``coupled_*`` columns of ``mv_node``,
 ``mv_grid.coupled_status`` (``done``, ``partial`` or ``failed``) and ``mv_grid.metrics['coupling']``.
 ``couple`` takes the same lock as ``generate`` and can be run again at any time. It refuses a
-retired variant.
+variant of another stage version (:ref:`mv-variants`).
 
 pylovo-mv list
 ~~~~~~~~~~~~~~
@@ -342,8 +338,8 @@ pylovo-mv list
 
    pylovo-mv list [--version VERSION]
 
-One line per variant: generation status, number of postcodes, grids done and failed, the retired
-options if any, electrical pass/violation/unchecked counts, stored line length, the stale flag and
+One line per variant: generation status, number of postcodes, grids done and failed, the stage
+version of a variant planned with another one, electrical pass/violation/unchecked counts, stored line length, the stale flag and
 the comment. The check mark (✓) means that the generation is done and the variant is not stale (an
 unknown stale flag keeps it); it does not certify electrical compliance. Non-converging power flows
 count among electrical failures. Circuit lengths count
@@ -496,9 +492,8 @@ Every result table carries ``version_id`` and ``mv_variant_id`` and is deleted w
    * - ``mv_customers``
      - MV customers written by the LV stage (per LV version).
 
-The columns about generation (``gen_*_kw``, the ``*feed_in*`` columns, ``n_generators``, the node
-kind and line role ``generator``) hold values only in retired variants planned with generators. The
-stage writes 0 or NULL there.
+The stage plans loads only: it writes 0 or NULL into the columns about generation (``gen_*_kw``,
+the ``*feed_in*`` columns, ``n_generators``, the node kind and line role ``generator``).
 
 The column ``connection`` of ``mv_node`` gives the result of the planning: ``busbar``, ``ring``,
 ``stub`` (also the node of a busbar radial), ``dedicated``, ``joint`` or ``excluded`` (HV customers
@@ -680,13 +675,11 @@ Troubleshooting
 ``another MV run of variant <id> of version <version> is active``
    A ``generate`` or ``couple`` of the same variant is running.
 ``MV parameters differ from the stored snapshot of MV variant <id> ...``
-   The variant exists with other parameters, an older stage version or a retired option: use
-   another ``--variant``, or delete it (``pylovo-mv delete`` or ``--replace``).
-``MV variant <id> of version <version> was planned with options this code no longer has (...)``
-   The variant is retired (:ref:`mv-variants`). Its stored results stay readable, but it cannot be
-   coupled. Plan it again under a new variant id.
-``<KEY> ... is no longer supported: the MV stage always uses ...``
-   The configuration or ``--set`` names an option that the stage no longer has. Remove the key.
+   The variant exists with other parameters: use another ``--variant``, or delete it
+   (``pylovo-mv delete`` or ``--replace``).
+``MV variant <id> of version <version> was planned with MV stage version <n>; plan it again ...``
+   The variant was planned by another version of the stage code (:ref:`mv-variants`). Its stored
+   results stay readable, but ``generate`` does not resume it and ``couple`` does not couple it.
 ``... is a constant of the MV stage, not a key of config_generation_mv.yaml``
    ``--set`` takes only ``MV_*`` keys. Change a constant in Python (:doc:`mv_parameters`).
 ``no HV/MV substations within 5 km of the region; check INFDB_OSM_SCHEMA``

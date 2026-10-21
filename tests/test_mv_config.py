@@ -126,19 +126,12 @@ def test_valid_values_are_coerced(tmp_path):
     assert proc.stdout.split()[:5] == ["False", "7", "10.0", "15", "0.5"]
 
 
-def test_removed_keys_of_older_configurations(tmp_path):
-    """An older configuration may keep a removed key with the value the stage still has, but no other value."""
-    proc = run_probe(tmp_path, {"MV_RING_SOLVER": "savings", "MV_STUBS": "rural", "MV_SUPPLY_AREAS": "routed"})
-    assert proc.returncode == 0, proc.stderr
-
-
 @pytest.mark.parametrize("key, value, message", [
-    ("MV_RING_SOLVER", "sweep", "MV_RING_SOLVER 'sweep' is no longer supported"),
+    ("MV_RING_SOLVER", "savings", "MV_RING_SOLVER is no key of the MV stage"),
     ("MV_NOMINAL_VOLTAGE_KV", "15", "MV_NOMINAL_VOLTAGE_KV must be one of auto, 20, 10"),
     ("MV_MAX_STATIONS_PER_RING", "0", "MV_MAX_STATIONS_PER_RING must be between 1 and 100"),
     ("MV_GRID_GENERATION", '"False"', "MV_GRID_GENERATION must be True or False"),
     ("MV_VARIANT_ID", '"variant-too-long"', "MV_VARIANT_ID must be a text of 1 to 10 characters"),
-    ("MV_SUPPLY_AREAS", "egon", "MV_SUPPLY_AREAS 'egon' is no longer supported"),
 ])
 def test_invalid_values_fail_at_import_with_the_key_name(tmp_path, key, value, message):
     proc = run_probe(tmp_path, {key: value})

@@ -302,6 +302,7 @@ class MvResultMixin(BaseMixin):
         """Raise if an MV variant exists with other parameters (cheap check before the graph build; no write).
 
         Raises:
+            MvStageError: The variant was planned with another MV stage version (``check_stage_version``).
             ValueError: The parameters differ from the stored snapshot (the message names the paths).
         """
         row = self.variant_row(version_id, params.variant_id)
@@ -309,14 +310,15 @@ class MvResultMixin(BaseMixin):
             self._compare_variant_snapshot(version_id, params, row["mv_parameters"])
 
     def _compare_variant_snapshot(self, version_id: str, params: "MvParameters", stored: Any) -> None:
-        from pylovo.version_snapshot import MV_ADDED_LATER, MV_REMOVED, compare_snapshots
+        from pylovo.mv_grid.parameters import check_stage_version
+        from pylovo.version_snapshot import MV_ADDED_LATER, compare_snapshots
 
         if isinstance(stored, str):
             stored = json.loads(stored)
-        expected = json.loads(json.dumps(params.to_snapshot(), allow_nan=False, sort_keys=True))
-        differences, not_recorded = compare_snapshots(stored or {}, expected, added_later=MV_ADDED_LATER,
-                                                      removed=MV_REMOVED)
         variant_id = params.variant_id
+        check_stage_version(stored, version_id, variant_id)
+        expected = json.loads(json.dumps(params.to_snapshot(), allow_nan=False, sort_keys=True))
+        differences, not_recorded = compare_snapshots(stored or {}, expected, added_later=MV_ADDED_LATER)
         if differences:
             more = " …" if len(differences) > 5 else ""
             raise ValueError(
@@ -342,6 +344,7 @@ class MvResultMixin(BaseMixin):
             ``'new'``, ``'resume'`` or ``'grow'``.
 
         Raises:
+            MvStageError: The variant was planned with another MV stage version.
             ValueError: The parameters differ from the stored snapshot of the variant.
         """
         variant_id = params.variant_id
@@ -1056,10 +1059,11 @@ class MvResultMixin(BaseMixin):
             raise
 
     def list_variants(self, version_id: str | None) -> pd.DataFrame:
-        """The MV variants with status, electrical outcome counts, km, ``retired`` options and a ``stale`` flag.
+        """The MV variants with status, electrical outcome counts, km, ``mv_stage_version`` and a ``stale`` flag.
 
-        ``retired`` lists the removed options a variant used (``version_snapshot.removed_differences``): such a
-        variant stays readable but is not resumed or coupled. ``stale`` is True when the LV fingerprint of the
+        ``mv_stage_version`` is the MV stage version of the variant's snapshot: a variant of another version than
+        the current one stays readable but is not resumed or coupled (``check_stage_version``). ``stale`` is True
+        when the LV fingerprint of the
         variant's PLZ (``MvInputMixin.lv_fingerprint``) differs from the one stored at creation (load edits,
         deleted or regenerated LV grids), None when it cannot be computed.
         """
@@ -1093,15 +1097,13 @@ class MvResultMixin(BaseMixin):
         df = pd.DataFrame(self.cur.fetchall(), columns=names)
         if df.empty:
             df["n_plz"] = pd.Series(dtype=int)
-            df["retired"] = pd.Series(dtype=object)
+            df["mv_stage_version"] = pd.Series(dtype=object)
             df["stale"] = pd.Series(dtype=object)
             return df.drop(columns="mv_parameters")
-        from pylovo.version_snapshot import MV_ADDED_LATER, MV_REMOVED, removed_differences
-
         df["n_plz"] = df["plz_list"].map(lambda p: len(p or []))
-        df["retired"] = df.pop("mv_parameters").map(
-            lambda p: removed_differences(json.loads(p) if isinstance(p, str) else dict(p or {}), MV_REMOVED,
-                                          MV_ADDED_LATER))
+        df["mv_stage_version"] = pd.Series(
+            [(json.loads(p) if isinstance(p, str) else dict(p or {})).get("mv_stage_version")
+             for p in df.pop("mv_parameters")], index=df.index, dtype=object)
         stale = []
         for record in df.to_dict("records"):
             stored = record["lv_fingerprint"]

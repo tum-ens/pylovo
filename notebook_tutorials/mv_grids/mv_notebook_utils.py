@@ -22,8 +22,8 @@ the client of :func:`read_only_client` runs read-only transactions.
   :func:`egon_districts`, :func:`egon_comparison`, :func:`read_ding0_district`, :func:`earth_fault_table`.
 - Electrical details: :func:`repairs_table`, :func:`flag_counts`, :func:`coupling_table`, :func:`coupling_left_out`.
 
-Older stored variants that used an option the MV stage no longer has are "retired" (column ``retired`` of
-``pylovo-mv list``). They are never selected by default, but an explicit selection reads them as stored.
+Variants planned with another MV stage version (column ``mv_stage_version`` of ``pylovo-mv list``) are never selected
+by default, but an explicit selection reads them as stored.
 """
 from __future__ import annotations
 
@@ -69,14 +69,12 @@ def read_only_client() -> Any:
     return dbc
 
 
-def _retired(listing: pd.DataFrame) -> pd.Series:
-    """The removed options each variant of a listing used (column ``retired``; an empty list for a current one)."""
-    return listing["retired"].map(lambda r: list(r) if isinstance(r, (list, tuple, np.ndarray)) else [])
-
-
 def current_variants(listing: pd.DataFrame) -> list[str]:
-    """The done variants of a version listing (``pylovo-mv list``) that are not retired, in listing order."""
-    current = (listing["status"] == "done") & (_retired(listing).map(len) == 0)
+    """The done variants of a version listing (``pylovo-mv list``) of the current MV stage version, in listing
+    order."""
+    from pylovo.mv_grid.options import MV_STAGE_VERSION
+
+    current = (listing["status"] == "done") & (listing["mv_stage_version"] == MV_STAGE_VERSION)
     return [str(v) for v in listing.loc[current, "mv_variant_id"]]
 
 
@@ -84,7 +82,7 @@ def default_variant(listing: pd.DataFrame) -> str | None:
     """The default MV variant of a version listing (``pylovo-mv list``).
 
     ``MV_VARIANT_ID`` of ``config/config_generation_mv.yaml`` if the version has this variant, else the newest done
-    variant that is not retired (latest ``finished_at``). None if there is neither.
+    variant of the current MV stage version (latest ``finished_at``). None if there is neither.
     """
     from pylovo import config_loader
 
@@ -107,12 +105,13 @@ def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | N
         version_id: LV version; None: ``VERSION_ID`` of ``config/config_generation_lv.yaml``.
         variants: MV variants; None: selected by ``select``. Unknown ids are reported and dropped.
         select: The selection when ``variants`` is None: ``"default"`` the one variant of :func:`default_variant`,
-            ``"current"`` all done variants that are not retired (:func:`current_variants`).
+            ``"current"`` all done variants of the current MV stage version (:func:`current_variants`).
 
     Returns:
         ``(version_id, variants, listing)``.
     """
     from pylovo import config_loader
+    from pylovo.mv_grid.options import MV_STAGE_VERSION
 
     if select not in ("default", "current"):
         raise ValueError(f"select must be 'default' or 'current', got {select!r}")
@@ -130,11 +129,10 @@ def resolve(dbc: Any, version_id: str | None = None, variants: Sequence[str] | N
         missing = [str(v) for v in variants if str(v) not in available]
         if missing:
             print(f"MV variants not in version {version}: {', '.join(missing)}")
-    retired = dict(zip(available, _retired(listing)))
+    stages = dict(zip(available, listing["mv_stage_version"]))
     for name in chosen:
-        if retired.get(name):
-            print(f"{name}: older variant with options the MV stage no longer has ({', '.join(retired[name])}); "
-                  "its stored results are read as they are.")
+        if stages.get(name) != MV_STAGE_VERSION:
+            print(f"{name}: planned with MV stage version {stages.get(name)}; its stored results are read as they are.")
     if not chosen:
         print(f"Version {version} has no done MV variant to analyse; run pylovo-mv generate first or set variants.")
     return version, chosen, listing
@@ -572,13 +570,8 @@ def flat_parameters(snapshot: Mapping[str, Any], prefix: str = "") -> dict[str, 
 
 
 def variant_parameters(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    """The parameter snapshot of an MV variant as ``{dotted path: value}`` (:func:`flat_parameters`) without the
-    paths of the options the MV stage no longer has (``pylovo.version_snapshot.MV_REMOVED``)."""
-    from pylovo.version_snapshot import MV_REMOVED
-
-    removed = tuple(".".join(path) for path in MV_REMOVED)
-    return {k: x for k, x in flat_parameters(snapshot).items()
-            if not any(k == r or k.startswith(r + ".") for r in removed)}
+    """The parameter snapshot of an MV variant as ``{dotted path: value}`` (:func:`flat_parameters`)."""
+    return flat_parameters(snapshot)
 
 
 def parameter_table(variants: Sequence[Variant], only_differences: bool = True) -> pd.DataFrame:

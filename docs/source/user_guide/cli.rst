@@ -110,7 +110,7 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
 ``pylovo-mv couple --version VERSION --variant VARIANT [--grid GRIDS ...] [--jobs JOBS] [--no-merged]``
    Check the done MV grids with the stored LV grids and solve the merged MV and LV operating point.
 ``pylovo-mv list [--version VERSION]``
-   List the MV variants with status, postcodes, grids, retired options, length and stale flag.
+   List the MV variants with status, postcodes, grids, length, stale flag and the stage version of older variants.
 ``pylovo-mv delete --version VERSION [--variant VARIANTS ...] [--yes]``
    Delete MV variants with all their results (all variants of the version without ``--variant``).
    Asks you to type the database name first, like ``pylovo-delete``; ``--yes`` skips the question and

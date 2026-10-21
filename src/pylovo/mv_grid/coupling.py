@@ -53,7 +53,7 @@ from scipy.sparse.csgraph import connected_components
 from pylovo.mv_grid import coincidence, electrical
 from pylovo.mv_grid.inputs import busbar_record
 from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
-from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, retired_options
+from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, check_stage_version
 
 logger = logging.getLogger(__name__)
 
@@ -969,15 +969,12 @@ def _variant_inputs(dbc: Any, version_id: str, variant_id: str) -> tuple[dict, M
 
     Raises:
         LookupError: The variant does not exist.
+        MvStageError: The variant was planned with another MV stage version (``check_stage_version``).
     """
     row = dbc.variant_row(version_id, variant_id)
     if row is None:
         raise LookupError(f"MV variant {variant_id} of version {version_id} does not exist")
-    retired = retired_options(row["mv_parameters"] or {})
-    if retired:
-        raise MvStageError(f"MV variant {variant_id} of version {version_id} was planned with options this code no "
-                           f"longer has ({', '.join(retired)}); its stored results stay readable, the branch "
-                           "feature/mv-backup can couple it")
+    check_stage_version(row["mv_parameters"], version_id, variant_id)
     params = MvParameters.from_snapshot(variant_id, row.get("mv_variant_comment") or "", row["mv_parameters"])
     lv_json = row.get("lv_parameters")
     if not lv_json:

@@ -25,12 +25,11 @@ from pylovo.mv_grid.options import (
     CONSTANTS,
     MV_STAGE_VERSION,
     YAML_KEYS,
-    check_removed_keys,
     coerce_mv_value,
     parse_assignment,
 )
-from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, retired_options
-from pylovo.version_snapshot import ADDED_LATER, MV_ADDED_LATER, MV_REMOVED, UNKNOWN, compare_snapshots
+from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, check_stage_version
+from pylovo.version_snapshot import ADDED_LATER, MV_ADDED_LATER, UNKNOWN, compare_snapshots
 
 LINE_TYPES = {
     "NA2XS2Y 1x240 RM/25 12/20 kV": LineType("NA2XS2Y 1x240 RM/25 12/20 kV", "cable", 20.0, 0.122, 0.112, 304.0, 0.421),
@@ -99,16 +98,15 @@ def record(item) -> dict:
 
 
 #: The snapshot of the default parameters with the fake types: auto voltage, so the equipment holds the
-#: 20 kV types and the 10 kV types of the dense districts; the removed options with their fixed values (MV_REMOVED).
+#: 20 kV types and the 10 kV types of the dense districts.
 EXPECTED_SNAPSHOT = {
     "schema": 1, "mv_stage_version": 13,
     "voltage": {"vn_kv": "auto", "busbar_vm_pu": 1.02, "busbar_band_pu": 0.015, "max_drop_percent": 5.0,
                 "max_drop_n1_percent": 10.0, "mv_10kv_min_density_mva_km2": 5.0},
     "loading": {"line_utilization": 0.6, "n1_utilization": 1.0, "hv_mv_n1_utilization": 1.0},
     "sources": {"region_buffer_m": 5000.0, "substation_merge_m": 75.0, "substation_drop_m": 150.0,
-                "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0, "egon_match_m": 300.0,
-                "substations": "osm", "supply_areas": "routed", "rebalance_max_iter": 0},
-    "routing": {"mode": "street", "bridge_detour": 1.3,
+                "ehv_partner_m": 1000.0, "substation_max_attach_m": 2000.0, "egon_match_m": 300.0},
+    "routing": {"bridge_detour": 1.3,
                 "long_connector_m": 300.0, "osm_line_snap_m": 100.0, "osm_line_cost_factor": 0.7,
                 "busbar_exit_radius_m": 200.0,
                 "graph_excluded_klasse": ["Bundesautobahn"],
@@ -125,8 +123,7 @@ EXPECTED_SNAPSHOT = {
                  "local_search_rounds": 50,
                  "neighbours": 15, "ls_time_guard_s": 120.0, "repair_rounds": 8,
                  "busbar_legs": "cable_along_streets", "rural_satellites": "stubs_after_rings",
-                 "links": "one_per_node_two_per_ring_pair_shorter_end_reach",
-                 "solver": "savings", "stubs": "rural", "overhead_lines": "osm", "interconnection": "ties"},
+                 "links": "one_per_node_two_per_ring_pair_shorter_end_reach"},
     "equipment": {"cable": record(LINE_TYPES["NA2XS2Y 1x240 RM/25 12/20 kV"]),
                   "overhead": record(LINE_TYPES["122-AL1/20-ST1A 20.0"]),
                   "max_parallel_cables": 2, "hv_mv_units": 2,
@@ -137,24 +134,9 @@ EXPECTED_SNAPSHOT = {
     "loads": {"customer_peak": "sim_factor_times_installed", "dedicated_feeder_kw": 5500.0, "hv_customer_kw": 20000.0,
               "customer_hall_min_footprint_m2": 2000.0, "customer_min_mv_kw": 200.0,
               "busbar_customer_max_m": 1000.0},
-    "generation": {"include_generation": False},
     "taps": {"rule": "load_only", "step_percent": 2.5, "min": -2, "max": 2, "lv_design_tolerance_pu": 0.002},
     "coupling": {"merged_scaling": "feeder_category"},
 }
-
-#: The groups and keys of a load-only snapshot of stage 12 (variant load9) that the stage no longer writes.
-STAGE_12_REMOVED = {
-    "voltage": {"max_rise_percent": 2.0},
-    "topology": {"loop_in_max_offset_m": 100.0, "generator_max_tee_m": 5000.0},
-    "generation": {"include_generation": False, "lv_side_kw": 200.0,
-                   "fallback_kw": {"lv": 100.0, "mvlv": 200.0, "mv": 5500.0, "hvmv": 20000.0},
-                   "mv_gen_cos_phi": 0.95, "lv_pv_cos_phi": 1.0, "include_storage": False},
-    "cases": {"feed_in_wind": {"load_p": 0.1, "load_q": 0.123, "wind": 1.0, "solar": 0.8, "other": 1.0},
-              "feed_in_pv": {"load_p": 0.1, "load_q": 0.123, "wind": 0.85, "solar": 0.95, "other": 1.0}},
-    "taps": {"lv_feed_in_max_pu": 1.07},
-    "coupling": {"lv_pv_at": "LVbus 1"},
-}
-
 
 def json_round_trip(value):
     return json.loads(json.dumps(value, allow_nan=False, sort_keys=True))
@@ -165,7 +147,7 @@ def json_round_trip(value):
 
 def test_specs_have_known_kinds_and_canonical_defaults():
     assert len(YAML_KEYS) == 9 and len(CONSTANTS) >= 50
-    assert not set(YAML_KEYS) & set(CONSTANTS) and not set(YAML_KEYS) & set(options.REMOVED_YAML_KEYS)
+    assert not set(YAML_KEYS) & set(CONSTANTS)
     for spec in (*YAML_KEYS.values(), *CONSTANTS.values()):
         assert spec.kind in options.KINDS, spec.name
         assert coerce_mv_value(spec.name, copy.deepcopy(spec.default)) == spec.default, spec.name
@@ -267,8 +249,7 @@ def test_parse_assignment():
     ("MV_VARIANT_ID=d2", "use --variant"),
     ("MV_VARIANT_COMMENT=x", "use --comment"),
     ("MV_GRID_GENERATION=True", "pylovo-generate --mv"),
-    ("MV_STUBS=none", "MV_STUBS is no longer supported: the MV stage always uses 'rural'"),
-    ("MV_INCLUDE_GENERATION=true", "MV_INCLUDE_GENERATION is no longer supported"),
+    ("MV_STUBS=rural", "unknown MV key 'MV_STUBS'"),
     ("lv_pv_cos_phi=0.95", "unknown MV key"),
     ("local_search_rounds=0", "local_search_rounds is a constant of the MV stage"),
     ("MV_MAX_STATIONS_PER_RING=many", "MV_MAX_STATIONS_PER_RING must be an integer"),
@@ -279,57 +260,15 @@ def test_parse_assignment_rejects(text, message):
         parse_assignment(text)
 
 
-def test_removed_keys_of_older_configurations_need_the_remaining_value():
-    check_removed_keys({})
-    check_removed_keys({"MV_RING_SOLVER": "savings", "MV_SUPPLY_AREAS": "routed", "MV_STUBS": "rural"})
-    with pytest.raises(ValueError, match="MV_RING_SOLVER 'sweep' is no longer supported.*feature/mv-backup"):
-        check_removed_keys({"MV_RING_SOLVER": "sweep"})
-    with pytest.raises(ValueError, match="MV_SUPPLY_AREAS 'municipal'"):
-        check_removed_keys({"MV_SUPPLY_AREAS": "municipal"})
-    check_removed_keys({"MV_INCLUDE_GENERATION": False})                  # load-only, as the stage plans
-    with pytest.raises(ValueError, match="MV_INCLUDE_GENERATION True is no longer supported.*always uses False"):
-        check_removed_keys({"MV_INCLUDE_GENERATION": True})
-
-
-def test_retired_options_of_stored_snapshots(equipment):
-    stored = json_round_trip(MvParameters().to_snapshot())
-    assert retired_options(MvParameters().to_snapshot()) == retired_options(stored) == []
-    assert compare_snapshots(stored, stored, MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
-    # the snapshot records the fixed value of every removed option: an older one without the path is told apart
-    assert all(stored[path[0]][path[1]] == fixed for path, fixed in MV_REMOVED.items() if fixed is not UNKNOWN)
-    old = copy.deepcopy(stored)
-    old["topology"].update({"solver": "sweep", "stubs": "rural"})
-    old["sources"].update({"rebalance_max_iter": 50, "rebalance_step_m": 500.0})
-    old["routing"]["crowfly_detour"] = 1.3                                 # constants of removed options: not compared
-    assert retired_options(old) == ["sources.rebalance_max_iter", "topology.solver"]
-    differences, _ = compare_snapshots(old, stored, added_later=MV_ADDED_LATER, removed=MV_REMOVED)
-    assert differences == ["sources.rebalance_max_iter", "topology.solver"]
-    same = copy.deepcopy(stored)
-    same["topology"].update({"solver": "savings", "overhead_lines": "osm"})
-    assert compare_snapshots(same, stored, added_later=MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
-
-
-def test_load_only_snapshots_of_stage_12_resume_and_generation_snapshots_are_retired(equipment):
-    """A stored load-only variant (e.g. load9) keeps its generation and cases groups: same plan, so it resumes. A
-    variant planned with generation, or one older than MV_INCLUDE_GENERATION (always with generation), is retired."""
-    current = json_round_trip(MvParameters().to_snapshot())
-    stage_12 = copy.deepcopy(current)
-    for group, values in STAGE_12_REMOVED.items():
-        stage_12.setdefault(group, {}).update(copy.deepcopy(values))
-    for group, values in STAGE_12_REMOVED.items():
-        assert all((group,) in MV_REMOVED or (group, key) in MV_REMOVED for key in values), group
-    assert retired_options(stage_12) == []
-    assert compare_snapshots(stage_12, current, added_later=MV_ADDED_LATER, removed=MV_REMOVED) == ([], [])
-    assert MvParameters.from_snapshot("load9", "old", stage_12) == MvParameters(variant_id="load9", comment="old")
-    full = copy.deepcopy(stage_12)
-    full["generation"]["include_generation"] = True
-    full["taps"]["rule"] = "centre_load_feed_in"
-    assert retired_options(full) == ["generation.include_generation"]
-    assert compare_snapshots(full, current, added_later=MV_ADDED_LATER, removed=MV_REMOVED)[0] == [
-        "generation.include_generation", "taps.rule"]
-    legacy = copy.deepcopy(full)
-    del legacy["generation"]["include_generation"]                          # before the key: always with generation
-    assert retired_options(legacy) == ["generation.include_generation"]
+def test_a_variant_of_another_stage_version_is_refused(equipment):
+    snapshot = json_round_trip(MvParameters().to_snapshot())
+    check_stage_version(snapshot, "mv1", "d0")
+    for older in ({**snapshot, "mv_stage_version": MV_STAGE_VERSION - 1}, {}, None):
+        stored = (older or {}).get("mv_stage_version")
+        with pytest.raises(MvStageError, match=re.escape(f"MV variant d0 of version mv1 was planned with MV stage "
+                                                         f"version {stored}; plan it again with --replace or under "
+                                                         "a new id")):
+            check_stage_version(older, "mv1", "d0")
 
 
 # ---------------------------------------------------------------------------------------------- MvParameters

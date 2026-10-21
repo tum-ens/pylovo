@@ -608,7 +608,7 @@ K_MEANS_SEED = CONFIG_GENERATION["K_MEANS_SEED"]
 
 def _mv_config(lv: dict, mv: dict) -> dict:
     """The MV stage keys of both files; a key may be in both only with the same value."""
-    names = set(_mv_options.YAML_KEYS) | set(_mv_options.REMOVED_YAML_KEYS)
+    names = set(_mv_options.YAML_KEYS)
     for key in mv:
         if key not in names:
             raise ValueError(f"{key} is no key of the MV stage (the LV keys belong in {CONFIG_GENERATION_FILE.name}): "
@@ -639,7 +639,6 @@ MV_STANDARD_CABLE = _mv_value("MV_STANDARD_CABLE")
 MV_OVERHEAD_LINE = _mv_value("MV_OVERHEAD_LINE")
 MV_LINE_PLANNING_UTILIZATION = _mv_value("MV_LINE_PLANNING_UTILIZATION")
 MV_MAX_VOLTAGE_DROP_PERCENT = _mv_value("MV_MAX_VOLTAGE_DROP_PERCENT")
-_mv_options.check_removed_keys(CONFIG_MV)
 
 # =============================================================================
 # ANALYSIS CONFIGURATION (from CONFIG_ANALYSIS)
@@ -699,7 +698,7 @@ NODE_COLOR_CONNECTION_BUS = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_CONNEC
 # =============================================================================
 # Typo protection: a misspelled key would silently keep the value of its default. The MV file needs no check,
 # _mv_config refuses its unknown keys; the MV_* keys of the LV file are read from there.
-_warn_about_unread_keys(CONFIG_GENERATION, set(_mv_options.YAML_KEYS) | set(_mv_options.REMOVED_YAML_KEYS))
+_warn_about_unread_keys(CONFIG_GENERATION, set(_mv_options.YAML_KEYS))
 _warn_about_unread_keys(CONFIG_ANALYSIS)
 _warn_about_unread_keys(CONFIG_CLASSIFICATION)
 _warn_about_unread_keys(CONFIG_CLUSTERING)

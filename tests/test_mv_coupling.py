@@ -17,6 +17,7 @@ from shapely.geometry import LineString
 import pylovo.mv_grid as mv_grid_package
 from pylovo.mv_grid import coincidence, electrical
 from pylovo.mv_grid.model import NODE_COLUMNS, DistrictInput, EdgeSet, GridOutcome, LinePlan, RingPlan, TopologyPlan
+from pylovo.mv_grid.options import MV_STAGE_VERSION
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
 
 X0, Y0 = 700_000.0, 5_380_000.0
@@ -871,12 +872,13 @@ def test_export_coupled_net_writes_the_case(fake_db, tmp_path):
         coupling.export_coupled_net("t", "d1", 8, tmp_path / "x.json")
 
 
-def test_a_variant_planned_with_generation_is_not_coupled(fake_db, tmp_path):
+def test_a_variant_of_another_stage_version_is_not_coupled(fake_db, tmp_path):
     state, log_file = fake_db
-    state["variant"]["mv_parameters"]["generation"] = {"include_generation": True}
-    with pytest.raises(MvStageError, match="generation.include_generation.*feature/mv-backup"):
+    state["variant"]["mv_parameters"]["mv_stage_version"] = MV_STAGE_VERSION - 1
+    with pytest.raises(MvStageError, match=f"planned with MV stage version {MV_STAGE_VERSION - 1}; plan it again "
+                                           "with --replace or under a new id"):
         coupling.run_coupling("t", "d1", log_file=log_file)
-    with pytest.raises(MvStageError, match="no longer has"):
+    with pytest.raises(MvStageError, match="planned with MV stage version"):
         coupling.export_coupled_net("t", "d1", 3, tmp_path / "old.json")
     assert "saved" not in state and not (tmp_path / "old.json").exists()
 

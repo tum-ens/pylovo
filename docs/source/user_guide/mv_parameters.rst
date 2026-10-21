@@ -17,9 +17,8 @@ the constant.
 The ``MV_*`` keys are in ``config_generation_mv.yaml``, which pylovo reads from the directory of
 ``config_generation_lv.yaml`` (:ref:`mv-configuration`). A missing key takes its shipped value, so
 older configuration files keep working. A former ``config_generation.yaml`` with ``MV_*`` keys is
-still read, and a key set in both files needs the same value. A configuration may still hold a key
-of an option that the stage no longer has, but only with the value that the stage uses; another
-value stops pylovo when it reads the configuration.
+still read, and a key set in both files needs the same value. ``config_generation_mv.yaml`` holds
+only the keys below; another key stops pylovo when it reads the configuration.
 
 ``pylovo-mv generate --set KEY=VALUE`` changes a key for one variant, except
 ``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and ``MV_VARIANT_COMMENT``.

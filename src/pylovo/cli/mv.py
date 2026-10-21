@@ -5,7 +5,7 @@ Subcommands:
 - ``generate``: run the MV stage for one MV variant of an LV version (:func:`pylovo.mv_grid.stage.run_mv_stage`).
 - ``couple``: LV design-point check and merged MV+LV power flows of a done variant.
 - ``delete``: delete MV variants of a version.
-- ``list``: list the MV variants (status, PLZ, grids, km, stale).
+- ``list``: list the MV variants (status, PLZ, grids, km, stale, the MV stage version of an older variant).
 - ``graph``: build or reuse the MV routing graph of a region and print its QA tables.
 - ``export``: write the stored pandapower net of one MV grid to a JSON file.
 - ``boundary``: write the HV boundary of a variant (one row per supplying HV/MV substation with its eTraGo 110 kV bus,
@@ -25,7 +25,7 @@ import traceback
 from pathlib import Path
 
 from pylovo.mv_grid.model import CASES
-from pylovo.mv_grid.options import parse_assignment
+from pylovo.mv_grid.options import MV_STAGE_VERSION, parse_assignment
 
 EPILOG = """
 Examples:
@@ -221,11 +221,11 @@ def _list(args: argparse.Namespace) -> int:
         stale_text = {True: ", stale", None: ", stale unknown"}.get(stale, "")
         electrical_violations = row.get("n_electrical_violations", 0)
         violation_text = f"{electrical_violations} violation{'s' if electrical_violations != 1 else ''}"
-        retired = row.get("retired") or []
-        retired_text = f", retired options {', '.join(retired)}" if retired else ""
+        stage = row.get("mv_stage_version")
+        stage_text = f", MV stage version {stage} (read only)" if stage != MV_STAGE_VERSION else ""
         print(f"{'✓' if ok else '✗'} {row['version_id']}/{row['mv_variant_id']}: generation {row['status']}, "
               f"{row['n_plz']} PLZ, {row['n_grids']} grids ({row['n_done']} done, {row['n_failed']} failed)"
-              f"{retired_text}; electrical: {row.get('n_electrical_pass', 0)} pass, "
+              f"{stage_text}; electrical: {row.get('n_electrical_pass', 0)} pass, "
               f"{violation_text}, "
               f"{row.get('n_electrical_not_checked', 0)} not checked, "
               f"{km_text}{stale_text} - {row.get('mv_variant_comment') or ''}")

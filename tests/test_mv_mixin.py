@@ -14,6 +14,8 @@ import pytest
 import shapely
 
 import pylovo.database.mv_result_mixin as mixin
+from pylovo.mv_grid.options import MV_STAGE_VERSION
+from pylovo.mv_grid.parameters import MvStageError
 from pylovo.mv_grid.model import (
     NODE_COLUMNS,
     CaseResult,
@@ -112,8 +114,8 @@ class FakeParams:
     def __init__(self, variant_id="d0", comment="test", snapshot=None):
         self.variant_id = variant_id
         self.comment = comment
-        self._snapshot = snapshot or {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 15},
-                                      "generation": {"include_generation": False}}
+        self._snapshot = snapshot or {"schema": 1, "mv_stage_version": MV_STAGE_VERSION,
+                                      "topology": {"max_stations_per_ring": 15}}
 
     def to_snapshot(self):
         return json.loads(json.dumps(self._snapshot))
@@ -182,8 +184,7 @@ def test_register_subset_resumes_and_superset_grows():
 
 
 def test_register_rejects_other_parameters():
-    stored = {"schema": 1, "mv_stage_version": 1, "topology": {"max_stations_per_ring": 20},
-              "generation": {"include_generation": False}}
+    stored = {"schema": 1, "mv_stage_version": MV_STAGE_VERSION, "topology": {"max_stations_per_ring": 20}}
     client = make_client([("INSERT INTO pylovo.mv_variant", ([], [], 0)), variant_rule(stored, [1])])
     with pytest.raises(ValueError, match=r"MV parameters differ from the stored snapshot of MV variant d0 of "
                                          r"version mv1 \(topology.max_stations_per_ring\)"):
@@ -192,6 +193,19 @@ def test_register_rejects_other_parameters():
     client = make_client([variant_rule(stored, [1])])
     with pytest.raises(ValueError, match="pylovo-mv delete --version mv1 --variant d0"):
         client.check_variant_parameters("mv1", FakeParams())
+
+
+def test_register_refuses_a_variant_of_another_stage_version():
+    older = {"schema": 1, "mv_stage_version": MV_STAGE_VERSION - 1, "topology": {"max_stations_per_ring": 15}}
+    message = (f"MV variant d0 of version mv1 was planned with MV stage version {MV_STAGE_VERSION - 1}; plan it "
+               "again with --replace or under a new id")
+    client = make_client([variant_rule(older, [1])])
+    with pytest.raises(MvStageError, match=re.escape(message)):
+        client.check_variant_parameters("mv1", FakeParams())
+    client = make_client([("INSERT INTO pylovo.mv_variant", ([], [], 0)), variant_rule(older, [1])])
+    with pytest.raises(MvStageError, match=re.escape(message)):
+        client.register_variant("mv1", FakeParams(), [1], "g1", LV, {})
+    assert client.conn.rollbacks == 1 and client.conn.commits == 0
 
 
 def test_reset_region_and_delete_variants_are_version_scoped():
@@ -361,10 +375,10 @@ def test_list_variants_flags_stale_fingerprints():
                "n_stations",
                "circuit_km", "cable_share", "n_electrical_pass", "n_electrical_violations",
                "n_electrical_not_checked"]
-    current = {"generation": {"include_generation": False}}
+    current = {"mv_stage_version": MV_STAGE_VERSION}
     rows = [("mv1", "d0", "a", "done", current, [1, 2], "g", {"n_grids": 3}, None, None, 2, 2, 0, 10,
              4.0, 0.5, 1, 1, 0),
-            ("mv1", "d1", "b", "done", "{}", [1], "g", {"n_grids": 1}, None, None, 1, 1, 0, 3,
+            ("mv1", "d1", "b", "done", '{"mv_stage_version": 12}', [1], "g", {"n_grids": 1}, None, None, 1, 1, 0, 3,
              1.0, 0.5, 0, 0, 1)]
     client = make_client([("LEFT JOIN pylovo.mv_variant_stats s", (columns, rows, 2))])
     client.lv_fingerprint = lambda version_id, plz: {"n_grids": 3}
@@ -375,8 +389,8 @@ def test_list_variants_flags_stale_fingerprints():
     query, params = client.cur.sql("LEFT JOIN pylovo.mv_variant_stats s")[0]
     assert "power_flow_status = 'converged'" in query and "n_electrical_not_checked" in query
     assert "v.mv_parameters" in query and "mv_parameters" not in df.columns
-    # a snapshot without the generation key predates it and was planned with generation (jsonb as dict or text)
-    assert df["retired"].tolist() == [[], ["generation.include_generation"]]
+    # the MV stage version of each snapshot (jsonb as dict or text): d1 is an older variant, listed as stored
+    assert df["mv_stage_version"].tolist() == [MV_STAGE_VERSION, 12]
     assert params["violations"] == ["voltage_violation", "loading_violation", "not_converged"]
     assert client.cur.sql("SAVEPOINT mv_list_fingerprint")
 

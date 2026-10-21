@@ -22,8 +22,9 @@ Every notebook starts with a cell tagged `parameters`:
 
 - `version_id`: the LV version (`None` uses `VERSION_ID` of `config/config_generation_lv.yaml`);
 - `variants`: the MV variants. In notebooks 1, 3 and 4, `None` selects the default variant: `MV_VARIANT_ID` of
-  `config/config_generation_mv.yaml` if the version has this variant, else the newest done variant that is not
-  retired. In notebook 2, `None` selects all done variants that are not retired (notebook 0 lists these as well).
+  `config/config_generation_mv.yaml` if the version has this variant, else the newest done variant of the current
+  MV stage version. In notebook 2, `None` selects all done variants of the current MV stage version (notebook 0 lists
+  these as well).
   An explicit list is kept as selected;
 - `show_details` (notebook 1): include the full tables and additional diagnostic figures (default: `False`);
 - `map_variants` (notebook 1): variants for every map and district/ring detail; `None` means the selected variants and `[]` suppresses those figures;
@@ -63,8 +64,8 @@ also need an explicit `repo_root`.
 
 - pylovo with the `notebooks` extra (`uv sync --extra notebooks`), see `../README.md` for the kernel.
 - A `.env` that points to a database with MV variants (`pylovo-mv list --version <version>`).
-- Older variants that used an option the MV stage no longer has are `retired` in `pylovo-mv list`. The notebooks
-  never select them by default; an explicit selection reads their stored results as they are.
+- `pylovo-mv list` names the MV stage version of a variant planned with an older one. The notebooks never select
+  such variants by default; an explicit selection reads their stored results as they are.
 - `4_mv_lv_coupling.ipynb`: coupling results (`pylovo-mv couple --version <version> --variant <variant>`).
 - `3_mv_plausibility.ipynb`: the eGon-data tables `egon_hvmv_substation` and `egon_mv_grid_district`
   (populated in `pylovo` or available in the opendata schema) and, for the Ding0 comparison, the Ding0 2023 MV grids

@@ -281,19 +281,6 @@ YAML_KEYS: dict[str, Spec] = {spec.name: spec for spec in _YAML_SPECS}
 #: The constants of the MV stage by name (= their field name in MvParameters).
 CONSTANTS: dict[str, Spec] = {spec.name: spec for spec in _CONSTANT_SPECS}
 
-#: ``MV_*`` keys whose alternatives were removed, with the only value the stage still has. An older configuration may
-#: keep them with that value; another value is an error (:func:`check_removed_keys`), not silently ignored.
-REMOVED_YAML_KEYS: dict[str, Any] = {
-    "MV_SUBSTATIONS": "osm",
-    "MV_SUPPLY_AREAS": "routed",
-    "MV_ROUTING": "street",
-    "MV_RING_SOLVER": "savings",
-    "MV_STUBS": "rural",
-    "MV_OVERHEAD_LINES": "osm",
-    "MV_INTERCONNECTION": "ties",
-    "MV_INCLUDE_GENERATION": False,
-}
-
 #: YAML keys that ``--set`` does not change, with the option to use instead.
 NOT_SETTABLE: dict[str, str] = {
     "MV_GRID_GENERATION": "it is the switch of pylovo-generate (use pylovo-generate --mv)",
@@ -432,19 +419,6 @@ def default_value(name: str) -> Any:
     return copy.deepcopy(spec_of(name).default)
 
 
-def check_removed_keys(config: Mapping[str, Any]) -> None:
-    """Accept a removed ``MV_*`` key of an older configuration only with the value the stage still has.
-
-    Raises:
-        ValueError: If a key of :data:`REMOVED_YAML_KEYS` has another value (the branch ``feature/mv-backup`` keeps
-            the removed alternatives).
-    """
-    for key, fixed in REMOVED_YAML_KEYS.items():
-        if key in config and config[key] != fixed:
-            raise ValueError(f"{key} {config[key]!r} is no longer supported: the MV stage always uses {fixed!r} "
-                             "(remove the key; the branch feature/mv-backup keeps the alternatives)")
-
-
 def parse_assignment(text: str) -> tuple[str, Any]:
     """Parse one ``--set`` argument ``KEY=VALUE`` into the name and its coerced value.
 
@@ -462,9 +436,6 @@ def parse_assignment(text: str) -> tuple[str, Any]:
         raise ValueError(f"--set takes KEY=VALUE, got {text!r}")
     if name in NOT_SETTABLE:
         raise ValueError(f"{name} cannot be changed with --set: {NOT_SETTABLE[name]}")
-    if name in REMOVED_YAML_KEYS:
-        raise ValueError(f"{name} is no longer supported: the MV stage always uses {REMOVED_YAML_KEYS[name]!r} (the "
-                         f"branch feature/mv-backup keeps the alternatives)")
     if name in CONSTANTS:
         raise ValueError(f"{name} is a constant of the MV stage, not a key of config_generation_mv.yaml: change it in "
                          f"Python with MvParameters.replace")

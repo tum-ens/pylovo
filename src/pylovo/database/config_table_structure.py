@@ -331,8 +331,8 @@ CREATE_QUERIES = {
     # MV stage (pylovo.mv_grid). The routing graph (mv_graph*) is unversioned reference data,
     # content-addressed by graph_id. Every MV result table carries version_id and mv_variant_id and
     # is deleted with its mv_variant row (ON DELETE CASCADE). Migration 0009_mv_grids gates them.
-    # The generation columns (gen_*_kw, *feed_in*, n_generators, kind/role generator) hold values only in older
-    # variants planned with generation (branch feature/mv-backup); the stage writes 0 or NULL.
+    # The stage plans loads only: it writes 0 or NULL into the generation columns (gen_*_kw, *feed_in*,
+    # n_generators, kind/role generator).
     "mv_graph": """
     CREATE TABLE IF NOT EXISTS pylovo.mv_graph (
         graph_id varchar(40) PRIMARY KEY,                -- 'g' || 16 hex of md5(source|ags|build parameters|fingerprint)

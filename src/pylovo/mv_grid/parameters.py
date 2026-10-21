@@ -37,7 +37,7 @@ from pylovo.mv_grid.options import (
     default_value,
     spec_of,
 )
-from pylovo.version_snapshot import MV_ADDED_LATER, MV_REMOVED, UNKNOWN, removed_differences
+from pylovo.version_snapshot import MV_ADDED_LATER, UNKNOWN
 
 logger = logging.getLogger(__name__)
 
@@ -392,8 +392,7 @@ class MvParameters:
         variant id and comment are not part of it (they are columns of ``pylovo.mv_variant``). ``equipment``
         holds the resolved types of the base voltage (``cable``, ``overhead``, ``hv_mv_types``) and, with
         ``MV_NOMINAL_VOLTAGE_KV`` auto, those of the 10 kV districts (``cable_10kv``, ``overhead_10kv``,
-        ``hv_mv_types_10kv``). The fixed rules (:data:`FIXED_RULES`) and the fixed values of the removed options
-        (:data:`~pylovo.version_snapshot.MV_REMOVED`) are written as well.
+        ``hv_mv_types_10kv``). The fixed rules (:data:`FIXED_RULES`) are written as well.
         """
         snapshot: dict[str, Any] = {"schema": SNAPSHOT_SCHEMA, "mv_stage_version": MV_STAGE_VERSION}
         for spec in _SNAPSHOT_SPECS:
@@ -407,10 +406,6 @@ class MvParameters:
                 _place(snapshot, (*path[:-1], path[-1] + suffix), value)
         for path, value in FIXED_RULES.items():
             _place(snapshot, path, value)
-        # the method each removed option is fixed to: tells this variant apart from older ones without the path
-        for path, value in MV_REMOVED.items():
-            if value is not UNKNOWN:
-                _place(snapshot, path, value)
         return snapshot
 
 
@@ -422,10 +417,19 @@ _SNAPSHOT_SPECS: tuple[Spec, ...] = tuple(spec for spec in _FIELD_SPECS.values()
                                           if spec.path and spec.field not in RESOLVED_FIELDS)
 
 
-def retired_options(snapshot: Mapping[str, Any]) -> list[str]:
-    """The removed options (dotted snapshot paths, :data:`~pylovo.version_snapshot.MV_REMOVED`) that a stored MV
-    variant used; empty if this code plans it the same way."""
-    return removed_differences(dict(snapshot), MV_REMOVED, MV_ADDED_LATER)
+def check_stage_version(snapshot: Mapping[str, Any] | None, version_id: str, variant_id: str) -> None:
+    """Refuse an MV variant planned with another MV stage version.
+
+    Such a variant is listed, displayed and exported as stored, but it is not resumed, extended or coupled.
+
+    Raises:
+        MvStageError: If the ``mv_stage_version`` of the stored snapshot is not
+            :data:`~pylovo.mv_grid.options.MV_STAGE_VERSION`.
+    """
+    stored = (snapshot or {}).get("mv_stage_version")
+    if stored != MV_STAGE_VERSION:
+        raise MvStageError(f"MV variant {variant_id} of version {version_id} was planned with MV stage version "
+                           f"{stored}; plan it again with --replace or under a new id")
 
 
 def _fields_from_raw(raw: Mapping[str, Any]) -> dict[str, Any]:
