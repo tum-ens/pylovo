@@ -9,13 +9,12 @@ served stale):
 
 * power-flow results of the on-demand power flow, keyed by grid, load scaling and the MD5
   of the stored pandapower JSON;
-* the version context (statistics over all grids of a version), keyed by the version's
-  grid fingerprints;
-* the batch findings of the Statistics panel.
+* the version context (statistics over all grids of a version), keyed by the change key of the
+  version (:func:`_version_token`);
+* the batch findings of the Statistics panel, keyed by the same.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import threading
@@ -54,25 +53,37 @@ def _recall(cache: OrderedDict, key: tuple) -> Any:
 
 
 # --------------------------------------------------------------------------- fingerprints
+def _version_token(version_id: str) -> str:
+    """A cheap change key of the grids of a version for the caches (no scan of the loads and lines).
+
+    The nets of a version change only when grids are generated or deleted (new ids: the count, the
+    largest id and the sum of the ids change), when a reset and a new generation replace the version
+    (its parameters change) and with load edits (the md5 of the ids of the active, not undone, edits;
+    an undo back to generation gives the old key again).
+    """
+    with db.cursor() as cur:
+        cur.execute(
+            """SELECT count(*) AS n, COALESCE(max(grid_result_id), 0) AS last, COALESCE(sum(grid_result_id), 0) AS total,
+                      (SELECT md5(generation_parameters::text) FROM pylovo.version WHERE version_id = %(v)s) AS parameters
+               FROM pylovo.grid_result WHERE version_id = %(v)s""", {"v": str(version_id)})
+        row = cur.fetchone()
+        cur.execute("SELECT to_regclass('pylovo.load_edit') IS NOT NULL AS ok")
+        edits = ""
+        if cur.fetchone()["ok"]:
+            cur.execute("""SELECT md5(COALESCE(string_agg(load_edit_id::text, ',' ORDER BY load_edit_id), '')) AS token
+                           FROM pylovo.load_edit WHERE version_id = %s AND undone_at IS NULL""", (str(version_id),))
+            edits = cur.fetchone()["token"]
+    return ":".join(str(row[key]) for key in ("n", "last", "total", "parameters")) + f":{edits}"
+
+
 def _version_grids(version_id: str, plz: list[int] | None = None) -> list[dict]:
-    """Grids of a version with a cheap change key (loads and lines), without hashing the stored nets."""
+    """The grids of a version (of some PLZ if given) in the order of the statistics: ``grid_result_id`` and ``plz``."""
     params: dict[str, Any] = {"v": str(version_id)}
-    where = "g.version_id = %(v)s"
+    where = "version_id = %(v)s"
     if plz:
-        where += " AND g.plz = ANY(%(plz)s)"
+        where += " AND plz = ANY(%(plz)s)"
         params["plz"] = list(plz)
-    return db.fetch_all(
-        f"""SELECT g.grid_result_id, g.plz,
-                   concat_ws(':', ld.n, round(ld.p::numeric, 9), round(ld.q::numeric, 9), ln.n, round(ln.km::numeric, 6)) AS fp
-            FROM pylovo.grid_result g
-            LEFT JOIN (SELECT grid_result_id, count(*) AS n, sum(p_mw) AS p, sum(max_p_mw) AS q FROM pylovo.pandapower_load
-                       WHERE grid_result_id IN (SELECT grid_result_id FROM pylovo.grid_result WHERE version_id = %(v)s)
-                       GROUP BY 1) ld ON ld.grid_result_id = g.grid_result_id
-            LEFT JOIN (SELECT grid_result_id, count(*) AS n, sum(length_km * COALESCE(parallel, 1)) AS km
-                       FROM pylovo.pandapower_line
-                       WHERE grid_result_id IN (SELECT grid_result_id FROM pylovo.grid_result WHERE version_id = %(v)s)
-                       GROUP BY 1) ln ON ln.grid_result_id = g.grid_result_id
-            WHERE {where} ORDER BY g.plz, g.kcid, g.bcid""", params)
+    return db.fetch_all(f"SELECT grid_result_id, plz FROM pylovo.grid_result WHERE {where} ORDER BY plz, kcid, bcid", params)
 
 
 # --------------------------------------------------------------------------- overrides
@@ -240,12 +251,11 @@ def version_context(version_id: str, plz: int | None = None) -> dict:
     (for "closer to another station"). Versions with more than :data:`MAX_CONTEXT_GRIDS`
     grids are sampled evenly (the grids of ``plz`` first).
     """
-    grids = _version_grids(version_id)
-    key = ("ctx", str(version_id), hashlib.md5("|".join(f"{g['grid_result_id']}:{g['fp']}" for g in grids)
-                                                 .encode()).hexdigest())
+    key = ("ctx", str(version_id), _version_token(version_id))
     cached = _recall(_context_cache, key)
     if cached is not None:
         return cached
+    grids = _version_grids(version_id)
     gp = generation_parameters(version_id)
     ids = [g["grid_result_id"] for g in grids]
     if len(ids) > MAX_CONTEXT_GRIDS:
@@ -349,14 +359,13 @@ def after_powerflow(result: dict) -> dict:
 def version_diagnostics(version_id: str, plz: list[int] | None = None) -> dict:
     """Findings of the rules that need no power flow for all grids of a version (Statistics)."""
     started = time.time()
-    grids = _version_grids(version_id, plz)
-    truncated = len(grids) > MAX_BATCH_GRIDS
-    grids = grids[:MAX_BATCH_GRIDS]
-    key = ("batch", str(version_id), tuple(plz or ()),
-           hashlib.md5("|".join(f"{g['grid_result_id']}:{g['fp']}" for g in grids).encode()).hexdigest())
+    key = ("batch", str(version_id), tuple(plz or ()), _version_token(version_id))
     cached = _recall(_batch_cache, key)
     if cached is not None:
         return cached
+    grids = _version_grids(version_id, plz)
+    truncated = len(grids) > MAX_BATCH_GRIDS
+    grids = grids[:MAX_BATCH_GRIDS]
     gp = generation_parameters(version_id)
     context = version_context(version_id, plz[0] if plz else None)
     overrides = threshold_overrides()
