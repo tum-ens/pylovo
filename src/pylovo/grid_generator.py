@@ -955,8 +955,10 @@ class GridGenerator:
 
         # Get cost dataframe between consumers and transformers
         cost_df = self.dbc.get_consumer_to_transformer_df(kcid, transformer_list)
-        # Keep connections shorter than MAX_BROWNFIELD_TRAFO_DISTANCE, nearest first
-        cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(by=["agg_cost"])
+        # Keep connections shorter than MAX_BROWNFIELD_TRAFO_DISTANCE, nearest first (the costs are whole
+        # metres, so ties are common: then the lower consumer and station vertex, not the routing row order)
+        cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(
+            by=["agg_cost", "start_vid", "end_vid"])
         if BROWNFIELD_NEAREST_ONLY and not cost_df.empty:
             # only each consumer's nearest station: when it is full, the consumer is left for greenfield
             # instead of joining a farther station that still has capacity
