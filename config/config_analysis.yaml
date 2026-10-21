@@ -31,21 +31,6 @@ PLOT_COLOR_DICT:
   1260: black
 
 # =============================================================================
-# TUM COLOR PALETTE
-# =============================================================================
-COLORS:
-  # Primary TUM Colors
-  TUMBlue: '#0065BD'
-  TUMGreen: '#A2AD00'
-  TUMOrange: '#E37222'
-  TUMIvory: '#DAD7CB'
-
-  # Secondary TUM Colors
-  TUMBlue4: '#98C6EA'
-  TUMBlue2: '#005293'
-  TUMGray2: '#7F7F7F'
-
-# =============================================================================
 # COLOR PALETTES
 # =============================================================================
 PALETTES:
@@ -68,21 +53,6 @@ PALETTES:
     - '#005293'  # TUMBlue2
     - '#7F7F7F'  # TUMGray2
 
-  # Alternative palette (6 colors)
-  TUMPalette2:
-    - '#0065BD'  # TUMBlue
-    - '#A2AD00'  # TUMGreen
-    - '#E37222'  # TUMOrange
-    - '#98C6EA'  # TUMBlue4
-    - '#005293'  # TUMBlue2
-    - '#7F7F7F'  # TUMGray2
-
-  # Minimal palette (3 colors)
-  TUMPalette3:
-    - '#0065BD'  # TUMBlue
-    - '#A2AD00'  # TUMGreen
-    - '#E37222'  # TUMOrange
-
 # =============================================================================
 # NETWORK VISUALIZATION COLORS
 # =============================================================================
@@ -90,16 +60,6 @@ NETWORK_COLORS:
   NODE_COLOR_TRAFO: '#DAD7CB'      # TUMIvory
   NODE_COLOR_CONSUMER: '#98C6EA'   # TUMBlue4
   NODE_COLOR_CONNECTION_BUS: '#A2AD00'  # TUMGreen
-
-# =============================================================================
-# PLOT STYLE DEFAULTS
-# =============================================================================
-PLOT_DEFAULTS:
-  FIGURE_SIZE: [12, 6]
-  DPI: 300
-  FONT_SIZE: 12
-  TITLE_FONT_SIZE: 14
-  GRID_ALPHA: 0.3
 
 # =============================================================================
 # MUNICIPAL REGISTER CONFIGURATION

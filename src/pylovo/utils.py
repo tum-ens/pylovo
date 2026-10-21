@@ -1,7 +1,6 @@
 """Shared helpers of pylovo.
 
-- directories and logging: :func:`get_user_data_dir`, :func:`reset_log_directory`,
-  :func:`create_logger`,
+- directories and logging: :func:`get_user_data_dir`, :func:`create_logger`,
 - electrical load aggregation used for transformer and cable sizing:
   :func:`build_load_components`, :func:`simultaneous_peak_load` (:class:`CoincidentLoads` for
   many node sets of the same buildings), :func:`category_simultaneous_load`,
@@ -12,7 +11,6 @@
 
 import logging
 import os
-import shutil
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -61,24 +59,6 @@ def get_user_data_dir() -> Path:
 
     # Fallback to current working directory
     return Path.cwd() / "data"
-
-
-def reset_log_directory() -> Path:
-    """Empty ``./log`` (keeping ``.gitkeep``) and make sure it exists.
-
-    Returns:
-        Path of the log directory, relative to the current working directory.
-    """
-    log_dir = Path("log")
-    if log_dir.exists():
-        for item in log_dir.iterdir():
-            if item.name != ".gitkeep":
-                if item.is_file():
-                    item.unlink()
-                elif item.is_dir():
-                    shutil.rmtree(item)
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir
 
 
 def create_logger(name: str, log_file, log_level) -> logging.Logger:
