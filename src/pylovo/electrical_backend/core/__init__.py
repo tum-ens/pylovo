@@ -2,11 +2,12 @@
 Core abstractions for electrical backends.
 
 This subpackage contains shared interfaces and data classes used by all backend
-implementations.
+implementations (Pandapower, OpenDSS, etc.).
 
 Contents:
     - IElectricalBackend: Abstract interface all backends must implement
     - Component specs: BusSpec, LineSpec, LoadSpec, TransformerSpec, ExtGridSpec
+    - Equipment classes: CableEquipment, TransformerEquipment
 
 Usage:
     from pylovo.electrical_backend.core import IElectricalBackend, BusSpec
@@ -24,6 +25,7 @@ from .specs import (
     ExtGridSpec,
     normalize_cable_name,
 )
+from .equipment import CableEquipment, TransformerEquipment
 
 __all__ = [
     "IElectricalBackend",
@@ -34,4 +36,6 @@ __all__ = [
     "TransformerSpec",
     "ExtGridSpec",
     "normalize_cable_name",
+    "CableEquipment",
+    "TransformerEquipment",
 ]

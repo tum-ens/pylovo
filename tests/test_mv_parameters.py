@@ -622,7 +622,7 @@ def test_lv_parameters_fallbacks(lv_snapshot, caplog):
                 if c["definition"] == "Commercial"], "no peak load per m² for Commercial"),
     (lambda s: [c.update(peak_load_per_m2=-1.0) for c in s["load_calculation"]["consumer_categories"]
                 if c["definition"] == "Public"], "peak load per m² of Public"),
-    (lambda s: s.update(electrical_backend="custom"), "pandapower backend"),
+    (lambda s: s.update(electrical_backend="opendss"), "pandapower backend"),
     (lambda s: s["power_flow_assessment"].update(lv_reference_voltage_pu="0.96"), "LV reference voltage"),
 ])
 def test_lv_parameters_reject_incomplete_snapshots(lv_snapshot, change, message):

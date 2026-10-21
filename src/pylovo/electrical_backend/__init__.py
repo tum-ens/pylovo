@@ -2,7 +2,7 @@
 Electrical backend package for pylovo.
 
 This package provides a unified interface for electrical grid simulation
-using different backend engines (pandapower ships; others can be registered).
+using different backend engines (pandapower, OpenDSS).
 
 Quick start:
     from pylovo.electrical_backend import create_backend, BusSpec, LineSpec
@@ -14,10 +14,11 @@ Quick start:
 Package structure:
     - core/: Shared interfaces and data classes
     - pandapower/: Pandapower backend implementation (default)
+    - opendss/: OpenDSS backend implementation (needs the optional ``altdss`` package)
     - factory.py: Backend registration and creation
 
 The backend classes are imported lazily, so importing this package does not
-import pandapower.
+import pandapower or altdss.
 """
 
 from .core.backend_base import IElectricalBackend
@@ -30,6 +31,7 @@ from .core.specs import (
     ExtGridSpec,
     normalize_cable_name,
 )
+from .core.equipment import CableEquipment, TransformerEquipment
 from .factory import (
     create_backend,
     register_backend,
@@ -48,6 +50,14 @@ def __getattr__(name: str):
             "PandapowerBackendError": PandapowerBackendError,
         }[name]
 
+    if name in {"OpenDSSBackend", "OpenDSSBackendError"}:
+        from .opendss.backend import OpenDSSBackend, OpenDSSBackendError
+
+        return {
+            "OpenDSSBackend": OpenDSSBackend,
+            "OpenDSSBackendError": OpenDSSBackendError,
+        }[name]
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -62,6 +72,9 @@ __all__ = [
     "LoadSpec",
     "ExtGridSpec",
     "normalize_cable_name",
+    # Equipment classes
+    "CableEquipment",
+    "TransformerEquipment",
     # Factory
     "create_backend",
     "register_backend",
@@ -70,4 +83,6 @@ __all__ = [
     # Backend classes (lazy loaded)
     "PandapowerBackend",
     "PandapowerBackendError",
+    "OpenDSSBackend",
+    "OpenDSSBackendError",
 ]

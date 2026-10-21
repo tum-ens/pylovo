@@ -73,7 +73,7 @@ def test_residential_peak_comes_from_the_category_record():
 
 
 @pytest.mark.parametrize("change, reason", [
-    (lambda gp: gp.update(electrical_backend="custom"), "backend"),
+    (lambda gp: gp.update(electrical_backend="opendss"), "backend"),
     (lambda gp: gp["load_calculation"].pop("default_power_factor"), "power_factor"),
     (lambda gp: gp["cable_dimensioning"].pop("mv_direct_connection_load_threshold_kw"), "threshold"),
 ])

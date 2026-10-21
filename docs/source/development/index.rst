@@ -34,7 +34,7 @@ Project layout
    |   |-- database/             DatabaseClient, mixins, DatabaseConstructor, table definitions, migrations
    |   |-- infdb/                InfdbClient
    |   |-- data_import/          transformer, DSO, municipal register and building imports
-   |   |-- electrical_backend/   backend interface and the pandapower backend
+   |   |-- electrical_backend/   backend interface, pandapower and OpenDSS
    |   |-- mv_grid/              MV stage (pylovo-mv)
    |   |-- classification/       grid classification (pylovo-classify)
    |   |-- analysis/             key figures, coverage and border diagnostics, MV validation, power-flow helpers

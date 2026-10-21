@@ -13,7 +13,7 @@ own model, solves the power flow and exports the grid.
 
 ``ELECTRICAL_BACKEND`` in ``config_generation_lv.yaml`` selects the backend; backends are created by
 :func:`~pylovo.electrical_backend.factory.create_backend` and new ones can be registered with
-:func:`~pylovo.electrical_backend.factory.register_backend`. pandapower is the only backend that ships.
+:func:`~pylovo.electrical_backend.factory.register_backend`.
 
 pandapower (default)
 --------------------
@@ -41,7 +41,8 @@ pandapower (default)
        500, 800 and 1260 kVA are two parallel units of half the rating; other ratings become
        parallel 630 kVA units. pandapower has no standard types below 0.25 MVA, so 100 and 160 kVA
        reuse the 0.25 MVA data with the rating and no-load losses scaled. The off-load tap (HV side,
-       ±2 steps of 2.5 %) stays neutral.
+       ±2 steps of 2.5 %) stays neutral. The OpenDSS backend does not support the reference voltage
+       and keeps the MV side at 1.0 p.u.
    * - Lines
      - Standard types registered from the cable catalogue (``r``, ``x``, ``max_i_ka``; capacitance
        0). Feeder lines follow the street routes; service lines are straight connections. Extra
@@ -66,3 +67,22 @@ with ``None`` where they do not apply (convert them with ``pandas.to_numeric`` b
 them). Text and flags are objects with ``None``. Before, the first line of a grid decided the dtype, so
 in grids generated earlier whose first line was a service line ``feeder_section_id`` is an object column
 and the ``service_*`` percentages are ``float64``.
+
+OpenDSS (experimental)
+----------------------
+
+:class:`~pylovo.electrical_backend.opendss.backend.OpenDSSBackend` implements the same interface on
+top of OpenDSS via ``altdss``. It is experimental and logs a warning when it is selected. Known defects:
+
+* ``altdss`` is not part of the dependencies (no extra), so ``ELECTRICAL_BACKEND: opendss`` needs a
+  manual ``pip install altdss``.
+* pylovo's bus names contain blanks (``LVbus 1``), which the OpenDSS parser does not accept: the power
+  flow reports convergence with zero power and zero voltages.
+* The number of parallel cables of a line (``LineSpec.parallel``) is ignored.
+* Its result (the AltDSS JSON) cannot be stored in the ``pandapower_*`` tables, so the analysis, the
+  HTTP API, the plots, the MV stage and the viewer cannot use it. Each power flow also writes CSV
+  files and a statistics report into the working directory.
+* The station reference voltage and the voltage-drop diagnostics are only available with the
+  pandapower backend.
+
+Use ``ELECTRICAL_BACKEND: pandapower`` for results.

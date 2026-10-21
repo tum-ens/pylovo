@@ -137,7 +137,7 @@ def architecture() -> None:
         ("Engines", [
             ("Feeder planning", "feeder_planning.py: branches,\nsections, cable sizing"),
             ("CableInstaller", "cable_installer.py: buses,\nloads, feeder, service lines"),
-            ("Electrical backends", "backend interface,\npandapower implementation"),
+            ("Electrical backends", "pandapower (default),\nOpenDSS (in progress)"),
             ("Load model", "utils.py: load components,\ncoincidence factor"),
         ]),
         ("Data access", [
