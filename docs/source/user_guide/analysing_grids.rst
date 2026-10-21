@@ -39,6 +39,12 @@ terminal backbone branches after pruning service stubs.
        resistance of segments, accounting for parallel conductors; it is not an end-to-end
        path resistance or a load-flow loss.
 
+The metrics also work for grids without the pylovo bus names, for example exports of real grids:
+their load buses count as house connections and every other bus as backbone. To mark service
+buses, cable distribution cabinets and service cables by the names of an export, pass
+``bus_type_config`` with its name patterns
+(:func:`~pylovo.analysis.parameter_calculation.classify_bus_types`).
+
 .. figure:: /images/analysis/synthetic_comparison_metrics.png
    :alt: Six histograms of feeder count, feeder length, mean and maximum transformer distance, transformer capacity and resistance for synthetic grids
    :width: 100%

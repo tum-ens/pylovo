@@ -43,23 +43,25 @@ from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
 # ---------------------------------------------------------------------------
 # Bus type classification configs for feeder counting
 # ---------------------------------------------------------------------------
-# Each config maps bus name patterns to semantic roles used by the unified
-# feeder counter.  Adapt ``name_column`` and the regex patterns when working
-# with a different DSO data export.
+# Each config maps bus and line name patterns to the roles used by the unified feeder counter
+# (see classify_bus_types); a pattern that is None matches nothing.
+#
+# Grids without the pylovo bus names, e.g. exports of real grids, use GENERIC_BUS_TYPE_CONFIG: no name
+# patterns, so the load buses are the house connections and every other bus is backbone. To mark service
+# buses, cable distribution cabinets and service cables by the names of an export, pass a config with
+# its patterns as ``bus_type_config``.
 
-DSO_BUS_TYPE_CONFIG: Dict[str, str] = {
+GENERIC_BUS_TYPE_CONFIG: Dict[str, Optional[str]] = {
     "name_column": "name",
-    # Clear service/attachment nodes in a DSO export. Service cables are
-    # identified separately through DSO line names such as NS_KbAn and NS_FlAn.
-    "house_connection_pattern": r"(NS_HaAn|NS_Kn\(n\)_(KbAn|FlAn)|ErLast)",
-    "kvs_pattern": r"NS_KVS",
-    "service_line_pattern": r"NS_(KbAn|FlAn)",
+    "house_connection_pattern": None,
+    "kvs_pattern": None,
+    "service_line_pattern": None,
 }
 
-PYLOVO_BUS_TYPE_CONFIG: Dict[str, str] = {
+PYLOVO_BUS_TYPE_CONFIG: Dict[str, Optional[str]] = {
     "name_column": "name",
     "house_connection_pattern": r"Consumer Nodebus",
-    "kvs_pattern": r"NS_KVS",
+    "kvs_pattern": None,
 }
 
 
@@ -96,8 +98,10 @@ def classify_bus_types(
 
     Args:
         net: Network whose ``bus`` table is inspected.
-        config: Needs the keys ``name_column``, ``house_connection_pattern`` and
-            ``kvs_pattern``. Patterns are case-insensitive regexes matched with ``re.search``.
+        config: Bus-type config with ``name_column`` and optionally ``house_connection_pattern``
+            and ``kvs_pattern`` (see :data:`GENERIC_BUS_TYPE_CONFIG`). Patterns are
+            case-insensitive regexes matched with ``re.search``; a missing or None pattern
+            matches nothing.
 
     Returns:
         Bus type per bus index; empty if the name column is missing.
@@ -106,19 +110,15 @@ def classify_bus_types(
     if col not in net.bus.columns:
         return {}
 
-    hc_re = re.compile(config["house_connection_pattern"], re.IGNORECASE)
-    kvs_re = re.compile(config["kvs_pattern"], re.IGNORECASE)
-
-    bus_types: Dict[int, str] = {}
-    for idx, name in net.bus[col].fillna("").items():
-        name_str = str(name)
-        if kvs_re.search(name_str):
-            bus_types[idx] = "kvs"
-        elif hc_re.search(name_str):
-            bus_types[idx] = "house_connection"
-        else:
-            bus_types[idx] = "backbone"
-    return bus_types
+    patterns = {
+        bus_type: re.compile(config[key], re.IGNORECASE)
+        for bus_type, key in (("kvs", "kvs_pattern"), ("house_connection", "house_connection_pattern"))
+        if config.get(key)
+    }
+    return {
+        idx: next((bus_type for bus_type, regex in patterns.items() if regex.search(str(name))), "backbone")
+        for idx, name in net.bus[col].fillna("").items()
+    }
 
 
 def _classify_bus_types_with_consumers(
@@ -357,9 +357,9 @@ class ParameterCalculator:
             graph: Switch-aware topology graph.
             root_idx: LV root bus index (transformer LV side or LVbus).
             uses_synthetic_naming: Selects ``PYLOVO_BUS_TYPE_CONFIG`` (True) or
-                ``DSO_BUS_TYPE_CONFIG`` when ``bus_type_config`` is None; also passed on to the
+                ``GENERIC_BUS_TYPE_CONFIG`` when ``bus_type_config`` is None; also passed on to the
                 recursive counter.
-            bus_type_config: Naming-pattern dictionary (see :data:`DSO_BUS_TYPE_CONFIG`).
+            bus_type_config: Naming-pattern dictionary (see :func:`classify_bus_types`).
             expand_kvs: Expand explicit KVS neighbours at the first branching point into several
                 feeders. If False, every first-hop downstream backbone neighbour is one feeder.
             recursive_expansion: Count terminal feeder branches recursively in the downstream
@@ -375,7 +375,7 @@ class ParameterCalculator:
         """
         if bus_type_config is None:
             bus_type_config = (
-                PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else DSO_BUS_TYPE_CONFIG
+                PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else GENERIC_BUS_TYPE_CONFIG
             )
         bus_types = _classify_bus_types_with_consumers(
             net, bus_type_config, root_idx, additional_house_connection_buses
@@ -576,10 +576,10 @@ class ParameterCalculator:
     ) -> nx.Graph:
         """Remove terminal service-connection line rows from feeder topology.
 
-        DSO line names such as NS_KbAn_* and NS_FlAn_* are the clearest
-        signal for house/service connection cables. A small endpoint guard keeps
-        rare structural-looking edges with the same line-name family, e.g. KVS to
-        KVS, in the backbone metric.
+        Line names that match ``service_line_pattern`` (the service cables of an
+        export) are the clearest signal for house/service connection cables. A small
+        endpoint guard keeps rare structural-looking edges with the same line-name
+        family, e.g. KVS to KVS, in the backbone metric.
         """
         if not service_line_pattern or not hasattr(net, "line") or net.line.empty:
             return graph
@@ -894,7 +894,7 @@ class ParameterCalculator:
             respect_switches=True,
         )
         bus_type_config = bus_type_config or (
-            PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else DSO_BUS_TYPE_CONFIG
+            PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else GENERIC_BUS_TYPE_CONFIG
         )
         bus_types = _classify_bus_types_with_consumers(
             pandapower_net, bus_type_config, root_bus, additional_house_connection_buses
@@ -1289,16 +1289,14 @@ class ParameterCalculator:
 
         return line_lookup
 
-    def _resolve_branch_from_path(self, pandapower_net: pp.pandapowerNet, path: List[int]) -> Tuple[int, int] | None:
-        """Resolve the feeder branch label associated with one source-to-consumer path."""
+    @staticmethod
+    def _resolve_branch_from_path(path: List[int], kvs_buses: set) -> Tuple[int, int] | None:
+        """Resolve the feeder branch of one source-to-consumer path: its first edge, or the edge
+        behind a cable distribution cabinet (``kvs_buses``) at the first hop."""
         if len(path) < 2:
             return None
 
-        first_hop_name = ""
-        if "name" in pandapower_net.bus.columns:
-            first_hop_name = str(pandapower_net.bus.at[path[1], "name"])
-
-        if "NS_KVS" in first_hop_name and len(path) >= 3:
+        if path[1] in kvs_buses and len(path) >= 3:
             return tuple(sorted((path[1], path[2])))
 
         return tuple(sorted((path[0], path[1])))
@@ -1310,12 +1308,14 @@ class ParameterCalculator:
         bus_weights: pd.DataFrame,
         line_table: pd.DataFrame,
         apply_simultaneity: bool,
+        bus_type_config: Optional[Dict[str, Optional[str]]] = None,
     ) -> Dict[str, float]:
-        """Run the shared source-to-consumer path impedance aggregation.
+        """Run the source-to-consumer path impedance aggregation of the VSW metric.
 
-        This helper is the common base for both the historical VSW metric and
-        the household-count path proxy. The caller provides the bus weights and
-        decides whether cumulated simultaneity should affect line resistance.
+        The caller provides the bus weights and decides whether cumulated
+        simultaneity should affect line resistance.
+        Paths are grouped by feeder branch; a first-hop bus of type ``kvs`` in
+        ``bus_type_config`` (default: by the bus naming) splits its feeders.
         """
         if bus_weights.empty or line_table.empty:
             return _empty_impedance_summary()
@@ -1325,6 +1325,11 @@ class ParameterCalculator:
         except ValueError:
             return _empty_impedance_summary()
 
+        bus_type_config = bus_type_config or (
+            PYLOVO_BUS_TYPE_CONFIG if self.uses_synthetic_bus_naming(pandapower_net) else GENERIC_BUS_TYPE_CONFIG
+        )
+        kvs_buses = {bus for bus, bus_type in classify_bus_types(pandapower_net, bus_type_config).items()
+                     if bus_type == "kvs"}
         line_lookup = self._build_line_lookup(line_table)
         records = []
         missing_line_edges = 0
@@ -1340,7 +1345,7 @@ class ParameterCalculator:
             except (nx.NetworkXNoPath, nx.NodeNotFound):
                 continue
 
-            branch = self._resolve_branch_from_path(pandapower_net, path)
+            branch = self._resolve_branch_from_path(path, kvs_buses)
             path_resistance = 0.0
             path_reactance = 0.0
 

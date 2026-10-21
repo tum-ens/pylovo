@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from pylovo.analysis import grid_analysis, parameter_calculation
-from pylovo.analysis.grid_analysis import compute_clustering_metrics
+from pylovo.analysis.grid_analysis import compute_clustering_metrics, compute_comparison_parameters
 from pylovo.analysis.parameter_calculation import ParameterCalculator, station_mva
 from pylovo.database.analysis_mixin import AnalysisMixin
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, create_backend
@@ -192,6 +192,24 @@ def test_the_cable_length_can_be_restricted_to_lines_in_service():
     net.line.loc[net.line["name"] == "f2", "in_service"] = False
     assert pc.calculate_cable_length(net) == pytest.approx(0.256)
     assert pc.calculate_cable_length(net, only_in_service=True) == pytest.approx(0.256 - 0.06)
+
+
+@pytest.mark.parametrize("parallel_trafo, mva", [(1, 0.4), (2, 0.8)])
+def test_comparison_parameters_of_a_pylovo_grid(parallel_trafo, mva):
+    net, pc = build(parallel_trafo=parallel_trafo), calculator()
+    result = compute_comparison_parameters(pc, net)
+    assert result["metric_status"] == "ok" and result["uses_synthetic_naming"] is True
+    assert result["root_bus"] == net.bus.index[net.bus["name"] == "LVbus 1"][0]
+    assert (result["bus_count"], result["line_count"], result["load_count"], result["consumer_bus_count"]) == (9, 7, 4, 4)
+    assert result["transformer_mva"] == pytest.approx(mva)                        # the station rating
+    # backbone only: the service stubs and the two attachment nodes are pruned, f0 (100 m) remains
+    assert result["feeder_lines"] == 1 and result["buildings_per_feeder"] == 4.0
+    assert result["graph_length"] == pytest.approx(0.1) and result["graph_resistance"] == pytest.approx(0.1 * R)
+    assert result["avg_trafo_distance"] == pytest.approx(0.1) and result["max_trafo_distance"] == pytest.approx(0.1)
+    # with the service lines: the routed distances to the consumers, as in the clustering metrics
+    full = compute_comparison_parameters(pc, net, with_service_lines=True)
+    assert full["graph_length"] == pytest.approx(0.256) and full["graph_resistance"] == pytest.approx(0.256 * R)
+    assert full["avg_trafo_distance"] == pytest.approx(0.1665) and full["max_trafo_distance"] == pytest.approx(0.173)
 
 
 def test_the_station_rating_counts_the_parallel_units_and_a_net_without_transformer_is_an_error():
