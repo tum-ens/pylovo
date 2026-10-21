@@ -9,6 +9,11 @@ from typing import Any
 from pylovo_api import queries, topology
 
 _PF_LOCK = threading.Semaphore(2)  # pandapower is CPU bound; keep the server responsive
+SLOT_WAIT_S = 30.0  # a request waits this long for one of the two slots, then it is refused
+
+
+class Busy(RuntimeError):
+    """Raised when no power-flow slot became free in time."""
 
 
 def _clean(value: Any, digits: int = 5) -> float | None:
@@ -33,6 +38,9 @@ def run(grid_result_id: int, load_scaling: float = 1.0) -> dict[str, Any] | None
         Bus voltages, line and transformer loadings keyed by pandapower index, extremes and a
         voltage profile along the feeders, or ``None`` if the grid does not exist. ``fingerprint``
         is the md5 of the stored net the power flow ran on (the key of the diagnostics cache).
+
+    Raises:
+        Busy: If both power-flow slots stayed taken for :data:`SLOT_WAIT_S` seconds.
     """
     import pandapower as pp
 
@@ -41,7 +49,9 @@ def run(grid_result_id: int, load_scaling: float = 1.0) -> dict[str, Any] | None
         return None
     text, ident = stored
     started = time.time()
-    with _PF_LOCK:
+    if not _PF_LOCK.acquire(timeout=SLOT_WAIT_S):
+        raise Busy(f"Both power-flow slots have been busy for {SLOT_WAIT_S:.0f} s. Try again in a moment.")
+    try:
         net = pp.from_json_string(text)
         if len(net.load):
             net.load["scaling"] = net.load["scaling"].fillna(1.0) * float(load_scaling)
@@ -50,6 +60,8 @@ def run(grid_result_id: int, load_scaling: float = 1.0) -> dict[str, Any] | None
             pp.runpp(net, algorithm="nr", init="auto")
         except Exception as exc:  # noqa: BLE001 - reported to the user
             error = f"{type(exc).__name__}: {exc}"
+    finally:
+        _PF_LOCK.release()
     converged = bool(getattr(net, "converged", False)) and error is None
     result: dict[str, Any] = {"grid_result_id": grid_result_id, **ident, "load_scaling": load_scaling,
                               "converged": converged, "error": error, "took_s": round(time.time() - started, 2)}

@@ -94,7 +94,10 @@ def grid_lod2(grid_result_id: int, request: Request) -> Response:
 @router.post("/grids/{grid_result_id}/powerflow")
 async def grid_powerflow(grid_result_id: int, load_scaling: float = Query(1.0, gt=0, le=5)) -> dict:
     """Run a pandapower power flow now (nothing is stored)."""
-    result = await run_in_threadpool(powerflow.run, grid_result_id, load_scaling)
+    try:
+        result = await run_in_threadpool(powerflow.run, grid_result_id, load_scaling)
+    except powerflow.Busy as exc:
+        raise HTTPException(503, str(exc), headers={"Retry-After": "5"}) from exc
     if result is None:
         raise HTTPException(404, "Grid not found")
     # Grid diagnostics: keep the result for GET .../diagnostics and refresh the findings in one go.
