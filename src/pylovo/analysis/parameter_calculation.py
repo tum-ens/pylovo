@@ -1118,7 +1118,7 @@ class ParameterCalculator:
                          coords[:, 1].min() >= -90 and coords[:, 1].max() <= 90)
 
         if is_geographic:
-            coords_rad = np.radians(coords)
+            coords_rad = np.radians(coords[:, ::-1])   # GeoJSON order (lon, lat); haversine_distances needs (lat, lon)
             dis_mat = haversine_distances(coords_rad, coords_rad) * 6371.0
         else:
             from scipy.spatial.distance import cdist

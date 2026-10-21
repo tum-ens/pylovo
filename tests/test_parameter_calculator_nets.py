@@ -110,9 +110,6 @@ def test_clustering_metrics_of_a_pylovo_grid():
     assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"])         # one branch
 
 
-@pytest.mark.xfail(strict=True, reason="NEW (related to ANALYSIS-09): calculate_average_house_distance passes (lon, lat) "
-                                       "to sklearn's haversine_distances, which expects (lat, lon): distances along a "
-                                       "parallel come out 1/cos(lat) = 1.5 times too long at 48 deg N")
 def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distance():
     pc = calculator()
     pair = pp.create_empty_network()
