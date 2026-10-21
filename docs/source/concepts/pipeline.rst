@@ -50,7 +50,10 @@ Both are normalised to [0, 1] between the rural and urban thresholds (``RURAL_MA
 distance inverted) and averaged. A score below 1/3 gives type 1 (rural), below 2/3 type 2
 (semi-urban), otherwise type 3 (urban). The type selects the allowed transformer ratings in
 ``TRANSFORMER_MAPPING``. Aying has 1.70 households per building and a house distance of 28.9 m,
-which gives type 3.
+which gives type 3. A metric that cannot be calculated counts as rural and stays empty in
+``postcode_result``: the house distance of a postcode with a single building, the household
+average of a postcode without residential buildings. Such a postcode is classified by the other
+metric alone (at most type 2), without either it is type 1.
 
 Finally, non-residential components above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` are marked as
 supplied from the MV grid and removed from the LV load. The buildings are stored in

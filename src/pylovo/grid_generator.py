@@ -446,19 +446,26 @@ class GridGenerator:
             f"buildings_tem"
         )
 
+        # A metric that cannot be calculated (no residential building with households, fewer than two
+        # buildings) stays NULL and counts as rural, so every PLZ gets a settlement type.
+        avg_hh = house_dist = None
         try:
             avg_hh = self.dbc.calculate_avg_households_per_building(self.plz)
+        except ValueError as e:
+            self.logger.warning(f"{e} The household metric counts as rural.")
+        try:
             house_dist = self.dbc.calculate_house_distance_metric(self.plz)
-            settlement_type = self.dbc.set_settlement_type_per_plz(self.plz, settlement_type_thresholds=
-            {"rural_max_households": RURAL_MAX_HOUSEHOLDS,
-             "urban_min_households": URBAN_MIN_HOUSEHOLDS,
-             "rural_min_distance": RURAL_MIN_BUILDING_DISTANCE,
-             "urban_max_distance": URBAN_MAX_BUILDING_DISTANCE})
-            self.logger.info(
-                f"Settlement type determined (avg_households_per_building={avg_hh:.2f}, house_distance={house_dist:.1f} m, settlement_type={settlement_type})"
-            )
-        except Exception as e:
-            self.logger.warning(f"Settlement type classification failed: {e}")
+        except ValueError as e:
+            self.logger.warning(f"{e} The distance metric counts as rural.")
+        settlement_type = self.dbc.set_settlement_type_per_plz(self.plz, settlement_type_thresholds=
+        {"rural_max_households": RURAL_MAX_HOUSEHOLDS,
+         "urban_min_households": URBAN_MIN_HOUSEHOLDS,
+         "rural_min_distance": RURAL_MIN_BUILDING_DISTANCE,
+         "urban_max_distance": URBAN_MAX_BUILDING_DISTANCE})
+        self.logger.info(
+            f"Settlement type determined (avg_households_per_building={None if avg_hh is None else round(avg_hh, 2)}, "
+            f"house_distance={None if house_dist is None else round(house_dist, 1)} m, settlement_type={settlement_type})"
+        )
 
         too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
         self.logger.debug(

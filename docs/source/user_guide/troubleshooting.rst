@@ -78,9 +78,11 @@ Generation
    InfDB has no street segments for the postcode. Run the InfDB street preprocessing for the
    municipality and check ``INFDB_SOURCE_SCHEMA`` (``basedata`` for current InfDB releases).
 
-``Settlement type classification failed`` followed by ``No settlement_type found in postcode_result``
-   The postcode has no residential buildings with households, so the settlement type (and with it
-   the allowed transformer ratings) cannot be determined.
+``No residential buildings with household data for ZIP ... The household metric counts as rural.``
+   A warning, not an error: the postcode has no residential buildings. Likewise ``House distance
+   calculation needs at least two buildings ... The distance metric counts as rural.`` for a
+   postcode with a single building. The settlement type (and with it the allowed transformer
+   ratings) then rests on the other metric alone (:doc:`../concepts/pipeline`).
 
 ``Invalid source building area components: negative=..., incomplete=..., inconsistent with gross floor area=...``
    The residential and non-residential floor areas of some InfDB buildings do not add up to

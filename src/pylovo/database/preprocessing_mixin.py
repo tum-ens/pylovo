@@ -559,7 +559,9 @@ class PreprocessingMixin(BaseMixin):
            ``urban_max_distance``, linear in between.
 
         The score ``0.5 * households + 0.5 * distance`` is binned: below 1/3 -> 1, below 2/3 -> 2,
-        otherwise 3.
+        otherwise 3. A metric that could not be calculated (``NULL``: no residential building with
+        households, or fewer than two buildings) counts as rural (0), so such a PLZ is classified by the
+        other metric alone (at most 2), and as 1 without either.
 
         Args:
             plz: Postcode to classify.
@@ -571,7 +573,7 @@ class PreprocessingMixin(BaseMixin):
             The settlement type.
 
         Raises:
-            ValueError: If one of the two metrics is not set yet.
+            ValueError: If the PLZ has no ``postcode_result`` row in the version.
         """
         if settlement_type_thresholds is None:
             settlement_type_thresholds = {
@@ -586,18 +588,22 @@ class PreprocessingMixin(BaseMixin):
             WHERE version_id = %(v)s AND postcode_result_plz = %(p)s;"""
         self.cur.execute(fetch_query, {"v": VERSION_ID, "p": plz})
         row = self.cur.fetchone()
-        if not row or row[0] is None or row[1] is None:
-            raise ValueError("Both metrics must be set before classification.")
-        avg_households, house_distance = float(row[0]), float(row[1])
+        if not row:
+            raise ValueError(f"PLZ {plz} has no postcode_result row in version {VERSION_ID}.")
+        avg_households, house_distance = row
 
-        # Normalization households
-        denom_hh = max(1e-9, (settlement_type_thresholds["urban_min_households"] - settlement_type_thresholds["rural_max_households"]))
-        hh_norm = (avg_households - settlement_type_thresholds["rural_max_households"]) / denom_hh
-        hh_norm = min(1.0, max(0.0, hh_norm))
-        # Normalization distances (inverted)
-        denom_dist = max(1e-9, (settlement_type_thresholds["rural_min_distance"] - settlement_type_thresholds["urban_max_distance"]))
-        dist_norm_raw = (house_distance - settlement_type_thresholds["urban_max_distance"]) / denom_dist
-        dist_norm = 1.0 - min(1.0, max(0.0, dist_norm_raw))
+        # A missing metric counts as rural (0).
+        hh_norm = dist_norm = 0.0
+        if avg_households is not None:
+            # Normalization households
+            denom_hh = max(1e-9, (settlement_type_thresholds["urban_min_households"] - settlement_type_thresholds["rural_max_households"]))
+            hh_norm = (float(avg_households) - settlement_type_thresholds["rural_max_households"]) / denom_hh
+            hh_norm = min(1.0, max(0.0, hh_norm))
+        if house_distance is not None:
+            # Normalization distances (inverted)
+            denom_dist = max(1e-9, (settlement_type_thresholds["rural_min_distance"] - settlement_type_thresholds["urban_max_distance"]))
+            dist_norm_raw = (float(house_distance) - settlement_type_thresholds["urban_max_distance"]) / denom_dist
+            dist_norm = 1.0 - min(1.0, max(0.0, dist_norm_raw))
 
         score = 0.5 * hh_norm + 0.5 * dist_norm
         if score >= 2/3:
