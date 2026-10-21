@@ -67,7 +67,6 @@ autoapi_ignore = [
     "*/plotting/classification/*",
     "*/plotting/validation/*",
     "*/cli/classify.py",
-    "*/analysis/validation_helpers.py",
     "*/__pycache__/*",
 ]
 

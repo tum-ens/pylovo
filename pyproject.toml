@@ -56,9 +56,6 @@ dependencies = [
     "python-dotenv>=1.0.1,<2.0.0",
     "requests>=2.32.3,<3.0.0",
     "openpyxl>=3.1.5,<4.0.0",
-    "tqdm>=4.67",
-    # Excel export of grids (pandapower to_excel)
-    "xlsxwriter>=3.2.9",
 ]
 
 [project.optional-dependencies]
