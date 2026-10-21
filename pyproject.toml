@@ -133,6 +133,12 @@ include = [
     "api/pylovo_api/**/*.py",
 ]
 
+[tool.pytest.ini_options]
+# Plain `pytest` runs both test folders and says why tests were skipped. Keep the default import
+# mode: the API tests import `from conftest import requires_db`.
+testpaths = ["tests", "api/tests"]
+addopts = "-ra"
+
 [project.urls]
 Homepage = "https://github.com/tum-ens/pylovo"
 Documentation = "https://pylovo.readthedocs.io"
