@@ -104,7 +104,8 @@ def test_lod2_endpoint_never_fails(client):
     r = client.get(f"/api/grids/{grid['grid_result_id']}/lod2")
     assert r.status_code == 200 and r.headers["content-type"] == "application/octet-stream"
     head, buf = decode(r.content)
-    has_citydb = db.fetch_one("SELECT to_regclass('citydb.feature') IS NOT NULL AS ok")["ok"]
+    with db.source_cursor() as cur:  # citydb lives in the InfDB, another database with USE_EXTERNAL_BASEDATA
+        has_citydb = db.fetch_one("SELECT to_regclass('citydb.feature') IS NOT NULL AS ok", None, cur)["ok"]
     assert head["available"] is bool(has_citydb) and head["requested"] > 0
     if has_citydb:
         assert 0 <= len(head["buildings"]) <= head["requested"]
