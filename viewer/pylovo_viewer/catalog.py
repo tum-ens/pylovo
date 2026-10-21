@@ -26,6 +26,7 @@ class Catalog:
         self.refresh()
 
     def refresh(self) -> None:
+        """Probe the database again; the catalog changes at once when every probe has answered."""
         s = self.db.settings
         schemas = sorted({"pylovo", "citydb", s.source_schema, s.opendata_schema, s.osm_schema})
         columns: dict[str, dict[str, str]] = {}
@@ -33,20 +34,20 @@ class Catalog:
                                     FROM information_schema.columns WHERE table_schema = ANY(%s)
                                     ORDER BY table_schema, table_name, ordinal_position""", (schemas,)):
             columns.setdefault(row["t"], {})[row["c"]] = row["u"]
-        self.columns = columns
         checks = [t for t in self.row_checks() if t in columns]
-        self.has_rows = {}
+        has_rows: dict[str, bool] = {}
         if checks:
             sql = " UNION ALL ".join(f"SELECT '{t}' AS t, EXISTS (SELECT 1 FROM {t}) AS has" for t in checks)
-            self.has_rows = {row["t"]: bool(row["has"]) for row in self.db.query(sql)}
-        self.citydb_classes = None
-        if self.has("citydb.objectclass", "classname", "id") and self.has("citydb.feature") \
-                and self.has("citydb.property") and self.has("citydb.geometry_data"):
+            has_rows = {row["t"]: bool(row["has"]) for row in self.db.query(sql)}
+        citydb_classes = None
+        if {"classname", "id"} <= columns.get("citydb.objectclass", {}).keys() \
+                and all(t in columns for t in ("citydb.feature", "citydb.property", "citydb.geometry_data")):
             rows = self.db.query("SELECT classname, id FROM citydb.objectclass WHERE classname = ANY(%s)",
                                  (list(LOD2_CLASSES),))
             classes = {row["classname"]: int(row["id"]) for row in rows}
-            if "Building" in classes and self.has_rows.get("citydb.feature"):
-                self.citydb_classes = classes
+            if "Building" in classes and has_rows.get("citydb.feature"):
+                citydb_classes = classes
+        self.columns, self.has_rows, self.citydb_classes = columns, has_rows, citydb_classes
         self.probed_at = time.time()
 
     def row_checks(self) -> list[str]:

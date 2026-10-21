@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from pylovo_viewer import summary
 from pylovo_viewer.catalog import Catalog
+from pylovo_viewer.db import DatabaseError
 from pylovo_viewer.layers import GROUPS, LayerService, Query, build_layers, feature_collection
 
 SCOPES = {"version", "view", "run", "file"}
@@ -176,3 +177,12 @@ def test_attribute_columns_are_quoted_identifiers(fake_db, tmp_path):
     service = LayerService(fake_db, Catalog(fake_db), tmp_path)
     assert service.feature("lv_cabinets", "7", Query()) == {"split_point_id": 7}
     assert fake_db.calls[-1][0].startswith('SELECT "split_point_id", "odd""name" FROM pylovo.split_points')
+
+
+def test_a_failed_refresh_keeps_the_catalog(fake_db):
+    catalog = Catalog(fake_db)
+    columns, has_rows = catalog.columns, catalog.has_rows
+    fake_db.errors = {"AS has": DatabaseError("the query took longer than 60 s")}
+    with pytest.raises(DatabaseError):
+        catalog.refresh()
+    assert catalog.columns is columns and catalog.has_rows == has_rows and has_rows["pylovo.version"]
