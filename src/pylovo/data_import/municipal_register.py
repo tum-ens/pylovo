@@ -5,7 +5,7 @@ if ``PYLOVO_DATA_DIR`` is set):
 
 - ``gemeindeverzeichnis/plz_einwohner.xlsx``: population and area per PLZ,
 - ``gemeindeverzeichnis/zuordnung_plz_ort.xlsx``: PLZ to AGS mapping
-  (both from https://www.suche-postleitzahl.org/downloads),
+  (both from suche-postleitzahl.org),
 - ``regiostar/regiostar.xlsx``: RegioStaR 5/7 classes per municipality (BMDV).
 """
 import os
@@ -86,7 +86,7 @@ def import_regiostar() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the RegioStaR classification of German municipalities.
 
     RegioStaR (Regionalstatistische Raumtypologie of the Federal Ministry for Digital and
-    Transport, https://bmdv.bund.de/SharedDocs/DE/Artikel/G/regionalstatistische-raumtypologie.html).
+    Transport, https://www.bmv.de/SharedDocs/DE/Artikel/G/regionalstatistische-raumtypologie.html).
 
     Returns:
         Tuple of the full table (columns ``mun_code``, ``name_city``, ``pop``, ``area``,

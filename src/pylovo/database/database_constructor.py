@@ -564,8 +564,8 @@ class DatabaseConstructor:
     def ways_to_db(self):
         """Copy the osm2po ways from ``public_2po_4pgr`` into ``pylovo.ways``, drop the source table and commit.
 
-        File-based input (``USE_INFDB=False``). Background:
-        https://github.com/TongYe1997/Connector-syn-grid/issues/19
+        File-based input (``USE_INFDB=False``): the osm2po dump creates ``public_2po_4pgr``; its columns are
+        copied one by one and the geometry is transformed to ``TARGET_EPSG``.
         """
         st = time.time()
 
