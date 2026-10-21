@@ -24,7 +24,7 @@ def test_numbering_by_cable_distance_without_the_station():
 def test_cabinet_names_match_the_diagnostics(client):
     versions = client.get("/api/versions").json()
     if not versions:
-        pytest.skip("no generated grids in the sandbox")
+        pytest.skip("no generated grids in the test database")
     checked = 0
     for v in versions:
         for g in client.get(f"/api/results/{v['version_id']}/summary").json()["grids"]:

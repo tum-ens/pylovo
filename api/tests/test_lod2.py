@@ -1,6 +1,6 @@
 """LoD2 building models of a grid (pylovo_api.lod2): triangulation, mesh, binary format, endpoint.
 
-The unit tests use synthetic geometry. The endpoint test needs the opt-in sandbox database; it
+The unit tests use synthetic geometry. The endpoint test needs the opt-in test database; it
 passes with or without a ``citydb`` schema there (without one the mesh is empty, never an error).
 """
 from __future__ import annotations

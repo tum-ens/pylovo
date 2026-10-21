@@ -7,7 +7,7 @@ PLZ 85653; derived from OpenStreetMap data, (c) OpenStreetMap contributors, ODbL
 * grid 1 (version 1, 400 kVA): one dominant load at the feeder end (Schieferweg 29);
 * grid 25 (version 3, 100 kVA): a grid without problems.
 
-The endpoint tests at the end need the opt-in sandbox database (see conftest.py).
+The endpoint tests at the end need the opt-in test database (see conftest.py).
 """
 from __future__ import annotations
 
@@ -286,12 +286,12 @@ def test_threshold_overrides_from_config_analysis(client, project):
     assert set(rules["categories"]) == {"transformer", "loading", "voltage", "design", "topology", "data"}
 
 
-# --------------------------------------------------------------------------- endpoints (sandbox database)
+# --------------------------------------------------------------------------- endpoints (test database)
 @requires_db
 def test_diagnostics_endpoints(client):
     versions = client.get("/api/versions").json()
     if not versions:
-        pytest.skip("no generated grids in the sandbox")
+        pytest.skip("no generated grids in the test database")
     summary = client.get(f"/api/results/{versions[0]['version_id']}/summary").json()
     gid = summary["grids"][0]["grid_result_id"]
     before = client.get(f"/api/grids/{gid}/diagnostics", params={"cached": False}).json()
@@ -311,14 +311,14 @@ def test_diagnostics_endpoints(client):
 
 
 @requires_db
-def test_sandbox_grid3_matches_the_design(client):
-    """Version 1, grid 1/3 of the sandbox: critical at 0.883 p.u. with the causes of the design."""
+def test_stored_check_findings_follow_the_generation(client):
+    """Version 1: VT-01 is critical exactly for the grids stored with a voltage violation, and where TR-02 is
+    reported, the LV busbar sits at the reference of the validation power flow (info)."""
     rows = client.get("/api/results/1/summary").json()["grids"]
-    grid = next((g for g in rows if (g["kcid"], g["bcid"]) == (1, 3)), None)
-    if grid is None:
-        pytest.skip("sandbox grid 1/3 of version 1 not found")
-    result = client.get(f"/api/grids/{grid['grid_result_id']}/diagnostics").json()
-    rules = {f["rule"] for f in result["findings"] if f["severity"] != "info"}
-    assert {"VT-01", "VT-04", "LD-04", "LD-06", "TP-02", "TP-03", "TP-01", "DE-01", "DE-02", "DE-05"} <= rules
-    tr02 = next(f for f in result["findings"] if f["rule"] == "TR-02")
-    assert tr02["severity"] == "info"  # generated with the MV side at 1.0 p.u.: the busbar is above the reference
+    assert rows
+    for grid in rows:
+        result = client.get(f"/api/grids/{grid['grid_result_id']}/diagnostics", params={"cached": False}).json()
+        assert result["source"]["basis"] == "stored_check"
+        vt01 = [f["severity"] for f in result["findings"] if f["rule"] == "VT-01"]
+        assert ("critical" in vt01) is (grid["power_flow_status"] == "voltage_violation"), (grid, vt01)
+        assert all(f["severity"] == "info" for f in result["findings"] if f["rule"] == "TR-02"), result["findings"]

@@ -5,7 +5,6 @@ without the typed confirmation; they never start a job that writes.
 """
 from __future__ import annotations
 
-import re
 import sys
 import time
 from types import SimpleNamespace
@@ -89,21 +88,11 @@ def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
     assert any(t.startswith("### Step 2/3") for t in texts) and not any(t.startswith("### Step 3/3") for t in texts)
 
 
-# --------------------------------------------------------------------------- sandbox database
-def _as_the_sandbox_was_generated(project):
-    """The sandbox grids predate LV_REFERENCE_VOLTAGE_PU and the 5 % / 1 % design limits: use the values they had."""
-    path = project / "config" / "config_generation_lv.yaml"
-    text = path.read_text()
-    for key, value in (("LV_REFERENCE_VOLTAGE_PU", "null"), ("MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT", "8"),
-                       ("MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", "3")):
-        text = re.sub(rf"^{key}:.*$", f"{key}: {value}", text, flags=re.MULTILINE)
-    path.write_text(text)
-
-
+# --------------------------------------------------------------------------- test database
 @requires_db
-def test_preflight_matches_the_stored_snapshot(client, project):
-    _as_the_sandbox_was_generated(project)
-    state = client.get("/api/flow/generate-state", params={"plz": 85653}).json()
+def test_preflight_matches_the_stored_snapshot(client, region):
+    """Version 1 of the test database was generated with the config/ of the checkout."""
+    state = client.get("/api/flow/generate-state", params={"plz": region["plz"]}).json()
     assert state["error"] is None and state["version_id"] == "1"
     assert state["comparison"]["exists"] and state["comparison"]["matches"] is True
     assert state["next_free_version_id"] not in state["versions"]
@@ -121,10 +110,10 @@ def test_preflight_matches_the_stored_snapshot(client, project):
 
 
 @requires_db
-def test_destructive_flow_endpoints_need_the_typed_confirmation(client, project):
-    _as_the_sandbox_was_generated(project)
-    assert client.post("/api/flow/regenerate", json={"plz": 85653, "confirm": "1/1"}).status_code == 400
-    assert client.post("/api/flow/reanalyse", json={"plz": 85653, "confirm": "85653"}).status_code == 400
+def test_destructive_flow_endpoints_need_the_typed_confirmation(client, region):
+    plz = region["plz"]
+    assert client.post("/api/flow/regenerate", json={"plz": plz, "confirm": "1/1"}).status_code == 400
+    assert client.post("/api/flow/reanalyse", json={"plz": plz, "confirm": str(plz)}).status_code == 400
 
 
 @requires_db
@@ -134,32 +123,47 @@ def test_feeders_exclude_service_cables_at_the_station(client):
         # pylovo's analysis counts the same branches (clustering_parameters.no_branches)
         assert [g["feeders"] for g in grids] == [g["pylovo_branches"] for g in grids]
     v1 = client.get("/api/results/1/summary").json()
-    assert v1["kpis"]["feeders"] == 24 and v1["kpis"]["direct_connections"] == 4
+    assert v1["kpis"]["feeders"] == sum(g["feeders"] for g in v1["grids"]) > 0
+    direct = 0
+    for g in v1["grids"]:  # the service cables at the station of the summary are the ones of the grid detail
+        detail = client.get(f"/api/grids/{g['grid_result_id']}").json()
+        assert len(detail["direct_connections"]) == g["direct_connections"]
+        assert all(d["address"] for d in detail["direct_connections"])
+        direct += g["direct_connections"]
+    assert v1["kpis"]["direct_connections"] == direct
 
 
 @requires_db
-def test_stored_validation_reproduces_the_on_demand_power_flow(client):
+def test_stored_validation_reproduces_the_on_demand_power_flow(client, region):
+    from pylovo import config_loader as cl
+
     summary = client.get("/api/results/1/summary").json()
-    kpis = summary["kpis"]
-    assert kpis["stations"] == kpis["grids"] == 4 and kpis["transformer_units"] == 5 and kpis["parallel_stations"] == 1
-    grid = next(g for g in summary["grids"] if (g["kcid"], g["bcid"]) == (1, 3))
-    stored = grid["validation"]
-    assert stored["checks"] == {"solver": "ok", "voltage_band": "fail", "cable_thermal": "fail", "trafo_planning": "warn"}
-    pf = client.post(f"/api/grids/{grid['grid_result_id']}/powerflow").json()
-    assert stored["min_vm_pu"] == pytest.approx(pf["min_vm_pu"], abs=1e-4)
-    assert stored["trafo_loading_percent"] == pytest.approx(pf["trafo"][0]["loading_percent"], abs=0.05)
-    assert stored["max_line_loading_percent"] == pytest.approx(pf["max_line_loading_percent"], abs=0.05)
-    budget = stored["budget"]
-    assert budget["total_pct"] == pytest.approx(budget["trafo_pct"] + budget["feeder_pct"] + budget["service_pct"], abs=0.02)
-    assert budget["lv_pct"] == pytest.approx(grid["max_total_drop_pct"], abs=0.01)  # the stored LV drop from the busbar
-    detail = client.get(f"/api/grids/{grid['grid_result_id']}").json()
-    assert detail["validation"]["min_vm_pu"] == stored["min_vm_pu"]
-    first = detail["feeder_stats"][0]
-    assert [m["std_type"] for m in first["cable_mix"]] == ["NAYY_4_300", "NAYY_4_240", "NAYY_4_150"]
-    assert sum(f["cabinets"] for f in detail["feeder_stats"]) == len(detail["splits"]["features"])
-    assert len(detail["direct_connections"]) == 1 and detail["direct_connections"][0]["address"]
-    station = client.get("/api/results/1/85653/map").json()["stations"]["features"]
-    assert "2 × 400 kVA" in {s["properties"]["size_label"] for s in station}
+    kpis, grids = summary["kpis"], summary["grids"]
+    assert kpis["stations"] == kpis["grids"] == len(grids) > 0
+    assert kpis["transformer_units"] == sum(g["units"] for g in grids) >= kpis["stations"]
+    assert kpis["parallel_stations"] == sum(1 for g in grids if g["units"] > 1)
+    feeder_cables = {c["name"] for c in cl.CONFIG_GENERATION["FEEDER_CABLES"]}
+    for grid in grids:
+        stored = grid["validation"]
+        assert set(stored["checks"]) == {"solver", "voltage_band", "cable_thermal", "trafo_planning"}
+        pf = client.post(f"/api/grids/{grid['grid_result_id']}/powerflow").json()
+        assert stored["checks"]["solver"] == ("ok" if pf["converged"] else "fail")
+        assert stored["min_vm_pu"] == pytest.approx(pf["min_vm_pu"], abs=1e-4)
+        assert stored["trafo_loading_percent"] == pytest.approx(pf["trafo"][0]["loading_percent"], abs=0.05)
+        assert stored["max_line_loading_percent"] == pytest.approx(pf["max_line_loading_percent"], abs=0.05)
+        budget = stored["budget"]
+        assert budget["total_pct"] == pytest.approx(budget["trafo_pct"] + budget["feeder_pct"] + budget["service_pct"],
+                                                    abs=0.02)
+        assert budget["lv_pct"] == pytest.approx(grid["max_total_drop_pct"], abs=0.01)  # the stored LV drop from the busbar
+        detail = client.get(f"/api/grids/{grid['grid_result_id']}").json()
+        assert detail["validation"]["min_vm_pu"] == stored["min_vm_pu"]
+        for feeder in detail["feeder_stats"]:
+            assert feeder["cable_mix"] and {m["std_type"] for m in feeder["cable_mix"]} <= feeder_cables
+        assert sum(f["cabinets"] for f in detail["feeder_stats"]) == len(detail["splits"]["features"])
+    plz = region["plz"]
+    stations = client.get(f"/api/results/1/{plz}/map").json()["stations"]["features"]
+    labels = {s["properties"]["grid_result_id"]: s["properties"]["size_label"] for s in stations}
+    assert labels == {g["grid_result_id"]: g["size_label"] for g in grids if g["plz"] == plz}
 
 
 # --------------------------------------------------------------------------- the API has no MV stage

@@ -1,4 +1,4 @@
-"""API tests against a sandbox database (opt-in, see conftest.py)."""
+"""API tests against the test database (opt-in, see conftest.py)."""
 from __future__ import annotations
 
 from conftest import requires_db
@@ -45,7 +45,7 @@ def test_results_grid_and_powerflow(client):
     versions = client.get("/api/versions").json()
     if not versions or not versions[0]["plz"]:
         import pytest
-        pytest.skip("no generated grids in the sandbox")
+        pytest.skip("no generated grids in the test database")
     v = versions[0]
     summary = client.get(f"/api/results/{v['version_id']}/summary").json()
     assert summary["kpis"]["grids"] == v["grid_count"]
