@@ -19,9 +19,9 @@ pylovo connects to an unexpected database
    The database is not reachable with the settings in ``.env``: check host, port, password and,
    for remote databases, the SSH tunnel.
 
-``FileNotFoundError: Config file 'config_generation_lv.yaml' not found in any search location``
+``FileNotFoundError: Config file 'config_generation_lv.yaml or config_generation.yaml' not found in any search location.``
    Run the command from the repository root or set ``PYLOVO_CONFIG_DIR``
-   (:ref:`config-file-lookup`).
+   (:ref:`config-file-lookup`). The message lists the folders that were searched.
 
 Setup
 -----
@@ -30,8 +30,18 @@ Setup
    Install GDAL (``sudo apt install gdal-bin``).
 
 ``function pgr_extractvertices(...) does not exist`` or ``extension "pgrouting" is not available``
-   pgRouting is not installed on the database server. Install the pgRouting package for your
-   PostgreSQL version and create the extension.
+   pgRouting is missing or older than 3.8 on the database server. Install the pgRouting package
+   for your PostgreSQL version and create the extension (:doc:`../getting_started/installation`).
+
+``pylovo needs PostgreSQL 15 or newer, server is ...``
+   The server is older than PostgreSQL 15. Use a newer server, for example a container, or
+   another database cluster (:doc:`../getting_started/installation`).
+
+``PyLovo schema has pending migrations (...); run pylovo-setup first``
+   The schema is older than the code, for example after an upgrade. Run ``uv run pylovo-setup``
+   once: it applies the migrations and keeps all grids. The message lists the pending migrations
+   (``PyLovo schema is not migrated`` for a schema without the migration ledger). Run the setup
+   when no generation is running.
 
 The Overpass download fails (HTTP 429 or 504, or a timeout)
    The public Overpass API limits and queues requests. Wait and retry, or use the processed
@@ -43,6 +53,11 @@ Generation
 ``Generation parameters differ from the stored snapshot for version <id>``
    The configuration changed since the version was created. Set a new ``VERSION_ID``
    (:ref:`versions`), or restore the previous parameters.
+
+``Error during grid generation for PLZ <plz>: ...`` followed by ``Skipped PLZ <plz> due to generation error.``
+   The postcode failed and was skipped, the others continue. ``pylovo-generate`` still exits with
+   0, so read the error line and the context above it in ``log/log.txt`` (``log/log_<plz>.txt``
+   for parallel runs).
 
 ``Grid for the postcode area <plz> has already been generated.``
    The postcode is skipped because grids exist in the active version. Delete them with
@@ -87,12 +102,8 @@ MV stage
 The messages of ``pylovo-mv`` and of ``pylovo-generate --mv`` are explained in
 :ref:`mv-troubleshooting`.
 
-Deleting and plotting
----------------------
-
-``transformer positions of generated grids reference pylovo.transformers`` (``pylovo-delete transformers``)
-   Generated grids still use the transformers. Delete those versions first, or delete single
-   sources with SQL, see :doc:`transformer_data`.
+Plotting
+--------
 
 The basemap of ``plot_contextily`` shows "Access blocked"
    The OpenStreetMap tile servers require an identifying User-Agent; see the note in

@@ -119,8 +119,9 @@ snapshot and stops with
 
 .. code-block:: text
 
-   ValueError: Generation parameters differ from the stored snapshot for version 1.
-   Increment VERSION_ID before generating grids with the changed configuration.
+   ValueError: Generation parameters differ from the stored snapshot for version 1
+   (max_end_to_end_feeder_voltage_drop_percent, ...). Increment VERSION_ID before generating
+   grids with the changed configuration.
 
 if anything differs. The column **Snapshot** in the tables below marks the keys that are part of
 the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``, so use at most 10 characters.
