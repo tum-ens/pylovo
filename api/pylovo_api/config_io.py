@@ -105,13 +105,30 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _parse_mapping(text: str) -> dict[str, Any]:
+    """The top-level mapping of a configuration text (an empty text gives ``{}``).
+
+    Raises:
+        ConfigError: If the text is not valid YAML or not a mapping.
+    """
+    try:
+        values = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"YAML syntax error: {getattr(exc, 'problem', None) or exc}") from exc
+    if values is None:
+        return {}
+    if not isinstance(values, dict):
+        raise ConfigError("The configuration must be a YAML mapping (KEY: value lines).")
+    return values
+
+
 def read_config() -> ConfigSnapshot:
-    """Read the configuration file fresh from disk."""
+    """Read the configuration file fresh from disk (``values`` is empty if it is not a YAML mapping)."""
     path = paths().config_file
     text = path.read_text(encoding="utf-8")
     try:
-        values = yaml.safe_load(text) or {}
-    except yaml.YAMLError:
+        values = _parse_mapping(text)
+    except ConfigError:
         values = {}
     return ConfigSnapshot(text=text, sha=sha(text), mtime=path.stat().st_mtime, values=values)
 
@@ -216,12 +233,12 @@ def set_top_level_values(text: str, changes: dict[str, Any]) -> str:
     Scalars and flat lists are written on the key line (keeping an inline comment); mappings
     such as ``TRANSFORMER_MAPPING`` replace the indented block below the key. Keys that are
     not in the file are appended at the end.
+
+    Raises:
+        ConfigError: If ``text`` is not a YAML mapping or the edit cannot be written safely.
     """
     lines = text.splitlines(keepends=True)
-    try:
-        before = yaml.safe_load(text) or {}
-    except yaml.YAMLError:
-        before = {}
+    before = _parse_mapping(text)
     changes = {k: v for k, v in changes.items() if not _same_value(before.get(k, _MISSING), v)}
     for key, value in changes.items():
         index = next((i for i, line in enumerate(lines) if line.startswith(f"{key}:")), None)
@@ -245,7 +262,7 @@ def set_top_level_values(text: str, changes: dict[str, Any]) -> str:
             block = [f"{key}: {_render_flow(value, key)}{suffix}\n"]
         lines[index:end] = block
     new_text = "".join(lines)
-    parsed = yaml.safe_load(new_text) or {}
+    parsed = _parse_mapping(new_text)
     for key, value in changes.items():
         got = parsed.get(key)
         if isinstance(value, dict):

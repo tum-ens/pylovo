@@ -166,3 +166,19 @@ def test_the_help_of_the_shipped_config_starts_with_the_description_of_the_key(p
     assert help_text["MAX_BROWNFIELD_TRAFO_DISTANCE"].startswith("Maximum assignment distance")
     assert help_text["RURAL_MAX_HOUSEHOLDS"].startswith("Maximum average number of households")
     assert help_text["TRANSFORMER_MAPPING"].startswith("Transformer mapping")
+
+
+def test_a_config_that_is_not_a_mapping_gives_4xx_and_can_be_repaired(client, project):
+    path = project / "config" / "config_generation_lv.yaml"
+    good = path.read_text()
+    for broken in ("- a\n- b\n", "just text\n", "{unclosed"):  # a list, a scalar, invalid YAML
+        path.write_text(broken)
+        state = client.get("/api/config")
+        assert state.status_code == 200 and state.json()["text"] == broken
+        assert set(state.json()["values"].values()) == {None}
+        for url in ("/api/config/values", "/api/flow/config-preflight"):
+            body = {"changes": {"VERSION_COMMENT": "x"}} | ({"dry_run": True} if url.endswith("values") else {})
+            assert client.post(url, json=body).status_code == 422, (broken, url)
+    repaired = client.put("/api/config", json={"text": good, "confirm": True})
+    assert repaired.status_code == 200 and repaired.json()["saved"]
+    assert client.get("/api/config").json()["values"]["VERSION_ID"] == "1"
