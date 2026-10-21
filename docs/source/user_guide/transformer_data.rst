@@ -17,7 +17,7 @@ Sources of transformer candidates
      - ``osm_id`` pattern
      - How it gets into ``pylovo.transformers``
    * - OpenStreetMap
-     - ``node/<id>``, ``way/<id>``, ``relation/<id>``
+     - ``node/<id>``, ``way/<id>`` (a multipolygon relation: ``multipolygon/<id>``)
      - ``pylovo-setup`` (Bavaria) or ``pylovo-import transformers-osm --relation-id <id>``.
    * - LoD2 stations
      - ``lod2/<objectid>``
@@ -83,8 +83,9 @@ the search results and copy its number from the URL or sidebar:
    The relation id of Munich is 62428 (screenshot of openstreetmap.org, © OpenStreetMap
    contributors).
 
-The import runs two Overpass queries from ``data/transformer_data/overpass_queries/``
-(``$relation_id$`` is replaced by the area id) and processes the result:
+The import runs two Overpass queries from ``transformer_data/overpass_queries/`` of the data
+directory (``data/``, or ``PYLOVO_DATA_DIR``, see :ref:`env-variables`; ``$relation_id$`` is replaced
+by the area id) and processes the result:
 
 ``substations_query.txt``
    All ``power=transformer`` and ``power=substation`` objects and the ``power=pole`` nodes with a
@@ -105,9 +106,9 @@ Processing (:func:`pylovo.data_import.import_transformers.process_trafos`) remov
 #. transformers inside the areas of the second query.
 
 The remaining centroids are written to
-``data/transformer_data/processed_trafos/<relation-id>_trafos_processed_<TARGET_EPSG>.geojson``
-and appended to ``pylovo.transformers``; the raw downloads are kept in
-``data/transformer_data/fetched_trafos/``. The thresholds and the setup relation
+``transformer_data/processed_trafos/<relation-id>_trafos_processed_<TARGET_EPSG>.geojson``
+of the data directory and appended to ``pylovo.transformers``; the raw downloads are kept in
+``transformer_data/fetched_trafos/``. The thresholds and the setup relation
 (``RELATION_ID = 2145268``, Bavaria) are constants at the top of
 ``src/pylovo/data_import/import_transformers.py``; distances and areas are computed in
 ``TARGET_EPSG`` from ``.env``. To load a different default area with
@@ -144,7 +145,7 @@ coordinates:
      - Latitude (EPSG:4326).
    * - ``transformer_rated_power``
      - no
-     - Rating in kVA, if known.
+     - Rating in kVA (a whole number above 0), if known.
    * - ``source``
      - no
      - Short source label; default ``csv``.
@@ -162,7 +163,11 @@ coordinates:
 Rows are stored with ``type = 'dso'`` and ids ``dso/<source>/<external_id>`` (the source label is
 lower-cased; characters other than ``a-z``, ``0-9``, ``_``, ``.`` and ``-`` become ``_``). ``--source`` overrides the
 CSV column; ``--replace-source`` deletes all rows ``dso/<source>/...`` before the import, which
-is useful for corrected re-imports. Rows with the same id are updated. Then enable the positions:
+is useful for corrected re-imports. All cells are read as text, so ids keep their leading zeros.
+The import stops and names the row numbers (the header is row 1) if a row has an empty or
+repeated id, invalid coordinates, or a rating that is neither empty nor a whole number of kVA above
+0. A row whose id already exists in the table from an earlier import is updated. Then enable the
+positions:
 
 .. code-block:: yaml
 
@@ -188,9 +193,9 @@ built around it; ratings of candidates whose source is switched off are ignored.
 Removing candidates
 -------------------
 
-``pylovo-delete transformers`` deletes all rows of ``pylovo.transformers``. Generated grids keep a
-reference to the transformers they used (``pylovo.transformer_positions``), so the command refuses
-while such grids exist and names how many positions still reference the table. Delete those
-versions first (``pylovo-delete --version <id>``) or delete single sources with SQL, for example
-``DELETE FROM pylovo.transformers WHERE osm_id LIKE 'dso/aying/%';`` -- which also deletes the
-transformer positions of generated grids that used them.
+``pylovo-delete transformers`` deletes all rows of ``pylovo.transformers``, including the manual
+and DSO positions, which cannot be recreated from the OSM files. Generated grids keep their
+transformer positions (``pylovo.transformer_positions``) but lose the link to the raw transformer:
+``osm_id`` becomes ``NULL``. To remove one source only, delete its rows with SQL, for example
+``DELETE FROM pylovo.transformers WHERE osm_id LIKE 'dso/aying/%';``. The grids that used them stay
+as they are.
