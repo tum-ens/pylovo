@@ -63,9 +63,9 @@ Generation
    (:ref:`versions`), or restore the previous parameters.
 
 ``Error during grid generation for PLZ <plz>: ...`` followed by ``Skipped PLZ <plz> due to generation error.``
-   The postcode failed and was skipped, the others continue. ``pylovo-generate`` still exits with
-   0, so read the error line and the context above it in ``log/log.txt`` (``log/log_<plz>.txt``
-   for parallel runs).
+   The postcode failed and was skipped, the others continue. ``pylovo-generate`` exits with 4 and
+   names the postcode in its last line; read the error line and the context above it in
+   ``log/log.txt`` (``log/log_<plz>.txt`` for parallel runs).
 
 ``Grid for the postcode area <plz> has already been generated.``
    The postcode is skipped because grids exist in the active version. Delete them with

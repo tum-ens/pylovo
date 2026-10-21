@@ -96,6 +96,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Only the pandas connection warning is hidden; pylovo's own warnings (e.g. K-means clustering issues) are shown again
 - Migration `0012_indexes`: indexes for the `way_id` lookup, the per-grid bus foreign keys of the pandapower tables and `postcode_result_plz`; redundant indexes and the leftover v0.8.0 function `generate_building_way_connection_candidates_infdb()` are dropped. Run `pylovo-setup` once
 - `pylovo-setup` refuses PostgreSQL servers older than 15 before changing anything; a migration that meets violating rows stops with a message naming the migration
+- `pylovo-generate` exits with 4 when the run finished but postcodes failed or got no grids (before: 0) and names them in one line; with `--mv` the MV stage runs only for the postcodes with LV grids; `pylovo-api` counts such a generate job as succeeded
 
 ### Deprecated
 - `pylovo-import transformers-ui` (Flask transformer map): use the transformer editor of the GridPlanner UI (on `pylovo-api`); Flask moved to the extra `legacy-ui`

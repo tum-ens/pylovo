@@ -7,10 +7,11 @@ read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`).
 
 Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset, an MV
 stage that does not end ``done``, ``pylovo-analyze`` for a postcode without grids and
-``pylovo-export`` when no postcode has grids), 2 for wrong arguments, and 3 for
-``pylovo-analyze --coverage`` when source buildings are missing. A postcode that fails inside
-``pylovo-generate`` is logged and skipped, and the command still exits with 0: look for
-``Skipped PLZ <plz> due to generation error.`` in the log (:doc:`troubleshooting`).
+``pylovo-export`` when no postcode has grids), 2 for wrong arguments, 3 for
+``pylovo-analyze --coverage`` when source buildings are missing, and 4 for ``pylovo-generate``
+when the run finished but postcodes failed or got no grids. Such postcodes are logged and
+skipped, the others are generated, and one line ``✗ N of M PLZ not generated: ...`` names them;
+the reasons are in the log (``Skipped PLZ <plz> due to generation error.``, :doc:`troubleshooting`).
 
 .. list-table::
    :header-rows: 1
