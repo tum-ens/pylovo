@@ -1,8 +1,8 @@
 """Delete generated grids, transformers or classification data (``pylovo-delete``)."""
-import argparse
 import sys
 import traceback
 
+from pylovo.cli import parsers
 from pylovo.database.database_client import DatabaseClient
 
 
@@ -41,75 +41,7 @@ def delete_classification_version(classification_id: int):
 
 def main():
     """Entry point of ``pylovo-delete``."""
-    parser = argparse.ArgumentParser(
-        prog="pylovo-delete",
-        description="Delete various pylovo data from database",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Delete all networks for one version across all PLZ
-  pylovo-delete --version 1
-
-  # Delete all networks for multiple versions across all PLZ
-  pylovo-delete --version 1 2 3
-
-  # Delete networks for a specific PLZ and version
-  pylovo-delete networks --plz 80803 --version 1
-
-  # Delete all transformers
-  pylovo-delete transformers
-
-  # Delete classification version data
-  pylovo-delete classification --version 1
-
-For more information, see: https://github.com/tum-ens/pylovo
-        """
-    )
-    parser.add_argument(
-        "--version",
-        dest="versions",
-        nargs="+",
-        metavar="VERSION_ID",
-        help="Version ID(s) to delete across all PLZ (e.g., 1 2 3)",
-    )
-
-    subparsers = parser.add_subparsers(dest="command", help="Delete operation to perform", required=False)
-
-    # Subcommand: networks
-    networks_parser = subparsers.add_parser(
-        "networks",
-        help="Delete networks for a specific PLZ and version",
-        description="Delete all generated grid networks for a specific postal code and version ID"
-    )
-    networks_parser.add_argument("--plz", type=int, required=True,
-                                help="Postal code (e.g., 80803)")
-    networks_parser.add_argument("--version", type=str, required=True,
-                                help="Version ID (e.g., 1)")
-
-    # Subcommand: version
-    version_parser = subparsers.add_parser(
-        "version",
-        help="Delete all networks for a version across all PLZ",
-        description="Delete all generated grid networks for a specific version across all postal codes"
-    )
-    version_parser.add_argument("--version", dest="version_ids", type=str, nargs="+", required=True,
-                               help="Version ID(s) to delete (e.g., 1 2 3)")
-
-    # Subcommand: transformers
-    subparsers.add_parser(
-        "transformers",
-        help="Delete all transformers",
-        description="Delete all transformer data"
-    )
-
-    # Subcommand: classification
-    class_parser = subparsers.add_parser(
-        "classification",
-        help="Delete classification version data",
-        description="Delete all data associated with a specific classification version"
-    )
-    class_parser.add_argument("--version", type=int, required=True,
-                             help="Classification ID (e.g., 1)")
+    parser = parsers.delete_parser()
 
     args = parser.parse_args()
 

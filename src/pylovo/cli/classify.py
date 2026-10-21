@@ -4,6 +4,7 @@ import sys
 
 import yaml
 
+from pylovo.cli import parsers
 from pylovo.config_loader import CLUSTERING_PARAMETERS, get_config_search_paths
 
 # Packages of the ``plots`` extra that the classification code imports.
@@ -46,21 +47,7 @@ CONFIG_CLUSTERING_PATH = _config_file("config_clustering.yaml")
 
 def _parse_args() -> argparse.Namespace:
     """Parse the command line; the pipeline itself takes no options."""
-    parser = argparse.ArgumentParser(
-        prog="pylovo-classify",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Interactive classification of the generated grids into representative grid types.",
-        epilog=(
-            "The pipeline asks questions on the terminal and then:\n"
-            "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml),\n"
-            "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
-            "  3. filters the grids by the thresholds of config/config_clustering.yaml,\n"
-            "  4. selects the clustering parameters and numbers of clusters (asked or computed)\n"
-            "     and writes them to config/config_clustering.yaml,\n"
-            "  5. clusters the grids and writes pylovo.transformer_classified.\n"
-            "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected."
-        ),
-    )
+    parser = parsers.classify_parser()
     return parser.parse_args()
 
 

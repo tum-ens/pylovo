@@ -4,13 +4,13 @@ Each export writes a line table and a bus table with WKT geometries (see
 :mod:`pylovo.plotting.gis_preparation.io_geodata`) for the ``VERSION_ID`` of
 ``config_generation_lv.yaml``.
 """
-import argparse
 import os
 import sys
 from pathlib import Path
 
 import pandas as pd
 
+from pylovo.cli import parsers
 from pylovo.config_loader import PROJECT_ROOT, VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.gis_preparation.io_geodata import get_bus_line_geo_for_network, save_geodata_as_csv
@@ -84,53 +84,7 @@ def export_grid(plz: int, kcid: int, bcid: int, output_dir: str | None = None):
 
 def main():
     """Entry point of ``pylovo-export``."""
-    parser = argparse.ArgumentParser(
-        prog="pylovo-export",
-        description="Export grid geodata to CSV for QGIS visualization",
-        epilog="""
-Examples:
-  # Export single PLZ
-  pylovo-export --plz 80803
-
-  # Export multiple PLZ
-  pylovo-export --plz 80803 80639 91720
-
-  # Export specific grid within PLZ (bcid is negative for brownfield transformers)
-  pylovo-export --grid --plz 91207 --kcid 4 --bcid 30
-
-  # Custom output directory
-  pylovo-export --plz 80803 --output /path/to/output
-        """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-
-    parser.add_argument(
-        "--plz",
-        type=int,
-        nargs="+",
-        required=True,
-        help="Postal code(s) to export"
-    )
-    parser.add_argument(
-        "--grid",
-        action="store_true",
-        help="Export specific grid (requires --kcid and --bcid)"
-    )
-    parser.add_argument(
-        "--kcid",
-        type=int,
-        help="K-means cluster ID (for --grid mode)"
-    )
-    parser.add_argument(
-        "--bcid",
-        type=int,
-        help="Building cluster ID (for --grid mode; negative for brownfield transformers)"
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        help="Output directory for CSV files (default: QGIS/)"
-    )
+    parser = parsers.export_parser()
 
     args = parser.parse_args()
 

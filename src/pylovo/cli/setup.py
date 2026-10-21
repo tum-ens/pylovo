@@ -1,6 +1,5 @@
 """Create or migrate the PyLovo schema; reset requires an explicit command and target."""
 
-import argparse
 import logging
 import signal
 import sys
@@ -8,32 +7,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from pylovo.cli import parsers
 from pylovo import utils
 from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
 from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
 from pylovo.database.database_constructor import DatabaseConstructor
 from pylovo.utils import get_user_data_dir
-
-DESCRIPTION = """Create new PyLovo tables or migrate an existing schema.
-
-With no command, setup is non-destructive. It creates missing tables, runs pending
-migrations and imports each reference table (transformers, postcodes, municipal
-register) while it is empty, so a rerun completes an interrupted setup. Use the
-explicit reset command to delete all data in the PyLovo schema: it moves the schema to
-a backup, rebuilds it, restores the backup if the rebuild fails and drops it otherwise.
-"""
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="pylovo-setup",
-        description=DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("command", nargs="?", choices=("setup", "reset"), default="setup")
-    parser.add_argument("--database", help="required for reset; must match DBNAME in .env")
-    parser.add_argument("--yes", action="store_true", help="skip interactive reset confirmation")
-    return parser
 
 
 def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
@@ -181,7 +160,7 @@ def run_setup(reset: bool = False) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Entry point: setup is safe by default, reset requires an explicit target."""
-    parser = _build_parser()
+    parser = parsers.setup_parser()
     args = parser.parse_args(argv)
     if args.command == "setup":
         if args.yes or args.database:

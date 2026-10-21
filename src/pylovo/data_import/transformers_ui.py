@@ -40,14 +40,12 @@ DEPRECATION_MESSAGE = (
     "use the transformer editor of the GridPlanner UI (backed by pylovo-api: uv sync --extra api)."
 )
 
+from pylovo.cli.parsers import DEFAULT_HOST, DEFAULT_PORT, add_ui_arguments
 from pylovo.config_loader import DBNAME, DBUSER, HOST, PASSWORD, PORT
 from pylovo.data_import.transformer_capacity_utils import get_transformer_capacity_options
 from pylovo.database.database_client import DatabaseClient
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8080
 
 
 def _ok(**payload) -> Response:
@@ -1871,28 +1869,13 @@ def run_transformers_ui(
         sys.exit(1)
 
 
-def _add_ui_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add the transformer UI options to ``parser`` (shared with ``pylovo-import transformers-ui``)."""
-    parser.add_argument('--host', default=DEFAULT_HOST,
-                        help=f'Interface to bind to (default: {DEFAULT_HOST}, local only; '
-                             '0.0.0.0 exposes the UI and its write access to the network)')
-    parser.add_argument('--port', type=int, default=DEFAULT_PORT,
-                        help=f'Port number (default: {DEFAULT_PORT}, 0 for the first free port)')
-    parser.add_argument('--debug', action='store_true', help='Enable Flask debug mode and debug logging')
-    parser.add_argument('--cleanup', action='store_true',
-                        help='Check the database connection before starting')
-    parser.add_argument('--auto-cleanup', action='store_true',
-                        help='Terminate (kill) any process that already listens on --port before starting '
-                             '(uses lsof; off by default)')
-
-
 def main(argv=None):
     """Entry point for ``python -m pylovo.data_import.transformers_ui``."""
     parser = argparse.ArgumentParser(description='Transformer Map UI (deprecated: use the GridPlanner UI)')
     # Accept the accidental passthrough form
     # `python -m pylovo.data_import.transformers_ui transformers-ui`.
     parser.add_argument('compat_command', nargs='?', choices=['transformers-ui'], help=argparse.SUPPRESS)
-    _add_ui_arguments(parser)
+    add_ui_arguments(parser)
 
     args = parser.parse_args(argv)
     run_transformers_ui(

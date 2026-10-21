@@ -5,17 +5,17 @@ Subcommands:
     transformers-dso-csv: add DSO transformer positions from a CSV file.
     transformers-ui: deprecated Flask map for editing transformer positions (use the GridPlanner UI).
 """
-import argparse
 import sys
 import time
 
+from pylovo.cli import parsers
 from pylovo.data_import.dso_transformers import import_dso_transformers_csv
 from pylovo.data_import.import_transformers import (
     fetch_trafos,
     get_trafos_processed_target_geojson_path,
     process_trafos,
 )
-from pylovo.data_import.transformers_ui import _add_ui_arguments, run_transformers_ui
+from pylovo.data_import.transformers_ui import run_transformers_ui
 from pylovo.database.database_constructor import DatabaseConstructor
 
 
@@ -61,59 +61,7 @@ def import_transformers_dso_csv(csv_path: str, source: str | None, replace_sourc
 
 def main():
     """Entry point of ``pylovo-import``."""
-    parser = argparse.ArgumentParser(
-        prog="pylovo-import",
-        description="Import various data into pylovo database",
-        epilog="""
-Examples:
-  # Import transformers from OSM by relation ID
-  pylovo-import transformers-osm --relation-id 62464
-
-  # Import DSO transformer positions from CSV
-  pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
-
-  # Deprecated: the old transformer map (use the GridPlanner UI; needs uv sync --extra legacy-ui)
-  pylovo-import transformers-ui
-        """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-
-    subparsers = parser.add_subparsers(dest="command", help="Import operation to perform")
-
-    osm_parser = subparsers.add_parser(
-        "transformers-osm",
-        help="Fetch and import transformers from OpenStreetMap"
-    )
-    osm_parser.add_argument(
-        "--relation-id",
-        type=int,
-        required=True,
-        help="OSM relation ID of the area"
-    )
-
-    dso_csv_parser = subparsers.add_parser(
-        "transformers-dso-csv",
-        help="Import DSO transformer positions from CSV"
-    )
-    dso_csv_parser.add_argument(
-        "csv_path",
-        help="Path to CSV with external_id, lon, lat and optional transformer_rated_power/source columns"
-    )
-    dso_csv_parser.add_argument(
-        "--source",
-        help="Source label used in generated ids dso/<source>/<external_id>; overrides a CSV source column"
-    )
-    dso_csv_parser.add_argument(
-        "--replace-source",
-        action="store_true",
-        help="Delete existing dso/<source>/... rows before importing this source"
-    )
-
-    ui_parser = subparsers.add_parser(
-        "transformers-ui",
-        help="Deprecated: the old transformer map (use the GridPlanner UI; needs the extra legacy-ui)"
-    )
-    _add_ui_arguments(ui_parser)
+    parser = parsers.import_parser()
 
     args = parser.parse_args()
 

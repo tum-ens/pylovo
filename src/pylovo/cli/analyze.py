@@ -13,12 +13,12 @@ import sys
 import traceback
 from pathlib import Path
 
+from pylovo.cli import parsers
+from pylovo.cli.parsers import DEFAULT_OUTPUT
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 
 #: Exit code of ``--coverage`` when source buildings are missing.
 EXIT_INCOMPLETE = 3
-#: Default of ``--output``.
-DEFAULT_OUTPUT = "results/diagnostics"
 
 
 def analyze_plz(plz: int) -> bool:
@@ -108,69 +108,7 @@ def ignored_options(args: argparse.Namespace) -> list[str]:
 
 def main():
     """Entry point of ``pylovo-analyze``."""
-    parser = argparse.ArgumentParser(
-        prog="pylovo-analyze",
-        description="Analyze generated grids and calculate parameters",
-        epilog="""
-Examples:
-  # Calculate parameters for PLZ
-  pylovo-analyze --plz 80803
-
-  # Calculate parameters per grid (run after PLZ analysis)
-  pylovo-analyze --plz 80803 --per-grid
-
-  # Do both in sequence
-  pylovo-analyze --plz 80803 --all
-
-  # Account for every source building and report the border context (CSV/JSON in results/diagnostics)
-  pylovo-analyze --plz 80331 80333 --coverage --border-diagnostics
-        """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-
-    parser.add_argument(
-        "--plz",
-        type=int,
-        nargs="+",
-        required=True,
-        help="Postal code(s) to analyze"
-    )
-
-    parser.add_argument(
-        "--coverage",
-        action="store_true",
-        help="Account for every source building (in a grid, left out with a reason, or missing); exit 3 if any is missing"
-    )
-
-    parser.add_argument(
-        "--border-diagnostics",
-        action="store_true",
-        help="Report the PLZ-border and data-edge context of the PLZ and their grids"
-    )
-
-    parser.add_argument(
-        "--version-id",
-        default=None,
-        help="Version for --coverage/--border-diagnostics (default: VERSION_ID of the config)"
-    )
-
-    parser.add_argument(
-        "--output",
-        default=DEFAULT_OUTPUT,
-        help="Directory of the --coverage/--border-diagnostics reports"
-    )
-
-    parser.add_argument(
-        "--per-grid",
-        action="store_true",
-        help="Calculate parameters per individual grid (requires PLZ analysis first)"
-    )
-
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Run both PLZ and per-grid analysis"
-    )
+    parser = parsers.analyze_parser()
 
     args = parser.parse_args()
     for note in ignored_options(args):

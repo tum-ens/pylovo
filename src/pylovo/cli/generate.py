@@ -17,7 +17,6 @@ Exit codes: 0 if every PLZ has LV grids (generated now or before), 1 after an er
 does not end ``done``), 2 for wrong arguments and :data:`EXIT_PLZ_NOT_GENERATED` if the run finished but some PLZ
 failed or have no grids (named in one summary line; the reasons are in the log).
 """
-import argparse
 import sys
 import time
 from typing import TYPE_CHECKING
@@ -26,6 +25,7 @@ import pandas as pd
 
 import pylovo.config_loader as config_loader
 import pylovo.database.database_client as dbc
+from pylovo.cli import parsers
 from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, USE_INFDB, VERSION_ID
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
 from pylovo.data_import.region_resolver import resolve_regions
@@ -141,56 +141,7 @@ def main(argv: list[str] | None = None):
     Args:
         argv: Command-line arguments (default ``sys.argv[1:]``).
     """
-    parser = argparse.ArgumentParser(
-        prog='pylovo-generate',
-        description='Generate synthetic LV distribution grids for specified regions',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
-Examples:
-  # Generate for single postal code (PLZ)
-  pylovo-generate --plz 80803
-
-  # Generate for multiple postal codes
-  pylovo-generate --plz 80803 80802 80801
-
-  # Generate for single municipality (AGS)
-  pylovo-generate --ags 09162000
-
-  # Generate for multiple municipalities
-  pylovo-generate --ags 09162000 09161000
-
-  # Disable parallel processing (useful for debugging); PARALLEL in the config sets the default
-  pylovo-generate --plz 80803 80802 --no-parallel
-
-  # Generate the LV grids, then the MV grids of the configured MV variant (MV_GRID_GENERATION sets the default)
-  pylovo-generate --plz 80803 80802 --mv
-
-Regional Identifiers:
-  PLZ: German postal codes (Postleitzahl) - 5-digit codes
-  AGS: Municipality codes (Amtlicher Gemeindeschlüssel) - 8-digit codes
-
-  You can find PLZ and AGS codes in your database after running pylovo-setup:
-    SELECT plz, note FROM pylovo.postcode LIMIT 10;
-    SELECT ags, name_city FROM pylovo.municipal_register LIMIT 10;
-
-For more information, see the README: https://github.com/tum-ens/pylovo
-        '''
-    )
-    region = parser.add_mutually_exclusive_group(required=True)
-    region.add_argument('--plz', type=int, nargs='+',
-                        help='Postal code(s) to generate grids for (e.g., 80803 or 80803 80802)')
-    region.add_argument('--ags', type=int, nargs='+',
-                        help='Municipality code(s) (AGS) to generate grids for (e.g., 09162000)')
-    parallelism = parser.add_mutually_exclusive_group()
-    parallelism.add_argument('--parallel', dest='parallel', action='store_true', default=None,
-                             help='Generate several regions in parallel worker processes')
-    parallelism.add_argument('--no-parallel', dest='parallel', action='store_false',
-                             help='Generate several regions one after the other')
-    mv_stage = parser.add_mutually_exclusive_group()
-    mv_stage.add_argument('--mv', dest='mv', action='store_true', default=None,
-                          help='Run the MV stage after the LV grids (default MV_GRID_GENERATION)')
-    mv_stage.add_argument('--no-mv', dest='mv', action='store_false',
-                          help='Do not run the MV stage')
+    parser = parsers.generate_parser()
 
     args = parser.parse_args(argv)
     # PARALLEL in config_generation_lv.yaml is the default; the flags override it

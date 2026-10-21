@@ -107,13 +107,13 @@ dev = [
 ]
 
 [project.scripts]
-pylovo-setup = "pylovo.cli.setup:main"
-pylovo-generate = "pylovo.cli.generate:main"
-pylovo-classify = "pylovo.cli.classify:main"
-pylovo-analyze = "pylovo.cli.analyze:main"
-pylovo-delete = "pylovo.cli.delete:main"
-pylovo-export = "pylovo.cli.export:main"
-pylovo-import = "pylovo.cli.import_data:main"
+pylovo-setup = "pylovo.cli.launch:setup"
+pylovo-generate = "pylovo.cli.launch:generate"
+pylovo-classify = "pylovo.cli.launch:classify"
+pylovo-analyze = "pylovo.cli.launch:analyze"
+pylovo-delete = "pylovo.cli.launch:delete"
+pylovo-export = "pylovo.cli.launch:export"
+pylovo-import = "pylovo.cli.launch:import_data"
 pylovo-mv = "pylovo.cli.mv:main"
 pylovo-api = "pylovo_api.cli:main"
 
