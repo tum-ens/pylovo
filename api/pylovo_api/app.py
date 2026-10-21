@@ -24,14 +24,13 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "testserver"}
 
 
-def create_app(root: Path, allowed_hosts: set[str] | None = None, allow_any_host: bool = False) -> FastAPI:
+def create_app(root: Path, allowed_hosts: set[str] | None = None) -> FastAPI:
     """Build the app for one pylovo project root.
 
     Args:
         root: Project directory with ``config/`` (the working directory of all jobs).
         allowed_hosts: Extra host names accepted in the ``Host`` header besides the loopback
-            names (protects against DNS rebinding).
-        allow_any_host: Accept every ``Host`` header (only for ``--host 0.0.0.0``).
+            names (protects against DNS rebinding). The check is always on, whatever interface is bound.
     """
     paths = init_paths(root)
     hosts = set(allowed_hosts or ()) | LOCAL_HOSTS
@@ -65,7 +64,7 @@ def create_app(root: Path, allowed_hosts: set[str] | None = None, allow_any_host
     async def guard(request: Request, call_next):
         header = request.headers.get("host") or ""
         host = header.split("]")[0] + "]" if header.startswith("[") else header.rsplit(":", 1)[0]
-        if not allow_any_host and host and host not in hosts:
+        if host and host not in hosts:
             return JSONResponse({"detail": f"Host '{host}' is not allowed"}, status_code=421)
         # State-changing API calls must come from the UI itself: browsers only send this custom
         # header from same-origin scripts, which blocks cross-site form posts (CSRF).

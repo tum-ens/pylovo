@@ -318,14 +318,17 @@ Starts the headless HTTP API that the GridPlanner UI uses (:doc:`http_api`). It 
 ``api``. It runs the other commands as jobs, so it has no generation options of its own.
 
 ``--host HOST``, ``--port PORT``
-   Interface and port to bind (default ``127.0.0.1`` and ``8765``).
+   Interface and port to bind (default ``127.0.0.1`` and ``8765``). ``0.0.0.0`` or ``::`` makes the API
+   reachable from other machines.
 ``--root ROOT``
    Project directory with ``config/`` (default: found automatically).
 ``--log-level LEVEL``
    uvicorn log level (``critical``, ``error``, ``warning``, ``info`` or ``debug``; default
    ``warning``).
 ``--allowed-host HOST``
-   Also accept this ``Host`` header, for example the host name of a reverse proxy (repeatable).
+   Also accept this ``Host`` name (without port), for example the name of a reverse proxy or the address
+   that other machines use (repeatable; also ``PYLOVO_API_ALLOWED_HOSTS``, comma-separated). The ``Host``
+   check stays on when all interfaces are bound: other names get 421.
 
 .. code-block:: bash
 

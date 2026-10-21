@@ -26,15 +26,16 @@ def main(argv: list[str] | None = None) -> None:
         description="Headless HTTP API for pylovo (used by the GridPlanner UI): set up the database, prepare "
                     "transformer data, edit the generation config, generate grids and inspect the results.",
         epilog="The API can drop database schemas and delete results. It binds to 127.0.0.1 by default; "
-               "only use --host 0.0.0.0 on a trusted network.")
+               "only use --host 0.0.0.0 on a trusted network. Requests need a Host name of localhost, the --host "
+               "value or an --allowed-host, also when all interfaces are bound.")
     parser.add_argument("--host", default="127.0.0.1", help="interface to bind (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8765, help="port (default: 8765)")
     parser.add_argument("--root", help="pylovo project directory with config/ (default: auto-detect)")
     parser.add_argument("--log-level", default="warning", choices=["critical", "error", "warning", "info", "debug"],
                         help="uvicorn log level (default: warning)")
     parser.add_argument("--allowed-host", action="append", default=[], metavar="HOST",
-                        help="also accept this Host header name, e.g. of a reverse proxy (repeatable; also "
-                             f"{ENV_ALLOWED_HOSTS}, comma-separated)")
+                        help="also accept this Host header name (without port), e.g. of a reverse proxy or the address "
+                             f"other machines use (repeatable; also {ENV_ALLOWED_HOSTS}, comma-separated)")
     args = parser.parse_args(argv)
     extra_hosts = host_names([*args.allowed_host, *os.getenv(ENV_ALLOWED_HOSTS, "").split(",")])
 
@@ -55,10 +56,11 @@ def main(argv: list[str] | None = None) -> None:
     from pylovo_api.app import create_app
 
     bind_all = args.host in ("0.0.0.0", "::")
-    app = create_app(root, allowed_hosts={args.host, *extra_hosts}, allow_any_host=bind_all)
+    app = create_app(root, allowed_hosts={args.host, *extra_hosts})
     if bind_all:
-        print("WARNING: pylovo-api is reachable from other machines. Anyone who can reach it can drop your schema.",
-              file=sys.stderr)
+        print("WARNING: pylovo-api is reachable from other machines. Anyone who can reach it can drop your schema.\n"
+              "It answers only requests whose Host is localhost or one of the --allowed-host names "
+              f"({', '.join(sorted(extra_hosts)) or 'none given'}).", file=sys.stderr)
     url = f"http://{'127.0.0.1' if args.host in ('0.0.0.0', '::') else args.host}:{args.port}"
     print(f"pylovo-api for {root}\n  → {url}/api/health  (API docs: {url}/docs; Ctrl+C to stop)")
     server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, log_level=args.log_level,

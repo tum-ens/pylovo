@@ -27,6 +27,17 @@ database is the one in the project's ``.env`` (or in the environment variables `
 ``--host`` (default ``127.0.0.1``), ``--port`` (default ``8765``), ``--log-level`` and
 ``--allowed-host`` (also ``PYLOVO_API_ALLOWED_HOSTS``) for the host name of a reverse proxy.
 
+The API answers a request only when its ``Host`` header names localhost, the ``--host`` value or an
+``--allowed-host`` (otherwise 421), also with ``--host 0.0.0.0``. Behind a reverse proxy, allow the name
+that the proxy sends: the name the browser used if the proxy forwards the ``Host`` header unchanged
+(nginx: ``proxy_set_header Host $host;``), otherwise the name of the upstream (nginx's default, for
+example ``pylovo-api:18765``). A proxy in a Docker network reaches the API only if it binds all
+interfaces:
+
+.. code-block:: bash
+
+   pylovo-api --host 0.0.0.0 --port 18765 --allowed-host pylovo.example.org --allowed-host pylovo-api
+
 The container image ``pylovo`` (``api/docker/Dockerfile``, published as
 ``ghcr.io/tum-ens/pylovo``) contains pylovo, GDAL and the API (without the plotting packages of the
 extra ``plots``, which neither the API nor its job commands import) and starts
@@ -44,7 +55,7 @@ error if one is missing. Set ``PYLOVO_REVISION=$(git rev-parse HEAD)`` for the c
    creates a missing schema or applies pending migrations (``pending_migrations`` in
    ``/api/status``) and keeps all grids. API contract version 2 introduced this split; in version 1
    the setup job reset the schema. It binds to ``127.0.0.1`` by default, rejects requests with a foreign ``Host``
-   header and requires the header ``X-Pylovo-UI: 1`` for every state-changing call. Destructive
+   header (also when it is bound to ``0.0.0.0``: list the names with ``--allowed-host``) and requires the header ``X-Pylovo-UI: 1`` for every state-changing call. Destructive
    actions need a typed confirmation (database name, version id, PLZ or DSO source) that the
    server checks. There is no user management: only bind to another interface on a trusted
    network.

@@ -28,11 +28,28 @@ environment variables `DBNAME`, `DBUSER`, `PASSWORD`, `HOST`, `PORT` when there 
 
 | Option | Default | |
 | --- | --- | --- |
-| `--host` | `127.0.0.1` | interface to bind; `0.0.0.0` accepts every `Host` header and prints a warning |
+| `--host` | `127.0.0.1` | interface to bind; `0.0.0.0` or `::` makes the API reachable from other machines and prints a warning |
 | `--port` | `8765` | |
 | `--root` | auto-detect | project directory with `config/` |
 | `--log-level` | `warning` | uvicorn log level |
-| `--allowed-host HOST` | – | also accept this `Host` header (repeatable; also `PYLOVO_API_ALLOWED_HOSTS`, comma-separated), e.g. the proxy's host name |
+| `--allowed-host HOST` | – | also accept this `Host` name, without port (repeatable; also `PYLOVO_API_ALLOWED_HOSTS`, comma-separated), e.g. the name of a reverse proxy |
+
+### Behind a reverse proxy
+
+The `Host` check is always on, also with `--host 0.0.0.0`: the API answers a request only when its
+`Host` header names localhost, the `--host` value or an `--allowed-host` (else 421). A proxy that
+runs next to the API on the same machine needs no option when it forwards to `127.0.0.1`. The
+`Host` name has to be allowed when the proxy forwards the name the browser used (nginx:
+`proxy_set_header Host $host;`) and when it sends the name of the upstream (nginx's default, for
+example `pylovo-api:18765`). A proxy that reaches the API over a Docker network needs the API to
+bind all interfaces:
+
+```bash
+pylovo-api --host 0.0.0.0 --port 18765 --allowed-host pylovo.example.org --allowed-host pylovo-api
+# or: PYLOVO_API_ALLOWED_HOSTS=pylovo.example.org,pylovo-api
+```
+
+Add the proxy's own authentication or restrict the network: the API has no user management.
 
 ### In a container
 
@@ -64,7 +81,8 @@ The API can drop the `pylovo` schema, delete results and overwrite the configura
 user management.
 
 * It binds to `127.0.0.1` by default and rejects requests whose `Host` header is not a loopback
-  name, the `--host` value or an `--allowed-host` (DNS rebinding) with 421.
+  name, the `--host` value or an `--allowed-host` (DNS rebinding) with 421. This holds with
+  `--host 0.0.0.0` too: the names that other machines use have to be listed.
 * Every state-changing call (not `GET`/`HEAD`/`OPTIONS`) under `/api/` needs the header
   `X-Pylovo-UI: 1` (browsers only send it from same-origin scripts: CSRF protection), else 403.
 * Destructive actions need a typed confirmation (database name, version id, PLZ, DSO source) or
