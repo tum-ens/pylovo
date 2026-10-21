@@ -1,4 +1,12 @@
-"""Opt-in integration checks for the schema review; run only on a disposable database."""
+"""Opt-in integration checks for the schema review; run only on a disposable database.
+
+    PYLOVO_REVIEW_TEST_DSN="host=127.0.0.1 port=55460 dbname=rv_review user=sandbox password=sandbox" \\
+        pytest tests/test_database_review.py
+
+The role needs CREATEDB and the right to create PostGIS and pgRouting: three tests create and drop databases
+``pylovo_review_<hex>``. ``PYLOVO_REVIEW_TEST_PORT=<port>`` alone stands for database and role ``postgres``
+without a password on 127.0.0.1.
+"""
 from __future__ import annotations
 
 import os
@@ -6,21 +14,34 @@ import uuid
 
 import psycopg2
 import pytest
+from psycopg2.extensions import parse_dsn
 
 from pylovo.config_loader import TARGET_EPSG
 from pylovo.database.database_client import DatabaseClient
 from pylovo.database.database_constructor import DatabaseConstructor
 
 TEST_PORT = os.getenv("PYLOVO_REVIEW_TEST_PORT")
+TEST_DSN = os.getenv("PYLOVO_REVIEW_TEST_DSN") or (
+    TEST_PORT and f"host=127.0.0.1 port={TEST_PORT} dbname=postgres user=postgres"
+)
 pytestmark = pytest.mark.skipif(
-    not TEST_PORT, reason="set PYLOVO_REVIEW_TEST_PORT for an isolated PostgreSQL/PostGIS instance"
+    not TEST_DSN,
+    reason="set PYLOVO_REVIEW_TEST_DSN or PYLOVO_REVIEW_TEST_PORT for an isolated PostgreSQL/PostGIS instance",
 )
 
 
-def client() -> DatabaseClient:
-    return DatabaseClient(
-        dbname="postgres", user="postgres", pw="", host="127.0.0.1", port=int(TEST_PORT)
-    )
+def client(dbname: str | None = None) -> DatabaseClient:
+    """Client of the test database, or of ``dbname`` on the same server with the same role."""
+    params = parse_dsn(TEST_DSN)
+    return DatabaseClient(dbname=dbname or params["dbname"], user=params.get("user"), pw=params.get("password", ""),
+                          host=params.get("host"), port=int(params.get("port", 5432)))
+
+
+def admin_connection():
+    """Autocommit connection to the test database for CREATE and DROP DATABASE."""
+    conn = psycopg2.connect(TEST_DSN)
+    conn.autocommit = True
+    return conn
 
 
 def test_migrations_are_repeatable_and_catalog_is_valid():
@@ -428,12 +449,11 @@ def test_blocked_migration_names_the_dependent_and_changes_nothing():
     from psycopg2 import sql
 
     name = "pylovo_review_" + uuid.uuid4().hex[:8]
-    admin = psycopg2.connect(dbname="postgres", user="postgres", host="127.0.0.1", port=int(TEST_PORT))
-    admin.autocommit = True
+    admin = admin_connection()
     try:
         with admin.cursor() as cur:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-        with DatabaseClient(dbname=name, user="postgres", pw="", host="127.0.0.1", port=int(TEST_PORT)) as db:
+        with client(name) as db:
             db.cur.execute("CREATE SCHEMA pylovo")
             db.cur.execute("""CREATE TABLE pylovo.buildings_result (
                                   version_id varchar(10) NOT NULL, osm_id text NOT NULL,
@@ -464,16 +484,11 @@ def test_legacy_building_columns_and_key_migrate_without_reset():
     from psycopg2 import sql
 
     name = "pylovo_review_" + uuid.uuid4().hex[:8]
-    admin = psycopg2.connect(
-        dbname="postgres", user="postgres", host="127.0.0.1", port=int(TEST_PORT)
-    )
-    admin.autocommit = True
+    admin = admin_connection()
     try:
         with admin.cursor() as cur:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-        with DatabaseClient(
-            dbname=name, user="postgres", pw="", host="127.0.0.1", port=int(TEST_PORT)
-        ) as db:
+        with client(name) as db:
             db.cur.execute("CREATE SCHEMA pylovo")
             db.cur.execute("""
                 CREATE TABLE pylovo.buildings_result (
@@ -525,12 +540,11 @@ def test_reset_backup_is_restored_on_failure_and_dropped_after_success():
     from psycopg2 import sql
 
     name = "pylovo_review_" + uuid.uuid4().hex[:8]
-    admin = psycopg2.connect(dbname="postgres", user="postgres", host="127.0.0.1", port=int(TEST_PORT))
-    admin.autocommit = True
+    admin = admin_connection()
     try:
         with admin.cursor() as cur:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-        with DatabaseClient(dbname=name, user="postgres", pw="", host="127.0.0.1", port=int(TEST_PORT)) as db:
+        with client(name) as db:
             constructor = DatabaseConstructor(db)
             constructor.migrate_schema()
             db.cur.execute("INSERT INTO pylovo.version (version_id) VALUES ('keep')")
