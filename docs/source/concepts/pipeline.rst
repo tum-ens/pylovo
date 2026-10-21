@@ -63,8 +63,10 @@ metric alone (at most type 2), without either it is type 1.
 3 -- Transformer candidates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If ``USE_OPEN_TRANSFORMER_POSITIONS``, ``USE_DSO_TRANSFORMER_POSITIONS`` or
-``USE_MANUAL_TRANSFORMER_POSITIONS`` is set, the selected
+With ``USE_OPEN_TRANSFORMER_POSITIONS`` or ``USE_MANUAL_TRANSFORMER_POSITIONS`` (InfDB mode), the
+LoD2 transformer stations of the postcode are first added to the shared candidates, in a short
+transaction before the postcode is generated. If ``USE_OPEN_TRANSFORMER_POSITIONS``,
+``USE_DSO_TRANSFORMER_POSITIONS`` or ``USE_MANUAL_TRANSFORMER_POSITIONS`` is set, the selected
 candidates inside the postcode polygon are added to the building table as points of type
 ``Transformer`` (:doc:`../user_guide/transformer_data`). Building rows that represent the
 transformers themselves are removed.

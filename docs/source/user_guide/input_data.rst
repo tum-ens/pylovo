@@ -73,7 +73,8 @@ From ``<INFDB_SOURCE_SCHEMA>.buildings`` pylovo takes the buildings of the postc
 ``Residential``, ``Commercial``, ``Public`` or ``Mixed``. Further rules:
 
 * Buildings with function code ``31001_2523`` (transformer stations in LoD2) are not consumers;
-  they are added to the transformer candidates (:doc:`transformer_data`).
+  with open or manual transformer positions they are added to the transformer candidates
+  (:doc:`transformer_data`).
 * ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` leaves out buildings without street or house number.
 * ``RESIDENTIAL_ONLY_GENERATION: True`` keeps only residential buildings and components.
 * Non-residential buildings that overlap a transformer candidate are removed; so are duplicates

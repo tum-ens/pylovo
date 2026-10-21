@@ -363,6 +363,7 @@ class GridGenerator:
                 f"The grids for the postcode area {self.plz} is already generated "
                 f"for the version {VERSION_ID}."
             )
+        self.prepare_lod2_transformer_stations()
         self.prepare_data_from_config()
         self.prepare_postcodes()
         self.prepare_buildings()
@@ -371,6 +372,24 @@ class GridGenerator:
         self.apply_kmeans_clustering()
         self.position_all_transformers()
         self.install_cables()
+
+    def prepare_lod2_transformer_stations(self):
+        """Add the LoD2 transformer-station buildings of the PLZ to the shared transformer candidates.
+
+        Only in InfDB mode and only when open or manual positions are used: a run without them does not
+        use the candidates. ``pylovo.transformers`` is shared by all PLZ, so the rows are written and
+        committed in a short transaction of their own before the PLZ is generated (the long PLZ
+        transaction would hold their row locks for minutes and could deadlock with a neighbouring PLZ).
+        """
+        if not (USE_INFDB and (USE_OPEN_TRANSFORMER_POSITIONS or USE_MANUAL_TRANSFORMER_POSITIONS)):
+            return
+        transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
+        transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
+        self.dbc.commit_changes()
+        if transformer_candidate_count:
+            self.logger.info(
+                f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
+            )
 
     def prepare_data_from_config(self):
         """
@@ -410,12 +429,6 @@ class GridGenerator:
         INTO: buildings_tem
         """
         if USE_INFDB:
-            transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
-            transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
-            if transformer_candidate_count:
-                self.logger.info(
-                    f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
-                )
             buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
             self.dbc.set_buildings_table(buildings_data)
         else:

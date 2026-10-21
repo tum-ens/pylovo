@@ -21,9 +21,10 @@ Sources of transformer candidates
      - ``pylovo-setup`` (Bavaria) or ``pylovo-import transformers-osm --relation-id <id>``.
    * - LoD2 stations
      - ``lod2/<objectid>``
-     - Added automatically during generation (InfDB mode) from LoD2 buildings with function
-       code ``31001_2523``. If an OSM transformer lies within 3 m or inside the building, that
-       OSM row is flagged ``lod2 = true`` instead of creating a new row.
+     - Added during generation (InfDB mode) from LoD2 buildings with function code ``31001_2523``
+       when open or manual positions are used, in a short transaction before each postcode. If an
+       OSM transformer lies within 3 m or inside the building, that OSM row is flagged
+       ``lod2 = true`` instead of creating a new row.
    * - DSO list
      - ``dso/<source>/<external_id>``
      - ``pylovo-import transformers-dso-csv <file.csv>``.
