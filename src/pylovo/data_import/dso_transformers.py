@@ -25,8 +25,9 @@ def _normalize_source(source: str) -> str:
 def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
     """Read a DSO transformer CSV and mark the rows that cannot be imported.
 
-    Ids and sources are read as text (no ``1001.0`` for a numeric id column with a gap, no ``nan`` for
-    a blank cell, leading zeros are kept). A blank source cell gets the default source ``csv``.
+    Every cell is read as text (no ``1001.0`` for a numeric id column with a gap, no ``nan`` for a blank
+    cell, leading zeros and ids such as ``NA`` are kept). A blank source cell gets the default source ``csv``. A rating
+    must be blank (unknown) or a whole number of kVA above 0, and an id may occur only once per source.
 
     Args:
         csv: Path or file object of the CSV with ``external_id``, ``lon``, ``lat`` and optional
@@ -36,12 +37,12 @@ def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
     Returns:
         DataFrame with ``external_id``, ``lon``, ``lat``, ``transformer_rated_power``, ``source``
         (normalised), ``osm_id`` (``dso/<source>/<external_id>``) and ``problem``: empty for a row that
-        can be imported, otherwise why it cannot.
+        can be imported, otherwise the first reason why it cannot (an unusable rating is set to NaN).
 
     Raises:
         ValueError: If required columns are missing.
     """
-    df = pd.read_csv(csv, dtype={"external_id": str, "source": str})
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         missing_text = ", ".join(sorted(missing))
@@ -53,11 +54,16 @@ def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
             keep_columns.append(column)
     df = df[keep_columns].copy()
 
-    df["external_id"] = df["external_id"].fillna("").str.strip()
+    df["external_id"] = df["external_id"].str.strip()
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    bad_rating = pd.Series(False, index=df.index)
     if "transformer_rated_power" in df.columns:
-        df["transformer_rated_power"] = pd.to_numeric(df["transformer_rated_power"], errors="coerce")
+        text = df["transformer_rated_power"].str.strip()
+        text = text.mask(text.eq(""))                           # blank: unknown rating
+        rating = pd.to_numeric(text, errors="coerce")
+        bad_rating = text.notna() & (rating.isna() | (rating <= 0) | (rating % 1 != 0))
+        df["transformer_rated_power"] = rating.mask(bad_rating)
     else:
         df["transformer_rated_power"] = pd.NA
     if source is not None:
@@ -65,9 +71,11 @@ def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
     elif "source" not in df.columns:
         df["source"] = DEFAULT_SOURCE
 
-    df["source"] = df["source"].fillna(DEFAULT_SOURCE).map(_normalize_source)
+    df["source"] = df["source"].map(_normalize_source)          # a blank source is the default source
     df["osm_id"] = "dso/" + df["source"] + "/" + df["external_id"]
-    df["problem"] = ""
+    df["problem"] = ""                  # the reasons are assigned from the least to the most important
+    df.loc[df["osm_id"].duplicated(keep=False), "problem"] = "duplicate external_id"
+    df.loc[bad_rating, "problem"] = "invalid transformer_rated_power (blank or whole kVA above 0)"
     df.loc[df["lon"].isna() | df["lat"].isna(), "problem"] = "invalid lon/lat"
     df.loc[df["external_id"].eq(""), "problem"] = "empty external_id"
     return df
@@ -86,8 +94,8 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
         and ``osm_id`` (``dso/<source>/<external_id>``).
 
     Raises:
-        ValueError: If required columns are missing or rows have an empty id or invalid coordinates;
-            the message names the row numbers of the file (the header is row 1).
+        ValueError: If required columns are missing or rows have an empty or repeated id, invalid
+            coordinates or an invalid rating; the message names the row numbers of the file (the header is row 1).
     """
     df = parse_transformer_csv(csv_path, source)
     invalid = df[df["problem"] != ""]

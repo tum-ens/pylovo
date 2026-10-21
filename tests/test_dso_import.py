@@ -52,3 +52,53 @@ def test_the_parser_marks_the_rows_instead_of_raising_for_the_api_preview():
     csv = io.BytesIO(b"external_id,lon,lat\nA,11.7,48.0\n,11.8,48.1\nC,,48.2\n")
     df = dso.parse_transformer_csv(csv)
     assert df["problem"].tolist() == ["", "empty external_id", "invalid lon/lat"]
+
+
+def test_duplicate_ids_are_refused_instead_of_the_last_row_winning(tmp_path):
+    csv = "external_id,lon,lat,transformer_rated_power\nST-1,11.7,48.0,400\nST-2,11.8,48.1,\nST-1,11.9,48.2,630\n"
+    with pytest.raises(ValueError, match=r"duplicate external_id in rows \[2, 4\]"):
+        read(tmp_path, csv)
+
+
+def test_ids_that_collide_after_the_source_is_normalised_are_duplicates(tmp_path):
+    csv = "external_id,lon,lat,source\nA,11.7,48.0,My Region\nA,11.8,48.1,my_region\n"
+    with pytest.raises(ValueError, match=r"duplicate external_id in rows \[2, 3\]"):
+        read(tmp_path, csv)
+
+
+def test_the_same_id_in_two_sources_is_fine(tmp_path):
+    df = read(tmp_path, "external_id,lon,lat,source\nA,11.7,48.0,north\nA,11.8,48.1,south\n")
+    assert df["osm_id"].tolist() == ["dso/north/A", "dso/south/A"]
+
+
+@pytest.mark.parametrize("rating", ["400kVA", "0", "-250", "630.7", "n/a"])
+def test_an_unusable_rating_is_refused(tmp_path, rating):
+    csv = f"external_id,lon,lat,transformer_rated_power\nA,11.7,48.0,{rating}\nB,11.8,48.1,400\n"
+    with pytest.raises(ValueError, match=r"invalid transformer_rated_power.* in rows \[2\]"):
+        read(tmp_path, csv)
+
+
+def test_blank_and_whole_number_ratings_are_kept(tmp_path):
+    df = read(tmp_path, "external_id,lon,lat,transformer_rated_power\nA,11.7,48.0,400\nB,11.8,48.1,\nC,11.9,48.2,630.0\nD,12.0,48.3, 250 \n")
+    assert df["transformer_rated_power"].isna().tolist() == [False, True, False, False]
+    assert df["transformer_rated_power"].dropna().astype(int).tolist() == [400, 630, 250]
+
+
+def test_a_file_without_ratings_imports_them_as_unknown(tmp_path):
+    df = read(tmp_path, "external_id,lon,lat\nA,11.7,48.0\n")
+    assert df["transformer_rated_power"].isna().all()
+
+
+def test_every_problem_is_reported_in_one_message(tmp_path):
+    csv = "external_id,lon,lat,transformer_rated_power\n,11.7,48.0,400\nB,,48.1,400\nC,11.9,48.2,x\nD,12.0,48.3,400\nD,12.1,48.4,400\n"
+    with pytest.raises(ValueError) as error:
+        read(tmp_path, csv)
+    message = str(error.value)
+    for expected in ("empty external_id in rows [2]", "invalid lon/lat in rows [3]", "in rows [4]",
+                     "duplicate external_id in rows [5, 6]"):
+        assert expected in message
+
+
+def test_ids_that_look_like_missing_values_are_kept(tmp_path):
+    df = read(tmp_path, "external_id,lon,lat\nNA,11.7,48.0\nnull,11.8,48.1\nNone,11.9,48.2\n")
+    assert df["osm_id"].tolist() == ["dso/csv/NA", "dso/csv/null", "dso/csv/None"]
