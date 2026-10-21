@@ -1593,7 +1593,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "contextily", marker = "extra == 'plots'", specifier = ">=1.6.2" },
+    { name = "contextily", marker = "extra == 'plots'", specifier = ">=1.7.0" },
     { name = "factor-analyzer", specifier = "==0.5.1" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115.0" },
     { name = "flask", marker = "extra == 'legacy-ui'", specifier = ">=3.1.2,<4.0.0" },

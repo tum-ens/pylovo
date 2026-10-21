@@ -115,3 +115,10 @@ def test_tests_workflow_installs_the_extras_the_tests_import():
 def test_citation_file_declares_a_cff_version_that_cffconvert_accepts():
     citation = yaml.safe_load((ROOT / "CITATION.cff").read_text(encoding="utf-8"))
     assert citation["cff-version"] == "1.2.0"  # 1.0.0 fails the validation of cffconvert and GitHub
+
+
+def test_contextily_lower_bound_has_the_headers_argument_of_add_basemap():
+    requirements = [Requirement(requirement) for requirement in PYPROJECT["project"]["optional-dependencies"]["plots"]]
+    contextily = next(requirement for requirement in requirements if requirement.name == "contextily")
+    assert contextily.specifier.contains("1.7.0")
+    assert not contextily.specifier.contains("1.6.2")  # add_basemap(headers=...) exists from 1.7.0
