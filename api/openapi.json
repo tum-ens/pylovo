@@ -2114,7 +2114,7 @@
     },
     "/api/jobs/delete-versions": {
       "post": {
-        "description": "``pylovo-delete --version <ids>``: removes all results of these versions.",
+        "description": "``pylovo-delete version --version <ids>``: removes all results of these versions.",
         "operationId": "delete_versions_api_jobs_delete_versions_post",
         "requestBody": {
           "content": {
