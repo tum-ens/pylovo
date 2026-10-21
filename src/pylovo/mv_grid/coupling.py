@@ -155,13 +155,15 @@ def _trafo_buses(trafo: pd.DataFrame) -> tuple[int, int]:
 # ---------------------------------------------------------------------------------------------- upsized stations
 def station_units(sn_kva: float) -> tuple[float, int]:
     """``(unit kVA, units)`` of a station rating as pylovo builds its transformer (:data:`SINGLE_UNIT_KVA`,
-    :data:`DOUBLE_UNIT_KVA`, else ``int(rating / 630)`` units of 630 kVA, at least one)."""
+    :data:`DOUBLE_UNIT_KVA`, else ``int(rating / 630)`` units, at least one, of ``rating / units`` each, so the
+    units always total the rating)."""
     rating = float(sn_kva)
     if any(math.isclose(rating, r) for r in SINGLE_UNIT_KVA):
         return rating, 1
     if any(math.isclose(rating, r) for r in DOUBLE_UNIT_KVA):
         return rating / 2.0, 2
-    return 630.0, max(1, int(rating / 630.0 + 1e-9))
+    units = max(1, int(rating / 630.0 + 1e-9))
+    return rating / units, units
 
 
 @functools.lru_cache(maxsize=1)
