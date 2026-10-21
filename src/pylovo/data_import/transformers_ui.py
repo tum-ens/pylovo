@@ -302,7 +302,8 @@ class TransformerMapUI:
         <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
         <meta http-equiv="Pragma" content="no-cache">
         <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <style>
         body {
             margin: 0;
@@ -870,13 +871,20 @@ class TransformerMapUI:
         <div id="status"></div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
         let map;
         let transformerLayer;
         let currentPLZ = null;
         let isAddingMode = false;
         let currentPLZDisplay = null;
+
+        // Escape text before it is put into HTML: ids and attributes of transformers can contain any character
+        function escapeHtml(value) {
+            const entities = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'};
+            return String(value ?? '').replace(/[&<>"']/g, character => entities[character]);
+        }
 
         // Initialize map
         function initMap() {
@@ -1025,10 +1033,11 @@ class TransformerMapUI:
                 return;
             }
             
-            // Validate PLZ (German PLZ range: 10000-99999)
-            const plzNum = parseInt(plz);
-            if (plzNum < 10000 || plzNum > 99999) {
-                showStatus('Please enter a valid German PLZ (10000-99999)', 'error');
+            // Validate PLZ (German postcodes 01001-99999; the database keys are integers, so 01067 is 1067)
+            const plzText = plz.trim();
+            const plzNum = parseInt(plzText, 10);
+            if (!/^\d{4,5}$/.test(plzText) || plzNum < 1001 || plzNum > 99999) {
+                showStatus('Please enter a valid German PLZ (01001-99999)', 'error');
                 return;
             }
             
@@ -1054,7 +1063,7 @@ class TransformerMapUI:
                 currentPLZDisplay = plzNum;
                 
                 // Load PLZ bounds (if available in database)
-                const boundsResponse = await fetch(`/api/plz-bounds/${plz}`);
+                const boundsResponse = await fetch(`/api/plz-bounds/${plzNum}`);
                 const boundsData = await boundsResponse.json();
                 
                 if (boundsData.success) {
@@ -1071,7 +1080,7 @@ class TransformerMapUI:
                 }
                 
                 // Load transformer positions
-                const response = await fetch(`/api/transformer-positions/${plz}`);
+                const response = await fetch(`/api/transformer-positions/${plzNum}`);
                 const data = await response.json();
                 
                 if (data.success) {
@@ -1088,7 +1097,7 @@ class TransformerMapUI:
                     // Update transformer count for bulk management
                     updateTransformerCount(data.positions.length);
                     
-                    showStatus(`Loaded ${data.positions.length} transformer positions for PLZ ${plz}`, 'success');
+                    showStatus(`Loaded ${data.positions.length} transformer positions for PLZ ${plzNum}`, 'success');
                 } else {
                     showStatus('Error loading transformer positions: ' + data.error, 'error');
                 }
@@ -1190,18 +1199,18 @@ class TransformerMapUI:
             
             const popupContent = `
                 <div class="transformer-popup">
-                    <h4>Transformer ${position.osm_id} ${isManual ? '<span style="color: #dc3545; font-size: 12px;">(Manual)</span>' : ''}</h4>
-                    <p><strong>OSM ID:</strong> ${position.osm_id || 'N/A'}</p>
-                    <p><strong>Capacity:</strong> <span id="capacity-${position.osm_id}">${position.transformer_rated_power ? position.transformer_rated_power + ' kVA' : 'N/A'}</span></p>
-                    <p><strong>Type:</strong> ${position.type || 'N/A'}</p>
-                    <p><strong>Geometry Type:</strong> ${position.geom_type || 'N/A'}</p>
+                    <h4>Transformer ${escapeHtml(position.osm_id)} ${isManual ? '<span style="color: #dc3545; font-size: 12px;">(Manual)</span>' : ''}</h4>
+                    <p><strong>OSM ID:</strong> ${escapeHtml(position.osm_id || 'N/A')}</p>
+                    <p><strong>Capacity:</strong> <span id="capacity-${escapeHtml(position.osm_id)}">${escapeHtml(position.transformer_rated_power ? position.transformer_rated_power + ' kVA' : 'N/A')}</span></p>
+                    <p><strong>Type:</strong> ${escapeHtml(position.type || 'N/A')}</p>
+                    <p><strong>Geometry Type:</strong> ${escapeHtml(position.geom_type || 'N/A')}</p>
                     <p><strong>Shopping:</strong> ${position.within_shopping ? 'Yes' : 'No'}</p>
                     <div style="margin-top: 10px;">
-                        <select id="edit-capacity-${position.osm_id}" style="width: 100%; margin-bottom: 5px;">
+                        <select id="edit-capacity-${escapeHtml(position.osm_id)}" style="width: 100%; margin-bottom: 5px;">
                             <option value="">Select new capacity...</option>
                         </select>
-                        <button class="btn" onclick="updateTransformerCapacity('${position.osm_id}')" style="margin-right: 5px;">Update Capacity</button>
-                        <button class="btn btn-danger" onclick="deleteTransformer('${position.osm_id}')">Delete</button>
+                        <button class="btn" data-osm-id="${escapeHtml(position.osm_id)}" onclick="updateTransformerCapacity(this.dataset.osmId)" style="margin-right: 5px;">Update Capacity</button>
+                        <button class="btn btn-danger" data-osm-id="${escapeHtml(position.osm_id)}" onclick="deleteTransformer(this.dataset.osmId)">Delete</button>
                     </div>
                 </div>
             `;
@@ -1359,7 +1368,10 @@ class TransformerMapUI:
         // Show status message
         function showStatus(message, type) {
             const statusDiv = document.getElementById('status');
-            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            const box = document.createElement('div');
+            box.className = 'status ' + type;
+            box.textContent = message;          // server errors and exception texts are shown as text, not as HTML
+            statusDiv.replaceChildren(box);
             setTimeout(() => {
                 statusDiv.innerHTML = '';
             }, 5000);
