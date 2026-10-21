@@ -59,7 +59,7 @@
     <label class="field" v-if="runs.length">
       <span>MV run</span>
       <select :value="mv" @change="setRun($event.target.value)">
-        <option v-for="r in runs" :key="r.id" :value="r.id" :title="retiredNote(r)">{{ r.id }}{{ r.comment ? ' · ' + r.comment : '' }}{{ r.retired?.length ? ' · retired' : '' }}</option>
+        <option v-for="r in runs" :key="r.id" :value="r.id" :title="olderNote(r)">{{ r.id }}{{ r.comment ? ' · ' + r.comment : '' }}{{ r.older ? ' · older stage' : '' }}</option>
       </select>
     </label>
     <div class="search">
@@ -183,7 +183,7 @@
       </template>
       <template v-if="summary?.mv">
         <h3>MV run {{ mv }}{{ region?.kind === 'area' ? ` · area ${region.id}` : '' }}</h3>
-        <p class="muted" v-if="retiredNote(run)">{{ retiredNote(run) }}</p>
+        <p class="muted" v-if="olderNote(run)">{{ olderNote(run) }}</p>
         <div class="tiles">
           <div class="tile"><b>{{ fmt.num(summary.mv.areas) }}</b><span>supply areas</span></div>
           <div class="tile"><b>{{ fmt.num(summary.mv.rings) }}</b><span>rings and feeders</span></div>

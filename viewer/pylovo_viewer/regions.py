@@ -9,6 +9,7 @@ import functools
 import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -27,37 +28,37 @@ def _bounds(db: Database, sql: str, params: Any) -> list[float] | None:
 
 
 @functools.cache
-def version_snapshot() -> ModuleType | None:
-    """pylovo's ``version_snapshot`` module, loaded from its file; ``None`` without pylovo next to the viewer.
+def mv_options() -> ModuleType | None:
+    """pylovo's ``mv_grid/options.py``, loaded from its file; ``None`` without pylovo next to the viewer.
 
-    ``import pylovo.version_snapshot`` would run ``pylovo/__init__.py``, which reads the ``.env`` with
-    ``override=True`` and imports the whole library. The module itself has no configuration or database access.
+    ``import pylovo.mv_grid.options`` would run the package ``__init__`` modules, which import the library and its
+    configuration. The module itself has no configuration or database access.
     """
     spec = importlib.util.find_spec("pylovo")   # finds the package without importing it
     folders = list(spec.submodule_search_locations or []) if spec else []
-    path = Path(folders[0]) / "version_snapshot.py" if folders else None
+    path = Path(folders[0]) / "mv_grid" / "options.py" if folders else None
     if path is None or not path.is_file():
         return None
-    module_spec = importlib.util.spec_from_file_location("pylovo_viewer._version_snapshot", path)
+    module_spec = importlib.util.spec_from_file_location("pylovo_viewer._mv_options", path)
     module = importlib.util.module_from_spec(module_spec)
+    sys.modules[module_spec.name] = module      # its dataclasses look their module up while it runs
     module_spec.loader.exec_module(module)
     return module
 
 
-def retired_options(parameters: Any) -> list[str] | None:
-    """The removed options an MV run used (its ``mv_parameters``), as ``pylovo-mv list`` names them.
-
-    An empty list for a current run, ``None`` when the viewer cannot tell. A retired run stays readable.
-    """
-    rules = version_snapshot()
-    if rules is None:
-        return None
+def stage_version(parameters: Any) -> int | None:
+    """The MV stage version an MV run was planned with (from its ``mv_parameters``), ``None`` if not recorded."""
     stored = json.loads(parameters) if isinstance(parameters, str) else dict(parameters or {})
-    return rules.removed_differences(stored, rules.MV_REMOVED, rules.MV_ADDED_LATER)
+    version = stored.get("mv_stage_version")
+    return int(version) if version is not None else None
 
 
 def versions(db: Database, catalog: Catalog) -> list[dict[str, Any]]:
-    """LV versions (newest first) with their counts and MV runs (with their ``retired`` options)."""
+    """LV versions (newest first) with their counts and MV runs.
+
+    A run planned with another MV stage version than pylovo's current one is ``older``: pylovo keeps it read-only
+    and the viewer shows it as stored. ``older`` is false when the viewer cannot tell (no pylovo next to it).
+    """
     if not catalog.has("pylovo.version"):
         return []
     rows = db.query("""SELECT v.version_id, v.version_comment AS comment, v.created_at,
@@ -67,12 +68,14 @@ def versions(db: Database, catalog: Catalog) -> list[dict[str, Any]]:
                        FROM pylovo.version v ORDER BY v.created_at DESC NULLS LAST, v.version_id""")
     runs: dict[str, list[dict[str, Any]]] = {}
     if catalog.has_rows.get("pylovo.mv_variant") and catalog.has("pylovo.mv_grid"):
+        current = getattr(mv_options(), "MV_STAGE_VERSION", None)
         for run in db.query("""SELECT v.version_id, v.mv_variant_id AS id, v.mv_variant_comment AS comment, v.status,
                                       v.created_at, v.finished_at, v.mv_parameters,
                                       (SELECT count(*) FROM pylovo.mv_grid g WHERE g.version_id = v.version_id
                                          AND g.mv_variant_id = v.mv_variant_id) AS areas
                                FROM pylovo.mv_variant v ORDER BY v.created_at DESC NULLS LAST"""):
-            run["retired"] = retired_options(run.pop("mv_parameters"))
+            run["stage_version"] = stage_version(run.pop("mv_parameters"))
+            run["older"] = current is not None and run["stage_version"] != current
             runs.setdefault(run.pop("version_id"), []).append(run)
     for row in rows:
         row["runs"] = runs.get(row["version_id"], [])

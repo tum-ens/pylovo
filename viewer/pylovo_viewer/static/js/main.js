@@ -357,13 +357,13 @@ createApp({
       this.refreshLod2(true);
     },
 
-    /** The newest MV run that is not retired, else the newest. */
+    /** The newest MV run of the current MV stage version, else the newest. */
     defaultRun() {
-      return (this.runs.find((r) => !r.retired?.length) || this.runs[0])?.id || null;
+      return (this.runs.find((r) => !r.older) || this.runs[0])?.id || null;
     },
-    /** Why a run is retired (it used options the MV stage no longer has), or ''. */
-    retiredNote(run) {
-      return run?.retired?.length ? `Retired: planned with options the MV stage no longer has (${run.retired.join(', ')}). Its results are shown as stored.` : '';
+    /** The note on a run of an older MV stage version (read only in pylovo), or ''. */
+    olderNote(run) {
+      return run?.older ? `Planned with MV stage version ${run.stage_version ?? '(not recorded)'}: pylovo keeps it read only, and its results are shown as stored.` : '';
     },
     setRun(mv) {
       this.mv = mv || null;

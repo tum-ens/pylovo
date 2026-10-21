@@ -46,7 +46,7 @@ schemes), `lod2.js` (LoD2 custom layer that draws the mesh of `pylovo_api.lod2`)
   is 127.0.0.1, localhost or ::1 (`create_app(local_only=True)`, against DNS rebinding); a wider `--host` turns
   this off.
 - Read only: no writes, no `pylovo` imports (they load the checkout's `.env` with `override=True`),
-  no `pylovo-*` commands. The one piece of pylovo code the viewer runs is `pylovo/version_snapshot.py`
-  (no configuration, no database), loaded from its file in `regions.py` to tell retired MV runs.
+  no `pylovo-*` commands. The one piece of pylovo code the viewer runs is `pylovo/mv_grid/options.py`
+  (no configuration, no database), loaded from its file in `regions.py` for the current MV stage version.
 - Colours: validated palettes only (see `palette.js`); map styles are MapLibre expressions, not
   colours written into the data.
