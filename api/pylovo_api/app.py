@@ -58,6 +58,7 @@ def create_app(root: Path, allowed_hosts: set[str] | None = None, allow_any_host
     # Region gate: which PLZ have generation input (background worker, see pylovo_api.coverage).
     app.state.coverage = InputCoverage(paths.state_dir / "cache" / "input-coverage.json", jobs=app.state.jobs,
                                        root=paths.root)
+    app.state.jobs.on_finish = app.state.coverage.on_job_finished  # setup, reset and generate change the postcodes
 
     @app.middleware("http")
     async def guard(request: Request, call_next):

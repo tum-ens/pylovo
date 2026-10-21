@@ -194,3 +194,29 @@ def test_last_event_id_that_is_not_a_plain_number_is_ignored(client):
         assert status == 200 and "hello" in body and "event: end" in body, value  # the stream starts at ``after`` = 0
     res = client.get(f"/api/jobs/{job.id}/events", headers={"Last-Event-ID": "0"})
     assert "hello" in res.text and '"text": "$ ' not in res.text  # a valid id resumes after that line
+
+
+# --------------------------------------------------------------------------- finish hook
+def test_the_finish_hook_runs_after_the_job_has_ended_and_may_fail(manager):
+    seen = []
+
+    def hook(job):
+        seen.append((job.status, job.exit_code, job.finished_at is not None))
+        raise RuntimeError("a failing listener must not break the runner")
+
+    manager.on_finish = hook
+    ok = manager.start("generate", "ok", [sys.executable, "-c", "pass"])
+    wait(ok)
+    bad = manager.start("generate", "bad", [sys.executable, "-c", "raise SystemExit(3)"])
+    wait(bad)
+    unstartable = manager.start("generate", "unstartable", ["/nonexistent/pylovo-nothing"])
+    wait(unstartable)
+    deadline = time.time() + 5
+    while len(seen) < 3 and time.time() < deadline:
+        time.sleep(0.05)
+    assert seen == [("succeeded", 0, True), ("failed", 3, True), ("failed", None, True)]
+    assert (ok.status, bad.status) == ("succeeded", "failed")
+
+
+def test_the_region_gate_hears_about_finished_jobs(client):
+    assert client.app.state.jobs.on_finish == client.app.state.coverage.on_job_finished

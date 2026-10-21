@@ -12,6 +12,7 @@ to the database may run at a time.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -22,12 +23,15 @@ import threading
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from pylovo_api import job_outcomes
+
+log = logging.getLogger(__name__)
 
 # Console script -> module with a ``main()`` (fallback when the script is not on disk).
 SCRIPT_MODULES = {
@@ -158,6 +162,7 @@ class JobManager:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.RLock()
         self._edit_leases = 0  # load edits being written (see db_edit_lease)
+        self.on_finish: Callable[[Job], None] | None = None  # called after every job has ended (set by the app)
         self._load_history()
 
     # ------------------------------------------------------------------ queries
@@ -317,6 +322,11 @@ class JobManager:
                                                          encoding="utf-8")
         except OSError:
             pass
+        if self.on_finish:
+            try:
+                self.on_finish(job)
+            except Exception:  # noqa: BLE001 - a listener must not break the job runner
+                log.exception("The finish hook failed for job %s", job.id)
 
     def _append(self, job: Job, text: str, level: str | None = None) -> None:
         if level is None:
