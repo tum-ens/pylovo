@@ -13,6 +13,16 @@ authors:
 title: "pylovo"
 type: software
 license: MIT
-version: 0.2.0
-date-released: 2025-01-14
+version: 1.0.0
+date-released: 2026-10-21
 url: "https://github.com/tum-ens/pylovo"
+repository-code: "https://github.com/tum-ens/pylovo"
+abstract: "pylovo (PYthon tool for LOw-VOltage distribution grid generation) generates synthetic low-voltage distribution grids for German postcode areas from open data. It places transformers, routes radial feeders along the streets, connects every supplied building, sizes all equipment with coincidence factors and voltage-drop limits, and checks every grid with a power flow. The grids are stored as pandapower networks and as GIS tables in PostgreSQL/PostGIS. An optional stage plans the medium-voltage grid of a low-voltage version."
+keywords:
+  - power grid
+  - synthetic grid
+  - low voltage
+  - distribution grid
+  - grid generation
+  - energy systems
+  - pandapower
