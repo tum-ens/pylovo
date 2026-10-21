@@ -108,6 +108,45 @@ def test_version_insert_runs_no_ddl():
     assert [query.split()[0] for query in client.cur.queries] == ["INSERT", "SELECT"]
 
 
+@pytest.mark.parametrize("worker, level", [(False, "WARNING"), (True, "DEBUG")])
+def test_an_old_snapshot_is_reported_by_the_main_process_only(monkeypatch, caplog, worker, level):
+    """The PLZ workers repeat the version check of the main process: a 12-PLZ run printed the warning 13 times."""
+    import logging
+    import multiprocessing
+
+    from pylovo.database.preprocessing_mixin import PreprocessingMixin
+
+    from pylovo.version_snapshot import UNKNOWN
+
+    old = copy.deepcopy(PreprocessingMixin._generation_parameters_snapshot(object.__new__(PreprocessingMixin)))
+    *parents, key = next(path for path, legacy in ADDED_LATER.items() if legacy is UNKNOWN)
+    node = old
+    for name in parents:
+        node = node[name]
+    del node[key]
+
+    class Cursor:
+        rowcount = 0
+
+        def execute(self, query, params=None):
+            pass
+
+        def fetchone(self):
+            return (json.dumps(old),)
+
+    class Connection:
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(multiprocessing, "parent_process", lambda: object() if worker else None)
+    client = object.__new__(PreprocessingMixin)
+    client.cur, client.conn, client.logger = Cursor(), Connection(), logging.getLogger("old-snapshot-test")
+    with caplog.at_level(logging.DEBUG, logger="old-snapshot-test"):
+        client.insert_version_if_not_exists()
+    (record,) = [record for record in caplog.records if "predates the parameters" in record.getMessage()]
+    assert record.levelname == level
+
+
 def two_unit_net(parallel: int) -> pp.pandapowerNet:
     net = pp.create_empty_network()
     hv, lv = pp.create_bus(net, 20), pp.create_bus(net, 0.4)

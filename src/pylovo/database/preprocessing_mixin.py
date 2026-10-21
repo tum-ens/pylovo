@@ -2,6 +2,7 @@
 buildings, transformers and ways in the working tables ``buildings_tem`` and ``ways_tem``."""
 
 import json
+import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -192,7 +193,9 @@ class PreprocessingMixin(BaseMixin):
                     "Increment VERSION_ID before generating grids with the changed configuration."
                 )
             if not_recorded:
-                self.logger.warning(
+                # The PLZ workers of generate_grid_for_multiple_plz repeat the check of the main process: warn once.
+                log = self.logger.warning if multiprocessing.parent_process() is None else self.logger.debug
+                log(
                     f"The stored snapshot of version {VERSION_ID} predates the parameters "
                     f"{', '.join(not_recorded)}; their values used for its existing grids are unknown."
                 )
