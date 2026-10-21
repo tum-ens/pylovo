@@ -40,7 +40,7 @@ createApp({
       fatal: null, info: null, db: null, databases: [], meta: [], groupMeta: [], lod2Available: false, mvVariants: false,
       versions: [],
       version: null, mv: null, region: null, layers: {}, groups: {}, zoom: 5,
-      theme: stored('theme', 'auto'), basemap: 'osm', d3: true,
+      theme: stored('theme', 'auto'), basemap: 'streets', d3: true,
       tab: 'layers', panel: true, legendOpen: true, help: false,
       search: { text: '', hits: [], open: false, index: 0 }, tooltip: null, inspector: null,
       summary: null, postcodes: [], areas: [], regionFilter: '', lod2: null, toast: null, tick: 0, themeTick: 0,
@@ -108,7 +108,7 @@ createApp({
   },
   watch: {
     theme(value) { store('theme', value); this.applyTheme(); },
-    // not remembered between visits (the URL keeps it), so a new visit starts on OpenStreetMap
+    // not remembered between visits (the URL keeps it), so a new visit starts on Streets
     basemap() { this.map?.setBasemap(this.effectiveBasemap()); this.saveHash(); },
   },
   async mounted() {
@@ -664,7 +664,7 @@ createApp({
         const modes = this.meta.filter((m) => this.layers[m.id]?.on && this.layers[m.id].mode && this.layers[m.id].mode !== defaultMode(m.id))
           .map((m) => `${m.id}:${this.layers[m.id].mode}`);
         const parts = { db: this.db, v: this.version, mv: this.mv, r: this.region ? `${this.region.kind}:${this.region.id}` : null,
-          g: groups.join(','), l: on.join(','), m: modes.join(','), b: this.basemap !== 'osm' ? this.basemap : null, '3d': this.d3 ? null : '0',
+          g: groups.join(','), l: on.join(','), m: modes.join(','), b: this.basemap !== 'streets' ? this.basemap : null, '3d': this.d3 ? null : '0',
           c: [v.center[0].toFixed(5), v.center[1].toFixed(5), v.zoom.toFixed(2), Math.round(v.pitch), Math.round(v.bearing)].join(',') };
         const hash = Object.entries(parts).filter(([k, x]) => x !== null && x !== undefined && (x !== '' || k === 'g' || k === 'l'))
           .map(([k, x]) => `${k}=${encodeURIComponent(x)}`).join('&');

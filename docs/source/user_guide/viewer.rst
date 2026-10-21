@@ -95,7 +95,7 @@ stations and highest (n-1) loading to the facts.
 and buildings are coloured by grid. The legend shows the categories of the loaded data with their
 counts. Colours that only tell grids, rings or supply areas apart have no legend entry.
 
-**3D.** The map starts in 3D, tilted by 25°, on the OpenStreetMap basemap (another basemap is kept
+**3D.** The map starts in 3D, tilted by 25°, on the Streets basemap of OpenFreeMap (another basemap is kept
 in the address bar, not between visits). The *3D* button switches
 to the flat map and back; buildings are extruded by their height in 3D. With a
 ``citydb`` schema (3DCityDB v5, see :doc:`input_data`) the buildings in view are drawn as their LoD2
@@ -206,7 +206,7 @@ Data and limits
   most 60,000 features per request and says so when it is cut.
 * The server keeps loaded data in memory. After a new generation or MV run, the reload button in
   the top bar reads everything from the database again.
-* The browser loads MapLibre GL JS, Vue, the fonts and the basemaps (OpenStreetMap by default,
-  OpenFreeMap) from the internet. The data layers also work without a basemap (*Basemap: No
+* The browser loads MapLibre GL JS, Vue, the fonts and the basemaps (OpenFreeMap, Streets by default,
+  and the OpenStreetMap tiles) from the internet. The data layers also work without a basemap (*Basemap: No
   basemap*).
 * LoD2 models need WebGL2; without it the buildings stay extruded footprints.
