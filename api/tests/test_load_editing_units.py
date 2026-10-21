@@ -357,6 +357,32 @@ def test_validate_operating_point_moves_the_source_voltage_to_the_lv_reference()
     assert le.validate_operating_point(Fake(converges=False), 0.9, 1.1, 0.96).status == "not_converged"
 
 
+def test_a_lock_timeout_inside_the_write_transaction_is_a_locked_conflict():
+    import psycopg2
+
+    class Conn:
+        committed = rolled_back = 0
+
+        def commit(self):
+            self.committed += 1
+
+        def rollback(self):
+            self.rolled_back += 1
+
+    class Cursor:
+        def execute(self, *args):
+            pass
+
+    db = type("Db", (), {"conn": Conn(), "cur": Cursor()})()
+    editor = le.LoadEditor(db)
+    with pytest.raises(le.LoadEditConflict) as caught, editor._write():
+        raise psycopg2.errors.LockNotAvailable("canceling statement due to lock timeout")
+    assert caught.value.status == 409 and caught.value.as_dict()["code"] == "locked"
+    assert db.conn.committed == 0 and db.conn.rolled_back >= 1
+    with pytest.raises(ValueError), editor._write():  # every other error is passed on
+        raise ValueError("boom")
+
+
 # --------------------------------------------------------------------------- UI: lease, request models, CSV
 def test_job_lease_rules(tmp_path):
     from pylovo_api.jobs import Job, JobConflict, JobManager

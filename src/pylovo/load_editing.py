@@ -1324,6 +1324,8 @@ class LoadEditor:
     # ------------------------------------------------------------------ writing
     @contextlib.contextmanager
     def _write(self, lock_timeout: str = "2s"):
+        import psycopg2
+
         cur = self.db.cur
         self._end_read()
         try:
@@ -1331,6 +1333,10 @@ class LoadEditor:
             cur.execute("SET LOCAL statement_timeout = '60s'")
             yield cur
             self.db.conn.commit()
+        except psycopg2.errors.LockNotAvailable as exc:  # e.g. the PLZ-level analysis row of another edit
+            self.db.conn.rollback()
+            raise LoadEditConflict("locked", "Another edit or a pylovo job is writing this PLZ right now. "
+                                   "Try again in a moment.") from exc
         except Exception:
             self.db.conn.rollback()
             raise
