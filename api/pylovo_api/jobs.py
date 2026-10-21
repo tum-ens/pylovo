@@ -43,6 +43,10 @@ SCRIPT_MODULES = {
     "pylovo-import": "pylovo.cli.import_data",
 }
 
+#: Exit code of ``pylovo-generate`` for a run that finished but left PLZ failed or without grids
+#: (``pylovo.cli.generate.EXIT_PLZ_NOT_GENERATED``, which the API does not import).
+GENERATE_PARTIAL_EXIT_CODE = 4
+
 MAX_LINES_IN_MEMORY = 50_000
 HISTORY_LIMIT = 60
 
@@ -285,9 +289,10 @@ class JobManager:
             self._append(job, f"Could not run the command: {type(exc).__name__}: {exc}", "error")
             self._finish(job, "failed", None)
             return
-        # The CLIs exit with 0 even when they skipped a region after logging an error; the UI
-        # shows such runs as "succeeded" with an error count instead of hiding the errors.
-        status = "cancelled" if job.cancel_requested else ("succeeded" if code == 0 else "failed")
+        # pylovo-generate ends with a code of its own when it finished but skipped PLZ after logging an
+        # error; the UI shows such runs as "succeeded" with an error count (the per-PLZ errors come from the log).
+        succeeded = (0, GENERATE_PARTIAL_EXIT_CODE) if job.kind == "generate" else (0,)
+        status = "cancelled" if job.cancel_requested else ("succeeded" if code in succeeded else "failed")
         self._finish(job, status, code)
 
     def _execute(self, job: Job, env: dict[str, str]) -> int | None:

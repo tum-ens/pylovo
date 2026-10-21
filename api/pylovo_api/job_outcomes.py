@@ -1,7 +1,7 @@
 """Per-PLZ outcomes of ``pylovo-generate`` jobs, parsed from the log.
 
-``pylovo-generate`` exits with 0 even when it skipped a PLZ after an error, so the exit code
-alone does not tell what happened. The generator logs one of these per PLZ
+``pylovo-generate`` exits with 4 (``GENERATE_PARTIAL_EXIT_CODE``, still a succeeded job) when it skipped
+a PLZ after an error, so the exit code alone does not tell which PLZ. The generator logs one of these per PLZ
 (``GridGenerator.generate_grid_for_single_plz`` / ``generate_grid_for_multiple_plz``):
 
 * ``-------------------- start <plz> ----`` / ``… end <plz> ----``
