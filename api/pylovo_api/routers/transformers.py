@@ -175,28 +175,6 @@ def osm_relations(q: str = Query(..., min_length=2, max_length=120)) -> list[dic
 
 
 # --------------------------------------------------------------------------- DSO CSV
-def _read_dso_csv(raw: bytes, source: str | None) -> pd.DataFrame:
-    """Parse a DSO CSV like ``pylovo.data_import.dso_transformers`` does (for the preview)."""
-    df = pd.read_csv(io.BytesIO(raw))
-    missing = {"external_id", "lon", "lat"} - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing required column(s): {', '.join(sorted(missing))}")
-    df["external_id"] = df["external_id"].astype(str).str.strip()
-    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
-    if "transformer_rated_power" in df.columns:
-        df["transformer_rated_power"] = pd.to_numeric(df["transformer_rated_power"], errors="coerce")
-    else:
-        df["transformer_rated_power"] = pd.NA
-    if source:
-        df["source"] = source
-    elif "source" not in df.columns:
-        df["source"] = "csv"
-    df["source"] = df["source"].map(lambda s: re.sub(r"[^a-z0-9_.-]+", "_", str(s or "csv").strip().lower()) or "csv")
-    df["osm_id"] = "dso/" + df["source"] + "/" + df["external_id"]
-    return df
-
-
 def _upload_path(upload_id: str):
     if not re.fullmatch(r"[0-9a-f]{12}", upload_id or ""):
         raise HTTPException(400, "Invalid upload id")
@@ -212,11 +190,13 @@ async def dso_preview(file: Annotated[UploadFile, File()], source: str | None = 
     raw = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "The CSV is larger than 20 MB")
+    from pylovo.data_import.dso_transformers import parse_transformer_csv    # the parser of pylovo-import
+
     try:
-        df = _read_dso_csv(raw, source)
+        df = parse_transformer_csv(io.BytesIO(raw), source or None)
     except (ValueError, pd.errors.ParserError, UnicodeDecodeError) as exc:
         raise HTTPException(400, f"Cannot read the CSV: {exc}") from exc
-    invalid = df[df["external_id"].eq("") | df["lon"].isna() | df["lat"].isna()]
+    invalid = df[df["problem"] != ""]          # the rows pylovo-import would refuse
     out_of_range = df[(df["lon"].abs() > 180) | (df["lat"].abs() > 90)]
     upload_id = uuid.uuid4().hex[:12]
     (paths().uploads_dir / f"{upload_id}.csv").write_bytes(raw)
@@ -238,7 +218,7 @@ async def dso_preview(file: Annotated[UploadFile, File()], source: str | None = 
         "sources": sorted(df["source"].unique().tolist()),
         "existing_ids": existing, "with_capacity": int(valid["transformer_rated_power"].notna().sum()),
         "capacities": [{"kva": int(k), "count": int(v)} for k, v in capacities.items()],
-        "columns": list(df.columns),
+        "columns": [column for column in df.columns if column != "problem"],
         "sample": valid.head(8)[["osm_id", "lon", "lat", "transformer_rated_power"]].astype(object)
                        .where(valid.head(8)[["osm_id", "lon", "lat", "transformer_rated_power"]].notna(), None)
                        .to_dict("records"),

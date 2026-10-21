@@ -22,22 +22,26 @@ def _normalize_source(source: str) -> str:
     return source or DEFAULT_SOURCE
 
 
-def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataFrame:
-    """Read and validate a DSO transformer CSV and add the generated ``osm_id``.
+def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
+    """Read a DSO transformer CSV and mark the rows that cannot be imported.
+
+    Ids and sources are read as text (no ``1001.0`` for a numeric id column with a gap, no ``nan`` for
+    a blank cell, leading zeros are kept). A blank source cell gets the default source ``csv``.
 
     Args:
-        csv_path: CSV file with ``external_id``, ``lon``, ``lat`` and optional
+        csv: Path or file object of the CSV with ``external_id``, ``lon``, ``lat`` and optional
             ``transformer_rated_power`` and ``source`` columns.
-        source: Normalised source label that overrides the ``source`` column.
+        source: Source label that overrides the ``source`` column.
 
     Returns:
         DataFrame with ``external_id``, ``lon``, ``lat``, ``transformer_rated_power``, ``source``
-        and ``osm_id`` (``dso/<source>/<external_id>``).
+        (normalised), ``osm_id`` (``dso/<source>/<external_id>``) and ``problem``: empty for a row that
+        can be imported, otherwise why it cannot.
 
     Raises:
-        ValueError: If required columns are missing or rows have an empty id or invalid coordinates.
+        ValueError: If required columns are missing.
     """
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv, dtype={"external_id": str, "source": str})
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         missing_text = ", ".join(sorted(missing))
@@ -49,7 +53,7 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
             keep_columns.append(column)
     df = df[keep_columns].copy()
 
-    df["external_id"] = df["external_id"].astype(str).str.strip()
+    df["external_id"] = df["external_id"].fillna("").str.strip()
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
     if "transformer_rated_power" in df.columns:
@@ -61,16 +65,37 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
     elif "source" not in df.columns:
         df["source"] = DEFAULT_SOURCE
 
-    invalid = df[df["external_id"].eq("") | df["lon"].isna() | df["lat"].isna()]
-    if not invalid.empty:
-        raise ValueError(
-            "CSV contains rows with empty external_id or invalid lon/lat values. "
-            f"Invalid row numbers: {list(invalid.index + 2)}"
-        )
-
-    df["source"] = df["source"].map(_normalize_source)
-    df["osm_id"] = "dso/" + df["source"] + "/" + df["external_id"].astype(str)
+    df["source"] = df["source"].fillna(DEFAULT_SOURCE).map(_normalize_source)
+    df["osm_id"] = "dso/" + df["source"] + "/" + df["external_id"]
+    df["problem"] = ""
+    df.loc[df["lon"].isna() | df["lat"].isna(), "problem"] = "invalid lon/lat"
+    df.loc[df["external_id"].eq(""), "problem"] = "empty external_id"
     return df
+
+
+def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataFrame:
+    """Read a DSO transformer CSV (:func:`parse_transformer_csv`) and refuse it if a row cannot be imported.
+
+    Args:
+        csv_path: CSV file with ``external_id``, ``lon``, ``lat`` and optional
+            ``transformer_rated_power`` and ``source`` columns.
+        source: Normalised source label that overrides the ``source`` column.
+
+    Returns:
+        DataFrame with ``external_id``, ``lon``, ``lat``, ``transformer_rated_power``, ``source``
+        and ``osm_id`` (``dso/<source>/<external_id>``).
+
+    Raises:
+        ValueError: If required columns are missing or rows have an empty id or invalid coordinates;
+            the message names the row numbers of the file (the header is row 1).
+    """
+    df = parse_transformer_csv(csv_path, source)
+    invalid = df[df["problem"] != ""]
+    if not invalid.empty:
+        reasons = ", ".join(f"{reason} in rows {[int(i) + 2 for i in rows.index]}"
+                            for reason, rows in invalid.groupby("problem"))
+        raise ValueError(f"The CSV has rows that cannot be imported: {reasons}")
+    return df.drop(columns="problem")
 
 
 def import_dso_transformers_csv(csv_path: str | Path, source: str | None = None, replace_source: bool = False) -> int:
