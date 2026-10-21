@@ -296,7 +296,7 @@ class MvParameters:
         return (AUTO_BASE_KV, AUTO_DENSE_KV) if self.auto_voltage else (float(self.vn_kv),)
 
     def district_kv(self, density_mva_km2: float | None) -> float:
-        """The nominal voltage of a district with the given installed density in MVA/km² (DESIGN §4.6).
+        """The nominal voltage of a district with the given installed density in MVA/km².
 
         With ``auto``: 10 kV when the density is at least ``mv_10kv_min_density_mva_km2``, else 20 kV (also without
         a finite density, e.g. a district without area); otherwise ``MV_NOMINAL_VOLTAGE_KV``. The stage decides by

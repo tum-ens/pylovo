@@ -1,4 +1,4 @@
-"""Electrical checks of one MV district with pandapower (DESIGN §5): design net, snapshot cases, criteria, repair
+"""Electrical checks of one MV district with pandapower: design net, snapshot cases, criteria, repair
 loop, HV/MV transformer sizing, stored net with a fixed OLTC tap and the voltage budget of every station.
 
 The module builds MV nets directly with pandapower (not through ``IElectricalBackend``, whose transformer specs are
@@ -75,7 +75,7 @@ STATION_TRANSFORMERS: tuple[tuple[float, float, float], ...] = ((250.0, 6.0, 1.4
                                                                (630.0, 6.0, 1.206))
 #: Comparison tolerance of the criteria (p.u. for voltages, percent for loadings).
 TOLERANCE: float = 1e-6
-#: Node roles whose node has no (n-1) requirement (DESIGN §5.3).
+#: Node roles whose node has no (n-1) requirement.
 NOT_N1_ROLES: frozenset[str] = frozenset({"stub"})
 #: Ring kinds (``RingPlan.kind``) that are (n-1) secure.
 N1_SECURE_KINDS: frozenset[str] = frozenset({"ring", "dedicated"})
@@ -222,7 +222,7 @@ def _ring_exits(plan: TopologyPlan, busbar: int) -> dict[int, str]:
 def n1_nodes(inp: DistrictInput, plan: TopologyPlan) -> set[int]:
     """Node keys with an (n-1) requirement: the path members of rings and 2-leg dedicated feeders.
 
-    Stub nodes and busbar radials have none (DESIGN §5.3).
+    Stub nodes and busbar radials have none.
     """
     out: set[int] = set()
     for ring in plan.rings:
@@ -261,7 +261,7 @@ def _load_arrays(inp: DistrictInput, keys: Sequence[int]) -> tuple[np.ndarray, n
     """Installed kW and units per category (k, 4) and fixed kW (k,) of the node keys (joints: zeros).
 
     MV customers carry only their fixed load (``p_fixed_kw`` = g_c x installed); their category statistics are
-    never pooled into the coincidence law again (DESIGN §3.5).
+    never pooled into the coincidence law again.
     """
     nodes = inp.nodes
     installed = np.zeros((len(keys), len(coincidence.INSTALLED_COLUMNS)))
@@ -280,7 +280,7 @@ def _load_arrays(inp: DistrictInput, keys: Sequence[int]) -> tuple[np.ndarray, n
 
 
 def node_loads(inp: DistrictInput, plan: TopologyPlan) -> pd.DataFrame:
-    """Feeder-proportional loads of the stations and MV customers of the net (DESIGN §5.2).
+    """Feeder-proportional loads of the stations and MV customers of the net.
 
     Per feeder set F and category c, ``u_c(F) = coincident_c(I_F, N_F, g) / I_c(F)`` and ``P_station = Σ_c u_c(F) ·
     I_station,c``; customers keep ``p_fixed_kw``; so the loads of F sum to the coincident load of F. Normal case:
@@ -316,7 +316,7 @@ def node_loads(inp: DistrictInput, plan: TopologyPlan) -> pd.DataFrame:
 
 def district_load_kw(inp: DistrictInput, plan: TopologyPlan | None = None) -> float:
     """Coincident load of all district nodes (stations and customers, dedicated ones included; excluded HV
-    customers not): the category law on the summed statistics plus the fixed customer loads (DESIGN §4.6).
+    customers not): the category law on the summed statistics plus the fixed customer loads.
 
     Never the sum of feeder heads (that overstates the district peak).
     """
@@ -385,7 +385,7 @@ def _set_column(df: pd.DataFrame, column: str, index: Sequence[int], values: Seq
 
 
 def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFAULT_EPSG) -> pp.pandapowerNet:
-    """The MV-only design net of a district in the load-case state (DESIGN §5.1).
+    """The MV-only design net of a district in the load-case state.
 
     Args:
         inp: The district input (nodes, parameters, LV version values).
@@ -516,7 +516,7 @@ def _column(df: pd.DataFrame, column: str, fallback: pd.Series) -> pd.Series:
 
 def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: float | None = None
              ) -> pp.pandapowerNet:
-    """A copy of ``net`` set to one snapshot case (DESIGN §5.2); shared by the main path and ``couple``.
+    """A copy of ``net`` set to one snapshot case; shared by the main path and ``couple``.
 
     - ``load``: normal loads, normal topology (normally-open switches open);
     - ``n1a`` / ``n1b``: (n-1) loads (``p_n1_mw``, ``q_n1_mvar``), every line with ``exit`` ``a`` / ``b`` out of
@@ -619,7 +619,7 @@ def run_cases(net: pp.pandapowerNet, inp: DistrictInput, plan: TopologyPlan) -> 
 
 # ---------------------------------------------------------------------------------------------- criteria
 def check(cases: Mapping[str, CaseResult], inp: DistrictInput, plan: TopologyPlan) -> list[Violation]:
-    """The violated criteria of the cases (DESIGN §5.3), ordered by case, element and key.
+    """The violated criteria of the cases, ordered by case, element and key.
 
     - ``load``: every MV node ``vm >= busbar_vm_pu - MV_MAX_VOLTAGE_DROP_PERCENT/100``; lines
       ``loading <= 100 · MV_LINE_PLANNING_UTILIZATION``;
@@ -799,7 +799,7 @@ def _upgradable(line: LinePlan, vn_kv: float) -> bool:
 
 def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan, violations: Sequence[Violation]
            ) -> tuple[TopologyPlan, list[dict]]:
-    """One round of the repair loop (DESIGN §5.4): applies all non-conflicting actions, at most one per ring.
+    """One round of the repair loop: applies all non-conflicting actions, at most one per ring.
 
     Larger conductors come before topology changes, as in Ding0's reinforcement (``topology.upgrade_lines``, the
     pandapower conductors of the kind by ampacity, :func:`pylovo.mv_grid.equipment.upgrade_ladder`). In this order:
@@ -1068,7 +1068,7 @@ def substation_load(inp: DistrictInput, plan: TopologyPlan) -> float:
 
 
 def size_substation(inp: DistrictInput, plan: TopologyPlan) -> tuple[int, float, str]:
-    """``(units, unit_mva, sizing)`` of the HV/MV transformers (DESIGN §4.6, ``equipment.size_hv_mv``).
+    """``(units, unit_mva, sizing)`` of the HV/MV transformers (``equipment.size_hv_mv``).
 
     ``S_load`` is the coincident load of all district nodes (never the sum of feeder heads).
     """
@@ -1100,7 +1100,7 @@ def _hv_mv_type(params: Any, vn_kv: float, unit_mva: float) -> HvMvType:
 
 def build_stored_net(design_net: pp.pandapowerNet, units: int, unit_mva: float, inp: DistrictInput
                      ) -> tuple[pp.pandapowerNet, int]:
-    """The stored net: the design net with the HV side and a fixed OLTC tap (DESIGN §5.5).
+    """The stored net: the design net with the HV side and a fixed OLTC tap.
 
     The ext_grid of the MV busbar is replaced by an HV bus (``HV busbar <substation_id>``, ``kind`` ``hv_busbar``,
     ``etrago_bus_id`` the eTraGo 110 kV bus of the substation or missing) with ``ext_grid(vm_pu = 1.0)`` and ``units`` rows ``HV/MV transformer 1..n`` of the sized type (its values are
@@ -1186,7 +1186,7 @@ def _vm(cases: Mapping[str, CaseResult], names: Sequence[str], how: str) -> pd.S
 
 def station_budgets(inp: DistrictInput, plan: TopologyPlan, cases: Mapping[str, CaseResult]
                     ) -> dict[int, StationBudget]:
-    """Voltage budget and MV/LV off-load tap of every station (DESIGN §5.6), keyed by node key.
+    """Voltage budget and MV/LV off-load tap of every station, keyed by node key.
 
     Per station with the stored LV requirement ``r = lv_design_source_vm_pu`` (the MV voltage that puts its LV busbar
     at ``lv_reference_voltage_pu`` at its own coincident load, tap 0)::

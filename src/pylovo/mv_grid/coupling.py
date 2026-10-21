@@ -1,4 +1,4 @@
-"""Coupled MV+LV checks of a stored MV variant: ``pylovo-mv couple`` and the coupled export (DESIGN §5.7).
+"""Coupled MV+LV checks of a stored MV variant: ``pylovo-mv couple`` and the coupled export.
 
 The main path of the MV stage estimates the LV busbar voltage of every station analytically (the voltage budget of
 :func:`pylovo.mv_grid.electrical.station_budgets`). This module verifies that estimate with the stored LV nets and
@@ -57,7 +57,7 @@ from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStage
 
 logger = logging.getLogger(__name__)
 
-#: Memory of one coupling worker (GB): the LV frames of a district and the merged net (DESIGN §1.4).
+#: Memory of one coupling worker (GB): the LV frames of a district and the merged net.
 WORKER_GB: float = 1.0
 #: Default number of coupling workers (``pylovo-mv couple --jobs``).
 DEFAULT_JOBS: int = 2
@@ -129,8 +129,7 @@ def _min_line_length(lines: pd.DataFrame) -> pd.DataFrame:
 
 
 def operating_busbar_vm(params: MvParameters) -> float:
-    """Busbar voltage of the coupled nets: the lower edge of the OLTC band (``busbar_vm_pu - busbar_band_pu``,
-    DESIGN §5.6, §5.7)."""
+    """Busbar voltage of the coupled nets: the lower edge of the OLTC band (``busbar_vm_pu - busbar_band_pu``)."""
     return float(params.busbar_vm_pu) - float(params.busbar_band_pu)
 
 
@@ -233,7 +232,7 @@ def upsized_ratings(stations: pd.DataFrame) -> dict[int, float]:
 def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, tap: int, *,
                        busbar_loads: Mapping[str, float] | None = None,
                        power_factor: float = 1.0) -> dict[str, float]:
-    """The LV verdict of one station at its design point (DESIGN §5.7 step 2); ``lv_net`` is not changed.
+    """The LV verdict of one station at its design point; ``lv_net`` is not changed.
 
     Lines shorter than :data:`MIN_LINE_KM` get that length in the check's copy. The MV side (ext_grid) at
     ``vm_low``, the station transformer at ``tap``, the stored station-coincident LV loads and fixed station-busbar
@@ -366,7 +365,7 @@ def _concat(parts: list[pd.DataFrame]) -> pd.DataFrame:
 
 def couple_lv_nets(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, dict[str, pd.DataFrame]]],
                    mv_vn_kv: float) -> pp.pandapowerNet:
-    """The merged MV+LV net: the LV nets fused at their MV node buses (bulk concat with index offsets, DESIGN §5.7).
+    """The merged MV+LV net: the LV nets fused at their MV node buses (bulk concat with index offsets).
 
     The MV part comes first (:func:`mv_part`: HV side removed, ideal slack at the busbar), so its indices, switch
     elements and custom columns stay valid. Per coupled station: the MV station-equivalent load (the load at the
@@ -482,7 +481,7 @@ def mv_feeders(net: pp.pandapowerNet, *, include_open: bool = False) -> pd.Serie
 
 
 def coupled_scaling(loads: pd.DataFrame, feeder_of_grid: Mapping[int, int], g: Mapping[str, float]) -> np.ndarray:
-    """Load scaling per row of an LV load table so each MV feeder carries pylovo's coincident load (DESIGN §5.7).
+    """Load scaling per row of an LV load table so each MV feeder carries pylovo's coincident load.
 
     Per feeder F and category c over the LV loads of the stations of F:
     ``scaling(F, c) = coincident_kw(Σ max_p_mw · 1000, Σ load_units, g_c) / (Σ p_mw · 1000)``, the category law of
@@ -573,7 +572,7 @@ def scale_lv_loads(net: pp.pandapowerNet, g: Mapping[str, float], *, include_ope
 
 
 def busbar_customer_loads(stations: pd.DataFrame) -> dict[int, dict[str, float]]:
-    """The fixed load per category of the station-busbar customers of each station (DESIGN §3.5).
+    """The fixed load per category of the station-busbar customers of each station.
 
     Args:
         stations: Station rows with ``grid_result_id`` and ``load_stats`` (a dict or its JSON text, as stored in
@@ -596,7 +595,7 @@ def busbar_customer_loads(stations: pd.DataFrame) -> dict[int, dict[str, float]]
 
 def add_busbar_customers(net: pp.pandapowerNet, loads: Mapping[int, Mapping[str, float]],
                          power_factor: float) -> float:
-    """Add the station-busbar customers as fixed loads at the LV busbar of their coupled station (DESIGN §3.5, §5.7).
+    """Add the station-busbar customers as fixed loads at the LV busbar of their coupled station.
 
     One load per station and category at the LV side of the station transformer (the ``trafo`` rows with the
     station's ``grid_result_id``): ``p_mw = kW / 1000``, ``q_mvar = p_mw * tan(arccos(power_factor))``, named
@@ -658,7 +657,7 @@ def build_coupled_net(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, 
 
 # ---------------------------------------------------------------------------------------------- operating point
 def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters) -> pd.DataFrame:
-    """The merged operating point (DESIGN §5.7 step 4): the load case on a copy of the coupled net
+    """The merged operating point: the load case on a copy of the coupled net
     (``electrical.case_net``) with the busbar at its band edge (:func:`operating_busbar_vm`).
 
     Returns:
@@ -752,7 +751,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
                     lv_nets: Iterable[tuple[int, pp.pandapowerNet]], params: MvParameters, lv: LvVersionParameters,
                     *, vn_kv: float, merged: bool = True, keep_net: bool = False,
                     log: logging.Logger | None = None) -> CoupledDistrict:
-    """Couple the stations of one district with their LV nets (pure; DESIGN §5.7 steps 2–5).
+    """Couple the stations of one district with their LV nets (pure).
 
     Every LV net is checked at its design point (:func:`design_point_check`, MV voltages and taps from the station
     table) and reduced to its frames (:func:`lv_frames`) at once, so one LV net is in memory at a time; the LV net of
@@ -1079,7 +1078,7 @@ def _run_tasks(tasks: Sequence[tuple], n: int, log: logging.Logger, warnings_: l
 def run_coupling(version_id: str, variant_id: str, mv_grid_ids: Sequence[int] | None = None, *,
                  jobs: int = DEFAULT_JOBS, merged: bool = True, log_file: str = "log/log.txt") -> CouplingSummary:
     """``pylovo-mv couple``: the LV design-point check and the merged operating point of the done grids of a
-    variant (DESIGN §5.7), one commit per district.
+    variant, one commit per district.
 
     Prints the database target, checks the schema, takes the variant lock (907362, so it never runs beside a
     ``generate`` of the same variant), reads the variant and its node results, and couples the done grids (all,

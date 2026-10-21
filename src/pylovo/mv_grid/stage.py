@@ -1,14 +1,14 @@
 """The MV stage driver: region steps, district workers, summary and the export of stored nets.
 
-:func:`run_mv_stage` runs the MV stage for one MV variant of a stored LV version (DESIGN §1.2):
+:func:`run_mv_stage` runs the MV stage for one MV variant of a stored LV version:
 
-0. **Safety:** prints the database target, checks the schema (migration ``0009_mv_grids``) and takes the variant
+0. **Safety:** prints the database target, checks that no migration is pending and takes the variant
    lock (advisory lock 907362) for the whole run.
 1. **PLZ:** the requested PLZ with LV grids of the version; requested PLZ without grids are try-locked (907361): a
    PLZ that is being generated right now stops the run before any write, the others are reported as missing.
 2. **Variant:** the parameter snapshot is checked first (no write), then the routing graph is built or reused
    (own commit), then the variant is registered once (``new``, ``resume`` or ``grow``, union semantics of the PLZ
-   set, DESIGN §2.5).
+   set).
 3. **Region** (one transaction): HV/MV substations, MV nodes (stations with their load statistics, MV customers,
    busbars), their attachment to the routing graph, the supply areas and
    one pending ``mv_grid`` per supplying substation with its Voronoi-cell polygon and its nominal voltage (with
@@ -336,7 +336,7 @@ def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger:
 
 def _node_rows(dbc: Any, version_id: str, plz: Sequence[int], sites: pd.DataFrame, params: MvParameters,
                lv: LvVersionParameters, logger: logging.Logger) -> pd.DataFrame:
-    """The ``mv_node`` rows of the region: stations, MV customers and busbars (DESIGN §3.4–§3.5)."""
+    """The ``mv_node`` rows of the region: stations, MV customers and busbars."""
     inputs = _module("inputs")
     station_nodes = dbc.station_nodes(version_id, plz)
     stats = dbc.station_load_stats(version_id, plz)
@@ -369,7 +369,7 @@ def _busbar_rows(sites: pd.DataFrame) -> pd.DataFrame:
 
 def _attachment_updates(rows: pd.DataFrame, attach: pd.DataFrame, params: MvParameters,
                         logger: logging.Logger) -> pd.DataFrame:
-    """Attachment columns per node from the KNN result (DESIGN §3.3).
+    """Attachment columns per node from the KNN result.
 
     Customers without a mapped station move to their street transfer point (offset 0, flag ``transfer_point``);
     the settlement of a node is the one of its attach edge (open field: NULL); ``area_class`` is ``urban`` on an
@@ -412,7 +412,7 @@ def _attachment_updates(rows: pd.DataFrame, attach: pd.DataFrame, params: MvPara
 def _assign_supply_areas(dbc: Any, graph_id: str, nodes: pd.DataFrame, sites: pd.DataFrame,
                          params: MvParameters, lv: LvVersionParameters,
                          logger: logging.Logger) -> tuple[np.ndarray, np.ndarray, list[int]]:
-    """Site index per node (into ``sites``), bridged flags and the overloaded site indices (DESIGN §4.1)."""
+    """Site index per node (into ``sites``), bridged flags and the overloaded site indices."""
     districts = _module("districts")
     graph = _module("graph")
     edge_id, source, target, length = dbc.region_graph_arrays(graph_id)
@@ -434,7 +434,7 @@ def _set_district_voltages(dbc: Any, version_id: str, variant_id: str, rows: pd.
                            grid_of_node: dict[int, int | None], params: MvParameters,
                            logger: logging.Logger, graph_id: str | None = None, region_wkb: bytes | None = None,
                            attach_edge: pd.Series | None = None) -> pd.DataFrame:
-    """The nominal voltage of every district from its installed density (``MV_NOMINAL_VOLTAGE_KV``, DESIGN §4.6).
+    """The nominal voltage of every district from its installed density (``MV_NOMINAL_VOLTAGE_KV``).
 
     Runs after the district areas are written: ``districts.installed_density`` of the station ratings and MV
     customer peaks of each district over its area, ``districts.district_voltages`` by the variant's rule; sets
@@ -683,7 +683,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
 
 def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
                logger: logging.Logger) -> dict:
-    """Plan and store the normally-open ties between the districts (post step, DESIGN §4.5).
+    """Plan and store the normally-open ties between the districts (post step).
 
     The ties of the variant are always planned anew from its done districts (a resumed run replaces them).
 

@@ -1,6 +1,6 @@
 """The pure district planner of the MV stage: one HV/MV supply district in, one district plan out.
 
-:func:`plan_district` composes the planning modules for one district (DESIGN §4.8): the in-memory run graph
+:func:`plan_district` composes the planning modules for one district: the in-memory run graph
 (:mod:`~pylovo.mv_grid.graph`), the distance model and the topology (:mod:`~pylovo.mv_grid.topology`), the ring
 evaluator (:mod:`~pylovo.mv_grid.rings`), the ring solver (:mod:`~pylovo.mv_grid.solvers`), the pandapower cases,
 the repair loop, the HV/MV sizing, the stored net and the station voltage budgets
@@ -46,7 +46,7 @@ def modelled_rows(nodes: pd.DataFrame) -> pd.Series:
 
 def district_peak_kw(inp: DistrictInput) -> float:
     """Coincident peak of all planned nodes of a district: the category law on their summed statistics plus the
-    fixed loads of the MV customers (DESIGN §4.6; never the sum of feeder heads)."""
+    fixed loads of the MV customers (never the sum of feeder heads)."""
     nodes = inp.nodes[modelled_rows(inp.nodes)]
     if not len(nodes):
         return 0.0
@@ -72,13 +72,12 @@ def merged_node_flags(*sources: dict | None) -> dict[int, list[str]]:
 
 
 def plan_district(inp: DistrictInput) -> DistrictPlan:
-    """Plan one HV/MV supply district (DESIGN §4.8).
+    """Plan one HV/MV supply district.
 
-    Steps: run graph (§3.8) → terminals and distance model (§4.2) → ring evaluator (§4.3) → solver with local
-    search (§4.4) → topology with stubs, dedicated feeders, open points and geometry (§4.5, §4.7) →
-    pandapower cases, criteria and up to ``repair_rounds`` repair rounds, always re-evaluated after a repair
-    (§5.1–§5.4) → HV/MV sizing on the district statistics (§4.6) → stored net with the OLTC tap (§5.5) → station
-    voltage budgets (§5.6) → metrics.
+    Steps: run graph → terminals and distance model → ring evaluator → solver with local search → topology with
+    stubs, dedicated feeders, open points and geometry → pandapower cases, criteria and up to ``repair_rounds``
+    repair rounds, always re-evaluated after a repair → HV/MV sizing on the district statistics → stored net with
+    the OLTC tap → station voltage budgets → metrics.
 
     The flags of the topology (``plan.topology.diagnostics['node_flags']``) and the electrical flags of
     :func:`electrical.node_flags` are merged there per node key (for ``mv_node.flags``).
@@ -102,17 +101,17 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     params = inp.params
     rg = graph.build_run_graph(inp.edges, inp.nodes, long_connector_m=params.long_connector_m,
                                bridge_detour=params.bridge_detour, exit_radius_m=params.busbar_exit_radius_m,
-                               osm_cost_factor=params.osm_line_cost_factor)              # §3.8
+                               osm_cost_factor=params.osm_line_cost_factor)
     terminals = topology.terminal_rows(inp)                                              # busbar first
-    model = topology.distance_model(inp, rg, terminals)                                  # §4.2
-    ev = rings.RingEvaluator.from_model(inp, model)                                      # §4.3
+    model = topology.distance_model(inp, rg, terminals)
+    ev = rings.RingEvaluator.from_model(inp, model)
     result = solvers.solve(ev, model.dist_m, model.candidates, rounds=params.local_search_rounds,
-                           neighbours=params.neighbours, time_guard_s=params.ls_time_guard_s)  # §4.4
-    plan = topology.build_plan(inp, rg, model, ev, result.routes)                       # §4.5, §4.7
+                           neighbours=params.neighbours, time_guard_s=params.ls_time_guard_s)
+    plan = topology.build_plan(inp, rg, model, ev, result.routes)
 
     repairs: list[dict] = []
     rounds_used = 0
-    for round_ in range(params.repair_rounds + 1):                                       # §5.4
+    for round_ in range(params.repair_rounds + 1):
         net = electrical.build_design_net(inp, plan)                                     # re-evaluated after a repair
         cases = electrical.run_cases(net, inp, plan)
         violations = electrical.check(cases, inp, plan)
@@ -125,9 +124,9 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
         repairs.extend({**action, "round": rounds_used} if isinstance(action, dict) else
                        {"action": str(action), "round": rounds_used} for action in actions)
 
-    units, unit_mva, sizing = electrical.size_substation(inp, plan)                     # §4.6
-    stored, tap = electrical.build_stored_net(net, units, unit_mva, inp)                # §5.5
-    budgets = electrical.station_budgets(inp, plan, cases)                               # §5.6
+    units, unit_mva, sizing = electrical.size_substation(inp, plan)
+    stored, tap = electrical.build_stored_net(net, units, unit_mva, inp)
+    budgets = electrical.station_budgets(inp, plan, cases)
     status = electrical.power_flow_status(cases, violations)
     plan.diagnostics["node_flags"] = merged_node_flags(plan.diagnostics.get("node_flags"),
                                                        electrical.node_flags(inp, plan, cases, budgets))

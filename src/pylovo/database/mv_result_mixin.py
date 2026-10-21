@@ -331,7 +331,7 @@ class MvResultMixin(BaseMixin):
                          lv: "LvVersionParameters", lv_fingerprint: dict) -> str:
         """Insert the MV variant once, or check it against the stored snapshot (mirrors the LV version rule); commits.
 
-        Union semantics of the PLZ set (DESIGN §2.5): if ``plz_list`` is a subset of the stored set and the routing
+        Union semantics of the PLZ set: if ``plz_list`` is a subset of the stored set and the routing
         graph is the stored one, the run resumes; otherwise the stored row gets the union, the new graph and
         fingerprint, and the stored region is deleted in the same transaction (:meth:`reset_variant_region`), so a
         failed or interrupted rebuild is never resumed as the region of the union ('grow': the caller rebuilds every
@@ -603,7 +603,7 @@ class MvResultMixin(BaseMixin):
         return dict(zip(substation_ids, (int(g) for g in ids)))
 
     def write_grid_areas(self, version_id: str, variant_id: str, plz_list: Sequence[int]) -> None:
-        """Write the district polygons (``mv_grid.geom``, ``area_km2``, ``complete``), DESIGN §4.1.
+        """Write the district polygons (``mv_grid.geom``, ``area_km2``, ``complete``).
 
         The polygon of a district is the union of the Voronoi cells of its stations and customers, clipped to the
         planning region (the PLZ polygons); the cells partition the region. A district is complete when its
@@ -1222,7 +1222,7 @@ class MvResultMixin(BaseMixin):
             self.conn.rollback()
             raise
 
-    # ------------------------------------------------------------------------------------------ ties (WP14)
+    # ------------------------------------------------------------------------------------------ ties
     def tie_grids(self, version_id: str, variant_id: str) -> pd.DataFrame:
         """The districts of a variant for the tie step (:mod:`pylovo.mv_grid.interconnection`).
 

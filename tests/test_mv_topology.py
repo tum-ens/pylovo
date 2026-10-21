@@ -1,7 +1,7 @@
 """Tests of the MV topology build (pylovo.mv_grid.topology), DB-free.
 
 The ring evaluator (rings.check_ring), the coincidence law and the solver are replaced by small fakes that follow
-their contracts (DESIGN §4.3, §9.3 WP3/WP4/WP5), so these tests do not depend on those packages.
+their contracts, so these tests do not depend on those packages.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ LV = LvVersionParameters(version_id="t", sim_factor={"Residential": 0.07, "Comme
 BUSBAR = 1
 
 
-# ============================================================================================ fakes of WP3, WP4, WP5
+# ============================================ fakes of the ring check, the coincidence law and the solver
 def fake_coincident_kw(installed, units, g):
     installed = np.asarray(installed, dtype=float)
     units = np.asarray(units, dtype=float)
@@ -40,7 +40,7 @@ def fake_coincident_kw(installed, units, g):
 
 def fake_check_ring(installed, units, fixed_kw, section_m, section_r, section_x, section_imax, member, switchgear,
                     g, power_factor, vn_kv, limits):
-    """Brute-force version of the ring check of DESIGN §4.3 (positions 1..k, sections s_0..s_k)."""
+    """Brute-force version of the ring check (positions 1..k, sections s_0..s_k)."""
     k = len(fixed_kw)
     tan = math.tan(math.acos(power_factor))
     w = (section_r + section_x * tan) * section_m / 1000.0 * 1000.0 / (vn_kv * 1000.0) ** 2
@@ -281,7 +281,7 @@ def node_point(plan, inp, key):
 
 
 def assert_plan_valid(plan, inp) -> None:
-    """Roles, open points and geometries of a plan (the WP9 acceptance rules)."""
+    """Roles, open points and geometries of a plan."""
     keys = [int(k) for k in inp.nodes.index]
     assert plan.node_role[BUSBAR] == "busbar"
     for key in keys + list(plan.joints):

@@ -5,7 +5,7 @@ snapshot, the stations of the LV grids with their load statistics, the MV custom
 ``pylovo.mv_customers``, the stored LV voltage requirement, the stored LV pandapower nets and the
 population of the PLZ. Read-only (no temporary tables, so the
 methods also run in a read-only transaction); the methods never commit. The planning rules that turn
-these rows into MV nodes live in :mod:`pylovo.mv_grid.inputs` (DESIGN §3.1, §3.4–§3.5).
+these rows into MV nodes live in :mod:`pylovo.mv_grid.inputs`.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:   # imported lazily at run time: an LV-only run never loads th
 
 #: Advisory lock key of LV generation per PLZ (``UtilsMixin.acquire_plz_lock``).
 PLZ_LOCK_KEY = 907361
-#: DataFrames kept when an LV net is streamed for the coupling (DESIGN §5.7); the others are not deserialised.
+#: DataFrames kept when an LV net is streamed for the coupling; the others are not deserialised.
 LV_NET_TABLES: frozenset[str] = frozenset({"bus", "line", "trafo", "load", "ext_grid"})
 
 #: Columns of :meth:`MvInputMixin.station_nodes`.
@@ -123,7 +123,7 @@ ORDER BY mc.objectid
 """).format(enabled=sql.SQL(SOURCE_ENABLED_SQL))
 
 # Versions generated before pylovo.mv_customers existed: only the mixed MV-direct buildings are left in
-# buildings_result (the pure ones were removed from the LV model), DESIGN §2.6.
+# buildings_result (the pure ones were removed from the LV model).
 _CUSTOMERS_FALLBACK_SQL = """
 SELECT br.objectid, br.postcode AS plz, br.nonresidential_use, br.nonresidential_peak_load_in_kw AS installed_kw,
        ST_X(COALESCE(br.centroid, ST_PointOnSurface(br.geom))) AS x,
@@ -218,7 +218,7 @@ class MvInputMixin(BaseMixin):
         return [int(row[0]) for row in self.cur.fetchall()]
 
     def busy_plz(self, plz_list: Sequence[int]) -> list[int]:
-        """The PLZ whose LV generation runs right now in another session (DESIGN §1.4).
+        """The PLZ whose LV generation runs right now in another session.
 
         Each PLZ lock (advisory lock 907361, taken by LV generation per PLZ) is tried and released at once, so
         nothing stays locked. Call it only for requested PLZ without results.
@@ -272,7 +272,7 @@ class MvInputMixin(BaseMixin):
 
     # ------------------------------------------------------------------------------------------ stations
     def station_nodes(self, version_id: str, plz_list: Sequence[int]) -> pd.DataFrame:
-        """One row per LV grid of the version's PLZ: station position, rating and LV status (DESIGN §3.4).
+        """One row per LV grid of the version's PLZ: station position, rating and LV status.
 
         The position is ``transformer_positions.geom`` (greenfield and brownfield alike), else the stored
         ``LVbus 1``. ``station_source`` is greenfield, osm, lod2, dso, manual, brownfield_unlinked or
@@ -301,7 +301,7 @@ class MvInputMixin(BaseMixin):
         return frame
 
     def station_load_stats(self, version_id: str, plz_list: Sequence[int]) -> pd.DataFrame:
-        """Per LV grid and consumer category: installed load, load units and buildings (DESIGN §3.4).
+        """Per LV grid and consumer category: installed load, load units and buildings.
 
         The load components follow ``utils._building_load_components``: residential where the residential peak
         and the households are positive (units = households), non-residential where the peak is positive and the
@@ -321,7 +321,7 @@ class MvInputMixin(BaseMixin):
         return frame
 
     def pandapower_load_check(self, version_id: str, plz_list: Sequence[int]) -> pd.DataFrame:
-        """The summed stored LV loads per grid of the version (cross-check of the station peaks, DESIGN §3.4).
+        """The summed stored LV loads per grid of the version (cross-check of the station peaks).
 
         pylovo allocates each grid's coincident peak to its loads, so the sum equals the station's ``p_own_kw``
         unless loads were edited or rows are duplicated.
@@ -338,7 +338,7 @@ class MvInputMixin(BaseMixin):
         return frame
 
     def lv_design_source_vm(self, version_id: str, grid_result_ids: Sequence[int]) -> dict[int, float]:
-        """The stored LV requirement per grid: ``ext_grid.vm_pu`` of its net (DESIGN §3.4, §5.6).
+        """The stored LV requirement per grid: ``ext_grid.vm_pu`` of its net.
 
         It is the MV-side voltage that puts the LV busbar at ``LV_REFERENCE_VOLTAGE_PU`` at the grid's own load.
         Read per district (the JSON operators parse the stored net text).
@@ -392,7 +392,7 @@ class MvInputMixin(BaseMixin):
 
     # ------------------------------------------------------------------------------------------ customers
     def mv_customer_rows(self, version_id: str, plz_list: Sequence[int], lv: "LvVersionParameters") -> pd.DataFrame:
-        """The MV customers of the version's PLZ (``pylovo.mv_customers``, DESIGN §3.5).
+        """The MV customers of the version's PLZ (``pylovo.mv_customers``).
 
         Position: the station candidate inside the building if the LV version used that source
         (``USE_*_TRANSFORMER_POSITIONS`` of its snapshot, so DSO points only for DSO versions; ``mapped_station``),
@@ -482,7 +482,7 @@ class MvInputMixin(BaseMixin):
     # ------------------------------------------------------------------------------------------ staleness
     def lv_fingerprint(self, version_id: str, plz_list: Sequence[int]) -> dict:
         """A fingerprint of the LV results of the PLZ that changes with regenerated grids, load edits (made or
-        undone) and MV customers of these PLZ (staleness check of an MV variant, DESIGN §2.5).
+        undone) and MV customers of these PLZ (staleness check of an MV variant).
 
         Returns:
             ``{"n_grids", "sum_grid_result_id", "active_load_edits", "n_mv_customers"}`` (JSON-native;

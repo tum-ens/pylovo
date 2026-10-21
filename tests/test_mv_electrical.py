@@ -657,7 +657,7 @@ def _budget_cases(vm_load: dict) -> dict:
 
 
 def _margins(inp, budget_key, cases):
-    """Brute force of the tap rule for one station (reference implementation of DESIGN §5.6)."""
+    """Brute force of the tap rule for one station."""
     p = inp.params
     row = inp.nodes.loc[budget_key]
     lv_ref = inp.lv.lv_reference_voltage_pu

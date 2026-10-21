@@ -55,7 +55,7 @@ def fake_hv_mv_type(sn_mva: float, vn_lv_kv: float) -> HvMvType:
 
 @pytest.fixture()
 def equipment(monkeypatch):
-    """A fake ``pylovo.mv_grid.equipment`` with the WP3 interface; ``calls`` counts the resolutions."""
+    """A fake ``pylovo.mv_grid.equipment`` with the interface of the real module; ``calls`` counts the resolutions."""
     module = types.ModuleType("pylovo.mv_grid.equipment")
     module.calls = []
 
@@ -98,7 +98,7 @@ def record(item) -> dict:
     return dataclasses.asdict(item)
 
 
-#: The snapshot of the default parameters (DESIGN §6.5) with the fake types: auto voltage, so the equipment holds the
+#: The snapshot of the default parameters with the fake types: auto voltage, so the equipment holds the
 #: 20 kV types and the 10 kV types of the dense districts; the removed options with their fixed values (MV_REMOVED).
 EXPECTED_SNAPSHOT = {
     "schema": 1, "mv_stage_version": 12,
@@ -521,7 +521,7 @@ def test_customer_rules_of_older_snapshots_take_their_legacy_values(equipment):
 
 
 def test_link_rules_of_older_snapshots_read_as_one_length_without_stub_ends(equipment):
-    """Before 2026-10-19 the link length was one number and stub ends took no links (MV_ADDED_LATER)."""
+    """Snapshots from before ``link_stub_ends`` existed hold one link length and no stub-end links (MV_ADDED_LATER)."""
     stored = json_round_trip(MvParameters(vn_kv=20).to_snapshot())
     stored["topology"]["link_max_length_m"] = 500.0
     del stored["topology"]["link_stub_ends"]

@@ -1,7 +1,7 @@
 """Topology of one MV supply district: rings with their open points, rural stubs and dedicated feeders.
 
 This module turns the rings of a solver (:mod:`pylovo.mv_grid.solvers`) into a
-:class:`~pylovo.mv_grid.model.TopologyPlan` (DESIGN §4.2, §4.5, §4.7):
+:class:`~pylovo.mv_grid.model.TopologyPlan`:
 
 1. **Rings** from the solver, each link routed along the run graph (:func:`distance_model`).
 2. **Rural stubs**: a rural station or MV customer leaves its ring for a T-off when that saves
@@ -112,7 +112,7 @@ def terminal_rows(inp: DistrictInput) -> np.ndarray:
 
 
 def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> DistanceModel:
-    """Design distances and link kinds between the terminals of a district (DESIGN §4.2).
+    """Design distances and link kinds between the terminals of a district.
 
     Every link follows the run graph: ``street_m`` is its routing cost (``inf`` where unreachable) and the solvers'
     ``dist_m``, ``length_m`` its true length and ``overhead_m`` the part of it on OSM MV lines
@@ -157,7 +157,7 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
 # ============================================================================================ public: plan and repairs
 def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any,
                routes: list[list[int]]) -> TopologyPlan:
-    """The topology of a district from the solver's rings (DESIGN §4.5 steps 1-7, §4.7).
+    """The topology of a district from the solver's rings (the steps of the module docstring).
 
     Args:
         inp: The district input.

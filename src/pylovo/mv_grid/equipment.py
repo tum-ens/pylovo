@@ -380,7 +380,7 @@ def add_hv_mv_std_type(net, t: HvMvType) -> str:
 
 def size_hv_mv(s_load_mva: float, sizes_mva: Sequence[float], units: int, n1_utilization: float
                ) -> tuple[int, float, str]:
-    """Number and rating of the HV/MV transformers of a substation (DESIGN section 4.6).
+    """Number and rating of the HV/MV transformers of a substation.
 
     * ``n = units`` and ``sn`` = the smallest size whose ``n - 1`` units carry the peak
       ``s_load_mva`` at ``n1_utilization`` (one unit out of service; with ``units = 1`` there is

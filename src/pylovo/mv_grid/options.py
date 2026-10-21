@@ -55,7 +55,7 @@ BROADCAST_MAPPINGS: frozenset[str] = frozenset({"link_max_length_m"})
 
 #: ``MV_NOMINAL_VOLTAGE_KV`` value of the density rule: a district gets 10 kV when at least half of its installed
 #: MV/LV capacity lies in municipalities whose installed capacity per km² reaches ``mv_10kv_min_density_mva_km2``
-#: (a district without installed capacity: its own density), else 20 kV (DESIGN §4.6, user decision 2026-10-15).
+#: (a district without installed capacity: its own density), else 20 kV.
 AUTO_VOLTAGE: str = "auto"
 
 
@@ -164,7 +164,7 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
     _constant("stub_max_kva_km", 2000.0, "float", "topology", bounds=_POSITIVE,
               source="largest product of stub tree load (kVA) and length (km): the outage energy of a stub grows with "
                      "both; 2 MVA km gives 2 km at the 1 MVA of an emergency generator (Consentec 2006, Amme et al. "
-                     "2018) and 4 km up to 0.5 MVA (derived rule, decision of 2026-10-19)"),
+                     "2018) and 4 km up to 0.5 MVA (derived rule)"),
     _constant("stub_min_offset_m", 100.0, "float", "topology", bounds=_POSITIVE,
               source="only nodes more than this off the ring become stubs; Amme et al. 2018"),
     _constant("tie_max_length_m", 2000.0, "float", "topology", bounds=_POSITIVE,
@@ -174,12 +174,12 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
               source="longest normally-open link inside a district by the settlement type of the PLZ of its ends "
                      "(pylovo settlement_type 1 rural, 2 semi-urban, 3 urban): about three times the median distance "
                      "between neighbouring stations (320, 250 and 180 m in the test region); a link takes the shorter "
-                     "reach of its two ends, an end without a type the urban one (assumption, decision of "
-                     "2026-10-19); one number applies to every type"),
+                     "reach of its two ends, an end without a type the urban one (assumption); one number applies "
+                     "to every type"),
     _constant("link_stub_ends", True, "bool", "topology",
               source="after the links between rings, each stub end (a stub station with one MV line) takes at most "
                      "one normally-open link within its reach to a station of another feeder of its district, a "
-                     "second infeed as many real rural stations have (decision of 2026-10-19)"),
+                     "second infeed as many real rural stations have"),
     _constant("local_search_rounds", 50, "int", "topology", bounds=(0, None),
               source="pass limit of the granular local search (Ding0 used 10 fixed rounds); 0 = no local search"),
     _constant("neighbours", 15, "int", "topology", bounds=(1, None),

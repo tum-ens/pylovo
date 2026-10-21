@@ -1,6 +1,6 @@
 """MV supply areas (pylovo.mv_grid.districts): routed assignment, overload report and the nominal voltage.
 
-DB-free. The weighted graph Voronoi of pylovo.mv_grid.graph (WP6) is replaced by a small brute-force fake with the
+DB-free. The weighted graph Voronoi of pylovo.mv_grid.graph is replaced by a small brute-force fake with the
 same contract (one Dijkstra per site); one test compares with the real module when it is importable.
 """
 from __future__ import annotations

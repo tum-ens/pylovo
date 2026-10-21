@@ -117,7 +117,7 @@ _23C = "Section 23c EnWG publications (derived)"
 _KREUTMAYR = "Kreutmayr 2023"
 _FGH = "FGH TB 302 (via Amme et al. 2018)"
 
-#: Published values and ranges of MV grid metrics (DESIGN section 7.3); labels are generic.
+#: Published values and ranges of MV grid metrics; labels are generic.
 LITERATURE_RANGES: tuple[LiteratureRange, ...] = (
     # ring members per ring
     LiteratureRange("ring_members", "rural", None, 20, None, "Ding0 planning limit", "Amme et al. 2018"),

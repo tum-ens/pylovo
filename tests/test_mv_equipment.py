@@ -14,7 +14,7 @@ from pylovo.mv_grid.parameters import MvParameters
 
 SIZES = (25.0, 31.5, 40.0, 63.0)
 
-#: pandapower 3.4.0 values (DESIGN section 4.6): r, x (Ohm/km), c (nF/km), max_i (kA).
+#: pandapower 3.4.0 values: r, x (Ohm/km), c (nF/km), max_i (kA).
 LINE_VALUES = {
     "NA2XS2Y 1x240 RM/25 12/20 kV": ("cable", 20.0, 0.122, 0.112, 304.0, 0.421),
     "122-AL1/20-ST1A 20.0": ("overhead", 20.0, 0.2376, 0.344, 10.3, 0.41),

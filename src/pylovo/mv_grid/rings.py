@@ -1,5 +1,5 @@
 """Analytic check of open MV rings: member cap, half-ring lengths, voltage drops and currents with the best
-normally-open point, and both (n-1) cases (DESIGN section 4.3). Shared by all solvers, the stubs and the repairs.
+normally-open point, and both (n-1) cases. Shared by all solvers, the stubs and the repairs.
 
 An open ring ``R = (v_1, ..., v_k)`` starts and ends at the HV/MV busbar ``v_0 = v_{k+1}``. Its ``k + 1``
 sections are ``s_j = (v_j, v_{j+1})``, ``j = 0 ... k``: ``s_0`` leaves the busbar at the A exit, ``s_k`` at the B

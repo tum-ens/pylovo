@@ -1,4 +1,4 @@
-"""Normally-open ties between the rings of neighbouring HV/MV supply districts (DESIGN §4.5, WP14), and normally-open
+"""Normally-open ties between the rings of neighbouring HV/MV supply districts, and normally-open
 links between the rings of one district.
 
 After all districts of a variant are planned, :func:`plan_and_save_ties` adds at most one normally-open tie per

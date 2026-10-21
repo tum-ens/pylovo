@@ -1,6 +1,6 @@
 """Supply areas of the HV/MV substations (pure: numpy, pandas, SciPy and shapely; no database or configuration).
 
-DESIGN §4.1. :func:`routed_assignment` gives every MV node (station, customer) to the HV/MV substation
+:func:`routed_assignment` gives every MV node (station, customer) to the HV/MV substation
 (site) nearest along the regional street graph, a graph Voronoi (:func:`pylovo.mv_grid.graph.graph_voronoi`). Cells
 are contiguous along shortest paths. The sites above their (n-1) capacity are reported (flag
 ``over_capacity``) and keep their load: the sizing gives such a site more transformer units. Nodes without a street
@@ -73,7 +73,7 @@ class Assignment:
 
 # ---------------------------------------------------------------------------------------------- capacity
 def site_capacity_mva(sites: pd.DataFrame, params: "MvParameters") -> np.ndarray:
-    """(n-1) capacity of each HV/MV substation in MVA (DESIGN §4.1).
+    """(n-1) capacity of each HV/MV substation in MVA.
 
     ``(hv_mv_units - 1) x max(hv_mv_sizes_mva)`` (63 MVA with the defaults); at least one unit counts (a
     one-transformer layout has no reserve). It is scaled by ``hv_mv_n1_utilization`` (1.0 by default).
@@ -328,7 +328,7 @@ def _log_result(overloaded: list[int], load: np.ndarray, capacity: np.ndarray, b
 def routed_assignment(csr, vertex_index: dict[int, int], edge_len: Mapping[int, float], sites: pd.DataFrame,
                       nodes: pd.DataFrame, g: np.ndarray, power_factor: float, capacity_mva: np.ndarray
                       ) -> Assignment:
-    """Assign every node to its nearest site along the streets, a graph Voronoi (DESIGN §4.1).
+    """Assign every node to its nearest site along the streets, a graph Voronoi.
 
     A site reaches a node through the ends of the node's attach edge (``dist[end] + part of the edge + offset``)
     or, when both lie on the same edge, directly along it. The sites whose coincident load (see

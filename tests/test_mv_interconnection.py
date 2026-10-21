@@ -1,4 +1,4 @@
-"""Normally-open ties between the rings of neighbouring MV districts (WP14), without a database: tie selection on
+"""Normally-open ties between the rings of neighbouring MV districts, without a database: tie selection on
 synthetic street graphs, the takeover check on small pandapower nets, the summaries, the persistence with a fake
 cursor, the post step of the stage and the tie handling of the metrics."""
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """MV node inputs from the LV results (pure: pandas and numpy only, no database or configuration).
 
 The region step of the MV stage turns the rows read by :class:`~pylovo.database.mv_input_mixin.MvInputMixin` into
-``pylovo.mv_node`` rows (DESIGN §3.4–§3.5):
+``pylovo.mv_node`` rows:
 
 * :func:`station_table`: one MV node per LV grid (station) with its per-category load statistics and its own
   coincident peak ``p_own_kw`` (pylovo's station design law, :func:`~pylovo.mv_grid.coincidence.coincident_kw`).
@@ -213,7 +213,7 @@ def station_table(stations: pd.DataFrame, stats: pd.DataFrame, lv: "LvVersionPar
 
 # ---------------------------------------------------------------------------------------------- customers
 def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvParameters") -> pd.DataFrame:
-    """The MV customers as node rows with their MV load, fixed load and connection class (DESIGN §3.5).
+    """The MV customers as node rows with their MV load, fixed load and connection class.
 
     **MV load (hall rule).** The LV stage gives a customer ``nonresidential_floor_area x W/m²`` of its category on
     the gross floor area, whose storeys the building data derive from the height, so large single-storey halls
@@ -329,7 +329,7 @@ def busbar_record(load_stats: Any) -> dict:
 
 def busbar_customers(stations: pd.DataFrame, customers: pd.DataFrame,
                      params: "MvParameters") -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Hang the MV customers below ``customer_min_mv_kw`` on the busbar of their nearest station (DESIGN §3.5).
+    """Hang the MV customers below ``customer_min_mv_kw`` on the busbar of their nearest station.
 
     A customer whose own peak is below ``customer_min_mv_kw`` gets no MV node (eGon-data: MV level above 200 kW
     building peak); the own peak of one building is its ``installed_kw`` after the hall rule (pylovo's law gives
@@ -444,7 +444,7 @@ def describe_customers(attrs: Mapping[str, Any], params: "MvParameters") -> str:
 
 
 def upsize_busbar_stations(stations: pd.DataFrame, lv: "LvVersionParameters") -> pd.DataFrame:
-    """Give a station that its station-busbar customers overload a larger rating in the MV model (DESIGN §3.5).
+    """Give a station that its station-busbar customers overload a larger rating in the MV model.
 
     A station with station-busbar customers (:func:`busbar_customers`) is overloaded when its LV coincident peak
     (``p_own_kw``, pylovo's station design load) plus the fixed load of its busbar customers exceeds its rating
@@ -501,7 +501,7 @@ def upsize_busbar_stations(stations: pd.DataFrame, lv: "LvVersionParameters") ->
 
 
 def demand_anchor(nodes: pd.DataFrame, population: pd.DataFrame, lv: "LvVersionParameters") -> dict:
-    """The regional demand anchor: the coincident MV load per inhabitant (DESIGN §7.2, judge method 4).
+    """The regional demand anchor: the coincident MV load per inhabitant.
 
     **Load:** pylovo's category law on the summed statistics of all modelled stations plus the fixed loads of the MV
     customer nodes and of the station-busbar customers (the regional coincident peak, not the sum of the district

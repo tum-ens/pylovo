@@ -19,7 +19,7 @@ module.
 ``parallel`` to 1. Inventory totals multiply each line length by ``parallel``; geometric feeder and ring
 distances use each route once. ``normalise_tables`` checks the format and fills these defaults.
 
-**Feeders, rings and stubs** (DESIGN section 7.2). Remove the busbars and every normally-open line (NOP line): the
+**Feeders, rings and stubs.** Remove the busbars and every normally-open line (NOP line): the
 connected components of the rest are the feeders; the closed lines between a busbar and a feeder are its outlets. A
 NOP line counts with the feeder of its closed end (the end without the open switch; ``from_node`` when
 ``open_at_node`` is unknown). Two feeders of the same busbar joined by one NOP line form an open ring (``ring``);
