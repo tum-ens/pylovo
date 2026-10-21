@@ -95,13 +95,13 @@ CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 4
 # TRANSFORMER PLACEMENT PARAMETERS
 # =============================================================================
 
-# Settlement_types thresholds
+## Settlement types thresholds
 RURAL_MAX_HOUSEHOLDS: 1.0 # Maximum average number of households per building for rural settlements
 URBAN_MIN_HOUSEHOLDS: 2.85 # Minimum average number of households per building for urban settlements
 RURAL_MIN_BUILDING_DISTANCE: 44 # Minimum average distance between buildings for rural settlements
 URBAN_MAX_BUILDING_DISTANCE: 29 # Maximum average distance between buildings for urban settlements
 
-### Transformer mapping: Settlement Type (1=low/rural,2=medium/semi-urban,3=high/urban) -> Allowed Transformer Capacities (s_max_kva)
+# Transformer mapping: Settlement Type (1=low/rural,2=medium/semi-urban,3=high/urban) -> Allowed Transformer Capacities (s_max_kva)
 TRANSFORMER_MAPPING:
   1: [250, 400]
   2: [400, 630]

@@ -152,3 +152,17 @@ def test_guards(client):
     # headless: the browser UI (page, static files, plugin list) lives in GridPlanner
     for path in ("/", "/static/js/main.js", "/popout.html", "/api/plugins"):
         assert bare.get(path).status_code == 404, path
+
+
+def test_section_headings_are_not_help_texts():
+    text = "## Section\nA: 1 # help of A\n\n# Describes B\n## Another heading\nB: 2\n\nC: 3\n"
+    assert config_io.comments_by_key(text) == {"A": "help of A", "B": "Describes B", "C": ""}
+
+
+def test_the_help_of_the_shipped_config_starts_with_the_description_of_the_key(project):
+    help_text = config_io.comments_by_key((project / "config" / "config_generation_lv.yaml").read_text())
+    assert help_text["MAX_BUILDINGS_PER_KCID"].startswith("Maximum number of load buildings")
+    assert help_text["MAX_GREENFIELD_TRAFO_DISTANCE"].startswith("Mean maximum distance")
+    assert help_text["MAX_BROWNFIELD_TRAFO_DISTANCE"].startswith("Maximum assignment distance")
+    assert help_text["RURAL_MAX_HOUSEHOLDS"].startswith("Maximum average number of households")
+    assert help_text["TRANSFORMER_MAPPING"].startswith("Transformer mapping")

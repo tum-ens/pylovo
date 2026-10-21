@@ -138,11 +138,16 @@ def _split_comment(rest: str) -> tuple[str, str]:
 
 
 def comments_by_key(text: str) -> dict[str, str]:
-    """Help text for every top-level key: the comment lines above it plus its inline comment."""
+    """Help text for every top-level key: the comment lines above it plus its inline comment.
+
+    Comment lines that start with ``##`` are section headings (``## KMeans``) and belong to no key.
+    """
     help_text: dict[str, str] = {}
     pending: list[str] = []
     for line in text.splitlines():
         stripped = line.strip()
+        if stripped.startswith("##"):
+            continue
         if stripped.startswith("#"):
             body = stripped.lstrip("#").strip()
             if body and not set(body) <= set("=-") and not body.isupper():
