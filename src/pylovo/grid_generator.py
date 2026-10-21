@@ -586,7 +586,7 @@ class GridGenerator:
         """Helper method to process components to kcid groups"""
         conn_building_count = self.dbc.count_connected_buildings(vertices)
 
-        if conn_building_count <= 1 or conn_building_count is None:
+        if conn_building_count <= 1:
             # Remove isolated or empty components
             self.dbc.delete_ways(vertices)
             self.dbc.delete_transformers_from_buildings_tem(vertices)
@@ -654,7 +654,7 @@ class GridGenerator:
                 if bcid >= 0:
                     self.position_greenfield_transformers(self.plz, kcid, bcid)
                     self.logger.debug(f"Transformer positioning for kcid{kcid}, bcid{bcid} finished")
-                    self.dbc.update_transformer_rated_power(self.plz, kcid, bcid, 1)
+                    self.dbc.update_transformer_rated_power(self.plz, kcid, bcid)
                     self.logger.debug("Transformer_rated_power in grid_result updated.")
 
     def dimension_bcid_for_kcid(self, plz: int, kcid: int) -> None:

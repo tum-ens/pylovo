@@ -69,13 +69,6 @@ class UtilsMixin(BaseMixin):
         """Release the session lock even after a failed generation transaction."""
         self.cur.execute("SELECT pg_advisory_unlock(%s, %s)", (907361, int(plz)))
 
-    def drop_orphaned_plz_temp_tables(self) -> None:
-        """Legacy entry point: session-local tables are reclaimed by PostgreSQL.
-
-        Persistent staging tables from older versions require a separate, reviewed cleanup.
-        """
-        self.logger.info("Session-local staging requires no global orphan cleanup.")
-
     def refresh_materialized_views(self) -> None:
         """Refresh the materialized views of ``REFRESH_QUERIES`` so they reflect the result tables."""
         for query in REFRESH_QUERIES.values():

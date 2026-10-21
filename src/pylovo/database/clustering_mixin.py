@@ -489,7 +489,7 @@ class ClusteringMixin(BaseMixin):
         return loads, missing_points
 
     def load_constrained_hierarchical_clustering(self, Z: np.ndarray, cluster_amount: int, localid2vid: dict, buildings: pd.DataFrame,
-            consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray, double_trans: np.ndarray | None = None,
+            consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray,
             dist_mat: np.ndarray | None = None, vid2localid: dict[int, int] | None = None,
             max_transformer_distance: float | None = None, ) -> tuple[
         dict, dict, int]:
@@ -508,9 +508,6 @@ class ClusteringMixin(BaseMixin):
             buildings (pd.DataFrame): DataFrame containing building information (loads, types, etc.).
             consumer_cat_df (pd.DataFrame): DataFrame containing consumer category definitions (simultaneity factors).
             transformer_capacities (np.ndarray): Array of available single transformer capacities (sorted).
-            double_trans: Unused. Callers passed twice the two largest capacities; a double station could
-                never win the comparison it fed (a single transformer always fits below the largest
-                rating), so the comparison was removed. Kept so positional callers keep working.
             dist_mat (np.ndarray, optional): Pairwise street-distance matrix for the cluster candidates.
             vid2localid (dict[int, int], optional): Reverse mapping for ``dist_mat`` lookup.
             max_transformer_distance (float, optional): Maximum allowed distance from a greenfield
@@ -910,22 +907,18 @@ class ClusteringMixin(BaseMixin):
         self.cur.execute(update_query,
                          {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": transformer_rated_power})
 
-    def update_transformer_rated_power(self, plz: int, kcid: int, bcid: int, note: int):
+    def update_transformer_rated_power(self, plz: int, kcid: int, bcid: int):
         """Revise ``grid_result.transformer_rated_power`` of one building cluster.
 
         A rated raw transformer inside the cluster (``get_existing_transformer_capacity_trafo_ui``)
-        always wins. Otherwise the stored value is revised against the standard capacities of
-        the PLZ's settlement type:
-
-        * ``note == 0``: upgrade to the next larger standard capacity (``IndexError`` if there is none).
-        * ``note != 0``: keep the value if it is a standard capacity or twice the third or fourth
-          standard capacity (two parallel units); otherwise round it up to a multiple of 630 kVA.
+        always wins. Otherwise the stored value is kept if it is a standard capacity of the PLZ's
+        settlement type or twice the third or fourth standard capacity (two parallel units), and
+        rounded up to a multiple of 630 kVA if it is not.
 
         Args:
             plz: Postcode.
             kcid: K-means cluster ID.
             bcid: Building cluster ID.
-            note: Update strategy, see above.
         """
         existing_capacity = self.get_existing_transformer_capacity_trafo_ui(plz, kcid, bcid)
         if existing_capacity is not None:
@@ -937,24 +930,17 @@ class ClusteringMixin(BaseMixin):
         sdl = self.get_settlement_type_from_plz(plz)
         transformer_capacities, _ = self.get_transformer_data(sdl)
 
-        if note == 0:
-            transformer_rated_power = self.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
-            new_transformer_rated_power = int(
-                transformer_capacities[transformer_capacities > transformer_rated_power][0].item()
-            )
-            self._set_transformer_rated_power(plz, kcid, bcid, new_transformer_rated_power)
-        else:
-            double_trans = np.multiply(transformer_capacities[2:4], 2)
-            combined = np.concatenate((transformer_capacities, double_trans), axis=None)
-            transformer_rated_power = self.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
-            if transformer_rated_power in combined.tolist():
-                return None
-            new_transformer_rated_power = int(np.ceil(transformer_rated_power / 630) * 630)
-            self._set_transformer_rated_power(plz, kcid, bcid, new_transformer_rated_power)
-            self.logger.info(
-                f"Updated transformer_rated_power (multi/group mode): plz={plz}, kcid={kcid}, bcid={bcid}, "
-                f"old={transformer_rated_power} kVA -> new={new_transformer_rated_power} kVA)"
-            )
+        double_trans = np.multiply(transformer_capacities[2:4], 2)
+        combined = np.concatenate((transformer_capacities, double_trans), axis=None)
+        transformer_rated_power = self.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
+        if transformer_rated_power in combined.tolist():
+            return None
+        new_transformer_rated_power = int(np.ceil(transformer_rated_power / 630) * 630)
+        self._set_transformer_rated_power(plz, kcid, bcid, new_transformer_rated_power)
+        self.logger.info(
+            f"Updated transformer_rated_power (multi/group mode): plz={plz}, kcid={kcid}, bcid={bcid}, "
+            f"old={transformer_rated_power} kVA -> new={new_transformer_rated_power} kVA)"
+        )
 
     def get_transformer_data(self, settlement_type: int = None) -> tuple[np.array, dict]:
         """Return the standard transformer capacities of a settlement type and their costs.

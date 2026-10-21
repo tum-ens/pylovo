@@ -429,10 +429,10 @@ TRANSFORMER_MAPPING = CONFIG_GENERATION.get("TRANSFORMER_MAPPING", {
     3: [250, 400, 630]
 })
 _check_transformer_mapping(TRANSFORMER_MAPPING, TRANSFORMERS)
-# CALIBRATION (temp): planned coincident load / rated power of a catalogue transformer.
+# Planned coincident load / rated power of a catalogue transformer.
 # 1.0 sizes and splits at the full rating (previous behaviour).
 TRANSFORMER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("TRANSFORMER_PLANNING_UTILIZATION", 1.0))
-# CALIBRATION (temp): greenfield stations are drawn at random among the distance-feasible positions whose
+# Greenfield stations are drawn at random among the distance-feasible positions whose
 # load-weighted distance cost is at most (1 + tolerance) times the optimum. 0 keeps the optimal position.
 GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION.get("GREENFIELD_TRAFO_POSITION_TOLERANCE", 0.0))
 
@@ -461,7 +461,7 @@ if LV_REFERENCE_VOLTAGE_PU is not None:
     if not 0.8 <= LV_REFERENCE_VOLTAGE_PU <= 1.2:
         raise ValueError(f"LV_REFERENCE_VOLTAGE_PU must be between 0.8 and 1.2 p.u., got {LV_REFERENCE_VOLTAGE_PU}")
 MAX_GREENFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_GREENFIELD_TRAFO_DISTANCE"]
-# CALIBRATION (temp): standard deviation (m) of a per-cluster greenfield distance limit drawn around
+# Standard deviation (m) of a per-cluster greenfield distance limit drawn around
 # MAX_GREENFIELD_TRAFO_DISTANCE and clipped to +/- 2 standard deviations. 0 keeps one fixed limit.
 MAX_GREENFIELD_TRAFO_DISTANCE_STD = float(CONFIG_GENERATION.get("MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0.0))
 MERGE_GREENFIELD_CLUSTERS = CONFIG_GENERATION.get("MERGE_GREENFIELD_CLUSTERS", False)
