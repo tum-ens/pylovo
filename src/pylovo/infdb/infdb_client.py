@@ -98,14 +98,17 @@ class InfdbClient:
 
         self.logger.debug(f"InfDB DatabaseClient is constructed and connected to {self.db_path}.")
 
-    def __del__(self):
-        """Close cursor and connection; safe if the constructor failed before opening them."""
+    def close(self) -> None:
+        """Close cursor and connection; safe to call twice and if the constructor failed before opening them."""
         cur = getattr(self, "cur", None)
         if cur is not None:
             cur.close()
         conn = getattr(self, "conn", None)
         if conn is not None:
             conn.close()
+
+    def __del__(self):
+        self.close()
 
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """
@@ -365,16 +368,21 @@ class InfdbClient:
 
     def fetch_street_length_km(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float
                                ) -> tuple[float, float]:
-        """Street length inside a PLZ polygon and in the ring of ``ring_m`` around it (other PLZ only), in km."""
+        """Street length inside a PLZ polygon and in the ring of ``ring_m`` around it (other PLZ only), in km.
+
+        Only the part of a street that lies in the ring counts: a street of another PLZ that crosses the border
+        counts with its length outside the polygon, up to ``ring_m`` from it.
+        """
         ways = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
         srid = self.source_srid("ways_per_connection")
         query = f"""
             WITH area AS (
-                SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g
+                SELECT g, ST_Buffer(g, %(ring)s) AS ring_area
+                FROM (SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g) own
             )
             SELECT COALESCE(SUM(ST_Length(ST_Intersection(w.geom, a.g))), 0) / 1000.0,
-                   COALESCE(SUM(ST_Length(w.geom)) FILTER (WHERE w.postcode IS DISTINCT FROM %(plz)s
-                                                          AND NOT ST_Within(w.geom, a.g)), 0) / 1000.0
+                   COALESCE(SUM(ST_Length(ST_Difference(ST_Intersection(w.geom, a.ring_area), a.g)))
+                            FILTER (WHERE w.postcode IS DISTINCT FROM %(plz)s), 0) / 1000.0
             FROM {ways} w, area a
             WHERE w.geom && ST_Expand(a.g, %(ring)s) AND ST_DWithin(w.geom, a.g, %(ring)s)
         """

@@ -66,21 +66,28 @@ def run_diagnostics(plz_list: list[int], coverage: bool, border: bool, version_i
     missing = 0
     with DatabaseClient() as dbc:
         inf_dbc = InfdbClient()
-        if coverage:
-            buildings, summary = reconcile_coverage(dbc, inf_dbc, plz_list, version_id)
-            buildings.to_csv(output / f"coverage_buildings_{version_id}.csv", index=False)
-            summary.to_csv(output / f"coverage_summary_{version_id}.csv", index=False)
-            report["coverage"] = coverage_totals(buildings)
-            missing = int(report["coverage"].get("missing", 0))
-        if border:
-            context = border_diagnostics.postcode_context(dbc, inf_dbc, plz_list)
-            grids = border_diagnostics.grid_edges(dbc, inf_dbc, plz_list, version_id)
-            context.to_csv(output / f"postcode_context_{version_id}.csv", index=False)
-            grids.to_csv(output / f"grid_edges_{version_id}.csv", index=False)
-            report["postcodes"] = context.round(4).to_dict(orient="records")
-            report["grids"] = border_diagnostics.summarize(grids)
-    (output / f"diagnostics_{version_id}.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
-    print(json.dumps({key: value for key, value in report.items() if key != "postcodes"}, indent=2, default=str))
+        try:
+            if coverage:
+                buildings, summary = reconcile_coverage(dbc, inf_dbc, plz_list, version_id)
+                buildings.to_csv(output / f"coverage_buildings_{version_id}.csv", index=False)
+                summary.to_csv(output / f"coverage_summary_{version_id}.csv", index=False)
+                report["coverage"] = coverage_totals(buildings)
+                missing = int(report["coverage"].get("missing", 0))
+            if border:
+                context = border_diagnostics.postcode_context(dbc, inf_dbc, plz_list)
+                grids = border_diagnostics.grid_edges(dbc, inf_dbc, plz_list, version_id)
+                context.to_csv(output / f"postcode_context_{version_id}.csv", index=False)
+                grids.to_csv(output / f"grid_edges_{version_id}.csv", index=False)
+                rounded = context.round(4)
+                # NaN (no scope table) becomes null: the JSON report must stay valid for strict parsers
+                report["postcodes"] = rounded.astype(object).where(rounded.notna(), None).to_dict(orient="records")
+                report["grids"] = border_diagnostics.summarize(grids)
+        finally:
+            inf_dbc.close()
+    (output / f"diagnostics_{version_id}.json").write_text(
+        json.dumps(report, indent=2, default=str, allow_nan=False) + "\n")
+    print(json.dumps({key: value for key, value in report.items() if key != "postcodes"}, indent=2, default=str,
+                     allow_nan=False))
     return missing
 
 

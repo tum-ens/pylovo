@@ -73,6 +73,8 @@ def border_kinds(polygons: dict[int, shapely.Geometry], plz_list: list[int], gen
     """The borders of ``plz_list`` by kind: ``generated``, ``open`` and ``outer`` (see the module docstring)."""
     parts: dict[str, list] = {"generated": [], "open": [], "outer": []}
     for plz in plz_list:
+        if plz not in polygons:
+            raise ValueError(f"PLZ {plz} has no polygon in pylovo.postcode")
         boundary = polygons[plz].boundary
         matched = []
         for other, polygon in polygons.items():

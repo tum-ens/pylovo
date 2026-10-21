@@ -1,6 +1,7 @@
 """Border kinds, the border summary, the width of the neighboring streets and their snapshot (no database)."""
 
 import pandas as pd
+import pytest
 from shapely.geometry import box
 
 from pylovo import postcode_border
@@ -16,6 +17,11 @@ def test_borders_are_split_into_generated_open_and_outer():
     assert abs(kinds["open"].length - 100) <= 4         # shared with 3 (no results)
     assert abs(kinds["outer"].length - 200) <= 4        # west and south: no neighbour
     assert kinds["generated"].distance(box(150, 40, 160, 50)) > 49 and kinds["open"].distance(box(40, 150, 50, 160)) > 49
+
+
+def test_a_plz_without_a_polygon_is_named_in_the_error():
+    with pytest.raises(ValueError, match="PLZ 99999 has no polygon in pylovo.postcode"):
+        border_kinds({1: box(0, 0, 100, 100)}, [1, 99999], generated={1})
 
 
 def test_summary_counts_small_grids_near_each_border():

@@ -1,7 +1,10 @@
 """``pylovo-analyze``: what is reported and the exit code for PLZ without grids or already analysed (no database)."""
+import json
 import logging
 import sys
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from pylovo.analysis.parameter_calculation import ParameterCalculator
@@ -111,3 +114,42 @@ def test_valid_option_combinations_are_not_reported(monkeypatch, capsys, argv):
     monkeypatch.setattr(sys, "argv", ["pylovo-analyze", "--plz", "80331", *argv])
     analyze.main()
     assert "Warning" not in capsys.readouterr().err
+
+
+def test_the_border_report_is_strict_json_and_closes_the_infdb_client(monkeypatch, tmp_path):
+    """Without a scope table the shares are NaN, which json writes as the token NaN that strict parsers reject."""
+    import pylovo.database.database_client as database_client
+    import pylovo.infdb.infdb_client as infdb_client
+    from pylovo.analysis import border_diagnostics
+
+    class FakeDatabase:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class FakeInfdb:
+        closed = False
+
+        def close(self):
+            FakeInfdb.closed = True
+
+    context = pd.DataFrame({"plz": [80331], "area_km2": [1.2345678], "scope_share": [np.nan],
+                            "context_share": [np.nan], "streets_inside_km": [3.0], "streets_ring_km": [1.5]})
+    grids = pd.DataFrame({"n_buildings": [5], "small": [False], "generated_border_m": [10.0],
+                          "open_border_m": [np.nan], "outer_border_m": [np.nan], "scope_edge_m": [np.nan]})
+    monkeypatch.setattr(database_client, "DatabaseClient", FakeDatabase)
+    monkeypatch.setattr(infdb_client, "InfdbClient", FakeInfdb)
+    monkeypatch.setattr(border_diagnostics, "postcode_context", lambda *args: context)
+    monkeypatch.setattr(border_diagnostics, "grid_edges", lambda *args: grids)
+
+    analyze.run_diagnostics([80331], coverage=False, border=True, version_id="v", output=tmp_path)
+
+    def refuse(constant):
+        raise ValueError(f"the report contains {constant}")
+
+    report = json.loads((tmp_path / "diagnostics_v.json").read_text(), parse_constant=refuse)
+    assert report["postcodes"] == [{"plz": 80331, "area_km2": 1.2346, "scope_share": None, "context_share": None,
+                                    "streets_inside_km": 3.0, "streets_ring_km": 1.5}]
+    assert FakeInfdb.closed
