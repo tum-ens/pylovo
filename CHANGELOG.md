@@ -48,8 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Unit tests of the classification, the CLI entry points, the packaging, the data directory and the MV, API and LV fixes of the release review
 - User guide page on the classification (`user_guide/classification`)
 - Wheel installs work outside a checkout: the wheel and the sdist contain the default configuration and the reference data (municipal register, Overpass queries, processed OSM transformers) as the last fallback, and `.env` is also looked up in the working directory
-- `pylovo-classify` options that answer its questions (`--additional-filtering`, `--restrict-to-generated`, `--auto` or `--manual` with `--parameters` and `--clusters`), so a classification can run without a terminal; the run ends with the number of grids per stage and warns about grids it lost
-- `ADDITIONAL_FILTERING` in `config_clustering.yaml`: the answer on the additional filtering, read by the classification readers
+- `pylovo-classify` options that answer its questions (`--additional-filtering`, `--restrict-to-generated`, `--auto` or `--manual` with `--parameters` and `--clusters`), so a classification can run without a terminal; the run ends with the number of grids per stage and warns about grids it lost; wrong `--parameters` or `--clusters` values exit 2
+- `ADDITIONAL_FILTERING` in `config_clustering.yaml`: the answer on the additional filtering. Step 7 of the classification stores the clustering parameters, the numbers of clusters and this answer with the classification (migration `0014_classification_choices`, four columns of `classification_version`), and the readers, the summary, a repeated step 7 and the clustering notebooks use the stored values (classifications clustered before use `config_clustering.yaml` until step 7 is repeated)
 - `pylovo-mv prune-graphs`: delete the MV routing graphs that no variant references
 - Migration `0013_schema_cleanup` (run `pylovo-setup`): drops the unused table `grid_parameters`, the MaStR tables of databases migrated with the former `0009` and renames the v0.8.0 key names of `lines_result_cache`
 - A warning for keys of `config_generation_lv.yaml`, `config_analysis.yaml`, `config_classification.yaml` and `config_clustering.yaml` that nothing reads, with the closest known name (the MV file refuses unknown keys as before)
@@ -173,6 +173,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Load edits and their undo keep `pylovo.mv_customers` in step when the MV-direct part of a building crosses the threshold; the diagnostics caches of `pylovo-api` follow the grids, the generation parameters and the active load edits
 - File-based input: the street-crossing splitter repeats its passes over the current ways until no crossing is left
 - `pylovo-api`: the region check counts buildings of unknown use as importable, as the library imports them (it reported too few importable buildings)
+- The warning about a version snapshot that predates parameters is printed once per run, not once per PLZ worker
 
 
 
