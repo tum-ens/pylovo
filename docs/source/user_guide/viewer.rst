@@ -5,8 +5,8 @@ Map viewer
 German high-voltage grid, the MV grids of an MV run and the LV grids of a version. It is the quick
 alternative to the QGIS templates (:doc:`exporting_visualising`). It only reads: its connections
 start read-only (``default_transaction_read_only``), every query runs in a read-only transaction, and
-the viewer never creates, migrates or resets anything. For setup, generation and editing use
-GridPlanner (:doc:`browser_ui`).
+the viewer never creates, migrates or resets anything. Setup and generation stay with the pylovo
+commands (:doc:`cli`).
 
 .. figure:: /images/viewer/viewer-detail.png
    :alt: The map viewer with LV grids coloured by grid and one selected feeder section
@@ -27,7 +27,10 @@ Start
 
 The viewer opens the database of the ``.env`` that pylovo uses (the one of the checkout), prints it
 at start and shows it in the top bar with a *read-only* badge. On a remote machine, VS Code forwards
-the port; otherwise use ``ssh -L 8770:127.0.0.1:8770 <host>``.
+the port; otherwise use ``ssh -L 8770:127.0.0.1:8770 <host>``. On ``127.0.0.1`` (the default) the
+viewer answers only requests addressed to ``127.0.0.1`` or ``localhost``, which both kinds of
+forwarding use, so a web page of another site cannot read it through a domain of its own that points
+to your machine (DNS rebinding).
 
 **Databases.** The viewer also offers the other pylovo databases of the same server, with the same
 user and password: every database with a ``pylovo.version`` table that the user may connect to, or
@@ -51,7 +54,8 @@ connections and cache, and the address bar keeps the database, so two tabs can s
        ``PYLOVO_VIEWER_DATABASES``.
    * - ``--host``
      - ``127.0.0.1``
-     - Interface to listen on. The viewer has no login, so only widen this on a trusted network.
+     - Interface to listen on. The viewer has no login, so only widen this on a trusted network; it
+       then answers requests to any host name.
    * - ``--port``
      - 8770, or the next free port
      -
@@ -206,7 +210,12 @@ Data and limits
   most 60,000 features per request and says so when it is cut.
 * The server keeps loaded data in memory. After a new generation or MV run, the reload button in
   the top bar reads everything from the database again.
-* The browser loads MapLibre GL JS, Vue, the fonts and the basemaps (OpenFreeMap, Streets by default,
-  and the OpenStreetMap tiles) from the internet. The data layers also work without a basemap (*Basemap: No
-  basemap*).
+* The browser needs internet access: it loads MapLibre GL JS 6.11.2 and Vue 3.5.43 from
+  ``cdn.jsdelivr.net`` (exact versions), the Inter font from Google Fonts (``fonts.googleapis.com``),
+  the basemaps and the fonts of the map labels from OpenFreeMap (``tiles.openfreemap.org``, Streets by
+  default) and, for the *OpenStreetMap* basemap, the tiles of ``tile.openstreetmap.org``. The server
+  and the database need no internet. Offline the page stays empty because the map library cannot
+  load. If only the basemap tiles are blocked, the data layers still work with *Basemap: No basemap*.
+* ``pylovo-viewer fetch etrago`` downloads from the Open Energy Platform (``openenergyplatform.org``)
+  once; the map then reads the file in ``--data-dir``.
 * LoD2 models need WebGL2; without it the buildings stay extruded footprints.

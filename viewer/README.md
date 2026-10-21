@@ -31,7 +31,7 @@ uv run --extra viewer pytest viewer/tests           # no database needed
 
 In `static/js/`: `main.js` (app state, loading, inspector, URL), `map.js` (MapLibre, draw order,
 picking), `styles.js` (colour modes, MapLibre layers, tooltip facts), `palette.js` (colours and
-schemes), `lod2.js` (LoD2 custom layer, adapted from the GridPlanner UI).
+schemes), `lod2.js` (LoD2 custom layer that draws the mesh of `pylovo_api.lod2`).
 
 ## Adding a layer
 
@@ -42,6 +42,9 @@ schemes), `lod2.js` (LoD2 custom layer, adapted from the GridPlanner UI).
 
 ## Rules
 
+- Local only: listening on 127.0.0.1 or localhost (the default), the app answers only requests whose `Host`
+  is 127.0.0.1, localhost or ::1 (`create_app(local_only=True)`, against DNS rebinding); a wider `--host` turns
+  this off.
 - Read only: no writes, no `pylovo` imports (they load the checkout's `.env` with `override=True`),
   no `pylovo-*` commands. The one piece of pylovo code the viewer runs is `pylovo/version_snapshot.py`
   (no configuration, no database), loaded from its file in `regions.py` to tell retired MV runs.
