@@ -20,7 +20,7 @@ district inventory reports ties separately.
 
 Every notebook starts with a cell tagged `parameters`:
 
-- `version_id`: the LV version (here `"mv2"`, an LV version of the MV test database; `None` uses `VERSION_ID` of `config/config_generation_lv.yaml`);
+- `version_id`: the LV version (`None` uses `VERSION_ID` of `config/config_generation_lv.yaml`);
 - `variants`: the MV variants. In notebooks 1, 3 and 4, `None` selects the default variant: `MV_VARIANT_ID` of
   `config/config_generation_mv.yaml` if the version has this variant, else the newest done variant that is not
   retired. In notebook 2, `None` selects all done variants that are not retired (notebook 0 lists these as well).
@@ -32,7 +32,7 @@ Every notebook starts with a cell tagged `parameters`:
 - `regions`, `plz`: region filter. The planning region of a variant is the union of its PLZ polygons; groups of
   PLZ more than 5 km apart are region parts, numbered by area (1 = largest). A district belongs to the part nearest
   to its substation. `regions` keeps the districts of some parts, `plz` the districts with nodes in some PLZ;
-- `dbname`: the expected database name of the `.env` (here `"infdb_mv"`, the MV test database; the notebook stops if it differs, `None` skips the check); `repo_root`: the
+- `dbname`: the expected database name of the `.env`; the notebook stops if it differs (`None` skips the check); `repo_root`: the
   repository root (default: two levels above the notebook);
 - notebook-specific ones: `grid_id` (district of the detail maps in the first mapped variant), `basemap` (OpenStreetMap tiles, needs internet
   access), `reference`, `compare_versions` and `compare_variant` (notebook 2), `complete_only`, `ding0_dir` and
