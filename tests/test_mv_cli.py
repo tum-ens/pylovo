@@ -140,6 +140,16 @@ class FakeClient:
         return False
 
 
+@pytest.mark.parametrize("variant_args, which", [(["--variant", "typo"], "typo"), ([], "all")])
+def test_deleting_a_variant_that_does_not_exist_is_an_error(monkeypatch, capsys, no_grid_generator, variant_args, which):
+    client = FakeClient(delete_variants=lambda v, ids: 0, ensure_grid_persistence_schema=lambda: None)
+    monkeypatch.setattr(cli, "_database_client", lambda: client)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["delete", "--version", "mv1", *variant_args, "--yes"])
+    assert exc.value.code == 1
+    assert capsys.readouterr().out.strip() == f"✗ No MV variant of version mv1 to delete ({which})"
+
+
 def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     import pandas as pd
 

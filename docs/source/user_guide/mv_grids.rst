@@ -360,7 +360,8 @@ Deletes the given variants of a version with all their results. Without ``--vari
 every MV variant of the version. It refuses while a ``generate`` or ``couple`` of one of them runs.
 Like ``pylovo-delete`` it shows the database and asks you to type its name; ``--yes`` skips the
 question and is required when stdin is not a terminal (otherwise nothing is deleted and the command
-exits with 1).
+exits with 1). If no variant matches, the command reports ``✗ No MV variant ... to delete`` and exits
+with 1.
 
 pylovo-mv export
 ~~~~~~~~~~~~~~~~

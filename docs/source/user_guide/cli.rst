@@ -114,7 +114,7 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
 ``pylovo-mv delete --version VERSION [--variant VARIANTS ...] [--yes]``
    Delete MV variants with all their results (all variants of the version without ``--variant``).
    Asks you to type the database name first, like ``pylovo-delete``; ``--yes`` skips the question and
-   is required without a terminal on stdin.
+   is required without a terminal on stdin. When no variant matches the command exits with 1.
 ``pylovo-mv export --version VERSION --variant VARIANT --grid GRID --output OUTPUT [--case CASE] [--coupled]``
    Write the pandapower net of one MV grid (case ``load``, ``n1a`` or ``n1b``) to a JSON file.
 ``pylovo-mv boundary --version VERSION --variant VARIANT --output OUTPUT``

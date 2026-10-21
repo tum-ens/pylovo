@@ -199,6 +199,9 @@ def _delete(args: argparse.Namespace) -> int:
     with _database_client() as dbc:
         dbc.ensure_grid_persistence_schema()
         count = dbc.delete_variants(args.version, args.variants)
+    if not count:
+        print(f"✗ No MV variant of version {args.version} to delete ({which})")
+        return 1
     print(f"✓ Deleted {count} MV variant{'s' if count != 1 else ''} of version {args.version} ({which})")
     return 0
 
