@@ -112,7 +112,7 @@ def regenerate(body: RegionBody, request: Request) -> dict:
     if not status.get("verified"):
         raise HTTPException(409, f"The input check of PLZ {body.plz} has not finished; try again in a moment.")
     argv = chain.build(pylovo_command("pylovo-delete", "networks", "--plz", str(body.plz), "--version", version_id),
-                       pylovo_command("pylovo-generate", "--plz", str(body.plz)))
+                       pylovo_command("pylovo-generate", "--plz", str(body.plz), "--no-mv"))  # the API has no MV stage
     return _start(request, "generate", f"Regenerate grids · {body.plz} · v{version_id}", argv,
                   {"plz": [body.plz], "version_id": version_id, "regenerate": True})
 

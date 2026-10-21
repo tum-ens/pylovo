@@ -2202,7 +2202,7 @@
     },
     "/api/jobs/generate": {
       "post": {
-        "description": "``pylovo-generate --plz ... | --ags ... --parallel|--no-parallel``, gated by the region gate.\n\nPLZ without input data are refused (409) unless ``skip_blocked`` drops them or\n``include_blocked`` keeps them; PLZ whose check has not finished need ``allow_unverified``.\n``--ags`` is passed on only when every PLZ of the municipality passes the gate.",
+        "description": "``pylovo-generate --plz ... | --ags ... --parallel|--no-parallel --no-mv``, gated by the region gate.\n\nPLZ without input data are refused (409) unless ``skip_blocked`` drops them or\n``include_blocked`` keeps them; PLZ whose check has not finished need ``allow_unverified``.\n``--ags`` is passed on only when every PLZ of the municipality passes the gate.",
         "operationId": "generate_api_jobs_generate_post",
         "requestBody": {
           "content": {

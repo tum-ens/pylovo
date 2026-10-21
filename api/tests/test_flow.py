@@ -160,3 +160,25 @@ def test_stored_validation_reproduces_the_on_demand_power_flow(client):
     assert len(detail["direct_connections"]) == 1 and detail["direct_connections"][0]["address"]
     station = client.get("/api/results/1/85653/map").json()["stations"]["features"]
     assert "2 × 400 kVA" in {s["properties"]["size_label"] for s in station}
+
+
+# --------------------------------------------------------------------------- the API has no MV stage
+def test_generate_and_regenerate_jobs_never_run_the_mv_stage(client, monkeypatch):
+    """``MV_GRID_GENERATION`` in the config is only the CLI default: a UI-started generation must not follow it."""
+    from pylovo_api.routers import flow, jobs
+
+    started = []
+    monkeypatch.setattr(jobs, "_start", lambda request, kind, title, argv, **kw: started.append(argv) or {})
+    monkeypatch.setattr(flow, "_start", lambda request, kind, title, argv, params: started.append(argv) or {})
+    monkeypatch.setattr(jobs.gate, "gate_generate", lambda plz, *a, **k: {
+        "use_ags": False, "plz": plz, "skipped": [], "included_blocked": [], "unverified": [], "notes": []})
+    monkeypatch.setattr(flow, "_require_matching_config", lambda: {"version_id": "1"})
+    monkeypatch.setattr(flow, "_plz_state", lambda version_id: ({80803}, set()))
+    monkeypatch.setattr(flow.gate, "classify", lambda *a, **k: {"statuses": {80803: {"selectable": True, "verified": True}}})
+    assert client.post("/api/jobs/generate", json={"plz": [80803]}).status_code == 202
+    assert client.post("/api/jobs/generate", json={"plz": [80803, 80804], "parallel": False}).status_code == 202
+    assert client.post("/api/flow/regenerate", json={"plz": 80803, "confirm": "1/80803"}).status_code == 202
+    generate_argv, parallel_argv, regenerate_argv = started
+    assert "--no-mv" in generate_argv and "--no-mv" in parallel_argv and "--mv" not in generate_argv
+    delete_step, generate_step = chain.split(regenerate_argv[3:])
+    assert "--no-mv" in generate_step and "--no-mv" not in delete_step

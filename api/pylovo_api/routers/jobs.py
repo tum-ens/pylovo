@@ -145,7 +145,7 @@ def generate_check(request: Request, plz: Annotated[list[int] | None, Query()] =
 
 @router.post("/generate", status_code=202)
 def generate(body: GenerateBody, request: Request) -> dict:
-    """``pylovo-generate --plz ... | --ags ... --parallel|--no-parallel``, gated by the region gate.
+    """``pylovo-generate --plz ... | --ags ... --parallel|--no-parallel --no-mv``, gated by the region gate.
 
     PLZ without input data are refused (409) unless ``skip_blocked`` drops them or
     ``include_blocked`` keeps them; PLZ whose check has not finished need ``allow_unverified``.
@@ -160,6 +160,7 @@ def generate(body: GenerateBody, request: Request) -> dict:
     args = (["--ags", *(str(a).zfill(8) for a in body.ags)] if decision["use_ags"]
             else ["--plz", *map(str, decision["plz"])])
     args.append("--parallel" if body.parallel else "--no-parallel")   # explicit: PARALLEL in the config is only the CLI default
+    args.append("--no-mv")   # the API has no MV stage (pylovo-mv): MV_GRID_GENERATION in the config is only the CLI default
     codes = body.ags if decision["use_ags"] else decision["plz"]
     label = ", ".join(map(str, codes[:4])) + (" …" if len(codes) > 4 else "")
     return _start(request, "generate", f"Generate grids · {label} · v{config_version_id()}",
