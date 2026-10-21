@@ -1,4 +1,5 @@
 ### Chosen directories/files to ignore
+/AGENTS.md
 /data/buildings/*
 /data/ways/ways_public_2po_4pgr.sql
 /data/postcode.csv
