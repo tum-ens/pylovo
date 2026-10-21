@@ -55,7 +55,10 @@ the postcodes run sequentially.
   for the postcodes with LV grids.
 * :kbd:`Ctrl+C` cancels pending postcodes and waits for the running ones to finish. The working
   tables of an interrupted postcode are session-local and disappear with their connection.
-* Every postcode is one database transaction: either all its grids are stored or none.
+* Every postcode is one database transaction: either all its grids are stored or none. A failed
+  postcode stores nothing. A postcode without any grid (``empty``) stores why each of its buildings
+  is in no grid (``building_exclusion``) and its MV customers; a rerun reports it as ``empty``
+  again until its results are deleted.
 
 Logs
 ----

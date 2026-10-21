@@ -205,7 +205,8 @@ database:
     Every source building that generation loads (InfDB, same filters) is ``generated`` (in a grid,
     in any PLZ), ``excluded`` with the step that left it out (``pylovo.building_exclusion``: e.g.
     ``mv_direct``, ``no_connection_point``, ``isolated_component``, ``unloaded``,
-    ``transformer_evidence``), ``postcode_not_generated`` (its PLZ has no results) or ``missing``.
+    ``transformer_evidence``), ``postcode_not_generated`` (its PLZ has no results: it failed or was not run) or ``missing``.
+    A PLZ that got no grid at all still stores the exclusions of its buildings.
     A ``buildings_result`` or ``building_exclusion`` row without a source building is reported as
     ``not_in_source``, a building that is both in a grid and excluded as ``generated_and_excluded``.
     If any building is missing, the command prints their number and exits with code 3; a

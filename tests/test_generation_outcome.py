@@ -50,6 +50,36 @@ def test_failures_empty_and_existing_results_are_reported_instead_of_hidden():
     assert generator(FakeDb(), exists).generate_grid_for_single_plz(80331) == GenerationOutcome.EXISTS
 
 
+class RecordingDb(FakeDb):
+    """Records the order of the database calls."""
+
+    def __init__(self, grids=()):
+        super().__init__(grids)
+        self.calls = []
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: self.calls.append(name)
+
+    def get_list_from_plz(self, plz):
+        self.calls.append("get_list_from_plz")
+        return self.grids
+
+
+def test_an_empty_plz_stores_its_exclusions_and_mv_customers_instead_of_rolling_back():
+    db = RecordingDb()
+    assert generator(db, lambda: None).generate_grid_for_single_plz(80331) == GenerationOutcome.EMPTY
+    after_generation = db.calls[db.calls.index("get_list_from_plz"):]
+    assert after_generation[:3] == ["get_list_from_plz", "save_building_exclusions", "commit_changes"]
+    assert not db.saved
+
+
+def test_a_plz_stored_without_grids_stays_empty_on_a_rerun():
+    def exists():
+        raise ResultExistsError()
+
+    assert generator(FakeDb(grids=()), exists).generate_grid_for_single_plz(80331) == GenerationOutcome.EMPTY
+
+
 def test_an_interrupt_still_raises():
     def interrupt():
         raise KeyboardInterrupt

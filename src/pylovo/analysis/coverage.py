@@ -5,7 +5,7 @@ same filters). A building is
 
 * ``generated``: in ``buildings_result`` of the version (in any PLZ's grid),
 * ``excluded``: in ``building_exclusion`` with the step that left it out,
-* ``postcode_not_generated``: its PLZ has no results in the version (failed, empty or not run),
+* ``postcode_not_generated``: its PLZ has no results in the version (failed or not run; a PLZ without grids keeps its exclusions),
 * ``missing``: none of these, which a complete run must not have.
 
 Rows of ``buildings_result``/``building_exclusion`` without an eligible source building are reported as

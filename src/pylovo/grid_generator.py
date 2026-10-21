@@ -130,8 +130,10 @@ class GridGenerator:
     ) -> GenerationOutcome:
         """Generates the grid for a single PLZ.
 
-        A failing PLZ is logged and skipped (the exception is not raised); the returned outcome
-        tells callers what happened.
+        A failing PLZ is logged, rolled back and skipped (the exception is not raised); the returned
+        outcome tells callers what happened. A PLZ without any grid (``EMPTY``) stores its
+        ``postcode_result`` row, its building exclusions and its MV customers, so a rerun reports it
+        as ``EMPTY`` again.
 
         :param plz: Postal code for which the grid should be generated.
         :type plz: int
@@ -152,21 +154,28 @@ class GridGenerator:
         try:
             self.dbc.create_temp_tables(plz)
             self.generate_grid()
-            if not self.dbc.get_list_from_plz(plz):
-                self.logger.warning(
-                    f"No grid_result rows were generated for PLZ {plz}; skipping result-table persistence."
-                )
-                self.dbc.rollback_changes()
-                return GenerationOutcome.EMPTY
-            self.dbc.save_tables(plz=self.plz)
+            if self.dbc.get_list_from_plz(plz):
+                self.dbc.save_tables(plz=self.plz)
+            else:
+                # No grid, but the PLZ is finished: keep its postcode_result row, why each building is in
+                # no grid and its MV customers. A FAILED PLZ is rolled back instead (its steps did not finish).
+                outcome = GenerationOutcome.EMPTY
+                self.logger.warning(f"No grid_result rows were generated for PLZ {plz}; "
+                                    "only its building exclusions and MV customers are stored.")
+                self.dbc.save_building_exclusions(plz)
             self.dbc.commit_changes()
-            if analyze_grids:
+            if analyze_grids and outcome == GenerationOutcome.GENERATED:
                 pc = ParameterCalculator()
                 pc.analyze_parameters_for_plz(plz)
                 self.dbc.commit_changes()  # commit the changes to the database
         except ResultExistsError:
-            outcome = GenerationOutcome.EXISTS
-            self.dbc.logger.info(f"Grid for the postcode area {plz} has already been generated.")
+            if self.dbc.get_list_from_plz(plz):
+                outcome = GenerationOutcome.EXISTS
+                self.dbc.logger.info(f"Grid for the postcode area {plz} has already been generated.")
+            else:
+                # Stored before without grids: it stays empty (no grids to analyse or to pass to the MV stage).
+                outcome = GenerationOutcome.EMPTY
+                self.logger.warning(f"No grid_result rows were generated for PLZ {plz} (stored before without grids).")
         except KeyboardInterrupt:
             interrupted = True
             self.logger.warning(f"Grid generation interrupted by user for PLZ {self.plz}.")

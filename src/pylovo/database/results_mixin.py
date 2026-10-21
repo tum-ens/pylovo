@@ -83,7 +83,7 @@ class ResultsMixin(BaseMixin):
         Removed rows come from ``excluded_tem`` (written by the removal steps). Rows still in
         ``buildings_tem`` but not saved are MV-direct (``peak_load_in_kw = 0``), in a street
         component that was dropped (no kcid) or not clustered. Must run after the buildings were
-        saved. Does not commit.
+        saved, or alone for a PLZ without grids. Does not commit.
 
         Args:
             plz: Postcode of the working tables.
