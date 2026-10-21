@@ -348,7 +348,8 @@ Examples:
     )
     dso_csv_parser.add_argument(
         "csv_path",
-        help="Path to CSV with external_id, lon, lat and optional transformer_rated_power/source columns"
+        help="Path to CSV with external_id, lon, lat (WGS84 degrees, EPSG:4326) and optional "
+             "transformer_rated_power/source columns"
     )
     dso_csv_parser.add_argument(
         "--source",

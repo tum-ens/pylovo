@@ -156,10 +156,10 @@ coordinates:
        not empty and unique per source after the source label is normalised.
    * - ``lon``
      - yes
-     - Longitude (EPSG:4326).
+     - Longitude in degrees (WGS84, EPSG:4326), between -180 and 180.
    * - ``lat``
      - yes
-     - Latitude (EPSG:4326).
+     - Latitude in degrees (WGS84, EPSG:4326), between -90 and 90.
    * - ``transformer_rated_power``
      - no
      - Rating in kVA: empty (unknown) or a whole number above 0.
@@ -177,12 +177,18 @@ coordinates:
 
    uv run pylovo-import transformers-dso-csv stations.csv --source aying --replace-source
 
+The coordinates must be WGS84 degrees (EPSG:4326, longitude first). pylovo converts no other
+coordinate system: positions in a projected system such as UTM have to be converted to WGS84 before
+the import. Values beyond 180 degrees of longitude or 90 degrees of latitude (typically the metres of
+a projected system) are refused with their row numbers. Swapped columns stay within the limits
+and are not detected, so check the first rows on a map.
+
 Rows are stored with ``type = 'dso'`` and ids ``dso/<source>/<external_id>`` (the source label is
 lower-cased; characters other than ``a-z``, ``0-9``, ``_``, ``.`` and ``-`` become ``_``). ``--source`` overrides the
 CSV column; ``--replace-source`` deletes the existing rows whose id starts exactly with
 ``dso/<source>/`` before the import, which is useful for corrected re-imports. All cells are read as
 text, so ids keep their leading zeros. The import stops before it changes anything and names the CSV
-rows (the header is row 1) of every problem: an empty or repeated id, invalid coordinates, or a
+rows (the header is row 1) of every problem: an empty or repeated id, missing or out-of-range coordinates, or a
 rating that is neither empty nor a whole number of kVA above 0. A row whose id already exists in
 the table from an earlier import is updated. Then enable the positions:
 

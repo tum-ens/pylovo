@@ -13,6 +13,7 @@ REQUIRED_COLUMNS = {"external_id", "lon", "lat"}
 OPTIONAL_COLUMNS = {"transformer_rated_power", "source"}
 DEFAULT_SOURCE = "csv"
 DSO_TYPE = "dso"
+OUT_OF_RANGE = "lon/lat out of range for EPSG:4326 (|lon| <= 180, |lat| <= 90)"
 
 
 def _normalize_source(source: str) -> str:
@@ -27,10 +28,12 @@ def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
 
     Every cell is read as text (no ``1001.0`` for a numeric id column with a gap, no ``nan`` for a blank
     cell, leading zeros and ids such as ``NA`` are kept). A blank source cell gets the default source ``csv``. A rating
-    must be blank (unknown) or a whole number of kVA above 0, and an id may occur only once per source.
+    must be blank (unknown) or a whole number of kVA above 0, and an id may occur only once per source. The
+    coordinates are WGS84 degrees (EPSG:4326, longitude first): values beyond ±180 or ±90, such as the metres of a
+    projected system, are marked, no other coordinate system is converted.
 
     Args:
-        csv: Path or file object of the CSV with ``external_id``, ``lon``, ``lat`` and optional
+        csv: Path or file object of the CSV with ``external_id``, ``lon``, ``lat`` (EPSG:4326) and optional
             ``transformer_rated_power`` and ``source`` columns.
         source: Source label that overrides the ``source`` column.
 
@@ -76,6 +79,7 @@ def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
     df["problem"] = ""                  # the reasons are assigned from the least to the most important
     df.loc[df["osm_id"].duplicated(keep=False), "problem"] = "duplicate external_id"
     df.loc[bad_rating, "problem"] = "invalid transformer_rated_power (blank or whole kVA above 0)"
+    df.loc[(df["lon"].abs() > 180) | (df["lat"].abs() > 90), "problem"] = OUT_OF_RANGE
     df.loc[df["lon"].isna() | df["lat"].isna(), "problem"] = "invalid lon/lat"
     df.loc[df["external_id"].eq(""), "problem"] = "empty external_id"
     return df
@@ -94,8 +98,9 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
         and ``osm_id`` (``dso/<source>/<external_id>``).
 
     Raises:
-        ValueError: If required columns are missing or rows have an empty or repeated id, invalid
-            coordinates or an invalid rating; the message names the row numbers of the file (the header is row 1).
+        ValueError: If required columns are missing or rows have an empty or repeated id, missing or
+            out-of-range coordinates or an invalid rating; the message names the row numbers of the file
+            (the header is row 1). The CLI and the API preview both read the file through this check.
     """
     df = parse_transformer_csv(csv_path, source)
     invalid = df[df["problem"] != ""]

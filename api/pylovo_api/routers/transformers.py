@@ -196,11 +196,10 @@ async def dso_preview(file: Annotated[UploadFile, File()], source: str | None = 
         df = parse_transformer_csv(io.BytesIO(raw), source or None)
     except (ValueError, pd.errors.ParserError, UnicodeDecodeError) as exc:
         raise HTTPException(400, f"Cannot read the CSV: {exc}") from exc
-    invalid = df[df["problem"] != ""]          # the rows pylovo-import would refuse
-    out_of_range = df[(df["lon"].abs() > 180) | (df["lat"].abs() > 90)]
+    invalid = df[df["problem"] != ""]          # the rows pylovo-import would refuse (also coordinates out of range)
     upload_id = uuid.uuid4().hex[:12]
     (paths().uploads_dir / f"{upload_id}.csv").write_bytes(raw)
-    valid = df.drop(index=invalid.index.union(out_of_range.index))
+    valid = df.drop(index=invalid.index)
     existing = 0
     if len(valid):
         row = db.fetch_one("SELECT count(*) AS n FROM pylovo.transformers WHERE osm_id = ANY(%s)",
@@ -214,7 +213,6 @@ async def dso_preview(file: Annotated[UploadFile, File()], source: str | None = 
     return {
         "upload_id": upload_id, "filename": file.filename, "rows": len(df), "valid_rows": len(valid),
         "invalid_rows": [int(i) + 2 for i in invalid.index[:50]],
-        "out_of_range_rows": [int(i) + 2 for i in out_of_range.index[:50]],
         "sources": sorted(df["source"].unique().tolist()),
         "existing_ids": existing, "with_capacity": int(valid["transformer_rated_power"].notna().sum()),
         "capacities": [{"kva": int(k), "count": int(v)} for k, v in capacities.items()],

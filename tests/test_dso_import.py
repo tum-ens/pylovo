@@ -33,6 +33,18 @@ def test_blank_coordinates_are_refused_with_their_row_numbers(tmp_path):
         read(tmp_path, "external_id,lon,lat\nA,,48.0\nB,11.8,48.1\nC,11.9,north\n")
 
 
+@pytest.mark.parametrize("lon, lat", [(691000, 5330000), (181, 48), (-180.5, 48), (11.7, 90.5), (11.7, -91), ("inf", 48)],
+                         ids=["utm metres", "lon > 180", "lon < -180", "lat > 90", "lat < -90", "infinite lon"])
+def test_coordinates_outside_epsg_4326_are_refused_with_their_row_numbers(tmp_path, lon, lat):
+    with pytest.raises(ValueError, match=r"lon/lat out of range for EPSG:4326.* in rows \[3\]"):
+        read(tmp_path, f"external_id,lon,lat\nA,11.7,48.0\nB,{lon},{lat}\n")
+
+
+def test_the_limits_of_the_coordinate_range_are_accepted(tmp_path):
+    df = read(tmp_path, "external_id,lon,lat\nA,180,90\nB,-180,-90\n")
+    assert df["osm_id"].tolist() == ["dso/csv/A", "dso/csv/B"]
+
+
 def test_a_blank_source_cell_gets_the_default_source_and_not_nan(tmp_path):
     df = read(tmp_path, "external_id,lon,lat,source\nA,11.7,48.0,Aying\nB,11.8,48.1,\n")
     assert df["osm_id"].tolist() == ["dso/aying/A", "dso/csv/B"]
@@ -52,6 +64,11 @@ def test_the_parser_marks_the_rows_instead_of_raising_for_the_api_preview():
     csv = io.BytesIO(b"external_id,lon,lat\nA,11.7,48.0\n,11.8,48.1\nC,,48.2\n")
     df = dso.parse_transformer_csv(csv)
     assert df["problem"].tolist() == ["", "empty external_id", "invalid lon/lat"]
+
+
+def test_the_parser_marks_out_of_range_coordinates_for_the_api_preview():
+    df = dso.parse_transformer_csv(io.BytesIO(b"external_id,lon,lat\nA,11.7,48.0\nB,691000,5330000\n"))
+    assert df["problem"].tolist() == ["", dso.OUT_OF_RANGE]
 
 
 def test_duplicate_ids_are_refused_instead_of_the_last_row_winning(tmp_path):
