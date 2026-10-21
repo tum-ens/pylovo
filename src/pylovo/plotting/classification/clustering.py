@@ -323,7 +323,7 @@ def plot_clusters_3D(df_min_max: pd.DataFrame, df_centroids: pd.DataFrame) -> Fi
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
 
-    for index, row in df_min_max.iterrows():
+    for _index, row in df_min_max.iterrows():
         Z = np.array([[row['attribute1_min'], row['attribute2_min'], row['attribute3_min']],
                       [row['attribute1_max'], row['attribute2_min'], row['attribute3_min']],
                       [row['attribute1_max'], row['attribute2_max'], row['attribute3_min']],

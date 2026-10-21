@@ -1126,7 +1126,7 @@ def run_coupling(version_id: str, variant_id: str, mv_grid_ids: Sequence[int] | 
 def _run_locked(dbc: Any, version_id: str, variant_id: str, mv_grid_ids: Sequence[int] | None, *, jobs: int,
                 merged: bool, log_file: str, log: logging.Logger, start: float) -> CouplingSummary:
     try:
-        row, params, lv_json = _variant_inputs(dbc, version_id, variant_id)
+        _row, params, lv_json = _variant_inputs(dbc, version_id, variant_id)
     except LookupError as exc:
         raise MvStageError(str(exc)) from exc
     layers = dbc.read_mv_layers(version_id, variant_id)

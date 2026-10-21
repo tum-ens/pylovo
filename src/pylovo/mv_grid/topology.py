@@ -722,7 +722,7 @@ def _decide_stubs(ctx: _Ctx, dec: _Decisions, ring_ids: Sequence[int]) -> None:
             continue
         scores = []
         for row in candidates:
-            accepted, spur, saving = _stub_trial(ctx, struct, struct.rows, [], row)
+            _accepted, spur, saving = _stub_trial(ctx, struct, struct.rows, [], row)
             scores.append((-(saving - spur) if math.isfinite(spur) else math.inf, ctx.key(row), row))
         accepted_rows: list[int] = []
         for _, _, row in sorted(scores):

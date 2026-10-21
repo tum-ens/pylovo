@@ -639,7 +639,7 @@ class GridModel:
             f = self.bus_feeder.get(bus)
             if f in feeders:
                 feeders[f]["consumers"].append(bus)
-        for f, info in feeders.items():
+        for info in feeders.values():
             head = self.lines.get(info["head"]) if info["head"] is not None else None
             cons = info["consumers"]
             info["head_role"] = head["role"] if head else None
@@ -1557,7 +1557,7 @@ def _rule_tr02(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) ->
     if not targets:
         return
     p = m.p
-    f, t = min(targets.items(), key=lambda kv: m.vm(kv[1]["bus"]) or 9.9)
+    _, t = min(targets.items(), key=lambda kv: m.vm(kv[1]["bus"]) or 9.9)
     k = t["bus"]
     vm_k = m.vm(k)
     if vm_k is None:
@@ -2106,7 +2106,7 @@ def _rule_tp02(m: GridModel, F: Findings, th: dict, heavy_symptoms: dict[int, li
     candidate = None
     if light:
         light_conn = [(b, m.buses[b]) for f, _ in light for b in m.lv_buses(f) if m.buses[b]["role"] == "connection"]
-        for cab, info in sorted(m.cabinets.items(), key=lambda kv: kv[1]["distance_m"]):
+        for cab in sorted(m.cabinets, key=lambda c: m.cabinets[c]["distance_m"]):
             if m.bus_feeder.get(cab) != f_max:
                 continue
             sub = [b for b in m.subtree(cab) if m.buses[b]["role"] == "connection"]
@@ -2199,7 +2199,7 @@ def _rule_tp04(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) ->
     if station[0] is None:
         return
     on_path: dict[int, list[str]] = {}
-    for f, t in targets.items():
+    for t in targets.values():
         for lid in m.path_lines(t["bus"]):
             on_path.setdefault(m.child_of[lid], []).extend(t["explains"])
     groups: dict[int, list[tuple]] = defaultdict(list)
@@ -2219,7 +2219,7 @@ def _rule_tp04(m: GridModel, F: Findings, th: dict, targets: dict[int, dict]) ->
             groups[m.bus_feeder.get(b)].append((ratio, extra, b, route, air, "info", []))
     for f, rows in groups.items():
         rows.sort(key=lambda r: (SEV_RANK[r[5]], -r[0]))
-        ratio, extra, b, route, air, severity, explains = rows[0]
+        ratio, extra, b, route, air, severity, _explains = rows[0]
         cons = [r for r in rows if m.buses[r[2]]["role"] == "consumer"]
         street = next((x.get("street") for x in m.bus_buildings.get(b, []) if x.get("street")), None)
         who = m.address(b) if m.buses[b]["role"] == "consumer" else m.node_label(b)
