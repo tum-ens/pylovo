@@ -1,7 +1,7 @@
 # Run the unit tests on pushes to main/dev and on pull requests. The database tests are opt-in and
 # skip themselves, so nothing here needs a database.
-# Both extras are needed: api/tests import fastapi (extra api), the MV plotting tests need matplotlib
-# (extra plots) and are skipped without it. uv takes the Python version from .python-version.
+# The extras are needed: api/tests and viewer/tests import fastapi (extras api, viewer), the MV plotting tests
+# need matplotlib (extra plots) and are skipped without it. uv takes the Python version from .python-version.
 name: Tests
 
 on:
@@ -34,4 +34,4 @@ jobs:
           enable-cache: true
 
       - name: Run the tests
-        run: uv run --locked --extra api --extra plots pytest -q tests api/tests
+        run: uv run --locked --extra api --extra plots --extra viewer pytest -q tests api/tests viewer/tests

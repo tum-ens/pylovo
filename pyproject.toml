@@ -145,6 +145,8 @@ include = [
     "src/pylovo/**/*.py",
     "src/pylovo/**/*.sql",
     "api/pylovo_api/**/*.py",
+    "viewer/pylovo_viewer/**/*.py",
+    "viewer/pylovo_viewer/static/**",
     "config/*.yaml",
     "data/municipal_register/**/*.xlsx",
     "data/transformer_data/overpass_queries/*",
@@ -164,9 +166,9 @@ include = [
 ]
 
 [tool.pytest.ini_options]
-# Plain `pytest` runs both test folders and says why tests were skipped. Keep the default import
+# Plain `pytest` runs the three test folders and says why tests were skipped. Keep the default import
 # mode: the API tests import `from conftest import requires_db`.
-testpaths = ["tests", "api/tests"]
+testpaths = ["tests", "api/tests", "viewer/tests"]
 addopts = "-ra"
 
 [project.urls]
