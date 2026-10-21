@@ -127,7 +127,8 @@ Run them from the repository root with the ``plots`` extra installed:
    * - ``plot_database_diagram.py``
      - no
      - ``images/diagrams/database_schema`` and the generated page
-       ``concepts/database_tables.rst``; rerun it after changing the table definitions
+       ``concepts/database_tables.rst``; rerun it after changing the table definitions or the
+       constraints of a migration
    * - ``make_demo_versions.py``
      - yes (writes)
      - generates version ``VERSION_ID`` and the demo versions ``docs_bf`` and ``docs_km`` for

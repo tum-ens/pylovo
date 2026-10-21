@@ -1,7 +1,9 @@
 """Database diagram and column reference generated from the table definitions.
 
 The script parses ``src/pylovo/database/config_table_structure.py`` statically
-(no import, so neither a database nor a ``.env`` file is needed) and writes
+(no import, so neither a database nor a ``.env`` file is needed) and applies the constraint
+changes of the migrations in ``src/pylovo/database/migrations.py`` (``ALTER TABLE ... ADD/DROP
+CONSTRAINT``), so the constraints shown are those of a database after all migrations. It writes
 
 * ``docs/source/images/diagrams/database_schema.{svg,png}`` - entity diagram
 * ``docs/source/concepts/database_tables.rst`` - generated column reference
@@ -22,6 +24,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 TABLE_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "config_table_structure.py"
+MIGRATIONS_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "migrations.py"
+CONSTRUCTOR_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "database_constructor.py"
 RST_OUTPUT = st.REPO_ROOT / "docs" / "source" / "concepts" / "database_tables.rst"
 
 #: Tables and views that belong to classification or validation workflows.
@@ -33,8 +37,10 @@ DESCRIPTIONS = {
                "(``generation_parameters``). Deleting a version cascades to all of its results.",
     "equipment_data": "Transformer and cable catalogue of a version, copied from ``TRANSFORMERS``, "
                       "``FEEDER_CABLES`` and ``CONSUMER_CONNECTION_CABLES``.",
-    "consumer_categories": "Electrical load categories (Residential, Commercial, Public) from "
+    "consumer_categories": "Electrical load categories (Residential, Commercial, Public, Unknown) from "
                            "``CONSUMER_CATEGORIES``; synchronised at the start of every generation run.",
+    "schema_migrations": "Ledger of the applied schema migrations: one row per migration name with the time it was "
+                         "applied (``pylovo-setup``). Created before the other tables.",
     "postcode": "Postcode polygons. Filled by ``pylovo-setup`` (from InfDB or ``data/postcode.csv``); "
                 "missing InfDB postcodes are added on demand during generation.",
     "municipal_register": "PLZ to AGS mapping with population, area and RegioStaR classes; used to resolve "
@@ -53,7 +59,7 @@ DESCRIPTIONS = {
                       "per transformer size.",
     "buildings_result": "Supplied buildings with their load components, household counts and routing vertices.",
     "transformer_positions": "Transformer location of each grid; ``osm_id`` links brownfield positions to "
-                             "``transformers``.",
+                             "``transformers`` and becomes NULL when that raw transformer is deleted.",
     "lines_result": "Feeder and service lines of each grid as projected line geometries.",
     "lines_result_helper": "Offset helper geometries that make parallel and split feeders visible in GIS.",
     "lines_result_cache": "Physical per-grid cache of lines plus helper geometries for QGIS layers.",
@@ -113,10 +119,12 @@ DESCRIPTIONS = {
 
 @dataclass
 class ForeignKey:
+    name: str
     columns: list[str]
     table: str
     ref_columns: list[str]
     on_delete: str
+    deferred: bool = False
 
 
 @dataclass
@@ -124,9 +132,20 @@ class Table:
     name: str
     columns: list[tuple[str, str]] = field(default_factory=list)
     primary_key: list[str] = field(default_factory=list)
-    unique: list[list[str]] = field(default_factory=list)
+    unique: dict[str, list[str]] = field(default_factory=dict)   # constraint name -> columns
     foreign_keys: list[ForeignKey] = field(default_factory=list)
+    checks: dict[str, str] = field(default_factory=dict)         # constraint name -> condition
     temporary: bool = False
+
+    def set_foreign_key(self, fk: ForeignKey) -> None:
+        """Add a foreign key, or replace the one of the same name."""
+        self.foreign_keys = [old for old in self.foreign_keys if old.name != fk.name] + [fk]
+
+    def drop_constraint(self, name: str) -> None:
+        """Remove the foreign key, unique or check constraint of this name (nothing happens if there is none)."""
+        self.foreign_keys = [fk for fk in self.foreign_keys if fk.name != name]
+        self.unique.pop(name, None)
+        self.checks.pop(name, None)
 
 
 def _string_dict(tree: ast.Module, name: str) -> dict[str, str]:
@@ -159,6 +178,30 @@ def _columns(text: str) -> list[str]:
     return [c.strip().strip('"') for c in text.split(",")]
 
 
+def _group(text: str, start: int) -> tuple[str, int]:
+    """Return the text inside the parentheses that open at ``text[start]`` and the index after the closing one."""
+    depth, index = 0, start
+    while True:
+        depth += {"(": 1, ")": -1}.get(text[index], 0)
+        index += 1
+        if depth == 0:
+            return text[start + 1:index - 1], index
+
+
+#: ``REFERENCES [pylovo.]table (columns)`` with its optional ``ON DELETE`` action (``SET NULL`` may list columns)
+#: and ``DEFERRABLE INITIALLY DEFERRED``.
+_REFERENCES = (r"REFERENCES (?:pylovo\.)?(\w+) ?\(([^)]*)\)"
+               r"(?: ON DELETE (CASCADE|SET NULL(?: \([^)]*\))?|SET DEFAULT|RESTRICT|NO ACTION))?"
+               r"( DEFERRABLE INITIALLY DEFERRED)?")
+
+
+def _foreign_key(name: str, columns: str, groups: tuple) -> ForeignKey:
+    """Build a foreign key from the column list and the four groups of :data:`_REFERENCES`."""
+    table, ref_columns, on_delete, deferred = groups[0], groups[1], groups[2], groups[3]
+    return ForeignKey(name, _columns(columns), table, _columns(ref_columns), on_delete or "NO ACTION",
+                      deferred=bool(deferred))
+
+
 def _parse_table(name: str, sql: str, temporary: bool = False) -> Table | None:
     sql = re.sub(r"--[^\n]*", "", sql)
     match = re.search(r"CREATE (?:TEMP )?TABLE IF NOT EXISTS (?:pylovo\.)?(\w+)\s*\(", sql)
@@ -174,15 +217,17 @@ def _parse_table(name: str, sql: str, temporary: bool = False) -> Table | None:
         compact = " ".join(item.split())
         upper = compact.upper()
         if upper.startswith("CONSTRAINT"):
+            constraint = compact.split()[1].strip('"')
             if "PRIMARY KEY" in upper:
                 table.primary_key = _columns(re.search(r"PRIMARY KEY \(([^)]*)\)", compact, re.IGNORECASE).group(1))
             elif "FOREIGN KEY" in upper:
-                fk = re.search(r"FOREIGN KEY \(([^)]*)\) REFERENCES (?:pylovo\.)?(\w+) ?\(([^)]*)\)(?: ON DELETE ([A-Z ]+))?",
-                               compact, re.IGNORECASE)
-                table.foreign_keys.append(ForeignKey(_columns(fk.group(1)), fk.group(2), _columns(fk.group(3)),
-                                                     (fk.group(4) or "NO ACTION").strip().upper()))
+                fk = re.search(r"FOREIGN KEY \(([^)]*)\) " + _REFERENCES, compact, re.IGNORECASE)
+                table.foreign_keys.append(_foreign_key(constraint, fk.group(1), fk.groups()[1:]))
             elif "UNIQUE" in upper:
-                table.unique.append(_columns(re.search(r"UNIQUE \(([^)]*)\)", compact, re.IGNORECASE).group(1)))
+                table.unique[constraint] = _columns(re.search(r"UNIQUE \(([^)]*)\)", compact, re.IGNORECASE).group(1))
+            elif re.search(r"\bCHECK \(", compact, re.IGNORECASE):
+                start = re.search(r"\bCHECK \(", compact, re.IGNORECASE).end() - 1
+                table.checks[constraint] = _group(compact, start)[0]
             continue
         column, _, rest = compact.partition(" ")
         column = column.strip('"')
@@ -192,11 +237,65 @@ def _parse_table(name: str, sql: str, temporary: bool = False) -> Table | None:
         if "PRIMARY KEY" in rest.upper():
             table.primary_key = [column]
         if re.search(r"\bUNIQUE\b", rest, re.IGNORECASE):
-            table.unique.append([column])
+            table.unique[f"{name}_{column}_key"] = [column]
+        inline_check = re.search(r"\bCHECK \(", rest, re.IGNORECASE)
+        if inline_check:
+            table.checks[f"{name}_{column}_check"] = _group(rest, inline_check.end() - 1)[0]
     for column, col_type in re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) ([^;]+?)(?: NOT NULL[^;]*)?;", sql):
         if column not in {c for c, _ in table.columns}:
             table.columns.append((column, col_type.strip().replace("{TARGET_EPSG}", "<TARGET_EPSG>")))
     return table
+
+
+def _migration_statements() -> list[str]:
+    """Return the SQL texts of the post-schema migrations that contain ``ALTER TABLE``, in migration order.
+
+    The migrations are listed in ``POST_SCHEMA_MIGRATIONS`` (name, function); the pre-schema migrations run before
+    the baseline tables exist and are not applied here.
+    """
+    tree = ast.parse(MIGRATIONS_MODULE.read_text(encoding="utf-8"))
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    order = []
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "POST_SCHEMA_MIGRATIONS":
+            order = [entry.elts[1].id for entry in node.value.elts]
+    texts = []
+    for function in order:
+        texts += [" ".join(const.value.split()) for const in ast.walk(functions[function])
+                  if isinstance(const, ast.Constant) and isinstance(const.value, str) and "ALTER TABLE" in const.value]
+    return texts
+
+
+def apply_migrations(tables: dict[str, Table]) -> None:
+    """Apply the ``ALTER TABLE ... DROP/ADD CONSTRAINT`` statements of the migrations to the parsed tables.
+
+    Only foreign keys, unique and check constraints are modelled (other statements, such as indexes and
+    ``VALIDATE CONSTRAINT``, do not change what the reference shows).
+    """
+    alter = r"ALTER TABLE (?:ONLY )?pylovo\.(\w+) "
+    for sql in _migration_statements():
+        for match in re.finditer(alter + r"DROP CONSTRAINT (?:IF EXISTS )?(\w+)", sql):
+            if match.group(1) in tables:
+                tables[match.group(1)].drop_constraint(match.group(2))
+        for match in re.finditer(alter + r"ADD CONSTRAINT (\w+) FOREIGN KEY \(([^)]*)\) " + _REFERENCES, sql):
+            if match.group(1) in tables:
+                tables[match.group(1)].set_foreign_key(_foreign_key(match.group(2), match.group(3), match.groups()[3:]))
+        for match in re.finditer(alter + r"ADD CONSTRAINT (\w+) UNIQUE \(([^)]*)\)", sql):
+            if match.group(1) in tables:
+                tables[match.group(1)].unique[match.group(2)] = _columns(match.group(3))
+        for match in re.finditer(alter + r"ADD CONSTRAINT (\w+) CHECK \(", sql):
+            if match.group(1) in tables:
+                tables[match.group(1)].checks[match.group(2)] = _group(sql, match.end() - 1)[0]
+
+
+def _constructor_table(name: str) -> Table:
+    """Parse the ``CREATE TABLE`` of ``pylovo.<name>`` that ``DatabaseConstructor`` runs outside ``CREATE_QUERIES``."""
+    tree = ast.parse(CONSTRUCTOR_MODULE.read_text(encoding="utf-8"))
+    for const in ast.walk(tree):
+        if (isinstance(const, ast.Constant) and isinstance(const.value, str)
+                and re.search(rf"CREATE TABLE IF NOT EXISTS pylovo\.{name}\s*\(", const.value)):
+            return _parse_table(name, const.value)
+    raise ValueError(f"CREATE TABLE of {name} not found in {CONSTRUCTOR_MODULE}")
 
 
 def parse_schema() -> tuple[dict[str, Table], list[str]]:
@@ -212,6 +311,8 @@ def parse_schema() -> tuple[dict[str, Table], list[str]]:
             views.append(name)
         else:
             tables[name] = table
+    tables["schema_migrations"] = _constructor_table("schema_migrations")
+    apply_migrations(tables)
     for name, sql in temp.items():
         tables[name] = _parse_table(name, sql, temporary=True)
     return tables, views
@@ -231,7 +332,7 @@ ZONES = [
         ["version", "postcode", "transformers"],
         ["equipment_data", "postcode_result", "ways_result"],
         ["consumer_categories", "grid_result", "plz_parameters"],
-        [None, "building_exclusion", None],
+        [None, None, "building_exclusion"],
     ]),
     ("Per-grid results: every table references grid_result.grid_result_id (ON DELETE CASCADE)", 0.2, [
         ["buildings_result", "clustering_parameters", "transformer_positions"],
@@ -239,15 +340,15 @@ ZONES = [
         ["split_points", "pandapower_bus", "pandapower_line"],
         ["pandapower_trafo", "pandapower_load", "load_edit"],
     ]),
-    ("MV stage: every MV result table references mv_variant (ON DELETE CASCADE)", 0.2, [
-        ["mv_variant", "mv_substation", "mv_grid"],
-        ["mv_node", "mv_line", "mv_ring"],
-        ["mv_customers", None, None],
+    ("MV stage: results hang on mv_variant (ON DELETE CASCADE, also through mv_grid); mv_node references grid_result",
+     0.2, [
         ["mv_graph_vertex", "mv_graph", "mv_graph_edge"],
-        [None, "mv_graph_settlement", None],
+        ["mv_graph_settlement", "mv_variant", "mv_substation"],
+        ["mv_customers", "mv_node", "mv_grid"],
+        [None, "mv_line", "mv_ring"],
     ]),
-    ("Standalone tables (municipal register; file-based input with USE_INFDB=False)", 0.2, [
-        ["municipal_register", "ags_log", None],
+    ("Standalone tables (municipal register, migration ledger; file-based input with USE_INFDB=False)", 0.2, [
+        ["municipal_register", "ags_log", "schema_migrations"],
         ["res", "oth", "ways"],
     ]),
     ("Temporary tables of one generation run (dropped afterwards)", 0.2, [
@@ -275,7 +376,7 @@ def _box_lines(table: Table) -> list[str]:
     lines += _fk_lines(table)
     keyed = set(table.primary_key) | {c for fk in table.foreign_keys for c in fk.columns}
     rest = len([c for c, _ in table.columns if c not in keyed])
-    lines.append(f"+ {rest} columns")
+    lines.append(f"+ {rest} column" + ("" if rest == 1 else "s"))
     return lines
 
 
@@ -358,7 +459,8 @@ def draw_diagram(tables: dict[str, Table]) -> None:
     def side(name, where, offset=0.35):
         x, y, w, h = boxes[name]
         return {"top": (x + w / 2, y + h), "bottom": (x + w / 2, y), "left": (x, y + h / 2), "right": (x + w, y + h / 2),
-                "top_left": (x + offset, y + h), "bottom_right": (x + w - offset, y)}[where]
+                "top_left": (x + offset, y + h), "top_right": (x + w - offset, y + h),
+                "bottom_left": (x + offset, y), "bottom_right": (x + w - offset, y)}[where]
 
     _edge(ax, side("equipment_data", "top"), side("version", "bottom"))
     _edge(ax, side("postcode_result", "top"), side("postcode", "bottom"))
@@ -373,6 +475,13 @@ def draw_diagram(tables: dict[str, Table]) -> None:
     _edge(ax, (gx + gw / 2, per_grid_top), (gx + gw / 2, gy), color=st.CATEGORICAL[0], lw=1.8)
     _edge(ax, side("lines_result_helper", "right"), side("lines_result", "left"))
     _edge(ax, side("lines_result_cache", "left"), side("lines_result", "right"))
+    # building_exclusion -> postcode_result through the gutter between the second and the third column
+    bx, by, bw, bh = boxes["building_exclusion"]
+    px, py, pw, _ = boxes["postcode_result"]
+    gutter_x = COL_X[2] - (COL_X[2] - COL_X[1] - BOX_W) / 2
+    end_y = py + 0.14
+    ax.plot([bx, gutter_x, gutter_x], [by + bh / 2, by + bh / 2, end_y], color=st.INK_MUTED, lw=1.0, zorder=2.5)
+    _edge(ax, (gutter_x, end_y), (px + pw, end_y))
     # transformer_positions -> transformers along the right margin
     tx, ty, tw, th = boxes["transformer_positions"]
     rx, ry, rw, rh = boxes["transformers"]
@@ -381,16 +490,18 @@ def draw_diagram(tables: dict[str, Table]) -> None:
     end_y = ry + rh / 2
     ax.plot([tx + tw, margin_x, margin_x], [start_y, start_y, end_y], color=st.INK_MUTED, lw=1.0, zorder=2.5)
     _edge(ax, (margin_x, end_y), (rx + rw, end_y))
-    # MV stage: variant -> substation -> grid; nodes, lines and rings; routing graph
+    # MV stage: variant -> routing graph, substation -> variant, grid -> substation; nodes, lines and rings
+    _edge(ax, side("mv_variant", "top"), side("mv_graph", "bottom"))
     _edge(ax, side("mv_substation", "left"), side("mv_variant", "right"))
-    _edge(ax, side("mv_grid", "left"), side("mv_substation", "right"))
+    _edge(ax, side("mv_grid", "top"), side("mv_substation", "bottom"))
     _edge(ax, side("mv_node", "top"), side("mv_variant", "bottom"))
-    _edge(ax, side("mv_node", "bottom"), side("mv_customers", "top"))
-    _edge(ax, side("mv_line", "left"), side("mv_node", "right"))
+    _edge(ax, side("mv_node", "left"), side("mv_customers", "right"))
+    _edge(ax, side("mv_node", "right"), side("mv_grid", "left"))
+    _edge(ax, side("mv_line", "top"), side("mv_node", "bottom"))
     _edge(ax, side("mv_ring", "top"), side("mv_grid", "bottom"))
     _edge(ax, side("mv_graph_vertex", "right"), side("mv_graph", "left"))
     _edge(ax, side("mv_graph_edge", "left"), side("mv_graph", "right"))
-    _edge(ax, side("mv_graph_settlement", "top"), side("mv_graph", "bottom"))
+    _edge(ax, side("mv_graph_settlement", "top_right"), side("mv_graph", "bottom_left"))
     st.save(fig, "diagrams", "database_schema", formats=("svg", "png"), dpi=170)
 
 
@@ -401,7 +512,9 @@ def _rst_table(table: Table) -> list[str]:
     fk_by_column = {}
     for fk in table.foreign_keys:
         for column in fk.columns:
-            fk_by_column.setdefault(column, []).append(fk.table)
+            targets = fk_by_column.setdefault(column, [])
+            if fk.table not in targets:
+                targets.append(fk.table)
     out = [".. list-table::", "   :header-rows: 1", "   :widths: 34 38 28", "   :class: fixed-table", "",
            "   * - Column", "     - Type",
            "     - Key"]
@@ -414,6 +527,13 @@ def _rst_table(table: Table) -> list[str]:
     return out
 
 
+def _foreign_key_sentence(fk: ForeignKey) -> str:
+    """One sentence for a foreign key, with its ON DELETE action and, if deferred, the check at commit."""
+    text = (f"Foreign key ({', '.join(fk.columns)}) references ``{fk.table}`` ({', '.join(fk.ref_columns)}), "
+            f"ON DELETE {fk.on_delete}")
+    return text + (", checked at commit (deferred)." if fk.deferred else ".")
+
+
 def write_rst(tables: dict[str, Table], views: list[str]) -> None:
     lines = [
         ".. This file is generated by docs/scripts/plot_database_diagram.py - do not edit by hand.",
@@ -421,16 +541,18 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
         "Database table reference",
         "========================",
         "",
-        "Generated from ``src/pylovo/database/config_table_structure.py``. All tables live in the schema",
-        "``pylovo``; ``<TARGET_EPSG>`` is the projected CRS from ``.env`` (default 25832). Tables used only by",
-        "the classification and validation modules are not listed.",
+        "Generated from ``src/pylovo/database/config_table_structure.py`` and the constraint changes of",
+        "``src/pylovo/database/migrations.py``: the keys and checks are those of a database after all migrations.",
+        "All tables live in the schema ``pylovo``; ``<TARGET_EPSG>`` is the projected CRS from ``.env`` (default",
+        "25832). Tables used only by the classification and validation modules are not listed.",
         "",
     ]
     groups = [
         ("Reference and input tables", ["version", "equipment_data", "consumer_categories", "postcode",
                                         "municipal_register", "transformers", "mv_graph", "mv_graph_vertex",
                                         "mv_graph_edge",
-                                        "mv_graph_settlement", "ags_log", "res", "oth", "ways"]),
+                                        "mv_graph_settlement", "ags_log", "res", "oth", "ways",
+                                        "schema_migrations"]),
         ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "building_exclusion",
                            "buildings_result",
                            "transformer_positions", "lines_result", "lines_result_helper", "lines_result_cache",
@@ -449,11 +571,12 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
             heading = f"``{name}_<plz>``" if table.temporary else f"``{name}``"
             lines += [heading, "~" * len(heading), "", DESCRIPTIONS.get(name, ""), ""]
             if table.unique:
-                uniques = "; ".join("(" + ", ".join(u) + ")" for u in table.unique)
+                uniques = "; ".join("(" + ", ".join(u) + ")" for u in table.unique.values())
                 lines += [f"Unique: {uniques}.", ""]
             for fk in table.foreign_keys:
-                lines += [(f"Foreign key ({', '.join(fk.columns)}) references ``{fk.table}`` "
-                           f"({', '.join(fk.ref_columns)}), ON DELETE {fk.on_delete}."), ""]
+                lines += [_foreign_key_sentence(fk), ""]
+            for check_name, condition in table.checks.items():
+                lines += [f"Check ``{check_name}``: ``{condition}``.", ""]
             lines += _rst_table(table) + [""]
     lines += ["Views", "-----", ""]
     for name in views:

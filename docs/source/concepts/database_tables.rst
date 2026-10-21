@@ -3,9 +3,10 @@
 Database table reference
 ========================
 
-Generated from ``src/pylovo/database/config_table_structure.py``. All tables live in the schema
-``pylovo``; ``<TARGET_EPSG>`` is the projected CRS from ``.env`` (default 25832). Tables used only by
-the classification and validation modules are not listed.
+Generated from ``src/pylovo/database/config_table_structure.py`` and the constraint changes of
+``src/pylovo/database/migrations.py``: the keys and checks are those of a database after all migrations.
+All tables live in the schema ``pylovo``; ``<TARGET_EPSG>`` is the projected CRS from ``.env`` (default
+25832). Tables used only by the classification and validation modules are not listed.
 
 Reference and input tables
 --------------------------
@@ -42,6 +43,10 @@ One row per ``VERSION_ID`` with its comment and the frozen generation-parameter 
 Transformer and cable catalogue of a version, copied from ``TRANSFORMERS``, ``FEEDER_CABLES`` and ``CONSUMER_CONNECTION_CABLES``.
 
 Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
+
+Check ``chk_equipment_positive_rating``: ``s_max_kva IS NULL OR s_max_kva > 0``.
+
+Check ``chk_equipment_positive_ampacity``: ``max_i_a IS NULL OR max_i_a > 0``.
 
 .. list-table::
    :header-rows: 1
@@ -85,9 +90,11 @@ Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
 ``consumer_categories``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Electrical load categories (Residential, Commercial, Public) from ``CONSUMER_CATEGORIES``; synchronised at the start of every generation run.
+Electrical load categories (Residential, Commercial, Public, Unknown) from ``CONSUMER_CATEGORIES``; synchronised at the start of every generation run.
 
 Unique: (definition).
+
+Check ``chk_consumer_sim_factor``: ``sim_factor BETWEEN 0 AND 1``.
 
 .. list-table::
    :header-rows: 1
@@ -125,6 +132,8 @@ Unique: (definition).
 Postcode polygons. Filled by ``pylovo-setup`` (from InfDB or ``data/postcode.csv``); missing InfDB postcodes are added on demand during generation.
 
 Unique: (plz).
+
+Check ``chk_postcode_geom``: ``geom IS NOT NULL``.
 
 .. list-table::
    :header-rows: 1
@@ -575,6 +584,26 @@ Street network imported from the osm2po SQL dump (file-based mode only).
      - ``integer``
      - PK
 
+``schema_migrations``
+~~~~~~~~~~~~~~~~~~~~~
+
+Ledger of the applied schema migrations: one row per migration name with the time it was applied (``pylovo-setup``). Created before the other tables.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``name``
+     - ``text``
+     - PK
+   * - ``applied_at``
+     - ``timestamptz``
+     - 
+
 Result tables
 -------------
 
@@ -623,7 +652,7 @@ Unique: (version_id, kcid, bcid, plz); (version_id, grid_result_id).
 
 Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.
 
-Foreign key (version_id, transformer_equipment_name) references ``equipment_data`` (version_id, name), ON DELETE SET NULL.
+Foreign key (version_id, transformer_equipment_name) references ``equipment_data`` (version_id, name), ON DELETE SET NULL (transformer_equipment_name).
 
 .. list-table::
    :header-rows: 1
@@ -712,6 +741,8 @@ Foreign key (version_id, transformer_equipment_name) references ``equipment_data
 Street segments of the processed routing graph of a postcode, including connection lines.
 
 Foreign key (version_id, plz) references ``postcode_result`` (version_id, postcode_result_plz), ON DELETE CASCADE.
+
+Check ``chk_ways_result_geom``: ``geom IS NOT NULL``.
 
 .. list-table::
    :header-rows: 1
@@ -826,6 +857,10 @@ Foreign key (version_id, plz) references ``postcode_result`` (version_id, postco
 Supplied buildings with their load components, household counts and routing vertices.
 
 Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id, grid_result_id), ON DELETE CASCADE.
+
+Check ``chk_building_peak_load``: ``peak_load_in_kw IS NULL OR peak_load_in_kw >= 0``.
+
+Check ``chk_buildings_result_geom``: ``geom IS NOT NULL``.
 
 .. list-table::
    :header-rows: 1
@@ -950,15 +985,15 @@ Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id,
 ``transformer_positions``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Transformer location of each grid; ``osm_id`` links brownfield positions to ``transformers``.
+Transformer location of each grid; ``osm_id`` links brownfield positions to ``transformers`` and becomes NULL when that raw transformer is deleted.
 
 Unique: (osm_id, version_id).
 
-Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
+Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id, grid_result_id), ON DELETE CASCADE.
 
-Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
+Foreign key (osm_id) references ``transformers`` (osm_id), ON DELETE SET NULL.
 
-Foreign key (osm_id) references ``transformers`` (osm_id), ON DELETE CASCADE.
+Check ``chk_transformer_positions_geom``: ``geom IS NOT NULL``.
 
 .. list-table::
    :header-rows: 1
@@ -979,7 +1014,7 @@ Foreign key (osm_id) references ``transformers`` (osm_id), ON DELETE CASCADE.
      - FK → ``transformers``
    * - ``version_id``
      - ``varchar(10)``
-     - FK → ``version``
+     - FK → ``grid_result``
    * - ``comment``
      - ``varchar``
      - 
@@ -998,7 +1033,13 @@ Foreign key (osm_id) references ``transformers`` (osm_id), ON DELETE CASCADE.
 
 Feeder and service lines of each grid as projected line geometries.
 
+Unique: (grid_result_id, lines_result_id).
+
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
+
+Check ``chk_lines_result_length``: ``length_km IS NULL OR length_km >= 0``.
+
+Check ``chk_lines_result_parallel``: ``parallel IS NULL OR parallel > 0``.
 
 .. list-table::
    :header-rows: 1
@@ -1044,9 +1085,9 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
 
 Offset helper geometries that make parallel and split feeders visible in GIS.
 
-Foreign key (source_lines_result_id) references ``lines_result`` (lines_result_id), ON DELETE CASCADE.
-
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
+
+Foreign key (grid_result_id, source_lines_result_id) references ``lines_result`` (grid_result_id, lines_result_id), ON DELETE CASCADE.
 
 .. list-table::
    :header-rows: 1
@@ -1064,7 +1105,7 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - FK → ``lines_result``
    * - ``grid_result_id``
      - ``bigint``
-     - FK → ``grid_result``
+     - FK → ``grid_result``, FK → ``lines_result``
    * - ``geom``
      - ``geometry(Geometry,<TARGET_EPSG>)``
      - 
@@ -1097,7 +1138,7 @@ Physical per-grid cache of lines plus helper geometries for QGIS layers.
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
-Foreign key (source_lines_result_id) references ``lines_result`` (lines_result_id), ON DELETE CASCADE.
+Foreign key (grid_result_id, source_lines_result_id) references ``lines_result`` (grid_result_id, lines_result_id), ON DELETE CASCADE.
 
 .. list-table::
    :header-rows: 1
@@ -1121,7 +1162,7 @@ Foreign key (source_lines_result_id) references ``lines_result`` (lines_result_i
      - 
    * - ``grid_result_id``
      - ``bigint``
-     - FK → ``grid_result``
+     - FK → ``grid_result``, FK → ``lines_result``
    * - ``geom``
      - ``geometry(Geometry,<TARGET_EPSG>)``
      - 
@@ -1255,6 +1296,14 @@ Unique: (grid_result_id, pp_index).
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
+Foreign key (grid_result_id, from_bus) references ``pandapower_bus`` (grid_result_id, pp_index), ON DELETE NO ACTION, checked at commit (deferred).
+
+Foreign key (grid_result_id, to_bus) references ``pandapower_bus`` (grid_result_id, pp_index), ON DELETE NO ACTION, checked at commit (deferred).
+
+Check ``chk_pp_line_length``: ``length_km IS NULL OR length_km >= 0``.
+
+Check ``chk_pp_line_parallel``: ``parallel IS NULL OR parallel > 0``.
+
 .. list-table::
    :header-rows: 1
    :widths: 34 38 28
@@ -1268,7 +1317,7 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - PK
    * - ``grid_result_id``
      - ``bigint``
-     - FK → ``grid_result``
+     - FK → ``grid_result``, FK → ``pandapower_bus``
    * - ``pp_index``
      - ``integer``
      - 
@@ -1280,10 +1329,10 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - 
    * - ``from_bus``
      - ``integer``
-     - 
+     - FK → ``pandapower_bus``
    * - ``to_bus``
      - ``integer``
-     - 
+     - FK → ``pandapower_bus``
    * - ``length_km``
      - ``double precision``
      - 
@@ -1357,6 +1406,18 @@ Unique: (grid_result_id, pp_index).
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
+Foreign key (grid_result_id, hv_bus) references ``pandapower_bus`` (grid_result_id, pp_index), ON DELETE NO ACTION, checked at commit (deferred).
+
+Foreign key (grid_result_id, lv_bus) references ``pandapower_bus`` (grid_result_id, pp_index), ON DELETE NO ACTION, checked at commit (deferred).
+
+Check ``chk_pp_trafo_vk_percent``: ``vk_percent IS NULL OR vk_percent BETWEEN 0 AND 100``.
+
+Check ``chk_pp_trafo_vkr_percent``: ``vkr_percent IS NULL OR vkr_percent BETWEEN 0 AND 100``.
+
+Check ``chk_pp_trafo_i0_percent``: ``i0_percent IS NULL OR i0_percent BETWEEN 0 AND 100``.
+
+Check ``chk_pp_trafo_parallel``: ``parallel IS NULL OR parallel > 0``.
+
 .. list-table::
    :header-rows: 1
    :widths: 34 38 28
@@ -1370,7 +1431,7 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - PK
    * - ``grid_result_id``
      - ``bigint``
-     - FK → ``grid_result``
+     - FK → ``grid_result``, FK → ``pandapower_bus``
    * - ``pp_index``
      - ``integer``
      - 
@@ -1382,10 +1443,10 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - 
    * - ``hv_bus``
      - ``integer``
-     - 
+     - FK → ``pandapower_bus``
    * - ``lv_bus``
      - ``integer``
-     - 
+     - FK → ``pandapower_bus``
    * - ``sn_mva``
      - ``double precision``
      - 
@@ -1447,6 +1508,12 @@ Unique: (grid_result_id, pp_index).
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
+Foreign key (grid_result_id, bus) references ``pandapower_bus`` (grid_result_id, pp_index), ON DELETE NO ACTION, checked at commit (deferred).
+
+Check ``chk_pp_load_const_z_percent``: ``const_z_percent IS NULL OR const_z_percent BETWEEN 0 AND 100``.
+
+Check ``chk_pp_load_const_i_percent``: ``const_i_percent IS NULL OR const_i_percent BETWEEN 0 AND 100``.
+
 .. list-table::
    :header-rows: 1
    :widths: 34 38 28
@@ -1460,7 +1527,7 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - PK
    * - ``grid_result_id``
      - ``bigint``
-     - FK → ``grid_result``
+     - FK → ``grid_result``, FK → ``pandapower_bus``
    * - ``pp_index``
      - ``integer``
      - 
@@ -1469,7 +1536,7 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - 
    * - ``bus``
      - ``integer``
-     - 
+     - FK → ``pandapower_bus``
    * - ``p_mw``
      - ``double precision``
      - 
@@ -1619,6 +1686,12 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
 Audit rows of manual load edits made in the browser UI (``pylovo.load_editing``): the changed inputs, the building, loads and pandapower net before the edit (for the exact undo) and the removed analysis rows. Append-only; an undo stamps ``undone_at``.
 
 Foreign key (version_id, grid_result_id) references ``grid_result`` (version_id, grid_result_id), ON DELETE CASCADE.
+
+Check ``load_edit_action_check``: ``action IN ('edit', 'revert')``.
+
+Check ``load_edit_reason_check``: ``reason IS NULL OR length(reason) <= 500``.
+
+Check ``chk_load_edit_undone``: ``(undone_at IS NULL) = (undone_by IS NULL)``.
 
 .. list-table::
    :header-rows: 1
