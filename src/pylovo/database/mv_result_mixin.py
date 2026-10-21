@@ -315,9 +315,10 @@ class MvResultMixin(BaseMixin):
 
         Union semantics of the PLZ set (DESIGN §2.5): if ``plz_list`` is a subset of the stored set and the routing
         graph is the stored one, the run resumes; otherwise the stored row gets the union, the new graph and
-        fingerprint ('grow': the caller rebuilds every district with :meth:`reset_variant_region`). A changed graph
-        (changed source rows or graph build) always rebuilds: the stored attachments refer to the edge ids of the
-        stored graph.
+        fingerprint, and the stored region is deleted in the same transaction (:meth:`reset_variant_region`), so a
+        failed or interrupted rebuild is never resumed as the region of the union ('grow': the caller rebuilds every
+        district). A changed graph (changed source rows or graph build) always rebuilds: the stored attachments refer
+        to the edge ids of the stored graph.
 
         Returns:
             ``'new'``, ``'resume'`` or ``'grow'``.
@@ -358,6 +359,7 @@ class MvResultMixin(BaseMixin):
                                lv_parameters = %s::jsonb, status = 'running', summary = NULL, finished_at = NULL
                            WHERE version_id = %s AND mv_variant_id = %s""",
                         (union, graph_id, _dumps(lv_fingerprint), _dumps(lv.as_json()), version_id, variant_id))
+                    self.reset_variant_region(version_id, variant_id)
             self.conn.commit()
             return mode
         except Exception:

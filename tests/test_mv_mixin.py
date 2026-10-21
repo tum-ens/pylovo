@@ -641,3 +641,146 @@ def test_lv_requirement_and_population_readers():
     assert "ce.name = 'vm_pu'" in query and params == {"v": "v1", "ids": [5, 6]}
     population = client.plz_population([80803])
     assert population.columns.tolist() == list(POPULATION_COLUMNS) and math.isnan(population["polygon_km2"].iloc[0])
+
+
+# ---------------------------------------------------------------------------------------------- register + region
+class TransactionalTables:
+    """The committed and the working state of ``mv_variant`` and ``mv_substation`` (rollback restores the last
+    commit), for the real registration, region and finish methods with the real ``stage._run_locked``."""
+
+    COLUMNS = ["version_id", "mv_variant_id", "mv_variant_comment", "mv_parameters", "lv_parameters", "plz_list",
+               "graph_id", "status", "lv_fingerprint", "summary", "created_at", "finished_at"]
+
+    def __init__(self):
+        self.state = {"variants": {}, "subs": []}
+        self.committed = json.loads(json.dumps(self.state))
+
+    def commit(self):
+        self.committed = json.loads(json.dumps(self.state))
+
+    def rollback(self):
+        self.state = json.loads(json.dumps(self.committed))
+
+    def execute(self, query, params=None):
+        text, st = flat(query), self.state
+        self.description, self._rows = None, []
+        self.rowcount = 0
+        key = "/".join(map(str, params[-2:])) if params else ""
+        if text.startswith("INSERT INTO pylovo.mv_variant"):
+            key = f"{params[0]}/{params[1]}"
+            if key not in st["variants"]:
+                st["variants"][key] = dict(zip(self.COLUMNS, [params[0], params[1], params[2], json.loads(params[3]),
+                                                              {}, list(params[5]), params[6], "running",
+                                                              json.loads(params[7]), None, None, None]))
+                self.rowcount = 1
+        elif text.startswith("SELECT version_id, mv_variant_id") and "FROM pylovo.mv_variant WHERE" in text:
+            row = st["variants"].get(f"{params[0]}/{params[1]}")
+            self.description = [(c,) for c in self.COLUMNS]
+            self._rows = [tuple(row[c] for c in self.COLUMNS)] if row else []
+        elif text.startswith("UPDATE pylovo.mv_variant SET status = 'running'"):
+            st["variants"][key]["status"] = "running"
+        elif text.startswith("UPDATE pylovo.mv_variant SET plz_list"):
+            st["variants"][key].update(plz_list=list(params[0]), graph_id=params[1], status="running")
+        elif text.startswith("UPDATE pylovo.mv_variant SET status = %s"):
+            st["variants"][key]["status"] = params[0]
+        elif text.startswith("SELECT EXISTS (SELECT 1 FROM pylovo.mv_substation"):
+            self._rows = [(any(s[0] == key for s in st["subs"]),)]
+        elif text.startswith("DELETE FROM pylovo.mv_substation"):
+            st["subs"] = [s for s in st["subs"] if s[0] != key]
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+
+class RegionClient(mixin.MvResultMixin):
+    """The real ``register_variant``, ``variant_region_built``, ``reset_variant_region`` and ``finish_variant`` on
+    :class:`TransactionalTables`; the LV reads are stubbed."""
+
+    def __init__(self):
+        self.cur = self.tables = TransactionalTables()
+        self.conn = SimpleNamespace(commit=self.tables.commit, rollback=self.tables.rollback)
+        self.logger = logging.getLogger("mv-region-test")
+        self.graph_id, self.fail_region, self.modes = "g1", False, []
+
+    def register_variant(self, *args, **kwargs):
+        self.modes.append(super().register_variant(*args, **kwargs))
+        return self.modes[-1]
+
+    def generated_plz(self, version_id, plz_list):
+        return list(plz_list)
+
+    def busy_plz(self, plz_list):
+        return []
+
+    def lv_snapshot(self, version_id):
+        return {}
+
+    def planning_region(self, plz_list):
+        return b""
+
+    def ensure_graph(self, region_wkb, params):
+        return self.graph_id
+
+    def lv_fingerprint(self, version_id, plz_list):
+        return {"n_grids": len(plz_list)}
+
+    def commit_changes(self):
+        self.tables.commit()
+
+    def rollback_changes(self):
+        self.tables.rollback()
+
+    def pending_grids(self, version_id, variant_id):
+        return []
+
+    def variant_totals(self, version_id, variant_id):
+        return {"grids_total": 1, "grids_done": 1}
+
+
+@pytest.fixture()
+def region_steps(monkeypatch):
+    """``stage._run_locked`` with a region step that stores one substation named after its PLZ and graph."""
+    from pylovo.mv_grid import stage
+
+    built = []
+
+    def region_step(dbc, version_id, variant_id, plz, region_wkb, graph_id, *args):
+        built.append((list(plz), graph_id))
+        dbc.tables.state["subs"].append((f"{version_id}/{variant_id}", f"PLZ {list(plz)} on {graph_id}"))
+        if dbc.fail_region:
+            raise RuntimeError("no HV/MV substation is within reach")
+        return {}
+
+    for name, value in (("_region_step", region_step), ("_run_districts", lambda *a, **k: []),
+                        ("_plan_ties", lambda *a, **k: None), ("_plan_links", lambda *a, **k: None),
+                        ("display_geometry", lambda *a, **k: None), ("_demand_anchor", lambda *a, **k: {}),
+                        ("_osm_coverage", lambda *a, **k: {})):
+        monkeypatch.setattr(stage, name, value)
+    monkeypatch.setattr(stage.LvVersionParameters, "from_generation_parameters",
+                        classmethod(lambda cls, v, s: SimpleNamespace(as_json=lambda: {"version_id": v})))
+
+    def run(dbc, plz):
+        from pylovo.mv_grid.parameters import MvParameters
+
+        return stage._run_locked(dbc, "mv1", MvParameters().replace(variant_id="d0"), plz, parallel=False, jobs=1,
+                                 replace=False, log_file="log/x.txt", logger=logging.getLogger("t"), start=0.0)
+    return run, built
+
+
+def test_a_failed_variant_extension_is_rebuilt_by_the_next_run(region_steps):
+    run, built = region_steps
+    dbc = RegionClient()
+    assert run(dbc, [1]).status == "done"                                     # new variant: PLZ 1 on graph g1
+    dbc.graph_id, dbc.fail_region = "g2", True
+    with pytest.raises(RuntimeError):                                         # grow to PLZ 1+2: the region fails
+        run(dbc, [1, 2])
+    assert dbc.tables.state["subs"] == []                                     # the old region went with the grow
+    dbc.fail_region = False
+    built.clear()
+    summary = run(dbc, [1, 2])                                                # the same command again
+    assert dbc.modes == ["new", "grow", "resume"] and built == [([1, 2], "g2")] and summary.status == "done"
+    assert [s[1] for s in dbc.tables.state["subs"]] == ["PLZ [1, 2] on g2"]
+
