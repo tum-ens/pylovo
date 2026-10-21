@@ -43,7 +43,11 @@ import yaml
 #: capacity lies in municipalities of at least ``mv_10kv_min_density_mva_km2`` (now 5 MVA/km²), not by its own cell.
 #: 12: a stub tree takes the true street length of each extension into its depth, also where the OSM-discounted
 #: routing cost would already have been within the limit.
-MV_STAGE_VERSION: int = 12
+#: 13: repairs: a ring split keeps parallel cables and larger conductors only on the lines that run on the repaired
+#: line, caps its rings by all the nodes it solves again (stubs included), and ring checks and open points use the
+#: upgraded conductors; ``pylovo-mv couple`` splits a station rating outside pylovo's lists into units of
+#: ``rating / units``.
+MV_STAGE_VERSION: int = 13
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")
