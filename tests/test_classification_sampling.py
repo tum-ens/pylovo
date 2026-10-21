@@ -56,18 +56,21 @@ def test_samples_per_class_follow_population_shares(monkeypatch):
     assert abs(sum(counts.values()) - 100) <= len(counts) / 2  # rounding per class
 
 
-def test_class_sample_is_unique_sized_and_uses_valid_probabilities(monkeypatch):
+class SpyRng:
+    """Wraps a generator and records the probabilities of the draw."""
+
+    def __init__(self, seed, seen):
+        self.rng, self.seen = np.random.default_rng(seed), seen
+
+    def choice(self, a, size, p=None, replace=True):
+        self.seen["p"] = np.asarray(p)
+        return self.rng.choice(a, size, p=p, replace=replace)
+
+
+def test_class_sample_is_unique_sized_and_uses_valid_probabilities():
     reg = register()
     seen = {}
-    original = np.random.choice
-
-    def spy(a, size, p=None, replace=True):
-        seen["p"] = np.asarray(p)
-        return original(a, size, p=p, replace=replace)
-
-    monkeypatch.setattr(np.random, "choice", spy)
-    np.random.seed(5)
-    out = sample.get_samples_within_regiostar_class(73, 12, reg)
+    out = sample.get_samples_within_regiostar_class(73, 12, reg, SpyRng(5, seen))
     assert len(out) == 12 and out["plz"].is_unique
     assert set(out["plz"]) <= set(reg.loc[reg["regio7"] == 73, "plz"])
     assert seen["p"].sum() == pytest.approx(1.0) and (seen["p"] > 0).all()
@@ -176,7 +179,6 @@ def test_version_is_committed_before_the_sample_rows_that_refer_to_it(monkeypatc
     assert client.conn.log == ["commit", "to_sql", "commit"]
 
 
-@pytest.mark.xfail(strict=True, reason="CLASSIF-08: np.random.choice uses the global, unseeded generator")
 def test_sample_is_reproducible_for_the_same_version(monkeypatch, written):
     draws = []
     for _ in range(2):
@@ -184,3 +186,30 @@ def test_sample_is_reproducible_for_the_same_version(monkeypatch, written):
         sample.create_sample_set()
         draws.append(sorted(written["frame"]["plz"]))
     assert draws[0] == draws[1]
+
+
+def test_sample_differs_between_versions(monkeypatch, written):
+    draws = []
+    for version in (7, 8):
+        monkeypatch.setattr(sample, "CLASSIFICATION_VERSION", version)
+        monkeypatch.setattr(sample, "_db_client", FakeClient(register()))
+        sample.create_sample_set()
+        draws.append(sorted(written["frame"]["plz"]))
+    assert draws[0] != draws[1]
+
+
+def test_sample_does_not_depend_on_the_row_order_of_the_register(monkeypatch, written):
+    """The database returns the register in an unspecified order; the sample must not follow it."""
+    draws = []
+    for reg in (register(), register().sample(frac=1, random_state=3)):
+        monkeypatch.setattr(sample, "_db_client", FakeClient(reg))
+        sample.create_sample_set()
+        draws.append(sorted(written["frame"]["plz"]))
+    assert draws[0] == draws[1]
+
+
+def test_the_draw_is_seeded_with_the_classification_version(written):
+    reg = register()
+    default = sample.get_samples_within_regiostar_class(73, 12, reg)
+    seeded = sample.get_samples_within_regiostar_class(73, 12, reg, np.random.default_rng(7))  # version 7 (fixture)
+    assert list(default["plz"]) == list(seeded["plz"])

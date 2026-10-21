@@ -2,8 +2,9 @@
 
 The number of samples per RegioStaR 7 class is proportional to the population of
 the class (``N_SAMPLES`` in ``config_classification.yaml``). Within a class, PLZ
-are drawn with probabilities that follow the population-density distribution.
-The sample set is stored in ``pylovo.sample_set`` under ``CLASSIFICATION_VERSION``.
+are drawn with probabilities that follow the population-density distribution, with a
+generator seeded by ``CLASSIFICATION_VERSION``: the same version, register and ``N_SAMPLES``
+give the same sample. The sample set is stored in ``pylovo.sample_set`` under ``CLASSIFICATION_VERSION``.
 """
 import numpy as np
 import pandas as pd
@@ -70,7 +71,7 @@ def perc_of_pop_per_class(regiostar_plz: pd.DataFrame) -> dict:
     return {k: int(v) for k, v in samples_dyn.items()}
 
 
-def get_samples_within_regiostar_class(reg_class, no_samples, regiostar_plz):
+def get_samples_within_regiostar_class(reg_class, no_samples, regiostar_plz, rng=None):
     """Draw ``no_samples`` PLZ of one RegioStaR 7 class without replacement.
 
     The population densities of the class are split into 5 bins (fewer than 100
@@ -81,6 +82,7 @@ def get_samples_within_regiostar_class(reg_class, no_samples, regiostar_plz):
         reg_class: RegioStaR 7 class (``regio7``).
         no_samples: Number of PLZ to draw.
         regiostar_plz: Municipal register rows.
+        rng: Random generator of the draw. ``None`` seeds a new one with ``CLASSIFICATION_VERSION``.
 
     Returns:
         pd.DataFrame: The selected PLZ with their register data and bin columns
@@ -113,8 +115,9 @@ def get_samples_within_regiostar_class(reg_class, no_samples, regiostar_plz):
     regiostar_i_bins = pd.merge(regiostar_i, df_bins, on="bin_no")
     regiostar_i_bins["perc"] = regiostar_i_bins["perc_bin"] / regiostar_i_bins["count"]
     # Sampling:
-    selected = np.random.choice(regiostar_i_bins["plz"], no_samples, p=regiostar_i_bins["perc"],
-                                replace=False)
+    if rng is None:
+        rng = np.random.default_rng(CLASSIFICATION_VERSION)
+    selected = rng.choice(regiostar_i_bins["plz"], no_samples, p=regiostar_i_bins["perc"], replace=False)
     plz_selected = pd.DataFrame()
     plz_selected["plz"] = pd.Series(selected)
     reg_i_selected = pd.merge(plz_selected, regiostar_i_bins, on="plz")
@@ -125,6 +128,9 @@ def get_samples_within_regiostar_class(reg_class, no_samples, regiostar_plz):
 def get_samples_with_regiostar(samples_per_class, regiostar_plz):
     """Draw the sample set over all RegioStaR 7 classes.
 
+    One generator seeded with ``CLASSIFICATION_VERSION`` serves all classes (in the order of
+    ``samples_per_class``), so the sample is reproducible.
+
     Args:
         samples_per_class: Mapping ``regio7 class -> number of samples``.
         regiostar_plz: Municipal register rows.
@@ -134,8 +140,9 @@ def get_samples_with_regiostar(samples_per_class, regiostar_plz):
         :func:`get_samples_within_regiostar_class` (register attributes dropped).
     """
     reg_selected = pd.DataFrame()
+    rng = np.random.default_rng(CLASSIFICATION_VERSION)
     for i in samples_per_class:
-        reg_i_selected = get_samples_within_regiostar_class(i, samples_per_class[i], regiostar_plz)
+        reg_i_selected = get_samples_within_regiostar_class(i, samples_per_class[i], regiostar_plz, rng)
         reg_selected = pd.concat([reg_selected, reg_i_selected])
     # Drop columns before returning
     reg_selected = reg_selected.drop(columns=[
@@ -170,6 +177,7 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
 
     Draws the sample from the municipal register (Germany or one federal state),
     registers ``CLASSIFICATION_VERSION`` and writes the sample to ``pylovo.sample_set``.
+    The draw is seeded with ``CLASSIFICATION_VERSION`` (a non-negative integer).
 
     Args:
         restrict_to_postcode_result: Only sample PLZ that already have a
@@ -182,9 +190,10 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
     if classification_version_exists():
         raise Exception(f"Classification version:  {CLASSIFICATION_VERSION} already exists. Create a new one.")
     db_client = _get_db_client()
-    regiostar_plz = db_client.get_municipal_register()
+    # The draw depends on the row order, which the database leaves open: sort the register first.
+    regiostar_plz = db_client.get_municipal_register().sort_values(["plz", "ags"])
 
-    # some PLZ might appear multiple times for small municipalities that share PLZ
+    # some PLZ might appear multiple times for small municipalities that share PLZ: keep the lowest AGS
     regiostar_plz = regiostar_plz.drop_duplicates(subset="plz")
 
     if restrict_to_postcode_result:
