@@ -4,6 +4,7 @@ Every command is a Python one-liner, so no pylovo CLI starts and nothing touches
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
@@ -116,3 +117,43 @@ def test_cancel_while_the_process_is_being_created_stops_it(manager, monkeypatch
         assert job.status == "cancelled"
     finally:
         procs[0].kill()
+
+
+# --------------------------------------------------------------------------- history
+def write_finished_job(jobs_dir, job_id: str, lines: int, status: str = "succeeded") -> None:
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    (jobs_dir / f"{job_id}.log").write_text("".join(f"line {i}\n" for i in range(lines)), encoding="utf-8")
+    (jobs_dir / f"{job_id}.json").write_text(json.dumps({"id": job_id, "kind": "generate", "title": "old job", "argv": [],
+                                                         "status": status, "created_at": 1.0}), encoding="utf-8")
+
+
+def test_history_reload_keeps_only_the_last_lines_in_memory(tmp_path, monkeypatch):
+    from pylovo_api import jobs as jobs_module
+
+    monkeypatch.setattr(jobs_module, "MAX_LINES_IN_MEMORY", 100)
+    write_finished_job(tmp_path / "jobs", "big", 1000)
+    write_finished_job(tmp_path / "jobs", "small", 30, status="failed")
+    manager = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs")
+    big = manager.get("big")
+    assert len(big.lines) == 100 and big.first_seq == 900 and big.next_seq == 1000
+    assert big.lines[0]["seq"] == 900 and big.lines[0]["text"] == "line 900" and big.lines[0]["level"] != "command"
+    assert big.lines[-1]["seq"] == 999 and big.lines[-1]["level"] == "success"
+    assert big.summary()["line_count"] == 1000
+    assert [line["seq"] for line in big.lines_after(995)] == [995, 996, 997, 998, 999]
+    small = manager.get("small")  # a short log is complete and starts with its command line
+    assert len(small.lines) == 30 and small.first_seq == 0 and small.next_seq == 30
+    assert small.lines[0]["level"] == "command" and small.lines[-1]["level"] == "error"
+
+
+def test_the_text_download_of_a_finished_job_is_the_whole_log(client, monkeypatch):
+    from pylovo_api import jobs as jobs_module
+
+    monkeypatch.setattr(jobs_module, "MAX_LINES_IN_MEMORY", 100)
+    manager = client.app.state.jobs
+    write_finished_job(manager.jobs_dir, "big", 1000)
+    manager._load_history()
+    res = client.get("/api/jobs/big/log", params={"format": "text"})
+    assert res.status_code == 200 and res.text == "".join(f"line {i}\n" for i in range(1000))
+    assert res.headers["content-disposition"] == 'attachment; filename="pylovo-job-big.log"'
+    assert res.headers["content-type"].startswith("text/plain")
+    assert len(client.get("/api/jobs/big/log").json()["lines"]) == 100  # the JSON log is the part in memory

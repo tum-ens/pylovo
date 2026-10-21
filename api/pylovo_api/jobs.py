@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -404,12 +405,22 @@ class JobManager:
                 job.output_dir = output_dir if output_dir and Path(output_dir).is_dir() else None
                 log_path = self.jobs_dir / f"{job.id}.log"
                 if log_path.exists():
-                    for i, text in enumerate(log_path.read_text(encoding="utf-8", errors="replace").splitlines()):
-                        job.lines.append({"seq": i, "t": None, "text": text, "level": classify_line(text)})
-                    job.next_seq = len(job.lines)
-                    if job.lines:
-                        job.lines[0]["level"] = "command"
-                        job.lines[-1]["level"] = {"succeeded": "success", "failed": "error"}.get(job.status, "warning")
+                    self._load_log(job, log_path)
                 self._jobs[job.id] = job
             except (OSError, ValueError, KeyError):
                 continue
+
+    @staticmethod
+    def _load_log(job: Job, path: Path) -> None:
+        """Read the last :data:`MAX_LINES_IN_MEMORY` lines of a log file (the file itself stays complete)."""
+        job._log_path = path
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            tail = deque(enumerate(fh), maxlen=MAX_LINES_IN_MEMORY)
+        for i, text in tail:
+            text = text.rstrip("\n")
+            job.lines.append({"seq": i, "t": None, "text": text, "level": classify_line(text)})
+        if tail:
+            job.first_seq, job.next_seq = tail[0][0], tail[-1][0] + 1
+            if job.first_seq == 0:
+                job.lines[0]["level"] = "command"
+            job.lines[-1]["level"] = {"succeeded": "success", "failed": "error"}.get(job.status, "warning")
