@@ -49,3 +49,29 @@ def test_setup_refuses_postgresql_before_15_before_any_change():
         DatabaseConstructor(SimpleNamespace(conn=conn)).migrate_schema()
     assert len(conn.log) == 1 and "server_version_num" in conn.log[0]
     DatabaseConstructor(SimpleNamespace(conn=Connection(server=(150000, "15.0")))).check_server_version()
+
+
+def test_migration_on_violating_rows_stops_with_the_setup_message(monkeypatch):
+    """A VALIDATE step that meets bad rows ends in "Migration X stopped" (setup prints it), not a traceback."""
+    import psycopg2.errors
+
+    from pylovo.database import database_constructor
+
+    class Violation(psycopg2.errors.ForeignKeyViolation):
+        diag = SimpleNamespace(
+            message_primary='insert or update on table "pandapower_line" violates foreign key constraint '
+                            '"fk_pp_line_from_bus"',
+            message_detail='Key (grid_result_id, from_bus)=(5, 3) is not present in table "pandapower_bus".')
+
+    def bad_rows(cur):
+        raise Violation()
+
+    monkeypatch.setattr(database_constructor, "PRE_SCHEMA_MIGRATIONS", (("0003_integrity", bad_rows),))
+    conn = Connection()
+    with pytest.raises(RuntimeError) as stopped:
+        DatabaseConstructor(SimpleNamespace(conn=conn)).migrate_schema()
+    assert str(stopped.value) == (
+        'Migration 0003_integrity stopped, nothing was changed: insert or update on table "pandapower_line" '
+        'violates foreign key constraint "fk_pp_line_from_bus". Key (grid_result_id, from_bus)=(5, 3) is not '
+        'present in table "pandapower_bus". Repair or delete these rows, then run pylovo-setup again.')
+    assert "ROLLBACK" in conn.log and not any("INSERT INTO pylovo.schema_migrations" in q for q in conn.log)

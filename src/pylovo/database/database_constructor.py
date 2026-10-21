@@ -55,6 +55,13 @@ def _blocked_message(step: str, exc: psy.errors.DependentObjectsStillExist) -> s
             "Drop or adapt these objects, then run pylovo-setup again.")
 
 
+def _violation_message(step: str, exc: psy.errors.IntegrityError) -> str:
+    """Name the constraint or column that existing rows violate in a migration step."""
+    detail = f" {exc.diag.message_detail}" if exc.diag.message_detail else ""
+    return (f"{step} stopped, nothing was changed: {exc.diag.message_primary or exc}.{detail} "
+            "Repair or delete these rows, then run pylovo-setup again.")
+
+
 class DatabaseConstructor:
     """Create the ``pylovo`` schema, its tables and SQL functions, and import the raw data.
 
@@ -210,6 +217,8 @@ class DatabaseConstructor:
                         action(cur)
                     except psy.errors.DependentObjectsStillExist as exc:
                         raise RuntimeError(_blocked_message(f"Migration {name}", exc)) from exc
+                    except psy.errors.IntegrityError as exc:  # existing rows violate a new constraint
+                        raise RuntimeError(_violation_message(f"Migration {name}", exc)) from exc
                     cur.execute("INSERT INTO pylovo.schema_migrations (name) VALUES (%s)", (name,))
                     applied.append(name)
                 self.dbc.conn.commit()
