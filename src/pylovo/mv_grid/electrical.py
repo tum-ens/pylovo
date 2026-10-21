@@ -68,8 +68,9 @@ OLTC_MAX_ITERATIONS: int = 3
 DEFAULT_EPSG: int = 25832
 #: MV/LV station transformers of the stored LV grids, pandapower 20/0.4 kV types used by pylovo's backend
 #: ``(sn_kva, vk_percent, vkr_percent)``: 0.25, 0.4 and 0.63 MVA; smaller ratings take the 0.25 MVA values (as the
-#: backend does), larger ones the 0.63 MVA values. Percentages hold for 10 kV MV variants too (budgets use
-#: percentages only).
+#: backend does), larger ones the 0.63 MVA values. 10 kV districts keep these percentages (budgets use percentages
+#: only); real 10/0.4 kV units have about 4 % instead of 6 % short-circuit voltage, so their budget is on the safe
+#: side.
 STATION_TRANSFORMERS: tuple[tuple[float, float, float], ...] = ((250.0, 6.0, 1.44), (400.0, 6.0, 1.425),
                                                                (630.0, 6.0, 1.206))
 #: Comparison tolerance of the criteria (p.u. for voltages, percent for loadings).

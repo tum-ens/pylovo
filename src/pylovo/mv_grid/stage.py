@@ -440,8 +440,8 @@ def _set_district_voltages(dbc: Any, version_id: str, variant_id: str, rows: pd.
     customer peaks of each district over its area, ``districts.district_voltages`` by the variant's rule; sets
     ``mv_grid.vn_kv`` and ``mv_grid.metrics['voltage_level']`` (caller commits). With ``auto`` and the routing graph
     (``graph_id``, ``region_wkb``, ``attach_edge``), each node takes the municipality of its street edge, and a
-    district gets 10 kV when most of its installed capacity lies in municipalities of at least the threshold density
-    (``districts.municipal_density``, ``districts.dense_share``).
+    district gets 10 kV when at least half of its installed capacity lies in municipalities of at least the threshold
+    density (``districts.municipal_density``, ``districts.dense_share``).
 
     Args:
         rows: The node rows of the region with ``mv_node_id`` (``kind``, ``connection_hint``, ``sn_kva``,

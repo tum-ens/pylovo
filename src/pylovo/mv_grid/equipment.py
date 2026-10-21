@@ -263,8 +263,8 @@ def line_std_type_name(kind: str, cable: LineType, overhead: LineType) -> str:
 
 
 def thermal_mva(lt: LineType) -> float:
-    """Thermal rating of one circuit in MVA: ``sqrt(3) * vn_kv * max_i_ka`` (11.1 MVA for the default 1x150 cable
-    and 14.6 MVA for 1x240 at 20 kV)."""
+    """Thermal rating of one circuit in MVA: ``sqrt(3) * vn_kv * max_i_ka`` (14.6 MVA for the default 1x240 cable
+    at 20 kV)."""
     return math.sqrt(3.0) * lt.vn_kv * lt.max_i_ka
 
 

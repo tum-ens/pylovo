@@ -39,8 +39,8 @@ import yaml
 #: reach of its ends), and stub ends take links to another feeder (``link_stub_ends``).
 #: 10: HV/MV substations inside thermal or heating plants are kept, and ``substation=transmission`` without a voltage tag
 #: counts as HV (OSM substation filter).
-#: 11: ``MV_NOMINAL_VOLTAGE_KV`` auto by municipality: a district gets 10 kV when most of its installed capacity lies in
-#: municipalities of at least ``mv_10kv_min_density_mva_km2`` (now 5 MVA/km²), not by its own cell.
+#: 11: ``MV_NOMINAL_VOLTAGE_KV`` auto by municipality: a district gets 10 kV when at least half of its installed
+#: capacity lies in municipalities of at least ``mv_10kv_min_density_mva_km2`` (now 5 MVA/km²), not by its own cell.
 #: 12: a stub tree takes the true street length of each extension into its depth, also where the OSM-discounted
 #: routing cost would already have been within the limit.
 MV_STAGE_VERSION: int = 12
@@ -53,8 +53,9 @@ SETTLEMENT_TYPE_KEYS: dict[int, str] = {1: "rural", 2: "semi_urban", 3: "urban"}
 #: Mappings that also take one number, which then applies to every key (their former single value).
 BROADCAST_MAPPINGS: frozenset[str] = frozenset({"link_max_length_m"})
 
-#: ``MV_NOMINAL_VOLTAGE_KV`` value of the density rule: each district gets 10 kV when its installed MV/LV capacity
-#: per km² reaches ``mv_10kv_min_density_mva_km2``, else 20 kV (DESIGN §4.6, user decision 2026-10-15).
+#: ``MV_NOMINAL_VOLTAGE_KV`` value of the density rule: a district gets 10 kV when at least half of its installed
+#: MV/LV capacity lies in municipalities whose installed capacity per km² reaches ``mv_10kv_min_density_mva_km2``
+#: (a district without installed capacity: its own density), else 20 kV (DESIGN §4.6, user decision 2026-10-15).
 AUTO_VOLTAGE: str = "auto"
 
 
@@ -102,8 +103,9 @@ _YAML_SPECS: tuple[Spec, ...] = (
     Spec("MV_VARIANT_COMMENT", "comment", "default", "str",
          source="as VERSION_COMMENT; stored once with a new MV variant"),
     Spec("MV_NOMINAL_VOLTAGE_KV", "vn_kv", AUTO_VOLTAGE, "voltage", choices=(20.0, 10.0), group="voltage",
-         source="auto: 10 kV in districts with an installed density of at least mv_10kv_min_density_mva_km2, else "
-                "20 kV (dense city grids run at 10 kV, rural grids at 20 kV, Harnisch 2016); the stored LV station "
+         source="auto: 10 kV in districts with at least half of their installed capacity in municipalities with an "
+                "installed density of at least mv_10kv_min_density_mva_km2, else 20 kV (dense city grids run at "
+                "10 kV, rural grids at 20 kV, Harnisch 2016); the stored LV station "
                 "transformers are 20/0.4 kV and are re-typed to 10 kV by pylovo-mv couple"),
     Spec("MV_MAX_STATIONS_PER_RING", "max_stations_per_ring", 20, "int", bounds=(1, 100), group="topology",
          source="Ding0 and Heuck; 5 to 30 stations per ring in a large-city grid study (mean 15); urban members "
@@ -214,7 +216,8 @@ _CONSTANT_SPECS: tuple[Spec, ...] = (
     _constant("bridge_detour", 1.3, "float", "routing", bounds=(1.0, 3.0),
               source="straight bridges between graph islands (detour factor of Ding0)"),
     _constant("long_connector_m", 300.0, "float", "routing", bounds=_POSITIVE,
-              source="connectors from a node to the street longer than this are flagged"),
+              source="connectors from a node to the street longer than this are reported and count bridge_detour "
+                     "times their length"),
     _constant("osm_line_snap_m", 100.0, "float", "routing", bounds=(0.0, 1000.0),
               source="a loose end of an OSM MV line joins the nearest street vertex within "
                      "this distance by a straight cable connector (a riser pole and its cable); OSM lines also join "

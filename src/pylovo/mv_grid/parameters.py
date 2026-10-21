@@ -281,7 +281,8 @@ class MvParameters:
     # ------------------------------------------------------------------ nominal voltage
     @property
     def auto_voltage(self) -> bool:
-        """``MV_NOMINAL_VOLTAGE_KV`` is ``auto``: each district gets 10 or 20 kV by its installed density."""
+        """``MV_NOMINAL_VOLTAGE_KV`` is ``auto``: each district gets 10 or 20 kV by the installed density of its
+        municipalities."""
         return self.vn_kv == AUTO_VOLTAGE
 
     @property
@@ -298,7 +299,9 @@ class MvParameters:
         """The nominal voltage of a district with the given installed density in MVA/km² (DESIGN §4.6).
 
         With ``auto``: 10 kV when the density is at least ``mv_10kv_min_density_mva_km2``, else 20 kV (also without
-        a finite density, e.g. a district without area); otherwise ``MV_NOMINAL_VOLTAGE_KV``.
+        a finite density, e.g. a district without area); otherwise ``MV_NOMINAL_VOLTAGE_KV``. The stage decides by
+        the municipal share (:func:`pylovo.mv_grid.districts.district_voltages`) and uses the district's own density
+        only for a district without a share.
         """
         if not self.auto_voltage:
             return float(self.vn_kv)

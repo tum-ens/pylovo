@@ -18,15 +18,16 @@ MV_GRID_GENERATION: False
 # Name of the MV variant (1 to 10 characters); one LV version can hold several MV variants
 MV_VARIANT_ID: "1"
 MV_VARIANT_COMMENT: default # Stored with a new MV variant
-# Nominal voltage in kV: 20, 10 or auto. auto plans a supply area at 10 kV when most of its installed MV/LV capacity
-# lies in municipalities with at least 5 MVA/km² (dense cities), else at 20 kV. The LV station transformers are stored
-# as 20/0.4 kV; pylovo-mv couple gives the stations of 10 kV areas 10/0.4 kV transformers.
+# Nominal voltage in kV: 20, 10 or auto. auto plans a supply area at 10 kV when at least half of its installed MV/LV
+# capacity lies in municipalities with at least 5 MVA/km² (dense cities), else at 20 kV. The LV station transformers
+# are stored as 20/0.4 kV; pylovo-mv couple gives the stations of 10 kV areas 10/0.4 kV transformers.
 MV_NOMINAL_VOLTAGE_KV: auto
 # Most ring members (stations and MV customers) in one open ring. A rural member counts half, so a rural ring holds up
 # to twice as many; stations on stubs do not count.
 MV_MAX_STATIONS_PER_RING: 20
 # Cable type laid on new MV lines, a pandapower line type name (null: NA2XS2Y 1x240 RM/25 at 20 or 10 kV). An
-# overloaded line gets the next larger cable of the pandapower catalogue.
+# overloaded line gets a larger conductor where the catalogue has one, else a parallel cable (the default cable is the
+# largest).
 MV_STANDARD_CABLE: null
 # Overhead line type where a planned line follows an MV overhead line mapped in OpenStreetMap; all other lines are
 # cables (null: 122-AL1/20-ST1A at 20 or 10 kV)
