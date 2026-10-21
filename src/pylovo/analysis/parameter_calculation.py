@@ -862,8 +862,38 @@ class ParameterCalculator:
         return pandapower_net.load["max_p_mw"].sum()
 
     def count_households(self, pandapower_net: pp.pandapowerNet) -> int:
-        """Count load elements, used here as a proxy for the number of households."""
-        return len(pandapower_net.load)
+        """Number of households: the sum of ``load_units`` of the residential loads.
+
+        ``load_units`` is the number of households of a residential load and 1 for a non-residential
+        load, which is no household. A load without ``load_units`` counts as one household.
+        """
+        loads = self._categorised_loads(pandapower_net)
+        return int(round(loads.loc[loads["analysis_category"] == "Residential", "load_units"].sum()))
+
+    @staticmethod
+    def _categorised_loads(pandapower_net: pp.pandapowerNet) -> pd.DataFrame:
+        """Copy of the load table with the consumer category (``analysis_category``) and numeric ``load_units``.
+
+        The category is the load's ``category``, else the ``zone`` of its bus, else Residential; the
+        building types of older nets (MFH, SFH, AB, TH, Mixed) count as Residential. Missing
+        ``load_units`` count as 1.
+        """
+        loads = pandapower_net.load.copy()
+        if "category" in loads.columns:
+            loads["analysis_category"] = loads["category"]
+        elif "zone" in pandapower_net.bus.columns:
+            loads = loads.merge(pandapower_net.bus[["zone"]], left_on="bus", right_index=True, how="left")
+            loads["analysis_category"] = loads["zone"]
+        else:
+            loads["analysis_category"] = "Residential"
+        loads["analysis_category"] = loads["analysis_category"].fillna("Residential")
+        loads["analysis_category"] = loads["analysis_category"].replace(
+            ["MFH", "SFH", "AB", "TH", "Mixed"], "Residential"
+        )
+        if "load_units" not in loads.columns:
+            loads["load_units"] = 1.0
+        loads["load_units"] = pd.to_numeric(loads["load_units"], errors="coerce").fillna(1.0)
+        return loads
 
     def count_buses_by_keyword(self, pandapower_net: pp.pandapowerNet, bus_description: str) -> int:
         """Count buses whose name contains a given description (substring match)."""
@@ -1086,11 +1116,14 @@ class ParameterCalculator:
     def calculate_average_house_distance(self, pandapower_net: pp.pandapowerNet) -> float:
         """Calculate a spatial neighborhood distance proxy for consumer locations.
 
-        The returned value is the median of the mean distance to the four nearest
-        neighboring points. The method auto-detects whether the available geometry
-        coordinates are geographic or projected.
+        The returned value (km) is the median over the consumer buses of the mean distance
+        to their four nearest neighbouring consumer buses. Consumer buses are the
+        ``Consumer Nodebus`` buses of pylovo grids and the load buses of other nets
+        (:meth:`resolve_consumer_buses`). The method auto-detects whether the available
+        geometry coordinates are geographic or projected.
         """
-        bus = pandapower_net.bus
+        consumer_buses = self.resolve_consumer_buses(pandapower_net, self.uses_synthetic_bus_naming(pandapower_net))
+        bus = pandapower_net.bus.loc[pandapower_net.bus.index.intersection(consumer_buses)]
 
         if "geo" not in bus.columns:
             self.dbc.logger.debug("Bus table has no geo column; returning 0.0 for house-distance proxy.")
@@ -1771,21 +1804,7 @@ class ParameterCalculator:
             except Exception:
                 continue
 
-            loads = net.load.copy()
-            if "category" in loads.columns:
-                loads["analysis_category"] = loads["category"]
-            elif "zone" in net.bus.columns:
-                loads = loads.merge(net.bus[["zone"]], left_on="bus", right_index=True, how="left")
-                loads["analysis_category"] = loads["zone"]
-            else:
-                loads["analysis_category"] = "Residential"
-            loads["analysis_category"] = loads["analysis_category"].fillna("Residential")
-            loads["analysis_category"] = loads["analysis_category"].replace(
-                ["MFH", "SFH", "AB", "TH", "Mixed"], "Residential"
-            )
-            if "load_units" not in loads.columns:
-                loads["load_units"] = 1.0
-            loads["load_units"] = pd.to_numeric(loads["load_units"], errors="coerce").fillna(1.0)
+            loads = self._categorised_loads(net)
 
             # Coincident peak load: simultaneity per category, then summed.
             sim_peak_load = 0.0

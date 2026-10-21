@@ -146,14 +146,16 @@ One row per grid (``grid_result_id``), computed by
    * - ``no_branches``
      - Number of feeders leaving the transformer (topological count).
    * - ``no_households``
-     - Number of load elements (one per consumer and load category).
+     - Number of households: the sum of ``load_units`` of the residential loads (a
+       non-residential load is no household).
    * - ``no_household_equ``
      - Installed power divided by ``PEAK_LOAD_HOUSEHOLD``.
    * - ``no_house_connections_per_branch``, ``no_households_per_branch``,
        ``max_no_of_households_of_a_branch``
      - The counts above per feeder, and the largest feeder.
    * - ``house_distance_km``
-     - Median of the mean distance of each consumer to its four nearest neighbours.
+     - Median over the consumer buses of the mean distance (km) to their four nearest consumer
+       buses; station and connection buses do not count.
    * - ``transformer_mva``, ``osm_trafo``
      - Rating of the transformer station in MVA (``sn_mva`` × ``parallel``); ``osm_trafo`` is true
        for brownfield grids (``bcid`` < 0).

@@ -113,26 +113,40 @@ def test_clustering_metrics_of_a_pylovo_grid():
 def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distance():
     pc = calculator()
     pair = pp.create_empty_network()
-    pp.create_bus(pair, 0.4, geodata=(LON, LAT))
-    pp.create_bus(pair, 0.4, geodata=(LON + 0.001, LAT))                             # 74 m east
+    for lon in (LON, LON + 0.001):                                                   # two consumers 74 m apart
+        pp.create_load(pair, pp.create_bus(pair, 0.4, geodata=(lon, LAT)), 0.01)
     assert pc.calculate_average_house_distance(pair) == pytest.approx(haversine_km((LON, LAT), (LON + 0.001, LAT)), rel=1e-4)
 
-    # the documented statistic: median over the buses of the mean distance to the four nearest buses
+    # the documented statistic: median over the consumers of the mean distance to the nearest (up to four) consumers;
+    # the station, MV and connection buses do not count
     net = build()
-    points = [tuple(json.loads(geo)["coordinates"]) for geo in net.bus["geo"]]
-    means = [sum(sorted(haversine_km(point, other) for j, other in enumerate(points) if j != i)[:4]) / 4
+    consumers = net.bus[net.bus["name"].str.startswith("Consumer Nodebus")]
+    points = [tuple(json.loads(geo)["coordinates"]) for geo in consumers["geo"]]
+    means = [sum(sorted(haversine_km(point, other) for j, other in enumerate(points) if j != i)[:3]) / 3
              for i, point in enumerate(points)]
     assert pc.calculate_average_house_distance(net) == pytest.approx(float(np.median(means)), rel=1e-4)
 
 
-def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_buses():
+def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_consumers():
     pc = calculator()
     net = pp.create_empty_network()
-    assert pc.calculate_average_house_distance(net) == 0.0                           # no geo column
-    pp.create_bus(net, 0.4, geodata=(500000.0, 5300000.0))
-    assert pc.calculate_average_house_distance(net) == 0.0                           # one bus
-    pp.create_bus(net, 0.4, geodata=(500300.0, 5300000.0))
+    assert pc.calculate_average_house_distance(net) == 0.0                           # no bus
+    pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500000.0, 5300000.0)), 0.01)
+    pp.create_bus(net, 0.4, geodata=(500100.0, 5300000.0))                          # no consumer: not counted
+    assert pc.calculate_average_house_distance(net) == 0.0                           # one consumer
+    pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500300.0, 5300000.0)), 0.01)
     assert pc.calculate_average_house_distance(net) == pytest.approx(0.3)            # 300 m
+
+
+def test_the_households_are_the_load_units_of_the_residential_loads():
+    net, pc = build(), calculator()
+    net.load.loc[net.load.index[0], "load_units"] = 6.0                              # a building with six flats
+    pp.create_load(net, net.load.at[net.load.index[1], "bus"], 0.005, max_p_mw=0.02, category="Commercial",
+                   load_units=1.0)                                                   # a shop in a house: no household
+    assert pc.count_households(net) == 6 + 3
+    assert compute_clustering_metrics(pc, net)["no_households"] == 9
+    net.load.drop(columns="load_units", inplace=True)                               # nets without the column
+    assert pc.count_households(net) == 4
 
 
 @pytest.mark.parametrize("parallel", [1, 2])
