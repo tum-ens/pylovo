@@ -525,7 +525,9 @@ neighbouring substations after all supply areas are planned:
 #. Pairs of candidates of different supply areas with the same nominal voltage within
    ``tie_max_length_m`` (2 km) along the streets are taken in the order of their length, at most
    one tie per ring. A tie follows the routing graph and is an overhead line where its route runs
-   on an OSM MV line.
+   on an OSM MV line. The limit applies to the true length of the route the tie takes: the
+   cheapest route, on which OSM MV lines cost ``osm_line_cost_factor`` times their length, if it
+   lies within the limit, else the shortest route if that one does.
 #. A tie belongs to the supply area with the lower ``mv_grid_id`` and is open at the other end.
 
 Ties carry no flow in any checked case. They are not part of the district nets, of ``circuit_km``
@@ -551,8 +553,8 @@ more MV cables, and a tenth to a seventh were stub ends with one cable. The ring
 no such cables, so the stage adds normally-open links after the ties:
 
 #. **Between rings:** pairs of ring members (the candidates of the ties) of different rings of the
-   same supply area within their reach along the streets, in true length, are taken in the order
-   of their length. Each ring member takes at most one link, as a station with a third cable bay.
+   same supply area within their reach along the streets, in true length of the cheapest route or
+   else of the shortest route as for the ties, are taken in the order of their length. Each ring member takes at most one link, as a station with a third cable bay.
    Two rings take at most two links, so that two links close a short loop between them.
 #. **From stub ends** (``link_stub_ends``, on by default): each stub end (a station or MV customer
    on a stub with one MV line) may then take one link within its reach to a ring member or stub

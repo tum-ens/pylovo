@@ -312,6 +312,38 @@ def test_the_limit_applies_to_the_true_length_on_osm_lines():
     assert tie["length_m"] == pytest.approx(2400.0) and tie["street_m"] == pytest.approx(2400.0)
 
 
+def _corridor_and_street(osm_m: float, street_m: float) -> EdgeSet:
+    """A detour of 2 x (osm_m / 6) street and 2/3 osm_m on an OSM MV line between vertices 1 and 4, and a direct
+    street of ``street_m`` that costs more than the OSM detour at the OSM factor of 0.7."""
+    leg, top = osm_m / 6.0, 2.0 * osm_m / 3.0
+    xy = np.array([[0.0, 0.0], [0.0, leg], [top, leg], [top, 0.0]])
+    return EdgeSet(edge_id=np.array([1, 2, 3, 4]), source=np.array([1, 2, 3, 1]), target=np.array([2, 3, 4, 4]),
+                   length_m=np.array([leg, top, leg, street_m]), in_settlement=np.zeros(4, bool),
+                   settlement_id=np.full(4, -1), vertex_id=np.array([1, 2, 3, 4]), vertex_xy=xy,
+                   overhead=np.array([False, True, False, False]))
+
+
+def test_a_pair_beyond_the_reach_on_the_cheapest_route_takes_the_shortest_route_within_it():
+    """The cheapest route runs on the OSM MV line, but its true length is beyond the reach; the direct street costs
+    more, but lies within the reach: the tie or link takes the street. Within the reach, the cheapest route stays."""
+    grids = grids_frame((1, 20.0), (2, 20.0))
+    both = _corridor_and_street(2400.0, 1950.0)               # OSM route: 2,400 m (1,920 m of cost)
+    a = node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0)
+    b = node(21, 2, 0, 1600.0, y=0.0, edge=3, fraction=1.0)
+    tie = ic.plan_ties(nodes_frame(a, b), grids, both, PARAMS).iloc[0]
+    assert tie["kind"] == "cable" and tie["length_m"] == pytest.approx(1950.0) and tie["overhead_m"] == 0.0
+    assert tie["street_m"] == pytest.approx(1950.0)
+    tie = ic.plan_ties(nodes_frame(a, b), grids, both, PARAMS.replace(tie_max_length_m=2500.0)).iloc[0]
+    assert tie["kind"] == "mixed" and tie["length_m"] == pytest.approx(2400.0)
+    # a link between two rural rings (reach 1 km): OSM route 1,200 m (960 m of cost), street 980 m
+    both = _corridor_and_street(1200.0, 980.0)
+    rows = nodes_frame(node(11, 1, 0, 0.0, y=0.0, edge=1, fraction=0.0, settlement_type=1),
+                       node(21, 1, 1, 800.0, y=0.0, edge=3, fraction=1.0, settlement_type=1))
+    link = ic.plan_links(rows, grids_frame((1, 20.0)), both, PARAMS).iloc[0]
+    assert (link["from_node"], link["to_node"]) == (11, 21) and link["length_m"] == pytest.approx(980.0)
+    assert link["kind"] == "cable"
+
+
 def test_orientation_geometry_and_flags():
     grids = grids_frame((5, 20.0, "done", False, True), (2, 20.0, "done", True, False))
     rows = nodes_frame(node(51, 5, 0, 1000.0, offset=30.0), node(21, 2, 0, 2200.0, offset=20.0))

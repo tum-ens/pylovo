@@ -12,7 +12,9 @@ cost-optimal plan of single districts lacks:
 2. **Distances** (:func:`plan_ties`): pairs of candidates of different districts with the same nominal voltage
    within ``tie_max_length_m`` (Euclidean pre-filter) get their street distance on one run graph of the routing
    graph (split at the attachment points, with connectors, without island bridges) from a Dijkstra limited to
-   ``tie_max_length_m``.
+   ``tie_max_length_m``. The limit applies to the true length of the route the tie takes: the cheapest route (OSM
+   MV lines discounted by ``osm_line_cost_factor``) if it is within the limit, else the shortest route by true
+   length if that one is (:func:`_measure`; the links use the same rule with their reach).
 3. **Link rule** of the district links (:func:`pylovo.mv_grid.topology.distance_model`): a tie follows the
    routing graph and is an overhead line where its route runs on OSM MV lines, a cable elsewhere.
 4. **Selection:** greedy by tie length (then street distance and node ids), at most one tie per ring. The tie
@@ -315,32 +317,52 @@ def _flags(grids: pd.DataFrame, grid_ids: Sequence[int]) -> list[str]:
     return flags
 
 
-def _measure(cand: pd.DataFrame, pairs: np.ndarray, edges: EdgeSet, params: "MvParameters", limit: float
-             ) -> dict | None:
-    """Street distance, length and line kind of candidate row pairs within ``limit`` (steps 2 and 3); None when no
-    pair is within reach."""
+def _measure(cand: pd.DataFrame, pairs: np.ndarray, edges: EdgeSet, params: "MvParameters", limit: float,
+             reach: Callable[[pd.DataFrame], np.ndarray] | None = None) -> dict | None:
+    """Street distance, length and line kind of candidate row pairs within their reach (steps 2 and 3); None when
+    no pair is within reach.
+
+    The reach of a pair is ``limit``, or with ``reach`` (candidate rows -> reach of each row, at most ``limit``)
+    the shorter reach of its two ends. It applies to the true length of the route the line takes: the cheapest
+    route (OSM MV lines cost ``osm_line_cost_factor`` times their length) if it is within the reach, else the
+    shortest route by true length (``shortest``, on the run graph ``rg_len`` without the discount), else the pair is
+    dropped.
+    """
     rows = np.unique(pairs)
     local = {int(r): k for k, r in enumerate(rows.tolist())}
     sub = cand.iloc[rows]
     lpairs = np.array([(local[int(i)], local[int(j)]) for i, j in pairs], dtype=np.int64).reshape(-1, 2)
-    rg = graph.build_run_graph(edges, _run_graph_rows(sub), long_connector_m=params.long_connector_m,
-                               bridge_detour=params.bridge_detour, osm_cost_factor=params.osm_line_cost_factor)
-    street = _street_distances(rg, lpairs, limit)
+
+    def run_graph(osm_cost_factor: float) -> Any:
+        return graph.build_run_graph(edges, _run_graph_rows(sub), long_connector_m=params.long_connector_m,
+                                     bridge_detour=params.bridge_detour, osm_cost_factor=osm_cost_factor)
+
+    rg = run_graph(params.osm_line_cost_factor)
+    street = _street_distances(rg, lpairs, limit)       # the cost: at most the true length of any route
     ok = np.isfinite(street) & (street <= limit)
     lpairs, street = lpairs[ok], street[ok]
     if not len(lpairs):
         return None
+    row_reach = np.full(len(rows), float(limit)) if reach is None else np.minimum(reach(sub), float(limit))
+    pair_reach = np.minimum(row_reach[lpairs[:, 0]], row_reach[lpairs[:, 1]])
+    shortest = np.zeros(len(lpairs), dtype=bool)
+    rg_len = None
     if "cost_m" in rg.pieces.columns and not np.allclose(rg.pieces["cost_m"], rg.pieces["length_m"]):
         street = _true_lengths(rg, lpairs)              # the limit and the ranking use the true route length
-        ok = street <= limit
-        lpairs, street = lpairs[ok], street[ok]
-        if not len(lpairs):
-            return None
+        far = street > pair_reach
+        if far.any():                                   # the cheapest route is too long: the shortest one?
+            rg_len = run_graph(1.0)
+            street[far] = _street_distances(rg_len, lpairs[far], limit)
+            shortest = far
+    ok = street <= pair_reach
+    lpairs, street, shortest = lpairs[ok], street[ok], shortest[ok]
+    if not len(lpairs):
+        return None
     xy = sub[["x", "y"]].to_numpy(dtype=float)
     i, j = lpairs[:, 0], lpairs[:, 1]
     straight_m = np.hypot(*(xy[i] - xy[j]).T)
-    return {"sub": sub, "rg": rg, "pairs": lpairs, "street": street, "straight_m": straight_m,
-            "length": np.maximum(street, MIN_TIE_M), "xy": xy,
+    return {"sub": sub, "rg": rg, "rg_len": rg_len, "pairs": lpairs, "street": street, "shortest": shortest,
+            "straight_m": straight_m, "length": np.maximum(street, MIN_TIE_M), "xy": xy,
             "ids": np.asarray(sub.index, dtype=np.int64), "grid": sub["mv_grid_id"].to_numpy(dtype=np.int64),
             "ring": _numbers(sub, "ring_id").astype(np.int64), "feeder": _numbers(sub, "feeder_id").astype(np.int64)}
 
@@ -353,9 +375,13 @@ def _line_table(m: dict, ends: Sequence[tuple[int, int, int]], grids: pd.DataFra
     rg, xy, street, length = m["rg"], m["xy"], m["street"].copy(), m["length"].copy()
     ids, grid = m["ids"], m["grid"]
     vertex = np.asarray(rg.terminal_vertex, dtype=np.int64)
-    street_ends = [(int(vertex[f]), int(vertex[t])) for p, f, t in ends]
-    paths = graph.vertex_paths(rg, street_ends) if street_ends else {}
-    pieces = {key: graph.path_pieces(rg, path) for key, path in paths.items() if path}
+    graph_of = {(int(vertex[f]), int(vertex[t])): m["rg_len"] if m["shortest"][p] else rg for p, f, t in ends}
+    pieces = {}
+    for g in (rg, m["rg_len"]):                         # the route each pair was measured on
+        keys = [key for key, of in graph_of.items() if of is g]
+        if keys:
+            pieces.update({key: graph.path_pieces(g, path) for key, path in graph.vertex_paths(g, keys).items()
+                           if path})
     edge_kind = rg.pieces["kind"].astype(str).to_numpy()
     edge_ids = rg.pieces["edge_id"].to_numpy(dtype=np.int64)
     on_osm = (rg.pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in rg.pieces.columns
@@ -459,22 +485,6 @@ def largest_reach(params: "MvParameters") -> float:
     return max(float(v) for v in params.link_max_length_m.values())
 
 
-def _within_reach(m: dict | None, params: "MvParameters") -> dict | None:
-    """The pairs of :func:`_measure` whose street distance is within the shorter reach of their two ends; None
-    when no pair is left."""
-    if m is None:
-        return None
-    reach = link_reach(m["sub"], params)
-    i, j = m["pairs"][:, 0], m["pairs"][:, 1]
-    ok = m["street"] <= np.minimum(reach[i], reach[j])
-    if not ok.any():
-        return None
-    out = dict(m)
-    for key in ("pairs", "street", "straight_m", "length"):
-        out[key] = m[key][ok]
-    return out
-
-
 def stub_link_pairs(candidates: pd.DataFrame, grids: pd.DataFrame, limit_m: float,
                     full: Collection[int] = ()) -> np.ndarray:
     """Row pairs of :func:`stub_link_candidates` that may hold a link from a stub end: in one district, on different
@@ -543,7 +553,7 @@ def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params:
     tables = []
     cand = tie_candidates(nodes, grids)
     pairs = close_pairs(cand, grids, limit + PREFILTER_SLACK_M, within=True)
-    m = _within_reach(_measure(cand, pairs, edges, params, limit) if len(pairs) else None, params)
+    m = _measure(cand, pairs, edges, params, limit, reach=lambda sub: link_reach(sub, params)) if len(pairs) else None
     if m is not None:
         ends = _greedy_links(m, per_node, defaultdict(int))
         if ends:
@@ -551,7 +561,8 @@ def plan_links(nodes: pd.DataFrame, grids: pd.DataFrame, edges: EdgeSet, params:
     if params.link_stub_ends:
         cand = stub_link_candidates(nodes, grids)
         pairs = stub_link_pairs(cand, grids, limit, [n for n, k in per_node.items() if k >= LINKS_PER_NODE])
-        m = _within_reach(_measure(cand, pairs, edges, params, limit) if len(pairs) else None, params)
+        m = (_measure(cand, pairs, edges, params, limit, reach=lambda sub: link_reach(sub, params)) if len(pairs)
+             else None)
         if m is not None:
             ends = _greedy_links(m, per_node, None)
             if ends:
