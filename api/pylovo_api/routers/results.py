@@ -1,7 +1,6 @@
 """Generated results: versions, statistics, grid maps, pandapower downloads, power flow, LoD2 models."""
 from __future__ import annotations
 
-import json
 import logging
 from typing import Annotated
 
@@ -66,9 +65,9 @@ def grid_download(grid_result_id: int) -> Response:
     stored = queries.grid_json(grid_result_id)
     if stored is None:
         raise HTTPException(404, "Grid not found")
-    grid, ident = stored
+    text, ident = stored
     name = f"pylovo_v{ident['version_id']}_{ident['plz']}_k{ident['kcid']}_b{ident['bcid']}.json"
-    return Response(json.dumps(grid), media_type="application/json",
+    return Response(text, media_type="application/json",  # the stored text as it is
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 

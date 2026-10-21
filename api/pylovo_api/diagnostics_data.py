@@ -54,15 +54,6 @@ def _recall(cache: OrderedDict, key: tuple) -> Any:
 
 
 # --------------------------------------------------------------------------- fingerprints
-def fingerprints(grid_ids: list[int]) -> dict[int, str]:
-    """MD5 of the stored pandapower JSON per grid (changes with every regeneration or edit)."""
-    if not grid_ids:
-        return {}
-    rows = db.fetch_all("SELECT grid_result_id, md5(COALESCE(grid::text, '')) AS fp FROM pylovo.grid_result "
-                        "WHERE grid_result_id = ANY(%s)", (list(grid_ids),))
-    return {r["grid_result_id"]: r["fp"] for r in rows}
-
-
 def _version_grids(version_id: str, plz: list[int] | None = None) -> list[dict]:
     """Grids of a version with a cheap change key (loads and lines), without hashing the stored nets."""
     params: dict[str, Any] = {"v": str(version_id)}
@@ -288,13 +279,16 @@ def version_context(version_id: str, plz: int | None = None) -> dict:
 
 
 # --------------------------------------------------------------------------- power-flow cache
-def remember_powerflow(result: dict, fingerprint: str | None = None) -> None:
-    """Keep a converged on-demand power flow for the diagnostics endpoint."""
+def remember_powerflow(result: dict) -> None:
+    """Keep a converged on-demand power flow for the diagnostics endpoint.
+
+    It is filed under ``result["fingerprint"]``, the md5 of the net it ran on (read together with the
+    net), so a load edit that commits meanwhile never gets the results of the net it replaced.
+    """
     if not result or not result.get("converged"):
         return
     gid = int(result["grid_result_id"])
-    fp = fingerprint or fingerprints([gid]).get(gid)
-    _remember(_pf_cache, (gid, round(float(result.get("load_scaling") or 1.0), 4), fp), result, 24)
+    _remember(_pf_cache, (gid, round(float(result.get("load_scaling") or 1.0), 4), result["fingerprint"]), result, 24)
 
 
 def cached_powerflow(grid_result_id: int, load_scaling: float, fingerprint: str | None) -> dict | None:
@@ -346,8 +340,7 @@ def after_powerflow(result: dict) -> dict:
     """
     try:
         gid = int(result["grid_result_id"])
-        fp = fingerprints([gid]).get(gid)
-        remember_powerflow(result, fp)
+        remember_powerflow(result)
         return grid_diagnostics(gid, float(result.get("load_scaling") or 1.0), pf=result) or {"error": "grid not found"}
     except Exception as exc:  # noqa: BLE001 - reported next to the power flow
         return {"error": f"{type(exc).__name__}: {exc}"}

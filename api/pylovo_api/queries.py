@@ -741,10 +741,13 @@ def grid_detail(grid_result_id: int, offsets: bool = True) -> dict[str, Any] | N
     return detail
 
 
-def grid_json(grid_result_id: int) -> tuple[dict, dict] | None:
-    """The stored pandapower JSON of one grid and its identifiers."""
-    row = db.fetch_one("SELECT version_id, plz, kcid, bcid, grid FROM pylovo.grid_result WHERE grid_result_id = %s",
-                       (grid_result_id,))
+def grid_json(grid_result_id: int) -> tuple[str, dict] | None:
+    """The stored pandapower JSON text of one grid and its identifiers.
+
+    The identifiers include the ``fingerprint`` (md5) of exactly that text, read in the same statement.
+    """
+    row = db.fetch_one("SELECT version_id, plz, kcid, bcid, grid::text AS grid, md5(grid::text) AS fingerprint "
+                       "FROM pylovo.grid_result WHERE grid_result_id = %s", (grid_result_id,))
     if not row or row["grid"] is None:
         return None
     grid = row.pop("grid")

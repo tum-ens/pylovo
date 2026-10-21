@@ -1,7 +1,6 @@
 """On-demand power flow for one stored grid (results are returned, never written back)."""
 from __future__ import annotations
 
-import json
 import math
 import threading
 import time
@@ -32,17 +31,18 @@ def run(grid_result_id: int, load_scaling: float = 1.0) -> dict[str, Any] | None
 
     Returns:
         Bus voltages, line and transformer loadings keyed by pandapower index, extremes and a
-        voltage profile along the feeders, or ``None`` if the grid does not exist.
+        voltage profile along the feeders, or ``None`` if the grid does not exist. ``fingerprint``
+        is the md5 of the stored net the power flow ran on (the key of the diagnostics cache).
     """
     import pandapower as pp
 
     stored = queries.grid_json(grid_result_id)
     if stored is None:
         return None
-    grid, ident = stored
+    text, ident = stored
     started = time.time()
     with _PF_LOCK:
-        net = pp.from_json_string(json.dumps(grid))
+        net = pp.from_json_string(text)
         if len(net.load):
             net.load["scaling"] = net.load["scaling"].fillna(1.0) * float(load_scaling)
         error = None
