@@ -5,17 +5,18 @@ import pytest
 from shapely.geometry import box
 
 from pylovo import postcode_border
-from pylovo.analysis.border_diagnostics import border_kinds, summarize
+from pylovo.analysis.border_diagnostics import BORDER_TOLERANCE_M, border_kinds, summarize
 from pylovo.version_snapshot import compare_snapshots
 
 
 def test_borders_are_split_into_generated_open_and_outer():
     polygons = {1: box(0, 0, 100, 100), 2: box(100, 0, 200, 100), 3: box(0, 100, 100, 200)}
     kinds = border_kinds(polygons, [1], generated={1, 2})
-    # lengths up to the matching tolerance at the corners (2 m per end)
-    assert abs(kinds["generated"].length - 100) <= 4    # shared with 2 (generated)
-    assert abs(kinds["open"].length - 100) <= 4         # shared with 3 (no results)
-    assert abs(kinds["outer"].length - 200) <= 4        # west and south: no neighbour
+    # lengths up to the matching tolerance at the corners (10 m per end)
+    stubs = 2 * BORDER_TOLERANCE_M
+    assert abs(kinds["generated"].length - 100) <= stubs    # shared with 2 (generated)
+    assert abs(kinds["open"].length - 100) <= stubs         # shared with 3 (no results)
+    assert abs(kinds["outer"].length - 200) <= stubs        # west and south: no neighbour
     assert kinds["generated"].distance(box(150, 40, 160, 50)) > 49 and kinds["open"].distance(box(40, 150, 50, 160)) > 49
 
 
