@@ -67,8 +67,9 @@ rows are kept, so running setup again completes an interrupted setup. Before
 it changes anything, setup checks the input data of the tables it will import
 (the InfDB table ``postcodes_germany``, the CSV and street files, the municipal
 register files) and stops with a list of what is missing. Finally
-it installs or updates the street preprocessing functions. OSM transformer
-import may fetch and process data if the processed GeoJSON is missing.
+it installs or updates the street preprocessing functions. The OSM transformer
+import reprojects the shipped Bavarian GeoJSON for another ``TARGET_EPSG`` and fetches data only
+for another relation (``RELATION_ID``) without a processed GeoJSON.
 
 A migration stops if existing rows violate a new constraint, with the message
 ``Migration <name> stopped, nothing was changed: ... Repair or delete these rows, then run

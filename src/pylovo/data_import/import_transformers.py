@@ -9,7 +9,9 @@ written to the data directory.
 - ``overpass_queries/``: Overpass query templates (``$relation_id$`` is replaced).
 - ``fetched_trafos/<relation_id>_{substations,shopping_mall}.geojson``: raw query results.
 - ``processed_trafos/<relation_id>_trafos_processed_<TARGET_EPSG>.geojson``: filtered result that
-  ``pylovo-setup`` and ``pylovo-import transformers-osm`` load into ``pylovo.transformers``.
+  ``pylovo-setup`` and ``pylovo-import transformers-osm`` load into ``pylovo.transformers``. The processed
+  file of Bavaria in EPSG:25832 ships with pylovo; for another ``TARGET_EPSG`` it is reprojected
+  (:func:`get_processed_trafos`).
 """
 import json
 import os
@@ -27,6 +29,7 @@ RELATION_ID_BASE = 3600000000  # Overpass area id = 3600000000 + OSM relation id
 
 # OSM relation used by pylovo-setup (see docs); Bavaria --> 2145268
 RELATION_ID = 2145268
+SHIPPED_EPSG = 25832  # CRS of the processed transformer GeoJSON of Bavaria that ships with pylovo
 
 # Filter thresholds of process_trafos()
 AREA_THRESHOLD = 60  # m²; larger substation polygons are HV/MV substations
@@ -58,6 +61,58 @@ def get_shopping_mall_geojson_path(relation_id: int) -> str:
 def get_trafos_processed_target_geojson_path(relation_id: int) -> str:
     """Return the path of the processed transformer GeoJSON (in ``TARGET_EPSG``) of an OSM relation."""
     return str(_transformer_data_dir() / "processed_trafos" / f"{relation_id}_trafos_processed_{TARGET_EPSG}.geojson")
+
+
+def _processed_trafos_file(relation_id: int, epsg: int) -> Path:
+    """Return the processed transformer GeoJSON in ``epsg``: in the data directory, else the copy in the wheel."""
+    name = f"{relation_id}_trafos_processed_{epsg}.geojson"
+    return reference_data_path(_transformer_data_dir() / "processed_trafos" / name,
+                               Path("transformer_data", "processed_trafos", name))
+
+
+def reproject_trafos(source: Path, target: Path) -> None:
+    """Write the processed transformer GeoJSON ``source`` (``SHIPPED_EPSG``) reprojected to ``TARGET_EPSG`` as ``target``.
+
+    Args:
+        source: Processed GeoJSON in ``SHIPPED_EPSG`` (the CRS in its file name counts).
+        target: File to write; missing folders are created.
+    """
+    gdf = gpd.read_file(source).set_crs(SHIPPED_EPSG, allow_override=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_crs(epsg=TARGET_EPSG).to_file(target, driver="GeoJSON")
+
+
+def get_processed_trafos(relation_id: int) -> str:
+    """Return the processed transformer GeoJSON of an OSM relation in ``TARGET_EPSG``, creating it if there is none.
+
+    1. The file for ``TARGET_EPSG`` is used as it is: in the data directory, and for 25832 also the copy in the wheel.
+    2. Otherwise the processed 25832 file that ships with pylovo (Bavaria) is reprojected to ``TARGET_EPSG`` and
+       written to the data directory: offline and fast.
+    3. Only if there is no such file either (another relation), the transformers are fetched from the Overpass API
+       and processed, which takes 30 to 50 minutes for a federal state.
+
+    Delete the file of ``TARGET_EPSG`` in the data directory to create it again.
+
+    Args:
+        relation_id: OSM relation id of the area (``RELATION_ID`` for ``pylovo-setup``).
+
+    Returns:
+        Path of the processed GeoJSON in ``TARGET_EPSG``.
+    """
+    processed = _processed_trafos_file(relation_id, TARGET_EPSG)
+    if processed.is_file():
+        return str(processed)
+
+    processed = Path(get_trafos_processed_target_geojson_path(relation_id))
+    shipped = _processed_trafos_file(relation_id, SHIPPED_EPSG)
+    if shipped.is_file():
+        print(f"{processed} does not exist -> reproject {shipped} to EPSG:{TARGET_EPSG}")
+        reproject_trafos(shipped, processed)
+    else:
+        print(f"{processed} does not exist -> fetch transformer data from the Overpass API and process it")
+        fetch_trafos(relation_id)
+        process_trafos(relation_id)
+    return str(processed)
 
 
 def fetch_trafos(relation_id: int) -> None:

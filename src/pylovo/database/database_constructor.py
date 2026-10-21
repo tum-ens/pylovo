@@ -26,12 +26,7 @@ from pylovo.config_loader import (
     TARGET_EPSG,
     USE_INFDB,
 )
-from pylovo.data_import.import_transformers import (
-    RELATION_ID,
-    fetch_trafos,
-    get_trafos_processed_target_geojson_path,
-    process_trafos,
-)
+from pylovo.data_import.import_transformers import RELATION_ID, get_processed_trafos
 
 # Import table structure from packaged module (reliable for installed/editable usage)
 from pylovo.database.config_table_structure import CREATE_QUERIES, INFDB_OPTIONAL_TABLES
@@ -366,9 +361,11 @@ class DatabaseConstructor:
     def transformers_to_db(self, clear_existing: bool = True):
         """Import the OSM transformers of ``RELATION_ID`` into ``pylovo.transformers`` and commit.
 
-        The processed GeoJSON in ``data/transformer_data/processed_trafos/`` is reused if it
-        exists; otherwise the transformers are fetched from the Overpass API and processed first
-        (can take more than 30 minutes). Delete the GeoJSON to force a fresh download.
+        The processed GeoJSON of ``TARGET_EPSG`` in ``data/transformer_data/processed_trafos/`` is
+        reused if it exists. Otherwise the processed 25832 file that ships with pylovo is reprojected
+        to it, and only without that file the transformers are fetched from the Overpass API and
+        processed first (can take more than 30 minutes), see
+        :func:`pylovo.data_import.import_transformers.get_processed_trafos`.
 
         Args:
             clear_existing: Replace OSM source rows only. Stored transformer positions
@@ -380,18 +377,9 @@ class DatabaseConstructor:
                 cur.execute("DELETE FROM pylovo.transformers WHERE osm IS TRUE;")
             self.dbc.conn.commit()
 
-        trafos_processed_target_geojson_path = get_trafos_processed_target_geojson_path(RELATION_ID)
-
-        update_trafos = not os.path.isfile(trafos_processed_target_geojson_path)
-
-        if update_trafos:
-            print(f"{trafos_processed_target_geojson_path} does not exist -> fetch transformer data from API and process it")
-            fetch_trafos(RELATION_ID)
-            process_trafos(RELATION_ID)
-
         trafo_dict = [
             {
-                "path": trafos_processed_target_geojson_path,
+                "path": get_processed_trafos(RELATION_ID),
                 "table_name": "transformers"
             }
         ]

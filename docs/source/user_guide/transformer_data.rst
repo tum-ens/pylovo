@@ -65,8 +65,20 @@ smallest catalogue rating that covers the planned load.
 OpenStreetMap download
 ----------------------
 
-``pylovo-setup`` loads the processed transformers of Bavaria that ship with the repository. To add
-another area, import it by the id of its OSM boundary relation:
+The processed transformers of Bavaria (relation 2145268) ship with pylovo, in the repository and in the
+wheel, as ``transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson`` (EPSG:25832).
+``pylovo-setup`` loads this file. With another ``TARGET_EPSG`` in ``.env`` it first reprojects the shipped
+file to ``2145268_trafos_processed_<TARGET_EPSG>.geojson`` in the data directory (a few seconds, no
+download) and loads that file; delete it to reproject again. Only for another relation without a processed
+file does the setup fetch the data from the Overpass API, see below.
+
+.. note::
+
+   The shipped file was created before the substation query fetched ``power=pole`` nodes, so it
+   holds no pole-mounted stations. ``pylovo-import transformers-osm --relation-id 2145268`` fetches
+   Bavaria again with the current query and adds the stations that are not in ``pylovo.transformers`` yet.
+
+To add another area, import it by the id of its OSM boundary relation:
 
 .. code-block:: bash
 
@@ -110,12 +122,11 @@ If no transformer is left after these steps, the import stops with a message.
 The remaining centroids are written to
 ``transformer_data/processed_trafos/<relation-id>_trafos_processed_<TARGET_EPSG>.geojson``
 of the data directory and appended to ``pylovo.transformers``; the raw downloads are kept in
-``transformer_data/fetched_trafos/``. The thresholds and the setup relation
+``transformer_data/fetched_trafos/`` (the repository ships none). The thresholds and the setup relation
 (``RELATION_ID = 2145268``, Bavaria) are constants at the top of
 ``src/pylovo/data_import/import_transformers.py``; distances and areas are computed in
 ``TARGET_EPSG`` from ``.env``. To load a different default area with
-``pylovo-setup``, change ``RELATION_ID``; to refresh the Bavarian data from OSM, delete the
-processed file for your ``TARGET_EPSG`` before the setup.
+``pylovo-setup``, change ``RELATION_ID``: the first setup then fetches and processes that relation.
 
 .. note::
 
