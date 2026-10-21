@@ -429,12 +429,6 @@ class GridGenerator:
             )
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
         self.logger.info("Buildings_tem table prepared")
-        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers(
-            include_dso=USE_DSO_TRANSFORMER_POSITIONS)
-        if removed_transformer_buildings:
-            self.logger.info(
-                f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
-            )
         self.dbc.remove_duplicate_buildings()
         self.logger.info("Duplicate buildings removed from buildings_tem")
 
@@ -445,6 +439,24 @@ class GridGenerator:
             f"Building peakload calculated in buildings_tem, {unloadcount} unloaded buildings are removed from "
             f"buildings_tem"
         )
+
+        # The MV-direct decision comes before the removal of the non-residential buildings with a
+        # transformer candidate inside: such a building leaves the LV input either way, but a large one
+        # (a customer with its own substation) is stored as MV customer first. The removed buildings do
+        # not count in the settlement classification, as before.
+        too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
+        self.logger.debug(
+            f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
+        )
+        if too_large_consumers:
+            saved = self.dbc.save_mv_customers(self.plz)
+            self.logger.info(f"{saved} MV customers stored in pylovo.mv_customers")
+        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers(
+            include_dso=USE_DSO_TRANSFORMER_POSITIONS)
+        if removed_transformer_buildings:
+            self.logger.info(
+                f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
+            )
 
         # A metric that cannot be calculated (no residential building with households, fewer than two
         # buildings) stays NULL and counts as rural, so every PLZ gets a settlement type.
@@ -466,15 +478,6 @@ class GridGenerator:
             f"Settlement type determined (avg_households_per_building={None if avg_hh is None else round(avg_hh, 2)}, "
             f"house_distance={None if house_dist is None else round(house_dist, 1)} m, settlement_type={settlement_type})"
         )
-
-        too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
-        self.logger.debug(
-            f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
-        )
-        if too_large_consumers:
-            saved = self.dbc.save_mv_customers(self.plz)
-            self.logger.info(f"{saved} MV customers stored in pylovo.mv_customers")
-
 
     def prepare_transformers(self):
         """

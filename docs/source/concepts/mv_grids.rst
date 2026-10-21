@@ -163,7 +163,9 @@ two rules in the MV stage decide which customers become MV nodes:
    ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` (200 kW installed, the boundary between the MV/LV
    station level and the MV level in eGon-data) leaves the LV grid, and the building is stored in
    ``pylovo.mv_customers``. The residential part of a mixed building stays in its LV grid. The
-   threshold is a parameter of the LV version, not of the MV variant. A load edit of a mixed building
+   threshold is a parameter of the LV version, not of the MV variant. A building with a
+   transformer candidate inside (a customer substation) is stored too before it leaves the LV
+   input, and so are the MV customers of a postcode that gets no LV grid. A load edit of a mixed building
    (:ref:`http-api-load-editing`) that moves its non-residential part across the threshold inserts or
    deletes this row in the same transaction, and an edit of an MV-direct part updates it; the undo
    restores it.

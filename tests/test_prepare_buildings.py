@@ -36,3 +36,11 @@ def prepared(monkeypatch, raises=()):
 def test_a_metric_that_cannot_be_calculated_does_not_skip_the_settlement_type(monkeypatch, missing):
     calls = prepared(monkeypatch, raises=[missing])
     assert "set_settlement_type_per_plz" in calls
+
+
+def test_mv_customers_are_stored_before_buildings_with_a_transformer_inside_leave_the_lv_input(monkeypatch):
+    calls = prepared(monkeypatch)
+    steps = ["remove_duplicate_buildings", "set_building_peak_load", "update_too_large_consumers_to_zero",
+             "save_mv_customers", "remove_non_residential_buildings_overlapping_transformers",
+             "calculate_avg_households_per_building", "calculate_house_distance_metric", "set_settlement_type_per_plz"]
+    assert [name for name in calls if name in steps] == steps

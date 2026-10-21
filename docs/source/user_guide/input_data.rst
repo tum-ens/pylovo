@@ -77,7 +77,8 @@ From ``<INFDB_SOURCE_SCHEMA>.buildings`` pylovo takes the buildings of the postc
 * ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` leaves out buildings without street or house number.
 * ``RESIDENTIAL_ONLY_GENERATION: True`` keeps only residential buildings and components.
 * Non-residential buildings that overlap a transformer candidate are removed; so are duplicates
-  and buildings without geometry or ``objectid``.
+  and buildings without geometry or ``objectid``. A removed building whose non-residential load is
+  above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` is still stored as MV customer.
 * Buildings whose street-side connection point cannot be determined, and street components with
   at most one building, are removed later in the pipeline (:doc:`../concepts/pipeline`). A
   postcode with a single building keeps it and gets one grid.

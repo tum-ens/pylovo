@@ -86,3 +86,23 @@ def test_saving_keeps_own_ways_and_records_every_left_out_building(tem, monkeypa
     tem.cur.execute("""SELECT objectid, reason FROM pylovo.building_exclusion
                        WHERE version_id = %s AND plz = %s ORDER BY objectid""", (VERSION_ID, PLZ))
     assert tem.cur.fetchall() == [("isolated", "isolated_component"), ("mv", "mv_direct"), ("mv_dropped", "mv_direct")]
+
+
+def transformer(db, osm_id, x, y):
+    db.cur.execute(
+        """INSERT INTO pylovo.transformers (osm_id, area, type, transformer_rated_power, geom_type, within_shopping,
+                                             osm, lod2, lod2_objectid, geom)
+           VALUES (%s, 0, 'Transformer', NULL, 'point', false, true, false, NULL,
+                   ST_Multi(ST_SetSRID(ST_MakePoint(%s, %s), 25832)))""", (osm_id, x, y))
+
+
+def test_a_building_with_a_transformer_inside_is_recorded_as_mv_direct_if_it_is_an_mv_customer(tem):
+    transformer(tem, "node/990001", 20, 20)
+    transformer(tem, "node/990002", 60, 60)
+    building(tem, "hall", 20, 20)
+    building(tem, "shop", 60, 60)
+    tem.cur.execute("""UPDATE buildings_tem SET type = 'Commercial', residential_floor_area = 0,
+                                               nonresidential_mv_direct = (objectid = 'hall')""")
+    assert tem.remove_non_residential_buildings_overlapping_transformers() == 2
+    tem.cur.execute("SELECT objectid, reason FROM excluded_tem ORDER BY objectid")
+    assert tem.cur.fetchall() == [("hall", "mv_direct"), ("shop", "overlaps_transformer")]

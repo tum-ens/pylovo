@@ -33,11 +33,16 @@ missing postcode is fetched from ``postcodes_germany`` first).
 2 -- Buildings and loads
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The buildings of the postcode are read (:doc:`../user_guide/input_data`) and cleaned: LoD2
-transformer stations become transformer candidates, non-residential buildings on top of
-transformer candidates, duplicates and buildings without load are removed. Each building gets its
-residential and non-residential load components; missing household counts and floor areas are
-filled.
+The buildings of the postcode are read (:doc:`../user_guide/input_data`) and cleaned: duplicates
+and buildings without load are removed. Each building gets its residential and non-residential
+load components; missing household counts and floor areas are filled.
+
+Then non-residential components above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` are marked as
+supplied from the MV grid and removed from the LV load. The buildings are stored in
+``mv_customers``, the input of the MV stage (:ref:`mv-customers`). Only after this decision are the
+non-residential buildings with a transformer candidate inside removed from the LV input (exclusion
+reason ``mv_direct`` if the building is an MV customer, else ``overlaps_transformer``), so a large
+customer with its own substation stays an MV customer.
 
 The **settlement type** of the postcode is derived from two metrics, stored in
 ``postcode_result``:
@@ -54,10 +59,6 @@ which gives type 3. A metric that cannot be calculated counts as rural and stays
 ``postcode_result``: the house distance of a postcode with a single building, the household
 average of a postcode without residential buildings. Such a postcode is classified by the other
 metric alone (at most type 2), without either it is type 1.
-
-Finally, non-residential components above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` are marked as
-supplied from the MV grid and removed from the LV load. The buildings are stored in
-``mv_customers``, the input of the MV stage (:ref:`mv-customers`).
 
 3 -- Transformer candidates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

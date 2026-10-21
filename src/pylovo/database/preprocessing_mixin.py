@@ -865,7 +865,8 @@ class PreprocessingMixin(BaseMixin):
 
         :meth:`update_too_large_consumers_to_zero` removes these components from the LV model; the
         MV stage connects them as MV customers. The residential part of a mixed building stays in
-        the LV grid and is only recorded here. Rerunning a PLZ replaces its rows. Of several rows with
+        the LV grid and is only recorded here. Buildings with a transformer candidate inside are
+        included: ``remove_non_residential_buildings_overlapping_transformers`` deletes them afterwards. Rerunning a PLZ replaces its rows. Of several rows with
         one ``objectid`` the one with the lowest ``id`` is kept, as in ``ResultsMixin.save_tables``.
 
         Args:
@@ -981,6 +982,10 @@ class PreprocessingMixin(BaseMixin):
     def remove_non_residential_buildings_overlapping_transformers(self, include_dso: bool = False) -> int:
         """Remove non-residential consumer buildings that overlap transformer candidates.
 
+        Runs after the MV-direct decision (``update_too_large_consumers_to_zero``, ``save_mv_customers``):
+        a building whose non-residential load is supplied from the MV grid is already an MV customer and
+        is recorded as ``mv_direct``, the others as ``overlaps_transformer``.
+
         Imported DSO stations count only when they are in use
         (`include_dso`): they stay in `pylovo.transformers` after the run that
         imported them, and must not remove buildings from a run that ignores them.
@@ -1003,10 +1008,11 @@ class PreprocessingMixin(BaseMixin):
                       WHERE (ST_Intersects(t.geom, b.geom) OR ST_Within(t.geom, b.geom))
                         AND (%(include_dso)s OR NOT {_IS_DSO_TRANSFORMER_SQL})
                   )
-                RETURNING b.objectid
+                RETURNING b.objectid, b.nonresidential_mv_direct
             )
             INSERT INTO excluded_tem (objectid, reason)
-            SELECT objectid, 'overlaps_transformer' FROM deleted;
+            SELECT objectid, CASE WHEN nonresidential_mv_direct THEN 'mv_direct' ELSE 'overlaps_transformer' END
+            FROM deleted;
         """
         self.cur.execute(query, {"include_dso": include_dso})
         return self.cur.rowcount
