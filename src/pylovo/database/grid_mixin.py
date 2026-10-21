@@ -189,8 +189,8 @@ class GridMixin(BaseMixin):
         Returns:
             ``(vertice_cost_dict, ont, paths_to_transformer)``: distance in metres from the
             transformer vertex to every building vertex and connection point of the cluster
-            (ascending), the transformer vertex, and the node path from each of these vertices
-            to the transformer.
+            (ascending, equal distances by vertex ID), the transformer vertex, and the node path
+            from each of these vertices to the transformer.
         """
         ont = self.get_ont_info_from_bc(plz, kcid, bcid)["ont_vertice_id"]
 
@@ -220,7 +220,7 @@ class GridMixin(BaseMixin):
                              FROM pgr_dijkstra(
                                  {WAYS_TEM_EDGES_SQL}::text,
                                  %(o)s, %(c)s::integer[], false)
-                             ORDER BY agg_cost;"""
+                             ORDER BY agg_cost, node;"""
         self.cur.execute(vertices_query, {"o": ont, "c": target_vertices})
         data = self.cur.fetchall()
         vertice_cost_dict = {
