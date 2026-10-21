@@ -63,3 +63,16 @@ def test_imported_packages_are_declared():
         "api/pylovo_api": imported_packages(ROOT / "api" / "pylovo_api") - declared_packages("api"),
     }
     assert undeclared == {"src/pylovo": set(), "api/pylovo_api": set()}
+
+
+def test_requirements_txt_pins_the_locked_versions():
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    locked = {canonicalize_name(package["name"]): package["version"] for package in lock["package"]}
+    pins = {}
+    for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith(("#", "-e")):
+            requirement = Requirement(line)
+            pins[canonicalize_name(requirement.name)] = next(iter(requirement.specifier)).version
+    assert pins
+    assert {name: pin for name, pin in pins.items() if locked.get(name) != pin} == {}, \
+        "requirements.txt is stale: uv export --format requirements-txt --no-hashes --no-annotate --no-dev"
