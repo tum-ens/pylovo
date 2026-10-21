@@ -158,8 +158,9 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
   changed meanwhile and keep a backup. Jobs always read the saved file; saving is refused with 409
   while a database-writing job runs, and two saves at once are processed one after the other.
 * **Load edits** write in one transaction through `pylovo.load_editing.LoadEditor`
-  (`buildings_result`, the grid's `pandapower_load` rows and stored net, `grid_result`, an audit
-  row in `pylovo.load_edit`) and remove the load-dependent analysis rows of the PLZ. Undo is exact.
+  (`buildings_result`, the building's row in `pylovo.mv_customers` where its non-residential part
+  is MV-direct, the grid's `pandapower_load` rows and stored net, `grid_result`, an audit row in
+  `pylovo.load_edit`) and remove the load-dependent analysis rows of the PLZ. Undo is exact.
 * **Files** (all inside the project, ignored by git): `.pylovo-api/config-backups/` (the newest 50
   backups), `uploads/` (DSO CSVs, deleted after 24 hours), `jobs/` (records and logs of the newest
   60 jobs), `exports/` (the output of those jobs), `tmp/`, `cache/input-coverage.json`. The files

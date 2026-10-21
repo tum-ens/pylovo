@@ -6,7 +6,8 @@ generation derived from these inputs, with the parameters stored for the grid's 
 ``pylovo.version.generation_parameters`` (never today's config):
 
 1. the component peaks of the building (``set_building_peak_load`` and
-   ``update_too_large_consumers_to_zero`` of :class:`~pylovo.database.preprocessing_mixin.PreprocessingMixin`),
+   ``update_too_large_consumers_to_zero`` of :class:`~pylovo.database.preprocessing_mixin.PreprocessingMixin`)
+   and, where its non-residential part is or becomes MV-direct, its row in ``pylovo.mv_customers``,
 2. the power-flow snapshot loads of the whole grid: simultaneity is grouped per category over the
    grid (:func:`pylovo.utils.allocate_consumer_simultaneous_loads`), so one household more changes
    every residential load of the grid,
@@ -463,7 +464,8 @@ def validate_changes(building: dict, changes: dict, params: LoadParameters,
             warnings.append(_issue("mv_direct_flip", "The non-residential part is now "
                                    + ("above" if peaks.nonresidential_mv_direct else "below")
                                    + f" the MV-direct threshold of {params.mv_direct_threshold_kw:g} kW, so it "
-                                   + ("leaves" if peaks.nonresidential_mv_direct else "joins") + " the LV grid."))
+                                   + ("leaves the LV grid and becomes an MV customer" if peaks.nonresidential_mv_direct
+                                      else "joins the LV grid and is no longer an MV customer") + "."))
         if params.residential_only and peaks.nonresidential_peak_load_in_kw > 0 and (
                 "nonresidential_floor_area" in effective or "nonresidential_use" in effective):
             warnings.append(_issue("residential_only_nonres", "Residential-only version: the non-residential part still enters "
@@ -1459,6 +1461,7 @@ class LoadEditor:
                 })
                 self.db.update_building_load_inputs(version_id, grid_result_id, objectid,
                                                     {**check.inputs.as_dict(), **check.peaks.as_dict()})
+                self.db.sync_mv_customer(version_id, state.head["plz"], objectid)
                 self.db.replace_pandapower_load_rows(grid_result_id, net.load)
                 self.db.update_pandapower_bus_zones(grid_result_id, [(i, new) for i, _, new in result["_zone_changes"]])
                 after_md5 = self.db.save_revalidated_grid(grid_result_id, json_text, validation.status, validation.drops)
@@ -1490,6 +1493,7 @@ class LoadEditor:
         before = edit["before_building"]
         self.db.update_building_load_inputs(edit["version_id"], gid, edit["objectid"],
                                             {k: before.get(k) for k in (*_BUILDING_INPUTS, *_BUILDING_PEAKS)})
+        self.db.sync_mv_customer(edit["version_id"], edit["plz"], edit["objectid"])
         self.db.restore_pandapower_load_rows(gid, edit["before_loads"])
         self.db.update_pandapower_bus_zones(gid, [(int(i), z) for i, z in edit["before_bus_zones"]])
         self.db.mark_load_edit_undone(edit["load_edit_id"], undone_by)

@@ -217,7 +217,11 @@ slightly too) and the validation power flow before and after.
 Applying an edit writes in one transaction: the building row, the grid's pandapower loads and
 stored network, the generation-check results and an audit row in ``pylovo.load_edit``. The
 parameters are always those of the version's stored snapshot. Cables and the transformer stay as
-generated: to redimension the grid, correct the input and regenerate the PLZ as a new version. The
+generated: to redimension the grid, correct the input and regenerate the PLZ as a new version. A
+mixed building whose non-residential part is or becomes larger than ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``
+of the version moves between the grid and the MV customers: the edit inserts, updates or deletes its row
+in ``pylovo.mv_customers`` in the same transaction, and the undo restores it. MV variants of the
+version are then ``stale`` (:doc:`mv_grids`). The
 first edit of a version needs its id as confirmation. Analysis rows of the PLZ are removed because
 they no longer match; a re-analysis rebuilds them. Every edit can be undone exactly (the latest
 first), or all edits of a grid at once, and edited grids and versions are flagged in the results.

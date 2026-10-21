@@ -163,6 +163,54 @@ class LoadEditMixin(BaseMixin):
         if self.cur.rowcount != 1:
             raise RuntimeError(f"expected to update 1 building row, updated {self.cur.rowcount}")
 
+    def sync_mv_customer(self, version_id: str, plz: int, objectid: str) -> None:
+        """Make the row of a building in ``pylovo.mv_customers`` agree with its ``buildings_result`` row.
+
+        Call it in the transaction of an edit or an undo, after the building row was written. A building
+        is an MV customer when its non-residential part is MV-direct and has a positive peak (the rule of
+        ``PreprocessingMixin.save_mv_customers``): its row is inserted, updated in place or deleted. An
+        update never deletes and inserts the row, because the MV nodes of stored variants refer to it
+        (``ON DELETE CASCADE``); a deleted row takes the node of that customer out of them.
+
+        A version without any row (generated before the table existed) whose buildings hold MV-direct
+        components is left alone: the MV stage reads those buildings then, and a first row would make
+        it read the table instead.
+
+        Args:
+            version_id: Version of the building.
+            plz: PLZ of the building's grid.
+            objectid: Building.
+        """
+        if not self._le_regclass("pylovo.mv_customers"):
+            return
+        params = {"v": version_id, "plz": plz, "o": objectid}
+        state = self._le_row(
+            """SELECT EXISTS (SELECT 1 FROM pylovo.mv_customers WHERE version_id = %(v)s) AS stored,
+                      EXISTS (SELECT 1 FROM pylovo.buildings_result
+                              WHERE version_id = %(v)s AND objectid <> %(o)s AND nonresidential_mv_direct
+                                AND COALESCE(nonresidential_peak_load_in_kw, 0) > 0) AS others""", params)
+        if not state["stored"] and state["others"]:
+            return
+        self.cur.execute(
+            """INSERT INTO pylovo.mv_customers
+                   (version_id, objectid, plz, id, building_use, building_use_id, building_type, type, nonresidential_use,
+                    nonresidential_floor_area, nonresidential_peak_load_in_kw, residential_peak_load_in_kw, households,
+                    gemeindeschluessel, geom, centroid)
+               SELECT br.version_id, br.objectid, %(plz)s, br.id, br.building_use, br.building_use_id, br.building_type,
+                      br.type, br.nonresidential_use, br.nonresidential_floor_area, br.nonresidential_peak_load_in_kw,
+                      br.residential_peak_load_in_kw, br.households, br.gemeindeschluessel, br.geom, br.centroid
+               FROM pylovo.buildings_result br
+               WHERE br.version_id = %(v)s AND br.objectid = %(o)s AND br.nonresidential_mv_direct
+                 AND COALESCE(br.nonresidential_peak_load_in_kw, 0) > 0
+               ON CONFLICT (version_id, objectid) DO UPDATE SET
+                   nonresidential_use = EXCLUDED.nonresidential_use,
+                   nonresidential_floor_area = EXCLUDED.nonresidential_floor_area,
+                   nonresidential_peak_load_in_kw = EXCLUDED.nonresidential_peak_load_in_kw,
+                   residential_peak_load_in_kw = EXCLUDED.residential_peak_load_in_kw,
+                   households = EXCLUDED.households""", params)
+        if self.cur.rowcount == 0:  # not (or no longer) an MV customer
+            self.cur.execute("DELETE FROM pylovo.mv_customers WHERE version_id = %(v)s AND objectid = %(o)s", params)
+
     def snapshot_pandapower_loads(self, grid_result_id: int) -> list[dict]:
         """The ``pandapower_load`` rows of a grid as JSON objects (without the serial id)."""
         return self._le_row(

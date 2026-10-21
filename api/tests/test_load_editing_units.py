@@ -383,6 +383,193 @@ def test_a_lock_timeout_inside_the_write_transaction_is_a_locked_conflict():
         raise ValueError("boom")
 
 
+# --------------------------------------------------------------------------- MV customers follow the edits
+class MvCustomerCursor:
+    """The statements of ``LoadEditMixin.sync_mv_customer`` on two dicts: ``buildings_result`` and ``mv_customers`` rows."""
+
+    def __init__(self, buildings: dict, customers: dict, table: bool = True):
+        self.buildings, self.customers, self.table = buildings, customers, table
+        self.statements: list[str] = []
+        self.inserted: list[str] = []
+        self.updated: list[str] = []
+        self.deleted: list[str] = []
+        self.description = None
+        self.rowcount = 0
+        self.rows: list[dict] = []
+
+    @staticmethod
+    def is_customer(b: dict) -> bool:  # the rule of PreprocessingMixin.save_mv_customers
+        return bool(b["nonresidential_mv_direct"]) and (b["nonresidential_peak_load_in_kw"] or 0) > 0
+
+    def execute(self, query, params=None):
+        text = " ".join(query.split())
+        self.statements.append(text)
+        self.description = None
+        objectid = params.get("o") if isinstance(params, dict) else None
+        if text.startswith("SELECT to_regclass"):
+            self.description, self.rows = [("ok",)], [{"ok": self.table}]
+        elif "AS stored" in text:
+            others = any(self.is_customer(b) for key, b in self.buildings.items() if key != objectid)
+            self.description, self.rows = [("stored",)], [{"stored": bool(self.customers), "others": others}]
+        elif text.startswith("INSERT INTO pylovo.mv_customers"):
+            building = self.buildings[objectid]
+            self.rowcount = int(self.is_customer(building))
+            if self.rowcount:
+                row = {k: building[k] for k in ("nonresidential_use", "nonresidential_floor_area",
+                                                "nonresidential_peak_load_in_kw", "residential_peak_load_in_kw", "households")}
+                (self.updated if objectid in self.customers else self.inserted).append(objectid)
+                self.customers[objectid] = {**self.customers.get(objectid, {"plz": params["plz"]}), **row}
+        elif text.startswith("DELETE FROM pylovo.mv_customers"):
+            self.rowcount = int(self.customers.pop(objectid, None) is not None)
+            self.deleted.append(objectid)
+        else:
+            raise AssertionError(text)
+
+    def fetchall(self):
+        return self.rows
+
+
+def mv_client(buildings: dict, customers: dict, table: bool = True):
+    from pylovo.database.load_edit_mixin import LoadEditMixin
+
+    client = LoadEditMixin.__new__(LoadEditMixin)
+    client.cur = MvCustomerCursor(buildings, customers, table)
+    return client
+
+
+def stored(kw: float, *, direct: bool, households: int = 4, use: str | None = "Commercial") -> dict:
+    return {"nonresidential_mv_direct": direct, "nonresidential_peak_load_in_kw": kw, "nonresidential_use": use,
+            "nonresidential_floor_area": kw / 0.079, "residential_peak_load_in_kw": households * 16.825,
+            "households": households}
+
+
+def test_an_edit_across_the_mv_direct_threshold_moves_the_building_between_lv_and_mv_and_the_undo_restores_it():
+    other = stored(300.0, direct=True)
+    buildings = {"b1": stored(50.0, direct=False), "x1": other}
+    customers = {"x1": {"plz": 85653, **other}}
+    client = mv_client(buildings, customers)
+    cur = client.cur
+    client.sync_mv_customer("v1", 85653, "b1")  # an edit that stays below the threshold
+    assert set(customers) == {"x1"} and cur.inserted == [] and cur.deleted == ["b1"]
+    buildings["b1"] = stored(120.0, direct=True)  # edit 1: the non-residential part leaves the LV grid
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert cur.inserted == ["b1"] and customers["b1"]["nonresidential_peak_load_in_kw"] == 120.0
+    assert customers["b1"]["plz"] == 85653
+    buildings["b1"] = stored(150.0, direct=True, households=6)  # edit 2: still MV-direct, other values
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert cur.updated == ["b1"] and customers["b1"]["nonresidential_peak_load_in_kw"] == 150.0
+    assert customers["b1"]["households"] == 6 and cur.deleted == ["b1"]  # updated in place: the deletes are the first call's
+    buildings["b1"] = stored(120.0, direct=True)  # undo of edit 2
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert customers["b1"]["nonresidential_peak_load_in_kw"] == 120.0 and customers["b1"]["households"] == 4
+    buildings["b1"] = stored(50.0, direct=False)  # undo of edit 1: back in the LV grid
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert set(customers) == {"x1"} and cur.deleted == ["b1", "b1"] and customers["x1"] == {"plz": 85653, **other}
+
+
+def test_a_building_that_flips_back_to_mv_direct_by_an_undo_gets_its_row_again():
+    kept = stored(120.0, direct=True)
+    buildings, customers = {"b1": stored(50.0, direct=False)}, {}
+    client = mv_client(buildings, customers)
+    buildings["b1"] = kept  # generated as MV-direct, edited below the threshold (row deleted), then undone
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert customers == {"b1": {"plz": 85653, **{k: kept[k] for k in ("nonresidential_use", "nonresidential_floor_area",
+                                                                      "nonresidential_peak_load_in_kw",
+                                                                      "residential_peak_load_in_kw", "households")}}}
+
+
+def test_a_version_from_before_the_mv_customers_table_is_left_alone():
+    """Without rows the MV stage reads buildings_result: a first row would drop the other MV-direct buildings."""
+    buildings = {"b1": stored(120.0, direct=True), "legacy": stored(300.0, direct=True)}
+    client = mv_client(buildings, {})
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert client.cur.customers == {} and not client.cur.inserted and not client.cur.deleted
+    no_table = mv_client(buildings, {}, table=False)  # schema set up before the MV stage
+    no_table.sync_mv_customer("v1", 85653, "b1")
+    assert len(no_table.cur.statements) == 1
+    first = mv_client({"b1": stored(120.0, direct=True)}, {})  # a version without MV customers gets its first one
+    first.sync_mv_customer("v1", 85653, "b1")
+    assert list(first.cur.customers) == ["b1"]
+
+
+class RecordingDb:
+    """A database that answers what ``LoadEditor.apply`` and ``_undo_one`` ask for and records every call."""
+
+    class Conn:
+        def __init__(self, calls):
+            self.calls = calls
+
+        def commit(self):
+            self.calls.append(("commit",))
+
+        def rollback(self):
+            pass
+
+    class Cur:
+        def execute(self, *args):
+            pass
+
+    def __init__(self, building: dict):
+        self.calls: list[tuple] = []
+        self.conn, self.cur = self.Conn(self.calls), self.Cur()
+        self.answers = {"version_has_load_edits": True, "load_edit_table_exists": True, "insert_load_edit": 11,
+                        "lock_load_edit_grid": {"grid_md5": "m1", "last_edit_id": None}, "snapshot_pandapower_loads": [],
+                        "capture_load_dependent_analysis": {"plz_parameters": None}, "save_revalidated_grid": "m2",
+                        "fetch_load_edit_building": building, "restore_grid_from_load_edit": "m1"}
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            self.calls.append((name, *args))
+            return self.answers.get(name)
+        return call
+
+
+def test_apply_and_undo_keep_the_mv_customer_in_the_transaction_of_the_edit(monkeypatch):
+    from types import SimpleNamespace
+
+    import pandapower as pp
+
+    before = building(nonresidential_floor_area=400.0, nonresidential_use="Commercial")
+    after = BuildingInputs.from_row({**before, "nonresidential_floor_area": 2000.0})  # 158 kW > 100 kW: MV-direct
+    peaks = component_peaks(after, params())
+    assert peaks.nonresidential_mv_direct and not before["nonresidential_mv_direct"]
+    state = SimpleNamespace(etag="m1-0", params=SimpleNamespace(version_id="v1", as_json=dict), head={"plz": 85653},
+                            reproduction=SimpleNamespace(tier="exact", max_rel_diff=0.0, max_abs_diff_mw=0.0))
+    result = {"valid": True, "_validation": SimpleNamespace(status="converged", drops={}), "_net": pp.create_empty_network(),
+              "_check": le.ChangeCheck(after, peaks, {"nonresidential_floor_area": [400.0, 2000.0]}),
+              "warnings": [], "categories": {}, "loads": {}, "grid": {}, "power_flow": {}, "service": {},
+              "_zone_changes": []}
+    monkeypatch.setattr(le.LoadEditor, "state", lambda self, grid_result_id: state)
+    monkeypatch.setattr(le.LoadEditor, "require_editable", staticmethod(lambda state: None))
+    monkeypatch.setattr(le.LoadEditor, "_compute", lambda self, state, objectid, changes: result)
+    monkeypatch.setattr(le.LoadEditor, "_building", lambda self, state, objectid: before)
+    db = RecordingDb(before)
+    le.LoadEditor(db).apply(5, "b1", {"nonresidential_floor_area": 2000.0}, if_match="m1-0")
+    names = [call[0] for call in db.calls]
+    sync = names.index("sync_mv_customer")
+    assert names[sync - 1] == "update_building_load_inputs" and db.calls[sync] == ("sync_mv_customer", "v1", 85653, "b1")
+    assert sync < names.index("set_load_edit_after_md5") < names.index("commit")  # one transaction with the edit
+
+    db = RecordingDb(before)
+    edit = {"load_edit_id": 11, "grid_result_id": 5, "version_id": "v1", "plz": 85653, "objectid": "b1",
+            "before_net_md5": "m1", "before_building": before, "before_loads": [], "before_bus_zones": []}
+    le.LoadEditor(db)._undo_one(edit, "me")
+    names = [call[0] for call in db.calls]
+    sync = names.index("sync_mv_customer")
+    assert names[sync - 1] == "update_building_load_inputs" and db.calls[sync] == ("sync_mv_customer", "v1", 85653, "b1")
+
+
+def test_the_mv_direct_warning_says_where_the_load_goes():
+    check = validate_changes(building(nonresidential_floor_area=400.0, nonresidential_use="Commercial"),
+                             {"nonresidential_floor_area": 2000.0}, params())
+    [flip] = [w for w in check.warnings if w["code"] == "mv_direct_flip"]
+    assert "leaves the LV grid and becomes an MV customer" in flip["message"]
+    back = validate_changes(building(nonresidential_floor_area=2000.0, nonresidential_use="Commercial"),
+                            {"nonresidential_floor_area": 400.0}, params())
+    [flip] = [w for w in back.warnings if w["code"] == "mv_direct_flip"]
+    assert "joins the LV grid and is no longer an MV customer" in flip["message"]
+
+
 # --------------------------------------------------------------------------- UI: lease, request models, CSV
 def test_job_lease_rules(tmp_path):
     from pylovo_api.jobs import Job, JobConflict, JobManager

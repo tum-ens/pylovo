@@ -163,7 +163,10 @@ two rules in the MV stage decide which customers become MV nodes:
    ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` (200 kW installed, the boundary between the MV/LV
    station level and the MV level in eGon-data) leaves the LV grid, and the building is stored in
    ``pylovo.mv_customers``. The residential part of a mixed building stays in its LV grid. The
-   threshold is a parameter of the LV version, not of the MV variant.
+   threshold is a parameter of the LV version, not of the MV variant. A load edit of a mixed building
+   (:ref:`http-api-load-editing`) that moves its non-residential part across the threshold inserts or
+   deletes this row in the same transaction, and an edit of an MV-direct part updates it; the undo
+   restores it.
 #. The hall rule corrects the floor area. The building data derive the storeys from the building
    height, so a large single-storey hall counts several storeys and a large floor area. For the MV
    load, a building with a footprint of at least ``customer_hall_min_footprint_m2`` (2,000 m²)
