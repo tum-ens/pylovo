@@ -14,17 +14,22 @@ nothing reads (a typo) is reported once per file with a warning. The ``MV_*`` ke
 with the rules of :mod:`pylovo.mv_grid.options`.
 
 ``.env`` lookup:
-    ``load_dotenv(find_dotenv(), override=True)``. ``find_dotenv`` walks up from the
+    ``load_dotenv(find_env_file(), override=True)``. ``find_dotenv`` walks up from the
     directory of this file (for an editable install: ``src/pylovo`` -> ``src`` ->
     repository root) and takes the first ``.env`` it finds; in an interactive session,
     a notebook or under a debugger it walks up from the current working directory
-    instead. Because of ``override=True`` the values in that ``.env`` **replace**
-    environment variables of the same name that are already set in the shell.
+    instead. If that walk finds none (a wheel installed outside the project), the ``.env`` of the
+    current working directory or its parents is used. A ``.env`` above the installed package
+    therefore still wins over the one in the working directory. Because of ``override=True`` the
+    values in that ``.env`` **replace** environment variables of the same name that are already set
+    in the shell.
 
 YAML lookup:
     See :func:`get_config_search_paths`. The first location is ``./config`` of the
     current working directory, so pylovo commands are normally run from the
-    repository root (or from a directory with its own ``config/``).
+    repository root (or from a directory with its own ``config/``). The last location is the
+    default configuration that the wheel ships (:func:`get_packaged_defaults_dir`), so an installed
+    pylovo also runs in a directory without any configuration.
 
 ``PROJECT_ROOT`` is the current working directory at import time, not the location
 of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``) are resolved
@@ -35,6 +40,7 @@ import difflib
 import os
 import re
 import warnings
+from importlib.resources import files
 from pathlib import Path
 
 import pandas as pd
@@ -42,6 +48,27 @@ import yaml
 from dotenv import find_dotenv, load_dotenv
 
 from pylovo.mv_grid import options as _mv_options
+
+
+def get_packaged_defaults_dir() -> Path:
+    """Return the folder ``pylovo/_defaults`` with the files that the wheel ships (it is not checked for existence).
+
+    It holds ``config/`` (the default YAML files) and ``data/`` (the reference data of ``pylovo-setup``:
+    municipal register, Overpass queries and the processed OSM transformers of Bavaria). The wheel copies
+    them from ``config/`` and ``data/`` of the repository (hatch ``force-include``). A source checkout or
+    an editable install has no such folder and uses its own ``config/`` and ``data/``.
+    """
+    return Path(str(files("pylovo") / "_defaults"))
+
+
+def find_env_file() -> str:
+    """Return the path of the ``.env`` to load, or an empty string if there is none.
+
+    The first ``.env`` above the directory of this file wins (a checkout: its root). Only if there is
+    none, the ``.env`` of the current working directory or its parents is used (a wheel installed
+    outside the project, where the first walk starts in ``site-packages``).
+    """
+    return find_dotenv() or find_dotenv(usecwd=True)
 
 
 def get_config_search_paths():
@@ -52,6 +79,7 @@ def get_config_search_paths():
     3. ``$PYLOVO_CONFIG_DIR`` if it is set; otherwise ``~/.config/pylovo`` (Linux/macOS)
        and ``<cwd>/.pylovo``
     4. ``config/`` of the source checkout this module was imported from, if it exists
+    5. ``config/`` of the defaults that the wheel ships (:func:`get_packaged_defaults_dir`), if it exists
 
     The environment variables may also be set in the ``.env`` file, which is loaded
     before the YAML files.
@@ -83,6 +111,11 @@ def get_config_search_paths():
     checkout_config = Path(__file__).parent.parent.parent / "config"
     if checkout_config.exists():
         search_paths.append(checkout_config)
+
+    # 5. Defaults shipped in the wheel (pip install pylovo); a checkout or an editable install has none
+    packaged_config = get_packaged_defaults_dir() / "config"
+    if packaged_config.exists():
+        search_paths.append(packaged_config)
 
     return search_paths
 
@@ -322,7 +355,7 @@ def _check_transformer_mapping(mapping: dict, transformers: pd.DataFrame) -> Non
 # =============================================================================
 # Load .env first, so PYLOVO_ROOT / PYLOVO_CONFIG_DIR set there also apply to the
 # YAML search below. override=True: the .env wins over variables of the shell.
-load_dotenv(find_dotenv(), override=True)
+load_dotenv(find_env_file(), override=True)
 
 # Current working directory at import time (not the package location).
 PROJECT_ROOT = Path.cwd()

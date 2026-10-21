@@ -21,7 +21,7 @@ import osm2geojson
 import pandas as pd
 import requests
 
-from pylovo.config_loader import DEFAULT_POWER_FACTOR, VN
+from pylovo.config_loader import DEFAULT_POWER_FACTOR, VN, get_packaged_defaults_dir
 
 # Log timestamps are written in German local time (CET/CEST).
 LOG_TIMEZONE = ZoneInfo("Europe/Berlin")
@@ -49,6 +49,8 @@ def get_user_data_dir() -> Path:
     2. ``PYLOVO_ROOT`` environment variable + ``/data`` (Docker-friendly),
     3. ``<current working directory>/data`` (development checkout).
 
+    Reference data that is missing there is read from the wheel, see :func:`reference_data_path`.
+
     Returns:
         Path of the user data directory (it is not checked for existence).
     """
@@ -64,6 +66,29 @@ def get_user_data_dir() -> Path:
 
     # Fallback to current working directory
     return Path.cwd() / "data"
+
+
+def reference_data_path(user_path: Path, relative_path: str | Path) -> Path:
+    """Return the reference data file to read: ``user_path``, else the copy that the wheel ships.
+
+    Reference data (municipal register, Overpass queries, processed Bavarian transformers) is looked up in the
+    data directory first and then in ``pylovo/_defaults/data`` of the wheel
+    (:func:`pylovo.config_loader.get_packaged_defaults_dir`; a checkout or an editable install ships none).
+    Files that pylovo writes (fetched or processed transformers) always go to the data directory.
+
+    Args:
+        user_path: The file in the data directory (it need not exist).
+        relative_path: Its path below the data directory, e.g. ``municipal_register/regiostar/regiostar.xlsx``.
+
+    Returns:
+        ``user_path`` if it exists, else the packaged file if it exists, else ``user_path``, so that a message
+        about the missing file names the data directory.
+    """
+    if not user_path.is_file():
+        packaged = get_packaged_defaults_dir() / "data" / relative_path
+        if packaged.is_file():
+            return packaged
+    return user_path
 
 
 def create_logger(name: str, log_file, log_level) -> logging.Logger:

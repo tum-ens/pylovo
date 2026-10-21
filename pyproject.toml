@@ -120,6 +120,29 @@ pylovo-api = "pylovo_api.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pylovo", "api/pylovo_api"]
 
+[tool.hatch.build.targets.wheel.force-include]
+# The default configuration and the read-only reference data of pylovo-setup, for a wheel outside a checkout
+# (pip install pylovo). They stay in config/ and data/ of the repository; pylovo reads them from
+# pylovo/_defaults as the last fallback (pylovo.config_loader.get_packaged_defaults_dir).
+"config" = "pylovo/_defaults/config"
+"data/municipal_register/regiostar/regiostar.xlsx" = "pylovo/_defaults/data/municipal_register/regiostar/regiostar.xlsx"
+"data/municipal_register/gemeindeverzeichnis/plz_einwohner.xlsx" = "pylovo/_defaults/data/municipal_register/gemeindeverzeichnis/plz_einwohner.xlsx"
+"data/municipal_register/gemeindeverzeichnis/zuordnung_plz_ort.xlsx" = "pylovo/_defaults/data/municipal_register/gemeindeverzeichnis/zuordnung_plz_ort.xlsx"
+"data/transformer_data/overpass_queries" = "pylovo/_defaults/data/transformer_data/overpass_queries"
+"data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson" = "pylovo/_defaults/data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson"
+
+[tool.hatch.build.targets.sdist]
+# The sources of the wheel and the files that its force-include needs (a wheel is built from the sdist by pip).
+include = [
+    "src/pylovo/**/*.py",
+    "src/pylovo/**/*.sql",
+    "api/pylovo_api/**/*.py",
+    "config/*.yaml",
+    "data/municipal_register/**/*.xlsx",
+    "data/transformer_data/overpass_queries/*",
+    "data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson",
+]
+
 [tool.hatch.build]
 include = [
     "src/pylovo/**/*.py",

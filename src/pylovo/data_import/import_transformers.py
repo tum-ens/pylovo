@@ -2,7 +2,9 @@
 
 Files are read from and written to ``transformer_data`` in the data directory
 (:func:`pylovo.utils.get_user_data_dir`: ``$PYLOVO_DATA_DIR``, else ``$PYLOVO_ROOT/data``, else
-``./data``), which is looked up at every call:
+``./data``), which is looked up at every call. The query templates are also read from the copy in the
+wheel if the data directory has none (:func:`pylovo.utils.reference_data_path`); results are always
+written to the data directory.
 
 - ``overpass_queries/``: Overpass query templates (``$relation_id$`` is replaced).
 - ``fetched_trafos/<relation_id>_{substations,shopping_mall}.geojson``: raw query results.
@@ -18,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.config_loader import TARGET_EPSG
-from pylovo.utils import get_user_data_dir, query_overpass_for_geojson
+from pylovo.utils import get_user_data_dir, query_overpass_for_geojson, reference_data_path
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 RELATION_ID_BASE = 3600000000  # Overpass area id = 3600000000 + OSM relation id; do not change
@@ -35,6 +37,12 @@ VOLTAGE_THRESHOLD = 110000  # V; transformers tagged with this voltage or more a
 def _transformer_data_dir() -> Path:
     """Return the ``transformer_data`` folder of the data directory."""
     return get_user_data_dir() / "transformer_data"
+
+
+def _overpass_query_path(name: str) -> Path:
+    """Return the Overpass query template ``<name>_query.txt``: in the data directory, else the copy in the wheel."""
+    relative = Path("transformer_data", "overpass_queries", f"{name}_query.txt")
+    return reference_data_path(_transformer_data_dir() / "overpass_queries" / f"{name}_query.txt", relative)
 
 
 def get_substations_geojson_path(relation_id: int) -> str:
@@ -61,10 +69,9 @@ def fetch_trafos(relation_id: int) -> None:
     Args:
         relation_id: OSM relation id of the area.
     """
-    queries_dir = _transformer_data_dir() / "overpass_queries"
-    with open(queries_dir / "substations_query.txt", "r") as f:
+    with open(_overpass_query_path("substations"), "r") as f:
         overpass_query_substations = f.read()
-    with open(queries_dir / "shopping_mall_query.txt", "r") as f:
+    with open(_overpass_query_path("shopping_mall"), "r") as f:
         overpass_query_mall = f.read()
 
     area_id = str(RELATION_ID_BASE + relation_id)

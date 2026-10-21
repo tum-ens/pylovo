@@ -89,7 +89,8 @@ Optional dependency groups (extras):
 
    pylovo reads ``config/*.yaml`` from the current working directory and writes logs to
    ``log/`` relative to it. Input data and downloaded data are in the data directory (``data/``,
-   or ``PYLOVO_DATA_DIR``). Run all commands from the repository root. See :ref:`config-file-lookup` for the other search locations.
+   or ``PYLOVO_DATA_DIR``). Run all commands from the repository root (or from the project
+   directory of a pip installation, see below). See :ref:`config-file-lookup` for the other search locations.
 
 Without uv, a virtual environment with pip works as well:
 
@@ -98,6 +99,45 @@ Without uv, a virtual environment with pip works as well:
    python3.12 -m venv .venv      # or python3.13
    source .venv/bin/activate
    pip install -e ".[plots]"
+
+.. _install-wheel:
+
+Install without a checkout (pip)
+--------------------------------
+
+The wheel runs outside a checkout. Install it into a virtual environment, with the extras you need
+(see the table above):
+
+.. code-block:: bash
+
+   python3.12 -m venv .venv      # or python3.13
+   source .venv/bin/activate
+   pip install pylovo            # or: pip install "pylovo[plots,api]"
+
+Then work in a project directory of your own: put the ``.env`` (:ref:`env-variables`) there and run the
+``pylovo-*`` commands from it. The wheel ships the default configuration and the read-only reference
+data that ``pylovo-setup`` needs, in the folder ``pylovo/_defaults`` of the package. They are
+the last fallback of the lookups, so nothing has to be copied to get started:
+
+* ``config/``: the five default YAML files (:ref:`config-file-lookup`),
+* ``data/``: the municipal register tables (Gemeindeverzeichnis, RegioStaR), the Overpass queries of
+  the transformer import and the processed OpenStreetMap transformers of Bavaria
+  (:doc:`../user_guide/transformer_data`). A file of the data directory (``./data``, or
+  ``PYLOVO_DATA_DIR``) wins over the packaged copy of the same name.
+
+The wheel contains the same files as ``config/`` and ``data/`` of the repository. Everything pylovo writes
+goes to the project directory, never into the package: ``log/``, ``results/``, the downloaded and
+processed transformers and your own input data in ``data/``. To change a parameter, copy the default
+configuration into ``./config`` and edit the copies, which take precedence from then on:
+
+.. code-block:: bash
+
+   python -c "import importlib.resources as r, shutil; shutil.copytree(r.files('pylovo') / '_defaults' / 'config', 'config')"
+
+``pylovo-api`` needs such a project directory with ``config/`` (``--root``, :doc:`../user_guide/http_api`).
+The ``.env.example`` of the repository lists all variables; the wheel does not contain it. An editable
+install (``pip install -e .``, ``uv sync``) has no ``pylovo/_defaults`` folder and uses ``config/`` and
+``data/`` of the checkout.
 
 Prepare the database
 --------------------
@@ -146,7 +186,8 @@ have changed. The tables pylovo reads are listed in :ref:`infdb-tables`.
 Configure the connection
 ------------------------
 
-Copy ``.env.example`` to ``.env`` in the repository root and enter the database settings:
+Copy ``.env.example`` to ``.env`` in the repository root (for a pip installation: into your project
+directory, see :ref:`env-variables` for where pylovo looks for it) and enter the database settings:
 
 .. code-block:: bash
 

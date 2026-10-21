@@ -1,7 +1,7 @@
 """Build the ``municipal_register`` table (PLZ, AGS, population, RegioStaR classes).
 
 The register joins three files in ``data/municipal_register`` (``$PYLOVO_DATA_DIR/municipal_register``
-if ``PYLOVO_DATA_DIR`` is set):
+if ``PYLOVO_DATA_DIR`` is set; a file that is missing there is read from the copy in the wheel):
 
 - ``gemeindeverzeichnis/plz_einwohner.xlsx``: population and area per PLZ,
 - ``gemeindeverzeichnis/zuordnung_plz_ort.xlsx``: PLZ to AGS mapping
@@ -15,7 +15,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 import pylovo.database.database_client as dbc
-from pylovo.utils import get_user_data_dir
+from pylovo.utils import get_user_data_dir, reference_data_path
 
 
 def _get_repo_root() -> Path:
@@ -56,28 +56,32 @@ REGISTER_FILES = (
 )
 
 
+def _register_file(relative_path: str) -> Path:
+    """Return the register source file: in :func:`_get_register_dir`, else the copy that the wheel ships."""
+    return reference_data_path(_get_register_dir() / relative_path, Path("municipal_register") / relative_path)
+
+
 def missing_input_files() -> list[str]:
     """Return the paths of the register source files that do not exist."""
-    root = _get_register_dir()
-    return [str(root / name) for name in REGISTER_FILES if not (root / name).exists()]
+    return [str(path) for path in map(_register_file, REGISTER_FILES) if not path.exists()]
 
 
 def _get_data_file_path(relative_path: str) -> str:
-    """Return the path of a file in the ``municipal_register`` folder (:func:`_get_register_dir`).
+    """Return the path of a register source file (:func:`_register_file`).
 
     Raises:
         FileNotFoundError: If the file does not exist (with setup hints).
     """
-    file_path = _get_register_dir() / relative_path
+    file_path = _register_file(relative_path)
     if not file_path.exists():
         raise FileNotFoundError(
             f"Municipal data file not found: {file_path}\n\n"
             f"Setup options:\n"
-            f"1. Clone full repo: git clone https://github.com/tum-ens/pylovo.git\n"
-            f"2. Docker/pip install: Set PYLOVO_ROOT environment variable to your project directory\n"
+            f"1. Install the wheel (pip install pylovo): it ships the file\n"
+            f"2. Clone full repo: git clone https://github.com/tum-ens/pylovo.git\n"
+            f"3. Set PYLOVO_ROOT to a project directory that has data/municipal_register/\n"
             f"   Example: export PYLOVO_ROOT=/app\n"
-            f"   Then ensure data/ directory exists at $PYLOVO_ROOT/data/\n"
-            f"3. Or set PYLOVO_DATA_DIR to a directory that contains municipal_register/"
+            f"4. Or set PYLOVO_DATA_DIR to a directory that contains municipal_register/"
         )
     return str(file_path)
 

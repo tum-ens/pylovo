@@ -15,11 +15,13 @@ see later edits; every ``pylovo-*`` command reads the files anew when it starts.
 Environment variables (``.env``)
 --------------------------------
 
-``.env`` is loaded with ``load_dotenv(find_dotenv(), override=True)`` before the YAML files: the
-first ``.env`` in the directories above the installed ``pylovo`` package (for a source checkout:
-the repository root) is used -- in an interactive session or a notebook the search starts in the
-current working directory instead -- and its values **override** environment variables with the
-same name.
+``.env`` is loaded with ``load_dotenv(find_dotenv() or find_dotenv(usecwd=True), override=True)`` before
+the YAML files. The first ``.env`` in the directories above the installed ``pylovo`` package (for a
+source checkout: the repository root) is used -- in an interactive session or a notebook the search starts
+in the current working directory instead. If that search finds none, as for a wheel installed in a virtual
+environment outside the project (:ref:`install-wheel`), the ``.env`` of the current working directory or its
+parents is used. A ``.env`` above the installed package therefore wins over the one in the working directory.
+The values of the ``.env`` **override** environment variables with the same name.
 
 .. list-table::
    :header-rows: 1
@@ -85,7 +87,9 @@ same name.
      - ``$PYLOVO_ROOT/data``, else ``./data``
      - Optional data directory with all input data: ``transformer_data/``, ``municipal_register/``
        and, in the file-based mode, ``postcode.csv``, ``ways/`` and ``buildings/``. The municipal
-       register also finds the ``data/`` folder of the checkout.
+       register also finds the ``data/`` folder of the checkout. Reference data that is missing here
+       (municipal register, Overpass queries, processed Bavarian transformers) is read from the copy
+       in the wheel (``pylovo/_defaults/data``); pylovo writes only into this directory.
    * - ``PYLOVO_CONFIG_DIR``
      - ``~/.config/pylovo``
      - Optional directory with the YAML files, searched after ``./config`` and
@@ -106,7 +110,9 @@ Each YAML file is taken from the first of these locations that contains it:
 #. ``$PYLOVO_ROOT/config/``,
 #. ``$PYLOVO_CONFIG_DIR`` if set; otherwise ``~/.config/pylovo/`` (Linux/macOS) and then
    ``./.pylovo/``,
-#. ``config/`` of the source checkout that contains the package.
+#. ``config/`` of the source checkout that contains the package,
+#. the default configuration in the wheel (``pylovo/_defaults/config``, only in a wheel installation,
+   :ref:`install-wheel`).
 
 The files ``config_generation_lv.yaml`` (the LV grids), ``config_analysis.yaml``,
 ``config_classification.yaml`` and ``config_clustering.yaml`` must exist. The last two belong to
