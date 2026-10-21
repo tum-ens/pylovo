@@ -480,8 +480,8 @@ Things to know
   last ``pylovo-classify`` run: set it to the values of that classification, or repeat step 7 with them, which stores
   them.
 * Step 7 can be repeated per classification id (see above).
-* The lower filter thresholds come from grids of May 2025 (pylovo 0.3.0) and are not re-derived for the current generator
-  (:ref:`classification-thresholds`).
+* The lower filter thresholds come from grids of May 2025 (pylovo 0.3.0). A re-derivation on pylovo 1.0.0 grids gave no
+  usable values (:ref:`classification-thresholds`).
 
 .. _classification-thresholds:
 
@@ -492,11 +492,11 @@ The shipped values (0.115, 14.332, 0.258 and 35.316) are the means of ``avg_traf
 ``vsw_per_branch`` and ``no_households`` over k-means cluster 0 of one classification over 100 PLZ. That
 classification clustered with exactly these four parameters and without additional filtering, on grids generated in May
 2025 (the values ship since pylovo 0.3.0).
-Cluster 0 is the cluster whose representative grid has the fewest households, the small filling grids. The generator
-has changed since (transformer sizing, cable catalogue, connection aggregation), pylovo 1.0.0 counts parallel cables in
-``vsw_per_branch`` and households instead of load elements in ``no_households``, and those grids are not stored, so a
-classification of today's grids gives other values. To derive them again, classify with the four parameters and
-without additional filtering and run the helper on that classification:
+Cluster 0 is the cluster whose representative grid has the fewest households, on those grids the small filling grids.
+The generator has changed since (transformer sizing, cable catalogue, connection aggregation), pylovo 1.0.0 counts
+parallel cables in ``vsw_per_branch`` and households instead of load elements in ``no_households``, and those grids are
+not stored, so a classification of today's grids gives other values. To derive them again, classify with the four
+parameters and without additional filtering and run the helper on that classification:
 
 .. code-block:: bash
 
@@ -509,6 +509,15 @@ It prints the four means as ``THRESHOLD_*`` lines for ``config_clustering.yaml``
 ``LIST_OF_CLUSTERING_PARAMETERS`` of the configuration is another list, because cluster 0 depends on the clustering
 parameters. An earlier version of the helper averaged ``LIST_OF_CLUSTERING_PARAMETERS`` (three parameters in the
 shipped file, without ``no_households``) over cluster 0 of all classifications and could not give the shipped values.
+
+Check the cluster before you use its means: the representative with the fewest households can also belong to a cluster
+of long rural grids. A re-derivation with pylovo 1.0.0 and its shipped configuration on three Bavarian test regions (26
+PLZ, the most that the sampling quotas allow, 1474 grids, k-means with k = 4 as the Calinski-Harabasz index chooses)
+gave such a cluster 0: 135 grids with a mean ``avg_trafo_dis`` of 0.45 km. As lower bounds its means would filter 99 %
+of the grids, so pylovo 1.0.0 keeps the values of May 2025, which filter 52 %. The cluster of the small grids (686
+grids) has the means 0.115, 18.402, 0.200 and 39.274, close to the shipped values except ``vsw_per_branch``, which is
+lower since the impedance is divided by the parallel cables. With k = 3 or 5, or over all 92 generated PLZ, cluster 0
+switches between the two clusters.
 
 Troubleshooting
 ---------------

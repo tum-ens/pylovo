@@ -21,7 +21,7 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
     can lead to isolated building clusters, depending on the greenfield or brownfield placement
     assumptions. As a consequence, some unrealistically small grids might be generated.
 
-    Cluster 0 is the cluster whose representative grid has the fewest households. It consists of
+    Cluster 0 is the cluster whose representative grid has the fewest households. It is meant to hold
     these filling grids, which the additional filtering removes. The thresholds are the means of
     the four parameters of ``LOWER_FILTER_THRESHOLDS`` over cluster 0 of one classification that
     clustered with exactly these four parameters and without additional filtering:
@@ -35,7 +35,10 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
     postcodes on grids generated in May 2025 (the values ship since pylovo 0.3.0). The generator has changed
     since (transformer sizing, cable catalogue, connection aggregation), pylovo 1.0.0 counts parallel cables in
     ``vsw_per_branch`` and households in ``no_households``, and those grids are not stored, so a classification of
-    today's grids gives other values. An earlier version of this helper averaged the parameters of
+    today's grids gives other values. Check that cluster 0 holds the small grids before you use its means: on
+    pylovo 1.0.0 grids of three Bavarian test regions, k-means with k = 4 put long rural grids (mean
+    ``avg_trafo_dis`` 0.45 km) into cluster 0, whose means would filter 99 % of the grids (see the classification
+    user guide). An earlier version of this helper averaged the parameters of
     ``LIST_OF_CLUSTERING_PARAMETERS`` (three in the shipped file, without ``no_households``) over
     cluster 0 of all classifications, which cannot reproduce them.
 
