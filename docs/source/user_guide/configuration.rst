@@ -138,6 +138,9 @@ the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``: use 1 to 10 letters, 
 start for any other value. Quote an id that YAML would read as another type: ``1.0`` is refused,
 ``"1.0"`` is the text.
 
+Versions that pylovo 0.x stored have a snapshot with other keys, so adding postcodes to such a
+version stops with the message above: generate those postcodes under a new ``VERSION_ID``.
+
 A postcode that already has grids in the active version is skipped
 (``Grid for the postcode area ... has already been generated``). Delete the old grids first
 (:doc:`cli`, ``pylovo-delete``) or use a new version.
