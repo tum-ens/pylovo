@@ -660,9 +660,14 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         dbc.commit_changes()
         demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
         coverage = _osm_coverage(dbc, version_id, variant_id, region_wkb, graph_id, logger)
-    except Exception as exc:
-        dbc.rollback_changes()
-        summary = _summary(version_id, variant_id, "failed", requested, used, missing, None,
+    except BaseException as exc:                   # also Ctrl-C: the variant must not stay 'running'
+        totals = None
+        try:
+            dbc.rollback_changes()
+            totals = dbc.variant_totals(version_id, variant_id)     # the districts stored before the failure
+        except Exception as totals_exc:
+            logger.error(f"Could not count the grids of MV variant {variant_id}: {_one_line(totals_exc)}")
+        summary = _summary(version_id, variant_id, "failed", requested, used, missing, totals,
                            warnings + [_one_line(exc)], start, params=params)
         try:
             dbc.finish_variant(version_id, variant_id, summary)

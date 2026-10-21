@@ -267,6 +267,30 @@ def test_partial_and_failed_runs(run):
     assert run(FakeDb(totals={"grids_total": 0, "grids_done": 0})).status == "failed"
 
 
+def test_a_failure_after_the_districts_keeps_the_grid_counts_in_the_summary(run, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("tie step failed")
+
+    monkeypatch.setattr(stage, "_plan_ties", broken)
+    db = FakeDb()
+    with pytest.raises(RuntimeError, match="tie step failed"):
+        run(db, plz=(1, 2))
+    assert db.finished.status == "failed" and db.finished.warnings[-1] == "RuntimeError: tie step failed"
+    assert (db.finished.grids_total, db.finished.grids_done, db.finished.circuit_km) == (2, 2, 12.0)
+
+
+def test_an_interrupted_run_does_not_stay_running(run, monkeypatch):
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(stage, "_plan_links", interrupted)
+    db = FakeDb()
+    with pytest.raises(KeyboardInterrupt):
+        run(db, plz=(1, 2))
+    assert db.finished.status == "failed" and db.finished.warnings[-1].startswith("KeyboardInterrupt")
+    assert db.finished.grids_done == 2 and "unlock_variant" in db.names()
+
+
 def test_ties_are_planned_by_default(run, monkeypatch):
     seen = []
     monkeypatch.setattr(stage, "_plan_ties", lambda dbc, v, var, graph_id, params, logger: seen.append(
