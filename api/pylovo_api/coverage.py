@@ -8,8 +8,10 @@ asks this module whether a PLZ can be generated. With ``USE_INFDB=True`` that ne
 * at least two importable buildings in ``basedata.buildings`` (the filters of
   ``InfdbClient.fetch_buildings_from_infdb`` and, if enabled, ``RESIDENTIAL_ONLY_GENERATION``;
   the settlement type needs two buildings and at least one residential building),
-* street segments in ``ways_per_connection`` and building connection lines in
-  ``connection_lines`` (both resolved through ``search_path = INFDB_SOURCE_SCHEMA, public``).
+* street segments in ``ways_per_connection`` (resolved through ``search_path = INFDB_SOURCE_SCHEMA, public``).
+  Building connection lines in ``connection_lines`` are counted per postcode too, but a PLZ without any
+  only gets a warning: generation also loads the lines of its buildings that the InfDB files under a
+  neighbouring postcode, which a count per postcode cannot see.
 
 With ``USE_EXTERNAL_BASEDATA`` the InfDB is another database: the three tables, ``public.changelog`` and the
 postcode polygons are read through a second read-only connection built from the ``INFDB_*`` settings
@@ -614,7 +616,7 @@ class InputCoverage:
             if t.key_col is None or not t.keys:
                 continue
             absent = [a for a in reg if a not in t.by_ags]
-            # all municipalities absent is a block (no buildings / streets / lines), not a warning,
+            # all municipalities absent is a block (no buildings / streets) or no_connection_lines, not partial,
             # unless rows of this PLZ come from a municipality the register does not list for it
             if absent and (len(absent) < len(reg) or plz in t.plz_rows):
                 names = ", ".join(f"{self.ags_names.get(a, '?')} (AGS {ags8(a)})" for a in absent)
@@ -648,7 +650,10 @@ class InputCoverage:
         if vl.pending and vl.counts is None:
             return result("pending")
         if lines == 0:
-            return blocked_or_pending(vl, "no_connection_lines", ags=self._missing_ags(plz, "lines"))
+            # not a block: generation also loads the lines of the PLZ's buildings filed under another postcode
+            warnings.append({"code": "no_connection_lines", "text": f"No connection lines are filed under postcode "
+                             f"{plz}: only buildings whose line the InfDB files under a neighbouring postcode can be "
+                             "connected."})
         if bcounts["importable"] < SPARSE:
             warnings.append({"code": "sparse", "text": f"Only {bcounts['importable']} importable buildings."})
         if bcounts["bad"]:
@@ -1469,7 +1474,6 @@ TEXTS: dict[str, tuple[str, str]] = {
     "too_few_buildings": ("block", "1 building"),
     "no_residential": ("block", "no residential"),
     "no_streets": ("block", "no streets"),
-    "no_connection_lines": ("block", "no connections"),
 }
 
 
@@ -1494,7 +1498,7 @@ def _finish(out: dict, flags: dict[str, bool]) -> dict:
         short = f"{counts.get('buildings_importable', 0):,} buildings".replace(",", " ")
         if any(w["code"].startswith("partial") for w in out["warnings"]):
             severity, short = "warn", "partial"
-        elif any(w["code"] == "data_quality" for w in out["warnings"]):
+        elif any(w["code"] in ("data_quality", "no_connection_lines") for w in out["warnings"]):
             severity, short = "warn", "data warning"
     elif status == "pending":
         reason = "The input data of this PLZ is being checked."
@@ -1557,9 +1561,6 @@ def _finish(out: dict, flags: dict[str, bool]) -> dict:
                   f"No street segments with postcode {plz} in ways_per_connection (cycle and footpaths are not used).")
         if not out.get("files"):
             actions.append(_infdb_action("infdb-basedata-ways", ags))
-    elif status == "no_connection_lines":
-        reason = f"No building connection lines with postcode {plz} in connection_lines."
-        actions.append(_infdb_action("infdb-basedata-ways", ags))
     for w in out["warnings"]:
         if w["code"].startswith("partial:") and w.get("tool"):
             actions.append(_infdb_action(w["tool"], w.get("ags") or []))

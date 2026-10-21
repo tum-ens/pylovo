@@ -109,8 +109,10 @@ Generation needs building and street input for a postcode area. The API therefor
 each PLZ whether it can be generated: it needs a postcode polygon, at least two buildings that
 pylovo would import (the same filters as ``pylovo-generate``, including
 ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`` and ``RESIDENTIAL_ONLY_GENERATION``), at least one
-residential building, street segments and connection lines. Postcodes whose check has not
-finished yet are reported as *not verified*. Existing results always stay readable, analysable
+residential building and street segments. A postcode without connection lines filed under it is
+only flagged, because generation also loads the lines of its buildings that the InfDB files under
+a neighbouring postcode. Postcodes whose check has not finished yet are reported as *not verified*.
+Existing results always stay readable, analysable
 and exportable, and the server refuses to generate a blocked PLZ unless it is included
 explicitly. With ``USE_EXTERNAL_BASEDATA`` the check, ``/api/status`` (``infdb_buildings``) and the
 3D view of the LoD2 buildings read the InfDB through a second read-only connection built from the

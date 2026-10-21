@@ -141,8 +141,10 @@ def test_no_residential_and_residential_only():
 def test_no_streets_and_no_connection_lines():
     assert status(engine(ways={"09184137": {85653: [0]}}))["status"] == "no_streets"   # only cycle/footpaths
     assert status(engine(ways={"09184137": {}}))["status"] == "no_streets"
+    # the lines of the PLZ's buildings may be filed under a neighbouring postcode, which generation also loads
     st = status(engine(lines={"09184137": {}}))
-    assert st["status"] == "no_connection_lines" and st["actions"][0]["tool"] == "infdb-basedata-ways"
+    assert st["status"] == "ready" and st["severity"] == "warn" and st["selectable"]
+    assert "no_connection_lines" in {w["code"] for w in st["warnings"]}
 
 
 def test_unknown_without_data_is_selectable():
