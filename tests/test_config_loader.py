@@ -2,6 +2,7 @@
 import shutil
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,7 @@ import pytest
 
 from pylovo import config_loader
 from pylovo.config_loader import (_check_cable_ampacities, _check_transformer_mapping, _consumer_categories_from_config,
-                                  _version_id)
+                                  _version_id, _warn_about_former_generation_config)
 
 
 def categories(sim_factor) -> dict:
@@ -86,3 +87,55 @@ def test_an_unquoted_numeric_version_id_loads_as_text(tmp_path):
                           cwd=tmp_path, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip().splitlines()[-1] == "'2'"
+
+
+LV, MV, FORMER = "config_generation_lv.yaml", "config_generation_mv.yaml", "config_generation.yaml"
+
+
+def folder_with(tmp_path, name, *files) -> Path:
+    folder = tmp_path / name
+    folder.mkdir()
+    for file in files:
+        (folder / file).write_text("")
+    return folder
+
+
+def warnings_for(config_file: Path, folders: list[Path]) -> list[str]:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _warn_about_former_generation_config(config_file, folders)
+    return [str(w.message) for w in caught]
+
+
+def test_only_the_former_file_is_read_with_a_warning(tmp_path):
+    here = folder_with(tmp_path, "here", FORMER)
+    messages = warnings_for(here / FORMER, [here])
+    assert len(messages) == 1
+    assert "is the former name of config_generation_lv.yaml" in messages[0] and "config_generation_mv.yaml" in messages[0]
+
+
+def test_a_former_file_in_a_folder_of_higher_priority_hides_the_current_files(tmp_path):
+    first = folder_with(tmp_path, "first", FORMER)
+    second = folder_with(tmp_path, "second", LV, MV)
+    messages = warnings_for(first / FORMER, [first, second])
+    assert len(messages) == 2 and "former name" in messages[0]
+    assert str(second / LV) in messages[1] and str(second / MV) in messages[1] and "hides" in messages[1]
+
+
+def test_the_former_file_is_not_reported_as_hiding_its_own_folder_or_a_resolved_alias(tmp_path):
+    first = folder_with(tmp_path, "first", FORMER, MV)
+    alias = tmp_path / "alias"
+    alias.symlink_to(first)
+    assert len(warnings_for(first / FORMER, [first, alias])) == 1          # only the former name
+
+
+def test_both_names_in_one_folder_warn_that_the_former_one_is_not_read(tmp_path):
+    here = folder_with(tmp_path, "here", LV, FORMER)
+    messages = warnings_for(here / LV, [here])
+    assert len(messages) == 1 and "is not read" in messages[0] and str(here / FORMER) in messages[0]
+
+
+def test_current_files_give_no_warning_even_if_a_former_file_follows_in_another_folder(tmp_path):
+    first = folder_with(tmp_path, "first", LV, MV)
+    second = folder_with(tmp_path, "second", FORMER)
+    assert warnings_for(first / LV, [first, second]) == []

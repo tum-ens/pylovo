@@ -114,6 +114,28 @@ def find_config_file(*filenames: str) -> Path:
     )
 
 
+def _warn_about_former_generation_config(config_file: Path, search_paths: list[Path]) -> None:
+    """Warn if the LV configuration found is the former ``config_generation.yaml`` or hides the current files.
+
+    The folder decides before the file name, so a former file in a folder of higher priority is read instead of
+    ``config_generation_lv.yaml`` and ``config_generation_mv.yaml`` of the folders after it.
+
+    Args:
+        config_file: The LV configuration file that is read (:func:`find_config_file`).
+        search_paths: The folders searched, in priority order.
+    """
+    current, former = GENERATION_CONFIG_FILES
+    if config_file.name == former:
+        warnings.warn(f"{config_file} is the former name of {current}: rename it and move its MV_* keys to "
+                      f"{GENERATION_MV_CONFIG_FILE}")
+        hidden = [folder / name for folder in search_paths if folder.resolve() != config_file.parent.resolve()
+                  for name in (current, GENERATION_MV_CONFIG_FILE) if (folder / name).exists()]
+        if hidden:
+            warnings.warn(f"{config_file} is read first and hides {', '.join(str(path) for path in hidden)}")
+    elif (config_file.parent / former).exists():
+        warnings.warn(f"{config_file.parent / former} is not read: {config_file.name} in the same folder replaces it")
+
+
 def read_yaml(path: Path) -> dict:
     """Read one YAML configuration file (an empty file gives an empty dictionary)."""
     with open(path, "r", encoding="utf-8") as file:
@@ -262,10 +284,7 @@ GENERATION_CONFIG_FILES: tuple[str, ...] = ("config_generation_lv.yaml", "config
 #: The configuration of the MV stage, read from the directory of the LV configuration.
 GENERATION_MV_CONFIG_FILE = "config_generation_mv.yaml"
 CONFIG_GENERATION_FILE = find_config_file(*GENERATION_CONFIG_FILES)
-if (CONFIG_GENERATION_FILE.name != GENERATION_CONFIG_FILES[-1]
-        and (CONFIG_GENERATION_FILE.parent / GENERATION_CONFIG_FILES[-1]).exists()):
-    warnings.warn(f"{CONFIG_GENERATION_FILE.parent / GENERATION_CONFIG_FILES[-1]} is not read: "
-                  f"{CONFIG_GENERATION_FILE.name} in the same folder replaces it", stacklevel=1)
+_warn_about_former_generation_config(CONFIG_GENERATION_FILE, get_config_search_paths())
 CONFIG_GENERATION = read_yaml(CONFIG_GENERATION_FILE)
 CONFIG_GENERATION_MV_FILE = CONFIG_GENERATION_FILE.parent / GENERATION_MV_CONFIG_FILE
 CONFIG_GENERATION_MV = read_yaml(CONFIG_GENERATION_MV_FILE) if CONFIG_GENERATION_MV_FILE.exists() else {}
