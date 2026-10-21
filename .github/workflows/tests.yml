@@ -1,5 +1,8 @@
-# Run the unit tests on pushes to main/dev and on pull requests. The database tests are opt-in and
-# skip themselves, so nothing here needs a database.
+# Run the tests on pushes to main/dev and on pull requests.
+#   pytest:   the unit tests; the opt-in database tests skip themselves, nothing needs a database.
+#   database: builds the toy-town test database (tests/db/build_test_database.py) on a PostgreSQL 17 /
+#             PostGIS 3.5 / pgRouting 3.8 service and runs the opt-in database tests against it
+#             (docs/source/development/index.rst, section "Tests").
 # The extras are needed: api/tests and viewer/tests import fastapi (extras api, viewer), the MV plotting tests
 # need matplotlib (extra plots) and are skipped without it. uv takes the Python version from .python-version.
 name: Tests
@@ -35,3 +38,57 @@ jobs:
 
       - name: Run the tests
         run: uv run --locked --extra api --extra plots --extra viewer pytest -q tests api/tests viewer/tests
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # public image with PostgreSQL 17, PostGIS 3.5 and pgRouting 3.8.0 (pylovo needs PostgreSQL >= 15, pgRouting >= 3.8)
+        image: pgrouting/pgrouting:17-3.5-3.8.0
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pylovo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DBNAME: pylovo_test
+      DBUSER: postgres
+      PASSWORD: postgres
+      HOST: 127.0.0.1
+      PORT: "5432"
+      # the opt-in variables of the database tests
+      PYLOVO_TOY_TOWN_DATABASE: pylovo_test
+      PYLOVO_API_TEST_DATABASE: pylovo_test
+      PYLOVO_FIXTURE_DB: "host=127.0.0.1 port=5432 dbname=pylovo_fixture user=postgres password=postgres"
+      PYLOVO_REVIEW_TEST_DSN: "host=127.0.0.1 port=5432 dbname=pylovo_review user=postgres password=postgres"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install GDAL (pylovo-setup imports the transformers with ogr2ogr)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gdal-bin
+
+      - name: Create the databases of the fixture and schema tests
+        run: |
+          for db in pylovo_fixture pylovo_review; do
+            docker exec ${{ job.services.postgres.id }} psql -U postgres -c "CREATE DATABASE $db"
+          done
+
+      - name: Build the toy-town test database
+        run: uv run --locked --extra api --extra plots python tests/db/build_test_database.py --database pylovo_test
+
+      - name: Run the database tests
+        run: >-
+          uv run --locked --extra api --extra plots pytest -q
+          tests/test_toy_town.py tests/test_postgis_fixtures.py tests/test_database_review.py api/tests
