@@ -688,6 +688,9 @@ class GridGenerator:
                 f"Skipped BCID dimensioning for PLZ {plz}, KCID {kcid}: "
                 f"empty distance vector for {len(vertices)} active connection point(s)"
             )
+            # A kcid without a grid_result row is picked again by position_all_transformers, and the
+            # kcids after it would never be clustered: drop its unassigned rows (recorded as excluded).
+            self.dbc.delete_isolated_building(plz, kcid)
             return
 
         # Initialize hierarchical clustering
