@@ -182,17 +182,24 @@ class ResultsMixin(BaseMixin):
         self.logger.info(f"Version(s) {versions} deleted from all tables")
         return deleted_count
 
-    def delete_classification_version_from_related_tables(self, classification_id: str) -> None:
-        """Delete a classification version and commit.
+    def delete_classification_version_from_related_tables(self, classification_id: int) -> None:
+        """Delete a classification version, refresh the materialized views and commit.
 
         The rows of ``sample_set`` and ``transformer_classified`` of this version are removed
-        by ``ON DELETE CASCADE``.
+        by ``ON DELETE CASCADE``; the refresh removes them from ``transformer_classified_with_grid``.
 
         Args:
             classification_id: ID of the classification version to delete.
+
+        Raises:
+            ValueError: If the classification version does not exist.
         """
         query = "DELETE FROM pylovo.classification_version WHERE classification_id = %(cid)s;"
         self.cur.execute(query, {"cid": classification_id})
+        if self.cur.rowcount == 0:
+            self.conn.rollback()
+            raise ValueError(f"Classification version not found in database: {classification_id}")
+        self.refresh_materialized_views()
         self.conn.commit()
 
         self.logger.info(f"Deleted classification ID {classification_id}.")

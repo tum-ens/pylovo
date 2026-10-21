@@ -32,11 +32,11 @@ def delete_transformers():
     print("✓ Deleted all transformers")
 
 
-def delete_classification_version(classification_version: str):
+def delete_classification_version(classification_id: int):
     """Delete a classification version and its rows in the related classification tables."""
     with DatabaseClient() as dbc_client:
-        dbc_client.delete_classification_version_from_related_tables(classification_version)
-    print(f"✓ Deleted classification version {classification_version}")
+        dbc_client.delete_classification_version_from_related_tables(classification_id)
+    print(f"✓ Deleted classification version {classification_id}")
 
 
 def main():
@@ -108,8 +108,8 @@ For more information, see: https://github.com/tum-ens/pylovo
         help="Delete classification version data",
         description="Delete all data associated with a specific classification version"
     )
-    class_parser.add_argument("--version", type=str, required=True,
-                             help="Classification version (e.g., v1.0)")
+    class_parser.add_argument("--version", type=int, required=True,
+                             help="Classification ID (e.g., 1)")
 
     args = parser.parse_args()
 
