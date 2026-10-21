@@ -6,10 +6,11 @@ including voltage distributions, line loading, and grid performance metrics.
 The networks need power flow results (``pandapower.runpp``).
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Sequence
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+import numpy as np
 import pandas as pd
 import pandapower as pp
 
@@ -21,7 +22,7 @@ def plot_load_and_voltage_distribution(
     figsize: Tuple[int, int] = (12, 6),
     bins: int = 20,
     show_stats: bool = True,
-    ax: Optional[plt.Axes] = None
+    ax: Optional[Sequence[plt.Axes]] = None
 ) -> Figure:
     """
     Plot histograms of load (p_mw) and bus voltage (vm_pu) distributions.
@@ -31,13 +32,14 @@ def plot_load_and_voltage_distribution(
         figsize: Figure size in inches (width, height). Default: (12, 6).
         bins: Number of histogram bins. Default: 20.
         show_stats: Whether to display statistics on the plots. Default: True.
-        ax: Axes object for subplot integration. If None, creates a new figure.
+        ax: The two axes of the load and the voltage histogram, for subplot integration. If None,
+            creates a new figure with two axes.
 
     Returns:
         matplotlib.figure.Figure: The Figure object containing the subplots.
 
     Raises:
-        ValueError: If power flow has not been run on the network.
+        ValueError: If power flow has not been run on the network, or ``ax`` does not hold two axes.
     """
     if net.res_load.empty or net.res_bus.empty:
         raise ValueError("No power flow results found. Run pp.runpp(net) first.")
@@ -48,8 +50,10 @@ def plot_load_and_voltage_distribution(
     if ax is None:
         fig, axes = plt.subplots(1, 2, figsize=figsize)
     else:
-        fig = ax.get_figure()
-        axes = [ax, ax]
+        axes = list(np.ravel(ax))
+        if len(axes) != 2:
+            raise ValueError("ax must hold two axes: one for the load and one for the voltage histogram")
+        fig = axes[0].get_figure()
 
     # Plot histogram of loads
     axes[0].hist(loads, bins=bins, color='skyblue', edgecolor='black', alpha=0.7)

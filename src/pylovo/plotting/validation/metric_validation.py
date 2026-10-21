@@ -4,6 +4,10 @@ Plots of grid statistics per postcode area (PLZ) and of synthetic/real metric co
 The PLZ plots read the results of ``VERSION_ID`` from the database: transformer
 sizes, cable types and the per-transformer parameters of ``plz_parameters``.
 The Plotly comparison plots take a metrics table with a ``source`` column.
+
+The matplotlib functions return their figure and never call ``plt.show()``. A notebook
+with the inline backend shows the open figure at the end of the cell, a script closes it
+with ``plt.close(fig)`` after saving.
 """
 
 from typing import Tuple, Optional, List
@@ -43,7 +47,6 @@ def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Fi
     # Plot cable length distribution
     axs[1].pie(cable_dict.values(), labels=cable_dict.keys(), autopct="%.1f%%")
     axs[1].set_title("Installed Cable Length", fontsize=14)
-    plt.show()
 
     return fig
 
@@ -66,7 +69,6 @@ def plot_hist_trafos(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
     ax.set_title('Transformer Size Distribution', fontsize=14)
     ax.set_xlabel("Trafo size")
     ax.set_ylabel("Count")
-    plt.show()
 
     return fig
 
@@ -100,7 +102,6 @@ def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
     fig.supxlabel('Values', fontsize=12)
     fig.supylabel('Transformer Size (kVA)', fontsize=12)
     plt.tight_layout()
-    plt.show()
 
     return fig
 
@@ -140,7 +141,6 @@ def plot_cable_length_of_types(plz: int, figsize: Tuple[int, int] = (10, 6)) -> 
     ax.set_title('Cable Type Distribution', fontsize=14)
     ax.set_xlabel("Cable type")
     ax.set_ylabel("Length in km")
-    plt.show()
 
     return fig
 

@@ -8,6 +8,10 @@
 
 Grids are read for the ``VERSION_ID`` of ``config_generation_lv.yaml``. Needs the ``plots`` extra;
 :func:`plot_with_generic_coordinates` additionally needs ``python-igraph``.
+
+The matplotlib functions return their figure and never call ``plt.show()``. A notebook with the
+inline backend shows the open figure at the end of the cell (assign the result, ``fig = ...``, so
+that it is shown once), a script closes it with ``plt.close(fig)`` after saving.
 """
 
 import math
@@ -304,13 +308,14 @@ def hierarchy_pos2(G, root, levels=None, width=1., height=1.):
     return make_pos({})
 
 
-def _draw_colored_graph(G: nx.Graph, pos: dict) -> None:
-    """Draw ``G`` with node labels and the tree colours in a new 20x10 inch figure."""
-    plt.figure(figsize=(20, 10))
+def _draw_colored_graph(G: nx.Graph, pos: dict) -> Figure:
+    """Draw ``G`` with node labels and the tree colours in a new 20x10 inch figure and return it."""
+    fig = plt.figure(figsize=(20, 10))
     nx.draw_networkx(G, node_color=get_colormap_for_treegraph(networkx_graph=G), pos=pos, with_labels=True)
+    return fig
 
 
-def draw_tree_network(G, width=1.):
+def draw_tree_network(G, width=1.) -> Figure:
     """Draw the grid graph as a tree with bus 1 (MV bus) as root.
 
     Colours: see :func:`get_colormap_for_treegraph` (transformer ivory, connection nodes green,
@@ -319,45 +324,56 @@ def draw_tree_network(G, width=1.):
     Args:
         G: Tree graph of the grid, e.g. ``pandapower.topology.create_nxgraph(net)``.
         width: Horizontal space of the layout.
+
+    Returns:
+        The figure with the drawing.
     """
-    _draw_colored_graph(G, hierarchy_pos(G, root=1, width=width))
+    return _draw_colored_graph(G, hierarchy_pos(G, root=1, width=width))
 
 
-def draw_tree_network_with_spacing_from_grid_id(plz: int, kcid: int, bcid: int):
+def draw_tree_network_with_spacing_from_grid_id(plz: int, kcid: int, bcid: int) -> Figure:
     """Read one grid and draw it with :func:`draw_tree_network_spacing`.
 
     Args:
         plz: Postal code.
         kcid: K-means cluster id.
         bcid: Building cluster id.
+
+    Returns:
+        The figure with the drawing.
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid)
     G = create_nxgraph(net)
-    draw_tree_network_spacing(G)
+    return draw_tree_network_spacing(G)
 
 
-def draw_tree_network_spacing(G):
+def draw_tree_network_spacing(G) -> Figure:
     """Draw the grid graph as a tree with evenly spaced nodes per level (better for large grids).
 
     Colours: see :func:`get_colormap_for_treegraph`.
 
     Args:
         G: Tree graph of the grid with bus 1 (MV bus) as root.
+
+    Returns:
+        The figure with the drawing.
     """
-    _draw_colored_graph(G, hierarchy_pos2(G, root=1))
-    plt.show()
+    return _draw_colored_graph(G, hierarchy_pos2(G, root=1))
 
 
-def draw_radial_network(G):
+def draw_radial_network(G) -> Figure:
     """Draw the grid graph in a radial tree layout around bus 1 (MV bus).
 
     Colours: see :func:`get_colormap_for_treegraph`.
 
     Args:
         G: Tree graph of the grid.
+
+    Returns:
+        The figure with the drawing.
     """
     pos = hierarchy_pos(G, 1, width=2 * math.pi, xcenter=0)
     new_pos = {u: (r * math.cos(theta), r * math.sin(theta)) for u, (theta, r) in pos.items()}
-    plt.figure(figsize=(20, 10))
+    fig = plt.figure(figsize=(20, 10))
     nx.draw(G, pos=new_pos, node_color=get_colormap_for_treegraph(networkx_graph=G), node_size=200)
-    plt.show()
+    return fig
