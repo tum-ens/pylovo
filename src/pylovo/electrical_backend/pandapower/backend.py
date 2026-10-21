@@ -382,12 +382,15 @@ class PandapowerBackend(IElectricalBackend):
             cables: Tuples ``(name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur)``
                 as returned by ``DatabaseClient.fetch_cables``. The cross-section
                 ``q_mm2`` is parsed from the last ``_``-separated part of the name
-                (for example ``NAYY_4_150``).
+                (for example ``NAYY_4_150``), 0 if that part is not a whole number.
         """
         for cable in cables:
             name, r_ohm_per_km, x_ohm_per_km, max_i_ka, _cost_eur = cable
             normalized = normalize_cable_name(name)
-            q_mm2 = int(name.split("_")[-1])
+            try:
+                q_mm2 = int(name.split("_")[-1])
+            except ValueError:   # a user catalogue may name cables like "NAYY 4x120 SE"
+                q_mm2 = 0
 
             pp.create_std_type(
                 self.net,

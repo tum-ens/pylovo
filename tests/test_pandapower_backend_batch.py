@@ -6,7 +6,7 @@ import pandapower as pp
 import pytest
 
 from pylovo.config_loader import POWER_FLOW_MAX_VM_PU, POWER_FLOW_MIN_VM_PU
-from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec
+from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, normalize_cable_name
 from pylovo.electrical_backend.pandapower.backend import PandapowerBackend, PandapowerBackendError
 
 CABLES = [("NAYY_4_150", 0.208, 0.08, 0.27, 25.0), ("NAYY_4_50", 0.642, 0.083, 0.142, 11.0)]
@@ -150,3 +150,14 @@ def test_lines_shorter_than_a_metre_get_one_metre_and_the_flow_converges():
     assert net.line.loc[net.line["name"] == "Line to 1", "length_km"].item() == pytest.approx(0.03)
     pp.runpp(net)
     assert net.converged
+
+
+def test_cable_names_without_a_trailing_cross_section_are_registered_with_zero():
+    """A user catalogue may name cables ``NAYY 4x120 SE`` or ``NAYY_4x95``: the cross-section is informational."""
+    names = ["NAYY 4x120 SE", "NAYY_4x95"]
+    backend = PandapowerBackend(logger=logging.getLogger("catalogue-test"))
+    backend.initialize_circuit(name="x", source_bus="MVbus 1", primary_kv=20.0)
+    backend.register_cable_types([(name, 0.25, 0.08, 0.24, 20.0) for name in names] + CABLES)
+    line_types = backend.net.std_types["line"]
+    assert [line_types[normalize_cable_name(name)]["q_mm2"] for name in names] == [0, 0]
+    assert line_types["NAYY_4_150"]["q_mm2"] == 150
