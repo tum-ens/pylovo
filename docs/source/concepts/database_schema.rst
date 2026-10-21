@@ -10,8 +10,8 @@ All pylovo tables are in the schema ``pylovo``. They are defined in
    :width: 100%
 
    Tables of the schema ``pylovo`` with primary and foreign keys, generated from the table
-   definitions with ``docs/scripts/plot_database_diagram.py``. Tables of the classification module
-   are not shown.
+   definitions and the migrations with ``docs/scripts/plot_database_diagram.py``. Tables of the
+   classification module are not shown.
 
 Structure
 ---------
@@ -23,7 +23,7 @@ The schema is organised around four keys:
    the transformer and cable catalogue of the version.
 ``(version_id, plz)``
    ``postcode_result`` is the per-postcode result: polygon, house distance, households per building
-   and settlement type. ``ways_result`` and ``plz_parameters`` hang on it.
+   and settlement type. ``ways_result``, ``plz_parameters`` and ``building_exclusion`` hang on it.
 ``grid_result_id``
    ``grid_result`` has one row per grid (``version_id``, ``plz``, ``kcid``, ``bcid``). All per-grid
    tables reference it: ``buildings_result``, ``transformer_positions``, ``lines_result`` and its
@@ -42,8 +42,9 @@ within their grid; dependent elements are deleted before buses.
 
 Reference and input tables are not versioned: ``postcode``, ``transformers``,
 ``consumer_categories`` (synchronised with the configuration at every run), ``municipal_register``,
-the MV routing graphs
-``mv_graph*`` and, in the file-based mode, ``res``, ``oth``, ``ways`` and ``ags_log``.
+the MV routing graphs ``mv_graph*`` and, in the file-based mode, ``res``, ``oth`` and ``ways``.
+``ags_log`` is created in every mode but only filled in the file-based mode. The ledger of the
+applied migrations is ``schema_migrations``.
 
 Result tables in short
 ----------------------
@@ -64,6 +65,10 @@ Result tables in short
        (``residential_peak_load_in_kw``, ``nonresidential_peak_load_in_kw``,
        ``nonresidential_mv_direct``, ``peak_load_in_kw``) and the vertices ``vertice_id``,
        ``connection_point``, ``agg_connection_point``.
+   * - ``building_exclusion``
+     - Loaded buildings of the postcode that are in no grid, with the generation step that left them
+       out (for example ``mv_direct`` or ``no_connection_point``). With ``buildings_result`` it
+       accounts for every loaded building (``pylovo-analyze --coverage``).
    * - ``transformer_positions``
      - Transformer point, ``osm_id`` of brownfield positions and the flags ``osm`` and ``lod2``;
        ``comment`` is ``Normal`` (brownfield) or ``on_way`` (greenfield).
@@ -94,8 +99,9 @@ MV stage tables in short
 ------------------------
 
 The MV stage (:doc:`mv_grids`) writes its results per MV variant. Every result table carries
-``version_id`` and ``mv_variant_id`` and references ``mv_variant`` with ``ON DELETE CASCADE``, so
-deleting a variant (``pylovo-mv delete``) or its version removes all its rows. Deleting a postcode
+``version_id`` and ``mv_variant_id`` and is removed with its ``mv_variant`` (``ON DELETE CASCADE``,
+directly or through ``mv_grid``), so deleting a variant (``pylovo-mv delete``) or its version removes
+all its rows. Deleting a postcode
 with ``pylovo-delete networks`` deletes the MV variants that contain it. The migrations
 ``0009_mv_grids`` and ``0010_mv_display_geometry`` create the tables and the display geometry columns
 on schemas set up before.
@@ -138,7 +144,7 @@ Views and temporary tables
    ``transformer_units`` is the number of units of the station.
 ``buildings_result_with_grid``
    Regular view of current ``buildings_result`` rows with ``kcid``, ``bcid`` and ``plz``.
-``buildings_tem_<plz>``, ``ways_tem_<plz>``, ``ways_tem_<plz>_vertices_pgr``
+``buildings_tem_<plz>``, ``ways_tem_<plz>``, ``ways_tem_<plz>_vertices_pgr``, ``excluded_tem_<plz>``
    Session-local working tables of one run (:doc:`../user_guide/database_setup`).
 
 Coordinates
