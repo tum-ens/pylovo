@@ -25,6 +25,9 @@ router = APIRouter(prefix="/api/transformers", tags=["transformers"])
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+#: An uploaded DSO CSV is kept this long (the import job reads it when it starts); older ones are
+#: deleted at server start and with every new upload.
+UPLOAD_MAX_AGE_H = 24
 
 
 class NewTransformer(BaseModel):
@@ -175,12 +178,24 @@ def osm_relations(q: str = Query(..., min_length=2, max_length=120)) -> list[dic
 
 
 # --------------------------------------------------------------------------- DSO CSV
+def prune_uploads() -> None:
+    """Delete the uploaded CSVs that are older than :data:`UPLOAD_MAX_AGE_H` hours."""
+    cutoff = time.time() - UPLOAD_MAX_AGE_H * 3600
+    for path in paths().uploads_dir.glob("*.csv"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            pass
+
+
 def _upload_path(upload_id: str):
     if not re.fullmatch(r"[0-9a-f]{12}", upload_id or ""):
         raise HTTPException(400, "Invalid upload id")
     path = paths().uploads_dir / f"{upload_id}.csv"
     if not path.exists():
-        raise HTTPException(404, "Upload not found (it may have expired); upload the file again")
+        raise HTTPException(404, f"Upload not found: uploaded files are deleted after {UPLOAD_MAX_AGE_H} hours. "
+                                 "Upload the file again")
     return path
 
 
@@ -198,6 +213,7 @@ async def dso_preview(file: Annotated[UploadFile, File()], source: str | None = 
         raise HTTPException(400, f"Cannot read the CSV: {exc}") from exc
     invalid = df[df["problem"] != ""]          # the rows pylovo-import would refuse (also coordinates out of range)
     upload_id = uuid.uuid4().hex[:12]
+    prune_uploads()
     (paths().uploads_dir / f"{upload_id}.csv").write_bytes(raw)
     valid = df.drop(index=invalid.index)
     existing = 0

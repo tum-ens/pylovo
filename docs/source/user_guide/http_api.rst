@@ -72,6 +72,10 @@ updated when it ends. A job that was still running when the server stopped or cr
 blocks other writers until it has ended, and it can still be cancelled. When the server exits, running
 jobs get SIGTERM, and SIGKILL if they are still running after three seconds.
 
+The API keeps the record, the log and the export files of the newest 60 jobs and deletes those of older
+jobs when the server starts and when a job starts. An uploaded DSO CSV is deleted after 24 hours, so
+an import that refers to an older upload answers "not found" and the file has to be uploaded again.
+
 A generation job never runs the MV stage: the API passes ``--no-mv``, so ``MV_GRID_GENERATION`` in
 ``config_generation_mv.yaml`` has no effect on runs that the API starts. The MV stage is a
 command-line workflow (:doc:`mv_grids`).

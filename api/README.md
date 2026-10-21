@@ -130,8 +130,11 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
 * **Load edits** write in one transaction through `pylovo.load_editing.LoadEditor`
   (`buildings_result`, the grid's `pandapower_load` rows and stored net, `grid_result`, an audit
   row in `pylovo.load_edit`) and remove the load-dependent analysis rows of the PLZ. Undo is exact.
-* **Files** (all inside the project, ignored by git): `.pylovo-api/config-backups/`,
-  `uploads/` (DSO CSVs), `jobs/` (job logs), `exports/`, `tmp/`, `cache/input-coverage.json`.
+* **Files** (all inside the project, ignored by git): `.pylovo-api/config-backups/` (the newest 50
+  backups), `uploads/` (DSO CSVs, deleted after 24 hours), `jobs/` (records and logs of the newest
+  60 jobs), `exports/` (the output of those jobs), `tmp/`, `cache/input-coverage.json`. The files
+  of older jobs are deleted when the server starts and when a job starts, old uploads at the start
+  and with every new upload (`HISTORY_LIMIT` in `jobs.py`, `UPLOAD_MAX_AGE_H` in `routers/transformers.py`).
 
 ## Architecture
 

@@ -54,7 +54,8 @@ def create_app(root: Path, allowed_hosts: set[str] | None = None, allow_any_host
     app = FastAPI(title="pylovo-api", version=str(API_VERSION), lifespan=lifespan,
                   description="HTTP API of the pylovo workflow (database, regions, data, generation, results) "
                               "for the GridPlanner UI.")
-    app.state.jobs = JobManager(cwd=paths.root, jobs_dir=paths.jobs_dir)
+    app.state.jobs = JobManager(cwd=paths.root, jobs_dir=paths.jobs_dir, exports_dir=paths.exports_dir)
+    transformers.prune_uploads()
     # Region gate: which PLZ have generation input (background worker, see pylovo_api.coverage).
     app.state.coverage = InputCoverage(paths.state_dir / "cache" / "input-coverage.json", jobs=app.state.jobs,
                                        root=paths.root)

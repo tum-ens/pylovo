@@ -304,3 +304,51 @@ def test_shutdown_kills_a_job_that_ignores_sigterm(manager):
     assert job.status == "cancelled"
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+# --------------------------------------------------------------------------- retention of the state directory
+def test_only_the_newest_jobs_keep_their_files(tmp_path, monkeypatch):
+    monkeypatch.setattr("pylovo_api.jobs.HISTORY_LIMIT", 3)
+    exports = tmp_path / "exports"
+    manager = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs", exports_dir=exports)
+    ids = []
+    for n in range(5):
+        out = exports / f"out{n}"
+        out.mkdir(parents=True)
+        job = manager.start("export", f"job {n}", [sys.executable, "-c", "print('x')"], writes_db=False, output_dir=out)
+        wait(job)
+        ids.append(job.id)
+    assert {path.stem for path in (tmp_path / "jobs").iterdir()} == set(ids[2:])  # record and log of the newest three
+    assert sorted(d.name for d in exports.iterdir()) == ["out2", "out3", "out4"]
+    assert len(manager.list()) == 3
+
+
+def test_files_beyond_the_history_and_unreferenced_exports_are_deleted_at_start(tmp_path, monkeypatch):
+    monkeypatch.setattr("pylovo_api.jobs.HISTORY_LIMIT", 2)
+    jobs_dir, exports = tmp_path / "jobs", tmp_path / "exports"
+    for n in range(4):
+        (exports / f"e{n}").mkdir(parents=True)
+        write_record(jobs_dir, f"j{n}", status="succeeded", exit_code=0, finished_at=time.time(),
+                     output_dir=str(exports / f"e{n}"))
+        os.utime(jobs_dir / f"j{n}.json", (1000 + n, 1000 + n))  # j0 is the oldest
+    (exports / "orphan").mkdir()
+    manager = JobManager(cwd=tmp_path, jobs_dir=jobs_dir, exports_dir=exports)
+    assert sorted(job.id for job in manager.list()) == ["j2", "j3"]
+    assert {path.stem for path in jobs_dir.iterdir()} == {"j2", "j3"}
+    assert sorted(d.name for d in exports.iterdir()) == ["e2", "e3"]
+
+
+def test_old_uploads_are_deleted_at_start_and_the_missing_upload_says_so(client, project):
+    from pylovo_api.app import create_app
+    from pylovo_api.routers import transformers
+
+    uploads = project / ".pylovo-api" / "uploads"
+    old, new = uploads / f"{'a' * 12}.csv", uploads / f"{'b' * 12}.csv"
+    old.write_text("x", encoding="utf-8")
+    new.write_text("x", encoding="utf-8")
+    aged = time.time() - (transformers.UPLOAD_MAX_AGE_H * 3600 + 60)
+    os.utime(old, (aged, aged))
+    create_app(project)  # a server start
+    assert not old.exists() and new.exists()
+    response = client.post("/api/jobs/import-dso", json={"upload_id": "a" * 12})
+    assert response.status_code == 404 and "deleted after 24 hours" in response.json()["detail"]

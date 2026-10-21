@@ -48,6 +48,8 @@ SCRIPT_MODULES = {
 GENERATE_PARTIAL_EXIT_CODE = 4
 
 MAX_LINES_IN_MEMORY = 50_000
+#: Jobs that keep their history record, log and export files. When a job starts and when the server
+#: starts, the files of older jobs and the export directories no kept job refers to are deleted.
 HISTORY_LIMIT = 60
 
 _LEVEL_RE = re.compile(r" - (DEBUG|INFO|WARNING|ERROR|CRITICAL) - ")
@@ -187,10 +189,11 @@ def _display_arg(arg: str) -> str:
 class JobManager:
     """Start, observe and cancel ``pylovo-*`` subprocesses."""
 
-    def __init__(self, cwd: Path, jobs_dir: Path):
+    def __init__(self, cwd: Path, jobs_dir: Path, exports_dir: Path | None = None):
         self.cwd = Path(cwd)
         self.jobs_dir = Path(jobs_dir)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
+        self.exports_dir = Path(exports_dir) if exports_dir else None  # the output directories of export jobs
         self._jobs: dict[str, Job] = {}
         self._lock = threading.RLock()
         self._edit_leases = 0  # load edits being written (see db_edit_lease)
@@ -453,6 +456,21 @@ class JobManager:
         finished = sorted((j for j in self._jobs.values() if not j.active), key=lambda j: j.created_at)
         for job in finished[: max(0, len(self._jobs) - HISTORY_LIMIT)]:
             self._jobs.pop(job.id, None)
+        self._prune_files()
+
+    def _prune_files(self) -> None:
+        """Delete the history files and export directories of the jobs that are not in the history any more."""
+        for path in [*self.jobs_dir.glob("*.json"), *self.jobs_dir.glob("*.log")]:
+            if path.stem not in self._jobs:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        if self.exports_dir and self.exports_dir.is_dir():
+            kept = {Path(job.output_dir).name for job in self._jobs.values() if job.output_dir}
+            for directory in self.exports_dir.iterdir():
+                if directory.is_dir() and directory.name not in kept:
+                    shutil.rmtree(directory, ignore_errors=True)
 
     def _load_history(self) -> None:
         metas = sorted(self.jobs_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)[-HISTORY_LIMIT:]
@@ -477,6 +495,7 @@ class JobManager:
                     self._adopt_or_interrupt(job, log_path)
             except (OSError, ValueError, KeyError):
                 continue
+        self._prune_files()
 
     def _adopt_or_interrupt(self, job: Job, log_path: Path) -> None:
         """Deal with a job that was still queued or running when an earlier pylovo-api run ended.
