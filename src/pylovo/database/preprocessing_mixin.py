@@ -1348,12 +1348,18 @@ class PreprocessingMixin(BaseMixin):
                    SET vertice_id = (SELECT id
                                      FROM ways_tem_vertices_pgr AS v
                                      WHERE ST_DWithin(v.geom, b.centroid, 0.000001)
-                                     ORDER BY ST_Distance(v.geom, b.centroid)
+                                     ORDER BY ST_Distance(v.geom, b.centroid), v.id
                                      LIMIT 1);"""
         self.cur.execute(query)
 
+        # Several edges can start at one vertex (buildings with one centroid, a centroid on a street
+        # vertex): the building's connection line (clazz 110) first, then the lowest way_id.
         query2 = """UPDATE buildings_tem b
-                    SET connection_point = (SELECT target FROM ways_tem WHERE source = b.vertice_id LIMIT 1)
+                    SET connection_point = (SELECT target
+                                            FROM ways_tem
+                                            WHERE source = b.vertice_id
+                                            ORDER BY clazz IS DISTINCT FROM 110, way_id
+                                            LIMIT 1)
                     WHERE vertice_id IS NOT NULL
                       AND connection_point IS NULL;"""
         self.cur.execute(query2)
