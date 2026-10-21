@@ -4,7 +4,8 @@ The functions work on the generic node and line tables of :mod:`pylovo.mv_grid.m
 the grids of the MV stage, on the Ding0 2023 CSV grids (:func:`read_ding0_grid`), on pandapower nets such as
 SimBench or ``pandapower.networks.mv_oberrhein()`` (:func:`net_to_tables`) and on external reference data converted
 to the generic format. The MV stage itself does not use this module. It imports no database, configuration or
-plotting module.
+plotting module of its own. Importing it still runs ``pylovo/__init__.py``, which loads the configuration, so a
+``.env`` is needed even though no database is touched.
 
 **Metric names** used by :data:`LITERATURE_RANGES` and :func:`compare_to_literature`:
 
