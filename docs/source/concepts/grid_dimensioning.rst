@@ -19,8 +19,8 @@ building's connection line crosses the footprint outline), not at the building c
 Method at a glance
 ------------------
 
-#. Build residential, commercial and public load components from the building
-   data. Mixed-use buildings can contain more than one component.
+#. Build residential and non-residential (commercial, public and unknown use) load components
+   from the building data. Mixed-use buildings can contain more than one component.
 #. Calculate coincident demand separately for each consumer category.
 #. Select a transformer that can supply the coincident demand of its complete
    building cluster.

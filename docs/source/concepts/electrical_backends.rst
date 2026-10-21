@@ -61,9 +61,12 @@ Buses, loads and lines are created with pandapower's batch functions, one call p
 columns of ``line`` and ``load`` have the same dtype in every stored net
 (``LINE_ATTRIBUTE_DTYPES``, ``LOAD_ATTRIBUTE_DTYPES`` in
 :mod:`pylovo.electrical_backend.pandapower.backend`): numbers are ``float64`` with NaN where they do
-not apply, text and flags are objects with ``None``. Before, the first line of a grid decided the
-dtype, so in grids generated earlier whose first line was a service line
-``feeder_section_id`` is an object column and the ``service_*`` percentages are ``float64``.
+not apply, except the three voltage-drop percentages ``service_ampacity_voltage_drop_percent``,
+``service_selected_voltage_drop_percent`` and ``total_design_voltage_drop_percent``, which are objects
+with ``None`` where they do not apply (convert them with ``pandas.to_numeric`` before you compute with
+them). Text and flags are objects with ``None``. Before, the first line of a grid decided the dtype, so
+in grids generated earlier whose first line was a service line ``feeder_section_id`` is an object column
+and the ``service_*`` percentages are ``float64``.
 
 OpenDSS (work in progress)
 --------------------------
