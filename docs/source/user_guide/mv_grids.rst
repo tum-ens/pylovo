@@ -305,7 +305,8 @@ by load edits, deleted or regenerated grids. ``pylovo-mv list`` compares a finge
 results of its postcodes (number of grids, grid ids, active load edits, number of MV customers) with
 the one stored at creation and marks such variants ``stale``. Undoing a load edit changes the active
 load edits, so it marks a variant that was built on the edited loads as stale. Rebuild them with
-``--replace``.
+``--replace``. ``generate`` warns when it resumes a stale variant: its remaining supply areas would
+read the new LV results, while the stored ones keep the old.
 
 ``pylovo-mv delete`` deletes variants with all their results. ``pylovo-delete networks --plz PLZ
 --version VERSION`` also deletes the MV variants of that version that contain the postcode, because

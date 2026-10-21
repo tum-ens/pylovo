@@ -634,6 +634,12 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         logger.info(f"PLZ set grew from {len(row['plz_list'])} to {len(union)}: rebuilding all districts")
     elif mode == "grow":
         logger.info(f"routing graph changed from {row.get('graph_id')} to {graph_id}: rebuilding all districts")
+    elif mode == "resume" and row.get("lv_fingerprint") not in (None, fingerprint):
+        stale = (f"The LV results of the PLZ of MV variant {variant_id} changed since it was built (load edits, "
+                 "deleted or regenerated LV grids): the resumed districts read the new LV results, the stored ones "
+                 "keep the old. Plan it again with --replace or under a new id")
+        logger.warning(stale)
+        warnings.append(stale)
     try:
         # 3. region
         if mode in ("new", "grow") or not dbc.variant_region_built(version_id, variant_id):

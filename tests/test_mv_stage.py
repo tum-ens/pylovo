@@ -73,8 +73,9 @@ class FakeDb:
     """Records the calls of the stage; ``mode``, ``generated``, ``busy``, ``region_built`` script the answers."""
 
     def __init__(self, *, generated=(1, 2), busy=(), mode="new", stored_plz=None, region_built=False,
-                 lock=True, totals=None):
+                 lock=True, totals=None, fingerprint=None):
         self.calls: list[tuple] = []
+        self.stored_fingerprint = fingerprint
         self.generated, self.busy, self.mode = list(generated), list(busy), mode
         self.stored_plz, self.region_built, self.lock = stored_plz, region_built, lock
         self.totals = totals or {"grids_total": 2, "grids_done": 2, "grids_failed": 0, "grids_pending": 0,
@@ -115,7 +116,8 @@ class FakeDb:
 
     def variant_row(self, version_id, variant_id):
         self._call("variant_row", version_id, variant_id)
-        return None if self.stored_plz is None else {"plz_list": list(self.stored_plz), "mv_parameters": {}}
+        return None if self.stored_plz is None else {"plz_list": list(self.stored_plz), "mv_parameters": {},
+                                                     "lv_fingerprint": self.stored_fingerprint}
 
     def lv_snapshot(self, version_id):
         return LV_SNAPSHOT
@@ -243,6 +245,16 @@ def test_resume_skips_the_region_and_grow_rebuilds_it(run):
     run(db, plz=(7,))
     assert ("register_variant", ([1, 2, 7], "g123", {"n_grids": 3})) in db.calls
     assert ("region_step", [1, 2, 7]) in db.calls and "reset_variant_region" in db.names()
+
+
+def test_a_resumed_variant_warns_when_its_lv_results_changed(run):
+    """The fingerprint is stored at creation; a resume after a load edit mixes old and new LV results."""
+    db = FakeDb(generated=(1, 2), mode="resume", stored_plz=(1, 2), region_built=True, fingerprint={"n_grids": 3})
+    warnings = run(db, plz=(1,)).warnings
+    assert any("changed since it was built" in w and "--replace or under a new id" in w for w in warnings)
+    for same in ({"n_grids": 2}, None):                                     # unchanged, or not recorded
+        db = FakeDb(generated=(1, 2), mode="resume", stored_plz=(1, 2), region_built=True, fingerprint=same)
+        assert not any("changed since" in w for w in run(db, plz=(1,)).warnings)
 
 
 def test_replace_deletes_the_variant_first(run):
