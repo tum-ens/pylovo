@@ -1652,7 +1652,6 @@ class ParameterCalculator:
         """Aggregate basic counts per transformer size across all grids of a PLZ."""
         load_count_dict = {}
         bus_count_dict = {}
-        cable_length_dict = {}
         trafo_dict = {}
 
         query = """
@@ -1662,27 +1661,25 @@ class ParameterCalculator:
                 WHERE version_id = %(v)s
                   AND plz = %(p)s
             ),
+            -- Aggregate only the grids of the PLZ: the joins below read no other grid, and
+            -- PostgreSQL does not push a join condition into a GROUP BY subquery.
             load_counts AS (
                 SELECT grid_result_id,
                        COUNT(DISTINCT COALESCE(consumer_vertex, pp_index::bigint))::integer AS load_count
                 FROM pylovo.pandapower_load
+                WHERE grid_result_id IN (SELECT grid_result_id FROM grid_scope)
                 GROUP BY grid_result_id
             ),
             bus_counts AS (
                 SELECT grid_result_id, COUNT(*)::integer AS bus_count
                 FROM pylovo.pandapower_bus
-                GROUP BY grid_result_id
-            ),
-            line_lengths AS (
-                SELECT grid_result_id, COALESCE(SUM(length_km), 0.0) AS cable_length
-                FROM pylovo.pandapower_line
+                WHERE grid_result_id IN (SELECT grid_result_id FROM grid_scope)
                 GROUP BY grid_result_id
             )
             SELECT
                 ROUND(pt.sn_mva * COALESCE(pt.parallel, 1) * 1000.0)::integer AS capacity,  -- station, not unit
                 COALESCE(lc.load_count, 0) AS load_count,
-                COALESCE(bc.bus_count, 0) AS bus_count,
-                COALESCE(ll.cable_length, 0.0) AS cable_length
+                COALESCE(bc.bus_count, 0) AS bus_count
             FROM grid_scope gs
             JOIN pylovo.pandapower_trafo pt
               ON pt.grid_result_id = gs.grid_result_id
@@ -1690,8 +1687,6 @@ class ParameterCalculator:
               ON lc.grid_result_id = gs.grid_result_id
             LEFT JOIN bus_counts bc
               ON bc.grid_result_id = gs.grid_result_id
-            LEFT JOIN line_lengths ll
-              ON ll.grid_result_id = gs.grid_result_id
             WHERE pt.sn_mva IS NOT NULL
             ORDER BY capacity
         """
@@ -1701,17 +1696,15 @@ class ParameterCalculator:
         processed = 0
         percent = 0
 
-        for capacity, load_count, bus_count, cable_length in rows:
+        for capacity, load_count, bus_count in rows:
             if capacity not in trafo_dict:
                 trafo_dict[capacity] = 0
                 load_count_dict[capacity] = []
                 bus_count_dict[capacity] = []
-                cable_length_dict[capacity] = []
 
             trafo_dict[capacity] += 1
             load_count_dict[capacity].append(load_count)
             bus_count_dict[capacity].append(bus_count)
-            cable_length_dict[capacity].append(cable_length)
 
             processed += 1
             if count > 0 and processed / count >= 0.1:
