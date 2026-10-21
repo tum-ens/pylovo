@@ -47,10 +47,10 @@ from pylovo.config_loader import CLASSIFICATION_VERSION, PEAK_LOAD_HOUSEHOLD, SI
 # feeder counter.  Adapt ``name_column`` and the regex patterns when working
 # with a different DSO data export.
 
-SWF_BUS_TYPE_CONFIG: Dict[str, str] = {
+DSO_BUS_TYPE_CONFIG: Dict[str, str] = {
     "name_column": "name",
-    # Clear service/attachment nodes in the SWF export. Service cables are
-    # identified separately through line names such as NS_KbAn and NS_FlAn.
+    # Clear service/attachment nodes in a DSO export. Service cables are
+    # identified separately through DSO line names such as NS_KbAn and NS_FlAn.
     "house_connection_pattern": r"(NS_HaAn|NS_Kn\(n\)_(KbAn|FlAn)|ErLast)",
     "kvs_pattern": r"NS_KVS",
     "service_line_pattern": r"NS_(KbAn|FlAn)",
@@ -349,9 +349,9 @@ class ParameterCalculator:
             graph: Switch-aware topology graph.
             root_idx: LV root bus index (transformer LV side or LVbus).
             uses_synthetic_naming: Selects ``PYLOVO_BUS_TYPE_CONFIG`` (True) or
-                ``SWF_BUS_TYPE_CONFIG`` when ``bus_type_config`` is None; also passed on to the
+                ``DSO_BUS_TYPE_CONFIG`` when ``bus_type_config`` is None; also passed on to the
                 recursive counter.
-            bus_type_config: Naming-pattern dictionary (see :data:`SWF_BUS_TYPE_CONFIG`).
+            bus_type_config: Naming-pattern dictionary (see :data:`DSO_BUS_TYPE_CONFIG`).
             expand_kvs: Expand explicit KVS neighbours at the first branching point into several
                 feeders. If False, every first-hop downstream backbone neighbour is one feeder.
             recursive_expansion: Count terminal feeder branches recursively in the downstream
@@ -367,7 +367,7 @@ class ParameterCalculator:
         """
         if bus_type_config is None:
             bus_type_config = (
-                PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+                PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else DSO_BUS_TYPE_CONFIG
             )
         bus_types = _classify_bus_types_with_consumers(
             net, bus_type_config, root_idx, additional_house_connection_buses
@@ -568,7 +568,7 @@ class ParameterCalculator:
     ) -> nx.Graph:
         """Remove terminal service-connection line rows from feeder topology.
 
-        SWF line names such as NS_KbAn_* and NS_FlAn_* are the clearest
+        DSO line names such as NS_KbAn_* and NS_FlAn_* are the clearest
         signal for house/service connection cables. A small endpoint guard keeps
         rare structural-looking edges with the same line-name family, e.g. KVS to
         KVS, in the backbone metric.
@@ -879,7 +879,7 @@ class ParameterCalculator:
             respect_switches=True,
         )
         bus_type_config = bus_type_config or (
-            PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+            PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else DSO_BUS_TYPE_CONFIG
         )
         bus_types = _classify_bus_types_with_consumers(
             pandapower_net, bus_type_config, root_bus, additional_house_connection_buses
@@ -1489,7 +1489,7 @@ class ParameterCalculator:
 
         loads["zone"] = loads["zone"].fillna("Residential")
         loads["zone"] = loads["zone"].replace(["MFH", "SFH", "AB", "TH"], "Residential")
-        # Map any zone not recognised by SIM_FACTOR (e.g. DSO zone codes like "SWF") to
+        # Map any zone not recognised by SIM_FACTOR (e.g. the zone codes of a DSO export) to
         # "Residential" so the category-based upstream propagation produces valid non-zero
         # sim_factor_cumulated values for real grid exports.
         _known_zones = set(SIM_FACTOR.keys())

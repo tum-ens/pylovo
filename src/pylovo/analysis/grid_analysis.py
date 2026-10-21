@@ -107,7 +107,7 @@ def compute_comparison_parameters(
         consumer_buses: Consumer connection buses; resolved from the bus naming if None.
         bus_type_config: Naming-pattern dictionary forwarded to the unified feeder counter.
             When None the config is auto-detected from the bus naming convention (see
-            :data:`~pylovo.analysis.parameter_calculation.SWF_BUS_TYPE_CONFIG`).
+            :data:`~pylovo.analysis.parameter_calculation.DSO_BUS_TYPE_CONFIG`).
         with_service_lines: Include terminal house/consumer service connections in length,
             resistance, and transformer-distance metrics. The default benchmark excludes them
             and measures feeder/backbone structure.
@@ -116,11 +116,11 @@ def compute_comparison_parameters(
         Flat dictionary of metrics (``feeder_lines``, ``graph_length``, ``avg_trafo_distance``,
         ...) plus diagnostic counts and the alternative feeder counts.
     """
-    from pylovo.analysis.parameter_calculation import PYLOVO_BUS_TYPE_CONFIG, SWF_BUS_TYPE_CONFIG
+    from pylovo.analysis.parameter_calculation import DSO_BUS_TYPE_CONFIG, PYLOVO_BUS_TYPE_CONFIG
 
     uses_synthetic_naming = calculator.uses_synthetic_bus_naming(net)
     active_bus_type_config = bus_type_config or (
-        PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else SWF_BUS_TYPE_CONFIG
+        PYLOVO_BUS_TYPE_CONFIG if uses_synthetic_naming else DSO_BUS_TYPE_CONFIG
     )
     root_idx = calculator.resolve_root_bus(net, uses_synthetic_naming)
     resolved_consumer_buses = (

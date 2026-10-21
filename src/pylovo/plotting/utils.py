@@ -30,7 +30,6 @@ def pandapower_on_map() -> Iterator[None]:
 # Colours of the data sources in real-vs-synthetic comparison plots
 COLOR_MAP = {
     "Real": "#2c3e50", # Dark Slate Blue/Grey for Real
-    "Real (SWF)": "#2c3e50",
     "Synthetic v1": "#e67e22", # Orange for V1
     "Synthetic v2": "#27ae60", # Green for V2
 }
