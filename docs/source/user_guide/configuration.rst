@@ -116,6 +116,13 @@ of ``config_generation_lv.yaml``, with its ``MV_*`` keys. pylovo warns about it,
 the former file hides ``config_generation_lv.yaml`` or ``config_generation_mv.yaml`` of a folder
 that is searched later.
 
+pylovo also warns, once per file, about a top-level key that nothing reads, for example a
+misspelled ``HOUSE_CONECTION`` or a key of an older release, and suggests the closest key it does
+read. Such a key has no effect: the setting keeps its default, which differs from the shipped value
+for some keys. The warning covers ``config_generation_lv.yaml``, ``config_analysis.yaml``,
+``config_classification.yaml`` and ``config_clustering.yaml``; ``config_generation_mv.yaml`` refuses
+an unknown key with an error.
+
 .. _versions:
 
 Versions and the parameter snapshot

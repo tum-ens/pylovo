@@ -11,7 +11,7 @@ import pytest
 
 from pylovo import config_loader
 from pylovo.config_loader import (_check_cable_ampacities, _check_transformer_mapping, _consumer_categories_from_config,
-                                  _version_id, _warn_about_former_generation_config)
+                                  _ReadKeys, _version_id, _warn_about_former_generation_config, _warn_about_unread_keys)
 
 
 def categories(sim_factor) -> dict:
@@ -139,3 +139,74 @@ def test_current_files_give_no_warning_even_if_a_former_file_follows_in_another_
     first = folder_with(tmp_path, "first", LV, MV)
     second = folder_with(tmp_path, "second", FORMER)
     assert warnings_for(first / LV, [first, second]) == []
+
+
+# --- keys that nothing reads ----------------------------------------------------------------------------------------
+def unread_warnings(config: _ReadKeys, *also_read) -> list[str]:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _warn_about_unread_keys(config, *also_read)
+    return [str(w.message) for w in caught]
+
+
+def test_a_key_that_nothing_read_gives_one_warning_with_the_closest_name():
+    config = _ReadKeys(Path("config/config_generation_lv.yaml"),
+                       {"HOUSE_CONECTION": "cabinet", "OLD_KEY": 1, "VN": 400, "FEEDER": 1, "N_JOBS_PERCENT": 50})
+    config["VN"]                                     # every kind of look-up counts as a read
+    config.get("HOUSE_CONNECTION", "joint")
+    config.get("N_JOBS_PERCENT")
+    "FEEDER" in config
+    messages = unread_warnings(config)
+    assert len(messages) == 1
+    assert "config/config_generation_lv.yaml has keys that pylovo does not read" in messages[0]
+    assert "HOUSE_CONECTION (did you mean HOUSE_CONNECTION?)" in messages[0] and "OLD_KEY," not in messages[0]
+    assert messages[0].endswith("OLD_KEY") and "VN" not in messages[0] and "FEEDER" not in messages[0]
+
+
+def test_keys_that_are_read_some_other_way_are_not_reported():
+    config = _ReadKeys(Path("lv.yaml"), {"MV_STANDARD_CABLE": "a", "VN": 400})
+    config["VN"]
+    assert unread_warnings(config, {"MV_STANDARD_CABLE", "MV_VARIANT_ID"}) == []
+    assert len(unread_warnings(config)) == 1
+
+
+def test_a_file_whose_keys_were_all_read_gives_no_warning():
+    config = _ReadKeys(Path("lv.yaml"), {})
+    assert unread_warnings(config) == []
+    config = _ReadKeys(Path("lv.yaml"), {"A": 1})
+    config["A"]
+    assert unread_warnings(config) == []
+
+
+def config_copy_with(tmp_path, file: str, extra_line: str) -> None:
+    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
+    path = tmp_path / "config" / file
+    path.write_text(path.read_text() + extra_line)
+
+
+def import_config(tmp_path) -> list[str]:
+    """The warnings of ``pylovo.config_loader`` about unread keys when it is imported in ``tmp_path``."""
+    code = ("import warnings\n"
+            "with warnings.catch_warnings(record=True) as caught:\n"
+            "    warnings.simplefilter('always')\n"
+            "    import pylovo.config_loader\n"
+            "print(*[str(w.message) for w in caught if 'does not read' in str(w.message)], sep='\\n')\n")
+    proc = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    return [line for line in proc.stdout.splitlines() if line]
+
+
+def test_the_shipped_configuration_has_no_key_that_nothing_reads(tmp_path):
+    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
+    assert import_config(tmp_path) == []
+
+
+@pytest.mark.parametrize("file, line, key", [
+    ("config_generation_lv.yaml", "HOUSE_CONECTION: cabinet\n", "HOUSE_CONECTION (did you mean HOUSE_CONNECTION?)"),
+    ("config_analysis.yaml", "PLOT_COLORS: {}\n", "PLOT_COLORS"),
+    ("config_classification.yaml", "N_SAMPELS: 5\n", "N_SAMPELS (did you mean N_SAMPLES?)"),
+    ("config_clustering.yaml", "N_CLUSTER_GMM: 3\n", "N_CLUSTER_GMM (did you mean N_CLUSTERS_GMM?)")])
+def test_a_misspelled_key_of_each_file_is_reported_once_and_the_import_goes_on(tmp_path, file, line, key):
+    config_copy_with(tmp_path, file, line)
+    messages = import_config(tmp_path)
+    assert len(messages) == 1 and file in messages[0] and key in messages[0]

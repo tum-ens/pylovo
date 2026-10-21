@@ -9,8 +9,9 @@ Importing this module (which every pylovo module does, directly or through
   ``config_classification.yaml`` and ``config_clustering.yaml``,
 
 and exposes their entries as module-level constants (``VERSION_ID``, ``VN``,
-``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process. The ``MV_*``
-keys of the MV stage are checked with the rules of :mod:`pylovo.mv_grid.options`.
+``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process. A top-level key that
+nothing reads (a typo) is reported once per file with a warning. The ``MV_*`` keys of the MV stage are checked
+with the rules of :mod:`pylovo.mv_grid.options`.
 
 ``.env`` lookup:
     ``load_dotenv(find_dotenv(), override=True)``. ``find_dotenv`` walks up from the
@@ -30,6 +31,7 @@ of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``) are 
 against it as well.
 """
 
+import difflib
 import os
 import re
 import warnings
@@ -136,10 +138,56 @@ def _warn_about_former_generation_config(config_file: Path, search_paths: list[P
         warnings.warn(f"{config_file.parent / former} is not read: {config_file.name} in the same folder replaces it", stacklevel=2)
 
 
+class _ReadKeys(dict):
+    """The content of a YAML file that remembers which of its top-level keys were looked up (``[]``, ``get``, ``in``)."""
+
+    def __init__(self, path: Path, content: dict):
+        super().__init__(content)
+        self.path = path
+        self.read: set = set()
+
+    def __getitem__(self, key):
+        self.read.add(key)
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        self.read.add(key)
+        return super().get(key, default)
+
+    def __contains__(self, key):
+        self.read.add(key)
+        return super().__contains__(key)
+
+
 def read_yaml(path: Path) -> dict:
-    """Read one YAML configuration file (an empty file gives an empty dictionary)."""
+    """Read one YAML configuration file (an empty file gives an empty dictionary).
+
+    The dictionary remembers which top-level keys are looked up, see :func:`_warn_about_unread_keys`.
+    """
     with open(path, "r", encoding="utf-8") as file:
-        return yaml.safe_load(file) or {}
+        return _ReadKeys(path, yaml.safe_load(file) or {})
+
+
+def _warn_about_unread_keys(config: _ReadKeys, also_read=()) -> None:
+    """Warn once about the top-level keys of ``config`` that nothing read: a misspelled key has no effect.
+
+    Call it after the last look-up. A close name among the keys that were looked up is suggested.
+
+    Args:
+        config: A file read by :func:`read_yaml`.
+        also_read: Keys that are read some other way than by looking them up in ``config`` (the ``MV_*`` keys).
+    """
+    unread = sorted(set(config) - config.read - set(also_read), key=str)
+    if not unread:
+        return
+    known = sorted(config.read | set(also_read), key=str)
+
+    def named(key) -> str:
+        close = difflib.get_close_matches(str(key), [str(name) for name in known], n=1)
+        return f"{key} (did you mean {close[0]}?)" if close else str(key)
+
+    warnings.warn(f"{config.path} has keys that pylovo does not read, so they have no effect: "
+                  f"{', '.join(named(key) for key in unread)}", stacklevel=2)
 
 
 def load_yaml_config(filename: str):
@@ -607,6 +655,16 @@ TUMPalette1 = CONFIG_ANALYSIS["PALETTES"]["TUMPalette1"]
 NODE_COLOR_TRAFO = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_TRAFO"]
 NODE_COLOR_CONSUMER = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_CONSUMER"]
 NODE_COLOR_CONNECTION_BUS = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_CONNECTION_BUS"]
+
+# =============================================================================
+# KEYS THAT NO CODE READ
+# =============================================================================
+# Typo protection: a misspelled key would silently keep the value of its default. The MV file needs no check,
+# _mv_config refuses its unknown keys; the MV_* keys of the LV file are read from there.
+_warn_about_unread_keys(CONFIG_GENERATION, set(_mv_options.YAML_KEYS) | set(_mv_options.REMOVED_YAML_KEYS))
+_warn_about_unread_keys(CONFIG_ANALYSIS)
+_warn_about_unread_keys(CONFIG_CLASSIFICATION)
+_warn_about_unread_keys(CONFIG_CLUSTERING)
 
 # Setup seaborn palette (optional "plots" extra)
 try:
