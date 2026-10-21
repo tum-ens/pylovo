@@ -548,9 +548,6 @@ def test_run_coupled_cases_reports_the_load_case(small):
     assert (result["op_mv_vm_pu"] <= inp.params.busbar_vm_pu - inp.params.busbar_band_pu + 1e-9).all()
     assert list(result.attrs["converged"]) == ["load"] and result.attrs["slack_p_mw"]["load"] > 0
     assert result.attrs["mv_vm_pu"].index.isin(stored.bus.index).all()
-    for cases in (("n1a",), ("feed_in_pv",)):
-        with pytest.raises(ValueError, match="operating-point cases"):
-            coupling.run_coupled_cases(net, inp.params, cases=cases)
 
 
 def test_couple_district_verifies_the_budget(small):
@@ -881,5 +878,4 @@ def test_a_variant_planned_with_generation_is_not_coupled(fake_db, tmp_path):
 
 def test_operating_busbar_voltage_uses_the_lower_band_edge():
     params = MvParameters()
-    assert coupling.operating_busbar_vm("load", params) == pytest.approx(1.005)
-    assert coupling.operating_busbar_vm("n1b", params) == pytest.approx(1.005)
+    assert coupling.operating_busbar_vm(params) == pytest.approx(1.005)

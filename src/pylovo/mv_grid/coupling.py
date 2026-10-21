@@ -72,8 +72,6 @@ _BUS_REFS: dict[str, tuple[str, ...]] = {"line": ("from_bus", "to_bus"), "trafo"
                                          "load": ("bus",)}
 #: Bus kinds of the MV part of a net (``bus.kind`` of the electrical module); coupled LV buses get ``lv``.
 MV_BUS_KINDS: tuple[str, ...] = ("busbar", "station", "customer", "generator", "joint")
-#: Cases of the merged operating point: the load case at the lower band edge.
-OPERATING_CASES: tuple[str, ...] = ("load",)
 #: ``mv_node`` columns written by the coupling (``MvResultMixin.save_coupled_results``).
 COUPLED_COLUMNS: tuple[str, ...] = ("coupled_lv_busbar_vm_pu", "coupled_lv_min_vm_pu", "coupled_op_lv_busbar_vm_pu")
 #: Columns of the station table of :func:`couple_district` (one row per station node of a district).
@@ -130,9 +128,9 @@ def _min_line_length(lines: pd.DataFrame) -> pd.DataFrame:
     return lines
 
 
-def operating_busbar_vm(case: str, params: MvParameters) -> float:
-    """Busbar voltage of the coupled cases: the lower edge of the OLTC band (``busbar_vm_pu - busbar_band_pu``,
-    DESIGN §5.6, §5.7); the same for every case."""
+def operating_busbar_vm(params: MvParameters) -> float:
+    """Busbar voltage of the coupled nets: the lower edge of the OLTC band (``busbar_vm_pu - busbar_band_pu``,
+    DESIGN §5.6, §5.7)."""
     return float(params.busbar_vm_pu) - float(params.busbar_band_pu)
 
 
@@ -659,24 +657,16 @@ def build_coupled_net(mv_net: pp.pandapowerNet, frames: Mapping[int, tuple[int, 
 
 
 # ---------------------------------------------------------------------------------------------- operating point
-def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters,
-                      cases: Sequence[str] | None = None) -> pd.DataFrame:
+def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters) -> pd.DataFrame:
     """The merged operating point (DESIGN §5.7 step 4): the load case on a copy of the coupled net
     (``electrical.case_net``) with the busbar at its band edge (:func:`operating_busbar_vm`).
 
     Returns:
         One row per coupled ``grid_result_id`` with :data:`OPERATING_COLUMNS`: ``op_mv_vm_pu`` (the station's MV
         node), ``op_lv_busbar_vm_pu`` (``LVbus 1``) and ``op_lv_min_vm_pu`` (lowest LV bus); NaN where the case did
-        not converge. ``attrs``: ``converged`` and ``slack_p_mw`` per case, and ``mv_vm_pu`` (load case voltages of
-        the MV buses, by bus index).
-
-    Raises:
-        ValueError: A case is not one of :data:`OPERATING_CASES`.
+        not converge. ``attrs``: ``converged`` and ``slack_p_mw`` of the case (``{"load": ...}``), and ``mv_vm_pu``
+        (load case voltages of the MV buses, by bus index).
     """
-    cases = OPERATING_CASES if cases is None else cases
-    unknown = [case for case in cases if case not in OPERATING_CASES]
-    if unknown:
-        raise ValueError(f"operating-point cases must be among {', '.join(OPERATING_CASES)}, got {unknown}")
     trafo = net.trafo
     gid = pd.to_numeric(trafo["grid_result_id"], errors="coerce") if "grid_result_id" in trafo.columns else \
         pd.Series(np.nan, index=trafo.index)
@@ -688,17 +678,12 @@ def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters,
     bus_gid = pd.to_numeric(net.bus["grid_result_id"], errors="coerce") if "grid_result_id" in net.bus.columns else \
         pd.Series(np.nan, index=net.bus.index)
     lv_rows = bus_gid.notna()
-    converged: dict[str, bool] = {}
-    slack: dict[str, float | None] = {}
+    slack: float | None = None
     mv_vm = pd.Series(dtype=float)
-    for case in cases:
-        current = electrical.case_net(net, case, params, busbar_vm_pu=operating_busbar_vm(case, params))
-        ok = _runpp(current)
-        converged[case] = ok
-        if not ok:
-            slack[case] = None
-            continue
-        slack[case] = _finite(current.res_ext_grid["p_mw"].sum())
+    current = electrical.case_net(net, "load", params, busbar_vm_pu=operating_busbar_vm(params))
+    converged = _runpp(current)
+    if converged:
+        slack = _finite(current.res_ext_grid["p_mw"].sum())
         vm = current.res_bus["vm_pu"]
         busbar_vm = pd.Series(vm.reindex(stations["lv_bus"].to_numpy()).to_numpy(), index=stations.index)
         lv_vm = vm[lv_rows]
@@ -707,8 +692,8 @@ def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters,
         result["op_lv_busbar_vm_pu"] = busbar_vm
         result["op_lv_min_vm_pu"] = grouped.min().reindex(result.index)
         mv_vm = vm[~lv_rows].copy()
-    result.attrs["converged"] = converged
-    result.attrs["slack_p_mw"] = slack
+    result.attrs["converged"] = {"load": converged}
+    result.attrs["slack_p_mw"] = {"load": slack}
     result.attrs["mv_vm_pu"] = mv_vm
     return result
 
@@ -874,8 +859,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         frames = {}                                       # the merged net holds the LV rows now
         op = run_coupled_cases(net, params)
         reference = mv_part(stored_net)
-        reference = electrical.case_net(reference, "load", params,
-                                        busbar_vm_pu=operating_busbar_vm("load", params))
+        reference = electrical.case_net(reference, "load", params, busbar_vm_pu=operating_busbar_vm(params))
         ref_ok = _runpp(reference)
         op_by_node = op.rename(index={g: node_of_grid[int(g)] for g in op.index if int(g) in node_of_grid})
         rows["coupled_op_lv_busbar_vm_pu"] = op_by_node["op_lv_busbar_vm_pu"].reindex(rows.index)
@@ -1245,7 +1229,7 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
     taps = {int(g): int(_number(table.at[k, "mv_lv_tap_pos"], 0.0)) for g, k in node_of_grid.items()}
     net = build_coupled_net(stored, frames, taps, lv, vn_kv, include_open=case in electrical.N1_CASES,
                             busbar_loads=busbar_customer_loads(table))
-    net = electrical.case_net(net, case, params, busbar_vm_pu=operating_busbar_vm(case, params))
+    net = electrical.case_net(net, case, params, busbar_vm_pu=operating_busbar_vm(params))
     if not _runpp(net):
         logger.warning(f"Case {case} of the coupled MV grid {mv_grid_id} did not converge: written without results")
     output.parent.mkdir(parents=True, exist_ok=True)
