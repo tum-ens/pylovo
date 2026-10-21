@@ -123,6 +123,8 @@ packages = ["src/pylovo", "api/pylovo_api"]
 [tool.hatch.build]
 include = [
     "src/pylovo/**/*.py",
+    # SQL functions that pylovo-setup loads (ways_preprocessing_functions)
+    "src/pylovo/**/*.sql",
     # HTTP API package (pylovo-api)
     "api/pylovo_api/**/*.py",
 ]
