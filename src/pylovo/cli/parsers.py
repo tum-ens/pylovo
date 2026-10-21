@@ -172,6 +172,14 @@ Examples:
     )
     return parser
 
+class _VersionOptionRemoved(argparse.Action):
+    """``pylovo-delete --version``, removed: deleting versions is the subcommand ``version``."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.error("--version is no option of pylovo-delete itself, delete versions with the subcommand: "
+                     "pylovo-delete version --version 1 2 3")
+
+
 def delete_parser() -> argparse.ArgumentParser:
     """The ``pylovo-delete`` argument parser."""
     parser = argparse.ArgumentParser(
@@ -181,10 +189,10 @@ def delete_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   # Delete all networks for one version across all PLZ
-  pylovo-delete --version 1
+  pylovo-delete version --version 1
 
   # Delete all networks for multiple versions across all PLZ
-  pylovo-delete --version 1 2 3
+  pylovo-delete version --version 1 2 3
 
   # Delete networks for a specific PLZ and version
   pylovo-delete networks --plz 80803 --version 1
@@ -198,13 +206,7 @@ Examples:
 For more information, see: https://github.com/tum-ens/pylovo
         """
     )
-    parser.add_argument(
-        "--version",
-        dest="versions",
-        nargs="+",
-        metavar="VERSION_ID",
-        help="Version ID(s) to delete across all PLZ (e.g., 1 2 3)",
-    )
+    parser.add_argument("--version", nargs="*", action=_VersionOptionRemoved, help=argparse.SUPPRESS)
 
     subparsers = parser.add_subparsers(dest="command", help="Delete operation to perform", required=False)
 

@@ -78,7 +78,7 @@ def test_job_routes_refuse_arguments_a_command_cannot_receive(client, monkeypatc
         assert client.post(f"/api/jobs/{path}", content=raw, headers=json_header).status_code == 422, (path, raw)
     assert started == []
     ok = client.post("/api/jobs/delete-versions", json={"version_ids": [" 1 ", "2"], "confirm": "1 2"})
-    assert ok.status_code == 202 and started[-1][-3:] == ["--version", "1", "2"]
+    assert ok.status_code == 202 and started[-1][-4:] == ["version", "--version", "1", "2"]
 
 
 def test_a_blank_dso_source_means_no_source():

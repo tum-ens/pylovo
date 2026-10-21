@@ -58,8 +58,7 @@ def run(monkeypatch, *args):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["--version", "1"], ("versions", ["1"])),
-    (["--version", "1", "2", "3"], ("versions", ["1", "2", "3"])),
+    (["version", "--version", "1"], ("versions", ["1"])),
     (["version", "--version", "4", "5"], ("versions", ["4", "5"])),
     (["networks", "--plz", "80803", "--version", "1"], ("networks", 80803, "1")),
     (["transformers"], ("transformers",)),
@@ -75,6 +74,14 @@ def test_incomplete_commands_are_refused_before_any_database_access(monkeypatch,
     with pytest.raises(SystemExit) as refused:
         run(monkeypatch, *args)
     assert refused.value.code == 2 and calls == []
+
+
+@pytest.mark.parametrize("args", [["--version", "1"], ["--version", "1", "2", "3"], ["--version"], ["--version", "1", "transformers"]])
+def test_the_former_version_option_names_the_subcommand_and_deletes_nothing(monkeypatch, calls, capsys, args):
+    with pytest.raises(SystemExit) as refused:
+        run(monkeypatch, *args)
+    assert refused.value.code == 2 and calls == []
+    assert "pylovo-delete version --version" in capsys.readouterr().err
 
 
 def test_without_arguments_the_help_is_shown_and_nothing_is_deleted(monkeypatch, calls, capsys):

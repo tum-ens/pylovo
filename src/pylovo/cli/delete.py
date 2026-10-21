@@ -42,20 +42,14 @@ def delete_classification_version(classification_id: int):
 def main():
     """Entry point of ``pylovo-delete``."""
     parser = parsers.delete_parser()
-
     args = parser.parse_args()
 
-    if args.versions and args.command:
-        parser.error("--version cannot be combined with a delete subcommand")
-
-    if not args.command and not args.versions:
+    if not args.command:
         parser.print_help()
         return
 
     try:
-        if args.versions:
-            delete_versions(args.versions)
-        elif args.command == "networks":
+        if args.command == "networks":
             delete_networks(args.plz, args.version)
         elif args.command == "version":
             delete_versions(args.version_ids)

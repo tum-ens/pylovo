@@ -199,11 +199,11 @@ def reset(body: ResetBody, request: Request) -> dict:
 
 @router.post("/delete-versions", status_code=202)
 def delete_versions(body: DeleteVersionsBody, request: Request) -> dict:
-    """``pylovo-delete --version <ids>``: removes all results of these versions."""
+    """``pylovo-delete version --version <ids>``: removes all results of these versions."""
     ids = body.version_ids
     require_confirm(body.confirm, " ".join(ids), "delete these versions")
     return _start(request, "delete", f"Delete version {' '.join(ids)}",
-                  pylovo_command("pylovo-delete", "--version", *ids), params={"version_ids": ids})
+                  pylovo_command("pylovo-delete", "version", "--version", *ids), params={"version_ids": ids})
 
 
 @router.post("/delete-networks", status_code=202)

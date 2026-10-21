@@ -233,18 +233,16 @@ pylovo-delete
 
 .. code-block:: text
 
-   pylovo-delete [-h] [--version VERSION_ID [VERSION_ID ...]] {networks,version,transformers,classification} ...
+   pylovo-delete [-h] {networks,version,transformers,classification} ...
 
 Deletes data from the database. Without arguments the help is shown. Deleting versions or
 postcodes cascades to all dependent result tables and refreshes the materialised views.
 
-``pylovo-delete --version VERSION_ID [VERSION_ID ...]``
-   Delete one or more versions with all their grids in all postcodes, their equipment data and
-   parameter snapshots. Unknown versions are reported and nothing is deleted. Cannot be combined
-   with a subcommand.
-
 ``pylovo-delete version --version VERSION_ID [VERSION_ID ...]``
-   The same as a subcommand.
+   Delete one or more versions with all their grids in all postcodes, their equipment data and
+   parameter snapshots. Unknown versions are reported and nothing is deleted. The option
+   ``pylovo-delete --version`` of earlier releases is gone and names this subcommand in its error
+   message.
 
 ``pylovo-delete networks --plz PLZ --version VERSION``
    Delete the grids of one postcode in one version (the version itself is kept). The MV variants
@@ -263,7 +261,7 @@ postcodes cascades to all dependent result tables and refreshes the materialised
 
 .. code-block:: bash
 
-   pylovo-delete --version docs_bf docs_km
+   pylovo-delete version --version docs_bf docs_km
    pylovo-delete networks --plz 85653 --version 1
    pylovo-delete classification --version 1
 

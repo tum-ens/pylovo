@@ -313,7 +313,7 @@ load edits, so it marks a variant that was built on the edited loads as stale. R
 
 ``pylovo-mv delete`` deletes variants with all their results. ``pylovo-delete networks --plz PLZ
 --version VERSION`` also deletes the MV variants of that version that contain the postcode, because
-an MV grid spans several postcodes. ``pylovo-delete --version VERSION`` deletes everything of the
+an MV grid spans several postcodes. ``pylovo-delete version --version VERSION`` deletes everything of the
 version, the MV variants included. The routing graphs are kept, because other variants may use
 them.
 
