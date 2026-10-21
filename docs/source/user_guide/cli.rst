@@ -6,11 +6,11 @@ repository root, either with ``uv run <command>`` or in the activated environmen
 read ``.env`` and ``config/*.yaml`` at start (:doc:`configuration`).
 
 Exit codes: 0 on success, 1 when the command stops with an error (also an aborted reset, an MV
-stage that does not end ``done``, and ``pylovo-analyze`` or ``pylovo-export`` for postcodes
-without grids), 2 for wrong arguments, and 3 for ``pylovo-analyze --coverage`` when source
-buildings are missing. A postcode that fails inside ``pylovo-generate`` is logged and skipped,
-and the command still exits with 0: look for ``Skipped PLZ <plz> due to generation error.`` in
-the log (:doc:`troubleshooting`).
+stage that does not end ``done``, ``pylovo-analyze`` for a postcode without grids and
+``pylovo-export`` when no postcode has grids), 2 for wrong arguments, and 3 for
+``pylovo-analyze --coverage`` when source buildings are missing. A postcode that fails inside
+``pylovo-generate`` is logged and skipped, and the command still exits with 0: look for
+``Skipped PLZ <plz> due to generation error.`` in the log (:doc:`troubleshooting`).
 
 .. list-table::
    :header-rows: 1
