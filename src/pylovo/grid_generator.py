@@ -37,7 +37,6 @@ from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
     CONFIG_EQUIPMENT_DATA,
-    CONFIG_GENERATION,
     CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
     CONNECTION_POINT_AGGREGATION_RADIUS_M,
     CONSUMER_CATEGORIES,
@@ -278,21 +277,7 @@ class GridGenerator:
                     )
                     for future in futures:
                         future.cancel()
-
-                    # Report workers that still finish within the optional grace period.
-                    shutdown_timeout = CONFIG_GENERATION.get("GRACEFUL_SHUTDOWN_TIMEOUT", 5)
-                    try:
-                        for future in as_completed(futures, timeout=shutdown_timeout):
-                            if not future.cancelled():
-                                plz = futures[future]
-                                try:
-                                    future.result()
-                                    self.logger.info(f"Gracefully completed PLZ {plz}")
-                                except Exception as exc:
-                                    self.logger.warning(f"PLZ {plz} failed during graceful shutdown: {exc}")
-                    except TimeoutError:
-                        pass
-
+                    # Leaving the with block waits for the running workers.
                     raise KeyboardInterrupt("Grid generation interrupted by user") from None
 
                 except Exception as e:

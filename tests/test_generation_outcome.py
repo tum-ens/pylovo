@@ -131,3 +131,42 @@ def test_sequential_run_names_failed_plz_too(monkeypatch, caplog):
     with caplog.at_level(logging.INFO, logger="outcome-test"):
         gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": list(results)}), parallel=False)
     assert "Grid generation finished with 1 failed PLZ: 80333" in [r.getMessage() for r in caplog.records]
+
+
+def test_an_interrupt_cancels_the_pending_plz_and_does_not_wait_for_a_grace_period(monkeypatch):
+    class FakeFuture:
+        cancelled = False
+
+        def cancel(self):
+            self.cancelled = True
+
+    class FakeExecutor:
+        futures = []
+
+        def __init__(self, max_workers):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def submit(self, function, *args):
+            FakeExecutor.futures.append(FakeFuture())
+            return FakeExecutor.futures[-1]
+
+    waits = []
+
+    def interrupted(futures, timeout=None):
+        waits.append(timeout)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(grid_generator, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(grid_generator, "as_completed", interrupted)
+    monkeypatch.setattr(grid_generator, "N_JOBS", 2)
+    gg = generator(FakeDb(), lambda: None)
+    with pytest.raises(KeyboardInterrupt, match="Grid generation interrupted by user"):
+        gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": [80331, 80333]}), parallel=True)
+    assert [future.cancelled for future in FakeExecutor.futures] == [True, True]
+    assert waits == [None]          # the interrupted loop only; the with block waits for the running workers
