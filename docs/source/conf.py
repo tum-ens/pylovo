@@ -108,6 +108,8 @@ latex_elements = {
 \DeclareUnicodeCharacter{03A9}{\ensuremath{\Omega}}
 \DeclareUnicodeCharacter{207B}{\ensuremath{^{-}}}
 \DeclareUnicodeCharacter{2713}{\ensuremath{\checkmark}}
+\DeclareUnicodeCharacter{2717}{\ensuremath{\times}}
+\DeclareUnicodeCharacter{03A3}{\ensuremath{\Sigma}}
 """,
 }
 
