@@ -1,4 +1,4 @@
-"""Transformer editor (replaces the old Flask ``pylovo-import transformers-ui``).
+"""Transformer editor (the HTTP counterpart of the Flask map ``pylovo-import transformers-ui``).
 
 Reads come from :mod:`pylovo_api.queries` (GeoJSON with source classification); every edit
 goes through the ``*_trafo_ui`` methods of ``DatabaseClient`` so the UI and the library share

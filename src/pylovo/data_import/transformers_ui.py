@@ -1,11 +1,8 @@
-"""Browser UI for editing transformer positions (``pylovo-import transformers-ui``).
-
-**Deprecated**: the GridPlanner UI (backed by ``pylovo-api``, ``uv sync --extra api``) covers all of
-its features in its transformer editor. This Flask map is kept for now; it needs the optional
-extra ``legacy-ui`` (``uv sync --extra legacy-ui``) and will be removed in a later release.
+"""Browser map for checking and editing transformer positions (``pylovo-import transformers-ui``).
 
 A small Flask app with a Leaflet map: select a PLZ, add or delete transformer positions and set
-their rated power one by one or in bulk. All database access goes through the ``*_trafo_ui``
+their rated power one by one or in bulk. It needs the optional extra ``legacy-ui``
+(``uv sync --extra legacy-ui``) and internet access for the map tiles and Leaflet. All database access goes through the ``*_trafo_ui``
 methods of :class:`~pylovo.database.database_client.DatabaseClient`; every request opens and
 closes its own connection.
 
@@ -27,18 +24,12 @@ import socket
 import subprocess
 import sys
 import time
-import warnings
 from contextlib import contextmanager
 
-try:  # optional since the deprecation: pylovo-import works without Flask
+try:  # optional (extra legacy-ui): pylovo-import works without Flask
     from flask import Flask, Response, jsonify, request
 except ImportError:  # pragma: no cover - depends on the installed extras
     Flask = Response = jsonify = request = None
-
-DEPRECATION_MESSAGE = (
-    "pylovo-import transformers-ui is deprecated and will be removed in a later release: "
-    "use the transformer editor of the GridPlanner UI (backed by pylovo-api: uv sync --extra api)."
-)
 
 from pylovo.cli.parsers import DEFAULT_HOST, DEFAULT_PORT, add_ui_arguments
 from pylovo.config_loader import DBNAME, DBUSER, HOST, PASSWORD, PORT
@@ -1852,11 +1843,8 @@ def run_transformers_ui(
     """
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
-    logging.getLogger(__name__).warning(DEPRECATION_MESSAGE)
     if Flask is None:
-        print("❌ The deprecated transformer map needs Flask: uv sync --extra legacy-ui "
-              "(or use the GridPlanner UI with pylovo-api: uv sync --extra api).")
+        print("❌ The transformer map needs Flask: uv sync --extra legacy-ui")
         sys.exit(1)
     if cleanup:
         cleanup_lingering_connections()
@@ -1883,7 +1871,7 @@ def run_transformers_ui(
 
 def main(argv=None):
     """Entry point for ``python -m pylovo.data_import.transformers_ui``."""
-    parser = argparse.ArgumentParser(description='Transformer Map UI (deprecated: use the GridPlanner UI)')
+    parser = argparse.ArgumentParser(description='Browser map for checking and editing transformer positions (needs the extra legacy-ui)')
     # Accept the accidental passthrough form
     # `python -m pylovo.data_import.transformers_ui transformers-ui`.
     parser.add_argument('compat_command', nargs='?', choices=['transformers-ui'], help=argparse.SUPPRESS)

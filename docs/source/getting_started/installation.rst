@@ -78,12 +78,12 @@ Optional dependency groups (extras):
        :doc:`../user_guide/browser_ui`
    * - ``legacy-ui``
      - Flask
-     - The deprecated ``pylovo-import transformers-ui``
+     - The browser map ``pylovo-import transformers-ui`` for checking and editing transformer positions
 
 .. code-block:: bash
 
    uv sync --extra plots            # one extra
-   uv sync --all-extras             # everything, including the deprecated legacy-ui
+   uv sync --all-extras             # everything
 
 .. note::
 

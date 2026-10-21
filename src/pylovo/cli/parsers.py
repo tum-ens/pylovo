@@ -323,7 +323,7 @@ Examples:
   # Import DSO transformer positions from CSV
   pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
 
-  # Deprecated: the old transformer map (use the GridPlanner UI; needs uv sync --extra legacy-ui)
+  # Check and edit transformer positions on a browser map (needs uv sync --extra legacy-ui)
   pylovo-import transformers-ui
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -363,7 +363,7 @@ Examples:
 
     ui_parser = subparsers.add_parser(
         "transformers-ui",
-        help="Deprecated: the old transformer map (use the GridPlanner UI; needs the extra legacy-ui)"
+        help="Browser map for checking and editing transformer positions (needs the extra legacy-ui)"
     )
     add_ui_arguments(ui_parser)
     return parser

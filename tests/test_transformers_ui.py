@@ -74,3 +74,28 @@ def test_the_server_serves_the_page_and_the_positions_of_a_postcode_with_a_leadi
     answer = client.get("/api/transformer-positions/01067").get_json()
     assert client.asked == [1067] and answer["success"] is True
     assert answer["positions"][0]["osm_id"] == 'manual/1"><img src=x>'     # the page escapes it when it draws it
+
+
+def test_the_map_is_described_neutrally_and_raises_no_deprecation_warning(monkeypatch, capsys):
+    import sys
+    import warnings
+
+    from pylovo.cli import import_data
+    from pylovo.data_import import transformers_ui
+
+    monkeypatch.setattr(transformers_ui, "Flask", None)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")                  # a DeprecationWarning would raise here
+        with pytest.raises(SystemExit):
+            transformers_ui.run_transformers_ui()
+    assert "needs Flask: uv sync --extra legacy-ui" in capsys.readouterr().out
+
+    shown = [transformers_ui.__doc__, import_data.__doc__]
+    for args in (["--help"], ["transformers-ui", "--help"]):
+        monkeypatch.setattr(sys, "argv", ["pylovo-import", *args])
+        with pytest.raises(SystemExit):
+            import_data.main()
+        shown.append(capsys.readouterr().out)
+    for text in shown:
+        assert "deprecated" not in text.lower() and "GridPlanner" not in text
+    assert "browser map" in shown[2].lower()            # the line of transformers-ui in pylovo-import --help

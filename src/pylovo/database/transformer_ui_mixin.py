@@ -1,4 +1,4 @@
-"""Queries of the transformer editors: ``pylovo-api`` and the deprecated Flask map (``pylovo.data_import.transformers_ui``).
+"""Queries of the transformer editors: ``pylovo-api`` and the Flask map (``pylovo.data_import.transformers_ui``).
 
 The UI edits the raw transformer candidates in ``pylovo.transformers``: it adds manual stations,
 deletes stations and sets rated powers. Grid generation reads these rows when existing

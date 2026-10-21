@@ -29,7 +29,7 @@ Sources of transformer candidates
      - ``pylovo-import transformers-dso-csv <file.csv>``.
    * - Manual edits
      - ``manual/<unix-time>``
-     - Transformer editor of the GridPlanner UI (:doc:`browser_ui`).
+     - Browser map ``pylovo-import transformers-ui`` (:ref:`transformer-map`).
 
 Which candidates are used
 -------------------------
@@ -199,19 +199,32 @@ the table from an earlier import is updated. Then enable the positions:
 
 and generate the grids in a new ``VERSION_ID``.
 
+.. _transformer-map:
+
 Manual editing
 --------------
 
-Transformer candidates can be viewed and edited on a map:
+``pylovo-import transformers-ui`` starts a browser map on which the candidates of
+``pylovo.transformers`` can be checked and edited. It needs the extra ``legacy-ui`` (Flask), the
+database of the ``.env`` and internet access for the map tiles and for Leaflet:
 
-The GridPlanner browser UI (:doc:`browser_ui`, step 3 *Data*) contains a transformer editor on
-top of the :doc:`http_api` (``/api/transformers``). It works on ``pylovo.transformers``: load a
-PLZ, add transformers by clicking on the map (ids ``manual/<unix-time>``), delete transformers,
-set the rating of one transformer or of all transformers in the postcode (uniformly or by a
-percentage distribution of ratings), or clear the ratings. Manual positions are used with
-``USE_OPEN_TRANSFORMER_POSITIONS`` (together with all OSM and LoD2 candidates) or alone with
-``USE_MANUAL_TRANSFORMER_POSITIONS``. A rating set on a candidate sizes the station of the grid
-built around it; ratings of candidates whose source is switched off are ignored.
+.. code-block:: bash
+
+   uv sync --extra legacy-ui
+   uv run pylovo-import transformers-ui        # then open http://127.0.0.1:8080
+
+Enter a PLZ to load the transformers inside it (at most 1000, imported ones blue, manual ones red).
+With *Start Adding Transformers* a click on the map adds a transformer (id ``manual/<unix-time>``,
+with the rating that is selected beforehand). A click on a marker opens its pop-up to set the rating of
+this transformer or to delete it. The bulk tools set the rating of all transformers of the PLZ: one rating
+for all, a percentage distribution of the ratings of ``TRANSFORMERS`` in ``config_generation_lv.yaml``
+(assigned at random: applying it again gives another assignment), or no rating. Every change is
+written to the database at once and cannot be undone. The map has no login and listens on this
+computer only (``--host``, see :doc:`cli`).
+
+Manual positions are used with ``USE_OPEN_TRANSFORMER_POSITIONS`` (together with all OSM and LoD2
+candidates) or alone with ``USE_MANUAL_TRANSFORMER_POSITIONS``. A rating set on a candidate sizes the
+station of the grid built around it; ratings of candidates whose source is switched off are ignored.
 
 Removing candidates
 -------------------

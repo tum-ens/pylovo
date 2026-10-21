@@ -3,7 +3,7 @@
 Subcommands:
     transformers-osm: fetch transformers of an OSM relation from the Overpass API and add them.
     transformers-dso-csv: add DSO transformer positions from a CSV file.
-    transformers-ui: deprecated Flask map for editing transformer positions (use the GridPlanner UI).
+    transformers-ui: browser map for checking and editing transformer positions (needs the extra legacy-ui).
 """
 import sys
 import time

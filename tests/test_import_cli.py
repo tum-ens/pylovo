@@ -47,7 +47,7 @@ def test_dso_positions_are_imported_from_the_csv_with_source_and_replace_flag(mo
     assert "Imported 3 DSO transformer positions" in capsys.readouterr().out
 
 
-def test_the_legacy_transformer_ui_gets_its_options_and_binds_to_the_local_host_by_default(monkeypatch, calls):
+def test_the_transformer_map_gets_its_options_and_binds_to_the_local_host_by_default(monkeypatch, calls):
     run(monkeypatch, "transformers-ui")
     (_, defaults), = calls
     assert defaults["host"] == DEFAULT_HOST and DEFAULT_HOST in ("127.0.0.1", "localhost", "::1")

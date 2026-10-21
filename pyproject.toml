@@ -86,7 +86,7 @@ docs = [
     "sphinx-design>=0.6.1",
 ]
 legacy-ui = [
-    # Deprecated Flask transformer map (pylovo-import transformers-ui); use the GridPlanner UI instead
+    # Flask browser map for checking and editing transformer positions (pylovo-import transformers-ui)
     "flask>=3.1.2,<4.0.0",
 ]
 api = [

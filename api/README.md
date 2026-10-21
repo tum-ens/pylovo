@@ -183,5 +183,3 @@ tests (static JS checks, Playwright walk-throughs) live in GridPlanner.
   run outside the API can re-insert pre-edit analysis values. Audit rows are deleted together
   with their version or PLZ.
 * One server process = one project root and one database.
-* The old Flask transformer editor (`pylovo-import transformers-ui`) is deprecated and needs the
-  extra `legacy-ui`; the GridPlanner UI covers all its features.
