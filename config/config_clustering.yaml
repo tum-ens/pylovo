@@ -2,7 +2,6 @@ LIST_OF_CLUSTERING_PARAMETERS:
 - no_house_connections
 - vsw_per_branch
 - avg_trafo_dis
-N_CLUSTERS_KMEDOID: 5
 N_CLUSTERS_KMEANS: 4
 N_CLUSTERS_GMM: 4
 THRESHOLD_MAX_TRAFO_DIS: 2.5

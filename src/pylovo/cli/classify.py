@@ -82,7 +82,7 @@ def get_custom_clustering_parameters():
 
 
 def get_custom_cluster_numbers():
-    """Gets custom cluster numbers for KMedoids, KMeans, and GMM from user input while ensuring valid ranges."""
+    """Gets custom cluster numbers for KMeans and GMM from user input while ensuring valid ranges."""
 
     # Load allowed cluster values from config_classification.yaml
     config_classification = load_yaml(CONFIG_CLASSIFICATION_PATH)
@@ -97,15 +97,15 @@ def get_custom_cluster_numbers():
     min_val, max_val = min(allowed_values), max(allowed_values)
 
     while True:
-        user_input = input(f"\nPlease enter desired number of clusters for KMedoid, KMeans, and GMM "
+        user_input = input(f"\nPlease enter desired number of clusters for KMeans and GMM "
                            f"(comma-separated, allowed: {allowed_values}). "
-                           f"For example: 4,5,4\n> ").strip()
+                           f"For example: 4,5\n> ").strip()
         try:
             values = [int(num.strip()) for num in user_input.split(",") if num.strip()]
 
-            # Check if exactly 3 values are provided
-            if len(values) != 3:
-                print("Invalid input. Please enter exactly 3 integer values separated by commas.")
+            # Check if exactly 2 values are provided
+            if len(values) != 2:
+                print("Invalid input. Please enter exactly 2 integer values separated by commas.")
                 continue
 
             # Check if all values are within the allowed range
@@ -160,7 +160,6 @@ def update_number_of_clusters(list_of_clustering_parameters: list | None = None)
     # Define the direct mapping from algorithm names to YAML keys
     cluster_counts = {
         "N_CLUSTERS_KMEANS": get_no_clusters_from_df(["kmeans", "KMeans"], "N_CLUSTERS_KMEANS"),
-        "N_CLUSTERS_KMEDOID": get_no_clusters_from_df(["KMedoids", "kmedoids", "kmedoid"], "N_CLUSTERS_KMEDOID"),
         "N_CLUSTERS_GMM": get_no_clusters_from_df(["GMM tied", "gmm_tied", "gmm tied"], "N_CLUSTERS_GMM"),
     }
 
@@ -205,7 +204,7 @@ def main():
         # Update YAML file manually
         config = load_yaml(CONFIG_CLUSTERING_PATH)
         config["LIST_OF_CLUSTERING_PARAMETERS"] = clustering_parameters
-        config["N_CLUSTERS_KMEDOID"], config["N_CLUSTERS_KMEANS"], config["N_CLUSTERS_GMM"] = cluster_numbers
+        config["N_CLUSTERS_KMEANS"], config["N_CLUSTERS_GMM"] = cluster_numbers
         save_yaml(CONFIG_CLUSTERING_PATH, config)
 
         print("\nManually assigned clustering parameters and number of clusters updated in config_clustering.yaml")

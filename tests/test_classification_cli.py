@@ -56,16 +56,18 @@ def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatc
     assert saved["LIST_OF_CLUSTERING_PARAMETERS"] == ["no_branches", "avg_trafo_dis"]
     assert (saved["N_CLUSTERS_KMEANS"], saved["N_CLUSTERS_GMM"]) == (5, 6)
     assert "CLUSTERING_PARAMETERS" in saved and "THRESHOLD_MAX_TRAFO_DIS" in saved, "other keys survive the rewrite"
-    assert "no cluster recommendation found for ['KMedoids'" in capsys.readouterr().out, "stale KMedoid warning (CLASSIF-09)"
+    assert "N_CLUSTERS_KMEDOID" not in saved
+    assert "kmedoid" not in capsys.readouterr().out.lower(), "no warning about the removed KMedoids"
 
 
-def test_manual_path_takes_parameters_and_three_cluster_numbers(monkeypatch, pipeline):
-    answers(monkeypatch, "no", "yes", "yes", "no_branches, max_no_of_households_of_a_branch", "3,4,5")
+def test_manual_path_takes_parameters_and_two_cluster_numbers(monkeypatch, pipeline):
+    answers(monkeypatch, "no", "yes", "yes", "no_branches, max_no_of_households_of_a_branch", "4,5")
     cl.main()
     assert pipeline["prepare"] == {"additional_filtering": False, "sample_from_postcode_result_only": True}
     assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "max_no_of_households_of_a_branch"],
                                  "n_clusters_kmeans": 4, "n_clusters_gmm": 5}
-    assert yaml.safe_load(pipeline["config"].read_text())["N_CLUSTERS_KMEDOID"] == 3, "first number is the removed KMedoids"
+    saved = yaml.safe_load(pipeline["config"].read_text())
+    assert (saved["N_CLUSTERS_KMEANS"], saved["N_CLUSTERS_GMM"]) == (4, 5) and "N_CLUSTERS_KMEDOID" not in saved
 
 
 def test_confirmation_loops_until_yes_or_no(monkeypatch, capsys):
@@ -75,14 +77,22 @@ def test_confirmation_loops_until_yes_or_no(monkeypatch, capsys):
 
 
 def test_custom_cluster_numbers_validation(monkeypatch, config_copy, capsys):
-    answers(monkeypatch, "4,5", "4,5,9", "a,b,c", "3,4,7")
-    assert cl.get_custom_cluster_numbers() == [3, 4, 7]
-    assert capsys.readouterr().out.count("Invalid input") == 3
+    answers(monkeypatch, "4", "3,4,5", "4,9", "a,b", "3,7")
+    assert cl.get_custom_cluster_numbers() == [3, 7]
+    assert capsys.readouterr().out.count("Invalid input") == 4
 
 
 def test_custom_parameters_reject_empty_input(monkeypatch, capsys):
     answers(monkeypatch, " , ", "a,b")
     assert cl.get_custom_clustering_parameters() == ["a", "b"]
+
+
+def test_shipped_clustering_config_has_no_kmedoid_key():
+    """The KMedoids clustering was removed: neither the shipped file nor the loader mention its cluster number."""
+    from pylovo import config_loader
+
+    assert "N_CLUSTERS_KMEDOID" not in yaml.safe_load((REPO_CONFIG / "config_clustering.yaml").read_text())
+    assert not hasattr(config_loader, "N_CLUSTERS_KMEDOID")
 
 
 def test_config_file_is_the_first_match_of_the_search_paths(tmp_path, monkeypatch):
