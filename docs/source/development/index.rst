@@ -1,11 +1,11 @@
 Development
 ===========
 
-Contributions are welcome. The workflow (issues, branch names, merge requests, reviews and
+Contributions are welcome. The workflow (issues, branch names, pull requests, reviews and
 releases) is described in `CONTRIBUTING.md <https://github.com/tum-ens/pylovo/blob/main/CONTRIBUTING.md>`_.
 In short: open an issue, work on a branch ``feature/<issue>-<description>`` (or ``bugfix/...``)
-from ``develop``, add an entry to ``CHANGELOG.md`` under *Unreleased* and open a merge request
-into ``develop``. ``main`` holds the released versions.
+from ``dev``, add an entry to ``CHANGELOG.md`` under *Unreleased* and open a pull request
+into ``dev``. ``main`` holds the released versions (tagged ``vX.Y.Z``).
 
 Project layout
 --------------
@@ -25,17 +25,24 @@ Project layout
    |-- api/                      HTTP API for the GridPlanner UI (pylovo-api)
    |-- notebook_tutorials/       Jupyter notebooks
    |-- QGIS/                     QGIS project templates
+   |-- tests/                    unit tests (no database needed; database tests are opt-in)
+   |-- .github/                  CI workflows (documentation, tests, API contract, image), issue and PR templates
    |-- src/pylovo/               the Python package
-   |   |-- cli/                  pylovo-* commands
-   |   |-- database/             DatabaseClient, mixins, DatabaseConstructor, table definitions
+   |   |-- cli/                  pylovo-* commands (setup, generate, mv, analyze, classify, import, export, delete)
+   |   |-- database/             DatabaseClient, mixins, DatabaseConstructor, table definitions, migrations
    |   |-- infdb/                InfdbClient
    |   |-- data_import/          transformer, DSO, municipal register and building imports
    |   |-- electrical_backend/   backend interface, pandapower and OpenDSS
-   |   |-- analysis/             key figures and power-flow helpers
+   |   |-- mv_grid/              MV stage (pylovo-mv)
+   |   |-- classification/       grid classification (pylovo-classify)
+   |   |-- analysis/             key figures, coverage and border diagnostics, MV validation, power-flow helpers
    |   |-- plotting/             plots and GIS export
    |   |-- ways_preprocessing_functions/   SQL functions installed by the setup
    |   |-- grid_generator.py     GridGenerator
    |   |-- cable_installer.py    CableInstaller
+   |   |-- feeder_planning.py    feeder topology and cable sizing
+   |   |-- load_editing.py       manual load edits of stored grids (used by pylovo-api)
+   |   |-- postcode_border.py, station_voltage.py, version_snapshot.py
    |   |-- config_loader.py      configuration constants
    |   `-- utils.py              load model, logging
    |-- pyproject.toml            package metadata, dependencies, extras, console scripts
@@ -77,8 +84,10 @@ Quick checks without a database:
    uvx ruff check src
    uv run python -m compileall -q src
 
-The HTTP API has its own tests in ``api/tests`` and an OpenAPI contract snapshot
-``api/openapi.json`` (see ``api/README.md``):
+The unit tests in ``tests`` and ``api/tests`` need no database; tests that need one are skipped
+unless you name a disposable database for them. The HTTP API has an OpenAPI contract snapshot
+``api/openapi.json`` (see ``api/README.md``). On pull requests the CI builds the documentation, runs the
+tests and checks the contract:
 
 .. code-block:: bash
 
@@ -137,4 +146,5 @@ The database-backed scripts expect a pylovo database with the demo region PLZ 85
 OpenStreetMap-derived extract (ODbL) in the InfDB-shaped schemas ``basedata`` and ``opendata``,
 a completed ``pylovo-setup`` and the versions created by ``make_demo_versions.py``. They only read
 from the database, except ``make_demo_versions.py``. Maps derived from these data must carry the
-attribution "© OpenStreetMap contributors, ODbL".
+attribution "© OpenStreetMap contributors, ODbL". The demo extract is not part of the repository:
+the committed figures are the reference, and regenerating them needs a database with the demo region.
