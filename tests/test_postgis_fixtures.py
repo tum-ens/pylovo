@@ -126,3 +126,15 @@ def test_a_transformer_on_a_street_becomes_a_vertex_of_that_street(tem):
     ]
     tem.cur.execute("SELECT objectid, ST_AsText(ST_SnapToGrid(centroid, 0.001)) FROM buildings_tem ORDER BY objectid")
     assert tem.cur.fetchall() == [("node/1", "POINT(50 0)"), ("node/2", "POINT(20 10)")]
+
+
+def test_crossing_ways_are_split_once_at_every_crossing(tem):
+    way(tem, 1, "LINESTRING(0 0, 30 0)")
+    way(tem, 2, "LINESTRING(10 -5, 10 5)")
+    way(tem, 3, "LINESTRING(20 -5, 20 5)")
+    tem.cur.execute("SELECT segment_intersecting_ways()")
+    tem.cur.execute("SELECT ST_AsText(ST_SnapToGrid(geom, 0.001)) FROM ways_tem")
+    assert sorted(row[0] for row in tem.cur.fetchall()) == sorted([
+        "LINESTRING(0 0,10 0)", "LINESTRING(10 0,20 0)", "LINESTRING(20 0,30 0)",
+        "LINESTRING(10 -5,10 0)", "LINESTRING(10 0,10 5)", "LINESTRING(20 -5,20 0)", "LINESTRING(20 0,20 5)",
+    ])
