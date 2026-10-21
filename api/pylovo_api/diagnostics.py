@@ -2186,9 +2186,9 @@ def _rule_tp03(m: GridModel, F: Findings, th: dict, strong: bool, explains: list
           targets={"trafo": True}, explains=explains, impact=e, basis="design",
           thresholds=[_heur("offset / load radius", "eccentricity", th)]
           + ([_threshold("GREENFIELD_TRAFO_POSITION_TOLERANCE", tol, "version parameter")] if tol is not None else []),
-          remedy=("Place a manual station position in the Data step and regenerate as a new version, or lower "
-                  "GREENFIELD_TRAFO_POSITION_TOLERANCE for a new version. For brownfield, check the assignment and the "
-                  "OSM position."),
+          remedy=("Place a manual station position (transformer map or HTTP API) and regenerate as a new version, "
+                  "or lower GREENFIELD_TRAFO_POSITION_TOLERANCE for a new version. For brownfield, check the "
+                  "assignment and the OSM position."),
           why=("DSOs place MV/LV stations near the load centre (Lastschwerpunkt) to minimise load moments. pylovo picks "
                "greenfield positions at random among those costing up to (1 + GREENFIELD_TRAFO_POSITION_TOLERANCE) × "
                "the optimum."))

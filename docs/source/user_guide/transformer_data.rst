@@ -30,7 +30,8 @@ Sources of transformer candidates
      - ``pylovo-import transformers-dso-csv <file.csv>``.
    * - Manual edits
      - ``manual/<unix-time>``
-     - Browser map ``pylovo-import transformers-ui`` (:ref:`transformer-map`).
+     - Browser map ``pylovo-import transformers-ui`` (:ref:`transformer-map`) or the HTTP API
+       (:doc:`http_api`).
 
 Which candidates are used
 -------------------------
@@ -47,8 +48,8 @@ Which candidates are used
    * - ``USE_DSO_TRANSFORMER_POSITIONS: True``
      - DSO rows (``type = 'dso'`` or ids starting with ``dso/``)
    * - ``USE_MANUAL_TRANSFORMER_POSITIONS: True``
-     - Only the positions placed in the transformer editor (ids ``manual/…``), without the OSM
-       and LoD2 candidates
+     - Only the positions placed with the transformer map or the HTTP API (ids ``manual/…``),
+       without the OSM and LoD2 candidates
    * - both ``False`` (shipped configuration)
      - none -- all grids are greenfield grids with optimised transformer positions
 
@@ -221,7 +222,8 @@ this transformer or to delete it. The bulk tools set the rating of all transform
 for all, a percentage distribution of the ratings of ``TRANSFORMERS`` in ``config_generation_lv.yaml``
 (assigned at random: applying it again gives another assignment), or no rating. Every change is
 written to the database at once and cannot be undone. The map has no login and listens on this
-computer only (``--host``, see :doc:`cli`).
+computer only (``--host``, see :doc:`cli`). The HTTP API (:doc:`http_api`) is the counterpart of
+this map for browser clients: it adds, rates and deletes candidates the same way.
 
 Manual positions are used with ``USE_OPEN_TRANSFORMER_POSITIONS`` (together with all OSM and LoD2
 candidates) or alone with ``USE_MANUAL_TRANSFORMER_POSITIONS``. A rating set on a candidate sizes the

@@ -494,9 +494,9 @@ Clustering
      - ✓
    * - ``USE_MANUAL_TRANSFORMER_POSITIONS``
      - ``False``
-     - Use the positions placed in the transformer editor (``manual/…``) also when
-       ``USE_OPEN_TRANSFORMER_POSITIONS`` is off, i.e. only a few hand-placed stations without
-       the OSM and LoD2 candidates.
+     - Use the positions placed with the transformer map (``pylovo-import transformers-ui``) or
+       the HTTP API (``manual/…``) also when ``USE_OPEN_TRANSFORMER_POSITIONS`` is off, i.e. only a
+       few hand-placed stations without the OSM and LoD2 candidates.
      - ✓
    * - ``ROUTE_ACROSS_POSTCODE_BORDERS``
      - ``True``
