@@ -1466,7 +1466,7 @@ class LoadEditor:
         return {"load_edit_id": edit_id, "action": action, "etag": f"{after_md5}-{edit_id}",
                 "status": _pair(state.head.get("power_flow_status"), validation.status),
                 "impact": impact, "removed_analysis": {k: removed.get(k) is not None for k in
-                                                       ("plz_parameters", "clustering_parameters", "grid_parameters")}}
+                                                       ("plz_parameters", "clustering_parameters")}}
 
     def revert(self, grid_result_id: int, objectid: str, **kwargs) -> dict[str, Any]:
         """Apply the generated inputs of a building again (a new audit row with ``action='revert'``).

@@ -165,7 +165,7 @@ def test_apply_and_undo_round_trip(client, conn):
     res = apply(client, gid, BUILDING, {"households": 4}, reason="=cmd audit test")
     assert res.status_code == 201, res.text
     out = res.json()
-    assert out["removed_analysis"] == {"plz_parameters": True, "clustering_parameters": True, "grid_parameters": False}
+    assert out["removed_analysis"] == {"plz_parameters": True, "clustering_parameters": True}
     assert out["grid"]["load_edit"]["modified"] and out["grid"]["load_edit"]["edited_buildings"] == 1
     after = fingerprint(conn, gid)
     assert after["net"][0] != before["net"][0] and after["loads"] != before["loads"]
@@ -187,7 +187,7 @@ def test_apply_and_undo_round_trip(client, conn):
     assert "'=cmd audit test" in csv
     undo = client.post(f"/api/load-edits/{out['load_edit_id']}/undo", json={"if_match": out["etag"]})
     assert undo.status_code == 200, undo.text
-    assert undo.json()["analysis_restored"] == {"plz_parameters": True, "clustering_parameters": True, "grid_parameters": False}
+    assert undo.json()["analysis_restored"] == {"plz_parameters": True, "clustering_parameters": True}
     assert fingerprint(conn, gid) == before  # bitwise: network, loads, zones, buildings, analysis rows
     again = client.post(f"/api/load-edits/{out['load_edit_id']}/undo", json={})
     assert again.status_code == 409 and again.json()["detail"]["code"] == "already_undone"

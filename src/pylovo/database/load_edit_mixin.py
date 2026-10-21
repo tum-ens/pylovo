@@ -35,7 +35,6 @@ _JSON_COLUMNS = ("changes", "before_building", "after_building", "before_grid", 
 _ANALYSIS_TABLES = (  # load-dependent analysis rows an edit removes (and an exact undo restores)
     ("plz_parameters", "version_id = %(v)s AND plz = %(plz)s"),
     ("clustering_parameters", "grid_result_id = %(g)s"),
-    ("grid_parameters", "grid_result_id = %(g)s"),
 )
 
 
