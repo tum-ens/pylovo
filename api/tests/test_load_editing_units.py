@@ -316,6 +316,47 @@ def test_validate_operating_point_classifies_like_save_net():
     assert failed.status == "not_converged" and "boom" in failed.error
 
 
+def test_validate_operating_point_moves_the_source_voltage_to_the_lv_reference():
+    class Fake:
+        """A backend whose LV busbar sits 0.03 p.u. below the MV side, the lowest bus 0.08 p.u. below it."""
+
+        def __init__(self, supported=True, converges=True):
+            self.source, self.supported, self.converges, self.solves, self.net = 1.0, supported, converges, 0, None
+
+        def get_source_voltage(self):
+            if not self.supported:
+                raise NotImplementedError
+            return self.source
+
+        def set_source_voltage(self, value):
+            self.source = value
+
+        def get_bus_voltage_pu(self, name):
+            assert name == "LVbus 1"
+            return self.source - 0.03
+
+        def solve_power_flow(self):
+            self.solves += 1
+            return self.converges
+
+        def get_circuit_metrics(self):
+            return {"min_voltage_pu": self.source - 0.08, "max_voltage_pu": self.source - 0.03}
+
+    backend = Fake()
+    result = le.validate_operating_point(backend, 0.9, 1.1, 0.96)  # LV busbar 0.97 at 1.0 p.u.: lower the MV side
+    assert backend.source == pytest.approx(0.99, abs=1e-4) and backend.solves == 2
+    assert result.status == "converged" and result.min_voltage_pu == pytest.approx(0.91, abs=1e-4)
+    # the classification is made at the reference point, not at 1.0 p.u. (where the minimum would be 0.92)
+    backend = Fake()
+    assert le.validate_operating_point(backend, 0.9, 1.1, 0.93).status == "voltage_violation"
+    assert backend.source == pytest.approx(0.96, abs=1e-4)
+    # a backend without the reference keeps the MV side as built and solves once
+    backend = Fake(supported=False)
+    assert le.validate_operating_point(backend, 0.9, 1.1, 0.96).status == "converged"
+    assert backend.source == 1.0 and backend.solves == 1
+    assert le.validate_operating_point(Fake(converges=False), 0.9, 1.1, 0.96).status == "not_converged"
+
+
 # --------------------------------------------------------------------------- UI: lease, request models, CSV
 def test_job_lease_rules(tmp_path):
     from pylovo_api.jobs import Job, JobConflict, JobManager
