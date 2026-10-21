@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from pylovo_api import config_io, queries
+from pylovo_api.deps import writer_lease
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -62,13 +63,18 @@ def validate(body: TextBody) -> dict:
 
 
 @router.put("")
-def save(body: TextBody) -> dict:
-    """Overwrite the file with a validated text; the old file is kept as a backup."""
+def save(body: TextBody, request: Request) -> dict:
+    """Overwrite the file with a validated text; the old file is kept as a backup.
+
+    Refused with 409 while a database-writing job runs (and no job starts during the save): a job reads
+    the saved file when it starts, and its workers may read it again.
+    """
     if not body.confirm:
         raise HTTPException(400, f"Saving overwrites {config_io.paths().config_file.name}; send confirm=true after "
                                  "reviewing the diff.")
     try:
-        result = config_io.save_text(body.text, body.base_sha)
+        with writer_lease(request):
+            result = config_io.save_text(body.text, body.base_sha)
     except config_io.ConfigError as exc:
         status = 409 if any(i.get("conflict") for i in exc.issues) else 422
         raise HTTPException(status, {"message": str(exc), "issues": exc.issues}) from exc
@@ -76,7 +82,7 @@ def save(body: TextBody) -> dict:
 
 
 @router.post("/values")
-def set_values(body: ValuesBody) -> dict:
+def set_values(body: ValuesBody, request: Request) -> dict:
     """Apply form edits to single keys (comments stay intact). ``dry_run`` returns the diff only."""
     unknown = [k for k in body.changes if k not in config_io.FORM_FIELDS]
     if unknown:
@@ -89,7 +95,7 @@ def set_values(body: ValuesBody) -> dict:
     if body.dry_run:
         _, issues = config_io.validate_text(text, deep=False)
         return {"text": text, "diff": config_io.diff(current.text, text), "issues": issues}
-    return save(TextBody(text=text, base_sha=body.base_sha, confirm=body.confirm))
+    return save(TextBody(text=text, base_sha=body.base_sha, confirm=body.confirm), request)
 
 
 @router.get("/backups/{name}", response_class=PlainTextResponse)
@@ -102,10 +108,10 @@ def backup(name: str) -> str:
 
 
 @router.post("/restore")
-def restore(body: RestoreBody) -> dict:
+def restore(body: RestoreBody, request: Request) -> dict:
     """Restore a backup (the current file is backed up first)."""
     try:
         text = config_io.backup_path(body.name).read_text(encoding="utf-8")
     except config_io.ConfigError as exc:
         raise HTTPException(404, str(exc)) from exc
-    return save(TextBody(text=text, confirm=body.confirm))
+    return save(TextBody(text=text, confirm=body.confirm), request)

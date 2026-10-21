@@ -196,7 +196,7 @@ class JobManager:
         self.exports_dir = Path(exports_dir) if exports_dir else None  # the output directories of export jobs
         self._jobs: dict[str, Job] = {}
         self._lock = threading.RLock()
-        self._edit_leases = 0  # load edits being written (see db_edit_lease)
+        self._edit_leases = 0  # direct database edits being written (see db_edit_lease)
         self.on_finish: Callable[[Job], None] | None = None  # called after every job has ended (set by the app)
         self._load_history()
 
@@ -236,16 +236,21 @@ class JobManager:
             return None
 
     @contextmanager
-    def db_edit_lease(self, version_id: str | None = None, plz: int | None = None):
-        """Hold while a load edit writes: refuses conflicting jobs in both directions.
+    def db_edit_lease(self, version_id: str | None = None, plz: int | None = None, *, any_writer: bool = False):
+        """Hold while a direct edit writes to the database: refuses conflicting jobs in both directions.
+
+        A load edit of ``(version_id, plz)`` conflicts with the jobs of :meth:`conflicting_writer`; with
+        ``any_writer`` (transformer and configuration edits) it conflicts with every database-writing job.
+        The check and the registration are one step, and no such job can start while the lease is held.
 
         Raises:
             JobConflict: If a conflicting job is active when the lease is requested.
         """
         with self._lock:
-            busy = self.conflicting_writer(version_id, plz)
+            busy = self.running_writer() if any_writer else self.conflicting_writer(version_id, plz)
             if busy:
-                raise JobConflict(f"'{busy.title}' is running. Load edits are blocked until it has finished.")
+                what = "Edits" if any_writer else "Load edits"
+                raise JobConflict(f"'{busy.title}' is running. {what} are blocked until it has finished.")
             self._edit_leases += 1
         try:
             yield
@@ -267,7 +272,7 @@ class JobManager:
                 if busy:
                     raise JobConflict(f"'{busy.title}' is still running. Wait for it or cancel it first.")
                 if self._edit_leases:
-                    raise JobConflict("A load edit (or a refresh of the GIS view) is being written, try again in a moment.")
+                    raise JobConflict("A direct edit (load edit, transformer or configuration) is being written, try again in a moment.")
             job = Job(id=uuid.uuid4().hex[:10], kind=kind, title=title, argv=list(argv), writes_db=writes_db,
                       params=params or {}, output_dir=str(output_dir) if output_dir else None)
             job._log_path = self.jobs_dir / f"{job.id}.log"

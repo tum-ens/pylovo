@@ -59,8 +59,9 @@ user management.
   `X-Pylovo-UI: 1` (browsers only send it from same-origin scripts: CSRF protection), else 403.
 * Destructive actions need a typed confirmation (database name, version id, PLZ, DSO source) or
   an explicit `confirm` or `force` flag that the server checks.
-* Only one database-writing job runs at a time; direct edits (transformers, loads) are refused
-  with 409 while one runs.
+* Only one database-writing job runs at a time; direct edits (transformers, configuration, loads)
+  are refused with 409 while one runs, and no job can start while such an edit is being written
+  (the edit holds a lease of the job manager for the duration of the write).
 
 ## Contract
 
@@ -126,7 +127,8 @@ Interactive documentation: `http://127.0.0.1:8765/docs`; the full list is `api/o
   get the id `manual/<epoch ms>`.
 * **Config edits** rewrite only the changed keys, validate the YAML, import
   `pylovo.config_loader` in a subprocess against a temporary copy, refuse to overwrite a file that
-  changed meanwhile and keep a backup. Jobs always read the saved file.
+  changed meanwhile and keep a backup. Jobs always read the saved file; saving is refused with 409
+  while a database-writing job runs, and two saves at once are processed one after the other.
 * **Load edits** write in one transaction through `pylovo.load_editing.LoadEditor`
   (`buildings_result`, the grid's `pandapower_load` rows and stored net, `grid_result`, an audit
   row in `pylovo.load_edit`) and remove the load-dependent analysis rows of the PLZ. Undo is exact.

@@ -64,8 +64,9 @@ Jobs
 
 Setup, generation, analysis, deletion, export and the transformer imports are jobs: the API runs
 the corresponding command with the project root as working directory and streams its output as
-Server-Sent Events. Only one database-writing job runs at a time, and direct edits of transformers
-or loads are refused while one runs. Job logs survive a restart of the API
+Server-Sent Events. Only one database-writing job runs at a time, and direct edits of transformers,
+loads or the configuration are refused (409) while one runs. No job can start while such an edit is
+being written. Job logs survive a restart of the API
 (``.pylovo-api/jobs/`` in the project). The record of a job is written when its process starts and
 updated when it ends. A job that was still running when the server stopped or crashed is shown as
 ``interrupted`` after the next start. If its process still exists, the job stays ``running`` and
@@ -114,7 +115,8 @@ generation parameters (the help texts are the YAML comments). Form edits rewrite
 keys, so comments and layout stay. Every save can be previewed as a diff, validates the YAML and
 imports ``pylovo.config_loader`` against a temporary copy (this catches every error pylovo itself
 would raise), refuses to overwrite a file that changed on disk, and keeps a backup that can be
-restored. Remember to change ``VERSION_ID`` when you change generation parameters
+restored. A save is refused (409) while a database-writing job runs, because a job reads the
+configuration when it starts and its workers may read it again. Remember to change ``VERSION_ID`` when you change generation parameters
 (:doc:`generating_grids`).
 
 Statistics and grid details

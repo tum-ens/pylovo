@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ import yaml
 from pylovo_api.settings import paths
 
 MAX_BACKUPS = 50
+_SAVE_LOCK = threading.Lock()  # two saves at once must not both pass the ``base_sha`` check
 
 # The key generation parameters shown in the form. Help texts come from the YAML comments.
 FORM_SECTIONS: list[dict[str, Any]] = [
@@ -394,11 +396,16 @@ def backup_path(name: str) -> Path:
 
 
 def save_text(text: str, base_sha: str | None) -> dict[str, Any]:
-    """Validate, back up the current file and write ``text``.
+    """Validate, back up the current file and write ``text`` (one save at a time).
 
     Raises:
         ConfigError: If the text is invalid or the file changed since ``base_sha`` was read.
     """
+    with _SAVE_LOCK:
+        return _save_text(text, base_sha)
+
+
+def _save_text(text: str, base_sha: str | None) -> dict[str, Any]:
     current = read_config()
     if base_sha and base_sha != current.sha:
         raise ConfigError(f"{paths().config_file.name} was changed on disk since you opened it. Reload and re-apply "

@@ -1,9 +1,12 @@
 """Shared helpers for the API routers."""
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from fastapi import HTTPException, Request
 
-from pylovo_api.jobs import JobManager
+from pylovo_api.jobs import JobConflict, JobManager
 
 
 def jobs(request: Request) -> JobManager:
@@ -15,11 +18,14 @@ def coverage(request: Request):
     return request.app.state.coverage
 
 
-def ensure_no_writer(request: Request) -> None:
-    """Refuse direct database edits while a database-writing job runs."""
-    busy = jobs(request).running_writer()
-    if busy:
-        raise HTTPException(409, f"'{busy.title}' is running. Edits are blocked until it has finished.")
+@contextmanager
+def writer_lease(request: Request) -> Iterator[None]:
+    """Hold while a direct edit (transformers, configuration) writes: 409 if a database-writing job runs, and no job starts meanwhile."""
+    try:
+        with jobs(request).db_edit_lease(any_writer=True):
+            yield
+    except JobConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 def require_confirm(given: object, expected: str, what: str) -> None:

@@ -18,7 +18,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from pylovo_api import config_io, db, queries
-from pylovo_api.deps import ensure_no_writer, require_confirm
+from pylovo_api.deps import require_confirm, writer_lease
 from pylovo_api.settings import paths
 
 router = APIRouter(prefix="/api/transformers", tags=["transformers"])
@@ -81,9 +81,8 @@ def list_transformers(plz: int | None = None, bbox: str | None = None) -> dict:
 @router.post("", status_code=201)
 def add_transformer(body: NewTransformer, request: Request) -> dict:
     """Add a manual transformer position (``osm_id = manual/<epoch-ms>``)."""
-    ensure_no_writer(request)
     osm_id = f"manual/{int(time.time() * 1000)}"
-    with db.database_client() as dbc:
+    with writer_lease(request), db.database_client() as dbc:
         result = dbc.add_transformer_position_trafo_ui(
             plz=body.plz, geom_wkt=f"POINT({body.lon:.7f} {body.lat:.7f})", osm_id=osm_id,
             transformer_rated_power=body.transformer_rated_power)
@@ -93,8 +92,7 @@ def add_transformer(body: NewTransformer, request: Request) -> dict:
 @router.patch("/{osm_id:path}")
 def update_capacity(osm_id: str, body: CapacityUpdate, request: Request) -> dict:
     """Set the rated power of one transformer."""
-    ensure_no_writer(request)
-    with db.database_client() as dbc:
+    with writer_lease(request), db.database_client() as dbc:
         ok = dbc.update_transformer_capacity_trafo_ui(osm_id, body.transformer_rated_power)
     if not ok:
         raise HTTPException(404, f"Transformer {osm_id} not found")
@@ -104,15 +102,15 @@ def update_capacity(osm_id: str, body: CapacityUpdate, request: Request) -> dict
 @router.delete("/{osm_id:path}")
 def delete_transformer(osm_id: str, request: Request, force: bool = False) -> dict:
     """Delete one transformer. Positions of generated grids that use it stay; their osm_id is cleared."""
-    ensure_no_writer(request)
-    usage = queries.transformer_usage(osm_id)
-    if not usage:
-        raise HTTPException(404, f"Transformer {osm_id} not found")
-    if usage["used_by_grids"] and not force:
-        raise HTTPException(409, f"{osm_id} is the station of {usage['used_by_grids']} generated grid(s); "
-                                 "deleting it keeps their transformer positions but clears their osm_id. Pass force=true.")
-    with db.database_client() as dbc:
-        ok = dbc.delete_transformer_by_osm_id_trafo_ui(osm_id)
+    with writer_lease(request):
+        usage = queries.transformer_usage(osm_id)
+        if not usage:
+            raise HTTPException(404, f"Transformer {osm_id} not found")
+        if usage["used_by_grids"] and not force:
+            raise HTTPException(409, f"{osm_id} is the station of {usage['used_by_grids']} generated grid(s); "
+                                     "deleting it keeps their transformer positions but clears their osm_id. Pass force=true.")
+        with db.database_client() as dbc:
+            ok = dbc.delete_transformer_by_osm_id_trafo_ui(osm_id)
     if not ok:
         raise HTTPException(404, f"Transformer {osm_id} not found")
     return {"deleted": osm_id}
@@ -121,10 +119,9 @@ def delete_transformer(osm_id: str, request: Request, force: bool = False) -> di
 @router.post("/bulk")
 def bulk_update(body: BulkUpdate, request: Request) -> dict:
     """Set all capacities of a PLZ to one size, or distribute sizes randomly by percentage."""
-    ensure_no_writer(request)
     if not body.confirm:
         raise HTTPException(400, "Bulk updates overwrite every capacity in the PLZ; send confirm=true.")
-    with db.database_client() as dbc:
+    with writer_lease(request), db.database_client() as dbc:
         if body.method == "uniform":
             if not body.transformer_rated_power:
                 raise HTTPException(400, "transformer_rated_power is required for the uniform method")
@@ -142,9 +139,8 @@ def bulk_update(body: BulkUpdate, request: Request) -> dict:
 @router.post("/clear-capacities")
 def clear_capacities(body: ClearCapacities, request: Request) -> dict:
     """Remove the rated power of every transformer in a PLZ."""
-    ensure_no_writer(request)
     require_confirm(body.confirm, str(body.plz), "clear all capacities of this PLZ")
-    with db.database_client() as dbc:
+    with writer_lease(request), db.database_client() as dbc:
         ok = dbc.clear_capacities_trafo_ui(body.plz)
     if not ok:
         raise HTTPException(500, "Clearing capacities failed")
