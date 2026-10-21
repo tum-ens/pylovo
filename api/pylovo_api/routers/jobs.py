@@ -295,7 +295,7 @@ async def job_events(job_id: str, request: Request, after: int = 0) -> Streaming
     """Server-Sent Events: ``log`` events with new lines, ``status`` updates and a final ``end``."""
     job = _job(request, job_id)
     last_id = request.headers.get("last-event-id")
-    cursor = int(last_id) + 1 if last_id and last_id.isdigit() else after
+    cursor = int(last_id) + 1 if last_id and last_id.isascii() and last_id.isdigit() else after  # "²".isdigit()
 
     async def stream():
         try:

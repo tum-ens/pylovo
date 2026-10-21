@@ -4,6 +4,7 @@ Every command is a Python one-liner, so no pylovo CLI starts and nothing touches
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -157,3 +158,39 @@ def test_the_text_download_of_a_finished_job_is_the_whole_log(client, monkeypatc
     assert res.headers["content-disposition"] == 'attachment; filename="pylovo-job-big.log"'
     assert res.headers["content-type"].startswith("text/plain")
     assert len(client.get("/api/jobs/big/log").json()["lines"]) == 100  # the JSON log is the part in memory
+
+
+# --------------------------------------------------------------------------- event stream
+def asgi_get(app, path: str, headers: list[tuple[bytes, bytes]]) -> tuple[int | None, str]:
+    """One GET straight through the ASGI interface: an HTTP client would re-encode a header value such as b"\\xb2"."""
+    sent = []
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http",
+             "path": path, "raw_path": path.encode(), "query_string": b"", "root_path": "", "headers": headers,
+             "client": ("127.0.0.1", 1234), "server": ("127.0.0.1", 8765)}
+    requested = False
+
+    async def receive():
+        nonlocal requested
+        if not requested:
+            requested = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await asyncio.sleep(0.3)
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(asyncio.wait_for(app(scope, receive, send), 10))  # an exception of the route is raised here
+    status = next((m["status"] for m in sent if m["type"] == "http.response.start"), None)
+    return status, b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body").decode()
+
+
+def test_last_event_id_that_is_not_a_plain_number_is_ignored(client):
+    job = client.app.state.jobs.start("test", "quick", [sys.executable, "-c", "print('hello')"], writes_db=False)
+    wait(job)
+    for value in (b"\xb2", b"1\xb2", b"abc", b""):  # b"\xb2" is "²" (latin-1): isdigit() but not an int
+        status, body = asgi_get(client.app, f"/api/jobs/{job.id}/events",
+                                [(b"host", b"127.0.0.1"), (b"last-event-id", value)])
+        assert status == 200 and "hello" in body and "event: end" in body, value  # the stream starts at ``after`` = 0
+    res = client.get(f"/api/jobs/{job.id}/events", headers={"Last-Event-ID": "0"})
+    assert "hello" in res.text and '"text": "$ ' not in res.text  # a valid id resumes after that line
