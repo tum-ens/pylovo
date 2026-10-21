@@ -699,6 +699,18 @@ def test_station_budget_far_station_raises_the_tap_up_to_the_tap_limit():
     assert budget.tap_limit and budget.band_conflict and budget.tap_pos == -2
 
 
+def test_the_district_load_leaves_out_the_nodes_the_topology_could_not_connect():
+    """A node without any line (role excluded, flag unconnected) keeps its connection_hint ring, but the HV/MV
+    transformers do not supply it: the district load (their sizing and peak_load_mw) leaves it out."""
+    inp, plan, (s1, s2) = _budget_district()
+    both = electrical.district_load_kw(inp, plan)
+    plan.node_role[s2] = "excluded"
+    stats = [inp.nodes.loc[[s1], list(c)].to_numpy(dtype=float)
+             for c in (coincidence.INSTALLED_COLUMNS, coincidence.UNITS_COLUMNS)]
+    alone = float(coincidence.coincident_kw(*stats, inp.lv.g())[0])
+    assert electrical.district_load_kw(inp, plan) == pytest.approx(alone) and alone < both
+
+
 def test_station_drop_ratio_of_an_upsized_station():
     sin = math.sqrt(1 - 0.95 ** 2)
     expected = ((1.206 * 0.95 + math.sqrt(36 - 1.206 ** 2) * sin) / 630) / (

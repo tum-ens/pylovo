@@ -117,6 +117,7 @@ def fakes(monkeypatch):
 
     e.check, e.repair = check, repair
     e.size_substation = lambda inp, plan: (calls.append("size") or (2, 25.0, "sized"))
+    e.district_load_kw = lambda inp, plan: 1000.0 * sum(role == "ring" for role in plan.node_role.values())
     e.build_stored_net = lambda net, units, mva, inp: (calls.append(f"stored:{net}:{units}:{mva:g}") or ("stored", -2))
     e.station_budgets = lambda inp, plan, cases: (calls.append("budgets") or {})
     e.node_flags = lambda inp, plan, cases, budgets: {12: ["band_conflict"], 11: []}
@@ -142,8 +143,8 @@ def test_plan_district_composes_the_steps(fakes):
                      "trench:4"]
     assert (plan.hv_mv_units, plan.hv_mv_unit_mva, plan.hv_mv_sizing, plan.oltc_tap) == (2, 25.0, "sized", -2)
     assert plan.net == "stored" and plan.power_flow_status == "converged" and plan.repairs == []
-    # district peak: law on the summed statistics of the planned nodes + fixed customer loads (excluded node out)
-    assert plan.peak_load_mw == pytest.approx((100.0 * 0.07 + 50.0 * 0.5 + 200.0) / 1000.0)
+    # district peak: the load of the HV/MV sizing (electrical.district_load_kw of the final plan: 3 ring nodes)
+    assert plan.peak_load_mw == pytest.approx(3.0)
     assert plan.peak_feed_in_mw == 0.0                                              # no feed-in case
     m = plan.metrics
     assert m["n_stations"] == 2 and m["n_customers"] == 1 and m["n_rings"] == 1 and m["n_nops"] == 1

@@ -24,10 +24,6 @@ import pandas as pd
 
 from pylovo.mv_grid.model import DistrictInput, DistrictPlan, TopologyPlan
 
-_INSTALLED = ("inst_res", "inst_com", "inst_pub", "inst_unk")
-_UNITS = ("units_res", "units_com", "units_pub", "units_unk")
-
-
 def _module(name: str) -> ModuleType:
     """``pylovo.mv_grid.<name>``, imported on first use (``sys.modules`` first, so tests can put fakes there)."""
     return importlib.import_module(f"pylovo.mv_grid.{name}")
@@ -39,23 +35,6 @@ def modelled_rows(nodes: pd.DataFrame) -> pd.Series:
     if hint is None:
         return pd.Series(True, index=nodes.index)
     return hint.ne("excluded")
-
-
-def district_peak_kw(inp: DistrictInput) -> float:
-    """Coincident peak of all planned nodes of a district: the category law on their summed statistics plus the
-    fixed loads of the MV customers (never the sum of feeder heads)."""
-    nodes = inp.nodes[modelled_rows(inp.nodes)]
-    if not len(nodes):
-        return 0.0
-    installed = nodes.loc[:, list(_INSTALLED)].to_numpy(dtype=float, na_value=0.0)
-    units = nodes.loc[:, list(_UNITS)].to_numpy(dtype=float, na_value=0.0)
-    fixed = nodes["p_fixed_kw"].to_numpy(dtype=float, na_value=0.0)
-    installed = np.where(np.isfinite(installed), installed, 0.0)
-    units = np.where(np.isfinite(units), units, 0.0)
-    fixed = np.where(np.isfinite(fixed), fixed, 0.0)
-    g = inp.lv.g()
-    coincidence = _module("coincidence")
-    return float(np.sum(coincidence.coincident_kw(installed.sum(axis=0), units.sum(axis=0), g)) + fixed.sum())
 
 
 def merged_node_flags(*sources: dict | None) -> dict[int, list[str]]:
@@ -128,7 +107,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     plan.diagnostics["node_flags"] = merged_node_flags(plan.diagnostics.get("node_flags"),
                                                        electrical.node_flags(inp, plan, cases, budgets))
 
-    peak_load_mw = district_peak_kw(inp) / 1000.0
+    peak_load_mw = electrical.district_load_kw(inp, plan) / 1000.0         # the load of the HV/MV sizing
     s_load_mva = peak_load_mw / inp.lv.power_factor if inp.lv.power_factor > 0 else peak_load_mw
     pieces = getattr(rg, "pieces", None)                                                 # trench: cable pieces
     on_osm = (pieces["overhead"].fillna(False).to_numpy(dtype=bool)

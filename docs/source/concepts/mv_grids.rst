@@ -682,8 +682,10 @@ Each substation gets ``hv_mv_units`` (2) transformers of one rating from ``hv_mv
 for the peak with the other one out of service. The rating is the smallest one for which the
 remaining unit carries the coincident load of the supply area at ``hv_mv_n1_utilization``
 (100 %). The normal loading then stays at or below 50 %. The load is the coincidence law over all
-nodes of the supply area, divided by the power factor, and never the sum of the feeder heads, which
-would overstate it. If even 63 MVA is too small, the substation gets as many 63 MVA units as the
+nodes of the supply area that the stage connects, divided by the power factor, and never the sum of
+the feeder heads, which would overstate it. Excluded HV customers and nodes the topology could not
+connect (flag ``unconnected``) do not count. ``mv_grid.peak_load_mw`` and the HV/MV loadings of
+the district metrics refer to the same load. If even 63 MVA is too small, the substation gets as many 63 MVA units as the
 peak needs plus one in reserve (``large_substation``). pandapower has no 31.5 MVA type, so it is
 interpolated between 25 and 40 MVA and marked ``interpolated`` in the snapshot.
 
