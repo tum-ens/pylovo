@@ -481,22 +481,24 @@ class MvInputMixin(BaseMixin):
 
     # ------------------------------------------------------------------------------------------ staleness
     def lv_fingerprint(self, version_id: str, plz_list: Sequence[int]) -> dict:
-        """A fingerprint of the LV results of the PLZ that changes with regenerated grids, load edits and MV
-        customers of these PLZ (staleness check of an MV variant, DESIGN §2.5).
+        """A fingerprint of the LV results of the PLZ that changes with regenerated grids, load edits (made or
+        undone) and MV customers of these PLZ (staleness check of an MV variant, DESIGN §2.5).
 
         Returns:
-            ``{"n_grids", "sum_grid_result_id", "max_load_edit_id", "n_mv_customers"}`` (JSON-native;
-            ``max_load_edit_id`` None without load edits).
+            ``{"n_grids", "sum_grid_result_id", "active_load_edits", "n_mv_customers"}`` (JSON-native;
+            ``active_load_edits`` is the md5 of the ordered ids of the active, not undone, load edits, as
+            ``LoadEditMixin.active_load_edit_token`` per PLZ).
         """
         plz = _ints(plz_list)
         self.cur.execute("SELECT count(*), COALESCE(sum(grid_result_id), 0) FROM pylovo.grid_result "
                          "WHERE version_id = %(v)s AND plz = ANY(%(plz)s)", {"v": version_id, "plz": plz})
         n_grids, sum_ids = self.cur.fetchone()
-        self.cur.execute("SELECT max(load_edit_id) FROM pylovo.load_edit WHERE version_id = %(v)s AND plz = ANY(%(plz)s)",
+        self.cur.execute("SELECT md5(COALESCE(string_agg(load_edit_id::text, ',' ORDER BY load_edit_id), '')) "
+                         "FROM pylovo.load_edit WHERE version_id = %(v)s AND plz = ANY(%(plz)s) AND undone_at IS NULL",
                          {"v": version_id, "plz": plz})
-        max_edit = self.cur.fetchone()[0]
+        active_edits = self.cur.fetchone()[0]
         self.cur.execute("SELECT count(*) FROM pylovo.mv_customers WHERE version_id = %(v)s AND plz = ANY(%(plz)s)",
                          {"v": version_id, "plz": plz})
         n_customers = self.cur.fetchone()[0]
         return {"n_grids": int(n_grids), "sum_grid_result_id": int(sum_ids),
-                "max_load_edit_id": None if max_edit is None else int(max_edit), "n_mv_customers": int(n_customers)}
+                "active_load_edits": str(active_edits), "n_mv_customers": int(n_customers)}

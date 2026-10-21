@@ -569,18 +569,53 @@ def test_save_display_geometry_clears_the_variant_then_writes_lines_and_busbar_c
     assert client.conn.commits == 1
 
 
-def test_lv_fingerprint_counts_only_the_load_edits_of_its_plz():
-    """A load edit in another PLZ of the version does not mark the variant stale."""
+def test_lv_fingerprint_counts_only_the_active_load_edits_of_its_plz():
+    """A load edit in another PLZ of the version does not mark the variant stale; an undone edit does."""
     from pylovo.database.mv_input_mixin import MvInputMixin
 
     client = object.__new__(type("InputClient", (MvInputMixin,), {}))
     client.cur = FakeCursor([("FROM pylovo.grid_result", (["n", "s"], [(2, 21)], 1)),
-                             ("FROM pylovo.load_edit", (["m"], [(7,)], 1)),
+                             ("FROM pylovo.load_edit", (["m"], [("a1b2",)], 1)),
                              ("FROM pylovo.mv_customers", (["n"], [(3,)], 1))])
-    assert client.lv_fingerprint("v1", [80803]) == {"n_grids": 2, "sum_grid_result_id": 21, "max_load_edit_id": 7,
-                                                     "n_mv_customers": 3}
+    assert client.lv_fingerprint("v1", [80803]) == {"n_grids": 2, "sum_grid_result_id": 21,
+                                                     "active_load_edits": "a1b2", "n_mv_customers": 3}
     [(query, params)] = client.cur.sql("FROM pylovo.load_edit")
     assert "plz = ANY" in query and params["v"] == "v1" and list(params["plz"]) == [80803]
+    assert "undone_at IS NULL" in query and "string_agg(load_edit_id::text, ',' ORDER BY load_edit_id)" in query
+
+
+def test_lv_fingerprint_changes_when_a_load_edit_is_undone():
+    """Edit, variant, undo: the undo only stamps ``undone_at``, so the fingerprint must leave out undone edits."""
+    import hashlib
+
+    from pylovo.database.mv_input_mixin import MvInputMixin
+
+    edits = [{"id": 9, "plz": 80803, "undone": False}, {"id": 10, "plz": 80803, "undone": False},
+             {"id": 11, "plz": 80802, "undone": False}]
+
+    class EditCursor:
+        def execute(self, query, params=None):
+            text = " ".join(query.split())
+            if "FROM pylovo.load_edit" in text:
+                ids = [e["id"] for e in edits if e["plz"] in params["plz"]
+                       and not (e["undone"] and "undone_at IS NULL" in text)]
+                self.row = (hashlib.md5(",".join(map(str, sorted(ids))).encode()).hexdigest(),) \
+                    if "md5(" in text else (max(ids, default=None),)
+            else:
+                self.row = (2, 21) if "grid_result" in text else (0,)
+
+        def fetchone(self):
+            return self.row
+
+    client = object.__new__(type("InputClient", (MvInputMixin,), {}))
+    client.cur = EditCursor()
+    built = client.lv_fingerprint("v1", [80803])
+    edits[0]["undone"] = True                                   # undo the older edit: the newest stays active
+    assert client.lv_fingerprint("v1", [80803]) != built
+    edits[0]["undone"] = False                                  # the same active edits, the same fingerprint
+    assert client.lv_fingerprint("v1", [80803]) == built
+    edits[2]["undone"] = True                                   # an undo in another PLZ changes nothing
+    assert client.lv_fingerprint("v1", [80803]) == built
 
 
 def test_lv_requirement_and_population_readers():
