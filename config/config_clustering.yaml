@@ -10,7 +10,7 @@ ADDITIONAL_FILTERING: false
 THRESHOLD_MAX_TRAFO_DIS: 2.5
 THRESHOLD_HOUSEHOLDS_PER_BUILDING: 150
 # Lower limits of the additional filtering: the means of k-means cluster 0 (the small filling grids) of one
-# classification over 100 PLZ that clustered with exactly these four parameters, on grids of pylovo 0.8.0.
+# classification over 100 PLZ that clustered with exactly these four parameters, on grids of May 2025 (shipped since 0.3.0).
 # Re-derive them with: python -m pylovo.classification.utils.get_average_values_clustering_parameters
 THRESHOLD_AVG_TRAFO_DIS: 0.115
 THRESHOLD_NO_HOUSE_CONNECTIONS: 14.332

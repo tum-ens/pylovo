@@ -32,8 +32,9 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
     - no_households
 
     The shipped values (0.115, 14.332, 0.258 and 35.316) come from one such classification over 100
-    postcodes on grids of pylovo 0.8.0. That generator has changed since (transformer sizing, cable
-    catalogue, connection aggregation), and its grids are not stored, so a classification of
+    postcodes on grids generated in May 2025 (the values ship since pylovo 0.3.0). The generator has changed
+    since (transformer sizing, cable catalogue, connection aggregation), pylovo 1.0.0 counts parallel cables in
+    ``vsw_per_branch`` and households in ``no_households``, and those grids are not stored, so a classification of
     today's grids gives other values. An earlier version of this helper averaged the parameters of
     ``LIST_OF_CLUSTERING_PARAMETERS`` (three in the shipped file, without ``no_households``) over
     cluster 0 of all classifications, which cannot reproduce them.

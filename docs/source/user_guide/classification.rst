@@ -131,7 +131,8 @@ it writes and keeps the comments and everything else in the file.
      - Lower bounds, applied only with additional filtering. A grid below any of them is filtered. They remove the
        small filling grids at the edge of a PLZ. The shipped values (0.115, 14.332, 0.258, 35.316) are the means of
        the four parameters over k-means cluster 0 of one classification over 100 PLZ that clustered with exactly these
-       four parameters, on grids of pylovo 0.8.0. The generator has changed since (:ref:`classification-thresholds`).
+       four parameters, on grids of May 2025 (shipped since pylovo 0.3.0). The generator and the definitions of
+       ``vsw_per_branch`` and ``no_households`` have changed since (:ref:`classification-thresholds`).
    * - ``CLUSTERING_PARAMETERS``
      - All columns that are read from the database. Leave it unchanged.
 
@@ -479,7 +480,7 @@ Things to know
   last ``pylovo-classify`` run: set it to the values of that classification, or repeat step 7 with them, which stores
   them.
 * Step 7 can be repeated per classification id (see above).
-* The lower filter thresholds come from grids of pylovo 0.8.0 and are not re-derived for the current generator
+* The lower filter thresholds come from grids of May 2025 (pylovo 0.3.0) and are not re-derived for the current generator
   (:ref:`classification-thresholds`).
 
 .. _classification-thresholds:
@@ -489,9 +490,11 @@ The lower filter thresholds
 
 The shipped values (0.115, 14.332, 0.258 and 35.316) are the means of ``avg_trafo_dis``, ``no_house_connections``,
 ``vsw_per_branch`` and ``no_households`` over k-means cluster 0 of one classification over 100 PLZ. That
-classification clustered with exactly these four parameters and without additional filtering, on grids of pylovo 0.8.0.
+classification clustered with exactly these four parameters and without additional filtering, on grids generated in May
+2025 (the values ship since pylovo 0.3.0).
 Cluster 0 is the cluster whose representative grid has the fewest households, the small filling grids. The generator
-has changed since (transformer sizing, cable catalogue, connection aggregation) and those grids are not stored, so a
+has changed since (transformer sizing, cable catalogue, connection aggregation), pylovo 1.0.0 counts parallel cables in
+``vsw_per_branch`` and households instead of load elements in ``no_households``, and those grids are not stored, so a
 classification of today's grids gives other values. To derive them again, classify with the four parameters and
 without additional filtering and run the helper on that classification:
 
