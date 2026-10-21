@@ -81,11 +81,11 @@ before needs one run of the non-destructive setup, which keeps all grids:
 
    uv run pylovo-setup
 
-Until every migration is recorded, ``pylovo-generate`` and the ``pylovo-mv`` commands that read the MV
-tables stop with ``PyLovo schema has pending migrations (0009_mv_grids, 0010_mv_display_geometry, ...);
-run pylovo-setup first``. The message lists all pending migrations, also those of the LV stage. Run the
-setup when no generation is running, because the new foreign keys to ``grid_result`` wait for running
-transactions.
+Until every migration is recorded, ``pylovo-generate`` and the ``pylovo-mv`` commands other than
+``export`` stop with ``PyLovo schema has pending migrations (0009_mv_grids, 0010_mv_display_geometry,
+...); run pylovo-setup first``. The message lists all pending migrations, also those of the LV stage.
+Run the setup when no generation is running, because the new foreign keys to ``grid_result`` wait for
+running transactions.
 
 .. _mv-osm-data:
 
