@@ -240,7 +240,6 @@ class GridGenerator:
             f"Generating {len(plz_list)} PLZ: parallel={should_use_parallel} "
             f"(requested={parallel}, N_JOBS={N_JOBS})"
         )
-        failed_plz = []
         outcomes: dict[int, GenerationOutcome] = {}
 
         if should_use_parallel:
@@ -261,14 +260,15 @@ class GridGenerator:
                         completed_count += 1
                         try:
                             # Raises the worker's exception, if any.
-                            outcomes[plz] = GenerationOutcome(future.result())
-                            self.logger.info(f"Completed PLZ {plz} ({completed_count}/{total_count})")
+                            outcome = GenerationOutcome(future.result())
+                            outcomes[plz] = outcome
+                            log = self.logger.warning if outcome == GenerationOutcome.FAILED else self.logger.info
+                            log(f"Completed PLZ {plz} ({completed_count}/{total_count}): {outcome.value}")
                         except Exception as exc:
                             # Record the failure and continue with the other PLZ.
                             self.logger.exception(
                                 f"PLZ {plz} generated an exception ({completed_count}/{total_count}): {exc}"
                             )
-                            failed_plz.append(plz)
                             outcomes[plz] = GenerationOutcome.FAILED
 
                 except KeyboardInterrupt:
@@ -318,15 +318,14 @@ class GridGenerator:
             self.logger.error(f"Error refreshing materialized views: {e}")
             # Don't re-raise here as individual PLZ processing might have succeeded
 
-        if should_use_parallel:
-            if failed_plz:
-                failed_plz = sorted(set(failed_plz))
-                failed_plz_str = ", ".join(str(plz) for plz in failed_plz)
-                self.logger.warning(
-                    f"Parallel grid generation finished with {len(failed_plz)} failed PLZ: {failed_plz_str}"
-                )
-            else:
-                self.logger.info("Parallel grid generation finished with no failed PLZ.")
+        # A PLZ that failed inside its worker is returned as FAILED, not raised: count the outcomes.
+        failed_plz = sorted(plz for plz, outcome in outcomes.items() if outcome == GenerationOutcome.FAILED)
+        run = "Parallel grid generation" if should_use_parallel else "Grid generation"
+        if failed_plz:
+            failed_plz_str = ", ".join(str(plz) for plz in failed_plz)
+            self.logger.warning(f"{run} finished with {len(failed_plz)} failed PLZ: {failed_plz_str}")
+        else:
+            self.logger.info(f"{run} finished with no failed PLZ.")
         counts = {outcome.value: sum(1 for value in outcomes.values() if value == outcome)
                   for outcome in GenerationOutcome}
         self.logger.info("Generation outcomes: " + ", ".join(f"{key}={value}" for key, value in counts.items()))

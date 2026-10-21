@@ -1,6 +1,8 @@
 """Explicit outcomes of generate_grid_for_single_plz / generate_grid_for_multiple_plz (no database)."""
 
+import concurrent.futures
 import logging
+import re
 
 import pandas as pd
 import pytest
@@ -74,3 +76,58 @@ def test_the_worker_returns_the_outcome(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(grid_generator, "GridGenerator", Stub)
     assert GridGenerator._worker(80331, False) == GenerationOutcome.EMPTY
+
+
+def parallel_generator(monkeypatch, run_worker):
+    # Threads instead of processes: the bookkeeping of the parent is the same.
+    monkeypatch.setattr(grid_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
+    monkeypatch.setattr(grid_generator, "N_JOBS", 2)
+    monkeypatch.setattr(GridGenerator, "_worker", staticmethod(lambda plz, analyze: run_worker(plz)))
+    return generator(FakeDb(), lambda: None)
+
+
+def test_parallel_run_counts_a_returned_failure_and_names_the_plz(monkeypatch, caplog):
+    outcomes = {80331: GenerationOutcome.GENERATED, 80333: GenerationOutcome.FAILED, 80335: GenerationOutcome.EMPTY}
+    gg = parallel_generator(monkeypatch, outcomes.__getitem__)
+    with caplog.at_level(logging.INFO, logger="outcome-test"):
+        result = gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": list(outcomes)}), parallel=True)
+
+    assert result == outcomes
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Parallel grid generation finished with 1 failed PLZ: 80333" in messages
+    assert "Parallel grid generation finished with no failed PLZ." not in messages
+    # the lines pylovo-api parses keep their wording, the outcome is appended
+    assert any(re.fullmatch(r"Completed PLZ 80333 \(\d/3\): failed", m) for m in messages)
+    assert any(re.fullmatch(r"Completed PLZ 80331 \(\d/3\): generated", m) for m in messages)
+
+
+def test_parallel_run_counts_a_raising_worker_once(monkeypatch, caplog):
+    def run_worker(plz):
+        if plz == 80333:
+            raise RuntimeError("connection lost")
+        return GenerationOutcome.GENERATED
+
+    gg = parallel_generator(monkeypatch, run_worker)
+    with caplog.at_level(logging.INFO, logger="outcome-test"):
+        result = gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": [80331, 80333]}), parallel=True)
+
+    assert result[80333] == GenerationOutcome.FAILED
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(re.fullmatch(r"PLZ 80333 generated an exception \(\d/2\): connection lost", m) for m in messages)
+    assert "Parallel grid generation finished with 1 failed PLZ: 80333" in messages
+
+
+def test_parallel_run_without_failures_says_so(monkeypatch, caplog):
+    gg = parallel_generator(monkeypatch, lambda plz: GenerationOutcome.GENERATED)
+    with caplog.at_level(logging.INFO, logger="outcome-test"):
+        gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": [80331, 80333]}), parallel=True)
+    assert "Parallel grid generation finished with no failed PLZ." in [r.getMessage() for r in caplog.records]
+
+
+def test_sequential_run_names_failed_plz_too(monkeypatch, caplog):
+    gg = generator(FakeDb(), lambda: None)
+    results = {80331: GenerationOutcome.GENERATED, 80333: GenerationOutcome.FAILED}
+    monkeypatch.setattr(gg, "generate_grid_for_single_plz", lambda plz, **kwargs: results[plz])
+    with caplog.at_level(logging.INFO, logger="outcome-test"):
+        gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": list(results)}), parallel=False)
+    assert "Grid generation finished with 1 failed PLZ: 80333" in [r.getMessage() for r in caplog.records]
