@@ -46,9 +46,9 @@ def _scope(args) -> list[str]:
     if args.command == "networks":
         return [f"the grids and results of PLZ {args.plz} in version {args.version}, and the MV variants of that "
                 "version that contain the PLZ"]
-    if args.command == "version":
+    if args.command is None:
         return [f"all grids and results in every PLZ, the equipment data, the parameter snapshot and the MV "
-                f"variants of version {', '.join(args.version_ids)}"]
+                f"variants of version {', '.join(args.versions)}"]
     if args.command == "transformers":
         return ["ALL rows of pylovo.transformers, including the manual and DSO positions, which cannot be recreated "
                 "from the OSM files (generated grids keep their positions but lose the link to the transformer)"]
@@ -60,17 +60,19 @@ def main():
     parser = parsers.delete_parser()
     args = parser.parse_args()
 
-    if not args.command:
+    if args.versions and args.command:
+        parser.error("--version cannot be combined with a delete subcommand")
+    if not args.command and not args.versions:
         parser.print_help()
         return
     if not args.yes and not confirm_deletion(_scope(args), DBNAME, HOST, PORT):
         sys.exit(1)
 
     try:
-        if args.command == "networks":
+        if args.versions:
+            delete_versions(args.versions)
+        elif args.command == "networks":
             delete_networks(args.plz, args.version)
-        elif args.command == "version":
-            delete_versions(args.version_ids)
         elif args.command == "transformers":
             delete_transformers()
         elif args.command == "classification":

@@ -193,14 +193,6 @@ Examples:
     )
     return parser
 
-class _VersionOptionRemoved(argparse.Action):
-    """``pylovo-delete --version``, removed: deleting versions is the subcommand ``version``."""
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.error("--version is no option of pylovo-delete itself, delete versions with the subcommand: "
-                     "pylovo-delete version --version 1 2 3")
-
-
 def delete_parser() -> argparse.ArgumentParser:
     """The ``pylovo-delete`` argument parser."""
     parser = argparse.ArgumentParser(
@@ -211,10 +203,10 @@ def delete_parser() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   # Delete all networks for one version across all PLZ
-  pylovo-delete version --version 1
+  pylovo-delete --version 1
 
   # Delete all networks for multiple versions across all PLZ
-  pylovo-delete version --version 1 2 3
+  pylovo-delete --version 1 2 3
 
   # Delete networks for a specific PLZ and version
   pylovo-delete networks --plz 80803 --version 1
@@ -231,7 +223,11 @@ Examples:
 For more information, see: https://github.com/tum-ens/pylovo
         """
     )
-    parser.add_argument("--version", nargs="*", action=_VersionOptionRemoved, help=argparse.SUPPRESS)
+    parser.add_argument("--version", dest="versions", nargs="+", metavar="VERSION_ID",
+                        help="Version ID(s) to delete with all their networks across all PLZ (e.g., 1 2 3)")
+    parser.add_argument("--yes", action="store_true",
+                        help="with --version: delete without asking for the confirmation (required when stdin is not "
+                             "a terminal)")
     confirmation = argparse.ArgumentParser(add_help=False)
     confirmation.add_argument("--yes", action="store_true",
                               help="delete without asking for the confirmation (required when stdin is not a terminal)")
@@ -249,16 +245,6 @@ For more information, see: https://github.com/tum-ens/pylovo
                                 help="Postal code (e.g., 80803)")
     networks_parser.add_argument("--version", type=str, required=True,
                                 help="Version ID (e.g., 1)")
-
-    # Subcommand: version
-    version_parser = subparsers.add_parser(
-        "version",
-        parents=[confirmation],
-        help="Delete all networks for a version across all PLZ",
-        description="Delete all generated grid networks for a specific version across all postal codes"
-    )
-    version_parser.add_argument("--version", dest="version_ids", type=str, nargs="+", required=True,
-                               help="Version ID(s) to delete (e.g., 1 2 3)")
 
     # Subcommand: transformers
     subparsers.add_parser(

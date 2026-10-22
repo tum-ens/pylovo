@@ -69,3 +69,8 @@ def test_the_arguments_are_parsed_before_the_command_module_is_imported(monkeypa
     monkeypatch.setattr(sys, "argv", ["pylovo-delete", "transformers"])
     launch.delete()
     assert imported == ["pylovo.cli.delete", "main"]
+
+    imported.clear()
+    monkeypatch.setattr(sys, "argv", ["pylovo-delete", "--version", "1"])  # the version option without a subcommand
+    launch.delete()
+    assert imported == ["pylovo.cli.delete", "main"]

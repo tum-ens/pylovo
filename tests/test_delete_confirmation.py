@@ -72,7 +72,7 @@ def test_a_non_interactive_stdin_is_refused_without_a_question(monkeypatch, caps
 
 
 # --- pylovo-delete ------------------------------------------------------------------------------------------------
-COMMANDS = [["networks", "--plz", "80803", "--version", "1"], ["version", "--version", "1", "2"], ["transformers"],
+COMMANDS = [["networks", "--plz", "80803", "--version", "1"], ["--version", "1", "2"], ["transformers"],
             ["classification", "--version", "3"]]
 
 
@@ -130,7 +130,7 @@ def test_typing_the_database_name_deletes(monkeypatch, opened, capsys, command):
 def test_a_wrong_answer_deletes_nothing(monkeypatch, opened, answer):
     terminal(monkeypatch, True, answer)
     with pytest.raises(SystemExit) as refused:
-        run(monkeypatch, "version", "--version", "1")
+        run(monkeypatch, "--version", "1")
     assert refused.value.code == 1 and opened == []
 
 

@@ -105,7 +105,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `pylovo-setup` refuses PostgreSQL servers older than 15 before changing anything; a migration that meets violating rows stops with a message naming the migration
 - `pylovo-generate` exits with 4 when the run finished but postcodes failed or got no grids (before: 0) and names them in one line; with `--mv` the MV stage runs only for the postcodes with LV grids; `pylovo-api` counts such a generate job as succeeded
 - `pylovo-delete` and `pylovo-mv delete` show the database and what they delete and ask you to type the database name; `--yes` skips the question and is needed without a terminal (they stop with exit 1 and delete nothing otherwise); `pylovo-api` passes `--yes`
-- Versions are deleted with `pylovo-delete version --version ...` only (the top-level `--version` of `pylovo-delete` is removed); `pylovo-mv delete` exits 1 when no variant matches
+- Versions are deleted with `pylovo-delete --version ...` only: the subcommand `pylovo-delete version`, which did the same, is removed; `pylovo-mv delete` exits 1 when no variant matches
 - `--help` and usage errors of the `pylovo-*` commands work without `.env` and configuration files: the console scripts parse the command line before they load the configuration (run `uv sync` once after updating), and `import pylovo` imports its classes on first use
 - The version snapshot records `USE_INFDB`, `TARGET_EPSG` and `INFDB_SOURCE_SCHEMA`; a version stored with other input settings refuses further postcodes (older snapshots without them stay usable)
 - Development status `Production/Stable`; the licence is declared as the SPDX expression `MIT`

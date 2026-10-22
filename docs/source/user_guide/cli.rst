@@ -274,7 +274,8 @@ pylovo-delete
 
 .. code-block:: text
 
-   pylovo-delete [-h] {networks,version,transformers,classification} ...
+   pylovo-delete [-h] [--version VERSION_ID [VERSION_ID ...]] [--yes]
+                 {networks,transformers,classification} ...
 
 Deletes data from the database. Without arguments the help is shown. Deleting versions or
 postcodes cascades to all dependent result tables and refreshes the materialised views.
@@ -284,11 +285,10 @@ you to type the database name, like ``pylovo-setup reset``. ``--yes`` skips the 
 terminal on stdin (a script, a job) and without ``--yes`` nothing is deleted and the command exits
 with 1. The HTTP API passes ``--yes`` after its own typed confirmation.
 
-``pylovo-delete version --version VERSION_ID [VERSION_ID ...] [--yes]``
+``pylovo-delete --version VERSION_ID [VERSION_ID ...] [--yes]``
    Delete one or more versions with all their grids in all postcodes, their equipment data and
-   parameter snapshots. Unknown versions are reported and nothing is deleted. The option
-   ``pylovo-delete --version`` of earlier releases is gone and names this subcommand in its error
-   message.
+   parameter snapshots. Unknown versions are reported and nothing is deleted. ``--version`` cannot
+   be combined with a subcommand.
 
 ``pylovo-delete networks --plz PLZ --version VERSION [--yes]``
    Delete the grids of one postcode in one version (the version itself is kept). The MV variants
@@ -307,7 +307,7 @@ with 1. The HTTP API passes ``--yes`` after its own typed confirmation.
 
 .. code-block:: bash
 
-   pylovo-delete version --version docs_bf docs_km
+   pylovo-delete --version docs_bf docs_km
    pylovo-delete networks --plz 85653 --version 1
    pylovo-delete classification --version 1
    pylovo-delete networks --plz 85653 --version 1 --yes    # in a script

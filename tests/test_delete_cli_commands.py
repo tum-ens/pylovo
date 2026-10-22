@@ -58,8 +58,8 @@ def run(monkeypatch, *args):
 
 
 @pytest.mark.parametrize("args, expected", [
-    (["version", "--version", "1", "--yes"], ("versions", ["1"])),
-    (["version", "--version", "4", "5", "--yes"], ("versions", ["4", "5"])),
+    (["--version", "1", "--yes"], ("versions", ["1"])),
+    (["--version", "4", "5", "--yes"], ("versions", ["4", "5"])),
     (["networks", "--plz", "80803", "--version", "1", "--yes"], ("networks", 80803, "1")),
     (["transformers", "--yes"], ("transformers",)),
 ])
@@ -69,19 +69,18 @@ def test_each_command_calls_its_client_method_with_the_parsed_arguments(monkeypa
 
 
 @pytest.mark.parametrize("args", [["networks", "--version", "1"], ["networks", "--plz", "80803"],
-                                  ["networks", "--plz", "abc", "--version", "1"], ["version"], ["unknown"]])
+                                  ["networks", "--plz", "abc", "--version", "1"], ["version"], ["--version"], ["unknown"]])
 def test_incomplete_commands_are_refused_before_any_database_access(monkeypatch, calls, args):
     with pytest.raises(SystemExit) as refused:
         run(monkeypatch, *args)
     assert refused.value.code == 2 and calls == []
 
 
-@pytest.mark.parametrize("args", [["--version", "1"], ["--version", "1", "2", "3"], ["--version"], ["--version", "1", "transformers"]])
-def test_the_former_version_option_names_the_subcommand_and_deletes_nothing(monkeypatch, calls, capsys, args):
+def test_the_version_option_cannot_be_combined_with_a_subcommand(monkeypatch, calls, capsys):
     with pytest.raises(SystemExit) as refused:
-        run(monkeypatch, *args)
+        run(monkeypatch, "--version", "1", "--yes", "transformers")
     assert refused.value.code == 2 and calls == []
-    assert "pylovo-delete version --version" in capsys.readouterr().err
+    assert "--version cannot be combined with a delete subcommand" in capsys.readouterr().err
 
 
 def test_without_arguments_the_help_is_shown_and_nothing_is_deleted(monkeypatch, calls, capsys):
@@ -93,7 +92,7 @@ def test_without_arguments_the_help_is_shown_and_nothing_is_deleted(monkeypatch,
 def test_a_failing_delete_exits_with_one_and_still_closes_the_client(monkeypatch, calls, capsys, error):
     calls.client.error = error
     with pytest.raises(SystemExit) as failed:
-        run(monkeypatch, "version", "--version", "9", "--yes")
+        run(monkeypatch, "--version", "9", "--yes")
     assert failed.value.code == 1 and calls[-1] == "close"
     assert str(error) in capsys.readouterr().out
 
