@@ -164,6 +164,14 @@ def _assert_same(got: RingCheck, expected: RingCheck, rel: float = 1e-9) -> None
         assert getattr(got, name) == pytest.approx(getattr(expected, name), rel=rel, abs=1e-12), name
 
 
+def test_open_sections_equal_within_the_tolerance_are_decided_by_the_lower_position():
+    # v2 is a joint; its 1e-10 kW stands in for the rounding that let a CI machine prefer the later open section
+    got = rings.check_ring(np.zeros((3, 4)), np.zeros((3, 4)), np.array([500.0, 1e-10, 2000.0]),
+                           np.full(4, 1000.0), np.full(4, 0.122), np.full(4, 0.112), np.full(4, 0.421),
+                           np.array([True, False, True]), np.array([True, False, True]), G, 1.0, 20.0, LIMITS)
+    assert (got.feasible, got.open_section, got.nop_position) == (True, 1, 1)
+
+
 def test_check_ring_agrees_with_brute_force_on_random_rings():
     rng = np.random.default_rng(20261015)
     reasons = set()
