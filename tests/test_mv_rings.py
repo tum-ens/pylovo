@@ -497,7 +497,10 @@ def test_with_loads_gives_a_new_evaluator():
 
 
 def test_evaluator_is_fast_enough():
-    """One evaluation of a 20-member ring (no memo hit) takes less than 200 microseconds."""
+    """One evaluation of a 20-member ring (no memo hit) takes less than a millisecond.
+
+    About 0.08 ms on a desktop and 0.22 ms on a shared CI runner; a lost vectorisation costs several milliseconds.
+    """
     rng = np.random.default_rng(13)
     n = 80
     ev = _evaluator(rng, n, cache_size=0)
@@ -508,7 +511,7 @@ def test_evaluator_is_fast_enough():
         for seq in seqs:
             ev.evaluate(seq)
         best = min(best, (time.perf_counter() - start) / len(seqs))
-    assert best < 200e-6, f"{best * 1e6:.0f} us per evaluation"
+    assert best < 1e-3, f"{best * 1e6:.0f} us per evaluation"
 
 
 def test_member_weights_count_rural_members_by_the_factor():
