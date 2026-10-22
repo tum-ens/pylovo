@@ -33,19 +33,13 @@ CONSUMER_CATEGORIES:
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
 
-# Voltage planning may upsize conductors at the ampacity's parallel count; with FEEDER_STANDARD_CABLE it adds parallel standard cables first.
-
 # Max. approximate voltage drop from the transformer LV bus to any service connection point.
-MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT: 5 # With the service limit the 6 % LV share of the band split (LV busbar at LV_REFERENCE_VOLTAGE_PU 0.96 p.u. down to MIN_VM_PU 0.90 p.u.)
-
+MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT: 5 # With the service limit the 6 % LV share of the band 
 # Max. service cable voltage drop at its building-local coincident load.
 MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT: 1 # The rest of the 6 % LV share
 
-## Station voltage of the validation power flow
-# DIN EN 50160 allows 0.90–1.10 p.u. at the customer. Following Niederle et al. (2026) this band is split between MV and LV:
-# at the load of the validation power flow the LV busbar of the station is at 0.96 p.u. (the MV grid and the transformer have used their share),
-# which leaves the LV cables 6 % down to MIN_VM_PU = 0.90 (config_analysis.yaml).
-LV_REFERENCE_VOLTAGE_PU: 0.96 # LV busbar voltage at the load of the validation power flow; pylovo sets the MV side to reach it (null: MV side at 1.0 p.u., the old check)
+## Station voltage of the validation power flow DIN EN 50160 allows 0.90–1.10 p.u. at the customer. Following Niederle et al. (2026) this band is split between MV and LV: at the load of the validation power flow the LV busbar of the station is at 0.96 p.u. (the MV grid and the transformer have used their share), which leaves the LV cables 6 % down to MIN_VM_PU = 0.90
+LV_REFERENCE_VOLTAGE_PU: 0.96 # LV busbar voltage at the load of the validation power flow
 
 # Planned coincident load / transformer rating for sizing and cluster splitting
 TRANSFORMER_PLANNING_UTILIZATION: 0.8
@@ -56,23 +50,17 @@ MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 200
 # Planned coincident current / ampacity of the feeder and service cable designs, as for the transformers (cable sizing only; voltage drops use the current itself)
 CABLE_PLANNING_UTILIZATION: 0.8
 
-# How houses are connected to the feeders (Hausanschlusstechnik; "Kabelverteiler- oder Muffenanschluss"):
-#   joint   - Muffentechnik: each house is connected with a tee joint (Abzweigmuffe, T-Muffe) on the street cable;
-#             cable distribution cabinets (Kabelverteilerschränke, KVS) only sit at branch points. Default.
-#   cabinet - Kabelverteilertechnik: houses are connected from cable distribution cabinets (KVS) placed along the
-#             feeders, each with its own house-connection cable (Hausanschlussleitung) from the nearest cabinet;
-#             the feeder cable runs from cabinet to cabinet. Common in rural Bavaria.
+# How houses are connected to the feeders (Hausanschlusstechnik: "Kabelverteiler- oder Muffenanschluss"):
+# - joint ("Muffen"): each house is connected with a tee joint (Abzweigmuffe, T-Muffe) on the street cable; cable distribution cabinets (Kabelverteilerschränke, KVS) only sit at branch points.
+# - cabinet ()"Kabelverteiler"): houses are connected from cable distribution cabinets (KVS) placed along the feeders, each with its own house-connection cable (Hausanschlussleitung) from the nearest cabinet the feeder cable runs from cabinet to cabinet. Common in rural Bavaria.
 HOUSE_CONNECTION: joint
-# Only with HOUSE_CONNECTION: cabinet. Longest feeder cable (m) without a cabinet (Abstand der Kabelverteiler); a single
-# building at a branch end within this distance is connected from the cabinet before it instead of by a feeder. The
-# default comes from one rural network (first cabinet 105 m from the station, cabinets 74 m apart, medians); check it
-# against the DSO's practice.
+
+# Only with HOUSE_CONNECTION: cabinet. Longest feeder cable (m) without a cabinet (Abstand der Kabelverteiler); a single building at a branch end within this distance is connected from the cabinet before it instead of by a feeder. The default comes from one rural network (first cabinet 105 m from the station, cabinets 74 m apart, medians); check it against the DSO's practice.
 CABINET_SPACING_M: 100
 
-# Standard feeder cable (Standardkabel, Regelquerschnitt), e.g. NAYY_4_150: every feeder section uses it, laid in parallel
-# (Parallelkabel) when one is not enough, for the load and for the voltage drop. Only beyond MAX_PARALLEL_FEEDER_CABLES are
-# larger cables from FEEDER_CABLES used. null = the cheapest sufficient cable from FEEDER_CABLES (larger cross-sections before parallel cables).
+# Standard feeder cable (Standardkabel, Regelquerschnitt), e.g. NAYY_4_150: every feeder section uses it, laid in parallel (Parallelkabel) when one is not enough, for the load and for the voltage drop. Only beyond MAX_PARALLEL_FEEDER_CABLES are larger cables from FEEDER_CABLES used. null = the cheapest sufficient cable from FEEDER_CABLES (larger cross-sections before parallel cables).
 FEEDER_STANDARD_CABLE: null
+
 # Most parallel standard cables per feeder section (only with FEEDER_STANDARD_CABLE)
 MAX_PARALLEL_FEEDER_CABLES: 4
 
@@ -85,11 +73,13 @@ MIN_SHARED_PREFIX_LENGTH_M: 50
 
 # Conservative open-data proxy for DSO HaAn aggregation: nearby street-side connection points
 # are merged only when they share the same street identifier/name and form a small local cluster.
-# With HOUSE_CONNECTION: cabinet the merged buildings share one house-connection cable from their cabinet
-# (gemeinsame Hausanschlussleitung with a joint near the houses).
+# With HOUSE_CONNECTION: cabinet the merged buildings share one house-connection cable from their cabinet (gemeinsame Hausanschlussleitung with a joint near the houses).
 AGGREGATE_NEARBY_CONNECTION_POINTS: False
 CONNECTION_POINT_AGGREGATION_RADIUS_M: 15
 CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS: 4
+
+## Postcode borders
+ROUTE_ACROSS_POSTCODE_BORDERS: True # Also route over the InfDB streets of the neighboring PLZ within MAX_BROWNFIELD_TRAFO_DISTANCE/2 + 100 m outside the PLZ (stations and buildings stay per PLZ)
 
 # =============================================================================
 # TRANSFORMER PLACEMENT PARAMETERS
@@ -119,19 +109,16 @@ K_MEANS_SEED: 3329829316 # k-means integer seed to ensure deterministic behavior
 MAX_GREENFIELD_TRAFO_DISTANCE: 1000 # Mean maximum distance from a greenfield transformer to any cluster connection point
 MAX_GREENFIELD_TRAFO_DISTANCE_STD: 250 # Per-cluster spread of that limit (normal, clipped to +/- 2 std); 0 = fixed limit
 GREENFIELD_TRAFO_POSITION_TOLERANCE: 0.3 # Random station among positions costing at most (1 + tolerance) x the optimum; 0 = optimal
-MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters as posprocessing step; with existing stations, clusters still small afterwards join the nearest station within MAX_BROWNFIELD_TRAFO_DISTANCE
+MERGE_GREENFIELD_CLUSTERS: True # Merge neighboring greenfield clusters as postprocessing step
 GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA: [250, 400, 630] # Select transformer capacities for merging
 GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: 4 # Merge a pair only if its smaller cluster has at most this many buildings; null = any size
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
 BROWNFIELD_NEAREST_ONLY: False # A building joins only its nearest existing station; when that one is full, the building gets a greenfield station
-USE_OPEN_TRANSFORMER_POSITIONS: False # Include all non-DSO positions from pylovo.transformers (OSM, LoD2 and manual)
-USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions from pylovo.transformers
+USE_OPEN_TRANSFORMER_POSITIONS: False # Include all non-DSO positions (OSM, LoD2 and manual)
+USE_DSO_TRANSFORMER_POSITIONS: False # Include imported DSO transformer positions
 USE_MANUAL_TRANSFORMER_POSITIONS: False # Include the positions placed with the transformer map or the HTTP API (manual/...) even when USE_OPEN_TRANSFORMER_POSITIONS is False
-
-## Postcode borders
-ROUTE_ACROSS_POSTCODE_BORDERS: True # Also route over the InfDB streets of the neighboring PLZ within MAX_BROWNFIELD_TRAFO_DISTANCE/2 + 100 m outside the PLZ (stations and buildings stay per PLZ)
 
 # =============================================================================
 # Equipment data configuration
@@ -146,7 +133,6 @@ TRANSFORMERS:
   - {name: Tr_630, s_max_kva: 630, cost_eur: 12000, typ: Transformer}
   - {name: Tr_800, s_max_kva: 800, cost_eur: 16000, typ: Transformer}
 
-# Cable costs are rounded material costs in EUR/m.
 FEEDER_CABLES:
 #  - {name: NAYY_4_95, max_i_a: 215, r_mohm_per_km: 320, x_mohm_per_km: 82, z_mohm_per_km: 330, cost_eur: 18, typ: Cable}
 #  - {name: NAYY_4_120, max_i_a: 242, r_mohm_per_km: 225, x_mohm_per_km: 80, z_mohm_per_km: 239, cost_eur: 24, typ: Cable}
@@ -160,8 +146,6 @@ FEEDER_CABLES:
 # - {name: NA2XS(F)2Y_1x240RM_12_20kV_ir_240, max_i_a: 456, r_mohm_per_km: 144, x_mohm_per_km: 182, z_mohm_per_km: 236, cost_eur: 45, typ: Cable} # MV level
 # - {name: NA2XS(F)2Y_1x150RM_12_20kV_ir_150, max_i_a: 353, r_mohm_per_km: 227, x_mohm_per_km: 195, z_mohm_per_km: 299, cost_eur: 35, typ: Cable} # MV level
 
-# House-connection cables (Hausanschlusskabel): each building gets its own cable, the cheapest of these that carries its
-# design current within MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT
 CONSUMER_CONNECTION_CABLES:
 # - {name: NYY_4_16, max_i_a: 103, r_mohm_per_km: 1150, x_mohm_per_km: 90, z_mohm_per_km: 1153, cost_eur: 7, typ: Cable}
 - {name: NAYY_4_50, max_i_a: 142, r_mohm_per_km: 642, x_mohm_per_km: 83, z_mohm_per_km: 647, cost_eur: 11, typ: Cable}
