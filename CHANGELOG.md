@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
+
+### Fixed
+- Update Pillow, certifi, urllib3, geopy and Werkzeug in the lock file to versions without known vulnerabilities
+
 ## [1.0.0] - 2026-10-22
 ### Changed
 - Split the generation configuration into `config_generation_lv.yaml` and `config_generation_mv.yaml`; an existing `config_generation.yaml` is still read
