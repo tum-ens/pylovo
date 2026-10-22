@@ -533,9 +533,8 @@ def indexes_and_cleanup(cur: cursor) -> None:
 def schema_cleanup(cur: cursor) -> None:
     """Drop three tables that no code uses and give the line cache the key names of a fresh setup.
 
-    Dropped: ``mastr_units`` and ``mastr_postcode_aggregates`` (databases that ran the earlier body of
-    ``0009_mv_grids`` with the MaStR import, which stays on ``feature/mv-backup``) and ``grid_parameters``
-    (nothing writes it). Their rows are deleted.
+    Dropped: ``mastr_units`` and ``mastr_postcode_aggregates`` (databases that ran an earlier body of
+    ``0009_mv_grids`` with a MaStR import) and ``grid_parameters`` (nothing writes it). Their rows are deleted.
     Renamed: the line cache was the table ``lines_result_view`` in v0.8.0 and kept the names of its primary
     key (and its index), its NOT NULL constraints (PostgreSQL 18) and its identity sequence.
     A no-op on a fresh schema.
