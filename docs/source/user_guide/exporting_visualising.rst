@@ -107,6 +107,18 @@ Alternatively, ``SAVE_GRID_FOLDER: True`` writes the JSON files during generatio
 (``GET /api/grids/{id}/pandapower.json``). The MV grids of the MV stage are stored in
 ``pylovo.mv_grid.net`` and written with ``pylovo-mv export`` (:doc:`mv_grids`).
 
+Excel workbooks, for example to exchange grids with a distribution system operator, come from
+:func:`~pylovo.analysis.validation_helpers.export_synthetic_grids_to_excel`: it writes every grid of
+``VERSION_ID``, or one grid given by ``plz``, ``kcid`` and ``bcid``, with ``pandapower.to_excel`` as
+``grid_<plz>_<kcid>_<bcid>.xlsx`` into a folder.
+
+.. code-block:: python
+
+   from pylovo.analysis.validation_helpers import export_synthetic_grids_to_excel
+
+   export_synthetic_grids_to_excel("results/excel")                          # every grid of VERSION_ID
+   export_synthetic_grids_to_excel("results/excel", plz=85653, kcid=1, bcid=2)
+
 Plotting helpers
 ----------------
 
