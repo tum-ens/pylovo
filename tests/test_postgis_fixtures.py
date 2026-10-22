@@ -128,6 +128,26 @@ def test_a_transformer_on_a_street_becomes_a_vertex_of_that_street(tem):
     assert tem.cur.fetchall() == [("node/1", "POINT(50 0)"), ("node/2", "POINT(20 10)")]
 
 
+def test_a_transformer_between_two_equally_near_streets_connects_to_the_lower_way_id(tem):
+    way(tem, 7, "LINESTRING(20 35, 20 65)")
+    way(tem, 3, "LINESTRING(5 35, 5 65)")
+    # PostGIS 3.5 computes its distance (15 m) one rounding step below the index box distance (CI image)
+    way(tem, 9, "LINESTRING(9 35, 20 35)", clazz=110)
+    tem.cur.execute(
+        """INSERT INTO buildings_tem (objectid, geom, centroid, type, peak_load_in_kw, plz)
+           VALUES ('lod2/1', ST_SetSRID(ST_MakePoint(12.5, 50), 25832), ST_SetSRID(ST_MakePoint(12.5, 50), 25832),
+                   'Transformer', -1, %s)""", (PLZ,))
+    tem.index_and_analyze_staging(PLZ)       # as in the generation: the nearest-way search can use the index
+    tem.cur.execute("SELECT generate_transformer_to_way_connections_infdb()")
+    tem.cur.execute("""SELECT clazz, ST_AsText(ST_SnapToGrid(geom, 0.001)) FROM ways_tem
+                       ORDER BY clazz, ST_XMin(geom), ST_YMin(geom)""")
+    assert tem.cur.fetchall() == [
+        (41, "LINESTRING(20 35,20 65)"),
+        (103, "LINESTRING(5 35,5 50)"), (103, "LINESTRING(5 50,5 65)"),
+        (110, "LINESTRING(12.5 50,5 50)"), (110, "LINESTRING(9 35,20 35)"),
+    ]
+
+
 def test_crossing_ways_are_split_once_at_every_crossing(tem):
     way(tem, 1, "LINESTRING(0 0, 30 0)")
     way(tem, 2, "LINESTRING(10 -5, 10 5)")

@@ -264,7 +264,7 @@ OSM_LOOSE_ENDS_SQL = """
                                ST_ClosestPoint(s.geom, l.pt) AS cp
                         FROM mvg_src s
                         WHERE COALESCE(s.klasse, '') <> ALL(%(osm)s) AND ST_DWithin(s.geom, l.pt, %(snap)s)
-                        ORDER BY s.geom <-> l.pt, s.edge_id LIMIT 1) n
+                        ORDER BY ST_Distance(s.geom, l.pt), s.edge_id LIMIT 1) n
 """
 
 # the straight connectors from the loose ends to their street points (cut into the streets before)

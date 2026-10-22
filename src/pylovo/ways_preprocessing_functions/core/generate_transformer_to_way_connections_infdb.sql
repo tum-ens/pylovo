@@ -48,7 +48,10 @@ BEGIN
             FROM ways_tem w
             WHERE w.clazz != 110
               AND ST_DWithin(t.centroid, w.geom, 2000)
-            ORDER BY t.centroid <-> w.geom, w.way_id
+            -- Not the KNN operator <->: with a tie-break the index scan reads past the nearest way, and
+            -- PostGIS 3.5 aborts it ("index returned tuples in wrong order") when an exact distance comes
+            -- out one rounding step below the box distance of the index, e.g. for an axis-parallel line.
+            ORDER BY ST_Distance(t.centroid, w.geom), w.way_id
             LIMIT 1
         ) w ON TRUE
     )
