@@ -144,6 +144,7 @@ class Job:
     in_traceback: bool = False
     _proc: subprocess.Popen | None = field(default=None, repr=False)
     _log_path: Path | None = field(default=None, repr=False)
+    _thread: threading.Thread | None = field(default=None, repr=False)  # ends after the final record is written
 
     @property
     def active(self) -> bool:
@@ -278,7 +279,8 @@ class JobManager:
             job._log_path = self.jobs_dir / f"{job.id}.log"
             self._jobs[job.id] = job
             self._trim_history()
-        threading.Thread(target=self._run, args=(job,), name=f"job-{job.id}", daemon=True).start()
+        job._thread = threading.Thread(target=self._run, args=(job,), name=f"job-{job.id}", daemon=True)
+        job._thread.start()
         return job
 
     def cancel(self, job_id: str) -> Job | None:
@@ -320,8 +322,9 @@ class JobManager:
 
     @staticmethod
     def _wait_until_ended(jobs: list[Job], seconds: float) -> None:
+        # a job is no longer active before its final record is written: wait for its thread
         deadline = time.time() + seconds
-        while time.time() < deadline and any(j.active for j in jobs):
+        while time.time() < deadline and any(j.active or (j._thread and j._thread.is_alive()) for j in jobs):
             time.sleep(0.1)
 
     # ------------------------------------------------------------------ internals
@@ -384,10 +387,16 @@ class JobManager:
                 log.exception("The finish hook failed for job %s", job.id)
 
     def _write_record(self, job: Job) -> None:
-        """Write ``<id>.json``, the history record: when the process has started (status ``running``, with its pid) and at the end."""
+        """Write ``<id>.json``, the history record: when the process has started (status ``running``, with its pid) and at the end.
+
+        The record is written to ``<id>.json.tmp`` and renamed, so a reader never sees an empty or half-written record.
+        """
+        path = self.jobs_dir / f"{job.id}.json"
+        tmp = path.with_name(f"{path.name}.tmp")
         try:
-            (self.jobs_dir / f"{job.id}.json").write_text(
+            tmp.write_text(
                 json.dumps(job.summary() | {"argv": job.argv, "output_dir": job.output_dir, "pid": job.pid}), encoding="utf-8")
+            os.replace(tmp, path)
         except OSError:
             pass
 
@@ -513,7 +522,8 @@ class JobManager:
             job._proc = _Orphan(job.pid, job.started_at)
             self._append(job, "pylovo-api was restarted: the job is still running, but its output is no longer followed",
                          "warning")
-            threading.Thread(target=self._watch_orphan, args=(job,), name=f"job-{job.id}", daemon=True).start()
+            job._thread = threading.Thread(target=self._watch_orphan, args=(job,), name=f"job-{job.id}", daemon=True)
+            job._thread.start()
             return
         ended = log_path.stat().st_mtime if log_path.exists() else None  # the last output is the last sign of life
         self._append(job, "pylovo-api was stopped while this job was running: its process is gone and its result is unknown",
