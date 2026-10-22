@@ -38,9 +38,9 @@ computed, never inferred from a neighbour. This is the MV analogue of pylovo's L
    ``n1_utilization * I_max`` and the drop at most ``max_drop_n1``.
 
 **NOP choice** (voltage balance, Klabunde 2022): ``m* = argmin max(du_A(m), du_B(m))`` over the feasible allowed
-``m``, ties by ``|P_A - P_B|``, then by the lower ``m``. If no allowed ``m`` is feasible, the same rule picks the
-open section among all allowed ``m`` (the ring is reported infeasible with that NOP, so the topology can still build
-and repair it). Cost: ``O(k * k * 4)``, about 0.1 ms for ``k = 20``.
+``m``, ties (equal within the tolerance) by ``|P_A - P_B|``, then by the lower ``m``. If no allowed ``m`` is
+feasible, the same rule picks the open section among all allowed ``m`` (the ring is reported infeasible with that
+NOP, so the topology can still build and repair it). Cost: ``O(k * k * 4)``, about 0.1 ms for ``k = 20``.
 
 * :func:`check_ring`: the vectorised check on explicit per-position and per-section arrays (rings with joints,
   parallel circuits, explicit sections after a split).
@@ -216,7 +216,11 @@ def _check(loads: np.ndarray, length: np.ndarray, w: np.ndarray, cap: np.ndarray
     index = np.flatnonzero(pool)
     balance = np.maximum(drop_a, drop_b)[index]
     spread = np.abs(p_a - p_b)[index]
-    best = int(index[np.lexsort((index, spread, balance))[0]])
+    # Equal keys (e.g. on both sides of joints without load) differ only by the rounding of the matrix products,
+    # which depends on the CPU: compare within the tolerance, so the lower m decides a tie on every machine.
+    near = balance <= balance.min() + _TOL
+    near &= spread <= spread[near].min() + _TOL
+    best = int(index[near][0])
     m = best + 1                                         # 1-based open section
     if allowed[best]:
         nop = m if switchgear[best] else m + 1           # the panel at v_m if it has switchgear, else at v_{m+1}
