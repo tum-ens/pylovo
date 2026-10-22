@@ -249,8 +249,9 @@ def test_the_record_of_a_job_exists_while_it_runs_and_holds_the_pid(manager):
     assert record["status"] == "running" and record["pid"] == job.pid and record["finished_at"] is None
     manager.cancel(job.id)
     wait(job, 20)
-    record = json.loads(path.read_text(encoding="utf-8"))
-    assert record["status"] == "cancelled" and record["finished_at"] is not None  # updated at the end
+    # updated at the end, just after the status changed
+    until(lambda: json.loads(path.read_text(encoding="utf-8"))["status"] == "cancelled")
+    assert json.loads(path.read_text(encoding="utf-8"))["finished_at"] is not None
 
 
 def test_a_job_record_is_never_read_half_written(manager):
@@ -315,6 +316,8 @@ def test_shutdown_kills_a_job_that_ignores_sigterm(manager):
     pid = job.pid
     manager.shutdown(wait_s=0.5)
     assert job.status == "cancelled"
+    record = json.loads((manager.jobs_dir / f"{job.id}.json").read_text(encoding="utf-8"))
+    assert record["status"] == "cancelled"  # shutdown returns only after the final record is written
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
 
