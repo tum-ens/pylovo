@@ -253,6 +253,19 @@ def test_the_record_of_a_job_exists_while_it_runs_and_holds_the_pid(manager):
     assert record["status"] == "cancelled" and record["finished_at"] is not None  # updated at the end
 
 
+def test_a_job_record_is_never_read_half_written(manager):
+    for _ in range(10):  # read as soon as the file exists: a plain write_text showed most of these reads an empty file
+        job = manager.start("test", "slow", [sys.executable, "-c", "import time; time.sleep(30)"])
+        path = manager.jobs_dir / f"{job.id}.json"
+        end = time.time() + 10
+        while not path.exists() and time.time() < end:
+            pass
+        assert json.loads(path.read_text(encoding="utf-8"))["status"] == "running"
+        manager.cancel(job.id)
+        wait(job, 20)
+    assert not list(manager.jobs_dir.glob("*.tmp"))
+
+
 def test_a_job_that_was_running_when_the_server_died_is_marked_interrupted(tmp_path):
     jobs_dir = tmp_path / "jobs"
     for job_id, status in (("a1", "running"), ("a2", "queued")):

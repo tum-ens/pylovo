@@ -384,10 +384,16 @@ class JobManager:
                 log.exception("The finish hook failed for job %s", job.id)
 
     def _write_record(self, job: Job) -> None:
-        """Write ``<id>.json``, the history record: when the process has started (status ``running``, with its pid) and at the end."""
+        """Write ``<id>.json``, the history record: when the process has started (status ``running``, with its pid) and at the end.
+
+        The record is written to ``<id>.json.tmp`` and renamed, so a reader never sees an empty or half-written record.
+        """
+        path = self.jobs_dir / f"{job.id}.json"
+        tmp = path.with_name(f"{path.name}.tmp")
         try:
-            (self.jobs_dir / f"{job.id}.json").write_text(
+            tmp.write_text(
                 json.dumps(job.summary() | {"argv": job.argv, "output_dir": job.output_dir, "pid": job.pid}), encoding="utf-8")
+            os.replace(tmp, path)
         except OSError:
             pass
 
