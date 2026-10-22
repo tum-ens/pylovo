@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]  # 1.27 reads the SPDX license expression (PEP 63
 build-backend = "hatchling.build"
 [project]
 name = "pylovo"
-version = "0.7.0"
+version = "1.0.0"
 description = "Python tool for generating synthetic low-voltage distribution grids"
 readme = "README.rst"
 requires-python = ">=3.12,<3.14"
