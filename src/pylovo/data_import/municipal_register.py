@@ -1,189 +1,208 @@
-"""
-Municipal register data import functions.
-This module consolidates functions for importing and processing municipal register data
-from Regiostar and Gemeindeverzeichnis datasets.
+"""Build the ``municipal_register`` table (PLZ, AGS, population, RegioStaR classes).
+
+The register joins three files in ``data/municipal_register`` (``$PYLOVO_DATA_DIR/municipal_register``
+if ``PYLOVO_DATA_DIR`` is set; a file that is missing there is read from the copy in the wheel):
+
+- ``gemeindeverzeichnis/plz_einwohner.xlsx``: population and area per PLZ,
+- ``gemeindeverzeichnis/zuordnung_plz_ort.xlsx``: PLZ to AGS mapping
+  (both from suche-postleitzahl.org),
+- ``regiostar/regiostar.xlsx``: RegioStaR 5/7 classes per municipality (BMDV).
 """
 import os
-import pandas as pd
 from pathlib import Path
-from openpyxl import load_workbook
-import pylovo.database.database_client as dbc
-def _get_repo_root() -> Path:
-    """
-    Get the repository/project root directory.
 
-    Priority:
-    1. PYLOVO_ROOT environment variable (for Docker/pip installs)
-    2. Walk up from package location looking for data/
-    3. Current working directory
+import pandas as pd
+from openpyxl import load_workbook
+
+import pylovo.database.database_client as dbc
+from pylovo.utils import get_user_data_dir, reference_data_path
+
+
+def _get_repo_root() -> Path:
+    """Return the directory that contains ``data/``.
+
+    Priority: ``$PYLOVO_ROOT``, then the first parent of this package that contains ``data/``,
+    then the current working directory.
     """
-    # Check environment variable first (Docker-friendly)
     env_root = os.getenv("PYLOVO_ROOT")
     if env_root:
         root_path = Path(env_root)
         if root_path.exists():
             return root_path
 
-    # Try to find data/ by walking up from package location
     current = Path(__file__).parent
     while current != current.parent:
         if (current / "data").exists():
             return current
         current = current.parent
 
-    # Fallback to current working directory
     return Path.cwd()
+
+
+def _get_register_dir() -> Path:
+    """Return the ``municipal_register`` folder.
+
+    ``$PYLOVO_DATA_DIR`` wins if it is set, otherwise it is ``data/`` of :func:`_get_repo_root`.
+    """
+    if os.getenv("PYLOVO_DATA_DIR"):
+        return get_user_data_dir() / "municipal_register"
+    return _get_repo_root() / "data" / "municipal_register"
+
+
+REGISTER_FILES = (
+    "regiostar/regiostar.xlsx",
+    "gemeindeverzeichnis/plz_einwohner.xlsx",
+    "gemeindeverzeichnis/zuordnung_plz_ort.xlsx",
+)
+
+
+def _register_file(relative_path: str) -> Path:
+    """Return the register source file: in :func:`_get_register_dir`, else the copy that the wheel ships."""
+    return reference_data_path(_get_register_dir() / relative_path, Path("municipal_register") / relative_path)
+
+
+def missing_input_files() -> list[str]:
+    """Return the paths of the register source files that do not exist."""
+    return [str(path) for path in map(_register_file, REGISTER_FILES) if not path.exists()]
+
+
 def _get_data_file_path(relative_path: str) -> str:
-    """Get path to municipal data file in data directory."""
-    repo_root = _get_repo_root()
-    file_path = repo_root / "data" / "municipal_register" / relative_path
+    """Return the path of a register source file (:func:`_register_file`).
+
+    Raises:
+        FileNotFoundError: If the file does not exist (with setup hints).
+    """
+    file_path = _register_file(relative_path)
     if not file_path.exists():
         raise FileNotFoundError(
             f"Municipal data file not found: {file_path}\n\n"
             f"Setup options:\n"
-            f"1. Clone full repo: git clone https://github.com/tum-ens/pylovo.git\n"
-            f"2. Docker/pip install: Set PYLOVO_ROOT environment variable to your project directory\n"
+            f"1. Install the wheel (pip install pylovo): it ships the file\n"
+            f"2. Clone full repo: git clone https://github.com/tum-ens/pylovo.git\n"
+            f"3. Set PYLOVO_ROOT to a project directory that has data/municipal_register/\n"
             f"   Example: export PYLOVO_ROOT=/app\n"
-            f"   Then ensure data/ directory exists at $PYLOVO_ROOT/data/"
+            f"4. Or set PYLOVO_DATA_DIR to a directory that contains municipal_register/"
         )
     return str(file_path)
+
+
 def import_regiostar() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Import RegioStaR dataset from excel datasheet.
-    Regiostar: Regionalstatistische Raumtypologie des Bundesministeriums für Digitales und Verkehr (BMVI)
-    classification of German Municipalities
-    source: https://bmdv.bund.de/SharedDocs/DE/Artikel/G/regionalstatistische-raumtypologie.html
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame]
-        - Full regiostar table with AGS, name, Regiostar 5 and 7 classes
-        - Bavaria-only subset of the regiostar table
+    """Read the RegioStaR classification of German municipalities.
+
+    RegioStaR (Regionalstatistische Raumtypologie of the Federal Ministry for Digital and
+    Transport, https://www.bmv.de/SharedDocs/DE/Artikel/G/regionalstatistische-raumtypologie.html).
+
+    Returns:
+        Tuple of the full table (columns ``mun_code``, ``name_city``, ``pop``, ``area``,
+        ``fed_state``, ``regio7``, ``regio5``, ``pop_den``) and its Bavaria-only subset
+        (without ``fed_state``).
     """
     data_path = _get_data_file_path('regiostar/regiostar.xlsx')
     name_worksheet = "ReferenzGebietsstand2020"
-    # load excel work book
     wb = load_workbook(data_path)
-    # load excel sheet
     ws = wb[name_worksheet]
-    # write excel regiostar table into dataframe
     data = ws.values
     columns = next(data)[0:]
     regiostar = pd.DataFrame(data, columns=columns)
-    # columns to be dropped
     drop_columns = ["gemrs_20", "vbgem_20", "vbgemrs_20", "vbgnam_20", "RegioStaR2", "RegioStaR4", "RegioStaR17",
                     "RegioStaRGem7", "RegioStaRGem5", "RegioStaR_Stadtregion", "RegioStaR_NameStadtregion"]
     regiostar5_7 = regiostar.drop(drop_columns, axis=1)
-    # The columns are municipal code (Gemeindeschlüssel), Name (Gemeindename), population, area, federal state (Bundesland)
-    # and regio 5 and 7 code
+    # municipal code (Gemeindeschlüssel), name, population, area, federal state, RegioStaR 7 and 5
     regiostar5_7.columns = ["mun_code", "name_city", "pop", "area", "fed_state", "regio7", "regio5"]
-    # Calculating the population density
     regiostar5_7["pop_den"] = regiostar5_7["pop"] / regiostar5_7["area"]
-    # selecting municipalities in Bayern
     regiostar5_7_bayern = regiostar5_7.loc[regiostar5_7['fed_state'] == 9]
     regiostar5_7_bayern = regiostar5_7_bayern.drop(["fed_state"], axis=1)
     return regiostar5_7, regiostar5_7_bayern
+
+
 def import_plz_einwohner() -> pd.DataFrame:
-    """
-    Import table with PLZ, population, area, latitude and longitude.
-    Source: https://www.suche-postleitzahl.org/downloads
-    Returns
-    -------
-    pd.DataFrame
-        Table with population data per postal code
-    """
+    """Read population, area, latitude and longitude per PLZ (suche-postleitzahl.org)."""
     data_path = _get_data_file_path('gemeindeverzeichnis/plz_einwohner.xlsx')
-    plz_einwohner = pd.read_excel(data_path)
-    return plz_einwohner
+    return pd.read_excel(data_path)
+
+
 def import_zuordnung_plz() -> pd.DataFrame:
-    """
-    Import excel table with matching PLZ and AGS.
-    Source: https://www.suche-postleitzahl.org/downloads
-    Returns
-    -------
-    pd.DataFrame
-        Table with PLZ and AGS data
-    """
+    """Read the PLZ to AGS mapping (suche-postleitzahl.org) without its ``osm_id`` column."""
     data_path = _get_data_file_path('gemeindeverzeichnis/zuordnung_plz_ort.xlsx')
     plz_zuordnung = pd.read_excel(data_path)
-    plz_zuordnung = plz_zuordnung.drop(columns=["osm_id"])
-    return plz_zuordnung
+    return plz_zuordnung.drop(columns=["osm_id"])
+
+
 def import_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """
-    Retrieve data from gemeindeverzeichnis and regiostar.
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-        - plz_einwohner: Population data per postal code
-        - plz_zuordnung: PLZ to AGS mapping
-        - regiostar: Regiostar classification data
+    """Read the three source tables.
+
+    Returns:
+        Tuple ``(plz_einwohner, plz_zuordnung, regiostar)``: population per PLZ, PLZ to AGS
+        mapping and the full RegioStaR table.
     """
     plz_zuordnung = import_zuordnung_plz()
     plz_einwohner = import_plz_einwohner()
-    regiostar, regiostar_bayern = import_regiostar()
+    regiostar, _ = import_regiostar()
     return plz_einwohner, plz_zuordnung, regiostar
+
+
 def join_regiostar_plz(plz_pop: pd.DataFrame, plz_ags: pd.DataFrame, regiostar: pd.DataFrame) -> pd.DataFrame:
-    """
-    Create table that contains regiostar classes for PLZ.
-    Pop and area columns contain specific data for the PLZ.
-    Parameters
-    ----------
-    plz_pop : pd.DataFrame
-        Population data per postal code
-    plz_ags : pd.DataFrame
-        PLZ to AGS mapping
-    regiostar : pd.DataFrame
-        Regiostar classification data
-    Returns
-    -------
-    pd.DataFrame
-        Combined table with PLZ, AGS, and regiostar classifications
+    """Join population per PLZ, the PLZ to AGS mapping and the RegioStaR classes.
+
+    ``pop`` and ``area`` of the result refer to the PLZ, not to the municipality.
+
+    Args:
+        plz_pop: Population per PLZ (column ``population``).
+        plz_ags: PLZ to AGS mapping.
+        regiostar: RegioStaR table from :func:`import_regiostar`.
+
+    Returns:
+        One row per (PLZ, AGS) with RegioStaR classes and the PLZ population density. RegioStaR is the
+        reference of 2020: a municipality that changed since has no row there. It keeps its (PLZ, AGS) pair,
+        so that ``--plz`` and ``--ags`` find it; ``fed_state``, ``regio7`` and ``regio5`` stay empty
+        (``NA``, NULL in the table) and ``name_city`` is taken from the PLZ assignment file.
     """
     plz_pop_ags = plz_pop.merge(plz_ags, left_on="plz", right_on="plz")
-    plz_pop_ags_regio = plz_pop_ags.merge(regiostar, left_on="ags", right_on="mun_code")
+    plz_pop_ags_regio = plz_pop_ags.merge(regiostar, left_on="ags", right_on="mun_code", how="left")
+    plz_pop_ags_regio["name_city"] = plz_pop_ags_regio["name_city"].fillna(plz_pop_ags_regio["ort"])
     plz_pop_ags_regio = plz_pop_ags_regio.drop(
         columns=["note", "ort", "landkreis", "bundesland", "mun_code", "pop", "area", "pop_den"])
     plz_pop_ags_regio = plz_pop_ags_regio.rename(columns={"population": "pop", "qkm": "area"})
     plz_pop_ags_regio["pop_den"] = plz_pop_ags_regio["pop"] / plz_pop_ags_regio["area"]
+    for column in ("fed_state", "regio7", "regio5"):    # nullable integers for the municipalities without a class
+        plz_pop_ags_regio[column] = plz_pop_ags_regio[column].astype("Int64")
     return plz_pop_ags_regio
+
+
 def municipal_register_to_db(regiostar_plz: pd.DataFrame) -> None:
-    """
-    Write municipal register to database.
+    """Write the municipal register to the database if the table is still empty.
 
-    Only inserts data if the table is empty to prevent duplicate key violations.
+    Args:
+        regiostar_plz: Register from :func:`join_regiostar_plz`.
 
-    Parameters
-    ----------
-    regiostar_plz : pd.DataFrame
-        Combined municipal register data
+    Raises:
+        Exception: Any database error during the insert (after printing it).
     """
     dbc_client = dbc.DatabaseClient()
 
-    # Check if table already has data
     if not dbc_client.is_table_empty('municipal_register'):
-        print(f"Municipal register table already contains data, skipping import.")
+        print("Municipal register table already contains data, skipping import.")
         dbc_client.close()
         return
 
-    # Table is empty, proceed with import
     print(f"Importing municipal register data ({len(regiostar_plz)} rows)...")
     try:
         regiostar_plz.to_sql(
-            'municipal_register', 
-            con=dbc_client.sqla_engine, 
+            'municipal_register',
+            con=dbc_client.sqla_engine,
             if_exists='append',
             index=False,
         )
         print(f"Successfully imported {len(regiostar_plz)} rows to municipal_register table.")
     except Exception as e:
         print(f"Error importing municipal register: {e}")
+        raise
     finally:
         dbc_client.close()
+
+
 def create_municipal_register() -> None:
-    """
-    Join gemeindeverzeichnis with regiostar.
-    Each PLZ is associated with an AGS and regiostar class.
-    The data is written to the database table 'municipal_register'.
-    """
+    """Build the municipal register from the source files and write it to ``municipal_register``."""
     plz_einwohner, plz_zuordnung, regiostar = import_tables()
     plz_einwohner = plz_einwohner.rename(columns={"einwohner": "population"})
     regiostar_plz = join_regiostar_plz(plz_einwohner, plz_zuordnung, regiostar)

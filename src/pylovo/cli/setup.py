@@ -1,66 +1,184 @@
-"""
-This script creates a pylovo database and fills with raw data from referenced files.
-Do not use DatabaseConstructor class unless you want to create a new database.
-"""
+"""Create or migrate the PyLovo schema; reset requires an explicit command and target."""
 
-from pylovo.data_import.municipal_register import create_municipal_register
-from pylovo.database.database_constructor import DatabaseConstructor
+import logging
+import signal
+import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from pylovo.cli import parsers
 from pylovo import utils
-from pylovo.config_loader import *
+from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
+from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
+from pylovo.database.database_constructor import DatabaseConstructor
+from pylovo.utils import get_user_data_dir
 
 
-def main():
-    # Set up logging
-    log_dir = utils.reset_log_directory()
-    logger = utils.create_logger(name="setup", log_file=log_dir / "log.txt", log_level=LOG_LEVEL)
+def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
+    """Ask the user to confirm the schema reset by typing the database name.
 
-    ### Create constructor class
-    logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
-    sgc = DatabaseConstructor()
-    logger.info("### DROPPING ALL TABLES ###")
-    # sgc.drop_all_tables() #uncomment for debugging
+    Args:
+        dbname: Name of the database whose ``pylovo`` schema will be dropped.
+        host: Database host, shown to the user.
+        port: Database port, shown to the user.
 
-    ### Create schema if it doesn't exist
-    logger.info("### CREATING SCHEMA pylovo IF NOT EXISTS ###")
-    sgc.create_schema()
+    Returns:
+        True only if stdin is interactive and the user typed exactly ``dbname``. A mismatch,
+        end of input (Ctrl-D) or a non-interactive stdin return False.
+    """
+    print("pylovo-setup drops the schema 'pylovo' (CASCADE) and rebuilds it.")
+    print(f"  host:     {host}")
+    print(f"  port:     {port}")
+    print(f"  database: {dbname}")
+    print("All grids, results and transformers stored in this schema will be deleted.")
+    if sys.stdin is None or not sys.stdin.isatty():
+        print("stdin is not interactive: aborting. Use reset --database NAME --yes for a non-interactive reset.")
+        return False
+    try:
+        answer = input(f"Type the database name '{dbname}' to continue: ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer.strip() == dbname
 
-    ### Create database with predefined table structure
-    logger.info("### CREATE ALL TABLES ###")
-    sgc.create_table(table_name="all")
 
-    ### Add transformer data from geojson to the database
-    logger.info("### DELETE EXISTING TRANSFORMERS AND INSERT NEW ONES INTO DB (without geojson in data/transformer_data this can take more than 30 min) ###")
-    sgc.transformers_to_db(clear_existing=True)
+@dataclass
+class ImportStep:
+    """A reference table that setup fills while it is empty."""
 
-    if USE_INFDB:
-        ### Fetch postcode data from InfDB and insert into local 'postcode' table
-        logger.info("### FETCH AND POPULATE POSTCODE DATA FROM INFDB ###")
-        sgc.load_postcode_from_infdb()
+    title: str
+    table: str
+    run: Callable[[], None]
+    check: Callable[[], list[str]] = list  # problems with the input data; checked before any change
 
-    if not USE_INFDB:
-        ### Add defined csv raw data from CSV_FILE_LIST to the database (ATM only postcode data)
-        logger.info("### POPULATE DB WITH CSV RAW DATA ###")
-        sgc.csv_to_db(CSV_FILE_LIST)
 
-        ### Create table with data from osm
-        logger.info("### POPULATE public_2po_4pgr TABLE (~30 min) ###")
+def _missing(paths: list[Path]) -> list[str]:
+    return [f"missing input file {path}" for path in paths if not path.exists()]
+
+
+def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
+    """Return the reference tables of a complete schema in import order."""
+
+    def ways() -> None:
         sgc.create_public_2po_table()
-
-        ### Transform these data into our ways table
-        logger.info("### PROCESS WAYS AND INSERTING THEM INTO ways TABLE ###")
         sgc.ways_to_db()
 
-    # Load PostGIS SQL functions required for preprocessing ways
+    steps = [ImportStep("IMPORT OSM TRANSFORMERS (a relation without a processed GeoJSON is fetched from "
+                        "the Overpass API, this can take more than 30 min)", "transformers",
+                        lambda: sgc.transformers_to_db(clear_existing=False))]
+    if USE_INFDB:
+        # Copy the postcode polygons from the InfDB into the local 'postcode' table.
+        steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb,
+                                lambda: [problem] if (problem := sgc.infdb_postcodes_problem()) else []))
+    else:
+        # File-based data path: postcode CSV plus the OSM ways table.
+        postcode_csv = get_user_data_dir() / "postcode.csv"
+        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode",
+                                lambda: sgc.csv_to_db([{"path": postcode_csv, "table_name": "postcode"}]),
+                                lambda: _missing([postcode_csv])))
+        steps.append(ImportStep("POPULATE public_2po_4pgr AND THE ways TABLE (~30 min)", "ways", ways,
+                                lambda: _missing([get_user_data_dir() / "ways" / "ways_public_2po_4pgr.sql"])))
+    # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
+    steps.append(ImportStep("FILL municipal_register TABLE", "municipal_register", create_municipal_register,
+                            lambda: [f"missing input file {path}" for path in missing_input_files()]))
+    return steps
+
+
+def build_schema(sgc: DatabaseConstructor, steps: list[ImportStep], logger: logging.Logger) -> None:
+    """Create or migrate the tables, fill the empty reference tables and load the SQL functions."""
+    logger.info("### CREATING OR MIGRATING PYLOVO SCHEMA ###")
+    sgc.migrate_schema()
+    for step in steps:
+        if sgc.table_is_empty_or_missing(step.table):
+            logger.info(f"### {step.title} ###")
+            step.run()
+        else:
+            logger.info(f"### SKIPPED: pylovo.{step.table} already has rows ###")
     logger.info("### LOAD POSTGIS FUNCTIONS FOR WAYS PREPROCESSING ###")
     sgc.load_ways_preprocessing_functions()
 
-    ### Create table with entries of all German municipalities and cities
-    logger.info("### FILL municipal_register TABLE ###")
-    create_municipal_register()
 
+def _interrupt(signum, frame) -> None:
+    raise KeyboardInterrupt(f"signal {signum}")
+
+
+def reset_schema(sgc: DatabaseConstructor, steps: list[ImportStep], logger: logging.Logger) -> None:
+    """Rebuild the schema from scratch; the previous one is kept as a backup until the rebuild succeeded."""
+    logger.info("### MOVING SCHEMA pylovo TO A BACKUP ###")
+    backup = sgc.move_schema_to_backup()
+    originals = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    signal.signal(signal.SIGTERM, _interrupt)  # a cancelled API job (SIGINT, then SIGTERM) restores too
+    try:
+        build_schema(sgc, steps, logger)
+    except BaseException:
+        for sig in originals:  # nothing may interrupt the restore
+            signal.signal(sig, signal.SIG_IGN)
+        logger.error(f"### REBUILD FAILED: RESTORING THE PREVIOUS SCHEMA{' FROM ' + backup if backup else ''} ###")
+        sgc.restore_backup(backup)
+        raise
+    finally:
+        for sig, handler in originals.items():
+            signal.signal(sig, handler)
+    if backup:
+        logger.info(f"### DROPPING THE BACKUP SCHEMA {backup} ###")
+        try:
+            sgc.drop_backup(backup)
+        except RuntimeError as exc:
+            logger.warning(f"The backup schema {backup} was kept: {exc}")
+
+
+def run_setup(reset: bool = False) -> None:
+    """Create or migrate the schema, then import every reference table that is still empty.
+
+    A rerun therefore completes an interrupted setup; tables with rows are kept. ``reset``
+    rebuilds the schema from scratch (see :func:`reset_schema`).
+    """
+    logger = utils.create_logger(name="setup", log_file=Path("log/log.txt"), log_level=LOG_LEVEL)
+
+    logger.info("### CREATING DATABASE CONSTRUCTOR CLASS ###")
+    sgc = DatabaseConstructor()
+    for backup in sgc.backup_schemas():
+        logger.warning(f"The schema {backup} holds the data of an interrupted reset. Drop it, or drop the "
+                       f"schema pylovo and rename {backup} to pylovo to go back to that data.")
+    steps = import_steps(sgc)
+    logger.info("### CHECKING THE INPUT DATA ###")
+    todo = [step for step in steps if reset or sgc.table_is_empty_or_missing(step.table)]
+    problems = [problem for step in todo for problem in step.check()]
+    if problems:
+        raise RuntimeError("nothing was changed, the input data is incomplete: " + "; ".join(problems))
+    sgc.acquire_setup_lock()
+    try:
+        if reset:
+            reset_schema(sgc, steps, logger)
+        else:
+            build_schema(sgc, steps, logger)
+    finally:
+        sgc.release_setup_lock()
     logger.info("### DONE ###")
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point: setup is safe by default, reset requires an explicit target."""
+    parser = parsers.setup_parser()
+    args = parser.parse_args(argv)
+    if args.command == "setup":
+        if args.yes or args.database:
+            parser.error("--yes and --database are only valid with reset")
+    else:
+        if not args.database:
+            parser.error("reset requires --database matching DBNAME in .env")
+        if args.database != DBNAME:
+            parser.error(f"reset target {args.database!r} does not match configured database {DBNAME!r}")
+        if not args.yes and not confirm_schema_reset(DBNAME, HOST, PORT):
+            print("Reset aborted. Nothing was changed.")
+            sys.exit(1)
+    try:
+        run_setup(reset=args.command == "reset")
+    except RuntimeError as exc:
+        print(f"✗ Setup stopped: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-

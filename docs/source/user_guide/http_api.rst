@@ -1,0 +1,242 @@
+HTTP API
+========
+
+``pylovo-api`` is the headless HTTP API of pylovo (FastAPI) for browser clients and scripts. It
+covers the whole pylovo workflow except classification and the MV stage: set up the database,
+select regions, prepare transformer data and the configuration, generate grids, and read
+statistics, grid details, diagnostics and power flows.
+Long-running and database-writing steps run the existing ``pylovo-*`` commands of :doc:`cli` as
+background jobs whose logs can be followed live, so the API does exactly what the command line
+does.
+
+pylovo itself serves no web page through the API. A browser client is served by its own web server,
+which usually forwards the requests of the page to ``pylovo-api`` (reverse proxy, see below). To look
+at generated grids on a map, use the read-only map viewer (:doc:`viewer`), a separate server that
+reads the database itself.
+
+Starting the API
+----------------
+
+.. code-block:: bash
+
+   uv sync --extra api
+   uv run --extra api pylovo-api      # http://127.0.0.1:8765/api/health, API docs at /docs
+
+``pylovo-api`` looks for ``config/config_generation_lv.yaml`` in ``--root DIR``, ``$PYLOVO_ROOT``,
+the current directory and its parents, and the checkout the package was installed from. The
+database is the one in the project's ``.env`` (or in the environment variables ``DBNAME``,
+``DBUSER``, ``PASSWORD``, ``HOST`` and ``PORT``), exactly as for the command line. Other options:
+``--host`` (default ``127.0.0.1``), ``--port`` (default ``8765``), ``--log-level`` and
+``--allowed-host`` (also ``PYLOVO_API_ALLOWED_HOSTS``) for the host name of a reverse proxy.
+
+The API answers a request only when its ``Host`` header names localhost, the ``--host`` value or an
+``--allowed-host`` (otherwise 421), also with ``--host 0.0.0.0``. Behind a reverse proxy, allow the name
+that the proxy sends: the name the browser used if the proxy forwards the ``Host`` header unchanged
+(nginx: ``proxy_set_header Host $host;``), otherwise the name of the upstream (nginx's default, for
+example ``pylovo-api:18765``). A proxy in a Docker network reaches the API only if it binds all
+interfaces:
+
+.. code-block:: bash
+
+   pylovo-api --host 0.0.0.0 --port 18765 --allowed-host pylovo.example.org --allowed-host pylovo-api
+
+The container image ``pylovo`` (``api/docker/Dockerfile``, published as
+``ghcr.io/tum-ens/pylovo``) contains pylovo, GDAL and the API (without the plotting packages of the
+extra ``plots``, which neither the API nor its job commands import) and starts
+``pylovo-api --host 127.0.0.1 --port 18765`` as the unprivileged user ``pylovo`` (id 1000), so
+mounted folders must be writable for that id. A health check requests ``/api/health``. With
+``docker compose -f api/docker/compose.yaml up --build`` the files and folders that compose mounts
+(``.env``, ``config/``, ``data/``, ``log/``, ``.pylovo-api/``) must exist; compose stops with an
+error if one is missing. Set ``PYLOVO_REVISION=$(git rev-parse HEAD)`` for the commit that
+``/api/health`` reports.
+
+.. warning::
+
+   The API can reset the schema ``pylovo`` (``POST /api/jobs/reset``), delete versions and overwrite
+   the configuration. ``POST /api/jobs/setup`` only runs the non-destructive ``pylovo-setup``: it
+   creates a missing schema or applies pending migrations (``pending_migrations`` in
+   ``/api/status``) and keeps all grids. API contract version 2 introduced this split; in version 1
+   the setup job reset the schema. It binds to ``127.0.0.1`` by default, rejects requests with a foreign ``Host``
+   header (also when it is bound to ``0.0.0.0``: list the names with ``--allowed-host``) and requires the header ``X-Pylovo-UI: 1`` for every state-changing call. Destructive
+   actions need a typed confirmation (database name, version id, PLZ or DSO source) that the
+   server checks. There is no user management: only bind to another interface on a trusted
+   network.
+
+.. note::
+
+   The server runs its code from memory. After a ``git checkout`` or ``git pull``,
+   ``/api/status`` reports the code as stale (``ui.code.stale``) until you restart the server;
+   requests to new features fail until then.
+
+Contract
+--------
+
+Clients rely on the routes, parameters and response shapes of the API; they stay stable.
+``GET /api/health`` answers without database access with the service name, the contract
+version ``api``, the pylovo package version and the git revision of the running code. The
+contract version is increased only for breaking changes, so a client can refuse a version it does
+not know. The committed OpenAPI snapshot ``api/openapi.json`` is checked by a unit test and, on pull
+requests, by ``oasdiff breaking`` against the base branch (see ``api/README.md``).
+
+Jobs
+----
+
+Setup, generation, analysis, deletion, export and the transformer imports are jobs: the API runs
+the corresponding command with the project root as working directory and streams its output as
+Server-Sent Events. Only one database-writing job runs at a time, and direct edits of transformers,
+loads or the configuration are refused (409) while one runs. No job can start while such an edit is
+being written. Job logs survive a restart of the API
+(``.pylovo-api/jobs/`` in the project). The record of a job is written when its process starts and
+updated when it ends. A job that was still running when the server stopped or crashed is shown as
+``interrupted`` after the next start. If its process still exists, the job stays ``running`` and
+blocks other writers until it has ended, and it can still be cancelled. When the server exits, running
+jobs get SIGTERM, and SIGKILL if they are still running after three seconds.
+
+The API keeps the record, the log and the export files of the newest 60 jobs and deletes those of older
+jobs when the server starts and when a job starts. An uploaded DSO CSV is deleted after 24 hours, so
+an import that refers to an older upload answers "not found" and the file has to be uploaded again.
+
+A generation job never runs the MV stage: the API passes ``--no-mv``, so ``MV_GRID_GENERATION`` in
+``config_generation_mv.yaml`` has no effect on runs that the API starts. The MV stage is a
+command-line workflow (:doc:`mv_grids`).
+
+.. _http-api-region-check:
+
+Region input check
+------------------
+
+Generation needs building and street input for a postcode area. The API therefore reports for
+each PLZ whether it can be generated: it needs a postcode polygon, at least two buildings that
+pylovo would import (the same filters as ``pylovo-generate``, including
+``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`` and ``RESIDENTIAL_ONLY_GENERATION``), at least one
+residential building and street segments. A postcode without connection lines filed under it is
+only flagged, because generation also loads the lines of its buildings that the InfDB files under
+a neighbouring postcode. Postcodes whose check has not finished yet are reported as *not verified*.
+Existing results always stay readable, analysable
+and exportable, and the server refuses to generate a blocked PLZ unless it is included
+explicitly. With ``USE_EXTERNAL_BASEDATA`` the check, ``/api/status`` (``infdb_buildings``) and the
+3D view of the LoD2 buildings read the InfDB through a second read-only connection built from the
+``INFDB_*`` settings, without startup options and with the settings of each transaction, so it also
+works through PgBouncer (:ref:`env-variables`); ``/api/status`` then shows
+``settings.use_external_basedata``, ``settings.infdb_target`` and, when the InfDB cannot be reached,
+``infdb_error``.
+
+On a large InfDB the check runs in the background per municipality key, using the indexes the
+InfDB schema creates; postcodes that are asked for are checked first. The results are cached in
+``.pylovo-api/cache/input-coverage.json`` and refreshed when the input tables change. An index on
+``postcode`` of ``basedata.buildings``, ``ways_per_connection`` and ``connection_lines`` makes the
+check (and every ``pylovo-generate`` run) faster. ``PYLOVO_API_COVERAGE_ENFORCE=0`` turns blocks
+into warnings.
+
+Configuration editing
+---------------------
+
+The API edits ``config/config_generation_lv.yaml`` either as text or through a form of the key
+generation parameters (the help texts are the YAML comments). Form edits rewrite only the changed
+keys, so comments and layout stay. Every save can be previewed as a diff, validates the YAML and
+imports ``pylovo.config_loader`` against a temporary copy (this catches every error pylovo itself
+would raise), refuses to overwrite a file that changed on disk, and keeps a backup that can be
+restored. A save is refused (409) while a database-writing job runs, because a job reads the
+configuration when it starts and its workers may read it again. Remember to change ``VERSION_ID``
+when you change generation parameters (:doc:`generating_grids`).
+
+Statistics and grid details
+---------------------------
+
+For a version and postcode area the API returns key figures: stations and their sizes (a station
+of two parallel 400 kVA units counts once, as ``2 × 400 kVA``), transformer loading, the voltage
+budget of the weakest consumer against the voltage band, design compliance (feeder and service
+voltage-drop limits), cable length by type, households, feeders and distances, and a comparison
+of two versions including the generation parameters that differ. The grids of a PLZ and the
+detail of one grid (cables, buses, feeders, consumers, cabinets) come as GeoJSON; the pandapower
+network can be downloaded.
+
+.. _http-api-generation-check:
+
+**Generation check and on-demand power flow.** pylovo runs a validation power flow when it saves
+each grid, at the transformer-coincident operating point, and stores the solved network with the
+grid. The API reads this *generation check* for four criteria: solver converged, voltage band
+(``POWER_FLOW_VOLTAGE_LIMITS``), cables at most 100 % loaded, and transformer loading against the
+planning utilisation. The *on-demand power flow* reruns the same stored operating point,
+optionally scaled, and writes nothing; at ×1 it reproduces the generation check. At most two
+on-demand power flows run at a time: a request that finds no free slot within 30 s is refused with
+503 and a ``Retry-After`` header.
+
+**Cable cabinets.** pylovo's feeder split points are reported as cable cabinets with their number
+of outgoing cables, never at the station busbar. They are named K1 … Kn by cable distance from the
+station, the same names the diagnostics use. Service connections directly at the station busbar
+are direct connections, not feeders.
+
+.. _http-api-lod2:
+
+**3D buildings.** The LoD2 models of a grid's buildings are read from the InfDB schema ``citydb``
+(3DCityDB v5), linked by the building ``objectid``, and sent as a small binary mesh. Buildings
+without an LoD2 model, or a database without ``citydb``, give an empty mesh and never an error.
+
+.. _http-api-diagnostics:
+
+Diagnostics
+-----------
+
+The diagnostics explain why a grid misses a limit. Their 26 rules follow DSO planning practice
+and fall into three kinds:
+
+* **symptoms** say what is wrong: voltage band at the weakest consumer, cable overload,
+  transformer loading, pylovo's feeder or service design limit, the generation check;
+* **causes** say why, each with the share of the symptom it explains, e.g. a long feeder, a
+  section dimensioned too small compared with its neighbours, a large load at the feeder end, dense
+  demand, too many households for one cable, unbalanced feeders or an eccentric station;
+* **practice and data findings** flag deviations from planning practice or implausible input,
+  e.g. a building whose households do not fit its floor area.
+
+Without a power flow the rules use the design data and the generation check (estimates are
+marked); with the on-demand power flow they use its exact results, and a load scaling other than
+×1 shows which findings are new. A voltage budget per feeder shows how the drop builds up from 1.0
+p.u. through the station (down to the LV busbar, which the validation power flow puts at
+``LV_REFERENCE_VOLTAGE_PU``) and the largest sections to the consumer. Thresholds that pylovo
+defines come from the version's stored parameters. The heuristic ones can be overridden in an optional
+``GRID_DIAGNOSTICS`` block of ``config_analysis.yaml``; the keys are those of ``DEFAULT_THRESHOLDS``
+in ``api/pylovo_api/diagnostics.py``, and tables such as ``grouping_factors`` can be changed
+entry by entry:
+
+.. code-block:: yaml
+
+   GRID_DIAGNOSTICS:
+     long_feeder_m: 400        # a feeder longer than this is reported as long
+     overload_warning: 0.85    # warn from 85 % of the cable ampacity
+
+Diagnostics never write to the database.
+
+.. _http-api-load-editing:
+
+Editing loads
+-------------
+
+A building's input can be corrected: the households, the residential and non-residential floor
+area and the non-residential use.
+A preview shows the effect before anything is written: the building's peak load, the grid's
+coincident load (simultaneity is grouped per category over the whole grid, so other loads change
+slightly too) and the validation power flow before and after.
+
+Applying an edit writes in one transaction: the building row, the grid's pandapower loads and
+stored network, the generation-check results and an audit row in ``pylovo.load_edit``. The
+parameters are always those of the version's stored snapshot. Cables and the transformer stay as
+generated: to redimension the grid, correct the input and regenerate the PLZ as a new version. A
+mixed building whose non-residential part is or becomes larger than ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``
+of the version moves between the grid and the MV customers: the edit inserts, updates or deletes its row
+in ``pylovo.mv_customers`` in the same transaction, and the undo restores it. MV variants of the
+version are then ``stale`` (:doc:`mv_grids`). The
+first edit of a version needs its id as confirmation. Analysis rows of the PLZ are removed because
+they no longer match; a re-analysis rebuilds them. Every edit can be undone exactly (the latest
+first), or all edits of a grid at once, and edited grids and versions are flagged in the results.
+The edit history of a version can be downloaded as CSV. Before editing, the API checks that the
+stored loads are reproduced exactly from the building inputs; if they are not, the grid cannot be
+edited and has to be regenerated.
+
+More
+----
+
+``api/README.md`` lists the endpoints by router and describes the architecture, the contract
+rules and the tests. The tests in ``api/tests`` use the FastAPI test client; database tests only
+run against a database you name explicitly (``PYLOVO_API_TEST_DATABASE``), the toy-town test database
+described in :doc:`../development/index`.

@@ -51,7 +51,7 @@ def export_synthetic_grids_to_excel(
             rows = [(int(plz), int(kcid), int(bcid))]
         else:
             dbc.cur.execute(
-                f"SELECT plz, kcid, bcid FROM pylovo.grid_result "
+                "SELECT plz, kcid, bcid FROM pylovo.grid_result "
                 "WHERE version_id = %s AND grid IS NOT NULL",
                 (VERSION_ID,),
             )

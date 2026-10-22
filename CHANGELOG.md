@@ -11,6 +11,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
 
+## [1.0.0] - 2026-10-22
+### Changed
+- Split the generation configuration into `config_generation_lv.yaml` and `config_generation_mv.yaml`; an existing `config_generation.yaml` is still read
+- Update the default generation configuration, e.g. a higher household peak load, revised settlement thresholds, transformer sizes and cable types, a planned utilization of 80 % for transformers and cables, and merging only small greenfield clusters; grids generated with the former defaults need a new `VERSION_ID` (see [Configuration](https://pylovo.readthedocs.io/en/latest/user_guide/configuration.html))
+- Replace the voltage band `V_BAND_LOW`/`V_BAND_HIGH` by design voltage-drop limits for feeders (5 %) and service cables (1 %) that share the band from the LV busbar (0.96 p.u.) to the customer (0.90 p.u.) (see [Grid dimensioning](https://pylovo.readthedocs.io/en/latest/concepts/grid_dimensioning.html))
+- Refine the grid topology: house cables end at the building facade instead of the centroid, and feeders leave the station busbar directly
+- Introduce schema migrations: `pylovo-setup` updates an existing database in place and keeps its grids, so run it once after upgrading (see [Database setup](https://pylovo.readthedocs.io/en/latest/user_guide/database_setup.html))
+- Require PostgreSQL 15 or newer with pgRouting 3.8 or newer, and Python 3.12 or 3.13
+- Speed up grid generation about three times with less than half the peak memory
+- Rework the exit codes and prompts of the CLI: `pylovo-generate` exits with 4 when postcodes failed, `pylovo-delete` asks for confirmation unless `--yes` is given, and `pylovo-classify` runs without questions when its options are given (see [Command-line reference](https://pylovo.readthedocs.io/en/latest/user_guide/cli.html))
+- Make the classification reproducible with a seeded sample and stored clustering choices, and count parallel cables and transformer units in the clustering parameters; analyze existing grids again to update them (see [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html))
+- Rewrite the documentation with a user guide, concepts, a CLI and API reference and executed tutorial notebooks (see [pylovo.readthedocs.io](https://pylovo.readthedocs.io/en/latest/))
+- Mark the OpenDSS backend as experimental because of known defects; use pandapower for results (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
+
+### Fixed
+- Fix buildings missing from the generated grids, e.g. at postcode borders where the InfDB files the connection line under the neighboring postcode
+- Fix the reproducibility of brownfield grids and edge cases that failed a whole postcode, e.g. two transformers at one point
+- Fix the grid analysis, which counted a station of parallel transformers with one unit and swapped longitude and latitude in the average house distance
+- Fix the cable and transformer catalogue, which read the equipment data of all versions instead of the current `VERSION_ID`
+- Fix the OSM transformer download and several CLI commands, e.g. `pylovo-import transformers-osm`, `pylovo-delete transformers` and `pylovo-export`
+
+### Added
+- Add a medium-voltage (MV) stage that builds MV grids on the generated LV grids, with HV/MV substations from OpenStreetMap, open rings, (n-1) checks and the CLI `pylovo-mv` (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html))
+- Add the map viewer `pylovo-viewer` to browse the HV, MV and LV grids of a database in the browser (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
+- Add the HTTP API `pylovo-api` with a Docker image, e.g. to set up databases, generate grids, edit transformers and building loads and run power flows (see [HTTP API](https://pylovo.readthedocs.io/en/latest/user_guide/http_api.html))
+- Add mixed-use buildings whose residential and non-residential components get their own loads
+- Add LV generation options, e.g. cabinet networks, parallel standard feeder cables, routing across postcode borders, randomized greenfield station positions near the optimum and excluding buildings without address (see [Configuration](https://pylovo.readthedocs.io/en/latest/user_guide/configuration.html))
+- Add the option to read the InfDB input data from another database or server (`USE_EXTERNAL_BASEDATA`)
+- Add coverage accounting that records why an input building is in no grid (`pylovo-analyze --coverage`)
+- Add unit and database tests with CI workflows on a synthetic test database
+
+### Removed
+- Remove `pylovo-validate` and the comparison with real grids, which is no longer part of the package
+- Remove unused functions, constants and repository files, e.g. `DatabaseConstructor.reset_schema` (use `pylovo-setup reset`) and `data/grid_examples`
+
 ## [0.8.0] - 2026-08-18
 ### Changed
 - Rework feeder routing and cable dimensioning to size uniform sections between hard nodes, support parallel cables, and select connection cables based on cost
@@ -81,24 +116,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add materialized views for better performance in QWC
 - Add uv with pyproject.toml file as alternative for installation
 - Add parallel grid generation depending on cores
-
-## [0.4.0] - 2025-06-26
-### Changed
-- Restructure database communication: split pgReaderWriter into multiple database modules for better organization
-- Restructure src and notebook directories
-- Restructure executable functions in runme categories
-- Adjust directory naming according to best practices
-- Convert configs into yaml files
-- Move parameter calculation class from classification into src to be used for validation
-
-### Fixed
-- Fix unique constraint issue when generating the same grid for different versions
-
-### Added
-- Add improved QGIS templates for local and remote visualization with QWC
-- Add modules for analyzing grid independent from grid generation
-- Add schema selection to config for more flexible database handling
-- Add warnings when analyzing grids
 
 ## [0.4.0] - 2025-06-26
 ### Changed

@@ -15,12 +15,12 @@
  * are represented by shared endpoints between line segments.
  *
  * ALGORITHM OVERVIEW:
- * 1. Iterate through each way in the temp_ways table
- * 2. Find another way that intersects with the current way
+ * 1. Iterate through each way of the current ways_tem table (one pass)
+ * 2. Find another way that crosses the current way in one point
  * 3. Calculate the precise intersection point between the two ways
  * 4. Split both intersecting ways at the intersection point
  * 5. Replace original ways with their split segments
- * 6. Continue until all intersections are processed
+ * 6. Repeat the pass on the updated table until a pass splits nothing
  *
  * INPUT: Uses data from 'ways_tem' table containing geometric line data
  * OUTPUT: Modified 'ways_tem' table with properly segmented line geometries
@@ -31,108 +31,92 @@ CREATE OR REPLACE FUNCTION segment_intersecting_ways() RETURNS void
 AS
 $$
 declare
-    -- Record to hold current way being processed (geometry, classification, ID)
+    -- Id of the way being processed and its current row (geometry, classification, ID)
+    current_id        integer;
     way               RECORD;
-    
     -- Record to store the calculated intersection point geometry
     interpolate_point RECORD;
-    
     -- Record to hold the intersecting street found for current way
     old_street        RECORD;
-    
-    
+    -- Splits of the current pass; the passes repeat until one splits nothing
+    splits            integer;
+    passes            integer := 0;
 begin
-    -- MAIN PROCESSING LOOP: Iterate through all ways in the temporary table
-    -- Each iteration processes one way and finds its intersections with other ways
-    for way in
-        SELECT geom, clazz, way_id
-        FROM ways_tem
-        loop
-            -- STEP 1: FIND INTERSECTING STREET
-            -- Search for another way that intersects with the current way
-            -- We use ST_LineSubstring(0.01, 0.99) to exclude the first and last 1% 
-            -- of the line to avoid false intersections at endpoints
-            SELECT geom, clazz, way_id
-            INTO old_street
-            FROM ways_tem as w
-            WHERE ST_Intersects(ST_LineSubstring(way.geom, 0.01, 0.99), w.geom) -- Limit to middle 98% of line
-              AND w.way_id != way.way_id  -- Exclude the current way from intersection search
-            LIMIT 1; -- Only process one intersection at a time
+    -- Every pass re-reads ways_tem: a way deleted earlier in the pass is skipped (an id that a new part
+    -- took over is processed with the part's current geometry), and the parts inserted in a pass are
+    -- checked in the next one. So every crossing is split once, also several crossings of one way, and
+    -- no deleted geometry is split again.
+    loop
+        splits := 0;
+        passes := passes + 1;
+        for current_id in SELECT way_id FROM ways_tem ORDER BY way_id
+            loop
+                SELECT geom, clazz, way_id INTO way FROM ways_tem WHERE way_id = current_id;
+                IF NOT FOUND OR ST_Length(way.geom) = 0 THEN
+                    continue;
+                END IF;
 
-            -- STEP 2: VALIDATION CHECK
-            -- If no intersecting street is found, skip to next way
-            IF NOT FOUND THEN
-                continue;
-            END IF;
+                -- STEP 1: FIND INTERSECTING STREET
+                -- Another way that crosses the middle 98% of the current way (the first and last 1% are
+                -- left out to avoid false intersections at the end points) in exactly one point: an
+                -- overlapping or twice-crossing way cannot be split at one point. The intersection of
+                -- the buffered current way with it must be a LineString for ST_LineInterpolatePoint.
+                SELECT geom, clazz, way_id
+                INTO old_street
+                FROM ways_tem as w
+                WHERE ST_Intersects(ST_LineSubstring(way.geom, 0.01, 0.99), w.geom)
+                  AND w.way_id != way.way_id
+                  AND ST_GeometryType(ST_Intersection(ST_LineSubstring(way.geom, 0.01, 0.99), w.geom)) = 'ST_Point'
+                  AND ST_GeometryType(ST_Intersection(ST_Buffer(way.geom, 0.1), w.geom)) = 'ST_LineString'
+                ORDER BY w.way_id
+                LIMIT 1;
 
-            -- STEP 3: GEOMETRY TYPE VALIDATION
-            -- Verify that the intersection of the buffered way and old street creates a LineString
-            -- ST_Buffer(way.geom, 0.1) creates a small buffer around the current way
-            -- The intersection must be a LineString for ST_LineInterpolatePoint to work properly
-            IF ST_Geometrytype(ST_Intersection(ST_Buffer(way.geom, 0.1), old_street.geom)) != 'ST_LineString' THEN
-                -- Log problematic geometry for debugging purposes
-                RAISE NOTICE 'Intersection is not a LineString. Skipping geometry: %', old_street.geom;
-                continue;
-            END IF;
+                IF NOT FOUND THEN
+                    continue;
+                END IF;
 
-            -- STEP 4: CALCULATE INTERSECTION POINT
-            -- Find the exact intersection point between the buffered current way and the old street
-            -- ST_LineInterpolatePoint(..., 0.5) gets the midpoint of the intersection line
-            SELECT ST_LineInterpolatePoint(ST_Intersection(ST_Buffer(way.geom, 0.1), old_street.geom), 0.5) AS geom
-            INTO interpolate_point;
+                -- STEP 2: CALCULATE INTERSECTION POINT
+                -- The midpoint of the part of the old street inside the 0.1 m buffer of the current way
+                SELECT ST_LineInterpolatePoint(ST_Intersection(ST_Buffer(way.geom, 0.1), old_street.geom), 0.5) AS geom
+                INTO interpolate_point;
 
-            -- STEP 5: REMOVE ORIGINAL INTERSECTING STREET
-            -- Delete the original old street since we'll replace it with two segments
-            DELETE
-            FROM ways_tem
-            WHERE way_id = old_street.way_id;
+                -- STEP 3: REPLACE THE OLD STREET BY ITS TWO PARTS AT THE INTERSECTION POINT
+                DELETE
+                FROM ways_tem
+                WHERE way_id = old_street.way_id;
+                PERFORM insert_way_segment(
+                    old_street.clazz,
+                    ST_LineSubstring(old_street.geom, 0, ST_LineLocatePoint(
+                        old_street.geom, interpolate_point.geom))
+                );
+                PERFORM insert_way_segment(
+                    old_street.clazz,
+                    ST_LineSubstring(old_street.geom, ST_LineLocatePoint(
+                        old_street.geom, interpolate_point.geom), 1)
+                );
 
-            -- STEP 6: CREATE SPLIT SEGMENTS FOR OLD STREET
-            -- Split the old street into two parts at the intersection point
-            
-            -- Insert first half of old street (from start to intersection point)
-            -- ST_LineLocatePoint finds the position (0-1) of interpolate_point on old_street
-            -- ST_LineSubstring(geom, 0, position) extracts line from start to that position
-            PERFORM insert_way_segment(
-                old_street.clazz,  -- Preserve original classification
-                ST_LineSubstring(old_street.geom, 0, ST_LineLocatePoint(
-                    old_street.geom, interpolate_point.geom))
-            );
-            
-            -- Insert second half of old street (from intersection point to end)
-            -- ST_LineSubstring(geom, position, 1) extracts line from position to end
-            PERFORM insert_way_segment(
-                old_street.clazz,  -- Preserve original classification
-                ST_LineSubstring(old_street.geom, ST_LineLocatePoint(
-                    old_street.geom, interpolate_point.geom), 1)
-            );
+                -- STEP 4: REPLACE THE CURRENT WAY BY ITS TWO PARTS AT THE INTERSECTION POINT
+                DELETE FROM ways_tem WHERE way_id = way.way_id;
+                PERFORM insert_way_segment(
+                    way.clazz,
+                    ST_LineSubstring(way.geom, 0, ST_LineLocatePoint(
+                        way.geom, interpolate_point.geom))
+                );
+                PERFORM insert_way_segment(
+                    way.clazz,
+                    ST_LineSubstring(way.geom, ST_LineLocatePoint(
+                        way.geom, interpolate_point.geom), 1)
+                );
+                splits := splits + 1;
+            end loop;
+        EXIT WHEN splits = 0;
+        -- Safety net only: every split leaves the parts meeting at the split point, outside their middle 98%.
+        IF passes >= 100 THEN
+            RAISE WARNING 'segment_intersecting_ways stopped after % passes with crossings left', passes;
+            EXIT;
+        END IF;
+    end loop;
 
-            -- STEP 7: REMOVE ORIGINAL CURRENT WAY
-            -- Delete the current way since we'll replace it with two segments
-            DELETE FROM ways_tem WHERE way_id = way.way_id;
-
-            -- STEP 8: CREATE SPLIT SEGMENTS FOR CURRENT WAY
-            -- Split the current way into two parts at the intersection point
-            
-            -- Insert first half of current way (from start to intersection point)
-            PERFORM insert_way_segment(
-                way.clazz,  -- Preserve original classification
-                ST_LineSubstring(way.geom, 0, ST_LineLocatePoint(
-                    way.geom, interpolate_point.geom))
-            );
-
-            -- Insert second half of current way (from intersection point to end)
-            PERFORM insert_way_segment(
-                way.clazz,  -- Preserve original classification
-                ST_LineSubstring(way.geom, ST_LineLocatePoint(
-                    way.geom, interpolate_point.geom), 1)
-            );
-
-        end loop; -- End of main processing loop
-    
-    
     RAISE NOTICE 'Way connections have been successfully drawn and segmented.';
-    
 end;
 $$;
-

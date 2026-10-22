@@ -1,7 +1,7 @@
 /*
  * FUNCTION PURPOSE AND OVERVIEW:
  * =============================
- * This function adds a new way record to the temp_ways table
+ * This function adds a new way record to the ways_tem table
  * with an automatically generated unique identifier. It's a utility function designed
  * to simplify the insertion of new way geometries while ensuring proper ID management.
  * 

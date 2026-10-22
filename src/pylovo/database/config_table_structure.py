@@ -1,9 +1,19 @@
-# Database schema - table structure
-from pylovo.config_loader import TARGET_EPSG, FEEDER_CABLES
+"""SQL definitions of the ``pylovo`` schema.
 
+* ``CREATE_QUERIES``: tables and views, run by ``DatabaseConstructor.create_table("all")`` in
+  dict order. They define new tables; migrations.py upgrades existing databases.
+* ``INFDB_OPTIONAL_TABLES``: file-based input tables that are only created with ``USE_INFDB=False``.
+* ``TEMP_CREATE_QUERIES``: templates of the per-PLZ working tables; ``UtilsMixin.create_temp_tables``
+  replaces the base name by ``<name>_<plz>``.
+* ``REFRESH_QUERIES``: refresh of the materialized views after results changed.
 
+All queries are passed through ``str.format(TARGET_EPSG=...)`` at import time, so they must not
+contain other literal curly braces.
+"""
+from pylovo.config_loader import TARGET_EPSG
+
+# Raw input tables of the file-based data path (shapefile buildings and osm2po ways).
 INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
-
 
 
 CREATE_QUERIES = {
@@ -13,7 +23,6 @@ CREATE_QUERIES = {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         generation_parameters jsonb
     );
-    ALTER TABLE pylovo.version ADD COLUMN IF NOT EXISTS generation_parameters jsonb;
     """,
     "equipment_data": """
    CREATE TABLE IF NOT EXISTS pylovo.equipment_data(
@@ -40,6 +49,11 @@ CREATE_QUERIES = {
         classification_version_comment varchar, 
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         classification_region varchar,
+        -- the choices of step 7 (classification.rst); NULL for classifications clustered before 0014
+        list_of_clustering_parameters text[],
+        n_clusters_kmeans integer,
+        n_clusters_gmm integer,
+        additional_filtering boolean,
         CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
     )
     """,
@@ -72,7 +86,10 @@ CREATE_QUERIES = {
             FOREIGN KEY (postcode_result_plz)
             REFERENCES pylovo.postcode (plz)
             ON DELETE CASCADE
-    )
+    );
+    -- Backs the ON DELETE CASCADE from postcode and the lookups of a PLZ across versions (API).
+    CREATE INDEX IF NOT EXISTS idx_postcode_result_plz
+    ON pylovo.postcode_result (postcode_result_plz)
     """,
     "grid_result": """
     CREATE TABLE IF NOT EXISTS pylovo.grid_result (
@@ -87,6 +104,18 @@ CREATE_QUERIES = {
         model_status integer,
         ont_vertice_id bigint,
         power_flow_status varchar(32),
+        ampacity_max_feeder_voltage_drop_percent double precision,
+        selected_max_feeder_voltage_drop_percent double precision,
+        feeder_voltage_drop_limit_met boolean,
+        ampacity_max_service_voltage_drop_percent double precision,
+        selected_max_service_voltage_drop_percent double precision,
+        service_voltage_drop_limit_met boolean,
+        service_voltage_upgraded_count integer,
+        long_service_connection_count integer,
+        max_total_design_voltage_drop_percent double precision,
+        max_feeder_voltage_drop_pu double precision,
+        max_service_voltage_drop_pu double precision,
+        max_total_lv_voltage_drop_pu double precision,
         grid json,
         CONSTRAINT cluster_identifier UNIQUE (version_id, kcid, bcid, plz),
         CONSTRAINT unique_grid_result_id_version_id UNIQUE (version_id, grid_result_id),
@@ -97,7 +126,7 @@ CREATE_QUERIES = {
         CONSTRAINT fk_grid_result_transformer_equipment
             FOREIGN KEY (version_id, transformer_equipment_name)
             REFERENCES pylovo.equipment_data(version_id, name)
-            ON DELETE SET NULL
+            ON DELETE SET NULL (transformer_equipment_name)
     );
     CREATE INDEX IF NOT EXISTS idx_grid_result_version_id_plz_bcid_kcid
     ON pylovo.grid_result (version_id, plz, bcid, kcid);
@@ -119,9 +148,6 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    ALTER TABLE pylovo.lines_result ADD COLUMN IF NOT EXISTS feeder_section_id integer;
-    CREATE INDEX IF NOT EXISTS idx_lines_result_grid_result_id
-    ON pylovo.lines_result (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_grid_section_id
     ON pylovo.lines_result (grid_result_id, feeder_section_id)
     """,
@@ -169,14 +195,13 @@ CREATE_QUERIES = {
         CONSTRAINT uq_split_points_grid_bus
             UNIQUE (grid_result_id, split_bus)
     );
-    CREATE INDEX IF NOT EXISTS idx_split_points_grid_result_id
-    ON pylovo.split_points (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_split_points_geom
     ON pylovo.split_points USING gist (geom)
     """,
-    "lines_result_view": """
-    DROP MATERIALIZED VIEW IF EXISTS pylovo.lines_result_with_grid CASCADE;
-    CREATE TABLE IF NOT EXISTS pylovo.lines_result_view (
+    # Physical per-grid visualization cache. Migration 0007 exposes the old
+    # lines_result_view name as a compatibility view for known readers.
+    "lines_result_cache": """
+    CREATE TABLE IF NOT EXISTS pylovo.lines_result_cache (
         id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
         is_helper boolean NOT NULL,
         source_lines_result_id bigint,
@@ -203,15 +228,22 @@ CREATE_QUERIES = {
             REFERENCES pylovo.lines_result (lines_result_id)
             ON DELETE CASCADE
     );
-    ALTER TABLE pylovo.lines_result_view ADD COLUMN IF NOT EXISTS feeder_section_id integer;
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_grid_result_id
-    ON pylovo.lines_result_view (grid_result_id);
+    ON pylovo.lines_result_cache (grid_result_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_version_plz
-    ON pylovo.lines_result_view (version_id, plz);
+    ON pylovo.lines_result_cache (version_id, plz);
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_grid_section_id
-    ON pylovo.lines_result_view (grid_result_id, feeder_section_id);
+    ON pylovo.lines_result_cache (grid_result_id, feeder_section_id);
     CREATE INDEX IF NOT EXISTS idx_lines_result_view_geom
-    ON pylovo.lines_result_view USING gist (geom)
+    ON pylovo.lines_result_cache USING gist (geom);
+    -- Backs the ON DELETE CASCADE from lines_result: without it, deleting a
+    -- version scans this table once per deleted line.
+    CREATE INDEX IF NOT EXISTS idx_lines_result_view_source_line
+    ON pylovo.lines_result_cache (source_lines_result_id)
+    """,
+    "lines_result_view": """
+    CREATE OR REPLACE VIEW pylovo.lines_result_view AS
+        SELECT * FROM pylovo.lines_result_cache;
     """,
     "consumer_categories": """
     CREATE TABLE IF NOT EXISTS pylovo.consumer_categories (
@@ -225,41 +257,6 @@ CREATE_QUERIES = {
     )
     """,
     "buildings_result": """
-    DROP MATERIALIZED VIEW IF EXISTS pylovo.buildings_result_with_grid CASCADE;
-    DO $$
-    BEGIN
-        IF to_regclass('pylovo.buildings_result') IS NOT NULL THEN
-            ALTER TABLE pylovo.buildings_result DROP CONSTRAINT IF EXISTS fk_buildings_result_type;
-            ALTER TABLE pylovo.buildings_result DROP CONSTRAINT IF EXISTS buildings_result_pkey;
-
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'osm_id')
-               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'objectid') THEN
-                ALTER TABLE pylovo.buildings_result RENAME COLUMN osm_id TO objectid;
-            END IF;
-
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'area')
-               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'floor_area') THEN
-                ALTER TABLE pylovo.buildings_result RENAME COLUMN area TO floor_area;
-            END IF;
-
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'floors')
-               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'floor_number') THEN
-                ALTER TABLE pylovo.buildings_result RENAME COLUMN floors TO floor_number;
-            END IF;
-
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'households_per_building')
-               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'households') THEN
-                ALTER TABLE pylovo.buildings_result RENAME COLUMN households_per_building TO households;
-            END IF;
-
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'center')
-               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pylovo' AND table_name = 'buildings_result' AND column_name = 'centroid') THEN
-                ALTER TABLE pylovo.buildings_result RENAME COLUMN center TO centroid;
-            END IF;
-
-        END IF;
-    END $$;
-
     CREATE TABLE IF NOT EXISTS pylovo.buildings_result (
         version_id varchar(10) NOT NULL,
         objectid text NOT NULL,
@@ -269,6 +266,12 @@ CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
+        residential_floor_area double precision,
+        nonresidential_floor_area double precision,
+        nonresidential_use varchar(30),
+        mix_score double precision,
+        mix_rule text,
+        mix_confidence text,
         building_use text,
         building_use_id text,
         building_type text,
@@ -285,6 +288,9 @@ CREATE_QUERIES = {
         gemeindeschluessel text,
         changelog_id bigint,
         assigned_way_id text,
+        residential_peak_load_in_kw double precision,
+        nonresidential_peak_load_in_kw double precision,
+        nonresidential_mv_direct boolean NOT NULL DEFAULT false,
         peak_load_in_kw double precision,
         vertice_id integer,
         connection_point integer,
@@ -293,61 +299,392 @@ CREATE_QUERIES = {
         CONSTRAINT fk_buildings_result_grid_result
             FOREIGN KEY (version_id, grid_result_id)
             REFERENCES pylovo.grid_result (version_id, grid_result_id)
-            ON DELETE CASCADE,
-        CONSTRAINT fk_buildings_result_type
-            FOREIGN KEY (type)
-            REFERENCES pylovo.consumer_categories (definition)
             ON DELETE CASCADE
     );
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS id integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS feature_id integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS objectid text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS height double precision;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_area double precision;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS floor_number integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_use_id text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS building_type text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS type varchar(30);
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS occupants integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS households integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS construction_year text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS postcode integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS address_street_id bigint;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS street text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS house_number text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS geom geometry(MultiPolygon,{TARGET_EPSG});
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS centroid geometry(Point,{TARGET_EPSG});
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS gemeindeschluessel text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS changelog_id bigint;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS assigned_way_id text;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS peak_load_in_kw double precision;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS vertice_id integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS connection_point integer;
-    ALTER TABLE pylovo.buildings_result ADD COLUMN IF NOT EXISTS agg_connection_point integer;
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conname = 'buildings_result_pkey'
-              AND conrelid = 'pylovo.buildings_result'::regclass
-        ) THEN
-            ALTER TABLE pylovo.buildings_result ADD CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid);
-        END IF;
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conname = 'fk_buildings_result_type'
-              AND conrelid = 'pylovo.buildings_result'::regclass
-        ) THEN
-            ALTER TABLE pylovo.buildings_result
-                ADD CONSTRAINT fk_buildings_result_type
-                FOREIGN KEY (type)
-                REFERENCES pylovo.consumer_categories (definition)
-                ON DELETE CASCADE;
-        END IF;
-    END $$;
     CREATE INDEX IF NOT EXISTS idx_buildings_result_grid_result_id
     ON pylovo.buildings_result (grid_result_id);
+    """,
+    "mv_customers": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_customers (
+        version_id varchar(10) NOT NULL,
+        objectid text NOT NULL,
+        plz integer NOT NULL,
+        id integer,
+        building_use text,
+        building_use_id text,
+        building_type text,
+        type varchar(30),
+        nonresidential_use varchar(30),
+        nonresidential_floor_area double precision,
+        nonresidential_peak_load_in_kw double precision NOT NULL,
+        residential_peak_load_in_kw double precision,
+        households integer,
+        gemeindeschluessel text,
+        geom geometry(MultiPolygon,{TARGET_EPSG}),
+        centroid geometry(Point,{TARGET_EPSG}),
+        CONSTRAINT mv_customers_pkey PRIMARY KEY (version_id, objectid),
+        CONSTRAINT fk_mv_customers_version
+            FOREIGN KEY (version_id)
+            REFERENCES pylovo.version (version_id)
+            ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_customers_version_plz
+    ON pylovo.mv_customers (version_id, plz);
+    CREATE INDEX IF NOT EXISTS idx_mv_customers_centroid
+    ON pylovo.mv_customers USING gist (centroid);
+    """,
+    # MV stage (pylovo.mv_grid). The routing graph (mv_graph*) is unversioned reference data,
+    # content-addressed by graph_id. Every MV result table carries version_id and mv_variant_id and
+    # is deleted with its mv_variant row (ON DELETE CASCADE). Migration 0009_mv_grids gates them.
+    # The stage plans loads only: it writes 0 or NULL into the generation columns (gen_*_kw, *feed_in*,
+    # n_generators, kind/role generator).
+    "mv_graph": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_graph (
+        graph_id varchar(40) PRIMARY KEY,                -- 'g' || 16 hex of md5(source|ags|build parameters|fingerprint)
+        source_table text NOT NULL,                      -- e.g. 'basedata.ways_per_junction'
+        ags text[] NOT NULL,                             -- AGS whose ways form the graph (whole municipalities)
+        excluded_klasse text[] NOT NULL DEFAULT ARRAY[]::text[],
+        snap_tolerance_m double precision NOT NULL,
+        build_parameters jsonb NOT NULL,                 -- settlement rule parameters, epsg
+        source_fingerprint text NOT NULL,                -- ways: count:round(sum length):max changelog; buildings: count
+        edge_count integer,
+        vertex_count integer,
+        component_count integer,
+        largest_component_share double precision,        -- length share of the largest component
+        total_length_km double precision,
+        settlement_count integer,
+        settlement_edge_share double precision,          -- length share of settlement edges
+        seam_endpoint_count integer,                     -- QA: lone endpoints within 0.5 m of another edge interior
+        build_seconds double precision,
+        created_at timestamptz NOT NULL DEFAULT now()
+    );
+    """,
+    "mv_graph_vertex": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_graph_vertex (
+        graph_id varchar(40) NOT NULL,
+        vertex_id bigint NOT NULL,
+        degree integer,
+        component bigint,
+        geom geometry(Point,{TARGET_EPSG}) NOT NULL,
+        CONSTRAINT mv_graph_vertex_pkey PRIMARY KEY (graph_id, vertex_id),
+        CONSTRAINT fk_mv_graph_vertex_graph FOREIGN KEY (graph_id)
+            REFERENCES pylovo.mv_graph (graph_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_graph_vertex_geom ON pylovo.mv_graph_vertex USING gist (geom);
+    """,
+    "mv_graph_edge": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_graph_edge (
+        graph_id varchar(40) NOT NULL,
+        edge_id bigint NOT NULL,
+        ags text,
+        src_id text,                                     -- InfDB key (ags, id) of the source way
+        klasse text,
+        objektart text,
+        source bigint NOT NULL,
+        target bigint NOT NULL,
+        length_m double precision NOT NULL,
+        component bigint,
+        n_buildings integer,                             -- address buildings within settlement_buffer_m
+        in_settlement boolean NOT NULL DEFAULT false,
+        settlement_id bigint,                            -- component of in_settlement edges (NULL outside)
+        settlement_urban boolean NOT NULL DEFAULT false,
+        geom geometry(LineString,{TARGET_EPSG}) NOT NULL,
+        CONSTRAINT mv_graph_edge_pkey PRIMARY KEY (graph_id, edge_id),
+        CONSTRAINT fk_mv_graph_edge_graph FOREIGN KEY (graph_id)
+            REFERENCES pylovo.mv_graph (graph_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_graph_edge_geom ON pylovo.mv_graph_edge USING gist (geom);
+    CREATE INDEX IF NOT EXISTS idx_mv_graph_edge_source ON pylovo.mv_graph_edge (graph_id, source);
+    CREATE INDEX IF NOT EXISTS idx_mv_graph_edge_target ON pylovo.mv_graph_edge (graph_id, target);
+    """,
+    "mv_graph_settlement": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_graph_settlement (
+        graph_id varchar(40) NOT NULL,
+        settlement_id bigint NOT NULL,
+        n_buildings integer NOT NULL,                    -- distinct address buildings near its edges
+        length_km double precision NOT NULL,
+        urban boolean NOT NULL,                          -- n_buildings >= urban_min_buildings
+        geom geometry(MultiPolygon,{TARGET_EPSG}) NOT NULL,   -- buffer of its edges (maps, mixed spans)
+        CONSTRAINT mv_graph_settlement_pkey PRIMARY KEY (graph_id, settlement_id),
+        CONSTRAINT fk_mv_graph_settlement_graph FOREIGN KEY (graph_id)
+            REFERENCES pylovo.mv_graph (graph_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_graph_settlement_geom ON pylovo.mv_graph_settlement USING gist (geom);
+    """,
+    "mv_variant": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_variant (
+        version_id varchar(10) NOT NULL,
+        mv_variant_id varchar(10) NOT NULL,
+        mv_variant_comment varchar,
+        mv_parameters jsonb NOT NULL,                    -- MvParameters.to_snapshot()
+        lv_parameters jsonb,                             -- LvVersionParameters.as_json() (informational copy)
+        plz_list integer[] NOT NULL,                     -- sorted PLZ the variant was built for
+        graph_id varchar(40),
+        status varchar(16) NOT NULL DEFAULT 'running',   -- running | done | partial | failed
+        lv_fingerprint jsonb,                            -- staleness check
+        summary jsonb,                                   -- MvRunSummary.to_dict() + region metrics
+        created_at timestamptz NOT NULL DEFAULT now(),
+        finished_at timestamptz,
+        CONSTRAINT mv_variant_pkey PRIMARY KEY (version_id, mv_variant_id),
+        CONSTRAINT fk_mv_variant_version FOREIGN KEY (version_id)
+            REFERENCES pylovo.version (version_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_variant_graph FOREIGN KEY (graph_id)
+            REFERENCES pylovo.mv_graph (graph_id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_variant_graph ON pylovo.mv_variant (graph_id);
+    """,
+    "mv_substation": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_substation (
+        substation_id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+        version_id varchar(10) NOT NULL,
+        mv_variant_id varchar(10) NOT NULL,
+        source varchar(8) NOT NULL,                      -- osm | egon
+        source_ids text[] NOT NULL,                      -- 'way/123', 'node/45', 'relation/7', 'egon/<bus_id>'
+        name text,
+        operator text,
+        voltage_tag text,                                -- raw OSM voltage tags of the site, '|'-joined
+        egon_bus_id bigint,                              -- nearest eGon substation within egon_match_m
+        egon_distance_m double precision,
+        in_region boolean NOT NULL,                      -- busbar inside the planning region
+        attach_edge_id bigint,
+        attach_fraction double precision,
+        attach_offset_m double precision,
+        osm_ratings_mva double precision[],              -- not filled (no OSM transformer ratings are read)
+        n_transformers integer,
+        transformer_mva double precision,
+        transformer_sizing varchar(16),                  -- sized | large_substation
+        peak_load_mw double precision,
+        peak_feed_in_mw double precision,
+        loading_n0_percent double precision,
+        loading_n1_percent double precision,
+        flags text[] NOT NULL DEFAULT ARRAY[]::text[],   -- ehv_uncertain, long_attach, over_capacity, no_nodes
+        geom geometry(Point,{TARGET_EPSG}) NOT NULL,     -- busbar point
+        footprint geometry(MultiPolygon,{TARGET_EPSG}),
+        display_geom geometry(Polygon,{TARGET_EPSG}),    -- busbar circle the display lines end on
+        CONSTRAINT fk_mv_substation_variant FOREIGN KEY (version_id, mv_variant_id)
+            REFERENCES pylovo.mv_variant (version_id, mv_variant_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_substation_variant ON pylovo.mv_substation (version_id, mv_variant_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_substation_geom ON pylovo.mv_substation USING gist (geom);
+    """,
+    # One row per substation that supplies at least one node.
+    "mv_grid": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_grid (
+        mv_grid_id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+        version_id varchar(10) NOT NULL,
+        mv_variant_id varchar(10) NOT NULL,
+        substation_id bigint NOT NULL,
+        status varchar(16) NOT NULL DEFAULT 'pending',   -- pending | done | failed
+        power_flow_status varchar(32),                   -- converged | voltage_violation | loading_violation | not_converged
+        coupled_status varchar(16),                      -- NULL | done | partial | failed
+        vn_kv double precision NOT NULL,
+        complete boolean,                                -- substation in region and cell not cut by the region border
+        area_km2 double precision,
+        hv_mv_transformers integer,
+        hv_mv_transformer_mva double precision,
+        hv_mv_sizing varchar(16),
+        oltc_tap_pos integer,
+        peak_load_mw double precision,                   -- category law over all nodes of the district
+        peak_feed_in_mw double precision,                -- older variants: largest reverse flow of the feed-in cases
+        sum_station_kva double precision,
+        n_stations integer,
+        n_customers integer,
+        n_generators integer,
+        n_joints integer,
+        n_rings integer,
+        n_stub_nodes integer,
+        n_feeder_bays integer,                           -- lines at the busbar (2 per ring, 2 per 2-leg feeder, ...)
+        circuit_km double precision,                     -- sum of line lengths; parallel cables count once
+        cable_km double precision,
+        overhead_km double precision,
+        trench_km double precision,                      -- union of street pieces used by cables + connectors
+        bridge_km double precision,
+        max_voltage_drop_percent double precision,
+        max_voltage_drop_n1_percent double precision,
+        max_voltage_rise_percent double precision,
+        max_line_loading_percent double precision,
+        max_line_loading_n1_percent double precision,
+        max_line_loading_feed_in_percent double precision,
+        n_band_conflicts integer,
+        n_tap_limit integer,
+        metrics jsonb,                                   -- metrics.topology_metrics() + electrical + diagnostics
+        repairs jsonb,
+        error text,
+        runtime_s double precision,
+        geom geometry(MultiPolygon,{TARGET_EPSG}),       -- union of the Voronoi cells of its nodes within the planning region
+        net json,                                        -- pp.to_json(stored MV net); never read by the plot readers
+        CONSTRAINT uq_mv_grid_substation UNIQUE (substation_id),
+        CONSTRAINT fk_mv_grid_variant FOREIGN KEY (version_id, mv_variant_id)
+            REFERENCES pylovo.mv_variant (version_id, mv_variant_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_grid_substation FOREIGN KEY (substation_id)
+            REFERENCES pylovo.mv_substation (substation_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_grid_variant ON pylovo.mv_grid (version_id, mv_variant_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_grid_geom ON pylovo.mv_grid USING gist (geom);
+    """,
+    "mv_node": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_node (
+        mv_node_id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+        version_id varchar(10) NOT NULL,
+        mv_variant_id varchar(10) NOT NULL,
+        mv_grid_id bigint,                               -- NULL until assigned
+        kind varchar(16) NOT NULL,                       -- busbar | station | customer | generator | joint
+        connection_hint varchar(16) NOT NULL,            -- region step: busbar | ring | dedicated | tee | excluded (never reset)
+        connection varchar(16),                          -- district result: busbar | ring | stub | dedicated | tee | loop_in | joint | excluded
+        substation_id bigint,                            -- busbar nodes
+        grid_result_id bigint,                           -- station: its LV grid (NULL for external stations)
+        customer_objectid text,                          -- customer: pylovo.mv_customers.objectid
+        mastr_connection_id text,                        -- generator rows of older variants with generation
+        voltage_class varchar(8),                        -- generator: mv | mvlv | hvmv (after the level rules)
+        technology varchar(32),                          -- generator: technology mix label, e.g. 'wind' or 'solar+other'
+        plz integer,
+        plz_settlement_type integer,                     -- postcode_result.settlement_type (reach of the links)
+        settlement_id bigint,                            -- settlement of the attach edge (NULL: open field)
+        area_class varchar(8),                           -- urban | rural
+        station_source varchar(24),                      -- greenfield | osm | lod2 | dso | manual | brownfield_unlinked | lv_bus_fallback | external
+        households double precision,
+        n_buildings integer,
+        load_stats jsonb,                                -- per category: [installed_kw, units], e.g. "Residential": [120.0, 14]
+        installed_kw double precision,
+        p_own_kw double precision,                       -- station: own coincident peak; customer: g_c * installed
+        gen_solar_kw double precision NOT NULL DEFAULT 0,
+        gen_wind_kw double precision NOT NULL DEFAULT 0,
+        gen_other_kw double precision NOT NULL DEFAULT 0,
+        sn_kva double precision,                         -- station rating (grid_result.transformer_rated_power)
+        feeder_id integer,
+        ring_id integer,
+        ring_position integer,
+        stub_parent bigint,
+        attach_edge_id bigint,
+        attach_fraction double precision,
+        attach_offset_m double precision,
+        bridged boolean NOT NULL DEFAULT false,
+        vm_load_pu double precision,                     -- MV voltages at busbar 1.02
+        vm_n1_pu double precision,
+        vm_feed_in_pu double precision,
+        lv_design_source_vm_pu double precision,         -- stored ext_grid.vm_pu of the LV net (requirement)
+        lv_max_drop_pu double precision,                 -- grid_result.max_total_lv_voltage_drop_pu
+        mv_lv_tap_pos integer,
+        lv_busbar_vm_pu double precision,                -- budget, design point, busbar at its lower edge
+        lv_min_vm_pu double precision,
+        lv_busbar_vm_feed_in_pu double precision,        -- budget, feed-in, busbar at its upper edge
+        band_conflict boolean,
+        coupled_lv_busbar_vm_pu double precision,        -- pylovo-mv couple (design point per LV net)
+        coupled_lv_min_vm_pu double precision,
+        coupled_lv_busbar_vm_feed_in_pu double precision,
+        coupled_lv_max_vm_pu double precision,
+        coupled_op_lv_busbar_vm_pu double precision,     -- pylovo-mv couple (merged operating point)
+        flags text[] NOT NULL DEFAULT ARRAY[]::text[],
+        geom geometry(Point,{TARGET_EPSG}) NOT NULL,     -- copied, not joined (positions can be edited in the UI)
+        CONSTRAINT fk_mv_node_variant FOREIGN KEY (version_id, mv_variant_id)
+            REFERENCES pylovo.mv_variant (version_id, mv_variant_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_node_grid FOREIGN KEY (mv_grid_id)
+            REFERENCES pylovo.mv_grid (mv_grid_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_node_grid_result FOREIGN KEY (version_id, grid_result_id)
+            REFERENCES pylovo.grid_result (version_id, grid_result_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_node_customer FOREIGN KEY (version_id, customer_objectid)
+            REFERENCES pylovo.mv_customers (version_id, objectid) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_node_variant_grid ON pylovo.mv_node (version_id, mv_variant_id, mv_grid_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_node_grid ON pylovo.mv_node (mv_grid_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_node_grid_result ON pylovo.mv_node (version_id, grid_result_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_node_customer ON pylovo.mv_node (version_id, customer_objectid);
+    CREATE INDEX IF NOT EXISTS idx_mv_node_geom ON pylovo.mv_node USING gist (geom);
+    """,
+    "mv_line": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_line (
+        mv_line_id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+        version_id varchar(10) NOT NULL,
+        mv_variant_id varchar(10) NOT NULL,
+        mv_grid_id bigint NOT NULL,                      -- owning grid (ties: grid of from_node)
+        from_node bigint NOT NULL,
+        to_node bigint NOT NULL,
+        role varchar(16) NOT NULL,                       -- ring | stub | dedicated | generator | tie | link
+        kind varchar(8) NOT NULL,                        -- cable | overhead | mixed
+        feeder_id integer,
+        ring_id integer,
+        std_type varchar(160) NOT NULL,                  -- pandapower std type; mixed: '<cable> + <overhead>'
+        parallel integer NOT NULL DEFAULT 1,
+        length_km double precision NOT NULL,             -- circuit length (>= 0.001)
+        cable_km double precision NOT NULL DEFAULT 0,
+        overhead_km double precision NOT NULL DEFAULT 0,
+        straight_km double precision,
+        bridge_m double precision NOT NULL DEFAULT 0,
+        normally_open boolean NOT NULL DEFAULT false,
+        open_at_node bigint,                             -- the open switch sits at this end
+        loading_load_percent double precision,
+        loading_n1_percent double precision,
+        loading_feed_in_percent double precision,
+        geom geometry(LineString,{TARGET_EPSG}) NOT NULL,
+        display_geom geometry(LineString,{TARGET_EPSG}), -- lanes where lines share a route; NULL: as geom
+        CONSTRAINT fk_mv_line_variant FOREIGN KEY (version_id, mv_variant_id)
+            REFERENCES pylovo.mv_variant (version_id, mv_variant_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_line_grid FOREIGN KEY (mv_grid_id)
+            REFERENCES pylovo.mv_grid (mv_grid_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_line_from FOREIGN KEY (from_node)
+            REFERENCES pylovo.mv_node (mv_node_id) ON DELETE CASCADE,
+        CONSTRAINT fk_mv_line_to FOREIGN KEY (to_node)
+            REFERENCES pylovo.mv_node (mv_node_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_line_variant_grid ON pylovo.mv_line (version_id, mv_variant_id, mv_grid_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_line_grid ON pylovo.mv_line (mv_grid_id);
+    CREATE INDEX IF NOT EXISTS idx_mv_line_from ON pylovo.mv_line (from_node);
+    CREATE INDEX IF NOT EXISTS idx_mv_line_to ON pylovo.mv_line (to_node);
+    CREATE INDEX IF NOT EXISTS idx_mv_line_geom ON pylovo.mv_line USING gist (geom);
+    """,
+    # One row per ring, dedicated feeder, generator feeder or busbar radial (metrics without traversal).
+    "mv_ring": """
+    CREATE TABLE IF NOT EXISTS pylovo.mv_ring (
+        version_id varchar(10) NOT NULL,
+        mv_variant_id varchar(10) NOT NULL,
+        mv_grid_id bigint NOT NULL,
+        ring_id integer NOT NULL,
+        kind varchar(16) NOT NULL,                       -- ring | dedicated | generator | radial
+        n_members integer,                               -- counted for the cap: stations + customers
+        n_stations integer,
+        n_customers integer,
+        n_generators integer,
+        n_stub_nodes integer,
+        length_km double precision,                      -- circuit length without stubs
+        half_a_km double precision,
+        half_b_km double precision,
+        stub_km double precision,
+        overhead_km double precision,
+        p_ring_kw double precision,                      -- coincident, whole ring incl. stubs
+        p_half_a_kw double precision,
+        p_half_b_kw double precision,
+        nop_node bigint,
+        max_drop_percent double precision,
+        max_drop_n1_percent double precision,
+        max_loading_percent double precision,
+        max_loading_n1_percent double precision,
+        area_class varchar(8),                           -- majority class of its members
+        has_tie boolean NOT NULL DEFAULT false,
+        CONSTRAINT mv_ring_pkey PRIMARY KEY (mv_grid_id, ring_id),
+        CONSTRAINT fk_mv_ring_grid FOREIGN KEY (mv_grid_id)
+            REFERENCES pylovo.mv_grid (mv_grid_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_mv_ring_variant ON pylovo.mv_ring (version_id, mv_variant_id);
+    """,
+    # Explicit columns only (never *): CREATE OR REPLACE VIEW may only append columns.
+    "mv_variant_stats": """
+    CREATE OR REPLACE VIEW pylovo.mv_variant_stats AS
+    SELECT g.version_id, g.mv_variant_id,
+           count(*) AS n_grids,
+           count(*) FILTER (WHERE g.status = 'done') AS n_done,
+           count(*) FILTER (WHERE g.status = 'failed') AS n_failed,
+           count(*) FILTER (WHERE g.complete) AS n_complete,
+           count(*) FILTER (WHERE g.power_flow_status = 'converged') AS n_converged,
+           sum(g.n_stations) AS n_stations, sum(g.n_customers) AS n_customers, sum(g.n_generators) AS n_generators,
+           sum(g.n_rings) AS n_rings, sum(g.n_stub_nodes) AS n_stub_nodes,
+           sum(g.circuit_km) AS circuit_km, sum(g.cable_km) AS cable_km, sum(g.overhead_km) AS overhead_km,
+           sum(g.trench_km) AS trench_km,
+           sum(g.cable_km) / NULLIF(sum(g.circuit_km), 0) AS cable_share,
+           sum(g.circuit_km) / NULLIF(sum(g.n_stations) + sum(g.n_customers), 0) AS km_per_supply_point,
+           sum(g.peak_load_mw) AS peak_load_mw, sum(g.n_band_conflicts) AS n_band_conflicts,
+           sum(g.runtime_s) AS runtime_s
+    FROM pylovo.mv_grid g
+    GROUP BY g.version_id, g.mv_variant_id;
     """,
     "municipal_register": """CREATE TABLE IF NOT EXISTS pylovo.municipal_register (
         plz integer,
@@ -367,7 +704,7 @@ CREATE_QUERIES = {
     "sample_set": """CREATE TABLE IF NOT EXISTS pylovo.sample_set (
         classification_id integer NOT NULL,
         plz integer NOT NULL,
-        ags bigint,
+        ags bigint NOT NULL,
         bin_no integer,
         bins double precision,
         perc_bin double precision,
@@ -415,22 +752,6 @@ CREATE_QUERIES = {
             ON DELETE CASCADE
     )
     """,
-        "grid_parameters": """CREATE TABLE IF NOT EXISTS pylovo.grid_parameters (
-        grid_result_id bigint PRIMARY KEY,
-        power_flow_status varchar(32),
-        feeder_lines integer,
-        buildings_per_feeder double precision,
-        graph_length double precision,
-        avg_trafo_distance double precision,
-        max_trafo_distance double precision,
-        transformer_mva double precision,
-        graph_resistance double precision,
-        CONSTRAINT fk_grid_parameters_grid_result
-            FOREIGN KEY (grid_result_id)
-            REFERENCES pylovo.grid_result (grid_result_id)
-            ON DELETE CASCADE
-    )
-    """,
     "pandapower_bus": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_bus (
         pandapower_bus_id SERIAL PRIMARY KEY,
@@ -450,8 +771,6 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_bus_grid_result_id
-    ON pylovo.pandapower_bus (grid_result_id);
     """,
     "pandapower_line": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_line (
@@ -473,16 +792,27 @@ CREATE_QUERIES = {
         max_i_ka double precision,
         df double precision,
         type varchar(32),
+        feeder_section_id integer,
+        feeder_sizing_basis varchar(32),
+        ampacity_std_type varchar(100),
+        ampacity_parallel integer,
+        service_sizing_basis varchar(32),
+        service_ampacity_voltage_drop_percent double precision,
+        service_selected_voltage_drop_percent double precision,
+        service_voltage_drop_limit_met boolean,
+        service_length_review boolean,
+        total_design_voltage_drop_percent double precision,
         CONSTRAINT uq_pandapower_line_grid_result_pp_index UNIQUE (grid_result_id, pp_index),
         CONSTRAINT fk_pandapower_line_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)
-            ON DELETE CASCADE
+               ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_id
-    ON pylovo.pandapower_line (grid_result_id);
-    CREATE INDEX IF NOT EXISTS idx_pandapower_line_from_to_bus
-    ON pylovo.pandapower_line (from_bus, to_bus);
+    -- Back the deferred bus FKs of migration 0003, checked for every deleted bus.
+    CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_from_bus
+    ON pylovo.pandapower_line (grid_result_id, from_bus);
+    CREATE INDEX IF NOT EXISTS idx_pandapower_line_grid_result_to_bus
+    ON pylovo.pandapower_line (grid_result_id, to_bus);
     """,
     "pandapower_trafo": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_trafo (
@@ -516,10 +846,11 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_id
-    ON pylovo.pandapower_trafo (grid_result_id);
-    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_hv_lv_bus
-    ON pylovo.pandapower_trafo (hv_bus, lv_bus);
+    -- Back the deferred bus FKs of migration 0003, checked for every deleted bus.
+    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_hv_bus
+    ON pylovo.pandapower_trafo (grid_result_id, hv_bus);
+    CREATE INDEX IF NOT EXISTS idx_pandapower_trafo_grid_result_lv_bus
+    ON pylovo.pandapower_trafo (grid_result_id, lv_bus);
     """,
     "pandapower_load": """
     CREATE TABLE IF NOT EXISTS pylovo.pandapower_load (
@@ -530,6 +861,11 @@ CREATE_QUERIES = {
         bus integer,
         p_mw double precision,
         q_mvar double precision,
+        service_design_p_mw double precision,
+        operating_point_basis varchar(64),
+        category varchar(30),
+        load_units double precision,
+        consumer_vertex bigint,
         const_z_percent double precision,
         const_i_percent double precision,
         sn_mva double precision,
@@ -547,11 +883,53 @@ CREATE_QUERIES = {
             REFERENCES pylovo.grid_result (grid_result_id)
             ON DELETE CASCADE
     );
-    CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_id
-    ON pylovo.pandapower_load (grid_result_id);
-    CREATE INDEX IF NOT EXISTS idx_pandapower_load_bus
-    ON pylovo.pandapower_load (bus);
+    -- Backs the deferred bus FK of migration 0003, checked for every deleted bus.
+    CREATE INDEX IF NOT EXISTS idx_pandapower_load_grid_result_bus
+    ON pylovo.pandapower_load (grid_result_id, bus);
     """,
+    # Audit rows of manual load edits (pylovo.load_editing, pylovo-api). Append-only: an undo only
+    # stamps undone_at. before_net keeps the previous grid_result.grid verbatim for the exact undo.
+    # Deleting a grid (PLZ or version) cascades to its audit rows.
+    "load_edit": """
+    CREATE TABLE IF NOT EXISTS pylovo.load_edit (
+        load_edit_id      bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        version_id        varchar(10) NOT NULL,
+        grid_result_id    bigint      NOT NULL,
+        plz               integer     NOT NULL,
+        objectid          text        NOT NULL,
+        action            varchar(16) NOT NULL CHECK (action IN ('edit', 'revert')),
+        changes           jsonb       NOT NULL,
+        reason            text CHECK (reason IS NULL OR length(reason) <= 500),
+        before_building   jsonb       NOT NULL,
+        after_building    jsonb       NOT NULL,
+        before_grid       jsonb       NOT NULL,
+        after_grid        jsonb       NOT NULL,
+        before_loads      jsonb       NOT NULL,
+        before_bus_zones  jsonb       NOT NULL,
+        before_net        json        NOT NULL,
+        before_net_md5    char(32)    NOT NULL,
+        after_net_md5     char(32)    NOT NULL,
+        removed_analysis  jsonb       NOT NULL,
+        impact            jsonb       NOT NULL,
+        parameters        jsonb       NOT NULL,
+        reproduction      jsonb       NOT NULL,
+        db_user           text        NOT NULL DEFAULT current_user,
+        client            text,
+        created_at        timestamptz NOT NULL DEFAULT clock_timestamp(),
+        undone_at         timestamptz,
+        undone_by         text,
+        CONSTRAINT fk_load_edit_grid_result
+            FOREIGN KEY (version_id, grid_result_id)
+            REFERENCES pylovo.grid_result (version_id, grid_result_id)
+            ON DELETE CASCADE,
+        CONSTRAINT chk_load_edit_undone CHECK ((undone_at IS NULL) = (undone_by IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS idx_load_edit_grid ON pylovo.load_edit (grid_result_id, load_edit_id);
+    CREATE INDEX IF NOT EXISTS idx_load_edit_version_plz ON pylovo.load_edit (version_id, plz);
+    CREATE INDEX IF NOT EXISTS idx_load_edit_building ON pylovo.load_edit (version_id, objectid, load_edit_id);
+    """,
+    # Raw transformer candidates: OSM stations from pylovo-setup, LoD2 station buildings,
+    # imported DSO stations and manual UI entries (see the osm_id prefixes and type values).
     "transformers": """CREATE TABLE IF NOT EXISTS pylovo.transformers (
         osm_id varchar PRIMARY KEY,
         area double precision,
@@ -564,12 +942,11 @@ CREATE_QUERIES = {
         lod2_objectid text,
         geom geometry(MultiPoint, {TARGET_EPSG})
     );
-    ALTER TABLE pylovo.transformers ADD COLUMN IF NOT EXISTS osm boolean NOT NULL DEFAULT true;
-    ALTER TABLE pylovo.transformers ADD COLUMN IF NOT EXISTS lod2 boolean NOT NULL DEFAULT false;
-    ALTER TABLE pylovo.transformers ADD COLUMN IF NOT EXISTS lod2_objectid text;
     CREATE INDEX IF NOT EXISTS idx_transformers_geom
     ON pylovo.transformers USING gist (geom)
     """,
+    # One transformer position per generated grid. The migration changes raw-source
+    # deletion to preserve positions and clear only osm_id.
     "transformer_positions": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_positions (
         grid_result_id bigint PRIMARY KEY,
@@ -594,9 +971,6 @@ CREATE_QUERIES = {
             REFERENCES pylovo.transformers (osm_id)
             ON DELETE CASCADE
     );
-    ALTER TABLE pylovo.transformer_positions ADD COLUMN IF NOT EXISTS osm boolean NOT NULL DEFAULT false;
-    ALTER TABLE pylovo.transformer_positions ADD COLUMN IF NOT EXISTS lod2 boolean NOT NULL DEFAULT false;
-    ALTER TABLE pylovo.transformer_positions ADD COLUMN IF NOT EXISTS lod2_objectid text
     """,
     "transformer_classified": """
     CREATE TABLE IF NOT EXISTS pylovo.transformer_classified (
@@ -652,7 +1026,30 @@ CREATE_QUERIES = {
             FOREIGN KEY (version_id, plz)
             REFERENCES pylovo.postcode_result (version_id, postcode_result_plz)
             ON DELETE CASCADE
-    )
+    );
+    -- Backs the ON DELETE CASCADE from postcode_result.
+    CREATE INDEX IF NOT EXISTS idx_ways_result_version_plz
+    ON pylovo.ways_result (version_id, plz);
+    -- MAX(way_id) over all versions, read for every PLZ (set_ways_tem_table_infdb).
+    CREATE INDEX IF NOT EXISTS idx_ways_result_way_id
+    ON pylovo.ways_result (way_id)
+    """,
+    # Buildings of a generated PLZ that are in no grid, with the step that left them out
+    # (see ResultsMixin.save_tables). Together with buildings_result it accounts for every loaded building.
+    "building_exclusion": """
+    CREATE TABLE IF NOT EXISTS pylovo.building_exclusion (
+        version_id varchar(10) NOT NULL,
+        objectid text NOT NULL,
+        plz integer NOT NULL,
+        reason varchar(40) NOT NULL,
+        CONSTRAINT pk_building_exclusion PRIMARY KEY (version_id, objectid),
+        CONSTRAINT fk_building_exclusion_version_id_plz
+            FOREIGN KEY (version_id, plz)
+            REFERENCES pylovo.postcode_result (version_id, postcode_result_plz)
+            ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_building_exclusion_version_plz
+    ON pylovo.building_exclusion (version_id, plz)
     """,
     "plz_parameters": """
     CREATE TABLE IF NOT EXISTS pylovo.plz_parameters (
@@ -700,8 +1097,11 @@ CREATE_QUERIES = {
                                    geom       geometry(MultiPolygon, {TARGET_EPSG})
                                )
     """,
+    # GIS views. Only transformer_classified_with_grid is materialized and refreshed.
+    # Equipment columns are present when the selected unit has a unique catalog match. They
+    # describe one transformer unit: the station has transformer_units of them and its
+    # rating is transformer_rated_power.
     "transformer_positions_with_grid": """
-    DROP MATERIALIZED VIEW IF EXISTS pylovo.transformer_positions_with_grid CASCADE;
     CREATE OR REPLACE VIEW pylovo.transformer_positions_with_grid AS
         SELECT
             tp.*,
@@ -716,14 +1116,15 @@ CREATE_QUERIES = {
             ed.x_mohm_per_km,
             ed.z_mohm_per_km,
             ed.cost_eur,
-            ed.typ AS equipment_type
+            ed.typ AS equipment_type,
+            round(gr.transformer_rated_power / NULLIF(ed.s_max_kva, 0))::integer AS transformer_units
         FROM pylovo.transformer_positions tp
         JOIN pylovo.grid_result gr ON tp.grid_result_id = gr.grid_result_id
         LEFT JOIN pylovo.equipment_data ed
             ON gr.version_id = ed.version_id
             AND gr.transformer_equipment_name = ed.name
     """,
-            "transformer_classified_with_grid": """
+    "transformer_classified_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid AS (
         SELECT 
             tc.*,
@@ -750,25 +1151,21 @@ CREATE_QUERIES = {
                 ON pylovo.transformer_classified_with_grid (grid_result_id, classification_id);
             CREATE INDEX IF NOT EXISTS idx_transformer_classified_with_grid_geom ON pylovo.transformer_classified_with_grid USING gist (geom)
     """,
-            "buildings_result_with_grid": """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.buildings_result_with_grid AS (
+    "buildings_result_with_grid": """
+    CREATE OR REPLACE VIEW pylovo.buildings_result_with_grid AS
         SELECT
-            (br.version_id || '_' || br.objectid) AS result_uid,
+            (length(br.version_id)::text || ':' || br.version_id || ':' || br.objectid) AS result_uid,
             br.*,
             gr.kcid, gr.bcid, gr.plz
         FROM pylovo.buildings_result br
-        JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_buildings_result_with_grid_uq_id
-    ON pylovo.buildings_result_with_grid (result_uid);
-    CREATE INDEX IF NOT EXISTS idx_buildings_result_with_grid_geom ON pylovo.buildings_result_with_grid USING gist (geom)
+        JOIN pylovo.grid_result gr ON br.grid_result_id = gr.grid_result_id;
     """,
-
-
 }
 
+# Working tables of one PLZ during generation (see UtilsMixin.create_temp_tables).
+# peak_load_in_kw = -1 marks transformer rows in buildings_tem.
 TEMP_CREATE_QUERIES = {
-    "buildings_tem": """CREATE TABLE IF NOT EXISTS pylovo.buildings_tem
+    "buildings_tem": """CREATE TEMP TABLE IF NOT EXISTS buildings_tem
     (
         id integer,
         feature_id integer,
@@ -776,6 +1173,12 @@ TEMP_CREATE_QUERIES = {
         height double precision,
         floor_area double precision,
         floor_number integer,
+        residential_floor_area double precision,
+        nonresidential_floor_area double precision,
+        nonresidential_use varchar(30),
+        mix_score double precision,
+        mix_rule text,
+        mix_confidence text,
         building_use text,
         building_use_id text,
         building_type text,
@@ -792,6 +1195,9 @@ TEMP_CREATE_QUERIES = {
         changelog_id bigint,
         assigned_way_id text,
         type varchar(80),
+        residential_peak_load_in_kw double precision,
+        nonresidential_peak_load_in_kw double precision,
+        nonresidential_mv_direct boolean NOT NULL DEFAULT false,
         peak_load_in_kw double precision,
         plz integer,
         vertice_id bigint,
@@ -800,7 +1206,7 @@ TEMP_CREATE_QUERIES = {
         connection_point integer,
         agg_connection_point integer
     )""",
-    "ways_tem": """CREATE TABLE IF NOT EXISTS pylovo.ways_tem
+    "ways_tem": """CREATE TEMP TABLE IF NOT EXISTS ways_tem
     (
         clazz integer,
         source integer,
@@ -811,14 +1217,17 @@ TEMP_CREATE_QUERIES = {
         way_id integer,
         plz integer
     )""",
+    # Buildings removed from buildings_tem during generation, with the reason; saved to building_exclusion.
+    "excluded_tem": """CREATE TEMP TABLE IF NOT EXISTS excluded_tem
+    (
+        objectid text,
+        reason varchar(40)
+    )""",
 }
 
 REFRESH_QUERIES = {
     "transformer_classified_with_grid": """
     REFRESH MATERIALIZED VIEW pylovo.transformer_classified_with_grid
-    """,
-    "buildings_result_with_grid": """
-    REFRESH MATERIALIZED VIEW pylovo.buildings_result_with_grid
     """,
 }
 

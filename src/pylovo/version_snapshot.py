@@ -1,0 +1,135 @@
+"""Compare a version's stored generation-parameter snapshot with the one of the current config.
+
+``pylovo-generate`` stores the generation parameters of a ``VERSION_ID`` once
+(``PreprocessingMixin._generation_parameters_snapshot``, table ``pylovo.version``) and refuses to
+add grids to that version with a different configuration. Parameters that were added to the
+snapshot later are missing from the snapshots of older versions; :data:`ADDED_LATER` lists them
+with the value that reproduces the behaviour from before they were recorded, or :data:`UNKNOWN`
+when that behaviour depended on a setting that was not stored. A missing parameter then does not
+block the version: with a known legacy value the current value must equal it, otherwise it is
+only reported as *not recorded*.
+
+The MV stage stores the parameters of each MV variant the same way (``pylovo.mv_variant.mv_parameters``) and
+compares them with ``compare_snapshots(stored, expected, added_later=MV_ADDED_LATER)``; a variant of another MV stage
+version is refused before (``pylovo.mv_grid.parameters.check_stage_version``).
+
+Pure functions without configuration or database access (also used by ``pylovo-api``).
+"""
+from __future__ import annotations
+
+from typing import Any
+
+UNKNOWN = object()
+
+#: Snapshot paths added after the first snapshots were stored, with their legacy value.
+ADDED_LATER: dict[tuple[str, ...], Any] = {
+    # Before this switch existed, manual positions were only used as part of the open positions.
+    ("transformer_placement", "use_manual_transformer_positions"): False,
+    # These config keys existed before they were recorded: the value used is not known.
+    ("transformer_placement", "merge_greenfield_clusters"): UNKNOWN,
+    ("transformer_placement", "greenfield_cluster_merge_transformer_kva"): UNKNOWN,
+    # Before this switch existed, a building could join any existing station with capacity in reach.
+    ("transformer_placement", "brownfield_nearest_only"): False,
+    # Before the size limit existed, merged clusters could have any size.
+    ("transformer_placement", "greenfield_cluster_merge_max_buildings"): None,
+    # Before the feeder utilization existed, feeder cables were sized at their full ampacity.
+    ("cable_dimensioning", "feeder_planning_utilization"): 1.0,
+    # Before CABLE_PLANNING_UTILIZATION, service cables were always sized at their full ampacity.
+    ("cable_dimensioning", "service_planning_utilization"): 1.0,
+    # Before the station voltage existed the MV side was at 1.0 p.u.
+    ("power_flow_assessment", "lv_reference_voltage_pu"): None,
+    # Before these existed: no standard feeder cable and tee-joint house connections. The parallel
+    # limit and the cabinet spacing only act with a standard cable or cabinets, so they have no legacy value.
+    ("cable_dimensioning", "feeder_standard_cable"): None,
+    ("cable_dimensioning", "max_parallel_feeder_cables"): UNKNOWN,
+    ("cable_dimensioning", "house_connection"): "joint",
+    ("cable_dimensioning", "cabinet_spacing_m"): UNKNOWN,
+    # Before ROUTE_ACROSS_POSTCODE_BORDERS every PLZ routed over its own streets only.
+    ("postcode_border", "route_across_postcode_borders"): False,
+    ("postcode_border", "neighboring_street_width_m"): None,
+    ("postcode_border", "neighboring_street_margin_m"): None,
+    ("postcode_border", "rule_revision"): None,
+    # The input data was not recorded: which data an older version was built from is not known.
+    ("input_data", "use_infdb"): UNKNOWN,
+    ("input_data", "target_epsg"): UNKNOWN,
+    ("input_data", "infdb_source_schema"): UNKNOWN,
+}
+
+#: The same for the MV variant snapshots (``MvParameters.to_snapshot``): a path added to that snapshot later, with
+#: the value that reproduces the results of the variants stored before it.
+MV_ADDED_LATER: dict[tuple[str, ...], Any] = {
+    # Before MV_NOMINAL_VOLTAGE_KV auto every variant had one fixed nominal voltage, which no threshold changes.
+    ("voltage", "mv_10kv_min_density_mva_km2"): 8.0,
+    # Before the hall rule the MV load of a customer was its LV load (no building counted as a hall).
+    ("loads", "customer_hall_min_footprint_m2"): None,
+    # Before the station-busbar customers every MV customer had an own MV node.
+    ("loads", "customer_min_mv_kw"): 0.0,
+    # Station-busbar customers came without a distance limit.
+    ("loads", "busbar_customer_max_m"): None,
+    # Before the rural ring factor every ring member counted 1 against the cap.
+    ("topology", "rural_ring_factor"): 1.0,
+    # Before the busbar exits the busbar was joined to the street graph at its attachment only.
+    ("routing", "busbar_exit_radius_m"): 0.0,
+    # The first variants with OSM MV lines in the routing graph routed on them at their length.
+    ("routing", "osm_line_cost_factor"): 1.0,
+    # Before the stub-end links the links joined ring members only.
+    ("topology", "link_stub_ends"): False,
+}
+
+
+
+def _flatten(value: Any, prefix: tuple[str, ...] = ()) -> dict[tuple[str, ...], Any]:
+    if isinstance(value, dict) and value:
+        out: dict[tuple[str, ...], Any] = {}
+        for key, item in value.items():
+            out.update(_flatten(item, prefix + (str(key),)))
+        return out
+    return {prefix: value}
+
+
+def _missing(stored: dict, path: tuple[str, ...]) -> bool:
+    node: Any = stored
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return True
+        node = node[key]
+    return False
+
+
+def compare_snapshots(stored: dict, expected: dict, added_later: dict[tuple[str, ...], Any] | None = None
+                      ) -> tuple[list[str], list[str]]:
+    """Differences between a stored and an expected snapshot (both JSON round-tripped).
+
+    Args:
+        stored: The stored snapshot.
+        expected: The snapshot of the current configuration.
+        added_later: Paths added to the snapshot later with their legacy values; ``None`` means
+            :data:`ADDED_LATER` (LV versions). The MV stage passes :data:`MV_ADDED_LATER`.
+
+    Returns:
+        ``(differences, not_recorded)``: dotted paths whose values differ (these block the version),
+        and paths of ``added_later`` that the stored snapshot does not contain and whose legacy
+        value is unknown (these are only reported).
+    """
+    added_later = ADDED_LATER if added_later is None else added_later
+    skipped: set[tuple[str, ...]] = set()
+    not_recorded: list[str] = []
+    differences: list[str] = []
+    for path, legacy in added_later.items():
+        if not _missing(stored, path) or _missing(expected, path):
+            continue
+        skipped.add(path)
+        current = expected
+        for key in path:
+            current = current[key]
+        if legacy is UNKNOWN:
+            not_recorded.append(".".join(path))
+        elif current != legacy:
+            differences.append(".".join(path))
+    flat_stored, flat_expected = _flatten(stored), _flatten(expected)
+    for path in sorted(set(flat_stored) | set(flat_expected)):
+        if any(path[:len(s)] == s for s in skipped):
+            continue
+        if flat_stored.get(path, UNKNOWN) != flat_expected.get(path, UNKNOWN):
+            differences.append(".".join(path))
+    return sorted(set(differences)), not_recorded

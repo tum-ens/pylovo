@@ -1,24 +1,74 @@
+"""Queries and helpers that split a PLZ into k-means clusters (kcid) and building clusters (bcid)
+and choose their transformers."""
+
+import hashlib
 import heapq
 import math
-import warnings
 import time
-from abc import ABC
-from decimal import *
-from typing import *
+from typing import Optional, Union
 
 import numpy as np
+import pandas as pd
+import psycopg2
+import scipy.sparse
 from scipy.cluster.hierarchy import cut_tree
+from scipy.sparse.csgraph import dijkstra
 
 from pylovo import utils
-from pylovo.config_loader import *
-from pylovo.database.base_mixin import BaseMixin
+from pylovo.config_loader import (
+    K_MEANS_SEED,
+    MAX_GREENFIELD_TRAFO_DISTANCE_STD,
+    TARGET_EPSG,
+    TRANSFORMER_MAPPING,
+    TRANSFORMER_PLANNING_UTILIZATION,
+    USE_DSO_TRANSFORMER_POSITIONS,
+    USE_MANUAL_TRANSFORMER_POSITIONS,
+    USE_OPEN_TRANSFORMER_POSITIONS,
+    VERSION_ID,
+)
+from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin
+from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
 
-warnings.simplefilter(action='ignore', category=UserWarning)
+# Street distances between the distinct connection points of the loaded buildings of one kcid;
+# {bcid_filter} selects one building cluster (the kcid matrix itself: street_distance_matrix).
+_CONNECTION_POINT_COST_MATRIX_SQL = f"""
+    SELECT *
+    FROM pgr_dijkstraCostMatrix(
+            {WAYS_TEM_EDGES_SQL},
+            (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point))
+             FROM (SELECT *
+                   FROM buildings_tem
+                   WHERE kcid = %(k)s
+                     AND {{bcid_filter}}
+                     AND peak_load_in_kw != 0
+                   ORDER BY COALESCE(agg_connection_point, connection_point)) AS b),
+            false);"""
 
 
-class ClusteringMixin(BaseMixin, ABC):
-    def __init__(self):
-        super().__init__()
+class ClusteringMixin(BaseMixin):
+    """Clustering queries on ``buildings_tem`` and ``ways_tem`` and transformer sizing.
+
+    ``kcid`` identifies a k-means cluster (a connected street component, split further if it
+    is large), ``bcid`` a building cluster inside it that gets one transformer. Brownfield
+    clusters (existing transformers) have negative ``bcid``, greenfield clusters non-negative ones.
+    """
+
+    @staticmethod
+    def greenfield_distance_limit(connection_points, mean_limit: float) -> float:
+        """Greenfield distance limit of one cluster, identified by its connection points.
+
+        With MAX_GREENFIELD_TRAFO_DISTANCE_STD > 0 the limit is drawn from a normal
+        distribution around ``mean_limit``, clipped to +/- 2 standard deviations. The
+        draw is seeded by the cluster's own members, so every check of the same cluster
+        (splitting, then station placement) sees the same limit.
+        """
+        if MAX_GREENFIELD_TRAFO_DISTANCE_STD <= 0 or mean_limit is None:
+            return mean_limit
+        members = np.asarray(sorted(int(p) for p in connection_points), dtype=np.int64)
+        key = int.from_bytes(hashlib.sha256(members.tobytes()).digest()[:8], 'little')
+        draw = np.random.default_rng([K_MEANS_SEED, key]).normal(mean_limit, MAX_GREENFIELD_TRAFO_DISTANCE_STD)
+        spread = 2 * MAX_GREENFIELD_TRAFO_DISTANCE_STD
+        return float(np.clip(draw, mean_limit - spread, mean_limit + spread))
 
     @staticmethod
     def cluster_has_feasible_transformer_position(
@@ -99,7 +149,17 @@ class ClusteringMixin(BaseMixin, ABC):
         return neighboring_clusters
 
     def get_cluster_adjacency_from_street_graph(self, cluster_dict: dict) -> set[frozenset[int]]:
-        """Build graph-Voronoi cluster adjacency in the components containing the clusters."""
+        """Return the pairs of clusters that are neighbours on the street graph of ``ways_tem``.
+
+        Every street node belongs to the cluster with the shortest street distance to it
+        (graph Voronoi partition); two clusters are neighbours if an edge joins their territories.
+
+        Args:
+            cluster_dict: ``{cluster_id: (vertex_ids, transformer_size)}``.
+
+        Returns:
+            Set of neighbouring cluster ID pairs.
+        """
         self.cur.execute(
             """SELECT source, target, cost
                FROM ways_tem
@@ -111,24 +171,43 @@ class ClusteringMixin(BaseMixin, ABC):
 
     def get_connected_component(self) -> tuple[np.ndarray, np.ndarray]:
         """
-        Reads from ways_tem
-        :return:
+        Read connected components from ways_tem in canonical order.
+
+        pgRouting does not promise an ordering for either its result rows or
+        its component labels. Canonicalizing the node lists here prevents
+        component processing (and the resulting KCID numbering) from
+        depending on the physical order of the temporary edge table.
         """
-        component_query = """SELECT component, node
-                             FROM pgr_connectedComponents(
-                                     'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem');"""
+        component_query = f"""SELECT component, node
+                             FROM pgr_connectedComponents({WAYS_TEM_EDGES_SQL})
+                             ORDER BY component, node;"""
         self.cur.execute(component_query)
         data = self.cur.fetchall()
-        component = np.asarray([i[0] for i in data])
-        node = np.asarray([i[1] for i in data])
+        return self._canonical_connected_components(data)
 
+    @staticmethod
+    def _canonical_connected_components(data) -> tuple[np.ndarray, np.ndarray]:
+        """Normalize pgRouting component labels and node ordering."""
+        nodes_by_component: dict[int, list[int]] = {}
+        for component_id, node_id in data:
+            nodes_by_component.setdefault(int(component_id), []).append(int(node_id))
+
+        ordered_components = sorted(
+            (sorted(nodes) for nodes in nodes_by_component.values()),
+            key=lambda nodes: (nodes[0], nodes),
+        )
+        if not ordered_components:
+            empty = np.asarray([], dtype=np.int64)
+            return empty, empty.copy()
+
+        component = np.concatenate(
+            [np.full(len(nodes), index + 1, dtype=np.int64) for index, nodes in enumerate(ordered_components)]
+        )
+        node = np.concatenate([np.asarray(nodes, dtype=np.int64) for nodes in ordered_components])
         return component, node
 
     def count_no_kmean_buildings(self):
-        """
-        Counts relative buildings in buildings_tem, which could not be clustered via k-means
-        :return: count
-        """
+        """Return the number of loaded rows of ``buildings_tem`` without a kcid."""
         query = """SELECT COUNT(*)
                    FROM buildings_tem
                    WHERE peak_load_in_kw != 0
@@ -139,10 +218,10 @@ class ClusteringMixin(BaseMixin, ABC):
         return count
 
     def count_connected_buildings(self, vertices: Union[list, tuple]) -> int:
-        """
-        Get count from buildings_tem where type is not transformer
-        :param vertices: np.array
-        :return: count of buildings with given vertice_id s from buildings_tem
+        """Return the number of loaded consumer buildings at the given vertices.
+
+        Args:
+            vertices: Vertex IDs, typically all nodes of one connected component.
         """
         query = """SELECT COUNT(*)
                    FROM buildings_tem
@@ -155,10 +234,13 @@ class ClusteringMixin(BaseMixin, ABC):
         return count
 
     def delete_ways(self, vertices: list) -> None:
-        """
-        Deletes selected ways from ways_tem and ways_tem_vertices_pgr
-        :param vertices:
-        :return:
+        """Delete the ways ending at the given vertices and the vertices themselves.
+
+        Used for connected components with at most one consumer building. The vertices are
+        deleted through the session view ``ways_tem_vertices_pgr``.
+
+        Args:
+            vertices: Vertex IDs of one connected component.
         """
         query = """DELETE
                    FROM ways_tem
@@ -169,16 +251,21 @@ class ClusteringMixin(BaseMixin, ABC):
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
     def get_connected_component_geometries(self, vertices: Union[list, tuple]) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Gets the vertice IDs and coordinates of all buildings within a connected component
-        :param vertices: vertice IDs of the connected component
-        :return: (selected_vertices, coordinates) - vertice IDs and coordinates of the buildings within the connected component as tuple of two np.arrays
+        """Return the vertex IDs and centroid coordinates of the loaded buildings of a component.
+
+        Args:
+            vertices: Vertex IDs of the connected component.
+
+        Returns:
+            ``(vertex_ids, coordinates)``: vertex IDs sorted ascending and an ``(n, 2)`` array of
+            centroid coordinates in ``TARGET_EPSG``.
         """
         query = """
                 SELECT vertice_id, ST_AsText(centroid) as wkt 
                 FROM buildings_tem
                 WHERE vertice_id IN %(v)s
                   AND peak_load_in_kw != 0
+                ORDER BY vertice_id
                 """
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
         data = self.cur.fetchall()
@@ -188,12 +275,11 @@ class ClusteringMixin(BaseMixin, ABC):
         return selected_vertices, coordinates
 
     def update_kmeans_cluster_multiple(self, vertices: np.ndarray, kcids: np.ndarray) -> None:
-        """
-        Assigns the given kcids to the buildings with the given vertice IDs.
-        Both inputs should have the same length and corresponding order.
-        :param vertices: np.array containing the vertice IDs of the buildings
-        :param kcids: np.array containing the kcids
-        :return:
+        """Assign k-means cluster IDs to the loaded buildings at the given vertices.
+
+        Args:
+            vertices: Vertex IDs of the buildings.
+            kcids: kcid of each vertex, in the same order as ``vertices``.
         """
         query = """
                 UPDATE buildings_tem
@@ -205,10 +291,10 @@ class ClusteringMixin(BaseMixin, ABC):
             self.cur.execute(query, {"k": int(kcid), "v": tuple(map(int, vertices[kcids == kcid]))})
 
     def update_kmeans_cluster(self, vertices: list) -> None:
-        """
-        Groups connected components into a k-means id withouth applying clustering
-        :param vertices:
-        :return:
+        """Give the loaded buildings of a small component one new kcid (highest kcid + 1), without k-means.
+
+        Args:
+            vertices: Vertex IDs of the connected component.
         """
         query = """
                 WITH maxk AS (SELECT MAX(kcid) AS max_k FROM buildings_tem)
@@ -224,6 +310,7 @@ class ClusteringMixin(BaseMixin, ABC):
 
     @staticmethod
     def _format_bytes(byte_count: int) -> str:
+        """Format a byte count with a binary unit, e.g. ``1.5 MiB``."""
         units = ["B", "KiB", "MiB", "GiB", "TiB"]
         size = float(byte_count)
         for unit in units:
@@ -252,13 +339,14 @@ class ClusteringMixin(BaseMixin, ABC):
         }
 
     def get_distance_matrix_from_kcid(self, kcid: int) -> tuple[dict, np.ndarray, dict]:
-        """
-        Creates a distance matrix from the buildings in the kcid
-        Args:
-            kcid: k-means cluster id
-        Returns: The distance matrix of the buildings in the k-means cluster as np.array and the mapping between vertice_id and local ID as dict
-        """
+        """Return the street-distance matrix between the connection points of a kcid's unclustered buildings.
 
+        Args:
+            kcid: K-means cluster ID.
+
+        Returns:
+            ``(localid2vid, dist_mat, vid2localid)`` as returned by ``street_distance_matrix``.
+        """
         stats = self.get_kcid_distance_matrix_stats(kcid)
         self.logger.debug(
             "KCID %s distance-matrix preflight: buildings=%s, connection_points=%s, "
@@ -270,25 +358,81 @@ class ClusteringMixin(BaseMixin, ABC):
             self._format_bytes(stats["estimated_dense_matrix_bytes"]),
         )
 
-        costmatrix_query = """SELECT * \
-                              FROM pgr_dijkstraCostMatrix( \
-                                      'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem', \
-                                      (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point)) \
-                                       FROM (SELECT * \
-                                             FROM buildings_tem \
-                                             WHERE kcid = %(k)s \
-                                               AND bcid ISNULL \
-                                               AND peak_load_in_kw != 0 \
-                                             ORDER BY COALESCE(agg_connection_point, connection_point)) AS b), \
-                                      false);"""
-        params = {"k": kcid}
-        localid2vid, dist_mat, _ = self.calculate_cost_arr_dist_matrix(costmatrix_query, params)
+        self.cur.execute(
+            """SELECT DISTINCT COALESCE(agg_connection_point, connection_point)
+               FROM buildings_tem
+               WHERE kcid = %(k)s
+                 AND bcid ISNULL
+                 AND peak_load_in_kw != 0
+                 AND COALESCE(agg_connection_point, connection_point) IS NOT NULL;""",
+            {"k": kcid},
+        )
+        return self.street_distance_matrix([row[0] for row in self.cur.fetchall()])
 
-        return localid2vid, dist_mat, _
+    def street_distance_matrix(self, points: list[int], chunk_size: int = 256) -> tuple[dict, np.ndarray, dict]:
+        """Return the street-distance matrix between vertices of ``ways_tem``, computed in memory.
+
+        Gives the result of ``calculate_cost_arr_dist_matrix`` for ``pgr_dijkstraCostMatrix`` over
+        ``points`` (undirected): vertices ordered by id, without the points that reach no other
+        point, costs truncated to whole metres, 0 for pairs without a path. Dijkstra's distances do
+        not depend on the order of relaxation (non-negative weights, rounding is monotonic), so they
+        are the same as pgRouting's; transferring the n x n rows of pgRouting took longer than the
+        search itself for kcids of a thousand points.
+
+        Args:
+            points: Vertex IDs.
+            chunk_size: Number of source vertices per Dijkstra call (memory: chunk x vertices floats).
+
+        Returns:
+            ``(localid2vid, dist_matrix, vid2localid)``.
+        """
+        self.cur.execute("""SELECT source, target, cost, reverse_cost
+                            FROM ways_tem
+                            WHERE source IS NOT NULL AND target IS NOT NULL;""")
+        edges = np.asarray(self.cur.fetchall(), dtype=float).reshape(-1, 4)
+        vertices = np.unique(edges[:, :2])
+        source = np.searchsorted(vertices, edges[:, 0])
+        target = np.searchsorted(vertices, edges[:, 1])
+        # Undirected: an edge is usable with the smaller of its non-negative costs (as in pgRouting);
+        # parallel edges keep their minimum instead of being summed by the sparse matrix.
+        weight = np.fmin(np.where(edges[:, 2] >= 0, edges[:, 2], np.inf),
+                         np.where(edges[:, 3] >= 0, edges[:, 3], np.inf))
+        keep = (source != target) & np.isfinite(weight)
+        pairs = pd.DataFrame({"a": np.minimum(source, target)[keep], "b": np.maximum(source, target)[keep],
+                              "w": weight[keep]}).groupby(["a", "b"], sort=True)["w"].min()
+        graph = scipy.sparse.csr_matrix(
+            (pairs.to_numpy(), (pairs.index.get_level_values("a"), pairs.index.get_level_values("b"))),
+            shape=(len(vertices), len(vertices)),
+        )
+
+        points = np.asarray(sorted(int(p) for p in points), dtype=np.int64)
+        points = points[np.isin(points, vertices)]
+        point_index = np.searchsorted(vertices, points)
+        distances = np.vstack(
+            [dijkstra(graph, directed=False, indices=point_index[i:i + chunk_size])[:, point_index]
+             for i in range(0, len(point_index), chunk_size)]
+        ) if len(point_index) else np.zeros((0, 0))
+        np.fill_diagonal(distances, np.inf)
+        connected = np.isfinite(distances).any(axis=1)
+        distances = distances[np.ix_(connected, connected)]
+        dist_matrix = np.where(np.isfinite(distances), distances, 0).astype(np.int32).astype(float)
+
+        localid2vid = dict(enumerate(points[connected].astype(np.int32)))
+        vid2localid = {y: x for x, y in localid2vid.items()}
+        return localid2vid, dist_matrix, vid2localid
 
     def calculate_cost_arr_dist_matrix(self, costmatrix_query: str, params: dict) -> tuple[dict, np.ndarray, dict]:
-        """
-        Helper function for calculating cost array and distance matrix from given parameters
+        """Run a ``pgr_dijkstraCostMatrix`` query and return it as a dense matrix.
+
+        Costs are truncated to whole metres (``int32``); pairs without a path stay 0.
+
+        Args:
+            costmatrix_query: Query returning ``start_vid``, ``end_vid`` and ``agg_cost``.
+            params: Query parameters.
+
+        Returns:
+            ``(localid2vid, dist_matrix, vid2localid)``: the mapping from matrix index to vertex ID,
+            the square distance matrix and the reverse mapping.
         """
         st = time.time()
         cost_df = pd.read_sql_query(costmatrix_query, con=self.conn, params=params,
@@ -302,32 +446,30 @@ class ClusteringMixin(BaseMixin, ABC):
         # Square distance matrix
         dist_matrix = np.zeros([len(localid2vid), len(localid2vid)])
         st = time.time()
-        for i in range(len(cost_df)):
-            start_id = vid2localid[cost_arr[i, 0]]
-            end_id = vid2localid[cost_arr[i, 1]]
-            dist_matrix[start_id][end_id] = cost_arr[i, 2]
+        local_ids = pd.Index(list(localid2vid.values()))
+        start_ids = local_ids.get_indexer(cost_arr[:, 0])
+        end_ids = local_ids.get_indexer(cost_arr[:, 1])
+        if (end_ids < 0).any():  # every end vertex is also a start vertex (undirected costs)
+            raise KeyError(cost_arr[np.flatnonzero(end_ids < 0)[0], 1])
+        dist_matrix[start_ids, end_ids] = cost_arr[:, 2]
         et = time.time()
         self.logger.debug(f"Elapsed time for dist_matrix creation: {et - st}")
         return localid2vid, dist_matrix, vid2localid
 
-
-    def generate_load_vector(self, kcid: int, bcid: int) -> np.ndarray:
-        query = """SELECT SUM(peak_load_in_kw)::float
-                   FROM buildings_tem
-                   WHERE kcid = %(k)s
-                     AND bcid = %(b)s
-                     AND peak_load_in_kw != 0
-                   GROUP BY COALESCE(agg_connection_point, connection_point)
-                   ORDER BY COALESCE(agg_connection_point, connection_point);"""
-        self.cur.execute(query, {"k": kcid, "b": bcid})
-        load = np.asarray([i[0] for i in self.cur.fetchall()])
-
-        return load
-
     def generate_load_vector_for_connection_points(
         self, kcid: int, bcid: int, connection_points: list[int]
     ) -> tuple[np.ndarray, list[int]]:
-        """Return loads aligned to a given connection-point order."""
+        """Return the summed peak load of a building cluster per connection point.
+
+        Args:
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            connection_points: Connection points in the order of the returned vector.
+
+        Returns:
+            ``(loads, missing_points)``: loads in kW aligned to ``connection_points`` (0 for points
+            without load) and the loaded connection points that are not in ``connection_points``.
+        """
         query = """SELECT COALESCE(agg_connection_point, connection_point)::int AS connection_point,
                           SUM(peak_load_in_kw)::float AS load_kw
                    FROM buildings_tem
@@ -344,7 +486,7 @@ class ClusteringMixin(BaseMixin, ABC):
         return loads, missing_points
 
     def load_constrained_hierarchical_clustering(self, Z: np.ndarray, cluster_amount: int, localid2vid: dict, buildings: pd.DataFrame,
-            consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray, double_trans: np.ndarray,
+            consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray,
             dist_mat: np.ndarray | None = None, vid2localid: dict[int, int] | None = None,
             max_transformer_distance: float | None = None, ) -> tuple[
         dict, dict, int]:
@@ -352,7 +494,7 @@ class ClusteringMixin(BaseMixin, ABC):
         Attempts to cluster buildings based on hierarchical clustering linkage matrix Z and assigns transformers.
 
         This function cuts the hierarchical tree to form `cluster_amount` clusters. For each cluster, it calculates
-        the simultaneous peak load. It then attempts to assign an optimal transformer (single or double) based on
+        the simultaneous peak load. It then assigns the smallest standard transformer that covers it, based on
         the load and available capacities. If a cluster's load exceeds the maximum single transformer capacity
         and has enough buildings, it is marked as invalid (too big).
 
@@ -363,7 +505,6 @@ class ClusteringMixin(BaseMixin, ABC):
             buildings (pd.DataFrame): DataFrame containing building information (loads, types, etc.).
             consumer_cat_df (pd.DataFrame): DataFrame containing consumer category definitions (simultaneity factors).
             transformer_capacities (np.ndarray): Array of available single transformer capacities (sorted).
-            double_trans (np.ndarray): Array of available double transformer capacities (sorted).
             dist_mat (np.ndarray, optional): Pairwise street-distance matrix for the cluster candidates.
             vid2localid (dict[int, int], optional): Reverse mapping for ``dist_mat`` lookup.
             max_transformer_distance (float, optional): Maximum allowed distance from a greenfield
@@ -385,33 +526,30 @@ class ClusteringMixin(BaseMixin, ABC):
         invalid_cluster_dict = {}
         for cluster_id in range(cluster_count):
             vid_list = [localid2vid[lid[0]] for lid in np.argwhere(flat_groups == cluster_id)]
-            total_sim_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, vid_list)
+            total_sim_load = utils.simultaneous_peak_load(buildings, consumer_cat_df, vid_list) / TRANSFORMER_PLANNING_UTILIZATION
             distance_feasible = True
             if dist_mat is not None and vid2localid is not None:
                 distance_feasible = self.cluster_has_feasible_transformer_position(
                     vid_list,
                     dist_mat,
                     vid2localid,
-                    max_transformer_distance,
+                    self.greenfield_distance_limit(vid_list, max_transformer_distance),
                 )
             if (total_sim_load >= max(transformer_capacities) and len(vid_list) >= 5):  # the cluster is too big
                 invalid_cluster_dict[cluster_id] = vid_list
             elif not distance_feasible:
                 invalid_cluster_dict[cluster_id] = vid_list
             elif total_sim_load < max(transformer_capacities):
-                # find the smallest transformer, that satisfies the load
+                # the smallest standard transformer that satisfies the load
                 opt_transformer = transformer_capacities[transformer_capacities > total_sim_load][0]
-                opt_double_transformer = double_trans[double_trans > total_sim_load * 1.15][0]
-                if (opt_double_transformer - total_sim_load) > (opt_transformer - total_sim_load):
-                    cluster_dict[cluster_id] = (vid_list, opt_transformer)
-                else:
-                    cluster_dict[cluster_id] = (vid_list, opt_double_transformer)
+                cluster_dict[cluster_id] = (vid_list, opt_transformer)
             else:
                 opt_transformer = math.ceil(total_sim_load)
                 cluster_dict[cluster_id] = (vid_list, opt_transformer)
         return invalid_cluster_dict, cluster_dict, cluster_count
 
     def get_kcid_length(self) -> int:
+        """Return the number of distinct kcids in ``buildings_tem``."""
         query = """SELECT COUNT(DISTINCT kcid)
                    FROM buildings_tem
                    WHERE kcid IS NOT NULL; """
@@ -420,8 +558,10 @@ class ClusteringMixin(BaseMixin, ABC):
         return kcid_length
 
     def get_next_unfinished_kcid(self, plz: int) -> int:
-        """
-        :return: one unmodeled k mean cluster ID - plz
+        """Return the smallest kcid of ``buildings_tem`` that has no ``grid_result`` row yet.
+
+        Raises:
+            TypeError: If every kcid is finished (``fetchone()`` returns ``None``).
         """
         query = """SELECT kcid
                    FROM buildings_tem
@@ -437,21 +577,22 @@ class ClusteringMixin(BaseMixin, ABC):
         return kcid
 
     def get_included_transformers(self, kcid: int) -> list:
+        """Return the vertex IDs of the existing transformers inside a kcid, each vertex once, ascending.
+
+        Candidates at one point (a double station imported as two rows) share a vertex and make one
+        station. The fixed order numbers the brownfield bcids (-1, -2, ...) the same in every run.
         """
-        Reads the vertice ids of transformers from a given kcid
-        :param kcid:
-        :return: list
-        """
-        query = """SELECT vertice_id
+        query = """SELECT DISTINCT vertice_id
                    FROM buildings_tem
                    WHERE kcid = %(k)s
-                     AND type = 'Transformer';"""
+                     AND type = 'Transformer'
+                   ORDER BY vertice_id;"""
         self.cur.execute(query, {"k": kcid})
         transformers_list = ([t[0] for t in data] if (data := self.cur.fetchall()) else [])
         return transformers_list
 
     def clear_grid_result_in_kmean_cluster(self, plz: int, kcid: int):
-        # Remove old clustering at same postcode cluster
+        """Delete the greenfield ``grid_result`` rows (``bcid >= 0``) of a kcid before it is clustered again."""
         clear_query = """DELETE
                          FROM pylovo.grid_result
                          WHERE version_id = %(v)s
@@ -464,14 +605,14 @@ class ClusteringMixin(BaseMixin, ABC):
         self.logger.debug(f"Building clusters with plz = {plz}, k_mean cluster = {kcid} area cleared.")
 
     def upsert_bcid(self, plz: int, kcid: int, bcid: int, vertices: list, transformer_rated_power: int):
-        """
-        Assign buildings in buildings_tem the bcid and stores the cluster in grid_result
+        """Assign a bcid to the unclustered buildings at the given connection points and add its ``grid_result`` row.
+
         Args:
-            plz: postcode cluster ID - plz
-            kcid: kmeans cluster ID
-            bcid: building cluster ID
-            vertices: List of vertice_id of selected buildings
-            transformer_rated_power: Apparent power of the selected transformer
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: New building cluster ID.
+            vertices: Connection points (``COALESCE(agg_connection_point, connection_point)``) of the cluster.
+            transformer_rated_power: Rated power of the selected transformer in kVA.
         """
         # Insert references to building elements in which cluster they are.
         building_query = """UPDATE buildings_tem
@@ -494,6 +635,16 @@ class ClusteringMixin(BaseMixin, ABC):
         self.cur.execute(cluster_query, params)
 
     def get_consumer_to_transformer_df(self, kcid: int, transformer_list: list) -> pd.DataFrame:
+        """Return the street distance from every consumer connection point of a kcid to every given transformer.
+
+        Args:
+            kcid: K-means cluster ID.
+            transformer_list: Vertex IDs of the transformers.
+
+        Returns:
+            DataFrame with ``start_vid`` (connection point), ``end_vid`` (transformer) and
+            ``agg_cost`` (distance truncated to whole metres).
+        """
         consumer_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                             FROM buildings_tem
                             WHERE kcid = %(k)s
@@ -501,16 +652,73 @@ class ClusteringMixin(BaseMixin, ABC):
                               AND peak_load_in_kw != 0;"""
         self.cur.execute(consumer_query, {"k": kcid})
         consumer_list = [t[0] for t in self.cur.fetchall()]
+        if not consumer_list or not transformer_list:
+            # A kcid can hold existing stations but no consumers; pgr_dijkstraCost rejects empty arrays.
+            return pd.DataFrame({"start_vid": pd.Series(dtype=np.int64), "end_vid": pd.Series(dtype=np.int64),
+                                 "agg_cost": pd.Series(dtype=np.int32)})
 
-        cost_query = """SELECT *
+        cost_query = f"""SELECT *
                         FROM pgr_dijkstraCost(
-                                'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem',
+                                {WAYS_TEM_EDGES_SQL},
                                 %(cl)s, %(tl)s,
                                 false);"""
+        # int16 would silently wrap vertex IDs and distances above 32767.
         cost_df = pd.read_sql_query(cost_query, con=self.conn, params={"cl": consumer_list, "tl": transformer_list},
-                                    dtype={"start_vid": np.int16, "end_vid": np.int16, "agg_cost": np.int16}, )
+                                    dtype={"start_vid": np.int64, "end_vid": np.int64, "agg_cost": np.int32}, )
 
         return cost_df
+
+    def get_connection_point_to_transformer_costs(self, connection_points: list, transformer_list: list) -> pd.DataFrame:
+        """Return the street distance from the given connection points to the given transformers.
+
+        Returns:
+            DataFrame with ``start_vid`` (connection point), ``end_vid`` (transformer) and
+            ``agg_cost`` (distance truncated to whole metres).
+        """
+        cost_query = f"""SELECT *
+                        FROM pgr_dijkstraCost(
+                                {WAYS_TEM_EDGES_SQL},
+                                %(cl)s::bigint[], %(tl)s::bigint[],
+                                false);"""
+        return pd.read_sql_query(cost_query, con=self.conn,
+                                 params={"cl": [int(c) for c in connection_points],
+                                         "tl": [int(t) for t in transformer_list]},
+                                 dtype={"start_vid": np.int64, "end_vid": np.int64, "agg_cost": np.int32})
+
+    def get_brownfield_stations(self, plz: int, kcid: int) -> dict[int, int]:
+        """Return ``{bcid: transformer vertex}`` of the brownfield clusters (``bcid < 0``) of a kcid."""
+        query = """SELECT bcid, ont_vertice_id
+                   FROM pylovo.grid_result
+                   WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(kc)s AND bcid < 0;"""
+        self.cur.execute(query, {"v": VERSION_ID, "pc": plz, "kc": kcid})
+        return {int(bcid): int(vertex) for bcid, vertex in self.cur.fetchall()}
+
+    def move_building_cluster(self, plz: int, kcid: int, bcid: int, target_bcid: int) -> None:
+        """Move the buildings of a not yet positioned greenfield cluster into another cluster and drop its row."""
+        query = """UPDATE buildings_tem SET bcid = %(t)s WHERE kcid = %(kc)s AND bcid = %(b)s;
+                   DELETE FROM pylovo.grid_result
+                   WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(kc)s AND bcid = %(b)s;"""
+        self.cur.execute(query, {"v": VERSION_ID, "pc": plz, "kc": kcid, "b": bcid, "t": target_bcid})
+
+    def get_brownfield_transformer_capacity_map(self, transformer_list: list) -> dict[int, int]:
+        """Known ratings (kVA) of existing transformers, keyed by their temporary vertex ID.
+
+        Only transformers imported with a rating, such as imported DSO
+        stations, appear; the others keep the catalogue choice.
+        """
+        if not transformer_list:
+            return {}
+        query = """
+            SELECT b.vertice_id, t.transformer_rated_power
+            FROM buildings_tem b
+            JOIN pylovo.transformers t
+              ON t.osm_id = b.objectid
+            WHERE b.vertice_id IN %(transformers)s
+              AND b.type = 'Transformer'
+              AND t.transformer_rated_power IS NOT NULL;
+        """
+        self.cur.execute(query, {"transformers": tuple(map(int, transformer_list))})
+        return {int(vertice_id): int(capacity) for vertice_id, capacity in self.cur.fetchall()}
 
     def count_kmean_cluster_consumers(self, kcid: int) -> int:
         query = """SELECT COUNT(DISTINCT vertice_id)
@@ -525,11 +733,22 @@ class ClusteringMixin(BaseMixin, ABC):
         return count
 
     def delete_isolated_building(self, plz: int, kcid):
-        query = """DELETE
-                   FROM buildings_tem
-                   WHERE plz = %(p)s
-                     AND kcid = %(k)s
-                     AND bcid ISNULL;"""
+        """Delete the rows of a kcid that no grid took (MV-direct buildings, unused transformers).
+
+        Consumer rows are recorded in ``excluded_tem``.
+        """
+        query = """WITH deleted AS (
+                       DELETE
+                       FROM buildings_tem
+                       WHERE plz = %(p)s
+                         AND kcid = %(k)s
+                         AND bcid ISNULL
+                       RETURNING objectid, peak_load_in_kw, type
+                   )
+                   INSERT INTO excluded_tem (objectid, reason)
+                   SELECT objectid, CASE WHEN peak_load_in_kw = 0 THEN 'mv_direct' ELSE 'isolated_after_brownfield' END
+                   FROM deleted
+                   WHERE peak_load_in_kw IS DISTINCT FROM -1 AND type IS DISTINCT FROM 'Transformer';"""
         self.cur.execute(query, {"p": plz, "k": kcid})
 
     def get_greenfield_bcids(self, plz: int, kcid: int) -> list:
@@ -552,11 +771,7 @@ class ClusteringMixin(BaseMixin, ABC):
         return bcid_list
 
     def get_buildings_from_kcid(self, kcid: int, ) -> pd.DataFrame:
-        """
-        Args:
-            kcid: kmeans_cluster ID
-        Returns: A dataframe with all building information
-        """
+        """Return the unclustered loaded buildings of a kcid, indexed and sorted by ``vertice_id``."""
         buildings_query = """SELECT *
                              FROM buildings_tem
                              WHERE COALESCE(agg_connection_point, connection_point) IS NOT NULL
@@ -574,7 +789,7 @@ class ClusteringMixin(BaseMixin, ABC):
         return buildings_df
 
     def get_buildings_from_bcid(self, plz: int, kcid: int, bcid: int) -> pd.DataFrame:
-
+        """Return the loaded consumer buildings of a building cluster, indexed and sorted by ``vertice_id``."""
         buildings_query = """SELECT *
                              FROM buildings_tem
                              WHERE type != 'Transformer'
@@ -587,25 +802,44 @@ class ClusteringMixin(BaseMixin, ABC):
         buildings_df = pd.read_sql_query(buildings_query, con=self.conn, params=params)
         buildings_df.set_index("vertice_id", drop=False, inplace=True)
         buildings_df.sort_index(inplace=True)
-        # dropping duplicate indices
-        # buildings_df = buildings_df[~buildings_df.index.duplicated(keep='first')]
 
         self.logger.debug(f"{len(buildings_df)} building data fetched.")
 
         return buildings_df
 
-    def get_existing_transformer_capacity_trafo_ui(self, plz: int, kcid: int, bcid: int) -> Optional[int]:
-        """
-        Check if there's an existing transformer with a specific capacity for the given cluster.
-        
+    def get_existing_transformer_capacity_trafo_ui(self, plz: int, kcid: int, bcid: int,
+                                                   include_dso: bool | None = None, include_open: bool | None = None,
+                                                   include_manual: bool | None = None) -> Optional[int]:
+        """Return the rated power of an existing transformer that intersects the buildings of a cluster.
+
+        Used by grid generation (``update_transformer_rated_power``), not only by the UI: a rating
+        entered in the transformer map UI (or imported) wins over the catalogue choice. Only
+        candidates of the sources this run uses count (``USE_DSO_TRANSFORMER_POSITIONS``,
+        ``USE_OPEN_TRANSFORMER_POSITIONS``, ``USE_MANUAL_TRANSFORMER_POSITIONS``; see
+        :mod:`pylovo.database.transformer_sources`), so a rating of a disabled source never sizes a
+        greenfield station. Among the rated candidates that intersect the collected geometries of
+        the cluster's ``buildings_tem`` rows, the cluster's own station (its ``Transformer`` row)
+        comes first, then the lowest ``osm_id``.
+
         Args:
-            plz (int): The postal code
-            kcid (int): K-means cluster ID
-            bcid (int): Building cluster ID
-            
+            plz: Postcode (only for log messages).
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            include_dso: Use the DSO transformer positions; ``None`` uses the configuration.
+            include_open: Use the open (OSM) transformer positions; ``None`` uses the configuration.
+            include_manual: Use the manual transformer positions; ``None`` uses the configuration.
+
         Returns:
-            Optional[int]: Transformer capacity if found, None otherwise
+            The rated power in kVA, or ``None`` if no rated candidate of an enabled source intersects
+            the cluster.
         """
+        sources = source_params(
+            USE_DSO_TRANSFORMER_POSITIONS if include_dso is None else include_dso,
+            USE_OPEN_TRANSFORMER_POSITIONS if include_open is None else include_open,
+            USE_MANUAL_TRANSFORMER_POSITIONS if include_manual is None else include_manual,
+        )
+        if not any(sources.values()):
+            return None
         # Get the geometry of the cluster area as text format for proper psycopg2 serialization
         cluster_geom_query = """
             SELECT ST_AsText(ST_Collect(geom)) as cluster_geom_wkt
@@ -619,6 +853,10 @@ class ClusteringMixin(BaseMixin, ABC):
             return None
             
         cluster_geom_wkt = result[0]
+        # transformer rows of buildings_tem carry the candidate's osm_id as objectid
+        own_station_first = """(t.osm_id NOT IN (SELECT objectid FROM buildings_tem
+                                                  WHERE kcid = %(kcid)s AND bcid = %(bcid)s
+                                                    AND type = 'Transformer' AND objectid IS NOT NULL))"""
         
         # Check if there's a transformer with a specific capacity in this area
         # Use a more robust approach to handle GEOS topology issues
@@ -626,137 +864,98 @@ class ClusteringMixin(BaseMixin, ABC):
             SELECT transformer_rated_power
             FROM pylovo.transformers t
             WHERE t.transformer_rated_power IS NOT NULL
+            AND {SOURCE_ENABLED_SQL}
             AND ST_Intersects(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)))
+            ORDER BY {own_station_first}, t.osm_id
             LIMIT 1
         """
         
+        fallback_query = f"""
+            SELECT transformer_rated_power
+            FROM pylovo.transformers t
+            WHERE t.transformer_rated_power IS NOT NULL
+            AND {SOURCE_ENABLED_SQL}
+            AND ST_DWithin(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)), 1.0)
+            ORDER BY {own_station_first}, t.osm_id
+            LIMIT 1
+        """
+        params = {"cluster_geom_wkt": cluster_geom_wkt, "kcid": kcid, "bcid": bcid, **sources}
+
+        # A failed query aborts the whole generation transaction; the savepoint keeps it
+        # usable for the fallback query and everything after it.
+        self.cur.execute("SAVEPOINT existing_transformer_capacity")
         try:
-            self.cur.execute(transformer_query, {"cluster_geom_wkt": cluster_geom_wkt})
-            result = self.cur.fetchone()
-            
-            if result:
-                return int(result[0])
-        except Exception as e:
-            # If ST_Intersects fails due to topology issues, try with a small buffer
             try:
-                fallback_query = f"""
-                    SELECT transformer_rated_power
-                    FROM pylovo.transformers t
-                    WHERE t.transformer_rated_power IS NOT NULL
-                    AND ST_DWithin(t.geom, ST_MakeValid(ST_Buffer(ST_MakeValid(ST_GeomFromText(%(cluster_geom_wkt)s, {TARGET_EPSG})), 0)), 1.0)
-                    LIMIT 1
-                """
-                self.cur.execute(fallback_query, {"cluster_geom_wkt": cluster_geom_wkt})
-                result = self.cur.fetchone()
-                
-                if result:
-                    return int(result[0])
-            except Exception as fallback_error:
-                # Log the error but don't fail the entire process
-                self.logger.warning(f"Could not check transformer intersection for plz={plz}, kcid={kcid}, bcid={bcid}: {fallback_error}")
-        
-        return None
+                self.cur.execute(transformer_query, params)
+            except psycopg2.Error:
+                # If ST_Intersects fails due to topology issues, retry with a 1 m tolerance.
+                self.cur.execute("ROLLBACK TO SAVEPOINT existing_transformer_capacity")
+                self.cur.execute(fallback_query, params)
+            result = self.cur.fetchone()
+        except psycopg2.Error as fallback_error:
+            self.cur.execute("ROLLBACK TO SAVEPOINT existing_transformer_capacity")
+            self.logger.warning(f"Could not check transformer intersection for plz={plz}, kcid={kcid}, bcid={bcid}: {fallback_error}")
+            result = None
+        self.cur.execute("RELEASE SAVEPOINT existing_transformer_capacity")
 
-    def update_transformer_rated_power(self, plz: int, kcid: int, bcid: int, note: int):
+        return int(result[0]) if result else None
+
+    def _set_transformer_rated_power(self, plz: int, kcid: int, bcid: int, transformer_rated_power: int) -> None:
+        """Write ``transformer_rated_power`` of one grid in ``grid_result``."""
+        update_query = """UPDATE pylovo.grid_result
+                          SET transformer_rated_power = %(n)s
+                          WHERE version_id = %(v)s
+                            AND plz = %(p)s
+                            AND kcid = %(k)s
+                            AND bcid = %(b)s;"""
+        self.cur.execute(update_query,
+                         {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": transformer_rated_power})
+
+    def update_transformer_rated_power(self, plz: int, kcid: int, bcid: int):
+        """Revise ``grid_result.transformer_rated_power`` of one building cluster.
+
+        A rated raw transformer inside the cluster (``get_existing_transformer_capacity_trafo_ui``)
+        always wins. Otherwise the stored value is kept if it is a standard capacity of the PLZ's
+        settlement type or twice the third or fourth standard capacity (two parallel units), and
+        rounded up to a multiple of 630 kVA if it is not.
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
         """
-        Update the field transformer_rated_power in grid_result for a given building cluster (bcid).
-
-        Process:
-        1) Determine settlement type from postcode (plz) and fetch the allowed standard transformer capacities
-           (ascending array transformer_capacities).
-        2) Read the currently stored transformer_rated_power for the (plz, kcid, bcid) tuple.
-
-        Behaviour controlled by note:
-        - note == 0 (single standard transformer mode):
-          Upgrade to the smallest standard capacity strictly greater than the current value.
-          (Precondition: such a larger capacity must exist; otherwise an IndexError would occur.)
-        - note != 0 (multi / grouped mode):
-          a) Build an extended list by appending doubled capacities of selected mid–range sizes (transformer_capacities[2:4] * 2).
-          b) If the current capacity already matches any allowed (standard or doubled) value: no change.
-          c) Else round up to the next multiple of 630 kVA (ceil(current / 630) * 630) to emulate a grouped / parallel transformer arrangement.
-
-        Parameters:
-        plz  : Postcode cluster ID.
-        kcid : K‑means cluster ID.
-        bcid : Building cluster ID within the k‑means cluster.
-        note : Control flag for update strategy (0 = standard single transformer upgrade, !=0 = multi / grouping logic).
-
-        Returns:
-        None. Performs an in‑place database update.
-        """
-        # First check if there's an existing transformer with a specific capacity
         existing_capacity = self.get_existing_transformer_capacity_trafo_ui(plz, kcid, bcid)
         if existing_capacity is not None:
-            # Use the existing transformer capacity
             existing_capacity = int(existing_capacity)
-            update_query = """UPDATE pylovo.grid_result
-                              SET transformer_rated_power = %(n)s
-                              WHERE version_id = %(v)s
-                                AND plz = %(p)s
-                                AND kcid = %(k)s
-                                AND bcid = %(b)s;"""
-            self.cur.execute(update_query,
-                             {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": existing_capacity})
+            self._set_transformer_rated_power(plz, kcid, bcid, existing_capacity)
             self.logger.debug(f"Using existing transformer capacity {existing_capacity} kVA for plz={plz}, kcid={kcid}, bcid={bcid}")
             return
-        
+
         sdl = self.get_settlement_type_from_plz(plz)
         transformer_capacities, _ = self.get_transformer_data(sdl)
 
-        if note == 0:
-            old_query = """SELECT transformer_rated_power
-                           FROM pylovo.grid_result
-                           WHERE version_id = %(v)s
-                             AND plz = %(p)s
-                             AND kcid = %(k)s
-                             AND bcid = %(b)s;"""
-            self.cur.execute(old_query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid})
-            transformer_rated_power = self.cur.fetchone()[0]
+        double_trans = np.multiply(transformer_capacities[2:4], 2)
+        combined = np.concatenate((transformer_capacities, double_trans), axis=None)
+        transformer_rated_power = self.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
+        if transformer_rated_power in combined.tolist():
+            return None
+        new_transformer_rated_power = int(np.ceil(transformer_rated_power / 630) * 630)
+        self._set_transformer_rated_power(plz, kcid, bcid, new_transformer_rated_power)
+        self.logger.info(
+            f"Updated transformer_rated_power (multi/group mode): plz={plz}, kcid={kcid}, bcid={bcid}, "
+            f"old={transformer_rated_power} kVA -> new={new_transformer_rated_power} kVA)"
+        )
 
-            new_transformer_rated_power = int(
-                transformer_capacities[transformer_capacities > transformer_rated_power][0].item()
-            )
-            update_query = """UPDATE pylovo.grid_result
-                              SET transformer_rated_power = %(n)s
-                              WHERE version_id = %(v)s
-                                AND plz = %(p)s
-                                AND kcid = %(k)s
-                                AND bcid = %(b)s;"""
-            self.cur.execute(update_query,
-                             {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": new_transformer_rated_power}, )
-        else:
-            double_trans = np.multiply(transformer_capacities[2:4], 2)
-            combined = np.concatenate((transformer_capacities, double_trans), axis=None)
-            np.sort(combined, axis=None)
-            old_query = """SELECT transformer_rated_power
-                           FROM pylovo.grid_result
-                           WHERE version_id = %(v)s
-                             AND plz = %(p)s
-                             AND kcid = %(k)s
-                             AND bcid = %(b)s;"""
-            self.cur.execute(old_query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid})
-            transformer_rated_power = self.cur.fetchone()[0]
-            if transformer_rated_power in combined.tolist():
-                return None
-            new_transformer_rated_power = int(np.ceil(transformer_rated_power / 630) * 630)
-            update_query = """UPDATE pylovo.grid_result
-                              SET transformer_rated_power = %(n)s
-                              WHERE version_id = %(v)s
-                                AND plz = %(p)s
-                                AND kcid = %(k)s
-                                AND bcid = %(b)s;"""
-            self.cur.execute(update_query,
-                             {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid, "n": new_transformer_rated_power}, )
-            self.logger.info(
-                f"Updated transformer_rated_power (multi/group mode): plz={plz}, kcid={kcid}, bcid={bcid}, "
-                f"old={transformer_rated_power} kVA -> new={new_transformer_rated_power} kVA)"
-            )
+    def get_transformer_data(self, settlement_type: int | None = None) -> tuple[np.array, dict]:
+        """Return the standard transformer capacities of a settlement type and their costs.
 
-    def get_transformer_data(self, settlement_type: int = None) -> tuple[np.array, dict]:
-        """
         Args:
-            Settlement type: 1=Rural, 2=Semi-urban, 3=Urban
-        Returns: Typical transformer capacities and costs depending on the settlement type
+            settlement_type: 1 = rural, 2 = semi-urban, 3 = urban (keys of ``TRANSFORMER_MAPPING``).
+
+        Returns:
+            ``(capacities, cost_by_capacity)``: capacities in kVA ascending, as found in
+            the ``equipment_data`` rows of ``VERSION_ID``, and a dict capacity -> cost in EUR.
+            ``None`` (after an info log) for an unknown settlement type.
         """
         if settlement_type not in TRANSFORMER_MAPPING:
             self.logger.info("Incorrect settlement type number specified.")
@@ -767,10 +966,11 @@ class ClusteringMixin(BaseMixin, ABC):
         query = """SELECT equipment_data.s_max_kva, cost_eur
                    FROM pylovo.equipment_data
                    WHERE typ = 'Transformer' \
+                     AND version_id = %(v)s \
                      AND s_max_kva IN %(capacities)s
                    ORDER BY s_max_kva;"""
 
-        self.cur.execute(query, {"capacities": allowed_capacities})
+        self.cur.execute(query, {"v": VERSION_ID, "capacities": allowed_capacities})
         data = self.cur.fetchall()
         capacities = [i[0] for i in data]
         transformer2cost = {i[0]: i[1] for i in data}
@@ -780,19 +980,19 @@ class ClusteringMixin(BaseMixin, ABC):
 
     def update_building_cluster(self, transformer_id: int, conn_id_list: Union[list, tuple], count: int, kcid: int,
             plz: int, transformer_rated_power: int) -> None:
-        """
-        Update building cluster information by performing multiple operations:
-          - Update the 'bcid' in 'buildings_tem' where 'vertice_id' matches the transformer_id.
-          - Update the 'bcid' in 'buildings_tem' for rows where 'connection_point' is in the provided list and type is not 'Transformer'.
-          - Insert a new record into 'grid_result'.
-          - Insert a new record into 'transformer_positions' using subqueries for geometry and OGC ID.
+        """Store a brownfield building cluster around an existing transformer.
+
+        Sets the bcid on the transformer row and on the loaded buildings of the kcid at the given
+        connection points (buildings of another kcid can share a connection point), inserts the ``grid_result`` row and a ``transformer_positions`` row at the
+        transformer (linked to its ``pylovo.transformers`` row when there is one).
+
         Args:
-            transformer_id (int): The ID of the transformer.
-            conn_id_list (Union[list, tuple]): A list or tuple of connection point IDs.
-            count (int): The new building cluster identifier.
-            kcid (int): The KCID value.
-            plz (int): The postcode value.
-            transformer_rated_power (int): The selected transformer size for the building cluster.
+            transformer_id: Vertex ID of the transformer.
+            conn_id_list: Connection points assigned to the transformer.
+            count: bcid of the new cluster (negative for brownfield clusters).
+            kcid: K-means cluster ID.
+            plz: Postcode.
+            transformer_rated_power: Rated power of the transformer in kVA.
         """
         query = """
                 UPDATE buildings_tem
@@ -801,11 +1001,12 @@ class ClusteringMixin(BaseMixin, ABC):
 
                 UPDATE buildings_tem
                 SET bcid = %(count)s
-                WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
+                WHERE kcid = %(k)s
+                  AND COALESCE(agg_connection_point, connection_point) IN %(c)s
                   AND type != 'Transformer'
                   AND peak_load_in_kw != 0;
 
-WITH inserted_grid AS (
+                WITH inserted_grid AS (
                     INSERT INTO pylovo.grid_result
                         (version_id, plz, kcid, bcid, ont_vertice_id, transformer_rated_power)
                     VALUES (%(v)s, %(pc)s, %(k)s, %(count)s, %(t)s, %(l)s)
@@ -838,117 +1039,14 @@ WITH inserted_grid AS (
                     transformer_row.lod2,
                     transformer_row.lod2_objectid
                 FROM inserted_grid
-                CROSS JOIN transformer_row; \
-
+                CROSS JOIN transformer_row;
                 """
         params = {"v": VERSION_ID, "count": count, "c": tuple(conn_id_list), "t": transformer_id, "k": kcid, "pc": plz,
             "l": transformer_rated_power, }
         self.cur.execute(query, params)
 
-    def calculate_sim_load(self, conn_list: Union[tuple, list]) -> Decimal:
-        residential = """WITH residential AS
-                                  (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                                   FROM buildings_tem AS b
-                                            LEFT JOIN pylovo.consumer_categories AS c
-                                                      ON b.type = c.definition
-                                   WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                     AND b.peak_load_in_kw != 0
-                                     AND b.type IN ('SFH', 'MFH', 'AB', 'TH'))
-                         SELECT SUM(load), SUM(count), sim_factor
-                         FROM residential
-                         GROUP BY sim_factor; \
-                      """
-        self.cur.execute(residential, {"c": tuple(conn_list)})
-
-        data = self.cur.fetchone()
-        if data:
-            residential_load = Decimal(data[0])
-            residential_count = Decimal(data[1])
-            residential_factor = Decimal(data[2])
-            residential_sim_load = residential_load * (
-                    residential_factor + (1 - residential_factor) * (residential_count ** Decimal(-3 / 4)))
-        else:
-            residential_sim_load = 0
-        # TODO can the following 4 repetitions simplified with a general function?
-        commercial = """WITH commercial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                                  FROM buildings_tem AS b
-                                           LEFT JOIN pylovo.consumer_categories AS c
-                                                     ON c.definition = b.type
-                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                    AND b.peak_load_in_kw != 0
-                                    AND b.type = 'Commercial')
-                        SELECT SUM(load), SUM(count), sim_factor
-                        FROM commercial
-                        GROUP BY sim_factor; \
-                     """
-        self.cur.execute(commercial, {"c": tuple(conn_list)})
-        data = self.cur.fetchone()
-        if data:
-            commercial_load = Decimal(data[0])
-            commercial_count = Decimal(data[1])
-            commercial_factor = Decimal(data[2])
-            commercial_sim_load = commercial_load * (
-                    commercial_factor + (1 - commercial_factor) * (commercial_count ** Decimal(-3 / 4)))
-        else:
-            commercial_sim_load = 0
-
-        public = """WITH public AS
-                             (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                              FROM buildings_tem AS b
-                                       LEFT JOIN pylovo.consumer_categories AS c
-                                                 ON c.definition = b.type
-                              WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                AND b.peak_load_in_kw != 0
-                                AND b.type = 'Public')
-                    SELECT SUM(load), SUM(count), sim_factor
-                    FROM public
-                    GROUP BY sim_factor; \
-                 """
-        self.cur.execute(public, {"c": tuple(conn_list)})
-        data = self.cur.fetchone()
-        if data:
-            public_load = Decimal(data[0])
-            public_count = Decimal(data[1])
-            public_factor = Decimal(data[2])
-            public_sim_load = public_load * (public_factor + (1 - public_factor) * (public_count ** Decimal(-3 / 4)))
-        else:
-            public_sim_load = 0
-
-        industrial = """WITH industrial AS
-                                 (SELECT b.peak_load_in_kw AS load, b.households AS count, c.sim_factor
-                                  FROM buildings_tem AS b
-                                           LEFT JOIN pylovo.consumer_categories AS c
-                                                     ON c.definition = b.type
-                                  WHERE COALESCE(b.agg_connection_point, b.connection_point) IN %(c)s
-                                    AND b.peak_load_in_kw != 0
-                                    AND b.type = 'Industrial')
-                        SELECT SUM(load), SUM(count), sim_factor
-                        FROM industrial
-                        GROUP BY sim_factor; \
-                     """
-        self.cur.execute(industrial, {"c": tuple(conn_list)})
-        data = self.cur.fetchone()
-        if data:
-            industrial_load = Decimal(data[0])
-            industrial_count = Decimal(data[1])
-            industrial_factor = Decimal(data[2])
-            industrial_sim_load = industrial_load * (
-                    industrial_factor + (1 - industrial_factor) * (industrial_count ** Decimal(-3 / 4)))
-        else:
-            industrial_sim_load = 0
-
-        total_sim_load = (residential_sim_load + commercial_sim_load + industrial_sim_load + public_sim_load)
-
-        return total_sim_load
-
     def get_building_connection_points_from_bc(self, kcid: int, bcid: int) -> list:
-        """
-        Args:
-            kcid: kmeans_cluster ID
-            bcid: building cluster ID
-        Returns: A dataframe with all building information
-        """
+        """Return the distinct connection points of the loaded buildings of a building cluster."""
         count_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
                          FROM buildings_tem
                          WHERE vertice_id IS NOT NULL
@@ -957,15 +1055,21 @@ WITH inserted_grid AS (
                            AND peak_load_in_kw != 0;"""
         params = {"b": bcid, "k": kcid}
         self.cur.execute(count_query, params)
-        try:
-            cp = [t[0] for t in self.cur.fetchall()]
-        except:
-            cp = []
-
-        return cp
+        return [t[0] for t in self.cur.fetchall()]
 
     def upsert_transformer_selection(self, plz: int, kcid: int, bcid: int, connection_id: int):
-        """Writes the vertice_id of chosen building as ONT location in the grid_result table"""
+        """Store the chosen greenfield transformer position of a building cluster.
+
+        Writes the vertex as ``ont_vertice_id`` (ONT: Ortsnetztransformator), marks the grid as
+        modelled (``model_status = 1``) and inserts a ``transformer_positions`` row at the vertex
+        with comment ``'on_way'``.
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            connection_id: Vertex ID of the transformer position.
+        """
 
         query = """UPDATE pylovo.grid_result
                    SET ont_vertice_id = %(c)s
@@ -999,34 +1103,23 @@ WITH inserted_grid AS (
         self.cur.execute(query, params)
 
     def get_distance_matrix_from_bcid(self, kcid: int, bcid: int) -> tuple[dict, np.ndarray, dict]:
-        """
+        """Return the street-distance matrix between the connection points of a building cluster.
+
         Args:
-            kcid: k mean cluster ID
-            bcid: building cluster ID
-        Returns: The distance matrix of the buildings in the building cluster as np.array and the mapping between vertice_id and local ID as dict
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+
+        Returns:
+            ``(localid2vid, dist_mat, vid2localid)`` as returned by ``calculate_cost_arr_dist_matrix``.
         """
-
-        costmatrix_query = """SELECT *
-                              FROM pgr_dijkstraCostMatrix(
-                                      'SELECT way_id as id, source, target, cost, reverse_cost FROM ways_tem',
-                                      (SELECT array_agg(DISTINCT COALESCE(b.agg_connection_point, b.connection_point))
-                                       FROM (SELECT *
-                                             FROM buildings_tem
-                                             WHERE kcid = %(k)s
-                                               AND bcid = %(b)s
-                                               AND peak_load_in_kw != 0
-                                             ORDER BY COALESCE(agg_connection_point, connection_point)) AS b),
-                                      false);"""
-        params = {"b": bcid, "k": kcid}
-        localid2vid, dist_mat, _ = self.calculate_cost_arr_dist_matrix(costmatrix_query, params)
-
-        return localid2vid, dist_mat, _
+        costmatrix_query = _CONNECTION_POINT_COST_MATRIX_SQL.format(bcid_filter="bcid = %(b)s")
+        return self.calculate_cost_arr_dist_matrix(costmatrix_query, {"b": bcid, "k": kcid})
 
     def get_settlement_type_from_plz(self, plz) -> int:
-        """
-        Args:
-            plz:
-        Returns: Settlement type: 1=Rural, 2=Semi-urban, 3=Urban
+        """Return the settlement type of the PLZ in the active version (1 rural, 2 semi-urban, 3 urban).
+
+        Raises:
+            ValueError: If the PLZ has not been classified.
         """
         settlement_query = """SELECT settlement_type
                               FROM pylovo.postcode_result

@@ -1,12 +1,13 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]  # 1.27 reads the SPDX license expression (PEP 639)
 build-backend = "hatchling.build"
 [project]
 name = "pylovo"
-version = "0.7.0"
+version = "1.0.0"
 description = "Python tool for generating synthetic low-voltage distribution grids"
 readme = "README.rst"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
 authors = [
     {name = "Beneharo Reveron Baecker", email = "beneharo.reveron-baecker@tum.de"},
 ]
@@ -22,9 +23,8 @@ keywords = [
 ]
 
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
 ]
 
@@ -36,9 +36,11 @@ dependencies = [
     "scipy>=1.13.1",
     # Core electrical grid generation
     "pandapower>=3.4.0,<4.0.0",
+    "networkx>=3.6",
     # "altdss>=0.2.0",
     # GIS & Geospatial
     "geopandas>=1.1.3,<1.2.0",
+    "shapely>=2.1",
     "geoalchemy2==0.17.1",
     "pyproj>=3.6.1,<4.0.0",
     "osm2geojson==0.2.6",
@@ -54,10 +56,8 @@ dependencies = [
     "python-dotenv>=1.0.1,<2.0.0",
     "requests>=2.32.3,<3.0.0",
     "openpyxl>=3.1.5,<4.0.0",
-    "xlrd>=2.0.1,<3.0.0",  # Required for reading old .xls Excel files (not 2.x which only supports .xlsx)
-    # Web UI components
-    "flask>=3.1.2,<4.0.0",
-    "flask-cors>=6.0.1,<7.0.0",
+    "tqdm>=4.67",
+    # Excel export of grids (pandapower to_excel)
     "xlsxwriter>=3.2.9",
 ]
 
@@ -67,34 +67,113 @@ plots = [
     "matplotlib>=3.10.0",
     "plotly>=5.24.1",
     "seaborn==0.13.2",
-    "contextily>=1.6.2",
+    "contextily>=1.7.0",
     "ipywidgets>=8.1.8",
     "nbformat>=5.10.4",
+    # Generic (topology) coordinates in plot_with_generic_coordinates
+    "igraph>=0.11",
+]
+notebooks = [
+    # Run the notebook_tutorials: plotting extra, a Jupyter kernel and headless execution
+    "pylovo[plots]",
+    "ipykernel>=6.29",
+    "nbclient>=0.10",
+    # pandas Styler (DataFrame.style) in the classification notebooks; came with Flask before
+    "jinja2>=3.1",
 ]
 docs = [
-    # Documentation generation
+    # Documentation generation (docs/source, built with sphinx-build)
+    "sphinx>=8.1",
+    "furo>=2024.8.6",
     "sphinx-autoapi>=3.4.0",
-    "sphinx-js>=4.0.0",
-    "sphinx-rtd-theme>=3.0.2",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-design>=0.6.1",
+]
+legacy-ui = [
+    # Flask browser map for checking and editing transformer positions (pylovo-import transformers-ui)
+    "flask>=3.1.2,<4.0.0",
+]
+api = [
+    # Headless HTTP API (pylovo-api) for browser clients and scripts: web server, job runner with live logs, CSV upload
+    "fastapi>=0.115.0",
+    "starlette>=1.7",
+    "pydantic>=2.13",
+    "uvicorn>=0.30.0",
+    "python-multipart>=0.0.9",
+    # Only needed by the FastAPI TestClient in api/tests
+    "httpx>=0.27.0",
+]
+viewer = [
+    # Read-only browser map of the database (pylovo-viewer): web server for the page and its data
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    # Only needed by the FastAPI TestClient in viewer/tests
+    "httpx>=0.27.0",
+]
+
+[dependency-groups]
+# Installed by `uv sync` / `uv run` (not by `pip install pylovo`, not in the image: `uv sync --no-dev`)
+dev = [
+    "pytest>=8.3",
 ]
 
 [project.scripts]
-pylovo-setup = "pylovo.cli.setup:main"
-pylovo-generate = "pylovo.cli.generate:main"
-pylovo-classify = "pylovo.cli.classify:main"
-pylovo-analyze = "pylovo.cli.analyze:main"
-pylovo-delete = "pylovo.cli.delete:main"
-pylovo-export = "pylovo.cli.export:main"
-pylovo-import = "pylovo.cli.import_data:main"
-pylovo-validate = "pylovo.cli.validate:main"
+pylovo-setup = "pylovo.cli.launch:setup"
+pylovo-generate = "pylovo.cli.launch:generate"
+pylovo-classify = "pylovo.cli.launch:classify"
+pylovo-analyze = "pylovo.cli.launch:analyze"
+pylovo-delete = "pylovo.cli.launch:delete"
+pylovo-export = "pylovo.cli.launch:export"
+pylovo-import = "pylovo.cli.launch:import_data"
+pylovo-mv = "pylovo.cli.mv:main"
+pylovo-api = "pylovo_api.cli:main"
+pylovo-viewer = "pylovo_viewer.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pylovo"]
+packages = ["src/pylovo", "api/pylovo_api", "viewer/pylovo_viewer"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# The default configuration and the read-only reference data of pylovo-setup, for a wheel outside a checkout
+# (pip install pylovo). They stay in config/ and data/ of the repository; pylovo reads them from
+# pylovo/_defaults as the last fallback (pylovo.config_loader.get_packaged_defaults_dir).
+"config" = "pylovo/_defaults/config"
+"data/municipal_register/regiostar/regiostar.xlsx" = "pylovo/_defaults/data/municipal_register/regiostar/regiostar.xlsx"
+"data/municipal_register/gemeindeverzeichnis/plz_einwohner.xlsx" = "pylovo/_defaults/data/municipal_register/gemeindeverzeichnis/plz_einwohner.xlsx"
+"data/municipal_register/gemeindeverzeichnis/zuordnung_plz_ort.xlsx" = "pylovo/_defaults/data/municipal_register/gemeindeverzeichnis/zuordnung_plz_ort.xlsx"
+"data/transformer_data/overpass_queries" = "pylovo/_defaults/data/transformer_data/overpass_queries"
+"data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson" = "pylovo/_defaults/data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson"
+
+[tool.hatch.build.targets.sdist]
+# The sources of the wheel and the files that its force-include needs (a wheel is built from the sdist by pip).
+include = [
+    "src/pylovo/**/*.py",
+    "src/pylovo/**/*.sql",
+    "api/pylovo_api/**/*.py",
+    "viewer/pylovo_viewer/**/*.py",
+    "viewer/pylovo_viewer/static/**",
+    "config/*.yaml",
+    "data/municipal_register/**/*.xlsx",
+    "data/transformer_data/overpass_queries/*",
+    "data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson",
+]
 
 [tool.hatch.build]
 include = [
     "src/pylovo/**/*.py",
+    # SQL functions that pylovo-setup loads (ways_preprocessing_functions)
+    "src/pylovo/**/*.sql",
+    # HTTP API package (pylovo-api)
+    "api/pylovo_api/**/*.py",
+    # Map viewer (pylovo-viewer): the server and its static page (HTML, JS, CSS)
+    "viewer/pylovo_viewer/**/*.py",
+    "viewer/pylovo_viewer/static/**",
 ]
+
+[tool.pytest.ini_options]
+# Plain `pytest` runs the three test folders and says why tests were skipped. Keep the default import
+# mode: the API tests import `from conftest import requires_db`.
+testpaths = ["tests", "api/tests", "viewer/tests"]
+addopts = "-ra"
 
 [project.urls]
 Homepage = "https://github.com/tum-ens/pylovo"

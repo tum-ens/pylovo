@@ -22,15 +22,6 @@ REGION_DICT:
   15: Sachsen-Anhalt
   16: Thüringen
 
-REGIOSTAR7_DICT:
-  71: Stadtregion - Metropole
-  72: Stadtregion - Regiopole und Großstadt
-  73: Stadtregion - Mittelstadt, städtischer Raum
-  74: Stadtregion - Kleinstädtischer, dörflicher Raum
-  75: Ländliche Region - Zentrale Stadt
-  76: Ländliche Region - Städtischer Raum
-  77: Ländliche Region - Kleinstädtischer, dörflicher Raum
-
 REGIO7_REGIO5_GEM_DICT:
   71: 51
   72: 52

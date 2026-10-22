@@ -19,6 +19,7 @@ Classes:
     ExtGridSpec: External grid connection specification
 """
 
+import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -34,8 +35,13 @@ def normalize_cable_name(name: str) -> str:
         "NAYY 4x120 SE" -> "NAYY_4_120"
         "NAYY 4 120"    -> "NAYY_4_120"
         "NAYY_4_120"    -> "NAYY_4_120"
+
+    Args:
+        name: Cable name as written in the configuration or a standard-type library.
+
+    Returns:
+        The canonical name.
     """
-    import re
     normalized = name.replace(' ', '_')
     normalized = re.sub(r'(\d)x(\d)', r'\1_\2', normalized)
     normalized = re.sub(r'_?SE$', '', normalized)
@@ -76,8 +82,8 @@ class TransformerSpec(ComponentSpec):
     """
     bus1: str = ""  # Primary (MV) side bus name
     bus2: str = ""  # Secondary (LV) side bus name
-    kva: float = 630.0  # Rated apparent power in kVA
-    parallel: int = 1  # Number of parallel transformers
+    kva: float = 630.0  # Rated apparent power of ONE unit in kVA (selects the standard type)
+    parallel: int = 1  # Number of identical parallel units in the station
 
     def __post_init__(self):
         self.component_type = "transformer"
@@ -97,7 +103,17 @@ class LineSpec(ComponentSpec):
     length_km: float = 0.0  # Cable length in km
     parallel: int = 1  # Number of parallel cables
     coordinates: Optional[list] = None  # Line geometry for visualization
-    
+    # Planning attributes, exported as extra line columns (None where not applicable).
+    feeder_section_id: Optional[int] = None  # Feeder section between two hard nodes (feeders only)
+    feeder_sizing_basis: Optional[str] = None  # "ampacity" or "end_to_end_voltage"
+    ampacity_std_type: Optional[str] = None  # Cable the ampacity check alone would choose
+    ampacity_parallel: Optional[int] = None  # Parallel count the ampacity check requires
+    service_sizing_basis: Optional[str] = None  # "ampacity" or "service_voltage_drop" (services only)
+    service_ampacity_voltage_drop_percent: Optional[float] = None  # Drop with the ampacity cable
+    service_selected_voltage_drop_percent: Optional[float] = None  # Drop with the selected cable
+    service_voltage_drop_limit_met: Optional[bool] = None  # Selected drop within the service limit
+    service_length_review: Optional[bool] = None  # Service longer than the review threshold
+    total_design_voltage_drop_percent: Optional[float] = None  # Feeder drop + service drop
 
     def __post_init__(self):
         self.component_type = "line"
@@ -114,6 +130,11 @@ class LoadSpec(ComponentSpec):
     kw: float = 0.0  # Active power in kW
     kvar: float = 0.0  # Reactive power in kvar
     max_p_mw: float = 0.0  # Maximum active power in MW
+    service_design_p_mw: float = 0.0  # Local coincident load used to size the service cable
+    operating_point_basis: Optional[str] = None  # Meaning of kw and kvar in the exported network
+    category: Optional[str] = None  # Electrical simultaneity category
+    load_units: float = 1.0  # Households for residential, otherwise component count
+    consumer_vertex: Optional[int] = None  # Shared physical connection vertex
 
     def __post_init__(self):
         self.component_type = "load"

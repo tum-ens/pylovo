@@ -61,10 +61,27 @@ BEGIN
     -- Handle special cases where connections are near way endpoints
     FOR r IN SELECT * FROM temp_building_connection_candidates
     LOOP
+        -- CASE 0: A TRANSFORMER ON THE WAY (within 0.1 m)
+        -- No connection line: the transformer moves onto the way and becomes its vertex there
+        IF r.is_transformer AND ST_Distance(r.centroid, r.old_geom) <= 0.1 THEN
+            IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
+                UPDATE buildings_tem SET centroid = ST_StartPoint(r.old_geom)
+                WHERE objectid = r.objectid AND type = 'Transformer';
+                DELETE FROM temp_building_connection_candidates WHERE objectid = r.objectid;
+            ELSIF ST_Distance(ST_EndPoint(r.old_geom), r.connection_point) < 0.1 THEN
+                UPDATE buildings_tem SET centroid = ST_EndPoint(r.old_geom)
+                WHERE objectid = r.objectid AND type = 'Transformer';
+                DELETE FROM temp_building_connection_candidates WHERE objectid = r.objectid;
+            ELSE
+                -- the way is split at the station below
+                UPDATE buildings_tem SET centroid = r.connection_point
+                WHERE objectid = r.objectid AND type = 'Transformer';
+            END IF;
+
         -- CASE 1: CONNECTION NEAR WAY START POINT
         -- If connection point is very close to the start of the existing way
         -- Connect directly to the start point to avoid unnecessary way splitting
-        IF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
+        ELSIF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
             -- Create connection line from building centroid to way start point
             final_geom := ST_MakeLine(r.centroid, ST_StartPoint(r.old_geom));
             

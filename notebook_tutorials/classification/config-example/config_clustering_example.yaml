@@ -7,7 +7,6 @@
 #   - no_house_connections_per_branch
 
 # set number of clusters
-# N_CLUSTERS_KMEDOID: 5
 # N_CLUSTERS_KMEANS: 5
 # N_CLUSTERS_GMM: 4  # refers to gmm tied
 
@@ -21,7 +20,6 @@
 #   - max_no_of_households_of_a_branch
 
 # set number of clusters
-# N_CLUSTERS_KMEDOID: 3
 # N_CLUSTERS_KMEANS: 6
 # N_CLUSTERS_GMM: 5  # refers to gmm tied
 
@@ -40,9 +38,11 @@ LIST_OF_CLUSTERING_PARAMETERS:
   - no_households
 
 # set number of clusters
-N_CLUSTERS_KMEDOID: 5
 N_CLUSTERS_KMEANS: 7
 N_CLUSTERS_GMM: 7  # refers to gmm tied
+
+# also filter the grids below the four lower thresholds (pylovo-classify writes the answer)
+ADDITIONAL_FILTERING: true
 
 # set threshold values
 THRESHOLD_MAX_TRAFO_DIS: 2.5  # cables between trafo and house connection too long

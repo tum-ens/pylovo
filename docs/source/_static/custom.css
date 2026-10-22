@@ -1,0 +1,35 @@
+/* Figures are drawn on a light surface; give them a quiet frame so they sit well in both themes. */
+figure img,
+.figure img {
+  border-radius: 6px;
+  border: 1px solid var(--color-background-border);
+}
+
+figcaption,
+.caption {
+  font-size: var(--font-size--small);
+  color: var(--color-foreground-secondary);
+}
+
+/* Wide reference tables: keep columns aligned at the top. */
+table.docutils td {
+  vertical-align: top;
+}
+
+/* List-tables with :widths: use a fixed layout; long identifiers wrap inside their cell. */
+table.fixed-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+table.fixed-table code {
+  overflow-wrap: anywhere;
+}
+
+/* Landing page: rubrics act as section headings (sections would nest the PDF chapters). */
+p.rubric {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+}

@@ -1,147 +1,131 @@
 .. image:: docs/source/images/logo.png
-    :width: 700
-    :alt: Default view
+    :width: 500
+    :alt: pylovo logo
 
-**A repo to generate synthetic low-voltage distribution grids based on open data.**
+**Synthetic low-voltage distribution grids from open data.**
 
-.. list-table::
-   :widths: auto
+|badge_license| |badge_documentation|
 
-   * - License
-     - |badge_license|
+`Documentation <https://pylovo.readthedocs.io/en/latest/>`_ · `Quickstart <https://pylovo.readthedocs.io/en/latest/getting_started/quickstart.html>`_
 
+pylovo (PYthon tool for LOw-VOltage distribution grid generation) generates synthetic
+low-voltage (LV) distribution grids for German postcode areas. It places transformers, routes
+radial feeders along the streets, connects every supplied building with a service cable, sizes
+all equipment with coincidence factors and voltage-drop limits, and checks every grid with a
+power flow. The grids are stored as `pandapower <https://www.pandapower.org/>`_ networks and as
+GIS tables in PostgreSQL/PostGIS.
 
-pylovo (PYthon tool for LOw-VOltage distribution grid generation)
-========================================================================
+.. figure:: docs/source/images/viewer/viewer-detail.png
+    :alt: Generated LV grids in pylovo-viewer in 3D, cables and buildings coloured by grid, one feeder section selected
 
-Overview
-------------------------------------------------------------------------
+    Generated LV grids in pylovo-viewer: cables and 3D buildings coloured by grid, one feeder section
+    selected (test region from open data; basemap OpenFreeMap © OpenMapTiles, map data
+    © OpenStreetMap contributors, ODbL).
 
-pylovo is a Python-based tool for generating synthetic low-voltage (LV) distribution grids using open data sources.
-Designed for energy system modeling research, it generates realistic and analyzable grid models for user-defined geographic areas.
-This enables researchers and practitioners to explore critical questions of the energy transition—such as the analysis
-of the potential integration of distributed energy resources and how their flexibilities can be leveraged while accounting
-for electricity grid constraints.
+Key features
+------------
 
+* **Open data** -- LoD2 buildings, Zensus 2022 households, basemap streets and postcode polygons
+  from the `InfDB <https://github.com/tum-ens/InfDB>`_ (or from files); transformer positions from
+  OpenStreetMap, LoD2 station buildings, DSO lists or manual edits.
+* **Brownfield and greenfield grids** -- existing transformers as grid roots, load- and
+  distance-constrained clustering and transformer placement for the rest.
+* **Electrical dimensioning** -- category-specific coincidence, uniform feeder sections, feeder
+  and service voltage-drop limits, power-flow check with stored diagnostics.
+* **Reproducible versions** -- every run belongs to a ``VERSION_ID`` whose parameters are frozen in
+  the database.
+* **Medium-voltage grids** -- an optional stage plans the MV grid of an LV version: open rings along
+  the streets from the HV/MV substations, checked with pandapower in the load case and both (n-1)
+  cases (``pylovo-mv``, ``pylovo-generate --mv``).
+* **From one postcode to many** -- regions by postcode (PLZ) or municipality (AGS), parallel runs.
+* **Grid classification** -- group the generated grids into representative grid types
+  (``pylovo-classify``, see the
+  `classification guide <https://pylovo.readthedocs.io/en/latest/user_guide/classification.html>`_).
+* **Analysis and visualisation** -- key figures per postcode and grid, the read-only map viewer
+  ``pylovo-viewer`` (see the `map viewer guide
+  <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_), QGIS templates, CSV and
+  pandapower JSON export, plotting helpers, and a headless HTTP API for browser clients and scripts.
 
-Key Features
-------------------------------------------------------------------------
+The shipped data cover Bavaria; other regions need the corresponding InfDB data and transformer
+download.
 
-* **Synthetic Grid Generation**: Creates realistic LV distribution network topologies (transformers, feeder cables, house connections, ...) based on available geodata
-* **Comprehensive Data Preprocessing**: Uses a reproducible and scalable preprocessing pipeline using harmonized open datasets (see section "Data Sources & Preprocessing Pipeline")
-* **Geospatial Processing**: Utilizes PostgreSQL databases with PostGIS for efficient geographic data handling
-* **Power System Integration**: Provides grid models in the format of existing simulation frameworks (Default: pandapower, WiP: OpenDSS)
-* **Automated Analysis**: Provides comprehensive grid statistics and performance metrics for evaluating the generated networks
-* **Visualization Support**: Includes tools for grid visualization and analysis using QGIS and geopandas
+Quick start
+-----------
 
-Regional Coverage
-------------------------------------------------------------------------
-* The default data currently supports all regions of Bavaria (extending to full Germany within the running `NEED <https://need.energy/>`_ project)
-* Other countries can be added by two steps:
+Requirements: Linux or WSL2, Python 3.12 or 3.13, `uv <https://docs.astral.sh/uv/>`_, GDAL (``ogr2ogr``)
+and a PostgreSQL database (version 15 or newer) with PostGIS and pgRouting 3.8 or newer -- in the
+recommended setup the InfDB database with processed buildings and streets (see the
+`InfDB documentation <https://tum-ens.github.io/InfDB/usage/>`_).
 
-  1. Add an input data preprocessing pipeline for the respective country (e.g., see a parallel project working on the `US-pipeline <https://github.com/DAI-Lab/Gridtracer>`_).
-  2. Adjust parameters in the ``config_generation.yaml`` file to consider specific equipment or grid dimensioning strategies across different countries.
+.. code-block:: bash
 
-Data Sources & Preprocessing Pipeline
-------------------------------------------------------------------------
-pylovo leverages a reproducible and scalable open-data-based preprocessing pipeline within a dockerized environment that integrates multiple harmonized datasets into a unified Infrastructure Database (`InfDB <https://github.com/tum-ens/InfDB>`_):
+   git clone https://github.com/tum-ens/pylovo.git
+   cd pylovo
+   uv sync                                   # add --extra plots for the plotting helpers
+   cp .env.example .env                      # enter the database connection
 
-Main data sources:
+Without a checkout the wheel works as well: ``pip install pylovo`` into a virtual environment, put the ``.env`` into
+your project directory and run the commands from there. The wheel ships the default configuration and the reference
+data that the setup needs (see the
+`installation page <https://pylovo.readthedocs.io/en/latest/getting_started/installation.html#install-wheel>`_).
 
-* **3D Building Models (LoD2)**: High-resolution 3D building geometries as a base of various other data modeling tools
-* **Census Demographics (Zensus 2022)**: Official statistical data on the population, households and buildings
-* **Cadastral Geodata**: Official street networks with addresses and administrative boundaries
-* **OpenStreetMap (OSM)**: Transformer locations and additional street network data
+Set up the schema ``pylovo`` and generate grids (run the commands from the repository root):
 
-Main processing steps for pylovo:
+.. code-block:: bash
 
-* **Building Type Classification**: Building type allocation based on geometry and demographic data
-* **Household Allocation**: Statistical assignment of households to buildings
-* **Street Graph Construction**: Network routing consistent with cadastral information for realistic grid topology
+   uv run pylovo-setup                       # creates or migrates the schema without deleting grids
+   uv run pylovo-generate --plz 80803        # one postcode
+   uv run pylovo-generate --ags 09162000     # all postcodes of a municipality
+   uv run pylovo-analyze --plz 80803 --all   # key figures
 
-User Data Requirements
-------------------------------------------------------------------------
+``pylovo-setup reset --database NAME`` explicitly deletes all PyLovo results; normal setup migrates in place. The
+grid parameters are in ``config/config_generation_lv.yaml``; use a new ``VERSION_ID`` when you change
+them. All commands and options are described in the
+`command-line reference <https://pylovo.readthedocs.io/en/latest/user_guide/cli.html>`_.
 
-Without infdb, pylovo requires substantial user-provided geospatial data in the ``raw_data/`` directory:
+Map viewer
+----------
 
-**Note**: When using InfDB, building and street data are fetched directly from the database, reducing the need for local shapefiles.
+``pylovo-viewer`` shows the database of your ``.env`` as an interactive map with one switch per
+level: the 110-380 kV grid of Germany (eTraGo), the MV grids and the LV grids, with all attributes on
+click, colour modes, a legend, key figures and 3D LoD2 buildings. It only reads the database. See the
+`map viewer guide <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_.
 
-* **Building shapefiles**: Place building geometries (as ``.shp`` files) in ``raw_data/buildings/``. Files should be named with AGS codes (e.g., ``09162000.shp`` for a specific municipality). These are typically obtained from official cadastral sources or InfDB preprocessing.
+.. code-block:: bash
 
-* **Street network SQL**: Place the OSM-derived street network SQL file (``ways_public_2po_4pgr.sql``) in ``raw_data/ways/``. This file is generated using the `osm2po <http://osm2po.de/>`_ tool from OpenStreetMap data.
+   uv sync --extra viewer
+   uv run --extra viewer pylovo-viewer       # http://127.0.0.1:8770/
 
-* **Transformer data** (optional): Import from OpenStreetMap with ``pylovo-import transformers-osm --relation-id <99999>`` or import DSO transformer positions from CSV with ``pylovo-import transformers-dso-csv path/to/transformers.csv --source <region>``. See ``src/pylovo/data_import/README.md`` for the CSV format.
+HTTP API
+--------
 
-Quick Start
-------------------------------------------------------------------------
-0. **Requirements**: Python 3.12+, Docker, Ubuntu WSL2 or Linux-based OS, uv
+``pylovo-api`` is the headless HTTP API of pylovo for browser clients and scripts: database setup,
+regions, input data, transformer editing, configuration, generation, analysis and export jobs with
+live logs, results (statistics, grid details, power flow), load editing and diagnostics.
+``api/README.md`` lists the endpoints.
 
-1. | **Setup InfDB**:
-   | Follow the documentation in `InfDB <https://tum-ens.github.io/InfDB/usage/>`_ from release 3.0.0 to set up the infdb database for pylovo.
-   | Summarized you have to follow these steps:
+.. code-block:: bash
 
-   a) Clone the infdb repository with its sumbmodules ``git clone --recurse-submodules git@github.com:tum-ens/InfDB.git infdb-pylovo`` (If your submodules are not properly downloaded you might need to additionally run ``git submodule update --init --recursive``)
-   b) Initialize the database with infdb-db service ``bash infdb.sh start``
-   c) Configure the import in ``configs/config-infdb-import.yml`` and download the required data with ``bash infdb.sh import``
-   d) Run the required preprocessing tools ``bash tools/tools.sh -p basedata-buildings <AGS>`` and ``bash tools/tools.sh -p basedata-ways <AGS>`` for the respective region (<AGS> code) you want to generate pylovo grids for.
+   uv sync --extra api
+   uv run --extra api pylovo-api             # http://127.0.0.1:8765/api/health
 
-   | Note: if this is not running for you check for updates in the infdb documentation
+Scientific background
+---------------------
 
-2. | **Install pylovo**:
-   | Input data has been prepared, next lets focus on pylovo - setup the repository as follows:
-
-   a) If not already installed, download uv to install and manage your Python environment.
-
-   .. code-block:: bash
-
-      curl -LsSf https://astral.sh/uv/install.sh | sh
-
-   b) Clone the pylovo repository and install dependencies:
-
-   .. code-block:: bash
-
-      git clone https://github.com/tum-ens/pylovo.git
-      cd pylovo
-      uv sync
-      source .venv/bin/activate
-
-3. Configure pylovo:
-
-   a) Copy ``.env.example`` to ``.env`` and align credentials with InfDB setup in environment file. Set ``TARGET_EPSG`` to the projected CRS you want pylovo to store and transform operational data in.
-   b) Optionally adjust grid generation parameters in ``config/config_generation.yaml``.
-
-4. Initialize pylovo database:
-
-   a) Run ``pylovo-setup`` to create database schema and import some data (osm transformer locations, municipal register data, equipment data, ...)
-
-   .. code-block:: bash
-
-      pylovo-setup
-
-   b) Run ``pylovo-generate`` with region arguments (--plz or --ags) to create single or multiple synthetic LV distribution grids, e.g.:
-
-   .. code-block:: bash
-
-      # single ags code
-      pylovo-generate --ags 09162000
-      # multiple postal codes
-      pylovo-generate --plz 80803 80802 80801
-
-**Note**: All ``pylovo-*`` commands must be run with the virtual environment activated (``source .venv/bin/activate``) or alternatively with ``uv run <command>``.
-
-Scientific Background
-------------------------------------------------------------------------
-
-For detailed methodology, see: `Reveron Baecker et al. (2025): Generation of low-voltage synthetic grid data for energy system modeling with the pylovo tool <https://doi.org/10.1016/j.segan.2024.101617>`_
+The methodology is described in `Reveron Baecker et al. (2025): Generation of low-voltage synthetic
+grid data for energy system modeling with the pylovo tool
+<https://doi.org/10.1016/j.segan.2024.101617>`_.
 
 License
-====================
+-------
+
 | The code of this repository is licensed under the **MIT License** (MIT).
 | See `LICENSE.txt <LICENSE.txt>`_ for rights and obligations.
 | Copyright: `pylovo <https://github.com/tum-ens/pylovo/>`_ © TUM ENS | `MIT <LICENSE.txt>`_
 
 Citation
-====================
+--------
+
 | If you use this code in a scientific publication, please cite the following publication:
 | * Reveron Baecker et al. (2025): `Generation of low-voltage synthetic grid data for energy system modeling with the pylovo tool <https://doi.org/10.1016/j.segan.2024.101617>`_
 
@@ -151,5 +135,5 @@ Citation
     :alt: License
 
 .. |badge_documentation| image:: https://readthedocs.org/projects/pylovo/badge/?version=latest
-    :target: https://pylovo.readthedocs.io/en/main/?badge=main
+    :target: https://pylovo.readthedocs.io/en/latest/
     :alt: Documentation

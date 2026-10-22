@@ -1,0 +1,638 @@
+"""Load editing without a database: peak formula, validation, the replicated generation code, guards, lease.
+
+The replication tests compare :mod:`pylovo.load_editing` with the generation code it mirrors
+(``CableInstaller.create_consumer_bus_and_load`` on a real pandapower backend).
+"""
+from __future__ import annotations
+
+import json
+import logging
+import math
+
+import numpy as np
+import pandas as pd
+import pytest
+
+import pylovo.load_editing as le
+from pylovo.load_editing import (
+    BuildingInputs,
+    LoadParameters,
+    component_peaks,
+    validate_changes,
+)
+
+GP = {
+    "electrical_backend": "pandapower",
+    "residential_only_generation": False,
+    "load_calculation": {
+        "peak_load_household": 16.825, "default_power_factor": 0.95,
+        "sim_factor": {"Commercial": 0.5, "Public": 0.6, "Residential": 0.07},
+        "consumer_categories": [
+            {"definition": "Commercial", "peak_load": None, "peak_load_per_m2": 79.0, "sim_factor": 0.5},
+            {"definition": "Public", "peak_load": None, "peak_load_per_m2": 29.0, "sim_factor": 0.6},
+            {"definition": "Residential", "peak_load": 16.825, "peak_load_per_m2": None, "sim_factor": 0.07},
+        ],
+    },
+    "cable_dimensioning": {"vn": 400, "mv_direct_connection_load_threshold_kw": 100,
+                           "max_service_design_voltage_drop_percent": 3},
+    "power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1},
+    "transformer_placement": {"transformer_planning_utilization": 0.8},
+}
+
+
+def params(**over) -> LoadParameters:
+    gp = json.loads(json.dumps(GP))
+    for key, value in over.items():
+        gp[key] = value
+    return LoadParameters.from_generation_parameters("t", gp)
+
+
+def building(**kw) -> dict:
+    row = {"objectid": "b1", "vertice_id": 7, "type": "MFH", "floor_area": 200.0, "floor_number": 2, "households": 6,
+           "residential_floor_area": 400.0, "nonresidential_floor_area": 0.0, "nonresidential_use": None}
+    row.update(kw)
+    p = component_peaks(BuildingInputs.from_row(row), params(residential_only_generation=row.pop("_ro", False)))
+    row.update(p.as_dict())
+    return row
+
+
+# --------------------------------------------------------------------------- parameters and peaks
+def test_parameters_from_snapshot():
+    p = params()
+    assert p.residential_peak_kw == 16.825 and p.peak_load_per_m2_w == {"Commercial": 79.0, "Public": 29.0}
+    assert p.sim_factor["Residential"] == 0.07 and p.vn_v == 400 and p.planning_utilization == 0.8
+    df = p.consumer_categories_df()
+    assert list(df.index) == ["Commercial", "Public", "Residential"] and "definition" in df.columns
+
+
+def test_residential_peak_comes_from_the_category_record():
+    gp = json.loads(json.dumps(GP))
+    gp["load_calculation"]["consumer_categories"][2]["peak_load"] = 15.0
+    p = LoadParameters.from_generation_parameters("t", gp)
+    assert p.residential_peak_kw == 15.0 and p.notes
+
+
+@pytest.mark.parametrize("change, reason", [
+    (lambda gp: gp.update(electrical_backend="opendss"), "backend"),
+    (lambda gp: gp["load_calculation"].pop("default_power_factor"), "power_factor"),
+    (lambda gp: gp["cable_dimensioning"].pop("mv_direct_connection_load_threshold_kw"), "threshold"),
+])
+def test_not_editable_snapshots(change, reason):
+    gp = json.loads(json.dumps(GP))
+    change(gp)
+    with pytest.raises(le.LoadEditConflict) as err:
+        LoadParameters.from_generation_parameters("t", gp)
+    assert err.value.code == "not_editable" and err.value.status == 409
+    with pytest.raises(le.LoadEditConflict):
+        LoadParameters.from_generation_parameters("t", None)
+
+
+@pytest.mark.parametrize("households", [3, 6, 7, 9])
+def test_component_peaks_residential(households):
+    p = component_peaks(BuildingInputs(households, 400.0, 0.0, None), params())
+    assert p.residential_peak_load_in_kw == households * 16.825  # same IEEE operation as the SQL
+    assert p.peak_load_in_kw == p.residential_peak_load_in_kw and not p.nonresidential_mv_direct
+    if households == 6:
+        assert p.residential_peak_load_in_kw == 100.94999999999999
+
+
+def test_component_peaks_mixed_and_mv_threshold():
+    p = component_peaks(BuildingInputs(2, 150.0, 300.0, "Commercial"), params())
+    assert p.nonresidential_peak_load_in_kw == 300.0 * 79.0 / 1000
+    assert p.peak_load_in_kw == 2 * 16.825 + 300.0 * 79.0 / 1000
+    low_threshold = params(cable_dimensioning={"vn": 400, "mv_direct_connection_load_threshold_kw": 79.0})
+    exactly = component_peaks(BuildingInputs(1, 0.0, 1000.0, "Commercial"), low_threshold)
+    assert exactly.nonresidential_peak_load_in_kw == 79.0 and not exactly.nonresidential_mv_direct  # exactly T stays LV
+    assert exactly.peak_load_in_kw == 79.0
+    above = component_peaks(BuildingInputs(1, 0.0, 1000.0000001, "Commercial"), low_threshold)
+    assert above.nonresidential_mv_direct and above.peak_load_in_kw == 0
+    mixed = component_peaks(BuildingInputs(2, 150.0, 1500.0, "Commercial"), params())  # 118.5 kW > 100 kW
+    assert mixed.nonresidential_mv_direct and mixed.peak_load_in_kw == 2 * 16.825
+
+
+def test_component_peaks_residential_only_and_no_area():
+    ro = component_peaks(BuildingInputs(4, 300.0, 2000.0, "Commercial"), params(residential_only_generation=True))
+    assert ro.nonresidential_peak_load_in_kw == 2000.0 * 79.0 / 1000  # computed, but not counted
+    assert not ro.nonresidential_mv_direct and ro.peak_load_in_kw == 4 * 16.825
+    none = component_peaks(BuildingInputs(1, 0.0, 0.0, None), params())
+    assert none.residential_peak_load_in_kw == 0 and none.peak_load_in_kw == 0
+
+
+# --------------------------------------------------------------------------- validation
+def test_validation_ranges_and_types():
+    p = params()
+    b = building()
+    for bad in (0, 5001, 1.5, True):
+        check = validate_changes(b, {"households": bad}, p)
+        assert not check.valid and check.errors[0]["field"] == "households"
+    assert validate_changes(b, {"households": 4}, p).valid
+    check = validate_changes(b, {"residential_floor_area": float("nan")}, p)
+    assert check.errors[0]["code"] == "invalid_number"
+    check = validate_changes(b, {"nonresidential_floor_area": 50.0}, p)
+    assert check.errors[0]["code"] == "invalid_use"  # the use is required with an area (the UI preselects one)
+    check = validate_changes(b, {"nonresidential_floor_area": 50.0, "nonresidential_use": "Public"}, p)
+    assert check.valid and any(w["code"] == "split_mismatch" for w in check.warnings)  # a warning, not an error
+
+
+def test_validation_keeps_stored_precision_and_detects_no_change():
+    p = params()
+    b = building(residential_floor_area=400.1234)
+    check = validate_changes(b, {"residential_floor_area": 400.12}, p)  # the UI shows 2 decimals
+    assert check.errors[0]["code"] == "no_change" and check.inputs.residential_floor_area == 400.1234
+
+
+def test_validation_no_lv_load_for_mv_direct_commercial_building():
+    p = params()
+    b = building(type="Commercial", households=1, residential_floor_area=0.0, nonresidential_floor_area=1232.42,
+                 nonresidential_use="Commercial")
+    check = validate_changes(b, {"nonresidential_floor_area": 1300.0}, p)  # 102.7 kW > 100 kW
+    assert [e["code"] for e in check.errors] == ["no_lv_load"]
+
+
+def test_validation_households_require_residential_area():
+    p = params()
+    b = building(type="Commercial", households=1, residential_floor_area=0.0, nonresidential_floor_area=500.0,
+                 nonresidential_use="Commercial")
+    assert validate_changes(b, {"households": 3}, p).errors[0]["code"] == "households_without_area"
+    check = validate_changes(b, {"residential_floor_area": 100.0}, p)
+    assert check.valid  # households=1 is kept
+    check = validate_changes({**b, "households": None}, {"residential_floor_area": 100.0}, p)
+    assert check.errors[0]["code"] == "households_required"
+
+
+def test_validation_residential_only_nonresidential_edit_is_allowed():
+    p = params(residential_only_generation=True)
+    b = building(_ro=True, type="AB", households=10, residential_floor_area=800.0, nonresidential_floor_area=466.96,
+                 nonresidential_use="Commercial")
+    check = validate_changes(b, {"nonresidential_floor_area": 200.0}, p)
+    assert check.valid and any(w["code"] == "residential_only_nonres" for w in check.warnings)
+    assert check.peaks.peak_load_in_kw == b["peak_load_in_kw"]
+
+
+# --------------------------------------------------------------------------- replicated generation code
+def _grid_buildings() -> pd.DataFrame:
+    rows = []
+    for i, (hh, res, nonres, use) in enumerate([(1, 150.0, 0.0, None), (6, 500.0, 0.0, None), (2, 120.0, 90.0, "Commercial"),
+                                                (1, 0.0, 400.0, "Public"), (12, 1400.0, 0.0, None), (2, 150.0, 1500.0, "Commercial")]):
+        b = building(objectid=f"b{i}", vertice_id=100 + i, households=hh, residential_floor_area=res,
+                     nonresidential_floor_area=nonres, nonresidential_use=use, type="MFH")
+        rows.append(b)
+    return le.buildings_frame(rows)
+
+
+def _installer_net(buildings: pd.DataFrame, p: LoadParameters):
+    """The loads generation creates: CableInstaller.create_consumer_bus_and_load on a pandapower backend."""
+    from pylovo import utils
+    from pylovo.cable_installer import CableInstaller
+    from pylovo.electrical_backend import create_backend
+
+    backend = create_backend("pandapower", logger=logging.getLogger("test"))
+    backend.initialize_circuit(name="t", source_bus="MVbus 1", primary_kv=20.0)
+    consumer_list = list(dict.fromkeys(buildings.vertice_id.to_list()))
+    coords = {v: (11.0 + v * 1e-5, 48.0) for v in consumer_list}
+    installer = CableInstaller(backend, None, logging.getLogger("test"), [], pd.DataFrame(), pd.DataFrame(),
+                               node_coordinates=coords)
+    _, components = utils.allocate_consumer_simultaneous_loads(consumer_list, buildings, p.consumer_categories_df())
+    installer.create_consumer_bus_and_load(consumer_list, components)
+    return backend.net
+
+
+def test_load_specs_identical_to_cable_installer():
+    from pylovo import config_loader as cl
+
+    p = params()
+    assert p.power_factor == cl.DEFAULT_POWER_FACTOR  # the installer uses the config constant
+    buildings = _grid_buildings()
+    net = _installer_net(buildings, p)
+    table = le.snapshot_loads(buildings, p)
+    rows = table.rows
+    assert len(rows) == len(net.load)
+    for (i, gen), mine in zip(net.load.iterrows(), rows):
+        assert gen["name"] == mine["name"] and gen["category"] == mine["category"]
+        for key in ("p_mw", "q_mvar", "max_p_mw", "service_design_p_mw", "load_units"):
+            assert gen[key] == mine[key], key  # bit-identical
+        assert int(gen["consumer_vertex"]) == mine["consumer_vertex"]
+    zones = {int(name.rsplit(" ", 1)[1]): zone for name, zone in zip(net.bus.name, net.bus.zone)}
+    assert zones == table.zones
+    assert "Load 105 Commercial" not in [r["name"] for r in rows]  # 118.5 kW: MV-direct, not in the LV model
+    assert "Load 105 Residential" in [r["name"] for r in rows] and table.zones[102] == "Mixed"
+
+
+def test_replace_net_loads_rebuilds_the_installer_table_exactly():
+    import pandapower as pp
+
+    p = params()
+    buildings = _grid_buildings()
+    net = _installer_net(buildings, p)
+    stored = pp.to_json(net)
+    parsed = pp.from_json_string(stored)
+    assert le.replace_net_loads(parsed, le.snapshot_loads(buildings, p)) == []
+    assert pp.to_json(parsed) == stored  # byte-identical network JSON
+
+
+def test_parameters_are_not_read_from_the_config(monkeypatch):
+    from pylovo import config_loader as cl
+
+    buildings = _grid_buildings()
+    before = le.snapshot_loads(buildings, params()).rows
+    monkeypatch.setattr(cl, "DEFAULT_POWER_FACTOR", 0.5)
+    monkeypatch.setattr(cl, "VN", 230)
+    assert le.snapshot_loads(buildings, params()).rows == before
+    other = le.snapshot_loads(buildings, params(load_calculation={**GP["load_calculation"], "default_power_factor": 0.9})).rows
+    assert other[0]["p_mw"] == before[0]["p_mw"] and other[0]["q_mvar"] != before[0]["q_mvar"]
+
+
+# --------------------------------------------------------------------------- guards
+def _stored(table):
+    return [{**r, "pp_index": i, "bus": None} for i, r in enumerate(table.rows)]
+
+
+def test_reproduction_tiers():
+    p = params()
+    buildings = _grid_buildings()
+    table = le.snapshot_loads(buildings, p)
+    assert le.compare_loads(table, _stored(table)).tier == "exact"
+    stored = _stored(table)
+    stored[0]["p_mw"] = np.nextafter(stored[0]["p_mw"], 1)
+    assert le.compare_loads(table, stored).tier == "tolerance"
+    stored = _stored(table)
+    stored[1]["p_mw"] *= 1 + 1e-9
+    rep = le.compare_loads(table, stored)
+    assert rep.tier == "drift" and rep.load_mismatches
+    other = le.snapshot_loads(buildings, params(load_calculation={**GP["load_calculation"],
+                                                                 "sim_factor": {**GP["load_calculation"]["sim_factor"],
+                                                                                "Residential": 0.07 + 1e-9}}))
+    assert le.compare_loads(other, _stored(table)).tier == "drift"
+    fewer = le.snapshot_loads(buildings.iloc[1:], p)  # e.g. a duplicated objectid dropped by save_tables
+    assert le.compare_loads(fewer, _stored(table)).tier == "drift"
+
+
+def test_building_peak_check():
+    p = params()
+    buildings = _grid_buildings()
+    assert le.check_building_peaks(buildings, p)[0] == []
+    changed = buildings.copy()
+    changed.iloc[0, changed.columns.get_loc("peak_load_in_kw")] += 1e-6
+    assert le.check_building_peaks(changed, p)[0]
+
+
+def test_storage_consistency():
+    import pandapower as pp
+
+    p = params()
+    buildings = _grid_buildings()
+    net = pp.from_json_string(pp.to_json(_installer_net(buildings, p)))
+    sql_loads = [{"pp_index": i, **{k: (r[k].item() if hasattr(r[k], "item") else r[k]) for k in
+                                    ("name", "category", "bus", "p_mw", "q_mvar", "max_p_mw", "service_design_p_mw",
+                                     "load_units", "consumer_vertex")}} for i, r in net.load.iterrows()]
+    sql_buses = [{"pp_index": int(i), "name": n} for i, n in net.bus.name.items()]
+    assert le.check_storage_consistency(net, sql_loads, sql_buses) == []
+    shifted = [dict(r) for r in sql_loads]
+    shifted[0]["p_mw"] += 5e-16
+    assert le.check_storage_consistency(net, shifted, sql_buses) == []  # JSON rounding
+    shifted[0]["p_mw"] += 1e-9
+    assert le.check_storage_consistency(net, shifted, sql_buses)
+    assert le.check_storage_consistency(net, sql_loads[:-1], sql_buses)
+    assert le.check_storage_consistency(net, sql_loads, [{**b, "pp_index": b["pp_index"] + 1} for b in sql_buses])
+
+
+def test_validate_operating_point_classifies_like_save_net():
+    class Fake:
+        def __init__(self, converged, vmin=0.95, raises=False):
+            self.converged, self.vmin, self.raises, self.net = converged, vmin, raises, None
+
+        def solve_power_flow(self):
+            if self.raises:
+                raise RuntimeError("boom")
+            return self.converged
+
+        def get_circuit_metrics(self):
+            return {"min_voltage_pu": self.vmin, "max_voltage_pu": 1.0}
+
+    assert le.validate_operating_point(Fake(True), 0.9, 1.1).status == "converged"
+    assert le.validate_operating_point(Fake(True, 0.89), 0.9, 1.1).status == "voltage_violation"
+    assert le.validate_operating_point(Fake(False), 0.9, 1.1).status == "not_converged"
+    failed = le.validate_operating_point(Fake(True, raises=True), 0.9, 1.1)
+    assert failed.status == "not_converged" and "boom" in failed.error
+
+
+def test_validate_operating_point_moves_the_source_voltage_to_the_lv_reference():
+    class Fake:
+        """A backend whose LV busbar sits 0.03 p.u. below the MV side, the lowest bus 0.08 p.u. below it."""
+
+        def __init__(self, supported=True, converges=True):
+            self.source, self.supported, self.converges, self.solves, self.net = 1.0, supported, converges, 0, None
+
+        def get_source_voltage(self):
+            if not self.supported:
+                raise NotImplementedError
+            return self.source
+
+        def set_source_voltage(self, value):
+            self.source = value
+
+        def get_bus_voltage_pu(self, name):
+            assert name == "LVbus 1"
+            return self.source - 0.03
+
+        def solve_power_flow(self):
+            self.solves += 1
+            return self.converges
+
+        def get_circuit_metrics(self):
+            return {"min_voltage_pu": self.source - 0.08, "max_voltage_pu": self.source - 0.03}
+
+    backend = Fake()
+    result = le.validate_operating_point(backend, 0.9, 1.1, 0.96)  # LV busbar 0.97 at 1.0 p.u.: lower the MV side
+    assert backend.source == pytest.approx(0.99, abs=1e-4) and backend.solves == 2
+    assert result.status == "converged" and result.min_voltage_pu == pytest.approx(0.91, abs=1e-4)
+    # the classification is made at the reference point, not at 1.0 p.u. (where the minimum would be 0.92)
+    backend = Fake()
+    assert le.validate_operating_point(backend, 0.9, 1.1, 0.93).status == "voltage_violation"
+    assert backend.source == pytest.approx(0.96, abs=1e-4)
+    # a backend without the reference keeps the MV side as built and solves once
+    backend = Fake(supported=False)
+    assert le.validate_operating_point(backend, 0.9, 1.1, 0.96).status == "converged"
+    assert backend.source == 1.0 and backend.solves == 1
+    assert le.validate_operating_point(Fake(converges=False), 0.9, 1.1, 0.96).status == "not_converged"
+
+
+def test_a_lock_timeout_inside_the_write_transaction_is_a_locked_conflict():
+    import psycopg2
+
+    class Conn:
+        committed = rolled_back = 0
+
+        def commit(self):
+            self.committed += 1
+
+        def rollback(self):
+            self.rolled_back += 1
+
+    class Cursor:
+        def execute(self, *args):
+            pass
+
+    db = type("Db", (), {"conn": Conn(), "cur": Cursor()})()
+    editor = le.LoadEditor(db)
+    with pytest.raises(le.LoadEditConflict) as caught, editor._write():
+        raise psycopg2.errors.LockNotAvailable("canceling statement due to lock timeout")
+    assert caught.value.status == 409 and caught.value.as_dict()["code"] == "locked"
+    assert db.conn.committed == 0 and db.conn.rolled_back >= 1
+    with pytest.raises(ValueError), editor._write():  # every other error is passed on
+        raise ValueError("boom")
+
+
+# --------------------------------------------------------------------------- MV customers follow the edits
+class MvCustomerCursor:
+    """The statements of ``LoadEditMixin.sync_mv_customer`` on two dicts: ``buildings_result`` and ``mv_customers`` rows."""
+
+    def __init__(self, buildings: dict, customers: dict, table: bool = True):
+        self.buildings, self.customers, self.table = buildings, customers, table
+        self.statements: list[str] = []
+        self.inserted: list[str] = []
+        self.updated: list[str] = []
+        self.deleted: list[str] = []
+        self.description = None
+        self.rowcount = 0
+        self.rows: list[dict] = []
+
+    @staticmethod
+    def is_customer(b: dict) -> bool:  # the rule of PreprocessingMixin.save_mv_customers
+        return bool(b["nonresidential_mv_direct"]) and (b["nonresidential_peak_load_in_kw"] or 0) > 0
+
+    def execute(self, query, params=None):
+        text = " ".join(query.split())
+        self.statements.append(text)
+        self.description = None
+        objectid = params.get("o") if isinstance(params, dict) else None
+        if text.startswith("SELECT to_regclass"):
+            self.description, self.rows = [("ok",)], [{"ok": self.table}]
+        elif "AS stored" in text:
+            others = any(self.is_customer(b) for key, b in self.buildings.items() if key != objectid)
+            self.description, self.rows = [("stored",)], [{"stored": bool(self.customers), "others": others}]
+        elif text.startswith("INSERT INTO pylovo.mv_customers"):
+            building = self.buildings[objectid]
+            self.rowcount = int(self.is_customer(building))
+            if self.rowcount:
+                row = {k: building[k] for k in ("nonresidential_use", "nonresidential_floor_area",
+                                                "nonresidential_peak_load_in_kw", "residential_peak_load_in_kw", "households")}
+                (self.updated if objectid in self.customers else self.inserted).append(objectid)
+                self.customers[objectid] = {**self.customers.get(objectid, {"plz": params["plz"]}), **row}
+        elif text.startswith("DELETE FROM pylovo.mv_customers"):
+            self.rowcount = int(self.customers.pop(objectid, None) is not None)
+            self.deleted.append(objectid)
+        else:
+            raise AssertionError(text)
+
+    def fetchall(self):
+        return self.rows
+
+
+def mv_client(buildings: dict, customers: dict, table: bool = True):
+    from pylovo.database.load_edit_mixin import LoadEditMixin
+
+    client = LoadEditMixin.__new__(LoadEditMixin)
+    client.cur = MvCustomerCursor(buildings, customers, table)
+    return client
+
+
+def stored(kw: float, *, direct: bool, households: int = 4, use: str | None = "Commercial") -> dict:
+    return {"nonresidential_mv_direct": direct, "nonresidential_peak_load_in_kw": kw, "nonresidential_use": use,
+            "nonresidential_floor_area": kw / 0.079, "residential_peak_load_in_kw": households * 16.825,
+            "households": households}
+
+
+def test_an_edit_across_the_mv_direct_threshold_moves_the_building_between_lv_and_mv_and_the_undo_restores_it():
+    other = stored(300.0, direct=True)
+    buildings = {"b1": stored(50.0, direct=False), "x1": other}
+    customers = {"x1": {"plz": 85653, **other}}
+    client = mv_client(buildings, customers)
+    cur = client.cur
+    client.sync_mv_customer("v1", 85653, "b1")  # an edit that stays below the threshold
+    assert set(customers) == {"x1"} and cur.inserted == [] and cur.deleted == ["b1"]
+    buildings["b1"] = stored(120.0, direct=True)  # edit 1: the non-residential part leaves the LV grid
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert cur.inserted == ["b1"] and customers["b1"]["nonresidential_peak_load_in_kw"] == 120.0
+    assert customers["b1"]["plz"] == 85653
+    buildings["b1"] = stored(150.0, direct=True, households=6)  # edit 2: still MV-direct, other values
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert cur.updated == ["b1"] and customers["b1"]["nonresidential_peak_load_in_kw"] == 150.0
+    assert customers["b1"]["households"] == 6 and cur.deleted == ["b1"]  # updated in place: the deletes are the first call's
+    buildings["b1"] = stored(120.0, direct=True)  # undo of edit 2
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert customers["b1"]["nonresidential_peak_load_in_kw"] == 120.0 and customers["b1"]["households"] == 4
+    buildings["b1"] = stored(50.0, direct=False)  # undo of edit 1: back in the LV grid
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert set(customers) == {"x1"} and cur.deleted == ["b1", "b1"] and customers["x1"] == {"plz": 85653, **other}
+
+
+def test_a_building_that_flips_back_to_mv_direct_by_an_undo_gets_its_row_again():
+    kept = stored(120.0, direct=True)
+    buildings, customers = {"b1": stored(50.0, direct=False)}, {}
+    client = mv_client(buildings, customers)
+    buildings["b1"] = kept  # generated as MV-direct, edited below the threshold (row deleted), then undone
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert customers == {"b1": {"plz": 85653, **{k: kept[k] for k in ("nonresidential_use", "nonresidential_floor_area",
+                                                                      "nonresidential_peak_load_in_kw",
+                                                                      "residential_peak_load_in_kw", "households")}}}
+
+
+def test_a_version_from_before_the_mv_customers_table_is_left_alone():
+    """Without rows the MV stage reads buildings_result: a first row would drop the other MV-direct buildings."""
+    buildings = {"b1": stored(120.0, direct=True), "legacy": stored(300.0, direct=True)}
+    client = mv_client(buildings, {})
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert client.cur.customers == {} and not client.cur.inserted and not client.cur.deleted
+    no_table = mv_client(buildings, {}, table=False)  # schema set up before the MV stage
+    no_table.sync_mv_customer("v1", 85653, "b1")
+    assert len(no_table.cur.statements) == 1
+    first = mv_client({"b1": stored(120.0, direct=True)}, {})  # a version without MV customers gets its first one
+    first.sync_mv_customer("v1", 85653, "b1")
+    assert list(first.cur.customers) == ["b1"]
+
+
+class RecordingDb:
+    """A database that answers what ``LoadEditor.apply`` and ``_undo_one`` ask for and records every call."""
+
+    class Conn:
+        def __init__(self, calls):
+            self.calls = calls
+
+        def commit(self):
+            self.calls.append(("commit",))
+
+        def rollback(self):
+            pass
+
+    class Cur:
+        def execute(self, *args):
+            pass
+
+    def __init__(self, building: dict):
+        self.calls: list[tuple] = []
+        self.conn, self.cur = self.Conn(self.calls), self.Cur()
+        self.answers = {"version_has_load_edits": True, "load_edit_table_exists": True, "insert_load_edit": 11,
+                        "lock_load_edit_grid": {"grid_md5": "m1", "last_edit_id": None}, "snapshot_pandapower_loads": [],
+                        "capture_load_dependent_analysis": {"plz_parameters": None}, "save_revalidated_grid": "m2",
+                        "fetch_load_edit_building": building, "restore_grid_from_load_edit": "m1"}
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            self.calls.append((name, *args))
+            return self.answers.get(name)
+        return call
+
+
+def test_apply_and_undo_keep_the_mv_customer_in_the_transaction_of_the_edit(monkeypatch):
+    from types import SimpleNamespace
+
+    import pandapower as pp
+
+    before = building(nonresidential_floor_area=400.0, nonresidential_use="Commercial")
+    after = BuildingInputs.from_row({**before, "nonresidential_floor_area": 2000.0})  # 158 kW > 100 kW: MV-direct
+    peaks = component_peaks(after, params())
+    assert peaks.nonresidential_mv_direct and not before["nonresidential_mv_direct"]
+    state = SimpleNamespace(etag="m1-0", params=SimpleNamespace(version_id="v1", as_json=dict), head={"plz": 85653},
+                            reproduction=SimpleNamespace(tier="exact", max_rel_diff=0.0, max_abs_diff_mw=0.0))
+    result = {"valid": True, "_validation": SimpleNamespace(status="converged", drops={}), "_net": pp.create_empty_network(),
+              "_check": le.ChangeCheck(after, peaks, {"nonresidential_floor_area": [400.0, 2000.0]}),
+              "warnings": [], "categories": {}, "loads": {}, "grid": {}, "power_flow": {}, "service": {},
+              "_zone_changes": []}
+    monkeypatch.setattr(le.LoadEditor, "state", lambda self, grid_result_id: state)
+    monkeypatch.setattr(le.LoadEditor, "require_editable", staticmethod(lambda state: None))
+    monkeypatch.setattr(le.LoadEditor, "_compute", lambda self, state, objectid, changes: result)
+    monkeypatch.setattr(le.LoadEditor, "_building", lambda self, state, objectid: before)
+    db = RecordingDb(before)
+    le.LoadEditor(db).apply(5, "b1", {"nonresidential_floor_area": 2000.0}, if_match="m1-0")
+    names = [call[0] for call in db.calls]
+    sync = names.index("sync_mv_customer")
+    assert names[sync - 1] == "update_building_load_inputs" and db.calls[sync] == ("sync_mv_customer", "v1", 85653, "b1")
+    assert sync < names.index("set_load_edit_after_md5") < names.index("commit")  # one transaction with the edit
+
+    db = RecordingDb(before)
+    edit = {"load_edit_id": 11, "grid_result_id": 5, "version_id": "v1", "plz": 85653, "objectid": "b1",
+            "before_net_md5": "m1", "before_building": before, "before_loads": [], "before_bus_zones": []}
+    le.LoadEditor(db)._undo_one(edit, "me")
+    names = [call[0] for call in db.calls]
+    sync = names.index("sync_mv_customer")
+    assert names[sync - 1] == "update_building_load_inputs" and db.calls[sync] == ("sync_mv_customer", "v1", 85653, "b1")
+
+
+def test_the_mv_direct_warning_says_where_the_load_goes():
+    check = validate_changes(building(nonresidential_floor_area=400.0, nonresidential_use="Commercial"),
+                             {"nonresidential_floor_area": 2000.0}, params())
+    [flip] = [w for w in check.warnings if w["code"] == "mv_direct_flip"]
+    assert "leaves the LV grid and becomes an MV customer" in flip["message"]
+    back = validate_changes(building(nonresidential_floor_area=2000.0, nonresidential_use="Commercial"),
+                            {"nonresidential_floor_area": 400.0}, params())
+    [flip] = [w for w in back.warnings if w["code"] == "mv_direct_flip"]
+    assert "joins the LV grid and is no longer an MV customer" in flip["message"]
+
+
+# --------------------------------------------------------------------------- UI: lease, request models, CSV
+def test_job_lease_rules(tmp_path):
+    from pylovo_api.jobs import Job, JobConflict, JobManager
+
+    jm = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs")
+    with jm.db_edit_lease("1", 85653), pytest.raises(JobConflict):
+        jm.start("delete", "Delete", ["true"], writes_db=True)
+    for kind, params_, blocks in (("delete", {}, True), ("setup", {}, True), ("import", {}, True),
+                                  ("generate", {"plz": [85653], "version_id": "1"}, False),
+                                  ("analyze", {"plz": 85653, "version_id": "1"}, True),
+                                  ("analyze", {"plz": 85653, "version_id": "2"}, False),
+                                  ("analyze", {"plz": 80000, "version_id": "1"}, False)):
+        jm._jobs = {"x": Job(id="x", kind=kind, title=kind, argv=[], writes_db=True, params=params_, status="running")}
+        assert (jm.conflicting_writer("1", 85653) is not None) == blocks, (kind, params_)
+        if blocks:
+            with pytest.raises(JobConflict), jm.db_edit_lease("1", 85653):
+                pass
+    jm._jobs = {}
+
+
+def test_request_models_reject_nan_infinity_and_extra_fields(client):
+    for raw in ('{"objectid": "a", "changes": {"nonresidential_floor_area": NaN}}',
+                '{"objectid": "a", "changes": {"residential_floor_area": Infinity}}',
+                '{"objectid": "a", "changes": {"households": 1.5}}',
+                '{"objectid": "a", "changes": {"households": true}}',
+                '{"objectid": "a", "changes": {"households": "4"}}',
+                '{"objectid": "a", "changes": {"households": 4.0}}',
+                '{"objectid": "a", "changes": {"households": 4}, "extra": 1}',
+                '{"objectid": "a", "changes": {"peak_load_in_kw": 4}}'):
+        res = client.post("/api/grids/1/load-edit/preview", content=raw, headers={"Content-Type": "application/json"})
+        assert res.status_code == 422, raw
+    res = client.post("/api/grids/1/load-edits", json={"objectid": "a", "changes": {}, "if_match": "x",
+                                                       "acknowledge": ["something_else"]})
+    assert res.status_code == 422
+    res = client.post("/api/grids/1/load-edits", json={"objectid": "a", "changes": {"households": 2}, "if_match": "x"},
+                      headers={"X-Pylovo-UI": ""})
+    assert res.status_code == 403
+
+
+def test_the_former_view_refresh_stays_a_constant_answer_for_old_clients(client, monkeypatch):
+    from pylovo_api import db, load_edit_service
+
+    def unreachable(**kwargs):
+        raise RuntimeError("no database")
+
+    monkeypatch.setattr(db, "cursor", unreachable)
+    info = load_edit_service.status_info()
+    assert info["schema"] == "missing" and info["views_stale"] == 0
+    assert info["refreshing_views"] is False and info["refresh_error"] is None
+    response = client.post("/api/maintenance/refresh-views", json={})
+    assert response.status_code == 202 and response.json() == {"started": False, "current": True}
+
+
+def test_csv_export_escapes_formulas():
+    from pylovo_api.load_edit_service import csv_safe, history_csv
+
+    assert csv_safe("=cmd|' /C calc'!A0") == "'=cmd|' /C calc'!A0" and csv_safe("+1") == "'+1" and csv_safe("ok") == "ok"
+    text = history_csv([{"load_edit_id": 1, "changes": {"households": [10, 4]}, "reason": "=HYPERLINK(1)",
+                         "before_grid": {"power_flow_status": "converged"}, "after_grid": {"power_flow_status": "converged"}}])
+    assert "'=HYPERLINK(1)" in text and "households,10,4" in text
+
+
+def test_clean_makes_results_json_safe():
+    out = le._clean({"a": np.float64("nan"), "b": [np.int64(3), math.inf], "c": np.bool_(True)})
+    assert out == {"a": None, "b": [3, None], "c": True}
+    json.dumps(out, allow_nan=False)

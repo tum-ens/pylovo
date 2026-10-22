@@ -1,0 +1,189 @@
+"""Tests of the workflow helpers: pre-flight, chained jobs, per-PLZ outcomes, stored validation.
+
+The database tests (``requires_db``) only read, or check that destructive endpoints refuse
+without the typed confirmation; they never start a job that writes.
+"""
+from __future__ import annotations
+
+import sys
+import time
+from types import SimpleNamespace
+
+import pytest
+from conftest import requires_db
+from pylovo_api import chain, job_outcomes, preflight
+from pylovo_api.jobs import JobManager
+
+
+# --------------------------------------------------------------------------- pure helpers
+def test_next_free_version_id():
+    assert preflight.next_free_version_id(["1", "2", "3"], "1") == "4"
+    assert preflight.next_free_version_id([], "1") == "1"
+    assert preflight.next_free_version_id(["base", "base_2"], "base") == "base_3"
+    assert preflight.next_free_version_id(["1", "x"], "x") == "2"
+
+
+def test_summarise_and_flags():
+    diff = [{"key": "transformer_placement.use_open_transformer_positions", "stored": False, "config": True},
+            {"key": "transformer_placement.transformer_mapping.1", "stored": [100], "config": [100, 160, 250]},
+            {"key": "transformer_placement.transformer_mapping.2", "stored": [100], "config": [250, 400]},
+            {"key": "transformer_placement.k_means_seed", "stored": 1, "config": 2}]
+    assert preflight.summarise(diff) == "open positions on; k_means_seed 2; sizes 1:100-250 2:250-400"
+    gp = {"transformer_placement": {"use_open_transformer_positions": True, "transformer_mapping": {"1": [100, 250]}},
+          "residential_only_generation": True}
+    assert preflight.version_flags(gp) == ["open positions", "residential only", "100–250 kVA"]
+    assert preflight.version_flags({"transformer_placement": {}}) == ["greenfield"]
+
+
+def _job(plz):
+    return SimpleNamespace(kind="generate", params={"plz": plz}, plz_outcomes={}, progress=None, status="running")
+
+
+def test_generate_outcomes_from_log():
+    job = _job([85653, 85654, 85655])
+    for line in ["-------------------- start 85653 ---------------------------",
+                 "Cable installation progress: 5/10",
+                 "2026-09-25 - GridGenerator - INFO - Grid for the postcode area 85653 has already been generated.",
+                 "-------------------- end 85653 -----------------------------",
+                 "-------------------- start 85654 ---------------------------",
+                 "2026-09-25 - GridGenerator - ERROR - Error during grid generation for PLZ 85654: boom",
+                 "2026-09-25 - GridGenerator - INFO - Skipped PLZ 85654 due to generation error.",
+                 "-------------------- end 85654 -----------------------------",
+                 "-------------------- start 85655 ---------------------------",
+                 "Cable installation progress: 1/2"]:
+        job_outcomes.observe(job, line)
+    items = job.plz_outcomes["items"]
+    assert items["85653"]["state"] == "exists"
+    assert items["85654"] == {"state": "failed", "error": "boom"}
+    assert items["85655"]["state"] == "running"
+    assert job.plz_outcomes["done"] == 2 and abs(job.progress - (2 + 0.5) / 3) < 1e-9
+    job.status = "cancelled"
+    job_outcomes.finish(job)
+    assert items["85655"]["state"] == "cancelled"
+
+
+def test_generate_outcomes_when_the_job_fails_before_any_plz():
+    job = _job([85653])
+    job_outcomes.observe(job, "ValueError: Generation parameters differ from the stored snapshot for version 1.")
+    job.status = "failed"
+    job_outcomes.finish(job)
+    item = job.plz_outcomes["items"]["85653"]
+    assert item["state"] == "not_run" and "differ from the stored snapshot" in item["error"]
+
+
+def test_chain_runs_in_order_and_stops_at_the_first_failure(tmp_path):
+    ok = [sys.executable, "-c", "print('one')"]
+    bad = [sys.executable, "-c", "import sys; print('two'); sys.exit(3)"]
+    never = [sys.executable, "-c", "print('three')"]
+    assert chain.split(chain.build(ok, bad)[3:]) == [ok, bad]
+    manager = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs")
+    job = manager.start("test", "chain", chain.build(ok, bad, never))
+    for _ in range(200):
+        if not job.active:
+            break
+        time.sleep(0.1)
+    texts = [line["text"] for line in job.lines]
+    assert job.status == "failed" and job.exit_code == 3
+    assert "one" in texts and "two" in texts and "three" not in texts
+    assert any(t.startswith("### Step 2/3") for t in texts) and not any(t.startswith("### Step 3/3") for t in texts)
+
+
+# --------------------------------------------------------------------------- test database
+@requires_db
+def test_preflight_matches_the_stored_snapshot(client, region):
+    """Version 1 of the test database was generated with the config/ of the checkout."""
+    state = client.get("/api/flow/generate-state", params={"plz": region["plz"]}).json()
+    assert state["error"] is None and state["version_id"] == "1"
+    assert state["comparison"]["exists"] and state["comparison"]["matches"] is True
+    assert state["next_free_version_id"] not in state["versions"]
+    assert state["next_free_version_id"] == preflight.next_free_version_id(state["versions"], "1")
+    candidate = client.post("/api/flow/config-preflight",
+                            json={"changes": {"USE_OPEN_TRANSFORMER_POSITIONS": True}}).json()
+    assert candidate["comparison"]["matches"] is False
+    assert [d["key"] for d in candidate["comparison"]["differences"]] == \
+        ["transformer_placement.use_open_transformer_positions"]
+    assert "+USE_OPEN_TRANSFORMER_POSITIONS: True" in candidate["diff"]
+    renamed = client.post("/api/flow/config-preflight", json={"changes": {
+        "USE_OPEN_TRANSFORMER_POSITIONS": True, "VERSION_ID": candidate["next_free_version_id"]}}).json()
+    assert renamed["comparison"]["exists"] is False and renamed["base_version_id"] == "1"
+    assert renamed["suggested_comment"] == "open positions on"
+
+
+@requires_db
+def test_destructive_flow_endpoints_need_the_typed_confirmation(client, region):
+    plz = region["plz"]
+    assert client.post("/api/flow/regenerate", json={"plz": plz, "confirm": "1/1"}).status_code == 400
+    assert client.post("/api/flow/reanalyse", json={"plz": plz, "confirm": str(plz)}).status_code == 400
+
+
+@requires_db
+def test_feeders_exclude_service_cables_at_the_station(client):
+    for version in ("1", "2"):
+        grids = client.get(f"/api/results/{version}/summary").json()["grids"]
+        # pylovo's analysis counts the same branches (clustering_parameters.no_branches)
+        assert [g["feeders"] for g in grids] == [g["pylovo_branches"] for g in grids]
+    v1 = client.get("/api/results/1/summary").json()
+    assert v1["kpis"]["feeders"] == sum(g["feeders"] for g in v1["grids"]) > 0
+    direct = 0
+    for g in v1["grids"]:  # the service cables at the station of the summary are the ones of the grid detail
+        detail = client.get(f"/api/grids/{g['grid_result_id']}").json()
+        assert len(detail["direct_connections"]) == g["direct_connections"]
+        assert all(d["address"] for d in detail["direct_connections"])
+        direct += g["direct_connections"]
+    assert v1["kpis"]["direct_connections"] == direct
+
+
+@requires_db
+def test_stored_validation_reproduces_the_on_demand_power_flow(client, region):
+    from pylovo import config_loader as cl
+
+    summary = client.get("/api/results/1/summary").json()
+    kpis, grids = summary["kpis"], summary["grids"]
+    assert kpis["stations"] == kpis["grids"] == len(grids) > 0
+    assert kpis["transformer_units"] == sum(g["units"] for g in grids) >= kpis["stations"]
+    assert kpis["parallel_stations"] == sum(1 for g in grids if g["units"] > 1)
+    feeder_cables = {c["name"] for c in cl.CONFIG_GENERATION["FEEDER_CABLES"]}
+    for grid in grids:
+        stored = grid["validation"]
+        assert set(stored["checks"]) == {"solver", "voltage_band", "cable_thermal", "trafo_planning"}
+        pf = client.post(f"/api/grids/{grid['grid_result_id']}/powerflow").json()
+        assert stored["checks"]["solver"] == ("ok" if pf["converged"] else "fail")
+        assert stored["min_vm_pu"] == pytest.approx(pf["min_vm_pu"], abs=1e-4)
+        assert stored["trafo_loading_percent"] == pytest.approx(pf["trafo"][0]["loading_percent"], abs=0.05)
+        assert stored["max_line_loading_percent"] == pytest.approx(pf["max_line_loading_percent"], abs=0.05)
+        budget = stored["budget"]
+        assert budget["total_pct"] == pytest.approx(budget["trafo_pct"] + budget["feeder_pct"] + budget["service_pct"],
+                                                    abs=0.02)
+        assert budget["lv_pct"] == pytest.approx(grid["max_total_drop_pct"], abs=0.01)  # the stored LV drop from the busbar
+        detail = client.get(f"/api/grids/{grid['grid_result_id']}").json()
+        assert detail["validation"]["min_vm_pu"] == stored["min_vm_pu"]
+        for feeder in detail["feeder_stats"]:
+            assert feeder["cable_mix"] and {m["std_type"] for m in feeder["cable_mix"]} <= feeder_cables
+        assert sum(f["cabinets"] for f in detail["feeder_stats"]) == len(detail["splits"]["features"])
+    plz = region["plz"]
+    stations = client.get(f"/api/results/1/{plz}/map").json()["stations"]["features"]
+    labels = {s["properties"]["grid_result_id"]: s["properties"]["size_label"] for s in stations}
+    assert labels == {g["grid_result_id"]: g["size_label"] for g in grids if g["plz"] == plz}
+
+
+# --------------------------------------------------------------------------- the API has no MV stage
+def test_generate_and_regenerate_jobs_never_run_the_mv_stage(client, monkeypatch):
+    """``MV_GRID_GENERATION`` in the config is only the CLI default: a UI-started generation must not follow it."""
+    from pylovo_api.routers import flow, jobs
+
+    started = []
+    monkeypatch.setattr(jobs, "_start", lambda request, kind, title, argv, **kw: started.append(argv) or {})
+    monkeypatch.setattr(flow, "_start", lambda request, kind, title, argv, params: started.append(argv) or {})
+    monkeypatch.setattr(jobs.gate, "gate_generate", lambda plz, *a, **k: {
+        "use_ags": False, "plz": plz, "skipped": [], "included_blocked": [], "unverified": [], "notes": []})
+    monkeypatch.setattr(flow, "_require_matching_config", lambda: {"version_id": "1"})
+    monkeypatch.setattr(flow, "_plz_state", lambda version_id: ({80803}, set()))
+    monkeypatch.setattr(flow.gate, "classify", lambda *a, **k: {"statuses": {80803: {"selectable": True, "verified": True}}})
+    assert client.post("/api/jobs/generate", json={"plz": [80803]}).status_code == 202
+    assert client.post("/api/jobs/generate", json={"plz": [80803, 80804], "parallel": False}).status_code == 202
+    assert client.post("/api/flow/regenerate", json={"plz": 80803, "confirm": "1/80803"}).status_code == 202
+    generate_argv, parallel_argv, regenerate_argv = started
+    assert "--no-mv" in generate_argv and "--no-mv" in parallel_argv and "--mv" not in generate_argv
+    delete_step, generate_step = chain.split(regenerate_argv[3:])
+    assert "--no-mv" in generate_step and "--no-mv" not in delete_step
+    assert delete_step[-1] == "--yes"        # the route asked for the typed confirmation itself

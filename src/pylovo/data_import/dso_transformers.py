@@ -13,6 +13,7 @@ REQUIRED_COLUMNS = {"external_id", "lon", "lat"}
 OPTIONAL_COLUMNS = {"transformer_rated_power", "source"}
 DEFAULT_SOURCE = "csv"
 DSO_TYPE = "dso"
+OUT_OF_RANGE = "lon/lat out of range for EPSG:4326 (|lon| <= 180, |lat| <= 90)"
 
 
 def _normalize_source(source: str) -> str:
@@ -22,8 +23,29 @@ def _normalize_source(source: str) -> str:
     return source or DEFAULT_SOURCE
 
 
-def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataFrame:
-    df = pd.read_csv(csv_path)
+def parse_transformer_csv(csv, source: str | None = None) -> pd.DataFrame:
+    """Read a DSO transformer CSV and mark the rows that cannot be imported.
+
+    Every cell is read as text (no ``1001.0`` for a numeric id column with a gap, no ``nan`` for a blank
+    cell, leading zeros and ids such as ``NA`` are kept). A blank source cell gets the default source ``csv``. A rating
+    must be blank (unknown) or a whole number of kVA above 0, and an id may occur only once per source. The
+    coordinates are WGS84 degrees (EPSG:4326, longitude first): values beyond ±180 or ±90, such as the metres of a
+    projected system, are marked, no other coordinate system is converted.
+
+    Args:
+        csv: Path or file object of the CSV with ``external_id``, ``lon``, ``lat`` (EPSG:4326) and optional
+            ``transformer_rated_power`` and ``source`` columns.
+        source: Source label that overrides the ``source`` column.
+
+    Returns:
+        DataFrame with ``external_id``, ``lon``, ``lat``, ``transformer_rated_power``, ``source``
+        (normalised), ``osm_id`` (``dso/<source>/<external_id>``) and ``problem``: empty for a row that
+        can be imported, otherwise the first reason why it cannot (an unusable rating is set to NaN).
+
+    Raises:
+        ValueError: If required columns are missing.
+    """
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         missing_text = ", ".join(sorted(missing))
@@ -35,11 +57,16 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
             keep_columns.append(column)
     df = df[keep_columns].copy()
 
-    df["external_id"] = df["external_id"].astype(str).str.strip()
+    df["external_id"] = df["external_id"].str.strip()
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    bad_rating = pd.Series(False, index=df.index)
     if "transformer_rated_power" in df.columns:
-        df["transformer_rated_power"] = pd.to_numeric(df["transformer_rated_power"], errors="coerce")
+        text = df["transformer_rated_power"].str.strip()
+        text = text.mask(text.eq(""))                           # blank: unknown rating
+        rating = pd.to_numeric(text, errors="coerce")
+        bad_rating = text.notna() & (rating.isna() | (rating <= 0) | (rating % 1 != 0))
+        df["transformer_rated_power"] = rating.mask(bad_rating)
     else:
         df["transformer_rated_power"] = pd.NA
     if source is not None:
@@ -47,26 +74,62 @@ def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataF
     elif "source" not in df.columns:
         df["source"] = DEFAULT_SOURCE
 
-    invalid = df[df["external_id"].eq("") | df["lon"].isna() | df["lat"].isna()]
-    if not invalid.empty:
-        raise ValueError(
-            "CSV contains rows with empty external_id or invalid lon/lat values. "
-            f"Invalid row numbers: {list(invalid.index + 2)}"
-        )
-
-    df["source"] = df["source"].map(_normalize_source)
-    df["osm_id"] = "dso/" + df["source"] + "/" + df["external_id"].astype(str)
+    df["source"] = df["source"].map(_normalize_source)          # a blank source is the default source
+    df["osm_id"] = "dso/" + df["source"] + "/" + df["external_id"]
+    df["problem"] = ""                  # the reasons are assigned from the least to the most important
+    df.loc[df["osm_id"].duplicated(keep=False), "problem"] = "duplicate external_id"
+    df.loc[bad_rating, "problem"] = "invalid transformer_rated_power (blank or whole kVA above 0)"
+    df.loc[(df["lon"].abs() > 180) | (df["lat"].abs() > 90), "problem"] = OUT_OF_RANGE
+    df.loc[df["lon"].isna() | df["lat"].isna(), "problem"] = "invalid lon/lat"
+    df.loc[df["external_id"].eq(""), "problem"] = "empty external_id"
     return df
+
+
+def _read_transformer_csv(csv_path: Path, source: str | None = None) -> pd.DataFrame:
+    """Read a DSO transformer CSV (:func:`parse_transformer_csv`) and refuse it if a row cannot be imported.
+
+    Args:
+        csv_path: CSV file with ``external_id``, ``lon``, ``lat`` and optional
+            ``transformer_rated_power`` and ``source`` columns.
+        source: Normalised source label that overrides the ``source`` column.
+
+    Returns:
+        DataFrame with ``external_id``, ``lon``, ``lat``, ``transformer_rated_power``, ``source``
+        and ``osm_id`` (``dso/<source>/<external_id>``).
+
+    Raises:
+        ValueError: If required columns are missing or rows have an empty or repeated id, missing or
+            out-of-range coordinates or an invalid rating; the message names the row numbers of the file
+            (the header is row 1). The CLI and the API preview both read the file through this check.
+    """
+    df = parse_transformer_csv(csv_path, source)
+    invalid = df[df["problem"] != ""]
+    if not invalid.empty:
+        reasons = ", ".join(f"{reason} in rows {[int(i) + 2 for i in rows.index]}"
+                            for reason, rows in invalid.groupby("problem"))
+        raise ValueError(f"The CSV has rows that cannot be imported: {reasons}")
+    return df.drop(columns="problem")
 
 
 def import_dso_transformers_csv(csv_path: str | Path, source: str | None = None, replace_source: bool = False) -> int:
     """Import DSO transformer positions into ``pylovo.transformers``.
 
-    The CSV must contain ``external_id``, ``lon`` and ``lat`` in EPSG:4326.
-    Optional columns are ``transformer_rated_power`` in kVA and ``source``.
-    Passing ``source`` overrides the optional CSV source column. Imported rows
-    use ``type='dso'`` and generated ids of the form
-    ``dso/<source>/<external_id>``.
+    Imported rows use ``type='dso'`` and ids of the form ``dso/<source>/<external_id>``; existing
+    rows with the same id are updated.
+
+    Args:
+        csv_path: CSV with ``external_id``, ``lon`` and ``lat`` (EPSG:4326) and the optional
+            columns ``transformer_rated_power`` (kVA) and ``source``.
+        source: Source label; overrides the CSV ``source`` column (default label: ``csv``).
+        replace_source: Delete all existing ``dso/<source>/...`` rows before the import.
+
+    Returns:
+        Number of imported rows.
+
+    Raises:
+        FileNotFoundError: If ``csv_path`` does not exist.
+        ValueError: If the CSV is invalid, or ``replace_source`` is set without ``source`` for a
+            CSV with several sources.
     """
     csv_path = Path(csv_path)
     if not csv_path.exists():
@@ -94,9 +157,10 @@ def import_dso_transformers_csv(csv_path: str | Path, source: str | None = None,
     try:
         with client.conn.cursor() as cur:
             if replace_source:
+                # starts_with, not LIKE: "_" in a source token would match any character
                 cur.execute(
-                    "DELETE FROM pylovo.transformers WHERE osm_id LIKE %(prefix)s AND type = %(type)s;",
-                    {"prefix": f"dso/{source_token}/%", "type": DSO_TYPE},
+                    "DELETE FROM pylovo.transformers WHERE starts_with(osm_id, %(prefix)s) AND type = %(type)s;",
+                    {"prefix": f"dso/{source_token}/", "type": DSO_TYPE},
                 )
 
             cur.executemany(

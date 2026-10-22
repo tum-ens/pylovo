@@ -1,11 +1,28 @@
+"""Grid generation for one or more postcode areas (PLZ).
+
+:class:`GridGenerator` runs the whole pipeline for a PLZ inside PLZ-specific
+temporary tables and finally copies the results into the ``*_result`` tables:
+
+1. ``prepare_*``: postcode, buildings with loads, candidate transformers and the
+   routable street network,
+2. :meth:`GridGenerator.apply_kmeans_clustering`: one ``kcid`` per connected street
+   component, split with k-means when it has more than ``MAX_BUILDINGS_PER_KCID``
+   buildings,
+3. :meth:`GridGenerator.position_all_transformers`: building clusters (``bcid``)
+   around existing (brownfield) transformers, the remaining buildings clustered
+   into greenfield transformer areas, and the greenfield station positions,
+4. :meth:`GridGenerator.install_cables`: feeders and service cables of every
+   grid, a validation power flow, and storage of the network.
+"""
+
 import math
 import traceback
 import warnings
+from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
 import pandas as pd  # type: ignore
-import pandapower as pp
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 from sklearn.cluster import KMeans
@@ -15,20 +32,78 @@ import pylovo.database.database_client as dbc
 from pylovo.infdb.infdb_client import InfdbClient
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo import utils
-from pylovo.config_loader import *
+from pylovo.config_loader import (
+    BROWNFIELD_NEAREST_ONLY,
+    AGGREGATE_NEARBY_CONNECTION_POINTS,
+    CABINET_SPACING_M,
+    CONFIG_EQUIPMENT_DATA,
+    CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
+    CONNECTION_POINT_AGGREGATION_RADIUS_M,
+    CONSUMER_CATEGORIES,
+    CONSUMER_CONNECTION_CABLES,
+    ELECTRICAL_BACKEND,
+    FEEDER_CABLES,
+    GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
+    GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
+    GREENFIELD_TRAFO_POSITION_TOLERANCE,
+    HOUSE_CONNECTION,
+    K_MEANS_SEED,
+    LOG_LEVEL,
+    LV_REFERENCE_VOLTAGE_PU,
+    MAX_BROWNFIELD_TRAFO_DISTANCE,
+    MAX_BUILDINGS_PER_KCID,
+    MAX_GREENFIELD_TRAFO_DISTANCE,
+    MERGE_GREENFIELD_CLUSTERS,
+    N_JOBS,
+    POWER_FLOW_MAX_VM_PU,
+    POWER_FLOW_MIN_VM_PU,
+    RESIDENTIAL_ONLY_GENERATION,
+    RESULT_DIR,
+    RURAL_MAX_HOUSEHOLDS,
+    RURAL_MIN_BUILDING_DISTANCE,
+    SAVE_GRID_FOLDER,
+    TARGET_EPSG,
+    TRANSFORMER_PLANNING_UTILIZATION,
+    URBAN_MAX_BUILDING_DISTANCE,
+    URBAN_MIN_HOUSEHOLDS,
+    USE_DSO_TRANSFORMER_POSITIONS,
+    USE_INFDB,
+    USE_MANUAL_TRANSFORMER_POSITIONS,
+    USE_OPEN_TRANSFORMER_POSITIONS,
+    VERSION_ID,
+)
 
 # Import electrical backend components
 from pylovo.electrical_backend import IElectricalBackend, create_backend
 from pylovo.cable_installer import CableInstaller
+from pylovo import feeder_planning, postcode_border
+from pylovo.station_voltage import solve_validation_power_flow
 
 class ResultExistsError(Exception):
-    "Raised when the PLZ has already been created."
-    pass
+    """Raised when the grids of a PLZ already exist for the current ``VERSION_ID``."""
+
+
+class GenerationOutcome(StrEnum):
+    """What :meth:`GridGenerator.generate_grid_for_single_plz` did with a PLZ.
+
+    The log lines that ``pylovo-api`` parses stay unchanged; the outcome makes the same
+    information available to callers that must not rely on the log.
+    """
+
+    GENERATED = "generated"
+    EXISTS = "exists"
+    EMPTY = "empty"
+    FAILED = "failed"
 
 
 class GridGenerator:
     """
-    Generates the grid for the given plz area
+    Generates the synthetic LV grids of postcode areas (PLZ).
+
+    One instance holds a :class:`~pylovo.database.database_client.DatabaseClient`
+    (and an ``InfdbClient`` if ``USE_INFDB``) and logs to ``log_file``
+    (keyword argument, default ``log/log.txt``). Generate grids with
+    :meth:`generate_grid_for_single_plz` or :meth:`generate_grid_for_multiple_plz`.
     """
 
     def __init__(self, plz=999999, **kwargs):
@@ -44,12 +119,21 @@ class GridGenerator:
             self.inf_dbc = InfdbClient(log_file=self.log_file)
 
     def __del__(self):
-        self.dbc.__del__()
+        # Close the database connection. A destructor must not raise: dbc is missing if __init__
+        # failed early, and test doubles may not implement close().
+        close = getattr(getattr(self, "dbc", None), "close", None)
+        if callable(close):
+            close()
 
     def generate_grid_for_single_plz(
         self, plz: int, analyze_grids: bool = False, refresh_mv: bool = True
-    ) -> None:
+    ) -> GenerationOutcome:
         """Generates the grid for a single PLZ.
+
+        A failing PLZ is logged, rolled back and skipped (the exception is not raised); the returned
+        outcome tells callers what happened. A PLZ without any grid (``EMPTY``) stores its
+        ``postcode_result`` row, its building exclusions and its MV customers, so a rerun reports it
+        as ``EMPTY`` again.
 
         :param plz: Postal code for which the grid should be generated.
         :type plz: int
@@ -57,43 +141,50 @@ class GridGenerator:
         :type analyze_grids: bool
         :param refresh_mv: Refresh materialized views after processing, defaults to True.
         :type refresh_mv: bool
+        :return: The outcome of the PLZ.
+        :rtype: GenerationOutcome
         """
         self.plz = plz
+        self.dbc.ensure_grid_persistence_schema()
+        self.dbc.commit_changes()
         print('-------------------- start', self.plz, '---------------------------')
-        self.dbc.create_temp_tables(plz)  # create PLZ-suffixed temp tables
-        # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
-
+        self.dbc.acquire_plz_lock(plz)
         interrupted = False
+        outcome = GenerationOutcome.GENERATED
         try:
+            self.dbc.create_temp_tables(plz)
             self.generate_grid()
-            if not self.dbc.get_list_from_plz(plz):
-                self.logger.warning(
-                    f"No grid_result rows were generated for PLZ {plz}; skipping result-table persistence."
-                )
-                self.dbc.rollback_changes()
-                return
-            self.dbc.save_tables(plz=self.plz)  # Save data from temporary tables to result tables
+            if self.dbc.get_list_from_plz(plz):
+                self.dbc.save_tables(plz=self.plz)
+            else:
+                # No grid, but the PLZ is finished: keep its postcode_result row, why each building is in
+                # no grid and its MV customers. A FAILED PLZ is rolled back instead (its steps did not finish).
+                outcome = GenerationOutcome.EMPTY
+                self.logger.warning(f"No grid_result rows were generated for PLZ {plz}; "
+                                    "only its building exclusions and MV customers are stored.")
+                self.dbc.save_building_exclusions(plz)
             self.dbc.commit_changes()
-            if analyze_grids:
+            if analyze_grids and outcome == GenerationOutcome.GENERATED:
                 pc = ParameterCalculator()
                 pc.analyze_parameters_for_plz(plz)
                 self.dbc.commit_changes()  # commit the changes to the database
         except ResultExistsError:
-            self.dbc.logger.info(f"Grid for the postcode area {plz} has already been generated.")
+            if self.dbc.get_list_from_plz(plz):
+                outcome = GenerationOutcome.EXISTS
+                self.dbc.logger.info(f"Grid for the postcode area {plz} has already been generated.")
+            else:
+                # Stored before without grids: it stays empty (no grids to analyse or to pass to the MV stage).
+                outcome = GenerationOutcome.EMPTY
+                self.logger.warning(f"No grid_result rows were generated for PLZ {plz} (stored before without grids).")
         except KeyboardInterrupt:
             interrupted = True
             self.logger.warning(f"Grid generation interrupted by user for PLZ {self.plz}.")
             self.dbc.rollback_changes()
         except Exception as e:
+            outcome = GenerationOutcome.FAILED
             self.logger.error(f"Error during grid generation for PLZ {self.plz}: {e}")
             self.logger.info(f"Skipped PLZ {self.plz} due to generation error.")
             self.dbc.rollback_changes()
-            try:
-                self.dbc.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), self.plz)
-            except Exception as cleanup_error:
-                self.logger.warning(
-                    f"Failed to remove PLZ {self.plz} from the sample set after generation error: {cleanup_error}"
-                )
             traceback.print_exc()
         finally:
             # Always clean up temporary tables, even if there was an error.
@@ -101,13 +192,17 @@ class GridGenerator:
             self.dbc.rollback_changes()
 
             try:
-                self.dbc.drop_temp_tables(plz)  # drop PLZ-suffixed temp tables
+                self.dbc.drop_temp_tables(plz)
                 # Commit cleanup so dropped tables don't reappear after interruption.
                 self.dbc.commit_changes()
             except Exception as cleanup_error:
                 self.logger.error(
                     f"Failed to clean up PLZ-specific temporary tables for PLZ {plz}: {cleanup_error}"
                 )
+                self.dbc.rollback_changes()
+            finally:
+                self.dbc.release_plz_lock(plz)
+                self.dbc.commit_changes()
 
         if interrupted:
             raise KeyboardInterrupt("Grid generation interrupted by user")
@@ -120,114 +215,91 @@ class GridGenerator:
         else:
             self.dbc.commit_changes()  # commit the changes to the database
         print('-------------------- end', self.plz, '-----------------------------')
+        return outcome
 
     def generate_grid_for_multiple_plz(
         self, df_plz: pd.DataFrame, analyze_grids: bool = False, parallel: bool = True
-    ) -> None:
-        """Generate grids for all PLZ entries. Materialized views are refreshed once all grids have been processed.
-        :param df_plz: table that contains PLZ for grid generation
-        :param analyze_grids: option to analyse the results after grid generation, defaults to False
-        :param parallel: optionally use parallel workers, defaults to True
-        """
-        # One-time cleanup of leftover PLZ-specific temp tables from previously interrupted runs.
-        self.dbc.drop_orphaned_plz_temp_tables()
-        self.dbc.commit_changes()
+    ) -> dict[int, GenerationOutcome]:
+        """Generate the grids of several PLZ, in parallel worker processes if possible.
 
-        plz_list = [int(row["plz"]) for _, row in df_plz.iterrows()]
-        
-        # Use parallel processing if:
-        # 1. parallel=True AND
-        # 2. We have multiple PLZ to process AND  
-        # 3. We have more than 1 CPU core available (can't parallelize with 1 core)
+        Workers are used when ``parallel`` is set, there is more than one PLZ and
+        ``N_JOBS`` (``N_JOBS_PERCENT`` of the CPU cores) is above one. Each worker
+        logs to ``log/log_<plz>.txt``; a failing PLZ is logged and skipped. The
+        materialized views are refreshed once at the end.
+
+        Args:
+            df_plz: Table with a ``plz`` column.
+            analyze_grids: Run the parameter analysis after each PLZ.
+            parallel: Allow parallel workers.
+
+        Returns:
+            The outcome of every PLZ; a worker that raised counts as ``failed``.
+
+        Raises:
+            KeyboardInterrupt: If the run is interrupted; pending PLZ are cancelled.
+        """
+        self.dbc.ensure_grid_persistence_schema()
+        self.dbc.commit_changes()
+        plz_list = [int(plz) for plz in df_plz["plz"]]
+
+        # Parallel workers only help with several PLZ and more than one allowed core.
         should_use_parallel = parallel and len(plz_list) > 1 and N_JOBS > 1
-        
-        print(f"🔍 Parallel processing check:")
-        print(f"   - parallel parameter: {parallel}")
-        print(f"   - Number of PLZ to process: {len(plz_list)}")
-        print(f"   - Available CPU cores: {N_JOBS}")
-        print(f"   - Will use parallel processing: {should_use_parallel}")
-        failed_plz = []
-        
+        self.logger.info(
+            f"Generating {len(plz_list)} PLZ: parallel={should_use_parallel} "
+            f"(requested={parallel}, N_JOBS={N_JOBS})"
+        )
+        outcomes: dict[int, GenerationOutcome] = {}
+
         if should_use_parallel:
-            # Use parallel processing for multiple PLZ
-            # Use up to N_JOBS workers, but not more than the number of PLZ
             max_workers = min(N_JOBS, len(plz_list))
-            print(f"   - Using {max_workers} workers for {len(plz_list)} PLZ")
-            
+            self.logger.info(f"Using {max_workers} worker processes for {len(plz_list)} PLZ")
+
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
-                # Create a dictionary that maps futures to their corresponding PLZ.
                 futures = {
                     executor.submit(GridGenerator._worker, plz, analyze_grids): plz
                     for plz in plz_list
                 }
-                
                 completed_count = 0
                 total_count = len(plz_list)
-                
+
                 try:
                     for future in as_completed(futures):
                         plz = futures[future]
                         completed_count += 1
-                        
                         try:
-                            # Calling future.result() will raise an exception if the worker process failed.
-                            future.result()
-                            print(f"✓ Completed PLZ {plz} ({completed_count}/{total_count})")
+                            # Raises the worker's exception, if any.
+                            outcome = GenerationOutcome(future.result())
+                            outcomes[plz] = outcome
+                            log = self.logger.warning if outcome == GenerationOutcome.FAILED else self.logger.info
+                            log(f"Completed PLZ {plz} ({completed_count}/{total_count}): {outcome.value}")
                         except Exception as exc:
-                            # Log the exception to record the failed PLZ without stopping the execution
-                            # for other, potentially successful, PLZs.
-                            self.logger.error(f"PLZ {plz} generated an exception: {exc}")
-                            failed_plz.append(plz)
-                            traceback.print_exc()
-                            print(f"✗ Failed PLZ {plz} ({completed_count}/{total_count})")
-                            
-                            # Clean up the failed future to prevent memory leaks
-                            try:
-                                future.cancel()
-                            except Exception:
-                                pass
-                            
+                            # Record the failure and continue with the other PLZ.
+                            self.logger.exception(
+                                f"PLZ {plz} generated an exception ({completed_count}/{total_count}): {exc}"
+                            )
+                            outcomes[plz] = GenerationOutcome.FAILED
+
                 except KeyboardInterrupt:
-                    print(f"\n⚠️  KeyboardInterrupt received. Shutting down gracefully...")
-                    print(f"   Completed: {completed_count}/{total_count} PLZ")
-                    
-                    # Cancel all pending futures
+                    self.logger.warning(
+                        f"KeyboardInterrupt received after {completed_count}/{total_count} PLZ; "
+                        "cancelling pending PLZ and waiting for running workers."
+                    )
                     for future in futures:
                         future.cancel()
-                    
-                    # Wait a bit for ongoing processes to finish gracefully
-                    print("   Waiting for ongoing processes to finish...")
-                    try:
-                        # Give processes time to finish gracefully based on config
-                        shutdown_timeout = CONFIG_GENERATION.get("GRACEFUL_SHUTDOWN_TIMEOUT", 5)
-                        for future in as_completed(futures, timeout=shutdown_timeout):
-                            if not future.cancelled():
-                                plz = futures[future]
-                                try:
-                                    future.result()
-                                    print(f"✓ Gracefully completed PLZ {plz}")
-                                except Exception as exc:
-                                    print(f"✗ PLZ {plz} failed during graceful shutdown: {exc}")
-                    except Exception:
-                        # Timeout or other exception during graceful shutdown
-                        pass
-                    
-                    print("   Shutdown complete.")
-                    raise KeyboardInterrupt("Grid generation interrupted by user")
-                    
+                    # Leaving the with block waits for the running workers.
+                    raise KeyboardInterrupt("Grid generation interrupted by user") from None
+
                 except Exception as e:
-                    print(f"\n❌ Error during parallel processing: {e}")
-                    print(f"   Completed: {completed_count}/{total_count} PLZ")
-                    
-                    # Cancel all pending futures on any error
+                    self.logger.error(
+                        f"Error during parallel processing after {completed_count}/{total_count} PLZ: {e}"
+                    )
                     for future in futures:
                         future.cancel()
-                    
                     raise
         else:
             for plz in plz_list:
                 # defer materialized view refresh until all PLZ are processed
-                self.generate_grid_for_single_plz(
+                outcomes[plz] = self.generate_grid_for_single_plz(
                     plz=plz, analyze_grids=analyze_grids, refresh_mv=False
                 )
 
@@ -240,76 +312,58 @@ class GridGenerator:
             self.logger.error(f"Error refreshing materialized views: {e}")
             # Don't re-raise here as individual PLZ processing might have succeeded
 
-        if should_use_parallel:
-            if failed_plz:
-                failed_plz = sorted(set(failed_plz))
-                failed_plz_str = ", ".join(str(plz) for plz in failed_plz)
-                summary = f"Parallel grid generation finished with {len(failed_plz)} failed PLZ: {failed_plz_str}"
-                print(summary)
-                self.logger.warning(summary)
-            else:
-                summary = "Parallel grid generation finished with no failed PLZ."
-                print(summary)
-                self.logger.info(summary)
+        # A PLZ that failed inside its worker is returned as FAILED, not raised: count the outcomes.
+        failed_plz = sorted(plz for plz, outcome in outcomes.items() if outcome == GenerationOutcome.FAILED)
+        run = "Parallel grid generation" if should_use_parallel else "Grid generation"
+        if failed_plz:
+            failed_plz_str = ", ".join(str(plz) for plz in failed_plz)
+            self.logger.warning(f"{run} finished with {len(failed_plz)} failed PLZ: {failed_plz_str}")
+        else:
+            self.logger.info(f"{run} finished with no failed PLZ.")
+        counts = {outcome.value: sum(1 for value in outcomes.values() if value == outcome)
+                  for outcome in GenerationOutcome}
+        self.logger.info("Generation outcomes: " + ", ".join(f"{key}={value}" for key, value in counts.items()))
+        return outcomes
 
     @staticmethod
-    def _worker(plz: int, analyze_grids: bool) -> None:
-        """Worker process to generate a grid for a single PLZ."""
+    def _worker(plz: int, analyze_grids: bool) -> GenerationOutcome:
+        """Generate the grid of one PLZ in a worker process and return its outcome.
+
+        Each worker builds its own :class:`GridGenerator` (own database connection)
+        that logs to ``log/log_<plz>.txt``. The connection is closed afterwards;
+        exceptions are passed on to the parent process.
+        """
         log_file = Path("log") / f"log_{plz}.txt"
         if log_file.exists():
             log_file.unlink()  # Overwrite log file if it exists
 
-        # Create a dedicated GridGenerator instance for this worker
-        # This ensures each worker has its own database connection and logger
         gg = None
         try:
-            print(f"Worker starting for PLZ {plz}...")
-            gg = GridGenerator(log_file=log_file)  # dedicated logger per PLZ
-            print(f"Worker initialized for PLZ {plz}")
-
-            # Generate grid with proper error handling
-            gg.generate_grid_for_single_plz(
+            gg = GridGenerator(log_file=log_file)
+            return gg.generate_grid_for_single_plz(
                 plz=plz, analyze_grids=analyze_grids, refresh_mv=False
             )
-
-            print(f"Worker completed for PLZ {plz}")
-
-        except Exception as e:
-            print(f"Worker failed for PLZ {plz}: {e}")
-            import traceback
-            traceback.print_exc()
-
-            # Ensure proper cleanup even on failure
-            if gg and hasattr(gg, 'dbc') and gg.dbc:
-                try:
-                    gg.dbc.rollback_changes()
-                except Exception as rollback_error:
-                    print(f"Rollback error for PLZ {plz}: {rollback_error}")
+        except Exception:
+            if gg is not None:
+                gg.logger.exception(f"Worker failed for PLZ {plz}")
+                gg.dbc.rollback_changes()
             raise
         finally:
-            # Ensure proper cleanup of database connections
-            if gg and hasattr(gg, 'dbc') and gg.dbc:
-                try:
-                    # Use the close method which handles all connection types
-                    gg.dbc.close()
-                except Exception as cleanup_error:
-                    print(f"Cleanup error for PLZ {plz}: {cleanup_error}")
-
-            # Also ensure GridGenerator cleanup
-            if gg:
-                try:
-                    gg.__del__()
-                except Exception as del_error:
-                    print(f"GridGenerator cleanup error for PLZ {plz}: {del_error}")
-
-            print(f"Worker cleanup completed for PLZ {plz}")
+            if gg is not None:
+                gg.dbc.close()
 
     def generate_grid(self):
+        """Run all generation steps for ``self.plz`` inside the PLZ temporary tables.
+
+        Raises:
+            ResultExistsError: If the PLZ already has grids for ``VERSION_ID``.
+        """
         if self.dbc.is_grid_generated(self.plz):
             raise ResultExistsError(
                 f"The grids for the postcode area {self.plz} is already generated "
                 f"for the version {VERSION_ID}."
             )
+        self.prepare_lod2_transformer_stations()
         self.prepare_data_from_config()
         self.prepare_postcodes()
         self.prepare_buildings()
@@ -318,6 +372,24 @@ class GridGenerator:
         self.apply_kmeans_clustering()
         self.position_all_transformers()
         self.install_cables()
+
+    def prepare_lod2_transformer_stations(self):
+        """Add the LoD2 transformer-station buildings of the PLZ to the shared transformer candidates.
+
+        Only in InfDB mode and only when open or manual positions are used: a run without them does not
+        use the candidates. ``pylovo.transformers`` is shared by all PLZ, so the rows are written and
+        committed in a short transaction of their own before the PLZ is generated (the long PLZ
+        transaction would hold their row locks for minutes and could deadlock with a neighbouring PLZ).
+        """
+        if not (USE_INFDB and (USE_OPEN_TRANSFORMER_POSITIONS or USE_MANUAL_TRANSFORMER_POSITIONS)):
+            return
+        transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
+        transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
+        self.dbc.commit_changes()
+        if transformer_candidate_count:
+            self.logger.info(
+                f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
+            )
 
     def prepare_data_from_config(self):
         """
@@ -357,14 +429,8 @@ class GridGenerator:
         INTO: buildings_tem
         """
         if USE_INFDB:
-            transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
-            transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
-            if transformer_candidate_count:
-                self.logger.info(
-                    f"LoD2 transformer-station buildings added to transformer candidates: {transformer_candidate_count}"
-                )
             buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
-            self.dbc.set_buildings_table(buildings_data, self.plz)
+            self.dbc.set_buildings_table(buildings_data)
         else:
             self.dbc.set_residential_buildings_table(self.plz)
             if not RESIDENTIAL_ONLY_GENERATION:
@@ -376,38 +442,55 @@ class GridGenerator:
             )
         # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
         self.logger.info("Buildings_tem table prepared")
-        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers()
-        if removed_transformer_buildings:
-            self.logger.info(
-                f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
-            )
         self.dbc.remove_duplicate_buildings()
         self.logger.info("Duplicate buildings removed from buildings_tem")
 
-        try:
-            avg_hh = self.dbc.calculate_avg_households_per_building(self.plz)
-            house_dist = self.dbc.calculate_house_distance_metric(self.plz)
-            settlement_type = self.dbc.set_settlement_type_per_plz(self.plz, settlement_type_thresholds=
-            {"rural_max_households": RURAL_MAX_HOUSEHOLDS,
-             "urban_min_households": URBAN_MIN_HOUSEHOLDS,
-             "rural_min_distance": RURAL_MIN_BUILDING_DISTANCE,
-             "urban_max_distance": URBAN_MAX_BUILDING_DISTANCE})
-            self.logger.info(
-                f"Settlement type determined (avg_households_per_building={avg_hh:.2f}, house_distance={house_dist:.1f} m, settlement_type={settlement_type})"
-            )
-        except Exception as e:
-            self.logger.warning(f"Settlement type classification failed: {e}")
-
+        # Fill missing household counts before they contribute to the postcode's
+        # settlement classification, then calculate residential demand.
         unloadcount = self.dbc.set_building_peak_load()
         self.logger.info(
             f"Building peakload calculated in buildings_tem, {unloadcount} unloaded buildings are removed from "
             f"buildings_tem"
         )
+
+        # The MV-direct decision comes before the removal of the non-residential buildings with a
+        # transformer candidate inside: such a building leaves the LV input either way, but a large one
+        # (a customer with its own substation) is stored as MV customer first. The removed buildings do
+        # not count in the settlement classification, as before.
         too_large_consumers = self.dbc.update_too_large_consumers_to_zero()
         self.logger.debug(
-            f"{too_large_consumers} Commercial/Public consumers assumed MV-direct and excluded from LV modeling"
+            f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
         )
+        if too_large_consumers:
+            saved = self.dbc.save_mv_customers(self.plz)
+            self.logger.info(f"{saved} MV customers stored in pylovo.mv_customers")
+        removed_transformer_buildings = self.dbc.remove_non_residential_buildings_overlapping_transformers(
+            include_dso=USE_DSO_TRANSFORMER_POSITIONS)
+        if removed_transformer_buildings:
+            self.logger.info(
+                f"Removed {removed_transformer_buildings} non-residential buildings overlapping transformer candidates"
+            )
 
+        # A metric that cannot be calculated (no residential building with households, fewer than two
+        # buildings) stays NULL and counts as rural, so every PLZ gets a settlement type.
+        avg_hh = house_dist = None
+        try:
+            avg_hh = self.dbc.calculate_avg_households_per_building(self.plz)
+        except ValueError as e:
+            self.logger.warning(f"{e} The household metric counts as rural.")
+        try:
+            house_dist = self.dbc.calculate_house_distance_metric(self.plz)
+        except ValueError as e:
+            self.logger.warning(f"{e} The distance metric counts as rural.")
+        settlement_type = self.dbc.set_settlement_type_per_plz(self.plz, settlement_type_thresholds=
+        {"rural_max_households": RURAL_MAX_HOUSEHOLDS,
+         "urban_min_households": URBAN_MIN_HOUSEHOLDS,
+         "rural_min_distance": RURAL_MIN_BUILDING_DISTANCE,
+         "urban_max_distance": URBAN_MAX_BUILDING_DISTANCE})
+        self.logger.info(
+            f"Settlement type determined (avg_households_per_building={None if avg_hh is None else round(avg_hh, 2)}, "
+            f"house_distance={None if house_dist is None else round(house_dist, 1)} m, settlement_type={settlement_type})"
+        )
 
     def prepare_transformers(self):
         """
@@ -416,50 +499,53 @@ class GridGenerator:
         INTO: buildings_tem
         """
         self.dbc.set_buildings_tem_plz(self.plz)
-        use_existing_transformers = USE_DSO_TRANSFORMER_POSITIONS or USE_OPEN_TRANSFORMER_POSITIONS
-        if use_existing_transformers:
-            self.dbc.insert_transformers(
-                self.plz,
-                include_dso=USE_DSO_TRANSFORMER_POSITIONS,
-                include_open=USE_OPEN_TRANSFORMER_POSITIONS,
-            )
+        sources = {"include_dso": USE_DSO_TRANSFORMER_POSITIONS, "include_open": USE_OPEN_TRANSFORMER_POSITIONS,
+                   "include_manual": USE_MANUAL_TRANSFORMER_POSITIONS}
+        if any(sources.values()):
+            self.dbc.insert_transformers(self.plz, **sources)
             self.logger.info(
                 "Transformers inserted into buildings_tem table "
-                f"(dso={USE_DSO_TRANSFORMER_POSITIONS}, open={USE_OPEN_TRANSFORMER_POSITIONS})"
+                f"(dso={USE_DSO_TRANSFORMER_POSITIONS}, open={USE_OPEN_TRANSFORMER_POSITIONS}, "
+                f"manual={USE_MANUAL_TRANSFORMER_POSITIONS})"
             )
         else:
             self.logger.info("Existing transformer positions disabled by configuration")
-        removed_transformer_buildings = self.dbc.remove_transformer_evidence_buildings_from_buildings_tem(
-            include_dso=USE_DSO_TRANSFORMER_POSITIONS,
-            include_open=USE_OPEN_TRANSFORMER_POSITIONS,
-        )
+        removed_transformer_buildings = self.dbc.remove_transformer_evidence_buildings_from_buildings_tem(**sources)
         self.logger.info(
             f"Removed {removed_transformer_buildings} transformer-evidence buildings from buildings_tem consumer input"
         )
-        self.dbc.count_indoor_transformers()
-        self.dbc.drop_indoor_transformers()
-        self.logger.info("Indoor transformers removed from buildings_tem table")
 
     def prepare_ways(self):
         """
         Cache ways, create network, connect buildings to the ways network
-        FROM: ways, buildings_tem
-        INTO: ways_tem, buildings_tem, ways_tem_vertices_pgr, ways_tem_
+        FROM: ``ways`` (or the InfDB street tables), ``buildings_tem``
+        INTO: ``ways_tem``, ``buildings_tem``, ``ways_tem_vertices_pgr``
         """
         if USE_INFDB:
             ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
-            ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows, self.plz)
+            if postcode_border.enabled():
+                width_m = postcode_border.neighboring_street_width_m()
+                neighboring_rows = self.inf_dbc.fetch_neighboring_ways(
+                    self.plz, self.dbc.get_postcode_polygon_wkb(self.plz), TARGET_EPSG,
+                    width_m, first_way_id=max(int(row[-1]) for row in ways_rows))
+                self.logger.info(
+                    f"Neighboring streets: {len(neighboring_rows)} ways of other PLZ within {width_m:.0f} m added")
+                ways_rows = list(ways_rows) + list(neighboring_rows)
+            ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows)
         else:
             ways_count = self.dbc.set_ways_tem_table(self.plz)
         self.logger.info(f"The ways_tem table filled with {ways_count} ways")
 
+        # Index loaded roads before nearest-road searches.
+        self.dbc.index_and_analyze_staging(self.plz)
+
         # Run preprocessing functions that segment roads and connect buildings
         self.dbc.preprocess_ways()
-        self.logger.info(f"Ways preprocessing completed in ways_tem.")
+        self.logger.info("Ways preprocessing completed in ways_tem.")
 
         # Build pgRouting topology on the processed network
         self.dbc.build_pgr_network_topology(self.plz)
-        self.logger.info(f"pgRouting network topology created from ways_tem.")
+        self.logger.info("pgRouting network topology created from ways_tem.")
 
         self.dbc.update_ways_cost()
         unconn = self.dbc.set_vertice_id()
@@ -491,29 +577,36 @@ class GridGenerator:
         component_ids = np.unique(component)
 
         if len(component_ids) > 0:
-            # Handle components based on number
+            # A PLZ with a single loaded building gets it as its own grid; otherwise a street component
+            # with one building is dropped. With one component, its building count is the PLZ's.
             if len(component_ids) > 1:
+                single_building_plz = self.dbc.count_connected_buildings(vertices) == 1
                 # Process multiple connected components
                 for i, component_id in enumerate(component_ids):
-                    related_vertices = vertices[np.argwhere(component == component_id)]
-                    self._process_component_to_kcid(related_vertices, i)
+                    # 1-D selection: int() of the 1-element rows of a 2-D selection is deprecated in NumPy.
+                    related_vertices = vertices[component == component_id]
+                    self._process_component_to_kcid(related_vertices, i, keep_single_building=single_building_plz)
             else:
                 # Process single connected component
-                self._process_component_to_kcid(vertices)
+                self._process_component_to_kcid(vertices, keep_single_building=True)
         else:
             # No components found - issue warning
-            warnings.warn("No connected components found in ways_tem table")
+            warnings.warn("No connected components found in ways_tem table", stacklevel=2)
 
         # Verify clustering was successful for all buildings
         no_kmean_count = self.dbc.count_no_kmean_buildings()
         if no_kmean_count not in [0, None]:
-            warnings.warn(f"K-means clustering issue: {no_kmean_count} buildings not assigned to clusters")
+            warnings.warn(f"K-means clustering issue: {no_kmean_count} buildings not assigned to clusters", stacklevel=2)
 
-    def _process_component_to_kcid(self, vertices, component_index=None):
-        """Helper method to process components to kcid groups"""
+    def _process_component_to_kcid(self, vertices, component_index=None, keep_single_building=False):
+        """Helper method to process components to kcid groups.
+
+        A component without loaded buildings is removed with its ways and transformers, and so is a
+        component with one building unless ``keep_single_building`` (it is the only building of the PLZ).
+        """
         conn_building_count = self.dbc.count_connected_buildings(vertices)
 
-        if conn_building_count <= 1 or conn_building_count is None:
+        if conn_building_count == 0 or (conn_building_count == 1 and not keep_single_building):
             # Remove isolated or empty components
             self.dbc.delete_ways(vertices)
             self.dbc.delete_transformers_from_buildings_tem(vertices)
@@ -565,11 +658,14 @@ class GridGenerator:
                 # Create brownfield building clusters with existing transformers
                 self.position_brownfield_transformers(self.plz, kcid, transformers)
 
-                # Check buildings and manage clusters
-                if self.dbc.count_kmean_cluster_consumers(kcid) > 1:
+                # Buildings no existing station takes get greenfield stations; a single
+                # remaining connection point becomes its own grid instead of being dropped
+                if self.dbc.count_kmean_cluster_consumers(kcid) > 0:
                     self.dimension_bcid_for_kcid(self.plz, kcid)
+                    if MERGE_GREENFIELD_CLUSTERS and GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS is not None:
+                        self.merge_small_greenfield_into_brownfield(self.plz, kcid)
                 else:
-                    self.dbc.delete_isolated_building(self.plz, kcid) #TODO: check approach with isolated buildings
+                    self.dbc.delete_isolated_building(self.plz, kcid)
                 self.logger.debug("Remaining building clustering finished")
 
             # Process unfinished clusters
@@ -578,23 +674,30 @@ class GridGenerator:
                 if bcid >= 0:
                     self.position_greenfield_transformers(self.plz, kcid, bcid)
                     self.logger.debug(f"Transformer positioning for kcid{kcid}, bcid{bcid} finished")
-                    self.dbc.update_transformer_rated_power(self.plz, kcid, bcid, 1)
+                    self.dbc.update_transformer_rated_power(self.plz, kcid, bcid)
                     self.logger.debug("Transformer_rated_power in grid_result updated.")
 
     def dimension_bcid_for_kcid(self, plz: int, kcid: int) -> None:
-        """
-        Create building clusters (bcids) with average linkage method for a given kcid.
-        :param plz: Postal code
-        :param kcid: K-means cluster ID
-        :return: None
+        """Split the unassigned buildings of a kcid into greenfield transformer areas (bcids).
+
+        Average-linkage hierarchical clustering on the routed distance matrix is cut
+        into two clusters at a time; a cluster that exceeds the largest allowed
+        transformer (after ``TRANSFORMER_PLANNING_UTILIZATION``) or has no station
+        position within the greenfield distance limit is split again, until all
+        clusters are feasible. Optionally neighbouring clusters are merged again
+        (``MERGE_GREENFIELD_CLUSTERS``, limited to small clusters with
+        ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``). The bcids are numbered from 1 by their
+        smallest vertex id and written to ``grid_result`` with their rating.
+
+        Args:
+            plz: Postal code
+            kcid: K-means cluster ID
         """
         # Get data needed for clustering
         buildings = self.dbc.get_buildings_from_kcid(kcid)
         consumer_cat_df = self.dbc.get_consumer_categories()
         settlement_type = self.dbc.get_settlement_type_from_plz(plz)
         transformer_capacities, _ = self.dbc.get_transformer_data(settlement_type)
-        # Use the two largest available transformers
-        double_trans = np.multiply(transformer_capacities[-2:], 2)
         self.logger.info(f"Start BCID dimensioning for PLZ {plz}, KCID {kcid}")
 
         # Get distance matrix and prepare for hierarchical clustering
@@ -602,16 +705,11 @@ class GridGenerator:
         dist_vector = squareform(dist_mat)
 
         if len(dist_vector) == 0:
-            planning_points = buildings["connection_point"]
-            fallback_buildings = buildings
-            if "agg_connection_point" in buildings.columns:
-                planning_points = buildings["agg_connection_point"].fillna(buildings["connection_point"])
-                fallback_buildings = buildings.copy()
-                fallback_buildings["agg_connection_point"] = planning_points
-
+            # No pair of connection points: a single point becomes one bcid directly.
+            planning_points = utils.planning_nodes(buildings)
             vertices = sorted(planning_points.dropna().astype(int).unique().tolist())
             if len(vertices) == 1:
-                total_sim_load = utils.simultaneousPeakLoad(fallback_buildings, consumer_cat_df, vertices)
+                total_sim_load = utils.simultaneous_peak_load(buildings, consumer_cat_df, vertices) / TRANSFORMER_PLANNING_UTILIZATION
                 feasible_transformers = transformer_capacities[transformer_capacities > total_sim_load]
                 transformer_size = int(feasible_transformers[0]) if len(feasible_transformers) else int(math.ceil(total_sim_load))
                 self.dbc.clear_grid_result_in_kmean_cluster(plz, kcid)
@@ -625,6 +723,9 @@ class GridGenerator:
                 f"Skipped BCID dimensioning for PLZ {plz}, KCID {kcid}: "
                 f"empty distance vector for {len(vertices)} active connection point(s)"
             )
+            # A kcid without a grid_result row is picked again by position_all_transformers, and the
+            # kcids after it would never be clustered: drop its unassigned rows (recorded as excluded).
+            self.dbc.delete_isolated_building(plz, kcid)
             return
 
         # Initialize hierarchical clustering
@@ -633,6 +734,7 @@ class GridGenerator:
         invalid_trans_cluster_dict = {}
         cluster_amount = 2
         new_localid2vid = localid2vid
+        new_dist_mat = dist_mat  # distance matrix of the (sub)problem being clustered
         reclustering_iterations = 0
 
         # Iterative clustering process
@@ -646,8 +748,7 @@ class GridGenerator:
                 buildings,
                 consumer_cat_df,
                 transformer_capacities,
-                double_trans,
-                dist_mat=new_dist_mat if reclustering_iterations > 1 else dist_mat,
+                dist_mat=new_dist_mat,
                 vid2localid={value: key for key, value in new_localid2vid.items()},
                 max_transformer_distance=MAX_GREENFIELD_TRAFO_DISTANCE,
             )
@@ -744,7 +845,11 @@ class GridGenerator:
         The load-constrained hierarchical split prevents oversized transformer
         areas. This conservative pass only recombines already valid neighboring
         clusters when the merged area still fits a configured single transformer
-        and satisfies the existing greenfield distance limit.
+        and satisfies its own greenfield distance limit (the per-cluster draw of
+        ``greenfield_distance_limit`` that the split and the station placement use). With
+        ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` a pair is only merged if its
+        smaller cluster has at most that many loaded buildings, so small
+        fragments join a neighbour while larger clusters stay as split.
         """
         if not MERGE_GREENFIELD_CLUSTERS or len(cluster_dict) <= 1:
             return cluster_dict
@@ -769,10 +874,15 @@ class GridGenerator:
             for cluster_id, (vertices, transformer_size) in cluster_dict.items()
         }
         merge_count = 0
+        planning_points = utils.planning_nodes(buildings)
 
         while True:
             best_candidate = None
             cluster_items = list(merged_clusters.items())
+            building_counts = {
+                cluster_id: int(planning_points.isin(vertices).sum())
+                for cluster_id, (vertices, _transformer_size) in cluster_items
+            }
 
             for left_index in range(len(cluster_items)):
                 left_id, (left_vertices, _left_transformer) = cluster_items[left_index]
@@ -783,13 +893,19 @@ class GridGenerator:
                 for right_id, (right_vertices, _right_transformer) in cluster_items[left_index + 1:]:
                     if frozenset((left_id, right_id)) not in neighboring_pairs:
                         continue
+                    if (
+                        GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS is not None
+                        and min(building_counts[left_id], building_counts[right_id])
+                        > GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS
+                    ):
+                        continue
 
                     right_local_ids = [vid2localid[vid] for vid in right_vertices if vid in vid2localid]
                     if not right_local_ids:
                         continue
 
                     combined_vertices = list(dict.fromkeys(left_vertices + right_vertices))
-                    combined_load = utils.simultaneousPeakLoad(buildings, consumer_cat_df, combined_vertices)
+                    combined_load = utils.simultaneous_peak_load(buildings, consumer_cat_df, combined_vertices) / TRANSFORMER_PLANNING_UTILIZATION
                     feasible_capacities = merge_capacities[merge_capacities > combined_load]
                     if len(feasible_capacities) == 0:
                         continue
@@ -798,7 +914,7 @@ class GridGenerator:
                         combined_vertices,
                         dist_mat,
                         vid2localid,
-                        MAX_GREENFIELD_TRAFO_DISTANCE,
+                        self.dbc.greenfield_distance_limit(combined_vertices, MAX_GREENFIELD_TRAFO_DISTANCE),
                     ):
                         continue
 
@@ -832,19 +948,22 @@ class GridGenerator:
         if merge_count:
             self.logger.info(
                 f"Greenfield cluster merge complete for PLZ {plz}, KCID {kcid}: "
-                f"merged {merge_count} neighboring cluster pairs, final_clusters={len(merged_clusters)}"
+                f"merged {merge_count} neighboring cluster pairs, final_clusters={len(merged_clusters)}, "
+                f"max_buildings_of_smaller_cluster={GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS}"
             )
 
         return dict(enumerate(merged_clusters.values()))
 
     def _order_clusters_by_min_vertice(self, cluster_dict: dict) -> dict:
-        """
-        Helper to reassign bcids based on smallest vertex ID of each cluster
-        for consistent ordering across equivalent partitions.
-        Helper function to reassign bcids of the given building clusters ordered by the smallest vertice IDs of the clusters.
-        Returns the same result for cluster distributions that are equivalent up to renaming.
-        :param cluster_dict: input clusters
-        :return: reordered clusters
+        """Renumber clusters from 1 in the order of their smallest vertex id.
+
+        Partitions that are equal up to renaming therefore get the same bcids.
+
+        Args:
+            cluster_dict: ``{cluster id: (vertices, transformer rating)}``.
+
+        Returns:
+            ``{bcid: (vertices, transformer rating)}`` with bcids 1, 2, ...
         """
         ordered_vertices = sorted(cluster_dict.items(), key = lambda cluster: min(cluster[1][0]))
         return {new_bcid: vertices for new_bcid, (_, vertices) in enumerate(ordered_vertices, start=1)}
@@ -852,22 +971,44 @@ class GridGenerator:
     def position_brownfield_transformers(self, plz: int, kcid: int, transformer_list: list) -> None:
         """
         Assign buildings to the existing transformers and store them as bcid in buildings_tem.
+
+        Consumer-transformer pairs closer than ``MAX_BROWNFIELD_TRAFO_DISTANCE`` are
+        visited from the shortest routed distance up (with ``BROWNFIELD_NEAREST_ONLY`` only the
+        pairs of each consumer's nearest transformer); a consumer joins the
+        transformer unless the coincident load would exceed the transformer's
+        imported rating or, without one, reach the largest allowed catalogue rating
+        (after ``TRANSFORMER_PLANNING_UTILIZATION``). Every used transformer becomes a
+        bcid with a negative id (-1, -2, ...) and keeps its imported rating or gets
+        the smallest sufficient catalogue rating; unused transformers are removed.
+        Unassigned consumers stay for greenfield clustering.
+
         Args:
             plz: Postal code
             kcid: K-means cluster ID
             transformer_list: List of transformer IDs
         """
         self.logger.info(f"{len(transformer_list)} Transformers found for kcid {kcid}")
+        buildings = self.dbc.get_buildings_from_kcid(kcid)
+        consumer_cat_df = self.dbc.get_consumer_categories()
+        loads = utils.CoincidentLoads(buildings, consumer_cat_df)
 
         # Get cost dataframe between consumers and transformers
         cost_df = self.dbc.get_consumer_to_transformer_df(kcid, transformer_list)
-
-        # Filter out connections with distance >= 800
-        cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(by=["agg_cost"])
+        # Keep connections shorter than MAX_BROWNFIELD_TRAFO_DISTANCE, nearest first (the costs are whole
+        # metres, so ties are common: then the lower consumer and station vertex, not the routing row order)
+        cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(
+            by=["agg_cost", "start_vid", "end_vid"])
+        if BROWNFIELD_NEAREST_ONLY and not cost_df.empty:
+            # only each consumer's nearest station: when it is full, the consumer is left for greenfield
+            # instead of joining a farther station that still has capacity
+            cost_df = cost_df[cost_df["agg_cost"] <= cost_df.groupby("start_vid")["agg_cost"].transform("min")]
 
         # Get available transformer capacities from database
         settlement_type = self.dbc.get_settlement_type_from_plz(plz)
         possible_transformers, _ = self.dbc.get_transformer_data(settlement_type)
+        # A transformer imported with its real rating is filled only up to that
+        # rating and keeps it; any other keeps the catalogue limit and choice.
+        known_capacities = self.dbc.get_brownfield_transformer_capacity_map(transformer_list)
 
         # Initialize tracking variables
         pre_result_dict = {transformer_id: [] for transformer_id in transformer_list}
@@ -885,9 +1026,13 @@ class GridGenerator:
 
             # Try to assign consumer to transformer
             pre_result_dict[end_transformer_id].append(int(start_consumer_id))
-            sim_load = self.dbc.calculate_sim_load(pre_result_dict[end_transformer_id])
+            sim_load = loads.simultaneous_peak_load(pre_result_dict[end_transformer_id])
 
-            if float(sim_load) > max(possible_transformers):
+            known = known_capacities.get(int(end_transformer_id))
+            # A catalogue rating must lie strictly above load / utilization (the rating pick below and the
+            # greenfield split say the same), so a load exactly at the largest rating already fills the station.
+            if (float(sim_load) > known) if known is not None else (
+                    float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION >= max(possible_transformers)):
                 # Remove consumer and mark transformer as full
                 pre_result_dict[end_transformer_id].pop()
                 full_transformer_list.append(end_transformer_id)
@@ -916,10 +1061,14 @@ class GridGenerator:
             building_cluster_count -= 1
 
             # Calculate the simulated load for all loads assigned to this transformer
-            sim_load = self.dbc.calculate_sim_load(pre_result_dict[transformer_id])
+            sim_load = loads.simultaneous_peak_load(pre_result_dict[transformer_id])
 
-            # Select the smallest transformer that is larger than the simulated load
-            transformer_rated_power = possible_transformers[possible_transformers > float(sim_load)][0].item()
+            if int(transformer_id) in known_capacities:
+                transformer_rated_power = known_capacities[int(transformer_id)]
+            else:
+                # Select the smallest transformer that is larger than the simulated load
+                transformer_rated_power = possible_transformers[
+                    possible_transformers > float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION][0].item()
 
             # Update database with new building cluster
             self.dbc.update_building_cluster(transformer_id, pre_result_dict[transformer_id], building_cluster_count, kcid,
@@ -928,11 +1077,68 @@ class GridGenerator:
         self.logger.info("Brownfield clusters completed")
 
 
+    def merge_small_greenfield_into_brownfield(self, plz: int, kcid: int) -> int:
+        """Let the small greenfield clusters beside existing stations join the nearest one.
+
+        Part of ``MERGE_GREENFIELD_CLUSTERS``: after the greenfield merge, a greenfield cluster
+        that still has at most ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` loaded buildings joins
+        the existing station with the shortest routed distance from one of its connection
+        points, if that distance is below ``MAX_BROWNFIELD_TRAFO_DISTANCE`` (the distance within
+        which existing stations take buildings anyway). The station's rating is not checked
+        again: the brownfield step fills stations nearest first, so a station can be full
+        before the last few buildings at the edge of its area come, and real stations run well
+        below their rating. An imported rating is kept; a station without one gets the smallest
+        catalogue rating above its new load (after ``TRANSFORMER_PLANNING_UTILIZATION``), or
+        keeps the largest.
+
+        Returns:
+            The number of clusters that joined a station.
+        """
+        stations = self.dbc.get_brownfield_stations(plz, kcid)
+        if not stations:
+            return 0
+        bcid_by_vertex = {vertex: bcid for bcid, vertex in stations.items()}
+        known_capacities = self.dbc.get_brownfield_transformer_capacity_map(list(stations.values()))
+        capacities, _ = self.dbc.get_transformer_data(self.dbc.get_settlement_type_from_plz(plz))
+        consumer_cat_df = self.dbc.get_consumer_categories()
+        merged = 0
+        # get_greenfield_bcids lists every unfinished grid, the brownfield ones (bcid < 0) too
+        for bcid in [b for b in self.dbc.get_greenfield_bcids(plz, kcid) if b >= 0]:
+            buildings = self.dbc.get_buildings_from_bcid(plz, kcid, bcid)
+            if buildings.empty or len(buildings) > GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS:
+                continue
+            points = sorted(utils.planning_nodes(buildings).dropna().astype(int).unique().tolist())
+            costs = self.dbc.get_connection_point_to_transformer_costs(points, list(stations.values()))
+            costs = costs[costs["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE]
+            if costs.empty:
+                continue
+            vertex = int(costs.sort_values(by=["agg_cost", "end_vid"]).iloc[0]["end_vid"])
+            target = bcid_by_vertex[vertex]
+            self.dbc.move_building_cluster(plz, kcid, bcid, target)
+            if vertex not in known_capacities:
+                station_buildings = self.dbc.get_buildings_from_bcid(plz, kcid, target)
+                load = utils.simultaneous_peak_load(
+                    station_buildings, consumer_cat_df,
+                    utils.planning_nodes(station_buildings).dropna().astype(int).unique().tolist(),
+                ) / TRANSFORMER_PLANNING_UTILIZATION
+                feasible = capacities[capacities > load]
+                self.dbc._set_transformer_rated_power(
+                    plz, kcid, target, int(feasible[0] if len(feasible) else capacities.max()))
+            merged += 1
+        if merged:
+            self.logger.info(f"Greenfield merge for PLZ {plz}, KCID {kcid}: {merged} small clusters joined their "
+                             f"nearest existing station (max_buildings={GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS})")
+        return merged
+
     def position_greenfield_transformers(self, plz, kcid, bcid):
         """
         Positions a transformer at the optimal location for a greenfield building cluster.
 
-        The optimal location minimizes the sum of distance*load from each vertex to others.
+        The optimal location minimizes the sum of distance*load from each vertex to others,
+        among the connection points from which every point of the cluster is within the
+        cluster's greenfield distance limit. With ``GREENFIELD_TRAFO_POSITION_TOLERANCE``
+        > 0 the station is drawn (seeded per cluster) among the feasible points whose
+        cost is at most ``1 + tolerance`` times the optimum.
 
         Args:
             plz: Postcode
@@ -989,15 +1195,24 @@ class GridGenerator:
         # Calculate weighted distance (distance * load) for each potential location
         total_load_per_vertice = dist_mat.dot(loads)
 
-        # Prefer candidates that also satisfy the max-distance limit.
-        feasible_candidate_ids = np.flatnonzero(dist_mat.max(axis=1) <= MAX_GREENFIELD_TRAFO_DISTANCE)
+        # Prefer candidates that also satisfy the max-distance limit (the same per-cluster
+        # limit the building clustering used for this cluster).
+        distance_limit = self.dbc.greenfield_distance_limit(matrix_connection_points, MAX_GREENFIELD_TRAFO_DISTANCE)
+        feasible_candidate_ids = np.flatnonzero(dist_mat.max(axis=1) <= distance_limit)
         if len(feasible_candidate_ids) > 0:
             min_localid = feasible_candidate_ids[np.argmin(total_load_per_vertice[feasible_candidate_ids])]
+            if GREENFIELD_TRAFO_POSITION_TOLERANCE > 0:
+                costs = total_load_per_vertice[feasible_candidate_ids]
+                eligible = sorted(feasible_candidate_ids[costs <= (1 + GREENFIELD_TRAFO_POSITION_TOLERANCE) * costs.min()],
+                                  key=lambda localid: localid2vid[localid])
+                # Seeded per cluster, so a rerun of the same configuration places the same stations.
+                rng = np.random.default_rng([K_MEANS_SEED, int(plz), int(kcid), int(bcid)])
+                min_localid = eligible[int(rng.integers(len(eligible)))]
         else:
             min_localid = int(np.argmin(total_load_per_vertice))
             self.logger.warning(
                 f"Greenfield transformer placement for PLZ {plz}, KCID {kcid}, BCID {bcid} has no candidate within "
-                f"MAX_GREENFIELD_TRAFO_DISTANCE={MAX_GREENFIELD_TRAFO_DISTANCE} m; falling back to weighted minimum."
+                f"the greenfield distance limit of {distance_limit:.0f} m; falling back to weighted minimum."
             )
 
         # Select the point with minimum weighted distance as transformer location
@@ -1012,320 +1227,62 @@ class GridGenerator:
         )
         return
 
-    def prepare_vertices_list(self, plz: int, kcid: int, bcid: int) -> tuple[
-        dict, int, list, pd.DataFrame, pd.DataFrame, list, list]:
-        vertices_dict, ont_vertice = self.dbc.get_vertices_from_bcid(plz, kcid, bcid)
+    def prepare_vertices_list(
+        self,
+        plz: int,
+        kcid: int,
+        bcid: int,
+        consumer_df: pd.DataFrame | None = None,
+    ) -> tuple:
+        """Load the routing and building data of one grid for cable installation.
+
+        Returns:
+            ``(vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df,
+            consumer_list, connection_nodes, paths_to_transformer)``: routed distance
+            from the transformer per vertex, the transformer vertex, the vertices,
+            the buildings, the consumer categories (fetched if not given), the
+            consumer vertices, the street-side connection nodes (vertices that are
+            not consumers) and the routed path of each vertex to the transformer.
+        """
+        vertices_dict, ont_vertice, paths_to_transformer = (
+            self.dbc.get_vertices_from_bcid(plz, kcid, bcid)
+        )
         vertices_list = list(vertices_dict.keys())
 
         buildings_df = self.dbc.get_buildings_from_bcid(plz, kcid, bcid)
-        consumer_df = self.dbc.get_consumer_categories()
+        if consumer_df is None:
+            consumer_df = self.dbc.get_consumer_categories()
         consumer_list = buildings_df.vertice_id.to_list()
         consumer_list = list(dict.fromkeys(consumer_list))  # removing duplicates
 
         connection_nodes = [i for i in vertices_list if i not in consumer_list]
 
-        return (vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes,)
-
-    def get_consumer_allocated_loads(self, consumer_list: list, buildings_df: pd.DataFrame) -> tuple[
-        dict, dict, dict]:
-        return utils.allocate_consumer_simultaneous_loads(
-            consumer_list,
+        return (
+            vertices_dict,
+            ont_vertice,
+            vertices_list,
             buildings_df,
-            CONSUMER_CATEGORIES,
+            consumer_df,
+            consumer_list,
+            connection_nodes,
+            paths_to_transformer,
         )
 
+    def _path_to_transformer_lookup(
+        self, paths_to_transformer: dict[int, tuple[int, ...]], ont_vertice: int
+    ) -> feeder_planning.PathLookup:
+        """Return a path lookup that prefers the cached routes and falls back to pgRouting."""
 
-    def find_furthest_node_path_list(self, connection_node_list: list, vertices_dict: dict, ont_vertice: int) -> list:
-        connection_node_dict = {n: vertices_dict[n] for n in connection_node_list}
-        furthest_node = max(connection_node_dict, key=connection_node_dict.get)
-        # all the connection nodes in the path from transformer to furthest node are considered as potential branch loads
-        furthest_node_path_list = self.dbc.get_path_to_bus(furthest_node, ont_vertice)
-        furthest_node_path = [p for p in furthest_node_path_list if p in connection_node_list]
+        def path_to_transformer(node: int):
+            return paths_to_transformer.get(node) or self.dbc.get_path_to_bus(node, ont_vertice)
 
-        return furthest_node_path
+        return path_to_transformer
 
-
-    def determine_maximum_load_branch(self, furthest_node_path_list: list, buildings_df: pd.DataFrame,
-            consumer_df: pd.DataFrame) -> tuple[list, float]:
-        """
-        Determine the longest feasible branch (in order from transformer to furthest node)
-        limited by maximum allowable current.
-        
-        This method implements the primary constraint for cable dimensioning: current capacity.
-        It builds branches by adding nodes one by one until the current limit is reached.
-        
-        Args:
-            furthest_node_path_list: List of nodes from transformer to furthest node
-            buildings_df: DataFrame with building load information
-            consumer_df: DataFrame with consumer category information
-            
-        Returns:
-            tuple: (branch_node_list, Imax) - List of nodes in the branch and maximum current
-        """
-        branch_node_list = []
-        for node in furthest_node_path_list:
-            branch_node_list.append(node)
-            # Calculate simultaneous peak load for all nodes in current branch
-            sim_load = utils.simultaneousPeakLoad(buildings_df, consumer_df, branch_node_list)  # sim_peak load in kW
-
-            # Calculate maximum current using worst-case voltage (VN * V_BAND_LOW)
-            # This ensures cables are sized for the lowest expected voltage (95% of nominal)
-            Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))  # current in kA
-
-            # Check if current exceeds the configured topology grouping cap.
-            # Cable sizing can still choose larger/parallel cables later.
-            if Imax >= FEEDER_SPLIT_MAX_CURRENT_KA and len(branch_node_list) > 1:
-                # Remove the last node if it would exceed current capacity
-                branch_node_list.remove(node)
-                break
-            elif Imax >= FEEDER_SPLIT_MAX_CURRENT_KA and len(branch_node_list) == 1:
-                # Even a single node exceeds capacity - keep it but break the loop
-                break
-
-        # Calculate final current for the selected branch
-        sim_load = utils.simultaneousPeakLoad(buildings_df, consumer_df, branch_node_list)
-        Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-
-        return branch_node_list, Imax
-
-    def find_branch_attachment_node(
-        self,
-        branch_start_node: int,
-        ont_vertice: int,
-        vertices_dict: dict[int, float],
-        installed_connection_nodes: set[int],
-    ) -> int:
-        """Return the deepest already-installed upstream node for a new branch.
-
-        The branch paths returned by ``get_path_to_bus`` are ordered from the
-        branch node towards the transformer. Reusing the first installed ancestor
-        on that path bundles later splits at existing street-corner nodes instead
-        of reconnecting every branch at the transformer. To avoid collapsing too
-        many feeders close to the transformer, only reuse split points whose
-        routed distance from the transformer exceeds ``MIN_SHARED_PREFIX_LENGTH_M``.
-        """
-        node_path_list = self.dbc.get_path_to_bus(branch_start_node, ont_vertice)
-        for node in node_path_list[1:]:
-            if node in installed_connection_nodes:
-                if vertices_dict.get(node, 0.0) < MIN_SHARED_PREFIX_LENGTH_M:
-                    return ont_vertice
-                return node
-        return ont_vertice
-
-    def _plan_backbone_branches(
-        self,
-        connection_nodes: list[int],
-        vertices_dict: dict[int, float],
-        ont_vertice: int,
-        buildings_df: pd.DataFrame,
-        consumer_df: pd.DataFrame,
-        installer: CableInstaller,
-        kcid: int,
-        bcid: int,
-    ) -> list[dict[str, int | float | list[int]]]:
-        """Freeze the finalized branch topology before any feeder cable is sized.
-
-        The previous implementation sized and installed branch backbones inside the
-        greedy branch-selection loop. Once later branches were attached to an
-        already-installed upstream node, those shared segments kept the original
-        cable choice instead of being resized for the combined downstream load.
-
-        This planning pass preserves the existing branch-selection logic and the
-        chosen attachment nodes, but delays backbone line creation until the full
-        branch tree is known.
-        """
-        branch_plans: list[dict[str, int | list[int]]] = []
-        branch_index = 0
-        connection_node_list = list(connection_nodes)
-        installed_connection_nodes = set()
-
-        while connection_node_list:
-            if len(connection_node_list) == 1:
-                remaining = connection_node_list[0]
-                self.logger.debug(
-                    f"Final remaining connection node {remaining} (kcid={kcid}, bcid={bcid}); preserving direct branch."
-                )
-                branch_node_list = [remaining]
-                attachment_node = ont_vertice
-            else:
-                furthest_node_path_list = self.find_furthest_node_path_list(
-                    connection_node_list, vertices_dict, ont_vertice
-                )
-                branch_node_list, Imax = self.determine_maximum_load_branch(
-                    furthest_node_path_list, buildings_df, consumer_df
-                )
-                self.logger.debug(
-                    f"Selected branch {branch_index} (nodes={len(branch_node_list)}, first={branch_node_list[0]}, "
-                    f"last={branch_node_list[-1]}, Imax={Imax:.3f} kA)"
-                )
-                attachment_node = self.find_branch_attachment_node(
-                    branch_node_list[-1],
-                    ont_vertice,
-                    vertices_dict,
-                    installed_connection_nodes,
-                )
-
-            branch_plans.append(
-                {
-                    "branch_index": branch_index,
-                    "attachment_node": attachment_node,
-                    "branch_nodes": list(branch_node_list),
-                }
-            )
-
-            for vertice in branch_node_list:
-                connection_node_list.remove(vertice)
-            installed_connection_nodes.update(branch_node_list)
-
-            branch_index += 1
-
-        return branch_plans
-
-    def _get_split_visualization_edges(
-        self,
-        branch_plans: list[dict[str, int | list[int]]],
-        ont_vertice: int,
-    ) -> list[dict[str, int]]:
-        """Return real line edges that should get shifted split-topology helpers."""
-        children_by_parent: dict[int, set[int]] = {}
-        for plan in branch_plans:
-            branch_nodes = [int(node) for node in plan["branch_nodes"]]
-            attachment_node = int(plan["attachment_node"])
-
-            for index in range(len(branch_nodes) - 1):
-                parent = int(branch_nodes[index + 1])
-                child = int(branch_nodes[index])
-                children_by_parent.setdefault(parent, set()).add(child)
-
-            branch_start_node = int(branch_nodes[-1])
-            if branch_start_node != ont_vertice:
-                children_by_parent.setdefault(attachment_node, set()).add(branch_start_node)
-
-        split_edges = []
-        for parent, children in children_by_parent.items():
-            ordered_children = sorted(children)
-            if len(ordered_children) <= 1:
-                continue
-
-            for child_index, child in enumerate(ordered_children[1:], start=1):
-                sign = 1 if child_index % 2 else -1
-                magnitude = (child_index + 1) // 2
-                split_edges.append(
-                    {
-                        "from_bus": int(parent),
-                        "to_bus": int(child),
-                        "offset_rank": int(sign * magnitude),
-                    }
-                )
-
-        return split_edges
-
-    def _build_feeder_edges_from_branch_plans(
-        self,
-        branch_plans: list[dict[str, int | list[int]]],
-        ont_vertice: int,
-    ) -> list[tuple[int, int]]:
-        """Return directed feeder tree edges as ``(parent, child)`` pairs."""
-        feeder_edges: list[tuple[int, int]] = []
-
-        for plan in branch_plans:
-            branch_nodes = [int(node) for node in plan["branch_nodes"]]
-            attachment_node = int(plan["attachment_node"])
-
-            for index in range(len(branch_nodes) - 1):
-                parent = int(branch_nodes[index + 1])
-                child = int(branch_nodes[index])
-                feeder_edges.append((parent, child))
-
-            branch_start_node = int(branch_nodes[-1])
-            if branch_start_node != ont_vertice:
-                feeder_edges.append((attachment_node, branch_start_node))
-
-        return feeder_edges
-
-    def _group_feeder_edges_by_hard_node_section(
-        self,
-        children_by_node: dict[int, list[int]],
-        ont_vertice: int,
-    ) -> dict[int, list[tuple[int, int]]]:
-        """Group directed feeder edges into uniform sections between hard nodes."""
-        hard_nodes = {ont_vertice}
-        hard_nodes.update(
-            parent for parent, children in children_by_node.items() if len(children) > 1
-        )
-        sections_by_key: dict[int, list[tuple[int, int]]] = {}
-        section_index = 0
-
-        for hard_node in sorted(hard_nodes):
-            for first_child in children_by_node.get(hard_node, []):
-                section_edges = []
-                parent = hard_node
-                child = int(first_child)
-
-                while True:
-                    section_edges.append((parent, child))
-                    child_children = children_by_node.get(child, [])
-                    if child in hard_nodes or len(child_children) != 1:
-                        break
-
-                    parent = child
-                    child = int(child_children[0])
-
-                sections_by_key[section_index] = section_edges
-                section_index += 1
-
-        return sections_by_key
-
-    def _select_cables_for_feeder_sections(
+    def _install_feeder_lines(
         self,
         installer: CableInstaller,
-        sections_by_key: dict[int, list[tuple[int, int]]],
-        downstream_nodes_by_node: dict[int, list[int]],
-        buildings_df: pd.DataFrame,
-        consumer_df: pd.DataFrame,
-        vertices_dict: dict[int, float],
-        ont_vertice: int,
-    ) -> dict[tuple[int, int], tuple[str, int]]:
-        """Choose one feeder cable/count for every edge in each hard-node section."""
-        cable_by_edge: dict[tuple[int, int], tuple[str, int]] = {}
-
-        def _distance_from_transformer(node: int) -> float:
-            if node == ont_vertice:
-                return 0.0
-            try:
-                return float(vertices_dict[node])
-            except KeyError as exc:
-                raise KeyError(
-                    f"Missing routed distance for feeder node {node} while sizing feeder sections."
-                ) from exc
-
-        for section_edges in sections_by_key.values():
-            section_Imax = 0.0
-            section_distance = 0.0
-
-            for parent, child in section_edges:
-                sim_load = utils.simultaneousPeakLoad(
-                    buildings_df, consumer_df, downstream_nodes_by_node[child]
-                )
-                edge_Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3))
-                edge_distance = _distance_from_transformer(child) - _distance_from_transformer(parent)
-                section_Imax = max(section_Imax, edge_Imax)
-                section_distance += edge_distance
-
-            cable, count = installer.find_minimal_available_cable(
-                section_Imax,
-                section_distance,
-            )
-
-            for edge in section_edges:
-                cable_by_edge[edge] = (cable, count)
-
-        return cable_by_edge
-
-    def _install_backbone_lines_two_pass(
-        self,
-        installer: CableInstaller,
-        branch_plans: list[dict[str, int | list[int]]],
+        branches: list[feeder_planning.FeederBranch],
+        design: feeder_planning.FeederDesign,
         buildings_df: pd.DataFrame,
         consumer_df: pd.DataFrame,
         vertices_dict: dict[int, float],
@@ -1334,108 +1291,49 @@ class GridGenerator:
         kcid: int,
         bcid: int,
     ) -> dict:
-        """Install planned backbone lines on the finalized split tree."""
-        children_by_node: dict[int, list[int]] = {}
-        downstream_nodes_by_node: dict[int, list[int]] = {}
+        """Create the planned feeder lines on the backend, branch by branch.
 
-        feeder_edges = self._build_feeder_edges_from_branch_plans(branch_plans, ont_vertice)
-        for parent, child in feeder_edges:
-            children_by_node.setdefault(parent, []).append(child)
+        Per branch: the lines between its nodes, then the line that connects its
+        start node to the attachment node (a split point) or to ``LVbus 1``. The
+        transformer vertex itself is ``LVbus 1`` (the station busbar), so a branch
+        that starts there needs no further line.
 
-        def _collect_downstream_nodes(node: int) -> list[int]:
-            cached_nodes = downstream_nodes_by_node.get(node)
-            if cached_nodes is not None:
-                return cached_nodes
-
-            downstream_nodes = [] if node == ont_vertice else [node]
-            for child in children_by_node.get(node, []):
-                downstream_nodes.extend(_collect_downstream_nodes(child))
-
-            downstream_nodes_by_node[node] = downstream_nodes
-            return downstream_nodes
-
-        _collect_downstream_nodes(ont_vertice)
-        sections_by_key = self._group_feeder_edges_by_hard_node_section(
-            children_by_node,
-            ont_vertice,
-        )
-        cable_by_edge = self._select_cables_for_feeder_sections(
-            installer,
-            sections_by_key,
-            downstream_nodes_by_node,
-            buildings_df,
-            consumer_df,
-            vertices_dict,
-            ont_vertice,
-        )
-        section_by_edge = {
-            edge: int(section_id)
-            for section_id, section_edges in sections_by_key.items()
-            for edge in section_edges
-        }
-
-        for plan in branch_plans:
-            branch_nodes = list(plan["branch_nodes"])
-            branch_index = int(plan["branch_index"])
-            attachment_node = int(plan["attachment_node"])
+        Returns:
+            ``material_length_by_cable_km``, updated.
+        """
+        loads = utils.CoincidentLoads(buildings_df, consumer_df)
+        for branch in branches:
+            branch_nodes = list(branch.nodes)
+            branch_index = int(branch.index)
+            attachment_node = int(branch.attachment_node)
 
             for index in range(len(branch_nodes) - 1):
-                parent = int(branch_nodes[index + 1])
-                child = int(branch_nodes[index])
-                cable, count = cable_by_edge[(parent, child)]
-                material_length_by_cable_km = installer.create_line_node_to_node(
-                    self.plz,
-                    kcid,
-                    bcid,
-                    [child, parent],
-                    vertices_dict,
-                    material_length_by_cable_km,
-                    cable,
-                    ont_vertice,
-                    count,
-                    section_by_edge[(parent, child)],
+                edge = (int(branch_nodes[index + 1]), int(branch_nodes[index]))
+                material_length_by_cable_km = self._install_feeder_edge(
+                    installer, design, edge, vertices_dict, material_length_by_cable_km, ont_vertice, kcid, bcid
                 )
 
             branch_start_node = int(branch_nodes[-1])
+            sim_load = loads.simultaneous_peak_load(design.downstream_nodes_by_node[branch_start_node])
             if branch_start_node == ont_vertice:
-                sim_load = utils.simultaneousPeakLoad(
-                    buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
-                )
-                Imax = sim_load / (VN * V_BAND_LOW * np.sqrt(3)) if sim_load > 0 else 0.0
-                cable, count = installer.find_minimal_available_cable(Imax)
-                installer.create_line_ont_to_lv_bus(
-                    self.plz, bcid, kcid, branch_start_node, cable, count, ont_vertice
-                )
+                # its first lines already leave the station busbar (the transformer vertex is LVbus 1)
                 self.logger.debug(
-                    f"Branch {branch_index} connected directly to transformer after two-pass sizing "
-                    f"(cable={cable}, parallels={count}, load_kw={sim_load:.2f})."
+                    f"Branch {branch_index} starts at the station busbar (load_kw={sim_load:.2f})."
                 )
             elif attachment_node != ont_vertice:
-                sim_load = utils.simultaneousPeakLoad(
-                    buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
+                edge = (attachment_node, branch_start_node)
+                material_length_by_cable_km = self._install_feeder_edge(
+                    installer, design, edge, vertices_dict, material_length_by_cable_km, ont_vertice, kcid, bcid
                 )
-                cable, count = cable_by_edge[(attachment_node, branch_start_node)]
-                material_length_by_cable_km = installer.create_line_node_to_node(
-                    self.plz,
-                    kcid,
-                    bcid,
-                    [branch_start_node, attachment_node],
-                    vertices_dict,
-                    material_length_by_cable_km,
-                    cable,
-                    ont_vertice,
-                    count,
-                    section_by_edge[(attachment_node, branch_start_node)],
-                )
+                cable, count = design.cable_by_edge[edge]
                 self.logger.debug(
                     f"Branch {branch_index} attached to finalized split node {attachment_node} after two-pass sizing "
                     f"(cable={cable}, parallels={count}, load_kw={sim_load:.2f})."
                 )
             else:
-                sim_load = utils.simultaneousPeakLoad(
-                    buildings_df, consumer_df, downstream_nodes_by_node[branch_start_node]
-                )
-                cable, count = cable_by_edge[(ont_vertice, branch_start_node)]
+                edge = (ont_vertice, branch_start_node)
+                cable, count = design.cable_by_edge[edge]
+                sizing = design.sizing_by_edge[edge]
                 length = installer.create_line_start_to_lv_bus(
                     self.plz,
                     bcid,
@@ -1445,7 +1343,10 @@ class GridGenerator:
                     cable,
                     count,
                     ont_vertice,
-                    section_by_edge[(ont_vertice, branch_start_node)],
+                    design.section_by_edge[edge],
+                    feeder_sizing_basis=sizing["feeder_sizing_basis"],
+                    ampacity_std_type=sizing["ampacity_std_type"],
+                    ampacity_parallel=sizing["ampacity_parallel"],
                 )
                 material_length_by_cable_km[cable] += length
                 self.logger.debug(
@@ -1455,21 +1356,77 @@ class GridGenerator:
 
         return material_length_by_cable_km
 
+    def _install_feeder_edge(
+        self,
+        installer: CableInstaller,
+        design: feeder_planning.FeederDesign,
+        edge: tuple[int, int],
+        vertices_dict: dict[int, float],
+        material_length_by_cable_km: dict,
+        ont_vertice: int,
+        kcid: int,
+        bcid: int,
+    ) -> dict:
+        """Create the feeder line of one ``(parent, child)`` edge between two connection nodes."""
+        parent, child = edge
+        cable, count = design.cable_by_edge[edge]
+        sizing = design.sizing_by_edge[edge]
+        return installer.create_line_node_to_node(
+            self.plz,
+            kcid,
+            bcid,
+            [child, parent],
+            vertices_dict,
+            material_length_by_cable_km,
+            cable,
+            ont_vertice,
+            count,
+            design.section_by_edge[edge],
+            feeder_sizing_basis=sizing["feeder_sizing_basis"],
+            ampacity_std_type=sizing["ampacity_std_type"],
+            ampacity_parallel=sizing["ampacity_parallel"],
+        )
+
+    @staticmethod
+    def _summarize_service_diagnostics(service_diagnostics: list[dict]) -> dict:
+        """Aggregate the per-service diagnostics of one grid for ``grid_result``."""
+        total_design_drops = [
+            row["total_design_drop_percent"]
+            for row in service_diagnostics
+            if row["total_design_drop_percent"] is not None
+        ]
+        return {
+            "ampacity_max_service_voltage_drop_percent": max(
+                (row["ampacity_drop_percent"] for row in service_diagnostics), default=0.0
+            ),
+            "selected_max_service_voltage_drop_percent": max(
+                (row["selected_drop_percent"] for row in service_diagnostics), default=0.0
+            ),
+            "service_voltage_drop_limit_met": all(
+                row["voltage_drop_limit_met"] for row in service_diagnostics
+            ),
+            "service_voltage_upgraded_count": sum(
+                row["selected_cable"] != row["ampacity_cable"] for row in service_diagnostics
+            ),
+            "long_service_connection_count": sum(
+                row["length_review"] for row in service_diagnostics
+            ),
+            "max_total_design_voltage_drop_percent": max(total_design_drops, default=None),
+        }
+
     def install_cables(self):
-        """
-        Installs electrical cables using the electrical backend pattern.
+        """Build, validate and store the electrical network of every grid of the PLZ.
 
-        The algorithm works as follows:
-        1. Retrieves all clusters (kcid, bcid) for the postal code area
-        2. For each cluster:
-           a. Prepares building and connection data
-           b. Creates an electrical network via backend
-           c. Adds buses, transformers, and loads using ComponentSpecs
-           d. Installs cables using the same branch-by-branch greedy algorithm
-        3. Tracks progress and saves the network configurations
+        For each grid (``kcid``, ``bcid``) of ``grid_result``:
 
-        Returns:
-            None
+        1. load its buildings, routed distances and consumer loads,
+        2. create buses, the station transformer and the snapshot loads on the
+           configured electrical backend (:class:`CableInstaller`),
+        3. plan the feeder branches and size the feeder cables
+           (:mod:`pylovo.feeder_planning`), then create the feeder lines,
+        4. size and create the service cables branch by branch,
+        5. write the lines to ``lines_result`` and rebuild the GIS helper rows,
+        6. run the validation power flow and store the network (:meth:`save_net`).
         """
         # Get all clusters for the postal code area
         cluster_list = self.dbc.get_list_from_plz(self.plz)
@@ -1480,24 +1437,50 @@ class GridGenerator:
         not_converged_count = 0
         voltage_violation_count = 0
 
-        for id in cluster_list:
-            kcid, bcid = id
+        # These inputs are invariant for every grid in a PLZ. Fetch them once after
+        # pgRouting topology creation and pass immutable snapshots into each installer.
+        consumer_df = self.dbc.get_consumer_categories()
+        node_coordinates = self.dbc.fetch_node_coordinates(self.plz)
+        # House cables end at the house connection box on the facade, not at the building centroid.
+        node_coordinates.update(self.dbc.fetch_house_connection_points(self.plz))
+        consumer_connection_mapping = self.dbc.fetch_consumer_connection_mapping(
+            self.plz,
+        )
+        cables = self.dbc.fetch_cables()
+
+        for kcid, bcid in cluster_list:
             self.logger.debug(f"Start cable installation for PLZ {self.plz} kcid {kcid} bcid {bcid}")
 
             # Get data for this cluster
-            vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df, consumer_list, connection_nodes = (
-                self.prepare_vertices_list(self.plz, kcid, bcid)
+            (
+                vertices_dict,
+                ont_vertice,
+                _vertices_list,
+                buildings_df,
+                consumer_df,
+                consumer_list,
+                connection_nodes,
+                paths_to_transformer,
+            ) = self.prepare_vertices_list(self.plz, kcid, bcid, consumer_df)
+            service_design_load_per_consumer, powerflow_snapshot_components = (
+                utils.allocate_consumer_simultaneous_loads(
+                    consumer_list,
+                    buildings_df,
+                    consumer_df,
+                )
             )
-            sim_load_per_building, load_units, load_type = self.get_consumer_allocated_loads(consumer_list, buildings_df)
 
-            # Initialize backend using configuration
+            transformer_coordinates = self.dbc.get_ont_geom_from_bcid(self.plz, kcid, bcid)
+            transformer_rated_power = self.dbc.get_transformer_rated_power_from_bcid(
+                self.plz, kcid, bcid
+            )
+
+            # Initialize backend and register the already-fetched cable catalog.
             backend = create_backend(ELECTRICAL_BACKEND, logger=self.logger)
             circuit_name = f"PLZ{self.plz}_kcid{kcid}_bcid{bcid}"
-            backend.initialize_circuit(name=circuit_name, source_bus="MVbus 1", primary_kv=20.0)
-            # Fetch cables once from database (single source of truth)
-            cables = self.dbc.fetch_cables()
-
-            # Register cable types from equipment data
+            backend.initialize_circuit(
+                name=circuit_name, source_bus="MVbus 1", primary_kv=20.0
+            )
             backend.register_cable_types(cables)
 
             # Get available cable
@@ -1510,60 +1493,127 @@ class GridGenerator:
 
             # Create cable installer
             installer = CableInstaller(
-                backend, self.dbc, self.logger, cables,
-                FEEDER_CABLES, CONSUMER_CONNECTION_CABLES
-            )
-            
-            # Create network components
-            installer.create_lvmv_bus(self.plz, kcid, bcid)
-            installer.create_transformer(self.plz, kcid, bcid)
-            installer.create_connection_bus(connection_nodes)
-            installer.create_consumer_bus_and_load(consumer_list, sim_load_per_building, buildings_df, load_type)
-
-            trafo_power = self.dbc.get_transformer_rated_power_from_bcid(self.plz, kcid, bcid)
-            self.logger.debug(
-                f"Backend network initialized (buses={backend.get_component_count('buses')}, "
-                f"loads={backend.get_component_count('loads')}, transformer_rated_power={trafo_power} kVA)"
+                backend,
+                self.dbc,
+                self.logger,
+                cables,
+                FEEDER_CABLES,
+                CONSUMER_CONNECTION_CABLES,
+                node_coordinates=node_coordinates,
+                transformer_coordinates=transformer_coordinates,
+                transformer_rated_power=transformer_rated_power,
+                consumer_connection_mapping=consumer_connection_mapping,
+                paths_to_transformer=paths_to_transformer,
+                context=(self.plz, kcid, bcid),
             )
 
-            # First finalize the split topology, then size every backbone segment on
-            # the resulting tree so shared prefixes carry the full downstream load.
-            branch_plans = self._plan_backbone_branches(
+            # First finalize the split topology. In a cabinet network the feeders then run
+            # from cabinet to cabinet and every building gets its own cable from its cabinet.
+            branches = feeder_planning.plan_feeder_branches(
                 connection_nodes,
                 vertices_dict,
                 ont_vertice,
+                self._path_to_transformer_lookup(paths_to_transformer, ont_vertice),
                 buildings_df,
                 consumer_df,
-                installer,
-                kcid,
-                bcid,
+                self.logger,
             )
+            cabinet_plan = None
+            feeder_branches, feeder_buildings, feeder_nodes = branches, buildings_df, connection_nodes
+            if HOUSE_CONNECTION == "cabinet":
+                buildings_by_node = utils.planning_nodes(buildings_df).dropna().astype(int).value_counts().to_dict()
+                cabinet_plan = feeder_planning.plan_cabinets(
+                    branches, ont_vertice, vertices_dict, CABINET_SPACING_M, buildings_by_node
+                )
+                feeder_branches = cabinet_plan.branches
+                feeder_buildings = feeder_planning.cabinet_buildings(buildings_df, cabinet_plan.cabinet_by_node)
+                feeder_nodes = sorted(cabinet_plan.kind_by_cabinet)
 
-            for plan in branch_plans:
-                material_length_by_cable_km = installer.install_consumer_cables(
-                    self.plz,
-                    bcid,
-                    kcid,
-                    list(plan["branch_nodes"]),
-                    ont_vertice,
-                    vertices_dict,
-                    sim_load_per_building,
-                    material_length_by_cable_km,
+            # Create network components (the backend creates them in batches)
+            with backend.batch():
+                installer.create_lvmv_bus(self.plz, kcid, bcid)
+                installer.create_transformer(self.plz, kcid, bcid)
+                installer.create_connection_bus(feeder_nodes, station_vertex=ont_vertice)
+                installer.create_consumer_bus_and_load(
+                    consumer_list, powerflow_snapshot_components
                 )
 
-            material_length_by_cable_km = self._install_backbone_lines_two_pass(
-                installer,
-                branch_plans,
-                buildings_df,
-                consumer_df,
-                vertices_dict,
-                ont_vertice,
-                material_length_by_cable_km,
-                kcid,
-                bcid,
+            self.logger.debug(
+                f"Backend network initialized (buses={backend.get_component_count('buses')}, "
+                f"loads={backend.get_component_count('loads')}, "
+                f"transformer_rated_power={transformer_rated_power} kVA)"
             )
-            split_visualization_edges = self._get_split_visualization_edges(branch_plans, ont_vertice)
-            savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid}"
+
+            # Size every feeder segment on the finalized tree so shared prefixes carry
+            # the full downstream load; in a cabinet network the cable may change at every cabinet.
+            feeder_design = feeder_planning.size_feeder_tree(
+                installer,
+                feeder_branches,
+                ont_vertice,
+                vertices_dict,
+                feeder_buildings,
+                consumer_df,
+                self.logger,
+                self.plz,
+                hard_nodes=list(cabinet_plan.kind_by_cabinet) if cabinet_plan else (),
+            )
+            with backend.batch():
+                material_length_by_cable_km = self._install_feeder_lines(
+                    installer,
+                    feeder_branches,
+                    feeder_design,
+                    feeder_buildings,
+                    consumer_df,
+                    vertices_dict,
+                    ont_vertice,
+                    material_length_by_cable_km,
+                    kcid,
+                    bcid,
+                )
+
+                service_diagnostics = []
+                if cabinet_plan is not None:
+                    # Buildings planned at one node share the house-connection cable from their cabinet.
+                    shared_design_load_by_node = {
+                        node: utils.simultaneous_peak_load(buildings_df, consumer_df, [node])
+                        for node, count in buildings_by_node.items()
+                        if count > 1 and cabinet_plan.cabinet_by_node.get(node, node) != node
+                    }
+                    material_length_by_cable_km, service_diagnostics = installer.install_cabinet_service_cables(
+                        self.plz,
+                        bcid,
+                        kcid,
+                        cabinet_plan.cabinet_by_node,
+                        ont_vertice,
+                        vertices_dict,
+                        service_design_load_per_consumer,
+                        material_length_by_cable_km,
+                        feeder_design.drop_percent_by_node,
+                        shared_design_load_by_node,
+                    )
+                for branch in branches if cabinet_plan is None else []:
+                    material_length_by_cable_km, branch_service_diagnostics = (
+                        installer.install_consumer_cables(
+                            list(branch.nodes),
+                            ont_vertice,
+                            vertices_dict,
+                            service_design_load_per_consumer,
+                            material_length_by_cable_km,
+                            feeder_design.drop_percent_by_node,
+                        )
+                    )
+                    service_diagnostics.extend(branch_service_diagnostics)
+            service_planning_diagnostics = self._summarize_service_diagnostics(service_diagnostics)
+
+            # GIS helper SQL must see every persisted feeder/service line in the same
+            # transaction, so flush exactly once before constructing visualization rows.
+            installer.flush_line_records(self.plz, kcid, bcid)
+
+            split_visualization_edges = feeder_planning.split_visualization_edges(
+                feeder_branches, ont_vertice
+            )
+            bcid_token = f"neg_{abs(int(bcid))}" if int(bcid) < 0 else str(int(bcid))
+            savepoint_name = f"split_visualization_{self.plz}_{kcid}_{bcid_token}"
             try:
                 self.dbc.cur.execute(f"SAVEPOINT {savepoint_name}")
                 self.dbc.rebuild_lines_result_helpers_for_split_topology(
@@ -1580,6 +1630,7 @@ class GridGenerator:
                     kcid,
                     bcid,
                     split_visualization_nodes,
+                    cabinet_plan.kind_by_cabinet if cabinet_plan is not None else None,
                 )
                 self.dbc.rebuild_lines_result_view_for_grid(self.plz, kcid, bcid)
                 self.dbc.cur.execute(f"RELEASE SAVEPOINT {savepoint_name}")
@@ -1598,8 +1649,6 @@ class GridGenerator:
                     f"{visualization_error}"
                 )
 
-            branch_index = len(branch_plans)
-
             # Cluster summary
             material_length = sum(material_length_by_cable_km.values())
             used_material_lengths = {k: v for k, v in material_length_by_cable_km.items() if v > 0}
@@ -1610,9 +1659,14 @@ class GridGenerator:
 
             lines_count = backend.get_component_count('lines')
             self.logger.info(
-                f"Finished cluster kcid={kcid}, bcid={bcid}: branches={branch_index}, lines={lines_count}, "
+                f"Finished cluster kcid={kcid}, bcid={bcid}: branches={len(branches)}, lines={lines_count}, "
+                f"service_voltage_upgrades={service_planning_diagnostics['service_voltage_upgraded_count']}, "
+                f"unresolved_service_drops={sum(not row['voltage_drop_limit_met'] for row in service_diagnostics)}, "
+                f"long_services_for_review={service_planning_diagnostics['long_service_connection_count']}, "
                 f"material_length={material_length:.3f} km ({cable_summary})"
             )
+
+            planning_diagnostics = {**feeder_design.diagnostics, **service_planning_diagnostics}
 
             # Track and report progress using real cluster counts.
             ci_count += 1
@@ -1624,7 +1678,12 @@ class GridGenerator:
                 )
                 next_progress_checkpoint += 10
 
-            powerflow_status = self.save_net(backend, kcid, bcid)
+            powerflow_status = self.save_net(
+                backend,
+                kcid,
+                bcid,
+                planning_diagnostics=planning_diagnostics,
+            )
             if powerflow_status == "converged":
                 converged_count += 1
             elif powerflow_status == "voltage_violation":
@@ -1639,40 +1698,123 @@ class GridGenerator:
             f"voltage_band_violations={voltage_violation_count}"
         )
 
-    def save_net(self, backend: IElectricalBackend, kcid, bcid) -> str:
+    def save_net(
+        self,
+        backend: IElectricalBackend,
+        kcid,
+        bcid,
+        planning_diagnostics: dict[str, float | bool | int] | None = None,
+    ) -> str:
         """
-        Validate and save grid to file and database using backend pattern.
+        Validate the synthetic transformer-coincident operating point and save the grid.
+
+        Runs the power flow of the snapshot loads with the station voltage of
+        :mod:`pylovo.station_voltage` (LV busbar at ``LV_REFERENCE_VOLTAGE_PU``), classifies it as
+        ``converged``, ``voltage_violation`` (outside ``POWER_FLOW_VOLTAGE_LIMITS``) or
+        ``not_converged``, and stores the network JSON with the planning and
+        voltage-drop diagnostics in ``grid_result`` (plus the SQL network tables for
+        pandapower, and a JSON file if ``SAVE_GRID_FOLDER``). A grid is stored even
+        if the power flow fails.
+
+        Args:
+            backend: Backend holding the finished network.
+            kcid: K-means cluster ID
+            bcid: Building cluster ID
+            planning_diagnostics: Feeder and service planning diagnostics.
+
+        Returns:
+            The power-flow status.
         """
         # Validate grid with power flow before saving
         powerflow_status = "not_converged"
+        voltage_drop_diagnostics = {
+            "max_feeder_voltage_drop_pu": None,
+            "max_service_voltage_drop_pu": None,
+            "max_total_lv_voltage_drop_pu": None,
+        }
+        if planning_diagnostics is None:
+            planning_diagnostics = {
+                "ampacity_max_feeder_voltage_drop_percent": None,
+                "selected_max_feeder_voltage_drop_percent": None,
+                "feeder_voltage_drop_limit_met": None,
+                "ampacity_max_service_voltage_drop_percent": None,
+                "selected_max_service_voltage_drop_percent": None,
+                "service_voltage_drop_limit_met": None,
+                "service_voltage_upgraded_count": None,
+                "long_service_connection_count": None,
+                "max_total_design_voltage_drop_percent": None,
+            }
         try:
-            converged = backend.solve_power_flow()
+            self.logger.debug(
+                "Running synthetic transformer-coincident validation operating point "
+                f"for kcid={kcid}, bcid={bcid}."
+            )
+            station = solve_validation_power_flow(backend, LV_REFERENCE_VOLTAGE_PU, logger=self.logger)
+            converged = station.converged
+            if station.applied:
+                self.logger.debug(f"Station voltage for kcid={kcid}, bcid={bcid}: {station.describe()}")
             if converged:
                 metrics = backend.get_circuit_metrics()
                 min_voltage_pu = metrics.get("min_voltage_pu")
                 max_voltage_pu = metrics.get("max_voltage_pu")
 
+                if ELECTRICAL_BACKEND == "pandapower" and getattr(backend, "net", None) is not None:
+                    net = backend.net
+                    lv_buses = net.bus.index[net.bus.name == "LVbus 1"]
+                    consumer_buses = set(
+                        net.bus.index[
+                            net.bus.name.fillna("").str.startswith("Consumer Nodebus ")
+                        ]
+                    )
+                    service_lines = net.line.loc[net.line.to_bus.isin(consumer_buses)]
+                    if len(lv_buses) == 1 and not service_lines.empty:
+                        lv_voltage_pu = float(net.res_bus.at[int(lv_buses[0]), "vm_pu"])
+                        feeder_drops = []
+                        service_drops = []
+                        total_drops = []
+                        for line in service_lines.itertuples():
+                            connection_voltage_pu = float(net.res_bus.at[line.from_bus, "vm_pu"])
+                            consumer_voltage_pu = float(net.res_bus.at[line.to_bus, "vm_pu"])
+                            feeder_drops.append(lv_voltage_pu - connection_voltage_pu)
+                            service_drops.append(connection_voltage_pu - consumer_voltage_pu)
+                            total_drops.append(lv_voltage_pu - consumer_voltage_pu)
+                        voltage_drop_diagnostics = {
+                            "max_feeder_voltage_drop_pu": max(feeder_drops),
+                            "max_service_voltage_drop_pu": max(service_drops),
+                            "max_total_lv_voltage_drop_pu": max(total_drops),
+                        }
+
                 voltage_out_of_band = False
-                if min_voltage_pu is not None and min_voltage_pu < V_BAND_LOW:
+                if min_voltage_pu is not None and min_voltage_pu < POWER_FLOW_MIN_VM_PU:
                     voltage_out_of_band = True
-                if max_voltage_pu is not None and max_voltage_pu > V_BAND_HIGH:
+                if max_voltage_pu is not None and max_voltage_pu > POWER_FLOW_MAX_VM_PU:
                     voltage_out_of_band = True
 
                 if voltage_out_of_band:
                     powerflow_status = "voltage_violation"
                     self.logger.warning(
-                        f"Power flow converged but voltage band was violated for kcid={kcid}, bcid={bcid} "
+                        "Synthetic transformer-coincident validation power flow converged "
+                        f"but violated the voltage band for kcid={kcid}, bcid={bcid} "
                         f"(min_vm_pu={min_voltage_pu}, max_vm_pu={max_voltage_pu}, "
-                        f"allowed=[{V_BAND_LOW}, {V_BAND_HIGH}])."
+                        f"allowed=[{POWER_FLOW_MIN_VM_PU}, {POWER_FLOW_MAX_VM_PU}])."
                     )
                 else:
-                    self.logger.info(f"Power flow converged for kcid={kcid}, bcid={bcid}")
+                    self.logger.info(
+                        "Synthetic transformer-coincident validation power flow converged "
+                        f"for kcid={kcid}, bcid={bcid}"
+                    )
                     powerflow_status = "converged"
             else:
-                self.logger.warning(f"Power flow did NOT converge for kcid={kcid}, bcid={bcid}")
+                self.logger.warning(
+                    "Synthetic transformer-coincident validation power flow did NOT converge "
+                    f"for kcid={kcid}, bcid={bcid}"
+                )
                 powerflow_status = "not_converged"
         except Exception as e:
-            self.logger.warning(f"Power flow failed for kcid={kcid}, bcid={bcid}: {e}")
+            self.logger.warning(
+                "Synthetic transformer-coincident validation power flow failed "
+                f"for kcid={kcid}, bcid={bcid}: {e}"
+            )
 
         if powerflow_status != "converged":
             self.logger.warning(
@@ -1711,6 +1853,8 @@ class GridGenerator:
             json_string,
             transformer_description,
             powerflow_status,
+            **planning_diagnostics,
+            **voltage_drop_diagnostics,
         )
 
         if ELECTRICAL_BACKEND == "pandapower":
@@ -1739,4 +1883,3 @@ class GridGenerator:
             f"Grid with kcid:{kcid} bcid:{bcid} is stored with status={powerflow_status}."
         )
         return powerflow_status
-

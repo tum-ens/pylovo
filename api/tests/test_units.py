@@ -1,0 +1,184 @@
+"""Tests without a database: config editing, topology, job runner, request guards."""
+from __future__ import annotations
+
+import sys
+import time
+
+import yaml
+from pylovo_api import config_io, topology
+from pylovo_api.jobs import JobManager, classify_line
+
+
+def test_form_edit_keeps_comments_and_layout(client, project):
+    text = (project / "config" / "config_generation_lv.yaml").read_text()
+    values = yaml.safe_load(text)
+    unchanged = config_io.set_top_level_values(text, {k: values[k] for k in config_io.FORM_FIELDS if k in values})
+    assert unchanged == text
+    new = config_io.set_top_level_values(text, {"VERSION_ID": "42", "USE_DSO_TRANSFORMER_POSITIONS": True,
+                                               "TRANSFORMER_MAPPING": {1: [100], 2: [250, 400], 3: [630]}})
+    parsed = yaml.safe_load(new)
+    assert parsed["VERSION_ID"] == "42" and parsed["USE_DSO_TRANSFORMER_POSITIONS"] is True
+    assert parsed["TRANSFORMER_MAPPING"] == {1: [100], 2: [250, 400], 3: [630]}
+    assert "# Change version if you changed any grid parameters" in new
+    assert len(new.splitlines()) == len(text.splitlines())  # only the changed lines were rewritten
+
+
+def test_a_project_with_the_former_config_name_is_edited_in_place(project):
+    from pylovo_api.settings import Paths, find_project_root
+
+    (project / "config" / "config_generation_lv.yaml").rename(project / "config" / "config_generation.yaml")
+    assert find_project_root(project) == project.resolve()
+    assert Paths(project).config_file == project / "config" / "config_generation.yaml"
+
+
+def test_validation_reports_yaml_and_pylovo_errors():
+    _, issues = config_io.validate_text("VERSION_ID: [1, 2")
+    assert issues[0]["level"] == "error" and issues[0]["line"] == 1
+    text = config_io.read_config().text
+    _, issues = config_io.validate_text(text.replace("\nVN: 400", "\nVNX: 400"))
+    assert any("VN" in i["message"] for i in issues)
+    _, issues = config_io.validate_text(text.replace('VERSION_ID: "1"', 'VERSION_ID: "12345678901"'), deep=False)
+    assert any(i.get("key") == "VERSION_ID" for i in issues)
+
+
+def test_nullable_fields_accept_null_only():
+    assert config_io._field_issues({"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS": None}) == []
+    assert config_io._field_issues({"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS": 4}) == []
+    assert config_io._field_issues({"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS": 0})[0]["level"] == "error"
+    assert config_io._field_issues({"MAX_BUILDINGS_PER_KCID": None})[0]["level"] == "error"
+
+
+def test_config_save_requires_confirm_and_makes_a_backup(client, project):
+    state = client.get("/api/config").json()
+    body = {"changes": {"VERSION_COMMENT": "ui test"}, "base_sha": state["sha"]}
+    assert client.post("/api/config/values", json=body).status_code == 400  # no confirm
+    dry = client.post("/api/config/values", json=body | {"dry_run": True}).json()
+    assert "+VERSION_COMMENT: ui test" in dry["diff"]
+    saved = client.post("/api/config/values", json=body | {"confirm": True}).json()
+    assert saved["saved"] and saved["backup"]
+    assert (project / ".pylovo-api" / "config-backups" / saved["backup"]).exists()
+    assert "VERSION_COMMENT: ui test" in (project / "config" / "config_generation_lv.yaml").read_text()
+    # a stale base hash is a conflict
+    stale = client.post("/api/config/values", json={"changes": {"VERSION_COMMENT": "x"}, "base_sha": state["sha"], "confirm": True})
+    assert stale.status_code == 409
+    restored = client.post("/api/config/restore", json={"name": saved["backup"], "confirm": True}).json()
+    assert restored["saved"]
+    assert "VERSION_COMMENT: default" in (project / "config" / "config_generation_lv.yaml").read_text()
+
+
+def test_topology_labels_feeders_and_distances():
+    buses = [{"pp_index": 0, "name": "LVbus 1"}, {"pp_index": 1, "name": "MVbus 1"}, {"pp_index": 2, "name": "Connection Nodebus 9"},
+             {"pp_index": 3, "name": "Connection Nodebus 3"}, {"pp_index": 4, "name": "Consumer Nodebus 4"},
+             {"pp_index": 5, "name": "Consumer Nodebus 5"}]
+    lines = [{"pp_index": 0, "from_bus": 0, "to_bus": 2, "length_km": 0.001},                     # busbar link
+             {"pp_index": 1, "from_bus": 2, "to_bus": 3, "length_km": 0.2, "feeder_section_id": 1},
+             {"pp_index": 2, "from_bus": 3, "to_bus": 4, "length_km": 0.02, "service_sizing_basis": "ampacity"},
+             {"pp_index": 3, "from_bus": 0, "to_bus": 5, "length_km": 0.05, "service_sizing_basis": "ampacity"}]
+    topo = topology.analyse(buses, lines)
+    assert topo["station"] == [0, 2]
+    # The service cable straight from the busbar (line 3) is a direct connection, not a feeder.
+    assert [f["feeder"] for f in topo["feeders"]] == [1]
+    assert topo["line_feeder"][1] == topo["line_feeder"][2] == 1 and 3 not in topo["line_feeder"]
+    assert topo["direct"] == [{"line": 3, "bus": 5}] and 5 not in topo["bus_feeder"]
+    assert abs(topo["distance_km"][4] - 0.22) < 1e-9
+    assert topology.line_role(lines[0]) == "link" and topology.line_role(lines[2]) == "service"
+
+
+def test_job_manager_runs_streams_and_blocks_second_writer(tmp_path):
+    manager = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs")
+    code = "import time\nfor i in range(3):\n    print('progress: %d/3' % (i + 1), flush=True); time.sleep(0.2)\nprint('WARNING something')"
+    job = manager.start("test", "test job", [sys.executable, "-c", code])
+    try:
+        manager.start("test", "second", [sys.executable, "-c", "pass"])
+        raise AssertionError("a second writing job must be refused")
+    except Exception as exc:
+        assert "still running" in str(exc)
+    for _ in range(100):
+        if not job.active:
+            break
+        time.sleep(0.1)
+    assert job.status == "succeeded" and job.exit_code == 0 and job.progress == 1.0
+    assert [line["text"] for line in job.lines][1:4] == ["progress: 1/3", "progress: 2/3", "progress: 3/3"]
+    assert job.counts["warning"] == 1
+    reloaded = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs").get(job.id)
+    assert reloaded and reloaded.status == "succeeded" and len(reloaded.lines) == len(job.lines)
+
+
+def test_job_cancel(tmp_path):
+    manager = JobManager(cwd=tmp_path, jobs_dir=tmp_path / "jobs")
+    job = manager.start("test", "sleeper", [sys.executable, "-c", "import time; print('start', flush=True); time.sleep(60)"])
+    time.sleep(0.5)
+    manager.cancel(job.id)
+    for _ in range(100):
+        if not job.active:
+            break
+        time.sleep(0.1)
+    assert job.status == "cancelled"
+
+
+def test_classify_line():
+    assert classify_line("2026-09-25 01:38:30,927 - GridGenerator - WARNING - x") == "warning"
+    assert classify_line("✓ Deleted all networks") == "success"
+    assert classify_line("Traceback (most recent call last):") == "error"
+    assert classify_line("ValueError: nope") == "error"
+    assert classify_line("Elapsed Time: 0 minutes") == "info"
+
+
+def test_setup_job_keeps_grids_and_only_reset_drops_the_schema(client, monkeypatch):
+    from pylovo_api import db
+    from pylovo_api.routers import jobs as jobs_router
+
+    started = []
+    monkeypatch.setattr(jobs_router, "_start", lambda request, kind, title, argv, **kw: started.append((kind, argv)) or {})
+    monkeypatch.setattr(db, "settings", lambda: {"dbname": "sandbox"})
+    assert client.post("/api/jobs/setup", json={"confirm": "sandbox"}).status_code == 202  # UI of API 1 sends a body
+    assert client.post("/api/jobs/reset", json={"confirm": "other"}).status_code == 400
+    assert client.post("/api/jobs/reset", json={"confirm": "sandbox"}).status_code == 202
+    (setup_kind, setup_argv), (reset_kind, reset_argv) = started
+    assert (setup_kind, reset_kind) == ("setup", "reset")
+    assert "reset" not in setup_argv and "--yes" not in setup_argv
+    assert reset_argv[-4:] == ["reset", "--database", "sandbox", "--yes"]
+
+
+def test_guards(client):
+    from fastapi.testclient import TestClient
+
+    bare = TestClient(client.app)
+    assert bare.post("/api/jobs/reset", json={"confirm": "x"}).status_code == 403  # no X-Pylovo-UI header
+    assert bare.post("/api/jobs/setup").status_code == 403
+    assert bare.get("/api/config", headers={"host": "evil.example"}).status_code == 421
+    assert client.post("/api/jobs/reset", json={"confirm": "wrong"}).status_code == 400
+    assert client.post("/api/jobs/delete-versions", json={"version_ids": ["1"], "confirm": "2"}).status_code == 400
+    # headless: pylovo-api serves no page, no static files and no plugin list
+    for path in ("/", "/static/js/main.js", "/popout.html", "/api/plugins"):
+        assert bare.get(path).status_code == 404, path
+
+
+def test_section_headings_are_not_help_texts():
+    text = "## Section\nA: 1 # help of A\n\n# Describes B\n## Another heading\nB: 2\n\nC: 3\n"
+    assert config_io.comments_by_key(text) == {"A": "help of A", "B": "Describes B", "C": ""}
+
+
+def test_the_help_of_the_shipped_config_starts_with_the_description_of_the_key(project):
+    help_text = config_io.comments_by_key((project / "config" / "config_generation_lv.yaml").read_text())
+    assert help_text["MAX_BUILDINGS_PER_KCID"].startswith("Maximum number of load buildings")
+    assert help_text["MAX_GREENFIELD_TRAFO_DISTANCE"].startswith("Mean maximum distance")
+    assert help_text["MAX_BROWNFIELD_TRAFO_DISTANCE"].startswith("Maximum assignment distance")
+    assert help_text["RURAL_MAX_HOUSEHOLDS"].startswith("Maximum average number of households")
+    assert help_text["TRANSFORMER_MAPPING"].startswith("Transformer mapping")
+
+
+def test_a_config_that_is_not_a_mapping_gives_4xx_and_can_be_repaired(client, project):
+    path = project / "config" / "config_generation_lv.yaml"
+    good = path.read_text()
+    for broken in ("- a\n- b\n", "just text\n", "{unclosed"):  # a list, a scalar, invalid YAML
+        path.write_text(broken)
+        state = client.get("/api/config")
+        assert state.status_code == 200 and state.json()["text"] == broken
+        assert set(state.json()["values"].values()) == {None}
+        for url in ("/api/config/values", "/api/flow/config-preflight"):
+            body = {"changes": {"VERSION_COMMENT": "x"}} | ({"dry_run": True} if url.endswith("values") else {})
+            assert client.post(url, json=body).status_code == 422, (broken, url)
+    repaired = client.put("/api/config", json={"text": good, "confirm": True})
+    assert repaired.status_code == 200 and repaired.json()["saved"]
+    assert client.get("/api/config").json()["values"]["VERSION_ID"] == "1"

@@ -1,14 +1,90 @@
-from typing import Any
+"""Read-only client for the InfDB source data (buildings, ways, postcodes)."""
 
 import psycopg2 as psy
+from psycopg2 import sql
 
 from pylovo import utils
-from pylovo.config_loader import *
-from pylovo.database.database_client import DatabaseClient
+from pylovo.config_loader import (
+    EXCLUDE_BUILDINGS_WITHOUT_ADDRESS,
+    INFDB_DBNAME,
+    INFDB_HOST,
+    INFDB_OPENDATA_SCHEMA,
+    INFDB_PASSWORD,
+    INFDB_PORT,
+    INFDB_SOURCE_SCHEMA,
+    INFDB_USER,
+    LOG_LEVEL,
+)
+
+
+#: InfDB road classes (``klasse``) as pylovo's integer ``clazz``; unknown classes become 99.
+KLASSE_TO_CLAZZ = {
+    "Bundesautobahn": 11,
+    "Bundesstraße": 13,
+    "Landesstraße, Staatsstraße": 15,
+    "Kreisstraße": 21,
+    "Gemeindestraße": 41,
+    "Nicht öffentliche Straße": 51,
+    "Wirtschaftsweg": 71,
+    "Hauptwirtschaftsweg": 71,
+    "Rad- und Fußweg": 72,
+    "Radweg": 81,
+    "Fußweg": 91,
+    "connection_line": 110,
+}
+DEFAULT_CLAZZ = 99
+
+
+def _clazz_case_sql() -> str:
+    """The SQL ``CASE`` that maps ``btrim(klasse)`` to ``clazz``."""
+    when_clauses = "\n".join(
+        f"WHEN '{k.replace(chr(39), chr(39) * 2)}' THEN {int(v)}" for k, v in KLASSE_TO_CLAZZ.items()
+    )
+    return f"""
+            (CASE btrim(klasse)
+                {when_clauses}
+                ELSE {int(DEFAULT_CLAZZ)}
+            END)::int
+        """
+
+
+def _consumer_buildings_sql() -> str:
+    """The SQL condition on ``buildings`` columns that selects the buildings generation loads as consumers."""
+    condition = ("building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown') "
+                 "AND COALESCE(building_use_id, '') != '31001_2523'")
+    if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
+        # Outbuildings (sheds, garages, barns) carry no address of their own and are
+        # almost never separate grid customers. An import restricted to a reviewed
+        # building allowlist must not apply this filter.
+        condition += " AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''"
+    return condition
 
 
 class InfdbClient:
-    """Responsible for connecting to InfDB database."""
+    """Connection to InfDB, the source of buildings, ways and postcodes when ``USE_INFDB=True``.
+
+    The connection defaults to the pylovo database itself; with ``USE_EXTERNAL_BASEDATA=True``
+    ``config_loader`` takes the ``INFDB_*`` connection settings of the ``.env`` file instead.
+    Buildings come from ``INFDB_SOURCE_SCHEMA.buildings``, ways from ``ways_per_connection`` and
+    ``connection_lines`` in ``INFDB_SOURCE_SCHEMA``, postcodes from
+    ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.
+
+    All tables are schema-qualified and no startup ``options`` are sent, so the connection also
+    works through PgBouncer. Every query runs in its own read-only transaction that is closed
+    right after the fetch, so the client never writes to InfDB and never stays idle in a
+    transaction there.
+
+    Args:
+        dbname: Database name; defaults to ``INFDB_DBNAME``.
+        user: Database user; defaults to ``INFDB_USER``.
+        pw: Password; defaults to ``INFDB_PASSWORD``.
+        host: Host; defaults to ``INFDB_HOST``.
+        port: Port; defaults to ``INFDB_PORT``.
+        **kwargs: ``log_file``: log file path (default ``log/log.txt``).
+
+    Raises:
+        psycopg2.OperationalError: If the database cannot be reached.
+    """
 
     def __init__(self, dbname=INFDB_DBNAME, user=INFDB_USER, pw=INFDB_PASSWORD, host=INFDB_HOST, port=INFDB_PORT, **kwargs):
         self.logger = utils.create_logger(
@@ -21,10 +97,12 @@ class InfdbClient:
                 password=pw,
                 host=host,
                 port=port,
-                options=f"-c search_path={INFDB_SOURCE_SCHEMA},public",
             )
+            # BEGIN READ ONLY per transaction; with autocommit psycopg2 would SET it for the session,
+            # which a PgBouncer in transaction mode can pass on to other clients
+            self.conn.set_session(readonly=True)
             self.cur = self.conn.cursor()
-            self.db_path = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{dbname}"
+            self.db_path = f"{host}:{port}/{dbname}"
         except psy.OperationalError as err:
             self.logger.warning(f"Connecting to {dbname} was not successful."
                                 f"Make sure, that you have established the SSH connection with correct port mapping.")
@@ -32,9 +110,17 @@ class InfdbClient:
 
         self.logger.debug(f"InfDB DatabaseClient is constructed and connected to {self.db_path}.")
 
+    def close(self) -> None:
+        """Close cursor and connection; safe to call twice and if the constructor failed before opening them."""
+        cur = getattr(self, "cur", None)
+        if cur is not None:
+            cur.close()
+        conn = getattr(self, "conn", None)
+        if conn is not None:
+            conn.close()
+
     def __del__(self):
-        self.cur.close()
-        self.conn.close()
+        self.close()
 
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """
@@ -47,7 +133,7 @@ class InfdbClient:
             list[tuple]: A list of tuples containing the source building columns plus
                 a derived type used by the generation pipeline.
         """
-        query = """
+        query = sql.SQL("""
             SELECT
                 id,
                 feature_id,
@@ -55,6 +141,23 @@ class InfdbClient:
                 height,
                 floor_area,
                 floor_number,
+                residential_floor_area,
+                nonresidential_floor_area,
+                CASE
+                    WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
+                    WHEN building_use = 'Residential' THEN 'Commercial'
+                    WHEN building_use = 'Mixed' THEN
+                        CASE {classify}(building_use_id)
+                            -- a cell-quota promotion keeps the original Residential
+                            -- function code, so its non-residential share is reclassified
+                            -- the same way a plain Residential building's is above
+                            WHEN 'Residential' THEN 'Commercial'
+                            ELSE {classify}(building_use_id)
+                        END
+                    WHEN building_use IN ('Commercial', 'Public', 'Unknown') THEN building_use
+                    ELSE NULL
+                END AS nonresidential_use,
+                mix_rule,
                 building_use,
                 building_use_id,
                 building_type,
@@ -71,127 +174,85 @@ class InfdbClient:
                 changelog_id,
                 assigned_way_id,
                 COALESCE(building_type, building_use) AS type
-            FROM basedata.buildings
+            FROM {buildings}
             WHERE postcode = %(p)s
-            AND building_use IN ('Commercial', 'Public', 'Residential')
-            AND COALESCE(building_use_id, '') != '31001_2523'
-        """
-        self.cur.execute(query, {"p": plz})
-        buildings = self.cur.fetchall()
+            AND {consumers}
+        """).format(classify=sql.Identifier(INFDB_SOURCE_SCHEMA, "classify_building_use"),
+                    buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"),
+                    consumers=sql.SQL(_consumer_buildings_sql()))
+        with self.conn:
+            self.cur.execute(query, {"p": plz})
+            buildings = self.cur.fetchall()
 
         return buildings
     
     def fetch_transformer_station_buildings_from_infdb(self, plz: int) -> list[tuple]:
-        """Retrieve LoD2 buildings that represent transformer stations."""
-        query = """
+        """Return the LoD2 transformer-station buildings of a PLZ (``building_use_id`` 31001_2523).
+
+        Returns:
+            ``(objectid, geom, centroid)`` rows in the source SRID.
+        """
+        query = sql.SQL("""
             SELECT
                 objectid,
                 geom,
                 COALESCE(centroid, ST_Centroid(geom)) AS centroid
-            FROM basedata.buildings
+            FROM {buildings}
             WHERE postcode = %(p)s
               AND building_use_id = '31001_2523'
-        """
-        self.cur.execute(query, {"p": plz})
-        return self.cur.fetchall()
+        """).format(buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"))
+        with self.conn:
+            self.cur.execute(query, {"p": plz})
+            return self.cur.fetchall()
 
     def fetch_ways_from_infdb(self, plz) -> list:
-        """
-        Fetch ways from the remote DB for a given postcode (PLZ) and return them in the
-        exact tuple layout expected by the pylovo import/insert pipeline.
+        """Return the ways of a PLZ in the tuple layout of ``PreprocessingMixin.set_ways_tem_table_infdb``.
 
-        What this function does (and why):
+        Rows are ``(clazz, source, target, cost, reverse_cost, geom, way_id)``; ``source`` and
+        ``target`` are NULL (pgRouting topology is built later), ``geom`` is in the source SRID.
+        Cycle and footpaths (``Rad- und Fußweg``, clazz 72) are left out.
 
-        1) klasse_to_clazz (string -> int mapping)
-        - In the source schema, the road type is stored as a string column `klasse`
-            (e.g., "Bundesstraße", "Fußweg", "connection_line").
-        - In pylovo, the downstream tables/operators expect an integer road class
-            (`clazz`).
-        - Therefore, we define `klasse_to_clazz` once in Python and generate a SQL
-            CASE expression from it. We also use `btrim(klasse)` so trailing/leading
-            spaces in the raw strings do not break the mapping.
+        How the rows are built:
 
-        2) Column mapping from source tables -> pylovo.ways tuple layout
-        The insert into the local temp/result tables expects rows shaped like:
-            (clazz, source, target, cost, reverse_cost, geom, way_id)
+        1. **Road class.** The InfDB stores the road type as text in ``klasse`` (for example
+           ``"Bundesstraße"``, ``"Fußweg"``, ``"connection_line"``); pylovo expects an integer
+           ``clazz``. ``klasse_to_clazz`` is turned into an SQL ``CASE`` on ``btrim(klasse)``
+           (unknown values become 99).
+        2. **Column mapping.** ``klasse`` -> ``clazz``; ``source`` and ``target`` -> ``NULL``
+           (they only keep the column positions); ``length_geo`` -> ``cost`` and
+           ``reverse_cost`` (symmetric routing cost); ``geom`` unchanged (transformed locally
+           later); the text ``id`` -> a generated integer ``way_id``.
+        3. **Two source tables.** The street segments (``ways_per_connection``, split at the
+           building connections) and the building connection lines (``connection_lines``) are
+           combined with ``UNION ALL``. The connection lines are those filed under the PLZ and
+           those that start at the centroid of a building that :meth:`fetch_buildings_from_infdb`
+           loads but are filed under another postcode: the InfDB may file the line of a building
+           near a PLZ border under the neighbouring postcode. Such a line usually ends on a
+           street of that neighbour, which is part of the graph with
+           ``ROUTE_ACROSS_POSTCODE_BORDERS``; without it the line ends unconnected and its
+           building is usually left out as an isolated component.
+        4. **Way ids.** ``way_id`` is ``row_number() OVER (ORDER BY remote_id)``, where
+           ``remote_id`` is a stable key derived from the source id, so it starts at 1 for every
+           PLZ. ``PreprocessingMixin.set_ways_tem_table_infdb`` offsets it by the largest
+           ``way_id`` of ``pylovo.ways_result`` in the pylovo database, which may be another
+           database than InfDB.
 
-        We construct that shape from the source columns as follows:
-        - klasse (string)      -> clazz (int)
-            via CASE mapping using `klasse_to_clazz` (defaulting to 99 if unknown).
-        - source (missing/unused in source) -> NULL
-            we return `NULL::bigint AS source` to preserve the expected column position/type.
-        - target (missing/unused in source) -> NULL
-            we return `NULL::bigint AS target` for the same reason.
-        - length_geo -> cost
-            we use the geometric length as the routing cost.
-        - length_geo -> reverse_cost
-            we set reverse_cost equal to cost (symmetric) because direction-specific
-            costs are not available/needed here.
-        - geom -> geom
-            geometry is passed through unchanged and later transformed locally.
-        - id (source is md5 text) -> way_id (generated int)
-            pylovo expects an integer id, so we generate numeric ids during fetch.
+        Args:
+            plz: Postcode.
 
-        3) Combining ways_segmented + connection_lines (UNION ALL)
-        - Previously, all relevant ways lived in a single table.
-        - Now the road network is split across:
-            * ways_segmented      (regular road segments)
-            * connection_lines    (synthetic connection segments, e.g., building-to-road)
-        - To ensure pylovo inserts a complete network, we combine both tables in a
-            single result set using `UNION ALL` so we keep all rows.
+        Returns:
+            The ways of the PLZ.
 
-        4) Ensuring unique integer way_id across multiple runs
-        - The source `id` is an md5 string (created for parallel-safe uniqueness), but
-            pylovo target expects an integer way_id.
-        - A plain `row_number()` would restart at 1 on every run/PLZ, causing collisions
-            if you generate 80803 first and later generate 80802 in a separate run.
-        - To avoid collisions, we:
-            a) read the current maximum used id from `pylovo.ways_result`:
-                    base_id = COALESCE(MAX(way_id), 0)
-            b) assign ids as:
-                    way_id = base_id + row_number() OVER (ORDER BY remote_id)
-            where remote_id is a stable ordering key derived from the source id.
-        - Result: each run continues numbering from the last used id, so way_id remains
-            globally unique across sequential executions.
+        Raises:
+            ValueError: If the PLZ has no ways.
         """
 
-        klasse_to_clazz = {
-            "Bundesautobahn": 11,
-            "Bundesstraße": 13,
-            "Landesstraße, Staatsstraße": 15,
-            "Kreisstraße": 21,
-            "Gemeindestraße": 41,
-            "Nicht öffentliche Straße": 51,
-            "Wirtschaftsweg": 71,
-            "Hauptwirtschaftsweg": 71,
-            "Rad- und Fußweg": 72,
-            "Radweg": 81,
-            "Fußweg": 91,
-            "connection_line": 110,
-        }
-        default_clazz = 99
-
-        def _sql_literal(s: str) -> str:
-            return s.replace("'", "''")
-
-        when_clauses = "\n".join(
-            f"WHEN '{_sql_literal(k)}' THEN {int(v)}"
-            for k, v in klasse_to_clazz.items()
-        )
-
-        case_expr = f"""
-            (CASE btrim(klasse)
-                {when_clauses}
-                ELSE {int(default_clazz)}
-            END)::int
-        """
-
+        case_expr = _clazz_case_sql()
+        ways_per_connection = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
+        connection_lines = sql.Identifier(INFDB_SOURCE_SCHEMA, "connection_lines").as_string(self.cur)
+        buildings = sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings").as_string(self.cur)
         query = f"""
-            WITH max_id AS (
-                SELECT COALESCE(MAX(way_id), 0) AS base_id
-                FROM pylovo.ways_result
-            ),
-            base AS (
+            WITH base AS (
                 SELECT
                     {case_expr} AS clazz,
                     NULL::bigint AS source,
@@ -200,7 +261,7 @@ class InfdbClient:
                     length_geo AS reverse_cost,
                     geom,
                     ('ways_per_connection:' || id::text) AS remote_id
-                FROM ways_per_connection
+                FROM {ways_per_connection}
                 WHERE postcode = %(plz)s
 
                 UNION ALL
@@ -213,8 +274,32 @@ class InfdbClient:
                     length_geo AS reverse_cost,
                     geom,
                     ('connection_lines:' || id::text) AS remote_id
-                FROM connection_lines
+                FROM {connection_lines}
                 WHERE postcode = %(plz)s
+
+                UNION ALL
+
+                SELECT
+                    {case_expr} AS clazz,
+                    NULL::bigint AS source,
+                    NULL::bigint AS target,
+                    length_geo AS cost,
+                    length_geo AS reverse_cost,
+                    geom,
+                    ('connection_lines:' || id::text) AS remote_id
+                FROM (
+                    -- lines of the PLZ's consumer buildings filed under another postcode; a line starts
+                    -- at its building's centroid (the tolerance that puts a building on its vertex)
+                    SELECT DISTINCT l.id, l.klasse, l.length_geo, l.geom
+                    FROM (
+                        SELECT COALESCE(centroid, ST_Centroid(geom)) AS c
+                        FROM {buildings}
+                        WHERE postcode = %(plz)s AND {_consumer_buildings_sql()}
+                    ) bu
+                    JOIN {connection_lines} l
+                      ON l.geom && ST_Expand(bu.c, 1e-6) AND ST_DWithin(ST_StartPoint(l.geom), bu.c, 1e-6)
+                    WHERE l.postcode IS DISTINCT FROM %(plz)s
+                ) lines_of_buildings
             )
             SELECT
                 b.clazz,
@@ -223,46 +308,162 @@ class InfdbClient:
                 b.cost,
                 b.reverse_cost,
                 b.geom,
-                (m.base_id + row_number() OVER (ORDER BY b.remote_id))::bigint AS way_id
+                (row_number() OVER (ORDER BY b.remote_id))::bigint AS way_id
             FROM base b
-            CROSS JOIN max_id m
             WHERE b.clazz != 72
         """
 
-        self.cur.execute(query, {"plz": plz})
-
-        ways = self.cur.fetchall()
+        with self.conn:
+            self.cur.execute(query, {"plz": plz})
+            ways = self.cur.fetchall()
         if not ways:
             raise ValueError("No ways found in remote DB intersecting the given PLZ geometry")
 
         return ways
+
+    def source_srid(self, table: str, schema: str | None = None) -> int:
+        """SRID of the geometries of an InfDB table, read from a row (``geometry_columns`` may say 0)."""
+        cache = self.__dict__.setdefault("_srid_cache", {})
+        key = (schema or INFDB_SOURCE_SCHEMA, table)
+        if key not in cache:
+            query = sql.SQL("SELECT ST_SRID(geom) FROM {t} WHERE geom IS NOT NULL LIMIT 1").format(
+                t=sql.Identifier(*key))
+            with self.conn:
+                self.cur.execute(query)
+                row = self.cur.fetchone()
+            cache[key] = int(row[0]) if row and row[0] else 0
+        return cache[key]
+
+    def fetch_neighboring_ways(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float,
+                        first_way_id: int) -> list:
+        """Return the street segments of other PLZ within ``ring_m`` of a PLZ polygon (its neighboring streets).
+
+        Rows have the layout of :meth:`fetch_ways_from_infdb` and way ids continuing after
+        ``first_way_id``. Only ``ways_per_connection`` is read (no house connection lines of other
+        PLZ; the lines of the PLZ's own consumer buildings come with :meth:`fetch_ways_from_infdb`,
+        whatever their postcode); segments are whole source rows found through the geometry index, and segments with
+        ``postcode`` NULL count as other PLZ.
+
+        Args:
+            plz: The PLZ whose own ways are loaded separately.
+            polygon_wkb: The PLZ polygon as WKB.
+            polygon_srid: SRID of ``polygon_wkb``.
+            ring_m: Width of the strip around the PLZ in metres.
+            first_way_id: Largest way id of the own ways; the ids of the neighboring ways follow it.
+        """
+        ways = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
+        srid = self.source_srid("ways_per_connection")
+        query = f"""
+            WITH area AS (
+                SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g
+            ), base AS (
+                SELECT
+                    {_clazz_case_sql()} AS clazz,
+                    NULL::bigint AS source,
+                    NULL::bigint AS target,
+                    w.length_geo AS cost,
+                    w.length_geo AS reverse_cost,
+                    w.geom,
+                    ('ways_per_connection:' || w.id::text) AS remote_id
+                FROM {ways} w, area a
+                WHERE w.postcode IS DISTINCT FROM %(plz)s
+                  AND w.geom && ST_Expand(a.g, %(ring)s)
+                  AND ST_DWithin(w.geom, a.g, %(ring)s)
+            )
+            SELECT b.clazz, b.source, b.target, b.cost, b.reverse_cost, b.geom,
+                   (row_number() OVER (ORDER BY b.remote_id))::bigint + %(offset)s AS way_id
+            FROM base b
+            WHERE b.clazz != 72
+        """
+        params = {"poly": polygon_wkb, "poly_srid": int(polygon_srid), "srid": srid or int(polygon_srid),
+                  "plz": int(plz), "ring": float(ring_m), "offset": int(first_way_id)}
+        with self.conn:
+            self.cur.execute(query, params)
+            return self.cur.fetchall()
+
+    def fetch_scope_wkb(self, polygon_wkb: bytes, polygon_srid: int, distance_m: float) -> bytes | None:
+        """Union of the import scope (``INFDB_OPENDATA_SCHEMA.scope``) near a region, as WKB in ``polygon_srid``.
+
+        Returns ``None`` if the InfDB has no scope table or no scope row is near the region.
+        """
+        with self.conn:
+            self.cur.execute("SELECT to_regclass(%s)", (f"{INFDB_OPENDATA_SCHEMA}.scope",))
+            if self.cur.fetchone()[0] is None:
+                return None
+        srid = self.source_srid("scope", INFDB_OPENDATA_SCHEMA)
+        query = sql.SQL("""
+            WITH area AS (
+                SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g
+            )
+            SELECT ST_AsBinary(ST_Transform(ST_Union(s.geom), %(poly_srid)s))
+            FROM {scope} s, area a
+            WHERE s.geom && ST_Expand(a.g, %(d)s) AND ST_DWithin(s.geom, a.g, %(d)s)
+        """).format(scope=sql.Identifier(INFDB_OPENDATA_SCHEMA, "scope"))
+        with self.conn:
+            self.cur.execute(query, {"poly": polygon_wkb, "poly_srid": int(polygon_srid),
+                                     "srid": srid or int(polygon_srid), "d": float(distance_m)})
+            row = self.cur.fetchone()
+        return bytes(row[0]) if row and row[0] is not None else None
+
+    def fetch_street_length_km(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float
+                               ) -> tuple[float, float]:
+        """Street length inside a PLZ polygon and in the ring of ``ring_m`` around it (other PLZ only), in km.
+
+        Only the part of a street that lies in the ring counts: a street of another PLZ that crosses the border
+        counts with its length outside the polygon, up to ``ring_m`` from it.
+        """
+        ways = sql.Identifier(INFDB_SOURCE_SCHEMA, "ways_per_connection").as_string(self.cur)
+        srid = self.source_srid("ways_per_connection")
+        query = f"""
+            WITH area AS (
+                SELECT g, ST_Buffer(g, %(ring)s) AS ring_area
+                FROM (SELECT ST_Transform(ST_SetSRID(ST_GeomFromWKB(%(poly)s), %(poly_srid)s), %(srid)s) AS g) own
+            )
+            SELECT COALESCE(SUM(ST_Length(ST_Intersection(w.geom, a.g))), 0) / 1000.0,
+                   COALESCE(SUM(ST_Length(ST_Difference(ST_Intersection(w.geom, a.ring_area), a.g)))
+                            FILTER (WHERE w.postcode IS DISTINCT FROM %(plz)s), 0) / 1000.0
+            FROM {ways} w, area a
+            WHERE w.geom && ST_Expand(a.g, %(ring)s) AND ST_DWithin(w.geom, a.g, %(ring)s)
+        """
+        with self.conn:
+            self.cur.execute(query, {"poly": polygon_wkb, "poly_srid": int(polygon_srid),
+                                     "srid": srid or int(polygon_srid), "plz": int(plz), "ring": float(ring_m)})
+            inside, ring = self.cur.fetchone()
+        return float(inside), float(ring)
     
     def fetch_postcode_from_infdb(self, plz: int) -> tuple | None:
+        """Return ``(plz, note, qkm, population, geom)`` of one PLZ from ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.
+
+        Returns:
+            The row, or ``None`` if the PLZ is unknown.
         """
-        Fetch the postcode geometry row for a single PLZ from opendata schema.
-        Returns a tuple of (plz, note, qkm, population, geom) or None if not found.
-        """
-        query = """
+        query = sql.SQL("""
             SELECT plz, note, qkm, einwohner, geom
-            FROM opendata.postcodes_germany
-            WHERE plz = %(plz)s::varchar
+            FROM {postcodes}
+            WHERE plz IN (%(plz)s::varchar, lpad(%(plz)s::varchar, 5, '0'))
             LIMIT 1;
-        """
-        self.cur.execute(query, {"plz": plz})
-        return self.cur.fetchone()
+        """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
+        with self.conn:
+            self.cur.execute(query, {"plz": plz})
+            return self.cur.fetchone()
 
     def fetch_all_postcodes_from_infdb(self) -> list[tuple]:
+        """Return all postcodes of ``INFDB_OPENDATA_SCHEMA.postcodes_germany`` for ``pylovo-setup``.
+
+        Returns:
+            ``(plz, note, qkm, population, geom)`` rows ordered by PLZ.
+
+        Raises:
+            ValueError: If the table is empty.
         """
-        Bulk-fetch all postcode rows from opendata schema for use during pylovo-setup.
-        Returns tuples of (plz, note, qkm, population, geom).
-        """
-        query = """
+        query = sql.SQL("""
             SELECT plz, note, qkm, einwohner, geom
-            FROM opendata.postcodes_germany
+            FROM {postcodes}
             ORDER BY plz;
-        """
-        self.cur.execute(query)
-        rows = self.cur.fetchall()
+        """).format(postcodes=sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany"))
+        with self.conn:
+            self.cur.execute(query)
+            rows = self.cur.fetchall()
         if not rows:
             raise ValueError("No postcode found in infdb")
 
