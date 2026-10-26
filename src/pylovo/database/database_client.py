@@ -20,6 +20,7 @@ from pylovo.database.preprocessing_mixin import PreprocessingMixin
 from pylovo.database.results_mixin import ResultsMixin
 from pylovo.database.transformer_ui_mixin import TransformerUiMixin
 from pylovo.database.utils_mixin import UtilsMixin
+from pylovo.infdb.source_reader import SourceReader
 
 # pandas warns at every read_sql_query on a psycopg2 connection, which the mixins use; every other UserWarning stays visible
 warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy connectable", category=UserWarning)
@@ -57,7 +58,9 @@ class DatabaseClient(
     * ``MvInputMixin``: LV results of a version as MV inputs (stations, loads, MV customers).
     * ``MvResultMixin``: MV variants and their results (substations, grids, nodes, lines, rings).
 
-    All queries share one psycopg2 connection (``search_path`` ``pylovo, public``) and cursor.
+    All queries share one psycopg2 connection (``search_path`` ``pylovo, public``) and cursor. The InfDB source
+    data of the MV stage are read through :meth:`source_reader`: on this connection, or with
+    ``USE_EXTERNAL_BASEDATA`` and another database on a separate read-only connection.
     Most methods do not commit; call ``commit_changes()`` or ``rollback_changes()``. Use the
     client as a context manager or call ``close()`` when done.
 
@@ -89,6 +92,9 @@ class DatabaseClient(
             "postgresql+psycopg2", username=user, password=pw,
             host=host, port=int(port), database=dbname,
         )
+        # the InfDB source schemas of the MV stage: on this connection, or with USE_EXTERNAL_BASEDATA on a
+        # separate read-only one (opened on first use)
+        self._source_reader = SourceReader.from_config(lambda: self.cur)
         try:
             self._connect()
         except psy.OperationalError as err:
@@ -109,7 +115,13 @@ class DatabaseClient(
         )
 
     def _close_handles(self) -> None:
-        """Close cursor, connection and engine; safe on a partly constructed or closed client."""
+        """Close cursor, connection, engine and the source connection; safe on a partly constructed or closed client."""
+        try:
+            if getattr(self, "_source_reader", None) is not None:
+                self._source_reader.close()
+        except Exception as e:
+            print(f"Warning: Error closing the InfDB source connection: {e}")
+
         try:
             if hasattr(self, 'cur') and self.cur:
                 self.cur.close()

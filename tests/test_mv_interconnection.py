@@ -715,6 +715,12 @@ class StageDb:
     def try_lock_variant(self, version_id, variant_id):
         return True
 
+    def check_mv_sources(self):
+        return []
+
+    def source_reader(self):
+        return SimpleNamespace(where="the pylovo database", close=lambda: None)
+
     def generated_plz(self, version_id, plz):
         return [1]
 

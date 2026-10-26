@@ -239,14 +239,14 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _graph(args: argparse.Namespace) -> int:
-    from pylovo import config_loader
-    from pylovo.mv_grid.parameters import MvParameters, require_local_source_data
+    from pylovo.mv_grid.parameters import MvParameters
 
-    require_local_source_data(config_loader)
     params = MvParameters.from_config()
     plz_list = _plz_of(args)
     with _database_client() as dbc:
         dbc.ensure_grid_persistence_schema()
+        for message in dbc.check_mv_sources():
+            print(f"✗ {message}")
         plz = dbc.generated_plz(args.version, plz_list)
         if not plz:
             print(f"✗ none of the requested PLZ has LV grids in version {args.version}")

@@ -15,7 +15,8 @@ from pylovo.cli import mv as cli
 from pylovo.mv_grid import stage
 from pylovo.mv_grid.model import MvRunSummary
 from pylovo.mv_grid.options import MV_STAGE_VERSION
-from pylovo.mv_grid.parameters import MvParameters, MvStageError, require_local_source_data
+from pylovo.infdb.source_reader import SourceReader, source_is_remote
+from pylovo.mv_grid.parameters import MvParameters, MvStageError
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -32,6 +33,45 @@ def no_grid_generator(monkeypatch):
         raise AssertionError("GridGenerator must not be constructed")
 
     monkeypatch.setattr(grid_generator.GridGenerator, "__init__", refuse)
+
+
+class _SourceClient:
+    """A DatabaseClient whose check of the InfDB source tables returns ``messages`` or raises ``error``."""
+
+    def __init__(self, error: Exception | None = None, messages: tuple[str, ...] = ()):
+        self.error, self.messages, self.closed = error, list(messages), False
+
+    def check_mv_sources(self):
+        if self.error is not None:
+            raise self.error
+        return self.messages
+
+    def ensure_grid_persistence_schema(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+
+@pytest.fixture()
+def source_check(monkeypatch):
+    """``pylovo-generate --mv`` checks the InfDB source tables on a fake client (no database)."""
+    clients = []
+
+    def client(*args, **kwargs):
+        clients.append(_SourceClient(messages=("no osm.landuse_polygon in the pylovo database: MV settlements from "
+                                               "address buildings only",)))
+        return clients[-1]
+
+    monkeypatch.setattr(generate.dbc, "DatabaseClient", client)
+    return clients
 
 
 @pytest.fixture()
@@ -273,7 +313,7 @@ def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):
 
 
 # ---------------------------------------------------------------------------------------------- pylovo-generate
-def test_generate_hook_runs_only_with_mv(monkeypatch, config_params):
+def test_generate_hook_runs_only_with_mv(monkeypatch, capsys, config_params, source_check):
     hook = []
     monkeypatch.setattr(generate, "create_grid_multiple_plz",
                         lambda plz, parallel=True: {p: grid_generator.GenerationOutcome.GENERATED for p in plz})
@@ -290,6 +330,8 @@ def test_generate_hook_runs_only_with_mv(monkeypatch, config_params):
     assert hook[1:] == [([80803], generate.PARALLEL)]
     with pytest.raises(SystemExit):
         generate.main(["--plz", "80803", "--mv", "--no-mv"])
+    assert len(source_check) == 2 and all(c.closed for c in source_check)   # checked once per run with the MV stage
+    assert "MV stage: no osm.landuse_polygon in the pylovo database" in capsys.readouterr().out
 
 
 def test_generate_hook_runs_the_configured_variant(monkeypatch, capsys, config_params):
@@ -401,33 +443,40 @@ def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys
     cli.main(["display", "--version", "mv1", "--variant", "d3"])           # no line in a lane is no failure
 
 
-def test_source_data_of_another_database_stop_the_mv_stage_before_any_grid(monkeypatch, capsys, no_grid_generator,
-                                                                           config_params):
-    from pylovo import config_loader
-
-    monkeypatch.setattr(config_loader, "USE_EXTERNAL_BASEDATA", True)
-    monkeypatch.setattr(config_loader, "INFDB_DBNAME", "central_infdb")
+def test_missing_source_tables_stop_the_mv_stage_before_any_grid(monkeypatch, capsys, no_grid_generator,
+                                                                  config_params):
+    missing = MvStageError("the MV stage needs basedata.ways_per_junction in central_infdb@remote:6432")
+    monkeypatch.setattr(generate.dbc, "DatabaseClient", lambda *a, **k: _SourceClient(missing))
     lv = []
     monkeypatch.setattr(generate, "create_grid_single_plz",
                         lambda plz: lv.append(plz) or {plz: grid_generator.GenerationOutcome.GENERATED})
     with pytest.raises(SystemExit) as stopped:
         generate.main(["--plz", "80803", "--mv"])
     assert stopped.value.code == 1 and lv == []                          # no LV grids before the MV stage fails
-    assert "central_infdb" in capsys.readouterr().out
+    assert "MV stage cannot run: the MV stage needs basedata.ways_per_junction in central_infdb" in \
+        capsys.readouterr().out
+    clients = []
+    monkeypatch.setattr(cli, "_database_client", lambda: clients.append(_SourceClient(missing)) or clients[-1])
     with pytest.raises(SystemExit):
         cli.main(["graph", "--version", "v1", "--plz", "80803"])
-    assert capsys.readouterr().out.startswith("✗ the MV stage reads the InfDB source data on the pylovo connection")
+    assert capsys.readouterr().out.startswith("✗ the MV stage needs basedata.ways_per_junction")
+    monkeypatch.setattr(stage, "_database_client", lambda log_file: clients.append(_SourceClient(missing))
+                        or clients[-1])
     with pytest.raises(MvStageError, match="central_infdb"):
         stage.run_mv_stage("v1", [80803], MvParameters())
+    assert all(c.closed for c in clients)
 
 
-def test_external_source_data_in_the_pylovo_database_keep_the_mv_stage():
-    pylovo = {"DBNAME": "pylovo", "HOST": "localhost", "PORT": "5432"}
+def test_source_data_are_remote_only_in_another_database():
+    pylovo = {"USE_INFDB": True, "DBNAME": "pylovo", "HOST": "localhost", "PORT": "5432"}
     same = SimpleNamespace(USE_EXTERNAL_BASEDATA=True, INFDB_DBNAME="pylovo", INFDB_HOST="localhost", INFDB_PORT=5432,
                            **pylovo)
-    require_local_source_data(same)                                    # unset INFDB_* values fall back to pylovo's
-    require_local_source_data(SimpleNamespace(USE_EXTERNAL_BASEDATA=False, INFDB_DBNAME="x", INFDB_HOST="y",
-                                              INFDB_PORT=1, **pylovo))
-    with pytest.raises(MvStageError, match="infdb@remote:6432"):
-        require_local_source_data(SimpleNamespace(USE_EXTERNAL_BASEDATA=True, INFDB_DBNAME="infdb", INFDB_HOST="remote",
-                                                  INFDB_PORT="6432", **pylovo))
+    assert not source_is_remote(same)                                  # unset INFDB_* values fall back to pylovo's
+    assert not source_is_remote(SimpleNamespace(USE_EXTERNAL_BASEDATA=False, INFDB_DBNAME="x", INFDB_HOST="y",
+                                                INFDB_PORT=1, **pylovo))
+    other = SimpleNamespace(USE_EXTERNAL_BASEDATA=True, INFDB_DBNAME="infdb", INFDB_HOST="remote", INFDB_PORT="6432",
+                            INFDB_USER="u", INFDB_PASSWORD="p", **pylovo)
+    assert source_is_remote(other)
+    reader = SourceReader.from_config(lambda: None, other)              # no connection before the first query
+    assert reader.remote and reader.where == "infdb@remote:6432"
+    assert not SourceReader.from_config(lambda: None, same).remote

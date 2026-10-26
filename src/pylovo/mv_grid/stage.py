@@ -41,7 +41,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.mv_grid.model import CASES, DistrictInput, GridOutcome, MvRunSummary, demand_line
-from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, require_local_source_data
+from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
 
 #: Memory of one district worker after its imports plus a large district (GB), measured ~0.3 + district data.
 WORKER_GB: float = 0.6
@@ -571,7 +571,6 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
     """
     params = params if params is not None else MvParameters.from_config()
     config = _config()
-    require_local_source_data(config)
     variant_id = params.variant_id
     start = time.time()
     logger = _logger("MvGrid", log_file)
@@ -580,6 +579,9 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
     locked = False
     try:
         dbc.ensure_grid_persistence_schema()
+        for message in dbc.check_mv_sources():
+            logger.warning(message)
+        logger.info(f"InfDB source data read from {dbc.source_reader().where}")
         if not dbc.try_lock_variant(version_id, variant_id):
             raise MvStageError(f"another MV run of variant {variant_id} of version {version_id} is active")
         locked = True
@@ -655,6 +657,7 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         # 4. districts
         pending = dbc.pending_grids(version_id, variant_id)
         dbc.commit_changes()                       # no open transaction is inherited by the workers
+        dbc.source_reader().close()                # nor the InfDB connection (opened again when needed)
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
         # 5. post

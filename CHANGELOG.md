@@ -11,15 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
 
-### Fixed
-- Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000 (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
-- Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
-
 ### Added
 - Add the `opendss` extra for the OpenDSS backend
+- Run the MV stage with `USE_EXTERNAL_BASEDATA`: it reads the InfDB through a separate read-only connection (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-prerequisites))
+
+### Changed
+- Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again
 
 ### Removed
 - Remove the statistics report and CSV files that the OpenDSS backend wrote into the working directory
+
+### Fixed
+- Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000 (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
+- Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
 
 ## [1.0.0] - 2026-10-22
 ### Changed

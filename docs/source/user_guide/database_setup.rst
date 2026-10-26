@@ -36,8 +36,8 @@ in another database, e.g. on your own machine: point ``DBNAME``, ``HOST`` and th
 other connection variables at that database, set ``USE_EXTERNAL_BASEDATA=True``
 and give the central InfDB as ``INFDB_DBNAME``, ``INFDB_HOST``, ``INFDB_PORT``,
 ``INFDB_USER`` and ``INFDB_PASSWORD``. PyLovo only reads from the central InfDB,
-in short read-only transactions, also through PgBouncer. This covers the LV grids and the
-HTTP API; the MV stage still needs the InfDB schemas in the pylovo database.
+in short read-only transactions, also through PgBouncer. This covers the LV grids, the MV
+stage and the HTTP API.
 
 File-based setup (USE_INFDB=False)
 ----------------------------------

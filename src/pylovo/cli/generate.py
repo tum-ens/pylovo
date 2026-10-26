@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-import pylovo.config_loader as config_loader
 import pylovo.database.database_client as dbc
 from pylovo.cli import parsers
 from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, USE_INFDB, VERSION_ID
@@ -149,12 +148,16 @@ def main(argv: list[str] | None = None):
     run_mv = MV_GRID_GENERATION if args.mv is None else args.mv
     mv_params = None
     if run_mv:   # before the LV grids, not after them
-        from pylovo.mv_grid.parameters import MvParameters, MvStageError, require_local_source_data
+        import psycopg2
+
+        from pylovo.mv_grid.parameters import MvParameters, MvStageError
 
         try:
-            require_local_source_data(config_loader)
             mv_params = MvParameters.from_config()   # resolves the line and transformer types (pandapower)
-        except (MvStageError, ValueError) as exc:
+            with dbc.DatabaseClient() as client:     # the InfDB source tables of the MV stage
+                for message in client.check_mv_sources():
+                    print(f"MV stage: {message}")
+        except (MvStageError, ValueError, psycopg2.Error) as exc:
             print(f"MV stage cannot run: {exc}")
             raise SystemExit(1) from None
 

@@ -1,23 +1,31 @@
 """Queries of the external MV inputs: OSM power features and the eGon-data HV/MV substations.
 
 Reads HV/MV substation candidates and their tags from the OSM schema of InfDB (``INFDB_OSM_SCHEMA``), the
-eGon-data HV/MV substations (``pylovo.egon_*`` if populated, else the copies in ``INFDB_OPENDATA_SCHEMA``). The rules
-that turn these rows into MV inputs are pure functions of :mod:`pylovo.mv_grid.substations`.
+eGon-data HV/MV substations (``pylovo.egon_hvmv_substation`` if populated, else the copy in
+``INFDB_OPENDATA_SCHEMA``). The rules that turn these rows into MV inputs are pure functions of
+:mod:`pylovo.mv_grid.substations`.
+
+The InfDB tables are read through the source reader (:mod:`pylovo.infdb.source_reader`): in the pylovo database, or
+with ``USE_EXTERNAL_BASEDATA`` on a separate read-only connection. Those queries filter by index only (bounding boxes
+in the SRID of each layer); the exact tests against the planning region run in the pylovo database on its
+``ST_Subdivide`` pieces (:meth:`MvSourceMixin.near_region`), which gives the same result as one test against the
+whole region.
 
 Every method takes its region or PLZ list explicitly, returns a DataFrame in ``TARGET_EPSG`` coordinates, is
-read-only and never commits.
+read-only (temporary tables aside) and never commits.
 """
 
 from __future__ import annotations
 
 from typing import Any, Sequence
 
+import numpy as np
 import pandas as pd
 from psycopg2 import sql
 
-from pylovo.config_loader import INFDB_OPENDATA_SCHEMA, INFDB_OSM_SCHEMA, TARGET_EPSG
+from pylovo.config_loader import INFDB_OPENDATA_SCHEMA, INFDB_OSM_SCHEMA, INFDB_SOURCE_SCHEMA, TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
-from pylovo.database.mv_graph_mixin import SRID_SQL
+from pylovo.infdb.source_reader import regclass_text
 
 #: Columns of :meth:`MvSourceMixin.osm_substation_candidates` (= ``substations.CANDIDATE_COLUMNS``).
 OSM_CANDIDATE_COLUMNS: tuple[str, ...] = ("source_id", "voltage", "substation_tag", "frequency", "operator", "name",
@@ -36,10 +44,32 @@ EGON_SUBSTATION_TABLE: str = "egon_hvmv_substation"
 #: test: it covers the difference between a transformed box and the transformed region, so results stay exact.
 SEARCH_BOX_MARGIN_M: float = 1000.0
 
-# power=substation features (points, ways, relations) of the OSM schema with their tags, inside the search buffer
-# of the planning region. The tags join uses (geom_type, osm_id): node, way and relation ids can collide. Every OSM
-# layer is first filtered in its own SRID (``geom && box``, GiST index) by the search box of the region (or of the
-# candidate for the plants within 100 m), then tested exactly in TARGET_EPSG.
+#: Largest number of vertices of a piece of the planning region in the exact tests (``ST_Subdivide``).
+REGION_PIECE_VERTICES: int = 256
+
+# The planning region as pieces with a GiST index: a test against the pieces is exact (a point lies within a distance
+# of the region when it does of one piece) and finds the near pieces through the index, while one test against a
+# region of hundreds of postcodes evaluates the whole multipolygon per row.
+_REGION_PIECES_SQL = sql.SQL("""
+CREATE TEMP TABLE mv_region_piece ON COMMIT DROP AS
+SELECT ST_Subdivide(ST_GeomFromWKB(%(region)s, {epsg}), %(vertices)s) AS g
+""")
+
+_REGION_POINTS_SQL = sql.SQL("""
+CREATE TEMP TABLE mv_region_point ON COMMIT DROP AS
+SELECT (p.k - 1)::integer AS k, ST_SetSRID(ST_MakePoint(p.x, p.y), {epsg}) AS pt
+FROM unnest(%(x)s::float8[], %(y)s::float8[]) WITH ORDINALITY AS p(x, y, k)
+""")
+
+_NEAR_REGION_SQL = """
+SELECT p.k FROM mv_region_point p
+WHERE EXISTS (SELECT 1 FROM mv_region_piece r WHERE ST_DWithin(p.pt, r.g, %(d)s))
+"""
+
+# power=substation features (points, ways, relations) of the OSM schema with their tags, in the search box of the
+# planning region. The tags join uses (geom_type, osm_id): node, way and relation ids can collide. Every OSM layer is
+# filtered in its own SRID (``geom && box``, GiST index) by the search box of the region (or of the candidate for the
+# plants within 100 m); the exact test within the search buffer runs afterwards on the points (:meth:`near_region`).
 _OSM_CANDIDATES_SQL = sql.SQL("""
 WITH cand AS (
     SELECT 'N'::char(1) AS gt, p.osm_id AS tag_id, 'node/' || p.osm_id AS source_id,
@@ -78,13 +108,13 @@ SELECT c.source_id, t.tags->>'voltage' AS voltage, t.tags->>'substation' AS subs
           AND ST_DWithin(ST_Transform(pl.geom, {epsg}), c.pt, 100)) AS plant
 FROM pts c
 LEFT JOIN {osm}.tags t ON t.geom_type = c.gt AND t.osm_id = c.tag_id
-WHERE ST_DWithin(c.pt, ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s)
 ORDER BY c.source_id;
 """)
 
-# power=substation and power=transformer features, power=pole nodes, and transformer-tower buildings inside the
-# planning region (plus 1 km for the HV/MV sites at its edge), with their tags (pylovo.mv_grid.osm_coverage tells the
-# MV/LV stations from the sites of a higher level). Prefiltered in the source SRIDs as the candidates.
+# power=substation and power=transformer features, power=pole nodes, and transformer-tower buildings in the search
+# box of the planning region with their tags (pylovo.mv_grid.osm_coverage tells the MV/LV stations from the sites of
+# a higher level); prefiltered in the source SRIDs as the candidates, then kept within 1 km of the region (the HV/MV
+# sites at its edge) by :meth:`near_region`.
 _OSM_OBJECTS_SQL = sql.SQL("""
 WITH obj AS (
     SELECT 'N'::char(1) AS gt, p.osm_id AS tag_id, 'node/' || p.osm_id AS source_id, p.osm_subtype AS kind,
@@ -111,26 +141,38 @@ pts AS (SELECT o.*, ST_Transform(o.src, {epsg}) AS pt FROM obj o)
 SELECT o.source_id, o.kind, t.tags::text AS tags, ST_X(o.pt) AS x, ST_Y(o.pt) AS y, o.area_src AS area_m2
 FROM pts o
 LEFT JOIN {osm}.tags t ON t.geom_type = o.gt AND t.osm_id = o.tag_id
-WHERE ST_DWithin(o.pt, ST_GeomFromWKB(%(region)s, {epsg}), 1000.0)
 ORDER BY o.source_id;
 """)
 
-# OSM land-use polygons clipped to the planning region (prefiltered in the source SRID as the candidates).
+# OSM land-use polygons in the search box of the planning region (staged into pg_temp.mv_landuse_raw) ...
+_OSM_LANDUSE_STAGE_SQL = sql.SQL("""
+SELECT l.osm_id, l.osm_type, l.geom FROM {osm}.landuse_polygon l
+WHERE l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(landuse_srid)s)
+""")
+# ... clipped to the region
 _OSM_LANDUSE_SQL = sql.SQL("""
 WITH r AS (SELECT ST_GeomFromWKB(%(region)s, {epsg}) AS g)
 SELECT l.osm_type, ST_AsBinary(ST_Intersection(ST_MakeValid(ST_Transform(l.geom, {epsg})), r.g))
-FROM {osm}.landuse_polygon l, r
-WHERE l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(landuse_srid)s)
-  AND ST_Intersects(ST_Transform(l.geom, {epsg}), r.g)
+FROM pg_temp.mv_landuse_raw l, r
+WHERE ST_Intersects(ST_Transform(l.geom, {epsg}), r.g)
 ORDER BY l.osm_id;
 """)
 
+# the municipality polygons of the AGS (staged into pg_temp.mv_scope_raw) ...
+_SCOPE_STAGE_SQL = sql.SQL("SELECT s.ags, s.geom FROM {scope} s WHERE s.ags::text = ANY(%(ags)s)")
+# ... and their area inside the region (km²)
+_SCOPE_AREAS_SQL = sql.SQL("""
+SELECT s.ags::text, ST_Area(ST_Intersection(ST_Transform(s.geom, {epsg}), ST_GeomFromWKB(%(region)s, {epsg}))) / 1e6
+FROM pg_temp.mv_scope_raw s
+""")
+
+# every eGon-data substation (a small table of Germany); the test within the search buffer runs on the points
 _EGON_SUBSTATIONS_SQL = sql.SQL("""
 SELECT s.bus_id::bigint AS bus_id, NULLIF(btrim(s.voltage::text), 'NA') AS voltage,
        NULLIF(btrim(s.osm_id::text), 'NA') AS osm_id,
        ST_X(ST_Transform(s.geom, {epsg})) AS x, ST_Y(ST_Transform(s.geom, {epsg})) AS y
 FROM {table} s
-WHERE ST_DWithin(ST_Transform(s.geom, {epsg}), ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s)
+WHERE s.geom IS NOT NULL
 ORDER BY s.bus_id;
 """)
 
@@ -147,11 +189,6 @@ def _schema(name: str | None, key: str) -> sql.Identifier:
         raise _stage_error(f"{key} is not set: the MV stage reads the InfDB schemas in the pylovo database "
                            "(USE_INFDB=True)")
     return sql.Identifier(name)
-
-
-def _regclass_text(schema: str, table: str) -> str:
-    """``"schema"."table"`` for ``to_regclass`` (quoted, so mixed case and odd names stay exact)."""
-    return ".".join('"' + part.replace('"', '""') + '"' for part in (schema, table))
 
 
 def _wkb(value: Any) -> bytes | None:
@@ -194,11 +231,72 @@ def _frame(rows: list[tuple], columns: Sequence[str], floats: Sequence[str] = ()
 class MvSourceMixin(BaseMixin):
     """Read the OSM and eGon-data inputs of the MV stage."""
 
+    def check_mv_sources(self) -> list[str]:
+        """Check, before any work, that the InfDB source tables of the MV stage exist and may be read.
+
+        Required: the ways and buildings of ``INFDB_SOURCE_SCHEMA`` (routing graph, settlements) and the OSM power
+        features with their tags (HV/MV substations). The OSM land use, MV lines and transformer towers and the
+        municipality areas (``INFDB_OPENDATA_SCHEMA.scope``) are used when they exist.
+
+        Returns:
+            One message per missing optional table (for the log).
+
+        Raises:
+            MvStageError: A schema is not set, or a required table is missing; the message names the tables and
+                the database that was searched.
+        """
+        reader = self.source_reader()
+        required = [(INFDB_SOURCE_SCHEMA, "ways_per_junction"), (INFDB_SOURCE_SCHEMA, "buildings"),
+                    (INFDB_OSM_SCHEMA, "infrastructure_point"), (INFDB_OSM_SCHEMA, "infrastructure_polygon"),
+                    (INFDB_OSM_SCHEMA, "tags")]
+        optional = {(INFDB_OSM_SCHEMA, "landuse_polygon"): "MV settlements from address buildings only",
+                    (INFDB_OSM_SCHEMA, "infrastructure_line"): "no OSM MV lines, every MV line is a cable",
+                    (INFDB_OSM_SCHEMA, "building_polygon"): "no transformer towers in the OSM coverage report",
+                    (INFDB_OPENDATA_SCHEMA, "scope"): "MV_NOMINAL_VOLTAGE_KV auto finds no municipality areas"}
+        if not INFDB_SOURCE_SCHEMA or not INFDB_OSM_SCHEMA:
+            raise _stage_error("the MV stage reads the InfDB schemas: set USE_INFDB, INFDB_SOURCE_SCHEMA and "
+                               "INFDB_OSM_SCHEMA in the .env file")
+        missing = [f"{s}.{t}" for s, t in required if not reader.table_exists(s, t)]
+        if missing:
+            raise _stage_error(f"the MV stage needs {', '.join(missing)} in {reader.where}")
+        return [f"no {s or '<INFDB_OPENDATA_SCHEMA>'}.{t} in {reader.where}: {effect}"
+                for (s, t), effect in optional.items() if not reader.table_exists(s, t)]
+
     def _osm_srid(self, table: str) -> int:
         """The SRID of the geometries of an OSM layer (``TARGET_EPSG`` without geometries), for the prefilters."""
-        self.cur.execute(SRID_SQL.format(table=sql.Identifier(INFDB_OSM_SCHEMA, table)))
-        row = self.cur.fetchone()
-        return int(row[0]) if row and row[0] else int(TARGET_EPSG)
+        return int(self.source_reader().srid(INFDB_OSM_SCHEMA, table) or TARGET_EPSG)
+
+    def near_region(self, xy: np.ndarray, region_wkb: bytes, distance_m: float) -> np.ndarray:
+        """Which points lie within ``distance_m`` of the planning region (``ST_DWithin`` in ``TARGET_EPSG``).
+
+        The test runs in the pylovo database against the ``ST_Subdivide`` pieces of the region (temporary tables
+        ``mv_region_piece`` and ``mv_region_point``, dropped at commit), with the same result as one test against the
+        whole region.
+
+        Args:
+            xy: ``(n, 2)`` point coordinates (``TARGET_EPSG``).
+            region_wkb: The planning region (WKB, ``TARGET_EPSG``).
+            distance_m: The distance.
+
+        Returns:
+            Boolean mask of length ``n``.
+        """
+        xy = np.asarray(xy, dtype=float).reshape(-1, 2)
+        if not len(xy):
+            return np.zeros(0, dtype=bool)
+        epsg = int(TARGET_EPSG)
+        self.cur.execute("DROP TABLE IF EXISTS pg_temp.mv_region_piece, pg_temp.mv_region_point")
+        self.cur.execute(_REGION_PIECES_SQL.format(epsg=sql.Literal(epsg)),
+                         {"region": _wkb(region_wkb), "vertices": REGION_PIECE_VERTICES})
+        self.cur.execute("CREATE INDEX ON mv_region_piece USING gist (g)")
+        self.cur.execute(_REGION_POINTS_SQL.format(epsg=sql.Literal(epsg)),
+                         {"x": [float(v) for v in xy[:, 0]], "y": [float(v) for v in xy[:, 1]]})
+        self.cur.execute("ANALYZE mv_region_piece")
+        self.cur.execute(_NEAR_REGION_SQL, {"d": float(distance_m)})
+        mask = np.zeros(len(xy), dtype=bool)
+        mask[[int(r[0]) for r in self.cur.fetchall()]] = True
+        self.cur.execute("DROP TABLE pg_temp.mv_region_piece, pg_temp.mv_region_point")
+        return mask
 
     # ------------------------------------------------------------------ OSM
     def osm_substation_candidates(self, region_wkb: bytes, buffer_m: float) -> pd.DataFrame:
@@ -226,12 +324,14 @@ class MvSourceMixin(BaseMixin):
         """
         query = _OSM_CANDIDATES_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
                                            epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m),
-                                 "box": _search_box(_wkb(region_wkb), buffer_m), "margin_m": SEARCH_BOX_MARGIN_M,
-                                 "point_srid": self._osm_srid("infrastructure_point"),
-                                 "polygon_srid": self._osm_srid("infrastructure_polygon")})
-        rows = [(*row[:10], _wkb(row[10]), row[11], row[12] if len(row) > 12 else None) for row in self.cur.fetchall()]
-        return _frame(rows, OSM_CANDIDATE_COLUMNS, floats=("x", "y", "area_m2"), bools=("in_plant",))
+        found = self.source_reader().fetchall(query, {
+            "box": _search_box(_wkb(region_wkb), buffer_m), "margin_m": SEARCH_BOX_MARGIN_M,
+            "point_srid": self._osm_srid("infrastructure_point"),
+            "polygon_srid": self._osm_srid("infrastructure_polygon")})
+        rows = [(*row[:10], _wkb(row[10]), row[11], row[12] if len(row) > 12 else None) for row in found]
+        frame = _frame(rows, OSM_CANDIDATE_COLUMNS, floats=("x", "y", "area_m2"), bools=("in_plant",))
+        keep = self.near_region(frame[["x", "y"]].to_numpy(dtype=float), region_wkb, buffer_m)
+        return frame[keep].reset_index(drop=True)
 
     def municipality_areas(self, ags: Sequence[str], region_wkb: bytes) -> dict[str, float]:
         """The area (km²) of each municipality inside the planning region (``INFDB_OPENDATA_SCHEMA.scope``).
@@ -245,12 +345,15 @@ class MvSourceMixin(BaseMixin):
         """
         if not len(ags):
             return {}
-        query = sql.SQL("""SELECT s.ags::text, ST_Area(ST_Intersection(ST_Transform(s.geom, {epsg}),
-                                                                    ST_GeomFromWKB(%(region)s, {epsg}))) / 1e6
-                           FROM {schema}.scope s WHERE s.ags::text = ANY(%(ags)s)""").format(
-            schema=_schema(INFDB_OPENDATA_SCHEMA, "INFDB_OPENDATA_SCHEMA"), epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb), "ags": [str(a) for a in ags]})
-        return {str(a): float(km2) for a, km2 in self.cur.fetchall() if km2 is not None}
+        reader = self.source_reader()
+        schema = _schema(INFDB_OPENDATA_SCHEMA, "INFDB_OPENDATA_SCHEMA")
+        reader.stage("mv_scope_raw", _SCOPE_STAGE_SQL.format(scope=sql.Identifier(INFDB_OPENDATA_SCHEMA, "scope")),
+                     {"ags": [str(a) for a in ags]},
+                     lambda: reader.column_types(schema.strings[0], "scope", ("ags", "geom")))
+        self.cur.execute(_SCOPE_AREAS_SQL.format(epsg=sql.Literal(TARGET_EPSG)), {"region": _wkb(region_wkb)})
+        areas = {str(a): float(km2) for a, km2 in self.cur.fetchall() if km2 is not None}
+        self.cur.execute("DROP TABLE pg_temp.mv_scope_raw")
+        return areas
 
     def osm_power_objects(self, region_wkb: bytes) -> pd.DataFrame:
         """The ``power=substation``, ``power=transformer`` and ``power=pole`` features and the ``transformer_tower``
@@ -267,58 +370,76 @@ class MvSourceMixin(BaseMixin):
         """
         query = _OSM_OBJECTS_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
                                         epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb), "box": _search_box(_wkb(region_wkb), 1000.0),
-                                 "point_srid": self._osm_srid("infrastructure_point"),
-                                 "polygon_srid": self._osm_srid("infrastructure_polygon"),
-                                 "building_srid": self._osm_srid("building_polygon")})
-        return _frame(self.cur.fetchall(), OSM_OBJECT_COLUMNS, floats=("x", "y", "area_m2"))
+        found = self.source_reader().fetchall(query, {
+            "box": _search_box(_wkb(region_wkb), 1000.0),
+            "point_srid": self._osm_srid("infrastructure_point"),
+            "polygon_srid": self._osm_srid("infrastructure_polygon"),
+            "building_srid": self._osm_srid("building_polygon")})
+        frame = _frame(found, OSM_OBJECT_COLUMNS, floats=("x", "y", "area_m2"))
+        keep = self.near_region(frame[["x", "y"]].to_numpy(dtype=float), region_wkb, 1000.0)
+        return frame[keep].reset_index(drop=True)
 
     def osm_landuse(self, region_wkb: bytes) -> pd.DataFrame:
         """The OSM ``landuse`` polygons clipped to the planning region: ``osm_type`` and ``geom_wkb`` (WKB,
         ``TARGET_EPSG``).
 
+        The polygons in the search box are staged (``pg_temp.mv_landuse_raw``) and clipped in the pylovo database.
+
         Raises:
             MvStageError: If ``INFDB_OSM_SCHEMA`` is not set.
         """
-        query = _OSM_LANDUSE_SQL.format(osm=_schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA"),
-                                        epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb), "box": _search_box(_wkb(region_wkb), 0.0),
-                                 "landuse_srid": self._osm_srid("landuse_polygon")})
-        return _frame([(t, _wkb(g)) for t, g in self.cur.fetchall()], OSM_LANDUSE_COLUMNS)
+        reader = self.source_reader()
+        epsg = sql.Literal(TARGET_EPSG)
+        osm = _schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA")
+        reader.stage("mv_landuse_raw", _OSM_LANDUSE_STAGE_SQL.format(osm=osm, epsg=epsg),
+                     {"box": _search_box(_wkb(region_wkb), 0.0), "landuse_srid": self._osm_srid("landuse_polygon")},
+                     lambda: reader.column_types(INFDB_OSM_SCHEMA, "landuse_polygon", ("osm_id", "osm_type", "geom")))
+        self.cur.execute(_OSM_LANDUSE_SQL.format(epsg=epsg), {"region": _wkb(region_wkb)})
+        frame = _frame([(t, _wkb(g)) for t, g in self.cur.fetchall()], OSM_LANDUSE_COLUMNS)
+        self.cur.execute("DROP TABLE pg_temp.mv_landuse_raw")
+        return frame
 
     # ------------------------------------------------------------------ eGon
-    def _egon_table(self, table: str) -> tuple[str, sql.Identifier] | None:
-        """The schema and qualified name of an eGon-data table: ``pylovo`` if filled, else the opendata schema.
+    def _egon_table(self, table: str) -> tuple[str, sql.Identifier, bool] | None:
+        """Where an eGon-data table is read: ``pylovo`` (the pylovo database) if filled, else the opendata schema
+        of the InfDB source.
 
         Returns:
-            ``(schema, identifier)`` of the first existing, non-empty table, or None.
+            ``(schema, identifier, local)`` of the first existing, non-empty table (``local``: in the pylovo
+            database, else read through the source reader), or None.
         """
-        for schema in ("pylovo", INFDB_OPENDATA_SCHEMA):
+        reader = self.source_reader()
+        for schema, local in (("pylovo", True), (INFDB_OPENDATA_SCHEMA, not reader.remote)):
             if not schema:
                 continue
-            # a probe that fails would abort the caller's transaction: check existence and privilege first
-            self.cur.execute("SELECT c IS NOT NULL AND has_table_privilege(c, 'SELECT') "
-                             "FROM (SELECT to_regclass(%s) AS c) AS r", (_regclass_text(schema, table),))
-            if not self.cur.fetchone()[0]:
-                continue
             identifier = sql.Identifier(schema, table)
-            self.cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(identifier))
-            if self.cur.fetchone()[0]:
-                return schema, identifier
+            if local:
+                # a probe that fails would abort the caller's transaction: check existence and privilege first
+                self.cur.execute("SELECT c IS NOT NULL AND has_table_privilege(c, 'SELECT') "
+                                 "FROM (SELECT to_regclass(%s) AS c) AS r", (regclass_text(schema, table),))
+                if not self.cur.fetchone()[0]:
+                    continue
+                self.cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(identifier))
+                filled = bool(self.cur.fetchone()[0])
+            else:
+                filled = reader.table_exists(schema, table) and bool(
+                    reader.fetchone(sql.SQL("SELECT EXISTS (SELECT 1 FROM {})").format(identifier))[0])
+            if filled:
+                return schema, identifier, local
         return None
 
-    def _egon_table_or_raise(self, table: str) -> sql.Identifier:
+    def _egon_table_or_raise(self, table: str) -> tuple[sql.Identifier, bool]:
         found = self._egon_table(table)
         if found is None:
             raise _stage_error(f"no eGon-data table {table}: neither populated pylovo.{table} nor "
                                f"{INFDB_OPENDATA_SCHEMA or '<INFDB_OPENDATA_SCHEMA>'}.{table} exists with rows")
-        return found[1]
+        return found[1], found[2]
 
     def egon_available(self) -> tuple[bool, str]:
         """Whether the eGon-data HV/MV substations can be read (for the eTraGo bus of each site), and from which schema.
 
-        The table ``pylovo.egon_hvmv_substation`` is used if it exists and holds rows, else the copy in
-        ``INFDB_OPENDATA_SCHEMA``.
+        The table ``pylovo.egon_hvmv_substation`` (filled by ``pylovo-setup``) is used if it holds rows, else the copy
+        in ``INFDB_OPENDATA_SCHEMA`` of the InfDB source.
 
         Returns:
             ``(True, schema)`` (``"pylovo"`` or the opendata schema), or ``(False, reason)``.
@@ -326,8 +447,8 @@ class MvSourceMixin(BaseMixin):
         found = self._egon_table(EGON_SUBSTATION_TABLE)
         if found is None:
             where = f"pylovo or {INFDB_OPENDATA_SCHEMA}" if INFDB_OPENDATA_SCHEMA else "pylovo"
-            return False, (f"no rows in {EGON_SUBSTATION_TABLE} ({where}); populate the eGon-data table or provide "
-                           "the eGon-data copy in the opendata schema")
+            return False, (f"no rows in {EGON_SUBSTATION_TABLE} ({where}); run pylovo-setup to import the eGon-data "
+                           "substations")
         return True, found[0]
 
     def egon_substations(self, region_wkb: bytes, buffer_m: float) -> pd.DataFrame:
@@ -340,9 +461,15 @@ class MvSourceMixin(BaseMixin):
         Raises:
             MvStageError: If no eGon-data substation table exists with rows.
         """
-        query = _EGON_SUBSTATIONS_SQL.format(table=self._egon_table_or_raise(EGON_SUBSTATION_TABLE),
-                                             epsg=sql.Literal(TARGET_EPSG))
-        self.cur.execute(query, {"region": _wkb(region_wkb), "buffer_m": float(buffer_m)})
-        rows = [(bus_id, _na(voltage), _na(osm_id), x, y) for bus_id, voltage, osm_id, x, y in self.cur.fetchall()]
-        return _frame(rows, EGON_SUBSTATION_COLUMNS, floats=("x", "y"), ints=("bus_id",))
+        table, local = self._egon_table_or_raise(EGON_SUBSTATION_TABLE)
+        query = _EGON_SUBSTATIONS_SQL.format(table=table, epsg=sql.Literal(TARGET_EPSG))
+        if local:
+            self.cur.execute(query)
+            found = self.cur.fetchall()
+        else:
+            found = self.source_reader().fetchall(query)
+        rows = [(bus_id, _na(voltage), _na(osm_id), x, y) for bus_id, voltage, osm_id, x, y in found]
+        frame = _frame(rows, EGON_SUBSTATION_COLUMNS, floats=("x", "y"), ints=("bus_id",))
+        keep = self.near_region(frame[["x", "y"]].to_numpy(dtype=float), region_wkb, buffer_m)
+        return frame[keep].reset_index(drop=True)
 

@@ -504,10 +504,20 @@ GRAPH_ID = "g0123456789abcdef"
 STREETS = MvParameters()
 BASE_ANSWERS = [
     (r"SELECT ST_SRID\(geom\)", [(25832,)]),
-    (r"array_agg\(DISTINCT w\.ags", [(["09000001", "09000002"],)]),
-    (r"max\(w\.changelog_id\)", [(10, 12345, 7)]),
+    # the municipalities of the graph: the box of the buffered region, the extent of the ways per AGS, their class
+    (r"FROM mv_ags_region WHERE NOT ST_IsEmpty", [(0.0, 0.0, 1000.0, 1000.0)]),
+    (r"ST_Extent\(w\.geom\) AS b", [("09000001", 0.0, 0.0, 400.0, 400.0), ("09000002", 500.0, 500.0, 900.0, 900.0)]),
+    (r"THEN 0 WHEN ST_Contains", [("09000001", 1), ("09000002", 1)]),
+    (r"max\(w\.changelog_id\)", [(10, 12345, 7, 0.0, 0.0, 1000.0, 1000.0)]),
     (r"max\(b\.changelog_id\)", [(20, 9)]),
+    (r"SELECT ST_AsEWKB\(ST_Transform", [(b"box",)]),
+    (r'SELECT count\(\*\) FROM "mvg', [(100,)]),                     # rows staged from the source
 ]
+
+
+def _tables(*present: str):
+    """Answer of the existence probe of the source reader: only the given ``schema.table`` exist."""
+    return (r"to_regclass", lambda params: [(params[0].replace('"', "") in present,)])
 
 
 def test_prune_graphs_deletes_the_unreferenced_graphs_under_their_build_lock():
@@ -549,11 +559,30 @@ def test_ensure_graph_reuses_a_stored_graph_without_writing():
     graph_id = client.ensure_graph(b"\x01", MvParameters())
     assert re.fullmatch(r"g[0-9a-f]{16}", graph_id)
     texts = [t for t, _ in client.cur.statements]
-    assert not any(re.search(r"\b(INSERT|UPDATE|CREATE|DELETE)\b", t) for t in texts)
+    assert not any(re.search(r"\b(INSERT|UPDATE|DELETE)\b", t) for t in texts)        # temporary tables only
+    assert all("CREATE TEMP TABLE" in t for t in texts if re.search(r"\bCREATE\b", t))
     assert client.conn.commits == 0
-    ags_text, ags_params = next((t, p) for t, p in client.cur.statements if "array_agg(DISTINCT w.ags" in t)
-    assert '"basedata"."ways_per_junction"' in ags_text and "ST_Buffer(ST_GeomFromWKB(%(region)s, 25832)" in ags_text
-    assert ags_params == {"region": b"\x01", "src_srid": 25832, "buffer_m": 5000.0}
+    # the buffered region is computed in the pylovo database, the source is read by box and AGS only
+    region_text, region_params = next((t, p) for t, p in client.cur.statements if "mv_ags_region ON COMMIT" in t)
+    assert "ST_Buffer(ST_GeomFromWKB(%(region)s, 25832)" in region_text
+    assert region_params == {"region": b"\x01", "src_srid": 25832, "buffer_m": 5000.0}
+    ags_text, ags_params = next((t, p) for t, p in client.cur.statements if "ST_Extent(w.geom) AS b" in t)
+    assert '"basedata"."ways_per_junction"' in ags_text and "%(region)s" not in ags_text
+    assert ags_params == {"x0": 0.0, "y0": 0.0, "x1": 1000.0, "y1": 1000.0, "src_srid": 25832}
+    # both AGS lie inside the buffer by their extent: no way is read one by one
+    assert not any("mvg_ags_ways" in t and "CREATE" in t for t in texts)
+
+
+def test_graph_ags_reads_the_ways_of_the_municipalities_at_the_border_of_the_buffer():
+    answers = [a for a in BASE_ANSWERS if "THEN 0" not in a[0]] + [
+        (r"THEN 0 WHEN ST_Contains", [("09000001", 1), ("09000002", 2), ("09000003", 0)]),
+        (r"FROM mvg_ags_ways w, mv_ags_region r", [("09000002",)])]
+    client = _client(answers)
+    assert client.graph_ags(b"\x01", 5000.0) == ["09000001", "09000002"]
+    stage, params = next((t, p) for t, p in client.cur.statements if 'CREATE TEMP TABLE "mvg_ags_ways"' in t)
+    assert '"basedata"."ways_per_junction"' in stage and params["ags"] == ["09000002"]       # the border AGS only
+    assert "w.geom && ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, %(src_srid)s)" in stage
+    assert client.cur.statements[-1][0].startswith("DROP TABLE IF EXISTS pg_temp.mv_ags_region")
 
 
 def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
@@ -567,7 +596,7 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
     assert client.conn.commits == 1 and client.conn.rollbacks == 0
     texts = [t for t, _ in client.cur.statements]
     lock = next(i for i, t in enumerate(texts) if "pg_advisory_xact_lock" in t)
-    first_write = next(i for i, t in enumerate(texts) if re.search(r"\bINSERT\b|CREATE TEMP", t))
+    first_write = next(i for i, t in enumerate(texts) if re.search(r"\bINSERT\b|CREATE TEMP TABLE \"?mvg_", t))
     assert lock < first_write
     assert client.cur.statements[lock][1] == {"key": 907363, "g": graph_id}
     # source tables only through the configured schema, MV tables always schema-qualified
@@ -599,8 +628,8 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
 def test_settlement_flags_use_built_up_osm_landuse_when_present():
     answers = BASE_ANSWERS + [
         (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
-        (r"information_schema\.tables", [(True,)]),
-        (r'FROM "osm"\."landuse_polygon" l WHERE l\.osm_type', [(4107,)]),
+        _tables("osm.landuse_polygon"),
+        (r'SELECT count\(\*\) FROM "osm"\."landuse_polygon" l WHERE l\.osm_type', [(4107,)]),
         (r"WITH lone AS", [(3,)]),
         (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
     ]
@@ -608,11 +637,16 @@ def test_settlement_flags_use_built_up_osm_landuse_when_present():
     graph_id = client.ensure_graph(b"\x01", STREETS)
     texts = [t for t, _ in client.cur.statements]
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
-    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107|osm_lines 0:0:"
+    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107|osm_lines none"
     assert '"settlement_landuse": ["commercial", "industrial", "residential", "retail"]' in insert["params"]
-    landuse, params = next((t, p) for t, p in client.cur.statements if "CREATE TEMP TABLE mvg_lu ON COMMIT DROP" in t)
-    assert '"osm"."landuse_polygon"' in landuse and params["types"] == ["commercial", "industrial", "residential",
-                                                                      "retail"]
+    # the count of the fingerprint and the staged rows use the extent of the ways (EWKB box in the layer's SRID)
+    count = next(p for t, p in client.cur.statements if 'SELECT count(*) FROM "osm"."landuse_polygon"' in t)
+    assert count == {"types": ["commercial", "industrial", "residential", "retail"], "box": b"box"}
+    staged, params = next((t, p) for t, p in client.cur.statements if 'CREATE TEMP TABLE "mvg_lu_raw"' in t)
+    assert '"osm"."landuse_polygon"' in staged and params["types"] == ["commercial", "industrial", "residential",
+                                                                     "retail"]
+    landuse = next(t for t in texts if "CREATE TEMP TABLE mvg_lu ON COMMIT DROP" in t)
+    assert "FROM pg_temp.mvg_lu_raw r" in landuse
     # the land-use table is filled before the settlement flags, which test the edge midpoints against it
     flags = next(i for i, t in enumerate(texts) if "SET in_settlement" in t)
     assert texts.index(landuse) < flags
@@ -630,7 +664,7 @@ def test_osm_mv_lines_join_the_graph_at_crossings_branches_and_loose_ends(monkey
              (14, "line", {"voltage": "110000;20000"}, mv)]                     # shared towers: MV corridor
     answers = BASE_ANSWERS + [
         (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
-        (r"table_name IN \('infrastructure_line', 'tags'\)", [(True,)]),
+        _tables("osm.infrastructure_line", "osm.tags"),
         (r'FROM "osm"\.infrastructure_line l\s+WHERE l\.osm_type', [(1000, 2500, 99)]),
         (r'FROM "osm"\.infrastructure_line l\s+LEFT JOIN', lines),
         (r"WITH lone AS", [(0,)]),

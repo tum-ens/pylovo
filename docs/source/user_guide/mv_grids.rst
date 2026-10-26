@@ -44,10 +44,15 @@ Prerequisites
      - Population of the demand anchor in the run summary
      - Loaded by ``pylovo-setup``
 
-The stage needs ``USE_INFDB=True``: it reads the InfDB schemas in the pylovo database
-(:doc:`input_data`). ``USE_EXTERNAL_BASEDATA`` with the InfDB in another database is not supported
-yet: ``pylovo-generate --mv``, ``pylovo-mv generate`` and ``pylovo-mv graph`` stop before they
-start. Run the MV stage on a database that holds both the InfDB schemas and the schema ``pylovo``.
+The stage needs ``USE_INFDB=True``: it reads the InfDB schemas, by default in the pylovo
+database (:doc:`input_data`). With ``USE_EXTERNAL_BASEDATA`` and the InfDB in another database
+(:doc:`database_setup`), the stage reads it through a separate read-only connection, in short
+transactions, also through PgBouncer. The source queries filter by index only (municipality keys
+and bounding boxes); the rows the stage processes in SQL (the streets and address buildings of the
+routing graph, the land use) are copied into temporary tables of the pylovo database for the run,
+and every exact test against the planning region runs there. The results are the same as with the
+InfDB schemas in the pylovo database. ``pylovo-generate --mv``, ``pylovo-mv generate`` and
+``pylovo-mv graph`` check the required InfDB tables before they start.
 
 LV version
 ~~~~~~~~~~
@@ -682,8 +687,10 @@ Troubleshooting
 ``MV variant(s) <version>/<variant> are being generated or coupled right now; delete them when the run has finished``
    ``pylovo-mv delete`` and the ``pylovo-delete`` commands refuse to delete a variant, a postcode or a
    version while a ``generate`` or ``couple`` of an affected variant runs. Wait for the run.
-``the MV stage reads the InfDB source data on the pylovo connection, but USE_EXTERNAL_BASEDATA points to ...``
-   The InfDB schemas are in another database (:ref:`mv-prerequisites`).
+``the MV stage needs <schema>.<table>, ... in <database>``
+   A required InfDB table is missing in the database of the InfDB source data (the pylovo
+   database, or with ``USE_EXTERNAL_BASEDATA`` the ``INFDB_*`` database), or the user may not read
+   it (:ref:`mv-prerequisites`).
 ``none of the requested PLZ has LV grids in version <version>``
    Generate the LV grids first, or check ``--version``. ``pylovo-mv`` never uses ``VERSION_ID``.
 ``PLZ ... of version <version> are being generated right now``

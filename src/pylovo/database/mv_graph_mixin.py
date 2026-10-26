@@ -80,22 +80,64 @@ _OSM_KLASSEN = (OSM_LINE_KLASSE, OSM_CONNECTOR_KLASSE)
 _EDGE_COLUMNS = "edge_id AS id, source, target, length_m AS cost, length_m AS reverse_cost"
 
 # ---------------------------------------------------------------------------------------------------- SQL templates
-# {ways}, {buildings}: sql.Identifier(INFDB_SOURCE_SCHEMA, ...); {epsg}: sql.Literal(TARGET_EPSG)
-SRID_SQL = sql.SQL("SELECT ST_SRID(geom) FROM {table} WHERE geom IS NOT NULL LIMIT 1")
+# {ways}, {buildings}: sql.Identifier(INFDB_SOURCE_SCHEMA, ...); {epsg}: sql.Literal(TARGET_EPSG). The statements on
+# the source tables run through the source reader (pylovo.infdb.source_reader): in the pylovo database, or with
+# USE_EXTERNAL_BASEDATA on a separate read-only connection; they filter by index only (AGS, bounding boxes) and the
+# exact tests against the region run in the pylovo database.
 
-# the buffer of the constant region is computed once and tested as a prepared geometry; ST_DWithin against a large
-# multipolygon evaluates the distance per row and took 35 times longer on the test regions
-GRAPH_AGS_SQL = sql.SQL("""
-    SELECT COALESCE(array_agg(DISTINCT w.ags::text ORDER BY w.ags::text), ARRAY[]::text[])
-    FROM {ways} w
-    WHERE ST_Intersects(w.geom, ST_Transform(ST_Buffer(ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s),
-                                             %(src_srid)s))
+# The municipalities of the graph: the AGS whose ways intersect the buffered planning region. The buffer of the
+# constant region is computed once (in the source SRID) and tested as a prepared geometry; ST_DWithin against a large
+# multipolygon evaluates the distance per row and took 35 times longer on the test regions. Per AGS the extent of its
+# ways inside the bounding box of that buffer is read from the source; an AGS whose extent misses the buffer has no
+# way in it, one whose extent lies inside it has all of them in it, and only the ways of the AGS between are read
+# and tested one by one.
+AGS_REGION_SQL = sql.SQL("""
+    CREATE TEMP TABLE mv_ags_region ON COMMIT DROP AS
+    SELECT ST_Transform(ST_Buffer(ST_GeomFromWKB(%(region)s, {epsg}), %(buffer_m)s), %(src_srid)s) AS g
+""")
+AGS_REGION_BOX_SQL = "SELECT ST_XMin(g), ST_YMin(g), ST_XMax(g), ST_YMax(g) FROM mv_ags_region WHERE NOT ST_IsEmpty(g)"
+
+AGS_EXTENTS_SQL = sql.SQL("""
+    SELECT x.ags, ST_XMin(x.b), ST_YMin(x.b), ST_XMax(x.b), ST_YMax(x.b)
+    FROM (SELECT w.ags::text AS ags, ST_Extent(w.geom) AS b
+          FROM {ways} w
+          WHERE w.geom && ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, %(src_srid)s) AND w.ags IS NOT NULL
+          GROUP BY w.ags::text) x
 """)
 
+AGS_EXTENT_TEMP_SQL = """
+    CREATE TEMP TABLE mv_ags_extent ON COMMIT DROP AS
+    SELECT * FROM unnest(%(ags)s::text[], %(x0)s::float8[], %(y0)s::float8[], %(x1)s::float8[], %(y1)s::float8[])
+                  AS e(ags, x0, y0, x1, y1)
+"""
+
+AGS_CLASSES_SQL = """
+    SELECT e.ags, CASE WHEN NOT ST_Intersects(r.g, e.b) THEN 0 WHEN ST_Contains(r.g, e.b) THEN 1 ELSE 2 END
+    FROM (SELECT ags, ST_SetSRID(ST_MakeBox2D(ST_Point(x0, y0), ST_Point(x1, y1))::geometry, %(src_srid)s) AS b
+          FROM mv_ags_extent) e, mv_ags_region r
+"""
+
+AGS_WAYS_SQL = sql.SQL("""
+    SELECT w.ags, w.geom FROM {ways} w
+    WHERE w.ags::text = ANY(%(ags)s) AND w.geom && ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, %(src_srid)s)
+""")
+AGS_EXACT_SQL = "SELECT DISTINCT w.ags::text FROM mvg_ags_ways w, mv_ags_region r WHERE ST_Intersects(w.geom, r.g)"
+DROP_AGS_TEMP_SQL = "DROP TABLE IF EXISTS pg_temp.mv_ags_region, pg_temp.mv_ags_extent, pg_temp.mvg_ags_ways"
+
+# also the extent of the ways (source SRID), which bounds the land use and OSM lines of the fingerprint
 WAYS_FINGERPRINT_SQL = sql.SQL("""
-    SELECT count(*), COALESCE(round(sum(ST_Length(w.geom))::numeric), 0), max(w.changelog_id)
+    SELECT count(*), COALESCE(round(sum(ST_Length(w.geom))::numeric), 0), max(w.changelog_id),
+           ST_XMin(ST_Extent(w.geom)), ST_YMin(ST_Extent(w.geom)), ST_XMax(ST_Extent(w.geom)),
+           ST_YMax(ST_Extent(w.geom))
     FROM {ways} w
     WHERE w.ags::text = ANY(%(ags)s)
+""")
+
+# The extent of the graph's ways (source SRID) as a box in another SRID (EWKB), the prefilter of the source rows in
+# the extent: through TARGET_EPSG, widened by %(pad)s there, as the build widens the extent of its edges.
+EXTENT_BOX_SQL = sql.SQL("""
+    SELECT ST_AsEWKB(ST_Transform(ST_Expand(ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, %(srid)s),
+                                                         {epsg}), %(pad)s), %(to_srid)s))
 """)
 
 BUILDINGS_FINGERPRINT_SQL = sql.SQL("""
@@ -117,8 +159,19 @@ PRUNE_GRAPHS_SQL = """DELETE FROM pylovo.mv_graph g
     RETURNING g.graph_id"""
 
 DROP_BUILD_TEMP_SQL = ("DROP TABLE IF EXISTS pg_temp.mvg_src, pg_temp.mvg_end, pg_temp.mvg_vert, pg_temp.mvg_bld, "
-                       "pg_temp.mvg_cut, pg_temp.mvg_split, pg_temp.mvg_lu, pg_temp.mvg_osm, pg_temp.mvg_conn")
+                       "pg_temp.mvg_cut, pg_temp.mvg_split, pg_temp.mvg_lu, pg_temp.mvg_osm, pg_temp.mvg_conn, "
+                       "pg_temp.mvg_src_raw, pg_temp.mvg_bld_raw, pg_temp.mvg_lu_raw")
 
+# the source rows of the graph, staged into pg_temp.mvg_src_raw (source columns and types) ...
+WAYS_STAGE_COLUMNS: tuple[str, ...] = ("ags", "id", "klasse", "objektart", "geom")
+WAYS_STAGE_SQL = sql.SQL("""
+    SELECT w.ags, w.id, w.klasse, w.objektart, w.geom
+    FROM {ways} w
+    WHERE w.ags::text = ANY(%(ags)s) AND w.geom IS NOT NULL
+      AND NOT (COALESCE(btrim(w.klasse), '') = ANY(%(excluded)s))
+""")
+
+# ... and turned into the edges ({ways}: pg_temp.mvg_src_raw)
 SOURCE_EDGES_SQL = sql.SQL("""
     CREATE TEMP TABLE mvg_src ON COMMIT DROP AS
     SELECT row_number() OVER (ORDER BY w.ags, w.id, d.path)::bigint AS edge_id,
@@ -208,16 +261,12 @@ OSM_LINES_SQL = sql.SQL("""
     ORDER BY l.osm_id
 """)
 
+# the overhead power ways in the extent of the graph's ways (%(box)s: EWKB in the SRID of the OSM layer)
 OSM_FINGERPRINT_SQL = sql.SQL("""
     SELECT count(*), COALESCE(round(sum(ST_Length(l.geom))::numeric), 0), max(l.osm_id)
     FROM {osm}.infrastructure_line l
-    WHERE l.osm_type = 'power' AND l.osm_subtype = ANY(%(subtypes)s)
+    WHERE l.osm_type = 'power' AND l.osm_subtype = ANY(%(subtypes)s) AND l.geom && ST_GeomFromEWKB(%(box)s)
 """)
-
-OSM_TABLES_SQL = """
-    SELECT count(*) = 2 FROM information_schema.tables
-    WHERE table_schema = %(schema)s AND table_name IN ('infrastructure_line', 'tags')
-"""
 
 OSM_INSERT_SQL = """
     INSERT INTO mvg_src (edge_id, ags, src_id, klasse, objektart, geom)
@@ -326,15 +375,24 @@ EDGE_COMPONENT_SQL = """
 
 EXTENT_SQL = "SELECT ST_XMin(x.b), ST_YMin(x.b), ST_XMax(x.b), ST_YMax(x.b) FROM (SELECT ST_Extent(geom) AS b FROM mvg_src) x"
 
-SETTLEMENT_BUILDINGS_SQL = sql.SQL("""
-    CREATE TEMP TABLE mvg_bld ON COMMIT DROP AS
-    SELECT row_number() OVER ()::bigint AS bid,
-           ST_Transform(COALESCE(b.centroid, ST_PointOnSurface(b.geom)), {epsg}) AS pt
+# an envelope in TARGET_EPSG as EWKB in the SRID of a source table (the prefilter of its rows)
+BOX_SQL = sql.SQL("SELECT ST_AsEWKB(ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, {epsg}), %(srid)s))")
+
+# the point of every address building in the box (staged into pg_temp.mvg_bld_raw) ...
+SETTLEMENT_POINTS_SQL = sql.SQL("""
+    SELECT COALESCE(b.centroid, ST_PointOnSurface(b.geom)) AS pt
     FROM {buildings} b
-    WHERE b.geom && ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, {epsg}), %(bld_srid)s)
+    WHERE b.geom && ST_GeomFromEWKB(%(box)s)
       AND b.building_use = ANY(%(uses)s)
       AND COALESCE(b.building_use_id, '') <> '31001_2523'
       AND COALESCE(b.street, '') <> '' AND COALESCE(b.house_number, '') <> ''
+""")
+
+# ... in TARGET_EPSG
+SETTLEMENT_BUILDINGS_SQL = sql.SQL("""
+    CREATE TEMP TABLE mvg_bld ON COMMIT DROP AS
+    SELECT row_number() OVER ()::bigint AS bid, ST_Transform(r.pt, {epsg}) AS pt
+    FROM pg_temp.mvg_bld_raw r
 """)
 
 EDGE_BUILDINGS_SQL = """
@@ -345,20 +403,18 @@ EDGE_BUILDINGS_SQL = """
     WHERE e.graph_id = %(g)s AND e.edge_id = c.edge_id
 """
 
-LANDUSE_EXISTS_SQL = """
-    SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = %(schema)s
-                                                              AND table_name = 'landuse_polygon')
-"""
+# the built-up land use in the extent of the graph's ways (%(box)s: EWKB in the SRID of the layer)
+LANDUSE_FINGERPRINT_SQL = sql.SQL("""
+    SELECT count(*) FROM {landuse} l WHERE l.osm_type = ANY(%(types)s) AND l.geom && ST_GeomFromEWKB(%(box)s)
+""")
 
-LANDUSE_FINGERPRINT_SQL = sql.SQL("SELECT count(*) FROM {landuse} l WHERE l.osm_type = ANY(%(types)s)")
-
-# {landuse}: sql.Identifier(INFDB_OSM_SCHEMA, 'landuse_polygon'); empty table without land use
+# {landuse}: sql.Identifier(INFDB_OSM_SCHEMA, 'landuse_polygon'), staged into pg_temp.mvg_lu_raw ...
+LANDUSE_STAGE_SQL = sql.SQL("""
+    SELECT l.geom FROM {landuse} l WHERE l.osm_type = ANY(%(types)s) AND l.geom && ST_GeomFromEWKB(%(box)s)
+""")
+# ... in TARGET_EPSG; empty table without land use
 LANDUSE_TEMP_SQL = sql.SQL("""
-    CREATE TEMP TABLE mvg_lu ON COMMIT DROP AS
-    SELECT ST_Transform(l.geom, {epsg}) AS geom
-    FROM {landuse} l
-    WHERE l.osm_type = ANY(%(types)s)
-      AND l.geom && ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, {epsg}), %(lu_srid)s)
+    CREATE TEMP TABLE mvg_lu ON COMMIT DROP AS SELECT ST_Transform(r.geom, {epsg}) AS geom FROM pg_temp.mvg_lu_raw r
 """)
 NO_LANDUSE_TEMP_SQL = "CREATE TEMP TABLE mvg_lu (geom geometry) ON COMMIT DROP"
 
@@ -561,17 +617,22 @@ class MvGraphMixin(BaseMixin):
 
     # ------------------------------------------------------------------------------------------------ build
     def _source_srid(self, table: str) -> int:
-        self.cur.execute(SRID_SQL.format(table=_source(table)))
-        row = self.cur.fetchone()
-        if not row or not row[0]:
+        srid = self.source_reader().srid(_source(table).strings[0], table)
+        if not srid:
             raise MvStageError(f"{INFDB_SOURCE_SCHEMA}.{table} has no geometries with an SRID")
-        return int(row[0])
+        return int(srid)
+
+    def _osm_layer_srid(self, table: str) -> int:
+        """The SRID of an OSM layer, ``TARGET_EPSG`` without geometries."""
+        return int(self.source_reader().srid(INFDB_OSM_SCHEMA, table) or TARGET_EPSG)
 
     def graph_ags(self, region_wkb: bytes, buffer_m: float) -> list[str]:
         """The municipalities (AGS) whose ways lie within ``buffer_m`` of the planning region.
 
         The graph always holds whole municipalities, so graphs of overlapping requests are shared when they cover
-        the same AGS. The buffer is measured in ``TARGET_EPSG``.
+        the same AGS. The buffer is measured in ``TARGET_EPSG``. The source is read through the source reader (see
+        :data:`AGS_REGION_SQL`): the extent of the ways per AGS near the buffer, and the ways themselves only of the
+        AGS whose extent crosses the border of the buffer; the tests against the buffer run in the pylovo database.
 
         Args:
             region_wkb: Planning region (WKB, ``TARGET_EPSG``).
@@ -580,55 +641,90 @@ class MvGraphMixin(BaseMixin):
         Returns:
             Sorted AGS (8-digit text).
         """
+        reader = self.source_reader()
         src_srid = self._source_srid("ways_per_junction")
-        self.cur.execute(GRAPH_AGS_SQL.format(ways=_source("ways_per_junction"), epsg=sql.Literal(TARGET_EPSG)),
+        ways = _source("ways_per_junction")
+        self.cur.execute(DROP_AGS_TEMP_SQL)
+        self.cur.execute(AGS_REGION_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
                          {"region": bytes(region_wkb), "src_srid": src_srid, "buffer_m": float(buffer_m)})
-        row = self.cur.fetchone()
-        return [str(a) for a in (row[0] if row and row[0] else [])]
+        self.cur.execute(AGS_REGION_BOX_SQL)
+        box = self.cur.fetchone()
+        if not box or box[0] is None:
+            self.cur.execute(DROP_AGS_TEMP_SQL)
+            return []
+        envelope = {"x0": box[0], "y0": box[1], "x1": box[2], "y1": box[3], "src_srid": src_srid}
+        extents = reader.fetchall(AGS_EXTENTS_SQL.format(ways=ways), envelope)
+        columns = list(zip(*extents)) if extents else [[], [], [], [], []]
+        self.cur.execute(AGS_EXTENT_TEMP_SQL, {name: [v for v in values] for name, values in
+                                               zip(("ags", "x0", "y0", "x1", "y1"), columns)})
+        self.cur.execute(AGS_CLASSES_SQL, {"src_srid": src_srid})
+        classes = self.cur.fetchall()
+        inside = {str(a) for a, c in classes if c == 1}
+        border = sorted(str(a) for a, c in classes if c == 2)
+        if border:
+            reader.stage("mvg_ags_ways", AGS_WAYS_SQL.format(ways=ways), {**envelope, "ags": border},
+                         lambda: reader.column_types(INFDB_SOURCE_SCHEMA, "ways_per_junction", ("ags", "geom")))
+            self.cur.execute(AGS_EXACT_SQL)
+            inside.update(str(row[0]) for row in self.cur.fetchall())
+        self.cur.execute(DROP_AGS_TEMP_SQL)
+        return sorted(inside)
 
     def _landuse_table(self) -> sql.Identifier | None:
         """``INFDB_OSM_SCHEMA.landuse_polygon`` if it exists, else None (settlements from address buildings only)."""
-        if not INFDB_OSM_SCHEMA:
+        if not self.source_reader().table_exists(INFDB_OSM_SCHEMA, "landuse_polygon"):
             return None
-        self.cur.execute(LANDUSE_EXISTS_SQL, {"schema": INFDB_OSM_SCHEMA})
-        row = self.cur.fetchone()
-        return sql.Identifier(INFDB_OSM_SCHEMA, "landuse_polygon") if row and row[0] else None
+        return sql.Identifier(INFDB_OSM_SCHEMA, "landuse_polygon")
 
     def _osm_lines_available(self) -> bool:
         """Whether ``INFDB_OSM_SCHEMA`` has ``infrastructure_line`` and ``tags`` (the OSM MV lines)."""
-        if not INFDB_OSM_SCHEMA:
-            return False
-        self.cur.execute(OSM_TABLES_SQL, {"schema": INFDB_OSM_SCHEMA})
-        row = self.cur.fetchone()
-        return bool(row and row[0])
+        reader = self.source_reader()
+        return reader.table_exists(INFDB_OSM_SCHEMA, "infrastructure_line") and reader.table_exists(
+            INFDB_OSM_SCHEMA, "tags")
+
+    def _extent_box(self, extent: Sequence[float], srid: int, to_srid: int, pad_m: float) -> bytes:
+        """The extent of the graph's ways (``srid``) widened by ``pad_m`` in ``TARGET_EPSG``, as EWKB in ``to_srid``."""
+        x0, y0, x1, y1 = extent
+        self.cur.execute(EXTENT_BOX_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
+                         {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "srid": int(srid), "to_srid": int(to_srid),
+                          "pad": float(pad_m)})
+        return bytes(self.cur.fetchone()[0])
 
     def graph_fingerprint(self, ags: Sequence[str], osm_lines: bool = False) -> str:
         """Fingerprint of the source rows of the AGS: ways ``count:length:max changelog``, buildings
-        ``count:max changelog``, and the number of built-up OSM land-use polygons (``none`` without the table);
-        with ``osm_lines`` also the overhead power ways of the OSM schema ``count:length:max id`` (``none``
-        without the tables)."""
+        ``count:max changelog``, and the number of built-up OSM land-use polygons in the extent of the ways
+        (``none`` without the table); with ``osm_lines`` also the overhead power ways of the OSM schema in that
+        extent ``count:length:max id`` (``none`` without the tables).
+
+        The land use and the OSM lines are counted in the extent of the ways (with the margins of the build), not in
+        the whole table, so a change of the OSM data elsewhere keeps the graph id."""
+        reader = self.source_reader()
         params = {"ags": list(ags)}
-        self.cur.execute(WAYS_FINGERPRINT_SQL.format(ways=_source("ways_per_junction")), params)
-        n_ways, length, ways_changelog = self.cur.fetchone()
-        self.cur.execute(BUILDINGS_FINGERPRINT_SQL.format(buildings=_source("buildings")), params)
-        n_buildings, buildings_changelog = self.cur.fetchone()
+        n_ways, length, ways_changelog, *extent = reader.fetchone(
+            WAYS_FINGERPRINT_SQL.format(ways=_source("ways_per_junction")), params)
+        n_buildings, buildings_changelog = reader.fetchone(
+            BUILDINGS_FINGERPRINT_SQL.format(buildings=_source("buildings")), params)
+        src_srid = self._source_srid("ways_per_junction") if extent[0] is not None else None
         landuse = self._landuse_table()
         n_landuse = "none"
-        if landuse is not None:
-            self.cur.execute(LANDUSE_FINGERPRINT_SQL.format(landuse=landuse),
-                             {"types": list(SETTLEMENT_LANDUSE_TYPES)})
-            row = self.cur.fetchone()
+        if landuse is not None and src_srid is not None:
+            box = self._extent_box(extent, src_srid, self._osm_layer_srid("landuse_polygon"), 100.0)
+            row = reader.fetchone(LANDUSE_FINGERPRINT_SQL.format(landuse=landuse),
+                                  {"types": list(SETTLEMENT_LANDUSE_TYPES), "box": box})
             n_landuse = str(int(row[0])) if row and row[0] is not None else "none"
+        elif landuse is not None:
+            n_landuse = "0"
         text = (f"ways {int(n_ways)}:{int(length)}:{'' if ways_changelog is None else ways_changelog}"
                 f"|buildings {int(n_buildings)}:{'' if buildings_changelog is None else buildings_changelog}"
                 f"|landuse {n_landuse}")
         if osm_lines:
             lines = "none"
-            if self._osm_lines_available():
-                self.cur.execute(OSM_FINGERPRINT_SQL.format(osm=sql.Identifier(INFDB_OSM_SCHEMA)),
-                                 {"subtypes": list(OVERHEAD_SUBTYPES)})
-                n, km, top = self.cur.fetchone() or (0, 0, None)
+            if self._osm_lines_available() and src_srid is not None:
+                box = self._extent_box(extent, src_srid, self._osm_layer_srid("infrastructure_line"), 0.0)
+                n, km, top = reader.fetchone(OSM_FINGERPRINT_SQL.format(osm=sql.Identifier(INFDB_OSM_SCHEMA)),
+                                             {"subtypes": list(OVERHEAD_SUBTYPES), "box": box}) or (0, 0, None)
                 lines = f"{int(n)}:{int(km)}:{'' if top is None else top}"
+            elif self._osm_lines_available():
+                lines = "0:0:"
             text += f"|osm_lines {lines}"
         return text
 
@@ -712,11 +808,18 @@ class MvGraphMixin(BaseMixin):
             self.logger.info("MV routing graph %s was built meanwhile by another process", graph_id)
             return
         epsg = sql.Literal(TARGET_EPSG)
+        reader = self.source_reader()
         ways = _source("ways_per_junction")
         buildings = _source("buildings")
         excluded = list(parameters["excluded_klasse"])
         self.cur.execute(DROP_BUILD_TEMP_SQL)
-        self.cur.execute(SOURCE_EDGES_SQL.format(ways=ways, epsg=epsg), {"ags": ags, "excluded": excluded})
+        n_rows = reader.stage("mvg_src_raw", WAYS_STAGE_SQL.format(ways=ways), {"ags": ags, "excluded": excluded},
+                              lambda: reader.column_types(INFDB_SOURCE_SCHEMA, "ways_per_junction",
+                                                          WAYS_STAGE_COLUMNS))
+        self.logger.info("MV routing graph %s: %d ways read from %s", graph_id, n_rows, reader.where)
+        self.cur.execute(SOURCE_EDGES_SQL.format(ways=sql.Identifier("pg_temp", "mvg_src_raw"), epsg=epsg),
+                         {"ags": ags, "excluded": excluded})
+        self.cur.execute("DROP TABLE pg_temp.mvg_src_raw")
         self.cur.execute("CREATE INDEX ON mvg_src USING gist (geom)")
         self.cur.execute("CREATE INDEX ON mvg_src (edge_id)")
         self.cur.execute("ANALYZE mvg_src")
@@ -753,20 +856,25 @@ class MvGraphMixin(BaseMixin):
         # settlement flags from address buildings near the edges
         self.cur.execute(EXTENT_SQL)
         x0, y0, x1, y1 = self.cur.fetchone()
-        bld_srid = self._source_srid("buildings")
-        self.cur.execute(SETTLEMENT_BUILDINGS_SQL.format(buildings=buildings, epsg=epsg),
-                         {"x0": x0 - 100.0, "y0": y0 - 100.0, "x1": x1 + 100.0, "y1": y1 + 100.0,
-                          "bld_srid": bld_srid, "uses": list(SETTLEMENT_BUILDING_USES)})
+        padded = {"x0": x0 - 100.0, "y0": y0 - 100.0, "x1": x1 + 100.0, "y1": y1 + 100.0}
+        self.cur.execute(BOX_SQL.format(epsg=epsg), {**padded, "srid": self._source_srid("buildings")})
+        bld_box = bytes(self.cur.fetchone()[0])
+        n_rows = reader.stage("mvg_bld_raw", SETTLEMENT_POINTS_SQL.format(buildings=buildings),
+                              {"box": bld_box, "uses": list(SETTLEMENT_BUILDING_USES)}, [("pt", "geometry")])
+        self.logger.info("MV routing graph %s: %d address buildings read from %s", graph_id, n_rows, reader.where)
+        self.cur.execute(SETTLEMENT_BUILDINGS_SQL.format(epsg=epsg))
+        self.cur.execute("DROP TABLE pg_temp.mvg_bld_raw")
         self.cur.execute("CREATE INDEX ON mvg_bld USING gist (pt)")
         self.cur.execute("ANALYZE mvg_bld")
         landuse = self._landuse_table()
         if landuse is not None:
-            self.cur.execute(SRID_SQL.format(table=landuse))
-            row = self.cur.fetchone()
-            lu_srid = int(row[0]) if row and row[0] else int(TARGET_EPSG)
-            self.cur.execute(LANDUSE_TEMP_SQL.format(landuse=landuse, epsg=epsg),
-                             {"x0": x0 - 100.0, "y0": y0 - 100.0, "x1": x1 + 100.0, "y1": y1 + 100.0,
-                              "lu_srid": lu_srid, "types": list(SETTLEMENT_LANDUSE_TYPES)})
+            self.cur.execute(BOX_SQL.format(epsg=epsg), {**padded, "srid": self._osm_layer_srid("landuse_polygon")})
+            lu_box = bytes(self.cur.fetchone()[0])
+            reader.stage("mvg_lu_raw", LANDUSE_STAGE_SQL.format(landuse=landuse),
+                         {"box": lu_box, "types": list(SETTLEMENT_LANDUSE_TYPES)},
+                         lambda: reader.column_types(INFDB_OSM_SCHEMA, "landuse_polygon", ("geom",)))
+            self.cur.execute(LANDUSE_TEMP_SQL.format(epsg=epsg))
+            self.cur.execute("DROP TABLE pg_temp.mvg_lu_raw")
         else:
             self.logger.warning("no %s.landuse_polygon: MV settlements from address buildings only",
                                 INFDB_OSM_SCHEMA or "OSM schema")
@@ -800,15 +908,13 @@ class MvGraphMixin(BaseMixin):
             return
         osm = sql.Identifier(INFDB_OSM_SCHEMA)
         epsg = sql.Literal(TARGET_EPSG)
-        self.cur.execute(SRID_SQL.format(table=sql.Identifier(INFDB_OSM_SCHEMA, "infrastructure_line")))
-        row = self.cur.fetchone()
-        osm_srid = int(row[0]) if row and row[0] else int(TARGET_EPSG)
+        osm_srid = self._osm_layer_srid("infrastructure_line")
         self.cur.execute(EXTENT_SQL)
         x0, y0, x1, y1 = self.cur.fetchone()
-        self.cur.execute(OSM_LINES_SQL.format(osm=osm, epsg=epsg),
-                         {"subtypes": list(OVERHEAD_SUBTYPES), "x0": x0, "y0": y0, "x1": x1, "y1": y1,
-                          "osm_srid": osm_srid})
-        kept = [(int(osm_id), str(subtype), bytes(wkb)) for osm_id, subtype, tags, wkb in self.cur.fetchall()
+        rows = self.source_reader().fetchall(OSM_LINES_SQL.format(osm=osm, epsg=epsg),
+                                             {"subtypes": list(OVERHEAD_SUBTYPES), "x0": x0, "y0": y0, "x1": x1,
+                                              "y1": y1, "osm_srid": osm_srid})
+        kept = [(int(osm_id), str(subtype), bytes(wkb)) for osm_id, subtype, tags, wkb in rows
                 if wkb is not None and is_mv_overhead_line(subtype, tags if isinstance(tags, dict) else {})]
         self.cur.execute(f"CREATE TEMP TABLE mvg_osm (osm_id bigint, subtype text, geom geometry(Geometry, "
                          f"{int(TARGET_EPSG)})) ON COMMIT DROP")

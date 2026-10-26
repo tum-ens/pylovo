@@ -5,6 +5,7 @@ the eGon cross-check and the tables handed to the stage; the mixin is run agains
 """
 
 import logging
+from typing import Sequence
 import random
 
 import numpy as np
@@ -359,29 +360,57 @@ def schemas(monkeypatch):
     monkeypatch.setattr(source_mixin, "TARGET_EPSG", 25832)
 
 
+def _query(client, needle):
+    """The last call whose text contains ``needle``."""
+    return next((text, params) for text, params in reversed(client.cur.calls) if needle in text)
+
+
+def _near_all(text, params):
+    """Answer of the exact region test: every staged point is near the region."""
+    return [(k,) for k in range(len(params["x"]))] if "FROM mv_region_point" in text else None
+
+
 def test_osm_candidates_query_the_osm_schema_and_return_bytes(schemas):
     footprint = _square(0, 0, 10)
     row = ("way/1", "110000;20000", None, "50", "Netz", "UW", None, 1.0, 2.0, 400.0, memoryview(footprint), True,
            "solar:pv")
-    client = _client(lambda text, params: [(4326,)] if text.startswith("SELECT ST_SRID") else [row])
+    points = {}
+
+    def respond(text, params):
+        if text.startswith("SELECT ST_SRID"):
+            return [(4326,)]
+        if "CREATE TEMP TABLE mv_region_point" in text:
+            points.update(params)
+            return []
+        if text.startswith("SELECT p.k FROM mv_region_point"):
+            return [(k,) for k in range(len(points["x"]))]
+        return [] if text.startswith(("DROP", "CREATE", "ANALYZE")) else [row]
+
+    client = _client(respond)
     region = shapely.to_wkb(shapely.box(0, 0, 10, 10))
     result = client.osm_substation_candidates(memoryview(region), 5000)
     assert [t for t, _ in client.cur.calls[:2]] == [f'SELECT ST_SRID(geom) FROM "osm_x"."{table}" WHERE geom IS NOT '
                                                     "NULL LIMIT 1" for table in ("infrastructure_point",
                                                                                  "infrastructure_polygon")]
-    text, params = client.cur.calls[-1]
+    text, params = _query(client, '"osm_x".infrastructure_point')
     for needle in ('"osm_x".infrastructure_point', '"osm_x".infrastructure_polygon', '"osm_x".tags',
                    "t.geom_type = c.gt AND t.osm_id = c.tag_id", "osm_subtype IN ('plant', 'generator')",
-                   "ST_DWithin(c.pt, ST_GeomFromWKB(%(region)s, 25832), %(buffer_m)s)", "'relation/' ||",
-                   "p.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(point_srid)s)",
+                   "'relation/' ||", "p.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(point_srid)s)",
                    "g.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(polygon_srid)s)"):
         assert needle in text
-    assert params["region"] == region and params["buffer_m"] == 5000.0 and isinstance(params["region"], bytes)
+    assert "%(region)s" not in text and "region" not in params          # the source query only prefilters by box
     assert params["point_srid"] == params["polygon_srid"] == 4326
     # the prefilter box holds the region widened by the buffer and the margin, with a vertex every 1 km at most
     box = shapely.from_wkb(params["box"])
     assert box.bounds == (-6000.0, -6000.0, 6010.0, 6010.0)
     assert shapely.get_num_coordinates(box) > 4 * 12
+    # the exact test within the buffer runs in the pylovo database on the pieces of the region
+    pieces_text, pieces = _query(client, "ST_Subdivide")
+    assert "ST_Subdivide(ST_GeomFromWKB(%(region)s, 25832), %(vertices)s)" in pieces_text
+    assert pieces["region"] == region and isinstance(pieces["region"], bytes)
+    near_text, near = _query(client, "FROM mv_region_point")
+    assert "ST_DWithin(p.pt, r.g, %(d)s)" in near_text and near == {"d": 5000.0}
+    assert points == {"x": [1.0], "y": [2.0]}
     assert tuple(result.columns) == CANDIDATE_COLUMNS == source_mixin.OSM_CANDIDATE_COLUMNS
     assert result["footprint_wkb"].iloc[0] == footprint and isinstance(result["footprint_wkb"].iloc[0], bytes)
     assert result["in_plant"].dtype == bool and result["x"].dtype == float
@@ -391,28 +420,48 @@ def test_osm_candidates_query_the_osm_schema_and_return_bytes(schemas):
     assert tuple(empty.columns) == CANDIDATE_COLUMNS and len(empty) == 0
 
 
+def test_osm_candidates_outside_the_buffer_are_dropped(schemas):
+    rows = [("node/1", None, None, None, None, "a", None, 1.0, 2.0, 0.0, None, False, None),
+            ("node/2", None, None, None, None, "b", None, 9.0, 9.0, 0.0, None, False, None)]
+
+    def respond(text, params):
+        if text.startswith("SELECT ST_SRID"):
+            return [(25832,)]
+        if text.startswith("SELECT p.k FROM mv_region_point"):
+            return [(1,)]                                               # only the second point is near the region
+        return [] if text.startswith(("DROP", "CREATE", "ANALYZE")) else rows
+
+    result = _client(respond).osm_substation_candidates(shapely.to_wkb(shapely.box(0, 0, 10, 10)), 5000)
+    assert result["source_id"].tolist() == ["node/2"] and result.index.tolist() == [0]
+
+
 def test_osm_objects_and_landuse_are_prefiltered_in_the_srid_of_each_layer(schemas):
     srids = {"infrastructure_point": 4326, "infrastructure_polygon": 3857, "building_polygon": 4258,
              "landuse_polygon": 31468}
 
     def respond(text, params):
         table = next((t for t in srids if f'"osm_x"."{t}"' in text), None)
+        if text.startswith("SELECT count(*)"):                         # rows of a staged table
+            return [(0,)]
         return [(srids[table],)] if text.startswith("SELECT ST_SRID") else []
 
     region = shapely.to_wkb(shapely.box(0, 0, 10, 10))
     client = _client(respond)
     client.osm_power_objects(region)
-    text, params = client.cur.calls[-1]
+    text, params = _query(client, '"osm_x".infrastructure_point')
     for alias, key in (("p", "point_srid"), ("g", "polygon_srid"), ("b", "building_srid")):
         assert f"{alias}.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %({key})s)" in text
     assert (params["point_srid"], params["polygon_srid"], params["building_srid"]) == (4326, 3857, 4258)
     assert shapely.from_wkb(params["box"]).bounds == (-2000.0, -2000.0, 2010.0, 2010.0)    # 1 km reach + margin
     client = _client(respond)
     client.osm_landuse(region)
-    text, params = client.cur.calls[-1]
+    text, params = _query(client, 'CREATE TEMP TABLE "mv_landuse_raw"')
+    assert '"osm_x".landuse_polygon' in text
     assert "l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(landuse_srid)s)" in text
     assert params["landuse_srid"] == 31468 and shapely.from_wkb(params["box"]).bounds == (-1000.0, -1000.0, 1010.0,
                                                                                           1010.0)
+    text, params = _query(client, "ST_Intersection(ST_MakeValid")     # the clip runs on the staged polygons
+    assert "FROM pg_temp.mv_landuse_raw l" in text and params == {"region": region}
 
 
 def test_osm_queries_need_the_osm_schema(schemas, monkeypatch):
@@ -423,8 +472,9 @@ def test_osm_queries_need_the_osm_schema(schemas, monkeypatch):
     assert client.cur.calls == []
 
 
-def _egon_responder(present: dict[str, bool], rows: list | None = None):
-    """Fake catalogue: ``present[schema.table]`` = has rows (missing key = table does not exist)."""
+def _egon_responder(present: dict[str, bool], rows: list | None = None, near: Sequence[int] | None = None):
+    """Fake catalogue: ``present[schema.table]`` = has rows (missing key = table does not exist); ``near``: the rows
+    within the buffer of the region (default: all)."""
     def respond(text, params):
         if text.startswith("SELECT c IS NOT NULL"):
             name = params[0].replace('"', "")
@@ -432,6 +482,10 @@ def _egon_responder(present: dict[str, bool], rows: list | None = None):
         if text.startswith("SELECT EXISTS"):
             name = text.split("FROM ")[1].rstrip(")").replace('"', "")
             return [(present[name],)]
+        if text.startswith("SELECT p.k FROM mv_region_point"):
+            return [(k,) for k in (range(len(rows or [])) if near is None else near)]
+        if text.startswith(("DROP", "CREATE", "ANALYZE")):
+            return []
         return rows or []
     return respond
 
@@ -442,7 +496,7 @@ def test_egon_table_prefers_the_filled_pylovo_table_then_opendata(schemas):
     empty_pylovo = {**both, "pylovo.egon_hvmv_substation": False}
     assert _client(_egon_responder(empty_pylovo)).egon_available() == (True, "open_x")
     ok, reason = _client(_egon_responder({})).egon_available()
-    assert not ok and "egon_hvmv_substation" in reason and "populate the eGon-data table" in reason
+    assert not ok and "egon_hvmv_substation" in reason and "run pylovo-setup" in reason
 
 
 def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):
@@ -450,13 +504,15 @@ def test_egon_readers_map_na_to_none_and_fail_without_tables(schemas):
     rows = [(501, "NA", "w123", 10.0, 20.0), (502, "110000;20000", "NA", 30.0, 40.0)]
     client = _client(_egon_responder(present, rows))
     result = client.egon_substations(b"region", 5000)
-    text, params = client.cur.calls[-1]
-    assert '"open_x"."egon_hvmv_substation"' in text and "NULLIF(btrim(s.voltage::text), 'NA')" in text
-    assert params == {"region": b"region", "buffer_m": 5000.0}
+    text, params = _query(client, '"open_x"."egon_hvmv_substation" s')
+    assert "NULLIF(btrim(s.voltage::text), 'NA')" in text and params is None    # every row, tested near the region
+    assert _query(client, "FROM mv_region_point")[1] == {"d": 5000.0}
     assert tuple(result.columns) == source_mixin.EGON_SUBSTATION_COLUMNS
     assert result["voltage"].tolist() == [None, "110000;20000"]
     assert result["osm_id"].tolist() == ["w123", None]
     assert result["bus_id"].dtype == np.int64
+    far = _client(_egon_responder(present, rows, near=[1])).egon_substations(b"region", 5000)
+    assert far["bus_id"].tolist() == [502]
 
     missing = _client(_egon_responder({}))
     with pytest.raises(MvStageError, match="no eGon-data table egon_hvmv_substation"):

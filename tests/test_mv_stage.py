@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -97,6 +98,12 @@ class FakeDb:
 
     def ensure_grid_persistence_schema(self):
         self._call("schema")
+
+    def check_mv_sources(self):
+        return []
+
+    def source_reader(self):
+        return SimpleNamespace(where="the pylovo database", close=lambda: self._call("close_source"))
 
     def try_lock_variant(self, version_id, variant_id):
         self._call("lock", version_id, variant_id)
