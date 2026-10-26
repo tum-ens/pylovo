@@ -487,6 +487,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     rows = _node_rows(dbc, version_id, plz, sites, params, lv, logger)
     rows["mv_node_id"] = dbc.insert_nodes(version_id, variant_id, rows)
     # attachment to the routing graph (one KNN query for all nodes and busbars)
+    logger.info(f"Region: attaching {len(rows)} nodes to the routing graph")
     attach = dbc.attach_points(graph_id, pd.DataFrame({"key": rows["mv_node_id"].to_numpy(),
                                                        "x": rows["x"].astype(float).to_numpy(),
                                                        "y": rows["y"].astype(float).to_numpy()}))
@@ -513,6 +514,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     members = nodes[nodes["kind"].isin(_KINDS_WITH_GRID)]
     # every node gets a district; excluded nodes (HV customers) do not count for the capacity
     if len(members):
+        logger.info(f"Region: supply areas of {len(members)} nodes and {len(usable)} substations")
         owner, bridged, overloaded = _assign_supply_areas(dbc, graph_id, members, usable, params, lv, logger)
     else:
         owner, bridged, overloaded = np.zeros(0, dtype=np.int64), np.zeros(0, dtype=bool), []
@@ -531,6 +533,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     unassigned = int((owner_sub < 0).sum())
     if unassigned:
         warnings.append(f"{unassigned} MV nodes were assigned to no HV/MV substation")
+    logger.info(f"Region: areas of {len(grids)} districts")
     dbc.write_grid_areas(version_id, variant_id, plz)
     _set_district_voltages(dbc, version_id, variant_id, rows,
                            dict(zip(members.index.to_numpy(dtype=np.int64).tolist(), grid_of_node)), params, logger,
@@ -724,6 +727,7 @@ def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params
         ``mv_variant.summary['ties']``).
     """
     interconnection = _module("interconnection")
+    logger.info("Planning the ties between the districts")
     summary = interconnection.plan_and_save_ties(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_ties(summary))
     return summary
@@ -738,6 +742,7 @@ def _plan_links(dbc: Any, version_id: str, variant_id: str, graph_id: str, param
         ``mv_variant.summary['links']``).
     """
     interconnection = _module("interconnection")
+    logger.info("Planning the links inside the districts")
     summary = interconnection.plan_and_save_links(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_links(summary))
     return summary
@@ -752,6 +757,7 @@ def display_geometry(dbc: Any, version_id: str, variant_id: str,
     circles, or None after an error.
     """
     try:
+        logger.info("Display geometry of the lines")
         lines, busbars = dbc.display_input(version_id, variant_id)
         result = _module("display").layout(lines, busbars)
         dbc.save_display_geometry(version_id, variant_id, result.lines, result.busbar_polygons())

@@ -843,6 +843,7 @@ class MvGraphMixin(BaseMixin):
         self.cur.execute("CREATE INDEX ON mvg_src (edge_id)")
         self.cur.execute("ANALYZE mvg_src")
         self._cluster_endpoints(parameters["snap_tolerance_m"])
+        self.logger.info("MV routing graph %s: edge ends clustered (%.0f s)", graph_id, time.perf_counter() - started)
         self.cur.execute(SEAM_COUNT_SQL, {"seam": SEAM_TOLERANCE_M})
         seams = int(self.cur.fetchone()[0])
         cuts = 0
@@ -870,6 +871,8 @@ class MvGraphMixin(BaseMixin):
         # for this graph_id and the building count below ran for many minutes instead of seconds.
         for statement in ANALYZE_SQL[:2]:
             self.cur.execute(statement)
+        self.logger.info("MV routing graph %s: vertices and edges stored (%.0f s)", graph_id,
+                         time.perf_counter() - started)
         self.cur.execute(VERTEX_COMPONENT_SQL, {**g, "edges_sql": edges_sql(graph_id)})
         self.cur.execute(EDGE_COMPONENT_SQL, g)
         # settlement flags from address buildings near the edges
@@ -901,6 +904,8 @@ class MvGraphMixin(BaseMixin):
         self.cur.execute("CREATE INDEX ON mvg_lu USING gist (geom)")
         self.cur.execute("ANALYZE mvg_lu")
         sbuf = parameters["settlement_buffer_m"]
+        self.logger.info("MV routing graph %s: components and settlement inputs ready (%.0f s)", graph_id,
+                         time.perf_counter() - started)
         self.cur.execute(EDGE_BUILDINGS_SQL, {**g, "sbuf": sbuf})
         self.cur.execute(IN_SETTLEMENT_SQL, {**g, "smin": parameters["settlement_min_buildings"],
                                              "sspacing": parameters["settlement_spacing_m"], "osm": list(_OSM_KLASSEN)})
