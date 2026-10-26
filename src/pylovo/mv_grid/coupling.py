@@ -1128,7 +1128,7 @@ def _run_locked(dbc: Any, version_id: str, variant_id: str, mv_grid_ids: Sequenc
         _row, params, lv_json = _variant_inputs(dbc, version_id, variant_id)
     except LookupError as exc:
         raise MvStageError(str(exc)) from exc
-    layers = dbc.read_mv_layers(version_id, variant_id)
+    layers = dbc.read_mv_layers(version_id, variant_id, layers=("grids", "nodes"))
     dbc.commit_changes()                                 # no open transaction is inherited by the workers
     grids = _plain_frame(layers["grids"])
     nodes = _plain_frame(layers["nodes"])
@@ -1198,7 +1198,7 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
     with _database_client("log/log.txt") as dbc:
         dbc.ensure_grid_persistence_schema()
         _, params, lv_json = _variant_inputs(dbc, version_id, variant_id)
-        layers = dbc.read_mv_layers(version_id, variant_id, int(mv_grid_id))
+        layers = dbc.read_mv_layers(version_id, variant_id, int(mv_grid_id), layers=("grids", "nodes"))
         grids = _plain_frame(layers["grids"])
         if not len(grids):
             raise LookupError(f"MV grid {mv_grid_id} does not belong to variant {variant_id} of version {version_id}")

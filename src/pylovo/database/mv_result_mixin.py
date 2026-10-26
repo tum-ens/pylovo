@@ -1137,48 +1137,53 @@ class MvResultMixin(BaseMixin):
         with self.sqla_engine.begin() as connection:
             return gpd.read_postgis(query, con=connection, params=params, geom_col=geom_col)
 
-    def read_mv_layers(self, version_id: str, variant_id: str, mv_grid_id: int | None = None
-                       ) -> dict[str, "gpd.GeoDataFrame"]:
+    def read_mv_layers(self, version_id: str, variant_id: str, mv_grid_id: int | None = None,
+                       layers: Sequence[str] | None = None) -> dict[str, "gpd.GeoDataFrame"]:
         """The map layers of a variant (or of one of its grids) for plots: never reads ``mv_grid.net``.
 
+        Args:
+            layers: Only these layers (default all); the coupling reads ``grids`` and ``nodes`` only, which matters
+                for a variant of a whole federal state.
+
         Returns:
-            ``{"nodes", "lines", "substations", "grids", "settlements"}``, each a GeoDataFrame in TARGET_EPSG
-            (``settlements``: the settlements of the variant's routing graph that touch its nodes).
+            ``{"nodes", "lines", "substations", "grids", "settlements"}`` (or the requested ones), each a
+            GeoDataFrame in TARGET_EPSG (``settlements``: the settlements of the variant's routing graph that touch
+            its nodes).
         """
         params = {"v": version_id, "var": variant_id, "g": None if mv_grid_id is None else int(mv_grid_id)}
         grid_filter = "" if mv_grid_id is None else " AND mv_grid_id = %(g)s"
-        layers = {
-            "nodes": self._read_geo(
-                f"SELECT {', '.join(_NODE_LAYER_COLUMNS)} FROM pylovo.mv_node "
-                f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_node_id", params),
-            "lines": self._read_geo(
-                "SELECT mv_line_id, version_id, mv_variant_id, mv_grid_id, from_node, to_node, role, kind, feeder_id,"
-                " ring_id, std_type, parallel, length_km, cable_km, overhead_km, straight_km, bridge_m,"
-                " normally_open, open_at_node, loading_load_percent, loading_n1_percent, loading_feed_in_percent,"
-                " geom FROM pylovo.mv_line "
-                f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_line_id", params),
-            "grids": self._read_geo(
-                f"SELECT {', '.join(_GRID_LAYER_COLUMNS)} FROM pylovo.mv_grid "
-                f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_grid_id", params),
-        }
         substation_filter = "" if mv_grid_id is None else \
             " AND substation_id IN (SELECT substation_id FROM pylovo.mv_grid WHERE mv_grid_id = %(g)s)"
-        layers["substations"] = self._read_geo(
-            "SELECT substation_id, version_id, mv_variant_id, source, source_ids, name, operator, voltage_tag,"
-            " egon_bus_id, egon_distance_m, in_region, attach_offset_m, osm_ratings_mva, n_transformers,"
-            " transformer_mva, transformer_sizing, peak_load_mw, peak_feed_in_mw, loading_n0_percent,"
-            " loading_n1_percent, flags, geom FROM pylovo.mv_substation "
-            f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{substation_filter} ORDER BY substation_id", params)
-        layers["settlements"] = self._read_geo(
-            f"""SELECT st.graph_id, st.settlement_id, st.n_buildings, st.length_km, st.urban, st.geom
+        queries = {
+            "nodes": f"SELECT {', '.join(_NODE_LAYER_COLUMNS)} FROM pylovo.mv_node "
+                     f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_node_id",
+            "lines": "SELECT mv_line_id, version_id, mv_variant_id, mv_grid_id, from_node, to_node, role, kind, "
+                     "feeder_id, ring_id, std_type, parallel, length_km, cable_km, overhead_km, straight_km, "
+                     "bridge_m, normally_open, open_at_node, loading_load_percent, loading_n1_percent, "
+                     "loading_feed_in_percent, geom FROM pylovo.mv_line "
+                     f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_line_id",
+            "grids": f"SELECT {', '.join(_GRID_LAYER_COLUMNS)} FROM pylovo.mv_grid "
+                     f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_grid_id",
+            "substations": "SELECT substation_id, version_id, mv_variant_id, source, source_ids, name, operator, "
+                           "voltage_tag, egon_bus_id, egon_distance_m, in_region, attach_offset_m, osm_ratings_mva, "
+                           "n_transformers, transformer_mva, transformer_sizing, peak_load_mw, peak_feed_in_mw, "
+                           "loading_n0_percent, loading_n1_percent, flags, geom FROM pylovo.mv_substation "
+                           f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{substation_filter} "
+                           "ORDER BY substation_id",
+            "settlements": f"""SELECT st.graph_id, st.settlement_id, st.n_buildings, st.length_km, st.urban, st.geom
                 FROM pylovo.mv_graph_settlement st
                 JOIN pylovo.mv_variant v ON v.graph_id = st.graph_id
                 WHERE v.version_id = %(v)s AND v.mv_variant_id = %(var)s
                   AND st.settlement_id IN (SELECT DISTINCT settlement_id FROM pylovo.mv_node
                                            WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter}
                                              AND settlement_id IS NOT NULL)
-                ORDER BY st.settlement_id""", params)
-        return layers
+                ORDER BY st.settlement_id""",
+        }
+        wanted = list(queries) if layers is None else list(layers)
+        unknown = [name for name in wanted if name not in queries]
+        if unknown:
+            raise ValueError(f"unknown MV layer {', '.join(unknown)} (one of {', '.join(queries)})")
+        return {name: self._read_geo(queries[name], params) for name in wanted}
 
     def read_mv_rings(self, version_id: str, variant_id: str) -> pd.DataFrame:
         """The ``pylovo.mv_ring`` rows of a variant."""

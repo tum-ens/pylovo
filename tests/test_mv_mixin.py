@@ -372,6 +372,12 @@ def test_plot_readers_never_read_the_net(monkeypatch):
     assert "metrics" in grids_sql and "SELECT *" not in grids_sql
     nodes_sql = next(s for s, _ in queries if "FROM pylovo.mv_node " in s and "mv_node_id" in s.split("FROM")[0])
     assert "load_stats" in nodes_sql                                    # the busbar customers for pylovo-mv couple
+    queries.clear()
+    some = client.read_mv_layers("mv1", "d0", layers=("grids", "nodes"))   # the coupling reads only these
+    assert list(some) == ["grids", "nodes"] and len(queries) == 2
+    assert "FROM pylovo.mv_grid " in queries[0][0] and "FROM pylovo.mv_node " in queries[1][0]
+    with pytest.raises(ValueError, match="unknown MV layer net"):
+        client.read_mv_layers("mv1", "d0", layers=("net",))
 
 
 def test_list_variants_flags_stale_fingerprints():

@@ -707,7 +707,8 @@ class FakeClient:
     def lv_snapshot(self, version_id):
         raise AssertionError("the variant row has the LV parameters")
 
-    def read_mv_layers(self, version_id, variant_id, mv_grid_id=None):
+    def read_mv_layers(self, version_id, variant_id, mv_grid_id=None, layers=None):
+        assert layers == ("grids", "nodes")                         # the coupling reads no other layer
         grids, nodes = self.state["grids"], self.state["nodes"]
         if mv_grid_id is not None:
             grids = grids[grids["mv_grid_id"] == mv_grid_id]

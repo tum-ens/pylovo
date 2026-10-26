@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them; the cells of the district areas find their stations through an index
+- Read only the grids and nodes of a variant in `pylovo-mv couple`
 - Keep the done supply areas and their status when the MV ties or links fail: the failure becomes a warning of the summary
 - Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again
 
