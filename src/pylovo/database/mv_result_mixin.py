@@ -996,12 +996,13 @@ class MvResultMixin(BaseMixin):
 
     def variant_totals(self, version_id: str, variant_id: str) -> dict:
         """Grid counts by status and the summed results of a variant (for :class:`MvRunSummary`); ``grids_by_kv``
-        counts the grids per nominal voltage (``{"20": n, "10": m}``)."""
+        counts the grids per nominal voltage (``{"20": n, "10": m}``). The lengths are summed in grid order, so the
+        last digits do not depend on the order of the rows in the table."""
         self.cur.execute(
             """SELECT count(*), count(*) FILTER (WHERE status = 'done'), count(*) FILTER (WHERE status = 'failed'),
                        count(*) FILTER (WHERE status = 'pending'),
-                       COALESCE(sum(n_stations), 0), COALESCE(sum(n_customers), 0), COALESCE(sum(circuit_km), 0),
-                       COALESCE(sum(cable_km), 0),
+                       COALESCE(sum(n_stations), 0), COALESCE(sum(n_customers), 0),
+                       COALESCE(sum(circuit_km ORDER BY mv_grid_id), 0), COALESCE(sum(cable_km ORDER BY mv_grid_id), 0),
                        count(*) FILTER (WHERE power_flow_status = ANY(%s)), COALESCE(sum(n_band_conflicts), 0)
                 FROM pylovo.mv_grid WHERE version_id = %s AND mv_variant_id = %s""",
             (list(_VIOLATION_STATUSES), version_id, variant_id))

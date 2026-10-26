@@ -15,7 +15,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add the `opendss` extra for the OpenDSS backend
 - Run the MV stage with `USE_EXTERNAL_BASEDATA`: it reads the InfDB through a separate read-only connection (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-prerequisites))
 - Import the eGon-data HV/MV substations in `pylovo-setup` and with `pylovo-import egon-substations`, so the MV stage finds the eTraGo bus of each substation; run `pylovo-setup` once after upgrading (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-egon-data))
-
 - Add `MV_OSM_COVERAGE` and `pylovo-mv generate --no-osm-coverage` to skip the OSM coverage report, which takes hours for a whole federal state (see [MV parameters](https://pylovo.readthedocs.io/en/latest/user_guide/mv_parameters.html))
 
 ### Changed
@@ -30,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000 (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
 - Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
+- Attach an MV node at a vertex of several equally near street edges always to the edge with the lowest id; before, the order of the index scan decided, so two runs on the same data could differ
 
 ## [1.0.0] - 2026-10-22
 ### Changed

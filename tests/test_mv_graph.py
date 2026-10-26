@@ -785,7 +785,9 @@ def test_attach_points_returns_one_typed_row_per_key(monkeypatch):
     assert frame.in_settlement.dtype == bool and frame.offset_m.dtype == np.float64
     assert calls[0][1] == [(2, 5.0, 35.0), (1, 10.0, 0.0)] and "25832" in calls[0][2]["template"]
     texts = [t for t, _ in client.cur.statements]
-    assert any("ON COMMIT DROP" in t for t in texts) and any("ORDER BY e.geom <-> p.geom LIMIT 1" in t for t in texts)
+    # equally near edges go to the lowest edge id
+    assert any("ON COMMIT DROP" in t for t in texts) and any("ORDER BY e.geom <-> p.geom, e.edge_id LIMIT 1" in t
+                                                             for t in texts)
 
 
 def test_subgraph_edges_and_region_arrays_build_typed_arrays():

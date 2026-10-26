@@ -351,9 +351,10 @@ The graph id is a hash of the municipalities, the build parameters and a fingerp
 rows. A graph is therefore reused by every variant with the same inputs, and a changed source gives
 a new graph instead of changing a stored one.
 
-Every node and substation is attached to its nearest graph edge. A node lies in the settlement of
-that edge and is urban if the settlement is urban. A node on an edge outside settlements is in open
-field and rural.
+Every node and substation is attached to its nearest graph edge. Of equally near edges, such as the
+edges that meet at a vertex, the one with the lowest id is taken, so the attachment does not depend
+on the storage order of the graph. A node lies in the settlement of that edge and is urban if the
+settlement is urban. A node on an edge outside settlements is in open field and rural.
 
 District graph
 ~~~~~~~~~~~~~~

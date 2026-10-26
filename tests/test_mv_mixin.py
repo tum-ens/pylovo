@@ -570,6 +570,7 @@ def test_variant_totals_and_pending_grids():
                           ("GROUP BY g.mv_grid_id", (["g", "n"], [(7, 30), (6, 10)], 2))])
     out = client.variant_totals("mv1", "d0")
     assert out["grids_total"] == 3 and out["cable_share"] == pytest.approx(0.6) and out["n_band_conflicts"] == 4
+    assert "sum(circuit_km ORDER BY mv_grid_id)" in client.cur.statements[0][0]     # independent of the row order
     assert out["grids_by_kv"] == {"20": 2, "10": 1}
     assert client.pending_grids("mv1", "d0") == [(7, 30), (6, 10)]
     assert "status IN ('pending', 'failed')" in client.cur.statements[-1][0]

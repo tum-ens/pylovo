@@ -501,6 +501,8 @@ ATTACH_TEMP_SQL = sql.SQL(
     "CREATE TEMP TABLE mv_point_tem (key bigint PRIMARY KEY, geom geometry(Point, {epsg}) NOT NULL) ON COMMIT DROP"
 )
 
+# Of equally near edges (a point at a vertex shared by several edges) the lowest edge id wins: otherwise the order of
+# the index scan decides, which changes with the insert order of the graph and with vacuum.
 ATTACH_SQL = """
     SELECT p.key, e.edge_id, e.component, e.in_settlement, e.settlement_id, e.settlement_urban,
            ST_LineLocatePoint(e.geom, p.geom) AS fraction, ST_Distance(e.geom, p.geom) AS offset_m,
@@ -509,7 +511,7 @@ ATTACH_SQL = """
     LEFT JOIN LATERAL (SELECT e.edge_id, e.component, e.in_settlement, e.settlement_id, e.settlement_urban, e.geom
                        FROM pylovo.mv_graph_edge e
                        WHERE e.graph_id = %(g)s AND COALESCE(e.klasse, '') <> ALL(%(osm)s)
-                       ORDER BY e.geom <-> p.geom LIMIT 1) e ON true
+                       ORDER BY e.geom <-> p.geom, e.edge_id LIMIT 1) e ON true
     ORDER BY p.key
 """
 
