@@ -636,7 +636,8 @@ class MvGraphMixin(BaseMixin):
 
     # ------------------------------------------------------------------------------------------------ build
     def _source_srid(self, table: str) -> int:
-        srid = self.source_reader().srid(_source(table).strings[0], table)
+        schema, _ = _source(table).strings                 # raises without INFDB_SOURCE_SCHEMA
+        srid = self.source_reader().srid(schema, table)
         if not srid:
             raise MvStageError(f"{INFDB_SOURCE_SCHEMA}.{table} has no geometries with an SRID")
         return int(srid)
@@ -673,8 +674,8 @@ class MvGraphMixin(BaseMixin):
             return []
         envelope = {"x0": box[0], "y0": box[1], "x1": box[2], "y1": box[3], "src_srid": src_srid}
         extents = reader.fetchall(AGS_EXTENTS_SQL.format(ways=ways), envelope)
-        columns = list(zip(*extents)) if extents else [[], [], [], [], []]
-        self.cur.execute(AGS_EXTENT_TEMP_SQL, {name: [v for v in values] for name, values in
+        columns = list(zip(*extents)) if extents else [()] * 5
+        self.cur.execute(AGS_EXTENT_TEMP_SQL, {name: list(values) for name, values in
                                                zip(("ags", "x0", "y0", "x1", "y1"), columns)})
         self.cur.execute(AGS_CLASSES_SQL, {"src_srid": src_srid})
         classes = self.cur.fetchall()
