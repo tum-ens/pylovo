@@ -433,12 +433,14 @@ SETTLEMENT_ID_SQL = """
     WHERE e.graph_id = %(g)s AND e.in_settlement AND c.node = e.source
 """
 
+# The edges of a settlement are summed and collected in edge order, so the last digits of its length do not depend
+# on the plan.
 INSERT_SETTLEMENTS_SQL = """
     WITH sb AS (SELECT e.settlement_id, count(DISTINCT b.bid) AS n
                 FROM pylovo.mv_graph_edge e JOIN mvg_bld b ON ST_DWithin(b.pt, e.geom, %(sbuf)s)
                 WHERE e.graph_id = %(g)s AND e.in_settlement GROUP BY e.settlement_id),
-         sg AS (SELECT settlement_id, sum(length_m) / 1000.0 AS km,
-                       ST_Multi(ST_Buffer(ST_Collect(geom), %(spoly)s, 'quad_segs=4')) AS geom
+         sg AS (SELECT settlement_id, sum(length_m ORDER BY edge_id) / 1000.0 AS km,
+                       ST_Multi(ST_Buffer(ST_Collect(geom ORDER BY edge_id), %(spoly)s, 'quad_segs=4')) AS geom
                 FROM pylovo.mv_graph_edge
                 WHERE graph_id = %(g)s AND in_settlement AND settlement_id IS NOT NULL
                 GROUP BY settlement_id)
@@ -913,6 +915,10 @@ class MvGraphMixin(BaseMixin):
         self.cur.execute(IN_SETTLEMENT_SQL, {**g, "smin": parameters["settlement_min_buildings"],
                                              "sspacing": parameters["settlement_spacing_m"], "osm": list(_OSM_KLASSEN)})
         self.cur.execute(SETTLEMENT_ID_SQL, {**g, "settlement_edges_sql": edges_sql(graph_id, settlement_only=True)})
+        # Fresh statistics of the settlement flags: with those from before the flags the planner expects no settlement
+        # edge and joins the settlement polygons to their building counts by a nested loop that reads the sorted
+        # counts again for every settlement (quadratic: 4 of the 5 minutes of a build of 364 municipalities).
+        self.cur.execute(ANALYZE_SQL[1])
         self.cur.execute(INSERT_SETTLEMENTS_SQL, {**g, "sbuf": sbuf, "spoly": parameters["settlement_polygon_buffer_m"],
                                                   "urban_min": parameters["urban_min_buildings"]})
         self.cur.execute(SETTLEMENT_URBAN_SQL, g)

@@ -641,6 +641,12 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
     assert len(pgr) == 2
     assert pgr[0]["edges_sql"] == edges_sql(graph_id)
     assert pgr[1]["settlement_edges_sql"] == edges_sql(graph_id, settlement_only=True)
+    # fresh edge statistics between the settlement ids and the settlement polygons (stale ones give a quadratic plan)
+    ids = next(i for i, t in enumerate(texts) if "SET settlement_id" in t)
+    polygons = next(i for i, t in enumerate(texts) if "INSERT INTO pylovo.mv_graph_settlement" in t)
+    assert "ANALYZE pylovo.mv_graph_edge" in texts[ids + 1:polygons]
+    assert "sum(length_m ORDER BY edge_id)" in texts[polygons]
+    assert "ST_Collect(geom ORDER BY edge_id)" in texts[polygons]
     summary = next(p for t, p in client.cur.statements if "UPDATE pylovo.mv_graph g" in t)
     assert summary["seams"] == 3 and summary["seconds"] >= 0
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
