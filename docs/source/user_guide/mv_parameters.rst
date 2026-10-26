@@ -38,8 +38,9 @@ only the keys below; another key stops pylovo when it reads the configuration.
    * - ``MV_OSM_COVERAGE``
      - ``True``
      - Add the OSM coverage report to the run summary (:ref:`mv-osm-coverage`). A report only, which
-       takes hours for a whole federal state; ``pylovo-mv generate --osm-coverage`` and
-       ``--no-osm-coverage`` override it. An execution flag, stored in no snapshot.
+       needs about three times the memory of the rest of the run: switch it off for a whole federal
+       state. ``pylovo-mv generate --osm-coverage`` and ``--no-osm-coverage`` override it. An
+       execution flag, stored in no snapshot.
    * - ``MV_VARIANT_ID``
      - ``"1"``
      - MV variant of the LV version (1 to 10 letters, digits, ``_``, ``.`` or ``-``). A changed MV

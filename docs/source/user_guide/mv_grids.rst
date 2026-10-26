@@ -226,9 +226,9 @@ variant. The summary at the end has this form (``<...>`` stands for the values o
 The OSM coverage line compares the station sites and MV lines mapped in OpenStreetMap with the planned
 stations (:ref:`mv-osm-coverage`); the full tables per settlement and land-use class are in the log and
 in ``mv_variant.summary['osm_coverage']``. Without an OSM power layer, or with
-``MV_OSM_COVERAGE: False`` (``--no-osm-coverage``), the line is missing. The report intersects every
-land-use polygon with the planning region and takes hours for a whole federal state: switch it off
-there.
+``MV_OSM_COVERAGE: False`` (``--no-osm-coverage``), the line is missing. The report merges the
+land-use polygons of the planning region per class and needs about three times the memory of the rest
+of the run: switch it off for a whole federal state.
 
 The exit code is 0 when the variant is ``done`` and 1 otherwise (2 for a usage error). A variant is
 ``partial`` when some supply areas failed. Every supply area is one database transaction, and a

@@ -109,7 +109,7 @@ _YAML_SPECS: tuple[Spec, ...] = (
          source="execution flag of pylovo-generate (like ANALYZE_GRIDS), in no snapshot"),
     Spec("MV_OSM_COVERAGE", "", True, "bool",
          source="execution flag of the MV stage: the OSM coverage report of the run summary, a report only that "
-                "costs hours for a whole federal state; in no snapshot"),
+                "needs about three times the memory of the rest of the run; in no snapshot"),
     Spec("MV_VARIANT_ID", "variant_id", "1", "str", bounds=(1, 10),
          source="as VERSION_ID; the key of pylovo.mv_variant together with the LV version"),
     Spec("MV_VARIANT_COMMENT", "comment", "default", "str",

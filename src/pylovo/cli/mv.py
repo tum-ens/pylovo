@@ -97,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     coverage.add_argument("--osm-coverage", dest="osm_coverage", action="store_true", default=None,
                           help="add the OSM coverage report to the summary (default MV_OSM_COVERAGE)")
     coverage.add_argument("--no-osm-coverage", dest="osm_coverage", action="store_false",
-                          help="skip the OSM coverage report (hours for a whole federal state)")
+                          help="skip the OSM coverage report (the most memory of a run)")
 
     couple = sub.add_parser("couple", help="LV design-point check and merged MV+LV power flows of a done variant")
     couple.add_argument("--version", required=True)
