@@ -150,8 +150,7 @@ def test_migration_0014_appends_the_classification_choices_of_a_fresh_setup():
     """A fresh setup creates the four columns with the table, an older schema gets them appended: same names, types, order."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, classification_choices
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0014_classification_choices", classification_choices)
-    assert MIGRATION_NAMES[-1] == "0014_classification_choices"
+    assert ("0014_classification_choices", classification_choices) in POST_SCHEMA_MIGRATIONS
     assert MIGRATION_NAMES.count("0014_classification_choices") == 1
     conn = Connection()
     classification_choices(Cursor(conn))
@@ -162,3 +161,17 @@ def test_migration_0014_appends_the_classification_choices_of_a_fresh_setup():
                                    ("n_clusters_gmm", "integer"), ("additional_filtering", "boolean")]
     assert sql.startswith("ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS")
     assert len(conn.log) == 1                                # one statement: it commits with its ledger row
+
+
+def test_migration_0015_creates_the_egon_table_of_a_fresh_setup():
+    """The eGon-data HV/MV substations: the same DDL for a fresh setup and an older schema, filled by pylovo-setup."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, egon_substations
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0015_egon_substations", egon_substations)
+    assert MIGRATION_NAMES[-1] == "0015_egon_substations"
+    conn = Connection()
+    egon_substations(Cursor(conn))
+    assert conn.log == [" ".join(CREATE_QUERIES["egon_hvmv_substation"].split())]
+    ddl = CREATE_QUERIES["egon_hvmv_substation"]
+    assert "CREATE TABLE IF NOT EXISTS pylovo.egon_hvmv_substation" in ddl and "bus_id bigint PRIMARY KEY" in ddl
+    assert "USING gist (geom)" in ddl

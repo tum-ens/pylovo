@@ -578,6 +578,15 @@ def classification_choices(cur: cursor) -> None:
     """)
 
 
+def egon_substations(cur: cursor) -> None:
+    """Create the table of the eGon-data HV/MV substations (the baseline creates it on new schemas); pylovo-setup
+    fills it afterwards."""
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.database.config_table_structure import CREATE_QUERIES
+
+    cur.execute(CREATE_QUERIES["egon_hvmv_substation"])
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -596,6 +605,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0012_indexes", indexes_and_cleanup),
     ("0013_schema_cleanup", schema_cleanup),
     ("0014_classification_choices", classification_choices),
+    ("0015_egon_substations", egon_substations),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

@@ -22,6 +22,8 @@ venv/
 /data/transformer_data/fetched_trafos/*
 /data/transformer_data/processed_trafos/*
 !/data/transformer_data/processed_trafos/2145268_trafos_processed_25832.geojson
+# eGon-data HV/MV substations, downloaded from the Open Energy Platform by pylovo-setup
+/data/egon_data/
 
 ### Output of pylovo runs
 # RESULT_DIR: generated grids, figures and analyses

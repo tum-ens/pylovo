@@ -4,6 +4,8 @@ Subcommands:
     transformers-osm: fetch transformers of an OSM relation from the Overpass API and add them.
     transformers-dso-csv: add DSO transformer positions from a CSV file.
     transformers-ui: browser map for checking and editing transformer positions (needs the extra legacy-ui).
+    egon-substations: load the eGon-data HV/MV substations of the MV stage (downloaded from the Open Energy
+        Platform when not cached or with --refresh).
 """
 import json
 import sys
@@ -77,6 +79,23 @@ def import_transformers_dso_csv(csv_path: str, source: str | None, replace_sourc
     print(f"✓ Imported {count} DSO transformer positions in {elapsed:.1f}s")
 
 
+def import_egon(refresh: bool) -> None:
+    """Replace ``pylovo.egon_hvmv_substation`` by the eGon-data HV/MV substations and commit.
+
+    Args:
+        refresh: Download them again instead of using the cached file.
+    """
+    from pylovo.data_import.import_egon import import_egon_substations
+    from pylovo.database.database_client import DatabaseClient
+
+    start_time = time.time()
+    with DatabaseClient() as client:
+        client.ensure_grid_persistence_schema()
+        count = import_egon_substations(client.cur, refresh=refresh)
+        client.conn.commit()
+    print(f"✓ Imported {count} eGon-data HV/MV substations in {time.time() - start_time:.1f}s")
+
+
 def main():
     """Entry point of ``pylovo-import``."""
     parser = parsers.import_parser()
@@ -92,6 +111,8 @@ def main():
             import_transformers_osm(args.relation_id)
         elif args.command == "transformers-dso-csv":
             import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
+        elif args.command == "egon-substations":
+            import_egon(args.refresh)
         elif args.command == "transformers-ui":
             run_transformers_ui(
                 host=args.host,

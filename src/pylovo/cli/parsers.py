@@ -332,6 +332,9 @@ Examples:
 
   # Check and edit transformer positions on a browser map (needs uv sync --extra legacy-ui)
   pylovo-import transformers-ui
+
+  # Load the eGon-data HV/MV substations of the MV stage again (--refresh: download them again first)
+  pylovo-import egon-substations --refresh
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -373,6 +376,16 @@ Examples:
         help="Browser map for checking and editing transformer positions (needs the extra legacy-ui)"
     )
     add_ui_arguments(ui_parser)
+
+    egon_parser = subparsers.add_parser(
+        "egon-substations",
+        help="Load the eGon-data HV/MV substations (eTraGo buses of the MV stage) from the Open Energy Platform"
+    )
+    egon_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Download them again instead of using the cached file of the data directory"
+    )
     return parser
 
 

@@ -209,7 +209,7 @@ pylovo-import
 
 .. code-block:: text
 
-   pylovo-import [-h] {transformers-osm,transformers-dso-csv,transformers-ui} ...
+   pylovo-import [-h] {transformers-osm,transformers-dso-csv,transformers-ui,egon-substations} ...
 
 Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
 
@@ -227,6 +227,15 @@ Imports data into the database (:doc:`transformer_data`). Without a subcommand t
       Source label for the ids ``dso/<source>/<external_id>``; overrides a ``source`` column.
    ``--replace-source``
       Delete the existing rows ``dso/<source>/...`` before the import.
+
+``pylovo-import egon-substations [--refresh]``
+   Replace ``pylovo.egon_hvmv_substation`` by the eGon-data HV/MV substations, which the MV stage needs
+   for the eTraGo 110 kV bus of each substation (:ref:`mv-egon-data`). ``pylovo-setup`` loads them once;
+   use this command to load them again.
+
+   ``--refresh``
+      Download them again from the Open Energy Platform instead of using the cached file of the data
+      directory.
 
 ``pylovo-import transformers-ui [--host HOST] [--port PORT] [--debug] [--cleanup] [--auto-cleanup]``
    Start a browser map for checking and editing the transformer positions of ``pylovo.transformers``

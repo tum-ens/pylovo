@@ -701,6 +701,26 @@ CREATE_QUERIES = {
         CONSTRAINT municipal_register_pkey PRIMARY KEY (plz, ags)
     )
     """,
+    # eGon-data HV/MV substations of Germany (Open Energy Platform), the eTraGo 110 kV bus of each MV supply site;
+    # filled by pylovo-setup or pylovo-import egon-substations (pylovo.data_import.import_egon)
+    "egon_hvmv_substation": """
+    CREATE TABLE IF NOT EXISTS pylovo.egon_hvmv_substation (
+        bus_id bigint PRIMARY KEY,
+        voltage text,
+        power_type text,
+        substation text,
+        osm_id text,
+        subst_name text,
+        operator text,
+        frequency text,
+        ref text,
+        dbahn text,
+        status integer,
+        geom geometry(Point,{TARGET_EPSG}) NOT NULL,
+        footprint geometry(MultiPolygon,{TARGET_EPSG})
+    );
+    CREATE INDEX IF NOT EXISTS idx_egon_hvmv_substation_geom ON pylovo.egon_hvmv_substation USING gist (geom)
+    """,
     "sample_set": """CREATE TABLE IF NOT EXISTS pylovo.sample_set (
         classification_id integer NOT NULL,
         plz integer NOT NULL,

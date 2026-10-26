@@ -39,7 +39,7 @@ Prerequisites
      - ``<INFDB_SOURCE_SCHEMA>.ways_per_junction`` and ``.buildings``
    * - eGon-data HV/MV substations (optional)
      - The eTraGo 110 kV bus of every substation (``pylovo-mv boundary``)
-     - ``egon_hvmv_substation`` (:ref:`mv-egon-data`)
+     - Loaded by ``pylovo-setup`` (:ref:`mv-egon-data`)
    * - Municipal register
      - Population of the demand anchor in the run summary
      - Loaded by ``pylovo-setup``
@@ -130,12 +130,16 @@ eGon-data (optional)
 ~~~~~~~~~~~~~~~~~~~~
 
 The eGon-data HV/MV substations (``egon_hvmv_substation``: ``bus_id``, ``voltage``, ``osm_id``,
-``geom``) are read from the schema ``pylovo`` if the table exists there and holds rows, else from
-``INFDB_OPENDATA_SCHEMA``. Every OSM site gets the bus id of the nearest one within
-``egon_match_m`` (300 m), which is the id of its 110 kV bus in the eTraGo grid model
+``geom``) are read from the schema ``pylovo`` if the table holds rows there, else from
+``INFDB_OPENDATA_SCHEMA`` of the InfDB source. ``pylovo-setup`` downloads the table of eGon-data
+(``grid.egon_hvmv_substation``, all of Germany, served by the Open Energy Platform as
+``data.edut_00_077``) once into ``egon_data/`` of the data directory and loads it into
+``pylovo.egon_hvmv_substation``; ``pylovo-import egon-substations`` loads it again, with
+``--refresh`` after a new download (:doc:`cli`). Without internet access setup only warns and the
+table stays empty until the next ``pylovo-setup``. Every OSM site gets the bus id of the nearest
+one within ``egon_match_m`` (300 m), which is the id of its 110 kV bus in the eTraGo grid model
 (``pylovo-mv boundary``). Without the table the stage runs, the match is skipped (warning) and no
-substation has a bus. pylovo has no importer for this table yet. Copy it from the eGon-data
-database or the Open Energy Platform.
+substation has a bus.
 
 The eGon substations are processed OSM-derived records. Keep the source release and the typed OSM
 identifiers when comparing them with another grid dataset. The stored ``egon_bus_id`` of an OSM

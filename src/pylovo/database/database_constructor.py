@@ -465,6 +465,32 @@ class DatabaseConstructor:
             infdb_client.conn.close()
         return None
 
+    def egon_to_db(self) -> None:
+        """Load the eGon-data HV/MV substations into ``pylovo.egon_hvmv_substation`` and commit
+        (:mod:`pylovo.data_import.import_egon`; downloaded from the Open Energy Platform if not cached).
+
+        The MV stage runs without them (no eTraGo bus per substation), so a failed download only warns: the table
+        stays empty and the next ``pylovo-setup`` (or ``pylovo-import egon-substations``) tries again.
+        """
+        import requests
+
+        from pylovo.data_import.import_egon import import_egon_substations
+
+        st = time.time()
+        try:
+            with self.dbc.conn.cursor() as cur:
+                count = import_egon_substations(cur)
+            self.dbc.conn.commit()
+        except (requests.RequestException, ValueError, OSError) as exc:
+            self.dbc.conn.rollback()
+            warnings.warn(f"eGon-data HV/MV substations not imported ({type(exc).__name__}: {exc}): the MV stage runs "
+                          "without eTraGo buses; rerun pylovo-setup or pylovo-import egon-substations", stacklevel=2)
+            return
+        except Exception:
+            self.dbc.conn.rollback()                  # keep the setup lock releasable; the error is reported
+            raise
+        print(f"{count} eGon-data HV/MV substations imported in {time.time() - st:.0f} s")
+
     def load_postcode_from_infdb(self):
         """Replace the local ``postcode`` table with all postcodes of InfDB and commit.
 

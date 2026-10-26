@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - Add the `opendss` extra for the OpenDSS backend
 - Run the MV stage with `USE_EXTERNAL_BASEDATA`: it reads the InfDB through a separate read-only connection (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-prerequisites))
+- Import the eGon-data HV/MV substations in `pylovo-setup` and with `pylovo-import egon-substations`, so the MV stage finds the eTraGo bus of each substation; run `pylovo-setup` once after upgrading (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-egon-data))
 
 ### Changed
 - Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again

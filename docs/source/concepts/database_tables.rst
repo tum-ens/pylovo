@@ -444,6 +444,59 @@ Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
      - 
 
+``egon_hvmv_substation``
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+eGon-data HV/MV substations of Germany from the Open Energy Platform (``pylovo-setup``, ``pylovo-import egon-substations``); the MV stage takes the ``bus_id`` of the nearest one as the eTraGo 110 kV bus of a substation.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 38 28
+   :class: fixed-table
+
+   * - Column
+     - Type
+     - Key
+   * - ``bus_id``
+     - ``bigint``
+     - PK
+   * - ``voltage``
+     - ``text``
+     - 
+   * - ``power_type``
+     - ``text``
+     - 
+   * - ``substation``
+     - ``text``
+     - 
+   * - ``osm_id``
+     - ``text``
+     - 
+   * - ``subst_name``
+     - ``text``
+     - 
+   * - ``operator``
+     - ``text``
+     - 
+   * - ``frequency``
+     - ``text``
+     - 
+   * - ``ref``
+     - ``text``
+     - 
+   * - ``dbahn``
+     - ``text``
+     - 
+   * - ``status``
+     - ``integer``
+     - 
+   * - ``geom``
+     - ``geometry(Point,<TARGET_EPSG>)``
+     - 
+   * - ``footprint``
+     - ``geometry(MultiPolygon,<TARGET_EPSG>)``
+     - 
+
 ``ags_log``
 ~~~~~~~~~~~
 
