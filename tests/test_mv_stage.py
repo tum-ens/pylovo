@@ -220,6 +220,21 @@ def test_the_osm_coverage_report_follows_its_switch(run, monkeypatch):
     assert run(FakeDb(generated=(1, 2)), plz=(1, 2)).osm_coverage == {} and reports == [("mv1", "d0")]
 
 
+def test_a_failed_tie_or_link_step_keeps_the_done_districts(run, monkeypatch):
+    def out_of_memory(*args):
+        raise MemoryError("ties")
+
+    links = []
+    monkeypatch.setattr(stage, "_plan_ties", out_of_memory)
+    monkeypatch.setattr(stage, "_plan_links", lambda *a: links.append(a[1:3]) or {"n_links": 3})
+    db = FakeDb(generated=(1, 2))
+    summary = run(db, plz=(1, 2))
+    assert summary.status == "done" and db.finished is summary                  # the districts decide the status
+    assert summary.ties == {} and summary.links == {"n_links": 3} and links == [("mv1", "d0")]
+    assert any(w.startswith("Ties failed: MemoryError: ties; the districts are kept") for w in summary.warnings)
+    assert "rollback_changes" in db.names()
+
+
 def test_the_summary_carries_the_demand_anchor(run, capsys):
     summary = run(FakeDb(generated=(1, 2)), plz=(1, 2))
     demand = summary.demand
@@ -295,16 +310,16 @@ def test_partial_and_failed_runs(run):
     assert run(FakeDb(totals={"grids_total": 0, "grids_done": 0})).status == "failed"
 
 
-def test_a_failure_after_the_districts_keeps_the_grid_counts_in_the_summary(run, monkeypatch):
+def test_a_failed_tie_step_keeps_the_grid_counts_and_the_status_of_the_districts(run, monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("tie step failed")
 
     monkeypatch.setattr(stage, "_plan_ties", broken)
     db = FakeDb()
-    with pytest.raises(RuntimeError, match="tie step failed"):
-        run(db, plz=(1, 2))
-    assert db.finished.status == "failed" and db.finished.warnings[-1] == "RuntimeError: tie step failed"
-    assert (db.finished.grids_total, db.finished.grids_done, db.finished.circuit_km) == (2, 2, 12.0)
+    summary = run(db, plz=(1, 2))
+    assert db.finished is summary and summary.status == "done"
+    assert summary.warnings[-1].startswith("Ties failed: RuntimeError: tie step failed; the districts are kept")
+    assert (summary.grids_total, summary.grids_done, summary.circuit_km) == (2, 2, 12.0)
 
 
 def test_an_interrupted_run_does_not_stay_running(run, monkeypatch):

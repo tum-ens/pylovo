@@ -19,7 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add `MV_OSM_COVERAGE` and `pylovo-mv generate --no-osm-coverage` to skip the OSM coverage report, which takes hours for a whole federal state (see [MV parameters](https://pylovo.readthedocs.io/en/latest/user_guide/mv_parameters.html))
 
 ### Changed
-- Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them
+- Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them; the cells of the district areas find their stations through an index
+- Keep the done supply areas and their status when the MV ties or links fail: the failure becomes a warning of the summary
 - Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again
 
 ### Removed

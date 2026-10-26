@@ -20,7 +20,8 @@
    ``failed`` with its error; the others continue. A broken pool (e.g. out of memory) leaves the remaining grids
    ``pending``; a rerun with fewer ``jobs`` resumes them.
 5. **Post:** normally-open ties between districts and links inside them, then the summary (``mv_variant.summary``)
-   and the final status ``done``, ``partial`` or ``failed``.
+   and the final status ``done``, ``partial`` or ``failed`` of the districts. A failed tie or link step (out of
+   memory included) keeps the districts and becomes a warning of the summary; a rerun of the variant plans it again.
 
 The planning modules (``graph``, ``substations``, ``inputs``, ``districts``, ...) are imported when they are used,
 so this module imports quickly.
@@ -662,9 +663,11 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         dbc.source_reader().close()                # nor the InfDB connection (opened again when needed)
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
-        # 5. post
-        ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger)
-        links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger)
+        # 5. post: a failure here keeps the done districts; a rerun of the variant plans the step again
+        ties = _post_step(dbc, "Ties", logger, warnings, _plan_ties, dbc, version_id, variant_id, graph_id, params,
+                          logger)
+        links = _post_step(dbc, "Links", logger, warnings, _plan_links, dbc, version_id, variant_id, graph_id, params,
+                           logger)
         display_geometry(dbc, version_id, variant_id, logger)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
@@ -693,6 +696,21 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
     dbc.finish_variant(version_id, variant_id, summary)                 # summary['ties'] holds the tie summary
     logger.info(summary.describe().splitlines()[0])
     return summary
+
+
+def _post_step(dbc: Any, name: str, logger: logging.Logger, warnings: list[str], func, *args) -> dict | None:
+    """Run a post step of the districts (ties, links); an error (out of memory included) is logged, rolled back and
+    kept as a warning of the summary, so the done districts stay and the variant keeps the status of its districts.
+    Ctrl-C still stops the run."""
+    try:
+        return func(*args)
+    except Exception as exc:
+        message = (f"{name} failed: {_one_line(exc)}; the districts are kept, rerun pylovo-mv generate of the variant "
+                   "to plan them again")
+        logger.error(message)
+        warnings.append(message)
+        dbc.rollback_changes()
+        return None
 
 
 def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
