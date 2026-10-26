@@ -616,21 +616,30 @@ class MvResultMixin(BaseMixin):
         planning region (the PLZ polygons); the cells partition the region. A district is complete when its
         substation lies in the region and less than 10 % of its cell boundary runs along the region border (within
         1 m of it).
+
+        The points are staged in a temporary table with a spatial index (``mv_area_point``, dropped at commit), so
+        each cell finds its points through the index instead of testing every point.
         """
+        self.cur.execute("DROP TABLE IF EXISTS pg_temp.mv_area_point")
+        self.cur.execute(
+            """CREATE TEMP TABLE mv_area_point ON COMMIT DROP AS
+               SELECT mv_grid_id, geom FROM pylovo.mv_node
+               WHERE version_id = %(v)s AND mv_variant_id = %(var)s AND kind IN ('station', 'customer')
+                 AND mv_grid_id IS NOT NULL""",
+            {"v": version_id, "var": variant_id})
+        self.cur.execute("CREATE INDEX ON mv_area_point USING gist (geom)")
+        self.cur.execute("ANALYZE mv_area_point")
         self.cur.execute(
             """
             WITH region AS (
                 SELECT u.geom, ST_Buffer(ST_Boundary(u.geom), 1.0) AS border
                 FROM (SELECT ST_UnaryUnion(ST_Collect(geom)) AS geom FROM pylovo.postcode
                       WHERE plz = ANY(%(plz)s)) u),
-            pts AS (SELECT mv_grid_id, geom FROM pylovo.mv_node
-                    WHERE version_id = %(v)s AND mv_variant_id = %(var)s AND kind IN ('station', 'customer')
-                      AND mv_grid_id IS NOT NULL),
             vor AS (SELECT row_number() OVER () AS cid, d.geom
                     FROM ST_Dump((SELECT ST_VoronoiPolygons(ST_Collect(p.geom), 0.0, (SELECT geom FROM region))
-                                  FROM pts p)) d),
+                                  FROM mv_area_point p)) d),
             lab AS (SELECT DISTINCT ON (v.cid) v.cid, p.mv_grid_id, v.geom
-                    FROM vor v JOIN pts p ON ST_Intersects(v.geom, p.geom) ORDER BY v.cid, p.mv_grid_id),
+                    FROM vor v JOIN mv_area_point p ON ST_Intersects(v.geom, p.geom) ORDER BY v.cid, p.mv_grid_id),
             cell AS (SELECT l.mv_grid_id,
                             ST_Multi(ST_CollectionExtract(ST_Intersection(ST_UnaryUnion(ST_Collect(l.geom)),
                                                                           r.geom), 3)) AS geom

@@ -292,8 +292,13 @@ def test_attachment_and_grid_updates_are_typed(recorded):
 def test_write_grid_areas_partitions_the_region():
     client = make_client()
     client.write_grid_areas("mv1", "d0", [80801, "80804"])
-    sql, params = client.cur.statements[0]
+    texts = [s for s, _ in client.cur.statements]
+    stage, stage_params = next((s, p) for s, p in client.cur.statements if "CREATE TEMP TABLE mv_area_point" in s)
+    assert "kind IN ('station', 'customer')" in stage and stage_params == {"v": "mv1", "var": "d0"}
+    assert any("ON mv_area_point USING gist (geom)" in s for s in texts)    # the cells find their points by index
+    sql, params = client.cur.statements[-1]
     assert "ST_VoronoiPolygons(ST_Collect(p.geom), 0.0, (SELECT geom FROM region))" in sql
+    assert "JOIN mv_area_point p ON ST_Intersects(v.geom, p.geom)" in sql
     assert "ST_CollectionExtract(ST_Intersection" in sql and "< 0.10" in sql
     assert params == {"v": "mv1", "var": "d0", "plz": [80801, 80804]}
 
