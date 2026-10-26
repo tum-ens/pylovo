@@ -225,7 +225,10 @@ variant. The summary at the end has this form (``<...>`` stands for the values o
 
 The OSM coverage line compares the station sites and MV lines mapped in OpenStreetMap with the planned
 stations (:ref:`mv-osm-coverage`); the full tables per settlement and land-use class are in the log and
-in ``mv_variant.summary['osm_coverage']``. Without an OSM power layer the line is missing.
+in ``mv_variant.summary['osm_coverage']``. Without an OSM power layer, or with
+``MV_OSM_COVERAGE: False`` (``--no-osm-coverage``), the line is missing. The report intersects every
+land-use polygon with the planning region and takes hours for a whole federal state: switch it off
+there.
 
 The exit code is 0 when the variant is ``done`` and 1 otherwise (2 for a usage error). A variant is
 ``partial`` when some supply areas failed. Every supply area is one database transaction, and a
@@ -270,8 +273,8 @@ transformer types and the version of the stage code (``mv_stage_version``). The 
 not part of the snapshot of the LV version, so MV variants never require a new ``VERSION_ID``.
 
 ``--set KEY=VALUE`` changes a parameter for one variant. KEY is an ``MV_*`` key of
-``config_generation_mv.yaml`` (except ``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and
-``MV_VARIANT_COMMENT``). VALUE is read as YAML (``null``, numbers, text) and checked against the
+``config_generation_mv.yaml`` (except ``MV_GRID_GENERATION``, ``MV_OSM_COVERAGE``, ``MV_VARIANT_ID``
+and ``MV_VARIANT_COMMENT``). VALUE is read as YAML (``null``, numbers, text) and checked against the
 rules of the key. A value with spaces needs quotes in the shell. The constants of
 :doc:`mv_parameters` are changed in Python with ``MvParameters.replace``.
 

@@ -415,7 +415,7 @@ def _fields_from_raw(raw: Mapping[str, Any]) -> dict[str, Any]:
     for name, value in raw.items():
         spec = spec_of(name)
         if not spec.field:
-            raise ValueError(f"{name} is an execution flag of pylovo-generate, not an MV parameter")
+            raise ValueError(f"{name} is an execution flag of the run, not an MV parameter")
         fields[spec.field] = value
     return fields
 

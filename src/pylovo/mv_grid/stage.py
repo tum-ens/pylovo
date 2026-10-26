@@ -549,7 +549,7 @@ def _status(totals: dict) -> str:
 
 def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvParameters | None = None, *,
                  parallel: bool = True, jobs: int | None = None, replace: bool = False,
-                 log_file: str = "log/log.txt") -> MvRunSummary:
+                 log_file: str = "log/log.txt", osm_coverage: bool | None = None) -> MvRunSummary:
     """Run the MV stage for one MV variant of a stored LV version (see the module docstring).
 
     Args:
@@ -560,6 +560,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
         jobs: Number of workers (default ``min(4, N_JOBS)``, capped by the free memory).
         replace: Delete the variant first and build it from scratch.
         log_file: Log file of the run (workers log next to it).
+        osm_coverage: Add the OSM coverage report to the summary (default ``MV_OSM_COVERAGE``).
 
     Returns:
         The run summary (also stored in ``mv_variant.summary``); ``status`` is ``done``, ``partial`` or ``failed``.
@@ -587,7 +588,8 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
         locked = True
         dbc.commit_changes()
         return _run_locked(dbc, version_id, params, plz_list, parallel=parallel, jobs=jobs, replace=replace,
-                           log_file=log_file, logger=logger, start=start)
+                           log_file=log_file, logger=logger, start=start,
+                           osm_coverage=config.MV_OSM_COVERAGE if osm_coverage is None else bool(osm_coverage))
     finally:
         if locked:
             try:
@@ -601,7 +603,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
 
 def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Sequence[int] | None, *, parallel: bool,
                 jobs: int | None, replace: bool, log_file: str, logger: logging.Logger,
-                start: float) -> MvRunSummary:
+                start: float, osm_coverage: bool = True) -> MvRunSummary:
     variant_id = params.variant_id
     warnings: list[str] = []
     logger.info(f"MV planning cases: {', '.join(CASES)} (load-only)")
@@ -667,7 +669,11 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
         demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
-        coverage = _osm_coverage(dbc, version_id, variant_id, region_wkb, graph_id, logger)
+        if osm_coverage:
+            coverage = _osm_coverage(dbc, version_id, variant_id, region_wkb, graph_id, logger)
+        else:
+            coverage = {}
+            logger.info("OSM coverage report skipped (MV_OSM_COVERAGE: False)")
     except BaseException as exc:                   # also Ctrl-C: the variant must not stay 'running'
         totals = None
         try:

@@ -93,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help="plan the districts one after the other in this process")
     gen.add_argument("--jobs", type=int, help="district workers (default min(4, N_JOBS), capped by free memory)")
     gen.add_argument("--replace", action="store_true", help="delete the variant first and build it again")
+    coverage = gen.add_mutually_exclusive_group()
+    coverage.add_argument("--osm-coverage", dest="osm_coverage", action="store_true", default=None,
+                          help="add the OSM coverage report to the summary (default MV_OSM_COVERAGE)")
+    coverage.add_argument("--no-osm-coverage", dest="osm_coverage", action="store_false",
+                          help="skip the OSM coverage report (hours for a whole federal state)")
 
     couple = sub.add_parser("couple", help="LV design-point check and merged MV+LV power flows of a done variant")
     couple.add_argument("--version", required=True)
@@ -181,7 +186,8 @@ def _generate(args: argparse.Namespace) -> int:
     plz_list = _plz_of(args)
     parallel = PARALLEL if args.parallel is None else args.parallel
     jobs = args.jobs if args.jobs is not None else min(stage.DEFAULT_MAX_JOBS, N_JOBS)
-    summary = stage.run_mv_stage(args.version, plz_list, params, parallel=parallel, jobs=jobs, replace=args.replace)
+    summary = stage.run_mv_stage(args.version, plz_list, params, parallel=parallel, jobs=jobs, replace=args.replace,
+                                 osm_coverage=args.osm_coverage)
     print(summary.describe())
     return 0 if summary.status == "done" else 1
 

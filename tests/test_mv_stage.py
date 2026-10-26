@@ -211,6 +211,15 @@ def test_a_new_variant_runs_every_step(run, capsys):
     assert capsys.readouterr().out.startswith("✓ MV stage on ")
 
 
+def test_the_osm_coverage_report_follows_its_switch(run, monkeypatch):
+    reports = []
+    monkeypatch.setattr(stage, "_osm_coverage", lambda *a, **k: reports.append(a[1:3]) or {"n_classes": 4})
+    assert run(FakeDb(generated=(1, 2)), plz=(1, 2), osm_coverage=False).osm_coverage == {} and reports == []
+    assert run(FakeDb(generated=(1, 2)), plz=(1, 2), osm_coverage=True).osm_coverage == {"n_classes": 4}
+    monkeypatch.setattr(stage._config(), "MV_OSM_COVERAGE", False)          # the configuration is the default
+    assert run(FakeDb(generated=(1, 2)), plz=(1, 2)).osm_coverage == {} and reports == [("mv1", "d0")]
+
+
 def test_the_summary_carries_the_demand_anchor(run, capsys):
     summary = run(FakeDb(generated=(1, 2)), plz=(1, 2))
     demand = summary.demand

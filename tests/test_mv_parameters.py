@@ -146,7 +146,7 @@ def json_round_trip(value):
 
 
 def test_specs_have_known_kinds_and_canonical_defaults():
-    assert len(YAML_KEYS) == 9 and len(CONSTANTS) >= 50
+    assert len(YAML_KEYS) == 10 and len(CONSTANTS) >= 50
     assert not set(YAML_KEYS) & set(CONSTANTS)
     for spec in (*YAML_KEYS.values(), *CONSTANTS.values()):
         assert spec.kind in options.KINDS, spec.name
@@ -155,14 +155,15 @@ def test_specs_have_known_kinds_and_canonical_defaults():
     assert all(name.startswith("MV_") for name in YAML_KEYS)
     assert "MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW" not in YAML_KEYS          # an LV-version key
     assert all(spec.field == name for name, spec in CONSTANTS.items())
-    assert YAML_KEYS["MV_GRID_GENERATION"].field == "" and YAML_KEYS["MV_GRID_GENERATION"].path == ()
+    for flag in ("MV_GRID_GENERATION", "MV_OSM_COVERAGE"):                   # execution flags, in no snapshot
+        assert YAML_KEYS[flag].field == "" and YAML_KEYS[flag].path == ()
 
 
 def test_snapshot_paths_are_unique():
     paths = [spec.path for spec in (*YAML_KEYS.values(), *CONSTANTS.values()) if spec.path]
     assert len(paths) == len(set(paths))
     assert {spec.name for spec in YAML_KEYS.values() if not spec.path} == {
-        "MV_GRID_GENERATION", "MV_VARIANT_ID", "MV_VARIANT_COMMENT"}
+        "MV_GRID_GENERATION", "MV_OSM_COVERAGE", "MV_VARIANT_ID", "MV_VARIANT_COMMENT"}
 
 
 @pytest.mark.parametrize("name, value, expected", [

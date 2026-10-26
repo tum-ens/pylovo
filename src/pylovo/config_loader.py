@@ -631,6 +631,8 @@ def _mv_value(key: str):
 
 # Execution flag (in no snapshot): run the MV stage after the LV grids in pylovo-generate (--mv / --no-mv)
 MV_GRID_GENERATION = _mv_value("MV_GRID_GENERATION")
+# Execution flag (in no snapshot): the OSM coverage report of an MV run (pylovo-mv generate --no-osm-coverage)
+MV_OSM_COVERAGE = _mv_value("MV_OSM_COVERAGE")
 MV_VARIANT_ID = _mv_value("MV_VARIANT_ID")
 MV_VARIANT_COMMENT = _mv_value("MV_VARIANT_COMMENT")
 MV_NOMINAL_VOLTAGE_KV = _mv_value("MV_NOMINAL_VOLTAGE_KV")

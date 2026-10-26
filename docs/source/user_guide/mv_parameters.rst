@@ -21,7 +21,7 @@ still read, and a key set in both files needs the same value. ``config_generatio
 only the keys below; another key stops pylovo when it reads the configuration.
 
 ``pylovo-mv generate --set KEY=VALUE`` changes a key for one variant, except
-``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and ``MV_VARIANT_COMMENT``.
+``MV_GRID_GENERATION``, ``MV_OSM_COVERAGE``, ``MV_VARIANT_ID`` and ``MV_VARIANT_COMMENT``.
 
 .. list-table::
    :header-rows: 1
@@ -35,6 +35,11 @@ only the keys below; another key stops pylovo when it reads the configuration.
      - ``False``
      - Run the MV stage after the LV grids in ``pylovo-generate`` (``--mv`` and ``--no-mv``
        override it). An execution flag, stored in no snapshot.
+   * - ``MV_OSM_COVERAGE``
+     - ``True``
+     - Add the OSM coverage report to the run summary (:ref:`mv-osm-coverage`). A report only, which
+       takes hours for a whole federal state; ``pylovo-mv generate --osm-coverage`` and
+       ``--no-osm-coverage`` override it. An execution flag, stored in no snapshot.
    * - ``MV_VARIANT_ID``
      - ``"1"``
      - MV variant of the LV version (1 to 10 letters, digits, ``_``, ``.`` or ``-``). A changed MV

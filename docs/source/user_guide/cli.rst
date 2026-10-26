@@ -106,7 +106,8 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
 ``pylovo-mv generate --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [OPTIONS]``
    Run the MV stage for one MV variant of the version. The options are ``--variant``,
    ``--comment``, ``--set KEY=VALUE ...`` (``MV_*`` keys of this variant, :ref:`mv-variants`),
-   ``--parallel`` or ``--no-parallel``, ``--jobs`` and ``--replace``.
+   ``--parallel`` or ``--no-parallel``, ``--jobs``, ``--replace`` and ``--osm-coverage`` or
+   ``--no-osm-coverage`` (the OSM coverage report of the summary, default ``MV_OSM_COVERAGE``).
 ``pylovo-mv couple --version VERSION --variant VARIANT [--grid GRIDS ...] [--jobs JOBS] [--no-merged]``
    Check the done MV grids with the stored LV grids and solve the merged MV and LV operating point.
 ``pylovo-mv list [--version VERSION]``

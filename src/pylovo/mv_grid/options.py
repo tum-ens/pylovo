@@ -74,8 +74,8 @@ class Spec:
 
     Attributes:
         name: YAML key (``MV_MAX_STATIONS_PER_RING``) or constant name (``stub_max_kva``).
-        field: Field name in :class:`~pylovo.mv_grid.parameters.MvParameters`; empty for ``MV_GRID_GENERATION``,
-            which is an execution flag and no parameter.
+        field: Field name in :class:`~pylovo.mv_grid.parameters.MvParameters`; empty for the execution flags
+            ``MV_GRID_GENERATION`` and ``MV_OSM_COVERAGE``, which are no parameters.
         default: Default in canonical form (the shipped value of a YAML key).
         kind: One of :data:`KINDS`.
         choices: Allowed numbers of a ``voltage`` (the nominal voltages besides ``auto``).
@@ -107,6 +107,9 @@ class Spec:
 _YAML_SPECS: tuple[Spec, ...] = (
     Spec("MV_GRID_GENERATION", "", False, "bool",
          source="execution flag of pylovo-generate (like ANALYZE_GRIDS), in no snapshot"),
+    Spec("MV_OSM_COVERAGE", "", True, "bool",
+         source="execution flag of the MV stage: the OSM coverage report of the run summary, a report only that "
+                "costs hours for a whole federal state; in no snapshot"),
     Spec("MV_VARIANT_ID", "variant_id", "1", "str", bounds=(1, 10),
          source="as VERSION_ID; the key of pylovo.mv_variant together with the LV version"),
     Spec("MV_VARIANT_COMMENT", "comment", "default", "str",
@@ -289,6 +292,7 @@ CONSTANTS: dict[str, Spec] = {spec.name: spec for spec in _CONSTANT_SPECS}
 #: YAML keys that ``--set`` does not change, with the option to use instead.
 NOT_SETTABLE: dict[str, str] = {
     "MV_GRID_GENERATION": "it is the switch of pylovo-generate (use pylovo-generate --mv)",
+    "MV_OSM_COVERAGE": "it is a switch of the run, not of the variant (use --osm-coverage or --no-osm-coverage)",
     "MV_VARIANT_ID": "use --variant",
     "MV_VARIANT_COMMENT": "use --comment",
 }

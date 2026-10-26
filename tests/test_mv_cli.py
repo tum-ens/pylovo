@@ -147,9 +147,15 @@ def test_generate_runs_the_stage_with_the_variant(monkeypatch, capsys, no_grid_g
     assert version_id == "mv1" and plz_list == [80802, 80803]
     assert (params.variant_id, params.comment, params.max_stations_per_ring, params.line_utilization) == (
         "d0", "cable rings", 15, 0.5)
-    assert kwargs == {"parallel": False, "jobs": 2, "replace": True}
+    assert kwargs == {"parallel": False, "jobs": 2, "replace": True, "osm_coverage": None}   # None: MV_OSM_COVERAGE
     out = capsys.readouterr().out.splitlines()
     assert out and all(line.startswith(("✓", "✗")) for line in out)
+    for flag, value in (("--no-osm-coverage", False), ("--osm-coverage", True)):
+        cli.main(["generate", "--version", "mv1", "--all", flag])
+        assert calls[-1][3]["osm_coverage"] is value
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["generate", "--version", "mv1", "--all", "--osm-coverage", "--no-osm-coverage"])
+    capsys.readouterr()
 
     monkeypatch.setattr(stage, "run_mv_stage", lambda *a, **k: summary("partial"))
     with pytest.raises(SystemExit) as exc:

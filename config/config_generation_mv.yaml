@@ -15,6 +15,10 @@
 
 # Run the MV stage after the LV grids in pylovo-generate (pylovo-generate --mv / --no-mv override it)
 MV_GRID_GENERATION: False
+# Add the OSM coverage report (mapped stations and lines per settlement and land-use class) to the run summary. A report
+# only, in no variant: switch it off for a whole federal state, where it takes hours (pylovo-mv generate
+# --osm-coverage / --no-osm-coverage override it)
+MV_OSM_COVERAGE: True
 # Name of the MV variant (1 to 10 characters); one LV version can hold several MV variants
 MV_VARIANT_ID: "1"
 MV_VARIANT_COMMENT: default # Stored with a new MV variant
