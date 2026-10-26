@@ -460,8 +460,9 @@ def test_osm_objects_and_landuse_are_prefiltered_in_the_srid_of_each_layer(schem
     assert "l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(landuse_srid)s)" in text
     assert params["landuse_srid"] == 31468 and shapely.from_wkb(params["box"]).bounds == (-1000.0, -1000.0, 1010.0,
                                                                                           1010.0)
-    text, params = _query(client, "ST_Intersection(ST_MakeValid")     # the clip runs on the staged polygons
+    text, params = _query(client, "ST_Intersection(v.geom, r.g)")     # the clip runs on the staged polygons
     assert "FROM pg_temp.mv_landuse_raw l" in text and params == {"region": region}
+    assert "CASE WHEN ST_Covers(r.g, v.geom) THEN v.geom" in text    # the overlay only for the border polygons
 
 
 def test_osm_queries_need_the_osm_schema(schemas, monkeypatch):

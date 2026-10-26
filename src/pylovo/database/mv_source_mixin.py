@@ -149,11 +149,14 @@ _OSM_LANDUSE_STAGE_SQL = sql.SQL("""
 SELECT l.osm_id, l.osm_type, l.geom FROM {osm}.landuse_polygon l
 WHERE l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(landuse_srid)s)
 """)
-# ... clipped to the region
+# ... clipped to the region. Only a polygon across the region border needs the overlay: a polygon inside it (the
+# prepared ST_Covers test, which ST_CoveredBy is not) stays as it is. A staged table is read without parallel workers,
+# so the overlay of every polygon took three times as long as in the source table.
 _OSM_LANDUSE_SQL = sql.SQL("""
 WITH r AS (SELECT ST_GeomFromWKB(%(region)s, {epsg}) AS g)
-SELECT l.osm_type, ST_AsBinary(ST_Intersection(ST_MakeValid(ST_Transform(l.geom, {epsg})), r.g))
-FROM pg_temp.mv_landuse_raw l, r
+SELECT l.osm_type, ST_AsBinary(CASE WHEN ST_Covers(r.g, v.geom) THEN v.geom ELSE ST_Intersection(v.geom, r.g) END)
+FROM pg_temp.mv_landuse_raw l CROSS JOIN r
+CROSS JOIN LATERAL (SELECT ST_MakeValid(ST_Transform(l.geom, {epsg})) AS geom) v
 WHERE ST_Intersects(ST_Transform(l.geom, {epsg}), r.g)
 ORDER BY l.osm_id;
 """)
