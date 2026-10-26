@@ -499,13 +499,16 @@ def _walk(pred_row: np.ndarray, source: int, target: int) -> list[int]:
 
 
 def vertex_paths(rg: RunGraph, pairs: Sequence[tuple[int, int]], *,
-                 chunk: int = 64) -> dict[tuple[int, int], list[int]]:
+                 chunk: int = 64, limit: float | None = None) -> dict[tuple[int, int], list[int]]:
     """Shortest vertex paths between run-graph vertices.
 
-    Predecessors are computed only for the distinct sources of ``pairs``, at most ``chunk`` per Dijkstra call.
+    Predecessors are computed only for the distinct sources of ``pairs``, at most ``chunk`` per Dijkstra call. With
+    ``limit`` the search of a source stops at that cost (the ties and links know that their routes are not
+    longer), which keeps it local in the graph of a whole variant.
 
     Returns:
-        ``{(a, b): [a, ..., b]}``; ``[a]`` for ``a == b`` and ``[]`` when ``b`` is unreachable from ``a``.
+        ``{(a, b): [a, ..., b]}``; ``[a]`` for ``a == b`` and ``[]`` when ``b`` is unreachable from ``a`` (or costs
+        more than ``limit``).
     """
     by_source: dict[int, list[int]] = defaultdict(list)
     for a, b in pairs:
@@ -515,7 +518,11 @@ def vertex_paths(rg: RunGraph, pairs: Sequence[tuple[int, int]], *,
     step = max(1, int(chunk))
     for start in range(0, len(sources), step):
         batch = sources[start:start + step]
-        dist, pred = dijkstra(rg.csr, directed=False, indices=batch, return_predecessors=True)
+        if limit is None:
+            dist, pred = dijkstra(rg.csr, directed=False, indices=batch, return_predecessors=True)
+        else:
+            dist, pred = dijkstra(rg.csr, directed=False, indices=batch, return_predecessors=True,
+                                  limit=float(limit))
         for i, a in enumerate(batch):
             for b in by_source[a]:
                 if a == b:

@@ -522,6 +522,25 @@ SUBGRAPH_EDGES_SQL = sql.SQL("""
     ORDER BY e.edge_id
 """)
 
+# The edges within the buffer of any of many points (the ring members of a whole variant for its ties and links):
+# each point finds its edges through the edge index, which gives the edges of one ST_DWithin test against the
+# MultiPoint of all points, while that test computes the distance to every point for every edge of the graph.
+SUBGRAPH_POINTS_SQL = sql.SQL("""
+    CREATE TEMP TABLE mv_subgraph_point ON COMMIT DROP AS
+    SELECT ST_SetSRID(ST_MakePoint(p.x, p.y), {epsg}) AS pt FROM unnest(%(x)s::float8[], %(y)s::float8[]) AS p(x, y)
+""")
+
+SUBGRAPH_NEAR_SQL = """
+    SELECT e.edge_id, e.source, e.target, e.length_m, e.in_settlement, COALESCE(e.settlement_id, -1),
+           COALESCE(e.klasse = %(line)s, false)
+    FROM pylovo.mv_graph_edge e
+    WHERE e.graph_id = %(g)s
+      AND (e.edge_id IN (SELECT n.edge_id FROM mv_subgraph_point p
+                         JOIN pylovo.mv_graph_edge n ON n.graph_id = %(g)s AND ST_DWithin(n.geom, p.pt, %(buffer_m)s))
+           OR e.edge_id = ANY(%(must)s))
+    ORDER BY e.edge_id
+"""
+
 SUBGRAPH_VERTICES_SQL = """
     SELECT v.vertex_id, ST_X(v.geom), ST_Y(v.geom) FROM pylovo.mv_graph_vertex v
     WHERE v.graph_id = %(g)s AND v.vertex_id = ANY(%(vertex_ids)s)
@@ -1044,7 +1063,38 @@ class MvGraphMixin(BaseMixin):
         self.cur.execute(SUBGRAPH_EDGES_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
                          {"g": graph_id, "hull": bytes(hull_wkb), "buffer_m": float(buffer_m), "must": must_ids,
                           "line": OSM_LINE_KLASSE})
+        return self._edge_set(graph_id, self.cur.fetchall())
+
+    def subgraph_edges_near(self, graph_id: str, xy: np.ndarray, buffer_m: float, must: Sequence[int]) -> EdgeSet:
+        """The edges within ``buffer_m`` of any of the points ``xy`` and the ``must`` edges, as an
+        :class:`~pylovo.mv_grid.model.EdgeSet` like :meth:`subgraph_edges`.
+
+        The same edges as :meth:`subgraph_edges` with the MultiPoint of the points, found point by point through the
+        edge index (temporary table ``mv_subgraph_point``, dropped at commit; see :data:`SUBGRAPH_NEAR_SQL`): the
+        ties and links of a variant search around thousands of ring members.
+
+        Args:
+            graph_id: Graph id.
+            xy: ``(n, 2)`` point coordinates (``TARGET_EPSG``).
+            buffer_m: Edges within this distance of a point are taken.
+            must: Edge ids always taken.
+        """
+        xy = np.asarray(xy, dtype=float).reshape(-1, 2)
+        must_ids = sorted({int(e) for e in must if e is not None and not pd.isna(e)})
+        self.cur.execute("DROP TABLE IF EXISTS pg_temp.mv_subgraph_point")
+        self.cur.execute(SUBGRAPH_POINTS_SQL.format(epsg=sql.Literal(TARGET_EPSG)),
+                         {"x": [float(v) for v in xy[:, 0]], "y": [float(v) for v in xy[:, 1]]})
+        self.cur.execute("CREATE INDEX ON mv_subgraph_point USING gist (pt)")
+        self.cur.execute("ANALYZE mv_subgraph_point")
+        self.cur.execute(SUBGRAPH_NEAR_SQL, {"g": graph_id, "buffer_m": float(buffer_m), "must": must_ids,
+                                             "line": OSM_LINE_KLASSE})
         rows = self.cur.fetchall()
+        self.cur.execute("DROP TABLE pg_temp.mv_subgraph_point")
+        return self._edge_set(graph_id, rows)
+
+    def _edge_set(self, graph_id: str, rows: list[tuple]) -> EdgeSet:
+        """The :class:`~pylovo.mv_grid.model.EdgeSet` of subgraph edge rows (ordered by ``edge_id``) and their
+        vertices."""
         if rows:
             edge_id, source, target, length, in_settlement, settlement_id, overhead = (np.asarray(c)
                                                                                        for c in zip(*rows))

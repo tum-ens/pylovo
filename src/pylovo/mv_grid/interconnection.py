@@ -57,7 +57,7 @@ import logging
 import math
 import time
 import warnings
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from typing import TYPE_CHECKING, Any, Callable, Collection, Mapping, Sequence
 
 import numpy as np
@@ -103,6 +103,8 @@ PREFILTER_SLACK_M: float = 50.0
 SUBGRAPH_MARGIN_M: float = 100.0
 #: Source vertices per Dijkstra call.
 _CHUNK: int = 64
+#: Prepared district nets the takeover check keeps in memory at once; an evicted one is read and prepared again.
+TAKEOVER_NETS_CACHED: int = 32
 
 
 # ---------------------------------------------------------------------------------------------- candidates
@@ -250,15 +252,22 @@ def _street_distances(rg: Any, pairs: np.ndarray, limit_m: float) -> np.ndarray:
     return out
 
 
-def _true_lengths(rg: Any, pairs: np.ndarray) -> np.ndarray:
+def _search_limit(limit_m: float) -> float:
+    """The cost limit of a path search for routes of at most ``limit_m`` (a hair above it: a route exactly at the
+    limit stays found)."""
+    return float(limit_m) * (1.0 + 1e-9) + 1e-6
+
+
+def _true_lengths(rg: Any, pairs: np.ndarray, limit_m: float) -> np.ndarray:
     """True length (m) of the minimum-cost route per local row pair (``inf`` if unreachable).
 
     The run graph weights OSM MV lines below their length (``osm_cost_factor``), so the street distance of
-    :func:`_street_distances` undercounts routes on OSM corridors.
+    :func:`_street_distances` undercounts routes on OSM corridors. The pairs cost at most ``limit_m``, so the path
+    search stops there.
     """
     vertex = np.asarray(rg.terminal_vertex, dtype=np.int64)
     keys = [(int(vertex[i]), int(vertex[j])) for i, j in pairs]
-    paths = graph.vertex_paths(rg, list(set(keys)))
+    paths = graph.vertex_paths(rg, list(set(keys)), limit=_search_limit(limit_m))
     piece_m = rg.pieces["length_m"].to_numpy(dtype=float)
     out = np.full(len(pairs), np.inf)
     for p, key in enumerate(keys):
@@ -348,7 +357,7 @@ def _measure(cand: pd.DataFrame, pairs: np.ndarray, edges: EdgeSet, params: "MvP
     shortest = np.zeros(len(lpairs), dtype=bool)
     rg_len = None
     if "cost_m" in rg.pieces.columns and not np.allclose(rg.pieces["cost_m"], rg.pieces["length_m"]):
-        street = _true_lengths(rg, lpairs)              # the limit and the ranking use the true route length
+        street = _true_lengths(rg, lpairs, limit)       # the limit and the ranking use the true route length
         far = street > pair_reach
         if far.any():                                   # the cheapest route is too long: the shortest one?
             rg_len = run_graph(1.0)
@@ -361,7 +370,8 @@ def _measure(cand: pd.DataFrame, pairs: np.ndarray, edges: EdgeSet, params: "MvP
     xy = sub[["x", "y"]].to_numpy(dtype=float)
     i, j = lpairs[:, 0], lpairs[:, 1]
     straight_m = np.hypot(*(xy[i] - xy[j]).T)
-    return {"sub": sub, "rg": rg, "rg_len": rg_len, "pairs": lpairs, "street": street, "shortest": shortest,
+    return {"sub": sub, "rg": rg, "rg_len": rg_len, "limit": float(limit), "pairs": lpairs, "street": street,
+            "shortest": shortest,
             "straight_m": straight_m, "length": np.maximum(street, MIN_TIE_M), "xy": xy,
             "ids": np.asarray(sub.index, dtype=np.int64), "grid": sub["mv_grid_id"].to_numpy(dtype=np.int64),
             "ring": _numbers(sub, "ring_id").astype(np.int64), "feeder": _numbers(sub, "feeder_id").astype(np.int64)}
@@ -379,9 +389,9 @@ def _line_table(m: dict, ends: Sequence[tuple[int, int, int]], grids: pd.DataFra
     pieces = {}
     for g in (rg, m["rg_len"]):                         # the route each pair was measured on
         keys = [key for key, of in graph_of.items() if of is g]
-        if keys:
-            pieces.update({key: graph.path_pieces(g, path) for key, path in graph.vertex_paths(g, keys).items()
-                           if path})
+        if keys:                                        # every chosen route costs at most the limit
+            pieces.update({key: graph.path_pieces(g, path) for key, path in
+                           graph.vertex_paths(g, keys, limit=_search_limit(m["limit"])).items() if path})
     edge_kind = rg.pieces["kind"].astype(str).to_numpy()
     edge_ids = rg.pieces["edge_id"].to_numpy(dtype=np.int64)
     on_osm = (rg.pieces["overhead"].fillna(False).to_numpy(dtype=bool) if "overhead" in rg.pieces.columns
@@ -667,7 +677,7 @@ def takeover_checks(ties: pd.DataFrame, nets: Mapping[int, Any], params: "MvPara
     from pandapower.toolbox import merge_nets
 
     rows: list[dict] = []
-    prepared: dict[int, Any] = {}
+    prepared: OrderedDict[int, Any] = OrderedDict()      # least recently used first, at most TAKEOVER_NETS_CACHED
     errors: dict[int, str] = {}
     for t, tie in enumerate(ties.itertuples(index=False)):
         ends = [
@@ -679,15 +689,20 @@ def takeover_checks(ties: pd.DataFrame, nets: Mapping[int, Any], params: "MvPara
         base = [{"tie": t, "side": e["side"], "mv_grid_id": e["mv_grid_id"], "ring_id": e["ring_id"],
                  "node": e["node"], "partner_grid_id": e["partner_grid_id"]} for e in ends]
         try:
-            for g in (int(tie.from_grid), int(tie.to_grid)):
+            pair = (int(tie.from_grid), int(tie.to_grid))
+            for g in pair:
                 if g in errors:
                     raise LookupError(errors[g])
-                if g not in prepared:
+                if g in prepared:
+                    prepared.move_to_end(g)
+                else:
                     try:
                         prepared[g] = _prepared_net(nets.get(g), g, params)
                     except Exception as exc:          # a grid without a usable net: every tie of it is skipped
                         errors[g] = f"{type(exc).__name__}: {exc}"
                         raise
+            for g in [g for g in prepared if g not in pair][:max(0, len(prepared) - TAKEOVER_NETS_CACHED)]:
+                del prepared[g]
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 net = merge_nets(prepared[int(tie.from_grid)], prepared[int(tie.to_grid)], validate=False,
@@ -982,6 +997,23 @@ def describe_ties(summary: Mapping[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------------------------- the post-pass
+class _StoredNets:
+    """The stored district nets for :func:`takeover_checks`, read when it needs one (``dbc.read_mv_grid_net``), so a
+    variant with hundreds of districts never holds all of them; a grid without a stored net gives None (logged)."""
+
+    def __init__(self, dbc: Any, log: logging.Logger) -> None:
+        self._dbc, self._log, self._missing = dbc, log, set()
+
+    def get(self, mv_grid_id: int) -> Any:
+        try:
+            return self._dbc.read_mv_grid_net(int(mv_grid_id))
+        except LookupError as exc:
+            if int(mv_grid_id) not in self._missing:
+                self._missing.add(int(mv_grid_id))
+                self._log.warning(f"Tie takeover check of MV grid {mv_grid_id} skipped: {exc}")
+            return None
+
+
 def plan_and_save_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: "MvParameters", *,
                        logger: logging.Logger | None = None, check_takeover: bool = True) -> dict:
     """Plan the ties of a variant and replace its stored ties (one transaction; commits).
@@ -1002,8 +1034,6 @@ def plan_and_save_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str
     Returns:
         The summary of :func:`tie_summary` (for ``mv_variant.summary['ties']``).
     """
-    import shapely
-
     log = logger or _LOGGER
     start = time.time()
     grids = dbc.tie_grids(version_id, variant_id)
@@ -1016,9 +1046,8 @@ def plan_and_save_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str
 
         sub = cand.iloc[np.unique(pairs)]
         must = sorted({int(e) for e in pd.to_numeric(sub["attach_edge_id"], errors="coerce").dropna()})
-        points = shapely.MultiPoint(sub[["x", "y"]].to_numpy(dtype=float))
-        edges = dbc.subgraph_edges(graph_id, shapely.to_wkb(points),
-                                   float(params.tie_max_length_m) + SUBGRAPH_MARGIN_M, must)
+        edges = dbc.subgraph_edges_near(graph_id, sub[["x", "y"]].to_numpy(dtype=float),
+                                        float(params.tie_max_length_m) + SUBGRAPH_MARGIN_M, must)
         cache: dict[int, Any] = {}
 
         def edge_geometry(edge_ids: Sequence[int]) -> dict[int, Any]:
@@ -1036,13 +1065,7 @@ def plan_and_save_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str
              f"{float(params.tie_max_length_m) + PREFILTER_SLACK_M:g} m, {len(ties)} ties")
     takeover = None
     if len(ties) and check_takeover:
-        nets = {}
-        for g in sorted({int(x) for x in ties["from_grid"]} | {int(x) for x in ties["to_grid"]}):
-            try:
-                nets[g] = dbc.read_mv_grid_net(g)
-            except LookupError as exc:
-                log.warning(f"Tie takeover check of MV grid {g} skipped: {exc}")
-        takeover = takeover_checks(ties, nets, params)
+        takeover = takeover_checks(ties, _StoredNets(dbc, log), params)
         for rec in takeover[takeover["error"].notna()].to_dict("records"):
             log.warning(f"Tie takeover check of node {rec['node']} (MV grid {rec['mv_grid_id']}): {rec['error']}")
     summary = tie_summary(ties, grids, params, takeover, runtime_s=time.time() - start)
@@ -1061,8 +1084,6 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
     Returns:
         The summary of :func:`link_summary` (for ``mv_variant.summary['links']``).
     """
-    import shapely
-
     log = logger or _LOGGER
     start = time.time()
     limit = largest_reach(params)
@@ -1086,8 +1107,8 @@ def plan_and_save_links(dbc: Any, version_id: str, variant_id: str, graph_id: st
         sub = pd.concat(rows) if len(rows) > 1 else rows[0]
         sub = sub[~sub.index.duplicated()]
         must = sorted({int(e) for e in pd.to_numeric(sub["attach_edge_id"], errors="coerce").dropna()})
-        points = shapely.MultiPoint(sub[["x", "y"]].to_numpy(dtype=float))
-        edges = dbc.subgraph_edges(graph_id, shapely.to_wkb(points), limit + SUBGRAPH_MARGIN_M, must)
+        edges = dbc.subgraph_edges_near(graph_id, sub[["x", "y"]].to_numpy(dtype=float), limit + SUBGRAPH_MARGIN_M,
+                                        must)
         cache: dict[int, Any] = {}
 
         def edge_geometry(edge_ids: Sequence[int]) -> dict[int, Any]:

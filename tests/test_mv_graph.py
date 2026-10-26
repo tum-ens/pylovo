@@ -424,6 +424,38 @@ def test_vertex_paths_between_node_rows():
     assert paths[(1, 1)] == [rg.terminal_vertex[1]]
 
 
+def test_vertex_paths_with_a_limit_find_the_same_paths_within_it():
+    edges = _edge_set([(11, 1, 2), (12, 2, 3)], LINE)
+    nodes = _nodes([
+        {"kind": "busbar", "x": 0.0, "y": 0.0, "attach_edge_id": 11, "attach_fraction": 0.0, "attach_offset_m": 0},
+        {"x": 150.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 0.5, "attach_offset_m": 0.0},
+        {"x": 200.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 1.0, "attach_offset_m": 0.0},
+    ])
+    rg = graph.build_run_graph(edges, nodes)
+    vertex = [int(v) for v in rg.terminal_vertex]
+    pairs = [(vertex[0], vertex[1]), (vertex[0], vertex[2]), (vertex[1], vertex[2])]
+    unbounded = graph.vertex_paths(rg, pairs)
+    assert graph.vertex_paths(rg, pairs, limit=200.0) == unbounded           # every route costs at most 200 m
+    near = graph.vertex_paths(rg, pairs, limit=160.0, chunk=1)
+    assert near[pairs[0]] == unbounded[pairs[0]] and near[pairs[2]] == unbounded[pairs[2]]
+    assert near[pairs[1]] == []                                              # 200 m: beyond the limit
+
+
+def test_subgraph_edges_near_points_go_through_the_edge_index():
+    rows = [(5, 100, 101, 12.5, True, 3, False), (7, 101, 102, 20.0, False, -1, True)]
+    vertex_rows = [(100, 0.0, 0.0), (101, 12.5, 0.0), (102, 12.5, 20.0)]
+    client = _client([(r"FROM mv_subgraph_point p", rows), (r"FROM pylovo\.mv_graph_vertex v", vertex_rows)])
+    edges = client.subgraph_edges_near(GRAPH_ID, np.array([[1.0, 2.0], [3.0, 4.0]]), 2100.0, [7, None])
+    assert edges.edge_id.tolist() == [5, 7] and edges.vertex_id.tolist() == [100, 101, 102]
+    texts = [t for t, _ in client.cur.statements]
+    points = next(p for t, p in client.cur.statements if "CREATE TEMP TABLE mv_subgraph_point" in t)
+    assert points == {"x": [1.0, 3.0], "y": [2.0, 4.0]}
+    query, params = next((t, p) for t, p in client.cur.statements if "FROM mv_subgraph_point p" in t)
+    assert "ST_DWithin(n.geom, p.pt, %(buffer_m)s)" in query and "OR e.edge_id = ANY(%(must)s)" in query
+    assert params == {"g": GRAPH_ID, "buffer_m": 2100.0, "must": [7], "line": "osm_mv_line"}
+    assert any("USING gist (pt)" in t for t in texts) and texts[-2].startswith("DROP TABLE pg_temp.mv_subgraph_point")
+
+
 def test_trench_counts_shared_pieces_once():
     edges = _edge_set([(11, 1, 2), (12, 2, 3)], LINE)
     nodes = _nodes([
