@@ -451,7 +451,8 @@ def test_subgraph_edges_near_points_go_through_the_edge_index():
     points = next(p for t, p in client.cur.statements if "CREATE TEMP TABLE mv_subgraph_point" in t)
     assert points == {"x": [1.0, 3.0], "y": [2.0, 4.0]}
     query, params = next((t, p) for t, p in client.cur.statements if "FROM mv_subgraph_point p" in t)
-    assert "ST_DWithin(n.geom, p.pt, %(buffer_m)s)" in query and "OR e.edge_id = ANY(%(must)s)" in query
+    assert "ST_DWithin(n.geom, p.pt, %(buffer_m)s)" in query and "SELECT unnest(%(must)s::bigint[])" in query
+    assert "UNION" in query and " OR " not in query       # an OR would rerun the subquery per edge of a large graph
     assert params == {"g": GRAPH_ID, "buffer_m": 2100.0, "must": [7], "line": "osm_mv_line"}
     assert any("USING gist (pt)" in t for t in texts) and texts[-2].startswith("DROP TABLE pg_temp.mv_subgraph_point")
 

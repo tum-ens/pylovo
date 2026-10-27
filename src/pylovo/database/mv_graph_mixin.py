@@ -534,14 +534,16 @@ SUBGRAPH_POINTS_SQL = sql.SQL("""
     SELECT ST_SetSRID(ST_MakePoint(p.x, p.y), {epsg}) AS pt FROM unnest(%(x)s::float8[], %(y)s::float8[]) AS p(x, y)
 """)
 
+# The edge ids are united first: with "edge_id IN (...) OR edge_id = ANY(must)" the planner hashes the IN list only
+# when it fits in work_mem and otherwise runs the subquery again for every edge of the graph (Bavaria: hours).
 SUBGRAPH_NEAR_SQL = """
+    WITH near AS (SELECT n.edge_id FROM mv_subgraph_point p
+                  JOIN pylovo.mv_graph_edge n ON n.graph_id = %(g)s AND ST_DWithin(n.geom, p.pt, %(buffer_m)s)
+                  UNION
+                  SELECT unnest(%(must)s::bigint[]))
     SELECT e.edge_id, e.source, e.target, e.length_m, e.in_settlement, COALESCE(e.settlement_id, -1),
            COALESCE(e.klasse = %(line)s, false)
-    FROM pylovo.mv_graph_edge e
-    WHERE e.graph_id = %(g)s
-      AND (e.edge_id IN (SELECT n.edge_id FROM mv_subgraph_point p
-                         JOIN pylovo.mv_graph_edge n ON n.graph_id = %(g)s AND ST_DWithin(n.geom, p.pt, %(buffer_m)s))
-           OR e.edge_id = ANY(%(must)s))
+    FROM near JOIN pylovo.mv_graph_edge e ON e.graph_id = %(g)s AND e.edge_id = near.edge_id
     ORDER BY e.edge_id
 """
 
