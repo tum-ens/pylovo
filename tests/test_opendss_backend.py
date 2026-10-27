@@ -9,7 +9,8 @@ import pytest
 altdss = pytest.importorskip("altdss")
 
 from pylovo.electrical_backend.core.specs import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec  # noqa: E402
-from pylovo.electrical_backend.opendss.backend import OpenDSSBackend, OpenDSSBackendError  # noqa: E402
+from pylovo.electrical_backend.opendss.backend import OpenDSSBackend, OpenDSSBackendError, _dss_name  # noqa: E402
+from pylovo.electrical_backend.pandapower.backend import PandapowerBackend  # noqa: E402
 from pylovo.station_voltage import solve_validation_power_flow  # noqa: E402
 
 LOGGER = logging.getLogger("test")
@@ -130,3 +131,29 @@ def test_the_external_grid_sets_the_source_voltage():
     backend = opendss(specs)
     assert backend.get_source_voltage() == 1.02
     assert solved_voltages(backend)["mvbus_1"] == pytest.approx(1.02, abs=1e-3)
+
+
+def test_a_load_below_0_95_pu_keeps_its_power():
+    backend = opendss()
+    assert solve_validation_power_flow(backend, 0.96).converged
+    metrics = backend.get_circuit_metrics()
+    assert metrics["min_voltage_pu"] < 0.95                       # OpenDSS's default limit of constant power
+    # the source supplies the loads and the losses (OpenDSS counts the power into the circuit as negative)
+    assert -metrics["total_power_kw"] == pytest.approx(sum(LOADS_KW.values()) + metrics["total_losses_kw"], rel=1e-4)
+
+
+def test_opendss_gives_the_lv_voltages_and_line_loadings_of_pandapower():
+    reference = build(PandapowerBackend(logger=LOGGER), feeder_specs(parallel=2))
+    assert solve_validation_power_flow(reference, 0.96).converged
+    backend = opendss(feeder_specs(parallel=2))
+    assert solve_validation_power_flow(backend, 0.96).converged
+
+    net = reference.net
+    lv_buses = [name for name in net.bus.name if name != "MVbus 1"]
+    assert min(reference.get_bus_voltage_pu(name) for name in lv_buses) < 0.95
+    for name in lv_buses:
+        assert backend.get_bus_voltage_pu(name) == pytest.approx(reference.get_bus_voltage_pu(name), abs=1e-4), name
+    for name, loading in zip(net.line.name, net.res_line.loading_percent):
+        line = backend.dss.Line[_dss_name(name)]
+        dss_loading = 100 * max(abs(current) for current in line.Currents()) / line.NormAmps
+        assert dss_loading == pytest.approx(loading, abs=0.1), name

@@ -68,6 +68,10 @@ def _dss_name(name: str) -> str:
     return re.sub(r"[\s.]", "_", str(name)).lower()
 
 
+#: Voltage range (p.u.) in which a load keeps constant power. OpenDSS switches a load to constant
+#: impedance outside it (default 0.95 to 1.05, inside the check band), pandapower never does.
+LOAD_CONSTANT_POWER_RANGE_PU = (0.7, 1.3)
+
 #: Known defects of this backend; see the "OpenDSS (experimental)" section of the electrical backend docs.
 EXPERIMENTAL_WARNING = (
     "The OpenDSS backend is experimental: bus names with blanks give a wrong power flow, parallel cables are "
@@ -320,6 +324,8 @@ class OpenDSSBackend(IElectricalBackend):
             kvar=spec.kvar,
             Conn="wye",
             Model=1,
+            VMinpu=LOAD_CONSTANT_POWER_RANGE_PU[0],
+            VMaxpu=LOAD_CONSTANT_POWER_RANGE_PU[1],
         )
 
         self._components_created["loads"].append(load)
