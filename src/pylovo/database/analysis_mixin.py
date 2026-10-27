@@ -627,7 +627,7 @@ class AnalysisMixin(BaseMixin):
             The pandapower network.
 
         Raises:
-            ValueError: If the grid does not exist.
+            ValueError: If the grid does not exist or was generated with the OpenDSS backend.
         """
         effective_version_id = VERSION_ID if version_id is None else str(version_id)
         read_query = "SELECT grid FROM pylovo.grid_result WHERE version_id = %s AND plz = %s AND kcid = %s AND bcid = %s LIMIT 1"
@@ -642,6 +642,11 @@ class AnalysisMixin(BaseMixin):
 
         grid_tuple = result[0]
         grid_dict = grid_tuple[0]
+        if isinstance(grid_dict, dict) and "_object" not in grid_dict:     # AltDSS JSON of the OpenDSS backend
+            raise ValueError(
+                f"Grid plz={plz}, kcid={kcid}, bcid={bcid} of version {effective_version_id} was generated with "
+                "the OpenDSS backend; this needs a grid of the pandapower backend"
+            )
         if tables is not None:
             grid_dict = {**grid_dict, "_object": {
                 key: value for key, value in grid_dict["_object"].items()
