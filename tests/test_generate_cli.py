@@ -7,6 +7,19 @@ from pylovo.grid_generator import GenerationOutcome as Outcome
 GENERATED, EXISTS, EMPTY, FAILED = Outcome.GENERATED, Outcome.EXISTS, Outcome.EMPTY, Outcome.FAILED
 
 
+class SourcesFound:
+    """Database client of the MV source check before the LV grids: every source table is there."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def check_mv_sources(self):
+        return []
+
+
 @pytest.fixture()
 def lv(monkeypatch):
     """Fake LV generation answering ``lv.outcomes[plz]``; ``lv.mv`` records the PLZ the MV stage runs for."""
@@ -21,6 +34,7 @@ def lv(monkeypatch):
                         lambda plz, parallel=True: {p: Run.outcomes[p] for p in plz})
     monkeypatch.setattr(generate, "create_grids_for_ags", lambda ags, parallel=True: dict(Run.outcomes))
     monkeypatch.setattr(generate, "run_mv_stage_after_lv", lambda plz, parallel, params: Run.mv.append(plz))
+    monkeypatch.setattr(generate.dbc, "DatabaseClient", SourcesFound)
     return Run
 
 
