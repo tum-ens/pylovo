@@ -166,7 +166,8 @@ class OpenDSSBackend(IElectricalBackend):
                 self._components_created["buses"].append(spec.name)
                 return spec.name
             elif isinstance(spec, ExtGridSpec):
-                # External grid is created in initialize_circuit
+                # The circuit's source (created in initialize_circuit) is the external grid
+                self.set_source_voltage(spec.vm_pu)
                 return "source"
             else:
                 raise OpenDSSBackendError(
@@ -496,6 +497,23 @@ class OpenDSSBackend(IElectricalBackend):
     def get_bus_coordinates(self, bus_name: str) -> tuple[float, float] | None:
         """Get bus coordinates (OpenDSS doesn't store geodata)."""
         return None
+
+    # =========================================================================
+    # Station voltage (see pylovo.station_voltage)
+    # =========================================================================
+
+    def get_source_voltage(self) -> float:
+        """Voltage of the external grid (MV side of the station) in p.u."""
+        return float(self.dss.Vsource["source"].pu)
+
+    def set_source_voltage(self, vm_pu: float) -> None:
+        """Set the voltage of the external grid (MV side of the station) in p.u."""
+        self.dss(f"Edit Vsource.source pu={float(vm_pu)!r}")
+
+    def get_bus_voltage_pu(self, bus_name: str) -> float:
+        """Solved voltage magnitude of a bus in p.u. (mean of its three phases)."""
+        magnitudes = self.dss.Bus[_dss_name(bus_name)].puVMagAngle[0::2]
+        return float(sum(magnitudes) / len(magnitudes))
 
     # =========================================================================
     # Update Methods (no-ops for OpenDSS)

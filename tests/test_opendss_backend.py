@@ -10,6 +10,7 @@ altdss = pytest.importorskip("altdss")
 
 from pylovo.electrical_backend.core.specs import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec  # noqa: E402
 from pylovo.electrical_backend.opendss.backend import OpenDSSBackend, OpenDSSBackendError  # noqa: E402
+from pylovo.station_voltage import solve_validation_power_flow  # noqa: E402
 
 LOGGER = logging.getLogger("test")
 CABLES = [("NAYY_4_150", 0.208, 0.08, 0.27, 10.0), ("NAYY_4_50", 0.642, 0.083, 0.142, 5.0)]
@@ -111,3 +112,21 @@ def test_two_parallel_cables_give_the_voltage_drop_of_half_the_impedance():
     halved = solved_voltages(opendss(half, CABLES + [("NAYY_4_150_half", 0.104, 0.04, 0.54, 0.0)]))
     assert double == pytest.approx(halved, abs=1e-9)
     assert double["consumer_nodebus_23"] > single["consumer_nodebus_23"] + 1e-3
+
+
+def test_the_lv_busbar_is_set_to_the_reference_voltage():
+    backend = opendss()
+    result = solve_validation_power_flow(backend, 0.96)
+    assert result.converged and result.applied
+    assert backend.get_bus_voltage_pu("LVbus 1") == pytest.approx(0.96, abs=2e-5)
+    assert result.lv_busbar_vm_pu == pytest.approx(backend.get_bus_voltage_pu("LVbus 1"))
+    assert 0.96 < backend.get_source_voltage() < 1.0              # the MV side covers the transformer drop
+    assert result.source_vm_pu == pytest.approx(backend.get_source_voltage())
+
+
+def test_the_external_grid_sets_the_source_voltage():
+    specs = feeder_specs()
+    next(spec for spec in specs if isinstance(spec, ExtGridSpec)).vm_pu = 1.02
+    backend = opendss(specs)
+    assert backend.get_source_voltage() == 1.02
+    assert solved_voltages(backend)["mvbus_1"] == pytest.approx(1.02, abs=1e-3)

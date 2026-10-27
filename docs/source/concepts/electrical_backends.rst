@@ -41,8 +41,7 @@ pandapower (default)
        500, 800 and 1260 kVA are two parallel units of half the rating; other ratings become
        parallel 630 kVA units. pandapower has no standard types below 0.25 MVA, so 100 and 160 kVA
        reuse the 0.25 MVA data with the rating and no-load losses scaled. The off-load tap (HV side,
-       ±2 steps of 2.5 %) stays neutral. The OpenDSS backend does not support the reference voltage
-       and keeps the MV side at 1.0 p.u.
+       ±2 steps of 2.5 %) stays neutral.
    * - Lines
      - Standard types registered from the cable catalogue (``r``, ``x``, ``max_i_ka``; capacitance
        0). Feeder lines follow the street routes; service lines are straight connections. Extra
@@ -80,7 +79,6 @@ top of OpenDSS via ``altdss`` (``uv sync --extra opendss``). It is experimental 
 * Its result (the AltDSS JSON) cannot be stored in the ``pandapower_*`` tables, so the analysis, the
   HTTP API, the plots, the MV stage and the viewer cannot use it. Each power flow also writes CSV
   files and a statistics report into the working directory.
-* The station reference voltage and the voltage-drop diagnostics are only available with the
-  pandapower backend.
+* The voltage-drop diagnostics are only available with the pandapower backend.
 
 Use ``ELECTRICAL_BACKEND: pandapower`` for results.
