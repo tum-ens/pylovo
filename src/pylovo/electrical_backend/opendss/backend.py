@@ -23,10 +23,7 @@ Optional dependency:
 """
 
 import logging
-import os
 import re
-import shutil
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from ..core.backend_base import IElectricalBackend
@@ -391,27 +388,15 @@ class OpenDSSBackend(IElectricalBackend):
             raise OpenDSSBackendError("No OpenDSS instance available for analysis")
 
         try:
-            self.logger.info("Calculating voltage bases...")
             self.dss("CalcVoltageBases")
             self.logger.debug("Solving power flow...")
             self.dss.Solution.Solve()
 
             converged = self.dss.Solution.Converged
             if converged:
-                self.logger.info("Power flow converged")
+                self.logger.debug("Power flow converged")
             else:
-                self.logger.error("Power flow did not converge")
-
-            try:
-                report_filename = (
-                    f"{self._circuit_name}_electrical_statistics.txt"
-                    if self._circuit_name
-                    else "electrical_statistics.txt"
-                )
-                self._generate_statistics_report(report_filename)
-            except Exception as diag_err:
-                self.logger.warning(f"Statistics report failed: {diag_err}")
-
+                self.logger.warning("Power flow did not converge")
             return converged
 
         except Exception as e:
@@ -536,90 +521,3 @@ class OpenDSSBackend(IElectricalBackend):
     def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
         """Set transformer rating (no-op - sized at creation)."""
         pass
-
-    # =========================================================================
-    # Statistics Report (internal)
-    # =========================================================================
-
-    def _generate_statistics_report(
-        self, output_filename: str = "electrical_statistics.txt"
-    ) -> None:
-        """Generate electrical statistics report after power flow solve."""
-        if self.dss is None:
-            return
-
-        circuit_name = self._circuit_name or "unknown"
-        m = re.search(r"K\d+_S\d+", circuit_name or "")
-        subfolder = m.group(0) if m else circuit_name
-        stats_dir = os.path.abspath(os.path.join(os.getcwd(), "statistics", subfolder))
-        os.makedirs(stats_dir, exist_ok=True)
-        out_path = os.path.join(stats_dir, output_filename)
-
-        converged = bool(self.dss.Solution.Converged)
-        total_power = self.dss.TotalPower()
-        total_losses = self.dss.Losses()
-
-        try:
-            raw_bus_vmags = self.dss.BusVMagPU()
-            bus_vmags = list(raw_bus_vmags) if raw_bus_vmags else []
-        except Exception:
-            bus_vmags = []
-
-        min_v = min(bus_vmags) if bus_vmags else None
-        max_v = max(bus_vmags) if bus_vmags else None
-        avg_v = sum(bus_vmags) / len(bus_vmags) if bus_vmags else None
-
-        # Export CSVs
-        export_types = ["Voltages", "Currents", "Powers", "Losses", "Loads"]
-        exported_files = []
-
-        for export_type in export_types:
-            try:
-                self.dss(f"Export {export_type}")
-                base_name = f"{export_type}.csv"
-                root_base = os.path.join(os.getcwd(), base_name)
-                tagged_name = f"{circuit_name}_EXP_{export_type.upper()}.csv"
-                stats_tagged = os.path.join(stats_dir, tagged_name)
-
-                if os.path.exists(root_base):
-                    shutil.move(root_base, stats_tagged)
-                    exported_files.append(stats_tagged)
-            except Exception:
-                continue
-
-        # Write report
-        def _to_kw(value: Any) -> float | None:
-            try:
-                if hasattr(value, "real"):
-                    return float(value.real)
-                if isinstance(value, (list, tuple)) and len(value) > 0:
-                    return float(value[0])
-                return float(value)
-            except Exception:
-                return None
-
-        with open(out_path, "w") as f:
-            f.write("=" * 80 + "\n")
-            f.write("Electrical Statistics Report\n")
-            f.write("=" * 80 + "\n\n")
-            f.write(f"Timestamp: {datetime.now(timezone.utc).replace(tzinfo=None).isoformat()}Z\n")
-            f.write(f"Circuit: {self._circuit_name or 'unknown'}\n")
-            f.write(f"Converged: {converged}\n")
-
-            tp_kw = _to_kw(total_power)
-            tl_w = _to_kw(total_losses)
-            tl_kw = (tl_w / 1000.0) if tl_w is not None else None
-
-            if tp_kw is not None:
-                f.write(f"Total Power kW: {tp_kw:.3f}\n")
-            if tl_kw is not None:
-                f.write(f"Total Losses kW: {tl_kw:.3f}\n")
-
-            f.write("\nVoltage stats (pu):\n")
-            f.write(f"  min: {min_v if min_v is not None else 'n/a'}\n")
-            f.write(f"  avg: {avg_v if avg_v is not None else 'n/a'}\n")
-            f.write(f"  max: {max_v if max_v is not None else 'n/a'}\n")
-
-            f.write("\nExported files:\n")
-            for p in exported_files:
-                f.write(f"  - {p}\n")

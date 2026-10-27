@@ -157,3 +157,10 @@ def test_opendss_gives_the_lv_voltages_and_line_loadings_of_pandapower():
         line = backend.dss.Line[_dss_name(name)]
         dss_loading = 100 * max(abs(current) for current in line.Currents()) / line.NormAmps
         assert dss_loading == pytest.approx(loading, abs=0.1), name
+
+
+def test_the_power_flow_writes_no_files(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    backend = opendss()
+    assert solve_validation_power_flow(backend, 0.96).converged
+    assert list(tmp_path.iterdir()) == []
