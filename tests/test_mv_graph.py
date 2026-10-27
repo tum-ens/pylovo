@@ -1,5 +1,6 @@
 """MV routing graph: region CSR, weighted Voronoi, run graph, distances, paths, geometry, trench, mixin SQL."""
 
+import dataclasses
 import heapq
 import logging
 import re
@@ -439,6 +440,53 @@ def test_vertex_paths_with_a_limit_find_the_same_paths_within_it():
     near = graph.vertex_paths(rg, pairs, limit=160.0, chunk=1)
     assert near[pairs[0]] == unbounded[pairs[0]] and near[pairs[2]] == unbounded[pairs[2]]
     assert near[pairs[1]] == []                                              # 200 m: beyond the limit
+
+
+def _grid_run_graph(side: int, teleports: int = 0) -> "graph.RunGraph":
+    """Run graph of a square street grid (50 m, all edges the same length: many routes cost the same) with
+    ``teleports`` short edges (10 m) between random far vertices, which the radius of a bounded search misses."""
+    coords = {i: (float(i % side) * 50.0, float(i // side) * 50.0) for i in range(side * side)}
+    edges = [(len(coords) + i, i, i + 1) for i in range(side * side) if i % side < side - 1]
+    edges += [(2 * len(coords) + i, i, i + side) for i in range(side * (side - 1))]
+    rng = np.random.default_rng(3)
+    edges += [(3 * len(coords) + k, int(a), int(b), 10.0)
+              for k, (a, b) in enumerate(rng.integers(0, side * side, (teleports, 2))) if a != b]
+    nodes = _nodes([{"kind": "busbar", "x": 0.0, "y": 0.0, "attach_edge_id": edges[0][0], "attach_fraction": 0.0,
+                     "attach_offset_m": 0.0}])
+    return graph.build_run_graph(_edge_set(edges, coords), nodes)
+
+
+@pytest.mark.parametrize("teleports", [0, 40])
+def test_bounded_searches_on_local_parts_equal_the_whole_graph(teleports):
+    from scipy.sparse.csgraph import dijkstra
+
+    rg = _grid_run_graph(60, teleports)
+    sources = np.unique(np.random.default_rng(1).integers(0, rg.n_vertices, 150))
+    seen, sizes = [], []
+    for batch, vertices, dist, pred in graph.bounded_searches(rg, sources, 400.0, chunk=8, return_predecessors=True):
+        full_dist, full_pred = dijkstra(rg.csr, directed=False, indices=batch, limit=400.0, return_predecessors=True)
+        assert np.array_equal(full_dist[:, vertices], dist)
+        assert np.isinf(np.delete(full_dist, vertices, axis=1)).all()        # nothing reached outside the part
+        assert np.array_equal(full_pred[:, vertices], np.where(pred >= 0, vertices[np.maximum(pred, 0)], pred))
+        seen += batch.tolist()
+        sizes.append(len(vertices))
+    assert sorted(seen) == sources.tolist()                                  # every source exactly once
+    assert min(sizes) < rg.n_vertices / 4                                    # the parts are local
+    if teleports:
+        assert max(sizes) > min(sizes)                                       # searches through teleports ran again
+
+
+def test_bounded_distances_and_paths_equal_the_whole_graph():
+    from scipy.sparse.csgraph import dijkstra
+
+    rg = _grid_run_graph(40, teleports=20)
+    rng = np.random.default_rng(2)
+    pairs = [(int(a), int(b)) for a, b in rng.integers(0, rg.n_vertices, (300, 2))] + [(5, 5)]
+    full = dijkstra(rg.csr, directed=False, limit=600.0)
+    expected = np.array([full[a, b] for a, b in pairs])
+    np.testing.assert_array_equal(graph.bounded_distances(rg, pairs, 600.0, chunk=16), expected)
+    whole = graph.vertex_paths(dataclasses.replace(rg, vertex_xy=np.zeros_like(rg.vertex_xy)), pairs, limit=600.0)
+    assert graph.vertex_paths(rg, pairs, limit=600.0, chunk=16) == whole     # same predecessors as one part
 
 
 def test_subgraph_edges_near_points_go_through_the_edge_index():

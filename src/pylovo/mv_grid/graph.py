@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections import Counter, defaultdict
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -36,6 +36,9 @@ PIECE_COLUMNS: tuple[str, ...] = ("piece_id", "u", "v", "length_m", "edge_id", "
 PATH_TRACE: float = 1e-6
 #: Split points of one edge closer than this (m along the edge) share one vertex.
 SPLIT_MERGE_M: float = 1e-3
+#: Margin (m) of the local graph of a bounded search beyond the distance its cost limit reaches
+#: (:func:`bounded_searches`).
+LOCAL_MARGIN_M: float = 100.0
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -498,13 +501,147 @@ def _walk(pred_row: np.ndarray, source: int, target: int) -> list[int]:
     return path
 
 
+def _local_graph(csr: Any, csc: Any, vertices: np.ndarray, inside: np.ndarray, local: np.ndarray
+                 ) -> tuple[scipy.sparse.csr_matrix, np.ndarray]:
+    """The subgraph of ``csr`` induced by the sorted ``vertices`` (local ids in their order, the entries of every
+    row in the order of ``csr``) and, per local vertex, the smallest weight of its edges to a vertex outside
+    (``inf`` without one). ``inside`` and ``local`` are scratch arrays of the graph size, ``inside`` all false on
+    entry and on return."""
+    k = len(vertices)
+    inside[vertices] = True
+    local[vertices] = np.arange(k, dtype=np.int64)
+    out_min = np.full(k, np.inf)
+
+    def entries(matrix: Any) -> tuple[np.ndarray, np.ndarray]:
+        starts = matrix.indptr[vertices].astype(np.int64)
+        counts = matrix.indptr[vertices + 1].astype(np.int64) - starts
+        offsets = np.repeat(starts - np.cumsum(counts) + counts, counts)
+        return offsets + np.arange(int(counts.sum()), dtype=np.int64), np.repeat(np.arange(k, dtype=np.int64), counts)
+
+    pos, row = entries(csr)
+    keep = inside[csr.indices[pos]]
+    np.minimum.at(out_min, row[~keep], csr.data[pos[~keep]])
+    pos, row = pos[keep], row[keep]
+    sub = scipy.sparse.csr_matrix((csr.data[pos], local[csr.indices[pos]],
+                                   np.r_[0, np.cumsum(np.bincount(row, minlength=k))]), shape=(k, k))
+    pos, column = entries(csc)                                   # edges stored in the rows of outside vertices
+    outside = ~inside[csc.indices[pos]]
+    np.minimum.at(out_min, column[outside], csc.data[pos[outside]])
+    inside[vertices] = False
+    return sub, out_min
+
+
+def bounded_searches(rg: RunGraph, sources: Sequence[int], limit: float, *, chunk: int = 64,
+                     return_predecessors: bool = False
+                     ) -> Iterator[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]]:
+    """Dijkstra searches from run-graph vertices that stop at the cost ``limit``, each on a local part of the graph.
+
+    SciPy returns a row of all graph vertices per source, so on the graph of a whole variant every search costs the
+    size of the graph, however local it is. The sources are therefore grouped by cells of half the search radius
+    (``limit`` over the smallest cost per m of the pieces, plus :data:`LOCAL_MARGIN_M`), at most ``chunk`` per group,
+    and each group searches the vertices within that radius of its box. A search that could leave its part within
+    ``limit`` (a reached vertex plus an edge to a vertex outside within ``limit``) runs again with twice the radius:
+    the part then holds every vertex the search reaches and every edge it relaxes, in the order of the whole graph,
+    so the distances and predecessors are those of the whole graph.
+
+    Yields:
+        ``(batch, vertices, dist, pred)``: source vertices, the sorted run-graph vertices of the part (the columns of
+        ``dist`` and ``pred``), the distances (``inf`` beyond ``limit``) and the predecessors as columns of the part
+        (``None`` without ``return_predecessors``). Every source comes exactly once.
+    """
+    pending = np.unique(np.asarray(sources, dtype=np.int64))
+    if not len(pending):
+        return
+    limit = float(limit)
+    csr = rg.csr
+    n = csr.shape[0]
+    xy = np.asarray(rg.vertex_xy, dtype=np.float64).reshape(-1, 2)
+    pieces = rg.pieces
+    length = pieces["length_m"].to_numpy(dtype=np.float64)
+    cost = (pieces["cost_m"] if "cost_m" in pieces.columns else pieces["length_m"]).to_numpy(dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = cost[length > 0] / length[length > 0]
+    ratio = float(np.min(ratio)) if len(ratio) else 1.0
+    radius = limit / ratio + LOCAL_MARGIN_M if ratio > 0 else np.inf
+    span = float(np.max(np.ptp(xy, axis=0))) if n else 0.0
+    by_x = np.argsort(xy[:, 0], kind="stable")
+    xs = xy[by_x, 0]
+    csc = csr.tocsc()
+    inside = np.zeros(n, dtype=bool)
+    local = np.zeros(n, dtype=np.int64)
+    step = max(1, int(chunk))
+    while len(pending):
+        if not radius < span:                                    # the part would be the whole graph
+            vertices = np.arange(n, dtype=np.int64)
+            for start in range(0, len(pending), step):
+                batch = pending[start:start + step]
+                result = dijkstra(csr, directed=False, indices=batch, limit=limit,
+                                  return_predecessors=return_predecessors)
+                dist, pred = result if return_predecessors else (result, None)
+                yield batch, vertices, np.atleast_2d(dist), None if pred is None else np.atleast_2d(pred)
+            return
+        cell = np.floor((xy[pending] - xy[pending].min(axis=0)) / (radius / 2.0)).astype(np.int64)
+        order = np.lexsort((pending, cell[:, 1], cell[:, 0]))
+        pending, cell = pending[order], cell[order]
+        new_cell = np.r_[True, (cell[1:] != cell[:-1]).any(axis=1)]
+        group = np.cumsum(new_cell) - 1
+        rank = np.arange(len(pending)) - np.flatnonzero(new_cell)[group]
+        cuts = np.flatnonzero(new_cell | (rank % step == 0))
+        failed = []
+        for batch in np.split(pending, cuts[1:]):
+            low = xy[batch].min(axis=0) - radius
+            high = xy[batch].max(axis=0) + radius
+            strip = by_x[np.searchsorted(xs, low[0], side="left"):np.searchsorted(xs, high[0], side="right")]
+            y = xy[strip, 1]
+            vertices = np.sort(strip[(y >= low[1]) & (y <= high[1])])
+            sub, out_min = _local_graph(csr, csc, vertices, inside, local)
+            result = dijkstra(sub, directed=False, indices=np.searchsorted(vertices, batch), limit=limit,
+                              return_predecessors=return_predecessors)
+            dist, pred = result if return_predecessors else (result, None)
+            dist = np.atleast_2d(dist)
+            leaves = (dist + out_min <= limit).any(axis=1)
+            if not leaves.all():
+                keep = ~leaves
+                yield batch[keep], vertices, dist[keep], None if pred is None else np.atleast_2d(pred)[keep]
+            failed.append(batch[leaves])
+        pending = np.sort(np.concatenate(failed))
+        radius *= 2.0
+
+
+def _columns(vertices: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    """Columns of ``targets`` in the sorted ``vertices`` of a part (-1 where a target is not in the part)."""
+    targets = np.asarray(targets, dtype=np.int64)
+    col = np.searchsorted(vertices, targets)
+    found = col < len(vertices)
+    found[found] = vertices[col[found]] == targets[found]
+    return np.where(found, col, -1)
+
+
+def bounded_distances(rg: RunGraph, pairs: Sequence[tuple[int, int]], limit: float, *,
+                      chunk: int = 64) -> np.ndarray:
+    """Cost of the shortest route per vertex pair ``(a, b)`` within ``limit`` (``inf`` beyond it or unreachable), by
+    :func:`bounded_searches`."""
+    pairs = np.asarray(pairs, dtype=np.int64).reshape(-1, 2)
+    out = np.full(len(pairs), np.inf)
+    by_source: dict[int, list[int]] = defaultdict(list)
+    for p, a in enumerate(pairs[:, 0].tolist()):
+        by_source[a].append(p)
+    for batch, vertices, dist, _ in bounded_searches(rg, list(by_source), limit, chunk=chunk):
+        for i, a in enumerate(batch.tolist()):
+            ps = np.asarray(by_source[a], dtype=np.int64)
+            col = _columns(vertices, pairs[ps, 1])
+            out[ps[col >= 0]] = dist[i, col[col >= 0]]
+    return out
+
+
 def vertex_paths(rg: RunGraph, pairs: Sequence[tuple[int, int]], *,
                  chunk: int = 64, limit: float | None = None) -> dict[tuple[int, int], list[int]]:
     """Shortest vertex paths between run-graph vertices.
 
     Predecessors are computed only for the distinct sources of ``pairs``, at most ``chunk`` per Dijkstra call. With
     ``limit`` the search of a source stops at that cost (the ties and links know that their routes are not
-    longer), which keeps it local in the graph of a whole variant.
+    longer) and runs on a local part of the graph (:func:`bounded_searches`), which keeps it local in the graph of a
+    whole variant.
 
     Returns:
         ``{(a, b): [a, ..., b]}``; ``[a]`` for ``a == b`` and ``[]`` when ``b`` is unreachable from ``a`` (or costs
@@ -515,14 +652,23 @@ def vertex_paths(rg: RunGraph, pairs: Sequence[tuple[int, int]], *,
         by_source[int(a)].append(int(b))
     out: dict[tuple[int, int], list[int]] = {}
     sources = sorted(by_source)
+    if limit is not None:
+        for batch, vertices, dist, pred in bounded_searches(rg, sources, limit, chunk=chunk, return_predecessors=True):
+            for i, a in enumerate(batch.tolist()):
+                start = int(_columns(vertices, [a])[0])
+                targets = by_source[a]
+                for b, col in zip(targets, _columns(vertices, targets).tolist()):
+                    if a == b:
+                        out[(a, b)] = [a]
+                    elif col < 0 or not np.isfinite(dist[i, col]):
+                        out[(a, b)] = []
+                    else:
+                        out[(a, b)] = vertices[_walk(pred[i], start, col)].tolist()
+        return out
     step = max(1, int(chunk))
     for start in range(0, len(sources), step):
         batch = sources[start:start + step]
-        if limit is None:
-            dist, pred = dijkstra(rg.csr, directed=False, indices=batch, return_predecessors=True)
-        else:
-            dist, pred = dijkstra(rg.csr, directed=False, indices=batch, return_predecessors=True,
-                                  limit=float(limit))
+        dist, pred = dijkstra(rg.csr, directed=False, indices=batch, return_predecessors=True)
         for i, a in enumerate(batch):
             for b in by_source[a]:
                 if a == b:

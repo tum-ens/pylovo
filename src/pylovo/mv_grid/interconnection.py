@@ -12,7 +12,8 @@ cost-optimal plan of single districts lacks:
 2. **Distances** (:func:`plan_ties`): pairs of candidates of different districts with the same nominal voltage
    within ``tie_max_length_m`` (Euclidean pre-filter) get their street distance on one run graph of the routing
    graph (split at the attachment points, with connectors, without island bridges) from a Dijkstra limited to
-   ``tie_max_length_m``. The limit applies to the true length of the route the tie takes: the cheapest route (OSM
+   ``tie_max_length_m``, each on the part of the graph that the limit can reach
+   (:func:`pylovo.mv_grid.graph.bounded_searches`). The limit applies to the true length of the route the tie takes: the cheapest route (OSM
    MV lines discounted by ``osm_line_cost_factor``) if it is within the limit, else the shortest route by true
    length if that one is (:func:`_measure`; the links use the same rule with their reach).
 3. **Link rule** of the district links (:func:`pylovo.mv_grid.topology.distance_model`): a tie follows the
@@ -62,7 +63,6 @@ from typing import TYPE_CHECKING, Any, Callable, Collection, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
-from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 from shapely.geometry import LineString
 
@@ -236,20 +236,8 @@ def _run_graph_rows(candidates: pd.DataFrame) -> pd.DataFrame:
 
 def _street_distances(rg: Any, pairs: np.ndarray, limit_m: float) -> np.ndarray:
     """Street distance per local row pair (``inf`` beyond ``limit_m`` or unreachable)."""
-    out = np.full(len(pairs), np.inf)
-    by_source: dict[int, list[int]] = defaultdict(list)
-    for p, (i, _) in enumerate(pairs):
-        by_source[int(i)].append(p)
-    sources = sorted(by_source)
     vertex = np.asarray(rg.terminal_vertex, dtype=np.int64)
-    for start in range(0, len(sources), _CHUNK):
-        chunk = sources[start:start + _CHUNK]
-        dist = dijkstra(rg.csr, directed=False, indices=vertex[chunk], limit=float(limit_m))
-        dist = np.atleast_2d(dist)
-        for k, source in enumerate(chunk):
-            for p in by_source[source]:
-                out[p] = dist[k, vertex[int(pairs[p, 1])]]
-    return out
+    return graph.bounded_distances(rg, np.c_[vertex[pairs[:, 0]], vertex[pairs[:, 1]]], float(limit_m), chunk=_CHUNK)
 
 
 def _search_limit(limit_m: float) -> float:
