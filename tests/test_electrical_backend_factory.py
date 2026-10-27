@@ -23,7 +23,7 @@ def test_the_opendss_backend_without_altdss_names_the_missing_package(monkeypatc
     from pylovo.electrical_backend.opendss import backend as opendss
 
     monkeypatch.setattr(opendss, "altdss", None)
-    with pytest.raises(opendss.OpenDSSBackendError, match="Install altdss"):
+    with pytest.raises(opendss.OpenDSSBackendError, match="uv sync --extra opendss"):
         create_backend("opendss")
 
 

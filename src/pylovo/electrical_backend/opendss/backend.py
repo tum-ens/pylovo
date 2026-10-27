@@ -14,11 +14,10 @@ Note:
     to be created before lines. This is handled internally via _create_line_code().
 
 Optional dependency:
-    The engine bindings come from the ``altdss`` package, which is *not* a pylovo
-    dependency (it is commented out in ``pyproject.toml``). This module always
-    imports; without ``altdss`` the name ``altdss`` is ``None`` and constructing
-    :class:`OpenDSSBackend` (``ELECTRICAL_BACKEND: opendss``) raises
-    :class:`OpenDSSBackendError`; install ``altdss`` separately to use it.
+    The engine bindings come from the ``altdss`` package of the ``opendss`` extra
+    (``uv sync --extra opendss``). This module always imports; without ``altdss`` the
+    name ``altdss`` is ``None`` and constructing :class:`OpenDSSBackend`
+    (``ELECTRICAL_BACKEND: opendss``) raises :class:`OpenDSSBackendError`.
     The backend is not covered by the regression runs; parts of ``GridGenerator``
     (voltage-drop diagnostics, SQL network tables) only work with pandapower.
 """
@@ -92,7 +91,7 @@ class OpenDSSBackend(IElectricalBackend):
 
         if altdss is None:
             raise OpenDSSBackendError(
-                "OpenDSS not available. Install altdss: pip install altdss"
+                "OpenDSS not available. Install the opendss extra: uv sync --extra opendss"
             )
         self.logger.warning(EXPERIMENTAL_WARNING)
 

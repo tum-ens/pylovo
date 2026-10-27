@@ -33,6 +33,23 @@ wheels = [
 ]
 
 [[package]]
+name = "altdss"
+version = "0.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dss-python" },
+    { name = "dss-python-backend" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/73/8e/4e9e75dbafdb9001e7bcce98190ad816bc838af7e982e00d1ce091a3c8d1/altdss-0.2.4.tar.gz", hash = "sha256:c2caccd1147c3a17c05605a700818ede77cd9406072684c6545727bd96d92937", size = 464734, upload-time = "2024-03-29T05:48:09.164Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/22/27c2cb4c642e58f600515ddde6e2b650ecbde36faf907a5188e11932189e/altdss-0.2.4-py3-none-any.whl", hash = "sha256:91d876f4c072eeedcd4c582700e5207b7f1b1729e2df0098ca5c461cc5f53f0f", size = 391969, upload-time = "2024-03-29T05:48:06.996Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -376,6 +393,38 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ae/b6/03bb70946330e88ffec97aefd3ea75ba575cb2e762061e0e62a213befee8/docutils-0.22.4.tar.gz", hash = "sha256:4db53b1fde9abecbb74d91230d32ab626d94f6badfc575d6db9194a49df29968", size = 2291750, upload-time = "2025-12-18T19:00:26.443Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl", hash = "sha256:d0013f540772d1420576855455d050a2180186c91c15779301ac2ccb3eeb68de", size = 633196, upload-time = "2025-12-18T19:00:18.077Z" },
+]
+
+[[package]]
+name = "dss-python"
+version = "0.15.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dss-python-backend" },
+    { name = "numpy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a4/15/0bb630d747d9cfbf15dcdc537508fe0602f0a4e256ea40f6cb8496d56847/dss_python-0.15.7.tar.gz", hash = "sha256:bcdb6d8e4eb4255c3afb473a25aaa6951dbec46366c4cf2940796f5c00e53848", size = 198521, upload-time = "2024-03-29T05:57:18.528Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/ad/88f91e2d636a051441dad0bbd804ce2f42e0184cd321adb7ec98ee38d97d/dss_python-0.15.7-py3-none-any.whl", hash = "sha256:86359b60e103f5ff038adabb3af424e97857cf98d5c43a042d08795d3ba2dd3d", size = 231968, upload-time = "2024-03-29T05:57:15.71Z" },
+]
+
+[[package]]
+name = "dss-python-backend"
+version = "0.14.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/f8/1fa9857d3d7d026f8897f4363a5c60bea9268f15ea41021a17682a351523/dss_python_backend-0.14.5-cp37-abi3-macosx_10_13_universal2.whl", hash = "sha256:511db113b30a4f979552c3c76ed520cf39acb4a7595f725465d7cda1fced8e78", size = 7595436, upload-time = "2024-03-29T04:55:07.185Z" },
+    { url = "https://files.pythonhosted.org/packages/39/95/ac35ee76cc7325201930638d3bf14952c93cf0915a2fe96fc5fd852346ed/dss_python_backend-0.14.5-cp37-abi3-macosx_12_0_arm64.whl", hash = "sha256:63cb7e495c9fd1834f7b5fe270333ef381b95281203dce5ece7ea2a11bb162a5", size = 6116707, upload-time = "2024-03-29T04:55:11.154Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/27/f188fc0e6cb54c94617bc2d9c1e19d010b6a8bd913e354bf1e544c30df6e/dss_python_backend-0.14.5-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0a490f6287f06c5f0d971ac5fa06527bbc1a19bc8ece5d12553d8aa72569dfba", size = 16427916, upload-time = "2024-03-29T04:55:16.47Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/4b/0610c18e4c5ca852a25524d635c0a65798d98335fc3e9c31f3fd61e22781/dss_python_backend-0.14.5-cp37-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:6aea8323d4e6a0425d01056e69f25eccb4d3951e287fe06fc53f342ddd8d09ac", size = 20565731, upload-time = "2024-03-29T04:55:22.96Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/eb/ff21c6d80a07cac2ec6d5a143ff2e3555d075eff66e5ffd4d3f64cbbf042/dss_python_backend-0.14.5-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e6fd9682a127f306a3b367810dee2b02d00660f6739e580609d5b9f523d03ccb", size = 22034261, upload-time = "2024-03-29T04:55:29.782Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/13/f6b7576d0d4fea9aba079816ce00ca67f784f0cbd9e2c418f50fcf00b06b/dss_python_backend-0.14.5-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ac31301222f58f148c145847fa08bfcea934b4ea1097e5788d164d4dcf0a09d1", size = 22036908, upload-time = "2024-03-29T04:55:36.169Z" },
+    { url = "https://files.pythonhosted.org/packages/59/58/c0c48259f73c83fec75873a968589ff79b29d142a12e199689c1d7230180/dss_python_backend-0.14.5-cp37-abi3-win32.whl", hash = "sha256:873f5fe904034bb5b11e44b74841cc92ddae2101a16e68592a4725b93b546e27", size = 17365863, upload-time = "2024-03-29T04:55:41.549Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/d5/c71c498c0cca35018691af448fdc792703d3e36146edfe840bba2ba26700/dss_python_backend-0.14.5-cp37-abi3-win_amd64.whl", hash = "sha256:503ff6f15c6037863848a127244e090dbf246eeafcb71a31b35c2d35f13efae8", size = 18778503, upload-time = "2024-03-29T04:55:46.615Z" },
 ]
 
 [[package]]
@@ -1566,6 +1615,9 @@ notebooks = [
     { name = "plotly" },
     { name = "seaborn" },
 ]
+opendss = [
+    { name = "altdss" },
+]
 plots = [
     { name = "contextily" },
     { name = "igraph" },
@@ -1588,6 +1640,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "altdss", marker = "extra == 'opendss'", specifier = ">=0.2.4" },
     { name = "contextily", marker = "extra == 'plots'", specifier = ">=1.7.0" },
     { name = "factor-analyzer", specifier = "==0.5.1" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115.0" },
@@ -1637,7 +1690,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'viewer'", specifier = ">=0.30.0" },
     { name = "xlsxwriter", specifier = ">=3.2.9" },
 ]
-provides-extras = ["plots", "notebooks", "docs", "legacy-ui", "api", "viewer"]
+provides-extras = ["plots", "notebooks", "docs", "opendss", "legacy-ui", "api", "viewer"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.3" }]

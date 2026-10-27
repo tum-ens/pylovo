@@ -72,10 +72,8 @@ OpenDSS (experimental)
 ----------------------
 
 :class:`~pylovo.electrical_backend.opendss.backend.OpenDSSBackend` implements the same interface on
-top of OpenDSS via ``altdss``. It is experimental and logs a warning when it is selected. Known defects:
+top of OpenDSS via ``altdss`` (``uv sync --extra opendss``). It is experimental and logs a warning when it is selected. Known defects:
 
-* ``altdss`` is not part of the dependencies (no extra), so ``ELECTRICAL_BACKEND: opendss`` needs a
-  manual ``pip install altdss``.
 * pylovo's bus names contain blanks (``LVbus 1``), which the OpenDSS parser does not accept: the power
   flow reports convergence with zero power and zero voltages.
 * The number of parallel cables of a line (``LineSpec.parallel``) is ignored.

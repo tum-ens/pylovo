@@ -37,7 +37,7 @@ jobs:
           enable-cache: true
 
       - name: Run the tests
-        run: uv run --locked --extra api --extra plots --extra viewer pytest -q tests api/tests viewer/tests
+        run: uv run --locked --extra api --extra plots --extra viewer --extra opendss pytest -q tests api/tests viewer/tests
 
   database:
     runs-on: ubuntu-latest
