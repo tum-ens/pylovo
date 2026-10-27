@@ -101,6 +101,8 @@ class OpenDSSBackend(IElectricalBackend):
         """Initialize OpenDSS circuit with German distribution standards."""
         try:
             altdss.altdss("Clear")
+            # before the circuit: its source takes the default base frequency (60 Hz in a new process)
+            altdss.altdss("Set DefaultBaseFrequency=50")
             altdss.altdss(
                 f"New Circuit.{name} basekv={primary_kv} pu=1.0 phases=3 bus1={source_bus}"
             )
@@ -110,7 +112,6 @@ class OpenDSSBackend(IElectricalBackend):
             bases_str = ",".join(str(v) for v in voltage_bases)
             altdss.altdss(f"Set VoltageBases=[{bases_str}]")
             altdss.altdss("CalcVoltageBases")
-            altdss.altdss("Set DefaultBaseFrequency=50")
 
             self.dss = altdss.altdss
             self._circuit_name = name
