@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - Speed up the MV routing graph of large regions: the settlement polygons no longer use a query plan that grows with the square of the number of settlements (364 municipalities: build in 1.7 instead of 4.8 minutes)
 - Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them; the cells of the district areas find their stations through an index
+- Speed up the district areas of large MV regions: the cells are united per district before they are clipped to the region, which before copied the whole region into every cell row (106 GB of temporary files for Bavaria)
 - Speed up the OSM coverage report of the MV stage: only the land-use polygons across the border of the region are clipped
 - Read only the grids and nodes of a variant in `pylovo-mv couple`
 - Keep the done supply areas and their status when the MV ties or links fail: the failure becomes a warning of the summary

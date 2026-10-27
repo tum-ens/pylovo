@@ -300,6 +300,9 @@ def test_write_grid_areas_partitions_the_region():
     assert "ST_VoronoiPolygons(ST_Collect(p.geom), 0.0, (SELECT geom FROM region))" in sql
     assert "JOIN mv_area_point p ON ST_Intersects(v.geom, p.geom)" in sql
     assert "ST_CollectionExtract(ST_Intersection" in sql and "< 0.10" in sql
+    # the cells are united per district before the clip, so no row of the grouping carries the region
+    assert "FROM lab GROUP BY mv_grid_id" in sql and "r.geom)" not in sql.split("cell AS")[0]
+    assert "GROUP BY l.mv_grid_id, r.geom" not in sql
     assert params == {"v": "mv1", "var": "d0", "plz": [80801, 80804]}
 
 

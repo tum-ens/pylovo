@@ -640,10 +640,13 @@ class MvResultMixin(BaseMixin):
                                   FROM mv_area_point p)) d),
             lab AS (SELECT DISTINCT ON (v.cid) v.cid, p.mv_grid_id, v.geom
                     FROM vor v JOIN mv_area_point p ON ST_Intersects(v.geom, p.geom) ORDER BY v.cid, p.mv_grid_id),
-            cell AS (SELECT l.mv_grid_id,
-                            ST_Multi(ST_CollectionExtract(ST_Intersection(ST_UnaryUnion(ST_Collect(l.geom)),
-                                                                          r.geom), 3)) AS geom
-                     FROM lab l CROSS JOIN region r GROUP BY l.mv_grid_id, r.geom)
+            -- the cells are united per district first and each district is clipped once: grouping the cells
+            -- together with the region would copy the region into every cell row of the sort (106 GB of temporary
+            -- files for Bavaria)
+            merged AS (SELECT mv_grid_id, ST_UnaryUnion(ST_Collect(geom ORDER BY cid)) AS geom
+                       FROM lab GROUP BY mv_grid_id),
+            cell AS (SELECT m.mv_grid_id, ST_Multi(ST_CollectionExtract(ST_Intersection(m.geom, r.geom), 3)) AS geom
+                     FROM merged m CROSS JOIN region r)
             UPDATE pylovo.mv_grid g
             SET geom = c.geom, area_km2 = ST_Area(c.geom) / 1e6,
                 complete = s.in_region AND COALESCE(
