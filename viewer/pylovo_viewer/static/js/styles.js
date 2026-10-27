@@ -95,15 +95,20 @@ export const STYLES = {
       ['Length', f.km(o.length_km)], ['Capacity', `${f.num(o.s_nom)} MVA`], ['Cables', f.num(o.cables)]] }),
   },
   hv_substations: {
+    // badges in the surface colour (the reverse of the dark MV/LV ones) and larger at every zoom;
+    // candidates the run did not use are faded
     layers: ({ id, p }) => [
-      { id, type: 'symbol', layout: symbol(stationIcon('hvmv', ['case', ['get', 'used'], p.ink.primary, p.surface], p.surface),
-        ['interpolate', ['linear'], ['zoom'], 5, 0.45, 9, 0.7, 12, 0.9, 15, 1.1]) },
+      { id, type: 'symbol', layout: symbol(stationIcon('hvmv', p.surface, p.surface),
+        ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 0.75, 12, 0.95, 15, 1.2, 19, 1.6]),
+        paint: { 'icon-opacity': ['case', ['get', 'used'], 1, 0.45] } },
       { id: `${id}:label`, type: 'symbol', pick: false, minzoom: 10,
-        layout: { ...label(['coalesce', ['get', 'name'], ''], 11.5), 'text-offset': [0, 1.9], 'text-anchor': 'top' },
+        layout: { ...label(['coalesce', ['get', 'name'], ''], 11.5), 'text-anchor': 'top',
+          'text-offset': ['interpolate', ['linear'], ['zoom'], 10, ['literal', [0, 1.7]], 19, ['literal', [0, 2.5]]] },
         paint: { 'text-color': p.ink.primary, 'text-halo-color': p.surface, 'text-halo-width': 1.8 } },
     ],
-    legend: () => [{ kind: 'station', colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
-      { kind: 'station', colour: pal().surface, label: 'Candidate, not used' }],
+    // `colour` is the dot of the panel and the inspector, `fill` the badge
+    legend: () => [{ kind: 'station', hv: true, fill: pal().surface, colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
+      { kind: 'station', hv: true, faded: true, fill: pal().surface, colour: pal().ink.primary, label: 'Candidate, not used (faded)' }],
     facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
       ['Transformers', o.transformers ? `${o.transformers} × ${f.num(o.mva / Math.max(o.transformers, 1), 0)} MVA` : '–'],
       ['Loading (n-0 / n-1)', `${f.pct(o.loading)} / ${f.pct(o.loading_n1)}`], ['Voltage tag', o.voltage || '–'],

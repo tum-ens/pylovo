@@ -100,7 +100,7 @@ createApp({
           entries.push({ kind, colour: scheme.colour, label: scheme.label });
         }
         if (style.extraLegend) entries.push(...style.extraLegend(this.modeOf(id)));
-        for (const e of entries) if (e.kind === 'station') Object.assign(e, stationColours(e.colour, pal().surface));
+        for (const e of entries) if (e.kind === 'station') Object.assign(e, stationColours(e.fill || e.colour, pal().surface, e.hv ? 'hvmv' : 'mvlv'));
         if (entries.length) out.push({ id, title: m.title, entries });
       }
       return out;

@@ -157,7 +157,7 @@ def build_layers() -> list[Layer]:
               attribution="eGon-data eTraGo grid (osmTGmod), © OpenStreetMap contributors (ODbL)"),
         Layer("hv_substations", "hv", "HV/MV substations",
               "The HV/MV substations of the MV run that supply the MV grids; candidates the run did not use "
-              "are drawn hollow. Their site outlines show from zoom 12.",
+              "are faded. Their site outlines show from zoom 12.",
               "point", "run", "pylovo.mv_substation",
               sql=f"""SELECT s.substation_id AS fid, s.source, s.name, s.operator, s.voltage_tag AS voltage,
                              s.egon_bus_id AS etrago_bus, s.n_transformers AS transformers, s.transformer_mva AS mva,

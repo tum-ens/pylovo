@@ -101,7 +101,8 @@ counts. Colours that only tell grids, rings or supply areas apart have no legend
 
 **3D.** The map starts in 3D, tilted by 25°, on the Streets basemap of OpenFreeMap (another basemap is kept
 in the address bar, not between visits). The *3D* button switches
-to the flat map and back; buildings are extruded by their height in 3D. With a
+to the flat map and back; buildings are extruded by their height in 3D. The buildings of the
+basemap stay flat, so they never hide the pylovo buildings. With a
 ``citydb`` schema (3DCityDB v5, see :doc:`input_data`) the buildings in view are drawn as their LoD2
 models with roofs and walls from zoom 15 (up to 5,000 buildings).
 
@@ -145,8 +146,9 @@ says so.
      - The 110, 220 and 380 kV grid of Germany from eGon-data (see below).
    * - HV and MV grids
      - HV/MV substations
-     - ``pylovo.mv_substation`` of the MV run with their site outlines; candidates the run did not use
-       are hollow. The facts give the eTraGo 110 kV bus of each substation. From zoom 15 the busbar
+     - ``pylovo.mv_substation`` of the MV run with their site outlines, as white badges with a frame
+       (dark in the dark theme) that are larger than the MV/LV substations; candidates the run did not
+       use are faded. The facts give the eTraGo 110 kV bus of each substation. From zoom 15 the busbar
        circle shows where the MV lines end (display geometry of the MV stage).
    * - MV grids
      - MV lines

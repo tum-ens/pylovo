@@ -120,8 +120,21 @@ export class MapView {
     return true;
   }
 
+  /** Keep the basemap buildings flat: Streets extrudes the OpenStreetMap buildings from zoom 14, and
+   *  where they are higher they hide the pylovo buildings. Its flat buildings (up to zoom 14) stay at
+   *  every zoom instead. */
+  flattenBasemap() {
+    const layers = this.map.getStyle().layers;
+    for (const l of layers.filter((x) => x.type === 'fill-extrusion')) {
+      this.map.removeLayer(l.id);
+      const flat = layers.find((x) => x.type === 'fill' && x.source === l.source && x['source-layer'] === l['source-layer']);
+      if (flat) this.map.setLayerZoomRange(flat.id, flat.minzoom ?? 0, 24);
+    }
+  }
+
   restore() {
     const map = this.map;
+    this.flattenBasemap();
     map.addLayer(createLod2Layer('lod2'));
     for (const layer of Object.values(this.layers)) { layer.sublayers = []; layer.pickable = []; }   // the old style is gone
     for (const id of Object.keys(this.layers)) {

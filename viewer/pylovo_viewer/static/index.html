@@ -202,52 +202,54 @@
     </section>
   </aside>
 
-  <!-- ----------------------------------------------------------------------- inspector -->
-  <aside class="inspector glass" v-if="inspector">
-    <template v-for="hit in [inspector.hits[inspector.index]]" :key="hit.layer + hit.fid">
-      <header>
-        <span class="dot" :style="{ background: facts(hit).colour }"></span>
-        <div class="head">
-          <div class="kicker">{{ facts(hit).layerTitle }}</div>
-          <h2>{{ facts(hit).title }}</h2>
-          <div class="subtitle" v-if="facts(hit).subtitle">{{ facts(hit).subtitle }}</div>
+  <!-- --------------------------------------------------------------- inspector, legend -->
+  <div class="side">
+    <aside class="inspector glass" v-if="inspector">
+      <template v-for="hit in [inspector.hits[inspector.index]]" :key="hit.layer + hit.fid">
+        <header>
+          <span class="dot" :style="{ background: facts(hit).colour }"></span>
+          <div class="head">
+            <div class="kicker">{{ facts(hit).layerTitle }}</div>
+            <h2>{{ facts(hit).title }}</h2>
+            <div class="subtitle" v-if="facts(hit).subtitle">{{ facts(hit).subtitle }}</div>
+          </div>
+          <button class="icon-btn small" @click="closeInspector" title="Close (Esc)">×</button>
+        </header>
+        <div class="hit-tabs" v-if="inspector.hits.length > 1">
+          <span class="muted">{{ inspector.hits.length }} features here:</span>
+          <button v-for="(h, i) in inspector.hits" :key="i" :class="{ on: i === inspector.index }" @click="show(i)"
+                  :title="metaById[h.layer]?.title">{{ facts(h).title }}</button>
         </div>
-        <button class="icon-btn small" @click="closeInspector" title="Close (Esc)">×</button>
-      </header>
-      <div class="hit-tabs" v-if="inspector.hits.length > 1">
-        <span class="muted">{{ inspector.hits.length }} features here:</span>
-        <button v-for="(h, i) in inspector.hits" :key="i" :class="{ on: i === inspector.index }" @click="show(i)"
-                :title="metaById[h.layer]?.title">{{ facts(h).title }}</button>
-      </div>
-      <table class="facts"><tr v-for="r in facts(hit).rows" :key="r[0]"><th>{{ r[0] }}</th><td>{{ r[1] }}</td></tr></table>
-      <div class="actions"><button v-for="a in actions(hit)" :key="a.label" @click="a.run()">{{ a.label }}</button></div>
-      <div class="attrs">
-        <button class="attrs-head" @click="inspector.attrsOpen ? (inspector.attrsOpen = false) : loadAttrs()">
-          <span class="chev" :class="{ open: inspector.attrsOpen }">›</span>All attributes</button>
-        <template v-if="inspector.attrsOpen">
-          <div class="muted" v-if="inspector.loading"><span class="spin"></span>loading</div>
-          <div class="warn" v-if="inspector.error">{{ inspector.error }}</div>
-          <table v-if="inspector.attrs"><tr v-for="[k, v] in inspector.attrs" :key="k"><th>{{ k }}</th><td>{{ attrValue(v) }}</td></tr></table>
-          <button class="link" v-if="inspector.attrs" @click="copyAttrs">Copy as JSON</button>
-        </template>
-      </div>
-    </template>
-  </aside>
+        <table class="facts"><tr v-for="r in facts(hit).rows" :key="r[0]"><th>{{ r[0] }}</th><td>{{ r[1] }}</td></tr></table>
+        <div class="actions"><button v-for="a in actions(hit)" :key="a.label" @click="a.run()">{{ a.label }}</button></div>
+        <div class="attrs">
+          <button class="attrs-head" @click="inspector.attrsOpen ? (inspector.attrsOpen = false) : loadAttrs()">
+            <span class="chev" :class="{ open: inspector.attrsOpen }">›</span>All attributes</button>
+          <template v-if="inspector.attrsOpen">
+            <div class="muted" v-if="inspector.loading"><span class="spin"></span>loading</div>
+            <div class="warn" v-if="inspector.error">{{ inspector.error }}</div>
+            <table v-if="inspector.attrs"><tr v-for="[k, v] in inspector.attrs" :key="k"><th>{{ k }}</th><td>{{ attrValue(v) }}</td></tr></table>
+            <button class="link" v-if="inspector.attrs" @click="copyAttrs">Copy as JSON</button>
+          </template>
+        </div>
+      </template>
+    </aside>
 
-  <!-- -------------------------------------------------------------------------- legend -->
-  <div class="legend glass" v-if="legend.length && !fatal" :class="{ shift: inspector }">
-    <button class="legend-head" @click="legendOpen = !legendOpen"><span class="chev" :class="{ open: legendOpen }">›</span>Legend</button>
-    <div class="legend-body" v-show="legendOpen">
-      <div class="lg" v-for="l in legend" :key="l.id">
-        <div class="lg-title">{{ l.title }}</div>
-        <div class="lg-row" v-for="(e, i) in l.entries" :key="i">
-          <span v-if="e.kind === 'slots'" class="lg-slots"><i v-for="c in e.colours" :key="c" :style="{ background: c }"></i></span>
-          <span v-else-if="e.kind === 'ramp'" class="lg-ramp" :style="{ background: e.css }"></span>
-          <span v-else-if="e.kind === 'note'" class="lg-note"></span>
-          <svg v-else-if="e.kind === 'station'" class="lg-station" viewBox="0 0 26 26"><rect x="2" y="2" width="22" height="22" rx="6" :fill="e.colour" :stroke="e.edge"/><circle cx="9.8" cy="13" r="5.2" :stroke="e.ink"/><circle cx="16.2" cy="13" r="5.2" :stroke="e.ink"/></svg>
-          <span v-else class="lg-sym" :class="[e.kind, { hollow: e.hollow, dash: e.dash, dot: e.dot, thin: e.thin }]" :style="{ '--c': e.colour }"></span>
-          <span class="lg-label">{{ e.label }}<span class="muted" v-if="e.kind === 'ramp'"> {{ fmt.auto(e.min) }}–{{ fmt.auto(e.max) }} {{ e.unit }}</span></span>
-          <span class="lg-count" v-if="e.count !== null && e.count !== undefined">{{ fmt.num(e.count) }}</span>
+    <div class="legend glass" v-if="legend.length && !fatal">
+      <button class="legend-head" @click="legendOpen = !legendOpen"><span class="chev" :class="{ open: legendOpen }">›</span>Legend</button>
+      <div class="legend-body" v-show="legendOpen">
+        <div class="lg" v-for="l in legend" :key="l.id">
+          <div class="lg-title">{{ l.title }}</div>
+          <div class="lg-row" v-for="(e, i) in l.entries" :key="i">
+            <span v-if="e.kind === 'slots'" class="lg-slots"><i v-for="c in e.colours" :key="c" :style="{ background: c }"></i></span>
+            <span v-else-if="e.kind === 'ramp'" class="lg-ramp" :style="{ background: e.css }"></span>
+            <span v-else-if="e.kind === 'note'" class="lg-note"></span>
+            <svg v-else-if="e.kind === 'station' && e.hv" class="lg-station hv" :class="{ faded: e.faded }" viewBox="0 0 34 34"><rect x="2.5" y="2.5" width="29" height="29" rx="8" :fill="e.fill" :stroke="e.edge"/><rect class="frame" x="6.5" y="6.5" width="21" height="21" rx="4" :stroke="e.ink"/><circle cx="13.3" cy="17" r="6" :stroke="e.ink"/><circle cx="20.7" cy="17" r="6" :stroke="e.ink"/></svg>
+            <svg v-else-if="e.kind === 'station'" class="lg-station" viewBox="0 0 26 26"><rect x="2" y="2" width="22" height="22" rx="6" :fill="e.colour" :stroke="e.edge"/><circle cx="9.8" cy="13" r="5.2" :stroke="e.ink"/><circle cx="16.2" cy="13" r="5.2" :stroke="e.ink"/></svg>
+            <span v-else class="lg-sym" :class="[e.kind, { hollow: e.hollow, dash: e.dash, dot: e.dot, thin: e.thin }]" :style="{ '--c': e.colour }"></span>
+            <span class="lg-label">{{ e.label }}<span class="muted" v-if="e.kind === 'ramp'"> {{ fmt.auto(e.min) }}–{{ fmt.auto(e.max) }} {{ e.unit }}</span></span>
+            <span class="lg-count" v-if="e.count !== null && e.count !== undefined">{{ fmt.num(e.count) }}</span>
+          </div>
         </div>
       </div>
     </div>

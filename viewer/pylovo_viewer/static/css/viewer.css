@@ -178,8 +178,12 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .chip { padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
 .chip b { color: var(--text-1); font-weight: 600; margin-left: 3px; }
 
-/* -------------------------------------------------------------------------- inspector */
-.inspector { position: absolute; top: 76px; right: 12px; width: 370px; max-height: calc(100% - 190px); overflow: auto; z-index: 11; padding: 12px 12px 10px; }
+/* ------------------------------------------------------------------ inspector, legend */
+/* One column at the right edge: the inspector at the top, the legend in the bottom corner (next to
+   the map controls). Both shrink when they do not fit, so they never overlap. */
+.side { position: absolute; top: 76px; right: 12px; bottom: 32px; z-index: 11; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+.side > * { pointer-events: auto; }
+.inspector { flex: 0 1 auto; min-height: 0; width: 370px; max-height: calc(100% - 82px); overflow: auto; padding: 12px 12px 10px; }
 .inspector header { display: flex; align-items: flex-start; gap: 10px; }
 .inspector .head { flex: 1; min-width: 0; }
 .inspector .dot { width: 12px; height: 12px; margin-top: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px var(--surface); }
@@ -204,9 +208,7 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .attrs th { width: 48%; white-space: normal; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
 .attrs td { text-align: left; padding-left: 6px; }
 
-/* ----------------------------------------------------------------------------- legend */
-.legend { position: absolute; right: 58px; bottom: 32px; z-index: 8; width: 268px; max-height: 46vh; overflow: auto; padding: 4px 12px 8px; }
-.legend.shift { right: 394px; }
+.legend { flex: 0 1 auto; min-height: 0; margin: auto 46px 0 0; width: 268px; max-height: 46vh; overflow: auto; padding: 4px 12px 8px; }
 .legend-head { display: flex; align-items: center; gap: 2px; width: 100%; padding: 6px 0; border: 0; background: none; cursor: pointer; font-weight: 700; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
 .lg + .lg { margin-top: 8px; }
 .lg-title { font-weight: 600; margin-bottom: 3px; }
@@ -226,6 +228,9 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
 .lg-station { flex: none; width: 18px; height: 16px; }
 .lg-station rect { stroke-width: 1.8; }
 .lg-station circle { fill: none; stroke-width: 2; }
+.lg-station.hv { height: 18px; }
+.lg-station .frame { fill: none; stroke-width: 1.2; }
+.lg-station.faded { opacity: 0.45; }
 .lg-slots { display: flex; flex: none; width: 66px; height: 10px; border-radius: 3px; overflow: hidden; }
 .lg-slots i { flex: 1; }
 .lg-ramp { flex: none; width: 66px; height: 10px; border-radius: 3px; }
@@ -264,6 +269,7 @@ kbd { padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2p
   .brand b, .db .ro, .field span { display: none; }
   .search { order: 10; flex-basis: 100%; max-width: none; }
   .panel { top: 128px; width: calc(100% - 24px); bottom: auto; max-height: 52vh; }
-  .inspector { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 52vh; }
+  .side { top: auto; bottom: 12px; left: 12px; align-items: stretch; }
+  .inspector { width: auto; max-height: 52vh; }
   .legend { display: none; }
 }
