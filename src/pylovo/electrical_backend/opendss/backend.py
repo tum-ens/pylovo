@@ -201,9 +201,13 @@ class OpenDSSBackend(IElectricalBackend):
         used.add(dss_name)
         return dss_name
 
-    def _create_line_code(self, cable: CableEquipment) -> Any:
-        """Create OpenDSS line code from cable equipment (with caching)."""
-        code_name = _dss_name(f"LC_{cable.name}")
+    def _create_line_code(self, cable: CableEquipment, parallel: int = 1) -> Any:
+        """Create the OpenDSS line code of ``parallel`` cables of one type (with caching).
+
+        Parallel cables are one line code with the impedances divided and the ampacity
+        multiplied by ``parallel``.
+        """
+        code_name = _dss_name(f"LC_{cable.name}" + (f"_x{parallel}" if parallel > 1 else ""))
 
         if code_name in self._line_codes:
             return self._line_codes[code_name]
@@ -211,15 +215,15 @@ class OpenDSSBackend(IElectricalBackend):
         line_code = self.dss.LineCode.new(
             code_name,
             NPhases=cable.n_phases,
-            R1=cable.r_ohm_per_km,
-            X1=cable.x_ohm_per_km,
-            R0=cable.r_ohm_per_km * 3,  # Zero sequence approximation
-            X0=cable.x_ohm_per_km * 3,
+            R1=cable.r_ohm_per_km / parallel,
+            X1=cable.x_ohm_per_km / parallel,
+            R0=cable.r_ohm_per_km * 3 / parallel,  # Zero sequence approximation
+            X0=cable.x_ohm_per_km * 3 / parallel,
             C1=0.0,
             C0=0.0,
             Units="km",
-            NormAmps=cable.max_i_a,
-            EmergAmps=cable.max_i_a * 1.25,
+            NormAmps=cable.max_i_a * parallel,
+            EmergAmps=cable.max_i_a * 1.25 * parallel,
         )
 
         self._line_codes[code_name] = line_code
@@ -279,8 +283,10 @@ class OpenDSSBackend(IElectricalBackend):
                     f"Available: {available}... Call register_cable_types first."
                 )
 
-        # Ensure line code exists
-        line_code = self._create_line_code(cable_equipment)
+        parallel = int(spec.parallel)
+        if parallel < 1:
+            raise OpenDSSBackendError(f"Line {spec.name!r} has {spec.parallel} parallel cables")
+        line_code = self._create_line_code(cable_equipment, parallel)
 
         # Enforce minimum length
         length_km = max(spec.length_km, 0.001)
@@ -298,7 +304,7 @@ class OpenDSSBackend(IElectricalBackend):
         self._components_created["lines"].append(line)
         self.logger.debug(
             f"Created line: {spec.name} (length={length_km:.3f}km, "
-            f"type={cable_equipment.name})"
+            f"type={cable_equipment.name}, parallel={parallel})"
         )
         return line
 

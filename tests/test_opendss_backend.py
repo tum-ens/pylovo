@@ -42,17 +42,23 @@ def feeder_specs(parallel: int = 1) -> list:
     return specs
 
 
-def build(backend, specs: list):
+def build(backend, specs: list, cables: list = CABLES):
     """``backend`` with the grid of ``specs``; the first spec is the MV bus."""
     backend.initialize_circuit(name="PLZ1_kcid1_bcid1", source_bus=specs[0].name, primary_kv=20.0)
-    backend.register_cable_types(CABLES)
+    backend.register_cable_types(cables)
     for spec in specs:
         backend.create_component(spec)
     return backend
 
 
-def opendss(specs: list | None = None) -> OpenDSSBackend:
-    return build(OpenDSSBackend(logger=LOGGER), feeder_specs() if specs is None else specs)
+def opendss(specs: list | None = None, cables: list = CABLES) -> OpenDSSBackend:
+    return build(OpenDSSBackend(logger=LOGGER), feeder_specs() if specs is None else specs, cables)
+
+
+def solved_voltages(backend: OpenDSSBackend) -> dict[str, float]:
+    """Voltage (p.u., first phase) of every bus after the power flow."""
+    assert backend.solve_power_flow()
+    return {bus.Name: float(bus.puVMagAngle[0]) for bus in backend.dss.Bus}
 
 
 def test_the_first_circuit_of_a_process_runs_at_50_hz():
@@ -93,3 +99,15 @@ def test_two_buses_with_the_same_opendss_name_raise():
     backend = opendss()
     with pytest.raises(OpenDSSBackendError, match="same OpenDSS name"):
         backend.create_component(BusSpec(name="Consumer_Nodebus 21"))
+
+
+def test_two_parallel_cables_give_the_voltage_drop_of_half_the_impedance():
+    single = solved_voltages(opendss())
+    backend = opendss(feeder_specs(parallel=2))
+    assert backend.dss.Line["line_to_10"].NormAmps == 540
+    double = solved_voltages(backend)
+    half = feeder_specs()
+    half[next(i for i, spec in enumerate(half) if spec.name == "Line to 10")].cable_name = "NAYY_4_150_half"
+    halved = solved_voltages(opendss(half, CABLES + [("NAYY_4_150_half", 0.104, 0.04, 0.54, 0.0)]))
+    assert double == pytest.approx(halved, abs=1e-9)
+    assert double["consumer_nodebus_23"] > single["consumer_nodebus_23"] + 1e-3
