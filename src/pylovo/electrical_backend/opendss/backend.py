@@ -59,6 +59,15 @@ def _empty_component_registry() -> Dict[str, list]:
     }
 
 
+def _dss_name(name: str) -> str:
+    """Name of a pylovo bus or element in OpenDSS.
+
+    The DSS parser splits names at blanks and reads ``.`` as a node separator, and OpenDSS
+    lowercases every name: ``"Consumer Nodebus 21"`` becomes ``"consumer_nodebus_21"``.
+    """
+    return re.sub(r"[\s.]", "_", str(name)).lower()
+
+
 #: Known defects of this backend; see the "OpenDSS (experimental)" section of the electrical backend docs.
 EXPERIMENTAL_WARNING = (
     "The OpenDSS backend is experimental: bus names with blanks give a wrong power flow, parallel cables are "
@@ -88,6 +97,9 @@ class OpenDSSBackend(IElectricalBackend):
         # Line codes by name, so each cable type is defined only once per circuit
         self._line_codes: Dict[str, Any] = {}
         self._components_created: Dict[str, list] = _empty_component_registry()
+        # pylovo bus name by OpenDSS bus name, and the OpenDSS names in use per element class
+        self._bus_names: Dict[str, str] = {}
+        self._element_names: Dict[str, set] = {}
 
         if altdss is None:
             raise OpenDSSBackendError(
@@ -100,11 +112,14 @@ class OpenDSSBackend(IElectricalBackend):
     ) -> None:
         """Initialize OpenDSS circuit with German distribution standards."""
         try:
+            self._bus_names = {}
+            self._element_names = {}
+            source_bus = self._bus(source_bus)
             altdss.altdss("Clear")
             # before the circuit: its source takes the default base frequency (60 Hz in a new process)
             altdss.altdss("Set DefaultBaseFrequency=50")
             altdss.altdss(
-                f"New Circuit.{name} basekv={primary_kv} pu=1.0 phases=3 bus1={source_bus}"
+                f"New Circuit.{_dss_name(name)} basekv={primary_kv} pu=1.0 phases=3 bus1={source_bus}"
             )
 
             # Set German distribution voltage bases
@@ -147,6 +162,7 @@ class OpenDSSBackend(IElectricalBackend):
                 return self._create_load(spec)
             elif isinstance(spec, BusSpec):
                 # OpenDSS creates buses implicitly; only track them for get_component_count()
+                self._bus(spec.name)
                 self._components_created["buses"].append(spec.name)
                 return spec.name
             elif isinstance(spec, ExtGridSpec):
@@ -164,9 +180,30 @@ class OpenDSSBackend(IElectricalBackend):
     # Private Component Creation Methods (merged from OpenDSSComponentFactory)
     # =========================================================================
 
+    def _bus(self, name: str) -> str:
+        """OpenDSS name of a pylovo bus; two pylovo buses must not get the same one."""
+        dss_name = _dss_name(name)
+        known = self._bus_names.setdefault(dss_name, name)
+        if known != name:
+            raise OpenDSSBackendError(
+                f"Buses {known!r} and {name!r} have the same OpenDSS name {dss_name!r}"
+            )
+        return dss_name
+
+    def _element_name(self, element_class: str, name: str) -> str:
+        """Unique OpenDSS name of a new element (OpenDSS refuses duplicates, pandapower allows them)."""
+        used = self._element_names.setdefault(element_class, set())
+        base = dss_name = _dss_name(name)
+        count = 1
+        while dss_name in used:
+            count += 1
+            dss_name = f"{base}_{count}"
+        used.add(dss_name)
+        return dss_name
+
     def _create_line_code(self, cable: CableEquipment) -> Any:
         """Create OpenDSS line code from cable equipment (with caching)."""
-        code_name = f"LC_{cable.name}"
+        code_name = _dss_name(f"LC_{cable.name}")
 
         if code_name in self._line_codes:
             return self._line_codes[code_name]
@@ -208,10 +245,10 @@ class OpenDSSBackend(IElectricalBackend):
         xhl = equipment.reactance_pu * 100 if equipment.reactance_pu else 7.0
 
         transformer = self.dss.Transformer.new(
-            spec.name,
+            self._element_name("transformer", spec.name),
             Phases=equipment.n_phases,
             Windings=2,
-            Buses=[spec.bus1, spec.bus2],
+            Buses=[self._bus(spec.bus1), self._bus(spec.bus2)],
             Conns=["delta", "wye"],
             kVs=[equipment.primary_voltage_kv, equipment.secondary_voltage_kv],
             kVAs=[equipment.s_max_kva, equipment.s_max_kva],
@@ -249,9 +286,9 @@ class OpenDSSBackend(IElectricalBackend):
         length_km = max(spec.length_km, 0.001)
 
         line = self.dss.Line.new(
-            spec.name,
-            Bus1=spec.bus1,
-            Bus2=spec.bus2,
+            self._element_name("line", spec.name),
+            Bus1=self._bus(spec.bus1),
+            Bus2=self._bus(spec.bus2),
             LineCode=line_code,
             Length=length_km,
             Units="km",
@@ -268,8 +305,8 @@ class OpenDSSBackend(IElectricalBackend):
     def _create_load(self, spec: LoadSpec) -> Any:
         """Create load from specification."""
         load = self.dss.Load.new(
-            spec.name,
-            Bus1=spec.bus,
+            self._element_name("load", spec.name),
+            Bus1=self._bus(spec.bus),
             Phases=3,
             kV=0.4,  # German LV
             kW=spec.kw,
@@ -433,6 +470,8 @@ class OpenDSSBackend(IElectricalBackend):
 
         self._line_codes = {}
         self._components_created = _empty_component_registry()
+        self._bus_names = {}
+        self._element_names = {}
         self._circuit_name = None
         self.logger.debug("OpenDSS cleanup completed")
 
