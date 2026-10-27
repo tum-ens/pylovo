@@ -14,7 +14,7 @@ Quick start:
 Package structure:
     - core/: Shared interfaces and data classes
     - pandapower/: Pandapower backend implementation (default)
-    - opendss/: OpenDSS backend implementation (needs the optional ``altdss`` package)
+    - opendss/: OpenDSS backend implementation (needs the ``opendss`` extra)
     - factory.py: Backend registration and creation
 
 The backend classes are imported lazily, so importing this package does not

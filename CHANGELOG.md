@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000 (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
+- Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
+
+### Added
+- Add the `opendss` extra for the OpenDSS backend
+
+### Removed
+- Remove the statistics report and CSV files that the OpenDSS backend wrote into the working directory
 
 ## [1.0.0] - 2026-10-22
 ### Changed

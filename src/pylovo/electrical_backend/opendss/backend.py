@@ -18,8 +18,9 @@ Optional dependency:
     (``uv sync --extra opendss``). This module always imports; without ``altdss`` the
     name ``altdss`` is ``None`` and constructing :class:`OpenDSSBackend`
     (``ELECTRICAL_BACKEND: opendss``) raises :class:`OpenDSSBackendError`.
-    The backend is not covered by the regression runs; parts of ``GridGenerator``
-    (voltage-drop diagnostics, SQL network tables) only work with pandapower.
+
+Differences from pandapower (transformer and source model, stored grid, tools that need
+pandapower grids): see the "OpenDSS" section of the electrical backend docs.
 """
 
 import logging
@@ -69,13 +70,6 @@ def _dss_name(name: str) -> str:
 #: impedance outside it (default 0.95 to 1.05, inside the check band), pandapower never does.
 LOAD_CONSTANT_POWER_RANGE_PU = (0.7, 1.3)
 
-#: Known defects of this backend; see the "OpenDSS (experimental)" section of the electrical backend docs.
-EXPERIMENTAL_WARNING = (
-    "The OpenDSS backend is experimental: bus names with blanks give a wrong power flow, parallel cables are "
-    "ignored and its results cannot be stored for the analysis, the API, the MV stage or the viewer. "
-    "Use ELECTRICAL_BACKEND: pandapower for results."
-)
-
 
 class OpenDSSBackendError(Exception):
     """Exception raised by OpenDSS backend operations."""
@@ -106,7 +100,6 @@ class OpenDSSBackend(IElectricalBackend):
             raise OpenDSSBackendError(
                 "OpenDSS not available. Install the opendss extra: uv sync --extra opendss"
             )
-        self.logger.warning(EXPERIMENTAL_WARNING)
 
     def initialize_circuit(
         self, name: str, source_bus: str, primary_kv: float

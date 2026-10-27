@@ -5,18 +5,9 @@ import pylovo.electrical_backend as electrical_backend
 from pylovo.electrical_backend import available_backends, create_backend, factory, register_backend
 
 
-def test_pandapower_and_the_experimental_opendss_backend_ship():
+def test_pandapower_and_the_opendss_backend_ship():
     assert tuple(available_backends()) == ("opendss", "pandapower")
     assert "OpenDSSBackend" in electrical_backend.__all__
-
-
-def test_the_opendss_backend_warns_that_it_is_experimental(monkeypatch, caplog):
-    from pylovo.electrical_backend.opendss import backend as opendss
-
-    monkeypatch.setattr(opendss, "altdss", object())          # as if altdss were installed
-    with caplog.at_level("WARNING"):
-        create_backend("opendss")
-    assert opendss.EXPERIMENTAL_WARNING in caplog.text
 
 
 def test_the_opendss_backend_without_altdss_names_the_missing_package(monkeypatch):

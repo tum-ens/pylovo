@@ -67,18 +67,51 @@ them). Text and flags are objects with ``None``. Before, the first line of a gri
 in grids generated earlier whose first line was a service line ``feeder_section_id`` is an object column
 and the ``service_*`` percentages are ``float64``.
 
-OpenDSS (experimental)
-----------------------
+OpenDSS
+-------
 
-:class:`~pylovo.electrical_backend.opendss.backend.OpenDSSBackend` implements the same interface on
-top of OpenDSS via ``altdss`` (``uv sync --extra opendss``). It is experimental and logs a warning when it is selected. Known defects:
+:class:`~pylovo.electrical_backend.opendss.backend.OpenDSSBackend` builds the same grid in OpenDSS via
+``altdss`` (DSS-Extensions). Install it with ``uv sync --extra opendss``. Its LV power flow matches
+pandapower's: on the same grid with the LV reference voltage, the LV bus voltages agree within
+1e-4 p.u. and the line loadings within 0.1 percentage points (``tests/test_opendss_backend.py``).
 
-* pylovo's bus names contain blanks (``LVbus 1``), which the OpenDSS parser does not accept: the power
-  flow reports convergence with zero power and zero voltages.
-* The number of parallel cables of a line (``LineSpec.parallel``) is ignored.
-* Its result (the AltDSS JSON) cannot be stored in the ``pandapower_*`` tables, so the analysis, the
-  HTTP API, the plots, the MV stage and the viewer cannot use it. Each power flow also writes CSV
-  files and a statistics report into the working directory.
-* The voltage-drop diagnostics are only available with the pandapower backend.
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+   :class: fixed-table
 
-Use ``ELECTRICAL_BACKEND: pandapower`` for results.
+   * - Element
+     - Model, and how it differs from pandapower
+   * - Buses
+     - pylovo's names with blanks and dots replaced by ``_``, in lower case (``Consumer Nodebus 21``
+       becomes ``consumer_nodebus_21``), because the OpenDSS parser splits names at blanks and OpenDSS
+       lowercases every name. A duplicate element name gets a suffix (``line_to_23_2``). No coordinates.
+   * - External grid
+     - The circuit's source at ``MVbus 1`` with a short-circuit power of 1000 MVA (pandapower: an ideal
+       slack). Its ``pu`` is set so that ``LVbus 1`` is at ``LV_REFERENCE_VOLTAGE_PU``, as in pandapower.
+   * - Transformer
+     - One transformer with the summed rating of the parallel units, 4 % reactance, 1 % resistance and no
+       no-load losses (pandapower: the standard type's ``vk_percent``, ``vkr_percent``, ``pfe_kw``,
+       ``i0_percent``).
+   * - Lines
+     - One line code per cable type and number of parallel cables: impedances divided, ampacity
+       multiplied. Capacitance 0 as in pandapower. An unknown cable type falls back to the strongest
+       registered cable of its family with a warning (pandapower raises).
+   * - Loads
+     - Three-phase constant power between 0.7 and 1.3 p.u. (OpenDSS's default switches to constant
+       impedance below 0.95 p.u.; pandapower keeps constant power).
+
+With the LV busbar at the reference voltage in both backends, the transformer and the source change the
+MV-side voltage and the transformer losses, not the LV voltages and line loadings.
+
+``grid_result.grid`` stores the AltDSS JSON of the circuit with the source voltage of the check, and
+``power_flow_status`` is classified as for pandapower. ``DSS.ActiveCircuit.FromJSON()`` of
+``dss-python`` loads the JSON back, and solving it reproduces the results. The JSON has no results, no
+line routes and none of pylovo's line and load attributes. An OpenDSS grid also has no rows in the
+``pandapower_*`` tables, no voltage-drop diagnostics (``max_feeder_voltage_drop_pu`` and the two others
+stay empty) and ``transformer_description`` ``N/A``.
+
+pylovo's tools after the generation read pandapower grids. ``pylovo-analyze``, ``pylovo-export``, the
+plots and the power flow of the HTTP API stop with a message that the grid comes from the OpenDSS
+backend. Load editing and the MV stage refuse OpenDSS grids. The viewer, the grid maps of the HTTP API and
+GridExpand read the ``pandapower_*`` tables and show nothing for them.
