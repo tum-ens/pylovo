@@ -9,6 +9,7 @@ from classification_helpers import make_sqlite_dc
 
 MAX_DIS = f"max_trafo_dis > {dcm.THRESHOLD_MAX_TRAFO_DIS}"
 BUILDING = f"a building with more than {dcm.THRESHOLD_HOUSEHOLDS_PER_BUILDING} households"
+INFEASIBLE = "a voltage violation or no converged power flow"
 
 
 @pytest.fixture()
@@ -24,13 +25,14 @@ def summary(dc, additional=False, plz_without_grids=()):
 def test_counts_per_stage_with_the_default_filters(dc):
     counts, _ = summary(dc, plz_without_grids=[80099])
     assert counts == {"plz_drawn": 6, "plz_in_sample": 5, "grids": 9, "analysed": 6, "filtered": 2,
-                      "filtered_by": {MAX_DIS: 1, BUILDING: 1}, "clustered": 2}
+                      "filtered_by": {MAX_DIS: 1, BUILDING: 1, INFEASIBLE: 0}, "clustered": 2}
 
 
 def test_additional_filtering_counts_the_small_grid_under_every_lower_bound(dc):
     counts, _ = summary(dc, additional=True)
     assert counts["filtered"] == 3
-    assert counts["filtered_by"] == {MAX_DIS: 1, BUILDING: 1, **{f"{name} < {value}": 1 for name, value in dcm.LOWER_FILTER_THRESHOLDS.items()}}
+    assert counts["filtered_by"] == {MAX_DIS: 1, BUILDING: 1, INFEASIBLE: 0,
+                                     **{f"{name} < {value}": 1 for name, value in dcm.LOWER_FILTER_THRESHOLDS.items()}}
 
 
 def test_every_loss_is_named_in_a_warning(dc):
@@ -80,8 +82,23 @@ def test_report_prints_the_stages_and_logs_every_warning(dc, monkeypatch, capsys
 def test_report_without_an_argument_lists_the_filters_of_the_stored_choice(dc, monkeypatch):
     """The labels and the status columns must both follow the choice stored with the classification."""
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", False)
-    dc.dbc.cur.fetchone_values = [(["no_branches"], 4, 4, True)] * 2
+    dc.dbc.cur.fetchone_values = [(["no_branches"], 4, 4, True, "none", True)] * 2
     dc.dbc.logger = logging.getLogger("classification-report-stored-test")
     monkeypatch.setattr(report, "DatabaseCommunication", lambda: dc)
     counts = report.report_grid_counts()
     assert f"avg_trafo_dis < {dcm.THRESHOLD_AVG_TRAFO_DIS}" in counts["filtered_by"]
+
+
+def test_the_filters_are_reported_per_class_in_grids_buildings_and_households(dc):
+    dc.sqlite.execute("UPDATE pylovo.grid_result SET power_flow_status = 'voltage_violation' WHERE grid_result_id = 5")
+    dc.sqlite.execute("UPDATE pylovo.clustering_parameters SET no_house_connections = 1 WHERE grid_result_id = 6")
+    dc.sqlite.execute("UPDATE pylovo.clustering_parameters SET no_households = 0 WHERE grid_result_id = 4")
+    dc.sqlite.execute("UPDATE pylovo.municipal_register SET regio7 = 77 WHERE plz = 80002")
+    grids = dc.get_grid_status_of_sample_set(False, True)
+    table = report.filtered_by_class(grids, list(dcm.filter_reasons(False, True)))
+    # class 73: grids 1 to 4 (grid 2 too long, grid 3 with a building of 200 households); class 77: grids 5 and 6
+    assert table.loc[73, ["grids", "filtered", "buildings_filtered", "households_filtered"]].tolist() == [4, 2, 80, 200]
+    assert table.loc[77, ["grids", "filtered", "F1", "F2", "F3"]].tolist() == [2, 1, 0, 0, 1]
+    assert table.loc[73, "filtered_pct"] == 50.0 and table.loc["all", "grids"] == 6
+    # the kept grids with one building or without households stay in and are counted
+    assert table.loc[77, "one_building"] == 1 and table.loc[73, "no_households"] == 1

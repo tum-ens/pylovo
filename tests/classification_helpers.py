@@ -153,7 +153,8 @@ def ddl_columns(create_query: str) -> list[str]:
 # --------------------------------------------------------------------------------------- SQLite stand-in for the SQL
 SQLITE_TABLES = """
 ATTACH DATABASE ':memory:' AS pylovo;
-CREATE TABLE pylovo.grid_result (grid_result_id INTEGER, version_id TEXT, plz INTEGER, kcid INTEGER, bcid INTEGER);
+CREATE TABLE pylovo.grid_result (grid_result_id INTEGER, version_id TEXT, plz INTEGER, kcid INTEGER, bcid INTEGER,
+    power_flow_status TEXT);
 CREATE TABLE pylovo.clustering_parameters (grid_result_id INTEGER, no_households INTEGER, avg_trafo_dis REAL,
     max_trafo_dis REAL, no_house_connections INTEGER, vsw_per_branch REAL, key_figures_version INTEGER);
 CREATE TABLE pylovo.classification_version (classification_id INTEGER, key_figures_version INTEGER);
@@ -190,7 +191,7 @@ def sqlite_classification_db() -> sqlite3.Connection:
     db = sqlite3.connect(":memory:")
     db.executescript(SQLITE_TABLES)
     for grid_id, (plz, kcid, bcid) in SQLITE_GRIDS.items():
-        db.execute("INSERT INTO pylovo.grid_result VALUES (?, 'v1', ?, ?, ?)", (grid_id, plz, kcid, bcid))
+        db.execute("INSERT INTO pylovo.grid_result VALUES (?, 'v1', ?, ?, ?, 'converged')", (grid_id, plz, kcid, bcid))
     for grid_id, figures in SQLITE_FIGURES.items():
         db.execute("INSERT INTO pylovo.clustering_parameters VALUES (?, ?, ?, ?, ?, ?, ?)",
                    (grid_id, *figures, KEY_FIGURES_VERSION))

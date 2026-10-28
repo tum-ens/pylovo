@@ -46,7 +46,7 @@ def test_reading_without_an_argument_follows_the_config(dc, monkeypatch):
 def test_reading_without_an_argument_follows_the_choice_stored_with_the_classification(dc, monkeypatch, reader):
     """A later run writes its ADDITIONAL_FILTERING to the configuration: the grids of this classification stay."""
     def read(stored):
-        dc.dbc.cur.fetchone_values = [(["no_branches"], 4, 4, stored)]
+        dc.dbc.cur.fetchone_values = [(["no_branches"], 4, 4, stored, "none", True)]
         return kept(getattr(dc, reader)())
 
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
@@ -77,3 +77,15 @@ def test_earlier_runs_leave_no_trace(dc, monkeypatch):
     assert read(True) == {(80001, 1, 1)}  # another classification on shared grids, with additional filtering
     monkeypatch.setattr(dcm, "CLASSIFICATION_VERSION", 1)
     assert read(False) == first == DEFAULT_KEPT and read(True) == ADDITIONAL_KEPT
+
+
+@pytest.mark.parametrize("status", dcm.INFEASIBLE_POWER_FLOW)
+def test_grids_with_an_infeasible_power_flow_are_left_out_unless_asked_to_keep_them(dc, status):
+    dc.sqlite.execute("UPDATE pylovo.grid_result SET power_flow_status = ? WHERE grid_result_id = 5", (status,))
+    assert kept(dc.get_clustering_parameters_for_classification_version(False, True)) == DEFAULT_KEPT - {(80002, 1, 1)}
+    assert kept(dc.get_clustering_parameters_for_classification_version(False, False)) == DEFAULT_KEPT
+
+
+def test_a_loading_violation_is_no_reason_to_leave_a_grid_out(dc):
+    dc.sqlite.execute("UPDATE pylovo.grid_result SET power_flow_status = 'loading_violation' WHERE grid_result_id = 5")
+    assert kept(dc.get_clustering_parameters_for_classification_version(False, True)) == DEFAULT_KEPT

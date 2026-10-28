@@ -68,7 +68,7 @@ def test_readers_add_the_four_lower_bounds_with_additional_filtering(monkeypatch
     assert dcm.LOWER_FILTER_THRESHOLDS == lower
     for parameter, threshold in lower.items():
         assert f"cp.{parameter} < %({parameter})s" in query and params[parameter] == threshold
-    assert query.count("NOT COALESCE((") == 6, "every condition is NULL-safe"
+    assert query.count("NOT COALESCE((") == 7, "every condition is NULL-safe"
 
 
 @pytest.mark.parametrize("additional", [False, True])
@@ -100,24 +100,25 @@ def stored_dc(row) -> dcm.DatabaseCommunication:
 def test_the_stored_choices_of_the_classification_win_over_the_configuration(monkeypatch):
     """The configuration holds the choices of the last run: classification 9002 must not change those of 9001."""
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
-    dc = stored_dc((["no_branches", "avg_trafo_dis"], 5, 3, False, "none"))
+    dc = stored_dc((["no_branches", "avg_trafo_dis"], 5, 3, False, "none", False))
     assert dc.get_classification_choices() == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
                                                "n_clusters_kmeans": 5, "n_clusters_gmm": 3, "additional_filtering": False,
-                                               "transform": "none"}
+                                               "transform": "none", "exclude_infeasible": False}
     ((query, params),) = dc.dbc.cur.executed
     assert query == ("SELECT list_of_clustering_parameters, n_clusters_kmeans, n_clusters_gmm, additional_filtering, "
-                     "transform FROM pylovo.classification_version WHERE classification_id = %(c)s")
+                     "transform, exclude_infeasible FROM pylovo.classification_version WHERE classification_id = %(c)s")
     assert params == {"c": dcm.CLASSIFICATION_VERSION}
     assert set(dcm.CLASSIFICATION_CHOICES) <= table_columns("classification_version")
 
 
-@pytest.mark.parametrize("row", [(None, None, None, None, None), None])
+@pytest.mark.parametrize("row", [(None,) * 6, None])
 def test_a_classification_without_stored_choices_uses_the_configuration(monkeypatch, row):
     """Clustered before migration 0014 (NULL) or not registered: the values of config_clustering.yaml apply."""
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
     assert stored_dc(row).get_classification_choices() == {
         "list_of_clustering_parameters": dcm.LIST_OF_CLUSTERING_PARAMETERS, "n_clusters_kmeans": dcm.N_CLUSTERS_KMEANS,
-        "n_clusters_gmm": dcm.N_CLUSTERS_GMM, "additional_filtering": True, "transform": dcm.TRANSFORM}
+        "n_clusters_gmm": dcm.N_CLUSTERS_GMM, "additional_filtering": True, "transform": dcm.TRANSFORM,
+        "exclude_infeasible": dcm.EXCLUDE_INFEASIBLE}
 
 
 @pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])
@@ -125,17 +126,31 @@ def test_a_classification_without_stored_choices_uses_the_configuration(monkeypa
 def test_the_readers_default_to_the_filter_choice_stored_with_the_classification(monkeypatch, reader, stored, configured):
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", configured)
     seen = capture_queries(monkeypatch)
-    getattr(stored_dc((["no_branches"], 4, 4, stored, "none")), reader)()
+    getattr(stored_dc((["no_branches"], 4, 4, stored, "none", True)), reader)()
     ((query, _),) = seen
     lower = configured if stored is None else stored
     assert ("cp.avg_trafo_dis < %(avg_trafo_dis)s" in query) is lower
 
 
-def test_an_explicit_filter_choice_needs_no_lookup(monkeypatch):
+def test_explicit_filter_choices_need_no_lookup(monkeypatch):
     capture_queries(monkeypatch)
-    dc = stored_dc((["no_branches"], 4, 4, True, "none"))
-    dc.get_clustering_parameters_for_classification_version(False)
+    dc = stored_dc((["no_branches"], 4, 4, True, "none", True))
+    dc.get_clustering_parameters_for_classification_version(False, False)
     assert dc.dbc.cur.executed == []
+    dc.get_clustering_parameters_for_classification_version(False)
+    assert len(dc.dbc.cur.executed) == 1, "the power-flow filter of the classification is looked up once"
+
+
+@pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])
+@pytest.mark.parametrize("stored, configured", [(False, True), (True, False), (None, True), (None, False)])
+def test_the_readers_default_to_the_power_flow_choice_stored_with_the_classification(monkeypatch, reader, stored,
+                                                                                     configured):
+    monkeypatch.setattr(dcm, "EXCLUDE_INFEASIBLE", configured)
+    seen = capture_queries(monkeypatch)
+    getattr(stored_dc((["no_branches"], 4, 4, False, "none", stored)), reader)()
+    ((query, _),) = seen
+    excluded = configured if stored is None else stored
+    assert ("pf.power_flow_status IN ('voltage_violation', 'not_converged')" in query) is excluded
 
 
 # ---------------------------------------------------------------------------------------- reading parameters
@@ -187,7 +202,7 @@ def prepare_save(monkeypatch, fail=False):
     monkeypatch.setattr(dcm.gpd, "read_postgis", lambda *a, **k: positions.copy())
     monkeypatch.setattr(dcm.pd, "read_sql_query", lambda *a, **k: grid_result.copy())
     monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql)
-    dc.get_clustering_parameters_for_classification_version = lambda additional_filtering=None: df.copy()
+    dc.get_clustering_parameters_for_classification_version = lambda additional_filtering=None, exclude_infeasible=None: df.copy()
     return dc, captured, df
 
 
@@ -226,27 +241,29 @@ def test_the_values_used_are_stored_with_the_classification_in_the_same_transact
                          "list_of_clustering_parameters = :list_of_clustering_parameters, "
                          "n_clusters_kmeans = :n_clusters_kmeans, n_clusters_gmm = :n_clusters_gmm, "
                          "additional_filtering = :additional_filtering, transform = :transform, "
-                         "key_figures_version = :key_figures_version WHERE classification_id = :c")
+                         "exclude_infeasible = :exclude_infeasible, key_figures_version = :key_figures_version "
+                         "WHERE classification_id = :c")
     assert params == {"c": dcm.CLASSIFICATION_VERSION, "list_of_clustering_parameters": PARAMS, "n_clusters_kmeans": 4,
                       "n_clusters_gmm": 4, "additional_filtering": dcm.ADDITIONAL_FILTERING, "transform": dcm.TRANSFORM,
-                      "key_figures_version": dcm.KEY_FIGURES_VERSION}
+                      "exclude_infeasible": dcm.EXCLUDE_INFEASIBLE, "key_figures_version": dcm.KEY_FIGURES_VERSION}
 
 
 def test_a_repeated_step_7_without_values_clusters_with_the_stored_choices(monkeypatch):
     """Repeating step 7 for an older classification must not take the values a later run wrote to the configuration."""
     dc, captured, df = prepare_save(monkeypatch)
-    dc.dbc.cur = FakeCursor(fetchone_values=[(["no_house_connections", "avg_trafo_dis"], 3, 2, True, "log1p")])
+    dc.dbc.cur = FakeCursor(fetchone_values=[(["no_house_connections", "avg_trafo_dis"], 3, 2, True, "log1p", False)])
     read = {}
     dc.get_clustering_parameters_for_classification_version = (
-        lambda additional_filtering=None: read.update(additional_filtering=additional_filtering) or df.copy())
+        lambda additional_filtering=None, exclude_infeasible=None:
+        read.update(additional_filtering=additional_filtering, exclude_infeasible=exclude_infeasible) or df.copy())
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", False)
     dc.save_transformers_with_classification_info()
-    assert read == {"additional_filtering": True}
+    assert read == {"additional_filtering": True, "exclude_infeasible": False}
     assert captured["frame"]["kmeans_clusters"].nunique() == 3
     params = dc.dbc.sqla_engine.log[3][2]
     assert params["list_of_clustering_parameters"] == ["no_house_connections", "avg_trafo_dis"]
     assert (params["n_clusters_kmeans"], params["n_clusters_gmm"], params["additional_filtering"]) == (3, 2, True)
-    assert params["transform"] == "log1p"
+    assert (params["transform"], params["exclude_infeasible"]) == ("log1p", False)
 
 
 def test_a_failing_write_rolls_the_delete_back_and_leaves_the_view_alone(monkeypatch):
@@ -321,7 +338,7 @@ def test_step_7_stores_the_version_of_the_key_figures_it_clustered(monkeypatch):
     dc, _, df = prepare_save(monkeypatch)
     old = df.copy()
     old.attrs["key_figures_version"] = 1
-    dc.get_clustering_parameters_for_classification_version = lambda additional_filtering=None: old.copy()
+    dc.get_clustering_parameters_for_classification_version = lambda additional_filtering=None, exclude_infeasible=None: old.copy()
     dc.save_transformers_with_classification_info(PARAMS, 4, 4)
     assert dc.dbc.sqla_engine.log[3][2]["key_figures_version"] == 1
 
@@ -401,7 +418,7 @@ def test_without_arguments_the_configured_classification_is_read_at_call_time(mo
 
 
 def test_the_choices_and_the_result_belong_to_the_given_classification(monkeypatch):
-    dc = stored_dc((["no_branches"], 4, 4, False, "none"))
+    dc = stored_dc((["no_branches"], 4, 4, False, "none", True))
     dc._classification_id = 9004
     dc.get_classification_choices()
     assert dc.dbc.cur.executed[0][1] == {"c": 9004}

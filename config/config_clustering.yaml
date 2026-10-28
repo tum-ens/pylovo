@@ -9,6 +9,9 @@ N_CLUSTERS_GMM: 4
 TRANSFORM: yeo-johnson
 # Also filter the grids below the four lower limits (pylovo-classify writes the answer of its question)
 ADDITIONAL_FILTERING: false
+# Leave out the grids whose power flow violates the voltage limits or does not converge: the generation could not
+# meet its own design limits there. Grids with one building or without households stay in (the small filling grids).
+EXCLUDE_INFEASIBLE: true
 # Upper limits, always applied
 THRESHOLD_MAX_TRAFO_DIS: 2.5
 THRESHOLD_HOUSEHOLDS_PER_BUILDING: 150

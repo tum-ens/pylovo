@@ -20,6 +20,7 @@ from pylovo.config_loader import (
     THRESHOLD_NO_HOUSEHOLDS,
     THRESHOLD_VSW_PER_BRANCH,
     TRANSFORM,
+    EXCLUDE_INFEASIBLE,
     VERSION_ID,
 )
 from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION
@@ -36,7 +37,11 @@ LOWER_FILTER_THRESHOLDS = {
 
 # Columns of ``classification_version`` that store the choices of step 7, in the order of ``config_clustering.yaml``.
 CLASSIFICATION_CHOICES = ("list_of_clustering_parameters", "n_clusters_kmeans", "n_clusters_gmm", "additional_filtering",
-                          "transform")
+                          "transform", "exclude_infeasible")
+
+# Power-flow results (``grid_result.power_flow_status``) of the grids that ``EXCLUDE_INFEASIBLE`` leaves out: the grid
+# violates the voltage limits of its own design, or its power flow did not converge.
+INFEASIBLE_POWER_FLOW = ("voltage_violation", "not_converged")
 
 # Column that the readers add to the key figures: the key-figure version stored with the classification (step 7).
 STORED_KEY_FIGURES_VERSION = (
@@ -51,24 +56,33 @@ FILTER_PARAMETERS = {
 }
 
 
-def filter_reasons(additional_filtering: bool | None = None) -> dict[str, str]:
+def filter_reasons(additional_filtering: bool | None = None, exclude_infeasible: bool | None = None) -> dict[str, str]:
     """Return the filters that apply as ``label -> SQL condition`` on ``pylovo.clustering_parameters`` (alias ``cp``).
 
     A grid is left out of the clustering if one condition holds. A missing value never filters. The two upper
-    limits always apply, the lower bounds only with additional filtering. The placeholders take their values from
-    ``FILTER_PARAMETERS``.
+    limits always apply, the power-flow filter with ``exclude_infeasible`` and the lower bounds only with additional
+    filtering. The placeholders take their values from ``FILTER_PARAMETERS``.
 
     Args:
         additional_filtering: Also apply the four lower bounds. ``None`` uses ``ADDITIONAL_FILTERING``.
+        exclude_infeasible: Also leave out the grids of :data:`INFEASIBLE_POWER_FLOW`. ``None`` uses
+            ``EXCLUDE_INFEASIBLE``.
     """
     if additional_filtering is None:
         additional_filtering = ADDITIONAL_FILTERING
+    if exclude_infeasible is None:
+        exclude_infeasible = EXCLUDE_INFEASIBLE
     reasons = {
         f"max_trafo_dis > {THRESHOLD_MAX_TRAFO_DIS}": "cp.max_trafo_dis > %(max_trafo_dis)s",
         f"a building with more than {THRESHOLD_HOUSEHOLDS_PER_BUILDING} households": (
             "EXISTS (SELECT 1 FROM pylovo.buildings_result br WHERE br.grid_result_id = cp.grid_result_id "
             "AND br.households > %(households_per_building)s)"),
     }
+    if exclude_infeasible:
+        statuses = ", ".join(f"'{status}'" for status in INFEASIBLE_POWER_FLOW)
+        reasons["a voltage violation or no converged power flow"] = (
+            "EXISTS (SELECT 1 FROM pylovo.grid_result pf WHERE pf.grid_result_id = cp.grid_result_id "
+            f"AND pf.power_flow_status IN ({statuses}))")
     if additional_filtering:
         for parameter, threshold in LOWER_FILTER_THRESHOLDS.items():
             reasons[f"{parameter} < {threshold}"] = f"cp.{parameter} < %({parameter})s"
@@ -103,10 +117,10 @@ def checked_key_figures(df_query: pd.DataFrame, classification_id: int) -> pd.Da
     return df_query
 
 
-def _keep_condition(additional_filtering: bool | None) -> str:
+def _keep_condition(additional_filtering: bool | None, exclude_infeasible: bool | None) -> str:
     """Return the SQL condition that keeps the grids which no filter matches."""
     return " AND ".join(f"NOT COALESCE(({condition}), false)"
-                        for condition in filter_reasons(additional_filtering).values())
+                        for condition in filter_reasons(additional_filtering, exclude_infeasible).values())
 
 
 class DatabaseCommunication:
@@ -164,22 +178,28 @@ class DatabaseCommunication:
 
         Returns:
             dict: ``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm``,
-            ``additional_filtering`` and ``transform``.
+            ``additional_filtering``, ``transform`` and ``exclude_infeasible``.
         """
         self.dbc.cur.execute(f"SELECT {', '.join(CLASSIFICATION_CHOICES)} FROM pylovo.classification_version "
                              "WHERE classification_id = %(c)s", {"c": self.classification_id})
         stored = self.dbc.cur.fetchone() or (None,) * len(CLASSIFICATION_CHOICES)
-        configured = (LIST_OF_CLUSTERING_PARAMETERS, N_CLUSTERS_KMEANS, N_CLUSTERS_GMM, ADDITIONAL_FILTERING, TRANSFORM)
+        configured = (LIST_OF_CLUSTERING_PARAMETERS, N_CLUSTERS_KMEANS, N_CLUSTERS_GMM, ADDITIONAL_FILTERING, TRANSFORM,
+                      EXCLUDE_INFEASIBLE)
         return {name: default if value is None else value
                 for name, value, default in zip(CLASSIFICATION_CHOICES, stored, configured)}
 
-    def _additional_filtering(self, additional_filtering: bool | None) -> bool:
-        """Return ``additional_filtering``, ``None`` replaced by the choice of the classification."""
-        if additional_filtering is None:
-            return self.get_classification_choices()["additional_filtering"]
-        return additional_filtering
+    def _filter_choices(self, additional_filtering: bool | None, exclude_infeasible: bool | None) -> tuple[bool, bool]:
+        """Return both filter choices, ``None`` replaced by the choice of the classification (one lookup)."""
+        if additional_filtering is None or exclude_infeasible is None:
+            choices = self.get_classification_choices()
+            if additional_filtering is None:
+                additional_filtering = choices["additional_filtering"]
+            if exclude_infeasible is None:
+                exclude_infeasible = choices["exclude_infeasible"]
+        return additional_filtering, exclude_infeasible
 
-    def get_clustering_parameters_for_classification_version(self, additional_filtering: bool | None = None) -> pd.DataFrame:
+    def get_clustering_parameters_for_classification_version(
+            self, additional_filtering: bool | None = None, exclude_infeasible: bool | None = None) -> pd.DataFrame:
         """Return the unfiltered clustering parameters of all grids in the sample set.
 
         Only grids of :attr:`version_id` whose PLZ belong to the sample set of
@@ -189,6 +209,8 @@ class DatabaseCommunication:
         Args:
             additional_filtering: Also leave out the grids below the four lower thresholds.
                 ``None`` uses the choice of the classification (:meth:`get_classification_choices`).
+            exclude_infeasible: Also leave out the grids with a voltage violation or no converged power flow.
+                ``None`` uses the choice of the classification.
 
         Returns:
             pd.DataFrame: One row per grid with the ``CLUSTERING_PARAMETERS`` columns, ordered by
@@ -209,7 +231,7 @@ class DatabaseCommunication:
                     SELECT version_id, plz, kcid, bcid, cp.*
                     FROM pylovo.clustering_parameters cp
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
-                    WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
+                    WHERE gr.version_id = %(v)s AND {_keep_condition(*self._filter_choices(additional_filtering, exclude_infeasible))}
                 )
                 SELECT c.*, {STORED_KEY_FIGURES_VERSION}
                 FROM clustering c
@@ -224,7 +246,7 @@ class DatabaseCommunication:
         return df_parameter
 
     def municipal_register_with_clustering_parameters_for_classification_version(
-            self, additional_filtering: bool | None = None) -> pd.DataFrame:
+            self, additional_filtering: bool | None = None, exclude_infeasible: bool | None = None) -> pd.DataFrame:
         """Return the clustering parameters of the sample set joined with municipal register data.
 
         Same grid selection and order as :meth:`get_clustering_parameters_for_classification_version`,
@@ -233,6 +255,8 @@ class DatabaseCommunication:
         Args:
             additional_filtering: Also leave out the grids below the four lower thresholds.
                 ``None`` uses the choice of the classification (:meth:`get_classification_choices`).
+            exclude_infeasible: Also leave out the grids with a voltage violation or no converged power flow.
+                ``None`` uses the choice of the classification.
 
         Returns:
             pd.DataFrame: One row per grid.
@@ -252,7 +276,7 @@ class DatabaseCommunication:
                     SELECT version_id, plz, kcid, bcid, cp.*
                     FROM pylovo.clustering_parameters cp
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
-                    WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
+                    WHERE gr.version_id = %(v)s AND {_keep_condition(*self._filter_choices(additional_filtering, exclude_infeasible))}
                 )
                 SELECT c.*, p.pop, p.area, p.lat, p.lon, p.ags, p.name_city, p.regio7, p.regio5, p.pop_den,
                        {STORED_KEY_FIGURES_VERSION}
@@ -263,23 +287,27 @@ class DatabaseCommunication:
         params = {"v": self.version_id, "c": self.classification_id, **FILTER_PARAMETERS}
         return checked_key_figures(pd.read_sql_query(query, con=self.dbc.conn, params=params, ), self.classification_id)
 
-    def get_grid_status_of_sample_set(self, additional_filtering: bool | None = None) -> pd.DataFrame:
+    def get_grid_status_of_sample_set(
+            self, additional_filtering: bool | None = None, exclude_infeasible: bool | None = None) -> pd.DataFrame:
         """Return what became of every grid of the sampled PLZ, for the summary of a classification run.
 
         One row per grid of :attr:`version_id` in a PLZ of the sample set, or one row with an empty
         ``grid_result_id`` for a sampled PLZ without grids. Columns: ``plz``, ``grid_result_id``,
         ``plz_analysed`` (the PLZ has a ``plz_parameters`` row), ``analysed`` (the grid has key figures),
-        ``clustered`` (the grid is in ``transformer_classified`` of the classification) and one
-        boolean column per filter of :func:`filter_reasons`, named by its label.
+        ``clustered`` (the grid is in ``transformer_classified`` of the classification), ``regio7`` (RegioStaR 7
+        class of the PLZ), ``buildings`` and ``households`` (key figures ``no_house_connections`` and
+        ``no_households``, empty without key figures) and one boolean column per filter of :func:`filter_reasons`,
+        named by its label.
 
         Args:
             additional_filtering: Also check the four lower thresholds. ``None`` uses the choice of the
                 classification (:meth:`get_classification_choices`).
+            exclude_infeasible: Also check the power flow. ``None`` uses the choice of the classification.
 
         Returns:
             pd.DataFrame: The status, ordered by ``plz``, ``kcid`` and ``bcid``.
         """
-        reasons = filter_reasons(self._additional_filtering(additional_filtering))
+        reasons = filter_reasons(*self._filter_choices(additional_filtering, exclude_infeasible))
         flags = "".join(f",\n                       COALESCE(({condition}), false) AS filter_{i}"
                         for i, condition in enumerate(reasons.values()))
         query = f"""
@@ -287,8 +315,10 @@ class DatabaseCommunication:
                        EXISTS (SELECT 1 FROM pylovo.plz_parameters pp
                                WHERE pp.version_id = %(v)s AND pp.plz = ss.plz) AS plz_analysed,
                        cp.grid_result_id IS NOT NULL AS analysed,
-                       tc.grid_result_id IS NOT NULL AS clustered{flags}
+                       tc.grid_result_id IS NOT NULL AS clustered,
+                       mr.regio7, cp.no_house_connections AS buildings, cp.no_households AS households{flags}
                 FROM pylovo.sample_set ss
+                LEFT JOIN pylovo.municipal_register mr ON mr.plz = ss.plz AND mr.ags = ss.ags
                 LEFT JOIN pylovo.grid_result gr ON gr.plz = ss.plz AND gr.version_id = %(v)s
                 LEFT JOIN pylovo.clustering_parameters cp ON cp.grid_result_id = gr.grid_result_id
                 LEFT JOIN pylovo.transformer_classified tc
@@ -310,6 +340,7 @@ class DatabaseCommunication:
         n_clusters_gmm: int | None = None,
         additional_filtering: bool | None = None,
         transform: str | None = None,
+        exclude_infeasible: bool | None = None,
     ) -> None:
         """Cluster the sample grids and write the result to ``pylovo.transformer_classified``.
 
@@ -317,7 +348,7 @@ class DatabaseCommunication:
         the cluster of each algorithm and whether the grid is the representative
         of its cluster. The KMedoids columns stay empty. The rows of
         the classification are replaced in one transaction, so the step can be repeated
-        and a failing write keeps the previous result. The same transaction stores the five
+        and a failing write keeps the previous result. The same transaction stores the six
         values used and the version of the key figures in ``classification_version``. ``None`` uses the stored
         value of the classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is
         stored).
@@ -328,6 +359,7 @@ class DatabaseCommunication:
             n_clusters_gmm: Number of GMM components.
             additional_filtering: Also leave out the grids below the four lower thresholds.
             transform: Transform of the key figures before the standardisation.
+            exclude_infeasible: Also leave out the grids with a voltage violation or no converged power flow.
         """
         choices = self.get_classification_choices()
         if list_of_clustering_parameters is None:
@@ -340,9 +372,12 @@ class DatabaseCommunication:
             additional_filtering = choices["additional_filtering"]
         if transform is None:
             transform = choices["transform"]
+        if exclude_infeasible is None:
+            exclude_infeasible = choices["exclude_infeasible"]
 
         # retrieve clustering parameters
-        df_parameters_of_grids = self.get_clustering_parameters_for_classification_version(additional_filtering)
+        df_parameters_of_grids = self.get_clustering_parameters_for_classification_version(additional_filtering,
+                                                                                            exclude_infeasible)
         key_figures_version = df_parameters_of_grids.attrs.get("key_figures_version", KEY_FIGURES_VERSION)
 
         # load transformer positions from database, preserve geo-datatype of geom column
@@ -429,6 +464,7 @@ class DatabaseCommunication:
                  "list_of_clustering_parameters": [str(name) for name in list_of_clustering_parameters],
                  "n_clusters_kmeans": int(n_clusters_kmeans), "n_clusters_gmm": int(n_clusters_gmm),
                  "additional_filtering": bool(additional_filtering), "transform": str(transform),
+                 "exclude_infeasible": bool(exclude_infeasible),
                  "key_figures_version": int(key_figures_version)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)

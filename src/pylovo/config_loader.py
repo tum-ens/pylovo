@@ -696,6 +696,11 @@ TRANSFORM = CONFIG_CLUSTERING.get("TRANSFORM", "yeo-johnson")
 if TRANSFORM not in TRANSFORMS:
     raise ValueError(f"TRANSFORM must be one of {', '.join(TRANSFORMS)}, got {TRANSFORM!r}")
 
+# Leave out the grids with a voltage violation or no converged power flow
+EXCLUDE_INFEASIBLE = CONFIG_CLUSTERING.get("EXCLUDE_INFEASIBLE", True)
+if not isinstance(EXCLUDE_INFEASIBLE, bool):
+    raise ValueError(f"EXCLUDE_INFEASIBLE must be true or false, got {EXCLUDE_INFEASIBLE!r}")
+
 # Also filter the grids below the four lower thresholds (pylovo-classify writes the answer of its question)
 ADDITIONAL_FILTERING = CONFIG_CLUSTERING.get("ADDITIONAL_FILTERING", False)
 if not isinstance(ADDITIONAL_FILTERING, bool):
