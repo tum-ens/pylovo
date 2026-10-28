@@ -541,6 +541,57 @@ def test_legacy_building_columns_and_key_migrate_without_reset():
         admin.close()
 
 
+def test_key_figures_and_classifications_of_1_0_0_migrate_to_version_2():
+    """0016 and 0017 on the classification tables of pylovo 1.0.0: values kept, old choices stamped and renamed."""
+    from psycopg2 import sql
+
+    name = "pylovo_review_" + uuid.uuid4().hex[:8]
+    admin = admin_connection()
+    try:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        with client(name) as db:
+            constructor = DatabaseConstructor(db)
+            constructor.migrate_schema()
+            db.cur.execute("""
+                ALTER TABLE pylovo.clustering_parameters DROP CONSTRAINT fk_clustering_parameters_grid_result;
+                ALTER TABLE pylovo.clustering_parameters
+                    RENAME COLUMN no_household_equ_per_branch TO no_households_per_branch;
+                ALTER TABLE pylovo.clustering_parameters
+                    RENAME COLUMN max_household_equ_of_a_branch TO max_no_of_households_of_a_branch;
+                ALTER TABLE pylovo.clustering_parameters DROP COLUMN key_figures_version, ADD COLUMN filtered boolean;
+                ALTER TABLE pylovo.classification_version DROP COLUMN key_figures_version, DROP COLUMN transform,
+                    DROP COLUMN exclude_infeasible, DROP COLUMN selection_report;
+                DELETE FROM pylovo.schema_migrations WHERE name IN ('0016_key_figure_names', '0017_key_figures_version');
+                INSERT INTO pylovo.clustering_parameters
+                    (grid_result_id, no_households_per_branch, max_no_of_households_of_a_branch, filtered)
+                VALUES (1, 7.5, 10.0, true);
+                INSERT INTO pylovo.classification_version
+                    (classification_id, list_of_clustering_parameters, n_clusters_kmeans, n_clusters_gmm,
+                     additional_filtering)
+                VALUES (1, '{no_households_per_branch,avg_trafo_dis}', 5, 5, false), (2, NULL, NULL, NULL, NULL);
+            """)
+            db.conn.commit()
+            for _ in range(2):                                   # the second run finds nothing to do
+                constructor.migrate_schema()
+                db.cur.execute("SELECT no_household_equ_per_branch, max_household_equ_of_a_branch, key_figures_version "
+                               "FROM pylovo.clustering_parameters")
+                assert db.cur.fetchall() == [(7.5, 10.0, 1)]
+                db.cur.execute("SELECT column_name, is_nullable, column_default FROM information_schema.columns "
+                               "WHERE table_schema = 'pylovo' AND table_name = 'clustering_parameters' "
+                               "AND column_name IN ('filtered', 'key_figures_version')")
+                assert db.cur.fetchall() == [("key_figures_version", "NO", None)]
+                db.cur.execute("SELECT classification_id, list_of_clustering_parameters, key_figures_version, transform, "
+                               "exclude_infeasible FROM pylovo.classification_version ORDER BY classification_id")
+                assert db.cur.fetchall() == [(1, ["no_household_equ_per_branch", "avg_trafo_dis"], 1, "none", False),
+                                             (2, None, None, None, None)]
+            db.conn.rollback()
+    finally:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+        admin.close()
+
+
 def test_reset_backup_is_restored_on_failure_and_dropped_after_success():
     from psycopg2 import sql
 
