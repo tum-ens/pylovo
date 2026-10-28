@@ -294,10 +294,11 @@ Many key figures are strongly correlated, so the clustering uses a few independe
 #. picks for every factor the parameter with the largest absolute loading.
 
 The names are printed and written to ``LIST_OF_CLUSTERING_PARAMETERS``. You can overrule them: the notebook
-``1_0_factor_analysis`` shows the loadings, and other considerations may decide. The shipped list is
-``no_house_connections``, ``vsw_per_branch`` and ``avg_trafo_dis``. It needs enough grids. If the factor analysis
-fails (a very small sample, or a parameter that is the same in every grid), the command stops with a message that
-names the number of grids and parameters: use a larger sample (``N_SAMPLES``) or enter the parameters yourself.
+``01_sample_and_key_figures`` shows the correlations and the loadings, and other considerations may decide. The
+shipped list is ``no_house_connections``, ``vsw_per_branch`` and ``avg_trafo_dis``. It needs enough grids. If the
+factor analysis fails (a very small sample, or a parameter that is the same in every grid), the command stops with a
+message that names the number of grids and parameters: use a larger sample (``N_SAMPLES``) or enter the parameters
+yourself.
 
 Step 6b: number of clusters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -305,7 +306,7 @@ Step 6b: number of clusters
 The Calinski-Harabasz index (higher is better) is computed for the numbers in ``NO_OF_CLUSTERS_ALLOWED`` for
 k-means and for four GMM covariance types (full, diagonal, tied, spherical). The best number of ``kmeans`` becomes
 ``N_CLUSTERS_KMEANS`` and the best of ``gmm_tied`` becomes ``N_CLUSTERS_GMM``. A line plot is drawn but not saved, and the table of the best number per algorithm with its index is printed.
-The notebooks ``1_CH_index`` and ``2_DB_index`` compare the Calinski-Harabasz and the Davies-Bouldin index.
+The notebook ``02_clusters_and_representatives`` compares the Calinski-Harabasz and the Davies-Bouldin index.
 
 Step 7: clustering and result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -390,9 +391,30 @@ Load one of them as a pandapower net with
 ``DatabaseClient().read_net_db(plz, kcid, bcid)`` (:doc:`analysing_grids`) or plot it with the helpers in
 ``pylovo.plotting.generation.networks`` (:doc:`exporting_visualising`).
 
-The notebooks in ``notebook_tutorials/classification`` walk through the steps. They read the sample set, the grids and
-the key figures of the ``CLASSIFICATION_VERSION`` and ``VERSION_ID`` of the configuration, need the ``notebooks``
-extra, and their stored outputs come from an earlier run on an older pylovo version.
+The notebooks in ``notebook_tutorials/classification`` walk through the steps. They need the ``notebooks`` extra and
+only read. The two notebooks below answer one question each; their parameter cell selects the classification
+(``classification_id``) and the grid version (``version_id``), ``None`` takes ``CLASSIFICATION_VERSION`` and
+``VERSION_ID`` of the configuration. Their stored outputs show a classification of 501 Bavarian PLZ drawn from all
+generated PLZ of the state (``N_SAMPLES: 500``).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 42 58
+   :class: fixed-table
+
+   * - Notebook
+     - Content
+   * - ``01_sample_and_key_figures``
+     - Which key figures describe an LV grid, and which should we cluster on? The sample per RegioStaR 7 class (map
+       and bar chart), the distributions and correlations of the key figures, the number of factors, the loadings of
+       the factor analysis and the chosen clustering parameters.
+   * - ``02_clusters_and_representatives``
+     - Which grid types are there? The number of clusters (Calinski-Harabasz and Davies-Bouldin index), k-means
+       against the GMM (adjusted Rand index), the clusters in parameter space and per RegioStaR 7 class, what
+       distinguishes them and the representative grid of every cluster as a map.
+
+Previous notebooks, kept for comparison. They read the ``CLASSIFICATION_VERSION`` and ``VERSION_ID`` of the
+configuration, and their stored outputs come from an earlier run on an older pylovo version.
 
 .. list-table::
    :header-rows: 1
@@ -449,7 +471,11 @@ classification ``CLASSIFICATION_VERSION``; a classification without stored value
 
 ``DatabaseCommunication.get_clustering_parameters_for_classification_version(additional_filtering)`` returns the grids
 that enter the clustering, and ``DatabaseCommunication.get_classification_choices()`` the parameters, the numbers of
-clusters and ``additional_filtering`` of the classification (the clustering notebooks use both). ``kmeans_clustering`` and ``gmm_tied_clustering`` in
+clusters and ``additional_filtering`` of the classification (the clustering notebooks use both).
+``DatabaseCommunication(classification_id, version_id)`` and ``get_sample_set(classification_id)`` read another
+classification or grid version than the configured one (``None`` keeps the configuration). Step 6a is split into
+``factor_analysis_input`` (the candidate key figures) and ``number_of_factors`` (eigenvalues above 1) in
+``pylovo.classification.clustering.get_parameters_for_clustering``. ``kmeans_clustering`` and ``gmm_tied_clustering`` in
 ``pylovo.classification.clustering.clustering_algorithms`` cluster any data frame with the key figures and return the
 clustered frame and the representative grids.
 
