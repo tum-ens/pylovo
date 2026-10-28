@@ -191,8 +191,9 @@ class TutorialData:
         self._manifest = manifest
 
     def __repr__(self) -> str:
-        where = "the database" if self.source == "database" else f"the example data in {self.folder}"
-        why = f" ({self.reason})" if self.reason else ""
+        # no paths: the repr ends up in the stored outputs of the notebooks
+        where = "the database" if self.source == "database" else "the example data"
+        why = f": {self.reason.split(' (')[0]}" if self.reason else ""     # the details stay in .reason
         return f"TutorialData(plz={self.plz}, version {self.version_id}, from {where}{why})"
 
     def close(self) -> None:
@@ -227,11 +228,16 @@ class TutorialData:
                 result[name] = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=self._manifest["crs"])
         assignment = self._area.get("building_assignment")
         if assignment:
-            # a variant stores which grid supplies each building; the footprints are those of the example version
-            base = TutorialData(self.plz, source="examples", folder=self.folder.parent.parent).layers["buildings"]
+            # a variant stores which grid supplies each building; the footprints, the postcode area and the streets
+            # are the inputs, the same as in the example version
+            base = TutorialData(self.plz, source="examples", folder=self.folder.parent.parent).layers
             grids = pd.read_csv(self.folder / assignment)
-            result["buildings"] = base.drop(columns=[c for c in ("grid_result_id", "kcid", "bcid") if c in base])\
-                .merge(grids, on="objectid", how="inner")
+            buildings = base["buildings"]
+            result["buildings"] = buildings.drop(columns=[c for c in ("grid_result_id", "kcid", "bcid")
+                                                          if c in buildings]).merge(grids, on="objectid", how="inner")
+            for name in ("postcode", "streets"):
+                if result[name].empty:
+                    result[name] = base[name]
         exclusions = self.folder / self._area.get("exclusions", "-")
         result["exclusions"] = pd.read_csv(exclusions) if exclusions.is_file() else pd.DataFrame(
             columns=["objectid", "reason"])

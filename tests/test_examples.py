@@ -79,6 +79,7 @@ def test_a_version_variant_reads_its_own_grids_on_the_buildings_of_the_example_v
     buildings = data.layers["buildings"]
     assert len(data.grid_ids) == VARIANTS[version][0]
     assert set(buildings["objectid"]) == set(base["objectid"])          # the same footprints, other grids
+    assert len(data.layers["streets"]) == len(examples.TutorialData(85256, source="examples").layers["streets"])
     assert set(zip(buildings["kcid"], buildings["bcid"])) <= set(data.grid_ids)
     assert data.typical_grid in data.grid_ids                          # the median grid, not the one of version 1
     assert data.parameters["cable_dimensioning"]["vn"] == 400
