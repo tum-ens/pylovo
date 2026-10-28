@@ -48,7 +48,7 @@ Project layout
    |   |-- config_loader.py      configuration constants
    |   `-- utils.py              load model, logging
    |-- pyproject.toml            package metadata, dependencies, extras, console scripts, ruff and pytest settings
-   |-- .pre-commit-config.yaml   checks of every commit (uvx pre-commit install)
+   |-- .pre-commit-config.yaml   checks of every commit (pre-commit install)
    |-- AGENTS.md                 notes for coding agents: databases, checks before a push, tests
    `-- CHANGELOG.md
 
@@ -88,8 +88,10 @@ before you push:
    uv run --no-project --with-requirements docs/requirements.txt \
        sphinx-build -W --keep-going -b html docs/source docs/build/html
 
-``uvx pre-commit install`` (once per clone) runs ruff and a few file checks (large files, merge conflict
-markers, YAML and TOML syntax; ``.pre-commit-config.yaml``) on the staged files of every commit.
+``uv tool install pre-commit`` (once per machine) and ``pre-commit install`` (once per clone) let every commit run
+ruff and a few file checks (large files, merge conflict markers, YAML and TOML syntax; ``.pre-commit-config.yaml``)
+on its staged files. Do not install the hook with ``uvx pre-commit install``: the hook would then point to the uv
+cache and stop every commit once the cache is cleaned.
 
 The unit tests in ``tests``, ``api/tests`` and ``viewer/tests`` need no database; the database tests skip
 themselves unless their variables are set (below). The HTTP API has an OpenAPI contract snapshot

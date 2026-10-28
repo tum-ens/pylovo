@@ -119,7 +119,7 @@ To ensure consistency in code style and to prevent potential issues, check your 
 ```bash
 uv run ruff check
 ```
-Or let git do it: after `uvx pre-commit install` (once per clone), every commit runs ruff and a few file checks (`.pre-commit-config.yaml`) on the staged files.
+Or let git do it: after `uv tool install pre-commit` (once per machine) and `pre-commit install` (once per clone), every commit runs ruff and a few file checks (`.pre-commit-config.yaml`) on the staged files.
 
 3.2. **Tests**:
 The unit tests need no database. Run them with:
