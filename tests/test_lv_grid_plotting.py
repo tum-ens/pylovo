@@ -304,17 +304,35 @@ def test_voltage_level_figure_and_chain(layers):
                                   geometry=[LineString([(-2000, 0), (0, 0)]), LineString([(0, 0), (400, 0)]),
                                             LineString([(400, 0), (2500, 2500)])], crs=CRS),
     }
-    hv = {"lines": gpd.GeoDataFrame({"v_nom": [110, 380]}, geometry=[LineString([(-20000, 0), (-2000, 0)]),
-                                                                   LineString([(-20000, 5000), (20000, 5000)])],
-                                    crs=CRS),
-          "buses": gpd.GeoDataFrame({"v_nom": [110]}, geometry=[Point(-2000, 0)], crs=CRS)}
+    hv = {"lines": gpd.GeoDataFrame({"v_nom": [110, 380], "bus0": [41, 50], "bus1": [42, 51]},
+                                    geometry=[LineString([(-20000, 0), (-2000, 0)]),
+                                              LineString([(-20000, 5000), (20000, 5000)])], crs=CRS),
+          "buses": gpd.GeoDataFrame({"fid": [42], "v_nom": [110]}, geometry=[Point(-2000, 0)], crs=CRS)}
     context = {"grids": district, "substations": mv_grid["substations"]}
     fig = vl.plot_voltage_levels(chain, hv, context, mv_grid, layers)
     assert isinstance(fig, Figure) and len(fig.axes) == 3
+    legend = [text.get_text() for text in fig.axes[0].get_legend().get_texts()]
+    assert "110 kV at the bus of the substation" in legend
+    assert [s.get_edgecolor() for s in fig.axes[1].spines.values()][0][:3] == pytest.approx(
+        matplotlib.colors.to_rgb(st.LEVEL_COLORS["MV"]))            # the next map is framed in its level colour
     table = vl.chain_table(chain)
     assert list(table["level"]) == ["HV grid", "HV/MV substation", "MV supply area", "MV ring", "MV/LV station",
                                     "LV grid"]
     assert table.loc[0, "key figures"] == "bus 42"
+
+    unmatched = vl.plot_voltage_levels({**chain, "egon_bus_id": None}, hv, context, mv_grid, layers)
+    texts = [text.get_text() for text in unmatched.axes[0].texts]
+    assert "Not in the eTraGo HV grid" in texts
+    assert any("not in the eTraGo grid" in text.get_text() for text in unmatched.texts)
+
+
+def test_hv_region_keeps_the_supply_area_at_a_quarter_of_the_map():
+    assert vl.hv_region((0, 0, 10_000, 10_000)) == pytest.approx((-15_000, -15_000, 25_000, 25_000))  # 4 x 10 km
+    assert vl.hv_region((0, 0, 1_000, 1_000))[2] - vl.hv_region((0, 0, 1_000, 1_000))[0] == pytest.approx(25_000)
+    assert vl.hv_region((0, 0, 40_000, 40_000))[2] - vl.hv_region((0, 0, 40_000, 40_000))[0] == \
+        pytest.approx(70_000)                                                     # 25 to 70 km wide
+    wide = vl.hv_region((0, 0, 10_000, 10_000), aspect=2.0)
+    assert (wide[2] - wide[0]) / (wide[3] - wide[1]) == pytest.approx(2.0)
 
 
 def test_hv_grid_needs_the_download(tmp_path):
