@@ -82,7 +82,7 @@ def test_the_tree_drawings_return_their_figure_and_do_not_show_it(draw):
 
 
 def test_the_tree_drawing_of_a_stored_grid_returns_the_figure(monkeypatch):
-    monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid: object())
+    monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid, version_id=None: object())
     monkeypatch.setattr(networks, "create_nxgraph", lambda net: _tree())
     fig = networks.draw_tree_network_with_spacing_from_grid_id(85653, 1, 2)
     assert isinstance(fig, Figure)
@@ -167,7 +167,8 @@ def no_file_and_no_browser(monkeypatch, tmp_path):
 def test_the_plotly_grid_plots_return_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser, plot):
     if plot == "plot_with_generic_coordinates":
         pytest.importorskip("igraph")
-    monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid: _grid_net())
+    monkeypatch.setattr(networks, "read_net_with_grid_generator",
+                        lambda plz, kcid, bcid, version_id=None: _grid_net())
     assert isinstance(getattr(networks, plot)(85653, 1, 1), go.Figure)
 
 
