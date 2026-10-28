@@ -280,3 +280,10 @@ class LvLayerMixin:
             return {}
         value = row[0]
         return json.loads(value) if isinstance(value, (str, bytes)) else dict(value)
+
+    def read_version_comment(self, version_id: str | None = None) -> str | None:
+        """The ``VERSION_COMMENT`` a version was generated with (``pylovo.version.version_comment``), None if none."""
+        self.cur.execute("SELECT version_comment FROM pylovo.version WHERE version_id = %s",
+                         (VERSION_ID if version_id is None else str(version_id),))
+        row = self.cur.fetchone()
+        return None if row is None else row[0]

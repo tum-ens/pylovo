@@ -27,7 +27,8 @@ from typing import Any, Iterable, Mapping, Optional
 
 import pandas as pd
 
-__all__ = ["EXAMPLE_AREAS", "EXAMPLE_ATTRIBUTION", "TutorialData", "example_dir", "export_example_data"]
+__all__ = ["EXAMPLE_AREAS", "EXAMPLE_ATTRIBUTION", "EXAMPLE_VERSION_ID", "TutorialData", "example_dir",
+           "export_example_data"]
 
 #: The example postcode areas: typical areas of their settlement type in Bavaria, and one typical grid of each.
 EXAMPLE_AREAS: dict[int, dict[str, Any]] = {
@@ -37,6 +38,8 @@ EXAMPLE_AREAS: dict[int, dict[str, Any]] = {
 }
 
 #: Short credit line of the example data (buildings, streets, postcode areas).
+#: The version of the Bavaria run whose grids :data:`EXAMPLE_AREAS` name.
+EXAMPLE_VERSION_ID = "1"
 EXAMPLE_ATTRIBUTION = ("Data: © Bayerische Vermessungsverwaltung (LoD2), © basemap.de / BKG, "
                        "© OpenStreetMap contributors")
 
@@ -51,6 +54,9 @@ _MV_GRID_COLUMNS = ["mv_grid_id", "substation_id", "vn_kv", "n_stations", "n_rin
                     "geom"]
 _MV_SUBSTATION_COLUMNS = ["substation_id", "name", "egon_bus_id", "n_transformers", "transformer_mva", "geom"]
 #: Columns of the key figures of all grids in the example data.
+#: Line columns of a version variant: those the maps use.
+_VARIANT_LINE_COLUMNS = ["kcid", "bcid", "pp_index", "std_type", "length_km", "parallel", "is_service",
+                         "feeder_sizing_basis"]
 _SUMMARY_COLUMNS = ["plz", "kcid", "bcid", "settlement_type", "transformer_rated_power", "power_flow_status",
                     "buildings", "households", "feeder_km", "service_km"]
 
@@ -161,6 +167,17 @@ class TutorialData:
             self.reason = ""
             return
         manifest = _manifest(self.folder)
+        if version_id is not None and str(version_id) != str(manifest["version_id"]):
+            variants = self.folder / "versions"
+            if not (variants / str(version_id) / "manifest.json").is_file():
+                known = sorted(p.name for p in variants.iterdir() if (p / "manifest.json").is_file()) \
+                    if variants.is_dir() else []
+                raise FileNotFoundError(
+                    f"version {version_id} is neither in the database ({reason or 'it lacks the version'}) nor in "
+                    f"the example data, which hold version {manifest['version_id']}"
+                    + (f" and the variants {', '.join(known)}" if known else ""))
+            self.folder = variants / str(version_id)
+            manifest = _manifest(self.folder)
         area = manifest.get("areas", {}).get(str(self.plz))
         if area is None:
             raise FileNotFoundError(
@@ -198,6 +215,9 @@ class TutorialData:
             return self._dbc.read_lv_layers(self.plz, version_id=self.version_id)
         import geopandas as gpd
 
+        if "file" not in self._area:
+            raise FileNotFoundError(f"the example data of version {self.version_id} hold the key figures of postcode "
+                                    f"area {self.plz}, not its map layers")
         path = _zip_path(self.folder, self._area["file"])
         result: dict[str, Any] = {}
         for name in _GEO_LAYERS:
@@ -205,7 +225,14 @@ class TutorialData:
                 result[name] = gpd.read_file(path, layer=name)
             else:
                 result[name] = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=self._manifest["crs"])
-        exclusions = self.folder / self._area["exclusions"]
+        assignment = self._area.get("building_assignment")
+        if assignment:
+            # a variant stores which grid supplies each building; the footprints are those of the example version
+            base = TutorialData(self.plz, source="examples", folder=self.folder.parent.parent).layers["buildings"]
+            grids = pd.read_csv(self.folder / assignment)
+            result["buildings"] = base.drop(columns=[c for c in ("grid_result_id", "kcid", "bcid") if c in base])\
+                .merge(grids, on="objectid", how="inner")
+        exclusions = self.folder / self._area.get("exclusions", "-")
         result["exclusions"] = pd.read_csv(exclusions) if exclusions.is_file() else pd.DataFrame(
             columns=["objectid", "reason"])
         return result
@@ -222,9 +249,9 @@ class TutorialData:
 
     @property
     def typical_grid(self) -> tuple[int, int]:
-        """The typical grid of an example area (:data:`EXAMPLE_AREAS`), else the grid with the median number of
-        buildings."""
-        if self.plz in EXAMPLE_AREAS:
+        """The typical grid of an example area (:data:`EXAMPLE_AREAS`, chosen in version
+        :data:`EXAMPLE_VERSION_ID`), else the grid with the median number of buildings."""
+        if self.plz in EXAMPLE_AREAS and self.version_id == EXAMPLE_VERSION_ID:
             return tuple(EXAMPLE_AREAS[self.plz]["grid"])
         grids = self.grids.sort_values("buildings")
         row = grids.iloc[len(grids) // 2]
@@ -317,7 +344,9 @@ class TutorialData:
             return {"chain": None}
         path = _zip_path(self.folder, entry["file"])
         read = lambda layer: gpd.read_file(path, layer=layer)    # noqa: E731
-        return {"chain": entry["chain"], "hv": {"lines": read("hv_lines"), "buses": read("hv_buses")},
+        # the eTraGo ids are the feature ids of the GeoPackage
+        read_hv = lambda layer: gpd.read_file(path, layer=layer, fid_as_index=True).rename_axis("fid").reset_index()  # noqa: E731
+        return {"chain": entry["chain"], "hv": {"lines": read_hv("hv_lines"), "buses": read_hv("hv_buses")},
                 "mv_context": {"substations": read("context_substations"), "grids": read("context_grids")},
                 "mv_grid": {"nodes": read("mv_nodes"), "lines": read("mv_lines"),
                             "substations": read("mv_substation"), "grids": read("mv_grid")},
@@ -327,8 +356,11 @@ class TutorialData:
 # --------------------------------------------------------------------------- export (maintainers)
 def _geo_frame(frame, columns: Optional[list[str]] = None):
     """A copy that a GeoPackage can store: dict and list values as JSON text, the geometry column ``geometry``."""
-    frame = frame.copy() if columns is None else frame[[c for c in columns if c in frame.columns]].copy()
     geometry = frame.geometry.name
+    if columns is not None:
+        keep = [c for c in columns if c in frame.columns and c != geometry] + [geometry]
+        frame = frame[keep]
+    frame = frame.copy()
     for column in frame.columns:
         if column != geometry and frame[column].dtype == object:
             frame[column] = frame[column].map(lambda v: json.dumps(v) if isinstance(v, (dict, list)) else v)
@@ -336,7 +368,8 @@ def _geo_frame(frame, columns: Optional[list[str]] = None):
 
 
 def export_example_data(folder: Path, areas: Mapping[int, Mapping[str, Any]] = EXAMPLE_AREAS,
-                        version_id: str = "1", hv_dir: Optional[Path] = None, region_km: float = 40.0) -> dict:
+                        version_id: str = "1", hv_dir: Optional[Path] = None, region_km: float = 40.0,
+                        map_areas: Optional[Iterable[int]] = None, variant_of: Optional[str] = None) -> dict:
     """Write the example data of the tutorials from the database (read-only); for maintainers.
 
     Per area a zipped GeoPackage with the layers of ``read_lv_layers``, the building exclusions as CSV, the pandapower
@@ -350,6 +383,13 @@ def export_example_data(folder: Path, areas: Mapping[int, Mapping[str, Any]] = E
         version_id: LV version.
         hv_dir: Folder of the eTraGo download (``pylovo-viewer fetch etrago``).
         region_km: Width of the region kept around an MV supply area for the voltage-level figure.
+        map_areas: The areas whose map layers are stored; default all ``areas``.
+        variant_of: For a variant of the example version (the same areas with one setting changed), the version
+            of the example data in ``<folder>/../..``. A variant keeps it small: stations and lines (the columns
+            the maps use), which grid supplies each building (the footprints come from the example version), the
+            key figures and postcode metrics of ``areas`` only, no nets and no voltage levels. Write it to
+            ``data/examples/versions/<version_id>``, where :class:`TutorialData` reads it when the database lacks
+            the version.
 
     Returns:
         The manifest.
@@ -363,36 +403,58 @@ def export_example_data(folder: Path, areas: Mapping[int, Mapping[str, Any]] = E
     from pylovo.plotting.voltage_levels import read_hv_grid
 
     folder = Path(folder)
-    (folder / "nets").mkdir(parents=True, exist_ok=True)
-    (folder / "voltage_levels").mkdir(parents=True, exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
+    map_areas = set(int(p) for p in (areas if map_areas is None else map_areas))
+    all_grids = variant_of is None
     manifest: dict[str, Any] = {
         "description": "Example grids of the pylovo tutorials (TutorialData without a database)",
         "version_id": str(version_id), "crs": f"EPSG:{TARGET_EPSG}",
         "created": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "pylovo": __version__,
-        "attribution": EXAMPLE_ATTRIBUTION, "postcodes": "postcodes.csv", "grid_summary": "grid_summary.csv.xz",
-        "areas": {},
+        "attribution": EXAMPLE_ATTRIBUTION, "postcodes": "postcodes.csv",
+        "grid_summary": "grid_summary.csv.xz" if all_grids else "grid_summary.csv", "areas": {},
     }
-    hv = read_hv_grid(hv_dir)
+    if variant_of is not None:
+        manifest["variant_of"] = str(variant_of)
+    hv = read_hv_grid(hv_dir) if all_grids else None
     with DatabaseClient.read_only(log_file=str(Path(tempfile.gettempdir()) / "pylovo-tutorials.log")) as dbc:
+        manifest["version_comment"] = dbc.read_version_comment(version_id)
         manifest["generation_parameters"] = dbc.read_generation_parameters(version_id)
-        dbc.read_postcode_metrics(version_id).to_csv(folder / "postcodes.csv", index=False, float_format="%.4g")
+        postcodes = dbc.read_postcode_metrics(version_id)
+        if not all_grids:
+            postcodes = postcodes[postcodes["plz"].isin([int(p) for p in areas])]
+        postcodes.to_csv(folder / "postcodes.csv", index=False, float_format="%.4g")
         # three significant digits and xz keep the table of all grids of the version at about 1 MB
-        summary = dbc.read_grid_summary(None, version_id=version_id)
+        summary = dbc.read_grid_summary(None if all_grids else [int(p) for p in areas], version_id=version_id)
         summary[[c for c in _SUMMARY_COLUMNS if c in summary]].to_csv(
-            folder / "grid_summary.csv.xz", index=False, float_format="%.3g", compression="xz")
+            folder / manifest["grid_summary"], index=False, float_format="%.3g",
+            compression="xz" if all_grids else None)
         for plz, area in areas.items():
-            layers = dbc.read_lv_layers(plz, version_id=version_id)
-            path = folder / f"{plz}.gpkg.zip"
-            stored = _write_zipped_gpkg({name: _geo_frame(layers[name]) for name in _GEO_LAYERS}, path)
-            layers["exclusions"].to_csv(folder / f"{plz}_exclusions.csv", index=False)
             kcid, bcid = (int(v) for v in area["grid"])
-            net_name = f"nets/{plz}_{kcid}_{bcid}.json"
-            pp.to_json(dbc.read_net_db(plz, kcid, bcid, version_id=version_id), str(folder / net_name))
-            entry = {"name": area["name"], "settlement": area["settlement"], "grid": [kcid, bcid],
-                     "file": path.name, "layers": stored, "exclusions": f"{plz}_exclusions.csv",
-                     "nets": {f"{kcid}_{bcid}": net_name}, "voltage_levels": {}}
-            chain = dbc.read_voltage_chain(plz, kcid, bcid, version_id=version_id)
+            entry = {"name": area["name"], "settlement": area["settlement"], "grid": [kcid, bcid], "nets": {},
+                     "voltage_levels": {}}
+            if int(plz) in map_areas:
+                lv_layers = dbc.read_lv_layers(plz, version_id=version_id)
+                path = folder / f"{plz}.gpkg.zip"
+                entry["file"] = path.name
+                if variant_of is None:
+                    frames = {name: _geo_frame(lv_layers[name]) for name in _GEO_LAYERS}
+                else:
+                    frames = {"grids": _geo_frame(lv_layers["grids"]),
+                              "lines": _geo_frame(lv_layers["lines"], _VARIANT_LINE_COLUMNS)}
+                    entry["building_assignment"] = f"{plz}_buildings.csv"
+                    lv_layers["buildings"][["objectid", "kcid", "bcid"]].to_csv(
+                        folder / entry["building_assignment"], index=False)
+                entry["layers"] = _write_zipped_gpkg(frames, path)
+                lv_layers["exclusions"].to_csv(folder / f"{plz}_exclusions.csv", index=False)
+                entry["exclusions"] = f"{plz}_exclusions.csv"
+            if all_grids:
+                (folder / "nets").mkdir(exist_ok=True)
+                net_name = f"nets/{plz}_{kcid}_{bcid}.json"
+                pp.to_json(dbc.read_net_db(plz, kcid, bcid, version_id=version_id), str(folder / net_name))
+                entry["nets"][f"{kcid}_{bcid}"] = net_name
+            chain = dbc.read_voltage_chain(plz, kcid, bcid, version_id=version_id) if all_grids else None
             if chain is not None:
+                (folder / "voltage_levels").mkdir(exist_ok=True)
                 variant = chain["mv_variant_id"]
                 mv_grid = dbc.read_mv_layers(version_id, variant, chain["mv_grid_id"],
                                              layers=["nodes", "lines", "substations", "grids"])

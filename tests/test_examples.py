@@ -66,6 +66,34 @@ def test_the_example_data_hold_only_the_typical_nets():
         data.net(*other)
 
 
+VARIANTS = {"tut-osm": (23, 14, 42), "tut-reach": (24, 13, 50), "tut-cabin": (26, 15, 50), "tut-large": (21, 13, 37)}
+
+
+@pytest.mark.parametrize("version", sorted(VARIANTS))
+def test_a_version_variant_reads_its_own_grids_on_the_buildings_of_the_example_version(version):
+    manifest = json.loads((EXAMPLES / "versions" / version / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["variant_of"] == "1" and manifest["version_id"] == version
+    data = examples.TutorialData(85256, version_id=version, source="examples")
+    assert data.version_id == version and data.source == "example data"
+    base = examples.TutorialData(85256, source="examples").layers["buildings"]
+    buildings = data.layers["buildings"]
+    assert len(data.grid_ids) == VARIANTS[version][0]
+    assert set(buildings["objectid"]) == set(base["objectid"])          # the same footprints, other grids
+    assert set(zip(buildings["kcid"], buildings["bcid"])) <= set(data.grid_ids)
+    assert data.typical_grid in data.grid_ids                          # the median grid, not the one of version 1
+    assert data.parameters["cable_dimensioning"]["vn"] == 400
+    for plz, grids in zip((85307, 80805), VARIANTS[version][1:]):
+        other = examples.TutorialData(plz, version_id=version, source="examples")
+        assert len(other.summary()) == grids
+        with pytest.raises(FileNotFoundError, match="not its map layers"):
+            other.layers
+
+
+def test_an_unknown_version_names_the_versions_of_the_example_data():
+    with pytest.raises(FileNotFoundError, match="hold version 1 and the variants tut-cabin, tut-large, tut-osm"):
+        examples.TutorialData(85256, version_id="nope", source="examples")
+
+
 def test_without_a_database_the_example_data_are_used(monkeypatch):
     monkeypatch.setattr(examples, "_open_database", lambda plz, version_id: (None, "no database in this test"))
     data = examples.TutorialData(85256)
