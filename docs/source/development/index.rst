@@ -28,7 +28,7 @@ Project layout
    |-- QGIS/                     QGIS project templates
    |-- tests/                    unit tests (no database needed; database tests are opt-in)
    |   `-- db/                   the toy-town test database (builder and build script)
-   |-- .github/                  CI workflows (documentation, tests, API contract, image), issue and PR templates
+   |-- .github/                  CI workflows (documentation, tests, API contract, image), Dependabot, issue and PR templates
    |-- src/pylovo/               the Python package
    |   |-- cli/                  pylovo-* commands (setup, generate, mv, analyze, classify, import, export, delete)
    |   |-- database/             DatabaseClient, mixins, DatabaseConstructor, table definitions, migrations
@@ -47,7 +47,9 @@ Project layout
    |   |-- postcode_border.py, station_voltage.py, version_snapshot.py
    |   |-- config_loader.py      configuration constants
    |   `-- utils.py              load model, logging
-   |-- pyproject.toml            package metadata, dependencies, extras, console scripts
+   |-- pyproject.toml            package metadata, dependencies, extras, console scripts, ruff and pytest settings
+   |-- .pre-commit-config.yaml   checks of every commit (uvx pre-commit install)
+   |-- AGENTS.md                 notes for coding agents: databases, checks before a push, tests
    `-- CHANGELOG.md
 
 The wheel carries ``config/`` and the reference data of ``data/`` (municipal register, Overpass queries,
@@ -73,24 +75,29 @@ Code conventions
 Tests
 -----
 
-Quick checks without a database:
+The CI (``.github/workflows``) runs on every push to ``main``, ``dev``, ``feature/**`` and ``fix/**`` and on
+pull requests: ruff, the unit tests on Python 3.12 and 3.13, the database tests on the toy-town test database
+(below) and the documentation build; on pull requests it also checks the HTTP API contract. Run the same checks
+before you push:
 
 .. code-block:: bash
 
    uv run ruff check
-   uv run python -m compileall -q src
+   uv run --extra api --extra plots --extra viewer --extra opendss pytest
+   uv run --extra api --extra plots python tests/db/run_database_tests.py   # needs Docker
+   uv run --no-project --with-requirements docs/requirements.txt \
+       sphinx-build -W --keep-going -b html docs/source docs/build/html
 
 ``uvx pre-commit install`` (once per clone) runs ruff and a few file checks (large files, merge conflict
 markers, YAML and TOML syntax; ``.pre-commit-config.yaml``) on the staged files of every commit.
 
-The unit tests in ``tests`` and ``api/tests`` need no database. The HTTP API has an OpenAPI contract
-snapshot ``api/openapi.json`` (see ``api/README.md``). On pull requests the CI builds the documentation,
-runs the unit tests, runs the database tests on the toy-town test database (below) and checks the contract:
+The unit tests in ``tests``, ``api/tests`` and ``viewer/tests`` need no database; the database tests skip
+themselves unless their variables are set (below). The HTTP API has an OpenAPI contract snapshot
+``api/openapi.json`` (see ``api/README.md``); write it again after changing a route:
 
 .. code-block:: bash
 
-   uv run --extra api --extra plots pytest
-   uv run --extra api python api/scripts/export_openapi.py   # after changing a route
+   uv run --extra api python api/scripts/export_openapi.py
 
 Database tests
 ~~~~~~~~~~~~~~
