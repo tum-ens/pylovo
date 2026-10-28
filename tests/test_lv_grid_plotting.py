@@ -271,6 +271,40 @@ def test_tree_drawings(net, draw):
     assert isinstance(draw(top.create_nxgraph(net), net), Figure)
 
 
+def test_a_radial_drawing_in_a_given_axes_leaves_the_other_axes_alone(net):
+    graph = top.create_nxgraph(net)
+    fig, axes = plt.subplots(1, 2)
+    networks.draw_tree_network(graph, net=net, y="distance", ax=axes[0])
+    before = axes[0].get_position().bounds
+    networks.draw_radial_network(graph, net=net, ax=axes[1])
+    assert axes[0].get_position().bounds == before and axes[0].get_aspect() == "auto" and axes[0].axison
+    assert axes[1].get_aspect() == 1.0 and not axes[1].axison
+
+
+def test_core_bounds_can_be_widened_to_an_aspect(layers):
+    plain = maps.core_bounds(layers)
+    square = maps.core_bounds(layers, aspect=1.0)
+    assert square[2] - square[0] == pytest.approx(square[3] - square[1])
+    assert square[0] <= plain[0] and square[1] <= plain[1] and square[2] >= plain[2] and square[3] >= plain[3]
+
+
+def test_the_style_context_restores_only_its_own_settings():
+    import matplotlib
+
+    before = (matplotlib.is_interactive(), plt.rcParams["figure.dpi"], plt.rcParams["axes.titleweight"])
+    with st.style():
+        assert plt.rcParams["axes.titleweight"] == "bold"
+        matplotlib.interactive(not before[0])          # what a notebook backend does with the first figure
+        plt.rcParams["figure.dpi"] = 150
+    try:
+        assert matplotlib.is_interactive() is (not before[0])   # kept: rc_context would undo it
+        assert plt.rcParams["figure.dpi"] == 150                 # the resolution belongs to the session
+        assert plt.rcParams["axes.titleweight"] == before[2]
+    finally:
+        matplotlib.interactive(before[0])
+        plt.rcParams["figure.dpi"] = before[1]
+
+
 def test_deprecated_functions_warn_with_their_replacement_and_keep_the_original():
     from pylovo.plotting._deprecation import deprecated
 

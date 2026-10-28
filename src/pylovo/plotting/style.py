@@ -103,16 +103,37 @@ RC = {
 }
 
 
-def apply_style() -> None:
-    """Set the pylovo matplotlib defaults for the rest of the session (e.g. at the top of a notebook)."""
+def apply_style(dpi: Optional[float] = None) -> None:
+    """Set the pylovo matplotlib defaults for the rest of the session (e.g. at the top of a notebook).
+
+    Args:
+        dpi: Resolution of the figures shown (``figure.dpi``); default that of :data:`RC`. The tutorials use 150, so
+            the maps stay sharp when a browser scales them to the page width.
+    """
     plt.rcParams.update(RC)
+    if dpi is not None:
+        plt.rcParams["figure.dpi"] = dpi
+
+
+#: Keys of :data:`RC` that :func:`style` leaves to the session: the resolution is the choice of the notebook or script.
+SESSION_KEYS = ("figure.dpi", "savefig.dpi")
 
 
 @contextmanager
 def style() -> Iterator[None]:
-    """Apply the pylovo matplotlib defaults inside a ``with`` block only."""
-    with plt.rc_context(RC):
+    """Apply the pylovo matplotlib defaults inside a ``with`` block only.
+
+    Only the keys of :data:`RC` are set and restored (not :data:`SESSION_KEYS`). ``plt.rc_context`` would restore all
+    of ``rcParams``, including the interactive mode that a notebook backend switches on with the first figure, so
+    later figures of the notebook would not be shown.
+    """
+    keys = [key for key in RC if key not in SESSION_KEYS]
+    previous = {key: plt.rcParams[key] for key in keys}
+    plt.rcParams.update({key: RC[key] for key in keys})
+    try:
         yield
+    finally:
+        plt.rcParams.update(previous)
 
 
 # --------------------------------------------------------------------------- colours

@@ -603,6 +603,7 @@ def draw_radial_network(G, *, net=None, ax: Optional[plt.Axes] = None, labels: O
            for node, (x, yy) in tidy.items()}
     fig = _draw_tree(G, pos, net=net, ax=ax, labels=labels, edge_color_by=edge_color_by, figsize=(7.4, 6.4),
                      title=title)
-    fig.axes[0].set_aspect("equal")
-    fig.axes[0].axis("off")
+    drawn = ax if ax is not None else fig.axes[0]      # not fig.axes[0]: that may be another drawing of the figure
+    drawn.set_aspect("equal")
+    drawn.axis("off")
     return fig

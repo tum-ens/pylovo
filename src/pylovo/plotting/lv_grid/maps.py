@@ -91,17 +91,33 @@ def _bounds(layers: Mapping[str, Any], pad: float = 0.04, min_size: float = 200.
     return st.padded_bounds(total, pad=pad, min_size=min_size)
 
 
-def core_bounds(layers: Mapping[str, Any], share: float = 0.8, pad: float = 0.06) -> tuple:
+def core_bounds(layers: Mapping[str, Any], share: float = 0.8, pad: float = 0.06,
+                aspect: Optional[float] = None) -> tuple:
     """Extent of the densest part of the supplied buildings: the ``share`` of buildings closest to their median
-    position (the main village of a postcode area with several hamlets)."""
+    position (the main village of a postcode area with several hamlets).
+
+    Args:
+        layers: The layers of the area.
+        share: Share of the buildings inside the extent.
+        pad: Margin around them, as a share of the larger side.
+        aspect: Widen the extent to this width / height, e.g. 1.0 for maps of the same shape side by side.
+    """
     buildings = _layer(layers, "buildings")
     if buildings is None:
-        return _bounds(layers)
-    centres = buildings.geometry.centroid
-    x, y = centres.x.to_numpy(), centres.y.to_numpy()
-    distance = np.hypot(x - np.median(x), y - np.median(y))
-    keep = distance <= np.quantile(distance, share)
-    return st.padded_bounds((x[keep].min(), y[keep].min(), x[keep].max(), y[keep].max()), pad=pad, min_size=300)
+        bounds = _bounds(layers)
+    else:
+        centres = buildings.geometry.centroid
+        x, y = centres.x.to_numpy(), centres.y.to_numpy()
+        distance = np.hypot(x - np.median(x), y - np.median(y))
+        keep = distance <= np.quantile(distance, share)
+        bounds = st.padded_bounds((x[keep].min(), y[keep].min(), x[keep].max(), y[keep].max()), pad=pad,
+                                  min_size=300)
+    if aspect is None:
+        return bounds
+    minx, miny, maxx, maxy = bounds
+    width, height = max(maxx - minx, (maxy - miny) * aspect), max(maxy - miny, (maxx - minx) / aspect)
+    cx, cy = (minx + maxx) / 2, (miny + maxy) / 2
+    return cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2
 
 
 def _extent(layers: Mapping[str, Any], extent: Any) -> tuple:
