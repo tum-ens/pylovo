@@ -29,6 +29,7 @@ from .features import (
     plot_key_figure_distributions,
     plot_factor_analysis,
     get_parameters_for_clustering,
+    varimax_factor_analysis,
     plot_eigendecomposition,
 )
 
@@ -56,5 +57,6 @@ __all__ = [
     'plot_key_figure_distributions',
     'plot_factor_analysis',
     'get_parameters_for_clustering',
+    'varimax_factor_analysis',
     'plot_eigendecomposition',
 ]

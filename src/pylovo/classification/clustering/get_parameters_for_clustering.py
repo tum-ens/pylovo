@@ -36,8 +36,8 @@ def factor_analysis_input(df_parameters: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=collinear_cols)
 
 
-def number_of_factors(df_candidates: pd.DataFrame) -> int:
-    """Return the number of factors: the eigenvalues of the correlation matrix above 1, at least one.
+def candidate_eigenvalues(df_candidates: pd.DataFrame) -> np.ndarray:
+    """Return the eigenvalues of the correlation matrix of the candidates, largest first.
 
     Args:
         df_candidates: Candidate key figures (:func:`factor_analysis_input`).
@@ -56,8 +56,20 @@ def number_of_factors(df_candidates: pd.DataFrame) -> int:
             # Fallback when the correlation matrix is still singular due to numerical issues.
             fa = FactorAnalyzer(use_smc=False)
             fa.fit(df_candidates)
-    eigenvalues = fa.get_eigenvalues()[0]
-    return max(int((eigenvalues > 1).sum()), 1)
+    return fa.get_eigenvalues()[0]
+
+
+def number_of_factors(df_candidates: pd.DataFrame) -> int:
+    """Return the number of factors: the eigenvalues of the correlation matrix above 1 (Kaiser), at least one.
+
+    Args:
+        df_candidates: Candidate key figures (:func:`factor_analysis_input`).
+
+    Raises:
+        ValueError: If the data cannot be analysed, e.g. a missing value.
+        numpy.linalg.LinAlgError: If the correlation matrix stays singular.
+    """
+    return max(int((candidate_eigenvalues(df_candidates) > 1).sum()), 1)
 
 
 def get_parameters_for_clustering(additional_filtering: bool | None = None, transform: str | None = None) -> list:

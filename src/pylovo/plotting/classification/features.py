@@ -258,6 +258,25 @@ def plot_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int, figsize:
     return fig
 
 
+def varimax_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int) -> tuple[pd.DataFrame, FactorAnalysis]:
+    """
+    Fit the varimax-rotated factor analysis of the standardised parameters.
+
+    The exact SVD (``svd_method="lapack"``) gives the loadings of the randomized default, only faster.
+
+    Args:
+        df_plz_parameters: Set of parameters for grids.
+        n_comps: Number of factors.
+
+    Returns:
+        tuple: The loadings (one row per parameter, one column per factor) and the fitted model (``noise_variance_``
+        holds the uniqueness of every parameter, ``n_iter_`` the iterations).
+    """
+    fa = FactorAnalysis(n_components=n_comps, rotation="varimax", svd_method="lapack")
+    fa.fit(StandardScaler().fit_transform(df_plz_parameters))
+    return pd.DataFrame(fa.components_.T, index=df_plz_parameters.columns), fa
+
+
 def get_parameters_for_clustering(df_plz_parameters: pd.DataFrame, n_comps: int) -> list:
     """
     Calculate mathematically ideal set of parameters using varimax rotated factor analysis.
@@ -267,16 +286,9 @@ def get_parameters_for_clustering(df_plz_parameters: pd.DataFrame, n_comps: int)
         n_comps: Number of components for factor analysis.
 
     Returns:
-        list: List of selected parameters for clustering.
+        list: The parameter with the largest absolute loading of every factor (:func:`varimax_factor_analysis`).
     """
-    data = df_plz_parameters
-    X = StandardScaler().fit_transform(data)
-    feature_names = data.columns
-    fa = FactorAnalysis(rotation="varimax")
-    fa.set_params(n_components=n_comps)
-    fa.fit(X)
-
-    df_components_fa = pd.DataFrame(fa.components_.T, index=feature_names)
+    df_components_fa, _ = varimax_factor_analysis(df_plz_parameters, n_comps)
     parameters = []
     for column in df_components_fa:
         parameter = df_components_fa[column].abs().idxmax()
