@@ -28,8 +28,9 @@ venv/
 ### Output of pylovo runs
 # RESULT_DIR: generated grids, figures and analyses
 /results/
-# Logs: log/log.txt, log/log_<plz>.txt (log/.gitkeep is committed)
+# Logs: log/log.txt, log/log_<plz>.txt (log/.gitkeep is committed), also of notebooks run in their folder
 /log/*.txt
+/notebook_tutorials/**/log/
 *.log
 # pylovo-api working files: config backups, uploads, job logs, exports
 /.pylovo-api/
