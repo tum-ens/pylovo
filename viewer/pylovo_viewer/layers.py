@@ -16,6 +16,11 @@ Scopes (which request parameters a layer needs):
 * ``view``: LV detail (cables, cabinets, buildings) of one version in the map view (``bbox``).
 * ``run``: one MV run (``version`` + ``mv``).
 * ``file``: the downloaded eTraGo grid (``pylovo-viewer fetch etrago``).
+
+A ``version`` or ``run`` layer with an ``extent`` that holds more than ``cap`` features (all MV lines of
+Bavaria) is not sent whole: the API answers ``by_view`` and the page asks again with the map view
+(``bbox``), which the ``extent`` condition applies. MV lines and open points come by whole supply areas,
+so a ring is never cut at the edge of the view.
 """
 from __future__ import annotations
 
@@ -56,6 +61,8 @@ def run(alias: str = "") -> str:
 
 
 RUN = run()
+# The supply areas of the MV run that reach into the map view ({env}), for the extent of a layer.
+RUN_AREAS = "(SELECT ra.mv_grid_id FROM pylovo.mv_grid ra WHERE " + run("ra") + " AND ra.geom && {env})"
 
 
 def geo(expr: str, digits: int = 6) -> str:
@@ -113,7 +120,10 @@ class Layer:
     scope: str
     source: str
     sql: str = ""                     # placeholders: {env} (map view), {mv_cols} {mv_join} (station MV data),
-    #                                   {line_geom} (an MV line's display geometry where the database has one)
+    #                                   {line_geom} (an MV line's display geometry where the database has one),
+    #                                   {extent} (the extent condition with a bbox, else nothing)
+    extent: str = ""                  # condition on the map view ({env}; {run_areas}: supply areas in view;
+    #                                   {mv_extent}: more of the station MV data) for a layer above the cap
     detail: str = ""                  # one feature, parameter %(fid)s
     requires: tuple[str, ...] = ()    # "schema.table" or "schema.table(col, col)"
     rows: tuple[str, ...] = ()        # tables that must hold rows
@@ -193,9 +203,10 @@ def build_layers() -> list[Layer]:
                              {num("l.overhead_km", 3)} AS overhead_km, l.normally_open AS open,
                              {num("l.loading_load_percent", 1)} AS loading, {num("l.loading_n1_percent", 1)} AS loading_n1,
                              {geo("ST_Simplify({line_geom}, 0.5)")} AS geometry
-                      FROM pylovo.mv_line l WHERE {run('l')}""",
+                      FROM pylovo.mv_line l WHERE {run('l')} {{extent}}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
-              requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts")),
+              requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts"),
+              extent="l.mv_grid_id IN {run_areas} OR l.geom && {env}"),
         Layer("mv_osm_lines", "mv", "OSM MV lines",
               "The MV overhead lines mapped in OpenStreetMap, as corridors in the routing graph of the run: "
               "an MV line is an overhead line where it runs on them, else a cable.",
@@ -205,14 +216,14 @@ def build_layers() -> list[Layer]:
                       FROM pylovo.mv_graph_edge e
                       WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
                                           WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
-                        AND e.klasse = 'osm_mv_line'""",
+                        AND e.klasse = 'osm_mv_line' {{extent}}""",
               detail="""SELECT e.edge_id, e.src_id AS osm_way, e.objektart AS osm_type, e.length_m, e.graph_id
                         FROM pylovo.mv_graph_edge e
                         WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
                                             WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
                           AND e.edge_id = %(fid)s""",
               requires=("pylovo.mv_graph_edge", "pylovo.mv_variant"), rows=("pylovo.mv_variant",), default=False,
-              attribution="© OpenStreetMap contributors (ODbL)"),
+              attribution="© OpenStreetMap contributors (ODbL)", extent="e.geom && {env}"),
         Layer("mv_open_points", "mv", "Normally-open points",
               "Where each open ring is opened, drawn next to the node it opens at.",
               "point", "run", "pylovo.mv_line",
@@ -222,10 +233,11 @@ def build_layers() -> list[Layer]:
                                    THEN LEAST(0.5, 12 / NULLIF(ST_Length({line_geom}), 0))
                                  ELSE GREATEST(0.5, 1 - 12 / NULLIF(ST_Length({line_geom}), 0)) END)''')} AS geometry
                       FROM pylovo.mv_line l JOIN pylovo.mv_node n ON n.mv_node_id = COALESCE(l.open_at_node, l.to_node)
-                      WHERE {run('l')} AND l.normally_open AND l.role NOT IN ('tie', 'link') AND ST_Length(l.geom) > 0""",
+                      WHERE {run('l')} AND l.normally_open AND l.role NOT IN ('tie', 'link') AND ST_Length(l.geom) > 0
+                        {{extent}}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line", "pylovo.mv_node"), rows=("pylovo.mv_variant",),
-              parent="mv_lines", min_zoom=11),
+              parent="mv_lines", min_zoom=11, extent="l.mv_grid_id IN {run_areas}"),
         Layer("mv_stations", "mv", "MV/LV substations",
               "The transformer station of every LV grid: size, origin and, with an MV run, its MV ring and voltage. "
               "Shown from zoom 10.2 (a scale bar of about 3 km).",
@@ -236,9 +248,9 @@ def build_layers() -> list[Layer]:
                       FROM pylovo.grid_result g
                       JOIN pylovo.transformer_positions tp ON tp.grid_result_id = g.grid_result_id
                       {{mv_join}}
-                      WHERE g.version_id = %(version)s""",
+                      WHERE g.version_id = %(version)s {{extent}}""",
               detail="grid", requires=("pylovo.grid_result", "pylovo.transformer_positions"),
-              with_run=True, post=("ring_slots",), also=("lv",), min_zoom=10.2),
+              with_run=True, post=("ring_slots",), also=("lv",), min_zoom=10.2, extent="tp.geom && {env}{mv_extent}"),
         Layer("mv_areas", "mv", "Supply areas",
               "Area supplied by each HV/MV substation (MV grid district), with its voltage. Areas cut "
               "by the border of the planning region have a dashed outline.",
@@ -259,9 +271,10 @@ def build_layers() -> list[Layer]:
               sql=f"""SELECT c.objectid AS fid, c.building_use AS use, c.nonresidential_use AS nonres_use,
                              {num("COALESCE(c.nonresidential_peak_load_in_kw, 0) + COALESCE(c.residential_peak_load_in_kw, 0)", 1)}
                                AS peak_kw, c.households, {geo("c.geom")} AS geometry
-                      FROM pylovo.mv_customers c WHERE c.version_id = %(version)s""",
+                      FROM pylovo.mv_customers c WHERE c.version_id = %(version)s {{extent}}""",
               detail="SELECT * FROM pylovo.mv_customers WHERE version_id = %(version)s AND objectid = %(fid)s",
-              requires=("pylovo.mv_customers",), rows=("pylovo.mv_customers",), min_zoom=12),
+              requires=("pylovo.mv_customers",), rows=("pylovo.mv_customers",), min_zoom=12,
+              extent="c.centroid && {env}"),
         # -------------------------------------------------------------------------------- LV grids
         Layer("lv_areas", "lv", "Grid areas",
               "Area of each LV grid (convex hull of its buildings), coloured so that neighbours differ.",
@@ -271,8 +284,10 @@ def build_layers() -> list[Layer]:
                              {geo("ST_SimplifyPreserveTopology(ST_Buffer(ST_ConvexHull(ST_Collect(b.centroid)), 8, 2), 2)")}
                                AS geometry
                       FROM pylovo.grid_result g JOIN pylovo.buildings_result b ON b.grid_result_id = g.grid_result_id
-                      WHERE g.version_id = %(version)s GROUP BY g.grid_result_id""",
-              detail="grid", requires=("pylovo.grid_result", "pylovo.buildings_result"), post=("grid_slots",)),
+                      WHERE g.version_id = %(version)s {{extent}} GROUP BY g.grid_result_id""",
+              detail="grid", requires=("pylovo.grid_result", "pylovo.buildings_result"), post=("grid_slots",),
+              extent="""EXISTS (SELECT 1 FROM pylovo.transformer_positions tp
+                                 WHERE tp.grid_result_id = g.grid_result_id AND tp.geom && {env})"""),
         Layer("lv_cables", "lv", "Cables",
               "LV feeder cables along the streets and service cables to the buildings, with the cable cabinets. "
               "An arrow marks the cable that supplies each cabinet. Shown when zoomed in.",
@@ -325,8 +340,9 @@ def to_json(value: Any) -> Any:
     return str(value)
 
 
-def feature_collection(rows: list[dict[str, Any]], truncated: bool = False) -> str:
-    """GeoJSON text; ``geometry`` is already GeoJSON text, ``fid`` stays a property (``promoteId``)."""
+def feature_collection(rows: list[dict[str, Any]], truncated: bool = False, by_view: bool = False) -> str:
+    """GeoJSON text; ``geometry`` is already GeoJSON text, ``fid`` stays a property (``promoteId``). ``by_view``:
+    the layer holds more than its cap, ask again with the map view."""
     dumps = json.JSONEncoder(default=to_json, separators=(",", ":"), ensure_ascii=False).encode
     parts = []
     for row in rows:
@@ -334,7 +350,8 @@ def feature_collection(rows: list[dict[str, Any]], truncated: bool = False) -> s
         if geometry:
             parts.append(f'{{"type":"Feature","geometry":{geometry},"properties":{dumps(row)}}}')
     flag = "true" if truncated else "false"
-    return f'{{"type":"FeatureCollection","truncated":{flag},"features":[{",".join(parts)}]}}'
+    view = ',"by_view":true' if by_view else ""
+    return f'{{"type":"FeatureCollection","truncated":{flag}{view},"features":[{",".join(parts)}]}}'
 
 
 class LRU:
@@ -402,7 +419,7 @@ class LayerService:
             out.append({"id": layer.id, "groups": [layer.group, *layer.also], "title": layer.title, "description": layer.description,
                         "geometry": layer.geometry, "scope": layer.scope, "source": layer.source,
                         "parent": layer.parent, "with_run": layer.with_run, "default": layer.default,
-                        "min_zoom": layer.min_zoom,
+                        "min_zoom": layer.min_zoom, "by_view": bool(layer.extent),
                         "attribution": layer.attribution, "available": reason is None, "reason": reason})
         return out
 
@@ -433,7 +450,11 @@ class LayerService:
         mv = self.station_mv(q)
         cols = (f", n.mv_grid_id AS area, n.ring_id AS ring, n.feeder_id AS feeder, n.connection AS mv_connection, "
                 f"{num('n.vm_load_pu', 4)} AS vm, {num('n.lv_busbar_vm_pu', 4)} AS lv_vm") if mv else ""
-        return (layer.sql.replace("{env}", env).replace("{mv_cols}", cols)
+        extent = ""
+        if layer.extent and q.bbox:
+            extent = "AND (" + layer.extent.replace("{mv_extent}", " OR n.mv_grid_id IN {run_areas}" if mv else "") \
+                .replace("{run_areas}", RUN_AREAS) + ")"
+        return (layer.sql.replace("{extent}", extent).replace("{env}", env).replace("{mv_cols}", cols)
                 .replace("{mv_join}", STATION_MV_JOIN if mv else "").replace("{line_geom}", self.line_geom()))
 
     def line_geom(self) -> str:
@@ -449,7 +470,12 @@ class LayerService:
             if blob is None:
                 raise LookupError(self.unavailable(layer) or "not available")
             return blob.decode()
-        rows = self.db.query(self.sql(layer, q) + f"\nLIMIT {layer.cap + 1}", q.params())
+        sql = self.sql(layer, q)
+        if layer.extent and q.bbox is None:   # count first (no geometries): more than the cap goes by the view
+            probe = self.db.one(f"SELECT count(*) AS n FROM ({sql}\nLIMIT {layer.cap + 1}) AS probe", q.params())
+            if probe and probe["n"] > layer.cap:
+                return feature_collection([], truncated=True, by_view=True)
+        rows = self.db.query(sql + f"\nLIMIT {layer.cap + 1}", q.params())
         truncated = len(rows) > layer.cap
         rows = rows[:layer.cap]
         for step in layer.post:

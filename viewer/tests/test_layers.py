@@ -1,6 +1,7 @@
 """Tests of the layer registry: scopes, filters, availability, GeoJSON and attributes (fake database)."""
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import date
 from decimal import Decimal
@@ -32,6 +33,8 @@ def test_registry():
             assert "AS fid" in layer.sql and "AS geometry" in layer.sql
         if layer.scope == "view":
             assert "{env}" in layer.sql
+        assert ("{extent}" in layer.sql) == bool(layer.extent)          # a layer above its cap follows the view
+        assert not layer.extent or layer.scope in {"version", "run"}
 
 
 def test_view_filter_and_station_mv_data(service, fake_db):
@@ -155,11 +158,46 @@ def test_geojson_with_colour_slots(service, fake_db):
     assert "LIMIT 60001" in sql and params["version"] == "v1"
 
 
+def test_large_layers_follow_the_map_view(service, fake_db):
+    point = '{"type":"Point","coordinates":[11,48]}'
+    fake_db.rows = {"count(*) AS buildings": [{"fid": 1, "geometry": point}, {"fid": 2, "geometry": point}]}
+    service.layers["lv_areas"] = dataclasses.replace(service.layers["lv_areas"], cap=1)
+    fake_db.calls.clear()
+    fc = json.loads(service.geojson("lv_areas", Query(version="v1")))
+    assert fc == {"type": "FeatureCollection", "truncated": True, "by_view": True, "features": []}
+    assert len(fake_db.calls) == 1 and fake_db.calls[0][0].rstrip().endswith(") AS probe")   # no geometries read
+    fake_db.calls.clear()
+    fc = json.loads(service.geojson("lv_areas", Query(version="v1", bbox=(11.0, 48.0, 11.1, 48.1))))
+    assert "by_view" not in fc and fc["truncated"] is True and len(fc["features"]) == 1
+    sql = fake_db.calls[0][0]
+    assert "AND (EXISTS (SELECT 1 FROM pylovo.transformer_positions tp" in sql and "{" not in sql
+    assert sql.index("ST_MakeEnvelope") < sql.index("GROUP BY g.grid_result_id")
+
+
+def test_extent_by_supply_areas_and_stations(service, fake_db):
+    view = (11.0, 48.0, 11.1, 48.1)
+    areas = ("IN (SELECT ra.mv_grid_id FROM pylovo.mv_grid ra WHERE ra.version_id = %(version)s "
+             "AND ra.mv_variant_id = %(mv)s AND ra.geom && ST_Transform(ST_MakeEnvelope(")
+    lines = service.layers["mv_lines"]
+    assert "ra.mv_grid_id" not in service.sql(lines, Query(version="v1", mv="d1"))      # whole run: no extent
+    in_view = service.sql(lines, Query(version="v1", mv="d1", bbox=view))
+    assert "AND (l.mv_grid_id " + areas in in_view and "OR l.geom && ST_Transform" in in_view and "{" not in in_view
+    stations = service.layers["mv_stations"]
+    plain = service.sql(stations, Query(version="v1", bbox=view))
+    assert "AND (tp.geom && ST_Transform(ST_MakeEnvelope(" in plain and "n.mv_grid_id IN" not in plain
+    service.catalog.columns["pylovo.mv_node"] = {"grid_result_id": "int8", "ring_id": "int4"}
+    with_mv = service.sql(stations, Query(version="v1", mv="d1", bbox=view))
+    assert "OR n.mv_grid_id " + areas in with_mv and "{" not in with_mv            # whole rings of the areas in view
+    flags = {d["id"]: d["by_view"] for d in service.describe()}
+    assert flags["mv_lines"] and flags["lv_areas"] and not flags["postcodes"] and not flags["lv_cables"]
+
+
 def test_feature_collection():
     rows = [{"fid": "a", "n": Decimal("1.5"), "d": date(2026, 1, 2), "geometry": '{"type":"Point","coordinates":[1,2]}'},
             {"fid": "b", "geometry": None}]
     fc = json.loads(feature_collection(rows, truncated=True))
-    assert fc["truncated"] is True and len(fc["features"]) == 1
+    assert fc["truncated"] is True and "by_view" not in fc and len(fc["features"]) == 1
+    assert json.loads(feature_collection([], truncated=True, by_view=True))["by_view"] is True
     assert fc["features"][0]["properties"] == {"fid": "a", "n": 1.5, "d": "2026-01-02"}
 
 

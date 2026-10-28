@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
 
+### Fixed
+- Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000 (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
+
 ## [1.0.0] - 2026-10-22
 ### Changed
 - Split the generation configuration into `config_generation_lv.yaml` and `config_generation_mv.yaml`; an existing `config_generation.yaml` is still read

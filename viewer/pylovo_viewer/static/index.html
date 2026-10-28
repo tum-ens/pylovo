@@ -109,7 +109,7 @@
             <input type="checkbox" :checked="groups[g.id]?.on && g.available" :disabled="!g.available" @change="toggleGroup(g.id)"><span></span>
           </label>
           <button class="group-name" @click="groups[g.id].open = !groups[g.id].open" :title="groups[g.id]?.open ? 'Hide details' : 'Details: single layers and colours'">
-            <b>{{ g.title }}</b><small>{{ groupNote(g) }}</small>
+            <b>{{ g.title }}</b><small :class="{ warn: groupCut(g).length }">{{ groupNote(g) }}</small>
           </button>
           <button class="icon-btn small" @click="groups[g.id].open = !groups[g.id].open"><span class="chev" :class="{ open: groups[g.id]?.open }">›</span></button>
         </div>
@@ -126,7 +126,7 @@
               <div class="sub" v-if="!m.available">{{ m.reason }}</div>
               <div class="sub" v-else-if="visible(m.id)">
                 <template v-if="layers[m.id].status === 'loading'"><span class="spin"></span>loading</template>
-                <template v-else-if="layers[m.id].status === 'ok'">{{ fmt.num(layers[m.id].count) }} features<span class="warn" v-if="layers[m.id].truncated"> · first {{ fmt.num(layers[m.id].count) }} only</span></template>
+                <template v-else-if="layers[m.id].status === 'ok'">{{ fmt.num(layers[m.id].count) }} features<template v-if="layers[m.id].inView"> in view</template><span class="warn" v-if="layers[m.id].truncated"> · first {{ fmt.num(layers[m.id].count) }} only: zoom in</span></template>
                 <template v-else-if="layers[m.id].status === 'wait'">{{ layers[m.id].note }}</template>
                 <template v-else-if="layers[m.id].status === 'error'"><span class="warn">{{ layers[m.id].note }}</span></template>
               </div>
