@@ -66,7 +66,8 @@ Before you start
   stored snapshot``.
 * A full sample of about 100 PLZ takes hours up to a day because every PLZ is generated. With the answer *yes* to
   "restrict sampling to PLZ present in postcode_result" only PLZ that already have grids are drawn, and step 3
-  has nothing left to generate.
+  has nothing left to generate. Step 4 then dominates with about 0.14 s per grid and process: 500 Bavarian PLZ
+  (27,000 grids) took one hour in one process, and seven worker processes computed seven PLZ 5.5 times faster.
 
 Configuration
 -------------
@@ -165,6 +166,11 @@ Every question has an option, so a run can be scripted:
    * - Restrict sampling to PLZ present in postcode_result for the configured ``VERSION_ID``?
      - ``--restrict-to-generated``, ``--no-restrict-to-generated``
      - *yes* draws only PLZ that already have grids, so step 3 generates nothing.
+   * - (no question)
+     - ``--parallel``, ``--no-parallel``
+     - Generate the grids (step 3) and compute their key figures (step 4) in worker processes, several PLZ at a
+       time, or one PLZ after the other. Without the option ``PARALLEL`` of ``config_generation_lv.yaml`` decides,
+       as for ``pylovo-generate``. The results are the same.
    * - Assign clustering parameters and number of clusters yourself?
      - ``--auto``, or ``--manual`` with ``--parameters`` and ``--clusters``
      - *no* or ``--auto``: both are computed (steps 6a and 6b). *yes* or ``--manual``: the parameter names,
@@ -254,8 +260,8 @@ With ``USE_INFDB=False`` the building shapefiles of the sampled municipalities a
 the generation reads the buildings itself.
 
 Then ``GridGenerator.generate_grid_for_multiple_plz`` generates the grids of the sample like ``pylovo-generate``
-does (:doc:`generating_grids`), in parallel worker processes (``N_JOBS_PERCENT`` of the CPU cores, independent of
-``PARALLEL``) and with the PLZ analysis (``analyze_grids=True``). A PLZ that already has grids for ``VERSION_ID``
+does (:doc:`generating_grids`), in parallel worker processes (``N_JOBS_PERCENT`` of the CPU cores) unless
+``PARALLEL`` is ``False`` or ``--no-parallel`` is given, and with the PLZ analysis (``analyze_grids=True``). A PLZ that already has grids for ``VERSION_ID``
 is kept as it is and not analysed again, so grids that were generated without ``ANALYZE_GRIDS`` need
 ``pylovo-analyze --plz <plz>`` before. A PLZ for which no grids could be generated is logged and removed from
 the sample set of this classification.
@@ -264,9 +270,12 @@ Steps 4 and 5: key figures and filter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Step 4 computes one row of ``clustering_parameters`` for every grid of every sampled PLZ
-(``ParameterCalculator.analyze_grid_parameters_for_plz``, columns in :doc:`analysing_grids`). Grids that already
-have a row are skipped. A PLZ without PLZ analysis and a grid whose calculation fails are logged and skipped, and the
-summary at the end counts them (:ref:`classification-summary`).
+(``analyze_grid_parameters_for_multiple_plz`` in ``pylovo.analysis.parameter_calculation``, columns in
+:doc:`analysing_grids`). Like step 3 it uses worker processes (``N_JOBS_PERCENT``) unless ``PARALLEL`` is ``False``
+or ``--no-parallel`` is given: every worker computes whole PLZ with its own database connection and writes the same
+rows as one process would, and one line per finished PLZ is printed. Grids that already have a row are skipped. A PLZ
+without PLZ analysis and a grid whose calculation fails are logged and skipped, and the summary at the end counts them
+(:ref:`classification-summary`).
 
 Step 5 stores nothing. The filters are applied each time the grids are read, by steps 6 and 7 and by the notebooks, to
 the grids of the sampled PLZ and of ``VERSION_ID``. A grid is left out if

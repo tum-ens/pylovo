@@ -7,14 +7,14 @@ import time
 
 import pylovo.database.database_client as dbc
 
-from pylovo.analysis.parameter_calculation import ParameterCalculator
+from pylovo.analysis.parameter_calculation import analyze_grid_parameters_for_multiple_plz
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz
 from pylovo.classification.sampling.sample import get_sample_set, create_sample_set
-from pylovo.config_loader import CLASSIFICATION_VERSION, USE_INFDB
+from pylovo.config_loader import CLASSIFICATION_VERSION, PARALLEL, USE_INFDB
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
 
 
-def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) -> list:
+def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False, parallel: bool | None = None) -> list:
     """Prepare the grid parameters of a new sample set for clustering.
 
     Creates the sample set of ``CLASSIFICATION_VERSION``, imports the building
@@ -26,6 +26,9 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) 
     Args:
         sample_from_postcode_result_only: Only sample PLZ that already have a
             ``postcode_result`` entry for ``VERSION_ID``.
+        parallel: Generate the grids (step 3) and compute the clustering parameters (step 4) of several PLZ in
+            worker processes (``N_JOBS_PERCENT`` of the CPU cores). None takes ``PARALLEL`` of
+            ``config_generation_lv.yaml``.
 
     Returns:
         list: The PLZ that were removed from the sample set because no grids could be generated
@@ -47,9 +50,10 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) 
 
     # %% 3. generate the grids for your set
     # this takes around a quarter of an hour for a grid and might take a whole day for an entire set.
+    parallel = PARALLEL if parallel is None else parallel
     start_time = time.time()
     gg = GridGenerator()
-    outcomes = gg.generate_grid_for_multiple_plz(df_plz=samples, analyze_grids=True)
+    outcomes = gg.generate_grid_for_multiple_plz(df_plz=samples, analyze_grids=True, parallel=parallel)
     print("--- %s seconds for step 3: grid generation---" % (time.time() - start_time))
 
     # A PLZ without grids is no part of this classification: remove it from the stored sample as well.
@@ -63,12 +67,9 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False) 
                 dbc_client.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), plz)
         samples = samples[~samples['plz'].isin(without_grids)]
 
-    # %% 4. calculate grid parameters
+    # %% 4. calculate grid parameters (one worker process per PLZ at a time if parallel)
     start_time = time.time()
-    # create single ParameterCalculator instance for all PLZ
-    pc = ParameterCalculator()
-    for plz_index in samples['plz']:
-        pc.analyze_grid_parameters_for_plz(plz=plz_index)
+    analyze_grid_parameters_for_multiple_plz(samples['plz'], parallel=parallel)
     print("--- %s seconds parameter calculation---" % (time.time() - start_time))
     return sorted(int(plz) for plz in without_grids)
 

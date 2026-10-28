@@ -291,7 +291,8 @@ def main():
             "Do you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID?")
 
     print("\nRunning prepare_data_for_clustering.py...")
-    plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only)
+    plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only,
+                                                    parallel=args.parallel)
 
     # Step 3: Manual input or automatic assignment
     manual = args.manual or (not args.auto and ask_yes_no(

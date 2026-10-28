@@ -199,7 +199,8 @@ Execution
    * - ``PARALLEL``
      - ``True``
      - Generate several postcodes in parallel worker processes (``N_JOBS_PERCENT``); the default of
-       ``pylovo-generate``, overridden by ``--parallel`` or ``--no-parallel``. Does not change results.
+       ``pylovo-generate`` and of ``pylovo-classify`` (grids and key figures of the sample), overridden by
+       ``--parallel`` or ``--no-parallel``. Does not change results.
      -
    * - ``N_JOBS_PERCENT``
      - ``50``

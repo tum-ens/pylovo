@@ -123,6 +123,12 @@ def classify_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clusters", metavar="KMEANS,GMM",
                         help="with --manual: number of clusters of k-means and of the GMM, both from "
                              "NO_OF_CLUSTERS_ALLOWED")
+    parallelism = parser.add_mutually_exclusive_group()
+    parallelism.add_argument("--parallel", dest="parallel", action="store_true", default=None,
+                             help="generate the grids and compute their parameters in worker processes, several PLZ "
+                                  "at a time (default: PARALLEL of config_generation_lv.yaml)")
+    parallelism.add_argument("--no-parallel", dest="parallel", action="store_false",
+                             help="generate the grids and compute their parameters one PLZ after the other")
     return parser
 
 def analyze_parser() -> argparse.ArgumentParser:

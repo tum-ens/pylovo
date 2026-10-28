@@ -372,6 +372,9 @@ class Workflow:
     def delete_plz_from_sample_set_table(self, classification_id, plz):
         self.events.append(("sample set cleared", plz))
 
+    def rollback_changes(self):
+        self.events.append("rollback")
+
 
 def workflow(dbc, monkeypatch, fail_on=None):
     pc = calculator(plz=None)
@@ -416,7 +419,8 @@ def test_a_failing_step_raises_without_touching_the_sample_set(monkeypatch):
 def test_the_per_grid_analysis_skips_stored_grids_and_goes_on_after_a_failing_one(monkeypatch):
     dbc = Workflow(analyzed=True, done=[(1, 1)])
     workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
-    assert dbc.events == [("grid", 1, 2), ("grid", 1, 3)]          # (1, 1) is stored, (1, 2) fails, (1, 3) is still done
+    # (1, 1) is stored, (1, 2) fails and its transaction is rolled back, (1, 3) is still done
+    assert dbc.events == [("grid", 1, 2), "rollback", ("grid", 1, 3)]
 
 
 def test_the_per_grid_analysis_needs_the_plz_analysis_first(monkeypatch):

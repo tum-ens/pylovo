@@ -22,10 +22,12 @@ projected coordinates are auto-detected where spatial distance calculations need
 """
 
 from collections import deque
+from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import pairwise
 import json
 import re
-from typing import Tuple, Dict, Any, List, Optional
+from typing import NamedTuple, Tuple, Dict, Any, List, Optional
 
 import networkx as nx
 import numpy as np
@@ -37,7 +39,7 @@ from sklearn.metrics.pairwise import haversine_distances
 import pylovo.database.database_client as dbc
 from pylovo.analysis.grid_analysis import compute_clustering_metrics
 from pylovo import utils
-from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
+from pylovo.config_loader import LOG_LEVEL, N_JOBS, PARALLEL, PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +147,20 @@ def _empty_impedance_summary() -> Dict[str, float]:
         "max_branch_resistance": 0.0,
         "total_weight": 0.0,
     }
+
+
+class GridParameterCounts(NamedTuple):
+    """What the per-grid analysis of one PLZ did (:meth:`ParameterCalculator.calculate_grid_parameters`)."""
+
+    #: ``"analysed"``, ``"not_analysed"`` (no PLZ-level parameters, nothing done) or ``"failed"`` (the PLZ could not
+    #: be processed, see the log)
+    status: str
+    #: grids whose parameters were calculated and stored
+    calculated: int = 0
+    #: grids that already had parameters
+    skipped: int = 0
+    #: grids whose calculation failed (logged)
+    failed: int = 0
 
 
 class ParameterCalculator:
@@ -261,6 +277,9 @@ class ParameterCalculator:
     def analyze_grid_parameters_for_plz(self, plz: int | None = None) -> str:
         """Compute and store per-grid parameters for all grids of an analyzed PLZ.
 
+        Prints the number of grids, one line per calculated grid and a summary.
+        :func:`analyze_grid_parameters_for_multiple_plz` analyses several PLZ, in worker processes if possible.
+
         Args:
             plz (int): Postcode area ID
 
@@ -272,20 +291,35 @@ class ParameterCalculator:
         """
         if plz is None:
             raise ValueError("analyze_grid_parameters_for_plz requires an explicit PLZ value.")
+        return self.calculate_grid_parameters(plz, progress=True).status
 
+    def calculate_grid_parameters(self, plz: int, progress: bool = False) -> "GridParameterCounts":
+        """Compute and store the per-grid parameters of every grid of ``plz`` that has none yet.
+
+        Grids that already have a row in ``clustering_parameters`` are skipped. A grid whose calculation fails is
+        logged, its open transaction is rolled back and the next grid is calculated.
+
+        Args:
+            plz: Postcode area; its PLZ-level parameters (:meth:`analyze_parameters_for_plz`) must exist.
+            progress: Print the number of grids, one line per calculated grid and a summary.
+
+        Returns:
+            The counts. Status ``"not_analysed"`` (nothing is done) if the PLZ-level parameters are missing.
+        """
         self.plz = plz
         grid_analysed = self.dbc.is_grid_analyzed(self.plz)
         if not grid_analysed:
             self.dbc.logger.info(
                 f"PLZ parameters for the postcode area {self.plz} missing. Please run analyze_parameters_for_plz() first.")
-            return "not_analysed"
+            return GridParameterCounts("not_analysed")
 
         cluster_list = self.dbc.get_list_from_plz(self.plz)
-        total_grids = len(cluster_list)
-        print(f"Checking {total_grids} grids for PLZ {self.plz}...")
+        if progress:
+            print(f"Checking {len(cluster_list)} grids for PLZ {self.plz}...")
 
         skipped = 0
         calculated = 0
+        failed = 0
 
         for kcid, bcid in cluster_list:
             # Check if this specific grid already has parameters
@@ -294,17 +328,22 @@ class ParameterCalculator:
                     skipped += 1
                     continue
 
-                print(f"Calculating parameters for grid kcid={kcid}, bcid={bcid}")
+                if progress:
+                    print(f"Calculating parameters for grid kcid={kcid}, bcid={bcid}")
                 self.analyze_single_grid(bcid, kcid)
                 calculated += 1
 
             except Exception as e:
+                failed += 1
                 self.dbc.logger.error(
                     f"Failed to calculate/insert parameters for grid {kcid},{bcid} in PLZ {self.plz}: {e}"
                 )
+                # a failed statement aborts the transaction: without the rollback every later grid would fail too
+                self.dbc.rollback_changes()
 
-        print(f"Finished PLZ {self.plz}. Calculated new: {calculated}, Skipped existing: {skipped}.")
-        return "analysed"
+        if progress:
+            print(f"Finished PLZ {self.plz}. Calculated new: {calculated}, Skipped existing: {skipped}.")
+        return GridParameterCounts("analysed", calculated, skipped, failed)
 
     # -------------------------------------------------------------------------
     # Shared Comparison-Parameter Helpers
@@ -1820,3 +1859,91 @@ class ParameterCalculator:
             json.dumps(trafo_max_distance_dict),
             json.dumps(trafo_avg_distance_dict)
         )
+
+
+def _grid_parameters_of_plz(plz: int) -> GridParameterCounts:
+    """Compute and store the per-grid parameters of one PLZ in a worker process, with its own database connection."""
+    calculator = ParameterCalculator()
+    try:
+        return calculator.calculate_grid_parameters(plz)
+    finally:
+        calculator.dbc.close()
+
+
+def analyze_grid_parameters_for_multiple_plz(plz_list: Iterable[int],
+                                             parallel: bool | None = None) -> dict[int, GridParameterCounts]:
+    """Compute and store the per-grid parameters of every grid of several PLZ, in worker processes if possible.
+
+    Workers are used as for the grid generation: when ``parallel`` is set, there is more than one PLZ and ``N_JOBS``
+    (``N_JOBS_PERCENT`` of the CPU cores) is above one. Every worker computes whole PLZ with its own database
+    connection. The rows are those of the serial path: one per grid without parameters, computed by
+    :meth:`ParameterCalculator.calculate_grid_parameters` and written in the grid order of their PLZ. Only the order
+    in which the PLZ finish differs; the table has no column that depends on it. One line per finished PLZ is
+    printed and errors go to the log. A PLZ that cannot be processed (for example a lost connection) is logged and
+    counted as ``"failed"``, the other PLZ go on.
+
+    Args:
+        plz_list: The PLZ (analysed once each, in the given order without workers).
+        parallel: Allow worker processes. None takes ``PARALLEL`` of ``config_generation_lv.yaml``.
+
+    Returns:
+        The counts of every PLZ, in the order of ``plz_list``.
+
+    Raises:
+        KeyboardInterrupt: If the run is interrupted; the PLZ not started yet are cancelled.
+    """
+    plz_list = list(dict.fromkeys(int(plz) for plz in plz_list))
+    parallel = PARALLEL if parallel is None else parallel
+    workers = min(N_JOBS, len(plz_list)) if parallel and len(plz_list) > 1 and N_JOBS > 1 else 1
+    logger = utils.create_logger("ParameterCalculator", log_file="log/log.txt", log_level=LOG_LEVEL)
+    print(f"Per-grid parameters of {len(plz_list)} PLZ in "
+          + (f"{workers} worker processes" if workers > 1 else "one process"))
+    counts: dict[int, GridParameterCounts] = {}
+
+    def finished(plz: int, result: GridParameterCounts) -> None:
+        counts[plz] = result
+        line = (f"Per-grid parameters of PLZ {plz} ({len(counts)}/{len(plz_list)}): {result.calculated} calculated, "
+                f"{result.skipped} existing")
+        if result.failed:
+            line += f", {result.failed} failed"
+        if result.status != "analysed":
+            line += f" ({result.status.replace('_', ' ')})"
+        print(line)
+
+    def failure(plz: int) -> GridParameterCounts:
+        logger.exception(f"Per-grid parameters of PLZ {plz} could not be computed")
+        return GridParameterCounts("failed")
+
+    if workers == 1:
+        calculator = ParameterCalculator()
+        try:
+            for plz in plz_list:
+                try:
+                    result = calculator.calculate_grid_parameters(plz)
+                except Exception:
+                    result = failure(plz)
+                    calculator.dbc.rollback_changes()
+                finished(plz, result)
+        finally:
+            calculator.dbc.close()
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_grid_parameters_of_plz, plz): plz for plz in plz_list}
+            try:
+                for future in as_completed(futures):
+                    plz = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception:
+                        result = failure(plz)
+                    finished(plz, result)
+            except KeyboardInterrupt:
+                logger.warning(f"Interrupted after {len(counts)}/{len(plz_list)} PLZ; cancelling the others.")
+                for future in futures:
+                    future.cancel()
+                raise
+
+    totals = [sum(getattr(result, field) for result in counts.values()) for field in ("calculated", "skipped", "failed")]
+    print(f"Per-grid parameters of {len(plz_list)} PLZ: {totals[0]} calculated, {totals[1]} existing, "
+          f"{totals[2]} failed")
+    return {plz: counts[plz] for plz in plz_list}

@@ -180,6 +180,7 @@ pylovo-classify
    pylovo-classify [-h] [--additional-filtering | --no-additional-filtering]
                    [--restrict-to-generated | --no-restrict-to-generated]
                    [--auto | --manual] [--parameters NAME[,NAME...]] [--clusters KMEANS,GMM]
+                   [--parallel | --no-parallel]
 
 Runs the classification of :doc:`classification`: it draws the sample set of ``CLASSIFICATION_VERSION``, generates and
 analyses the sample grids, chooses the clustering parameters and the numbers of clusters, clusters the grids that the
@@ -201,6 +202,9 @@ the filter choice with the classification (``classification_version``) and also 
    With ``--manual``: the columns of ``clustering_parameters`` to cluster on, comma-separated.
 ``--clusters KMEANS,GMM``
    With ``--manual``: the number of clusters of k-means and of the GMM, both from ``NO_OF_CLUSTERS_ALLOWED``.
+``--parallel``, ``--no-parallel``
+   Generate the sample grids and compute their key figures in worker processes (``N_JOBS_PERCENT``), several PLZ at a
+   time, or one after the other. Default: ``PARALLEL`` of the configuration. The results are the same.
 
 The names and numbers are checked before anything runs: a wrong name or number and an inconsistent combination of
 options are usage errors (exit code 2). An existing ``CLASSIFICATION_VERSION`` stops the command with exit code 1. A closed standard input with an open question stops the command with a message.
