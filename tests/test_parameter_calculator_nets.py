@@ -207,15 +207,23 @@ def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simult
     paths = {"s21": ("f0", "f1"), "s22": ("f0", "f1"), "s23": ("f0", "f2"), "s24": ("f0", "f2")}
     resistance = sum(weight * (sum(length[c] * R / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * R * factor["s"])
                      for s, feeders in paths.items())
-    reactance = sum(weight * sum(length[c] * X / cables.get(c, 1) for c in (*feeders, s)) for s, feeders in paths.items())
+    reactance = sum(weight * (sum(length[c] * X / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * X * factor["s"])
+                    for s, feeders in paths.items())
 
     max_branch, total_r, total_x, ratio, max_branch_r = pc.calculate_impedance_metrics(
         net, top.create_nxgraph(net, respect_switches=True))
 
     assert (total_r, total_x) == (pytest.approx(resistance), pytest.approx(reactance))
-    assert ratio == pytest.approx(resistance / reactance)
+    assert ratio == pytest.approx(resistance / reactance) == pytest.approx(R / X)    # one cable type: its R/X
     assert max_branch == pytest.approx(households)       # every consumer hangs behind the one feeder f0
     assert max_branch_r == pytest.approx(resistance)
+
+
+def test_the_ratio_lies_within_the_r_x_of_the_lines():
+    net, pc = build(), calculator()
+    net.line.loc[net.line["name"] == "f2", ["r_ohm_per_km", "x_ohm_per_km"]] = (0.125, 0.078)    # NAYY_4_240
+    ratio = pc.calculate_impedance_metrics(net, top.create_nxgraph(net, respect_switches=True))[3]
+    assert 0.125 / 0.078 < ratio < R / X
 
 
 def test_graph_length_and_resistance_describe_the_backbone_unless_service_lines_are_asked_for():

@@ -1429,8 +1429,9 @@ class ParameterCalculator:
                 parallel = float(line_data.get("parallel", 1) or 1)
                 parallel = parallel if parallel > 0 else 1.0        # NaN or 0: one cable
 
+                # R and X alike, so their ratio is a weighted mean of the R/X of the lines
                 path_resistance += length_km * resistance_per_km / parallel * sim_factor
-                path_reactance += length_km * reactance_per_km / parallel
+                path_reactance += length_km * reactance_per_km / parallel * sim_factor
 
             records.append({
                 "branch": branch,
@@ -1471,8 +1472,9 @@ class ParameterCalculator:
 
         Returns maximum household equivalents per branch, total resistance, total
         reactance, the resistance-to-reactance ratio, and the maximum branch
-        resistance proxy. The resistance and reactance of a line are divided by its
-        number of parallel cables. The branches are those of ``branch_of_bus``
+        resistance proxy. Resistance and reactance of a line are weighted alike (household
+        equivalents behind it times its cumulated simultaneity), so the ratio lies between the
+        smallest and the largest R/X of the lines. They are divided by the number of parallel cables. The branches are those of ``branch_of_bus``
         (:meth:`classification_branches`), else the feeder branches of
         :meth:`_calculate_path_impedance_summary`.
         """
