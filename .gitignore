@@ -52,3 +52,5 @@ htmlcov/
 ### Editors and operating systems
 .idea/
 .DS_Store
+# copies of the tutorial notebooks, made by docs/source/conf.py at build time
+/docs/source/tutorials/

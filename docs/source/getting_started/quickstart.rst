@@ -56,13 +56,10 @@ The read-only map viewer shows the database of your ``.env`` as a map in the bro
 
    uv run --extra viewer pylovo-viewer       # http://127.0.0.1:8770/, opens the browser
 
-Open the :download:`basic-grid notebook
-<../../../notebook_tutorials/grid_generation/0_basic_grid_generation.ipynb>` for a guided look
-at the stored grids and one pandapower network. For maps and statistics in Python, open the
-:download:`statistics notebook
-<../../../notebook_tutorials/grid_generation/4_basic_plotting.ipynb>`. The notebooks use the
-database configured in ``.env``; change their ``plz`` parameter to ``80803``. Install the
-notebook environment with ``uv sync --extra notebooks`` if needed (:doc:`tutorials`).
+For a guided look in Python, open ``notebook_tutorials/01_tour.ipynb`` (:doc:`/tutorials/01_tour`) and set its
+``plz`` parameter to ``80803``: it reads the grids from the database of your ``.env``, maps them and shows the
+voltage profile of one grid. The other notebooks of the learning path are listed in :doc:`tutorials`. Install the
+notebook environment with ``uv sync --extra notebooks`` if needed.
 
 Next steps
 ----------

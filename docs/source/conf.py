@@ -12,6 +12,9 @@ generated API pages.
 """
 from __future__ import annotations
 
+import base64
+import json
+import shutil
 import tomllib
 from pathlib import Path
 
@@ -35,6 +38,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",
     "autoapi.extension",
+    "myst_nb",
 ]
 
 exclude_patterns = ["_build", "build"]
@@ -72,6 +76,19 @@ autoapi_ignore = [
 # autoapi parses statically and cannot follow names that config_loader defines inside an
 # ``if`` block (the INFDB_* settings); that is a limitation of the tool, not an error.
 suppress_warnings = ["autoapi.python_import_resolution"]
+
+# -- Tutorial notebooks (myst-nb) -------------------------------------------
+# The notebooks stay in notebook_tutorials/, where users look for them. The build copies the learning path and the
+# consolidated classification notebooks into tutorials/ (git-ignored), takes the first figure of each as the picture of
+# its card on the tutorials page and renders their stored outputs; it executes nothing.
+TUTORIAL_NOTEBOOKS = [
+    "01_tour.ipynb", "02_building_grids.ipynb", "03_one_grid.ipynb", "04_comparing_areas.ipynb",
+    "05_versions.ipynb", "06_voltage_levels.ipynb",
+    "classification/01_sample_and_key_figures.ipynb", "classification/02_clusters_and_representatives.ipynb",
+]
+TUTORIALS_DIR = DOCS_SOURCE / "tutorials"
+source_suffix = {".rst": "restructuredtext", ".ipynb": "myst-nb"}
+nb_execution_mode = "off"
 
 # -- Copy button -------------------------------------------------------------
 copybutton_prompt_text = r"\$ "
@@ -125,5 +142,30 @@ def _skip_duplicate_module_data(app, what, name, obj, skip, options):
     return skip
 
 
+def _first_figure(notebook: Path) -> bytes | None:
+    """The first PNG output of a notebook, or None."""
+    for cell in json.loads(notebook.read_text(encoding="utf-8"))["cells"]:
+        for output in cell.get("outputs", []):
+            image = output.get("data", {}).get("image/png")
+            if image:
+                return base64.b64decode("".join(image) if isinstance(image, list) else image)
+    return None
+
+
+def _copy_tutorials(app) -> None:
+    """Copy the tutorial notebooks into tutorials/ and their first figures into tutorials/_thumbs/."""
+    shutil.rmtree(TUTORIALS_DIR, ignore_errors=True)
+    (TUTORIALS_DIR / "_thumbs").mkdir(parents=True)
+    for name in TUTORIAL_NOTEBOOKS:
+        source = REPO_ROOT / "notebook_tutorials" / name
+        target = TUTORIALS_DIR / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        figure = _first_figure(source)
+        if figure is not None:
+            (TUTORIALS_DIR / "_thumbs" / f"{Path(name).stem}.png").write_bytes(figure)
+
+
 def setup(app):
     app.connect("autoapi-skip-member", _skip_duplicate_module_data)
+    app.connect("builder-inited", _copy_tutorials)

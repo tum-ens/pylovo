@@ -55,8 +55,16 @@ streets and transformers are derived from OpenStreetMap. Map data © OpenStreetM
 The classification notebooks need a classification data set of many postcode areas (sample
 set, generated and analysed grids, clustering parameters), which `pylovo-classify` creates; see
 the user guide page [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html)
-(`docs/source/user_guide/classification.rst`). Their stored outputs come from an earlier classification run.
-In the order of the classification workflow:
+(`docs/source/user_guide/classification.rst`). Start with the two consolidated notebooks, whose stored outputs come
+from a classification of 501 Bavarian postcode areas:
+
+| Notebook | Question |
+| --- | --- |
+| `01_sample_and_key_figures.ipynb` | Which key figures describe an LV grid, and which should the clustering use? |
+| `02_clusters_and_representatives.ipynb` | Which types of grids are there, and which grid represents each? |
+
+The previous classification notebooks are kept for comparison; their stored outputs come from an earlier
+classification run. In the order of the classification workflow:
 
 1. `sampling/`: the sample set of postcode areas (`analyse_sampling_results.ipynb`).
 2. `plz_parameter_analysis/`: the grid parameters of the sample (`analyse_clustering_parameters.ipynb`,

@@ -33,3 +33,10 @@ p.rubric {
   margin-top: 1.6em;
   margin-bottom: 0.5em;
 }
+
+/* Tutorial gallery: pictures of the same height, cropped from the top */
+img.tutorial-card-image {
+  height: 11rem;
+  object-fit: cover;
+  object-position: center top;
+}

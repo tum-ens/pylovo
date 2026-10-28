@@ -226,8 +226,18 @@ Run them from the repository root with the ``plots`` extra installed:
      - yes
      - ``images/analysis/*`` (charts of stored results)
    * - ``plot_pylovo_examples.py``
-     - yes, and internet
-     - ``images/plotting/*`` (made with pylovo's own plotting functions)
+     - no
+     - ``images/plotting/*`` (made with pylovo's own plotting functions from the example data of the
+       tutorials)
+   * - ``plot_synthetic_metrics.py``
+     - yes (reads)
+     - ``images/analysis/synthetic_comparison_metrics.png`` for PLZ 85256 of the Bavaria run
+       (version ``1``)
+   * - ``make_tutorial_versions.py``
+     - yes (writes)
+     - the version variants of the tutorials (``tut-osm``, ``tut-reach``, ``tut-cabin``, ``tut-large``) for
+       the three example areas, then exports them to ``data/examples/versions``; ``--database`` must name the
+       target database
 
 The database-backed scripts expect a pylovo database with the demo region PLZ 85653 (Aying): an
 OpenStreetMap-derived extract (ODbL) in the InfDB-shaped schemas ``basedata`` and ``opendata``,
@@ -235,3 +245,21 @@ a completed ``pylovo-setup`` and the versions created by ``make_demo_versions.py
 from the database, except ``make_demo_versions.py``. Maps derived from these data must carry the
 attribution "© OpenStreetMap contributors, ODbL". The demo extract is not part of the repository:
 the committed figures are the reference, and regenerating them needs a database with the demo region.
+
+Tutorial notebooks
+~~~~~~~~~~~~~~~~~~
+
+The notebooks of the learning path (``notebook_tutorials/0*.ipynb``) store their outputs, which the documentation
+renders with myst-nb without executing anything (``docs/source/conf.py`` copies them into the git-ignored
+``docs/source/tutorials/`` at build time). Their outputs are made from the example data, so everyone gets the same:
+
+.. code-block:: bash
+
+   uv run --extra notebooks python notebook_tutorials/refresh_outputs.py            # all six
+   uv run --extra notebooks python notebook_tutorials/refresh_outputs.py 05_versions.ipynb
+
+The script runs each notebook without a database, stores the figures as 8-bit palette PNGs (about a third of the
+size) and refuses outputs with errors, output on stderr, home paths, IP addresses or credentials, and notebooks above
+1000 kB, the limit of the pre-commit hook. The example data in ``data/examples`` come from the Bavaria run:
+``export_example_data`` in :mod:`pylovo.examples` writes them read-only from a database that holds it, and
+``make_tutorial_versions.py`` adds the version variants (``data/examples/README.md``).
