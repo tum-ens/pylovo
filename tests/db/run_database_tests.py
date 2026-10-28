@@ -7,7 +7,7 @@ Usage (from the repository root; needs Docker and GDAL's ``ogr2ogr``)::
 
 The script
 
-1. starts the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 3.8) as the container
+1. starts the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 4.0, as the InfDB) as the container
    ``pylovo-test-db`` on ``127.0.0.1:55432`` and creates the databases of the four test groups,
 2. builds the toy town into ``pylovo_test`` (``build_test_database.py``),
 3. runs the database tests (:data:`TESTS`, arguments after ``--`` go to pytest) and
@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE = "pgrouting/pgrouting:17-3.5-3.8.0"
+IMAGE = "pgrouting/pgrouting:17-3.5-4.0.1"
 CONTAINER = "pylovo-test-db"
 TESTS = ["tests/test_toy_town.py", "tests/test_postgis_fixtures.py", "tests/test_database_review.py", "api/tests"]
 

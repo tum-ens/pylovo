@@ -4,7 +4,7 @@
 #   pytest:   the unit tests on Python 3.12 and 3.13 (requires-python); the opt-in database tests skip themselves,
 #             nothing needs a database.
 #   database: tests/db/run_database_tests.py, the same command as locally: builds the toy-town test database on a
-#             disposable PostgreSQL 17 / PostGIS 3.5 / pgRouting 3.8 container and runs the opt-in database tests
+#             disposable PostgreSQL 17 / PostGIS 3.5 / pgRouting 4.0 container and runs the opt-in database tests
 #             against it (docs/source/development/index.rst, section "Database tests").
 # The extras are needed: api/tests and viewer/tests import fastapi (extras api, viewer), the MV plotting tests
 # need matplotlib (extra plots) and are skipped without it. lint and database use the Python of .python-version.

@@ -153,7 +153,7 @@ the CI does:
    uv run --extra api --extra plots python tests/db/run_database_tests.py
    uv run --extra api --extra plots python tests/db/run_database_tests.py -- -x -k toy_town   # pytest arguments
 
-It starts the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 3.8) as the container ``pylovo-test-db``
+It starts the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 4.0) as the container ``pylovo-test-db``
 on ``127.0.0.1:55432``, creates the databases of the table above, builds the toy town, runs the tests and removes
 the container again (``--keep`` keeps it for a look with ``psql``). It takes about a minute and a half.
 
