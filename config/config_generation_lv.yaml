@@ -65,7 +65,7 @@ FEEDER_STANDARD_CABLE: null
 MAX_PARALLEL_FEEDER_CABLES: 4
 
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
-# This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue 
+# This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue
 FEEDER_SPLIT_MAX_CURRENT_KA: 0.4
 
 # Min. routed distance from transformer to an existing upstream split point before a later branch may reuse that point instead of starting as a separate transformer feeder. Switch the feature off by setting a high value.

@@ -822,4 +822,3 @@ def test_a_failed_variant_extension_is_rebuilt_by_the_next_run(region_steps):
     summary = run(dbc, [1, 2])                                                # the same command again
     assert dbc.modes == ["new", "grow", "resume"] and built == [([1, 2], "g2")] and summary.status == "done"
     assert [s[1] for s in dbc.tables.state["subs"]] == ["PLZ [1, 2] on g2"]
-

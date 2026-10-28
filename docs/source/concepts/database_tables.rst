@@ -29,13 +29,13 @@ One row per ``VERSION_ID`` with its comment and the frozen generation-parameter 
      - PK
    * - ``version_comment``
      - ``varchar``
-     - 
+     -
    * - ``created_at``
      - ``TIMESTAMPTZ``
-     - 
+     -
    * - ``generation_parameters``
      - ``jsonb``
-     - 
+     -
 
 ``equipment_data``
 ~~~~~~~~~~~~~~~~~~
@@ -64,28 +64,28 @@ Check ``chk_equipment_positive_ampacity``: ``max_i_a IS NULL OR max_i_a > 0``.
      - PK
    * - ``s_max_kva``
      - ``integer``
-     - 
+     -
    * - ``max_i_a``
      - ``integer``
-     - 
+     -
    * - ``r_mohm_per_km``
      - ``integer``
-     - 
+     -
    * - ``x_mohm_per_km``
      - ``integer``
-     - 
+     -
    * - ``z_mohm_per_km``
      - ``integer``
-     - 
+     -
    * - ``cost_eur``
      - ``integer``
-     - 
+     -
    * - ``typ``
      - ``varchar(50)``
-     - 
+     -
    * - ``grid_role``
      - ``varchar(50)``
-     - 
+     -
 
 ``consumer_categories``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,22 +109,22 @@ Check ``chk_consumer_sim_factor``: ``sim_factor BETWEEN 0 AND 1``.
      - PK
    * - ``definition``
      - ``varchar(30)``
-     - 
+     -
    * - ``peak_load``
      - ``double precision``
-     - 
+     -
    * - ``yearly_consumption``
      - ``double precision``
-     - 
+     -
    * - ``peak_load_per_m2``
      - ``double precision``
-     - 
+     -
    * - ``yearly_consumption_per_m2``
      - ``double precision``
-     - 
+     -
    * - ``sim_factor``
      - ``double precision``
-     - 
+     -
 
 ``postcode``
 ~~~~~~~~~~~~
@@ -148,19 +148,19 @@ Check ``chk_postcode_geom``: ``geom IS NOT NULL``.
      - PK
    * - ``plz``
      - ``integer``
-     - 
+     -
    * - ``note``
      - ``varchar``
-     - 
+     -
    * - ``qkm``
      - ``double precision``
-     - 
+     -
    * - ``population``
      - ``integer``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
 
 ``municipal_register``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -180,34 +180,34 @@ PLZ to AGS mapping with population, area and RegioStaR classes; used to resolve 
      - PK
    * - ``pop``
      - ``bigint``
-     - 
+     -
    * - ``area``
      - ``double precision``
-     - 
+     -
    * - ``lat``
      - ``double precision``
-     - 
+     -
    * - ``lon``
      - ``double precision``
-     - 
+     -
    * - ``ags``
      - ``bigint``
      - PK
    * - ``name_city``
      - ``text``
-     - 
+     -
    * - ``fed_state``
      - ``integer``
-     - 
+     -
    * - ``regio7``
      - ``integer``
-     - 
+     -
    * - ``regio5``
      - ``integer``
-     - 
+     -
    * - ``pop_den``
      - ``double precision``
-     - 
+     -
 
 ``transformers``
 ~~~~~~~~~~~~~~~~
@@ -227,31 +227,31 @@ Transformer candidates: OSM download, LoD2 transformer-station buildings, DSO CS
      - PK
    * - ``area``
      - ``double precision``
-     - 
+     -
    * - ``type``
      - ``varchar``
-     - 
+     -
    * - ``transformer_rated_power``
      - ``integer``
-     - 
+     -
    * - ``geom_type``
      - ``varchar``
-     - 
+     -
    * - ``within_shopping``
      - ``boolean``
-     - 
+     -
    * - ``osm``
      - ``boolean``
-     - 
+     -
    * - ``lod2``
      - ``boolean``
-     - 
+     -
    * - ``lod2_objectid``
      - ``text``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPoint, <TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_graph``
 ~~~~~~~~~~~~
@@ -271,52 +271,52 @@ One row per MV routing graph built from the regional street graph of InfDB, cont
      - PK
    * - ``source_table``
      - ``text``
-     - 
+     -
    * - ``ags``
      - ``text[]``
-     - 
+     -
    * - ``excluded_klasse``
      - ``text[]``
-     - 
+     -
    * - ``snap_tolerance_m``
      - ``double precision``
-     - 
+     -
    * - ``build_parameters``
      - ``jsonb``
-     - 
+     -
    * - ``source_fingerprint``
      - ``text``
-     - 
+     -
    * - ``edge_count``
      - ``integer``
-     - 
+     -
    * - ``vertex_count``
      - ``integer``
-     - 
+     -
    * - ``component_count``
      - ``integer``
-     - 
+     -
    * - ``largest_component_share``
      - ``double precision``
-     - 
+     -
    * - ``total_length_km``
      - ``double precision``
-     - 
+     -
    * - ``settlement_count``
      - ``integer``
-     - 
+     -
    * - ``settlement_edge_share``
      - ``double precision``
-     - 
+     -
    * - ``seam_endpoint_count``
      - ``integer``
-     - 
+     -
    * - ``build_seconds``
      - ``double precision``
-     - 
+     -
    * - ``created_at``
      - ``timestamptz``
-     - 
+     -
 
 ``mv_graph_vertex``
 ~~~~~~~~~~~~~~~~~~~
@@ -341,13 +341,13 @@ Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
      - PK
    * - ``degree``
      - ``integer``
-     - 
+     -
    * - ``component``
      - ``bigint``
-     - 
+     -
    * - ``geom``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_graph_edge``
 ~~~~~~~~~~~~~~~~~
@@ -372,43 +372,43 @@ Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
      - PK
    * - ``ags``
      - ``text``
-     - 
+     -
    * - ``src_id``
      - ``text``
-     - 
+     -
    * - ``klasse``
      - ``text``
-     - 
+     -
    * - ``objektart``
      - ``text``
-     - 
+     -
    * - ``source``
      - ``bigint``
-     - 
+     -
    * - ``target``
      - ``bigint``
-     - 
+     -
    * - ``length_m``
      - ``double precision``
-     - 
+     -
    * - ``component``
      - ``bigint``
-     - 
+     -
    * - ``n_buildings``
      - ``integer``
-     - 
+     -
    * - ``in_settlement``
      - ``boolean``
-     - 
+     -
    * - ``settlement_id``
      - ``bigint``
-     - 
+     -
    * - ``settlement_urban``
      - ``boolean``
-     - 
+     -
    * - ``geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_graph_settlement``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -433,16 +433,16 @@ Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE CASCADE.
      - PK
    * - ``n_buildings``
      - ``integer``
-     - 
+     -
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``urban``
      - ``boolean``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
 
 ``egon_hvmv_substation``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -462,40 +462,40 @@ eGon-data HV/MV substations of Germany from the Open Energy Platform (``pylovo-s
      - PK
    * - ``voltage``
      - ``text``
-     - 
+     -
    * - ``power_type``
      - ``text``
-     - 
+     -
    * - ``substation``
      - ``text``
-     - 
+     -
    * - ``osm_id``
      - ``text``
-     - 
+     -
    * - ``subst_name``
      - ``text``
-     - 
+     -
    * - ``operator``
      - ``text``
-     - 
+     -
    * - ``frequency``
      - ``text``
-     - 
+     -
    * - ``ref``
      - ``text``
-     - 
+     -
    * - ``dbahn``
      - ``text``
-     - 
+     -
    * - ``status``
      - ``integer``
-     - 
+     -
    * - ``geom``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
    * - ``footprint``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
 
 ``ags_log``
 ~~~~~~~~~~~
@@ -532,43 +532,43 @@ Residential building polygons imported from shapefiles (file-based mode only).
      - PK
    * - ``area``
      - ``double precision``
-     - 
+     -
    * - ``use``
      - ``varchar(80)``
-     - 
+     -
    * - ``comment``
      - ``varchar(80)``
-     - 
+     -
    * - ``free_walls``
      - ``integer``
-     - 
+     -
    * - ``building_t``
      - ``varchar(80)``
-     - 
+     -
    * - ``occupants``
      - ``double precision``
-     - 
+     -
    * - ``floors``
      - ``integer``
-     - 
+     -
    * - ``constructi``
      - ``varchar(80)``
-     - 
+     -
    * - ``refurb_wal``
      - ``double precision``
-     - 
+     -
    * - ``refurb_roo``
      - ``double precision``
-     - 
+     -
    * - ``refurb_bas``
      - ``double precision``
-     - 
+     -
    * - ``refurb_win``
      - ``double precision``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon, <TARGET_EPSG>)``
-     - 
+     -
 
 ``oth``
 ~~~~~~~
@@ -588,19 +588,19 @@ Other building polygons imported from shapefiles (file-based mode only).
      - PK
    * - ``area``
      - ``double precision``
-     - 
+     -
    * - ``use``
      - ``varchar(80)``
-     - 
+     -
    * - ``comment``
      - ``varchar(80)``
-     - 
+     -
    * - ``free_walls``
      - ``integer``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon, <TARGET_EPSG>)``
-     - 
+     -
 
 ``ways``
 ~~~~~~~~
@@ -617,22 +617,22 @@ Street network imported from the osm2po SQL dump (file-based mode only).
      - Key
    * - ``clazz``
      - ``integer``
-     - 
+     -
    * - ``source``
      - ``integer``
-     - 
+     -
    * - ``target``
      - ``integer``
-     - 
+     -
    * - ``cost``
      - ``double precision``
-     - 
+     -
    * - ``reverse_cost``
      - ``double precision``
-     - 
+     -
    * - ``geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
    * - ``way_id``
      - ``integer``
      - PK
@@ -655,7 +655,7 @@ Ledger of the applied schema migrations: one row per migration name with the tim
      - PK
    * - ``applied_at``
      - ``timestamptz``
-     - 
+     -
 
 Result tables
 -------------
@@ -685,16 +685,16 @@ Foreign key (postcode_result_plz) references ``postcode`` (plz), ON DELETE CASCA
      - PK, FK → ``postcode``
    * - ``geom``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
    * - ``house_distance``
      - ``double precision``
-     - 
+     -
    * - ``avg_households_per_building``
      - ``double precision``
-     - 
+     -
    * - ``settlement_type``
      - ``integer``
-     - 
+     -
 
 ``grid_result``
 ~~~~~~~~~~~~~~~
@@ -723,70 +723,70 @@ Foreign key (version_id, transformer_equipment_name) references ``equipment_data
      - FK → ``postcode_result``, FK → ``equipment_data``
    * - ``kcid``
      - ``integer``
-     - 
+     -
    * - ``bcid``
      - ``integer``
-     - 
+     -
    * - ``plz``
      - ``integer``
      - FK → ``postcode_result``
    * - ``transformer_rated_power``
      - ``bigint``
-     - 
+     -
    * - ``transformer_equipment_name``
      - ``varchar(100)``
      - FK → ``equipment_data``
    * - ``transformer_description``
      - ``varchar(100)``
-     - 
+     -
    * - ``model_status``
      - ``integer``
-     - 
+     -
    * - ``ont_vertice_id``
      - ``bigint``
-     - 
+     -
    * - ``power_flow_status``
      - ``varchar(32)``
-     - 
+     -
    * - ``ampacity_max_feeder_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``selected_max_feeder_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``feeder_voltage_drop_limit_met``
      - ``boolean``
-     - 
+     -
    * - ``ampacity_max_service_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``selected_max_service_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``service_voltage_drop_limit_met``
      - ``boolean``
-     - 
+     -
    * - ``service_voltage_upgraded_count``
      - ``integer``
-     - 
+     -
    * - ``long_service_connection_count``
      - ``integer``
-     - 
+     -
    * - ``max_total_design_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_feeder_voltage_drop_pu``
      - ``double precision``
-     - 
+     -
    * - ``max_service_voltage_drop_pu``
      - ``double precision``
-     - 
+     -
    * - ``max_total_lv_voltage_drop_pu``
      - ``double precision``
-     - 
+     -
    * - ``grid``
      - ``json``
-     - 
+     -
 
 ``ways_result``
 ~~~~~~~~~~~~~~~
@@ -810,22 +810,22 @@ Check ``chk_ways_result_geom``: ``geom IS NOT NULL``.
      - PK, FK → ``postcode_result``
    * - ``clazz``
      - ``integer``
-     - 
+     -
    * - ``source``
      - ``integer``
-     - 
+     -
    * - ``target``
      - ``integer``
-     - 
+     -
    * - ``cost``
      - ``double precision``
-     - 
+     -
    * - ``reverse_cost``
      - ``double precision``
-     - 
+     -
    * - ``geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
    * - ``way_id``
      - ``integer``
      - PK
@@ -856,25 +856,25 @@ Foreign key (version_id, plz) references ``postcode_result`` (version_id, postco
      - PK, FK → ``postcode_result``
    * - ``trafo_num``
      - ``json``
-     - 
+     -
    * - ``cable_length``
      - ``json``
-     - 
+     -
    * - ``load_count_per_trafo``
      - ``json``
-     - 
+     -
    * - ``bus_count_per_trafo``
      - ``json``
-     - 
+     -
    * - ``sim_peak_load_per_trafo``
      - ``json``
-     - 
+     -
    * - ``max_distance_per_trafo``
      - ``json``
-     - 
+     -
    * - ``avg_distance_per_trafo``
      - ``json``
-     - 
+     -
 
 ``building_exclusion``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -902,7 +902,7 @@ Foreign key (version_id, plz) references ``postcode_result`` (version_id, postco
      - FK → ``postcode_result``
    * - ``reason``
      - ``varchar(40)``
-     - 
+     -
 
 ``buildings_result``
 ~~~~~~~~~~~~~~~~~~~~
@@ -934,106 +934,106 @@ Check ``chk_buildings_result_geom``: ``geom IS NOT NULL``.
      - FK → ``grid_result``
    * - ``id``
      - ``integer``
-     - 
+     -
    * - ``feature_id``
      - ``integer``
-     - 
+     -
    * - ``height``
      - ``double precision``
-     - 
+     -
    * - ``floor_area``
      - ``double precision``
-     - 
+     -
    * - ``floor_number``
      - ``integer``
-     - 
+     -
    * - ``residential_floor_area``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_floor_area``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_use``
      - ``varchar(30)``
-     - 
+     -
    * - ``mix_score``
      - ``double precision``
-     - 
+     -
    * - ``mix_rule``
      - ``text``
-     - 
+     -
    * - ``mix_confidence``
      - ``text``
-     - 
+     -
    * - ``building_use``
      - ``text``
-     - 
+     -
    * - ``building_use_id``
      - ``text``
-     - 
+     -
    * - ``building_type``
      - ``text``
-     - 
+     -
    * - ``type``
      - ``varchar(30)``
-     - 
+     -
    * - ``occupants``
      - ``integer``
-     - 
+     -
    * - ``households``
      - ``integer``
-     - 
+     -
    * - ``construction_year``
      - ``text``
-     - 
+     -
    * - ``postcode``
      - ``integer``
-     - 
+     -
    * - ``address_street_id``
      - ``bigint``
-     - 
+     -
    * - ``street``
      - ``text``
-     - 
+     -
    * - ``house_number``
      - ``text``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
    * - ``centroid``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
    * - ``gemeindeschluessel``
      - ``text``
-     - 
+     -
    * - ``changelog_id``
      - ``bigint``
-     - 
+     -
    * - ``assigned_way_id``
      - ``text``
-     - 
+     -
    * - ``residential_peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_mv_direct``
      - ``boolean``
-     - 
+     -
    * - ``peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``vertice_id``
      - ``integer``
-     - 
+     -
    * - ``connection_point``
      - ``integer``
-     - 
+     -
    * - ``agg_connection_point``
      - ``integer``
-     - 
+     -
 
 ``transformer_positions``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1061,7 +1061,7 @@ Check ``chk_transformer_positions_geom``: ``geom IS NOT NULL``.
      - PK, FK → ``grid_result``
    * - ``geom``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
    * - ``osm_id``
      - ``varchar``
      - FK → ``transformers``
@@ -1070,16 +1070,16 @@ Check ``chk_transformer_positions_geom``: ``geom IS NOT NULL``.
      - FK → ``grid_result``
    * - ``comment``
      - ``varchar``
-     - 
+     -
    * - ``osm``
      - ``boolean``
-     - 
+     -
    * - ``lod2``
      - ``boolean``
-     - 
+     -
    * - ``lod2_objectid``
      - ``text``
-     - 
+     -
 
 ``lines_result``
 ~~~~~~~~~~~~~~~~
@@ -1110,28 +1110,28 @@ Check ``chk_lines_result_parallel``: ``parallel IS NULL OR parallel > 0``.
      - FK → ``grid_result``
    * - ``geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
    * - ``line_name``
      - ``varchar(50)``
-     - 
+     -
    * - ``std_type``
      - ``varchar(50)``
-     - 
+     -
    * - ``from_bus``
      - ``integer``
-     - 
+     -
    * - ``to_bus``
      - ``integer``
-     - 
+     -
    * - ``parallel``
      - ``integer``
-     - 
+     -
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``feeder_section_id``
      - ``integer``
-     - 
+     -
 
 ``lines_result_helper``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -1161,28 +1161,28 @@ Foreign key (grid_result_id, source_lines_result_id) references ``lines_result``
      - FK → ``grid_result``, FK → ``lines_result``
    * - ``geom``
      - ``geometry(Geometry,<TARGET_EPSG>)``
-     - 
+     -
    * - ``line_name``
      - ``varchar(50)``
-     - 
+     -
    * - ``std_type``
      - ``varchar(50)``
-     - 
+     -
    * - ``from_bus``
      - ``integer``
-     - 
+     -
    * - ``to_bus``
      - ``integer``
-     - 
+     -
    * - ``parallel``
      - ``integer``
-     - 
+     -
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``helper_type``
      - ``varchar(50)``
-     - 
+     -
 
 ``lines_result_cache``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1206,52 +1206,52 @@ Foreign key (grid_result_id, source_lines_result_id) references ``lines_result``
      - PK
    * - ``is_helper``
      - ``boolean``
-     - 
+     -
    * - ``source_lines_result_id``
      - ``bigint``
      - FK → ``lines_result``
    * - ``helper_type``
      - ``varchar(50)``
-     - 
+     -
    * - ``grid_result_id``
      - ``bigint``
      - FK → ``grid_result``, FK → ``lines_result``
    * - ``geom``
      - ``geometry(Geometry,<TARGET_EPSG>)``
-     - 
+     -
    * - ``line_name``
      - ``varchar(50)``
-     - 
+     -
    * - ``std_type``
      - ``varchar(50)``
-     - 
+     -
    * - ``from_bus``
      - ``integer``
-     - 
+     -
    * - ``to_bus``
      - ``integer``
-     - 
+     -
    * - ``parallel``
      - ``integer``
-     - 
+     -
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``feeder_section_id``
      - ``integer``
-     - 
+     -
    * - ``version_id``
      - ``varchar(10)``
-     - 
+     -
    * - ``kcid``
      - ``integer``
-     - 
+     -
    * - ``bcid``
      - ``integer``
-     - 
+     -
    * - ``plz``
      - ``integer``
-     - 
+     -
 
 ``split_points``
 ~~~~~~~~~~~~~~~~
@@ -1278,16 +1278,16 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - FK → ``grid_result``
    * - ``split_bus``
      - ``integer``
-     - 
+     -
    * - ``outgoing_count``
      - ``integer``
-     - 
+     -
    * - ``split_type``
      - ``varchar(50)``
-     - 
+     -
    * - ``geom``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
 
 ``pandapower_bus``
 ~~~~~~~~~~~~~~~~~~
@@ -1314,31 +1314,31 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - FK → ``grid_result``
    * - ``pp_index``
      - ``integer``
-     - 
+     -
    * - ``name``
      - ``varchar(255)``
-     - 
+     -
    * - ``vn_kv``
      - ``double precision``
-     - 
+     -
    * - ``type``
      - ``varchar(32)``
-     - 
+     -
    * - ``zone``
      - ``varchar(32)``
-     - 
+     -
    * - ``geo``
      - ``jsonb``
-     - 
+     -
    * - ``in_service``
      - ``boolean``
-     - 
+     -
    * - ``min_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``max_vm_pu``
      - ``double precision``
-     - 
+     -
 
 ``pandapower_line``
 ~~~~~~~~~~~~~~~~~~~
@@ -1373,13 +1373,13 @@ Check ``chk_pp_line_parallel``: ``parallel IS NULL OR parallel > 0``.
      - FK → ``grid_result``, FK → ``pandapower_bus``
    * - ``pp_index``
      - ``integer``
-     - 
+     -
    * - ``name``
      - ``varchar(255)``
-     - 
+     -
    * - ``std_type``
      - ``varchar(100)``
-     - 
+     -
    * - ``from_bus``
      - ``integer``
      - FK → ``pandapower_bus``
@@ -1388,67 +1388,67 @@ Check ``chk_pp_line_parallel``: ``parallel IS NULL OR parallel > 0``.
      - FK → ``pandapower_bus``
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``parallel``
      - ``integer``
-     - 
+     -
    * - ``geo``
      - ``jsonb``
-     - 
+     -
    * - ``in_service``
      - ``boolean``
-     - 
+     -
    * - ``r_ohm_per_km``
      - ``double precision``
-     - 
+     -
    * - ``x_ohm_per_km``
      - ``double precision``
-     - 
+     -
    * - ``c_nf_per_km``
      - ``double precision``
-     - 
+     -
    * - ``g_us_per_km``
      - ``double precision``
-     - 
+     -
    * - ``max_i_ka``
      - ``double precision``
-     - 
+     -
    * - ``df``
      - ``double precision``
-     - 
+     -
    * - ``type``
      - ``varchar(32)``
-     - 
+     -
    * - ``feeder_section_id``
      - ``integer``
-     - 
+     -
    * - ``feeder_sizing_basis``
      - ``varchar(32)``
-     - 
+     -
    * - ``ampacity_std_type``
      - ``varchar(100)``
-     - 
+     -
    * - ``ampacity_parallel``
      - ``integer``
-     - 
+     -
    * - ``service_sizing_basis``
      - ``varchar(32)``
-     - 
+     -
    * - ``service_ampacity_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``service_selected_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``service_voltage_drop_limit_met``
      - ``boolean``
-     - 
+     -
    * - ``service_length_review``
      - ``boolean``
-     - 
+     -
    * - ``total_design_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
 
 ``pandapower_trafo``
 ~~~~~~~~~~~~~~~~~~~~
@@ -1487,13 +1487,13 @@ Check ``chk_pp_trafo_parallel``: ``parallel IS NULL OR parallel > 0``.
      - FK → ``grid_result``, FK → ``pandapower_bus``
    * - ``pp_index``
      - ``integer``
-     - 
+     -
    * - ``name``
      - ``varchar(255)``
-     - 
+     -
    * - ``std_type``
      - ``varchar(100)``
-     - 
+     -
    * - ``hv_bus``
      - ``integer``
      - FK → ``pandapower_bus``
@@ -1502,55 +1502,55 @@ Check ``chk_pp_trafo_parallel``: ``parallel IS NULL OR parallel > 0``.
      - FK → ``pandapower_bus``
    * - ``sn_mva``
      - ``double precision``
-     - 
+     -
    * - ``vn_hv_kv``
      - ``double precision``
-     - 
+     -
    * - ``vn_lv_kv``
      - ``double precision``
-     - 
+     -
    * - ``vkr_percent``
      - ``double precision``
-     - 
+     -
    * - ``vk_percent``
      - ``double precision``
-     - 
+     -
    * - ``pfe_kw``
      - ``double precision``
-     - 
+     -
    * - ``i0_percent``
      - ``double precision``
-     - 
+     -
    * - ``shift_degree``
      - ``double precision``
-     - 
+     -
    * - ``tap_side``
      - ``varchar(16)``
-     - 
+     -
    * - ``tap_neutral``
      - ``integer``
-     - 
+     -
    * - ``tap_min``
      - ``integer``
-     - 
+     -
    * - ``tap_max``
      - ``integer``
-     - 
+     -
    * - ``tap_step_percent``
      - ``double precision``
-     - 
+     -
    * - ``tap_pos``
      - ``integer``
-     - 
+     -
    * - ``tap_phase_shifter``
      - ``boolean``
-     - 
+     -
    * - ``parallel``
      - ``integer``
-     - 
+     -
    * - ``in_service``
      - ``boolean``
-     - 
+     -
 
 ``pandapower_load``
 ~~~~~~~~~~~~~~~~~~~
@@ -1583,67 +1583,67 @@ Check ``chk_pp_load_const_i_percent``: ``const_i_percent IS NULL OR const_i_perc
      - FK → ``grid_result``, FK → ``pandapower_bus``
    * - ``pp_index``
      - ``integer``
-     - 
+     -
    * - ``name``
      - ``varchar(255)``
-     - 
+     -
    * - ``bus``
      - ``integer``
      - FK → ``pandapower_bus``
    * - ``p_mw``
      - ``double precision``
-     - 
+     -
    * - ``q_mvar``
      - ``double precision``
-     - 
+     -
    * - ``service_design_p_mw``
      - ``double precision``
-     - 
+     -
    * - ``operating_point_basis``
      - ``varchar(64)``
-     - 
+     -
    * - ``category``
      - ``varchar(30)``
-     - 
+     -
    * - ``load_units``
      - ``double precision``
-     - 
+     -
    * - ``consumer_vertex``
      - ``bigint``
-     - 
+     -
    * - ``const_z_percent``
      - ``double precision``
-     - 
+     -
    * - ``const_i_percent``
      - ``double precision``
-     - 
+     -
    * - ``sn_mva``
      - ``double precision``
-     - 
+     -
    * - ``scaling``
      - ``double precision``
-     - 
+     -
    * - ``in_service``
      - ``boolean``
-     - 
+     -
    * - ``type``
      - ``varchar(64)``
-     - 
+     -
    * - ``controllable``
      - ``boolean``
-     - 
+     -
    * - ``max_p_mw``
      - ``double precision``
-     - 
+     -
    * - ``min_p_mw``
      - ``double precision``
-     - 
+     -
    * - ``max_q_mvar``
      - ``double precision``
-     - 
+     -
    * - ``min_q_mvar``
      - ``double precision``
-     - 
+     -
 
 ``clustering_parameters``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1665,73 +1665,73 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      - PK, FK → ``grid_result``
    * - ``no_connection_buses``
      - ``integer``
-     - 
+     -
    * - ``no_branches``
      - ``integer``
-     - 
+     -
    * - ``no_house_connections``
      - ``integer``
-     - 
+     -
    * - ``no_house_connections_per_branch``
      - ``double precision``
-     - 
+     -
    * - ``no_households``
      - ``integer``
-     - 
+     -
    * - ``no_household_equ``
      - ``double precision``
-     - 
+     -
    * - ``no_households_per_branch``
      - ``double precision``
-     - 
+     -
    * - ``max_no_of_households_of_a_branch``
      - ``double precision``
-     - 
+     -
    * - ``house_distance_km``
      - ``double precision``
-     - 
+     -
    * - ``transformer_mva``
      - ``double precision``
-     - 
+     -
    * - ``osm_trafo``
      - ``bool``
-     - 
+     -
    * - ``max_trafo_dis``
      - ``double precision``
-     - 
+     -
    * - ``avg_trafo_dis``
      - ``double precision``
-     - 
+     -
    * - ``cable_length_km``
      - ``double precision``
-     - 
+     -
    * - ``cable_len_per_house``
      - ``double precision``
-     - 
+     -
    * - ``max_power_mw``
      - ``double precision``
-     - 
+     -
    * - ``simultaneous_peak_load_mw``
      - ``double precision``
-     - 
+     -
    * - ``resistance``
      - ``double precision``
-     - 
+     -
    * - ``reactance``
      - ``double precision``
-     - 
+     -
    * - ``ratio``
      - ``double precision``
-     - 
+     -
    * - ``vsw_per_branch``
      - ``double precision``
-     - 
+     -
    * - ``max_vsw_of_a_branch``
      - ``double precision``
-     - 
+     -
    * - ``filtered``
      - ``boolean``
-     - 
+     -
 
 ``load_edit``
 ~~~~~~~~~~~~~
@@ -1765,73 +1765,73 @@ Check ``chk_load_edit_undone``: ``(undone_at IS NULL) = (undone_by IS NULL)``.
      - FK → ``grid_result``
    * - ``plz``
      - ``integer``
-     - 
+     -
    * - ``objectid``
      - ``text``
-     - 
+     -
    * - ``action``
      - ``varchar(16)``
-     - 
+     -
    * - ``changes``
      - ``jsonb``
-     - 
+     -
    * - ``reason``
      - ``text``
-     - 
+     -
    * - ``before_building``
      - ``jsonb``
-     - 
+     -
    * - ``after_building``
      - ``jsonb``
-     - 
+     -
    * - ``before_grid``
      - ``jsonb``
-     - 
+     -
    * - ``after_grid``
      - ``jsonb``
-     - 
+     -
    * - ``before_loads``
      - ``jsonb``
-     - 
+     -
    * - ``before_bus_zones``
      - ``jsonb``
-     - 
+     -
    * - ``before_net``
      - ``json``
-     - 
+     -
    * - ``before_net_md5``
      - ``char(32)``
-     - 
+     -
    * - ``after_net_md5``
      - ``char(32)``
-     - 
+     -
    * - ``removed_analysis``
      - ``jsonb``
-     - 
+     -
    * - ``impact``
      - ``jsonb``
-     - 
+     -
    * - ``parameters``
      - ``jsonb``
-     - 
+     -
    * - ``reproduction``
      - ``jsonb``
-     - 
+     -
    * - ``db_user``
      - ``text``
-     - 
+     -
    * - ``client``
      - ``text``
-     - 
+     -
    * - ``created_at``
      - ``timestamptz``
-     - 
+     -
    * - ``undone_at``
      - ``timestamptz``
-     - 
+     -
    * - ``undone_by``
      - ``text``
-     - 
+     -
 
 MV stage tables
 ---------------
@@ -1859,46 +1859,46 @@ Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
      - PK
    * - ``plz``
      - ``integer``
-     - 
+     -
    * - ``id``
      - ``integer``
-     - 
+     -
    * - ``building_use``
      - ``text``
-     - 
+     -
    * - ``building_use_id``
      - ``text``
-     - 
+     -
    * - ``building_type``
      - ``text``
-     - 
+     -
    * - ``type``
      - ``varchar(30)``
-     - 
+     -
    * - ``nonresidential_use``
      - ``varchar(30)``
-     - 
+     -
    * - ``nonresidential_floor_area``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``residential_peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``households``
      - ``integer``
-     - 
+     -
    * - ``gemeindeschluessel``
      - ``text``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
    * - ``centroid``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_variant``
 ~~~~~~~~~~~~~~
@@ -1925,34 +1925,34 @@ Foreign key (graph_id) references ``mv_graph`` (graph_id), ON DELETE SET NULL.
      - PK
    * - ``mv_variant_comment``
      - ``varchar``
-     - 
+     -
    * - ``mv_parameters``
      - ``jsonb``
-     - 
+     -
    * - ``lv_parameters``
      - ``jsonb``
-     - 
+     -
    * - ``plz_list``
      - ``integer[]``
-     - 
+     -
    * - ``graph_id``
      - ``varchar(40)``
      - FK → ``mv_graph``
    * - ``status``
      - ``varchar(16)``
-     - 
+     -
    * - ``lv_fingerprint``
      - ``jsonb``
-     - 
+     -
    * - ``summary``
      - ``jsonb``
-     - 
+     -
    * - ``created_at``
      - ``timestamptz``
-     - 
+     -
    * - ``finished_at``
      - ``timestamptz``
-     - 
+     -
 
 ``mv_substation``
 ~~~~~~~~~~~~~~~~~
@@ -1980,73 +1980,73 @@ Foreign key (version_id, mv_variant_id) references ``mv_variant`` (version_id, m
      - FK → ``mv_variant``
    * - ``source``
      - ``varchar(8)``
-     - 
+     -
    * - ``source_ids``
      - ``text[]``
-     - 
+     -
    * - ``name``
      - ``text``
-     - 
+     -
    * - ``operator``
      - ``text``
-     - 
+     -
    * - ``voltage_tag``
      - ``text``
-     - 
+     -
    * - ``egon_bus_id``
      - ``bigint``
-     - 
+     -
    * - ``egon_distance_m``
      - ``double precision``
-     - 
+     -
    * - ``in_region``
      - ``boolean``
-     - 
+     -
    * - ``attach_edge_id``
      - ``bigint``
-     - 
+     -
    * - ``attach_fraction``
      - ``double precision``
-     - 
+     -
    * - ``attach_offset_m``
      - ``double precision``
-     - 
+     -
    * - ``osm_ratings_mva``
      - ``double precision[]``
-     - 
+     -
    * - ``n_transformers``
      - ``integer``
-     - 
+     -
    * - ``transformer_mva``
      - ``double precision``
-     - 
+     -
    * - ``transformer_sizing``
      - ``varchar(16)``
-     - 
+     -
    * - ``peak_load_mw``
      - ``double precision``
-     - 
+     -
    * - ``peak_feed_in_mw``
      - ``double precision``
-     - 
+     -
    * - ``loading_n0_percent``
      - ``double precision``
-     - 
+     -
    * - ``loading_n1_percent``
      - ``double precision``
-     - 
+     -
    * - ``flags``
      - ``text[]``
-     - 
+     -
    * - ``geom``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
    * - ``footprint``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
    * - ``display_geom``
      - ``geometry(Polygon,<TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_grid``
 ~~~~~~~~~~~
@@ -2081,121 +2081,121 @@ Foreign key (substation_id) references ``mv_substation`` (substation_id), ON DEL
      - FK → ``mv_substation``
    * - ``status``
      - ``varchar(16)``
-     - 
+     -
    * - ``power_flow_status``
      - ``varchar(32)``
-     - 
+     -
    * - ``coupled_status``
      - ``varchar(16)``
-     - 
+     -
    * - ``vn_kv``
      - ``double precision``
-     - 
+     -
    * - ``complete``
      - ``boolean``
-     - 
+     -
    * - ``area_km2``
      - ``double precision``
-     - 
+     -
    * - ``hv_mv_transformers``
      - ``integer``
-     - 
+     -
    * - ``hv_mv_transformer_mva``
      - ``double precision``
-     - 
+     -
    * - ``hv_mv_sizing``
      - ``varchar(16)``
-     - 
+     -
    * - ``oltc_tap_pos``
      - ``integer``
-     - 
+     -
    * - ``peak_load_mw``
      - ``double precision``
-     - 
+     -
    * - ``peak_feed_in_mw``
      - ``double precision``
-     - 
+     -
    * - ``sum_station_kva``
      - ``double precision``
-     - 
+     -
    * - ``n_stations``
      - ``integer``
-     - 
+     -
    * - ``n_customers``
      - ``integer``
-     - 
+     -
    * - ``n_generators``
      - ``integer``
-     - 
+     -
    * - ``n_joints``
      - ``integer``
-     - 
+     -
    * - ``n_rings``
      - ``integer``
-     - 
+     -
    * - ``n_stub_nodes``
      - ``integer``
-     - 
+     -
    * - ``n_feeder_bays``
      - ``integer``
-     - 
+     -
    * - ``circuit_km``
      - ``double precision``
-     - 
+     -
    * - ``cable_km``
      - ``double precision``
-     - 
+     -
    * - ``overhead_km``
      - ``double precision``
-     - 
+     -
    * - ``trench_km``
      - ``double precision``
-     - 
+     -
    * - ``bridge_km``
      - ``double precision``
-     - 
+     -
    * - ``max_voltage_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_voltage_drop_n1_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_voltage_rise_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_line_loading_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_line_loading_n1_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_line_loading_feed_in_percent``
      - ``double precision``
-     - 
+     -
    * - ``n_band_conflicts``
      - ``integer``
-     - 
+     -
    * - ``n_tap_limit``
      - ``integer``
-     - 
+     -
    * - ``metrics``
      - ``jsonb``
-     - 
+     -
    * - ``repairs``
      - ``jsonb``
-     - 
+     -
    * - ``error``
      - ``text``
-     - 
+     -
    * - ``runtime_s``
      - ``double precision``
-     - 
+     -
    * - ``geom``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
-     - 
+     -
    * - ``net``
      - ``json``
-     - 
+     -
 
 ``mv_node``
 ~~~~~~~~~~~
@@ -2232,16 +2232,16 @@ Foreign key (version_id, customer_objectid) references ``mv_customers`` (version
      - FK → ``mv_grid``
    * - ``kind``
      - ``varchar(16)``
-     - 
+     -
    * - ``connection_hint``
      - ``varchar(16)``
-     - 
+     -
    * - ``connection``
      - ``varchar(16)``
-     - 
+     -
    * - ``substation_id``
      - ``bigint``
-     - 
+     -
    * - ``grid_result_id``
      - ``bigint``
      - FK → ``grid_result``
@@ -2250,130 +2250,130 @@ Foreign key (version_id, customer_objectid) references ``mv_customers`` (version
      - FK → ``mv_customers``
    * - ``mastr_connection_id``
      - ``text``
-     - 
+     -
    * - ``voltage_class``
      - ``varchar(8)``
-     - 
+     -
    * - ``technology``
      - ``varchar(32)``
-     - 
+     -
    * - ``plz``
      - ``integer``
-     - 
+     -
    * - ``plz_settlement_type``
      - ``integer``
-     - 
+     -
    * - ``settlement_id``
      - ``bigint``
-     - 
+     -
    * - ``area_class``
      - ``varchar(8)``
-     - 
+     -
    * - ``station_source``
      - ``varchar(24)``
-     - 
+     -
    * - ``households``
      - ``double precision``
-     - 
+     -
    * - ``n_buildings``
      - ``integer``
-     - 
+     -
    * - ``load_stats``
      - ``jsonb``
-     - 
+     -
    * - ``installed_kw``
      - ``double precision``
-     - 
+     -
    * - ``p_own_kw``
      - ``double precision``
-     - 
+     -
    * - ``gen_solar_kw``
      - ``double precision``
-     - 
+     -
    * - ``gen_wind_kw``
      - ``double precision``
-     - 
+     -
    * - ``gen_other_kw``
      - ``double precision``
-     - 
+     -
    * - ``sn_kva``
      - ``double precision``
-     - 
+     -
    * - ``feeder_id``
      - ``integer``
-     - 
+     -
    * - ``ring_id``
      - ``integer``
-     - 
+     -
    * - ``ring_position``
      - ``integer``
-     - 
+     -
    * - ``stub_parent``
      - ``bigint``
-     - 
+     -
    * - ``attach_edge_id``
      - ``bigint``
-     - 
+     -
    * - ``attach_fraction``
      - ``double precision``
-     - 
+     -
    * - ``attach_offset_m``
      - ``double precision``
-     - 
+     -
    * - ``bridged``
      - ``boolean``
-     - 
+     -
    * - ``vm_load_pu``
      - ``double precision``
-     - 
+     -
    * - ``vm_n1_pu``
      - ``double precision``
-     - 
+     -
    * - ``vm_feed_in_pu``
      - ``double precision``
-     - 
+     -
    * - ``lv_design_source_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``lv_max_drop_pu``
      - ``double precision``
-     - 
+     -
    * - ``mv_lv_tap_pos``
      - ``integer``
-     - 
+     -
    * - ``lv_busbar_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``lv_min_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``lv_busbar_vm_feed_in_pu``
      - ``double precision``
-     - 
+     -
    * - ``band_conflict``
      - ``boolean``
-     - 
+     -
    * - ``coupled_lv_busbar_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``coupled_lv_min_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``coupled_lv_busbar_vm_feed_in_pu``
      - ``double precision``
-     - 
+     -
    * - ``coupled_lv_max_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``coupled_op_lv_busbar_vm_pu``
      - ``double precision``
-     - 
+     -
    * - ``flags``
      - ``text[]``
-     - 
+     -
    * - ``geom``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_line``
 ~~~~~~~~~~~
@@ -2416,58 +2416,58 @@ Foreign key (to_node) references ``mv_node`` (mv_node_id), ON DELETE CASCADE.
      - FK → ``mv_node``
    * - ``role``
      - ``varchar(16)``
-     - 
+     -
    * - ``kind``
      - ``varchar(8)``
-     - 
+     -
    * - ``feeder_id``
      - ``integer``
-     - 
+     -
    * - ``ring_id``
      - ``integer``
-     - 
+     -
    * - ``std_type``
      - ``varchar(160)``
-     - 
+     -
    * - ``parallel``
      - ``integer``
-     - 
+     -
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``cable_km``
      - ``double precision``
-     - 
+     -
    * - ``overhead_km``
      - ``double precision``
-     - 
+     -
    * - ``straight_km``
      - ``double precision``
-     - 
+     -
    * - ``bridge_m``
      - ``double precision``
-     - 
+     -
    * - ``normally_open``
      - ``boolean``
-     - 
+     -
    * - ``open_at_node``
      - ``bigint``
-     - 
+     -
    * - ``loading_load_percent``
      - ``double precision``
-     - 
+     -
    * - ``loading_n1_percent``
      - ``double precision``
-     - 
+     -
    * - ``loading_feed_in_percent``
      - ``double precision``
-     - 
+     -
    * - ``geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
    * - ``display_geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
 
 ``mv_ring``
 ~~~~~~~~~~~
@@ -2486,10 +2486,10 @@ Foreign key (mv_grid_id) references ``mv_grid`` (mv_grid_id), ON DELETE CASCADE.
      - Key
    * - ``version_id``
      - ``varchar(10)``
-     - 
+     -
    * - ``mv_variant_id``
      - ``varchar(10)``
-     - 
+     -
    * - ``mv_grid_id``
      - ``bigint``
      - PK, FK → ``mv_grid``
@@ -2498,67 +2498,67 @@ Foreign key (mv_grid_id) references ``mv_grid`` (mv_grid_id), ON DELETE CASCADE.
      - PK
    * - ``kind``
      - ``varchar(16)``
-     - 
+     -
    * - ``n_members``
      - ``integer``
-     - 
+     -
    * - ``n_stations``
      - ``integer``
-     - 
+     -
    * - ``n_customers``
      - ``integer``
-     - 
+     -
    * - ``n_generators``
      - ``integer``
-     - 
+     -
    * - ``n_stub_nodes``
      - ``integer``
-     - 
+     -
    * - ``length_km``
      - ``double precision``
-     - 
+     -
    * - ``half_a_km``
      - ``double precision``
-     - 
+     -
    * - ``half_b_km``
      - ``double precision``
-     - 
+     -
    * - ``stub_km``
      - ``double precision``
-     - 
+     -
    * - ``overhead_km``
      - ``double precision``
-     - 
+     -
    * - ``p_ring_kw``
      - ``double precision``
-     - 
+     -
    * - ``p_half_a_kw``
      - ``double precision``
-     - 
+     -
    * - ``p_half_b_kw``
      - ``double precision``
-     - 
+     -
    * - ``nop_node``
      - ``bigint``
-     - 
+     -
    * - ``max_drop_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_drop_n1_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_loading_percent``
      - ``double precision``
-     - 
+     -
    * - ``max_loading_n1_percent``
      - ``double precision``
-     - 
+     -
    * - ``area_class``
      - ``varchar(8)``
-     - 
+     -
    * - ``has_tie``
      - ``boolean``
-     - 
+     -
 
 Temporary tables
 ----------------
@@ -2578,118 +2578,118 @@ Temporary building table of one postcode, created as ``buildings_tem_<plz>`` and
      - Key
    * - ``id``
      - ``integer``
-     - 
+     -
    * - ``feature_id``
      - ``integer``
-     - 
+     -
    * - ``objectid``
      - ``text``
-     - 
+     -
    * - ``height``
      - ``double precision``
-     - 
+     -
    * - ``floor_area``
      - ``double precision``
-     - 
+     -
    * - ``floor_number``
      - ``integer``
-     - 
+     -
    * - ``residential_floor_area``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_floor_area``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_use``
      - ``varchar(30)``
-     - 
+     -
    * - ``mix_score``
      - ``double precision``
-     - 
+     -
    * - ``mix_rule``
      - ``text``
-     - 
+     -
    * - ``mix_confidence``
      - ``text``
-     - 
+     -
    * - ``building_use``
      - ``text``
-     - 
+     -
    * - ``building_use_id``
      - ``text``
-     - 
+     -
    * - ``building_type``
      - ``text``
-     - 
+     -
    * - ``occupants``
      - ``integer``
-     - 
+     -
    * - ``households``
      - ``integer``
-     - 
+     -
    * - ``construction_year``
      - ``text``
-     - 
+     -
    * - ``postcode``
      - ``integer``
-     - 
+     -
    * - ``address_street_id``
      - ``bigint``
-     - 
+     -
    * - ``street``
      - ``text``
-     - 
+     -
    * - ``house_number``
      - ``text``
-     - 
+     -
    * - ``geom``
      - ``geometry(Geometry,<TARGET_EPSG>)``
-     - 
+     -
    * - ``centroid``
      - ``geometry(Point,<TARGET_EPSG>)``
-     - 
+     -
    * - ``gemeindeschluessel``
      - ``text``
-     - 
+     -
    * - ``changelog_id``
      - ``bigint``
-     - 
+     -
    * - ``assigned_way_id``
      - ``text``
-     - 
+     -
    * - ``type``
      - ``varchar(80)``
-     - 
+     -
    * - ``residential_peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``nonresidential_mv_direct``
      - ``boolean``
-     - 
+     -
    * - ``peak_load_in_kw``
      - ``double precision``
-     - 
+     -
    * - ``plz``
      - ``integer``
-     - 
+     -
    * - ``vertice_id``
      - ``bigint``
-     - 
+     -
    * - ``bcid``
      - ``integer``
-     - 
+     -
    * - ``kcid``
      - ``integer``
-     - 
+     -
    * - ``connection_point``
      - ``integer``
-     - 
+     -
    * - ``agg_connection_point``
      - ``integer``
-     - 
+     -
 
 ``ways_tem_<plz>``
 ~~~~~~~~~~~~~~~~~~
@@ -2706,28 +2706,28 @@ Temporary street table of one postcode, created as ``ways_tem_<plz>``; pgRouting
      - Key
    * - ``clazz``
      - ``integer``
-     - 
+     -
    * - ``source``
      - ``integer``
-     - 
+     -
    * - ``target``
      - ``integer``
-     - 
+     -
    * - ``cost``
      - ``double precision``
-     - 
+     -
    * - ``reverse_cost``
      - ``double precision``
-     - 
+     -
    * - ``geom``
      - ``geometry(LineString,<TARGET_EPSG>)``
-     - 
+     -
    * - ``way_id``
      - ``integer``
-     - 
+     -
    * - ``plz``
      - ``integer``
-     - 
+     -
 
 ``excluded_tem_<plz>``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -2744,10 +2744,10 @@ Temporary table of the buildings removed during the generation of one postcode, 
      - Key
    * - ``objectid``
      - ``text``
-     - 
+     -
    * - ``reason``
      - ``varchar(40)``
-     - 
+     -
 
 Views
 -----

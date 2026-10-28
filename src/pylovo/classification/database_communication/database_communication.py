@@ -168,11 +168,11 @@ class DatabaseCommunication:
                 ),
                 clustering AS (
                     SELECT version_id, plz, kcid, bcid, cp.*
-                    FROM pylovo.clustering_parameters cp 
+                    FROM pylovo.clustering_parameters cp
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
                     WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
                 )
-                SELECT c.* 
+                SELECT c.*
                 FROM clustering c
                 JOIN plz_table p
                 ON c.plz = p.plz
@@ -206,7 +206,7 @@ class DatabaseCommunication:
                 ),
                 clustering AS (
                     SELECT version_id, plz, kcid, bcid, cp.*
-                    FROM pylovo.clustering_parameters cp 
+                    FROM pylovo.clustering_parameters cp
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
                     WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
                 )
@@ -347,7 +347,7 @@ class DatabaseCommunication:
         df_transformers_classified = pd.merge(df_transformer_positions, df_parameters_of_grids, how='right',
                                               left_on=['version_id', 'plz', 'kcid', 'bcid'],
                                               right_on=['version_id', 'plz', 'kcid', 'bcid'])
-        
+
         query = """
                 SELECT grid_result_id, version_id, plz, kcid, bcid
                 FROM pylovo.grid_result

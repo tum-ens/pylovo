@@ -29,12 +29,12 @@ BEGIN
     -- This table will contain all necessary data for building-to-way connections
     DROP TABLE IF EXISTS temp_building_connection_candidates;
     CREATE TEMP TABLE temp_building_connection_candidates AS
-    
+
     -- CTE 1: FILTER BUILDINGS REQUIRING CONNECTIONS
     -- Extract only buildings that have electrical load requirements
     -- These are the buildings that need to be connected to the ways network
     WITH buildings AS (
-        SELECT 
+        SELECT
             objectid,           -- Unique building identifier
             centroid,           -- Geometric centroid point of the building
             COALESCE(type = 'Transformer', false) AS is_transformer
@@ -45,7 +45,7 @@ BEGIN
     -- CTE 2: FIND CLOSEST SUITABLE way FOR EACH BUILDING
     -- For each building, identify the nearest way that can serve as connection point
     closest_way AS (
-        SELECT 
+        SELECT
             b.objectid,                                      -- Building identifier
             b.centroid,                                      -- Building centroid point
             b.is_transformer,
@@ -72,7 +72,7 @@ BEGIN
     -- CTE 3: CALCULATE PRECISE CONNECTION POINTS
     -- Determine the exact point on each way where the building should connect
     connection_line AS (
-        SELECT 
+        SELECT
             c.objectid,                                           -- Building identifier
             c.centroid,                                           -- Building centroid point
             c.is_transformer,
@@ -95,15 +95,15 @@ BEGIN
         old_geom,            -- Geometry of way that will be connected to
         connection_point     -- Exact point on way where connection will be made
     FROM connection_line;
-    
+
     -- Index on old_way_id for fast grouping of connections by way
     -- Useful when processing multiple connections to the same way segment
     CREATE INDEX temp_candidates_old_way_idx ON temp_building_connection_candidates (old_way_id);
-    
+
     -- Spatial index on connection_point for fast geometric searches
     -- Enables efficient spatial queries and nearest-neighbor operations
     CREATE INDEX temp_candidates_connection_gix ON temp_building_connection_candidates USING GIST (connection_point);
 
-    
+
 END;
 $$ LANGUAGE plpgsql;

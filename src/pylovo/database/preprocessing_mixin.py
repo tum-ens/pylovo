@@ -237,7 +237,7 @@ class PreprocessingMixin(BaseMixin):
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = None
-        
+
         # Keep only relevant columns
         df = df[expected_cols]
 

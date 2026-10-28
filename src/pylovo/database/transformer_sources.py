@@ -37,4 +37,3 @@ def source_params(include_dso: bool, include_open: bool, include_manual: bool) -
     """The named parameters of :data:`SOURCE_ENABLED_SQL`."""
     return {"include_dso": bool(include_dso), "include_open": bool(include_open),
             "include_manual": bool(include_manual)}
-

@@ -19,7 +19,7 @@ INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
 CREATE_QUERIES = {
     "version": """CREATE TABLE IF NOT EXISTS pylovo.version (
         version_id varchar(10) PRIMARY KEY,
-        version_comment varchar, 
+        version_comment varchar,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         generation_parameters jsonb
     );
@@ -46,7 +46,7 @@ CREATE_QUERIES = {
     "classification_version": """
     CREATE TABLE IF NOT EXISTS pylovo.classification_version (
         classification_id integer NOT NULL,
-        classification_version_comment varchar, 
+        classification_version_comment varchar,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         classification_region varchar,
         -- the choices of step 7 (classification.rst); NULL for classifications clustered before 0014
@@ -69,14 +69,14 @@ CREATE_QUERIES = {
     )
     """,
     "postcode_result": """
-    CREATE TABLE IF NOT EXISTS pylovo.postcode_result (   
+    CREATE TABLE IF NOT EXISTS pylovo.postcode_result (
         version_id varchar(10) NOT NULL,
         postcode_result_plz integer NOT NULL,
         geom geometry(MultiPolygon,{TARGET_EPSG}),
         house_distance double precision,
         avg_households_per_building double precision,
         settlement_type integer,
-        
+
         CONSTRAINT "postcode_result_pkey" PRIMARY KEY (version_id, postcode_result_plz),
         CONSTRAINT fk_postcode_result_version_id
             FOREIGN KEY (version_id)
@@ -1146,7 +1146,7 @@ CREATE_QUERIES = {
     """,
     "transformer_classified_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid AS (
-        SELECT 
+        SELECT
             tc.*,
             gr.version_id,
             gr.kcid,
@@ -1163,8 +1163,8 @@ CREATE_QUERIES = {
             ed.typ AS equipment_type
         FROM pylovo.transformer_classified tc
         JOIN pylovo.grid_result gr ON tc.grid_result_id = gr.grid_result_id
-        LEFT JOIN pylovo.equipment_data ed 
-            ON gr.version_id = ed.version_id 
+        LEFT JOIN pylovo.equipment_data ed
+            ON gr.version_id = ed.version_id
             AND gr.transformer_equipment_name = ed.name
     );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_transformer_classified_with_grid_uq_grid_result_id_classification_id

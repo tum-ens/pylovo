@@ -475,4 +475,3 @@ class MvSourceMixin(BaseMixin):
         frame = _frame(rows, EGON_SUBSTATION_COLUMNS, floats=("x", "y"), ints=("bus_id",))
         keep = self.near_region(frame[["x", "y"]].to_numpy(dtype=float), region_wkb, buffer_m)
         return frame[keep].reset_index(drop=True)
-

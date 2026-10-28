@@ -104,5 +104,3 @@ def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
         plotly.offline.plot(figure, filename=str(savepath_file), auto_open=False)
 
     return figure
-
-

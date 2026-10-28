@@ -574,7 +574,7 @@ class AnalysisMixin(BaseMixin):
     def has_clustering_parameters(self, plz: int, kcid: int, bcid: int) -> bool:
         """Return whether ``clustering_parameters`` already has a row for the grid in the active version."""
         query = """
-            SELECT 1 
+            SELECT 1
             FROM pylovo.clustering_parameters cp
             JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
             WHERE gr.plz = %s AND gr.kcid = %s AND gr.bcid = %s AND gr.version_id = %s

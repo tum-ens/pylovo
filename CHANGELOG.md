@@ -1,7 +1,7 @@
 
 # Changelog
 
-All notable changes to this project will be documented in this file. 
+All notable changes to this project will be documented in this file.
 See below for the format and guidelines for updating the changelog.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
@@ -108,7 +108,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Rework transformer placement and cluster validation by adding a maximum greenfield transformer distance for transformer locations
 - Introduce separated feeder and consumer connection cable sets
 - Update the grid default generation configuration, e.g. a higher household peak load, revised settlement thresholds, and an updated brownfield assignment distance
-- Reduce heavy and add optional dependencies 
+- Reduce heavy and add optional dependencies
 - Update database table structures to include analysis parameters and powerflow status in grid results
 - Adjust ways query to latest InfDB version v4.0.0
 - Added metrics calculation functions for grid comparison
@@ -220,7 +220,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Explanation of bugs or issues that have been resolved.
-  
+
 ### Deprecated
 - Note any features that are marked for future removal.
 
@@ -257,4 +257,3 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 3. **Link Issues or MRs**: Where possible, reference related issues or merge requests for easy tracking.
 4. **Date Each Release**: Add the release date in `YYYY-MM-DD` format for each version.
 5. **Organize Unreleased Changes**: Document ongoing changes under the `[Unreleased]` section, which can be merged into the next release version.
-

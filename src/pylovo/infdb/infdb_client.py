@@ -185,7 +185,7 @@ class InfdbClient:
             buildings = self.cur.fetchall()
 
         return buildings
-    
+
     def fetch_transformer_station_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """Return the LoD2 transformer-station buildings of a PLZ (``building_use_id`` 31001_2523).
 
@@ -430,7 +430,7 @@ class InfdbClient:
                                      "srid": srid or int(polygon_srid), "plz": int(plz), "ring": float(ring_m)})
             inside, ring = self.cur.fetchone()
         return float(inside), float(ring)
-    
+
     def fetch_postcode_from_infdb(self, plz: int) -> tuple | None:
         """Return ``(plz, note, qkm, population, geom)`` of one PLZ from ``INFDB_OPENDATA_SCHEMA.postcodes_germany``.
 
@@ -468,4 +468,3 @@ class InfdbClient:
             raise ValueError("No postcode found in infdb")
 
         return rows
-

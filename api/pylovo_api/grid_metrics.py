@@ -367,4 +367,3 @@ def version_limits(generation_parameters: dict | None) -> dict[str, Any]:
     pf = gp.get("power_flow_assessment") or {}
     return {"min_vm_pu": pf.get("min_vm_pu"), "max_vm_pu": pf.get("max_vm_pu"),
             "planning_utilisation": (gp.get("transformer_placement") or {}).get("transformer_planning_utilization")}
-

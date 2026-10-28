@@ -36,16 +36,16 @@ $$
 DECLARE
     -- Record for iterating through building connection candidates
     r RECORD;
-    
+
     -- Record for iterating through grouped way splits
     s RECORD;
-    
+
     -- Temporary geometry variable for building connection lines
     final_geom geometry;
-    
+
     -- Individual way segment returned from splitting operations
     part geometry;
-    
+
 BEGIN
     -- =====================================================================================
     -- PHASE 1: ANALYSIS - Generate Connection Candidates
@@ -84,7 +84,7 @@ BEGIN
         ELSIF ST_Distance(ST_StartPoint(r.old_geom), r.connection_point) < 0.1 THEN
             -- Create connection line from building centroid to way start point
             final_geom := ST_MakeLine(r.centroid, ST_StartPoint(r.old_geom));
-            
+
             -- Insert connection line with classification 110 (building connection)
             PERFORM insert_way_segment(110, final_geom);
 
@@ -92,14 +92,14 @@ BEGIN
             -- The connection uses the existing way endpoint
             DELETE FROM temp_building_connection_candidates
             WHERE objectid = r.objectid;
-            
-        -- CASE 2: CONNECTION NEAR WAY END POINT  
+
+        -- CASE 2: CONNECTION NEAR WAY END POINT
         -- If connection point is very close to the end of the existing way
         -- Connect directly to the end point to avoid unnecessary way splitting
         ELSIF ST_Distance(ST_EndPoint(r.old_geom), r.connection_point) < 0.1 THEN
             -- Create connection line from building centroid to way end point
             final_geom := ST_MakeLine(r.centroid, ST_EndPoint(r.old_geom));
-            
+
             -- Insert connection line with classification 110 (building connection)
             PERFORM insert_way_segment(110, final_geom);
 
@@ -114,7 +114,7 @@ BEGIN
         ELSE
             -- Use the connection line calculated during analysis phase
             final_geom := r.new_geom;
-            
+
             -- Insert connection line with classification 110 (building connection)
             PERFORM insert_way_segment(110, final_geom);
         END IF;
@@ -127,9 +127,9 @@ BEGIN
     -- This ensures each way is split only once, even with multiple connections
     DROP TABLE IF EXISTS grouped_splits;
     CREATE TEMP TABLE grouped_splits AS
-    SELECT 
+    SELECT
         old_way_id,                           -- ID of way that will be split
-        old_geom,                            -- Geometry of way that will be split  
+        old_geom,                            -- Geometry of way that will be split
         -- Aggregate all connection points for this way, ordered by position along the way
         -- This ordering is crucial for proper segmentation
         ARRAY_AGG(connection_point ORDER BY ST_LineLocatePoint(old_geom, connection_point)) AS connection_points
@@ -160,7 +160,7 @@ BEGIN
     -- =====================================================================================
     -- At this point:
     -- 1. All buildings have connection lines (classification 110)
-    -- 2. Original ways are segmented at connection points (classification 103)  
+    -- 2. Original ways are segmented at connection points (classification 103)
     -- 3. Network topology properly represents building-to-infrastructure connections
 
 END;

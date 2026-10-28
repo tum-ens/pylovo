@@ -213,4 +213,3 @@ def plot_line_loading_distribution(
 
     fig.tight_layout()
     return fig
-

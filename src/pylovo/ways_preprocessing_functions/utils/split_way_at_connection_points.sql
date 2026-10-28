@@ -1,9 +1,9 @@
 /*
  * FUNCTION PURPOSE AND OVERVIEW:
  * =============================
- * This function splits a single linear geometry of ways into multiple 
- * segments at specified point locations. It takes a line geometry and an array of 
- * point geometries, then returns each segment between consecutive points as separate 
+ * This function splits a single linear geometry of ways into multiple
+ * segments at specified point locations. It takes a line geometry and an array of
+ * point geometries, then returns each segment between consecutive points as separate
  * geometric objects.
  *
  * The function is essential for network segmentation operations where you need to
@@ -20,7 +20,7 @@
  * - line: LineString geometry to be split
  * - points: Array of Point geometries indicating where to split the line
  *
- * OUTPUT: 
+ * OUTPUT:
  * - TABLE with 'part' column containing LineString geometries for each segment
  * - Each row represents one segment between consecutive split points
  */
@@ -30,14 +30,14 @@ RETURNS TABLE(part geometry) AS $$
 DECLARE
     -- Loop counter for iterating through the points array
     i INTEGER;
-    
+
     -- Fractional position along the line where the previous segment ended
     -- Ranges from 0.0 (line start) to 1.0 (line end)
     start_fraction FLOAT := 0;
-    
+
     -- Fractional position along the line where the current segment should end
     end_fraction FLOAT;
-    
+
 BEGIN
     -- MAIN PROCESSING LOOP: Iterate through all points in the input array
     -- Each iteration creates one line segment between consecutive points
@@ -47,7 +47,7 @@ BEGIN
         -- ST_LineLocatePoint returns a value between 0.0 (start) and 1.0 (end)
         -- indicating where this point lies along the line geometry
         end_fraction := ST_LineLocatePoint(line, points[i]);
-        
+
         -- STEP 2: Validate segment and extract geometry
         -- Only create a segment if the end point is further along than the start
         -- This prevents zero-length or backwards segments
@@ -57,11 +57,11 @@ BEGIN
             RETURN QUERY
             SELECT ST_LineSubstring(line, start_fraction, end_fraction);
         END IF;
-        
+
         -- STEP 3: Update start position for next iteration
         -- The end of this segment becomes the start of the next segment
         start_fraction := end_fraction;
-        
+
     END LOOP;
 
     -- STEP 4: HANDLE FINAL SEGMENT
@@ -72,6 +72,6 @@ BEGIN
         RETURN QUERY
         SELECT ST_LineSubstring(line, start_fraction, 1);
     END IF;
-    
+
 END;
 $$ LANGUAGE plpgsql;

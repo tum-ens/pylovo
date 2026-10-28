@@ -489,7 +489,7 @@ class TransformerMapUI:
         .legend-marker.red {
             background: #dc3545;
         }
-        
+
         /* Bulk Management Styles */
         .radio-group {
             display: flex;
@@ -501,7 +501,7 @@ class TransformerMapUI:
             border-radius: 6px;
             border: 1px solid #dee2e6;
         }
-        
+
         .radio-label {
             display: flex;
             align-items: center;
@@ -513,21 +513,21 @@ class TransformerMapUI:
             font-weight: 500;
             white-space: nowrap;
         }
-        
+
         .radio-label:hover {
             background-color: #e9ecef;
         }
-        
+
         .radio-label input[type="radio"] {
             margin-right: 4px;
             margin-left: 0;
         }
-        
+
         .radio-label input[type="radio"]:checked + span {
             color: #007bff;
             font-weight: 600;
         }
-        
+
         .distribution-panel {
             margin: 15px 0;
             padding: 15px;
@@ -535,19 +535,19 @@ class TransformerMapUI:
             border-radius: 6px;
             background-color: #f8f9fa;
         }
-        
+
         .capacity-percentage-item {
             display: flex;
             align-items: center;
             margin: 8px 0;
             gap: 10px;
         }
-        
+
         .capacity-percentage-item label {
             min-width: 120px;
             font-size: 14px;
         }
-        
+
         .percentage-slider {
             flex: 1;
             margin: 0 10px;
@@ -559,7 +559,7 @@ class TransformerMapUI:
             outline: none;
             position: relative;
         }
-        
+
         .percentage-slider::-webkit-slider-track {
             width: 100%;
             height: 8px;
@@ -567,7 +567,7 @@ class TransformerMapUI:
             background: #e9ecef;
             border-radius: 4px;
         }
-        
+
         .percentage-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
@@ -581,7 +581,7 @@ class TransformerMapUI:
             position: relative;
             z-index: 2;
         }
-        
+
         .percentage-slider::-moz-range-track {
             width: 100%;
             height: 8px;
@@ -590,7 +590,7 @@ class TransformerMapUI:
             border-radius: 4px;
             border: none;
         }
-        
+
         .percentage-slider::-moz-range-thumb {
             width: 0px;
             height: 0px;
@@ -600,12 +600,12 @@ class TransformerMapUI:
             border: 3px solid #fff;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
-        
+
         .percentage-slider:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
-        
+
         /* Enhanced slider with visual fill */
         .slider-container {
             position: relative;
@@ -617,7 +617,7 @@ class TransformerMapUI:
             overflow: visible;
             padding: 0 8px;
         }
-        
+
         .slider-fill {
             position: absolute;
             top: 6px;
@@ -628,7 +628,7 @@ class TransformerMapUI:
             transition: width 0.1s ease;
             width: 0%;
         }
-        
+
         .slider-thumb {
             position: absolute;
             top: 50%;
@@ -643,7 +643,7 @@ class TransformerMapUI:
             z-index: 3;
             transition: left 0.1s ease;
         }
-        
+
         .percentage-slider {
             position: absolute;
             top: 0;
@@ -657,7 +657,7 @@ class TransformerMapUI:
             z-index: 1;
             pointer-events: none;
         }
-        
+
         .percentage-slider::-webkit-slider-track {
             width: 100%;
             height: 8px;
@@ -665,7 +665,7 @@ class TransformerMapUI:
             background: transparent;
             border-radius: 4px;
         }
-        
+
         .percentage-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
@@ -676,7 +676,7 @@ class TransformerMapUI:
             cursor: pointer;
             border: none;
         }
-        
+
         .percentage-slider::-moz-range-track {
             width: 100%;
             height: 8px;
@@ -685,7 +685,7 @@ class TransformerMapUI:
             border-radius: 4px;
             border: none;
         }
-        
+
         .percentage-slider::-moz-range-thumb {
             width: 0px;
             height: 0px;
@@ -694,19 +694,19 @@ class TransformerMapUI:
             cursor: pointer;
             border: none;
         }
-        
+
         .percentage-slider:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
-        
+
         .percentage-value {
             min-width: 40px;
             text-align: right;
             font-weight: bold;
             color: #495057;
         }
-        
+
         .percentage-summary {
             display: flex;
             justify-content: space-between;
@@ -716,7 +716,7 @@ class TransformerMapUI:
             background-color: #e9ecef;
             border-radius: 4px;
         }
-        
+
         .btn-small {
             padding: 4px 8px;
             font-size: 12px;
@@ -726,11 +726,11 @@ class TransformerMapUI:
             border-radius: 3px;
             cursor: pointer;
         }
-        
+
         .btn-small:hover {
             background: #5a6268;
         }
-        
+
         .bulk-status {
             margin-top: 15px;
             padding: 10px;
@@ -738,11 +738,11 @@ class TransformerMapUI:
             border-radius: 4px;
             font-size: 14px;
         }
-        
+
         .bulk-status div {
             margin: 2px 0;
         }
-        
+
         #transformer-count {
             font-weight: bold;
             color: #495057;
@@ -768,7 +768,7 @@ class TransformerMapUI:
             <h3>Transformer Management</h3>
             <div id="current-plz-display" class="current-plz">No PLZ loaded</div>
         </div>
-        
+
         <div class="form-section">
             <h4>Load Area</h4>
             <div class="form-group">
@@ -780,7 +780,7 @@ class TransformerMapUI:
                 <button class="btn" onclick="clearMap()">Clear Map</button>
             </div>
         </div>
-        
+
         <div class="form-section">
             <h4>Add New Transformer</h4>
             <div class="button-group">
@@ -794,7 +794,7 @@ class TransformerMapUI:
                 </select>
             </div>
         </div>
-        
+
         <div class="form-section">
             <h4>Bulk Capacity Management</h4>
             <div class="form-group">
@@ -810,7 +810,7 @@ class TransformerMapUI:
                     </label>
                 </div>
             </div>
-            
+
             <div id="uniform-distribution" class="distribution-panel">
                 <div class="form-group">
                     <label for="bulk-capacity-select">Set All Transformers to:</label>
@@ -820,7 +820,7 @@ class TransformerMapUI:
                 </div>
                 <button id="apply-uniform" class="btn" onclick="applyUniformCapacity()" style="background: #007bff;">Apply to All Transformers</button>
             </div>
-            
+
             <div id="percentage-distribution" class="distribution-panel" style="display: none;">
                 <div class="form-group">
                     <label>Capacity Distribution (%):</label>
@@ -834,19 +834,19 @@ class TransformerMapUI:
                 </div>
                 <button id="apply-percentage" class="btn" onclick="applyPercentageDistribution()" style="background: #6f42c1;">Apply Distribution Randomly</button>
             </div>
-            
+
             <div class="bulk-status">
                 <div id="bulk-status-text"></div>
                 <div id="transformer-count">Transformers in area: 0</div>
             </div>
-            
+
             <div class="form-group" style="margin-top: 15px;">
                 <button id="clear-capacities" class="btn" onclick="clearAllCapacities()" style="background: #dc3545; color: white;">
                     Clear All Capacities
                 </button>
             </div>
         </div>
-        
+
         <div class="instructions">
             <h4>Instructions:</h4>
             <ul>
@@ -891,7 +891,7 @@ class TransformerMapUI:
                 zoomSnap: 0.25,
                 zoomDelta: 0.5
             });
-            
+
             L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 18,
@@ -901,9 +901,9 @@ class TransformerMapUI:
                 updateWhenIdle: true,
                 keepBuffer: 2
             }).addTo(map);
-            
+
             transformerLayer = L.layerGroup().addTo(map);
-            
+
             // Add click handler for map
             map.on('click', async function(e) {
                 console.log('Map clicked!', { isAddingMode, currentPLZ, lat: e.latlng.lat, lng: e.latlng.lng });
@@ -911,14 +911,14 @@ class TransformerMapUI:
                     console.log('Click ignored - not in adding mode or no PLZ selected');
                     return;
                 }
-                
+
                 const lat = e.latlng.lat;
                 const lng = e.latlng.lng;
                 const geomWkt = `POINT(${lng} ${lat})`;
-                
+
                 const capacity = document.getElementById('capacity-select').value;
                 console.log('Adding transformer with:', { capacity, geomWkt });
-                
+
                 try {
                     console.log('Sending request with:', { plz: currentPLZ, geom_wkt: geomWkt, transformer_rated_power: capacity });
                     const response = await fetch('/api/add-transformer', {
@@ -932,10 +932,10 @@ class TransformerMapUI:
                             transformer_rated_power: capacity ? parseInt(capacity) : null
                         })
                     });
-                    
+
                     const data = await response.json();
                     console.log('Response from server:', data);
-                    
+
                     if (data.success) {
                         showStatus('Transformer added successfully', 'success');
                         // Add the new transformer to the map without reloading
@@ -1013,17 +1013,17 @@ class TransformerMapUI:
         async function loadPLZData() {
             const plzInput = document.getElementById('plz-input');
             let plz = plzInput.value;
-            
+
             // If input is empty but we have a current PLZ, use that instead
             if (!plz && currentPLZ) {
                 plz = currentPLZ.toString();
             }
-            
+
             if (!plz) {
                 showStatus('Please enter a PLZ code', 'error');
                 return;
             }
-            
+
             // Validate PLZ (German postcodes 01001-99999; the database keys are integers, so 01067 is 1067)
             const plzText = plz.trim();
             const plzNum = parseInt(plzText, 10);
@@ -1031,16 +1031,16 @@ class TransformerMapUI:
                 showStatus('Please enter a valid German PLZ (01001-99999)', 'error');
                 return;
             }
-            
+
             // Don't automatically enable adding mode - let user toggle it
-            
+
             try {
                 // Clear map first (but preserve PLZ)
                 transformerLayer.clearLayers();
                 isAddingMode = false;
                 document.getElementById('plz-input').value = '';
                 document.getElementById('capacity-select').value = '';
-                
+
                 // Reset adding mode button
                 const button = document.getElementById('toggle-add-mode');
                 const status = document.getElementById('add-mode-status');
@@ -1048,15 +1048,15 @@ class TransformerMapUI:
                 button.textContent = 'Start Adding Transformers';
                 status.textContent = 'Adding mode: OFF';
                 status.style.color = '#666';
-                
+
                 // Set PLZ after clearing
                 currentPLZ = plzNum;
                 currentPLZDisplay = plzNum;
-                
+
                 // Load PLZ bounds (if available in database)
                 const boundsResponse = await fetch(`/api/plz-bounds/${plzNum}`);
                 const boundsData = await boundsResponse.json();
-                
+
                 if (boundsData.success) {
                     const bounds = boundsData.bounds;
                     console.log('PLZ bounds:', bounds);
@@ -1069,25 +1069,25 @@ class TransformerMapUI:
                     const lng = 10.0 + (plzNum / 1000) / 100.0; // Very rough longitude
                     map.setView([lat, lng], 12);
                 }
-                
+
                 // Load transformer positions
                 const response = await fetch(`/api/transformer-positions/${plzNum}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     // Add transformers
                     data.positions.forEach(pos => {
                         addTransformerMarker(pos);
                     });
-                    
+
                     // Update PLZ display after successful load
                     document.getElementById('current-plz-display').textContent = `Current PLZ: ${plzNum}`;
                     document.getElementById('current-plz-display').style.background = '#d4edda';
                     document.getElementById('current-plz-display').style.color = '#155724';
-                    
+
                     // Update transformer count for bulk management
                     updateTransformerCount(data.positions.length);
-                    
+
                     showStatus(`Loaded ${data.positions.length} transformer positions for PLZ ${plzNum}`, 'success');
                 } else {
                     showStatus('Error loading transformer positions: ' + data.error, 'error');
@@ -1104,90 +1104,90 @@ class TransformerMapUI:
             console.log('WKT string:', position.geom_wkt);
             console.log('WKT string length:', position.geom_wkt.length);
             console.log('WKT string type:', typeof position.geom_wkt);
-            
+
             // Parse WKT geometry to get coordinates (handle both POINT and MULTIPOINT)
             // Try single parentheses first (for manually added transformers)
             let wktMatch = position.geom_wkt.match(/POINT\(([^)]+)\)/);
             console.log('POINT (single) match:', wktMatch);
-            
+
             if (!wktMatch) {
                 // Try double parentheses (for existing transformers)
                 wktMatch = position.geom_wkt.match(/POINT\(\(([^)]+)\)\)/);
                 console.log('POINT (double) match:', wktMatch);
             }
-            
+
             if (!wktMatch) {
                 // Try MULTIPOINT with single parentheses (no space)
                 wktMatch = position.geom_wkt.match(/MULTIPOINT\(([^)]+)\)/);
                 console.log('MULTIPOINT (single, no space) match:', wktMatch);
             }
-            
+
             if (!wktMatch) {
                 // Try MULTIPOINT with double parentheses (no space)
                 wktMatch = position.geom_wkt.match(/MULTIPOINT\(\(([^)]+)\)\)/);
                 console.log('MULTIPOINT (double, no space) match:', wktMatch);
             }
-            
+
             if (!wktMatch) {
                 // Try MULTIPOINT with single parentheses (with space)
                 wktMatch = position.geom_wkt.match(/MULTIPOINT\s+\(([^)]+)\)/);
                 console.log('MULTIPOINT (single, with space) match:', wktMatch);
             }
-            
+
             if (!wktMatch) {
                 // Try MULTIPOINT with double parentheses (with space)
                 wktMatch = position.geom_wkt.match(/MULTIPOINT\s+\(\(([^)]+)\)\)/);
                 console.log('MULTIPOINT (double, with space) match:', wktMatch);
             }
-            
+
             if (!wktMatch) {
                 console.error('Could not parse WKT:', position.geom_wkt);
                 return;
             }
-            
+
             console.log('Matched group:', wktMatch[1]);
-            
+
             // Clean the matched group by removing any leading/trailing parentheses and whitespace
             const cleanCoords = wktMatch[1].replace(/^[\(\s]+|[\)\s]+$/g, '');
             console.log('Cleaned coordinates:', cleanCoords);
-            
+
             // Split coordinates and parse
             const coords = cleanCoords.split(/\s+/).map(coord => parseFloat(coord.trim()));
             console.log('Parsed coordinates:', coords);
-            
+
             if (coords.length !== 2 || isNaN(coords[0]) || isNaN(coords[1])) {
                 console.error('Invalid coordinates:', coords);
                 return;
             }
-            
+
             const [lng, lat] = coords;
             // WKT format is (lng lat), but Leaflet expects [lat, lng]
             console.log('Creating marker at:', [lat, lng]);
-            
+
             // Determine if this is a manually added transformer
             const isManual = position.osm_id && position.osm_id.startsWith('manual/');
             const markerColor = isManual ? 'red' : 'blue';
-            
+
             // Create custom icon based on transformer type
             const customIcon = L.divIcon({
                 className: 'custom-marker',
                 html: `<div style="
-                    width: 12px; 
-                    height: 12px; 
-                    background-color: ${markerColor}; 
-                    border: 2px solid white; 
-                    border-radius: 50%; 
+                    width: 12px;
+                    height: 12px;
+                    background-color: ${markerColor};
+                    border: 2px solid white;
+                    border-radius: 50%;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                 "></div>`,
                 iconSize: [16, 16],
                 iconAnchor: [8, 8]
             });
-            
+
             const marker = L.marker([lat, lng], { icon: customIcon }).addTo(transformerLayer);
-            
+
             // Store osmId in marker options for deletion
             marker.options.osmId = position.osm_id;
-            
+
             const popupContent = `
                 <div class="transformer-popup">
                     <h4>Transformer ${escapeHtml(position.osm_id)} ${isManual ? '<span style="color: #dc3545; font-size: 12px;">(Manual)</span>' : ''}</h4>
@@ -1205,9 +1205,9 @@ class TransformerMapUI:
                     </div>
                 </div>
             `;
-            
+
             marker.bindPopup(popupContent);
-            
+
             // Populate capacity dropdown when popup opens
             marker.on('popupopen', function() {
                 const select = document.getElementById(`edit-capacity-${position.osm_id}`);
@@ -1229,33 +1229,33 @@ class TransformerMapUI:
         async function updateTransformerCapacity(osmId) {
             const select = document.getElementById(`edit-capacity-${osmId}`);
             const newCapacity = select.value;
-            
+
             if (!newCapacity) {
                 showStatus('Please select a capacity', 'error');
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/update-transformer-capacity', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         osm_id: osmId,
                         transformer_rated_power: parseInt(newCapacity)
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     showStatus('Transformer capacity updated successfully', 'success');
-                    
+
                     // Update the capacity display in the popup
                     const capacitySpan = document.getElementById(`capacity-${osmId}`);
                     capacitySpan.textContent = newCapacity + ' kVA';
-                    
+
                     // Reset the select
                     select.value = '';
                 } else {
@@ -1272,7 +1272,7 @@ class TransformerMapUI:
             if (!confirm('Are you sure you want to delete this transformer?')) {
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/delete-transformer', {
                     method: 'POST',
@@ -1281,9 +1281,9 @@ class TransformerMapUI:
                     },
                     body: JSON.stringify({ osm_id: osmId })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     // Remove the specific marker from the map
                     transformerLayer.eachLayer(function(layer) {
@@ -1309,11 +1309,11 @@ class TransformerMapUI:
                 showStatus('Please load a PLZ first', 'error');
                 return;
             }
-            
+
             isAddingMode = !isAddingMode;
             const button = document.getElementById('toggle-add-mode');
             const status = document.getElementById('add-mode-status');
-            
+
             if (isAddingMode) {
                 button.style.background = '#dc3545';
                 button.textContent = 'Stop Adding Transformers';
@@ -1339,12 +1339,12 @@ class TransformerMapUI:
             currentPLZDisplay = null;
             document.getElementById('plz-input').value = '';
             document.getElementById('capacity-select').value = '';
-            
+
             // Reset PLZ display
             document.getElementById('current-plz-display').textContent = 'No PLZ loaded';
             document.getElementById('current-plz-display').style.background = '#e3f2fd';
             document.getElementById('current-plz-display').style.color = '#1976d2';
-            
+
             // Reset adding mode button
             const button = document.getElementById('toggle-add-mode');
             const status = document.getElementById('add-mode-status');
@@ -1372,7 +1372,7 @@ class TransformerMapUI:
         // Bulk Management Functions
         let availableCapacities = [];
         let transformerCount = 0;
-        
+
         // Load transformer capacities for bulk management
         async function loadTransformerCapacitiesForBulk() {
             try {
@@ -1390,16 +1390,16 @@ class TransformerMapUI:
                 console.error('Error loading transformer capacities:', error);
             }
         }
-        
+
         // Populate bulk capacity selects
         function populateBulkCapacitySelects() {
             const bulkSelect = document.getElementById('bulk-capacity-select');
             const percentageContainer = document.getElementById('capacity-percentages');
-            
+
             // Clear existing options
             bulkSelect.innerHTML = '<option value="">Select capacity...</option>';
             percentageContainer.innerHTML = '';
-            
+
             // Add options to uniform select
             availableCapacities.forEach(capacity => {
                 const option = document.createElement('option');
@@ -1407,7 +1407,7 @@ class TransformerMapUI:
                 option.textContent = `${capacity} kVA`;
                 bulkSelect.appendChild(option);
             });
-            
+
             // Create percentage sliders for each capacity
             availableCapacities.forEach(capacity => {
                 const item = document.createElement('div');
@@ -1417,20 +1417,20 @@ class TransformerMapUI:
                     <div class="slider-container">
                         <div class="slider-fill" style="width: 0%"></div>
                         <div class="slider-thumb" style="left: 0%"></div>
-                        <input type="range" class="percentage-slider" 
-                               min="0" max="100" value="0" 
+                        <input type="range" class="percentage-slider"
+                               min="0" max="100" value="0"
                                data-capacity="${capacity}"
                                oninput="updatePercentageValue(this)">
                     </div>
                     <span class="percentage-value">0%</span>
                 `;
                 percentageContainer.appendChild(item);
-                
+
                 // Add mouse event handlers to the custom thumb
                 const container = item.querySelector('.slider-container');
                 const thumb = item.querySelector('.slider-thumb');
                 const slider = item.querySelector('.percentage-slider');
-                
+
                 // Make the entire container clickable
                 container.addEventListener('click', function(e) {
                     const rect = container.getBoundingClientRect();
@@ -1442,15 +1442,15 @@ class TransformerMapUI:
                     slider.value = Math.round(percentage);
                     updatePercentageValue(slider);
                 });
-                
+
                 // Make thumb draggable
                 let isDragging = false;
-                
+
                 thumb.addEventListener('mousedown', function(e) {
                     isDragging = true;
                     e.preventDefault();
                 });
-                
+
                 document.addEventListener('mousemove', function(e) {
                     if (isDragging) {
                         const rect = container.getBoundingClientRect();
@@ -1463,35 +1463,35 @@ class TransformerMapUI:
                         updatePercentageValue(slider);
                     }
                 });
-                
+
                 document.addEventListener('mouseup', function() {
                     isDragging = false;
                 });
             });
         }
-        
+
         // Update percentage value display
         function updatePercentageValue(slider) {
             const value = parseInt(slider.value);
             const valueSpan = slider.parentElement.nextElementSibling;
             const sliderFill = slider.previousElementSibling.previousElementSibling;
             const sliderThumb = slider.previousElementSibling;
-            
+
             // Calculate positions accounting for 8px padding on each side
             const containerWidth = slider.parentElement.offsetWidth - 16; // 16px total padding
             const fillWidth = (value / 100) * containerWidth;
             const thumbPosition = 8 + fillWidth; // 8px left padding + fill width
-            
+
             // Update the visual fill and thumb position
             sliderFill.style.width = fillWidth + 'px';
             sliderThumb.style.left = thumbPosition + 'px';
             valueSpan.textContent = value + '%';
-            
+
             // Calculate current total
             const allSliders = document.querySelectorAll('.percentage-slider');
             let currentTotal = 0;
             allSliders.forEach(s => currentTotal += parseInt(s.value));
-            
+
             // If this slider would make total > 100%, cap it
             if (currentTotal > 100) {
                 const maxAllowed = 100 - (currentTotal - value);
@@ -1502,25 +1502,25 @@ class TransformerMapUI:
                 sliderThumb.style.left = cappedThumbPosition + 'px';
                 valueSpan.textContent = maxAllowed + '%';
             }
-            
+
             // Update other sliders' max values and disabled state
             updateSliderConstraints();
             updateTotalPercentage();
         }
-        
+
         // Update slider constraints based on current total
         function updateSliderConstraints() {
             const allSliders = document.querySelectorAll('.percentage-slider');
             let currentTotal = 0;
             allSliders.forEach(s => currentTotal += parseInt(s.value));
-            
+
             allSliders.forEach(slider => {
                 const currentValue = parseInt(slider.value);
                 const remaining = 100 - (currentTotal - currentValue);
-                
+
                 // Set max value to remaining percentage
                 slider.max = Math.max(0, remaining);
-                
+
                 // Disable if at max and others are at 100%
                 if (currentTotal >= 100 && currentValue < remaining) {
                     slider.disabled = true;
@@ -1531,7 +1531,7 @@ class TransformerMapUI:
                 }
             });
         }
-        
+
         // Update total percentage
         function updateTotalPercentage() {
             const sliders = document.querySelectorAll('.percentage-slider');
@@ -1539,10 +1539,10 @@ class TransformerMapUI:
             sliders.forEach(slider => {
                 total += parseInt(slider.value);
             });
-            
+
             const totalSpan = document.getElementById('total-percentage');
             totalSpan.textContent = `Total: ${total}%`;
-            
+
             // Change color based on total
             if (total === 100) {
                 totalSpan.style.color = '#28a745';
@@ -1552,7 +1552,7 @@ class TransformerMapUI:
                 totalSpan.style.color = '#ffc107';
             }
         }
-        
+
         // Reset all percentages to 0
         function resetPercentages() {
             const sliders = document.querySelectorAll('.percentage-slider');
@@ -1569,20 +1569,20 @@ class TransformerMapUI:
                 updatePercentageValue(slider);
             });
         }
-        
+
         // Apply uniform capacity to all transformers
         async function applyUniformCapacity() {
             if (!currentPLZ) {
                 showStatus('Please load a PLZ first', 'error');
                 return;
             }
-            
+
             const capacity = document.getElementById('bulk-capacity-select').value;
             if (!capacity) {
                 showStatus('Please select a capacity', 'error');
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/bulk-update-capacities', {
                     method: 'POST',
@@ -1595,7 +1595,7 @@ class TransformerMapUI:
                         transformer_rated_power: parseInt(capacity)
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
                     showStatus(`Set all ${transformerCount} transformers to ${capacity} kVA`, 'success');
@@ -1608,18 +1608,18 @@ class TransformerMapUI:
                 showStatus('Error applying uniform capacity: ' + error.message, 'error');
             }
         }
-        
+
         // Apply percentage distribution
         async function applyPercentageDistribution() {
             if (!currentPLZ) {
                 showStatus('Please load a PLZ first', 'error');
                 return;
             }
-            
+
             const sliders = document.querySelectorAll('.percentage-slider');
             const distribution = {};
             let total = 0;
-            
+
             sliders.forEach(slider => {
                 const capacity = parseInt(slider.dataset.capacity);
                 const percentage = parseInt(slider.value);
@@ -1628,17 +1628,17 @@ class TransformerMapUI:
                     total += percentage;
                 }
             });
-            
+
             if (total !== 100) {
                 showStatus('Total percentage must equal 100%', 'error');
                 return;
             }
-            
+
             if (Object.keys(distribution).length === 0) {
                 showStatus('Please set at least one capacity percentage', 'error');
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/bulk-update-capacities', {
                     method: 'POST',
@@ -1651,7 +1651,7 @@ class TransformerMapUI:
                         capacity_distribution: distribution
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
                     const distributionText = Object.entries(distribution)
@@ -1667,18 +1667,18 @@ class TransformerMapUI:
                 showStatus('Error applying distribution: ' + error.message, 'error');
             }
         }
-        
+
         // Clear all capacities for transformers in the current PLZ
         async function clearAllCapacities() {
             if (!currentPLZ) {
                 showStatus('Please load a PLZ first', 'error');
                 return;
             }
-            
+
             if (!confirm('Are you sure you want to clear all capacity information for transformers in this PLZ area?')) {
                 return;
             }
-            
+
             try {
                 const response = await fetch('/api/clear-capacities', {
                     method: 'POST',
@@ -1689,7 +1689,7 @@ class TransformerMapUI:
                         plz: currentPLZ
                     })
                 });
-                
+
                 const data = await response.json();
                 if (data.success) {
                     showStatus('All capacities cleared successfully!', 'success');
@@ -1702,19 +1702,19 @@ class TransformerMapUI:
                 showStatus('Error: ' + error.message, 'error');
             }
         }
-        
+
         // Update transformer count display
         function updateTransformerCount(count) {
             transformerCount = count;
             document.getElementById('transformer-count').textContent = `Transformers in area: ${count}`;
         }
-        
+
         // Handle distribution method change
         function handleDistributionMethodChange() {
             const uniformPanel = document.getElementById('uniform-distribution');
             const percentagePanel = document.getElementById('percentage-distribution');
             const method = document.querySelector('input[name="distribution-method"]:checked').value;
-            
+
             if (method === 'uniform') {
                 uniformPanel.style.display = 'block';
                 percentagePanel.style.display = 'none';
@@ -1723,14 +1723,14 @@ class TransformerMapUI:
                 percentagePanel.style.display = 'block';
             }
         }
-        
+
         // Initialize map when page loads
         document.addEventListener('DOMContentLoaded', function() {
             initMap();
             loadPLZList();
             loadTransformerCapacities();
             loadTransformerCapacitiesForBulk();
-            
+
             // Add event listeners for distribution method
             document.querySelectorAll('input[name="distribution-method"]').forEach(radio => {
                 radio.addEventListener('change', handleDistributionMethodChange);

@@ -247,4 +247,3 @@ database:
     ``context_share`` are empty in the CSV and ``null`` in ``diagnostics_<version>.json``; a PLZ
     without a polygon in ``pylovo.postcode`` stops the command. These are diagnostics: report
     flagged and unflagged grids side by side.
-

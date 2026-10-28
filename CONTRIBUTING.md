@@ -18,23 +18,23 @@ To simplify authentication, consider setting up SSH keys for GitHub. Follow [Git
 Please be self-reflective and always maintain a good culture of discussion and active participation.
 
 ### A. Use
-Since the open license allows free use, no notification is required. 
-However, for the authors it is valuable information who uses the software for what purpose. 
-Indicators are `Watch`, `Fork` and `Starred` of the repository. 
+Since the open license allows free use, no notification is required.
+However, for the authors it is valuable information who uses the software for what purpose.
+Indicators are `Watch`, `Fork` and `Starred` of the repository.
 
 ### B. Comment
-You can give ideas, hints or report bugs in issues, in pull requests, at meetings or other channels. 
-This is no development but can be considered a notable contribution. 
+You can give ideas, hints or report bugs in issues, in pull requests, at meetings or other channels.
+This is no development but can be considered a notable contribution.
 If you wish, add your name and details to [CITATION.cff](CITATION.cff).
 
 ### C. Contribute and Review
-You add code and become an author of the repository. 
+You add code and become an author of the repository.
 You must follow the workflow!
 Add your name and details to [CITATION.cff](CITATION.cff).
 
 ### D. Maintain and Release
-You contribute and take care of the repository. 
-You review and answer questions. 
+You contribute and take care of the repository.
+You review and answer questions.
 You coordinate and carry out the release.
 Add your name and details to [CITATION.cff](CITATION.cff).
 
@@ -47,7 +47,7 @@ The workflow for contributing to this project has been inspired by the workflow 
 * topic branches (`feature/...`, `fix/...`) - one topic each, created from `dev` and merged back into it by a pull request
 
 ### 1. Describe the issue on GitHub
-Create an issue in the [GitHub repository](https://github.com/tum-ens/pylovo/issues). 
+Create an issue in the [GitHub repository](https://github.com/tum-ens/pylovo/issues).
 The `issue title` describes the problem you will address.  <br>
 This is an important step as it forces one to think about the "issue".
 Make a checklist for all needed steps if possible.
@@ -86,7 +86,7 @@ Check branch status:
 git status
 ```
 
-#### 2.3. Commit your changes 
+#### 2.3. Commit your changes
 If the file does not exist on the remote server yet, use:
 ```bash
 git add filename.md
@@ -162,7 +162,7 @@ If you are the reviewer:
 - Check the changes in all corresponding files.
 - Checkout the branch and run code.
 - Comment if you would like to change something (Use `Request changes`)
-- If all tests pass and all changes are good, `Approve` the PR. 
+- If all tests pass and all changes are good, `Approve` the PR.
 - Leave a comment and some nice words!
 
 #### 5.2. Merge the PR and delete the feature branch
@@ -190,7 +190,7 @@ To maintain consistency and readability, please follow the coding standards outl
   - Indentation (4 spaces per level).
   - Naming conventions for variables, functions, and classes.
   The code base does not enforce a line length.
-  
+
 - **Linting Tool**: To help ensure compliance, use [ruff](https://docs.astral.sh/ruff/):
   ```bash
   uv run ruff check
@@ -199,7 +199,7 @@ To maintain consistency and readability, please follow the coding standards outl
 - **Keep it simple**: Prefer the simplest solution. Do not add abstractions or options that nobody asked for. Configuration parameters stay as simple as possible and are documented with their shipped value in `docs/source/user_guide/configuration.rst`.
 
 ### Documentation Style
-To ensure consistent and clear documentation, please follow the Google-style docstring format. 
+To ensure consistent and clear documentation, please follow the Google-style docstring format.
 This style is straightforward and well-suited for research projects, as it provides structured sections for describing parameters, return values, examples, and more.
 
 #### General Rules
@@ -221,10 +221,10 @@ This style is straightforward and well-suited for research projects, as it provi
 1. **Module-Level Docstring**
    ```python
    """Brief module description.
-    
+
     This module demonstrates the Google-style docstring format. It provides
     several examples of documenting different types of objects and methods.
-    
+
     Attributes:
         module_level_variable1 (int): Module level variables can be documented here.
         module_level_variable2 (str): An example of an inline attribute docstring.
@@ -235,14 +235,14 @@ This style is straightforward and well-suited for research projects, as it provi
     ```python
     def example_function(param1: int, param2: str = 'default') -> bool:
          """Summary of the function.
-         
+
          Args:
               param1 (int): The first parameter.
               param2 (str): The second parameter. Defaults to 'default'.
-         
+
          Returns:
               bool: A boolean value indicating success.
-         
+
          Raises:
               ValueError: If the parameter is invalid.
          """
@@ -252,28 +252,28 @@ This style is straightforward and well-suited for research projects, as it provi
     ```python
     def example_generator(param: int) -> Iterator[int]:
          """Summary of the generator function.
-         
+
          Args:
               param (int): The parameter for the generator.
-         
+
          Yields:
               int: The next value in the sequence.
          """
     ```
-   
+
 4. **Class Docstring with Attributes**
     ```python
     class ExampleClass:
     """A summary line for the class.
-    
+
         Attributes:
             attr1 (str): Description of `attr1`.
             attr2 (int, optional): Description of `attr2`, which is optional.
         """
-    
+
         def __init__(self, attr1: str, attr2: int = 0):
             """Initializes ExampleClass with specified attributes.
-    
+
             Args:
                 attr1 (str): Description of `attr1`.
                 attr2 (int, optional): Description of `attr2`. Defaults to 0.
@@ -286,11 +286,11 @@ This style is straightforward and well-suited for research projects, as it provi
     ```python
     class CustomError(Exception):
         """Exception raised for specific errors in ExampleClass.
-    
+
         Args:
             msg (str): Explanation of the error.
             code (int, optional): Error code, if applicable.
-    
+
         Attributes:
             msg (str): Explanation of the error.
             code (int): Error code.
@@ -338,16 +338,16 @@ The `CHANGELOG.md` file keeps a record of significant changes to the project and
   - Use the following structure for each section:
     ```markdown
     ## [Version] - [YYYY-MM-DD]
-    
+
     ### Added
     - Brief description of the new feature, referencing the issue or pull request number if applicable.
-    
+
     ### Changed
     - Description of any modifications to existing features.
-    
+
     ### Fixed
     - Description of bug fixes or corrections.
-    
+
     ### Removed
     - Deprecated features or removed functionality.
     ```

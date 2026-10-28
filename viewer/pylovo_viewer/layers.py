@@ -742,4 +742,3 @@ WHERE g.grid_result_id = %(fid)s"""
 STATION_MV_COLUMNS = """, n.mv_node_id, n.mv_grid_id AS mv_supply_area, n.ring_id AS mv_ring, n.feeder_id AS mv_feeder,
        n.connection AS mv_connection, n.vm_load_pu AS mv_vm_load_pu, n.vm_n1_pu AS mv_vm_n1_pu, n.lv_busbar_vm_pu,
        n.mv_lv_tap_pos, array_to_string(n.flags, ', ') AS mv_flags"""
-
