@@ -135,7 +135,7 @@ Never run the code against a database that holds data you want to keep: `pylovo-
 3.3. **Documentation build**:
 Build the documentation with warnings as errors, as the CI does:
 ```bash
-uv run --extra docs sphinx-build -W --keep-going -b html docs/source docs/build/html
+uv run --no-project --with-requirements docs/requirements.txt sphinx-build -W --keep-going -b html docs/source docs/build/html
 ```
 
 ### 4. Push your commits
@@ -325,7 +325,7 @@ Keeping documentation up-to-date is essential for ensuring other contributors an
   - **Code Examples**: Include code examples where applicable to demonstrate usage.
   - **Building Documentation**: The documentation is built with Sphinx. Preview changes by building it locally, with warnings as errors as in the CI:
     ```bash
-    uv run --extra docs sphinx-build -W --keep-going -b html docs/source docs/build/html
+    uv run --no-project --with-requirements docs/requirements.txt sphinx-build -W --keep-going -b html docs/source docs/build/html
     ```
   - **Figures**: The figures come from the scripts in `docs/scripts` and are committed (see the development page of the documentation).
 - **Docstrings**: Update or add docstrings to any new or modified functions, classes, or modules, following the Google-style guidelines in the Documentation Style section above.
