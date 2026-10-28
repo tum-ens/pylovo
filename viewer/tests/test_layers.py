@@ -205,6 +205,42 @@ def test_extent_by_supply_areas_and_stations(service, fake_db):
     assert flags["mv_lines"] and flags["lv_areas"] and not flags["postcodes"] and not flags["lv_cables"]
 
 
+def test_lines_supplied_by_a_transformer(service, fake_db):
+    line = '{"type":"LineString","coordinates":[[11,48],[11.001,48]]}'
+    multi = '{"type":"MultiLineString","coordinates":[[[11,48],[11.002,48]]]}'
+    fake_db.rows = {
+        "FROM pylovo.lines_result_cache c WHERE c.grid_result_id": [
+            {"id": 10, "km": 0.05, "feeder": True, "geometry": line}, {"id": 11, "km": 0.02, "feeder": False, "geometry": line}],
+        "count(*) AS n FROM pylovo.buildings_result": [{"n": 3}],
+        "SELECT grid_result_id, ont_vertice_id": [{"grid_result_id": 7, "ont_vertice_id": 1}],
+        "AS g, id, from_bus": [{"g": 7, "id": 10, "from_bus": 1, "to_bus": 2, "length_km": 0.05},
+                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02}],
+    }
+    lv = service.supplied("mv_stations", 7, Query(version="v1"))
+    assert lv["geometry"] == {"type": "MultiLineString", "coordinates": [[[11, 48], [11.001, 48]]] * 2}
+    assert lv["supplied_cables"] == 2 and lv["supplied_buildings"] == 3 and lv["supplied_feeders"] == 1
+    assert lv["supplied_feeder_km"] == 0.05 and lv["supplied_service_km"] == 0.02
+    fake_db.rows = {"FROM pylovo.mv_line l JOIN pylovo.mv_grid g": [
+        {"role": "ring", "ring_id": 1, "km": 1.5, "area": 186, "n_stations": 221, "geometry": line},
+        {"role": "stub", "ring_id": 1, "km": 0.2, "area": 186, "n_stations": 221, "geometry": multi},
+        {"role": "ring", "ring_id": 2, "km": 1.0, "area": 186, "n_stations": 221, "geometry": line},
+        {"role": "tie", "ring_id": None, "km": 0.8, "area": 186, "n_stations": 221, "geometry": line},
+        {"role": "link", "ring_id": None, "km": 0.3, "area": 186, "n_stations": 221, "geometry": line}]}
+    mv = service.supplied("hv_substations", 5, Query(version="v1", mv="d1"))
+    assert len(mv["geometry"]["coordinates"]) == 3                       # the ties and links supply nothing
+    assert (mv["supplied_area"], mv["supplied_lines"], mv["supplied_km"], mv["supplied_rings"]) == (186, 3, 2.7, 2)
+    assert (mv["supplied_stations"], mv["open_ties"], mv["open_links"]) == (221, 1, 1)
+    sql, params = fake_db.calls[-1]
+    assert "g.substation_id = %(fid)s AND l.version_id = %(version)s AND l.mv_variant_id = %(mv)s" in sql
+    assert params["fid"] == 5 and params["mv"] == "d1"
+    fake_db.rows = {}
+    assert service.supplied("hv_substations", 6, Query(version="v1", mv="d1"))["geometry"] is None   # not used
+    with pytest.raises(ValueError, match="need version and mv"):
+        service.supplied("hv_substations", 5, Query(version="v1"))
+    with pytest.raises(LookupError, match="no transformers"):
+        service.supplied("lv_cables", 5, Query(version="v1"))
+
+
 def test_feature_collection():
     rows = [{"fid": "a", "n": Decimal("1.5"), "d": date(2026, 1, 2), "geometry": '{"type":"Point","coordinates":[1,2]}'},
             {"fid": "b", "geometry": None}]

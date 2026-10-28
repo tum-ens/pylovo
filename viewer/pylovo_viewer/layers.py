@@ -639,6 +639,46 @@ class LayerService:
                 "geometry": {"type": "MultiLineString",
                              "coordinates": [json.loads(r["geometry"])["coordinates"] for r in rows if r["geometry"]]}}
 
+    def supplied(self, layer_id: str, fid: int, q: Query) -> dict[str, Any]:
+        """The lines a transformer supplies, for the highlight of a clicked one: the cables of the LV grid of an MV/LV
+        substation (``mv_stations``, ``fid`` = grid id), or the MV lines of the supply area of an HV/MV substation in
+        the MV run (``hv_substations``) as drawn, without the normally-open ties and links (they supply nothing)."""
+        if layer_id == "mv_stations":
+            rows = self.db.query(f"""SELECT c.id, c.length_km * COALESCE(c.parallel, 1) AS km,
+                                            c.feeder_section_id IS NOT NULL AS feeder, {geo("c.geom")} AS geometry
+                                     FROM pylovo.lines_result_cache c WHERE c.grid_result_id = %s""", (fid,))
+            buildings = self.db.one("SELECT count(*) AS n FROM pylovo.buildings_result WHERE grid_result_id = %s", (fid,))
+            feeders = self.feeder_maps({fid}).get(fid, ({}, {}))[0]
+            out = {"supplied_cables": len(rows), "supplied_buildings": buildings["n"] if buildings else 0,
+                   "supplied_feeders": len(set(feeders.values())) if feeders else None,
+                   "supplied_feeder_km": round(sum(float(r["km"] or 0) for r in rows if r["feeder"]), 3),
+                   "supplied_service_km": round(sum(float(r["km"] or 0) for r in rows if not r["feeder"]), 3)}
+        elif layer_id == "hv_substations":
+            if q.version is None or q.mv is None:
+                raise ValueError("the MV lines of a substation need version and mv")
+            rows = self.db.query(f"""SELECT l.role, l.ring_id, l.length_km * COALESCE(l.parallel, 1) AS km,
+                                            g.mv_grid_id AS area, g.n_stations,
+                                            {geo(f"ST_Simplify({self.line_geom()}, 0.5)")} AS geometry
+                                     FROM pylovo.mv_line l JOIN pylovo.mv_grid g ON g.mv_grid_id = l.mv_grid_id
+                                     WHERE g.substation_id = %(fid)s AND {run('l')}""", {**q.params(), "fid": fid})
+            open_lines = [r for r in rows if r["role"] in ("tie", "link")]
+            rows = [r for r in rows if r["role"] not in ("tie", "link")]
+            out = {"supplied_area": rows[0]["area"] if rows else None, "supplied_lines": len(rows),
+                   "supplied_km": round(sum(float(r["km"] or 0) for r in rows), 3),
+                   "supplied_rings": len({r["ring_id"] for r in rows if r["ring_id"] is not None}),
+                   "supplied_stations": rows[0]["n_stations"] if rows else 0,
+                   "open_ties": sum(r["role"] == "tie" for r in open_lines),
+                   "open_links": sum(r["role"] == "link" for r in open_lines)}
+        else:
+            raise LookupError(f"layer {layer_id} has no transformers")
+        parts = []
+        for r in rows:
+            if r["geometry"]:
+                g = json.loads(r["geometry"])
+                parts += [g["coordinates"]] if g["type"] == "LineString" else g["coordinates"]
+        out["geometry"] = {"type": "MultiLineString", "coordinates": parts} if parts else None
+        return out
+
     def _overhead_parts(self, rows: list[dict[str, Any]], q: Query) -> None:
         """Overhead parts of mixed MV lines (``overhead``, MultiLineString coordinates): where they run on the OSM
         MV lines of the run's routing graph, moved onto the line's display geometry where it has one."""

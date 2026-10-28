@@ -15,6 +15,7 @@ import { stationColours } from './icons.js';
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const REGION_SOURCE = { plz: 'postcodes', area: 'mv_areas', grid: 'lv_areas' };
 const GRID_LAYERS = new Set(['lv_areas', 'mv_stations']);
+const SUPPLYING = new Set(['mv_stations', 'hv_substations']);   // a click highlights the lines they supply
 const KIND = { point: 'circle', line: 'line', polygon: 'fill' };
 const LOD2_ZOOM = 15;
 const VIEW_ZOOM = 10;   // a layer too large to load whole follows the map view from this zoom
@@ -491,6 +492,18 @@ createApp({
       this.map.setHighlight(hit.group || this.map.feature(hit.layer, hit.fid), hit.group?.open_points);
       if (ins.attrsOpen) this.loadAttrs();
       if (hit.layer === 'lv_cables' && hit.props.role === 'feeder' && !hit.group) this.loadSection(ins, hit);
+      if (SUPPLYING.has(hit.layer) && !hit.group) this.loadSupplied(ins, hit);
+    },
+    /** A transformer stands for the lines it supplies: the cables of its LV grid, or the MV lines of its area. */
+    async loadSupplied(ins, hit) {
+      try {
+        const supplied = await this.api(`/api/supplied/${hit.layer}/${encodeURIComponent(hit.fid)}`, { version: this.version, mv: this.mv });
+        if (!supplied.geometry) return;
+        hit.group = supplied;
+        if (this.inspector === ins && ins.hits[ins.index] === hit) this.map.setHighlight(supplied);
+      } catch (err) {
+        this.notify(err.message);
+      }
     },
     /** A feeder cable stands for its section, from a split point (or the station) to the next. */
     async loadSection(ins, hit) {

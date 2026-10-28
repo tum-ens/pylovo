@@ -92,7 +92,10 @@ on an LV feeder cable selects its whole feeder section, from the station or a ca
 next cabinet or the end of the feeder, with its length, cable types and house connections. Clicking
 section by section follows the feeder through the grid. A click on an MV line selects its whole ring
 with the stubs, marks the normally-open point on it and adds the ring's length, overhead length,
-stations and highest (n-1) loading to the facts.
+stations and highest (n-1) loading to the facts. A click on a transformer selects the lines it
+supplies, at any zoom: an MV/LV substation the cables of its LV grid (feeder and service length,
+feeders, buildings), an HV/MV substation the MV lines of its supply area in the MV run (length,
+rings, stations). The normally-open ties and links of the area are counted but not selected.
 
 **Colours and legend.** Layers with several colour modes have a small menu next to their name
 (for example cables by grid, feeder, type or feeder/service). By default the LV grid areas, cables

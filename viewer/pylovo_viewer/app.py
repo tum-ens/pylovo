@@ -211,6 +211,11 @@ def create_app(settings: Settings, data_dir: Path, db: Database | None = None,
     def section(request: Request, cable: int, db: str | None = None) -> Response:
         return send_json(request, site(db).service.section(cable))
 
+    @app.get("/api/supplied/{layer_id}/{fid}")
+    def supplied(request: Request, layer_id: str, fid: int, version: str | None = None, mv: str | None = None,
+                 db: str | None = None) -> Response:
+        return send_json(request, site(db).service.supplied(layer_id, fid, query(version, mv)))
+
     @app.get("/api/summary")
     def key_figures(request: Request, version: str, mv: str | None = None, plz: int | None = None,
                     area: int | None = None, grid: int | None = None, db: str | None = None) -> Response:

@@ -113,7 +113,11 @@ export const STYLES = {
       ['Transformers', o.transformers ? `${o.transformers} × ${f.num(o.mva / Math.max(o.transformers, 1), 0)} MVA` : '–'],
       ['Loading (n-0 / n-1)', `${f.pct(o.loading)} / ${f.pct(o.loading_n1)}`], ['Voltage tag', o.voltage || '–'],
       ['eTraGo 110 kV bus', o.etrago_bus ?? 'none (no eGon match)'],
-      ['Operator', o.operator || '–'], ...(o.flags ? [['Flags', o.flags]] : [])] }),
+      ['Operator', o.operator || '–'], ...(o.flags ? [['Flags', o.flags]] : []),
+      // after a click: the MV lines of its supply area (highlighted), see main.js
+      ...(o.supplied_lines ? [['Supplies (area ' + o.supplied_area + ')', `${f.num(o.supplied_lines)} MV lines · ${f.km(o.supplied_km)}`],
+        ['Rings / MV/LV substations', `${f.num(o.supplied_rings)} / ${f.num(o.supplied_stations)}`],
+        ['Normally open (not highlighted)', `${f.count(o.open_ties, 'tie')} · ${f.count(o.open_links, 'link')}`]] : [])] }),
   },
   hv_sites: {
     layers: ({ id, p }) => [
@@ -225,7 +229,10 @@ export const STYLES = {
       ['Rated power', f.kva(o.kva)],
       ['Origin', { new: 'new (greenfield)', osm: 'existing (OSM)', lod2: 'existing (LoD2)' }[o.origin] || '–'],
       ...(o.area !== null && o.area !== undefined ? [['MV supply area / ring', `${o.area} / ${o.ring ?? '–'}`],
-        ['MV voltage (load case)', f.pu(o.vm)], ['LV busbar voltage', f.pu(o.lv_vm)]] : [])] }),
+        ['MV voltage (load case)', f.pu(o.vm)], ['LV busbar voltage', f.pu(o.lv_vm)]] : []),
+      // after a click: the cables of its LV grid (highlighted), see main.js
+      ...(o.supplied_cables ? [['Supplies', `${f.count(o.supplied_cables, 'cable')} · ${f.km(o.supplied_feeder_km)} feeders + ${f.km(o.supplied_service_km)} service`],
+        ['Feeders / buildings', `${o.supplied_feeders ?? '–'} / ${f.num(o.supplied_buildings)}`]] : [])] }),
   },
   mv_areas: {
     modes: { area: { label: 'Supply area', scheme: () => slot() },
