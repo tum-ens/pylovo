@@ -51,19 +51,17 @@ buses, cable distribution cabinets and service cables by the names of an export,
    :alt: Six histograms of feeder count, feeder length, mean and maximum transformer distance, transformer capacity and resistance for synthetic grids
    :width: 100%
 
-   Distributions for **synthetic grids only**, version 1, PLZ 91301. Of 113 stored grids,
-   106 have at least five buses and enter the figure; seven smaller grids are excluded. The
-   orange lines mark medians. The read-only source script is
-   ``docs/scripts/plot_synthetic_metrics.py``; run it with
-   ``uv run --extra plots python docs/scripts/plot_synthetic_metrics.py`` after generating
-   grids for this version and postcode.
+   Distributions for **synthetic grids only**, version 1 of the Bavaria run, PLZ 85256 (Vierkirchen, the
+   semi-urban example area of the tutorials). All 26 stored grids have at least five buses and enter the figure.
+   The orange lines mark medians. The read-only source script is ``docs/scripts/plot_synthetic_metrics.py``; run
+   it with ``uv run --extra plots python docs/scripts/plot_synthetic_metrics.py`` against a database with this
+   version and postcode.
 
-In this synthetic set, the median grid has four terminal feeder branches, 0.82 km of backbone
-and a 0.63 MVA transformer station. Its mean and maximum transformer-to-terminal distances are
-0.24 and 0.35 km, and the median resistance proxy is 0.15 Ω. The 10th–90th percentile range of
-backbone length is 0.15–2.31 km, showing substantial variation between local networks. These
-summaries describe this one generated postcode and version; use a broader regional sample for
-population-level conclusions.
+In this synthetic set, the median grid has three to four terminal feeder branches, 0.44 km of backbone and a
+0.4 MVA transformer station. Its mean and maximum transformer-to-terminal distances are 0.14 and 0.21 km, and the
+median resistance proxy is 0.09 Ω. The 10th–90th percentile range of backbone length is 0.03–1.75 km, showing
+substantial variation between local networks. These summaries describe this one generated postcode and version; use
+a broader regional sample for population-level conclusions.
 
 Stored diagnostics
 ------------------

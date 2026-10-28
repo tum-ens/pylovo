@@ -1,7 +1,8 @@
 """Plot the six comparison metrics for stored synthetic grids only.
 
-Read-only: loads version 1, PLZ 91301 and never invokes the comparison export,
-which drops and recreates ``pylovo.grid_parameters``. Run from the repository root::
+Read-only: loads version 1 of the semi-urban example area of the tutorials (PLZ 85256) through a read-only database
+session and never invokes the comparison export, which drops and recreates ``pylovo.grid_parameters``. Needs the
+database of the Bavaria run in ``.env``. Run from the repository root::
 
     uv run --extra plots python docs/scripts/plot_synthetic_metrics.py
 """
@@ -13,9 +14,10 @@ import numpy as np
 
 from pylovo.analysis.grid_analysis import compute_comparison_parameters
 from pylovo.analysis.parameter_calculation import ParameterCalculator
+from pylovo.database.database_client import DatabaseClient
 
 VERSION_ID = "1"
-PLZ = 91301
+PLZ = 85256
 MIN_BUSES = 5
 METRICS = (
     ("feeder_lines", "Terminal feeder branches", "count"),
@@ -30,6 +32,8 @@ METRICS = (
 def main() -> None:
     style.apply_style()
     calculator = ParameterCalculator()
+    calculator.dbc.close()
+    calculator.dbc = DatabaseClient.read_only()       # every statement of the script runs read-only
     dbc = calculator.dbc
     try:
         dbc.cur.execute(
