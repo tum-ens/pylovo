@@ -1,4 +1,4 @@
-# Run the tests on pushes to main/dev and on pull requests.
+# Run the tests on pushes to main, dev, feature/** and fix/** and on pull requests.
 #   lint:     ruff with the version and rules of pyproject.toml (only the dev tools are installed), and
 #             requirements.txt (for pip users) is the export of uv.lock.
 #   pytest:   the unit tests; the opt-in database tests skip themselves, nothing needs a database.
@@ -11,7 +11,8 @@ name: Tests
 
 on:
   push:
-    branches: ["main", "dev"]
+    # feature and fix branches too, so a branch is checked before it is merged (also without a pull request)
+    branches: ["main", "dev", "feature/**", "fix/**"]
   pull_request:
   workflow_dispatch:
 
