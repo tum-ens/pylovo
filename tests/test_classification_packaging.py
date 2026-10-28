@@ -105,3 +105,21 @@ def test_kmeans_notebook_plots_every_cluster_instead_of_hard_coded_positions():
     code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
     assert not re.findall(r"representative_networks\.iloc\[\d+\]", code)
     assert "representative_networks.iterrows()" in code
+
+
+def notebook_code(path: Path) -> str:
+    import json
+
+    nb = json.loads(path.read_text(encoding="utf-8"))
+    return "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
+
+
+def test_representative_notebooks_show_every_cluster_and_select_columns_by_name():
+    """The GMM notebook hard-coded four representatives; both discarded the plotly figures of their loop."""
+    for name in ("2_0_kmeans_representative_grids", "3_0_gmm_representative_grids"):
+        code = notebook_code(REPO / f"notebook_tutorials/classification/clustering/{name}.ipynb")
+        assert not re.findall(r"representative_networks\.iloc\[\d+\]", code), name
+        assert "representative_networks.iterrows()" in code, name
+        assert "display(plot_simple_grid(" in code and "display(plot_with_generic_coordinates(" in code, name
+    for nb in NOTEBOOKS:
+        assert not re.search(r"\.iloc\[\s*:\s*,\s*\[", notebook_code(nb)), f"columns by position in {nb.name}"
