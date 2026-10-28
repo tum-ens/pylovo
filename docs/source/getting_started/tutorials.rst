@@ -1,7 +1,42 @@
 Tutorial notebooks
 ==================
 
-The directory ``notebook_tutorials/grid_generation`` contains Jupyter notebooks that walk through
+Learning path
+-------------
+
+Six notebooks in ``notebook_tutorials/`` show what pylovo produces and how to use it, one question each. They
+need only the ``notebooks`` extra (``uv sync --extra notebooks``): without a database, or without the areas in it,
+they read the example data in ``data/examples`` (:class:`pylovo.examples.TutorialData`), three typical Bavarian
+postcode areas of a run for all of Bavaria with four version variants. Their stored outputs come from these data.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 36 64
+   :class: fixed-table
+
+   * - Notebook
+     - Question
+   * - ``01_tour.ipynb``
+     - What does pylovo produce? All grids of a postcode area, one grid and its voltage profile.
+   * - ``02_building_grids.ipynb``
+     - How does pylovo build the grids? Settlement type, buildings and loads, connections to the streets,
+       k-means and building clusters with their stations, cable sizing and the final checks.
+   * - ``03_one_grid.ipynb``
+     - What is inside one grid? The pandapower model, feeders and their voltage, loading and voltage at peak load,
+       the grid as a tree, and saving it for other tools.
+   * - ``04_comparing_areas.ipynb``
+     - How do the grids of a city, a suburb and a village differ, and how do all Bavarian grids spread by
+       settlement type?
+   * - ``05_versions.ipynb``
+     - How much do the settings matter? Existing stations, a longer station reach, cable cabinets and larger
+       stations against the default settings.
+   * - ``06_voltage_levels.ipynb``
+     - How is an LV grid connected to its MV ring, the HV/MV substation and the 110 kV grid?
+
+Previous notebooks
+------------------
+
+The directory ``notebook_tutorials/grid_generation`` contains the earlier Jupyter notebooks that walk through
 the generated grids of one postcode area. They read from a database with generated grids (for
 example ``uv run pylovo-generate --plz 85653``) and need the ``notebooks`` extra
 (``uv sync --extra notebooks``: the plotting extra plus a Jupyter kernel). Each notebook starts with

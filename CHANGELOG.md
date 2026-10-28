@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add new changes here before merging into the next official version.
 
 ### Added
+- Add a learning path of six tutorial notebooks with stored outputs, which run without a database on the new example data of three Bavarian postcode areas and four version variants (`pylovo.examples.TutorialData`; see [Tutorial notebooks](https://pylovo.readthedocs.io/en/latest/getting_started/tutorials.html))
+- Add `pylovo.plotting.lv_grid` with maps, voltage profiles and statistics of the LV grids, the shared figure style `pylovo.plotting.style` and `plot_voltage_levels`, three maps from the eTraGo HV grid over the MV supply area to one LV grid (see [Plotting helpers](https://pylovo.readthedocs.io/en/latest/user_guide/exporting_visualising.html#plotting-helpers))
+- Add `DatabaseClient.read_only()` and the readers `read_lv_layers`, `read_voltage_chain`, `read_grid_summary`, `read_postcode_metrics`, `read_generation_parameters` and `read_version_comment`
 - Add the `opendss` extra for the OpenDSS backend
 - Select the lines a transformer supplies with a click in `pylovo-viewer`: the LV cables of an MV/LV substation or the MV lines of an HV/MV substation's supply area (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
 - Add `PYLOVO_ENV_FILE` to read another `.env` or none (see [Environment variables](https://pylovo.readthedocs.io/en/latest/user_guide/configuration.html#env-variables))
@@ -21,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add `DATA_LICENSES.md` with the sources and licences of the data files in the repository, which the MIT License does not cover
 
 ### Changed
+- Draw the networkx trees with a leaf-based layout, the cables coloured by type and the cable distance as axis or radius (`draw_tree_network(..., y="distance")`)
+- Deprecate `plot_contextily`, `draw_tree_network_spacing` and its helpers, the pie, histogram and box plots of `metric_validation`, `plot_grid_on_map_plotly` and the bus-index `plot_voltage_profile`: they warn and will be removed in 2.0 (see [Plotting helpers](https://pylovo.readthedocs.io/en/latest/user_guide/exporting_visualising.html#plotting-helpers))
 - Speed up the MV routing graph of large regions: the settlement polygons no longer use a query plan that grows with the square of the number of settlements (364 municipalities: build in 1.7 instead of 4.8 minutes)
 - Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them; the cells of the district areas find their stations through an index
 - Find the street edges of the MV ties and links with a union of the edges near the ring members and the attachment edges; the former OR made the planner rerun the search for every edge of a large graph
