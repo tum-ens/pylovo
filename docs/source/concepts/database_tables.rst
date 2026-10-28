@@ -1648,7 +1648,7 @@ Check ``chk_pp_load_const_i_percent``: ``const_i_percent IS NULL OR const_i_perc
 ``clustering_parameters``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Per-grid key figures written by ``pylovo-analyze --per-grid``.
+Per-grid key figures written by ``pylovo-analyze --per-grid``, defined in :doc:`/user_guide/analysing_grids`.
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
@@ -1729,6 +1729,9 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
    * - ``max_vsw_of_a_branch``
      - ``double precision``
      -
+   * - ``key_figures_version``
+     - ``smallint``
+     - NOT NULL. Version of the definitions the row was computed with.
 
 ``load_edit``
 ~~~~~~~~~~~~~

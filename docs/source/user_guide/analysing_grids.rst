@@ -4,6 +4,8 @@ Analysing grids
 Generated grids can be analysed on three levels: the diagnostics stored with every grid, the
 key figures computed by ``pylovo-analyze``, and your own analyses on the pandapower nets.
 
+.. _structural-metrics:
+
 Six structural metrics for synthetic grids
 ------------------------------------------
 
@@ -138,49 +140,95 @@ Per-grid key figures (``clustering_parameters``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 One row per grid (``grid_result_id``), computed by
-:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.analyze_grid_parameters_for_plz`:
+:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.analyze_grid_parameters_for_plz`.
+
+A **branch** is an outgoing circuit of the LV busbar: every cable that leaves the busbar of the station. A building
+connected directly at the busbar is a branch of its own, and a grid with one building has one branch. All per-branch
+figures use these branches. The structural metrics count feeders differently
+(:ref:`structural-metrics`).
+
+A **household equivalent** is the installed power of a consumer divided by ``PEAK_LOAD_HOUSEHOLD`` (16.825 kW): a
+load measure that makes residential, commercial and public buildings comparable. It is no household count and no
+coincident load.
 
 .. list-table::
    :header-rows: 1
-   :widths: 34 66
+   :widths: 34 50 16
    :class: fixed-table
 
    * - Column
      - Content
-   * - ``no_house_connections``, ``no_connection_buses``
-     - Number of consumer buses and of street-side connection buses.
+     - Unit
+   * - ``no_house_connections``
+     - Consumer buses: the buildings of the grid.
+     - count
+   * - ``no_connection_buses``
+     - Street-side connection buses.
+     - count
    * - ``no_branches``
-     - Number of feeders leaving the transformer (topological count).
+     - Branches with at least one building.
+     - count
    * - ``no_households``
-     - Number of households: the sum of ``load_units`` of the residential loads (a
-       non-residential load is no household).
+     - Households: the sum of ``load_units`` of the residential loads. A non-residential load is no household.
+     - count
    * - ``no_household_equ``
-     - Household equivalents: installed power divided by ``PEAK_LOAD_HOUSEHOLD``.
+     - Household equivalents of the grid.
+     - –
    * - ``no_house_connections_per_branch``
-     - House connections per feeder.
+     - ``no_house_connections`` divided by ``no_branches``.
+     - count
    * - ``no_household_equ_per_branch``
-     - Household equivalents per feeder (``no_household_equ`` divided by ``no_branches``), not households despite
-       the name.
+     - ``no_household_equ`` divided by ``no_branches``.
+     - –
    * - ``max_household_equ_of_a_branch``
-     - Household equivalents of the feeder with the most: installed power of its consumers divided by
-       ``PEAK_LOAD_HOUSEHOLD``, not households despite the name.
+     - Household equivalents of the branch with the most.
+     - –
    * - ``house_distance_km``
-     - Median over the consumer buses of the mean distance (km) to their four nearest consumer
-       buses; station and connection buses do not count.
+     - Median over the buildings of the mean distance to their (up to) four nearest buildings. Empty for a grid
+       with one building.
+     - km
    * - ``transformer_mva``, ``osm_trafo``
-     - Rating of the transformer station in MVA (``sn_mva`` × ``parallel``); ``osm_trafo`` is true
-       for brownfield grids (``bcid`` < 0).
+     - Rating of the station (``sn_mva`` × ``parallel``). ``osm_trafo`` is true for brownfield grids (``bcid`` < 0).
+     - MVA
    * - ``max_trafo_dis``, ``avg_trafo_dis``
-     - Maximum and mean path length (km) from the transformer to the consumers.
+     - Maximum and mean path length along the cables from the busbar to the buildings, service cables included.
+     - km
    * - ``cable_length_km``, ``cable_len_per_house``
-     - Installed cable length in km (``length_km`` × ``parallel``) and length per consumer.
+     - Installed cable length (``length_km`` × ``parallel``) and length per building.
+     - km
    * - ``max_power_mw``, ``simultaneous_peak_load_mw``
-     - Installed power and coincident peak load of the grid in MW, the latter from the grid's own
-       loads with the formula of ``sim_peak_load_per_trafo``.
-   * - ``resistance``, ``reactance``, ``ratio``, ``vsw_per_branch``, ``max_vsw_of_a_branch``
-     - Path-impedance proxies weighted with household equivalents
-       (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_impedance_metrics`);
-       the resistance and reactance of a line are divided by its number of parallel cables.
+     - Installed power and coincident peak load of the grid, the latter from the grid's own loads with the formula
+       of ``sim_peak_load_per_trafo``.
+     - MW
+   * - ``resistance``, ``reactance``
+     - Consumer-weighted resistance and reactance (*Verbrauchersummenwiderstand*): the sum over the buildings of
+       their household equivalents times the R or X of the lines on their path, each line weighted with the
+       coincidence factor of the loads behind it and divided by its parallel cables.
+     - Ω
+   * - ``ratio``
+     - ``resistance`` divided by ``reactance``: a load-weighted mean R/X of the lines, so it lies between the
+       smallest and the largest R/X of the cable catalogue.
+     - –
+   * - ``vsw_per_branch``
+     - ``resistance`` divided by ``no_branches``.
+     - Ω
+   * - ``max_vsw_of_a_branch``
+     - ``resistance`` of the branch with the largest one: an upper bound of the voltage drop at the end of that
+       branch, exact for an unbranched feeder.
+     - Ω
+   * - ``key_figures_version``
+     - Version of these definitions (``KEY_FIGURES_VERSION``). The per-grid analysis computes rows of an older
+       version again, and a classification reads only key figures of the version it was clustered with.
+     - –
+
+The Ω of the impedance figures are weighted with household equivalents. Multiplied by ``PEAK_LOAD_HOUSEHOLD`` and
+divided by the square of the nominal voltage, ``resistance`` becomes the summed resistive voltage drop of the grid in
+per unit. Version 1 of the key figures (pylovo 1.0.0) counted only the street feeders as branches, but kept the
+buildings at the busbar in the per-branch figures, and weighted only R with the coincidence factor.
+
+Service cables are straight lines from the street to the building. They make up about a tenth of ``avg_trafo_dis``
+in a typical grid, but where streets are missing in the map data a service cable can be hundreds of metres long.
+There, ``max_trafo_dis`` and ``avg_trafo_dis`` measure the missing streets rather than the length of the feeders.
 
 Cable lengths are installed lengths: a line of ``parallel`` cables counts ``length_km`` ×
 ``parallel``, in ``plz_parameters.cable_length`` and in ``cable_length_km`` alike. Only the

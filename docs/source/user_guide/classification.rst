@@ -23,7 +23,7 @@ At a glance
      - What happens
      - Stored in
    * - 1
-     - Sample set: PLZ drawn per RegioStaR 7 class.
+     - Sample set: PLZ drawn per RegioStaR 7 class, or copied from another classification.
      - ``classification_version``, ``sample_set``
    * - 2
      - Buildings imported from shapefiles (only with ``USE_INFDB=False``).
@@ -32,15 +32,17 @@ At a glance
      - Grids generated and the PLZ analysed for the sample (PLZ that already exist for ``VERSION_ID`` are kept).
      - ``grid_result``, ``plz_parameters``, ...
    * - 4
-     - Key figures per grid (:doc:`analysing_grids`).
+     - Key figures per grid (:doc:`analysing_grids`), of the current definitions (``key_figures_version``).
      - ``clustering_parameters``
    * - 5
-     - Implausible grids filtered, applied each time the grids are read in steps 6 and 7.
-     - ``config_clustering.yaml`` (``ADDITIONAL_FILTERING`` and the thresholds), the choice also in
-       ``classification_version`` (step 7), nothing per grid
+     - Grids with errors filtered, applied each time the grids are read in steps 6 and 7.
+     - ``config_clustering.yaml`` (``EXCLUDE_INFEASIBLE``, ``ADDITIONAL_FILTERING`` and the thresholds), the choices
+       also in ``classification_version`` (step 7), nothing per grid
    * - 6
-     - Clustering parameters chosen with a factor analysis, number of clusters chosen with the Calinski-Harabasz index.
-     - ``config_clustering.yaml``, ``classification_version`` (step 7)
+     - Key figures transformed, clustering parameters chosen with a factor analysis, number of clusters chosen with
+       the Calinski-Harabasz index, and a report of how close and how stable these choices are.
+     - ``config_clustering.yaml``, ``classification_version`` (``selection_report``, the choices in step 7),
+       ``log/selection_report_<id>.md``
    * - 7
      - Grids clustered, representative grids chosen, result written.
      - ``transformer_classified``, ``transformer_classified_with_grid``, the choices of steps 5 and 6 in
@@ -64,6 +66,9 @@ Before you start
 * The grids come from the ``VERSION_ID`` of ``config_generation_lv.yaml`` (:ref:`versions`). Its configuration
   must still match the stored snapshot, otherwise step 3 stops with ``Generation parameters differ from the
   stored snapshot``.
+* Automatic choices need a sample of at least 100 PLZ. With fewer, the number of factors, the picks and the number
+  of clusters change from one draw to the next, and the selection report shows it (step 6). The shipped
+  ``N_SAMPLES: 7`` is a test value.
 * A full sample of about 100 PLZ takes hours up to a day because every PLZ is generated. With the answer *yes* to
   "restrict sampling to PLZ present in postcode_result" only PLZ that already have grids are drawn, and step 3
   has nothing left to generate. Step 4 then dominates with about 0.14 s per grid and process: 500 Bavarian PLZ
@@ -96,7 +101,10 @@ it writes and keeps the comments and everything else in the file.
      - ``Germany`` or one value of ``REGION_DICT`` (``Bayern``, ``Hessen``, ...). It limits the PLZ that can be drawn.
    * - ``N_SAMPLES``
      - Approximate number of PLZ in the sample. The shipped ``7`` is a test value that leaves small RegioStaR
-       classes empty. Use a larger number for a federal state, for example 100.
+       classes empty. Use at least 100 for automatic choices, for example 500 for a federal state.
+   * - ``SELECTION_BOOTSTRAP``
+     - PLZ bootstrap resamples of the selection report (shipped ``100``, also when the key is missing; ``0``
+       reports the sample only). One resample takes about 5 s for 500 PLZ.
    * - ``NO_OF_CLUSTERS_ALLOWED``
      - Cluster numbers that the Calinski-Harabasz index compares and that manual input accepts
        (shipped ``[3, 4, 5, 6, 7]``).
@@ -118,6 +126,12 @@ it writes and keeps the comments and everything else in the file.
      - Columns of ``clustering_parameters`` that the clustering uses. ``pylovo-classify`` writes it.
    * - ``N_CLUSTERS_KMEANS``, ``N_CLUSTERS_GMM``
      - Number of clusters of the two algorithms. ``pylovo-classify`` writes them.
+   * - ``TRANSFORM``
+     - Transform of the key figures before the factor analysis and the clustering (step 6a): ``yeo-johnson``
+       (shipped, also when the key is missing), ``log1p`` or ``none``. Step 7 stores it with the classification.
+   * - ``EXCLUDE_INFEASIBLE``
+     - ``true`` (shipped, also when the key is missing) or ``false``. Whether grids with a voltage violation or a
+       power flow that did not converge are filtered (step 5). Step 7 stores the choice with the classification.
    * - ``ADDITIONAL_FILTERING``
      - ``true`` or ``false`` (shipped ``false``, also when the key is missing). Whether the four lower thresholds below
        filter grids as well. The filters are applied each time the grids are read. Step 7 stores the choice with the
@@ -169,6 +183,10 @@ Every question has an option, so a run can be scripted:
      - ``--restrict-to-generated``, ``--no-restrict-to-generated``
      - *yes* draws only PLZ that already have grids, so step 3 generates nothing.
    * - (no question)
+     - ``--same-sample-as N``
+     - Copy the sample set of classification ``N`` instead of drawing one, to classify the same PLZ again, for
+       example with other key-figure definitions or filters. The question about restricting the sample is not asked.
+   * - (no question)
      - ``--parallel``, ``--no-parallel``
      - Generate the grids (step 3) and compute their key figures (step 4) in worker processes, several PLZ at a
        time, or one PLZ after the other. Without the option ``PARALLEL`` of ``config_generation_lv.yaml`` decides,
@@ -193,7 +211,8 @@ each other. The names and numbers are checked at the start, so a typo stops the 
 If standard input is closed while a question is open, the command stops with a message that points to the options.
 
 The automatic path prints the selected parameters, the Calinski-Harabasz table (best number of clusters per
-algorithm with its index) and the chosen numbers. The parameters, the numbers and ``ADDITIONAL_FILTERING`` are written
+algorithm with its index) and the chosen numbers. Both paths then print the selection report of the chosen values
+(:ref:`classification-selection-report`). The parameters, the numbers and ``ADDITIONAL_FILTERING`` are written
 to ``config/config_clustering.yaml`` (a record of the last run) and handed to the clustering step directly, which
 stores them with the classification in ``classification_version``. Only these values are edited in
 the file, comments and the rest stay. A layout that this edit cannot handle (a changed key with a mapping as value) is
@@ -255,6 +274,10 @@ with the restriction, the same ``postcode_result``) draw the same PLZ with the s
 guarantee the stream of its generators across versions. Another version number gives another sample. ``sample_set``
 remains the record of the sample.
 
+With ``--same-sample-as N`` nothing is drawn: the classification is registered with a copy of the ``sample_set``
+rows of classification ``N``, in one transaction. Two classifications of the same PLZ differ only by what changed
+between them, for example the key-figure definitions, the transform or the filters.
+
 Steps 2 and 3: buildings and grids
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -277,16 +300,31 @@ Step 4 computes one row of ``clustering_parameters`` for every grid of every sam
 or ``--no-parallel`` is given: every worker computes whole PLZ with its own database connection and writes the same
 rows as one process would, and one line per finished PLZ is printed. Each worker needs about 0.3 GB of memory at its
 peak, about half of it shared with the main process, which needs about 0.4 GB itself; a generation worker of step 3
-needs about 0.4 GB. ``N_JOBS_PERCENT`` sets the number of workers of both steps. Grids that already have a row are skipped. A PLZ
-without PLZ analysis and a grid whose calculation fails are logged and skipped, and the summary at the end counts them
-(:ref:`classification-summary`).
+needs about 0.4 GB. ``N_JOBS_PERCENT`` sets the number of workers of both steps. Grids that already have a row of the current
+definitions are skipped. A row of older definitions (a smaller ``key_figures_version``) is computed again and
+replaced. A PLZ without PLZ analysis and a grid whose calculation fails are logged and skipped, and the summary at
+the end counts them (:ref:`classification-summary`).
+
+A classification reads only key figures of the definitions it was clustered with, which step 7 stores as
+``key_figures_version``. When its grids are analysed again with newer definitions, for example by a later
+classification of the same PLZ, reading it stops with a message: its result in ``transformer_classified`` stays,
+but it cannot be clustered again. Classifications clustered before migration ``0017_key_figures_version`` are
+version 1.
 
 Step 5 stores nothing. The filters are applied each time the grids are read, by steps 6 and 7 and by the notebooks, to
 the grids of the sampled PLZ and of ``VERSION_ID``. A grid is left out if
 
 * ``max_trafo_dis > THRESHOLD_MAX_TRAFO_DIS``,
-* it has a building with more than ``THRESHOLD_HOUSEHOLDS_PER_BUILDING`` households, or
+* it has a building with more than ``THRESHOLD_HOUSEHOLDS_PER_BUILDING`` households,
+* with ``EXCLUDE_INFEASIBLE`` its power flow violates the voltage limits (``voltage_violation``) or did not converge
+  (``not_converged``), or
 * with ``ADDITIONAL_FILTERING`` it is below one of the four lower thresholds.
+
+The first three remove grids with errors: buildings wrongly classified as residential, cables across missing streets,
+and grids that do not meet the design limits of their own generation. Grids with one building and grids without
+households stay in: the classes stand for all grids of the region, and these are the small filling grids at the
+edges of the others. The summary of the run reports per RegioStaR 7 class what each filter removes and how many of
+these small grids stay (:ref:`classification-summary`).
 
 A key figure that is missing never filters a grid. The result depends only on the current key figures, the sample set
 and the two YAML files, never on earlier runs, and classifications that share grids can use different filters. This
@@ -302,9 +340,17 @@ Many key figures are strongly correlated, so the clustering uses a few independe
    ``kcid``, ``ratio``, ``osm_trafo``, ``house_distance_km``, ``no_connection_buses``, ``resistance``,
    ``reactance``, ``simultaneous_peak_load_mw``, ``no_household_equ``, ``max_power_mw``), which leaves 13 candidates,
 #. removes columns that are perfectly collinear with an earlier column,
-#. takes the number of factors as the number of eigenvalues of the correlation matrix above 1,
+#. transforms every candidate with ``TRANSFORM``,
+#. takes the number of factors as the number of eigenvalues of the correlation matrix above 1 (Kaiser criterion),
 #. runs a varimax-rotated factor analysis on the standardised data with that many factors and
 #. picks for every factor the parameter with the largest absolute loading.
+
+The key figures have long tails: a few large or long grids reach many times the median, with a skewness of 2 to 5.
+Standardised but untransformed, these grids dominate the correlations of the factor analysis and the distances of
+the clustering. ``yeo-johnson`` fits one power transform per key figure (scikit-learn's ``PowerTransformer``, which
+also takes zeros), so that each one is close to symmetric. The same transform applies in steps 6b and 7. ``log1p``
+is ``log(1 + x)`` in the unit of the key figure, so figures in km hardly change. ``none`` standardises only, as
+pylovo 1.0.0 did.
 
 The names are printed and written to ``LIST_OF_CLUSTERING_PARAMETERS``. You can overrule them: the notebook
 ``01_sample_and_key_figures`` shows the correlations and the loadings, and other considerations may decide. The
@@ -321,10 +367,37 @@ k-means and for four GMM covariance types (full, diagonal, tied, spherical). The
 ``N_CLUSTERS_KMEANS`` and the best of ``gmm_tied`` becomes ``N_CLUSTERS_GMM``. A line plot is drawn but not saved, and the table of the best number per algorithm with its index is printed.
 The notebook ``02_clusters_and_representatives`` compares the Calinski-Harabasz and the Davies-Bouldin index.
 
+.. _classification-selection-report:
+
+The selection report
+~~~~~~~~~~~~~~~~~~~~
+
+Each rule of step 6 turns on a threshold or a maximum, so a small change of the sample can change the choice. After
+step 6 ``pylovo-classify`` repeats the steps on the sample and on ``SELECTION_BOOTSTRAP`` PLZ bootstrap resamples
+(the PLZ of the sample drawn with replacement, with all their grids) and reports
+
+* the adequacy of the candidates for a factor analysis: Bartlett's test of sphericity and the Kaiser-Meyer-Olkin
+  criterion (KMO, at least 0.6),
+* the eigenvalues, the explained variance of the kept factors and the range of every eigenvalue over the resamples,
+* for every factor the pick, its loading, the runner-up and the margin between them, and how often the resamples
+  pick it,
+* the Calinski-Harabasz and Davies-Bouldin curves of k-means and the tied GMM for the chosen parameters, and how
+  often each number of clusters wins over the resamples,
+* a warning for every close call: an eigenvalue within 0.1 of 1, a pick that leads by less than 0.05, a
+  parameter whose factors explain all of its variance (uniqueness below 0.01, a Heywood case), another number of
+  clusters within 2 % of the best CH index, a DB index that prefers another number, and every choice that fewer
+  than 80 % of the resamples repeat.
+
+The report changes no choice. It is printed, written to ``log/selection_report_<id>.md``, stored as JSON in
+``classification_version.selection_report`` and its warnings go to the log.
+``selection_report`` in ``pylovo.classification.clustering.selection_report`` computes it for any frame of key
+figures.
+
 Step 7: clustering and result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The parameters are standardised, then the grids are clustered with k-means (``random_state=0``) and with a Gaussian
+The parameters are transformed (``TRANSFORM``) and standardised, then the grids are clustered with k-means
+(``random_state=0``) and with a Gaussian
 mixture model with tied covariance (``random_state=1``). The **representative grid** of a cluster is the real grid
 closest to the cluster centre. The clusters are numbered by the number of households of their representative grid:
 cluster 0 has the smallest representative. K-medoids was removed to avoid the ``scikit-learn-extra``
@@ -333,8 +406,9 @@ dependency.
 The result is written to ``pylovo.transformer_classified`` with the position of the transformer of every grid. The rows
 of the classification are deleted and inserted in one transaction, so the step can be repeated with other parameters or
 numbers, and a failing write keeps the previous result. The same transaction stores the parameters, the numbers of
-clusters and ``additional_filtering`` of the run in ``classification_version`` (columns ``list_of_clustering_parameters``,
-``n_clusters_kmeans``, ``n_clusters_gmm`` and ``additional_filtering``):
+clusters, the filter choices, the transform and the version of the key figures of the run in
+``classification_version`` (columns ``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm``,
+``additional_filtering``, ``exclude_infeasible``, ``transform`` and ``key_figures_version``):
 
 .. list-table::
    :header-rows: 1
@@ -384,8 +458,12 @@ and logs a ``WARNING`` for every loss that the filters do not explain:
   grids whose calculation failed (details in ``log/log.txt``),
 * a mismatch between the grids that pass the filters and the grids in ``transformer_classified``.
 
-Filtered grids are listed per rule (a grid can match several) and are no warning, they are the intended filter. The
-run still ends with "Classification process completed successfully!" when grids were lost, so read the summary.
+Filtered grids are listed per rule (a grid can match several) and are no warning, they are the intended filter. A
+table per RegioStaR 7 class follows: the grids with key figures, the grids, buildings and households that the filters
+leave out (with the share of the grids), the grids per filter (``F1``, ``F2``, ..., named below the table) and the
+kept grids with one building or without households. The classes of the clustering stand for the grids that pass the
+filters, so a model that weights its grids by class can account for the rest. The run still ends with
+"Classification process completed successfully!" when grids were lost, so read the summary.
 
 Look at the result
 ------------------
@@ -487,8 +565,9 @@ that enter the clustering, and ``DatabaseCommunication.get_classification_choice
 clusters and ``additional_filtering`` of the classification (the clustering notebooks use both).
 ``DatabaseCommunication(classification_id, version_id)`` and ``get_sample_set(classification_id)`` read another
 classification or grid version than the configured one (``None`` keeps the configuration). Step 6a is split into
-``factor_analysis_input`` (the candidate key figures) and ``number_of_factors`` (eigenvalues above 1) in
-``pylovo.classification.clustering.get_parameters_for_clustering``. ``kmeans_clustering`` and ``gmm_tied_clustering`` in
+``factor_analysis_input`` (the candidate key figures), ``candidate_eigenvalues`` and ``number_of_factors``
+(eigenvalues above 1) in ``pylovo.classification.clustering.get_parameters_for_clustering``, and
+``transform_key_figures`` in ``pylovo.classification.clustering.transform`` applies ``TRANSFORM``. ``kmeans_clustering`` and ``gmm_tied_clustering`` in
 ``pylovo.classification.clustering.clustering_algorithms`` cluster any data frame with the key figures and return the
 clustered frame and the representative grids.
 
@@ -581,6 +660,12 @@ Troubleshooting
      - Too few or degenerate grids, or a missing value in a key figure. Use a larger sample or enter parameters yourself.
    * - ``KeyError`` in step 7
      - A name in ``LIST_OF_CLUSTERING_PARAMETERS`` is not a column of ``clustering_parameters``.
+   * - ``... lists renamed key figures: no_households_per_branch is now no_household_equ_per_branch``
+     - The configuration names a key figure by its name of pylovo 1.0.0. Use the new name.
+   * - ``Classification N needs key figures of version V, but grids of its sample hold version W``
+     - The grids were analysed with other key-figure definitions than the classification. With a newer W: its result
+       stays, classify the grids again under a new id (``--same-sample-as N``). With an older W: compute them again
+       (``pylovo-analyze --plz <plz>`` or step 4).
    * - Fewer grids than expected
      - Read the summary at the end of the run: it names the PLZ without grids or without PLZ analysis and the grids
        whose calculation failed (warnings, details in ``log/log.txt``) and counts the grids per filter.

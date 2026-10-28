@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Support Python 3.14 (numba no longer pinned to 0.62.1)
 - Add `pylovo-generate --all [STATE ...]` to generate every postcode with buildings in the InfDB, or those of federal states, e.g. `--all by nrw` (see [Region selection](https://pylovo.readthedocs.io/en/latest/user_guide/region_selection.html))
 - Flag HV/MV substations that no 60 kV or 110 kV line or cable of OSM ends at (`no_osm_hv_line`): their feed, and so their eTraGo bus, is not confirmed by OSM (see [MV grids](https://pylovo.readthedocs.io/en/latest/concepts/mv_grids.html#mv-substations))
+- Add a selection report to `pylovo-classify` that shows how close and how stable the automatic choice of the clustering parameters and the number of clusters is, and `--same-sample-as` to classify the PLZ of another classification again (see [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html#classification-selection-report))
 
 ### Changed
 - Upgrade the locked dependencies, among them pandapower 3.5, NumPy 2.4, SciPy 1.18, SQLAlchemy 2.1, numba 0.68, plotly 7 and matplotlib 3.11; pandapower 3.5.2 is the new minimum
@@ -38,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Read only the grids and nodes of a variant in `pylovo-mv couple`
 - Keep the done supply areas and their status when the MV ties or links fail: the failure becomes a warning of the summary
 - Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again
+- Count every outgoing circuit of the LV busbar as a branch of the key figures, buildings at the busbar included, and rename the household-equivalent key figures to `no_household_equ_per_branch` and `max_household_equ_of_a_branch`; run `pylovo-setup` once after upgrading (see [Analysing grids](https://pylovo.readthedocs.io/en/latest/user_guide/analysing_grids.html))
+- Transform the key figures before the factor analysis and the clustering (`TRANSFORM`, Yeo-Johnson by default) and leave out grids with a voltage violation or no converged power flow (`EXCLUDE_INFEASIBLE`) (see [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html))
 
 ### Removed
 - Remove `plot_contextily`, `draw_tree_network_spacing`, `draw_tree_network_with_spacing_from_grid_id`, `hierarchy_pos`, `hierarchy_pos2` and `get_colormap_for_treegraph`; use `plot_lv_grid`, `draw_tree_network(..., y="distance")` and `draw_radial_network` (see [Plotting helpers](https://pylovo.readthedocs.io/en/latest/user_guide/exporting_visualising.html#plotting-helpers))
@@ -48,6 +51,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000, and a map view with more asks you to zoom in instead of leaving out grids (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
 - Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
 - Attach an MV node at a vertex of several equally near street edges always to the edge with the lowest id; before, the order of the index scan decided, so two runs on the same data could differ
+- Weight the reactance of the key figures with the simultaneity like the resistance, so `ratio` lies within the R/X of the cable catalogue
+- Leave the house distance of a grid with one building empty instead of 0 km
 
 ## [1.0.0] - 2026-10-22
 ### Changed
