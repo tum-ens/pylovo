@@ -115,7 +115,7 @@ The messages of ``pylovo-mv`` and of ``pylovo-generate --mv`` are explained in
 Plotting
 --------
 
-The basemap of ``plot_contextily`` shows "Access blocked"
+An OpenStreetMap basemap (MV maps, ``plot_grid_on_map``) shows "Access blocked"
    The OpenStreetMap tile servers require an identifying User-Agent. pylovo sends one with
    contextily 1.7 or newer: update the ``plots`` extra. For your own maps see the note in
    :doc:`exporting_visualising`.

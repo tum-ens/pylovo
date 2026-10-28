@@ -122,8 +122,13 @@ Excel workbooks, for example to exchange grids with a distribution system operat
 Plotting helpers
 ----------------
 
-:mod:`pylovo.plotting.generation.networks` plots single grids; install the ``plots`` extra first.
-The functions read the grid of the active ``VERSION_ID``.
+Install the ``plots`` extra first. The figures of the LV grids take the layers of a postcode area or the
+pandapower net of a grid, not a database connection: read them once with
+:meth:`~pylovo.database.database_client.DatabaseClient.read_lv_layers` and
+:meth:`~pylovo.database.database_client.DatabaseClient.read_net_db` (any ``version_id``), or with
+:class:`pylovo.examples.TutorialData`, which falls back to the example areas of the tutorials when there is no
+database. The functions return their figure, accept ``ax=`` where one axes is enough, never call ``plt.show()``
+and draw streets and buildings from pylovo's own layers, so they work offline.
 
 .. list-table::
    :header-rows: 1
@@ -132,61 +137,109 @@ The functions read the grid of the active ``VERSION_ID``.
 
    * - Function
      - Output
-   * - :func:`~pylovo.plotting.generation.networks.plot_contextily`
-     - Matplotlib map with lines, buildings coloured by peak load, the transformer and an
-       OpenStreetMap basemap (needs internet access).
-   * - :func:`~pylovo.plotting.generation.networks.plot_simple_grid`
-     - Interactive plotly figure of the pandapower net with geographic coordinates.
-   * - :func:`~pylovo.plotting.generation.networks.plot_grid_on_map`
-     - The same on an OpenStreetMap basemap.
-   * - :func:`~pylovo.plotting.generation.networks.plot_with_generic_coordinates`
-     - The net with generic tree coordinates (requires the package ``igraph``, which is part of
-       the ``plots`` extra).
+   * - :func:`~pylovo.plotting.lv_grid.plot_lv_overview`
+     - All grids of a postcode area, coloured by grid, station rating, cable type or power-flow status, stations
+       labelled.
+   * - :func:`~pylovo.plotting.lv_grid.plot_lv_grid`
+     - One grid: cables by type, by feeder, by sizing basis (ampacity or voltage drop), by loading or voltage of
+       the validation power flow; buildings by peak load or use.
+   * - :func:`~pylovo.plotting.lv_grid.plot_feeder_voltage_profile`
+     - The voltage along every feeder over the cable distance from the station, in the voltage band of the
+       version (:func:`~pylovo.plotting.lv_grid.voltage_band`).
+   * - :func:`~pylovo.plotting.lv_grid.plot_building_uses`, :func:`~pylovo.plotting.lv_grid.plot_partition`,
+       :func:`~pylovo.plotting.lv_grid.plot_connections`, :func:`~pylovo.plotting.lv_grid.plot_exclusions`
+     - Intermediate steps of the generation: building uses and MV customers, k-means and building clusters,
+       connection lines to the streets, buildings left out and why.
+   * - :func:`~pylovo.plotting.lv_grid.plot_settlement_type`, :func:`~pylovo.plotting.lv_grid.plot_rating_counts`,
+       :func:`~pylovo.plotting.lv_grid.plot_cable_inventory`, :func:`~pylovo.plotting.lv_grid.plot_voltage_drop_check`,
+       :func:`~pylovo.plotting.lv_grid.plot_grid_distributions`
+     - Statistics of many grids: settlement type, station ratings, cable kilometres by type, feeder voltage drop
+       against the limit, distributions of key figures by settlement type.
+   * - :func:`~pylovo.plotting.voltage_levels.plot_voltage_levels`
+     - From the eTraGo HV grid (``pylovo-viewer fetch etrago``) over the MV supply area and its ring to one LV
+       grid, with the chain of the connection
+       (:meth:`~pylovo.database.database_client.DatabaseClient.read_voltage_chain`).
    * - :func:`~pylovo.plotting.generation.networks.draw_tree_network`,
-       :func:`~pylovo.plotting.generation.networks.draw_tree_network_spacing`,
        :func:`~pylovo.plotting.generation.networks.draw_radial_network`
-     - Tree and radial drawings of a networkx graph of the grid
-       (``pandapower.topology.create_nxgraph(net)``); node colours from ``NETWORK_COLORS``. They
-       return the matplotlib figure and do not call ``plt.show()``: in a notebook assign the result
-       (``fig = ...``), in a script close the figure when it is saved.
-   * - :func:`~pylovo.plotting.generation.networks.draw_tree_network_with_spacing_from_grid_id`
-     - Reads a grid and draws it with :func:`~pylovo.plotting.generation.networks.draw_tree_network_spacing`.
-
-The plotly functions return their figure; they write no HTML file and open no browser. A notebook
-shows the figure when the call is the last line of the cell, a script saves it with
-``fig.write_html("grid.html")``.
+     - The grid as a tree or radially (networkx graph of ``pandapower.topology.create_nxgraph(net)``): cables by
+       type, consumers by category, depth or cable distance as the vertical axis or radius.
+   * - :func:`~pylovo.plotting.generation.networks.plot_simple_grid`,
+       :func:`~pylovo.plotting.generation.networks.plot_grid_on_map`,
+       :func:`~pylovo.plotting.generation.networks.plot_with_generic_coordinates`
+     - Interactive plotly figures of one grid (``version_id`` optional), with geographic coordinates, on an
+       OpenStreetMap basemap or with generic tree coordinates (needs ``igraph``, part of the ``plots`` extra).
 
 .. code-block:: python
 
-   from pylovo.plotting.generation.networks import plot_contextily
+   import pandapower.topology as top
 
-   fig = plot_contextily(plz=85653, kcid=1, bcid=4, zoomfactor=17)
+   from pylovo.examples import TutorialData
+   from pylovo.plotting.generation.networks import draw_tree_network
+   from pylovo.plotting.lv_grid import plot_lv_grid
+
+   data = TutorialData(85307)                       # the database of your .env, else the example data
+   kcid, bcid = data.typical_grid
+   fig = plot_lv_grid(data.layers, kcid, bcid, color_by="cable", buildings="peak_load")
    fig.savefig("grid.png", dpi=150)
+   net = data.net(kcid, bcid)
+   fig = draw_tree_network(top.create_nxgraph(net), net=net, y="distance")
 
-.. figure:: /images/plotting/plot_contextily.png
-   :alt: Map of one grid with lines, buildings coloured by peak load and the transformer on an OpenStreetMap basemap
+.. figure:: /images/plotting/plot_lv_grid.png
+   :alt: Map of one rural grid with its cables coloured by type and its buildings coloured by peak load
    :width: 75%
 
-   Output of ``plot_contextily`` for PLZ 85653, kcid 1, bcid 4. Basemap and demo data
-   © OpenStreetMap contributors (ODbL). Figure made with ``docs/scripts/plot_pylovo_examples.py``.
+   ``plot_lv_grid`` for the typical grid of the rural example area 85307 (grid 1/6, 250 kVA).
+   Made with ``docs/scripts/plot_pylovo_examples.py``.
 
-.. figure:: /images/plotting/draw_tree_network_spacing.png
-   :alt: Tree drawing of a small grid with transformer, connection and consumer nodes
+.. figure:: /images/plotting/draw_tree_network.png
+   :alt: Tree drawing of the same grid with the cable distance from the station as vertical axis
    :width: 100%
 
-   ``draw_tree_network_spacing`` for a small grid (version ``docs_km``, kcid 1, bcid 2): transformer
-   buses at the top, connection buses in green, consumers in light blue. The tree drawings are
-   readable for grids with up to about a hundred buses.
+   ``draw_tree_network(G, net=net, y="distance")`` for the same grid: the station at the top, every bus at its
+   cable distance from the station, cables coloured by type, consumers by category.
+
+.. figure:: /images/plotting/plot_voltage_levels.png
+   :alt: Three maps zooming from the HV grid over the MV supply area to one LV grid, with the chain of the connection above
+   :width: 100%
+
+   ``plot_voltage_levels`` for the same grid: the 110 kV lines at the eTraGo bus of the HV/MV substation, the
+   20 kV supply area with the ring that supplies the grid, and the LV grid. The box of the same colour and number
+   in each map marks the extent of the next one.
 
 .. note::
 
    The OpenStreetMap tile servers reject requests without an identifying User-Agent. The plotting
    functions of pylovo send ``pylovo (https://github.com/tum-ens/pylovo)`` themselves, which needs
-   contextily 1.7 or newer (the ``plots`` extra installs it). For a basemap that you add with
-   contextily yourself, pass an identifying one, for example
+   contextily 1.7 or newer (the ``plots`` extra installs it; the MV maps and ``plot_grid_on_map`` use
+   basemap tiles). For a basemap that you add with contextily yourself, pass an identifying one, for example
    ``cx.add_basemap(ax, headers={"User-Agent": "my-project/1.0 (contact@example.org)"})``, and keep
    the number of tile downloads small (`tile usage policy
    <https://operations.osmfoundation.org/policies/tiles/>`_).
+
+**Deprecated** (they still work, warn when called and will be removed in pylovo 2.0):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 50 50
+   :class: fixed-table
+
+   * - Function
+     - Use instead
+   * - ``networks.plot_contextily``
+     - :func:`~pylovo.plotting.lv_grid.plot_lv_grid`
+   * - ``networks.draw_tree_network_spacing``, ``networks.draw_tree_network_with_spacing_from_grid_id``,
+       ``networks.hierarchy_pos``, ``networks.hierarchy_pos2``, ``networks.get_colormap_for_treegraph``
+     - :func:`~pylovo.plotting.generation.networks.draw_tree_network` (``y="distance"``),
+       :func:`~pylovo.plotting.generation.networks.draw_radial_network`,
+       :func:`~pylovo.plotting.generation.networks.tidy_tree_pos`
+   * - ``metric_validation.plot_pie_of_trafo_cables``, ``plot_hist_trafos``, ``plot_boxplot_plz``,
+       ``plot_cable_length_of_types``
+     - :func:`~pylovo.plotting.lv_grid.plot_rating_counts`, :func:`~pylovo.plotting.lv_grid.plot_cable_inventory`,
+       :func:`~pylovo.plotting.lv_grid.plot_grid_distributions`
+   * - ``geo_validation.plot_grid_on_map_plotly``
+     - :func:`~pylovo.plotting.generation.networks.plot_grid_on_map`
+   * - ``powerflow_validation.plot_voltage_profile``
+     - :func:`~pylovo.plotting.lv_grid.plot_feeder_voltage_profile`
 
 For whole postcode areas, :mod:`pylovo.plotting.gis_preparation.io_geodata` returns the buses and
 lines of all grids as GeoDataFrames
@@ -213,18 +266,11 @@ metrics table with one row per grid and a ``source`` column (for example the res
 
    * - Module
      - Output
-   * - :mod:`~pylovo.plotting.validation.metric_validation`: ``plot_pie_of_trafo_cables``,
-       ``plot_hist_trafos``, ``plot_boxplot_plz``, ``plot_cable_length_of_types``
-     - Station ratings, cable types and the per-transformer key figures of a postcode
-       (``plz_parameters``, :doc:`analysing_grids`), matplotlib.
    * - :mod:`~pylovo.plotting.validation.metric_validation`: ``plot_comparison_distribution_plotly``,
        ``plot_comparison_histogram_plotly``, ``plot_comparison_scatter_plotly``
      - One metric per source as box, violin or strip plot or as histograms, or two metrics against
        each other, plotly; the source colours come from ``pylovo.plotting.utils.COLOR_MAP``.
-   * - :mod:`~pylovo.plotting.validation.geo_validation`: ``plot_trafo_on_map``,
-       ``plot_grid_on_map_plotly``
-     - The stations of a postcode coloured by their rating (``PLOT_COLOR_DICT``), or one grid, on a
-       map, plotly.
+   * - :mod:`~pylovo.plotting.validation.geo_validation`: ``plot_trafo_on_map``
+     - The stations of a postcode coloured by their rating (``PLOT_COLOR_DICT``) on a map, plotly.
    * - :mod:`~pylovo.plotting.validation.powerflow_validation`
-     - Histograms and profiles of the loads, bus voltages and line loadings of solved nets,
-       matplotlib.
+     - Histograms of the loads, bus voltages and line loadings of solved nets, matplotlib.

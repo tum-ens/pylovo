@@ -1,51 +1,39 @@
-"""Example figures made with pylovo's own plotting functions.
+"""Example figures made with pylovo's own plotting functions, from the example data of the tutorials.
 
-Requires a pylovo database with the demo region PLZ 85653 and the grid versions
-created by ``docs/scripts/make_demo_versions.py``; ``plot_contextily`` downloads
-OpenStreetMap tiles and therefore needs internet access. Run from the repository
-root (``config/config_generation_lv.yaml`` must have ``VERSION_ID: "1"``)::
+Needs no database and no internet: :class:`pylovo.examples.TutorialData` reads the rural example area from
+``data/examples``. Run from the repository root::
 
-    uv run python docs/scripts/plot_pylovo_examples.py
+    uv run --extra plots python docs/scripts/plot_pylovo_examples.py
 
 Output: ``docs/source/images/plotting/*.png``.
 """
 from __future__ import annotations
 
 import _figure_style as st
-import contextily.tile
-import matplotlib.pyplot as plt
 import pandapower.topology as top
 
-from pylovo.database.database_client import DatabaseClient
-from pylovo.plotting.generation.networks import (
-    draw_tree_network_spacing,
-    plot_contextily,
-)
+from pylovo.examples import TutorialData
+from pylovo.plotting.generation.networks import draw_tree_network
+from pylovo.plotting.lv_grid import plot_lv_grid
+from pylovo.plotting.voltage_levels import plot_voltage_levels
 
-PLZ = 85653
+PLZ = 85307
 SUBDIR = "plotting"
 
 
-#: The OpenStreetMap tile servers reject contextily's anonymous default User-Agent
-#: (tile usage policy); identify the client for the handful of tiles needed here.
-contextily.tile.USER_AGENT = "pylovo-docs/0.7 (+https://github.com/tum-ens/pylovo)"
-
-
 def main() -> None:
-    fig = plot_contextily(plz=PLZ, kcid=1, bcid=4, zoomfactor=17, figsize=(7, 6))
-    fig.axes[0].set_title("plot_contextily(plz=85653, kcid=1, bcid=4)", fontsize=10, loc="left")
-    fig.text(0.01, 0.01, "Basemap © OpenStreetMap contributors", fontsize=6.5, color=st.INK_SECONDARY)
-    st.save(fig, SUBDIR, "plot_contextily")
+    data = TutorialData(PLZ, source="examples")
+    kcid, bcid = data.typical_grid
+    st.save(plot_lv_grid(data.layers, kcid, bcid, color_by="cable", buildings="peak_load"), SUBDIR, "plot_lv_grid",
+            dpi=130)
 
-    with DatabaseClient() as dbc:
-        net = dbc.read_net_db(PLZ, 1, 2, version_id="docs_km")
-    graph = top.create_nxgraph(net)
-    draw_tree_network_spacing(graph)
-    fig = plt.gcf()
-    fig.set_size_inches(12, 5.5)
-    fig.axes[0].set_title("draw_tree_network_spacing(G) for grid kcid 1 / bcid 2 (version docs_km)", loc="left")
-    st.save(fig, SUBDIR, "draw_tree_network_spacing", dpi=110)
-    plt.close("all")
+    net = data.net(kcid, bcid)
+    st.save(draw_tree_network(top.create_nxgraph(net), net=net, y="distance"), SUBDIR, "draw_tree_network", dpi=120)
+
+    levels = data.voltage_levels(kcid, bcid)
+    st.save(plot_voltage_levels(levels["chain"], levels["hv"], levels["mv_context"], levels["mv_grid"], levels["lv"]),
+            SUBDIR, "plot_voltage_levels", dpi=110)
+
 
 if __name__ == "__main__":
     main()
