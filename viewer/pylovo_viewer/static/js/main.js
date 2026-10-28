@@ -77,8 +77,8 @@ createApp({
       const out = [];
       for (const id of [...Z_ORDER].reverse()) {
         const m = this.metaById[id];
-        const st = this.layers[id];
-        if (!m || !this.visible(id) || st.status !== 'ok' || !st.count || this.zoom < (m.min_zoom || 0)) continue;
+        // what is drawn, whatever the state of its latest request (a reload keeps the data until it is answered)
+        if (!m || !this.visible(id) || !this.map?.data(id)?.features.length || this.zoom < (m.min_zoom || 0)) continue;
         const style = STYLES[id];
         const entries = [...(style.legend ? style.legend() : [])];
         const scheme = schemeOf(id, this.modeOf(id));
