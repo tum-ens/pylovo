@@ -106,7 +106,7 @@ skipped with the reason otherwise.
    * - Tests
      - Variable
      - Database
-   * - ``tests/test_toy_town.py``: end-to-end smoke test of the generation (reads)
+   * - ``tests/test_toy_town.py``: end-to-end test of the generation, with the result snapshot (reads)
      - ``PYLOVO_TOY_TOWN_DATABASE`` = database name
      - the toy-town test database; the name must be the database pylovo's configuration points to
    * - ``api/tests`` marked ``requires_db``: regions, results, diagnostics, load editing (writes)
@@ -149,6 +149,18 @@ the database it points to. Without that variable, pylovo reads ``.env`` with ``o
 in the checkout replaces exported variables; set ``PYLOVO_ENV_FILE=`` also when you run single database tests by
 hand against a test database. The build script refuses to run unless ``--database`` names the database the
 configuration points to, and it refuses a database that already has the ``pylovo`` or the ``basedata`` schema.
+
+**The result snapshot.** ``tests/test_toy_town.py`` compares the key figures of the toy-town grids with
+``tests/db/toy_town_results.json``: per version and postcode the number of grids and of converged grids, the
+transformers per rating, the cable length per type and number of parallel cables, the connected buildings with
+their summed peak load and the largest LV voltage drop. Version ``1`` uses the ``config/`` of the checkout, so a
+change of the code, of the shipped configuration or of the reference data that alters the generated grids fails
+this test with a list of the changed figures. If the change is intended, write the snapshot again and commit it
+with the change (and a changelog line), so that the diff of the file shows the effect on the results:
+
+.. code-block:: bash
+
+   PYLOVO_UPDATE_TOY_TOWN_SNAPSHOT=1 uv run --extra api --extra plots python tests/db/run_database_tests.py -- -k snapshot
 
 For behaviour-preserving changes of the generation, generate the same postcode before and after the change
 in a disposable database and compare ``grid_result``, ``buildings_result``, ``lines_result`` and the

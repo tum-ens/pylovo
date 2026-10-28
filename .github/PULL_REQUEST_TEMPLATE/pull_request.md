@@ -38,6 +38,7 @@ Provide steps to test this PR. List clear instructions for testing, including an
 - [ ] My changes generate no new warnings.
 - [ ] I have added or updated tests to cover my changes.
 - [ ] All tests pass locally with my changes.
+- [ ] If the generated grids change on purpose, the toy-town snapshot (`tests/db/toy_town_results.json`) is updated and the change is in the changelog.
 
 ### Additional Notes
 Add any additional notes, suggestions, or comments here (e.g., areas the reviewer should focus on, known limitations, or special circumstances).

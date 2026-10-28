@@ -1,15 +1,26 @@
 """End-to-end smoke test of the LV generation on the toy-town test database (opt-in; only reads).
 
-    PYLOVO_TOY_TOWN_DATABASE=pylovo_test uv run pytest tests/test_toy_town.py
+    uv run --extra api --extra plots python tests/db/run_database_tests.py
 
-Build the database first with ``tests/db/build_test_database.py`` (section "Tests" of the development guide). The
-variable must name the database pylovo's configuration points to.
+Or build the database with ``tests/db/build_test_database.py`` and set ``PYLOVO_TOY_TOWN_DATABASE`` to it (section
+"Database tests" of the development guide); the variable must name the database pylovo's configuration points to.
+
+The key figures of the generated grids are compared with the snapshot ``tests/db/toy_town_results.json``, so a
+change of the results shows up in a test. After an intended change, write the snapshot again and commit it with the
+change and a changelog line::
+
+    PYLOVO_UPDATE_TOY_TOWN_SNAPSHOT=1 uv run --extra api --extra plots python tests/db/run_database_tests.py -- -k snapshot
 """
 from __future__ import annotations
 
+import json
+import math
 import os
+from pathlib import Path
 
 import pytest
+
+SNAPSHOT = Path(__file__).parent / "db" / "toy_town_results.json"
 
 DATABASE = os.getenv("PYLOVO_TOY_TOWN_DATABASE")
 pytestmark = pytest.mark.skipif(
@@ -77,3 +88,52 @@ def test_every_building_is_accounted_for(q, postcodes, tmp_path):
                                 USING (objectid)
                             WHERE r.version_id = '1' AND e.version_id = '3' AND COALESCE(r.residential_floor_area, 0) > 0""")
     assert residential_only == [(0,)]
+
+
+def toy_town_results(q) -> dict:
+    """Key figures per version and postcode: grids, transformers, cables, connected buildings and voltage drop."""
+    results: dict = {}
+
+    def entry(version: str, plz: int) -> dict:
+        return results.setdefault(version, {}).setdefault(str(plz), {})
+
+    for version, plz, grids, converged, drop in q("""
+            SELECT version_id, plz, count(*), count(*) FILTER (WHERE power_flow_status = 'converged'),
+                   max(max_total_lv_voltage_drop_pu)
+            FROM pylovo.grid_result GROUP BY 1, 2"""):
+        entry(version, plz).update(grids=grids, converged=converged, max_lv_voltage_drop_pu=round(drop, 6))
+    for version, plz, rating, count in q("""
+            SELECT version_id, plz, transformer_rated_power, count(*) FROM pylovo.grid_result GROUP BY 1, 2, 3"""):
+        entry(version, plz).setdefault("transformers_kva", {})[str(rating)] = count
+    for version, plz, std_type, parallel, km in q("""
+            SELECT g.version_id, g.plz, l.std_type, l.parallel, sum(l.length_km)
+            FROM pylovo.lines_result l JOIN pylovo.grid_result g USING (grid_result_id) GROUP BY 1, 2, 3, 4"""):
+        entry(version, plz).setdefault("cable_km", {})[f"{std_type} x{parallel}"] = round(km, 6)
+    for version, plz, buildings, peak in q("""
+            SELECT b.version_id, g.plz, count(*), sum(b.peak_load_in_kw)
+            FROM pylovo.buildings_result b JOIN pylovo.grid_result g USING (grid_result_id) GROUP BY 1, 2"""):
+        entry(version, plz).update(buildings=buildings, peak_load_kw=round(peak, 6))
+    return results
+
+
+def differences(expected, actual, path: str = "") -> list[str]:
+    """The paths whose values differ; numbers count as equal within 1e-6 (relative) or 1e-5 (absolute)."""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        return [line for key in sorted(expected.keys() | actual.keys())
+                for line in differences(expected.get(key), actual.get(key), f"{path}/{key}")]
+    numbers = all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in (expected, actual))
+    if expected == actual or numbers and math.isclose(expected, actual, rel_tol=1e-6, abs_tol=1e-5):
+        return []
+    return [f"{path.lstrip('/')}: {expected} -> {actual}"]
+
+
+def test_the_results_equal_the_snapshot(q):
+    results = toy_town_results(q)
+    if os.getenv("PYLOVO_UPDATE_TOY_TOWN_SNAPSHOT"):
+        SNAPSHOT.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        pytest.skip(f"wrote {SNAPSHOT}: check its diff and commit it with the change")
+    changed = differences(json.loads(SNAPSHOT.read_text(encoding="utf-8")), results)
+    assert not changed, (
+        f"The toy-town results differ from {SNAPSHOT.name} (version/postcode/figure: snapshot -> now):\n  "
+        + "\n  ".join(changed)
+        + "\nIf the change is intended, write the snapshot again (see the docstring of this module) and commit it.")

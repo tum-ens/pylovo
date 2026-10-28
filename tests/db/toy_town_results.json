@@ -1,0 +1,104 @@
+{
+  "1": {
+    "99001": {
+      "buildings": 122,
+      "cable_km": {
+        "NAYY_4_150 x1": 1.456,
+        "NAYY_4_150 x2": 0.231,
+        "NAYY_4_185 x1": 0.172,
+        "NAYY_4_240 x1": 0.174,
+        "NAYY_4_50 x1": 0.732
+      },
+      "converged": 5,
+      "grids": 5,
+      "max_lv_voltage_drop_pu": 0.027762,
+      "peak_load_kw": 7117.595,
+      "transformers_kva": {
+        "400": 4,
+        "630": 1
+      }
+    },
+    "99002": {
+      "buildings": 36,
+      "cable_km": {
+        "NAYY_4_150 x1": 0.355,
+        "NAYY_4_50 x1": 0.216
+      },
+      "converged": 2,
+      "grids": 2,
+      "max_lv_voltage_drop_pu": 0.002907,
+      "peak_load_kw": 626.795,
+      "transformers_kva": {
+        "400": 2
+      }
+    }
+  },
+  "2": {
+    "99001": {
+      "buildings": 122,
+      "cable_km": {
+        "NAYY_4_150 x1": 3.266,
+        "NAYY_4_150 x2": 0.274,
+        "NAYY_4_185 x2": 0.1145,
+        "NAYY_4_240 x1": 0.088,
+        "NAYY_4_240 x2": 0.4055,
+        "NAYY_4_50 x1": 0.732
+      },
+      "converged": 3,
+      "grids": 3,
+      "max_lv_voltage_drop_pu": 0.043311,
+      "peak_load_kw": 7117.595,
+      "transformers_kva": {
+        "400": 2,
+        "630": 1
+      }
+    },
+    "99002": {
+      "buildings": 36,
+      "cable_km": {
+        "NAYY_4_150 x1": 0.355,
+        "NAYY_4_50 x1": 0.216
+      },
+      "converged": 2,
+      "grids": 2,
+      "max_lv_voltage_drop_pu": 0.002907,
+      "peak_load_kw": 626.795,
+      "transformers_kva": {
+        "400": 2
+      }
+    }
+  },
+  "3": {
+    "99001": {
+      "buildings": 118,
+      "cable_km": {
+        "NAYY_4_150 x1": 1.544,
+        "NAYY_4_150 x2": 0.231,
+        "NAYY_4_240 x1": 0.174,
+        "NAYY_4_50 x1": 0.708
+      },
+      "converged": 5,
+      "grids": 5,
+      "max_lv_voltage_drop_pu": 0.021796,
+      "peak_load_kw": 6780.475,
+      "transformers_kva": {
+        "400": 4,
+        "630": 1
+      }
+    },
+    "99002": {
+      "buildings": 35,
+      "cable_km": {
+        "NAYY_4_150 x1": 0.355,
+        "NAYY_4_50 x1": 0.21
+      },
+      "converged": 2,
+      "grids": 2,
+      "max_lv_voltage_drop_pu": 0.002907,
+      "peak_load_kw": 588.875,
+      "transformers_kva": {
+        "400": 2
+      }
+    }
+  }
+}
