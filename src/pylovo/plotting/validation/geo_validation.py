@@ -28,6 +28,7 @@ from pandapower.plotting.plotly.mapbox_plot import set_mapbox_token
 from pylovo.config_loader import ACCESS_TOKEN_PLOTLY, PLOT_COLOR_DICT, RESULT_DIR, VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.utils import pandapower_on_map
+from pylovo.plotting._deprecation import deprecated
 
 if ACCESS_TOKEN_PLOTLY:
     set_mapbox_token(ACCESS_TOKEN_PLOTLY)
@@ -107,6 +108,7 @@ def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
     return figure
 
 
+@deprecated("pylovo.plotting.generation.networks.plot_grid_on_map")
 def plot_grid_on_map_plotly(
     plz: int,
     kcid: int,
@@ -114,6 +116,9 @@ def plot_grid_on_map_plotly(
     title: Optional[str] = None
 ) -> Any:
     """Visualize a single grid on a map using ``pandapower.plotting.plotly.simple_plotly``.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.generation.networks.plot_grid_on_map; removed in pylovo 2.0.
 
     Args:
         plz: Postal code.

@@ -21,10 +21,15 @@ import plotly.graph_objects as go
 from pylovo.config_loader import VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.utils import get_color_map
+from pylovo.plotting._deprecation import deprecated
 
 
+@deprecated("pylovo.plotting.lv_grid.plot_rating_counts and plot_cable_inventory")
 def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
     """Plot pie charts of the transformer sizes and installed cable types of a PLZ.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.lv_grid.plot_rating_counts and plot_cable_inventory; removed in pylovo 2.0.
 
     Args:
         plz: Postal code.
@@ -51,8 +56,12 @@ def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Fi
     return fig
 
 
+@deprecated("pylovo.plotting.lv_grid.plot_rating_counts")
 def plot_hist_trafos(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
     """Plot a bar chart of the number of transformers per size in a PLZ.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.lv_grid.plot_rating_counts; removed in pylovo 2.0.
 
     Args:
         plz: Postal code.
@@ -73,8 +82,12 @@ def plot_hist_trafos(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
     return fig
 
 
+@deprecated("pylovo.plotting.lv_grid.plot_grid_distributions")
 def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
     """Create boxplots of grid parameters grouped by transformer size.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.lv_grid.plot_grid_distributions; removed in pylovo 2.0.
 
     Shows the distribution of load numbers, bus numbers, simultaneous peak load and
     maximum/average transformer distance for each transformer size of the PLZ.
@@ -106,8 +119,12 @@ def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
     return fig
 
 
+@deprecated("pylovo.plotting.lv_grid.plot_cable_inventory")
 def plot_cable_length_of_types(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
     """Plot the installed cable length per cable type in a PLZ.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.lv_grid.plot_cable_inventory; removed in pylovo 2.0.
 
     Parallel cables count with their multiplicity; lines out of service are ignored.
 

@@ -2,6 +2,8 @@
 
 No database and no internet. Needs the ``plots`` extra; without it the module is skipped.
 """
+import warnings
+
 import pytest
 
 pytest.importorskip("matplotlib")
@@ -263,11 +265,26 @@ def test_tidy_tree_layout_spaces_the_leaves_and_centres_the_parents(net):
 @pytest.mark.parametrize("draw", [
     lambda graph, net: networks.draw_tree_network(graph),
     lambda graph, net: networks.draw_tree_network(graph, net=net, edge_color_by="cable", y="distance"),
-    lambda graph, net: networks.draw_tree_network_spacing(graph, net=net),
     lambda graph, net: networks.draw_radial_network(graph, net=net, radius="distance"),
 ])
 def test_tree_drawings(net, draw):
     assert isinstance(draw(top.create_nxgraph(net), net), Figure)
+
+
+def test_deprecated_functions_warn_with_their_replacement_and_keep_the_original():
+    from pylovo.plotting._deprecation import deprecated
+
+    @deprecated("new_function")
+    def old_function(x):
+        """Old."""
+        return 2 * x
+
+    with pytest.warns(DeprecationWarning, match=r"old_function is deprecated .* pylovo 2\.0; use new_function"):
+        assert old_function(2) == 4
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert old_function.__wrapped__(3) == 6
+    assert old_function.__doc__ == "Old."
 
 
 # --------------------------------------------------------------------------- voltage levels

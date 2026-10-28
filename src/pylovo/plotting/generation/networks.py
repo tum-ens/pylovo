@@ -34,6 +34,7 @@ from pandapower.plotting.plotly import simple_plotly
 from pandapower.topology import create_nxgraph
 
 from pylovo.plotting import style as st
+from pylovo.plotting._deprecation import deprecated
 
 # The database client and the configuration are imported where a function reads a grid, so that the drawings of
 # a net need no .env (example data of the tutorials).
@@ -77,8 +78,12 @@ def read_net_with_grid_generator(plz: int, kcid: int, bcid: int, version_id: Opt
         return dbc_client.read_net_db(plz=plz, kcid=kcid, bcid=bcid, version_id=version_id)
 
 
+@deprecated("draw_tree_network(G, net=net), which colours the cables by type")
 def get_colormap_for_treegraph(networkx_graph: nx.Graph) -> list:
     """Return one colour per node for the tree plots.
+
+    .. deprecated:: 1.1
+       Use draw_tree_network(G, net=net), which colours the cables by type; removed in pylovo 2.0.
 
     Buses 0 and 1 (LV and MV bus of the transformer) get ``NODE_COLOR_TRAFO``, leaves (degree 1,
     consumers) ``NODE_COLOR_CONSUMER`` and all other nodes ``NODE_COLOR_CONNECTION_BUS``
@@ -105,9 +110,13 @@ def get_colormap_for_treegraph(networkx_graph: nx.Graph) -> list:
     return color_map
 
 
+@deprecated("pylovo.plotting.lv_grid.plot_lv_grid (vector map layers, no tile download)")
 def plot_contextily(plz: int, kcid: int, bcid: int, zoomfactor: int = 19, ax: Optional[plt.Axes] = None,
         figsize: Tuple[int, int] = (8, 8)) -> Figure:
     """Plot the lines, buildings and transformer of one grid on an OpenStreetMap basemap.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.lv_grid.plot_lv_grid (vector map layers, no tile download); removed in pylovo 2.0.
 
     The basemap tiles are downloaded by contextily (internet access needed).
 
@@ -240,8 +249,12 @@ def plot_grid_on_map(plz: int, kcid: int, bcid: int, version_id: Optional[str] =
     return fig
 
 
+@deprecated("pylovo.plotting.generation.networks.tidy_tree_pos")
 def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5):
     """Return hierarchical (top-down) layout positions of a tree.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.generation.networks.tidy_tree_pos; removed in pylovo 2.0.
 
     From Joel's answer at https://stackoverflow.com/a/29597209/2966723
     (CC BY-SA).
@@ -291,8 +304,12 @@ def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5)
     return _hierarchy_pos(G, root, width, vert_gap, vert_loc, xcenter)
 
 
+@deprecated("pylovo.plotting.generation.networks.tidy_tree_pos")
 def hierarchy_pos2(G, root, levels=None, width=1., height=1.):
     """Return hierarchical layout positions with the nodes of each level evenly spaced.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.generation.networks.tidy_tree_pos; removed in pylovo 2.0.
 
     Recurses without a visited set, so a cycle reachable from ``root`` recurses forever.
 
@@ -509,9 +526,13 @@ def draw_tree_network(G, width=1., *, net=None, ax: Optional[plt.Axes] = None, l
                       ylabel="Cable distance from the station (m)" if y == "distance" else None)
 
 
+@deprecated("draw_tree_network with a net from DatabaseClient.read_net_db or pylovo.examples.TutorialData")
 def draw_tree_network_with_spacing_from_grid_id(plz: int, kcid: int, bcid: int,
                                                 version_id: Optional[str] = None) -> Figure:
     """Read one grid and draw it with :func:`draw_tree_network_spacing`, cables coloured by type.
+
+    .. deprecated:: 1.1
+       Use draw_tree_network with a net from DatabaseClient.read_net_db or pylovo.examples.TutorialData; removed in pylovo 2.0.
 
     Args:
         plz: Postal code.
@@ -524,12 +545,16 @@ def draw_tree_network_with_spacing_from_grid_id(plz: int, kcid: int, bcid: int,
     """
     net = read_net_with_grid_generator(plz=plz, kcid=kcid, bcid=bcid, version_id=version_id)
     G = create_nxgraph(net)
-    return draw_tree_network_spacing(G, net=net, edge_color_by="cable")
+    return draw_tree_network_spacing.__wrapped__(G, net=net, edge_color_by="cable")
 
 
+@deprecated('draw_tree_network(G, net=net, y="distance") or draw_radial_network')
 def draw_tree_network_spacing(G, *, net=None, ax: Optional[plt.Axes] = None, labels: Optional[bool] = None,
                               edge_color_by: Optional[str] = None, title: Optional[str] = None) -> Figure:
     """Draw the grid graph as a tree with the buses of each level evenly spaced (:func:`hierarchy_pos2`).
+
+    .. deprecated:: 1.1
+       Use draw_tree_network(G, net=net, y="distance") or draw_radial_network; removed in pylovo 2.0.
 
     Each level holds the buses at the same number of cables from the MV bus; spreading them evenly fills the
     width, also for large grids, at the cost of longer edges than :func:`draw_tree_network`.
@@ -547,7 +572,7 @@ def draw_tree_network_spacing(G, *, net=None, ax: Optional[plt.Axes] = None, lab
     """
     root = _tree_root(G, net)
     simple = nx.Graph(G)
-    pos = hierarchy_pos2(simple, root=root, width=max(6.0, 0.11 * simple.number_of_nodes()), height=4.0)
+    pos = hierarchy_pos2.__wrapped__(simple, root=root, width=max(6.0, 0.11 * simple.number_of_nodes()), height=4.0)
     return _draw_tree(G, pos, net=net, ax=ax, labels=labels, edge_color_by=edge_color_by,
                       figsize=(float(np.clip(1.5 + 0.06 * simple.number_of_nodes(), 6.0, 18.0)), 4.6), title=title)
 

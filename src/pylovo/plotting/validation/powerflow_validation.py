@@ -15,6 +15,7 @@ import pandas as pd
 import pandapower as pp
 
 from pylovo.plotting.utils import setup_axes, add_statistics_box, add_limit_lines
+from pylovo.plotting._deprecation import deprecated
 
 
 def plot_load_and_voltage_distribution(
@@ -161,6 +162,7 @@ def plot_all_voltages_for_plz(
     return fig
 
 
+@deprecated("pylovo.plotting.lv_grid.plot_feeder_voltage_profile")
 def plot_voltage_profile(
     net: pp.pandapowerNet,
     figsize: Tuple[int, int] = (12, 6),
@@ -169,6 +171,9 @@ def plot_voltage_profile(
 ) -> Figure:
     """
     Plot voltage profile across all buses.
+
+    .. deprecated:: 1.1
+       Use pylovo.plotting.lv_grid.plot_feeder_voltage_profile; removed in pylovo 2.0.
 
     Args:
         net: Pandapower network with completed power flow results.

@@ -2,6 +2,7 @@
 
 Needs the ``plots`` extra; without it the module is skipped.
 """
+import contextlib
 import types
 
 import networkx as nx
@@ -64,7 +65,8 @@ class FakeClient:
                                   "plot_cable_length_of_types"])
 def test_the_plz_plots_return_an_open_figure_and_do_not_show_it(monkeypatch, name):
     monkeypatch.setattr(metric_validation, "DatabaseClient", FakeClient)
-    fig = getattr(metric_validation, name)(85653)
+    with pytest.warns(DeprecationWarning, match=name):
+        fig = getattr(metric_validation, name)(85653)
     assert isinstance(fig, Figure)
     assert plt.get_fignums() == [fig.number]
 
@@ -73,19 +75,27 @@ def _tree():
     return nx.Graph([(1, 2), (2, 3), (2, 4), (1, 5)])
 
 
-@pytest.mark.parametrize("draw", [networks.draw_tree_network, networks.draw_tree_network_spacing,
-                                  networks.draw_radial_network])
+@pytest.mark.parametrize("draw", [networks.draw_tree_network, networks.draw_radial_network])
 def test_the_tree_drawings_return_their_figure_and_do_not_show_it(draw):
     fig = draw(_tree())
     assert isinstance(fig, Figure)
     assert plt.get_fignums() == [fig.number]
 
 
+def test_the_deprecated_spacing_tree_warns_once_and_still_draws():
+    with pytest.warns(DeprecationWarning, match="draw_tree_network_spacing") as caught:
+        fig = networks.draw_tree_network_spacing(_tree())
+    assert isinstance(fig, Figure)
+    assert len(caught) == 1                      # its use of hierarchy_pos2 does not warn again
+
+
 def test_the_tree_drawing_of_a_stored_grid_returns_the_figure(monkeypatch):
     monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid, version_id=None: object())
     monkeypatch.setattr(networks, "create_nxgraph", lambda net: _tree())
-    fig = networks.draw_tree_network_with_spacing_from_grid_id(85653, 1, 2)
+    with pytest.warns(DeprecationWarning, match="draw_tree_network_with_spacing_from_grid_id") as caught:
+        fig = networks.draw_tree_network_with_spacing_from_grid_id(85653, 1, 2)
     assert isinstance(fig, Figure)
+    assert len(caught) == 1
 
 
 def _net_with_results():
@@ -176,7 +186,9 @@ def test_the_plotly_grid_plots_return_the_figure_without_a_file_or_a_browser(mon
 def test_the_plotly_maps_return_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser, plot, args):
     GridClient.net = _grid_net()
     monkeypatch.setattr(geo_validation, "DatabaseClient", GridClient)
-    assert isinstance(getattr(geo_validation, plot)(*args), go.Figure)
+    deprecated = plot == "plot_grid_on_map_plotly"
+    with pytest.warns(DeprecationWarning, match=plot) if deprecated else contextlib.nullcontext():
+        assert isinstance(getattr(geo_validation, plot)(*args), go.Figure)
 
 
 # --- smoke tests of the comparison and power-flow plots (pylovo itself does not call them) ------------------------------
@@ -214,8 +226,10 @@ def test_the_power_flow_plots_of_a_solved_net_return_their_figures():
 
     net = pn.example_simple()
     pp.runpp(net)
+    with pytest.warns(DeprecationWarning, match="plot_feeder_voltage_profile"):
+        profile = powerflow_validation.plot_voltage_profile(net)
     figures = [powerflow_validation.plot_load_and_voltage_distribution(net),
-               powerflow_validation.plot_voltage_profile(net),
+               profile,
                powerflow_validation.plot_line_loading_distribution(net),
                powerflow_validation.plot_all_voltages_for_plz(net.res_bus[["vm_pu"]])]
     assert all(isinstance(fig, Figure) for fig in figures)
