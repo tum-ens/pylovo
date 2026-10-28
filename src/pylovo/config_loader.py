@@ -690,6 +690,12 @@ _check_key_figure_names(CONFIG_CLUSTERING)
 N_CLUSTERS_KMEANS = CONFIG_CLUSTERING["N_CLUSTERS_KMEANS"]
 N_CLUSTERS_GMM = CONFIG_CLUSTERING["N_CLUSTERS_GMM"]
 
+# Transform of the key figures before the factor analysis and the clustering
+TRANSFORMS = ("none", "log1p", "yeo-johnson")
+TRANSFORM = CONFIG_CLUSTERING.get("TRANSFORM", "yeo-johnson")
+if TRANSFORM not in TRANSFORMS:
+    raise ValueError(f"TRANSFORM must be one of {', '.join(TRANSFORMS)}, got {TRANSFORM!r}")
+
 # Also filter the grids below the four lower thresholds (pylovo-classify writes the answer of its question)
 ADDITIONAL_FILTERING = CONFIG_CLUSTERING.get("ADDITIONAL_FILTERING", False)
 if not isinstance(ADDITIONAL_FILTERING, bool):

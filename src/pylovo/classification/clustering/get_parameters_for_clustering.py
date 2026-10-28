@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from factor_analyzer import FactorAnalyzer
 
+from pylovo.classification.clustering.transform import transform_key_figures
 from pylovo.classification.database_communication.database_communication import DatabaseCommunication
 from pylovo.plotting.classification import get_parameters_for_clustering as select_clustering_parameters
 
@@ -59,16 +60,18 @@ def number_of_factors(df_candidates: pd.DataFrame) -> int:
     return max(int((eigenvalues > 1).sum()), 1)
 
 
-def get_parameters_for_clustering(additional_filtering: bool | None = None) -> list:
+def get_parameters_for_clustering(additional_filtering: bool | None = None, transform: str | None = None) -> list:
     """Return the clustering parameters for the active classification version.
 
-    The number of factors is the number of eigenvalues above 1 (at least one, :func:`number_of_factors`).
-    For each factor of the varimax-rotated factor analysis of the candidates (:func:`factor_analysis_input`) the
-    parameter with the highest absolute loading is selected. Warnings are suppressed.
+    The candidates (:func:`factor_analysis_input`) are transformed like the clustering parameters
+    (:func:`~pylovo.classification.clustering.transform.transform_key_figures`). The number of factors is the number
+    of eigenvalues above 1 (at least one, :func:`number_of_factors`). For each factor of the varimax-rotated factor
+    analysis of the candidates the parameter with the highest absolute loading is selected. Warnings are suppressed.
 
     Args:
         additional_filtering: Also leave out the grids below the four lower thresholds.
             ``None`` uses the choice of the classification (``DatabaseCommunication.get_classification_choices``).
+        transform: Transform of the key figures. ``None`` uses the choice of the classification.
 
     Returns:
         list: Names of the selected parameters (one per factor).
@@ -81,7 +84,11 @@ def get_parameters_for_clustering(additional_filtering: bool | None = None) -> l
         warnings.simplefilter("ignore")
         # get grid data
         dc = DatabaseCommunication()
-        df = factor_analysis_input(dc.get_clustering_parameters_for_classification_version(additional_filtering))
+        if transform is None:
+            transform = dc.get_classification_choices()["transform"]
+        df = transform_key_figures(
+            factor_analysis_input(dc.get_clustering_parameters_for_classification_version(additional_filtering)),
+            transform)
         try:
             return select_clustering_parameters(df_plz_parameters=df, n_comps=number_of_factors(df))
         except (ValueError, np.linalg.LinAlgError) as exc:

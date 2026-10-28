@@ -4,6 +4,9 @@ LIST_OF_CLUSTERING_PARAMETERS:
 - avg_trafo_dis
 N_CLUSTERS_KMEANS: 4
 N_CLUSTERS_GMM: 4
+# Transform of the key figures before the factor analysis and the clustering: yeo-johnson (one power transform per
+# key figure, against their long tails), log1p (log(1 + x) in the unit of the figure) or none (standardisation only)
+TRANSFORM: yeo-johnson
 # Also filter the grids below the four lower limits (pylovo-classify writes the answer of its question)
 ADDITIONAL_FILTERING: false
 # Upper limits, always applied

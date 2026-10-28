@@ -19,6 +19,7 @@ from pylovo.config_loader import (
     THRESHOLD_NO_HOUSE_CONNECTIONS,
     THRESHOLD_NO_HOUSEHOLDS,
     THRESHOLD_VSW_PER_BRANCH,
+    TRANSFORM,
     VERSION_ID,
 )
 from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION
@@ -34,7 +35,8 @@ LOWER_FILTER_THRESHOLDS = {
 }
 
 # Columns of ``classification_version`` that store the choices of step 7, in the order of ``config_clustering.yaml``.
-CLASSIFICATION_CHOICES = ("list_of_clustering_parameters", "n_clusters_kmeans", "n_clusters_gmm", "additional_filtering")
+CLASSIFICATION_CHOICES = ("list_of_clustering_parameters", "n_clusters_kmeans", "n_clusters_gmm", "additional_filtering",
+                          "transform")
 
 # Column that the readers add to the key figures: the key-figure version stored with the classification (step 7).
 STORED_KEY_FIGURES_VERSION = (
@@ -161,13 +163,13 @@ class DatabaseCommunication:
         ``config_clustering.yaml``, which hold the choices of the last ``pylovo-classify`` run.
 
         Returns:
-            dict: ``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm`` and
-            ``additional_filtering``.
+            dict: ``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm``,
+            ``additional_filtering`` and ``transform``.
         """
         self.dbc.cur.execute(f"SELECT {', '.join(CLASSIFICATION_CHOICES)} FROM pylovo.classification_version "
                              "WHERE classification_id = %(c)s", {"c": self.classification_id})
         stored = self.dbc.cur.fetchone() or (None,) * len(CLASSIFICATION_CHOICES)
-        configured = (LIST_OF_CLUSTERING_PARAMETERS, N_CLUSTERS_KMEANS, N_CLUSTERS_GMM, ADDITIONAL_FILTERING)
+        configured = (LIST_OF_CLUSTERING_PARAMETERS, N_CLUSTERS_KMEANS, N_CLUSTERS_GMM, ADDITIONAL_FILTERING, TRANSFORM)
         return {name: default if value is None else value
                 for name, value, default in zip(CLASSIFICATION_CHOICES, stored, configured)}
 
@@ -307,6 +309,7 @@ class DatabaseCommunication:
         n_clusters_kmeans: int | None = None,
         n_clusters_gmm: int | None = None,
         additional_filtering: bool | None = None,
+        transform: str | None = None,
     ) -> None:
         """Cluster the sample grids and write the result to ``pylovo.transformer_classified``.
 
@@ -314,7 +317,7 @@ class DatabaseCommunication:
         the cluster of each algorithm and whether the grid is the representative
         of its cluster. The KMedoids columns stay empty. The rows of
         the classification are replaced in one transaction, so the step can be repeated
-        and a failing write keeps the previous result. The same transaction stores the four
+        and a failing write keeps the previous result. The same transaction stores the five
         values used and the version of the key figures in ``classification_version``. ``None`` uses the stored
         value of the classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is
         stored).
@@ -324,6 +327,7 @@ class DatabaseCommunication:
             n_clusters_kmeans: Number of k-means clusters.
             n_clusters_gmm: Number of GMM components.
             additional_filtering: Also leave out the grids below the four lower thresholds.
+            transform: Transform of the key figures before the standardisation.
         """
         choices = self.get_classification_choices()
         if list_of_clustering_parameters is None:
@@ -334,6 +338,8 @@ class DatabaseCommunication:
             n_clusters_gmm = choices["n_clusters_gmm"]
         if additional_filtering is None:
             additional_filtering = choices["additional_filtering"]
+        if transform is None:
+            transform = choices["transform"]
 
         # retrieve clustering parameters
         df_parameters_of_grids = self.get_clustering_parameters_for_classification_version(additional_filtering)
@@ -355,7 +361,7 @@ class DatabaseCommunication:
         df_parameters_of_grids, representative_networks_kmeans = kmeans_clustering(
             df_parameters_of_grids=df_parameters_of_grids,
             list_of_clustering_parameters=list_of_clustering_parameters,
-            n_clusters=n_clusters_kmeans)
+            n_clusters=n_clusters_kmeans, transform=transform)
         df_parameters_of_grids.rename(mapper={'clusters': 'kmeans_clusters'}, axis=1, inplace=True)
         df_parameters_of_grids['kmeans_representative_grid'] = False
         for i in list(representative_networks_kmeans['index']):
@@ -367,7 +373,7 @@ class DatabaseCommunication:
         df_parameters_of_grids, representative_networks_gmm = gmm_tied_clustering(
             df_parameters_of_grids=df_parameters_of_grids,
             list_of_clustering_parameters=list_of_clustering_parameters,
-            n_clusters=n_clusters_gmm)
+            n_clusters=n_clusters_gmm, transform=transform)
         df_parameters_of_grids.rename(mapper={'clusters': 'gmm_clusters'}, axis=1, inplace=True)
         df_parameters_of_grids['gmm_representative_grid'] = False
         for i in list(representative_networks_gmm['index']):
@@ -422,7 +428,7 @@ class DatabaseCommunication:
                 {"c": self.classification_id,
                  "list_of_clustering_parameters": [str(name) for name in list_of_clustering_parameters],
                  "n_clusters_kmeans": int(n_clusters_kmeans), "n_clusters_gmm": int(n_clusters_gmm),
-                 "additional_filtering": bool(additional_filtering),
+                 "additional_filtering": bool(additional_filtering), "transform": str(transform),
                  "key_figures_version": int(key_figures_version)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)

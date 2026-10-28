@@ -21,6 +21,7 @@ from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score  # noq
 
 import pylovo.classification.clustering.get_no_clusters_for_clustering as get_no  # noqa: E402
 import pylovo.classification.clustering.get_parameters_for_clustering as get_params  # noqa: E402
+from pylovo.classification.clustering.transform import transform_key_figures  # noqa: E402
 from classification_helpers import synthetic_clustering_parameters  # noqa: E402
 from pylovo.plotting.classification import (  # noqa: E402
     get_parameters_for_clustering as select_parameters,
@@ -42,6 +43,10 @@ def _close_figures():
 class FakeDC:
     frame: pd.DataFrame
     additional_filtering = "not read"
+    transform = "none"                 # the transform stored with the classification
+
+    def get_classification_choices(self):
+        return {"transform": FakeDC.transform}
 
     def get_clustering_parameters_for_classification_version(self, additional_filtering=None):
         FakeDC.additional_filtering = additional_filtering
@@ -53,6 +58,7 @@ def fake_dc(monkeypatch):
     monkeypatch.setattr(get_params, "DatabaseCommunication", FakeDC)
     monkeypatch.setattr(get_no, "DatabaseCommunication", FakeDC)
     FakeDC.frame = synthetic_clustering_parameters()
+    FakeDC.transform = "none"
     return FakeDC
 
 
@@ -111,7 +117,7 @@ def test_ch_index_table_contract_and_value():
     frame = synthetic_clustering_parameters()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        table = plot_ch_index_for_clustering_algos(frame, ALLOWED, PARAMS)
+        table = plot_ch_index_for_clustering_algos(frame, ALLOWED, PARAMS, transform="none")
     assert list(table.columns) == ["algorithm", "no_clusters", "ch_index"]
     assert list(table["algorithm"]) == ["kmeans", "gmm_full", "gmm_diag", "gmm_tied", "gmm_sph"]
     assert table["no_clusters"].isin(ALLOWED).all() and (table["ch_index"] > 0).all()
@@ -125,7 +131,7 @@ def test_db_index_picks_the_minimum():
     frame = synthetic_clustering_parameters()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        table = plot_db_index_for_clustering_algos(frame, ALLOWED, PARAMS)
+        table = plot_db_index_for_clustering_algos(frame, ALLOWED, PARAMS, transform="none")
     X = preprocessing.scale(frame[PARAMS])
     scores = {k: davies_bouldin_score(X, KMeans(n_clusters=k, random_state=0).fit(X).labels_) for k in ALLOWED}
     kmeans_row = table[table["algorithm"] == "kmeans"].iloc[0]
@@ -135,13 +141,17 @@ def test_db_index_picks_the_minimum():
 def test_get_no_clusters_passes_parameters_and_allowed_numbers_through(fake_dc, monkeypatch):
     seen = {}
 
-    def fake_plot(df_plz_parameters, no_of_clusters_allowed, list_of_clustering_parameters):
-        seen.update(allowed=no_of_clusters_allowed, params=list_of_clustering_parameters)
+    def fake_plot(df_plz_parameters, no_of_clusters_allowed, list_of_clustering_parameters, transform):
+        seen.update(allowed=no_of_clusters_allowed, params=list_of_clustering_parameters, transform=transform)
         return pd.DataFrame({"algorithm": ["kmeans"], "no_clusters": [4], "ch_index": [1.0]})
 
     monkeypatch.setattr(get_no, "plot_ch_index_for_clustering_algos", fake_plot)
+    fake_dc.transform = "log1p"
     out = get_no.get_no_clusters_for_clustering(["a", "b"])
-    assert seen == {"allowed": get_no.NO_OF_CLUSTERS_ALLOWED, "params": ["a", "b"]} and len(out) == 1
+    assert seen == {"allowed": get_no.NO_OF_CLUSTERS_ALLOWED, "params": ["a", "b"], "transform": "log1p"}
+    assert len(out) == 1
+    get_no.get_no_clusters_for_clustering(["a", "b"], transform="none")
+    assert seen["transform"] == "none", "an explicit transform needs no lookup"
 
 
 def test_algorithm_names_used_by_the_cli_exist_in_the_ch_table():
@@ -182,9 +192,13 @@ def test_number_of_factors_counts_the_eigenvalues_above_one_without_warnings():
         assert get_params.number_of_factors(candidates) == int((eigenvalues > 1).sum())
 
 
-def test_the_pipeline_selects_with_the_helpers(fake_dc):
-    candidates = get_params.factor_analysis_input(fake_dc.frame)
+@pytest.mark.parametrize("transform", ["none", "yeo-johnson"])
+def test_the_pipeline_selects_with_the_helpers(fake_dc, transform):
+    """The candidates are transformed like the clustering parameters, with the transform of the classification."""
+    fake_dc.transform = transform
+    candidates = transform_key_figures(get_params.factor_analysis_input(fake_dc.frame), transform)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         expected = select_parameters(df_plz_parameters=candidates, n_comps=get_params.number_of_factors(candidates))
     assert get_params.get_parameters_for_clustering() == expected
+    assert get_params.get_parameters_for_clustering(transform=transform) == expected

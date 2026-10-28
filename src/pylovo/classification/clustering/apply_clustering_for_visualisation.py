@@ -11,6 +11,7 @@ def apply_clustering_for_visualisation(
     n_clusters_kmeans: int | None = None,
     n_clusters_gmm: int | None = None,
     additional_filtering: bool | None = None,
+    transform: str | None = None,
 ) -> None:
     """Cluster the grids of the current classification version and write ``transformer_classified``.
 
@@ -23,6 +24,7 @@ def apply_clustering_for_visualisation(
         n_clusters_kmeans: Number of k-means clusters.
         n_clusters_gmm: Number of GMM components.
         additional_filtering: Also leave out the grids below the four lower thresholds.
+        transform: Transform of the key figures before the standardisation.
     """
     dc = DatabaseCommunication()
     dc.save_transformers_with_classification_info(
@@ -30,6 +32,7 @@ def apply_clustering_for_visualisation(
         n_clusters_kmeans=n_clusters_kmeans,
         n_clusters_gmm=n_clusters_gmm,
         additional_filtering=additional_filtering,
+        transform=transform,
     )
 
 

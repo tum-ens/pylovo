@@ -100,23 +100,24 @@ def stored_dc(row) -> dcm.DatabaseCommunication:
 def test_the_stored_choices_of_the_classification_win_over_the_configuration(monkeypatch):
     """The configuration holds the choices of the last run: classification 9002 must not change those of 9001."""
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
-    dc = stored_dc((["no_branches", "avg_trafo_dis"], 5, 3, False))
+    dc = stored_dc((["no_branches", "avg_trafo_dis"], 5, 3, False, "none"))
     assert dc.get_classification_choices() == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
-                                               "n_clusters_kmeans": 5, "n_clusters_gmm": 3, "additional_filtering": False}
+                                               "n_clusters_kmeans": 5, "n_clusters_gmm": 3, "additional_filtering": False,
+                                               "transform": "none"}
     ((query, params),) = dc.dbc.cur.executed
-    assert query == ("SELECT list_of_clustering_parameters, n_clusters_kmeans, n_clusters_gmm, additional_filtering "
-                     "FROM pylovo.classification_version WHERE classification_id = %(c)s")
+    assert query == ("SELECT list_of_clustering_parameters, n_clusters_kmeans, n_clusters_gmm, additional_filtering, "
+                     "transform FROM pylovo.classification_version WHERE classification_id = %(c)s")
     assert params == {"c": dcm.CLASSIFICATION_VERSION}
     assert set(dcm.CLASSIFICATION_CHOICES) <= table_columns("classification_version")
 
 
-@pytest.mark.parametrize("row", [(None, None, None, None), None])
+@pytest.mark.parametrize("row", [(None, None, None, None, None), None])
 def test_a_classification_without_stored_choices_uses_the_configuration(monkeypatch, row):
     """Clustered before migration 0014 (NULL) or not registered: the values of config_clustering.yaml apply."""
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", True)
     assert stored_dc(row).get_classification_choices() == {
         "list_of_clustering_parameters": dcm.LIST_OF_CLUSTERING_PARAMETERS, "n_clusters_kmeans": dcm.N_CLUSTERS_KMEANS,
-        "n_clusters_gmm": dcm.N_CLUSTERS_GMM, "additional_filtering": True}
+        "n_clusters_gmm": dcm.N_CLUSTERS_GMM, "additional_filtering": True, "transform": dcm.TRANSFORM}
 
 
 @pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])
@@ -124,7 +125,7 @@ def test_a_classification_without_stored_choices_uses_the_configuration(monkeypa
 def test_the_readers_default_to_the_filter_choice_stored_with_the_classification(monkeypatch, reader, stored, configured):
     monkeypatch.setattr(dcm, "ADDITIONAL_FILTERING", configured)
     seen = capture_queries(monkeypatch)
-    getattr(stored_dc((["no_branches"], 4, 4, stored)), reader)()
+    getattr(stored_dc((["no_branches"], 4, 4, stored, "none")), reader)()
     ((query, _),) = seen
     lower = configured if stored is None else stored
     assert ("cp.avg_trafo_dis < %(avg_trafo_dis)s" in query) is lower
@@ -132,7 +133,7 @@ def test_the_readers_default_to_the_filter_choice_stored_with_the_classification
 
 def test_an_explicit_filter_choice_needs_no_lookup(monkeypatch):
     capture_queries(monkeypatch)
-    dc = stored_dc((["no_branches"], 4, 4, True))
+    dc = stored_dc((["no_branches"], 4, 4, True, "none"))
     dc.get_clustering_parameters_for_classification_version(False)
     assert dc.dbc.cur.executed == []
 
@@ -224,17 +225,17 @@ def test_the_values_used_are_stored_with_the_classification_in_the_same_transact
     assert statement == ("UPDATE pylovo.classification_version SET "
                          "list_of_clustering_parameters = :list_of_clustering_parameters, "
                          "n_clusters_kmeans = :n_clusters_kmeans, n_clusters_gmm = :n_clusters_gmm, "
-                         "additional_filtering = :additional_filtering, key_figures_version = :key_figures_version "
-                         "WHERE classification_id = :c")
+                         "additional_filtering = :additional_filtering, transform = :transform, "
+                         "key_figures_version = :key_figures_version WHERE classification_id = :c")
     assert params == {"c": dcm.CLASSIFICATION_VERSION, "list_of_clustering_parameters": PARAMS, "n_clusters_kmeans": 4,
-                      "n_clusters_gmm": 4, "additional_filtering": dcm.ADDITIONAL_FILTERING,
+                      "n_clusters_gmm": 4, "additional_filtering": dcm.ADDITIONAL_FILTERING, "transform": dcm.TRANSFORM,
                       "key_figures_version": dcm.KEY_FIGURES_VERSION}
 
 
 def test_a_repeated_step_7_without_values_clusters_with_the_stored_choices(monkeypatch):
     """Repeating step 7 for an older classification must not take the values a later run wrote to the configuration."""
     dc, captured, df = prepare_save(monkeypatch)
-    dc.dbc.cur = FakeCursor(fetchone_values=[(["no_house_connections", "avg_trafo_dis"], 3, 2, True)])
+    dc.dbc.cur = FakeCursor(fetchone_values=[(["no_house_connections", "avg_trafo_dis"], 3, 2, True, "log1p")])
     read = {}
     dc.get_clustering_parameters_for_classification_version = (
         lambda additional_filtering=None: read.update(additional_filtering=additional_filtering) or df.copy())
@@ -245,6 +246,7 @@ def test_a_repeated_step_7_without_values_clusters_with_the_stored_choices(monke
     params = dc.dbc.sqla_engine.log[3][2]
     assert params["list_of_clustering_parameters"] == ["no_house_connections", "avg_trafo_dis"]
     assert (params["n_clusters_kmeans"], params["n_clusters_gmm"], params["additional_filtering"]) == (3, 2, True)
+    assert params["transform"] == "log1p"
 
 
 def test_a_failing_write_rolls_the_delete_back_and_leaves_the_view_alone(monkeypatch):
@@ -399,7 +401,7 @@ def test_without_arguments_the_configured_classification_is_read_at_call_time(mo
 
 
 def test_the_choices_and_the_result_belong_to_the_given_classification(monkeypatch):
-    dc = stored_dc((["no_branches"], 4, 4, False))
+    dc = stored_dc((["no_branches"], 4, 4, False, "none"))
     dc._classification_id = 9004
     dc.get_classification_choices()
     assert dc.dbc.cur.executed[0][1] == {"c": 9004}

@@ -18,11 +18,11 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyproj import CRS, Transformer
-from sklearn import preprocessing
 from sklearn.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 from sklearn.mixture import GaussianMixture
 
+from pylovo.classification.clustering.clustering_algorithms import scaled_key_figures
 from pylovo.config_loader import TUMPalette, LIST_OF_CLUSTERING_PARAMETERS, REGIO7_REGIO5_GEM_DICT
 
 # Legend labels of the algorithms of the CH and DB index plots, in the order of the algorithms.
@@ -148,6 +148,7 @@ def plot_ch_index_for_clustering_algos(
     list_of_clustering_parameters: Sequence[str] | None = None,
     ax: plt.Axes | None = None,
     legend: bool = True,
+    transform: str | None = None,
 ) -> pd.DataFrame:
     """
     Plot Calinski-Harabasz index for different clustering algorithms.
@@ -159,12 +160,13 @@ def plot_ch_index_for_clustering_algos(
             ``LIST_OF_CLUSTERING_PARAMETERS`` from ``config_clustering.yaml``.
         ax: Axes to draw into. If None, creates a new figure.
         legend: Draw the legend of the algorithms (right of the axes).
+        transform: Transform of the key figures before the standardisation; ``None`` uses ``TRANSFORM`` of
+            ``config_clustering.yaml``.
 
     Returns:
         pd.DataFrame: Comparison table of optimal cluster numbers for each algorithm.
     """
-    X = df_plz_parameters[_clustering_columns(list_of_clustering_parameters)]
-    X = preprocessing.scale(X)
+    X = scaled_key_figures(df_plz_parameters, _clustering_columns(list_of_clustering_parameters), transform)
 
     df_ch_comparison = pd.DataFrame(columns=['algorithm', 'no_clusters', 'ch_index'])
     df_ch_index = pd.DataFrame({'no_clusters': list(no_of_clusters_allowed)})
@@ -204,6 +206,7 @@ def plot_db_index_for_clustering_algos(
     list_of_clustering_parameters: Sequence[str] | None = None,
     ax: plt.Axes | None = None,
     legend: bool = True,
+    transform: str | None = None,
 ) -> pd.DataFrame:
     """
     Plot Davies-Bouldin index for different clustering algorithms.
@@ -215,12 +218,13 @@ def plot_db_index_for_clustering_algos(
             ``LIST_OF_CLUSTERING_PARAMETERS`` from ``config_clustering.yaml``.
         ax: Axes to draw into. If None, creates a new figure.
         legend: Draw the legend of the algorithms (right of the axes).
+        transform: Transform of the key figures before the standardisation; ``None`` uses ``TRANSFORM`` of
+            ``config_clustering.yaml``.
 
     Returns:
         pd.DataFrame: Comparison table of optimal cluster numbers for each algorithm.
     """
-    X = df_plz_parameters[_clustering_columns(list_of_clustering_parameters)]
-    X = preprocessing.scale(X)
+    X = scaled_key_figures(df_plz_parameters, _clustering_columns(list_of_clustering_parameters), transform)
 
     df_db_comparison = pd.DataFrame(columns=['algorithm', 'no_clusters', 'db_index'])
     df_db_index = pd.DataFrame({'no_clusters': list(no_of_clusters_allowed)})
