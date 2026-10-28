@@ -1,165 +1,17 @@
 """
-Plots of grid statistics per postcode area (PLZ) and of synthetic/real metric comparisons.
+Plots of synthetic/real metric comparisons (plotly).
 
-The PLZ plots read the results of ``VERSION_ID`` from the database: transformer
-sizes, cable types and the per-transformer parameters of ``plz_parameters``.
-The Plotly comparison plots take a metrics table with a ``source`` column.
-
-The matplotlib functions return their figure and never call ``plt.show()``. A notebook
-with the inline backend shows the open figure at the end of the cell, a script closes it
-with ``plt.close(fig)`` after saving.
+They take a metrics table with a ``source`` column. The statistics of the grids of postcode areas are in
+:mod:`pylovo.plotting.lv_grid` (``plot_rating_counts``, ``plot_cable_inventory``, ``plot_grid_distributions``).
 """
 
-from typing import Tuple, Optional, List
+from typing import Optional, List
 
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from pylovo.config_loader import VERSION_ID
-from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.utils import get_color_map
-from pylovo.plotting._deprecation import deprecated
-
-
-@deprecated("pylovo.plotting.lv_grid.plot_rating_counts and plot_cable_inventory")
-def plot_pie_of_trafo_cables(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
-    """Plot pie charts of the transformer sizes and installed cable types of a PLZ.
-
-    .. deprecated:: 1.1
-       Use pylovo.plotting.lv_grid.plot_rating_counts and plot_cable_inventory; removed in pylovo 2.0.
-
-    Args:
-        plz: Postal code.
-        figsize: Figure size in inches (width, height).
-
-    Returns:
-        The figure with the two pie charts.
-    """
-    with DatabaseClient() as dbc_client:
-        _, _, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
-        cable_dict = dbc_client.read_cable_dict(plz)
-
-    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=figsize)
-
-    # Plot Transformer size distribution
-    axs[0].pie(trafo_dict.values(), labels=trafo_dict.keys(), autopct='%1.1f%%',
-               pctdistance=1.15, labeldistance=.6)
-    axs[0].set_title('Transformer Size Distribution', fontsize=14)
-
-    # Plot cable length distribution
-    axs[1].pie(cable_dict.values(), labels=cable_dict.keys(), autopct="%.1f%%")
-    axs[1].set_title("Installed Cable Length", fontsize=14)
-
-    return fig
-
-
-@deprecated("pylovo.plotting.lv_grid.plot_rating_counts")
-def plot_hist_trafos(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
-    """Plot a bar chart of the number of transformers per size in a PLZ.
-
-    .. deprecated:: 1.1
-       Use pylovo.plotting.lv_grid.plot_rating_counts; removed in pylovo 2.0.
-
-    Args:
-        plz: Postal code.
-        figsize: Figure size in inches (width, height).
-
-    Returns:
-        The figure with the bar chart.
-    """
-    with DatabaseClient() as dbc_client:
-        _, _, trafo_dict = dbc_client.read_per_trafo_dict(plz=plz)
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.bar(trafo_dict.keys(), height=trafo_dict.values(), width=0.3)
-    ax.set_title('Transformer Size Distribution', fontsize=14)
-    ax.set_xlabel("Trafo size")
-    ax.set_ylabel("Count")
-
-    return fig
-
-
-@deprecated("pylovo.plotting.lv_grid.plot_grid_distributions")
-def plot_boxplot_plz(plz: int, figsize: Tuple[int, int] = (16, 4)) -> Figure:
-    """Create boxplots of grid parameters grouped by transformer size.
-
-    .. deprecated:: 1.1
-       Use pylovo.plotting.lv_grid.plot_grid_distributions; removed in pylovo 2.0.
-
-    Shows the distribution of load numbers, bus numbers, simultaneous peak load and
-    maximum/average transformer distance for each transformer size of the PLZ.
-
-    Args:
-        plz: Postal code.
-        figsize: Figure size in inches (width, height).
-
-    Returns:
-        The figure with one boxplot panel per parameter.
-    """
-    with DatabaseClient() as dbc_client:
-        data_list, data_labels, _ = dbc_client.read_per_trafo_dict(plz=plz)
-    trafo_sizes = list(data_list[0].keys())
-    values = [list(d.values()) for d in data_list]
-
-    # Create the figure and axes objects
-    fig, axs = plt.subplots(nrows=1, ncols=len(data_list), figsize=figsize, sharey=True)
-
-    for i, data_label in enumerate(data_labels):
-        axs[i].boxplot(values[i], tick_labels=trafo_sizes, orientation='horizontal',
-                       showfliers=False, patch_artist=True, notch=False)
-        axs[i].set_title(data_label, fontsize=12)
-
-    fig.supxlabel('Values', fontsize=12)
-    fig.supylabel('Transformer Size (kVA)', fontsize=12)
-    plt.tight_layout()
-
-    return fig
-
-
-@deprecated("pylovo.plotting.lv_grid.plot_cable_inventory")
-def plot_cable_length_of_types(plz: int, figsize: Tuple[int, int] = (10, 6)) -> Figure:
-    """Plot the installed cable length per cable type in a PLZ.
-
-    .. deprecated:: 1.1
-       Use pylovo.plotting.lv_grid.plot_cable_inventory; removed in pylovo 2.0.
-
-    Parallel cables count with their multiplicity; lines out of service are ignored.
-
-    Args:
-        plz: Postal code.
-        figsize: Figure size in inches (width, height).
-
-    Returns:
-        The figure with the bar chart (lengths in km).
-    """
-    query = """
-        SELECT
-            pl.std_type,
-            COALESCE(SUM(COALESCE(pl.parallel, 1) * COALESCE(pl.length_km, 0.0)), 0.0) AS cable_length
-        FROM pylovo.pandapower_line pl
-        JOIN pylovo.grid_result gr
-          ON gr.grid_result_id = pl.grid_result_id
-        WHERE gr.version_id = %(v)s
-          AND gr.plz = %(p)s
-          AND COALESCE(pl.in_service, TRUE)
-          AND pl.std_type IS NOT NULL
-        GROUP BY pl.std_type
-        ORDER BY pl.std_type
-    """
-    with DatabaseClient() as dbc_client:
-        dbc_client.cur.execute(query, {"v": VERSION_ID, "p": plz})
-        cable_length_dict = {std_type: float(length) for std_type, length in dbc_client.cur.fetchall()}
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.bar(cable_length_dict.keys(), height=cable_length_dict.values(), width=0.3)
-    ax.set_title('Cable Type Distribution', fontsize=14)
-    ax.set_xlabel("Cable type")
-    ax.set_ylabel("Length in km")
-
-    return fig
 
 
 # -----------------------------------------------------------------------------

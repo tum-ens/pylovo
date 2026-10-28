@@ -25,7 +25,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Draw the networkx trees with a leaf-based layout, the cables coloured by type and the cable distance as axis or radius (`draw_tree_network(..., y="distance")`)
-- Deprecate `plot_contextily`, `draw_tree_network_spacing` and its helpers, the pie, histogram and box plots of `metric_validation`, `plot_grid_on_map_plotly` and the bus-index `plot_voltage_profile`: they warn and will be removed in 2.0 (see [Plotting helpers](https://pylovo.readthedocs.io/en/latest/user_guide/exporting_visualising.html#plotting-helpers))
 - Speed up the MV routing graph of large regions: the settlement polygons no longer use a query plan that grows with the square of the number of settlements (364 municipalities: build in 1.7 instead of 4.8 minutes)
 - Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them; the cells of the district areas find their stations through an index
 - Find the street edges of the MV ties and links with a union of the edges near the ring members and the attachment edges; the former OR made the planner rerun the search for every edge of a large graph
@@ -37,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again
 
 ### Removed
+- Remove `plot_contextily`, `draw_tree_network_spacing`, `draw_tree_network_with_spacing_from_grid_id`, `hierarchy_pos`, `hierarchy_pos2` and `get_colormap_for_treegraph`; use `plot_lv_grid`, `draw_tree_network(..., y="distance")` and `draw_radial_network` (see [Plotting helpers](https://pylovo.readthedocs.io/en/latest/user_guide/exporting_visualising.html#plotting-helpers))
+- Remove `plot_pie_of_trafo_cables`, `plot_hist_trafos`, `plot_boxplot_plz`, `plot_cable_length_of_types`, `plot_grid_on_map_plotly` and the bus-index `plot_voltage_profile` of `pylovo.plotting.validation`; use `plot_rating_counts`, `plot_cable_inventory`, `plot_grid_distributions`, `plot_grid_on_map` and `plot_feeder_voltage_profile`
 - Remove the statistics report and CSV files that the OpenDSS backend wrote into the working directory
 
 ### Fixed

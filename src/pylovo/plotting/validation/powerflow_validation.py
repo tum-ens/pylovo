@@ -15,7 +15,6 @@ import pandas as pd
 import pandapower as pp
 
 from pylovo.plotting.utils import setup_axes, add_statistics_box, add_limit_lines
-from pylovo.plotting._deprecation import deprecated
 
 
 def plot_load_and_voltage_distribution(
@@ -157,61 +156,6 @@ def plot_all_voltages_for_plz(
                       f'Range: [{min_v:.4f}, {max_v:.4f}]')
 
     add_statistics_box(ax, stats_text, position='upper left')
-    fig.tight_layout()
-
-    return fig
-
-
-@deprecated("pylovo.plotting.lv_grid.plot_feeder_voltage_profile")
-def plot_voltage_profile(
-    net: pp.pandapowerNet,
-    figsize: Tuple[int, int] = (12, 6),
-    show_limits: bool = True,
-    ax: Optional[plt.Axes] = None
-) -> Figure:
-    """
-    Plot voltage profile across all buses.
-
-    .. deprecated:: 1.1
-       Use pylovo.plotting.lv_grid.plot_feeder_voltage_profile; removed in pylovo 2.0.
-
-    Args:
-        net: Pandapower network with completed power flow results.
-        figsize: Figure size in inches (width, height). Default: (12, 6).
-        show_limits: Whether to show voltage limit lines. Default: True.
-        ax: Axes object for subplot integration. If None, creates a new figure.
-
-    Returns:
-        matplotlib.figure.Figure: The Figure object containing the voltage profile plot.
-
-    Raises:
-        ValueError: If power flow has not been run on the network.
-    """
-    if net.res_bus.empty:
-        raise ValueError("No power flow results found. Run pp.runpp(net) first.")
-
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-    else:
-        fig = ax.get_figure()
-
-    bus_indices = net.res_bus.index.tolist()
-    voltages = net.res_bus['vm_pu'].tolist()
-
-    # Plot voltage profile
-    ax.plot(bus_indices, voltages, 'bo-', linewidth=2, markersize=4, label='Bus Voltage')
-
-    if show_limits:
-        voltage_limits = {
-            0.9: {'label': 'Min limit (0.9 p.u.)', 'color': 'red', 'linestyle': '--', 'linewidth': 1.5},
-            1.1: {'label': 'Max limit (1.1 p.u.)', 'color': 'red', 'linestyle': '--', 'linewidth': 1.5},
-            1.0: {'label': 'Nominal (1.0 p.u.)', 'color': 'green', 'linestyle': ':', 'linewidth': 1}
-        }
-        add_limit_lines(ax, voltage_limits, orientation='horizontal')
-
-    setup_axes(ax, xlabel='Bus Index', ylabel='Voltage (p.u.)',
-               title='Bus Voltage Profile', grid=True)
-    ax.legend()
     fig.tight_layout()
 
     return fig

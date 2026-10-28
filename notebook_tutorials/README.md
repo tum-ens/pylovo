@@ -32,7 +32,9 @@ errors, local paths or credentials.
 
 ### `grid_generation/`
 
-The LV notebooks before the learning path, kept for comparison. Run them in this order. Each has a parameter cell
+The LV notebooks before the learning path, kept with their stored outputs for comparison. Four of them call
+plotting functions that were removed (`plot_contextily`, the spacing trees and the pie, histogram and box plots), so
+they no longer run. In this order: Each has a parameter cell
 at the top (`plz`, and `kcid`/`bcid` of one grid; `None` selects the first grid of the PLZ).
 
 | Notebook | Content |

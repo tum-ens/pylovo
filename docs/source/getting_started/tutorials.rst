@@ -37,7 +37,8 @@ Previous notebooks
 ------------------
 
 The directory ``notebook_tutorials/grid_generation`` contains the earlier Jupyter notebooks that walk through
-the generated grids of one postcode area. They read from a database with generated grids (for
+the generated grids of one postcode area, kept with their stored outputs for comparison. Four of them call plotting
+functions that were removed, so they no longer run. They read from a database with generated grids (for
 example ``uv run pylovo-generate --plz 85653``) and need the ``notebooks`` extra
 (``uv sync --extra notebooks``: the plotting extra plus a Jupyter kernel). Each notebook starts with
 a parameter cell (``plz``, and ``kcid``/``bcid`` of one grid; ``None`` selects the first grid).

@@ -15,20 +15,18 @@ Note:
 
 import json
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pandapower as pp
 import plotly
-import pandapower.plotting.plotly as pp_plotly
 from pandapower.plotting.plotly import vlevel_plotly
 from pandapower.plotting.plotly.mapbox_plot import set_mapbox_token
 
 from pylovo.config_loader import ACCESS_TOKEN_PLOTLY, PLOT_COLOR_DICT, RESULT_DIR, VERSION_ID
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.utils import pandapower_on_map
-from pylovo.plotting._deprecation import deprecated
 
 if ACCESS_TOKEN_PLOTLY:
     set_mapbox_token(ACCESS_TOKEN_PLOTLY)
@@ -108,43 +106,3 @@ def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
     return figure
 
 
-@deprecated("pylovo.plotting.generation.networks.plot_grid_on_map")
-def plot_grid_on_map_plotly(
-    plz: int,
-    kcid: int,
-    bcid: int,
-    title: Optional[str] = None
-) -> Any:
-    """Visualize a single grid on a map using ``pandapower.plotting.plotly.simple_plotly``.
-
-    .. deprecated:: 1.1
-       Use pylovo.plotting.generation.networks.plot_grid_on_map; removed in pylovo 2.0.
-
-    Args:
-        plz: Postal code.
-        kcid: K-means cluster ID.
-        bcid: Building cluster ID.
-        title: Title of the plot.
-
-    Returns:
-        plotly.graph_objects.Figure | None: The figure, or ``None`` if the grid
-        could not be loaded or plotted (the reason is printed).
-    """
-    try:
-        with DatabaseClient() as dbc_client:
-            net = dbc_client.read_net_db(plz, kcid, bcid)
-    except Exception as e:
-        print(f"Could not load grid {kcid}-{bcid}: {e}")
-        return None
-
-    # on_map=True enables the map background
-    try:
-        with pandapower_on_map():
-            fig = pp_plotly.simple_plotly(net, on_map=True, filename=None, auto_open=False)
-        if title:
-            fig.update_layout(title_text=title)
-        return fig
-
-    except Exception as e:
-        print(f"Plotting failed: {e}")
-        return None

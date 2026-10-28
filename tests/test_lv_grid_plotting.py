@@ -2,7 +2,6 @@
 
 No database and no internet. Needs the ``plots`` extra; without it the module is skipped.
 """
-import warnings
 
 import pytest
 
@@ -303,22 +302,6 @@ def test_the_style_context_restores_only_its_own_settings():
     finally:
         matplotlib.interactive(before[0])
         plt.rcParams["figure.dpi"] = before[1]
-
-
-def test_deprecated_functions_warn_with_their_replacement_and_keep_the_original():
-    from pylovo.plotting._deprecation import deprecated
-
-    @deprecated("new_function")
-    def old_function(x):
-        """Old."""
-        return 2 * x
-
-    with pytest.warns(DeprecationWarning, match=r"old_function is deprecated .* pylovo 2\.0; use new_function"):
-        assert old_function(2) == 4
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        assert old_function.__wrapped__(3) == 6
-    assert old_function.__doc__ == "Old."
 
 
 # --------------------------------------------------------------------------- voltage levels

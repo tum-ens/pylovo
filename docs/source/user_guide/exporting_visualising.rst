@@ -210,36 +210,15 @@ and draw streets and buildings from pylovo's own layers, so they work offline.
 
    The OpenStreetMap tile servers reject requests without an identifying User-Agent. The plotting
    functions of pylovo send ``pylovo (https://github.com/tum-ens/pylovo)`` themselves, which needs
-   contextily 1.7 or newer (the ``plots`` extra installs it; the MV maps and ``plot_grid_on_map`` use
-   basemap tiles). For a basemap that you add with contextily yourself, pass an identifying one, for example
+   contextily 1.7 or newer (the ``plots`` extra installs it; the MV maps use contextily basemap
+   tiles). For a basemap that you add with contextily yourself, pass an identifying one, for example
    ``cx.add_basemap(ax, headers={"User-Agent": "my-project/1.0 (contact@example.org)"})``, and keep
    the number of tile downloads small (`tile usage policy
    <https://operations.osmfoundation.org/policies/tiles/>`_).
 
-**Deprecated** (they still work, warn when called and will be removed in pylovo 2.0):
-
-.. list-table::
-   :header-rows: 1
-   :widths: 50 50
-   :class: fixed-table
-
-   * - Function
-     - Use instead
-   * - ``networks.plot_contextily``
-     - :func:`~pylovo.plotting.lv_grid.plot_lv_grid`
-   * - ``networks.draw_tree_network_spacing``, ``networks.draw_tree_network_with_spacing_from_grid_id``,
-       ``networks.hierarchy_pos``, ``networks.hierarchy_pos2``, ``networks.get_colormap_for_treegraph``
-     - :func:`~pylovo.plotting.generation.networks.draw_tree_network` (``y="distance"``),
-       :func:`~pylovo.plotting.generation.networks.draw_radial_network`,
-       :func:`~pylovo.plotting.generation.networks.tidy_tree_pos`
-   * - ``metric_validation.plot_pie_of_trafo_cables``, ``plot_hist_trafos``, ``plot_boxplot_plz``,
-       ``plot_cable_length_of_types``
-     - :func:`~pylovo.plotting.lv_grid.plot_rating_counts`, :func:`~pylovo.plotting.lv_grid.plot_cable_inventory`,
-       :func:`~pylovo.plotting.lv_grid.plot_grid_distributions`
-   * - ``geo_validation.plot_grid_on_map_plotly``
-     - :func:`~pylovo.plotting.generation.networks.plot_grid_on_map`
-   * - ``powerflow_validation.plot_voltage_profile``
-     - :func:`~pylovo.plotting.lv_grid.plot_feeder_voltage_profile`
+The older single-purpose plots (``plot_contextily``, the spacing trees, the pie, histogram and box plots of
+:mod:`~pylovo.plotting.validation.metric_validation`, ``plot_grid_on_map_plotly`` and the bus-index voltage
+profile) were removed in favour of the functions above.
 
 For whole postcode areas, :mod:`pylovo.plotting.gis_preparation.io_geodata` returns the buses and
 lines of all grids as GeoDataFrames
