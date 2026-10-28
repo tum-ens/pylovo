@@ -1,0 +1,24 @@
+# Checks that run on every `git commit` (only on the staged files). Install the hook once per clone:
+#   uvx pre-commit install
+# Run all checks on all files:  uvx pre-commit run --all-files
+# Skip them for one commit:     git commit --no-verify
+minimum_pre_commit_version: "4.4.0"
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # input data and database dumps belong outside git (data/ is the place for small reference files)
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+  - repo: local
+    hooks:
+      # the ruff of uv.lock with the rules of pyproject.toml, as in CI
+      - id: ruff
+        name: ruff
+        entry: uv run --locked --only-dev ruff check --force-exclude
+        language: unsupported
+        types_or: [python, jupyter]
+        require_serial: true

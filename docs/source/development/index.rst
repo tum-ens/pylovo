@@ -80,6 +80,9 @@ Quick checks without a database:
    uv run ruff check
    uv run python -m compileall -q src
 
+``uvx pre-commit install`` (once per clone) runs ruff and a few file checks (large files, merge conflict
+markers, YAML and TOML syntax; ``.pre-commit-config.yaml``) on the staged files of every commit.
+
 The unit tests in ``tests`` and ``api/tests`` need no database. The HTTP API has an OpenAPI contract
 snapshot ``api/openapi.json`` (see ``api/README.md``). On pull requests the CI builds the documentation,
 runs the unit tests, runs the database tests on the toy-town test database (below) and checks the contract:
