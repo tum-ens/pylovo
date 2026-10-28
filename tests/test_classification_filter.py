@@ -76,8 +76,4 @@ def test_earlier_runs_leave_no_trace(dc, monkeypatch):
     monkeypatch.setattr(dcm, "CLASSIFICATION_VERSION", 2)
     assert read(True) == {(80001, 1, 1)}  # another classification on shared grids, with additional filtering
     monkeypatch.setattr(dcm, "CLASSIFICATION_VERSION", 1)
-    assert read(False) == first == DEFAULT_KEPT
-    # flags left in the table by the old pipeline, in both directions, are ignored
-    dc.sqlite.execute("UPDATE pylovo.clustering_parameters SET filtered = 1 WHERE grid_result_id IN (1, 5)")
-    dc.sqlite.execute("UPDATE pylovo.clustering_parameters SET filtered = 0 WHERE grid_result_id IN (2, 4)")
-    assert read(False) == DEFAULT_KEPT and read(True) == ADDITIONAL_KEPT
+    assert read(False) == first == DEFAULT_KEPT and read(True) == ADDITIONAL_KEPT

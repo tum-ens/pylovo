@@ -15,6 +15,16 @@ from pylovo.database.base_mixin import BaseMixin
 from pylovo.database.migrations import pending_migrations
 from pylovo.electrical_backend.pandapower.backend import empty_network
 
+#: The columns of ``clustering_parameters`` that :meth:`AnalysisMixin.insert_clustering_parameters` writes besides
+#: ``grid_result_id``.
+CLUSTERING_PARAMETER_COLUMNS = (
+    "no_connection_buses", "no_branches", "no_house_connections", "no_house_connections_per_branch", "no_households",
+    "no_household_equ", "no_household_equ_per_branch", "max_household_equ_of_a_branch", "house_distance_km",
+    "transformer_mva", "osm_trafo", "max_trafo_dis", "avg_trafo_dis", "cable_length_km", "cable_len_per_house",
+    "max_power_mw", "simultaneous_peak_load_mw", "resistance", "reactance", "ratio", "vsw_per_branch",
+    "max_vsw_of_a_branch", "key_figures_version",
+)
+
 
 class AnalysisMixin(BaseMixin):
     """Store generated networks and analysis results, and read result tables for plotting."""
@@ -571,15 +581,17 @@ class AnalysisMixin(BaseMixin):
         self._insert_pandapower_trafo_rows(grid_result_id, getattr(net, "trafo", None))
         self._insert_pandapower_load_rows(grid_result_id, getattr(net, "load", None))
 
-    def has_clustering_parameters(self, plz: int, kcid: int, bcid: int) -> bool:
-        """Return whether ``clustering_parameters`` already has a row for the grid in the active version."""
+    def has_clustering_parameters(self, plz: int, kcid: int, bcid: int, key_figures_version: int) -> bool:
+        """Return whether ``clustering_parameters`` has a row of ``key_figures_version`` for the grid in the active
+        version; a row of other definitions does not count."""
         query = """
             SELECT 1
             FROM pylovo.clustering_parameters cp
             JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
             WHERE gr.plz = %s AND gr.kcid = %s AND gr.bcid = %s AND gr.version_id = %s
+              AND cp.key_figures_version = %s
         """
-        self.cur.execute(query, (plz, kcid, bcid, VERSION_ID))
+        self.cur.execute(query, (plz, kcid, bcid, VERSION_ID, key_figures_version))
         return bool(self.cur.fetchone())
 
     def read_per_trafo_dict(self, plz: int) -> tuple[list[dict], list[str], dict]:
@@ -658,60 +670,20 @@ class AnalysisMixin(BaseMixin):
         return net
 
     def insert_clustering_parameters(self, params: dict) -> None:
-        """Insert the calculated parameters of one grid into ``clustering_parameters`` and commit.
+        """Insert the calculated parameters of one grid into ``clustering_parameters``, replacing a stored row, and
+        commit.
 
         Args:
-            params: Column values plus ``version_id``, ``plz``, ``kcid`` and ``bcid`` of the grid.
+            params: The values of :data:`CLUSTERING_PARAMETER_COLUMNS` plus ``version_id``, ``plz``, ``kcid`` and
+                ``bcid`` of the grid.
         """
-        insert_query = """INSERT INTO pylovo.clustering_parameters (
-                   grid_result_id,
-                   no_connection_buses,
-                   no_branches,
-                   no_house_connections,
-                   no_house_connections_per_branch,
-                   no_households,
-                   no_household_equ,
-                   no_household_equ_per_branch,
-                   max_household_equ_of_a_branch,
-                   house_distance_km,
-                   transformer_mva,
-                   osm_trafo,
-                   max_trafo_dis,
-                   avg_trafo_dis,
-                   cable_length_km,
-                   cable_len_per_house,
-                   max_power_mw,
-                   simultaneous_peak_load_mw,
-                   resistance,
-                   reactance,
-                   ratio,
-                   vsw_per_branch,
-                   max_vsw_of_a_branch
-                  )
+        columns = CLUSTERING_PARAMETER_COLUMNS
+        insert_query = f"""INSERT INTO pylovo.clustering_parameters (grid_result_id, {", ".join(columns)})
                   VALUES (
                   (SELECT grid_result_id FROM pylovo.grid_result WHERE version_id = %(version_id)s AND plz = %(plz)s AND bcid = %(bcid)s AND kcid = %(kcid)s),
-                  %(no_connection_buses)s,
-                  %(no_branches)s,
-                  %(no_house_connections)s,
-                  %(no_house_connections_per_branch)s,
-                  %(no_households)s,
-                  %(no_household_equ)s,
-                  %(no_household_equ_per_branch)s,
-                  %(max_household_equ_of_a_branch)s,
-                  %(house_distance_km)s,
-                  %(transformer_mva)s,
-                  %(osm_trafo)s,
-                  %(max_trafo_dis)s,
-                  %(avg_trafo_dis)s,
-                  %(cable_length_km)s,
-                  %(cable_len_per_house)s,
-                  %(max_power_mw)s,
-                  %(simultaneous_peak_load_mw)s,
-                  %(resistance)s,
-                  %(reactance)s,
-                  %(ratio)s,
-                  %(vsw_per_branch)s,
-                  %(max_vsw_of_a_branch)s);"""
+                  {", ".join(f"%({column})s" for column in columns)})
+                  ON CONFLICT (grid_result_id) DO UPDATE SET
+                  {", ".join(f"{column} = EXCLUDED.{column}" for column in columns)};"""
 
         self.cur.execute(insert_query, params)
         self.conn.commit()

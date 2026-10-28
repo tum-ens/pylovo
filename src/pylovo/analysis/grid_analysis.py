@@ -17,6 +17,11 @@ from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD
 if TYPE_CHECKING:
     from pylovo.analysis.parameter_calculation import ParameterCalculator
 
+#: Version of the definitions of :func:`compute_clustering_metrics`, stored with every row of ``clustering_parameters``
+#: and with the classifications clustered on them. Raise it when a definition changes: the per-grid analysis then
+#: computes stored rows again. 1: before branches counted the buildings at the busbar (pylovo 1.0.0); 2: since.
+KEY_FIGURES_VERSION = 2
+
 
 def _get_transformer_mva(net: pp.pandapowerNet) -> float:
     """Return the station rating in MVA of the first transformer in ``net.trafo``, or NaN if there is none.

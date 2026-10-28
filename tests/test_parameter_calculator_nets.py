@@ -414,7 +414,8 @@ class Workflow:
     logger = LOGGER
 
     def __init__(self, generated=True, analyzed=False, grids=((1, 1), (1, 2), (1, 3)), done=()):
-        self.generated, self.analyzed, self.grids, self.done = generated, analyzed, list(grids), set(done)
+        self.generated, self.analyzed, self.grids = generated, analyzed, list(grids)
+        self.done = dict(done)           # (kcid, bcid) -> key-figure version of the stored row
         self.events, self.conn = [], type("Conn", (), {"commit": lambda s: self.events.append("commit")})()
 
     def is_grid_generated(self, plz):
@@ -426,8 +427,8 @@ class Workflow:
     def get_list_from_plz(self, plz):
         return self.grids
 
-    def has_clustering_parameters(self, plz, kcid, bcid):
-        return (kcid, bcid) in self.done
+    def has_clustering_parameters(self, plz, kcid, bcid, key_figures_version):
+        return self.done.get((kcid, bcid)) == key_figures_version
 
     def delete_plz_from_sample_set_table(self, classification_id, plz):
         self.events.append(("sample set cleared", plz))
@@ -477,10 +478,17 @@ def test_a_failing_step_raises_without_touching_the_sample_set(monkeypatch):
 
 
 def test_the_per_grid_analysis_skips_stored_grids_and_goes_on_after_a_failing_one(monkeypatch):
-    dbc = Workflow(analyzed=True, done=[(1, 1)])
+    dbc = Workflow(analyzed=True, done={(1, 1): grid_analysis.KEY_FIGURES_VERSION})
     workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
     # (1, 1) is stored, (1, 2) fails and its transaction is rolled back, (1, 3) is still done
     assert dbc.events == [("grid", 1, 2), "rollback", ("grid", 1, 3)]
+
+
+def test_the_per_grid_analysis_computes_rows_of_older_definitions_again(monkeypatch):
+    current = grid_analysis.KEY_FIGURES_VERSION
+    dbc = Workflow(analyzed=True, grids=((1, 1), (1, 3)), done={(1, 1): current - 1, (1, 3): current})
+    workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
+    assert dbc.events == [("grid", 1, 1)]
 
 
 def test_the_per_grid_analysis_needs_the_plz_analysis_first(monkeypatch):
@@ -500,4 +508,5 @@ def test_a_single_grid_is_stored_with_its_context_and_the_origin_of_its_transfor
 
     assert [(p["plz"], p["kcid"], p["bcid"], p["osm_trafo"], p["version_id"]) for p in stored] == [
         (80803, 7, -3, True, "1"), (80803, 7, 4, False, "1")]
+    assert all(p["key_figures_version"] == grid_analysis.KEY_FIGURES_VERSION for p in stored)
     assert stored[0]["no_house_connections"] == 4

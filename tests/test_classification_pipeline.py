@@ -132,7 +132,7 @@ class KeyFigureDb:
     def get_list_from_plz(self, plz):
         return [(1, 1), (1, 2), (2, 1)]
 
-    def has_clustering_parameters(self, plz, kcid, bcid):
+    def has_clustering_parameters(self, plz, kcid, bcid, key_figures_version):
         return (kcid, bcid) == (1, 2)
 
     def rollback_changes(self):

@@ -620,6 +620,29 @@ def key_figure_names(cur: cursor) -> None:
     """)
 
 
+def key_figures_version(cur: cursor) -> None:
+    """Stamp the key figures and the classifications with the version of the key-figure definitions.
+
+    ``clustering_parameters.key_figures_version`` says which definitions a row was computed with; the rows of older
+    schemas are version 1 (branches without the buildings at the busbar). ``classification_version`` gets the
+    version its clustering read, its transform, whether infeasible grids were left out, and its selection report.
+    The classifications clustered before are stamped as made with version 1, no transform and no such filter, so
+    that reading them gives what they were clustered with. A no-op on a fresh schema.
+    """
+    cur.execute("""
+        ALTER TABLE pylovo.clustering_parameters ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL DEFAULT 1;
+        ALTER TABLE pylovo.clustering_parameters ALTER COLUMN key_figures_version DROP DEFAULT;
+        ALTER TABLE pylovo.classification_version
+            ADD COLUMN IF NOT EXISTS key_figures_version smallint,
+            ADD COLUMN IF NOT EXISTS transform text,
+            ADD COLUMN IF NOT EXISTS exclude_infeasible boolean,
+            ADD COLUMN IF NOT EXISTS selection_report jsonb;
+        UPDATE pylovo.classification_version
+        SET key_figures_version = 1, transform = 'none', exclude_infeasible = false
+        WHERE list_of_clustering_parameters IS NOT NULL AND key_figures_version IS NULL;
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -640,6 +663,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0014_classification_choices", classification_choices),
     ("0015_egon_substations", egon_substations),
     ("0016_key_figure_names", key_figure_names),
+    ("0017_key_figures_version", key_figures_version),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

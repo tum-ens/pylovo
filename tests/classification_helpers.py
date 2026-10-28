@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import numpy as np
 import pandas as pd
 
+from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION
 from pylovo.config_loader import CLUSTERING_PARAMETERS
 
 # four grid archetypes: rural, village, suburb, urban (centre of the log-normal parameter distributions)
@@ -154,7 +155,8 @@ SQLITE_TABLES = """
 ATTACH DATABASE ':memory:' AS pylovo;
 CREATE TABLE pylovo.grid_result (grid_result_id INTEGER, version_id TEXT, plz INTEGER, kcid INTEGER, bcid INTEGER);
 CREATE TABLE pylovo.clustering_parameters (grid_result_id INTEGER, no_households INTEGER, avg_trafo_dis REAL,
-    max_trafo_dis REAL, no_house_connections INTEGER, vsw_per_branch REAL, filtered INTEGER);
+    max_trafo_dis REAL, no_house_connections INTEGER, vsw_per_branch REAL, key_figures_version INTEGER);
+CREATE TABLE pylovo.classification_version (classification_id INTEGER, key_figures_version INTEGER);
 CREATE TABLE pylovo.buildings_result (grid_result_id INTEGER, households INTEGER);
 CREATE TABLE pylovo.sample_set (classification_id INTEGER, plz INTEGER, ags INTEGER);
 CREATE TABLE pylovo.municipal_register (plz INTEGER, ags INTEGER, pop INTEGER, area REAL, lat REAL, lon REAL,
@@ -190,7 +192,8 @@ def sqlite_classification_db() -> sqlite3.Connection:
     for grid_id, (plz, kcid, bcid) in SQLITE_GRIDS.items():
         db.execute("INSERT INTO pylovo.grid_result VALUES (?, 'v1', ?, ?, ?)", (grid_id, plz, kcid, bcid))
     for grid_id, figures in SQLITE_FIGURES.items():
-        db.execute("INSERT INTO pylovo.clustering_parameters VALUES (?, ?, ?, ?, ?, ?, NULL)", (grid_id, *figures))
+        db.execute("INSERT INTO pylovo.clustering_parameters VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   (grid_id, *figures, KEY_FIGURES_VERSION))
     db.executemany("INSERT INTO pylovo.buildings_result VALUES (?, ?)", [(1, 3), (3, 200), (3, 4)])
     db.executemany("INSERT INTO pylovo.sample_set VALUES (?, ?, ?)",
                    [(1, plz, 9000000 + plz) for plz in range(80001, 80006)] + [(2, 80001, 9080001)])

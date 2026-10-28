@@ -37,7 +37,7 @@ import pandapower.topology as top
 from sklearn.metrics.pairwise import haversine_distances
 
 import pylovo.database.database_client as dbc
-from pylovo.analysis.grid_analysis import compute_clustering_metrics
+from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION, compute_clustering_metrics
 from pylovo import utils
 from pylovo.config_loader import LOG_LEVEL, N_JOBS, PARALLEL, PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
 
@@ -294,10 +294,11 @@ class ParameterCalculator:
         return self.calculate_grid_parameters(plz, progress=True).status
 
     def calculate_grid_parameters(self, plz: int, progress: bool = False) -> "GridParameterCounts":
-        """Compute and store the per-grid parameters of every grid of ``plz`` that has none yet.
+        """Compute and store the per-grid parameters of every grid of ``plz`` that has none of the current definitions.
 
-        Grids that already have a row in ``clustering_parameters`` are skipped. A grid whose calculation fails is
-        logged, its open transaction is rolled back and the next grid is calculated.
+        Grids that already have a row of ``KEY_FIGURES_VERSION`` in ``clustering_parameters`` are skipped; a row of
+        older definitions is computed again and replaced. A grid whose calculation fails is logged, its open
+        transaction is rolled back and the next grid is calculated.
 
         Args:
             plz: Postcode area; its PLZ-level parameters (:meth:`analyze_parameters_for_plz`) must exist.
@@ -324,7 +325,7 @@ class ParameterCalculator:
         for kcid, bcid in cluster_list:
             # Check if this specific grid already has parameters
             try:
-                if self.dbc.has_clustering_parameters(self.plz, kcid, bcid):
+                if self.dbc.has_clustering_parameters(self.plz, kcid, bcid, KEY_FIGURES_VERSION):
                     skipped += 1
                     continue
 
@@ -836,7 +837,7 @@ class ParameterCalculator:
             kcid (int): Grid cluster ID
 
         Writes a record to the clustering-parameters table including metadata
-        (plz, bcid, kcid, version, osm_trafo flag).
+        (plz, bcid, kcid, version, osm_trafo flag, ``KEY_FIGURES_VERSION``), replacing a stored one.
         """
         self._require_plz_context("analyze_single_grid")
         self.bcid = bcid
@@ -850,7 +851,8 @@ class ParameterCalculator:
             "plz": self.plz,
             "bcid": self.bcid,
             "kcid": self.kcid,
-            "osm_trafo": bool(osm_trafo)
+            "osm_trafo": bool(osm_trafo),
+            "key_figures_version": KEY_FIGURES_VERSION,
         })
 
         self.dbc.insert_clustering_parameters(params)

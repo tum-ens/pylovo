@@ -54,6 +54,11 @@ CREATE_QUERIES = {
         n_clusters_kmeans integer,
         n_clusters_gmm integer,
         additional_filtering boolean,
+        -- the key-figure definitions, transform, filter and selection report of the clustering (0017)
+        key_figures_version smallint,
+        transform text,
+        exclude_infeasible boolean,
+        selection_report jsonb,
         CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
     )
     """,
@@ -766,6 +771,7 @@ CREATE_QUERIES = {
         ratio double precision,
         vsw_per_branch double precision,
         max_vsw_of_a_branch double precision,
+        key_figures_version smallint NOT NULL,      -- definitions the row was computed with (KEY_FIGURES_VERSION)
         CONSTRAINT fk_clustering_parameters_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)

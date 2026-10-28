@@ -10,7 +10,8 @@ import sys
 
 import pandas as pd
 
-from pylovo.classification.database_communication.database_communication import LOWER_FILTER_THRESHOLDS
+from pylovo.classification.database_communication.database_communication import (
+    LOWER_FILTER_THRESHOLDS, checked_key_figures)
 from pylovo.config_loader import CLASSIFICATION_VERSION, LIST_OF_CLUSTERING_PARAMETERS
 from pylovo.database.database_client import DatabaseClient
 
@@ -50,15 +51,17 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
         pd.DataFrame: Clustering parameters of the grids in k-means cluster 0 of that classification.
     """
     query = """
-        SELECT cp.*
+        SELECT cp.*, cv.key_figures_version AS classification_key_figures_version
         FROM pylovo.clustering_parameters cp
         JOIN pylovo.transformer_classified tc ON tc.grid_result_id = cp.grid_result_id
+        JOIN pylovo.classification_version cv ON cv.classification_id = tc.classification_id
         WHERE tc.classification_id = %(c)s AND tc.kmeans_clusters = 0;
     """
     if classification_id is None:
         classification_id = CLASSIFICATION_VERSION
     with DatabaseClient() as dbc:
-        return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
+        return checked_key_figures(pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id}),
+                                   classification_id)
 
 
 def get_clustering_parameters_by_kmeans_cluster(classification_id: int | None = None) -> pd.DataFrame:
@@ -71,15 +74,17 @@ def get_clustering_parameters_by_kmeans_cluster(classification_id: int | None = 
         pd.DataFrame: Clustering parameters with the k-means cluster in the column ``kmeans_clusters``.
     """
     query = """
-        SELECT tc.kmeans_clusters, cp.*
+        SELECT tc.kmeans_clusters, cp.*, cv.key_figures_version AS classification_key_figures_version
         FROM pylovo.clustering_parameters cp
         JOIN pylovo.transformer_classified tc ON tc.grid_result_id = cp.grid_result_id
+        JOIN pylovo.classification_version cv ON cv.classification_id = tc.classification_id
         WHERE tc.classification_id = %(c)s;
     """
     if classification_id is None:
         classification_id = CLASSIFICATION_VERSION
     with DatabaseClient() as dbc:
-        return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
+        return checked_key_figures(pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id}),
+                                   classification_id)
 
 
 def cluster_means(df: pd.DataFrame, parameters: list) -> pd.DataFrame:

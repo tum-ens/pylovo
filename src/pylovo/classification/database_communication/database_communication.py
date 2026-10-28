@@ -21,6 +21,7 @@ from pylovo.config_loader import (
     THRESHOLD_VSW_PER_BRANCH,
     VERSION_ID,
 )
+from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION
 from pylovo.classification.clustering.clustering_algorithms import gmm_tied_clustering, kmeans_clustering
 
 # Lower bounds of the additional filtering: clustering parameter -> threshold of config_clustering.yaml. A grid below
@@ -34,6 +35,11 @@ LOWER_FILTER_THRESHOLDS = {
 
 # Columns of ``classification_version`` that store the choices of step 7, in the order of ``config_clustering.yaml``.
 CLASSIFICATION_CHOICES = ("list_of_clustering_parameters", "n_clusters_kmeans", "n_clusters_gmm", "additional_filtering")
+
+# Column that the readers add to the key figures: the key-figure version stored with the classification (step 7).
+STORED_KEY_FIGURES_VERSION = (
+    "(SELECT key_figures_version FROM pylovo.classification_version WHERE classification_id = %(c)s) "
+    "AS classification_key_figures_version")
 
 # Values of the placeholders in the conditions of ``filter_reasons``.
 FILTER_PARAMETERS = {
@@ -65,6 +71,34 @@ def filter_reasons(additional_filtering: bool | None = None) -> dict[str, str]:
         for parameter, threshold in LOWER_FILTER_THRESHOLDS.items():
             reasons[f"{parameter} < {threshold}"] = f"cp.{parameter} < %({parameter})s"
     return reasons
+
+
+def checked_key_figures(df_query: pd.DataFrame, classification_id: int) -> pd.DataFrame:
+    """Check that key figures read for a classification are of its definitions, and drop the helper column.
+
+    The classification needs the ``key_figures_version`` stored with its clustering (step 7), before that the
+    current ``KEY_FIGURES_VERSION``. The version is kept in ``attrs["key_figures_version"]`` of the result.
+
+    Args:
+        df_query: Key figures with ``key_figures_version`` and the stored version of the classification in
+            ``classification_key_figures_version`` (e.g. by ``STORED_KEY_FIGURES_VERSION``).
+        classification_id: The classification, for the message.
+
+    Raises:
+        ValueError: If a grid holds key figures of other definitions, e.g. those of a classification clustered
+            before its grids were analysed again.
+    """
+    stored = df_query.pop("classification_key_figures_version").dropna()
+    expected = int(stored.iloc[0]) if not stored.empty else KEY_FIGURES_VERSION
+    other = sorted({int(version) for version in df_query["key_figures_version"].dropna()} - {expected})
+    if other:
+        hint = ("compute them again for the sampled PLZ (step 4 or pylovo-analyze)" if max(other) < expected else
+                "they were computed again with other definitions. Its clusters stay in transformer_classified; "
+                "cluster the grids again in a new classification")
+        raise ValueError(f"Classification {classification_id} needs key figures of version {expected}, but grids of "
+                         f"its sample hold version {', '.join(map(str, other))}: {hint}.")
+    df_query.attrs["key_figures_version"] = expected
+    return df_query
 
 
 def _keep_condition(additional_filtering: bool | None) -> str:
@@ -157,7 +191,11 @@ class DatabaseCommunication:
         Returns:
             pd.DataFrame: One row per grid with the ``CLUSTERING_PARAMETERS`` columns, ordered by
             ``plz``, ``kcid`` and ``bcid``: the clusters depend on the row order, so it must not be
-            left to the database.
+            left to the database. ``attrs["key_figures_version"]`` is the version of the key figures.
+
+        Raises:
+            ValueError: If the key figures are not of the definitions of the classification
+                (:func:`checked_key_figures`).
         """
         query = f"""
                 WITH plz_table(plz) AS (
@@ -171,15 +209,16 @@ class DatabaseCommunication:
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
                     WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
                 )
-                SELECT c.*
+                SELECT c.*, {STORED_KEY_FIGURES_VERSION}
                 FROM clustering c
                 JOIN plz_table p
                 ON c.plz = p.plz
                 ORDER BY c.plz, c.kcid, c.bcid;"""
         params = {"v": self.version_id, "c": self.classification_id, **FILTER_PARAMETERS}
-        df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
+        df_query = checked_key_figures(pd.read_sql_query(query, con=self.dbc.conn, params=params, ), self.classification_id)
         columns = CLUSTERING_PARAMETERS
         df_parameter = pd.DataFrame(df_query, columns=columns)
+        df_parameter.attrs["key_figures_version"] = df_query.attrs["key_figures_version"]
         return df_parameter
 
     def municipal_register_with_clustering_parameters_for_classification_version(
@@ -195,6 +234,10 @@ class DatabaseCommunication:
 
         Returns:
             pd.DataFrame: One row per grid.
+
+        Raises:
+            ValueError: If the key figures are not of the definitions of the classification
+                (:func:`checked_key_figures`).
         """
         query = f"""
                 WITH plz_table AS (
@@ -209,14 +252,14 @@ class DatabaseCommunication:
                     JOIN pylovo.grid_result gr ON cp.grid_result_id = gr.grid_result_id
                     WHERE gr.version_id = %(v)s AND {_keep_condition(self._additional_filtering(additional_filtering))}
                 )
-                SELECT c.*, p.pop, p.area, p.lat, p.lon, p.ags, p.name_city, p.regio7, p.regio5, p.pop_den
+                SELECT c.*, p.pop, p.area, p.lat, p.lon, p.ags, p.name_city, p.regio7, p.regio5, p.pop_den,
+                       {STORED_KEY_FIGURES_VERSION}
                 FROM clustering c
                 JOIN plz_table p
                 ON c.plz = p.plz
                 ORDER BY c.plz, c.kcid, c.bcid;"""
         params = {"v": self.version_id, "c": self.classification_id, **FILTER_PARAMETERS}
-        df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
-        return df_query
+        return checked_key_figures(pd.read_sql_query(query, con=self.dbc.conn, params=params, ), self.classification_id)
 
     def get_grid_status_of_sample_set(self, additional_filtering: bool | None = None) -> pd.DataFrame:
         """Return what became of every grid of the sampled PLZ, for the summary of a classification run.
@@ -272,8 +315,9 @@ class DatabaseCommunication:
         of its cluster. The KMedoids columns stay empty. The rows of
         the classification are replaced in one transaction, so the step can be repeated
         and a failing write keeps the previous result. The same transaction stores the four
-        values used in ``classification_version``. ``None`` uses the stored value of the
-        classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is stored).
+        values used and the version of the key figures in ``classification_version``. ``None`` uses the stored
+        value of the classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is
+        stored).
 
         Args:
             list_of_clustering_parameters: Columns used for clustering.
@@ -293,6 +337,7 @@ class DatabaseCommunication:
 
         # retrieve clustering parameters
         df_parameters_of_grids = self.get_clustering_parameters_for_classification_version(additional_filtering)
+        key_figures_version = df_parameters_of_grids.attrs.get("key_figures_version", KEY_FIGURES_VERSION)
 
         # load transformer positions from database, preserve geo-datatype of geom column
         query = """
@@ -372,12 +417,13 @@ class DatabaseCommunication:
                                               dtype={'geom': Geometry(geometry_type='POINT', srid=TARGET_EPSG)})
             connection.execute(
                 text("UPDATE pylovo.classification_version SET "
-                     + ", ".join(f"{name} = :{name}" for name in CLASSIFICATION_CHOICES)
+                     + ", ".join(f"{name} = :{name}" for name in (*CLASSIFICATION_CHOICES, "key_figures_version"))
                      + " WHERE classification_id = :c"),
                 {"c": self.classification_id,
                  "list_of_clustering_parameters": [str(name) for name in list_of_clustering_parameters],
                  "n_clusters_kmeans": int(n_clusters_kmeans), "n_clusters_gmm": int(n_clusters_gmm),
-                 "additional_filtering": bool(additional_filtering)})
+                 "additional_filtering": bool(additional_filtering),
+                 "key_figures_version": int(key_figures_version)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)
         self.dbc.conn.commit()
