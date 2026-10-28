@@ -167,11 +167,30 @@ def test_migration_0015_creates_the_egon_table_of_a_fresh_setup():
     """The eGon-data HV/MV substations: the same DDL for a fresh setup and an older schema, filled by pylovo-setup."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, egon_substations
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0015_egon_substations", egon_substations)
-    assert MIGRATION_NAMES[-1] == "0015_egon_substations"
+    assert ("0015_egon_substations", egon_substations) in POST_SCHEMA_MIGRATIONS
+    assert MIGRATION_NAMES.count("0015_egon_substations") == 1
     conn = Connection()
     egon_substations(Cursor(conn))
     assert conn.log == [" ".join(CREATE_QUERIES["egon_hvmv_substation"].split())]
     ddl = CREATE_QUERIES["egon_hvmv_substation"]
     assert "CREATE TABLE IF NOT EXISTS pylovo.egon_hvmv_substation" in ddl and "bus_id bigint PRIMARY KEY" in ddl
     assert "USING gist (geom)" in ddl
+
+
+def test_migration_0016_renames_the_household_equivalent_key_figures_and_their_stored_choices():
+    """Older schemas get the names of a fresh setup, only where the former column exists, and lose ``filtered``."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, key_figure_names
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0016_key_figure_names", key_figure_names)
+    assert MIGRATION_NAMES[-1] == "0016_key_figure_names"
+    conn = Connection()
+    key_figure_names(Cursor(conn))
+    sql = " ".join(conn.log)
+    fresh = CREATE_QUERIES["clustering_parameters"]
+    for former, name in (("no_households_per_branch", "no_household_equ_per_branch"),
+                         ("max_no_of_households_of_a_branch", "max_household_equ_of_a_branch")):
+        assert f"AND column_name='{former}') THEN ALTER TABLE pylovo.clustering_parameters RENAME COLUMN {former} TO {name};" in sql
+        assert f"'{former}', '{name}'" in sql                 # the stored parameter lists of the classifications
+        assert f" {name} double precision," in fresh and former not in fresh
+    assert "DROP COLUMN IF EXISTS filtered;" in sql and "filtered" not in fresh
+    assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row

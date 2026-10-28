@@ -10,8 +10,9 @@ import pandas as pd
 import pytest
 
 from pylovo import config_loader
-from pylovo.config_loader import (_check_cable_ampacities, _check_transformer_mapping, _consumer_categories_from_config,
-                                  _ReadKeys, _version_id, _warn_about_former_generation_config, _warn_about_unread_keys)
+from pylovo.config_loader import (_check_cable_ampacities, _check_key_figure_names, _check_transformer_mapping,
+                                  _consumer_categories_from_config, _ReadKeys, _version_id,
+                                  _warn_about_former_generation_config, _warn_about_unread_keys)
 
 
 def categories(sim_factor) -> dict:
@@ -49,6 +50,15 @@ def test_a_catalogue_without_ampacity_is_named():
 
 def test_valid_cables_pass():
     _check_cable_ampacities(cables(142, 270), "FEEDER_CABLES")
+
+
+def test_the_former_names_of_renamed_key_figures_are_rejected():
+    _check_key_figure_names({"CLUSTERING_PARAMETERS": ["no_household_equ_per_branch"],
+                             "LIST_OF_CLUSTERING_PARAMETERS": ["avg_trafo_dis"]})
+    with pytest.raises(ValueError, match="LIST_OF_CLUSTERING_PARAMETERS of config_clustering.yaml lists renamed key "
+                                         "figures: max_no_of_households_of_a_branch is now max_household_equ_of_a_branch"):
+        _check_key_figure_names({"CLUSTERING_PARAMETERS": [],
+                                 "LIST_OF_CLUSTERING_PARAMETERS": ["avg_trafo_dis", "max_no_of_households_of_a_branch"]})
 
 
 def test_transformer_mapping_needs_ratings_of_the_catalogue():

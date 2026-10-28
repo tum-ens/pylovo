@@ -670,6 +670,23 @@ REGIO7_REGIO5_GEM_DICT = CONFIG_CLASSIFICATION["REGIO7_REGIO5_GEM_DICT"]
 # =============================================================================
 CLUSTERING_PARAMETERS = CONFIG_CLUSTERING["CLUSTERING_PARAMETERS"]
 LIST_OF_CLUSTERING_PARAMETERS = CONFIG_CLUSTERING["LIST_OF_CLUSTERING_PARAMETERS"]
+# Key figures renamed by migration 0016_key_figure_names: former name -> name
+RENAMED_KEY_FIGURES = {
+    "no_households_per_branch": "no_household_equ_per_branch",
+    "max_no_of_households_of_a_branch": "max_household_equ_of_a_branch",
+}
+
+
+def _check_key_figure_names(config: dict) -> None:
+    """Reject the former names of renamed key figures in the parameter lists of ``config_clustering.yaml``."""
+    for key in ("CLUSTERING_PARAMETERS", "LIST_OF_CLUSTERING_PARAMETERS"):
+        renamed = [name for name in config[key] if name in RENAMED_KEY_FIGURES]
+        if renamed:
+            raise ValueError(f"{key} of config_clustering.yaml lists renamed key figures: "
+                             + ", ".join(f"{name} is now {RENAMED_KEY_FIGURES[name]}" for name in renamed))
+
+
+_check_key_figure_names(CONFIG_CLUSTERING)
 N_CLUSTERS_KMEANS = CONFIG_CLUSTERING["N_CLUSTERS_KMEANS"]
 N_CLUSTERS_GMM = CONFIG_CLUSTERING["N_CLUSTERS_GMM"]
 

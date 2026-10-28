@@ -27,8 +27,8 @@ CLUSTERING_PARAMETERS:
 - no_house_connections_per_branch
 - no_households
 - no_household_equ
-- no_households_per_branch
-- max_no_of_households_of_a_branch
+- no_household_equ_per_branch
+- max_household_equ_of_a_branch
 - house_distance_km
 - transformer_mva
 - osm_trafo

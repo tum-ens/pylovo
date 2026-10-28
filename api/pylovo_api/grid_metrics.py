@@ -175,8 +175,8 @@ def _extra_rows(ids: list[int]) -> dict[int, dict[str, Any]]:
     rows = db.fetch_all(
         """SELECT g.grid_result_id, g.ampacity_max_feeder_voltage_drop_percent AS amp_feeder,
                   g.ampacity_max_service_voltage_drop_percent AS amp_service,
-                  cp.cable_len_per_house, cp.ratio AS r_x, cp.no_households_per_branch AS hh_per_branch,
-                  cp.max_no_of_households_of_a_branch AS max_hh_branch, cp.no_house_connections,
+                  cp.cable_len_per_house, cp.ratio AS r_x, cp.no_household_equ_per_branch AS hh_per_branch,
+                  cp.max_household_equ_of_a_branch AS max_hh_branch, cp.no_house_connections,
                   (SELECT count(*) FROM pylovo.split_points s WHERE s.grid_result_id = g.grid_result_id) AS cabinets,
                   (SELECT sum(l.length_km * COALESCE(l.parallel, 1)) FROM pylovo.pandapower_line l
                     WHERE l.grid_result_id = g.grid_result_id AND l.service_sizing_basis IS NULL
@@ -216,6 +216,7 @@ def extend_records(grids: list[dict], limits: dict[str, Any]) -> dict[str, Any]:
         g["ampacity_service_drop_pct"] = _num(e.get("amp_service"), 2)
         g["cable_m_per_connection"] = _num(e.get("cable_len_per_house") and e["cable_len_per_house"] * 1000, 1)
         g["r_x"] = _num(e.get("r_x"), 2)
+        # household equivalents (installed power over the peak load of a household), not households
         g["households_per_branch"] = _num(e.get("hh_per_branch"), 1)
         g["max_households_per_branch"] = _num(e.get("max_hh_branch"), 0)
         g["cabinets"] = e.get("cabinets") or 0

@@ -88,10 +88,9 @@ class DatabaseCommunication:
     Note:
         The grids that enter the clustering are selected when they are read: the readers apply the filters
         of :func:`filter_reasons` to the key figures of the sampled grids of the version. Nothing is
-        stored per grid, so classifications that share grids do not influence each other. The column
-        ``clustering_parameters.filtered`` is no longer used. Step 7 stores the parameters, the numbers of
-        clusters and the filter choice with the classification, and ``None`` arguments default to them
-        (:meth:`get_classification_choices`).
+        stored per grid, so classifications that share grids do not influence each other. Step 7 stores the
+        parameters, the numbers of clusters and the filter choice with the classification, and ``None``
+        arguments default to them (:meth:`get_classification_choices`).
     """
 
     # Class defaults: an instance made without __init__ (as in the tests) reads the configuration.

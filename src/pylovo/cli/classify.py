@@ -182,7 +182,7 @@ def get_custom_clustering_parameters():
     """Gets custom clustering parameters from user input; the names must be columns of the parameter table."""
     while True:
         user_input = _ask("\nPlease enter desired clustering parameters (comma-separated). "
-                          "For example: no_branches,max_no_of_households_of_a_branch,avg_trafo_dis\n> ")
+                          "For example: no_branches,max_household_equ_of_a_branch,avg_trafo_dis\n> ")
         try:
             return parse_parameter_names(user_input)
         except ValueError as exc:

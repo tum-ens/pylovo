@@ -750,8 +750,8 @@ CREATE_QUERIES = {
         no_house_connections_per_branch double precision,
         no_households integer,
         no_household_equ double precision,
-        no_households_per_branch double precision,
-        max_no_of_households_of_a_branch double precision,
+        no_household_equ_per_branch double precision,
+        max_household_equ_of_a_branch double precision,
         house_distance_km double precision,
         transformer_mva double precision,
         osm_trafo bool,
@@ -766,7 +766,6 @@ CREATE_QUERIES = {
         ratio double precision,
         vsw_per_branch double precision,
         max_vsw_of_a_branch double precision,
-        filtered boolean,
         CONSTRAINT fk_clustering_parameters_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)

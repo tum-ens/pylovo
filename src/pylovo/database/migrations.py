@@ -587,6 +587,39 @@ def egon_substations(cur: cursor) -> None:
     cur.execute(CREATE_QUERIES["egon_hvmv_substation"])
 
 
+def key_figure_names(cur: cursor) -> None:
+    """Rename the household-equivalent key figures of ``clustering_parameters`` and drop its unused ``filtered``.
+
+    ``no_households_per_branch`` and ``max_no_of_households_of_a_branch`` hold household equivalents (installed
+    power over the peak load of one household), not households. They become ``no_household_equ_per_branch`` and
+    ``max_household_equ_of_a_branch``, also in the parameter lists stored with the classifications. A no-op on a
+    fresh schema.
+    """
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema='pylovo' AND table_name='clustering_parameters'
+                         AND column_name='no_households_per_branch') THEN
+                ALTER TABLE pylovo.clustering_parameters
+                    RENAME COLUMN no_households_per_branch TO no_household_equ_per_branch;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema='pylovo' AND table_name='clustering_parameters'
+                         AND column_name='max_no_of_households_of_a_branch') THEN
+                ALTER TABLE pylovo.clustering_parameters
+                    RENAME COLUMN max_no_of_households_of_a_branch TO max_household_equ_of_a_branch;
+            END IF;
+        END $$;
+        ALTER TABLE pylovo.clustering_parameters DROP COLUMN IF EXISTS filtered;
+        UPDATE pylovo.classification_version
+        SET list_of_clustering_parameters = array_replace(
+                array_replace(list_of_clustering_parameters, 'no_households_per_branch', 'no_household_equ_per_branch'),
+                'max_no_of_households_of_a_branch', 'max_household_equ_of_a_branch')
+        WHERE list_of_clustering_parameters && ARRAY['no_households_per_branch', 'max_no_of_households_of_a_branch'];
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -606,6 +639,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0013_schema_cleanup", schema_cleanup),
     ("0014_classification_choices", classification_choices),
     ("0015_egon_substations", egon_substations),
+    ("0016_key_figure_names", key_figure_names),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

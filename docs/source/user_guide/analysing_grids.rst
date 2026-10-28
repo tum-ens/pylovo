@@ -158,10 +158,10 @@ One row per grid (``grid_result_id``), computed by
      - Household equivalents: installed power divided by ``PEAK_LOAD_HOUSEHOLD``.
    * - ``no_house_connections_per_branch``
      - House connections per feeder.
-   * - ``no_households_per_branch``
+   * - ``no_household_equ_per_branch``
      - Household equivalents per feeder (``no_household_equ`` divided by ``no_branches``), not households despite
        the name.
-   * - ``max_no_of_households_of_a_branch``
+   * - ``max_household_equ_of_a_branch``
      - Household equivalents of the feeder with the most: installed power of its consumers divided by
        ``PEAK_LOAD_HOUSEHOLD``, not households despite the name.
    * - ``house_distance_km``

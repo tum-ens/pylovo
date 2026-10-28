@@ -107,7 +107,7 @@ def test_clustering_metrics_of_a_pylovo_grid():
     assert metrics["no_branches"] == 1 and metrics["no_house_connections_per_branch"] == 4.0
     assert metrics["max_power_mw"] == pytest.approx(0.068)
     assert metrics["no_household_equ"] == pytest.approx(68.0 / peak)                 # installed kW over a household peak
-    assert metrics["no_households_per_branch"] == pytest.approx(68.0 / peak)
+    assert metrics["no_household_equ_per_branch"] == pytest.approx(68.0 / peak)
     assert metrics["cable_length_km"] == pytest.approx(0.256)
     assert metrics["cable_len_per_house"] == pytest.approx(0.256 / 4)
     assert metrics["transformer_mva"] == pytest.approx(0.4)
@@ -139,7 +139,7 @@ def test_a_branch_is_an_outgoing_circuit_of_the_busbar(options, branches, feeder
     assert metrics["no_branches"] == branches
     assert metrics["no_house_connections_per_branch"] == pytest.approx(connections / branches)
     assert metrics["no_house_connections_per_branch"] <= connections
-    assert metrics["no_households_per_branch"] == pytest.approx(metrics["no_household_equ"] / branches)
+    assert metrics["no_household_equ_per_branch"] == pytest.approx(metrics["no_household_equ"] / branches)
     assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"] / branches)
     assert structural_feeders == feeders           # the feeder count of the structural comparison stays as it was
 
@@ -153,11 +153,11 @@ def test_a_single_building_grid_has_no_house_distance():
 def test_the_largest_branch_is_one_of_the_same_branches():
     peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
     metrics, _ = metrics_and_feeders(busbar=(31,))
-    assert metrics["max_no_of_households_of_a_branch"] == pytest.approx(4 * 17.0 / peak)    # the street feeder
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(4 * 17.0 / peak)    # the street feeder
     metrics, _ = metrics_and_feeders(street=False, busbar=(31, 32, 33))
-    assert metrics["max_no_of_households_of_a_branch"] == pytest.approx(17.0 / peak)        # one building each
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(17.0 / peak)        # one building each
     metrics, _ = metrics_and_feeders(f2_at_busbar=True, busbar=(31, 32))
-    assert metrics["max_no_of_households_of_a_branch"] == pytest.approx(2 * 17.0 / peak)    # two houses per street
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(2 * 17.0 / peak)    # two houses per street
     assert metrics["resistance"] / 4 < metrics["max_vsw_of_a_branch"] < metrics["resistance"]
 
 

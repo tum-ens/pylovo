@@ -1681,10 +1681,10 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
    * - ``no_household_equ``
      - ``double precision``
      -
-   * - ``no_households_per_branch``
+   * - ``no_household_equ_per_branch``
      - ``double precision``
      -
-   * - ``max_no_of_households_of_a_branch``
+   * - ``max_household_equ_of_a_branch``
      - ``double precision``
      -
    * - ``house_distance_km``
@@ -1728,9 +1728,6 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
      -
    * - ``max_vsw_of_a_branch``
      - ``double precision``
-     -
-   * - ``filtered``
-     - ``boolean``
      -
 
 ``load_edit``

@@ -78,10 +78,10 @@ def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatc
 
 
 def test_manual_path_takes_parameters_and_two_cluster_numbers(monkeypatch, pipeline):
-    answers(monkeypatch, "no", "yes", "yes", "no_branches, max_no_of_households_of_a_branch", "4,5")
+    answers(monkeypatch, "no", "yes", "yes", "no_branches, max_household_equ_of_a_branch", "4,5")
     cl.main()
     assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None}
-    assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "max_no_of_households_of_a_branch"],
+    assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "max_household_equ_of_a_branch"],
                                  "n_clusters_kmeans": 4, "n_clusters_gmm": 5, "additional_filtering": False}
     saved = yaml.safe_load(pipeline["config"].read_text())
     assert (saved["N_CLUSTERS_KMEANS"], saved["N_CLUSTERS_GMM"]) == (4, 5) and "N_CLUSTERS_KMEDOID" not in saved

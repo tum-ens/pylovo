@@ -291,7 +291,7 @@ the grids of the sampled PLZ and of ``VERSION_ID``. A grid is left out if
 A key figure that is missing never filters a grid. The result depends only on the current key figures, the sample set
 and the two YAML files, never on earlier runs, and classifications that share grids can use different filters. This
 replaced a flag ``clustering_parameters.filtered`` that was set for the grids of all versions and classifications and
-never reset. The column still exists in the table and is no longer used.
+never reset. Migration ``0016_key_figure_names`` drops the column.
 
 Step 6a: clustering parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -295,17 +295,17 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
 
     if no_branches > 0:
         no_house_connections_per_branch = no_house_connections / no_branches
-        no_households_per_branch = max_power_mw * 1000.0 / (PEAK_LOAD_HOUSEHOLD * no_branches)
+        no_household_equ_per_branch = max_power_mw * 1000.0 / (PEAK_LOAD_HOUSEHOLD * no_branches)
     else:
         no_house_connections_per_branch = 0.0
-        no_households_per_branch = 0.0
+        no_household_equ_per_branch = 0.0
 
     transformer_mva = calculator.get_transformer_power(net)
     house_distance_km = calculator.calculate_average_house_distance(net)
     simultaneous_peak_load_mw = calculator.calculate_simultaneous_peak_load(net) / 1000.0
 
     (
-        max_no_of_households_of_a_branch,
+        max_household_equ_of_a_branch,
         resistance,
         reactance,
         ratio,
@@ -321,8 +321,8 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
         "no_house_connections_per_branch": float(no_house_connections_per_branch),
         "no_households": int(no_households),
         "no_household_equ": float(no_household_equ),
-        "no_households_per_branch": float(no_households_per_branch),
-        "max_no_of_households_of_a_branch": float(max_no_of_households_of_a_branch),
+        "no_household_equ_per_branch": float(no_household_equ_per_branch),
+        "max_household_equ_of_a_branch": float(max_household_equ_of_a_branch),
         "house_distance_km": None if math.isnan(house_distance_km) else float(house_distance_km),   # NULL if undefined
         "transformer_mva": float(transformer_mva),
         "max_trafo_dis": float(max_trafo_dis),
