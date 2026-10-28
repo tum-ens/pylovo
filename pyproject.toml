@@ -117,7 +117,7 @@ viewer = [
 [dependency-groups]
 # Installed by `uv sync` / `uv run` (not by `pip install pylovo`, not in the image: `uv sync --no-dev`)
 dev = [
-    "pytest>=8.3",
+    "pytest>=9.0",
     # pinned: a new ruff can enable new rules; upgrade with `uv lock --upgrade-package ruff`
     "ruff==0.17.3",
 ]
@@ -189,6 +189,11 @@ select = ["E4", "E7", "E9", "F"]
 # mode: the API tests import `from conftest import requires_db`.
 testpaths = ["tests", "api/tests", "viewer/tests"]
 addopts = "-ra"
+minversion = "9.0"
+# unknown markers and configuration keys are errors, an xfail test that passes fails
+strict_config = true
+strict_markers = true
+strict_xfail = true
 
 [project.urls]
 Homepage = "https://github.com/tum-ens/pylovo"
