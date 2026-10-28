@@ -1,7 +1,10 @@
-# Checks that run on every `git commit` (only on the staged files). Install the hook once per clone:
-#   uvx pre-commit install
-# Run all checks on all files:  uvx pre-commit run --all-files
+# Checks that run on every `git commit` (only on the staged files). Install pre-commit once per machine and the hook
+# once per clone (docs/source/development/index.rst, section "Tests"):
+#   uv tool install pre-commit && pre-commit install
+# Run all checks on all files:  pre-commit run --all-files
 # Skip them for one commit:     git commit --no-verify
+# A hook that corrects files (whitespace, end of file, requirements.txt) stops the commit: add the corrections and
+# commit again.
 minimum_pre_commit_version: "4.4.0"
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -13,6 +16,35 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
       - id: check-toml
+      - id: check-json
+      - id: check-case-conflict
+      - id: debug-statements
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      # the generated diagrams and the example data of the tutorials keep the formatting of their scripts
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md"]
+        exclude: ^(docs/source/images/.*\.svg|data/examples/.*)$
+      - id: end-of-file-fixer
+        exclude: ^(docs/source/images/.*\.svg|data/examples/.*)$
+
+  # passwords, tokens and private keys in the staged changes
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # the GitHub workflows: syntax and expressions (actionlint), security (zizmor, also .github/dependabot.yml)
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.30.1
+    hooks:
+      - id: zizmor
+
   - repo: local
     hooks:
       # the ruff of uv.lock with the rules of pyproject.toml, as in CI
@@ -22,3 +54,16 @@ repos:
         language: unsupported
         types_or: [python, jupyter]
         require_serial: true
+      # uv.lock follows pyproject.toml and requirements.txt (for pip users) is its export, the command of the CI check
+      - id: requirements-txt
+        name: uv.lock and requirements.txt
+        entry: bash -c 'uv export --quiet --format requirements-txt --no-hashes --no-annotate --no-dev > requirements.txt'
+        language: unsupported
+        files: ^(pyproject\.toml|uv\.lock|requirements\.txt)$
+        pass_filenames: false
+      # every data file has a licence in DATA_LICENSES.md
+      - id: data-licenses
+        name: data files are listed in DATA_LICENSES.md
+        entry: python3 tests/check_data_licenses.py
+        language: unsupported
+        files: (?i)\.(csv|tsv|xlsx?|ods|geojson|gpkg|shp|shx|dbf|parquet|feather|sqlite|db|dump|backup|pkl|pickle|npy|npz|h5|hdf5|nc|zip|gz|bz2|xz|7z|tar)$

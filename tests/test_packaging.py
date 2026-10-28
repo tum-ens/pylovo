@@ -12,6 +12,8 @@ from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 
+from check_data_licenses import listed_paths, tracked_files, unlisted
+
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
@@ -78,6 +80,12 @@ def test_requirements_txt_pins_the_locked_versions():
     assert pins
     assert {name: pin for name, pin in pins.items() if locked.get(name) != pin} == {}, \
         "requirements.txt is stale: uv export --format requirements-txt --no-hashes --no-annotate --no-dev"
+
+
+def test_every_data_file_in_git_has_a_licence():
+    # the check of the pre-commit hook data-licenses, for commits made without the hook
+    assert unlisted(tracked_files(), listed_paths()) == [], "list these data files in DATA_LICENSES.md"
+    assert unlisted(["data/a/b.csv", "data/c.CSV", "src/d.py"], {"data/a/"}) == ["data/c.CSV"]
 
 
 def test_pytest_runs_the_three_test_folders_and_shows_the_skip_reasons():

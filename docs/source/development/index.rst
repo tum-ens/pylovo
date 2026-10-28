@@ -89,9 +89,11 @@ before you push:
        sphinx-build -W --keep-going -b html docs/source docs/build/html
 
 ``uv tool install pre-commit`` (once per machine) and ``pre-commit install`` (once per clone) let every commit run
-ruff and a few file checks (large files, merge conflict markers, YAML and TOML syntax; ``.pre-commit-config.yaml``)
-on its staged files. Do not install the hook with ``uvx pre-commit install``: the hook would then point to the uv
-cache and stop every commit once the cache is cleaned.
+the checks of ``.pre-commit-config.yaml`` on its staged files: ruff, file syntax, large files, merge conflict markers,
+trailing whitespace, passwords and keys (gitleaks), the GitHub workflows (actionlint, zizmor), ``requirements.txt``
+as the export of ``uv.lock``, and a licence in ``DATA_LICENSES.md`` for every data file. A check that corrects files
+stops the commit: add the corrections and commit again. Do not install the hook with ``uvx pre-commit install``:
+the hook would then point to the uv cache and stop every commit once the cache is cleaned.
 
 The unit tests in ``tests``, ``api/tests`` and ``viewer/tests`` need no database; the database tests skip
 themselves unless their variables are set (below). The HTTP API has an OpenAPI contract snapshot
