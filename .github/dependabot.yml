@@ -1,0 +1,38 @@
+# Dependabot version updates: once a month at most one pull request per ecosystem, with all its updates in one
+# group, checked by the CI before it is merged. Only releases older than 14 days are proposed (cooldown), so a
+# compromised or broken release has been noticed and withdrawn by then.
+# The dependencies of pylovo itself (uv.lock, requirements.txt) are not updated here: a new numpy, pandas,
+# pandapower or scikit-learn can change the generated grids, so they are upgraded on purpose
+# (uv lock --upgrade, the toy-town snapshot shows the effect). Dependabot alerts still report their known
+# vulnerabilities (GitHub: Security -> Dependabot).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      documentation:
+        patterns: ["*"]
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+    groups:
+      pre-commit:
+        patterns: ["*"]
