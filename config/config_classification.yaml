@@ -3,6 +3,8 @@ CLASSIFICATION_VERSION_COMMENT: "describe the idea and parameters of the classif
 CLASSIFICATION_REGION: Bayern
 NO_OF_CLUSTERS_ALLOWED: [3, 4, 5, 6, 7]
 N_SAMPLES: 7  # default value
+# PLZ bootstrap resamples of the selection report (0: the report of the sample only); about 5 s each for 500 PLZ
+SELECTION_BOOTSTRAP: 100
 
 REGION_DICT:
   1: Schleswig-Hohlstein

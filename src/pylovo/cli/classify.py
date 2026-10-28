@@ -17,6 +17,7 @@ try:
     from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
     from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
     from pylovo.classification.clustering.report_grid_counts import report_grid_counts
+    from pylovo.classification.clustering.selection_report import report_selection
     from pylovo.classification.sampling.sample import classification_version_exists
 except ModuleNotFoundError as exc:
     if (exc.name or "").split(".")[0] not in PLOTS_EXTRA_PACKAGES:
@@ -322,6 +323,10 @@ def main():
     config["ADDITIONAL_FILTERING"] = apply_additional_filtering
     save_yaml(CONFIG_CLUSTERING_PATH, config)
     print("\nClustering parameters, number of clusters and the filter choice written to config_clustering.yaml")
+
+    # How close and how stable the choices are (SELECTION_BOOTSTRAP resamples; stored with the classification)
+    print("\nComputing the selection report...")
+    report_selection(clustering_parameters, apply_additional_filtering)
 
     # Step 5: Run apply_clustering_for_visualisation.py with the values just written;
     # pylovo.config_loader still holds the values loaded at start-up.

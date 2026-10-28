@@ -52,6 +52,7 @@ def pipeline(monkeypatch, config_copy):
     monkeypatch.setattr(cl, "get_parameters_for_clustering", select_parameters)
     monkeypatch.setattr(cl, "get_no_clusters_for_clustering", select_clusters)
     monkeypatch.setattr(cl, "apply_clustering_for_visualisation", lambda **kw: calls.__setitem__("apply", kw))
+    monkeypatch.setattr(cl, "report_selection", lambda params, filtering: calls.__setitem__("selection", (params, filtering)))
     calls["config"] = config_copy / "config_clustering.yaml"
     return calls
 
@@ -63,6 +64,7 @@ def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatc
     assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
                                  "n_clusters_kmeans": 5, "n_clusters_gmm": 6, "additional_filtering": True}
     assert pipeline["parameters_filtering"] is True and pipeline["clusters_filtering"] is True
+    assert pipeline["selection"] == (["no_branches", "avg_trafo_dis"], True), "the report covers the chosen values"
     assert pipeline["report"] == {"additional_filtering": True, "plz_without_grids": [80002]}, "the summary closes the run"
     saved = yaml.safe_load(pipeline["config"].read_text())
     assert saved["LIST_OF_CLUSTERING_PARAMETERS"] == ["no_branches", "avg_trafo_dis"]

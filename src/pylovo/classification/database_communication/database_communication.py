@@ -1,4 +1,6 @@
 """Database access for the grid classification (sample set, clustering parameters, results)."""
+import json
+
 import geopandas as gpd
 import pandas as pd
 from geoalchemy2 import Geometry, WKTElement
@@ -332,6 +334,13 @@ class DatabaseCommunication:
     def create_wkt_element(self, geom):
         """Wrap a shapely geometry as ``WKTElement`` in ``TARGET_EPSG`` for writing with SQLAlchemy."""
         return WKTElement(geom.wkt, srid=TARGET_EPSG)
+
+    def save_selection_report(self, report: dict) -> None:
+        """Store the selection report (:mod:`~pylovo.classification.clustering.selection_report`) with the
+        classification and commit."""
+        self.dbc.cur.execute("UPDATE pylovo.classification_version SET selection_report = %(r)s::jsonb "
+                             "WHERE classification_id = %(c)s", {"r": json.dumps(report), "c": self.classification_id})
+        self.dbc.conn.commit()
 
     def save_transformers_with_classification_info(
         self,
