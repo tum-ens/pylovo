@@ -1,5 +1,6 @@
 # Run the tests on pushes to main/dev and on pull requests.
-#   lint:     ruff with the version and rules of pyproject.toml (only the dev tools are installed).
+#   lint:     ruff with the version and rules of pyproject.toml (only the dev tools are installed), and
+#             requirements.txt (for pip users) is the export of uv.lock.
 #   pytest:   the unit tests; the opt-in database tests skip themselves, nothing needs a database.
 #   database: builds the toy-town test database (tests/db/build_test_database.py) on a PostgreSQL 17 /
 #             PostGIS 3.5 / pgRouting 3.8 service and runs the opt-in database tests against it
@@ -32,6 +33,14 @@ jobs:
 
       - name: ruff
         run: uv run --locked --only-dev ruff check --output-format=github
+
+      - name: requirements.txt is the export of uv.lock
+        run: |
+          uv export --format requirements-txt --no-hashes --no-annotate --no-dev > requirements.txt
+          git diff --exit-code requirements.txt || {
+            echo "::error file=requirements.txt::requirements.txt differs from uv.lock: run the uv export command in its first lines and commit it."
+            exit 1
+          }
 
   pytest:
     runs-on: ubuntu-latest
