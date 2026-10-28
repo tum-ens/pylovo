@@ -121,6 +121,7 @@ License
 
 | The code of this repository is licensed under the **MIT License** (MIT).
 | See `LICENSE.txt <LICENSE.txt>`_ for rights and obligations.
+| The data files in the repository are not covered by the MIT License: see `DATA_LICENSES.md <DATA_LICENSES.md>`_.
 | Copyright: `pylovo <https://github.com/tum-ens/pylovo/>`_ © TUM ENS | `MIT <LICENSE.txt>`_
 
 Citation

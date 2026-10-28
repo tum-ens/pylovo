@@ -8,6 +8,8 @@ description = "Python tool for generating synthetic low-voltage distribution gri
 readme = "README.rst"
 requires-python = ">=3.12,<3.14"
 license = "MIT"
+# DATA_LICENSES.md: the licences of the data files that the wheel ships in pylovo/_defaults
+license-files = ["LICENSE.txt", "DATA_LICENSES.md"]
 authors = [
     {name = "Beneharo Reveron Baecker", email = "beneharo.reveron-baecker@tum.de"},
 ]

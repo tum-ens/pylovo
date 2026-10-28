@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Run the MV stage with `USE_EXTERNAL_BASEDATA`: it reads the InfDB through a separate read-only connection (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-prerequisites))
 - Import the eGon-data HV/MV substations in `pylovo-setup` and with `pylovo-import egon-substations`, so the MV stage finds the eTraGo bus of each substation; run `pylovo-setup` once after upgrading (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-egon-data))
 - Add `MV_OSM_COVERAGE` and `pylovo-mv generate --no-osm-coverage` to skip the OSM coverage report, which needs about three times the memory of the rest of an MV run (see [MV parameters](https://pylovo.readthedocs.io/en/latest/user_guide/mv_parameters.html))
+- Add `DATA_LICENSES.md` with the sources and licences of the data files in the repository, which the MIT License does not cover
 
 ### Changed
 - Speed up the MV routing graph of large regions: the settlement polygons no longer use a query plan that grows with the square of the number of settlements (364 municipalities: build in 1.7 instead of 4.8 minutes)
