@@ -265,6 +265,9 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
     ``simultaneous_peak_load_mw`` is the coincident peak load of the grid's own loads, with the
     formula of the PLZ-level transformer statistics
     (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.calculate_simultaneous_peak_load`).
+    A branch is an outgoing circuit of the LV busbar, a building connected at the busbar included
+    (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.classification_branches`). ``no_branches``, the
+    per-branch figures and the figures of the largest branch use the same branches.
 
     Args:
         calculator: Calculator with the PLZ context of the grid.
@@ -284,7 +287,9 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
 
     graph = pp.topology.create_nxgraph(net, respect_switches=True)
     root_idx = calculator.resolve_synthetic_root_bus(net)
-    no_branches = calculator.count_feeders(net, graph, root_idx, uses_synthetic_naming=True)
+    branch_of_bus = calculator.classification_branches(
+        graph, root_idx, calculator.resolve_consumer_buses(net, uses_synthetic_naming=True))
+    no_branches = len(set(branch_of_bus.values()))
     avg_trafo_dis, max_trafo_dis = calculator.calculate_trafo_distances_for_synthetic_grid(net, graph)
 
     if no_branches > 0:
@@ -304,7 +309,7 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
         reactance,
         ratio,
         max_vsw_of_a_branch,
-    ) = calculator.calculate_impedance_metrics(net, graph)
+    ) = calculator.calculate_impedance_metrics(net, graph, branch_of_bus)
 
     vsw_per_branch = resistance / no_branches if no_branches > 0 else 0.0
 

@@ -368,6 +368,29 @@ class ParameterCalculator:
             return []
         return net.load["bus"].unique().tolist()
 
+    @staticmethod
+    def classification_branches(graph: nx.Graph, root_idx: int, consumer_buses: List[int]) -> Dict[int, int]:
+        """Assign every consumer bus to its branch, the outgoing circuit of the LV busbar that supplies it.
+
+        A branch is a cable that leaves the busbar ``root_idx``; it is named by the bus at its far end. A building
+        connected directly at the busbar is a branch of its own, and a single-building grid has one branch. This is
+        the branch of the key figures of the classification (``no_branches`` and the per-branch figures). The
+        structural comparison counts feeders with :meth:`count_feeders`, which skips the buildings at the busbar.
+
+        Args:
+            graph: Topology graph of a radial net.
+            root_idx: The LV busbar.
+            consumer_buses: Consumer buses of the net.
+
+        Returns:
+            ``{consumer bus: first bus after the busbar on its path}``; a consumer that the busbar does not reach
+            has no entry.
+        """
+        if root_idx not in graph:
+            return {}
+        paths = nx.single_source_shortest_path(graph, root_idx)
+        return {int(bus): int(paths[bus][1]) for bus in consumer_buses if len(paths.get(bus, ())) > 1}
+
     def count_feeders(
         self,
         net: pp.pandapowerNet,
@@ -1348,13 +1371,14 @@ class ParameterCalculator:
         line_table: pd.DataFrame,
         apply_simultaneity: bool,
         bus_type_config: Optional[Dict[str, Optional[str]]] = None,
+        branch_of_bus: Optional[Dict[int, int]] = None,
     ) -> Dict[str, float]:
         """Run the source-to-consumer path impedance aggregation of the VSW metric.
 
         The caller provides the bus weights and decides whether cumulated
         simultaneity should affect line resistance.
-        Paths are grouped by feeder branch; a first-hop bus of type ``kvs`` in
-        ``bus_type_config`` (default: by the bus naming) splits its feeders.
+        Paths are grouped by the branch of their consumer in ``branch_of_bus``. Without it, by feeder branch: a
+        first-hop bus of type ``kvs`` in ``bus_type_config`` (default: by the bus naming) splits its feeders.
         """
         if bus_weights.empty or line_table.empty:
             return _empty_impedance_summary()
@@ -1384,7 +1408,10 @@ class ParameterCalculator:
             except (nx.NetworkXNoPath, nx.NodeNotFound):
                 continue
 
-            branch = self._resolve_branch_from_path(path, kvs_buses)
+            if branch_of_bus is None:
+                branch = self._resolve_branch_from_path(path, kvs_buses)
+            else:
+                branch = branch_of_bus.get(consumer_bus)
             path_resistance = 0.0
             path_reactance = 0.0
 
@@ -1434,13 +1461,20 @@ class ParameterCalculator:
             "total_weight": float(df_records["path_weight"].sum()),
         }
 
-    def calculate_impedance_metrics(self, pandapower_net: pp.pandapowerNet, networkx_graph: nx.Graph) -> Tuple[float, float, float, float, float]:
+    def calculate_impedance_metrics(
+        self,
+        pandapower_net: pp.pandapowerNet,
+        networkx_graph: nx.Graph,
+        branch_of_bus: Optional[Dict[int, int]] = None,
+    ) -> Tuple[float, float, float, float, float]:
         """Calculate the legacy VSW-style impedance metrics used by clustering.
 
         Returns maximum household equivalents per branch, total resistance, total
         reactance, the resistance-to-reactance ratio, and the maximum branch
         resistance proxy. The resistance and reactance of a line are divided by its
-        number of parallel cables.
+        number of parallel cables. The branches are those of ``branch_of_bus``
+        (:meth:`classification_branches`), else the feeder branches of
+        :meth:`_calculate_path_impedance_summary`.
         """
         load_table = self._prepare_legacy_impedance_loads(pandapower_net)
         if load_table.empty or "max_p_mw" not in load_table.columns:
@@ -1460,6 +1494,7 @@ class ParameterCalculator:
             bus_weights,
             line_table,
             apply_simultaneity=True,
+            branch_of_bus=branch_of_bus,
         )
         total_reactance = result["total_reactance"]
         ratio = result["total_resistance"] / total_reactance if total_reactance > 0 else 0.0
