@@ -178,8 +178,10 @@ include = [
 
 [tool.ruff.lint]
 # `uv run ruff check` (also in CI and in the pre-commit hook). The rules are listed explicitly because the
-# default rule set changes with ruff versions: syntax errors, undefined and unused names, statement style.
-select = ["E4", "E7", "E9", "F"]
+# default rule set changes with ruff versions: syntax errors, undefined and unused names, statement style and the
+# likely bugs of flake8-bugbear (B). B905 (zip() without strict=) is left out: it would change 200 working calls.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = ["B905"]
 
 [tool.ruff.lint.per-file-ignores]
 # notebooks import where a step needs it; tests assign lambdas as fakes

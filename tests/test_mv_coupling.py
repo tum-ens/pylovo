@@ -446,7 +446,7 @@ def test_coupled_scaling_reproduces_the_coincident_feeder_load():
     known = loads.iloc[:-2].copy()
     known["feeder"] = known["grid_result_id"].astype(int).map(feeder_of_grid)
     known["p_scaled"] = known["p_mw"] * scaling[:-2]
-    for feeder, part in known.groupby("feeder"):
+    for _, part in known.groupby("feeder"):
         installed = np.array([part.loc[part.category == c, "max_p_mw"].sum() * 1000
                               for c in ("Residential", "Commercial", "Public", "Unknown")])
         units = np.array([part.loc[part.category == c, "load_units"].sum()

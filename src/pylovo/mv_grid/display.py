@@ -244,7 +244,7 @@ class _Layout:
             if n == 1:
                 out[(lines[0], s)] = 0.0
                 continue
-            order = sorted(sorted(lines), key=cmp_to_key(lambda x, y: self.side(x, y, s)))
+            order = sorted(sorted(lines), key=cmp_to_key(lambda x, y, s=s: self.side(x, y, s)))
             gap = self.p.spacing(n)
             for rank, line in enumerate(order):
                 out[(line, s)] = (rank - (n - 1) / 2) * gap

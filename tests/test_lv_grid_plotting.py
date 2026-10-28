@@ -59,7 +59,7 @@ def _net():
     pp.create_line(net, buses[0], consumers[1], 0.05, "NAYY 4x50 SE")
     pp.create_line(net, lv, buses[1], 0.2, "NAYY 4x150 SE")       # feeder 2
     pp.create_line(net, buses[1], consumers[2], 0.03, "NAYY 4x50 SE")
-    for vertex, bus in enumerate(consumers):
+    for bus in consumers:
         pp.create_load(net, bus, p_mw=0.03)
     net.load["consumer_vertex"] = [10, 11, 12]
     pp.runpp(net)

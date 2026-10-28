@@ -87,7 +87,7 @@ def test_a_version_variant_reads_its_own_grids_on_the_buildings_of_the_example_v
         other = examples.TutorialData(plz, version_id=version, source="examples")
         assert len(other.summary()) == grids
         with pytest.raises(FileNotFoundError, match="not its map layers"):
-            other.layers
+            _ = other.layers
 
 
 def test_an_unknown_version_names_the_versions_of_the_example_data():

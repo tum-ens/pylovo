@@ -155,7 +155,7 @@ def test_a_key_that_nothing_read_gives_one_warning_with_the_closest_name():
     config["VN"]                                     # every kind of look-up counts as a read
     config.get("HOUSE_CONNECTION", "joint")
     config.get("N_JOBS_PERCENT")
-    "FEEDER" in config
+    assert "FEEDER" in config
     messages = unread_warnings(config)
     assert len(messages) == 1
     assert "config/config_generation_lv.yaml has keys that pylovo does not read" in messages[0]

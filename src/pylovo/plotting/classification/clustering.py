@@ -449,7 +449,7 @@ def _grid_geometry(net) -> tuple[list[tuple[np.ndarray, bool]], np.ndarray, np.n
     load_buses = set(net.load['bus']) if len(net.load) else set()
 
     lines = []
-    for index, line in net.line.iterrows():
+    for _, line in net.line.iterrows():
         coordinates = _geojson_coordinates(line['geo']) if 'geo' in net.line.columns else None
         if coordinates is None and line['from_bus'] in bus_xy and line['to_bus'] in bus_xy:
             coordinates = [bus_xy[line['from_bus']], bus_xy[line['to_bus']]]

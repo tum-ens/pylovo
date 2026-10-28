@@ -207,7 +207,7 @@ def test_load_specs_identical_to_cable_installer():
     table = le.snapshot_loads(buildings, p)
     rows = table.rows
     assert len(rows) == len(net.load)
-    for (i, gen), mine in zip(net.load.iterrows(), rows):
+    for (_, gen), mine in zip(net.load.iterrows(), rows):
         assert gen["name"] == mine["name"] and gen["category"] == mine["category"]
         for key in ("p_mw", "q_mvar", "max_p_mw", "service_design_p_mw", "load_units"):
             assert gen[key] == mine[key], key  # bit-identical

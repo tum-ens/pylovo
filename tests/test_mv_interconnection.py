@@ -388,7 +388,7 @@ def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0, vn_kv
     net.bus["node_key"] = [base + i for i in range(4)]
     pp.create_ext_grid(net, buses[0], vm_pu=1.0)
     sections = [(0, 1, 0, "a"), (1, 2, 0, None), (2, 3, 1, None), (3, 0, 1, "b")]
-    for a, b, feeder, exit_ in sections:
+    for a, b, _, _ in sections:
         pp.create_line_from_parameters(net, buses[a], buses[b], length_km, r_ohm_per_km=0.122, x_ohm_per_km=0.112,
                                        c_nf_per_km=304.0, max_i_ka=0.421)
     net.line["ring_id"] = 0.0
