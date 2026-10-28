@@ -214,8 +214,9 @@ Data and limits
 * Data travel as GeoJSON per version, per MV run or for the map view, gzipped. A layer returns at
   most 60,000 features per request. A version or MV run with more (all MV lines, MV/LV substations or
   LV grid areas of Bavaria) loads these layers for the map view from zoom 10 and asks you to zoom in
-  below. MV lines come by whole supply areas, so a ring is never cut at the edge of the view. A layer
-  cut at the limit says so in the panel.
+  below. MV lines come by whole supply areas, so a ring is never cut at the edge of the view. A map
+  view with more (LV cables of a city centre at zoom 14) shows nothing of that layer and asks you to
+  zoom in: a cut set would show grids without cables.
 * The server keeps loaded data in memory. After a new generation or MV run, the reload button in
   the top bar reads everything from the database again.
 * The browser needs internet access: it loads MapLibre GL JS 6.11.2 and Vue 3.5.43 from

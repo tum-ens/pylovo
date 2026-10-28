@@ -20,7 +20,8 @@ Scopes (which request parameters a layer needs):
 A ``version`` or ``run`` layer with an ``extent`` that holds more than ``cap`` features (all MV lines of
 Bavaria) is not sent whole: the API answers ``by_view`` and the page asks again with the map view
 (``bbox``), which the ``extent`` condition applies. MV lines and open points come by whole supply areas,
-so a ring is never cut at the edge of the view.
+so a ring is never cut at the edge of the view. A map view with more than ``cap`` features (LV cables of
+central Munich at zoom 14) gets ``zoom_in`` and no features: a cut set would show grids without cables.
 """
 from __future__ import annotations
 
@@ -340,9 +341,10 @@ def to_json(value: Any) -> Any:
     return str(value)
 
 
-def feature_collection(rows: list[dict[str, Any]], truncated: bool = False, by_view: bool = False) -> str:
+def feature_collection(rows: list[dict[str, Any]], truncated: bool = False, by_view: bool = False,
+                       zoom_in: bool = False) -> str:
     """GeoJSON text; ``geometry`` is already GeoJSON text, ``fid`` stays a property (``promoteId``). ``by_view``:
-    the layer holds more than its cap, ask again with the map view."""
+    the layer holds more than its cap, ask again with the map view; ``zoom_in``: so does the map view."""
     dumps = json.JSONEncoder(default=to_json, separators=(",", ":"), ensure_ascii=False).encode
     parts = []
     for row in rows:
@@ -350,7 +352,7 @@ def feature_collection(rows: list[dict[str, Any]], truncated: bool = False, by_v
         if geometry:
             parts.append(f'{{"type":"Feature","geometry":{geometry},"properties":{dumps(row)}}}')
     flag = "true" if truncated else "false"
-    view = ',"by_view":true' if by_view else ""
+    view = (',"by_view":true' if by_view else "") + (',"zoom_in":true' if zoom_in else "")
     return f'{{"type":"FeatureCollection","truncated":{flag}{view},"features":[{",".join(parts)}]}}'
 
 
@@ -471,10 +473,10 @@ class LayerService:
                 raise LookupError(self.unavailable(layer) or "not available")
             return blob.decode()
         sql = self.sql(layer, q)
-        if layer.extent and q.bbox is None:   # count first (no geometries): more than the cap goes by the view
+        if layer.extent or q.bbox is not None:   # count first (no geometries): more than the cap is never cut
             probe = self.db.one(f"SELECT count(*) AS n FROM ({sql}\nLIMIT {layer.cap + 1}) AS probe", q.params())
             if probe and probe["n"] > layer.cap:
-                return feature_collection([], truncated=True, by_view=True)
+                return feature_collection([], truncated=True, by_view=q.bbox is None, zoom_in=q.bbox is not None)
         rows = self.db.query(sql + f"\nLIMIT {layer.cap + 1}", q.params())
         truncated = len(rows) > layer.cap
         rows = rows[:layer.cap]

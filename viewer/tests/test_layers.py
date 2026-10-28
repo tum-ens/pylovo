@@ -168,10 +168,23 @@ def test_large_layers_follow_the_map_view(service, fake_db):
     assert len(fake_db.calls) == 1 and fake_db.calls[0][0].rstrip().endswith(") AS probe")   # no geometries read
     fake_db.calls.clear()
     fc = json.loads(service.geojson("lv_areas", Query(version="v1", bbox=(11.0, 48.0, 11.1, 48.1))))
-    assert "by_view" not in fc and fc["truncated"] is True and len(fc["features"]) == 1
+    assert fc == {"type": "FeatureCollection", "truncated": True, "zoom_in": True, "features": []}   # never cut
     sql = fake_db.calls[0][0]
     assert "AND (EXISTS (SELECT 1 FROM pylovo.transformer_positions tp" in sql and "{" not in sql
     assert sql.index("ST_MakeEnvelope") < sql.index("GROUP BY g.grid_result_id")
+    fake_db.rows["count(*) AS buildings"].pop()
+    fc = json.loads(service.geojson("lv_areas", Query(version="v1", bbox=(11.0, 48.0, 11.05, 48.05))))
+    assert fc["truncated"] is False and len(fc["features"]) == 1 and "zoom_in" not in fc
+
+
+def test_a_crowded_map_view_asks_to_zoom_in(service, fake_db):
+    # LV cables of central Munich at zoom 14: a cut set would show grids without cables
+    line = '{"type":"LineString","coordinates":[[11,48],[11.001,48]]}'
+    fake_db.rows = {"FROM pylovo.lines_result_cache c": [{"fid": i, "grid": 7, "geometry": line} for i in range(3)]}
+    service.layers["lv_cables"] = dataclasses.replace(service.layers["lv_cables"], cap=2)
+    fake_db.calls.clear()
+    fc = json.loads(service.geojson("lv_cables", Query(version="v1", bbox=(11.0, 48.0, 11.1, 48.1))))
+    assert fc["zoom_in"] is True and fc["features"] == [] and len(fake_db.calls) == 1   # the probe only
 
 
 def test_extent_by_supply_areas_and_stations(service, fake_db):

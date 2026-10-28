@@ -264,7 +264,8 @@ createApp({
       }
       const { bbox } = params;
       const last = this.loaded[id];
-      if (!force && last && last.base === base && (!bbox || inside(this.map.bbox(0), last.bbox))) return;
+      // a complete load of a larger box still holds the view; a cut one never does
+      if (!force && last && last.base === base && !last.truncated && (!bbox || inside(this.map.bbox(0), last.bbox))) return;
       const token = `${base}|${bbox || ''}`;
       this.pending[id] = token;
       st.status = 'loading';
@@ -272,8 +273,9 @@ createApp({
         const fc = await this.api(`/api/layer/${id}`, params);
         if (this.pending[id] !== token) return;
         if (fc.by_view) { st.byView = base; this.load(id, true); return; }
+        if (fc.zoom_in) { this.wait(id, 'Too many in this view: zoom in'); this.loaded[id] = null; return; }
         this.map.setData(id, fc);
-        this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null };
+        this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null, truncated: fc.truncated };
         Object.assign(st, { status: 'ok', count: fc.features.length, truncated: fc.truncated,
           inView: !!bbox && m.scope !== 'view', note: '' });
         this.tick++;
