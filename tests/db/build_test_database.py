@@ -9,7 +9,7 @@ pgRouting >= 3.8 available)::
 The database is the one pylovo's configuration points to (environment variables or a ``.env``, which
 replaces environment variables, see :mod:`pylovo.config_loader`); ``--database`` must name it, so a ``.env``
 of a real database is never used by accident. The script refuses a database that already has the pylovo
-or the InfDB source schema. It
+or the InfDB source schema. ``run_database_tests.py`` runs it, and the tests, on a disposable container. It
 
 1. writes the toy town into the InfDB source schemas (``USE_INFDB=True``, no ``USE_EXTERNAL_BASEDATA``),
 2. runs ``pylovo-setup`` (schema, transformers, postcodes and municipal register), then adds the toy

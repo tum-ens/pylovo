@@ -132,27 +132,23 @@ versions: ``1`` with the ``config/`` of the checkout, ``2`` with the existing tr
 tests derive their expectations from this database; they write (a manual transformer, load edits that
 are undone again), but they can be repeated on the same database.
 
-Locally, with the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 3.8) and GDAL's ``ogr2ogr``
-installed (``pylovo-setup`` needs it):
+Locally, with Docker and GDAL's ``ogr2ogr`` installed (``pylovo-setup`` needs it), one command runs them as
+the CI does:
 
 .. code-block:: bash
 
-   docker run -d --name pylovo-test-db -p 127.0.0.1:55432:5432 \
-       -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=pylovo_test pgrouting/pgrouting:17-3.5-3.8.0
-   docker exec pylovo-test-db psql -U postgres -c "CREATE DATABASE pylovo_fixture" -c "CREATE DATABASE pylovo_review"
-   export DBNAME=pylovo_test DBUSER=postgres PASSWORD=postgres HOST=127.0.0.1 PORT=55432
-   uv run --extra api --extra plots python tests/db/build_test_database.py --database pylovo_test
-   PYLOVO_TOY_TOWN_DATABASE=pylovo_test PYLOVO_API_TEST_DATABASE=pylovo_test \
-   PYLOVO_FIXTURE_DB="host=127.0.0.1 port=55432 dbname=pylovo_fixture user=postgres password=postgres" \
-   PYLOVO_REVIEW_TEST_DSN="host=127.0.0.1 port=55432 dbname=pylovo_review user=postgres password=postgres" \
-       uv run --extra api --extra plots pytest tests/test_toy_town.py tests/test_postgis_fixtures.py \
-       tests/test_database_review.py api/tests
-   docker rm -f pylovo-test-db   # start again from scratch
+   uv run --extra api --extra plots python tests/db/run_database_tests.py
+   uv run --extra api --extra plots python tests/db/run_database_tests.py -- -x -k toy_town   # pytest arguments
 
-pylovo reads ``.env`` with ``override=True``: a ``.env`` in the checkout replaces the exported variables.
-Then put the test database into ``.env`` instead (and switch it back afterwards). The build script refuses
-to run unless ``--database`` names the database the configuration points to, and it refuses a database
-that already has the ``pylovo`` or the ``basedata`` schema; drop and create the database to build it again.
+It starts the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 3.8) as the container ``pylovo-test-db``
+on ``127.0.0.1:55432``, creates the databases of the table above, builds the toy town, runs the tests and removes
+the container again (``--keep`` keeps it for a look with ``psql``). It takes about a minute and a half.
+
+All its commands get ``PYLOVO_ENV_FILE=`` (empty): the ``.env`` of the checkout is not read, so nothing reaches
+the database it points to. Without that variable, pylovo reads ``.env`` with ``override=True``, and a ``.env``
+in the checkout replaces exported variables; set ``PYLOVO_ENV_FILE=`` also when you run single database tests by
+hand against a test database. The build script refuses to run unless ``--database`` names the database the
+configuration points to, and it refuses a database that already has the ``pylovo`` or the ``basedata`` schema.
 
 For behaviour-preserving changes of the generation, generate the same postcode before and after the change
 in a disposable database and compare ``grid_result``, ``buildings_result``, ``lines_result`` and the

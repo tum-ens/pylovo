@@ -126,7 +126,11 @@ The unit tests need no database. Run them with:
 ```bash
 uv run --extra api --extra plots pytest
 ```
-This collects `tests` and `api/tests` and lists the reason of every skipped test. Tests that need a database are skipped unless you name a disposable database for them (the toy-town test database, see "Tests" in the development guide `docs/source/development/index.rst`). Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
+This collects `tests` and `api/tests` and lists the reason of every skipped test. Tests that need a database are skipped unless you name a disposable database for them (the toy-town test database, see "Tests" in the development guide `docs/source/development/index.rst`). With Docker, one command runs them on a disposable container, as the CI does:
+```bash
+uv run --extra api --extra plots python tests/db/run_database_tests.py
+```
+Never run the code against a database that holds data you want to keep: `pylovo-setup reset --database NAME` deletes all pylovo results.
 
 3.3. **Documentation build**:
 Build the documentation with warnings as errors, as the CI does:
