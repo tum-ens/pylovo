@@ -20,11 +20,15 @@ from pathlib import Path
 
 import pytest
 
+from db import toy_town  # tests/db/toy_town.py, the input of the test database
+
 SNAPSHOT = Path(__file__).parent / "db" / "toy_town_results.json"
 
 DATABASE = os.getenv("PYLOVO_TOY_TOWN_DATABASE")
 pytestmark = pytest.mark.skipif(
     not DATABASE, reason="set PYLOVO_TOY_TOWN_DATABASE to the toy-town test database (tests/db/build_test_database.py)")
+#: the versions of tests/db/build_test_database.py
+VERSIONS = ["1", "2", "3", "4", "5"]
 
 
 @pytest.fixture(scope="module")
@@ -59,35 +63,53 @@ def accounted(q, version: str) -> set[str]:
 
 def test_every_postcode_has_converged_grids_in_every_version(q, postcodes):
     assert postcodes == [99001, 99002]
-    assert [v for (v,) in q("SELECT version_id FROM pylovo.version ORDER BY version_id")] == ["1", "2", "3"]
+    assert [v for (v,) in q("SELECT version_id FROM pylovo.version ORDER BY version_id")] == VERSIONS
     rows = q("""SELECT version_id, plz, count(*), count(*) FILTER (WHERE power_flow_status = 'converged'),
                        count(*) FILTER (WHERE bcid < 0)
                 FROM pylovo.grid_result GROUP BY 1, 2 ORDER BY 1, 2""")
-    assert [(v, plz) for v, plz, *_ in rows] == [(v, plz) for v in "123" for plz in postcodes]
+    assert [(v, plz) for v, plz, *_ in rows] == [(v, plz) for v in VERSIONS for plz in postcodes]
     assert all(grids == converged > 0 for _, _, grids, converged, _ in rows), rows
-    # version 2 uses the existing (LoD2) station of the town, the others are greenfield
-    assert {(v, plz): existing for v, plz, _, _, existing in rows if existing} == {("2", 99001): 1}
+    # version 2 uses the existing (LoD2) station of the town, version 5 the manual one, the others are greenfield
+    assert {(v, plz): existing for v, plz, _, _, existing in rows if existing} == {("2", 99001): 1, ("5", 99001): 1}
 
 
 def test_every_building_is_accounted_for(q, postcodes, tmp_path):
     from pylovo.cli.analyze import run_diagnostics
 
-    for version in ("1", "2", "3"):
+    for version in VERSIONS:
         assert run_diagnostics(postcodes, coverage=True, border=False, version_id=version,
                                output=tmp_path / version) == 0
     # the same candidates in every version, only the reasons differ
-    assert accounted(q, "1") == accounted(q, "2") == accounted(q, "3")
+    assert all(accounted(q, version) == accounted(q, "1") for version in VERSIONS)
     reasons = {(v, r): n for v, r, n in q("""SELECT version_id, reason, count(*) FROM pylovo.building_exclusion
                                              GROUP BY 1, 2""")}
     # the plant is MV-direct and the building of unknown use has no load; residential-only leaves out both, the four
     # shops and the school
-    assert reasons == {("1", "mv_direct"): 1, ("1", "unloaded"): 1, ("2", "mv_direct"): 1, ("2", "unloaded"): 1,
+    assert reasons == {**{(v, r): 1 for v in ("1", "2", "4", "5") for r in ("mv_direct", "unloaded")},
                        ("3", "residential_only"): 7}
     # residential-only leaves out exactly the buildings without a residential part
     residential_only = q("""SELECT count(*) FROM pylovo.buildings_result r JOIN pylovo.building_exclusion e
                                 USING (objectid)
                             WHERE r.version_id = '1' AND e.version_id = '3' AND COALESCE(r.residential_floor_area, 0) > 0""")
     assert residential_only == [(0,)]
+
+
+def test_missing_household_counts_follow_the_building_type(q):
+    # the fallback of PreprocessingMixin.set_building_peak_load for buildings without an InfDB count:
+    # MFH max(2, round(588 m2 / 181)), AB max(5, round(1280 m2 / 146)), untyped max(1, round(240 m2 / 181))
+    expected = {"MFH_NO_COUNT": 3, "AB_NO_COUNT": 9, "UNTYPED_NO_COUNT": 1}
+    kinds = {b.objectid: name for b in toy_town.buildings() for name in expected if b.kind is toy_town.KINDS[name]}
+    rows = q("SELECT objectid, households FROM pylovo.buildings_result WHERE version_id = '1' AND objectid = ANY(%s)",
+             (list(kinds),))
+    assert {kinds[objectid]: households for objectid, households in rows} == expected
+
+
+def test_the_manual_station_keeps_its_rated_power(q):
+    # version 5 uses only the manual positions; the rating entered for the station wins over the catalogue
+    # (ClusteringMixin.get_existing_transformer_capacity_trafo_ui), which would choose 400 or 630 kVA here
+    rated_power = toy_town.MANUAL_STATION[2]
+    assert q("SELECT transformer_rated_power FROM pylovo.grid_result WHERE version_id = '5' AND bcid < 0") \
+        == [(rated_power,)]
 
 
 def toy_town_results(q) -> dict:
@@ -125,6 +147,12 @@ def differences(expected, actual, path: str = "") -> list[str]:
     if expected == actual or numbers and math.isclose(expected, actual, rel_tol=1e-6, abs_tol=1e-5):
         return []
     return [f"{path.lstrip('/')}: {expected} -> {actual}"]
+
+
+def test_parallel_workers_give_the_grids_of_the_serial_run(q):
+    # version 4 is version 1 generated in worker processes, one per postcode
+    results = toy_town_results(q)
+    assert differences(results["1"], results["4"]) == []
 
 
 def test_the_results_equal_the_snapshot(q):

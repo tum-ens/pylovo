@@ -16,7 +16,9 @@ or the InfDB source schema. ``run_database_tests.py`` runs it, and the tests, on
    postcodes to ``pylovo.municipal_register``,
 3. runs ``pylovo-generate --plz 99001 99002`` and the per-grid analysis (``pylovo-analyze --per-grid``)
    for the versions of :data:`VERSIONS`: ``1`` with the ``config/`` of the checkout unchanged, ``2`` with
-   the open (here: LoD2) transformer positions (brownfield), ``3`` residential-only.
+   the open (here: LoD2) transformer positions (brownfield), ``3`` residential-only, ``4`` as ``1`` but in
+   parallel worker processes (one per postcode), ``5`` with the manual station of ``toy_town.MANUAL_STATION``
+   (placed with ``add_transformer_position_trafo_ui`` before this version, so version 2 does not use it).
 
 The commands run in a temporary directory with a copy of ``config/`` (logs and results stay out of the
 checkout), ``PYLOVO_ROOT`` points to the checkout for the reference data in ``data/``. It takes less than
@@ -42,7 +44,13 @@ VERSIONS = {
     "1": {},
     "2": {"VERSION_COMMENT": "toy town, open transformer positions", "USE_OPEN_TRANSFORMER_POSITIONS": True},
     "3": {"VERSION_COMMENT": "toy town, residential only", "RESIDENTIAL_ONLY_GENERATION": True},
+    "4": {"VERSION_COMMENT": "toy town, default in parallel", "N_JOBS_PERCENT": 100},
+    "5": {"VERSION_COMMENT": "toy town, manual station with a rated power", "USE_MANUAL_TRANSFORMER_POSITIONS": True},
 }
+#: versions generated in worker processes; the others run with --no-parallel
+PARALLEL_VERSIONS = {"4"}
+#: the version before which the manual station is placed
+MANUAL_STATION_VERSION = "5"
 
 
 def _run(command: list[str], cwd: Path, env: dict) -> None:
@@ -59,6 +67,18 @@ def _run(command: list[str], cwd: Path, env: dict) -> None:
 def _command(name: str) -> str:
     local = Path(sys.executable).parent / name
     return str(local) if local.exists() else (shutil.which(name) or name)
+
+
+def _place_manual_station() -> None:
+    """Place :data:`toy_town.MANUAL_STATION` as the transformer map and the HTTP API do."""
+    from pylovo.database.database_client import DatabaseClient
+
+    osm_id, (x, y), rated_power = toy_town.MANUAL_STATION
+    with DatabaseClient() as client:
+        client.cur.execute("SELECT ST_AsText(ST_Transform(ST_SetSRID(ST_MakePoint(%s, %s), %s), 4326))",
+                           (toy_town.X0 + x, toy_town.Y0 + y, toy_town.SRID))
+        client.add_transformer_position_trafo_ui(toy_town.PLZ_TOWN, client.cur.fetchone()[0], osm_id=osm_id,
+                                                 transformer_rated_power=rated_power)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -102,8 +122,11 @@ def main(argv: list[str] | None = None) -> None:
             if changes:
                 config = {**default, **changes, "VERSION_ID": version_id}
                 path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+            if version_id == MANUAL_STATION_VERSION:
+                _place_manual_station()
             plz = list(map(str, toy_town.GENERATED_PLZ))
-            _run([_command("pylovo-generate"), "--plz", *plz, "--no-parallel", "--no-mv"], project, env)
+            parallel = "--parallel" if version_id in PARALLEL_VERSIONS else "--no-parallel"
+            _run([_command("pylovo-generate"), "--plz", *plz, parallel, "--no-mv"], project, env)
             _run([_command("pylovo-analyze"), "--plz", *plz, "--per-grid"], project, env)
     conn.close()
     print(f"Test database {cl.DBNAME!r} is ready (versions {', '.join(VERSIONS)}).")

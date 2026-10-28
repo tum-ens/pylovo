@@ -15,12 +15,14 @@ relations of the InfDB schemas (see :mod:`pylovo.infdb.infdb_client`):
 :func:`write_source_data` creates exactly these (the columns pylovo and its API read) and fills them with a
 made-up town: postcode 99001 (a street grid with apartment blocks, mixed buildings with shops, a school, a
 plant large enough for an MV connection, single-family houses, a LoD2 transformer station, a garage without
-address, a building of unknown use and a cycle path), the neighbouring village 99002 (one street across the postcode border) and
+address, a building of unknown use, three residential buildings without a household count and a cycle path), the
+neighbouring village 99002 (one street across the postcode border) and
 99003, a postcode that only :func:`write_municipal_register` knows (no polygon, no buildings). Everything
 is computed from the tables below (no randomness, no geodata files), in EPSG:25832 in the open North Sea west
 of Heligoland, so no real building or OSM transformer lies near it.
 
-``tests/db/build_test_database.py`` builds a complete test database from it.
+``tests/db/build_test_database.py`` builds a complete test database from it; before its version 5 it places the
+manual station :data:`MANUAL_STATION` with a rated power.
 """
 from __future__ import annotations
 
@@ -56,7 +58,7 @@ class Kind:
     along: float
     across: float
     floors: int
-    households: int
+    households: int | None          # None: pylovo fills the count from the type and the residential floor area
     building_use: str
     building_use_id: str
     building_type: str | None
@@ -76,6 +78,10 @@ KINDS = {
     "STATION": Kind(4, 3, 1, 0, "Commercial", "31001_2523", None, nonresidential_floors=1, address=False),
     "GARAGE": Kind(6, 6, 1, 0, "Residential", "31001_2463", None, nonresidential_floors=1, address=False),
     "UNKNOWN": Kind(12, 10, 1, 0, "Unknown", "31001_9998", None, nonresidential_floors=1),  # use not classified
+    # no household count in the InfDB (the fallback of PreprocessingMixin.set_building_peak_load)
+    "MFH_NO_COUNT": Kind(14, 14, 3, None, "Residential", "31001_1010", "MFH"),
+    "AB_NO_COUNT": Kind(20, 16, 4, None, "Residential", "31001_1010", "AB"),
+    "UNTYPED_NO_COUNT": Kind(12, 10, 2, None, "Residential", "31001_1010", None),
 }
 
 #: street, side (+1 left of the street direction, -1 right), first position along the street, kinds in order
@@ -96,11 +102,15 @@ ROWS = [
     ("Hauptstraße", -1, 1020, ["SFH", "SFH", "SFH", "SFH", "SHOP", "SFH", "SFH"]),
     ("Dorfstraße", +1, 30, ["SFH"] * 10),
     ("Dorfstraße", -1, 30, ["SFH"] * 10),
-    ("Ostgasse", +1, 30, ["UNKNOWN"]),
+    ("Ostgasse", +1, 30, ["UNKNOWN", "MFH_NO_COUNT", "AB_NO_COUNT", "UNTYPED_NO_COUNT"]),
 ]
 GAP = 8.0             # metres between neighbouring buildings
 SETBACK = 6.0         # metres from the street centre line to the building front
 JUNCTION_CLEARANCE = 25.0  # no building faces a street within this distance of a junction or a postcode border
+
+#: osm_id, local position and rated power (kVA) of the station placed by hand (transformer map, HTTP API) between
+#: Nordweg and Hauptstraße; build_test_database.py adds it before version 5, which uses only the manual positions
+MANUAL_STATION = ("manual/toy-town", (300.0, 475.0), 250)
 
 
 @dataclass(frozen=True)
@@ -262,10 +272,11 @@ def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str
         k = b.kind
         nonres = b.floor_area * k.nonresidential_floors
         res = b.floor_area * (k.floors - k.nonresidential_floors)
-        population[b.plz] += 2 * k.households
+        occupants = None if k.households is None else 2 * k.households
+        population[b.plz] += occupants or 0
         street = b.street if k.address else None
         rows.append((i, 100_000 + i, b.objectid, 3.0 * k.floors, b.floor_area, k.floors, res, nonres,
-                     k.building_use, k.building_use_id, k.building_type, 2 * k.households, k.households,
+                     k.building_use, k.building_use_id, k.building_type, occupants, k.households,
                      str(1950 + (i * 7) % 70), b.plz, STREETS.index(_street(b.street)) + 1, street,
                      str(b.house_number) if k.address else None,
                      _box(b.centre[0] - b.half[0], b.centre[1] - b.half[1], b.centre[0] + b.half[0],
@@ -311,7 +322,7 @@ def write_municipal_register(cur) -> None:
     for plz, (x, y) in centres.items():
         area = (POSTCODES[plz][3] - POSTCODES[plz][1]) * (POSTCODES[plz][4] - POSTCODES[plz][2]) / 1e6 \
             if plz in POSTCODES else 0.2
-        pop = sum(2 * b.kind.households for b in buildings() if b.plz == plz)
+        pop = sum(2 * (b.kind.households or 0) for b in buildings() if b.plz == plz)
         cur.execute(f"""
             INSERT INTO pylovo.municipal_register (plz, pop, area, lat, lon, ags, name_city, fed_state, regio7, regio5,
                                                    pop_den)

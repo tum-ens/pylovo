@@ -134,12 +134,14 @@ skipped with the reason otherwise.
 pylovo reads (``basedata.buildings``, ``ways_per_connection``, ``connection_lines``,
 ``classify_building_use`` and ``opendata.postcodes_germany``): postcode 99001 with a street grid,
 apartment blocks, mixed buildings with shops, a school, a plant above the MV-direct threshold,
-single-family houses, a LoD2 transformer station and a cycle path, the neighbouring village 99002 and
-99003, a postcode without a polygon. The data are synthetic (no geodata files) and lie in the North Sea,
-far from real buildings and OSM transformers. ``tests/db/build_test_database.py`` writes the toy town into
-an empty database and runs ``pylovo-setup``, ``pylovo-generate`` and ``pylovo-analyze --per-grid`` for three
-versions: ``1`` with the ``config/`` of the checkout, ``2`` with the existing transformer positions
-(``USE_OPEN_TRANSFORMER_POSITIONS``) and ``3`` residential-only. It takes less than a minute. The API
+single-family houses, a LoD2 transformer station, three residential buildings without a household count
+and a cycle path, the neighbouring village 99002 and 99003, a postcode without a polygon. The data are
+synthetic (no geodata files) and lie in the North Sea, far from real buildings and OSM transformers.
+``tests/db/build_test_database.py`` writes the toy town into an empty database and runs ``pylovo-setup``,
+``pylovo-generate`` and ``pylovo-analyze --per-grid`` for five versions: ``1`` with the ``config/`` of the
+checkout, ``2`` with the existing transformer positions (``USE_OPEN_TRANSFORMER_POSITIONS``), ``3``
+residential-only, ``4`` as ``1`` in parallel worker processes (it must give the same grids) and ``5`` with
+a manual station of a given rated power (``USE_MANUAL_TRANSFORMER_POSITIONS``). It takes about a minute. The API
 tests derive their expectations from this database; they write (a manual transformer, load edits that
 are undone again), but they can be repeated on the same database.
 
