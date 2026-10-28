@@ -21,7 +21,9 @@ source checkout: the repository root) is used -- in an interactive session or a 
 in the current working directory instead. If that search finds none, as for a wheel installed in a virtual
 environment outside the project (:ref:`install-wheel`), the ``.env`` of the current working directory or its
 parents is used. A ``.env`` above the installed package therefore wins over the one in the working directory.
-The values of the ``.env`` **override** environment variables with the same name.
+The values of the ``.env`` **override** environment variables with the same name. ``PYLOVO_ENV_FILE``, set in
+the shell, replaces the search: it names the file to read, and an empty value (``PYLOVO_ENV_FILE=``) reads
+no ``.env`` at all, so that only the variables of the shell count.
 
 .. list-table::
    :header-rows: 1
@@ -79,6 +81,9 @@ The values of the ``.env`` **override** environment variables with the same name
      - ``25832``
      - Projected CRS (metres) of all geometries stored by pylovo. Choose it before the first
        ``pylovo-setup``; the table definitions use it. Part of the version snapshot.
+   * - ``PYLOVO_ENV_FILE``
+     - --
+     - Optional, only from the shell: the ``.env`` to read instead of the search above; empty: none.
    * - ``PYLOVO_ROOT``
      - --
      - Optional project root for installations outside a checkout: ``$PYLOVO_ROOT/config`` is

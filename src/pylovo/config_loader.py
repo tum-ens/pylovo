@@ -22,7 +22,8 @@ with the rules of :mod:`pylovo.mv_grid.options`.
     current working directory or its parents is used. A ``.env`` above the installed package
     therefore still wins over the one in the working directory. Because of ``override=True`` the
     values in that ``.env`` **replace** environment variables of the same name that are already set
-    in the shell.
+    in the shell. ``PYLOVO_ENV_FILE`` (from the shell) replaces this search: it names the file to load, and
+    an empty value loads none.
 
 YAML lookup:
     See :func:`get_config_search_paths`. The first location is ``./config`` of the
@@ -64,10 +65,15 @@ def get_packaged_defaults_dir() -> Path:
 def find_env_file() -> str:
     """Return the path of the ``.env`` to load, or an empty string if there is none.
 
-    The first ``.env`` above the directory of this file wins (a checkout: its root). Only if there is
+    ``PYLOVO_ENV_FILE`` of the shell replaces the search: it names the file, and an empty value loads none
+    (the database tests use this to keep the ``.env`` of a checkout away from their test database).
+    Otherwise the first ``.env`` above the directory of this file wins (a checkout: its root). Only if there is
     none, the ``.env`` of the current working directory or its parents is used (a wheel installed
     outside the project, where the first walk starts in ``site-packages``).
     """
+    explicit = os.environ.get("PYLOVO_ENV_FILE")
+    if explicit is not None:
+        return explicit
     return find_dotenv() or find_dotenv(usecwd=True)
 
 
