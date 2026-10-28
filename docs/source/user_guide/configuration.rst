@@ -204,8 +204,9 @@ Execution
      -
    * - ``N_JOBS_PERCENT``
      - ``50``
-     - Share of CPU cores used as worker processes for multi-postcode runs
-       (at least one worker; about 0.4 GB of memory per worker).
+     - Share of CPU cores used as worker processes for multi-postcode runs, also by ``pylovo-classify``
+       (at least one worker). Memory per worker: about 0.4 GB for the grid generation and about 0.3 GB for the key
+       figures of ``pylovo-classify`` (peak resident memory, about half of it shared with the main process).
      -
    * - ``ANALYZE_GRIDS``
      - ``True``

@@ -68,6 +68,8 @@ Before you start
   "restrict sampling to PLZ present in postcode_result" only PLZ that already have grids are drawn, and step 3
   has nothing left to generate. Step 4 then dominates with about 0.14 s per grid and process: 500 Bavarian PLZ
   (27,000 grids) took one hour in one process, and seven worker processes computed seven PLZ 5.5 times faster.
+  ``pylovo-classify`` uses worker processes by default: ``PARALLEL`` (``True`` also when the key is missing) and
+  ``N_JOBS_PERCENT`` of ``config_generation_lv.yaml``, as ``pylovo-generate`` does.
 
 Configuration
 -------------
@@ -273,7 +275,9 @@ Step 4 computes one row of ``clustering_parameters`` for every grid of every sam
 (``analyze_grid_parameters_for_multiple_plz`` in ``pylovo.analysis.parameter_calculation``, columns in
 :doc:`analysing_grids`). Like step 3 it uses worker processes (``N_JOBS_PERCENT``) unless ``PARALLEL`` is ``False``
 or ``--no-parallel`` is given: every worker computes whole PLZ with its own database connection and writes the same
-rows as one process would, and one line per finished PLZ is printed. Grids that already have a row are skipped. A PLZ
+rows as one process would, and one line per finished PLZ is printed. Each worker needs about 0.3 GB of memory at its
+peak, about half of it shared with the main process, which needs about 0.4 GB itself; a generation worker of step 3
+needs about 0.4 GB. ``N_JOBS_PERCENT`` sets the number of workers of both steps. Grids that already have a row are skipped. A PLZ
 without PLZ analysis and a grid whose calculation fails are logged and skipped, and the summary at the end counts them
 (:ref:`classification-summary`).
 

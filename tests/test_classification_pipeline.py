@@ -254,3 +254,14 @@ def test_parallel_none_takes_the_configuration(fake_step_4, monkeypatch):
     monkeypatch.setattr(pcm, "PARALLEL", True)
     pcm.analyze_grid_parameters_for_multiple_plz([80001, 80002])
     assert RecordingPool.workers == [2]
+
+
+def test_the_shipped_configuration_runs_steps_3_and_4_in_worker_processes():
+    """PARALLEL and N_JOBS_PERCENT of config_generation_lv.yaml are the only knobs of pylovo-generate and steps 3 and 4."""
+    from pathlib import Path
+
+    import yaml
+
+    shipped = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "config_generation_lv.yaml").read_text())
+    assert shipped["PARALLEL"] is True and shipped["N_JOBS_PERCENT"] == 50
+    assert pdc.PARALLEL is pcm.PARALLEL, "the classification reads the knob of the grid generation"
