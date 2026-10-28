@@ -5,7 +5,7 @@ Subcommands:
     transformers-dso-csv: add DSO transformer positions from a CSV file.
     transformers-ui: browser map for checking and editing transformer positions (needs the extra legacy-ui).
     egon-substations: load the eGon-data HV/MV substations of the MV stage (downloaded from the Open Energy
-        Platform when not cached or with --refresh).
+    Platform when not cached or with --refresh).
 """
 import json
 import sys
