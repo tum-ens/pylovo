@@ -213,3 +213,14 @@ def test_the_draw_is_seeded_with_the_classification_version(written):
     default = sample.get_samples_within_regiostar_class(73, 12, reg)
     seeded = sample.get_samples_within_regiostar_class(73, 12, reg, np.random.default_rng(7))  # version 7 (fixture)
     assert list(default["plz"]) == list(seeded["plz"])
+
+
+@pytest.mark.parametrize("argument, expected", [(None, "configured"), (9002, 9002)])
+def test_get_sample_set_reads_the_given_classification_ordered_by_plz(monkeypatch, argument, expected):
+    client = FakeClient(register())
+    monkeypatch.setattr(sample, "_db_client", client)
+    monkeypatch.setattr(sample, "CLASSIFICATION_VERSION", 9001)
+    sample.get_sample_set(argument)
+    ((query, params),) = client.cur.executed
+    assert params == {"c": 9001 if expected == "configured" else expected}
+    assert query.endswith("ORDER BY ss.plz;")

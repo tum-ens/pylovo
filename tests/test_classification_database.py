@@ -318,3 +318,38 @@ def test_sample_set_references_the_register_and_the_version():
     assert "REFERENCES pylovo.classification_version (classification_id)" in ddl
     assert "REFERENCES pylovo.municipal_register (plz, ags)" in ddl
     assert "ags bigint NOT NULL" in ddl
+
+
+# ---------------------------------------------------------------------------------------- another classification
+@pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])
+def test_the_readers_read_the_classification_and_version_given_to_the_constructor(monkeypatch, reader):
+    """The notebooks pass the classification of their parameter cell; None keeps the configuration."""
+    monkeypatch.setattr(dcm.dbc, "DatabaseClient", FakeDbc)
+    seen = capture_queries(monkeypatch)
+    dc = dcm.DatabaseCommunication(classification_id=9002, version_id=7)
+    getattr(dc, reader)(False)
+    ((_, params),) = seen
+    assert (params["c"], params["v"]) == (9002, "7")
+    assert (dc.classification_id, dc.version_id) == (9002, "7")
+
+
+def test_without_arguments_the_configured_classification_is_read_at_call_time(monkeypatch):
+    monkeypatch.setattr(dcm.dbc, "DatabaseClient", FakeDbc)
+    dc = dcm.DatabaseCommunication()
+    monkeypatch.setattr(dcm, "CLASSIFICATION_VERSION", 9003)
+    monkeypatch.setattr(dcm, "VERSION_ID", "v9")
+    assert (dc.classification_id, dc.version_id) == (9003, "v9")
+    assert (make_dc().classification_id, make_dc().version_id) == (9003, "v9"), "also without __init__"
+
+
+def test_the_choices_and_the_result_belong_to_the_given_classification(monkeypatch):
+    dc = stored_dc((["no_branches"], 4, 4, False))
+    dc._classification_id = 9004
+    dc.get_classification_choices()
+    assert dc.dbc.cur.executed[0][1] == {"c": 9004}
+    save, captured, _ = prepare_save(monkeypatch)
+    save._classification_id = 9004
+    save.save_transformers_with_classification_info(PARAMS, 4, 4)
+    assert set(captured["frame"]["classification_id"]) == {9004}
+    statements = [entry for entry in save.dbc.sqla_engine.log if entry[0] == "execute"]
+    assert all(entry[2]["c"] == 9004 for entry in statements)

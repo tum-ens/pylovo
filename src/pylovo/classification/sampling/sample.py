@@ -221,18 +221,22 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
     sample_set_to_db(regiostar_samples_result)
 
 
-def get_sample_set() -> pd.DataFrame:
-    """Read the sample set of ``CLASSIFICATION_VERSION`` joined with the municipal register.
+def get_sample_set(classification_id: int | None = None) -> pd.DataFrame:
+    """Read the sample set of a classification joined with the municipal register.
+
+    Args:
+        classification_id: The classification. ``None`` uses ``CLASSIFICATION_VERSION``.
 
     Returns:
-        pd.DataFrame: One row per sampled PLZ with the ``MUNICIPAL_REGISTER`` columns.
+        pd.DataFrame: One row per sampled PLZ with the ``MUNICIPAL_REGISTER`` columns, ordered by PLZ.
     """
     cur = _get_db_client().cur
     query = """SELECT ss.plz, mr.pop, mr.area, mr.lat, mr.lon, ss.ags, mr.name_city, mr.fed_state, mr.regio7, mr.regio5, mr.pop_den
     FROM pylovo.sample_set ss
     JOIN pylovo.municipal_register mr ON ss.plz = mr.plz AND ss.ags = mr.ags
-    WHERE ss.classification_id = %(c)s;"""
-    cur.execute(query, {"c": CLASSIFICATION_VERSION})
+    WHERE ss.classification_id = %(c)s
+    ORDER BY ss.plz;"""
+    cur.execute(query, {"c": CLASSIFICATION_VERSION if classification_id is None else classification_id})
     sample_set = cur.fetchall()
     df_sample_set = pd.DataFrame(sample_set, columns=MUNICIPAL_REGISTER)
     return df_sample_set

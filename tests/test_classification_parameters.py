@@ -162,3 +162,29 @@ def test_the_filter_choice_reaches_the_reader_of_both_steps(fake_dc, monkeypatch
                         lambda **kw: pd.DataFrame({"algorithm": ["kmeans"], "no_clusters": [4], "ch_index": [1.0]}))
     get_no.get_no_clusters_for_clustering(["a"], additional_filtering=False)
     assert fake_dc.additional_filtering is False
+
+
+# ---------------------------------------------------------------------------------------- helpers of step 6a
+def test_factor_analysis_input_drops_the_excluded_and_the_collinear_columns():
+    frame = synthetic_clustering_parameters()
+    frame["cable_length_twice"] = frame["cable_length_km"] * 2
+    candidates = get_params.factor_analysis_input(frame)
+    assert set(candidates.columns).isdisjoint(get_params.EXCLUDED_COLUMNS)
+    assert "cable_length_km" in candidates.columns and "cable_length_twice" not in candidates.columns
+    assert len(candidates) == len(frame)
+
+
+def test_number_of_factors_counts_the_eigenvalues_above_one_without_warnings():
+    candidates = get_params.factor_analysis_input(synthetic_clustering_parameters())
+    eigenvalues = np.linalg.eigvalsh(candidates.corr().to_numpy())
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert get_params.number_of_factors(candidates) == int((eigenvalues > 1).sum())
+
+
+def test_the_pipeline_selects_with_the_helpers(fake_dc):
+    candidates = get_params.factor_analysis_input(fake_dc.frame)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        expected = select_parameters(df_plz_parameters=candidates, n_comps=get_params.number_of_factors(candidates))
+    assert get_params.get_parameters_for_clustering() == expected

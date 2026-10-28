@@ -77,19 +77,30 @@ class DatabaseCommunication:
     """Database interface of the classification workflow.
 
     Wraps its own :class:`~pylovo.database.database_client.DatabaseClient`. Queries
-    use ``VERSION_ID`` (grid generation) and ``CLASSIFICATION_VERSION`` from the
-    configuration files.
+    use the classification :attr:`classification_id` and the grids of :attr:`version_id`, by default
+    ``CLASSIFICATION_VERSION`` and ``VERSION_ID`` of the configuration files.
+
+    Args:
+        classification_id: Classification to read, and to write in step 7. ``None`` uses
+            ``CLASSIFICATION_VERSION`` of ``config_classification.yaml``.
+        version_id: Version of the grids to read. ``None`` uses ``VERSION_ID`` of ``config_generation_lv.yaml``.
 
     Note:
         The grids that enter the clustering are selected when they are read: the readers apply the filters
-        of :func:`filter_reasons` to the key figures of the sampled grids of ``VERSION_ID``. Nothing is
+        of :func:`filter_reasons` to the key figures of the sampled grids of the version. Nothing is
         stored per grid, so classifications that share grids do not influence each other. The column
         ``clustering_parameters.filtered`` is no longer used. Step 7 stores the parameters, the numbers of
         clusters and the filter choice with the classification, and ``None`` arguments default to them
         (:meth:`get_classification_choices`).
     """
 
-    def __init__(self):
+    # Class defaults: an instance made without __init__ (as in the tests) reads the configuration.
+    _classification_id: int | None = None
+    _version_id: str | None = None
+
+    def __init__(self, classification_id: int | None = None, version_id: str | None = None):
+        self._classification_id = classification_id
+        self._version_id = version_id
         self.dbc = dbc.DatabaseClient()
 
         print("Database connection is constructed. ")
@@ -99,8 +110,18 @@ class DatabaseCommunication:
         self.dbc.conn.close()
         print("Database connection closed.")
 
+    @property
+    def classification_id(self) -> int:
+        """The classification that the readers read and step 7 writes (``CLASSIFICATION_VERSION`` by default)."""
+        return CLASSIFICATION_VERSION if self._classification_id is None else int(self._classification_id)
+
+    @property
+    def version_id(self) -> str:
+        """The version whose grids the readers read (``VERSION_ID`` by default)."""
+        return VERSION_ID if self._version_id is None else str(self._version_id)
+
     def get_classification_choices(self) -> dict:
-        """Return the choices that ``CLASSIFICATION_VERSION`` was clustered with.
+        """Return the choices that the classification was clustered with.
 
         Step 7 stores them in ``classification_version``. A classification without stored choices (clustered
         before migration ``0014_classification_choices``, or not clustered yet) gets the values of
@@ -111,7 +132,7 @@ class DatabaseCommunication:
             ``additional_filtering``.
         """
         self.dbc.cur.execute(f"SELECT {', '.join(CLASSIFICATION_CHOICES)} FROM pylovo.classification_version "
-                             "WHERE classification_id = %(c)s", {"c": CLASSIFICATION_VERSION})
+                             "WHERE classification_id = %(c)s", {"c": self.classification_id})
         stored = self.dbc.cur.fetchone() or (None,) * len(CLASSIFICATION_CHOICES)
         configured = (LIST_OF_CLUSTERING_PARAMETERS, N_CLUSTERS_KMEANS, N_CLUSTERS_GMM, ADDITIONAL_FILTERING)
         return {name: default if value is None else value
@@ -126,8 +147,8 @@ class DatabaseCommunication:
     def get_clustering_parameters_for_classification_version(self, additional_filtering: bool | None = None) -> pd.DataFrame:
         """Return the unfiltered clustering parameters of all grids in the sample set.
 
-        Only grids of ``VERSION_ID`` whose PLZ belong to the sample set of
-        ``CLASSIFICATION_VERSION`` are read, and the grids that a filter matches are left out
+        Only grids of :attr:`version_id` whose PLZ belong to the sample set of
+        :attr:`classification_id` are read, and the grids that a filter matches are left out
         (:func:`filter_reasons`).
 
         Args:
@@ -156,7 +177,7 @@ class DatabaseCommunication:
                 JOIN plz_table p
                 ON c.plz = p.plz
                 ORDER BY c.plz, c.kcid, c.bcid;"""
-        params = {"v": VERSION_ID, "c": CLASSIFICATION_VERSION, **FILTER_PARAMETERS}
+        params = {"v": self.version_id, "c": self.classification_id, **FILTER_PARAMETERS}
         df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
         columns = CLUSTERING_PARAMETERS
         df_parameter = pd.DataFrame(df_query, columns=columns)
@@ -194,17 +215,17 @@ class DatabaseCommunication:
                 JOIN plz_table p
                 ON c.plz = p.plz
                 ORDER BY c.plz, c.kcid, c.bcid;"""
-        params = {"v": VERSION_ID, "c": CLASSIFICATION_VERSION, **FILTER_PARAMETERS}
+        params = {"v": self.version_id, "c": self.classification_id, **FILTER_PARAMETERS}
         df_query = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
         return df_query
 
     def get_grid_status_of_sample_set(self, additional_filtering: bool | None = None) -> pd.DataFrame:
         """Return what became of every grid of the sampled PLZ, for the summary of a classification run.
 
-        One row per grid of ``VERSION_ID`` in a PLZ of the sample set, or one row with an empty
+        One row per grid of :attr:`version_id` in a PLZ of the sample set, or one row with an empty
         ``grid_result_id`` for a sampled PLZ without grids. Columns: ``plz``, ``grid_result_id``,
         ``plz_analysed`` (the PLZ has a ``plz_parameters`` row), ``analysed`` (the grid has key figures),
-        ``clustered`` (the grid is in ``transformer_classified`` of ``CLASSIFICATION_VERSION``) and one
+        ``clustered`` (the grid is in ``transformer_classified`` of the classification) and one
         boolean column per filter of :func:`filter_reasons`, named by its label.
 
         Args:
@@ -230,7 +251,7 @@ class DatabaseCommunication:
                        ON tc.grid_result_id = gr.grid_result_id AND tc.classification_id = %(c)s
                 WHERE ss.classification_id = %(c)s
                 ORDER BY ss.plz, gr.kcid, gr.bcid;"""
-        params = {"v": VERSION_ID, "c": CLASSIFICATION_VERSION, **FILTER_PARAMETERS}
+        params = {"v": self.version_id, "c": self.classification_id, **FILTER_PARAMETERS}
         status = pd.read_sql_query(query, con=self.dbc.conn, params=params, )
         return status.rename(columns={f"filter_{i}": label for i, label in enumerate(reasons)})
 
@@ -250,7 +271,7 @@ class DatabaseCommunication:
         Runs k-means and tied GMM and stores, per grid, the transformer position,
         the cluster of each algorithm and whether the grid is the representative
         of its cluster. The KMedoids columns stay empty. The rows of
-        ``CLASSIFICATION_VERSION`` are replaced in one transaction, so the step can be repeated
+        the classification are replaced in one transaction, so the step can be repeated
         and a failing write keeps the previous result. The same transaction stores the four
         values used in ``classification_version``. ``None`` uses the stored value of the
         classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is stored).
@@ -281,7 +302,7 @@ class DatabaseCommunication:
                 JOIN pylovo.grid_result gr
                   ON tp.grid_result_id = gr.grid_result_id
                 WHERE gr.version_id=%(v)s;"""
-        params = {"v": VERSION_ID}
+        params = {"v": self.version_id}
         df_transformer_positions = gpd.read_postgis(query, con=self.dbc.sqla_engine, params=params, )
         df_transformer_positions['geom'] = df_transformer_positions['geom'].apply(self.create_wkt_element)
 
@@ -331,7 +352,7 @@ class DatabaseCommunication:
                 SELECT grid_result_id, version_id, plz, kcid, bcid
                 FROM pylovo.grid_result
                 WHERE version_id=%(v)s;"""
-        params = {"v": VERSION_ID}
+        params = {"v": self.version_id}
         df_grid_result = pd.read_sql_query(query, con=self.dbc.sqla_engine, params=params)
 
         df_transformers_classified  = pd.merge(df_grid_result, df_transformers_classified, how='right',
@@ -341,12 +362,12 @@ class DatabaseCommunication:
         df_transformers_classified.drop(columns=['version_id', 'plz', 'kcid', 'bcid'], inplace=True)
 
         # add classification id
-        df_transformers_classified['classification_id'] = CLASSIFICATION_VERSION
+        df_transformers_classified['classification_id'] = self.classification_id
         # write transformer data with cluster info to database: replace this classification's rows in one transaction
         # and store the choices of the result with the classification
         with self.dbc.sqla_engine.begin() as connection:
             connection.execute(text("DELETE FROM pylovo.transformer_classified WHERE classification_id = :c"),
-                               {"c": CLASSIFICATION_VERSION})
+                               {"c": self.classification_id})
             df_transformers_classified.to_sql(name='transformer_classified', con=connection, if_exists='append',
                                               index=False,
                                               dtype={'geom': Geometry(geometry_type='POINT', srid=TARGET_EPSG)})
@@ -354,7 +375,7 @@ class DatabaseCommunication:
                 text("UPDATE pylovo.classification_version SET "
                      + ", ".join(f"{name} = :{name}" for name in CLASSIFICATION_CHOICES)
                      + " WHERE classification_id = :c"),
-                {"c": CLASSIFICATION_VERSION,
+                {"c": self.classification_id,
                  "list_of_clustering_parameters": [str(name) for name in list_of_clustering_parameters],
                  "n_clusters_kmeans": int(n_clusters_kmeans), "n_clusters_gmm": int(n_clusters_gmm),
                  "additional_filtering": bool(additional_filtering)})
