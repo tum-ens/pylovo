@@ -52,7 +52,7 @@ download.
 Quick start
 -----------
 
-Requirements: Linux or WSL2, Python 3.12 or 3.13, `uv <https://docs.astral.sh/uv/>`_, GDAL (``ogr2ogr``)
+Requirements: Linux or WSL2, Python 3.12 to 3.14, `uv <https://docs.astral.sh/uv/>`_, GDAL (``ogr2ogr``)
 and a PostgreSQL database (version 15 or newer) with PostGIS and pgRouting 3.8 or newer -- in the
 recommended setup the InfDB database with processed buildings and streets (see the
 `InfDB documentation <https://tum-ens.github.io/InfDB/usage/>`_).

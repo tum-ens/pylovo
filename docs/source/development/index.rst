@@ -76,7 +76,7 @@ Tests
 -----
 
 The CI (``.github/workflows``) runs on every push to ``main``, ``dev``, ``feature/**`` and ``fix/**`` and on
-pull requests: ruff, the unit tests on Python 3.12 and 3.13, the database tests on the toy-town test database
+pull requests: ruff, the unit tests on Python 3.12 and 3.14, the database tests on the toy-town test database
 (below) and the documentation build; on pull requests it also checks the HTTP API contract. Run the same checks
 before you push:
 

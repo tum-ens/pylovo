@@ -9,7 +9,7 @@
 - Development environment setup:
   - Clone the repository and set up the environment with [uv](https://docs.astral.sh/uv/) as described in the `README.rst` and in the installation page of the documentation: `uv sync` (add the extras you need, for example `--extra plots --extra api --extra docs`).
   - Copy `.env.example` to `.env` and enter the database connection. Never commit `.env`.
-  - Requirements: Linux or WSL2, Python 3.12 or 3.13, GDAL (`ogr2ogr`) and a PostgreSQL database (version 15 or newer) with PostGIS and pgRouting.
+  - Requirements: Linux or WSL2, Python 3.12 to 3.14, GDAL (`ogr2ogr`) and a PostgreSQL database (version 15 or newer) with PostGIS and pgRouting.
 
 ### Optional: Setting Up SSH for GitHub
 To simplify authentication, consider setting up SSH keys for GitHub. Follow [GitHub's guide on connecting with SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh) for instructions.

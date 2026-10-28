@@ -18,8 +18,8 @@ Requirements
    * - Operating system
      - Linux (Ubuntu) or Windows with WSL2. The commands below assume a Unix shell.
    * - Python
-     - 3.12 or 3.13 (``requires-python = ">=3.12,<3.14"``: numba, which pylovo pins, has no wheels
-       for 3.14 yet), managed with `uv <https://docs.astral.sh/uv/>`_.
+     - 3.12, 3.13 or 3.14 (``requires-python = ">=3.12,<3.15"``: some dependencies have no wheels for
+       3.15 yet), managed with `uv <https://docs.astral.sh/uv/>`_.
    * - PostgreSQL
      - PostgreSQL 15 or newer, with the extensions `PostGIS <https://postgis.net/>`_ and
        `pgRouting <https://pgrouting.org/>`_ 3.8 or newer installed on the server. The schema uses

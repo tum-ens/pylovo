@@ -210,8 +210,8 @@ class PandapowerBackend(IElectricalBackend):
     def _create_buses(self, queued: list) -> None:
         index = [item[0] for item in queued]
         specs = [item[1] for item in queued]
-        # the GeoJSON text of pp.create_bus, so stored grids keep one format
-        geo = [None if xy is None else f'{{"coordinates":[{xy[0]},{xy[1]}], "type":"Point"}}' for *_, xy in queued]
+        # the GeoJSON text of pp.create_bus (pandapower >= 3.5.2), so stored grids keep one format
+        geo = [None if xy is None else f'{{"coordinates": [{xy[0]}, {xy[1]}], "type": "Point"}}' for *_, xy in queued]
         pp.create_buses(
             self._net,
             len(specs),

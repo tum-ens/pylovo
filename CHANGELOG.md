@@ -22,8 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Import the eGon-data HV/MV substations in `pylovo-setup` and with `pylovo-import egon-substations`, so the MV stage finds the eTraGo bus of each substation; run `pylovo-setup` once after upgrading (see [MV grids](https://pylovo.readthedocs.io/en/latest/user_guide/mv_grids.html#mv-egon-data))
 - Add `MV_OSM_COVERAGE` and `pylovo-mv generate --no-osm-coverage` to skip the OSM coverage report, which needs about three times the memory of the rest of an MV run (see [MV parameters](https://pylovo.readthedocs.io/en/latest/user_guide/mv_parameters.html))
 - Add `DATA_LICENSES.md` with the sources and licences of the data files in the repository, which the MIT License does not cover
+- Support Python 3.14 (numba no longer pinned to 0.62.1)
 
 ### Changed
+- Upgrade the locked dependencies, among them pandapower 3.5, NumPy 2.4, SciPy 1.18, SQLAlchemy 2.1, numba 0.68, plotly 7 and matplotlib 3.11; pandapower 3.5.2 is the new minimum
 - Draw the networkx trees with a leaf-based layout, the cables coloured by type and the cable distance as axis or radius (`draw_tree_network(..., y="distance")`)
 - Speed up the MV routing graph of large regions: the settlement polygons no longer use a query plan that grows with the square of the number of settlements (364 municipalities: build in 1.7 instead of 4.8 minutes)
 - Speed up the MV ties and links of large regions: their street subgraph is found through the edge index, their path searches stop at the length limit, and the takeover check reads the district nets when it needs them; the cells of the district areas find their stations through an index

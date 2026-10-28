@@ -26,12 +26,13 @@ def test_every_sql_file_of_the_package_is_in_the_wheel_and_sdist():
     assert not missing, f"SQL files that DatabaseConstructor loads but the build leaves out: {missing}"
 
 
-def test_requires_python_matches_the_interpreter_and_the_numba_wheels():
-    # numba 0.62.1 and llvmlite 0.45.1 have no Python 3.14 wheels: lift the cap together with the numba bump.
+def test_requires_python_matches_the_interpreter_and_the_available_wheels():
+    # Python 3.15 (October 2026): PyYAML 6.0.3 has no 3.15 wheels yet. Lift the cap when
+    # `uv sync --python 3.15` installs without compiling, and test 3.15 in CI instead of 3.14.
     supported = SpecifierSet(PYPROJECT["project"]["requires-python"])
     assert (ROOT / ".python-version").read_text().strip() in supported
-    assert "3.13" in supported
-    assert "3.14" not in supported
+    assert "3.14" in supported
+    assert "3.15" not in supported
 
 
 def declared_packages(extra):
