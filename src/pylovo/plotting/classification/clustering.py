@@ -24,6 +24,7 @@ from sklearn.mixture import GaussianMixture
 
 from pylovo.classification.clustering.clustering_algorithms import scaled_key_figures
 from pylovo.config_loader import TUMPalette, LIST_OF_CLUSTERING_PARAMETERS, REGIO7_REGIO5_GEM_DICT
+from pylovo.plotting import style as st
 
 # Legend labels of the algorithms of the CH and DB index plots, in the order of the algorithms.
 _ALGORITHM_LABELS = ['k-means', 'GMM full', 'GMM diagonal', 'GMM tied', 'GMM spherical']
@@ -476,6 +477,7 @@ def plot_representative_grids(
     ncols: int = 3,
     panel_size: float = 3.8,
     same_scale: bool = False,
+    attribution: str | None = None,
 ) -> Figure:
     """
     Draw grids side by side from the geodata of their pandapower nets (small multiples, no basemap).
@@ -493,6 +495,8 @@ def plot_representative_grids(
         panel_size: Width and height of one panel in inches.
         same_scale: Give every panel the extent of the largest grid, so that the sizes can be compared; otherwise
             every panel is zoomed to its grid.
+        attribution: Credit line of the data the grids are made from, in the lower right corner; default
+            :data:`pylovo.plotting.style.DATA_ATTRIBUTION`, ``""`` for none.
 
     Returns:
         matplotlib.figure.Figure: The figure with one panel per net.
@@ -547,6 +551,9 @@ def plot_representative_grids(
                Line2D([], [], marker='^', linestyle='', markersize=8, color='black', label='Transformer')]
     fig.legend(handles=handles, loc='lower center', ncol=4, frameon=False, fontsize=9)
     fig.tight_layout(rect=(0, 0.4 / (panel_size * nrows + 0.4), 1, 1))
+    text = st.DATA_ATTRIBUTION if attribution is None else attribution
+    if text:
+        fig.text(0.995, 0.004, text, ha='right', va='bottom', fontsize=6.3, color=st.INK_SECONDARY)
 
     return fig
 

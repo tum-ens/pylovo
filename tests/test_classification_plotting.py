@@ -319,6 +319,19 @@ def test_representative_grids_on_the_same_scale_share_the_extent():
     assert widths[0] >= 8 * 0.002 * 111_320 * np.cos(np.radians(48.0))
 
 
+def test_the_classification_maps_credit_their_data_unless_switched_off():
+    from pylovo.plotting import style as st
+    from pylovo.plotting.classification.features import PLZ_ATTRIBUTION
+
+    grids = plot_representative_grids([fake_net(2, 0.001)])
+    assert [text.get_text() for text in grids.texts] == [st.DATA_ATTRIBUTION]
+    assert plot_representative_grids([fake_net(2, 0.001)], attribution="").texts == []
+    samples = pd.DataFrame({"lat": [48.1], "lon": [11.5], "regio7": [71.0]})
+    fig, ax = plt.subplots()
+    plot_sample_map(samples, ax=ax)
+    assert [text.get_text() for text in ax.texts] == [PLZ_ATTRIBUTION]
+
+
 def test_representative_grids_need_a_net_with_geodata():
     with pytest.raises(ValueError, match="No net"):
         plot_representative_grids([])

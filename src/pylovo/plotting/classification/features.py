@@ -121,8 +121,13 @@ def plot_samples_on_map(df_samples: pd.DataFrame) -> None:
     fig.show()
 
 
+#: Credit line of the PLZ positions of the municipal register (suche-postleitzahl.org, derived from OpenStreetMap).
+PLZ_ATTRIBUTION = "PLZ positions: © OpenStreetMap contributors (ODbL)"
+
+
 def plot_sample_map(df_samples: pd.DataFrame, df_pool: Optional[pd.DataFrame] = None,
-                    ax: Optional[plt.Axes] = None, figsize: Tuple[float, float] = (8, 7)) -> Figure:
+                    ax: Optional[plt.Axes] = None, figsize: Tuple[float, float] = (8, 7),
+                    attribution: Optional[str] = None) -> Figure:
     """
     Plot the sampled PLZ on a static map, coloured by RegioStaR 7 class.
 
@@ -136,6 +141,8 @@ def plot_sample_map(df_samples: pd.DataFrame, df_pool: Optional[pd.DataFrame] = 
             sample. None draws the sample only.
         ax: Axes to draw into. If None, creates a new figure.
         figsize: Figure size in inches if a new figure is created.
+        attribution: Credit line in the lower right corner of the map; default :data:`PLZ_ATTRIBUTION`, ``""`` for
+            none.
 
     Returns:
         matplotlib.figure.Figure: The figure that contains the map.
@@ -159,6 +166,9 @@ def plot_sample_map(df_samples: pd.DataFrame, df_pool: Optional[pd.DataFrame] = 
     ax.set_xlabel("Longitude (°)")
     ax.set_ylabel("Latitude (°)")
     ax.legend(loc="upper left", bbox_to_anchor=(0, -0.1), frameon=False, fontsize=9)
+    text = PLZ_ATTRIBUTION if attribution is None else attribution
+    if text:
+        ax.text(0.995, 0.006, text, transform=ax.transAxes, ha="right", va="bottom", fontsize=6.3, color="#555555")
 
     return fig
 
