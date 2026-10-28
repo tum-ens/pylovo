@@ -60,7 +60,7 @@ def pipeline(monkeypatch, config_copy):
 def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatch, pipeline, capsys):
     answers(monkeypatch, "yes", "no", "no")
     cl.main()
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None, "same_sample_as": None}
     assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
                                  "n_clusters_kmeans": 5, "n_clusters_gmm": 6, "additional_filtering": True}
     assert pipeline["parameters_filtering"] is True and pipeline["clusters_filtering"] is True
@@ -82,7 +82,7 @@ def test_automatic_path_writes_the_computed_values_and_passes_them_on(monkeypatc
 def test_manual_path_takes_parameters_and_two_cluster_numbers(monkeypatch, pipeline):
     answers(monkeypatch, "no", "yes", "yes", "no_branches, max_household_equ_of_a_branch", "4,5")
     cl.main()
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None, "same_sample_as": None}
     assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "max_household_equ_of_a_branch"],
                                  "n_clusters_kmeans": 4, "n_clusters_gmm": 5, "additional_filtering": False}
     saved = yaml.safe_load(pipeline["config"].read_text())
@@ -92,7 +92,7 @@ def test_manual_path_takes_parameters_and_two_cluster_numbers(monkeypatch, pipel
 def test_all_three_questions_accept_the_short_answers(monkeypatch, pipeline):
     answers(monkeypatch, "y", "n", "N")
     cl.main()
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None, "same_sample_as": None}
     assert pipeline["apply"]["additional_filtering"] is True
 
 
@@ -298,7 +298,7 @@ def run_with(monkeypatch, *flags):
 def test_a_fully_scripted_manual_run_asks_nothing(monkeypatch, pipeline):
     run_with(monkeypatch, "--no-additional-filtering", "--restrict-to-generated", "--manual",
              "--parameters", "no_branches,avg_trafo_dis", "--clusters", "4,5")
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None, "same_sample_as": None}
     assert pipeline["apply"] == {"list_of_clustering_parameters": ["no_branches", "avg_trafo_dis"],
                                  "n_clusters_kmeans": 4, "n_clusters_gmm": 5, "additional_filtering": False}
     saved_config = yaml.safe_load(pipeline["config"].read_text())
@@ -309,7 +309,7 @@ def test_a_fully_scripted_manual_run_asks_nothing(monkeypatch, pipeline):
 
 def test_a_fully_scripted_automatic_run_asks_nothing_and_prints_the_choice(monkeypatch, pipeline, capsys):
     run_with(monkeypatch, "--additional-filtering", "--no-restrict-to-generated", "--auto")
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None, "same_sample_as": None}
     assert pipeline["apply"]["additional_filtering"] is True and pipeline["apply"]["n_clusters_gmm"] == 6
     assert pipeline["parameters_filtering"] is True and pipeline["clusters_filtering"] is True
     assert "N_CLUSTERS_KMEANS=5" in capsys.readouterr().out
@@ -319,7 +319,7 @@ def test_options_answer_only_their_question(monkeypatch, pipeline):
     answers(monkeypatch, "yes")  # the remaining question: restrict to postcode_result
     monkeypatch.setattr(sys, "argv", ["pylovo-classify", "--no-additional-filtering", "--auto"])
     cl.main()
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": None, "same_sample_as": None}
     assert pipeline["apply"]["additional_filtering"] is False
 
 
@@ -366,7 +366,7 @@ def test_help_lists_the_options(monkeypatch, capsys):
 @pytest.mark.parametrize("flag, parallel", [("--parallel", True), ("--no-parallel", False)])
 def test_the_parallel_option_reaches_the_generation_and_the_key_figures(monkeypatch, pipeline, flag, parallel):
     run_with(monkeypatch, "--no-additional-filtering", "--restrict-to-generated", "--auto", flag)
-    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": parallel}
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": True, "parallel": parallel, "same_sample_as": None}
 
 
 def test_parallel_and_no_parallel_exclude_each_other(monkeypatch, pipeline, capsys):
@@ -374,3 +374,10 @@ def test_parallel_and_no_parallel_exclude_each_other(monkeypatch, pipeline, caps
     with pytest.raises(SystemExit) as exc:
         cl.main()
     assert exc.value.code == 2 and "not allowed with argument" in capsys.readouterr().err and "prepare" not in pipeline
+
+
+def test_the_sample_of_another_classification_needs_no_question_about_the_sample(monkeypatch, pipeline):
+    monkeypatch.setattr(sys, "argv", ["pylovo-classify", "--same-sample-as", "1", "--no-additional-filtering", "--auto"])
+    answers(monkeypatch)                                     # no question is left
+    cl.main()
+    assert pipeline["prepare"] == {"sample_from_postcode_result_only": False, "parallel": None, "same_sample_as": 1}

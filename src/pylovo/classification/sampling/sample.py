@@ -41,8 +41,12 @@ def classification_version_exists() -> bool:
     return bool(cur.fetchone()[0])
 
 
-def register_classification_version() -> None:
-    """Register ``CLASSIFICATION_VERSION`` with ``CLASSIFICATION_VERSION_COMMENT`` and ``CLASSIFICATION_REGION``."""
+def register_classification_version(commit: bool = True) -> None:
+    """Register ``CLASSIFICATION_VERSION`` with ``CLASSIFICATION_VERSION_COMMENT`` and ``CLASSIFICATION_REGION``.
+
+    Args:
+        commit: Commit at once; ``False`` leaves the commit to the caller's transaction.
+    """
     db_client = _get_db_client()
     cur = db_client.cur
     cur.execute(
@@ -52,7 +56,8 @@ def register_classification_version() -> None:
         {"c": CLASSIFICATION_VERSION, "comment": CLASSIFICATION_VERSION_COMMENT, "region": CLASSIFICATION_REGION},
     )
     print(cur.statusmessage)
-    db_client.conn.commit()
+    if commit:
+        db_client.conn.commit()
     print(f"Classification version: {CLASSIFICATION_VERSION} was added")
 
 
@@ -219,6 +224,41 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
     # Register the version only now: a failing draw leaves nothing behind. The sample rows refer to it.
     register_classification_version()
     sample_set_to_db(regiostar_samples_result)
+
+
+def copy_sample_set(source_classification_id: int) -> None:
+    """Register ``CLASSIFICATION_VERSION`` with the sample set of another classification.
+
+    The same PLZ are classified again, e.g. with other key-figure definitions, filters or a transform, so that the
+    two results differ by these alone. The registration and the copy commit together.
+
+    Args:
+        source_classification_id: The classification whose sample set is copied.
+
+    Raises:
+        Exception: If ``CLASSIFICATION_VERSION`` already exists.
+        ValueError: If the source is ``CLASSIFICATION_VERSION`` itself or has no sample set.
+    """
+    if classification_version_exists():
+        raise Exception(f"Classification version:  {CLASSIFICATION_VERSION} already exists. Create a new one.")
+    if int(source_classification_id) == int(CLASSIFICATION_VERSION):
+        raise ValueError(f"Classification {CLASSIFICATION_VERSION} cannot copy its own sample set.")
+    db_client = _get_db_client()
+    cur = db_client.cur
+    cur.execute("SELECT count(*) FROM pylovo.sample_set WHERE classification_id = %(s)s",
+                {"s": source_classification_id})
+    if not cur.fetchone()[0]:
+        raise ValueError(f"Classification {source_classification_id} has no sample set to copy.")
+    register_classification_version(commit=False)
+    cur.execute(
+        """INSERT INTO pylovo.sample_set (classification_id, plz, ags, bin_no, bins, perc_bin, count, perc)
+           SELECT %(c)s, plz, ags, bin_no, bins, perc_bin, count, perc
+           FROM pylovo.sample_set WHERE classification_id = %(s)s""",
+        {"c": CLASSIFICATION_VERSION, "s": source_classification_id},
+    )
+    print(cur.statusmessage)
+    db_client.conn.commit()
+    print(f"Sample set of classification {source_classification_id} copied")
 
 
 def get_sample_set(classification_id: int | None = None) -> pd.DataFrame:

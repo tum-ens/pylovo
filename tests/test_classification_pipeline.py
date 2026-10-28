@@ -86,7 +86,8 @@ def pipeline(monkeypatch):
         def delete_plz_from_sample_set_table(self, classification_id, plz):
             record["deleted"].append((classification_id, plz))
 
-    monkeypatch.setattr(pdc, "create_sample_set", lambda restrict_to_postcode_result: None)
+    monkeypatch.setattr(pdc, "create_sample_set", lambda restrict_to_postcode_result: record.update(drawn=True))
+    monkeypatch.setattr(pdc, "copy_sample_set", lambda source: record.update(copied_from=source))
     monkeypatch.setattr(pdc, "get_sample_set", lambda: samples)
     monkeypatch.setattr(pdc, "USE_INFDB", True)
     monkeypatch.setattr(pdc, "CLASSIFICATION_VERSION", 7)
@@ -101,6 +102,13 @@ def test_plz_without_grids_leave_the_sample_and_are_not_analysed(pipeline):
     assert pipeline["generated"] == [80001, 80002, 80003, 80004]
     assert sorted(pipeline["deleted"]) == [("7", 80002), ("7", 80003)]
     assert pipeline["analysed"] == [80001, 80004], "an already generated PLZ stays in the sample"
+
+
+def test_the_sample_of_another_classification_is_copied_instead_of_drawn(pipeline):
+    pdc.prepare_data_for_clustering(same_sample_as=1)
+    assert pipeline["copied_from"] == 1 and "drawn" not in pipeline
+    pdc.prepare_data_for_clustering()
+    assert pipeline["drawn"] is True
 
 
 @pytest.mark.parametrize("argument, configured, expected", [(None, True, True), (None, False, False),

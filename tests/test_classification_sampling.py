@@ -224,3 +224,27 @@ def test_get_sample_set_reads_the_given_classification_ordered_by_plz(monkeypatc
     ((query, params),) = client.cur.executed
     assert params == {"c": 9001 if expected == "configured" else expected}
     assert query.endswith("ORDER BY ss.plz;")
+
+
+def test_a_copied_sample_set_is_registered_and_copied_in_one_transaction(monkeypatch):
+    client = FakeDbc(FakeCursor(fetchone_values=[(0,), (501,)]))      # the version is new, the source has 501 PLZ
+    monkeypatch.setattr(sample, "_db_client", client)
+    monkeypatch.setattr(sample, "CLASSIFICATION_VERSION", 2)
+    sample.copy_sample_set(1)
+    statements = [query for query, _ in client.cur.executed]
+    assert statements[2].startswith("INSERT INTO pylovo.classification_version")
+    assert statements[3] == ("INSERT INTO pylovo.sample_set (classification_id, plz, ags, bin_no, bins, perc_bin, count, "
+                             "perc) SELECT %(c)s, plz, ags, bin_no, bins, perc_bin, count, perc FROM pylovo.sample_set "
+                             "WHERE classification_id = %(s)s")
+    assert client.cur.executed[3][1] == {"c": 2, "s": 1} and client.conn.log == ["commit"]
+
+
+@pytest.mark.parametrize("fetched, source, message", [
+    ([(1,)], 1, "already exists"), ([(0,)], 2, "cannot copy its own"), ([(0,), (0,)], 1, "has no sample set")])
+def test_a_sample_set_is_copied_only_from_another_classification_with_one(monkeypatch, fetched, source, message):
+    client = FakeDbc(FakeCursor(fetchone_values=fetched))
+    monkeypatch.setattr(sample, "_db_client", client)
+    monkeypatch.setattr(sample, "CLASSIFICATION_VERSION", 2)
+    with pytest.raises(Exception, match=message):
+        sample.copy_sample_set(source)
+    assert client.conn.log == []

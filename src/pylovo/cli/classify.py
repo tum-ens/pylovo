@@ -287,13 +287,16 @@ def main():
         apply_additional_filtering = ask_yes_no(
             "Do you want to apply additional filtering on top of the default filters?")
     sample_from_postcode_result_only = args.restrict_to_generated
-    if sample_from_postcode_result_only is None:
+    if args.same_sample_as is not None:
+        sample_from_postcode_result_only = False        # the copied sample needs no draw
+        print(f"Using the sample set of classification {args.same_sample_as}")
+    elif sample_from_postcode_result_only is None:
         sample_from_postcode_result_only = ask_yes_no(
             "Do you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID?")
 
     print("\nRunning prepare_data_for_clustering.py...")
     plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only,
-                                                    parallel=args.parallel)
+                                                    parallel=args.parallel, same_sample_as=args.same_sample_as)
 
     # Step 3: Manual input or automatic assignment
     manual = args.manual or (not args.auto and ask_yes_no(

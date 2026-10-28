@@ -120,10 +120,12 @@ def classify_parser() -> argparse.ArgumentParser:
                     "on the terminal unless an option answers them, so a run can also be scripted.",
         epilog=(
             "The pipeline then:\n"
-            "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml),\n"
+            "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml) or copies\n"
+            "     the one of --same-sample-as,\n"
             "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
-            "  3. selects the clustering parameters and numbers of clusters (asked, given or computed) and writes\n"
-            "     them to config/config_clustering.yaml together with the answer on additional filtering,\n"
+            "  3. selects the clustering parameters and numbers of clusters (asked, given or computed), writes\n"
+            "     them to config/config_clustering.yaml together with the answer on additional filtering and\n"
+            "     prints the selection report (log/selection_report_<classification>.md),\n"
             "  4. clusters the grids that the filters leave, writes pylovo.transformer_classified, stores the\n"
             "     choices with the classification (pylovo.classification_version) and prints the grids per stage.\n"
             "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected.\n\n"
@@ -137,6 +139,9 @@ def classify_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restrict-to-generated", action=argparse.BooleanOptionalAction, default=None,
                         help="sample only PLZ that already have grids (postcode_result) for VERSION_ID, so nothing "
                              "is generated (default: ask)")
+    parser.add_argument("--same-sample-as", type=int, metavar="CLASSIFICATION",
+                        help="copy the sample set of this classification instead of drawing one, to compare two "
+                             "classifications of the same PLZ (no question about the sample)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--auto", action="store_true",
                       help="compute the clustering parameters and the numbers of clusters (default: ask)")
