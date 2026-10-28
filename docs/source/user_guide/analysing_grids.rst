@@ -155,10 +155,15 @@ One row per grid (``grid_result_id``), computed by
      - Number of households: the sum of ``load_units`` of the residential loads (a
        non-residential load is no household).
    * - ``no_household_equ``
-     - Installed power divided by ``PEAK_LOAD_HOUSEHOLD``.
-   * - ``no_house_connections_per_branch``, ``no_households_per_branch``,
-       ``max_no_of_households_of_a_branch``
-     - The counts above per feeder, and the largest feeder.
+     - Household equivalents: installed power divided by ``PEAK_LOAD_HOUSEHOLD``.
+   * - ``no_house_connections_per_branch``
+     - House connections per feeder.
+   * - ``no_households_per_branch``
+     - Household equivalents per feeder (``no_household_equ`` divided by ``no_branches``), not households despite
+       the name.
+   * - ``max_no_of_households_of_a_branch``
+     - Household equivalents of the feeder with the most: installed power of its consumers divided by
+       ``PEAK_LOAD_HOUSEHOLD``, not households despite the name.
    * - ``house_distance_km``
      - Median over the consumer buses of the mean distance (km) to their four nearest consumer
        buses; station and connection buses do not count.
