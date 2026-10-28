@@ -11,7 +11,6 @@ import math
 import numpy as np
 import pandapower as pp
 import pandapower.topology as top
-import pandas as pd
 import pytest
 
 from pylovo.analysis import grid_analysis, parameter_calculation
@@ -258,7 +257,7 @@ def test_feeders_leave_the_busbar_and_houses_at_the_busbar_do_not_count(edges, e
 
 def test_a_cable_distribution_cabinet_is_expanded_into_its_outgoing_feeders():
     cabinet_config = {"name_column": "name", "house_connection_pattern": "Consumer Nodebus", "kvs_pattern": "Cabinet"}
-    net, bus = topology(("LVbus 1", "Cabinet 1"), *[(f"Cabinet 1", f"Connection Nodebus {i}") for i in (1, 2, 3)],
+    net, bus = topology(("LVbus 1", "Cabinet 1"), *[("Cabinet 1", f"Connection Nodebus {i}") for i in (1, 2, 3)],
                         *[(f"Connection Nodebus {i}", f"Consumer Nodebus {i}") for i in (1, 2, 3)])
     # the busbar has one neighbour, the cabinet: with expansion each outgoing cable is a feeder, without it the cabinet is one
     assert feeders(net, bus, bus_type_config=cabinet_config) == 3

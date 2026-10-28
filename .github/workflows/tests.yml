@@ -1,4 +1,5 @@
 # Run the tests on pushes to main/dev and on pull requests.
+#   lint:     ruff with the version and rules of pyproject.toml (only the dev tools are installed).
 #   pytest:   the unit tests; the opt-in database tests skip themselves, nothing needs a database.
 #   database: builds the toy-town test database (tests/db/build_test_database.py) on a PostgreSQL 17 /
 #             PostGIS 3.5 / pgRouting 3.8 service and runs the opt-in database tests against it
@@ -17,6 +18,21 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: ruff
+        run: uv run --locked --only-dev ruff check --output-format=github
+
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 30

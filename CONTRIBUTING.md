@@ -115,9 +115,9 @@ git commit --amend
 ### 3. Maintain code
 
 3.1. **Code Quality and Linting**:
-To ensure consistency in code style and to prevent potential issues, check your code with [ruff](https://docs.astral.sh/ruff/) before you push:
+To ensure consistency in code style and to prevent potential issues, check your code with [ruff](https://docs.astral.sh/ruff/) before you push (the version and the rules are in `pyproject.toml`):
 ```bash
-uvx ruff check src
+uv run ruff check
 ```
 
 3.2. **Tests**:
@@ -188,7 +188,7 @@ To maintain consistency and readability, please follow the coding standards outl
   
 - **Linting Tool**: To help ensure compliance, use [ruff](https://docs.astral.sh/ruff/):
   ```bash
-  uvx ruff check src
+  uv run ruff check
   ```
 
 - **Keep it simple**: Prefer the simplest solution. Do not add abstractions or options that nobody asked for. Configuration parameters stay as simple as possible and are documented with their shipped value in `docs/source/user_guide/configuration.rst`.

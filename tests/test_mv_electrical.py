@@ -488,7 +488,7 @@ def _types_of(plan, keys):
 
 def test_path_lines_follow_the_switching_state_of_the_case():
     b = Builder()
-    r = b.ring(6, set_exits=True)
+    b.ring(6, set_exits=True)
     inp, plan = b.build()
     m = plan.rings[0].members
     keys = {frozenset((ln.from_key, ln.to_key)): ln.key for ln in plan.lines}
@@ -519,7 +519,7 @@ def test_repair_upgrades_an_overloaded_overhead_section_before_splitting(fake_to
 
 
 def test_repair_voltage_ladder_upgrades_the_path_before_splitting(fake_topology):
-    fake = fake_topology(moved=True)
+    fake_topology(moved=True)
     b = Builder()
     r = b.ring(6, kind="overhead", set_exits=True)
     inp, plan = b.build()

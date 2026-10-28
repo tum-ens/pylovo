@@ -2,7 +2,6 @@
 (``ClusteringMixin._cluster_adjacency_from_street_edges``, ``load_constrained_hierarchical_clustering``), no database."""
 import numpy as np
 import pandas as pd
-import pytest
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 

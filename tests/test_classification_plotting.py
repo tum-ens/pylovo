@@ -1,5 +1,4 @@
 """Plots of the classification package that need no database."""
-import numpy as np
 import pandas as pd
 import pytest
 

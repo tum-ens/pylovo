@@ -118,6 +118,8 @@ viewer = [
 # Installed by `uv sync` / `uv run` (not by `pip install pylovo`, not in the image: `uv sync --no-dev`)
 dev = [
     "pytest>=8.3",
+    # pinned: a new ruff can enable new rules; upgrade with `uv lock --upgrade-package ruff`
+    "ruff==0.17.3",
 ]
 
 [project.scripts]
@@ -171,6 +173,16 @@ include = [
     "viewer/pylovo_viewer/**/*.py",
     "viewer/pylovo_viewer/static/**",
 ]
+
+[tool.ruff.lint]
+# `uv run ruff check` (also in CI and in the pre-commit hook). The rules are listed explicitly because the
+# default rule set changes with ruff versions: syntax errors, undefined and unused names, statement style.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# notebooks import where a step needs it; tests assign lambdas as fakes
+"*.ipynb" = ["E402"]
+"{tests,api/tests,viewer/tests}/**" = ["E731"]
 
 [tool.pytest.ini_options]
 # Plain `pytest` runs the three test folders and says why tests were skipped. Keep the default import

@@ -60,7 +60,7 @@ build, run ``uv build``, install the wheel into a fresh virtual environment and 
 Code conventions
 ----------------
 
-* Python 3.12, formatted and linted with ruff (``uvx ruff check src``).
+* Python 3.12, linted with ruff (``uv run ruff check``; version and rules in ``pyproject.toml``).
 * Docstrings in Google style (``Args:``, ``Returns:``, ``Raises:``); they are rendered in the
   :doc:`../api_reference` with napoleon.
 * Import configuration values explicitly (``from pylovo.config_loader import VERSION_ID, ...``).
@@ -77,7 +77,7 @@ Quick checks without a database:
 
 .. code-block:: bash
 
-   uvx ruff check src
+   uv run ruff check
    uv run python -m compileall -q src
 
 The unit tests in ``tests`` and ``api/tests`` need no database. The HTTP API has an OpenAPI contract

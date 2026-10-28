@@ -4,7 +4,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from pylovo import grid_generator, utils
 from pylovo.grid_generator import GridGenerator
