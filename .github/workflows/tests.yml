@@ -1,12 +1,13 @@
 # Run the tests on pushes to main, dev, feature/** and fix/** and on pull requests.
 #   lint:     ruff with the version and rules of pyproject.toml (only the dev tools are installed), and
 #             requirements.txt (for pip users) is the export of uv.lock.
-#   pytest:   the unit tests; the opt-in database tests skip themselves, nothing needs a database.
+#   pytest:   the unit tests on Python 3.12 and 3.13 (requires-python); the opt-in database tests skip themselves,
+#             nothing needs a database.
 #   database: tests/db/run_database_tests.py, the same command as locally: builds the toy-town test database on a
 #             disposable PostgreSQL 17 / PostGIS 3.5 / pgRouting 3.8 container and runs the opt-in database tests
 #             against it (docs/source/development/index.rst, section "Database tests").
 # The extras are needed: api/tests and viewer/tests import fastapi (extras api, viewer), the MV plotting tests
-# need matplotlib (extra plots) and are skipped without it. uv takes the Python version from .python-version.
+# need matplotlib (extra plots) and are skipped without it. lint and database use the Python of .python-version.
 name: Tests
 
 on:
@@ -46,9 +47,15 @@ jobs:
           }
 
   pytest:
+    name: pytest (Python ${{ matrix.python }})
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
     env:
+      UV_PYTHON: ${{ matrix.python }}
       # Importing pylovo needs database settings; nothing connects to a database here.
       DBNAME: ci
       DBUSER: ci
