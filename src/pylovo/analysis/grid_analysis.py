@@ -6,6 +6,7 @@
 """
 
 import copy
+import math
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import pandas as pd
@@ -322,7 +323,7 @@ def compute_clustering_metrics(calculator: "ParameterCalculator", net: pp.pandap
         "no_household_equ": float(no_household_equ),
         "no_households_per_branch": float(no_households_per_branch),
         "max_no_of_households_of_a_branch": float(max_no_of_households_of_a_branch),
-        "house_distance_km": float(house_distance_km),
+        "house_distance_km": None if math.isnan(house_distance_km) else float(house_distance_km),   # NULL if undefined
         "transformer_mva": float(transformer_mva),
         "max_trafo_dis": float(max_trafo_dis),
         "avg_trafo_dis": float(avg_trafo_dis),

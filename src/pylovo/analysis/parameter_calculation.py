@@ -1159,18 +1159,19 @@ class ParameterCalculator:
         to their four nearest neighbouring consumer buses. Consumer buses are the
         ``Consumer Nodebus`` buses of pylovo grids and the load buses of other nets
         (:meth:`resolve_consumer_buses`). The method auto-detects whether the available
-        geometry coordinates are geographic or projected.
+        geometry coordinates are geographic or projected. Without two consumer buses with a location (e.g. a
+        single-building grid) the distance is undefined: NaN.
         """
         consumer_buses = self.resolve_consumer_buses(pandapower_net, self.uses_synthetic_bus_naming(pandapower_net))
         bus = pandapower_net.bus.loc[pandapower_net.bus.index.intersection(consumer_buses)]
 
         if "geo" not in bus.columns:
-            self.dbc.logger.debug("Bus table has no geo column; returning 0.0 for house-distance proxy.")
-            return 0.0
+            self.dbc.logger.debug("Bus table has no geo column; returning NaN for house-distance proxy.")
+            return float("nan")
 
         if bus["geo"].isna().all():
-            self.dbc.logger.debug("Bus table has no populated geo values; returning 0.0 for house-distance proxy.")
-            return 0.0
+            self.dbc.logger.debug("Bus table has no populated geo values; returning NaN for house-distance proxy.")
+            return float("nan")
 
         geometries = []
         invalid_geometry_count = 0
@@ -1189,7 +1190,7 @@ class ParameterCalculator:
                     len(geometries),
                     invalid_geometry_count,
                 )
-            return 0.0
+            return float("nan")
 
         coords = np.array(geometries)
 
@@ -1204,8 +1205,6 @@ class ParameterCalculator:
             dis_mat = cdist(coords, coords, metric="euclidean") / 1000.0
 
         k = min(len(dis_mat) - 1, 4)
-        if k == 0:
-            return 0.0
 
         dis_mat.sort(axis=1)
         avg_dists = dis_mat[:, 1:k+1].mean(axis=1)

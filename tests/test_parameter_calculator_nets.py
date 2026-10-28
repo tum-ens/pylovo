@@ -144,6 +144,12 @@ def test_a_branch_is_an_outgoing_circuit_of_the_busbar(options, branches, feeder
     assert structural_feeders == feeders           # the feeder count of the structural comparison stays as it was
 
 
+def test_a_single_building_grid_has_no_house_distance():
+    metrics, _ = metrics_and_feeders(street=False, busbar=(31,))
+    assert metrics["house_distance_km"] is None                                       # stored as NULL, not 0 km
+    assert metrics_and_feeders(street=False, busbar=(31, 32))[0]["house_distance_km"] > 0
+
+
 def test_the_largest_branch_is_one_of_the_same_branches():
     peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
     metrics, _ = metrics_and_feeders(busbar=(31,))
@@ -175,10 +181,10 @@ def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distan
 def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_consumers():
     pc = calculator()
     net = pp.create_empty_network()
-    assert pc.calculate_average_house_distance(net) == 0.0                           # no bus
+    assert math.isnan(pc.calculate_average_house_distance(net))                      # no bus: undefined
     pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500000.0, 5300000.0)), 0.01)
     pp.create_bus(net, 0.4, geodata=(500100.0, 5300000.0))                          # no consumer: not counted
-    assert pc.calculate_average_house_distance(net) == 0.0                           # one consumer
+    assert math.isnan(pc.calculate_average_house_distance(net))                      # one consumer: undefined
     pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500300.0, 5300000.0)), 0.01)
     assert pc.calculate_average_house_distance(net) == pytest.approx(0.3)            # 300 m
 
