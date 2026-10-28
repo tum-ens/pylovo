@@ -1,8 +1,6 @@
 ### Local files that stay out of the repository
 # Local checkout of the validations package (confidential data and outputs)
 /validations
-# Local agent instructions
-/AGENTS.md
 # PDFs are never committed
 *.pdf
 
