@@ -28,6 +28,8 @@ const prettyCable = (t) => String(t || '').replace(/_(\d+)_(\d+)$/, ' $1×$2').r
 // Station symbols: always drawn, never hidden by other symbols.
 const symbol = (image, size) => ({ 'icon-image': image, 'icon-size': size, 'icon-allow-overlap': true, 'icon-ignore-placement': true });
 
+// The title of an HV/MV substation, its site and busbar: the level first, as their OSM names rarely say it.
+const hvmv = (name) => (name ? `HV/MV: ${name}` : 'HV/MV substation');
 // The ends of a feeder section.
 const sectionEnd = (e) => ({ station: 'station', cabinet: `cabinet ${e?.id}` }[e?.kind] || 'end of the feeder');
 
@@ -109,7 +111,7 @@ export const STYLES = {
     // `colour` is the dot of the panel and the inspector, `fill` the badge
     legend: () => [{ kind: 'station', hv: true, fill: pal().surface, colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
       { kind: 'station', hv: true, faded: true, fill: pal().surface, colour: pal().ink.primary, label: 'Candidate, not used (faded)' }],
-    facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
+    facts: (o) => ({ title: hvmv(o.name), subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
       ['Transformers', o.transformers ? `${o.transformers} × ${f.num(o.mva / Math.max(o.transformers, 1), 0)} MVA` : '–'],
       ['Loading (n-0 / n-1)', `${f.pct(o.loading)} / ${f.pct(o.loading_n1)}`], ['Voltage tag', o.voltage || '–'],
       ['eTraGo 110 kV bus', o.etrago_bus ?? 'none (no eGon match)'],
@@ -125,7 +127,7 @@ export const STYLES = {
       { id: `${id}:line`, type: 'line', pick: false, paint: { 'line-color': p.ink.primary, 'line-width': 1.4 } },
     ],
     legend: () => [{ kind: 'fill', colour: pal().ink.primary, label: 'Substation site' }],
-    facts: (o) => ({ title: o.name || 'Substation site', subtitle: o.source, rows: [] }),
+    facts: (o) => ({ title: hvmv(o.name), subtitle: `site · ${o.source}`, rows: [] }),
   },
   hv_busbars: {
     // the circle the MV lines of a substation end on (their display geometry), under the substation symbol
@@ -135,7 +137,7 @@ export const STYLES = {
         'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 19, 3] } },
     ],
     legend: () => [{ kind: 'circle', hollow: true, colour: pal().ink.primary, label: 'Busbar: the MV lines end on it' }],
-    facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: 'busbar', rows: [] }),
+    facts: (o) => ({ title: hvmv(o.name), subtitle: 'busbar', rows: [] }),
   },
   mv_lines: {
     modes: { ring: { label: 'Ring', scheme: () => slot('ring_slot') },
@@ -247,7 +249,7 @@ export const STYLES = {
         paint: { 'line-color': selected(p.accent, p.ink.secondary), 'line-width': selected(3.5, 1.2), 'line-opacity': 0.85, 'line-dasharray': [3, 2] } },
     ],
     extraLegend: () => [{ kind: 'line', dash: true, colour: pal().ink.secondary, label: 'Incomplete (cut by the region border)' }],
-    facts: (o) => ({ title: `Supply area ${o.fid}`, subtitle: o.substation || 'HV/MV substation', rows: [
+    facts: (o) => ({ title: `Supply area ${o.fid}`, subtitle: hvmv(o.substation), rows: [
       ['Voltage', f.kv(o.vn_kv)], ['MV/LV stations', f.num(o.stations)], ['MV customers', f.num(o.customers)],
       ['Rings', f.num(o.rings)], ['Peak load', f.mw(o.peak_mw)], ['Max loading', f.pct(o.max_loading)],
       ['Max voltage drop', f.pct(o.max_drop, 2)], ['Complete', o.complete ? 'yes' : 'no (border)']] }),
