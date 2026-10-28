@@ -123,3 +123,53 @@ def test_representative_notebooks_show_every_cluster_and_select_columns_by_name(
         assert "display(plot_simple_grid(" in code and "display(plot_with_generic_coordinates(" in code, name
     for nb in NOTEBOOKS:
         assert not re.search(r"\.iloc\[\s*:\s*,\s*\[", notebook_code(nb)), f"columns by position in {nb.name}"
+
+
+NEW_NOTEBOOKS = [REPO / "notebook_tutorials/classification/01_sample_and_key_figures.ipynb",
+                 REPO / "notebook_tutorials/classification/02_clusters_and_representatives.ipynb"]
+GERMAN = re.compile(r"Anzahl|Klasse|Stichprobe|Anteil|Verteilung|Erkl[äa]rt|Kumulativ|Algorithmus|Gemeindetyp")
+
+
+@pytest.mark.parametrize("path", NEW_NOTEBOOKS, ids=lambda path: path.name)
+def test_new_notebooks_have_one_parameter_cell_no_warning_filter_and_no_sql(path):
+    import json
+
+    nb = json.loads(path.read_text(encoding="utf-8"))
+    tagged = [c for c in nb["cells"] if "parameters" in c.get("metadata", {}).get("tags", [])]
+    assert len(tagged) == 1 and tagged[0]["cell_type"] == "code"
+    code = notebook_code(path)
+    assert "filterwarnings" not in code and "simplefilter" not in code, "warnings stay visible"
+    assert not re.search(r"\bSELECT\b|\bFROM pylovo\.|get_geo_df_join|\._\w+\(", code), "public API only"
+    assert not GERMAN.search("".join("".join(c["source"]) for c in nb["cells"]))
+    for cell in nb["cells"]:
+        for output in cell.get("outputs", []):
+            assert output["output_type"] != "error"
+            assert not (output["output_type"] == "stream" and output["name"] == "stderr"), "a warning was stored"
+            assert not any("plotly" in mime for mime in output.get("data", {})), "static figures only"
+
+
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda path: path.name)
+def test_stored_outputs_contain_no_address_home_path_or_credential(path):
+    """The notebooks are published: the failure names the kind of leak, never the value."""
+    import json
+
+    from pylovo import config_loader
+
+    nb = json.loads(path.read_text(encoding="utf-8"))
+    parts = []
+    for cell in nb["cells"]:
+        for output in cell.get("outputs", []):
+            parts += [json.dumps(value) for key, value in output.items() if key not in ("data", "metadata")]
+            parts += [json.dumps(value) for mime, value in output.get("data", {}).items()
+                      if not mime.startswith("image/")]
+    text = "\n".join(parts)
+    leaks = [name for name, pattern in (("IPv4 address", r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
+                                        ("home path", r"/home/|/Users/|[A-Z]:\\\\Users"))
+             if re.search(pattern, text)]
+    for name in ("HOST", "INFDB_HOST", "DBUSER", "INFDB_USER", "PASSWORD", "INFDB_PASSWORD"):
+        value = str(getattr(config_loader, name, None) or "")
+        # whole words of four characters or more: the CI values ("ci") are parts of ordinary words
+        if (len(value) >= 4 and value not in ("localhost", "127.0.0.1", "postgres")
+                and re.search(rf"(?<![\w.-]){re.escape(value)}(?![\w-])", text)):
+            leaks.append(f"value of {name}")
+    assert not leaks, leaks
