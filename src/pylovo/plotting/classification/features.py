@@ -258,11 +258,17 @@ def plot_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int, figsize:
     return fig
 
 
+#: Iteration limit of the varimax factor analysis (:func:`varimax_factor_analysis`)
+FACTOR_ANALYSIS_MAX_ITER = 10_000
+
+
 def varimax_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int) -> tuple[pd.DataFrame, FactorAnalysis]:
     """
     Fit the varimax-rotated factor analysis of the standardised parameters.
 
-    The exact SVD (``svd_method="lapack"``) gives the loadings of the randomized default, only faster.
+    The exact SVD (``svd_method="lapack"``) gives the loadings of the randomized default, only faster. With a
+    parameter that the factors explain fully (a Heywood case) the fit needs some 1,600 iterations, more than
+    scikit-learn's default limit of 1,000, so the limit is :data:`FACTOR_ANALYSIS_MAX_ITER`.
 
     Args:
         df_plz_parameters: Set of parameters for grids.
@@ -272,7 +278,7 @@ def varimax_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int) -> tu
         tuple: The loadings (one row per parameter, one column per factor) and the fitted model (``noise_variance_``
         holds the uniqueness of every parameter, ``n_iter_`` the iterations).
     """
-    fa = FactorAnalysis(n_components=n_comps, rotation="varimax", svd_method="lapack")
+    fa = FactorAnalysis(n_components=n_comps, rotation="varimax", svd_method="lapack", max_iter=FACTOR_ANALYSIS_MAX_ITER)
     fa.fit(StandardScaler().fit_transform(df_plz_parameters))
     return pd.DataFrame(fa.components_.T, index=df_plz_parameters.columns), fa
 
