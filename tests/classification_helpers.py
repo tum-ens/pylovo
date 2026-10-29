@@ -57,6 +57,8 @@ def synthetic_clustering_parameters(n_per_archetype=(40, 40, 30, 20), seed=0) ->
                 ratio=3.3,
                 vsw_per_branch=res / branches,
                 max_vsw_of_a_branch=res * rng.uniform(0.3, 0.8),
+                no_branch_ends=int(branches * rng.integers(1, 4)),
+                max_route_resistance_ohm=max_dis * 0.2 * rng.uniform(0.8, 1.2),
             ))
     df = pd.DataFrame(rows)
     df.insert(0, "version_id", "1")

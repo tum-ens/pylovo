@@ -205,9 +205,14 @@ def test_migration_0017_stamps_the_key_figures_and_the_classifications_clustered
     conn = Connection()
     key_figures_version(Cursor(conn))
     sql = " ".join(conn.log)
-    assert ("ALTER TABLE pylovo.clustering_parameters ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL "
-            "DEFAULT 1; ALTER TABLE pylovo.clustering_parameters ALTER COLUMN key_figures_version DROP DEFAULT;") in sql
-    assert " key_figures_version smallint NOT NULL," in CREATE_QUERIES["clustering_parameters"]
+    assert ("ALTER TABLE pylovo.clustering_parameters ADD COLUMN IF NOT EXISTS no_branch_ends integer, "
+            "ADD COLUMN IF NOT EXISTS max_route_resistance_ohm double precision, "
+            "ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL DEFAULT 1; "
+            "ALTER TABLE pylovo.clustering_parameters ALTER COLUMN key_figures_version DROP DEFAULT;") in sql
+    # an older table ends with the same three columns as a fresh one
+    fresh_key_figures = re.findall(r"^\s*(\w+) ([\w ]+?),(?:\s*--.*)?$", CREATE_QUERIES["clustering_parameters"], re.M)
+    assert fresh_key_figures[-3:] == [("no_branch_ends", "integer"), ("max_route_resistance_ohm", "double precision"),
+                                      ("key_figures_version", "smallint NOT NULL")]
     added = re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) (\w+)", sql.split("ALTER TABLE pylovo.classification_version")[1])
     fresh = re.findall(r"^\s*(\w+) ([\w\[\]]+),$", CREATE_QUERIES["classification_version"], re.M)
     assert added == fresh[-4:] == [("key_figures_version", "smallint"), ("transform", "text"),

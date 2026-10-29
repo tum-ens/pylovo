@@ -338,7 +338,7 @@ Many key figures are strongly correlated, so the clustering uses a few independe
 
 #. drops identifiers and parameters that are not meant for clustering (``version_id``, ``plz``, ``bcid``,
    ``kcid``, ``ratio``, ``osm_trafo``, ``house_distance_km``, ``no_connection_buses``, ``resistance``,
-   ``reactance``, ``simultaneous_peak_load_mw``, ``no_household_equ``, ``max_power_mw``), which leaves 13 candidates,
+   ``reactance``, ``simultaneous_peak_load_mw``, ``no_household_equ``, ``max_power_mw``), which leaves 15 candidates,
 #. removes columns that are perfectly collinear with an earlier column,
 #. transforms every candidate with ``TRANSFORM``,
 #. takes the number of factors as the number of eigenvalues of the correlation matrix above 1 (Kaiser criterion),

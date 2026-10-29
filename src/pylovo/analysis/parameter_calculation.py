@@ -145,6 +145,7 @@ def _empty_impedance_summary() -> Dict[str, float]:
         "total_resistance": 0.0,
         "total_reactance": 0.0,
         "max_branch_resistance": 0.0,
+        "branch_resistance": 0.0,
         "total_weight": 0.0,
     }
 
@@ -369,28 +370,95 @@ class ParameterCalculator:
             return []
         return net.load["bus"].unique().tolist()
 
-    @staticmethod
-    def classification_branches(graph: nx.Graph, root_idx: int, consumer_buses: List[int]) -> Dict[int, int]:
-        """Assign every consumer bus to its branch, the outgoing circuit of the LV busbar that supplies it.
+    #: Links from the busbar of at most this length (km) belong to the station, as in the structural metrics of the
+    #: validation (station stubs); the feeders start where they end.
+    STATION_LINK_KM = 0.002
 
-        A branch is a cable that leaves the busbar ``root_idx``; it is named by the bus at its far end. A building
-        connected directly at the busbar is a branch of its own, and a single-building grid has one branch. This is
-        the branch of the key figures of the classification (``no_branches`` and the per-branch figures). The
-        structural comparison counts feeders with :meth:`count_feeders`, which skips the buildings at the busbar.
+    @staticmethod
+    def _line_tree(net: pp.pandapowerNet, root_idx: int) -> Tuple[Dict[int, int | None], List[int], Dict[int, Tuple[float, float]]]:
+        """Return the radial line network seen from ``root_idx``.
+
+        Lines between the same two buses form one link: the shortest length and the resistances in parallel. The
+        resistance of a line is divided by its parallel cables.
+
+        Returns:
+            ``(parent, order, link)``: the parent of every reached bus (``None`` for the root), the buses in
+            breadth-first order and, per bus except the root, ``(length_km, resistance_ohm)`` of the link to its parent.
+        """
+        graph = nx.Graph()
+        for line in net.line.itertuples():
+            parallel = float(getattr(line, "parallel", 1) or 1)
+            length = float(line.length_km)
+            resistance = float(line.r_ohm_per_km) * length / (parallel if parallel > 0 else 1.0)
+            u, v = int(line.from_bus), int(line.to_bus)
+            if graph.has_edge(u, v):
+                old = graph.edges[u, v]
+                length = min(length, old["length_km"])
+                resistance = 0.0 if 0.0 in (resistance, old["r_ohm"]) else 1 / (1 / resistance + 1 / old["r_ohm"])
+            graph.add_edge(u, v, length_km=length, r_ohm=resistance)
+        if root_idx not in graph:
+            return {root_idx: None}, [root_idx], {}
+        parent, order, link = {root_idx: None}, [root_idx], {}
+        for u, v in nx.bfs_edges(graph, root_idx, sort_neighbors=sorted):
+            parent[v] = u
+            order.append(v)
+            link[v] = (graph.edges[u, v]["length_km"], graph.edges[u, v]["r_ohm"])
+        return parent, order, link
+
+    @classmethod
+    def feeder_structure(cls, net: pp.pandapowerNet, root_idx: int,
+                         consumer_buses: List[int]) -> Tuple[Dict[int, int], int]:
+        """Return the feeders and the branch ends of the label-free boundary of the structural metrics.
+
+        A bus belongs to the shared network if at least two consumer buses lie at or beyond it. The cable from the last
+        shared bus to a building is the building's dedicated path. The station is the busbar ``root_idx`` with the
+        buses it reaches over links of at most :attr:`STATION_LINK_KM`. A feeder is a cable that leaves the station
+        towards at least two consumer buses: a building at the busbar, or on its own cable from the station, belongs
+        to no feeder. The branch ends are the shared buses from which no shared bus continues, the busbar excluded.
+        The structural comparison of :func:`~pylovo.analysis.grid_analysis.compute_comparison_parameters` counts
+        feeders with :meth:`count_feeders` instead.
 
         Args:
-            graph: Topology graph of a radial net.
+            net: A radial net.
             root_idx: The LV busbar.
             consumer_buses: Consumer buses of the net.
 
         Returns:
-            ``{consumer bus: first bus after the busbar on its path}``; a consumer that the busbar does not reach
-            has no entry.
+            ``({consumer bus: first bus of its feeder}, number of branch ends)``. A consumer of no feeder has no entry.
         """
-        if root_idx not in graph:
-            return {}
-        paths = nx.single_source_shortest_path(graph, root_idx)
-        return {int(bus): int(paths[bus][1]) for bus in consumer_buses if len(paths.get(bus, ())) > 1}
+        parent, order, link = cls._line_tree(net, root_idx)
+        consumers = {int(bus) for bus in consumer_buses} & set(parent)
+        downstream = {bus: int(bus in consumers) for bus in order}
+        for bus in reversed(order[1:]):
+            downstream[parent[bus]] += downstream[bus]
+        station = {root_idx}
+        for bus in order[1:]:                    # parents come first in breadth-first order
+            if parent[bus] in station and link[bus][0] <= cls.STATION_LINK_KM:
+                station.add(bus)
+        feeders = {bus for bus in order[1:]
+                   if parent[bus] in station and bus not in station and downstream[bus] >= 2}
+        feeder_of_bus = {}
+        for consumer in consumers:
+            bus = consumer
+            while bus not in station and parent[bus] not in station:
+                bus = parent[bus]
+            if bus in feeders:
+                feeder_of_bus[consumer] = bus
+        shared = {bus for bus in order if downstream[bus] >= 2}
+        continued = {parent[bus] for bus in shared if parent[bus] is not None}
+        branch_ends = sum(bus != root_idx and bus not in continued for bus in shared)
+        return feeder_of_bus, int(branch_ends)
+
+    @classmethod
+    def calculate_max_route_resistance(cls, net: pp.pandapowerNet, root_idx: int, consumer_buses: List[int]) -> float:
+        """Highest series resistance (ohm) of the cables from the busbar to a consumer bus, the most exposed building of
+        the structural metrics; parallel cables divide the resistance of their line. 0.0 without a reached consumer."""
+        parent, order, link = cls._line_tree(net, root_idx)
+        resistance = {root_idx: 0.0}
+        for bus in order[1:]:
+            resistance[bus] = resistance[parent[bus]] + link[bus][1]
+        values = [resistance[int(bus)] for bus in consumer_buses if int(bus) in resistance]
+        return float(max(values)) if values else 0.0
 
     def count_feeders(
         self,
@@ -1378,8 +1446,9 @@ class ParameterCalculator:
 
         The caller provides the bus weights and decides whether cumulated
         simultaneity should affect line resistance.
-        Paths are grouped by the branch of their consumer in ``branch_of_bus``. Without it, by feeder branch: a
-        first-hop bus of type ``kvs`` in ``bus_type_config`` (default: by the bus naming) splits its feeders.
+        Paths are grouped by the branch of their consumer in ``branch_of_bus``; consumers without an entry count in
+        the totals but in no branch. Without it, by feeder branch: a first-hop bus of type ``kvs`` in
+        ``bus_type_config`` (default: by the bus naming) splits its feeders.
         """
         if bus_weights.empty or line_table.empty:
             return _empty_impedance_summary()
@@ -1453,13 +1522,15 @@ class ParameterCalculator:
             return _empty_impedance_summary()
 
         df_records = pd.DataFrame(records)
-        branch_weights = df_records.groupby("branch", dropna=False)["path_weight"].sum()
-        branch_resistance = df_records.groupby("branch", dropna=False)["weighted_resistance"].sum()
+        in_branch = df_records if branch_of_bus is None else df_records[df_records["branch"].notna()]
+        branch_weights = in_branch.groupby("branch", dropna=False)["path_weight"].sum()
+        branch_resistance = in_branch.groupby("branch", dropna=False)["weighted_resistance"].sum()
         return {
             "max_branch_weight": float(branch_weights.max()) if not branch_weights.empty else 0.0,
             "total_resistance": float(df_records["weighted_resistance"].sum()),
             "total_reactance": float(df_records["weighted_reactance"].sum()),
             "max_branch_resistance": float(branch_resistance.max()) if not branch_resistance.empty else 0.0,
+            "branch_resistance": float(in_branch["weighted_resistance"].sum()),
             "total_weight": float(df_records["path_weight"].sum()),
         }
 
@@ -1468,15 +1539,16 @@ class ParameterCalculator:
         pandapower_net: pp.pandapowerNet,
         networkx_graph: nx.Graph,
         branch_of_bus: Optional[Dict[int, int]] = None,
-    ) -> Tuple[float, float, float, float, float]:
+    ) -> Tuple[float, float, float, float, float, float]:
         """Calculate the legacy VSW-style impedance metrics used by clustering.
 
         Returns maximum household equivalents per branch, total resistance, total
-        reactance, the resistance-to-reactance ratio, and the maximum branch
-        resistance proxy. Resistance and reactance of a line are weighted alike (household
-        equivalents behind it times its cumulated simultaneity), so the ratio lies between the
-        smallest and the largest R/X of the lines. They are divided by the number of parallel cables. The branches are those of ``branch_of_bus``
-        (:meth:`classification_branches`), else the feeder branches of
+        reactance, the resistance-to-reactance ratio, the maximum branch
+        resistance proxy and the resistance of the consumers in a branch.
+        Resistance and reactance of a line are weighted alike (household equivalents behind it
+        times its cumulated simultaneity), so the ratio lies between the smallest and the largest
+        R/X of the lines. They are divided by the number of parallel cables. The branches are the
+        feeders of ``branch_of_bus`` (:meth:`feeder_structure`), else the feeder branches of
         :meth:`_calculate_path_impedance_summary`.
         """
         load_table = self._prepare_legacy_impedance_loads(pandapower_net)
@@ -1507,6 +1579,7 @@ class ParameterCalculator:
             total_reactance,
             ratio,
             result["max_branch_resistance"],
+            result["branch_resistance"],
         )
 
     def _augment_line_table_with_simultaneity(

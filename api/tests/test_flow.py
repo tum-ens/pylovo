@@ -120,9 +120,10 @@ def test_destructive_flow_endpoints_need_the_typed_confirmation(client, region):
 def test_feeders_exclude_service_cables_at_the_station(client):
     for version in ("1", "2"):
         grids = client.get(f"/api/results/{version}/summary").json()["grids"]
-        # pylovo's analysis counts every circuit at the station as a branch (clustering_parameters.no_branches):
-        # the street feeders and the service cables at the station
-        assert [g["feeders"] + g["direct_connections"] for g in grids] == [g["pylovo_branches"] for g in grids]
+        # pylovo's analysis counts the feeders of the structural metrics (clustering_parameters.no_branches): cables
+        # that leave the station towards at least two buildings, behind which no building is counted twice
+        assert all(0 <= g["pylovo_branches"] <= g["buildings"] // 2 for g in grids)
+        assert any(g["pylovo_branches"] < g["feeders"] + g["direct_connections"] for g in grids)
     v1 = client.get("/api/results/1/summary").json()
     assert v1["kpis"]["feeders"] == sum(g["feeders"] for g in v1["grids"]) > 0
     direct = 0

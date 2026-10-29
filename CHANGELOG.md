@@ -39,7 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Read only the grids and nodes of a variant in `pylovo-mv couple`
 - Keep the done supply areas and their status when the MV ties or links fail: the failure becomes a warning of the summary
 - Count the land use and OSM MV lines in the fingerprint of an MV routing graph only within its extent, so OSM changes elsewhere keep the graph; existing graphs get new ids, so resuming an MV variant of 1.0.0 plans its districts again
-- Count every outgoing circuit of the LV busbar as a branch of the key figures, buildings at the busbar included, and rename the household-equivalent key figures to `no_household_equ_per_branch` and `max_household_equ_of_a_branch`; run `pylovo-setup` once after upgrading (see [Analysing grids](https://pylovo.readthedocs.io/en/latest/user_guide/analysing_grids.html))
+- Count the branches of the key figures like the feeders of the structural validation, add the key figures `no_branch_ends` and `max_route_resistance_ohm`, and rename the household-equivalent key figures to `no_household_equ_per_branch` and `max_household_equ_of_a_branch`; run `pylovo-setup` once after upgrading (see [Analysing grids](https://pylovo.readthedocs.io/en/latest/user_guide/analysing_grids.html))
 - Transform the key figures before the factor analysis and the clustering (`TRANSFORM`, Yeo-Johnson by default) and leave out grids with a voltage violation or no converged power flow (`EXCLUDE_INFEASIBLE`) (see [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html))
 
 ### Removed

@@ -771,6 +771,8 @@ CREATE_QUERIES = {
         ratio double precision,
         vsw_per_branch double precision,
         max_vsw_of_a_branch double precision,
+        no_branch_ends integer,
+        max_route_resistance_ohm double precision,
         key_figures_version smallint NOT NULL,      -- definitions the row was computed with (KEY_FIGURES_VERSION)
         CONSTRAINT fk_clustering_parameters_grid_result
             FOREIGN KEY (grid_result_id)

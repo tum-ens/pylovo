@@ -49,3 +49,5 @@ CLUSTERING_PARAMETERS:
 - ratio
 - vsw_per_branch
 - max_vsw_of_a_branch
+- no_branch_ends
+- max_route_resistance_ohm

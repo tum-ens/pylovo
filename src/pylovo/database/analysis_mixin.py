@@ -22,7 +22,7 @@ CLUSTERING_PARAMETER_COLUMNS = (
     "no_household_equ", "no_household_equ_per_branch", "max_household_equ_of_a_branch", "house_distance_km",
     "transformer_mva", "osm_trafo", "max_trafo_dis", "avg_trafo_dis", "cable_length_km", "cable_len_per_house",
     "max_power_mw", "simultaneous_peak_load_mw", "resistance", "reactance", "ratio", "vsw_per_branch",
-    "max_vsw_of_a_branch", "key_figures_version",
+    "max_vsw_of_a_branch", "no_branch_ends", "max_route_resistance_ohm", "key_figures_version",
 )
 
 

@@ -142,10 +142,14 @@ Per-grid key figures (``clustering_parameters``)
 One row per grid (``grid_result_id``), computed by
 :meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.analyze_grid_parameters_for_plz`.
 
-A **branch** is an outgoing circuit of the LV busbar: every cable that leaves the busbar of the station. A building
-connected directly at the busbar is a branch of its own, and a grid with one building has one branch. All per-branch
-figures use these branches. The structural metrics count feeders differently
-(:ref:`structural-metrics`).
+A **branch** is a feeder as the structural validation of the pylovo paper defines it, without line labels, so that
+a cabinet star and a row of tee joints split alike. A bus belongs to the *shared network* if at least two buildings
+lie at or beyond it. The cable from the last shared bus to a building is the building's *dedicated path*. The
+*station* is the busbar with the buses it reaches over links of at most 2 m. A **feeder** is a cable that leaves the
+station towards at least two buildings. A building at the busbar, or on its own cable from the station, belongs to
+no feeder, and a grid without a feeder (one building, or one cable per building) has 0 branches. The per-branch
+figures count only the buildings behind the feeders and are 0 without a feeder. The six structural metrics above
+count feeders differently (:ref:`structural-metrics`).
 
 A **household equivalent** is the installed power of a consumer divided by ``PEAK_LOAD_HOUSEHOLD`` (16.825 kW): a
 load measure that makes residential, commercial and public buildings comparable. It is no household count and no
@@ -166,7 +170,11 @@ coincident load.
      - Street-side connection buses.
      - count
    * - ``no_branches``
-     - Branches with at least one building.
+     - Feeders: cables that leave the station towards at least two buildings.
+     - count
+   * - ``no_branch_ends``
+     - Ends of the shared network: shared buses from which no shared bus continues, the busbar excluded. More ends
+       mean more branching.
      - count
    * - ``no_households``
      - Households: the sum of ``load_units`` of the residential loads. A non-residential load is no household.
@@ -175,13 +183,13 @@ coincident load.
      - Household equivalents of the grid.
      - –
    * - ``no_house_connections_per_branch``
-     - ``no_house_connections`` divided by ``no_branches``.
+     - Buildings behind the feeders divided by ``no_branches``.
      - count
    * - ``no_household_equ_per_branch``
-     - ``no_household_equ`` divided by ``no_branches``.
+     - Household equivalents behind the feeders divided by ``no_branches``.
      - –
    * - ``max_household_equ_of_a_branch``
-     - Household equivalents of the branch with the most.
+     - Household equivalents of the feeder with the most.
      - –
    * - ``house_distance_km``
      - Median over the buildings of the mean distance to their (up to) four nearest buildings. Empty for a grid
@@ -210,11 +218,15 @@ coincident load.
        smallest and the largest R/X of the cable catalogue.
      - –
    * - ``vsw_per_branch``
-     - ``resistance`` divided by ``no_branches``.
+     - ``resistance`` of the buildings behind the feeders divided by ``no_branches``.
      - Ω
    * - ``max_vsw_of_a_branch``
-     - ``resistance`` of the branch with the largest one: an upper bound of the voltage drop at the end of that
-       branch, exact for an unbranched feeder.
+     - ``resistance`` of the feeder with the largest one: an upper bound of the voltage drop at the end of that
+       feeder, exact for an unbranched one.
+     - Ω
+   * - ``max_route_resistance_ohm``
+     - Highest series resistance of the cables from the busbar to a building (the worst-supplied building),
+       parallel cables dividing the resistance of their line. Unlike ``resistance`` it is not weighted with loads.
      - Ω
    * - ``key_figures_version``
      - Version of these definitions (``KEY_FIGURES_VERSION``). The per-grid analysis computes rows of an older
@@ -223,8 +235,9 @@ coincident load.
 
 The Ω of the impedance figures are weighted with household equivalents. Multiplied by ``PEAK_LOAD_HOUSEHOLD`` and
 divided by the square of the nominal voltage, ``resistance`` becomes the summed resistive voltage drop of the grid in
-per unit. Version 1 of the key figures (pylovo 1.0.0) counted only the street feeders as branches, but kept the
-buildings at the busbar in the per-branch figures, and weighted only R with the coincidence factor.
+per unit. Version 1 of the key figures (pylovo 1.0.0) counted the street cables at the busbar as branches, at
+least one, but kept the buildings at the busbar in the per-branch figures, and weighted only R with the coincidence
+factor. It had no ``no_branch_ends`` and ``max_route_resistance_ohm``.
 
 Service cables are straight lines from the street to the building. They make up about a tenth of ``avg_trafo_dis``
 in a typical grid, but where streets are missing in the map data a service cable can be hundreds of metres long.

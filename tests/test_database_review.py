@@ -559,7 +559,8 @@ def test_key_figures_and_classifications_of_1_0_0_migrate_to_version_2():
                     RENAME COLUMN no_household_equ_per_branch TO no_households_per_branch;
                 ALTER TABLE pylovo.clustering_parameters
                     RENAME COLUMN max_household_equ_of_a_branch TO max_no_of_households_of_a_branch;
-                ALTER TABLE pylovo.clustering_parameters DROP COLUMN key_figures_version, ADD COLUMN filtered boolean;
+                ALTER TABLE pylovo.clustering_parameters DROP COLUMN key_figures_version, DROP COLUMN no_branch_ends,
+                    DROP COLUMN max_route_resistance_ohm, ADD COLUMN filtered boolean;
                 ALTER TABLE pylovo.classification_version DROP COLUMN key_figures_version, DROP COLUMN transform,
                     DROP COLUMN exclude_infeasible, DROP COLUMN selection_report;
                 DELETE FROM pylovo.schema_migrations WHERE name IN ('0016_key_figure_names', '0017_key_figures_version');
@@ -574,9 +575,9 @@ def test_key_figures_and_classifications_of_1_0_0_migrate_to_version_2():
             db.conn.commit()
             for _ in range(2):                                   # the second run finds nothing to do
                 constructor.migrate_schema()
-                db.cur.execute("SELECT no_household_equ_per_branch, max_household_equ_of_a_branch, key_figures_version "
-                               "FROM pylovo.clustering_parameters")
-                assert db.cur.fetchall() == [(7.5, 10.0, 1)]
+                db.cur.execute("SELECT no_household_equ_per_branch, max_household_equ_of_a_branch, key_figures_version, "
+                               "no_branch_ends, max_route_resistance_ohm FROM pylovo.clustering_parameters")
+                assert db.cur.fetchall() == [(7.5, 10.0, 1, None, None)]
                 db.cur.execute("SELECT column_name, is_nullable, column_default FROM information_schema.columns "
                                "WHERE table_schema = 'pylovo' AND table_name = 'clustering_parameters' "
                                "AND column_name IN ('filtered', 'key_figures_version')")

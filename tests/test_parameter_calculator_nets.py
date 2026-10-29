@@ -27,9 +27,10 @@ R, X = 0.206, 0.080
 SIM_FACTOR = parameter_calculation.SIM_FACTOR["Residential"]
 
 
-def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0, f2_at_busbar=False, busbar=(), street=True):
+def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0, f2_at_busbar=False, busbar=(), street=True,
+          f0_km=0.1, drop=()):
     """The test net; ``busbar`` are the vertices of buildings connected at the busbar, ``street=False`` leaves out the
-    feeders and their four households."""
+    feeders and their four households, ``f0_km`` is the length of f0 and ``drop`` removes consumers with their cable."""
     backend = create_backend("pandapower", logger=LOGGER)
     backend.initialize_circuit("c", "MVbus 1", 20.0)
     backend.register_cable_types(CABLES)
@@ -57,7 +58,7 @@ def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0, f2_at_busb
                                               parallel=parallel))
 
         if street:
-            line("f0", "LVbus 1", "Connection Nodebus 10", 0.1, parallel_feeder)
+            line("f0", "LVbus 1", "Connection Nodebus 10", f0_km, parallel_feeder)
             line("f1", "Connection Nodebus 10", "Connection Nodebus 11", 0.05, parallel_feeder)
             line("f2", "LVbus 1" if f2_at_busbar else "Connection Nodebus 10", "Connection Nodebus 12", 0.06)
             line("s21", "Connection Nodebus 11", "Consumer Nodebus 21", 0.01)
@@ -66,7 +67,9 @@ def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0, f2_at_busb
             line("s24", "Connection Nodebus 12", "Consumer Nodebus 24", 0.013)
         for vertex in busbar:
             line(f"s{vertex}", "LVbus 1", f"Consumer Nodebus {vertex}", 0.015)
-    return backend.net
+    net = backend.net
+    pp.toolbox.drop_buses(net, [int(net.bus.index[net.bus["name"] == f"Consumer Nodebus {v}"][0]) for v in drop])
+    return net
 
 
 class Database:
@@ -126,22 +129,36 @@ def metrics_and_feeders(**options):
     return compute_clustering_metrics(pc, net), feeders
 
 
-@pytest.mark.parametrize("options, branches, feeders", [
-    ({}, 1, 1),                                                  # one street feeder
-    ({"busbar": (31,)}, 2, 1),                                   # a building at the busbar is a branch of its own
-    ({"f2_at_busbar": True, "busbar": (31, 32)}, 4, 2),          # six connections on four branches
-    ({"street": False, "busbar": (31, 32, 33)}, 3, 1),           # a star grid: buildings at the busbar only
-    ({"street": False, "busbar": (31,)}, 1, 1),                  # a single-building grid
+@pytest.mark.parametrize("options, branches, behind, ends, feeders", [
+    ({}, 1, 4, 2, 1),                                            # one feeder, two branch ends (nodes 11 and 12)
+    ({"busbar": (31,)}, 1, 4, 2, 1),                             # a building at the busbar belongs to no feeder
+    ({"f2_at_busbar": True, "busbar": (31, 32)}, 2, 4, 2, 2),    # two feeders of two houses each
+    ({"f0_km": 0.001}, 2, 4, 2, None),                           # a 1 m stub belongs to the station: two feeders
+    ({"f2_at_busbar": True, "drop": (24,)}, 1, 2, 1, None),      # a cable from the station to one house: no feeder
+    ({"street": False, "busbar": (31, 32, 33)}, 0, 0, 0, 1),     # a star grid: buildings at the busbar only
+    ({"street": False, "busbar": (31,)}, 0, 0, 0, 1),            # a single-building grid
 ])
-def test_a_branch_is_an_outgoing_circuit_of_the_busbar(options, branches, feeders):
+def test_a_branch_is_a_feeder_of_the_structural_metrics(options, branches, behind, ends, feeders):
+    """A feeder leaves the station towards at least two buildings; the per-feeder figures count the buildings
+    behind the feeders and are 0 without a feeder."""
     metrics, structural_feeders = metrics_and_feeders(**options)
-    connections = metrics["no_house_connections"]
-    assert metrics["no_branches"] == branches
-    assert metrics["no_house_connections_per_branch"] == pytest.approx(connections / branches)
-    assert metrics["no_house_connections_per_branch"] <= connections
-    assert metrics["no_household_equ_per_branch"] == pytest.approx(metrics["no_household_equ"] / branches)
-    assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"] / branches)
-    assert structural_feeders == feeders           # the feeder count of the structural comparison stays as it was
+    assert (metrics["no_branches"], metrics["no_branch_ends"]) == (branches, ends)
+    per_branch = behind / branches if branches else 0.0
+    assert metrics["no_house_connections_per_branch"] == pytest.approx(per_branch)
+    assert metrics["no_household_equ_per_branch"] == pytest.approx(per_branch * 17.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD)
+    assert metrics["no_house_connections_per_branch"] <= metrics["no_house_connections"]
+    assert 0 <= metrics["vsw_per_branch"] <= metrics["resistance"]
+    if not branches:
+        assert metrics["vsw_per_branch"] == metrics["max_vsw_of_a_branch"] == metrics["max_household_equ_of_a_branch"] == 0
+    if feeders is not None:
+        assert structural_feeders == feeders       # the feeder count of the structural comparison stays as it was
+
+
+@pytest.mark.parametrize("parallel, metres", [(1, 100 + 60 + 13), (2, 50 + 60 + 13)])
+def test_the_route_resistance_is_the_highest_series_resistance_to_a_house(parallel, metres):
+    metrics, _ = metrics_and_feeders(parallel_feeder=parallel)   # f0 and f1 doubled: house 24 behind f2 is the worst
+    assert metrics["max_route_resistance_ohm"] == pytest.approx(metres / 1000 * R)
+    assert metrics_and_feeders(street=False, busbar=(31,))[0]["max_route_resistance_ohm"] == pytest.approx(0.015 * R)
 
 
 def test_a_single_building_grid_has_no_house_distance():
@@ -150,15 +167,13 @@ def test_a_single_building_grid_has_no_house_distance():
     assert metrics_and_feeders(street=False, busbar=(31, 32))[0]["house_distance_km"] > 0
 
 
-def test_the_largest_branch_is_one_of_the_same_branches():
+def test_the_largest_branch_is_one_of_the_same_feeders():
     peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
     metrics, _ = metrics_and_feeders(busbar=(31,))
-    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(4 * 17.0 / peak)    # the street feeder
-    metrics, _ = metrics_and_feeders(street=False, busbar=(31, 32, 33))
-    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(17.0 / peak)        # one building each
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(4 * 17.0 / peak)    # not the busbar building
     metrics, _ = metrics_and_feeders(f2_at_busbar=True, busbar=(31, 32))
-    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(2 * 17.0 / peak)    # two houses per street
-    assert metrics["resistance"] / 4 < metrics["max_vsw_of_a_branch"] < metrics["resistance"]
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(2 * 17.0 / peak)    # two houses per feeder
+    assert metrics["vsw_per_branch"] < metrics["max_vsw_of_a_branch"] < metrics["resistance"]
 
 
 def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distance():
@@ -216,13 +231,13 @@ def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simult
     reactance = sum(weight * (sum(length[c] * X / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * X * factor["s"])
                     for s, feeders in paths.items())
 
-    max_branch, total_r, total_x, ratio, max_branch_r = pc.calculate_impedance_metrics(
+    max_branch, total_r, total_x, ratio, max_branch_r, branch_r = pc.calculate_impedance_metrics(
         net, top.create_nxgraph(net, respect_switches=True))
 
     assert (total_r, total_x) == (pytest.approx(resistance), pytest.approx(reactance))
     assert ratio == pytest.approx(resistance / reactance) == pytest.approx(R / X)    # one cable type: its R/X
     assert max_branch == pytest.approx(households)       # every consumer hangs behind the one feeder f0
-    assert max_branch_r == pytest.approx(resistance)
+    assert max_branch_r == pytest.approx(resistance) == pytest.approx(branch_r)
 
 
 def test_the_ratio_lies_within_the_r_x_of_the_lines():

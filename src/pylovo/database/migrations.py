@@ -623,14 +623,18 @@ def key_figure_names(cur: cursor) -> None:
 def key_figures_version(cur: cursor) -> None:
     """Stamp the key figures and the classifications with the version of the key-figure definitions.
 
-    ``clustering_parameters.key_figures_version`` says which definitions a row was computed with; the rows of older
-    schemas are version 1 (branches without the buildings at the busbar). ``classification_version`` gets the
+    ``clustering_parameters`` gets the two key figures of version 2 (``no_branch_ends``, ``max_route_resistance_ohm``,
+    empty in older rows) and ``key_figures_version``, which says which definitions a row was computed with; the rows
+    of older schemas are version 1 (pylovo 1.0.0). ``classification_version`` gets the
     version its clustering read, its transform, whether infeasible grids were left out, and its selection report.
     The classifications clustered before are stamped as made with version 1, no transform and no such filter, so
     that reading them gives what they were clustered with. A no-op on a fresh schema.
     """
     cur.execute("""
-        ALTER TABLE pylovo.clustering_parameters ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL DEFAULT 1;
+        ALTER TABLE pylovo.clustering_parameters
+            ADD COLUMN IF NOT EXISTS no_branch_ends integer,
+            ADD COLUMN IF NOT EXISTS max_route_resistance_ohm double precision,
+            ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL DEFAULT 1;
         ALTER TABLE pylovo.clustering_parameters ALTER COLUMN key_figures_version DROP DEFAULT;
         ALTER TABLE pylovo.classification_version
             ADD COLUMN IF NOT EXISTS key_figures_version smallint,
