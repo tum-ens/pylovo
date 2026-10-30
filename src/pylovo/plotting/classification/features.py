@@ -213,6 +213,10 @@ def plot_key_figure_distributions(df_parameters: pd.DataFrame, columns: Optional
     return fig
 
 
+#: Iteration limit of the factor analyses (:func:`varimax_factor_analysis`, :func:`plot_factor_analysis`)
+FACTOR_ANALYSIS_MAX_ITER = 10_000
+
+
 def plot_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int, figsize: Tuple[int, int] = (10, 8)) -> Figure:
     """
     Plot factor analysis comparison for different methods.
@@ -234,7 +238,8 @@ def plot_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int, figsize:
     feature_names = data.columns
 
     # Define methods
-    methods = [("PCA", PCA()), ("Unrotated FA", FactorAnalysis()), ("Varimax FA", FactorAnalysis(rotation="varimax")), ]
+    methods = [("PCA", PCA()), ("Unrotated FA", FactorAnalysis(max_iter=FACTOR_ANALYSIS_MAX_ITER)),
+               ("Varimax FA", FactorAnalysis(rotation="varimax", max_iter=FACTOR_ANALYSIS_MAX_ITER))]
     fig, axes = plt.subplots(ncols=len(methods), figsize=figsize, sharey=True, layout="constrained")
 
     # Plot each method
@@ -256,10 +261,6 @@ def plot_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int, figsize:
     fig.suptitle("Factors")
 
     return fig
-
-
-#: Iteration limit of the varimax factor analysis (:func:`varimax_factor_analysis`)
-FACTOR_ANALYSIS_MAX_ITER = 10_000
 
 
 def varimax_factor_analysis(df_plz_parameters: pd.DataFrame, n_comps: int) -> tuple[pd.DataFrame, FactorAnalysis]:
