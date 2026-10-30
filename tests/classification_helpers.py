@@ -177,7 +177,7 @@ SQLITE_FIGURES = {
     1: (100, 0.30, 1.0, 40, 0.50),   # normal
     2: (100, 0.30, 3.0, 40, 0.50),   # transformer distance above the upper limit
     3: (100, 0.30, 1.0, 40, 0.50),   # has a building with 200 households
-    4: (10, 0.05, 1.0, 5, 0.10),     # small filling grid, below all four lower bounds
+    4: (10, 0.05, 1.0, 5, 0.05),     # small filling grid, below all four lower bounds
     5: (100, 0.30, 1.0, 40, 0.50),   # normal
     6: (100, 0.30, None, 40, 0.50),  # no max_trafo_dis: a missing value never filters
 }

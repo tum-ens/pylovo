@@ -1,9 +1,17 @@
+# Clustering parameters and numbers of clusters: the automatic choice of classification 2 (2026-10-30, the 501
+# Bavarian PLZ of classification 1, LV version 1, 26,049 grids after the filters, key figures version 2, Yeo-Johnson
+# transform). pylovo-classify --auto computes them for every run and writes them here; the values below matter for
+# manual runs and for classifications without stored choices. Caveats of its selection report:
+# - the 3rd eigenvalue is 1.086 (bootstrap 1.04 to 1.14), just above the Kaiser cut-off of 1;
+# - max_trafo_dis leads avg_trafo_dis by a loading of 0.004; either is defensible (all 100 resamples pick max_trafo_dis);
+# - k-means: the CH index prefers 4, 5 and 6 lie within 2 %, the DB index prefers 7; 72 % of the resamples give 4;
+# - GMM tied: the CH index gives 6 (99 % of the resamples), the DB index prefers 7.
 LIST_OF_CLUSTERING_PARAMETERS:
 - no_house_connections
-- vsw_per_branch
-- avg_trafo_dis
+- no_household_equ_per_branch
+- max_trafo_dis
 N_CLUSTERS_KMEANS: 4
-N_CLUSTERS_GMM: 4
+N_CLUSTERS_GMM: 6
 # Transform of the key figures before the factor analysis and the clustering: yeo-johnson (one power transform per
 # key figure, against their long tails), log1p (log(1 + x) in the unit of the figure) or none (standardisation only)
 TRANSFORM: yeo-johnson
@@ -15,13 +23,14 @@ EXCLUDE_INFEASIBLE: true
 # Upper limits, always applied
 THRESHOLD_MAX_TRAFO_DIS: 2.5
 THRESHOLD_HOUSEHOLDS_PER_BUILDING: 150
-# Lower limits of the additional filtering: the means of k-means cluster 0 (the small filling grids) of one
-# classification over 100 PLZ that clustered with exactly these four parameters, on grids of May 2025 (shipped since 0.3.0).
-# Re-derive them with: python -m pylovo.classification.utils.get_average_values_clustering_parameters
-THRESHOLD_AVG_TRAFO_DIS: 0.115
-THRESHOLD_NO_HOUSE_CONNECTIONS: 14.332
-THRESHOLD_VSW_PER_BRANCH: 0.258
-THRESHOLD_NO_HOUSEHOLDS: 35.316
+# Lower limits of the additional filtering: the means of k-means cluster 0 of classification 2, the small filling
+# grids (median 6 buildings). A grid below any of them is filtered: 31 % of the grids of classification 2, among them
+# 90 % of cluster 0 and 41 % of the long rural grids (the values of May 2025 filtered 61 %). Re-derive them with:
+# python -m pylovo.classification.utils.get_average_values_clustering_parameters --classification-id <id>
+THRESHOLD_AVG_TRAFO_DIS: 0.071
+THRESHOLD_NO_HOUSE_CONNECTIONS: 6.763
+THRESHOLD_VSW_PER_BRANCH: 0.087
+THRESHOLD_NO_HOUSEHOLDS: 12.012
 CLUSTERING_PARAMETERS:
 - version_id
 - plz
