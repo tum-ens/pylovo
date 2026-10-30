@@ -205,13 +205,17 @@ OpenStreetMap (2021) and published on the Open Energy Platform. Download it once
    uv run --extra viewer pylovo-viewer fetch etrago      # scenario eGon2035
 
 The 110 kV grid is the reason for this source: the prebuilt OpenStreetMap network of PyPSA-Eur
-covers 220 kV and above only. The layer *Links to the HV grid* joins the HV/MV substations of the MV run
-to this grid. A substation with an eTraGo bus (``mv_substation.egon_bus_id``) gets a short line to it.
-A substation without one gets a dashed link to the nearest eTraGo 110 kV line, wider beyond 1 km and
-labelled with its length from zoom 11. eTraGo has no line to such a substation, so the link is
-artificial: either the substation is missing from the OpenStreetMap data of 2021, or its supply line
-is not mapped at all, which the facts show with the flag ``no_osm_hv_line``. The data derive from OpenStreetMap (ODbL); the map shows the
-attribution.
+covers 220 kV and above only.
+
+The layer *Links to the HV grid* joins the HV/MV substations of the MV run to this grid. A
+substation with an eTraGo bus (``mv_substation.egon_bus_id``) gets a short line to it. A substation
+without one gets a dashed link to the nearest eTraGo 110 kV line, wider beyond 1 km and labelled
+with its length from zoom 11. eTraGo has no line to such a substation, so the link is artificial:
+either the substation is missing from the OpenStreetMap data of 2021, or its supply line is not
+mapped at all, which the facts show with the flag ``no_osm_hv_line``.
+
+eGon-data publishes the grid under the ODbL 1.0 with the credit "© eGon development team", and it
+derives from OpenStreetMap (© OpenStreetMap contributors). The map shows both credits.
 
 .. figure:: /images/viewer/viewer-overview.png
    :alt: MV supply areas, rings and substations of a test region with the eTraGo high-voltage grid
@@ -219,7 +223,8 @@ attribution.
 
    MV supply areas, rings and HV/MV substations of an MV run in a test region generated from open
    data, with the eTraGo 110, 220 and 380 kV lines (LV level switched off). Basemap OpenFreeMap
-   © OpenMapTiles, map data © OpenStreetMap contributors (ODbL), eGon-data eTraGo grid.
+   © OpenMapTiles, map data © OpenStreetMap contributors (ODbL), eGon-data eTraGo grid © eGon
+   development team (ODbL).
 
 Data and limits
 ---------------

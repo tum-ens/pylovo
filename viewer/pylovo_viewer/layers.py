@@ -166,7 +166,7 @@ def build_layers() -> list[Layer]:
               "The 110, 220 and 380 kV grid of Germany from eGon-data (eTraGo, PyPSA format). Download it "
               "once with: pylovo-viewer fetch etrago",
               "line", "file", "eGon-data eTraGo (Open Energy Platform)",
-              attribution="eGon-data eTraGo grid (osmTGmod), © OpenStreetMap contributors (ODbL)"),
+              attribution="eGon-data eTraGo grid © eGon development team (ODbL), from OpenStreetMap © OpenStreetMap contributors"),
         Layer("hv_substations", "hv", "HV/MV substations",
               "The HV/MV substations of the MV run that supply the MV grids; candidates the run did not use "
               "are faded. Their site outlines show from zoom 12.",
@@ -208,7 +208,7 @@ def build_layers() -> list[Layer]:
               detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
               requires=("pylovo.mv_substation",), rows=("pylovo.mv_variant",), etrago=True,
               parent="hv_substations", post=("hv_links",),
-              attribution="eGon-data eTraGo grid (osmTGmod), © OpenStreetMap contributors (ODbL)"),
+              attribution="eGon-data eTraGo grid © eGon development team (ODbL), from OpenStreetMap © OpenStreetMap contributors"),
         # -------------------------------------------------------------------------------- MV grids
         Layer("mv_lines", "mv", "MV lines",
               "MV cables and overhead lines of the run: open rings, stubs, dedicated feeders, ties between supply "

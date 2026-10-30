@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Remove the statistics report and CSV files that the OpenDSS backend wrote into the working directory
 
 ### Fixed
+- Credit the eGon development team (ODbL) for the eTraGo grid in `pylovo-viewer`, the voltage-level plots and the example data, as eGon-data's metadata asks
 - Show all MV lines, MV/LV substations and LV grid areas of large versions and MV runs in `pylovo-viewer`: above 60,000 features they load for the map view instead of an arbitrary first 60,000, and a map view with more asks you to zoom in instead of leaving out grids (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html))
 - Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's (see [Electrical backends](https://pylovo.readthedocs.io/en/latest/concepts/electrical_backends.html))
 - Attach an MV node at a vertex of several equally near street edges always to the edge with the lowest id; before, the order of the index scan decided, so two runs on the same data could differ

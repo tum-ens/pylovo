@@ -69,8 +69,8 @@ POWER_FLOW_STATUS_COLORS = {"converged": STATUS["good"], "voltage_violation": ST
 DATA_ATTRIBUTION = ("Data: © Bayerische Vermessungsverwaltung (LoD2), © basemap.de / BKG, "
                     "© OpenStreetMap contributors")
 
-#: Credit line of the HV/EHV grid (eGon-data eTraGo, built by osmTGmod from OpenStreetMap).
-HV_ATTRIBUTION = "HV grid: eGon-data eTraGo (osmTGmod), © OpenStreetMap contributors (ODbL)"
+#: Credit line of the HV/EHV grid (eGon-data eTraGo, ODbL 1.0, built by osmTGmod from OpenStreetMap).
+HV_ATTRIBUTION = "HV grid: eGon-data eTraGo © eGon development team, © OpenStreetMap contributors (ODbL)"
 
 #: Matplotlib defaults of all pylovo figures.
 RC = {
