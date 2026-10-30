@@ -12,7 +12,9 @@ ADDITIONAL_KEPT = {(80001, 1, 1), (80002, 1, 1), (80002, 1, 2)}
 
 @pytest.fixture()
 def dc(monkeypatch):
-    return make_sqlite_dc(monkeypatch)
+    dc = make_sqlite_dc(monkeypatch)
+    yield dc
+    dc.sqlite.close()  # Python 3.13+ warns about an unclosed connection, and pytest fails the test that is running then
 
 
 def kept(frame):

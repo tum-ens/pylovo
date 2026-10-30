@@ -14,7 +14,9 @@ INFEASIBLE = "a voltage violation or no converged power flow"
 
 @pytest.fixture()
 def dc(monkeypatch):
-    return make_sqlite_dc(monkeypatch)
+    dc = make_sqlite_dc(monkeypatch)
+    yield dc
+    dc.sqlite.close()  # Python 3.13+ warns about an unclosed connection, and pytest fails the test that is running then
 
 
 def summary(dc, additional=False, plz_without_grids=()):
