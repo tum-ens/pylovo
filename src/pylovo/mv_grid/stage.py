@@ -313,8 +313,8 @@ def _optional(dbc: Any, name: str, logger: logging.Logger, func, *args, **kwargs
 
 
 def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger: logging.Logger) -> pd.DataFrame:
-    """The HV/MV substation sites of the region from OSM, matched to the eGon-data substations (eTraGo buses), as a
-    table for ``insert_substations``."""
+    """The HV/MV substation sites of the region from OSM, matched to the eGon-data substations (eTraGo buses) and
+    checked for an OSM HV line that feeds them, as a table for ``insert_substations``."""
     substations = _module("substations")
     egon_ok, egon_why = dbc.egon_available()
     egon = dbc.egon_substations(region_wkb, params.region_buffer_m) if egon_ok else None
@@ -325,12 +325,18 @@ def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger:
     if not egon_ok:
         logger.warning(f"eGon cross-check disabled: {egon_why}")
     matches = substations.match_egon(sites, egon, params.egon_match_m) if egon is not None else None
-    frame = substations.sites_frame(sites, region_wkb=region_wkb, matches=matches)
+    lines = _optional(dbc, "mv_osm_hv_lines", logger, dbc.osm_hv_lines, region_wkb,
+                      params.region_buffer_m + substations.HV_LINE_END_M)
+    fed = substations.hv_line_ends(sites, lines) if lines is not None else None
+    frame = substations.sites_frame(sites, region_wkb=region_wkb, matches=matches, hv_lines=fed)
     if matches is not None:
         unmatched = int(frame["egon_bus_id"].isna().sum())
         if unmatched:
             logger.info(f"{unmatched} of {len(frame)} OSM sites have no eGon substation within "
                         f"{params.egon_match_m:g} m")
+    if fed is not None and not all(fed):
+        logger.info(f"{len(fed) - sum(fed)} of {len(fed)} OSM sites have no 60 or 110 kV line or cable of OSM ending "
+                    f"within {substations.HV_LINE_END_M:g} m (flag no_osm_hv_line)")
     return frame.reset_index(drop=True)
 
 

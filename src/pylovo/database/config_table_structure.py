@@ -457,7 +457,8 @@ CREATE_QUERIES = {
         peak_feed_in_mw double precision,
         loading_n0_percent double precision,
         loading_n1_percent double precision,
-        flags text[] NOT NULL DEFAULT ARRAY[]::text[],   -- ehv_uncertain, long_attach, over_capacity, no_nodes
+        flags text[] NOT NULL DEFAULT ARRAY[]::text[],   -- ehv_uncertain, long_attach, over_capacity, no_nodes,
+                                                         -- no_egon_bus, no_osm_hv_line
         geom geometry(Point,{TARGET_EPSG}) NOT NULL,     -- busbar point
         footprint geometry(MultiPolygon,{TARGET_EPSG}),
         display_geom geometry(Polygon,{TARGET_EPSG}),    -- busbar circle the display lines end on

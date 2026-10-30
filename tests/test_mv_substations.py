@@ -326,6 +326,72 @@ def _render(query) -> str:
     raise TypeError(type(query))
 
 
+# ---------------------------------------------------------------------------------------------- OSM HV lines
+@pytest.mark.parametrize("subtype, tags, expected", [
+    ("line", {"voltage": "110000"}, True),
+    ("cable", {"voltage": "110000", "location": "underground"}, True),         # cables feed the city substations
+    ("line", {"voltage": "380000;110000"}, True),                                # 110 kV circuits on EHV towers
+    ("line", {"voltage": "110000;20000"}, True),
+    ("line", {"voltage": "60000"}, True),
+    ("line", {"voltage": "20000"}, False),
+    ("line", {"voltage": "380000"}, False),
+    ("line", {}, False),                                                         # no voltage tag
+    ("line", None, False),
+    ("minor_line", {"voltage": "110000"}, False),
+    ("line", {"voltage": "110000", "line": "busbar"}, False),                    # substation internals
+    ("line", {"voltage": "110000", "frequency": "16.7"}, False),                 # railway current
+    ("line", {"voltage": "110000", "frequency": "50;16.7"}, True),
+    ("line", {"voltage": "110000", "operator": "DB Energie"}, False),            # railway operator without 50 Hz
+    ("line", {"voltage": "110000", "operator": "DB Energie", "frequency": "50"}, True),
+    ("line", {"voltage": "110000", "operator": "Bayernwerk;DB Energie"}, True),          # a shared line
+    ("line", {"voltage": "110000", "disused:power": "line"}, False),
+])
+def test_hv_lines_are_60_or_110_kv_lines_and_cables_in_service(subtype, tags, expected):
+    assert subs.is_hv_line(subtype, tags) is expected
+
+
+def _lines(*items) -> pd.DataFrame:
+    """OSM power ways from ``(subtype, voltage, geometry)``."""
+    return pd.DataFrame({"subtype": [s for s, _, _ in items],
+                         "tags": [None if v is None else {"voltage": v} for _, v, _ in items],
+                         "wkb": [shapely.to_wkb(g) for _, _, g in items]})
+
+
+def test_a_site_is_fed_where_an_hv_line_ends_within_50_m():
+    sites = _sites()                     # node/2 (1000, 0), node/3 (5000, 0), node/4 (9000, 0), way/1 (100 m square)
+    lines = _lines(
+        ("line", "110000", shapely.LineString([(-3000, 0), (-20, 0)])),         # ends inside the footprint of way/1
+        ("cable", "110000", shapely.LineString([(1040, 0), (3000, 0)])),        # ends 40 m from node/2
+        ("line", "110000", shapely.LineString([(5000, -500), (5000, 500)])),    # passes node/3 without ending there
+        ("line", "20000", shapely.LineString([(9000, 0), (9500, 0)])),          # an MV line at node/4
+        ("line", "110000", shapely.MultiLineString([[(8000, 0), (8500, 0)], [(9060, 0), (9900, 0)]])))   # 60 m
+    assert subs.hv_line_ends(sites, lines) == [True, False, False, True]
+    assert subs.hv_line_ends(sites, lines, max_m=60.0) == [True, False, True, True]
+    assert subs.hv_line_ends(sites, None) == [False] * 4
+    assert subs.hv_line_ends(sites, lines.iloc[0:0]) == [False] * 4
+    assert subs.hv_line_ends([], lines) == []
+
+
+def test_a_stub_inside_the_yard_feeds_nothing_but_the_last_span_does():
+    yard = Site(["way/9"], 0.0, 0.0, 10000.0, _square(0, 0, 50), None, None, "110000", 110000, False)
+    stubs = _lines(("line", "110000", shapely.LineString([(-40, 0), (40, 0)])),          # inside the footprint
+                   ("line", "110000", shapely.LineString([(0, -45), (0, 55)])))          # crosses the fence by 5 m
+    assert subs.hv_line_ends([yard], stubs) == [False]
+    last_span = _lines(("line", "110000", shapely.LineString([(80, 0), (20, 0)])))      # from the last tower in
+    assert subs.hv_line_ends([yard], last_span) == [True]
+
+
+def test_sites_frame_flags_sites_without_an_osm_hv_line():
+    sites = _sites()
+    table = sites_frame(sites, hv_lines=[True, False, False, True])
+    assert ["no_osm_hv_line" in f for f in table["flags"]] == [False, True, True, False]
+    assert not any("no_osm_hv_line" in f for f in sites_frame(sites)["flags"])       # no check: no flag
+    both = sites_frame(sites, matches=match_egon(sites, EGON, 300.0), hv_lines=[True, False, False, True])
+    assert both["flags"].tolist()[1] == ["no_egon_bus", "no_osm_hv_line"]
+    with pytest.raises(ValueError, match="hv_lines"):
+        sites_frame(sites, hv_lines=[True])
+
+
 class FakeCursor:
     """Records the rendered queries; ``respond(text, params)`` returns the rows of each query."""
 
@@ -463,6 +529,35 @@ def test_osm_objects_and_landuse_are_prefiltered_in_the_srid_of_each_layer(schem
     text, params = _query(client, "ST_Intersection(v.geom, r.g)")     # the clip runs on the staged polygons
     assert "FROM pg_temp.mv_landuse_raw l" in text and params == {"region": region}
     assert "CASE WHEN ST_Covers(r.g, v.geom) THEN v.geom" in text    # the overlay only for the border polygons
+
+
+def test_osm_hv_lines_are_read_in_the_srid_of_the_line_layer(schemas):
+    line = shapely.to_wkb(shapely.LineString([(0, 0), (500, 0)]))
+    rows = [(7, "cable", {"voltage": "110000"}, memoryview(line)), (8, "line", None, line)]
+
+    def respond(text, params):
+        if text.startswith("SELECT c IS NOT NULL"):                      # the line layer exists
+            return [(True,)]
+        return [(3857,)] if text.startswith("SELECT ST_SRID") else rows
+
+    client = _client(respond)
+    region = shapely.to_wkb(shapely.box(0, 0, 10, 10))
+    result = client.osm_hv_lines(region, 5050.0)
+    text, params = _query(client, '"osm_x".infrastructure_line')
+    for needle in ("LEFT JOIN \"osm_x\".tags t ON t.geom_type = 'W' AND t.osm_id = l.osm_id",
+                   "l.osm_subtype = ANY(%(subtypes)s)", "ST_Transform(l.geom, 25832)",
+                   "l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, 25832), %(line_srid)s)"):
+        assert needle in text
+    assert params["subtypes"] == list(subs.HV_LINE_SUBTYPES) and params["line_srid"] == 3857
+    assert shapely.from_wkb(params["box"]).bounds == (-6050.0, -6050.0, 6060.0, 6060.0)   # reach + margin
+    assert tuple(result.columns) == source_mixin.OSM_HV_LINE_COLUMNS
+    assert result["source_id"].tolist() == ["way/7", "way/8"]
+    assert result["tags"].tolist() == [{"voltage": "110000"}, None]
+    assert all(isinstance(wkb, bytes) for wkb in result["wkb"])
+    assert subs.hv_line_ends([Site(["node/1"], 0.0, 0.0, 0.0, None, None, None, "110000", 110000, False)],
+                             result) == [True]                             # the cable ends at the site
+    absent = _client(lambda text, params: [(False,)] if text.startswith("SELECT c IS NOT NULL") else [])
+    assert absent.osm_hv_lines(region, 5050.0) is None
 
 
 def test_osm_queries_need_the_osm_schema(schemas, monkeypatch):

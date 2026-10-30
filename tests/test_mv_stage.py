@@ -469,6 +469,10 @@ class RegionDb:
     def osm_substation_candidates(self, region, buffer_m):
         return pd.DataFrame({"source_id": ["way/1", "way/2", "way/3"]})
 
+    def osm_hv_lines(self, region, reach_m):
+        self._record("osm_hv_lines", reach_m)
+        return pd.DataFrame({"subtype": ["line"], "tags": [{"voltage": "110000"}], "wkb": [None]})
+
     def insert_substations(self, version_id, variant_id, sites):
         self._record("insert_substations", sites.copy())
         return np.array([11, 12, 13])
@@ -546,10 +550,18 @@ def region_modules(monkeypatch):
     sites = [types.SimpleNamespace(key=f"way/{i}") for i in (1, 2, 3)]
     subs.select_osm_sites = lambda candidates, params: types.SimpleNamespace(sites=sites, describe=lambda: "3 sites")
     subs.match_egon = lambda s, egon, max_m: [(1, 0.0), (None, None), (None, None)]
-    subs.sites_frame = lambda s, region_wkb=None, matches=None: pd.DataFrame({
-        "source": "osm", "source_ids": [[x.key] for x in s], "egon_bus_id": pd.array([1, None, None], dtype="Int64"),
-        "in_region": [True, False, True], "osm_ratings_mva": None, "flags": [[], [], []],
-        "x": [0.0, 5000.0, 900.0], "y": [0.0, 0.0, 0.0], "footprint_wkb": None})
+    subs.HV_LINE_END_M = 50.0
+    subs.hv_line_ends = lambda s, lines: [True, False, True] if len(lines) else [False] * len(s)
+
+    def sites_frame(s, region_wkb=None, matches=None, hv_lines=None):
+        recorded["hv_lines"] = hv_lines
+        return pd.DataFrame({
+            "source": "osm", "source_ids": [[x.key] for x in s],
+            "egon_bus_id": pd.array([1, None, None], dtype="Int64"), "in_region": [True, False, True],
+            "osm_ratings_mva": None, "flags": [[], [], []], "x": [0.0, 5000.0, 900.0], "y": [0.0, 0.0, 0.0],
+            "footprint_wkb": None})
+
+    subs.sites_frame = sites_frame
     inputs = types.ModuleType("pylovo.mv_grid.inputs")
     inputs.station_table = lambda st, stats, lv: pd.DataFrame({
         "kind": "station", "connection_hint": "ring", "grid_result_id": [7, 8], "x": [10.0, 20.0], "y": 0.0,
@@ -609,6 +621,8 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert region_modules["stations"]["grid_result_id"].tolist() == [7, 8]
     assert region_modules["split"] == 1                                   # the small customers are split off
     assert region_modules["upsize_lv"] is LV                              # then overloaded stations are upsized
+    # the OSM HV lines are read within the search buffer plus the end distance and checked at the sites
+    assert db.calls["osm_hv_lines"] == [(5050.0,)] and region_modules["hv_lines"] == [True, False, True]
     nodes = db.inserted_nodes
     assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
 

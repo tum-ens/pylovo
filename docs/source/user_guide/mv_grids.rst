@@ -593,10 +593,12 @@ important ones:
      - Customer whose dedicated feeder would need more than ``max_parallel_cables`` parallel cables.
    * - ``unsupplied``, ``unconnected``
      - Node without a voltage in the load case, or without any line.
-   * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``, ``no_egon_bus``
+   * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``, ``no_egon_bus``,
+       ``no_osm_hv_line``
      - Substation flags: extra-high-voltage site without an HV/MV partner, busbar too far from the
        streets, load above the (n-1) capacity (more transformer units), no node assigned, no
-       eGon-data substation (eTraGo bus) within reach.
+       eGon-data substation (eTraGo bus) within reach, no 60 kV or 110 kV line or cable of OSM
+       ending at the site (its feed is not mapped).
 
 SQL examples
 ~~~~~~~~~~~~

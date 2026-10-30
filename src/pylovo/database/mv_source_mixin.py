@@ -37,6 +37,10 @@ EGON_SUBSTATION_COLUMNS: tuple[str, ...] = ("bus_id", "voltage", "osm_id", "x", 
 OSM_OBJECT_COLUMNS: tuple[str, ...] = ("source_id", "kind", "tags", "x", "y", "area_m2")
 #: Columns of :meth:`MvSourceMixin.osm_landuse`.
 OSM_LANDUSE_COLUMNS: tuple[str, ...] = ("osm_type", "geom_wkb")
+#: Columns of :meth:`MvSourceMixin.osm_hv_lines`.
+OSM_HV_LINE_COLUMNS: tuple[str, ...] = ("source_id", "subtype", "tags", "wkb")
+#: ``power`` values of the ways :meth:`MvSourceMixin.osm_hv_lines` reads (= ``substations.HV_LINE_SUBTYPES``).
+OSM_HV_LINE_SUBTYPES: tuple[str, ...] = ("line", "cable")
 
 #: The eGon-data table of the HV/MV substations (their bus ids are the 110 kV buses of eTraGo).
 EGON_SUBSTATION_TABLE: str = "egon_hvmv_substation"
@@ -142,6 +146,17 @@ SELECT o.source_id, o.kind, t.tags::text AS tags, ST_X(o.pt) AS x, ST_Y(o.pt) AS
 FROM pts o
 LEFT JOIN {osm}.tags t ON t.geom_type = o.gt AND t.osm_id = o.tag_id
 ORDER BY o.source_id;
+""")
+
+# power=line and power=cable ways in the search box of the planning region with their tags, prefiltered in the SRID
+# of the line layer (pylovo.mv_grid.substations.is_hv_line keeps the 60 kV and 110 kV ones).
+_OSM_HV_LINES_SQL = sql.SQL("""
+SELECT l.osm_id, l.osm_subtype, t.tags, ST_AsBinary(ST_Force2D(ST_Transform(l.geom, {epsg}))) AS wkb
+FROM {osm}.infrastructure_line l
+LEFT JOIN {osm}.tags t ON t.geom_type = 'W' AND t.osm_id = l.osm_id
+WHERE l.osm_type = 'power' AND l.osm_subtype = ANY(%(subtypes)s)
+  AND l.geom && ST_Transform(ST_GeomFromWKB(%(box)s, {epsg}), %(line_srid)s)
+ORDER BY l.osm_id
 """)
 
 # OSM land-use polygons in the search box of the planning region (staged into pg_temp.mv_landuse_raw) ...
@@ -253,7 +268,8 @@ class MvSourceMixin(BaseMixin):
                     (INFDB_OSM_SCHEMA, "infrastructure_point"), (INFDB_OSM_SCHEMA, "infrastructure_polygon"),
                     (INFDB_OSM_SCHEMA, "tags")]
         optional = {(INFDB_OSM_SCHEMA, "landuse_polygon"): "MV settlements from address buildings only",
-                    (INFDB_OSM_SCHEMA, "infrastructure_line"): "no OSM MV lines, every MV line is a cable",
+                    (INFDB_OSM_SCHEMA, "infrastructure_line"): "no OSM MV lines, every MV line is a cable, and "
+                                                               "no check of the OSM HV lines at the substations",
                     (INFDB_OSM_SCHEMA, "building_polygon"): "no transformer towers in the OSM coverage report",
                     (INFDB_OPENDATA_SCHEMA, "scope"): "MV_NOMINAL_VOLTAGE_KV auto finds no municipality areas"}
         if not INFDB_SOURCE_SCHEMA or not INFDB_OSM_SCHEMA:
@@ -401,6 +417,32 @@ class MvSourceMixin(BaseMixin):
         frame = _frame([(t, _wkb(g)) for t, g in self.cur.fetchall()], OSM_LANDUSE_COLUMNS)
         self.cur.execute("DROP TABLE pg_temp.mv_landuse_raw")
         return frame
+
+    def osm_hv_lines(self, region_wkb: bytes, reach_m: float) -> pd.DataFrame | None:
+        """The ``power=line`` and ``power=cable`` ways of the OSM schema in the search box of the planning region,
+        the inputs of :func:`pylovo.mv_grid.substations.hv_line_ends` (which keeps the 60 kV and 110 kV ones).
+
+        Args:
+            region_wkb: The planning region (WKB, ``TARGET_EPSG``).
+            reach_m: How far beyond the region the ways are read (the search buffer of the sites plus the end
+                distance of the check).
+
+        Returns:
+            Columns of :data:`OSM_HV_LINE_COLUMNS`, sorted by ``source_id`` (``way/<id>``): ``subtype`` (the power
+            value), ``tags`` (dict, None without tags) and ``wkb`` (the line, WKB in ``TARGET_EPSG``); None without
+            ``infrastructure_line`` in the OSM schema.
+
+        Raises:
+            MvStageError: If ``INFDB_OSM_SCHEMA`` is not set.
+        """
+        osm = _schema(INFDB_OSM_SCHEMA, "INFDB_OSM_SCHEMA")
+        if not self.source_reader().table_exists(INFDB_OSM_SCHEMA, "infrastructure_line"):
+            return None
+        found = self.source_reader().fetchall(_OSM_HV_LINES_SQL.format(osm=osm, epsg=sql.Literal(TARGET_EPSG)), {
+            "subtypes": list(OSM_HV_LINE_SUBTYPES), "box": _search_box(_wkb(region_wkb), reach_m),
+            "line_srid": self._osm_srid("infrastructure_line")})
+        return _frame([(f"way/{osm_id}", subtype, tags if isinstance(tags, dict) else None, _wkb(wkb))
+                       for osm_id, subtype, tags, wkb in found], OSM_HV_LINE_COLUMNS)
 
     # ------------------------------------------------------------------ eGon
     def _egon_table(self, table: str) -> tuple[str, sql.Identifier, bool] | None:
