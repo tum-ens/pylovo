@@ -115,6 +115,41 @@ def test_mv_lines_draw_their_display_geometry_where_the_database_has_one(service
     assert "ST_LineInterpolatePoint(COALESCE(l.display_geom, l.geom)" in service.sql(opens, q)
 
 
+def _etrago_files(folder: Path) -> None:
+    """A downloaded eTraGo grid: bus 7 and one 110 kV line along 48.5° N."""
+    folder.mkdir(parents=True)
+    (folder / "meta.json").write_text("{}", encoding="utf-8")
+    (folder / "buses.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"fid": 7, "v_nom": 110}, "geometry": {"type": "Point", "coordinates": [11.0, 48.5]}}]}))
+    (folder / "lines.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"fid": 1, "v_nom": 110},
+         "geometry": {"type": "LineString", "coordinates": [[11.0, 48.5], [11.2, 48.5]]}}]}))
+
+
+def test_links_of_the_hv_mv_substations_to_the_etrago_grid(service, fake_db, tmp_path):
+    links = service.layers["hv_links"]
+    assert links.parent == "hv_substations" and links.etrago and "NULL AS geometry" in links.sql
+    assert service.unavailable(links) == "no table pylovo.mv_substation in this database"
+    service.catalog.columns["pylovo.mv_substation"] = {"substation_id": "int8", "geom": "geometry"}
+    service.catalog.has_rows["pylovo.mv_variant"] = True
+    assert "not downloaded yet" in service.unavailable(links)
+    _etrago_files(tmp_path / "etrago" / "eGon2035")
+    assert service.unavailable(links) is None
+    fake_db.rows = {"AS etrago_bus,": [
+        {"fid": 11, "name": "A", "etrago_bus": 7, "flags": "", "x": 11.001, "y": 48.501, "geometry": None},
+        {"fid": 12, "name": "B", "etrago_bus": None, "flags": "no_egon_bus, no_osm_hv_line", "x": 11.1, "y": 48.48,
+         "geometry": None}]}
+    out = json.loads(service.geojson("hv_links", Query(version="v1", mv="d1")))
+    props = {f["properties"]["fid"]: f["properties"] for f in out["features"]}
+    assert (props[11]["link"], props[11]["target"]) == ("bus", 7) and (props[12]["link"], props[12]["target"]) == ("nearest_line", 1)
+    assert props[12]["flags"] == "no_egon_bus, no_osm_hv_line" and "x" not in props[12] and props[12]["length_m"] > 2000
+    assert out["features"][1]["geometry"]["coordinates"][1] == pytest.approx([11.1, 48.5], abs=1e-6)
+    assert "WHERE s.version_id = %(version)s AND s.mv_variant_id = %(mv)s" in fake_db.calls[-1][0]
+    grid = next(iter(service._etrago._data.values()))
+    service.geojson("hv_links", Query(version="v1", mv="d1"))
+    assert next(iter(service._etrago._data.values())) is grid             # the indexed grid is reused
+
+
 def test_overhead_parts_of_mixed_lines(service, fake_db):
     rows = [{"fid": 1, "kind": "mixed"}, {"fid": 2, "kind": "cable"}, {"fid": 3, "kind": "mixed"}]
     service._overhead_parts(rows, Query(version="v1", mv="d1"))   # no routing graph in the database: left out

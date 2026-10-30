@@ -57,6 +57,8 @@ const voltageScheme = (prop, numeric) => {
     : levels.map(([k, c, l]) => [k, c, l]);
   return { type: 'match', prop, entries, fallback: [pal().ink.neutral, 'Other'] };
 };
+// The colour of the 110 kV level (the HV links share it).
+const hv110 = () => voltageLevels().find(([k]) => k === '110')[1];
 const voltageWidth = (prop, numeric) => ['match', ['get', prop],
   ...voltageLevels().filter(([k]) => !numeric || ['380', '220', '110'].includes(k))
     .flatMap(([k, , , w]) => [numeric ? Number(k) : k, w]), 1];
@@ -120,6 +122,33 @@ export const STYLES = {
       ...(o.supplied_lines ? [['Supplies (area ' + o.supplied_area + ')', `${f.num(o.supplied_lines)} MV lines · ${f.km(o.supplied_km)}`],
         ['Rings / MV/LV substations', `${f.num(o.supplied_rings)} / ${f.num(o.supplied_stations)}`],
         ['Normally open (not highlighted)', `${f.count(o.open_ties, 'tie')} · ${f.count(o.open_links, 'link')}`]] : [])] }),
+  },
+  hv_links: {
+    // a straight link from each HV/MV substation to the eTraGo grid: solid to its 110 kV bus, dashed where
+    // eTraGo has no bus for it (artificial, to the nearest 110 kV line; wider beyond 1 km, with its length)
+    layers: ({ id, p }) => {
+      const long = ['>', ['get', 'length_m'], 1000];
+      const width = (k) => ['interpolate', ['linear'], ['zoom'], 7, ['*', 0.6, k], 11, ['*', 1.4, k], 15, ['*', 2.4, k]];
+      const artificial = ['!=', ['get', 'link'], 'bus'];
+      return [
+        { id, type: 'line', filter: ['==', ['get', 'link'], 'bus'], layout: { 'line-cap': 'round' },
+          paint: { 'line-color': hv110(), 'line-width': width(1) } },
+        { id: `${id}:artificial`, type: 'line', filter: artificial,
+          paint: { 'line-color': hv110(), 'line-width': width(['case', long, 1.8, 1]), 'line-dasharray': [1.6, 1.4] } },
+        { id: `${id}:label`, type: 'symbol', pick: false, minzoom: 11, filter: ['all', artificial, ['>=', ['get', 'length_m'], 100]],
+          layout: { ...label(['case', long,
+            ['concat', ['number-format', ['/', ['get', 'length_m'], 1000], { 'max-fraction-digits': 1 }], ' km'],
+            ['concat', ['to-string', ['get', 'length_m']], ' m']], 10.5), 'symbol-placement': 'line-center' },
+          paint: { 'text-color': hv110(), 'text-halo-color': p.surface, 'text-halo-width': 1.6 } },
+      ];
+    },
+    legend: () => [{ kind: 'line', colour: hv110(), label: 'Link to its eTraGo 110 kV bus' },
+      { kind: 'line', dash: true, colour: hv110(), label: 'No eTraGo bus: artificial link to the nearest 110 kV line (wider beyond 1 km)' }],
+    facts: (o) => ({ title: hvmv(o.name),
+      subtitle: o.link === 'bus' ? `link to eTraGo bus ${o.target}` : `artificial link to eTraGo line ${o.target}`, rows: [
+        ['Length', f.meters(o.length_m)],
+        ['eTraGo', o.link === 'bus' ? 'its 110 kV bus' : 'no bus for this substation: nearest 110 kV line'],
+        ...(String(o.flags || '').includes('no_osm_hv_line') ? [['OSM', 'no 60 or 110 kV line ends at the substation']] : [])] }),
   },
   hv_sites: {
     layers: ({ id, p }) => [

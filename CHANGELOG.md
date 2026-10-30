@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add `pylovo-generate --all [STATE ...]` to generate every postcode with buildings in the InfDB, or those of federal states, e.g. `--all by nrw` (see [Region selection](https://pylovo.readthedocs.io/en/latest/user_guide/region_selection.html))
 - Flag HV/MV substations that no 60 kV or 110 kV line or cable of OSM ends at (`no_osm_hv_line`): their feed, and so their eTraGo bus, is not confirmed by OSM (see [MV grids](https://pylovo.readthedocs.io/en/latest/concepts/mv_grids.html#mv-substations))
 - Add a selection report to `pylovo-classify` that shows how close and how stable the automatic choice of the clustering parameters and the number of clusters is, and `--same-sample-as` to classify the PLZ of another classification again (see [Classifying grids](https://pylovo.readthedocs.io/en/latest/user_guide/classification.html#classification-selection-report))
+- Draw a link from each HV/MV substation to the eTraGo grid in `pylovo-viewer`: to its 110 kV bus, or dashed to the nearest 110 kV line where eTraGo has no bus for it (see [Map viewer](https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html#the-german-high-voltage-grid-etrago))
 
 ### Changed
 - Upgrade the locked dependencies, among them pandapower 3.5, NumPy 2.4, SciPy 1.18, SQLAlchemy 2.1, numba 0.68, plotly 7 and matplotlib 3.11; pandapower 3.5.2 is the new minimum

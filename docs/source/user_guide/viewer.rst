@@ -147,6 +147,11 @@ says so.
    * - HV grid
      - HV and EHV lines
      - The 110, 220 and 380 kV grid of Germany from eGon-data (see below).
+   * - HV grid
+     - Links to the HV grid
+     - From each HV/MV substation of the MV run a straight line to its eTraGo 110 kV bus, or, for a
+       substation without one, a dashed artificial link to the nearest eTraGo 110 kV line (see below).
+       Shown with the HV/MV substations.
    * - HV and MV grids
      - HV/MV substations
      - ``pylovo.mv_substation`` of the MV run with their site outlines, as white badges with a frame
@@ -200,7 +205,12 @@ OpenStreetMap (2021) and published on the Open Energy Platform. Download it once
    uv run --extra viewer pylovo-viewer fetch etrago      # scenario eGon2035
 
 The 110 kV grid is the reason for this source: the prebuilt OpenStreetMap network of PyPSA-Eur
-covers 220 kV and above only. The data derive from OpenStreetMap (ODbL); the map shows the
+covers 220 kV and above only. The layer *Links to the HV grid* joins the HV/MV substations of the MV run
+to this grid. A substation with an eTraGo bus (``mv_substation.egon_bus_id``) gets a short line to it.
+A substation without one gets a dashed link to the nearest eTraGo 110 kV line, wider beyond 1 km and
+labelled with its length from zoom 11. eTraGo has no line to such a substation, so the link is
+artificial: either the substation is missing from the OpenStreetMap data of 2021, or its supply line
+is not mapped at all, which the facts show with the flag ``no_osm_hv_line``. The data derive from OpenStreetMap (ODbL); the map shows the
 attribution.
 
 .. figure:: /images/viewer/viewer-overview.png

@@ -128,6 +128,7 @@ class Layer:
     detail: str = ""                  # one feature, parameter %(fid)s
     requires: tuple[str, ...] = ()    # "schema.table" or "schema.table(col, col)"
     rows: tuple[str, ...] = ()        # tables that must hold rows
+    etrago: bool = False              # also needs the downloaded eTraGo grid (pylovo-viewer fetch etrago)
     parent: str | None = None         # shown and hidden with this layer
     also: tuple[str, ...] = ()        # further groups that list the layer (substations: both levels)
     with_run: bool = False            # a version layer that adds data of the MV run when one is given
@@ -193,6 +194,21 @@ def build_layers() -> list[Layer]:
               detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
               requires=("pylovo.mv_substation(display_geom)",), rows=("pylovo.mv_variant",),
               parent="hv_substations", min_zoom=15),
+        Layer("hv_links", "hv", "Links to the HV grid",
+              "A straight link from each HV/MV substation of the run to the eTraGo grid as drawn: to its 110 kV "
+              "bus, or, for a substation without one, to the nearest eTraGo 110 kV line (dashed: eTraGo has no "
+              "line to it, so the link is artificial).",
+              "line", "run", "pylovo.mv_substation and the eGon-data eTraGo grid",
+              sql=f"""SELECT s.substation_id AS fid, s.name, s.egon_bus_id AS etrago_bus,
+                             array_to_string(s.flags, ', ') AS flags,
+                             {num("ST_X(ST_Transform(s.geom, 4326))", 6)} AS x,
+                             {num("ST_Y(ST_Transform(s.geom, 4326))", 6)} AS y,
+                             NULL AS geometry
+                      FROM pylovo.mv_substation s WHERE {run('s')}""",
+              detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
+              requires=("pylovo.mv_substation",), rows=("pylovo.mv_variant",), etrago=True,
+              parent="hv_substations", post=("hv_links",),
+              attribution="eGon-data eTraGo grid (osmTGmod), © OpenStreetMap contributors (ODbL)"),
         # -------------------------------------------------------------------------------- MV grids
         Layer("mv_lines", "mv", "MV lines",
               "MV cables and overhead lines of the run: open rings, stubs, dedicated feeders, ties between supply "
@@ -396,6 +412,7 @@ class LayerService:
         self._slots = LRU(64)
         self._feeders = LRU(20_000)
         self._overhead = LRU(16)   # overhead parts of mixed MV lines per run (their query takes about 0.5 s)
+        self._etrago = LRU(2)      # the eTraGo grid of the HV links by file times (indexing takes about 1 s)
 
     # ------------------------------------------------------------------------------ availability
     def unavailable(self, layer: Layer) -> str | None:
@@ -412,6 +429,10 @@ class LayerService:
         for table in layer.rows:
             if not self.catalog.has_rows.get(table, False):
                 return f"{table} is empty"
+        if layer.etrago:
+            from pylovo_viewer import etrago
+            if not etrago.status(self.data_dir)["available"]:
+                return "the eTraGo grid is not downloaded yet: run pylovo-viewer fetch etrago"
         return None
 
     def describe(self) -> list[dict[str, Any]]:
@@ -434,6 +455,7 @@ class LayerService:
         self._slots.clear()
         self._feeders.clear()
         self._overhead.clear()
+        self._etrago.clear()
 
     # -------------------------------------------------------------------------------------- data
     def _check(self, layer: Layer, q: Query) -> None:
@@ -695,6 +717,27 @@ class LayerService:
         for row in mixed:
             if row["fid"] in parts:
                 row["overhead"] = parts[row["fid"]]
+
+    def _hv_links(self, rows: list[dict[str, Any]], q: Query) -> None:
+        """The straight link of each substation to the eTraGo grid (:func:`pylovo_viewer.hv_links.link`); a
+        substation without one (no bus and no 110 kV line) is left out."""
+        from pylovo_viewer import etrago, hv_links
+
+        folder = etrago.dataset_dir(self.data_dir)
+        try:
+            key = tuple((folder / f"{part}.geojson").stat().st_mtime_ns for part in etrago.PARTS)
+        except OSError:
+            key = None
+        grid = None if key is None else self._etrago.get(key)
+        if grid is None and key is not None:
+            buses, lines = (etrago.read(self.data_dir, part) for part in ("buses", "lines"))
+            if buses is not None and lines is not None:
+                grid = self._etrago.put(key, hv_links.EtragoGrid.from_geojson(buses, lines))
+        for row in rows:
+            x, y = row.pop("x", None), row.pop("y", None)
+            made = None if grid is None or x is None or y is None else \
+                hv_links.link(grid, float(x), float(y), row.get("etrago_bus"))
+            row.update(made or {"geometry": None})
 
     def _building_feeders(self, rows: list[dict[str, Any]], q: Query) -> None:
         maps = self.feeder_maps({row["grid"] for row in rows if row.get("grid") is not None})

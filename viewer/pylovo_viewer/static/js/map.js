@@ -22,7 +22,7 @@ export const BASEMAPS = {
 
 // Draw order, bottom to top ('lod2' is the custom 3D layer).
 export const Z_ORDER = ['postcodes', 'mv_areas', 'lv_areas', 'mv_customers', 'lv_buildings', 'lod2', 'hv_sites',
-  'mv_osm_lines', 'hv_lines', 'lv_cables', 'mv_lines', 'hv_busbars', 'lv_cabinets', 'mv_open_points', 'mv_stations',
+  'mv_osm_lines', 'hv_lines', 'hv_links', 'lv_cables', 'mv_lines', 'hv_busbars', 'lv_cabinets', 'mv_open_points', 'mv_stations',
   'hv_substations'];
 const HOVER = new Set(['postcodes', 'lv_areas', 'mv_areas']);
 const EMPTY = { type: 'FeatureCollection', features: [] };
