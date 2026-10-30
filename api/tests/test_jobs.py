@@ -270,7 +270,9 @@ def test_a_job_record_is_never_read_half_written(manager):
 def test_a_job_that_was_running_when_the_server_died_is_marked_interrupted(tmp_path):
     jobs_dir = tmp_path / "jobs"
     for job_id, status in (("a1", "running"), ("a2", "queued")):
-        write_record(jobs_dir, job_id, status=status, pid=os.getpid())  # a pid that exists, but is not the job's process
+        # a pid that exists, but is not the job's process: it started later (with the default started_at of 100 s ago,
+        # a test session that reached this test after 95 to 105 s passed as the job's process)
+        write_record(jobs_dir, job_id, status=status, pid=os.getpid(), started_at=time.time() - 3600)
     manager = JobManager(cwd=tmp_path, jobs_dir=jobs_dir)
     for job_id in ("a1", "a2"):
         job = manager.get(job_id)
