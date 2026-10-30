@@ -1,7 +1,7 @@
 """``pylovo-generate``: summary line, exit code and MV stage for PLZ that failed or have no grids (no database)."""
 import pytest
 
-from pylovo.cli import generate
+from pylovo.cli import generate, parsers
 from pylovo.grid_generator import GenerationOutcome as Outcome
 
 GENERATED, EXISTS, EMPTY, FAILED = Outcome.GENERATED, Outcome.EXISTS, Outcome.EMPTY, Outcome.FAILED
@@ -33,6 +33,7 @@ def lv(monkeypatch):
     monkeypatch.setattr(generate, "create_grid_multiple_plz",
                         lambda plz, parallel=True: {p: Run.outcomes[p] for p in plz})
     monkeypatch.setattr(generate, "create_grids_for_ags", lambda ags, parallel=True: dict(Run.outcomes))
+    monkeypatch.setattr(generate, "create_grids_for_all_plz", lambda states, parallel=True: dict(Run.outcomes))
     monkeypatch.setattr(generate, "run_mv_stage_after_lv", lambda plz, parallel, params: Run.mv.append(plz))
     monkeypatch.setattr(generate.dbc, "DatabaseClient", SourcesFound)
     return Run
@@ -73,6 +74,40 @@ def test_a_municipality_run_reports_its_plz_too(lv, capsys):
     lv.outcomes = {80803: GENERATED, 80804: FAILED}
     code, out = run(["--ags", "9162000"], capsys)
     assert code == 4 and "✗ 1 of 2 PLZ not generated: 80804 (failed)" in out
+
+
+def test_an_all_run_reports_its_plz_too(lv, monkeypatch, capsys):
+    monkeypatch.setattr(generate, "USE_INFDB", True)
+    lv.outcomes = {80803: GENERATED, 80804: EMPTY}
+    code, out = run(["--all"], capsys)
+    assert code == 4 and "✗ 1 of 2 PLZ not generated: 80804 (empty)" in out
+
+
+def test_all_is_refused_in_the_file_based_mode(lv, monkeypatch, capsys):
+    monkeypatch.setattr(generate, "USE_INFDB", False)
+    with pytest.raises(SystemExit) as stopped:
+        generate.main(["--all"])
+    out, err = capsys.readouterr()
+    assert stopped.value.code == 2 and "--all needs USE_INFDB=True" in err
+    assert "Pylovo Grid Creation Script" not in out
+
+
+def test_all_cannot_be_combined_with_plz(lv, capsys):
+    code, _ = run(["--all", "--plz", "80803"], capsys)
+    assert code == 2
+
+
+def test_all_takes_federal_states_by_code_or_by_key():
+    parse = parsers.generate_parser().parse_args
+    assert parse(["--all"]).all_states == [] and parse(["--plz", "80803"]).all_states is None
+    assert parse(["--all", "by", "NRW", "nw", "9", "05", "--no-mv"]).all_states == ["09", "05", "05", "09", "05"]
+
+
+@pytest.mark.parametrize("state", ["bayern", "17", "0", "de"])
+def test_an_unknown_federal_state_is_a_usage_error(state, capsys):
+    with pytest.raises(SystemExit) as stopped:
+        parsers.generate_parser().parse_args(["--all", state])
+    assert stopped.value.code == 2 and f"unknown federal state '{state}'" in capsys.readouterr().err
 
 
 def test_the_mv_stage_runs_only_for_the_plz_with_lv_grids(lv, capsys):
@@ -121,3 +156,37 @@ def test_the_create_functions_return_the_outcome_of_every_plz(monkeypatch):
     monkeypatch.setattr(generate, "USE_INFDB", True)
     assert generate.create_grid_single_plz(80803) == {80803: EMPTY}
     assert generate.create_grid_multiple_plz([80803, 80804]) == {80803: FAILED, 80804: FAILED}
+
+
+def test_all_generates_the_postcodes_of_the_infdb_in_their_order(monkeypatch):
+    class FakeInfdb:
+        postcodes = [80804, 80803]
+        states = None
+        closed = False
+
+        def fetch_building_postcodes(self, states):
+            FakeInfdb.states = states
+            return list(self.postcodes)
+
+        def close(self):
+            FakeInfdb.closed = True
+
+    generated = []
+
+    class FakeGenerator:
+        def generate_grid_for_multiple_plz(self, df_plz, analyze_grids, parallel):
+            generated.extend(df_plz["plz"])
+            return {int(p): GENERATED for p in df_plz["plz"]}
+
+    monkeypatch.setattr(generate, "InfdbClient", FakeInfdb)
+    monkeypatch.setattr(generate, "GridGenerator", FakeGenerator)
+    assert generate.create_grids_for_all_plz() == {80804: GENERATED, 80803: GENERATED}
+    assert generated == [80804, 80803] and FakeInfdb.closed   # largest first, as the InfDB returned them
+    assert FakeInfdb.states == []
+
+    generate.create_grids_for_all_plz(["09", "05", "09"])
+    assert FakeInfdb.states == ["05", "09"]                     # each state once
+
+    FakeInfdb.postcodes = []
+    with pytest.raises(ValueError, match="No building with a postcode in the InfDB in the federal states 09"):
+        generate.create_grids_for_all_plz(["09"])

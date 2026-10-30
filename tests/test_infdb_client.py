@@ -80,6 +80,29 @@ def test_the_ways_of_a_plz_hold_the_connection_lines_of_its_buildings_filed_unde
     assert params == {"plz": 85465}
 
 
+def test_the_building_postcodes_come_largest_first_without_buildings_lacking_a_postcode():
+    infdb = InfdbClient.__new__(InfdbClient)
+    infdb.conn, infdb.cur = FakeConnection(), FakeCursor()
+    infdb.cur.rows = [(91126,), (80331,)]
+    assert infdb.fetch_building_postcodes() == [91126, 80331]
+    (query, params), = infdb.cur.executed
+    text = "".join(part.string for part in query.seq if isinstance(part, infdb_client.sql.SQL))
+    tables = [part.strings for part in query.seq if isinstance(part, infdb_client.sql.Identifier)]
+    assert tables == [(infdb_client.INFDB_SOURCE_SCHEMA, "buildings")] and params is None
+    assert "WHERE postcode IS NOT NULL" in text and "GROUP BY postcode" in text
+    assert "ORDER BY count(*) DESC, postcode" in text and "gemeindeschluessel" not in text
+
+
+def test_the_building_postcodes_of_federal_states_come_from_the_municipality_key_of_the_buildings():
+    infdb = InfdbClient.__new__(InfdbClient)
+    infdb.conn, infdb.cur = FakeConnection(), FakeCursor()
+    infdb.fetch_building_postcodes(["05", "09"])
+    (query, params), = infdb.cur.executed
+    text = "".join(part.string for part in query.seq if isinstance(part, infdb_client.sql.SQL))
+    assert "WHERE postcode IS NOT NULL AND left(gemeindeschluessel, 2) = ANY(%(states)s)" in text
+    assert params == {"states": ["05", "09"]}
+
+
 def test_the_consumer_buildings_need_an_address_only_with_the_address_filter(monkeypatch):
     monkeypatch.setattr(infdb_client, "EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", True)
     assert "COALESCE(house_number, '') <> ''" in infdb_client._consumer_buildings_sql()

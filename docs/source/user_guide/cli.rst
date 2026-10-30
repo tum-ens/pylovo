@@ -64,22 +64,26 @@ pylovo-generate
 
 .. code-block:: text
 
-   pylovo-generate [-h] [--plz PLZ [PLZ ...]] [--ags AGS [AGS ...]] [--parallel | --no-parallel]
-                   [--mv | --no-mv]
+   pylovo-generate [-h] (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all [STATE ...])
+                   [--parallel | --no-parallel] [--mv | --no-mv]
 
 Generates the grids of the given regions under the ``VERSION_ID`` of the configuration
-(:doc:`generating_grids`). Exactly one of ``--plz`` and ``--ags`` is required; they cannot be
-combined. Several postcodes run in parallel when ``PARALLEL`` in the configuration is ``True``
-(the default); the flags override it.
+(:doc:`generating_grids`). Exactly one of ``--plz``, ``--ags`` and ``--all`` is required; they
+cannot be combined. Several postcodes run in parallel when ``PARALLEL`` in the configuration is
+``True`` (the default); the flags override it.
 
 ``--plz PLZ [PLZ ...]``
    One or more postcodes (5 digits, integers).
 ``--ags AGS [AGS ...]``
    One or more municipality keys (8 digits, integers); all postcodes of the municipalities are
    generated (:doc:`region_selection`).
+``--all [STATE ...]``
+   Every postcode with buildings in the InfDB, or with buildings in the given federal states
+   (``by``, ``nrw``, ...; :doc:`region_selection`), the one with the most buildings first. Only with
+   ``USE_INFDB=True``; postcodes that already have grids are skipped, so a rerun resumes.
 ``--parallel`` / ``--no-parallel``
-   Process several postcodes (also those of ``--ags``) in worker processes, or one after the
-   other in the main process, whatever ``PARALLEL`` says.
+   Process several postcodes (also those of ``--ags`` and ``--all``) in worker processes, or one
+   after the other in the main process, whatever ``PARALLEL`` says.
 ``--mv`` / ``--no-mv``
    Run the MV stage after the LV grids of all postcodes, for the configured MV variant, or skip it,
    whatever ``MV_GRID_GENERATION`` says (:doc:`mv_grids`). The MV parameters are checked before the
@@ -91,6 +95,7 @@ combined. Several postcodes run in parallel when ``PARALLEL`` in the configurati
    pylovo-generate --plz 80803
    pylovo-generate --plz 80803 80802 80801 --no-parallel
    pylovo-generate --ags 09162000
+   pylovo-generate --all by --no-mv
    pylovo-generate --plz 80803 80802 --mv
 
 pylovo-mv

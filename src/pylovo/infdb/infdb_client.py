@@ -186,6 +186,32 @@ class InfdbClient:
 
         return buildings
 
+    def fetch_building_postcodes(self, states: list[str] | None = None) -> list[int]:
+        """Return the postcodes of ``INFDB_SOURCE_SCHEMA.buildings``, the one with the most buildings first.
+
+        Buildings without a postcode belong to no PLZ and are left out. ``states`` keeps the postcodes with
+        buildings in these federal states, by the first two digits of the building's ``gemeindeschluessel``; a
+        postcode across a state border belongs to both. Both take about a second for the 12.7 M buildings of
+        Bavaria and North Rhine-Westphalia.
+
+        Args:
+            states: Two-digit state keys (e.g. ``["09"]`` for Bavaria); ``None`` or empty for all postcodes.
+
+        Returns:
+            The postcodes, by descending number of buildings (in the states), ties by postcode.
+        """
+        query = sql.SQL("""
+            SELECT postcode
+            FROM {buildings}
+            WHERE postcode IS NOT NULL {in_states}
+            GROUP BY postcode
+            ORDER BY count(*) DESC, postcode
+        """).format(buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"),
+                    in_states=sql.SQL("AND left(gemeindeschluessel, 2) = ANY(%(states)s)" if states else ""))
+        with self.conn:
+            self.cur.execute(query, {"states": list(states)} if states else None)
+            return [int(row[0]) for row in self.cur.fetchall()]
+
     def fetch_transformer_station_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """Return the LoD2 transformer-station buildings of a PLZ (``building_use_id`` 31001_2523).
 

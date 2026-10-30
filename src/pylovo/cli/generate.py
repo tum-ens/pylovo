@@ -3,6 +3,8 @@
 - One PLZ: :func:`create_grid_single_plz` (sequential, with building import in file mode).
 - Several PLZ: :func:`create_grid_multiple_plz` (in parallel unless ``PARALLEL: False`` or ``--no-parallel``).
 - One or more AGS: :func:`create_grids_for_ags` generates all PLZ of the municipalities.
+- ``--all [STATE ...]``: :func:`create_grids_for_all_plz` generates every PLZ with buildings in the InfDB
+  (``USE_INFDB=True``), or with buildings in the given federal states.
 
 With ``USE_INFDB=False`` the building shapefiles are imported first (see
 :mod:`pylovo.data_import.import_buildings`). ``ANALYZE_GRIDS`` in ``config_generation_lv.yaml``
@@ -29,6 +31,7 @@ from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARA
 from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
 from pylovo.data_import.region_resolver import resolve_regions
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
+from pylovo.infdb.infdb_client import InfdbClient
 
 #: Exit code of a run that finished but left PLZ failed or without grids (1 stays "crashed", 2 "wrong arguments",
 #: 3 is the code of ``pylovo-analyze --coverage``). ``pylovo-api`` counts such a generate job as succeeded.
@@ -108,6 +111,35 @@ def create_grids_for_ags(ags_list: list, parallel: bool = True) -> dict[int, Gen
     return _generate_plz_list(plz_list, parallel)
 
 
+def create_grids_for_all_plz(states: list[str] | None = None, parallel: bool = True) -> dict[int, GenerationOutcome]:
+    """Generate the grids of every PLZ with buildings in the InfDB (``USE_INFDB=True``), or in the given states.
+
+    The PLZ with the most buildings go first, so the longest ones do not end a parallel run on few workers.
+    PLZ that already have grids for ``VERSION_ID`` are skipped as with ``--plz``, so a rerun resumes.
+
+    Args:
+        states: Two-digit state keys (e.g. ``["09"]`` for Bavaria); ``None`` or empty for all PLZ.
+        parallel: Generate the PLZ in parallel worker processes.
+
+    Returns:
+        The outcome of every PLZ.
+
+    Raises:
+        ValueError: If no building in the InfDB (in the states) has a postcode.
+    """
+    states = sorted(set(states or []))
+    where = f" in the federal states {', '.join(states)}" if states else ""
+    infdb = InfdbClient()
+    try:
+        plz_list = infdb.fetch_building_postcodes(states)
+    finally:
+        infdb.close()
+    if not plz_list:
+        raise ValueError(f"No building with a postcode in the InfDB{where}")
+    print(f"Creating grids for all {len(plz_list)} PLZ with buildings in the InfDB{where}")
+    return _generate_plz_list(plz_list, parallel)
+
+
 def run_mv_stage_after_lv(plz_list: list[int], parallel: bool, params: "MvParameters") -> None:
     """Run the MV stage for the configured MV variant of ``VERSION_ID`` on the PLZ of this call.
 
@@ -143,6 +175,8 @@ def main(argv: list[str] | None = None):
     parser = parsers.generate_parser()
 
     args = parser.parse_args(argv)
+    if args.all_states is not None and not USE_INFDB:
+        parser.error("--all needs USE_INFDB=True; in the file-based mode, pass --plz or --ags")
     # PARALLEL in config_generation_lv.yaml is the default; the flags override it
     parallel = PARALLEL if args.parallel is None else args.parallel
     run_mv = MV_GRID_GENERATION if args.mv is None else args.mv
@@ -171,8 +205,10 @@ def main(argv: list[str] | None = None):
                 outcomes = create_grid_single_plz(args.plz[0])
             else:
                 outcomes = create_grid_multiple_plz(args.plz, parallel=parallel)
-        else:
+        elif args.ags:
             outcomes = create_grids_for_ags(args.ags, parallel=parallel)
+        else:
+            outcomes = create_grids_for_all_plz(args.all_states, parallel=parallel)
     except Exception as e:
         print("=" * 60)
         print(f"Error occurred during grid creation: {str(e)}")

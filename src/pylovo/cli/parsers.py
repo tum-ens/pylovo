@@ -32,6 +32,22 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument("--yes", action="store_true", help="skip interactive reset confirmation")
     return parser
 
+#: Federal states of ``pylovo-generate --all``: ISO 3166-2:DE code (and NRW) -> state key, the first two AGS digits
+FEDERAL_STATES = {"sh": "01", "hh": "02", "ni": "03", "hb": "04", "nw": "05", "nrw": "05", "he": "06", "rp": "07",
+                  "bw": "08", "by": "09", "sl": "10", "be": "11", "bb": "12", "mv": "13", "sn": "14", "st": "15",
+                  "th": "16"}
+
+
+def _federal_state(value: str) -> str:
+    """The two-digit state key of a federal state given by its code (``by``, ``nw``, ``nrw``) or key (``9``, ``09``)."""
+    code = value.strip().lower()
+    if code in FEDERAL_STATES:
+        return FEDERAL_STATES[code]
+    if code.isdigit() and 1 <= int(code) <= 16:
+        return f"{int(code):02d}"
+    raise argparse.ArgumentTypeError(f"unknown federal state {value!r}: use its code (e.g. by, nw or nrw) "
+                                     "or its key (e.g. 09)")
+
 def generate_parser() -> argparse.ArgumentParser:
     """The ``pylovo-generate`` argument parser."""
     parser = argparse.ArgumentParser(
@@ -51,6 +67,12 @@ Examples:
 
   # Generate for multiple municipalities
   pylovo-generate --ags 09162000 09161000
+
+  # Generate every postcode with buildings in the InfDB (USE_INFDB=True), the largest first
+  pylovo-generate --all
+
+  # Only the postcodes with buildings in Bavaria and North Rhine-Westphalia
+  pylovo-generate --all by nrw
 
   # Disable parallel processing (useful for debugging); PARALLEL in the config sets the default
   pylovo-generate --plz 80803 80802 --no-parallel
@@ -74,6 +96,9 @@ For more information, see the README: https://github.com/tum-ens/pylovo
                         help='Postal code(s) to generate grids for (e.g., 80803 or 80803 80802)')
     region.add_argument('--ags', type=int, nargs='+',
                         help='Municipality code(s) (AGS) to generate grids for (e.g., 09162000)')
+    region.add_argument('--all', dest='all_states', nargs='*', type=_federal_state, metavar='STATE',
+                        help='Every postcode with buildings in the InfDB, or with buildings in the given federal '
+                             'states (e.g. by nrw), the largest first (USE_INFDB=True only)')
     parallelism = parser.add_mutually_exclusive_group()
     parallelism.add_argument('--parallel', dest='parallel', action='store_true', default=None,
                              help='Generate several regions in parallel worker processes')
