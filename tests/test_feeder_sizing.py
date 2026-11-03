@@ -47,6 +47,7 @@ def planning_rules(monkeypatch):
     monkeypatch.setattr(feeder_planning, "CABLE_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(feeder_planning, "FEEDER_STANDARD_CABLE", None)
     monkeypatch.setattr(feeder_planning, "MAX_PARALLEL_FEEDER_CABLES", 4)
+    monkeypatch.setattr(feeder_planning, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", 1)
     monkeypatch.setattr(feeder_planning, "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT", 5.0)
     monkeypatch.setattr(feeder_planning, "VN", 400)
 
@@ -136,6 +137,29 @@ def test_an_unreachable_voltage_limit_ends_at_the_lowest_impedance_design_and_wa
     assert design.diagnostics["selected_max_feeder_voltage_drop_percent"] == pytest.approx(
         drop_percent(0.15, 0.8, "NAYY_4_300", 1))
     assert any("voltage-drop" in message for message in caplog.messages)
+
+
+def test_without_a_standard_cable_parallel_cables_follow_the_largest_conductor(installer, monkeypatch, caplog):
+    # the same feeder with MAX_VOLTAGE_PARALLEL_FEEDER_CABLES 2: after NAYY_4_300 (6.2 %) the second stage lays two
+    # cables: 2 x NAYY_4_150 first (cheaper than one NAYY_4_300 and lower in impedance), then 2 x NAYY_4_185 (4.7 %)
+    monkeypatch.setattr(feeder_planning, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", 2)
+    with caplog.at_level(logging.WARNING, logger=LOGGER.name):
+        design = size(installer, monkeypatch, [FeederBranch(0, [1], 0)], {1: 800.0}, {1: 0.15}, [1])
+
+    assert design.cable_by_edge == {(0, 1): ("NAYY_4_185", 2)}
+    assert design.sizing_by_edge[(0, 1)]["ampacity_parallel"] == 1
+    assert design.diagnostics["feeder_voltage_drop_limit_met"] is True
+    assert design.diagnostics["selected_max_feeder_voltage_drop_percent"] == pytest.approx(
+        drop_percent(0.15, 0.8, "NAYY_4_185", 2))
+    assert not any("voltage-drop" in message for message in caplog.messages)
+
+
+def test_parallel_voltage_upgrades_wait_until_larger_conductors_are_exhausted(installer, monkeypatch):
+    # 0.15 kA over 500 m: one NAYY_4_240 meets 5 %, so no second cable is laid although two are allowed
+    monkeypatch.setattr(feeder_planning, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", 2)
+    design = size(installer, monkeypatch, [FeederBranch(0, [1], 0)], {1: 500.0}, {1: 0.15}, [1])
+
+    assert design.cable_by_edge == {(0, 1): ("NAYY_4_240", 1)}
 
 
 def test_with_a_standard_cable_voltage_upgrades_add_parallel_standard_cables_first(installer, monkeypatch):

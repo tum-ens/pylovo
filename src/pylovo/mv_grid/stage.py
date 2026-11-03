@@ -509,10 +509,16 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     long_attach = [int(s) for s, off in busbar_offset.items()
                    if not pd.notna(off) or off > params.substation_max_attach_m]
     dbc.flag_substations(long_attach, "long_attach")
-    if long_attach:
-        logger.info(f"{len(long_attach)} substations are more than {params.substation_max_attach_m:g} m from the "
-                    "street graph (long_attach): not used as supply points")
     usable = sites[~sites["substation_id"].isin(long_attach)].reset_index(drop=True)
+    if long_attach:
+        # a warning of the summary: usually the InfDB lacks the streets around these substations (a region imported
+        # by postcode), and their nodes go to substations farther away
+        message = (f"{len(long_attach)} of {len(sites)} HV/MV substations are more than "
+                   f"{params.substation_max_attach_m:g} m from the street graph and supply nothing (long_attach), "
+                   f"so the supply areas go to the other {len(usable)}; check that the InfDB has the streets of the "
+                   f"municipalities within {params.region_buffer_m / 1000:g} km of the region")
+        logger.warning(message)
+        warnings.append(message)
     if not len(usable):
         raise MvStageError("no HV/MV substation is within reach of the street graph of the region")
     # supply areas

@@ -16,7 +16,9 @@ Build (:meth:`MvGraphMixin.ensure_graph`), one transaction under an advisory loc
    another edge; the InfDB splits ways per AGS only) are repaired by splitting the touched edge there;
 3. degrees, connected components (``pgr_connectedComponents``, label = smallest vertex id);
 4. settlement flags: an edge is in a settlement if at least ``max(settlement_min_buildings, length /
-   settlement_spacing_m)`` address buildings lie within ``settlement_buffer_m``, or if its midpoint lies in built-up
+   settlement_spacing_m)`` settlement buildings lie within ``settlement_buffer_m`` (the buildings of
+   :data:`SETTLEMENT_BUILDING_USES`; with street and house number only if the source has no class Auxiliary, see
+   :meth:`MvGraphMixin.settlement_needs_addresses`), or if its midpoint lies in built-up
    OSM land use (:data:`SETTLEMENT_LANDUSE_TYPES`, when ``INFDB_OSM_SCHEMA`` has ``landuse_polygon``); settlements
    are the connected components of the settlement edges, urban with at least ``urban_min_buildings`` buildings;
 5. summary columns of ``pylovo.mv_graph`` (counts, largest component share, settlement share, seam diagnostic).
@@ -43,8 +45,9 @@ import pandas as pd
 from psycopg2 import sql
 from psycopg2.extras import execute_values
 
-from pylovo.config_loader import INFDB_OSM_SCHEMA, INFDB_SOURCE_SCHEMA, TARGET_EPSG
+from pylovo.config_loader import EXCLUDE_BUILDINGS_WITHOUT_ADDRESS, INFDB_OSM_SCHEMA, INFDB_SOURCE_SCHEMA, TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
+from pylovo.infdb.infdb_client import AUXILIARY_RULE_COLUMN
 from pylovo.mv_grid.model import EdgeSet
 from pylovo.mv_grid.osm_lines import OVERHEAD_SUBTYPES, is_mv_overhead_line
 from pylovo.mv_grid.parameters import MvStageError
@@ -64,6 +67,10 @@ SEAM_TOLERANCE_M: float = 0.5
 SEAM_SPLIT_M: float | None = 0.5
 #: Building classes of the settlement flags (the classes of the LV building fetch, ``infdb_client.py``).
 SETTLEMENT_BUILDING_USES: tuple[str, ...] = ("Commercial", "Public", "Residential", "Mixed", "Unknown")
+#: ``settlement_buildings`` of the build parameters when the settlement flags count every building of these classes
+#: (:meth:`MvGraphMixin.settlement_needs_addresses` False); the address rule is not recorded, so the graphs built
+#: with it before keep their ids.
+SETTLEMENT_CONSUMER_BUILDINGS = "consumers"
 #: Built-up OSM land use (``osm_type`` of ``INFDB_OSM_SCHEMA.landuse_polygon``): a street edge whose midpoint lies in
 #: such a polygon is in a settlement whatever its address-building count. Industrial and commercial zones have large
 #: plots (about one address building per 200 m of street), so the building rule alone leaves them as open field and
@@ -378,15 +385,22 @@ EXTENT_SQL = "SELECT ST_XMin(x.b), ST_YMin(x.b), ST_XMax(x.b), ST_YMax(x.b) FROM
 # an envelope in TARGET_EPSG as EWKB in the SRID of a source table (the prefilter of its rows)
 BOX_SQL = sql.SQL("SELECT ST_AsEWKB(ST_Transform(ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, {epsg}), %(srid)s))")
 
-# the point of every address building in the box (staged into pg_temp.mvg_bld_raw) ...
+# the point of every settlement building in the box (staged into pg_temp.mvg_bld_raw); {address_filter} is
+# SETTLEMENT_ADDRESS_SQL or empty (MvGraphMixin.settlement_needs_addresses) ...
 SETTLEMENT_POINTS_SQL = sql.SQL("""
     SELECT COALESCE(b.centroid, ST_PointOnSurface(b.geom)) AS pt
     FROM {buildings} b
     WHERE b.geom && ST_GeomFromEWKB(%(box)s)
       AND b.building_use = ANY(%(uses)s)
       AND COALESCE(b.building_use_id, '') <> '31001_2523'
-      AND COALESCE(b.street, '') <> '' AND COALESCE(b.house_number, '') <> ''
+      {address_filter}
 """)
+SETTLEMENT_ADDRESS_SQL = sql.SQL("AND COALESCE(b.street, '') <> '' AND COALESCE(b.house_number, '') <> ''")
+# whether the source buildings have the class Auxiliary (the column of infdb_client.AUXILIARY_RULE_COLUMN)
+SOURCE_AUXILIARY_SQL = """
+    SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = %(schema)s AND table_name = 'buildings' AND column_name = %(column)s)
+"""
 
 # ... in TARGET_EPSG
 SETTLEMENT_BUILDINGS_SQL = sql.SQL("""
@@ -715,6 +729,21 @@ class MvGraphMixin(BaseMixin):
                           "pad": float(pad_m)})
         return bytes(self.cur.fetchone()[0])
 
+    def settlement_needs_addresses(self) -> bool:
+        """Whether the settlement flags count only the buildings with street and house number.
+
+        Without the class Auxiliary in the source buildings (no column ``auxiliary_rule``) garages, sheds and barns
+        carry the uses of :data:`SETTLEMENT_BUILDING_USES`, and only the address tells the houses from them. With
+        it the uses suffice, as for the LV consumers (``infdb_client._consumer_buildings_sql``), so the flags also
+        work in the states whose LoD2 has no addresses; ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`` keeps the address
+        rule for both stages.
+        """
+        if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
+            return True
+        row = self.source_reader().fetchone(SOURCE_AUXILIARY_SQL, {"schema": INFDB_SOURCE_SCHEMA,
+                                                                    "column": AUXILIARY_RULE_COLUMN})
+        return not (row and row[0])
+
     def graph_fingerprint(self, ags: Sequence[str], osm_lines: bool = False) -> str:
         """Fingerprint of the source rows of the AGS: ways ``count:length:max changelog``, buildings
         ``count:max changelog``, and the number of built-up OSM land-use polygons in the extent of the ways
@@ -809,6 +838,8 @@ class MvGraphMixin(BaseMixin):
                                f"{params.region_buffer_m:g} m of the planning region")
         source_table = f"{INFDB_SOURCE_SCHEMA}.ways_per_junction"
         parameters = build_parameters(params)
+        if not self.settlement_needs_addresses():
+            parameters["settlement_buildings"] = SETTLEMENT_CONSUMER_BUILDINGS
         fingerprint = self.graph_fingerprint(ags, osm_lines=bool(parameters.get("osm_mv_lines")))
         graph_id = graph_id_for(source_table, ags, parameters, fingerprint)
         self.cur.execute(GRAPH_EXISTS_SQL, {"g": graph_id})
@@ -882,15 +913,19 @@ class MvGraphMixin(BaseMixin):
                          time.perf_counter() - started)
         self.cur.execute(VERTEX_COMPONENT_SQL, {**g, "edges_sql": edges_sql(graph_id)})
         self.cur.execute(EDGE_COMPONENT_SQL, g)
-        # settlement flags from address buildings near the edges
+        # settlement flags from the settlement buildings near the edges
         self.cur.execute(EXTENT_SQL)
         x0, y0, x1, y1 = self.cur.fetchone()
         padded = {"x0": x0 - 100.0, "y0": y0 - 100.0, "x1": x1 + 100.0, "y1": y1 + 100.0}
         self.cur.execute(BOX_SQL.format(epsg=epsg), {**padded, "srid": self._source_srid("buildings")})
         bld_box = bytes(self.cur.fetchone()[0])
-        n_rows = reader.stage("mvg_bld_raw", SETTLEMENT_POINTS_SQL.format(buildings=buildings),
+        consumers = parameters.get("settlement_buildings") == SETTLEMENT_CONSUMER_BUILDINGS
+        address_filter = sql.SQL("") if consumers else SETTLEMENT_ADDRESS_SQL
+        n_rows = reader.stage("mvg_bld_raw", SETTLEMENT_POINTS_SQL.format(buildings=buildings,
+                                                                          address_filter=address_filter),
                               {"box": bld_box, "uses": list(SETTLEMENT_BUILDING_USES)}, [("pt", "geometry")])
-        self.logger.info("MV routing graph %s: %d address buildings read from %s", graph_id, n_rows, reader.where)
+        self.logger.info("MV routing graph %s: %d %s buildings read from %s", graph_id, n_rows,
+                         "consumer" if consumers else "address", reader.where)
         self.cur.execute(SETTLEMENT_BUILDINGS_SQL.format(epsg=epsg))
         self.cur.execute("DROP TABLE pg_temp.mvg_bld_raw")
         self.cur.execute("CREATE INDEX ON mvg_bld USING gist (pt)")

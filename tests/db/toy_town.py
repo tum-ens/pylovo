@@ -4,8 +4,8 @@ With ``USE_INFDB=True`` (the default) ``pylovo-setup`` and ``pylovo-generate`` r
 relations of the InfDB schemas (see :mod:`pylovo.infdb.infdb_client`):
 
 * ``<INFDB_SOURCE_SCHEMA>.buildings``: buildings with use, floor areas, households, address, footprint and
-  centroid; the LoD2 transformer-station buildings (``building_use_id`` ``31001_2523``) become transformer
-  candidates,
+  centroid, and the rule of the class ``Auxiliary`` (``auxiliary_rule``); the LoD2 transformer-station buildings
+  (``building_use_id`` ``31001_2523``) become transformer candidates,
 * ``<INFDB_SOURCE_SCHEMA>.ways_per_connection``: the street segments, split at every junction and at every
   building connection point,
 * ``<INFDB_SOURCE_SCHEMA>.connection_lines``: one line from each building centroid to its point on the street,
@@ -14,7 +14,8 @@ relations of the InfDB schemas (see :mod:`pylovo.infdb.infdb_client`):
 
 :func:`write_source_data` creates exactly these (the columns pylovo and its API read) and fills them with a
 made-up town: postcode 99001 (a street grid with apartment blocks, mixed buildings with shops, a school, a
-plant large enough for an MV connection, single-family houses, a LoD2 transformer station, a garage without
+plant large enough for an MV connection, single-family houses, a LoD2 transformer station, a garage and a shed of
+the InfDB class ``Auxiliary`` (no consumers), a weekend house (one household, no residents), a house without
 address, a building of unknown use, three residential buildings without a household count and a cycle path), the
 neighbouring village 99002 (one street across the postcode border) and
 99003, a postcode that only :func:`write_municipal_register` knows (no polygon, no buildings). Everything
@@ -63,7 +64,17 @@ class Kind:
     building_use_id: str
     building_type: str | None
     nonresidential_floors: int = 0   # floors with non-residential use (from the ground floor up)
-    address: bool = True
+    address: bool = True             # street and house number
+    connected: bool = True           # a connection line to the street (InfDB draws one for every building)
+    residents: bool = True           # two occupants per household; False: none (InfDB leisure buildings)
+    floor_space: bool = True         # False: no residential or non-residential floor area (InfDB class Auxiliary)
+
+
+def occupants(kind: Kind) -> int | None:
+    """The occupants of a building of this kind, as the InfDB census allocation gives them."""
+    if kind.households is None:
+        return None
+    return 2 * kind.households if kind.residents else 0
 
 
 KINDS = {
@@ -75,8 +86,14 @@ KINDS = {
     "SHOP": Kind(24, 20, 1, 0, "Commercial", "31001_2050", None, nonresidential_floors=1),
     "SCHOOL": Kind(40, 20, 2, 0, "Public", "31001_3065", None, nonresidential_floors=2),
     "PLANT": Kind(50, 30, 2, 0, "Commercial", "31001_2100", None, nonresidential_floors=2),  # 3000 m2: MV-direct
-    "STATION": Kind(4, 3, 1, 0, "Commercial", "31001_2523", None, nonresidential_floors=1, address=False),
-    "GARAGE": Kind(6, 6, 1, 0, "Residential", "31001_2463", None, nonresidential_floors=1, address=False),
+    # the InfDB class Auxiliary: no consumer, no floor space; the station stays a transformer candidate by its code
+    "STATION": Kind(4, 3, 1, 0, "Auxiliary", "31001_2523", None, address=False, connected=False, floor_space=False),
+    "GARAGE": Kind(6, 6, 1, 0, "Auxiliary", "31001_2463", None, address=False, connected=False, floor_space=False),
+    "SHED": Kind(6, 5, 1, 0, "Auxiliary", "31001_2723", None, address=False, floor_space=False),  # farm shed
+    # weekend house (InfDB leisure building 1310-1312): one household, no census residents
+    "LEISURE": Kind(8, 6, 1, 1, "Residential", "31001_1312", None, residents=False),
+    # a house without street and house number, as in the states whose LoD2 has no addresses
+    "HOUSE_NO_ADDRESS": Kind(10, 10, 2, 1, "Residential", "31001_1010", "SFH", address=False),
     "UNKNOWN": Kind(12, 10, 1, 0, "Unknown", "31001_9998", None, nonresidential_floors=1),  # use not classified
     # no household count in the InfDB (the fallback of PreprocessingMixin.set_building_peak_load)
     "MFH_NO_COUNT": Kind(14, 14, 3, None, "Residential", "31001_1010", "MFH"),
@@ -103,6 +120,7 @@ ROWS = [
     ("Dorfstraße", +1, 30, ["SFH"] * 10),
     ("Dorfstraße", -1, 30, ["SFH"] * 10),
     ("Ostgasse", +1, 30, ["UNKNOWN", "MFH_NO_COUNT", "AB_NO_COUNT", "UNTYPED_NO_COUNT"]),
+    ("Südweg", -1, 560, ["LEISURE", "SHED", "HOUSE_NO_ADDRESS"]),   # last, so the object ids above stay
 ]
 GAP = 8.0             # metres between neighbouring buildings
 SETBACK = 6.0         # metres from the street centre line to the building front
@@ -187,8 +205,8 @@ def buildings() -> list[Building]:
 
 
 def connected(building: Building) -> bool:
-    """Whether the building gets a connection line (the consumers with an address; not stations and garages)."""
-    return building.kind.address
+    """Whether the building gets a connection line (all but the station and the garage)."""
+    return building.kind.connected
 
 
 def street_segments() -> list[tuple[str, str, tuple[float, float], tuple[float, float]]]:
@@ -230,7 +248,8 @@ CREATE TABLE {src}.buildings (
     nonresidential_floor_area double precision, mix_rule text, building_use text, building_use_id text,
     building_type text, occupants integer, households integer, construction_year text, postcode integer,
     address_street_id bigint, street text, house_number text, geom geometry(MultiPolygon, {srid}),
-    centroid geometry(Point, {srid}), gemeindeschluessel text, changelog_id bigint, assigned_way_id text);
+    centroid geometry(Point, {srid}), gemeindeschluessel text, changelog_id bigint, assigned_way_id text,
+    auxiliary_rule text);
 CREATE TABLE {src}.ways_per_connection (
     id bigint PRIMARY KEY, klasse text, name text, length_geo double precision, postcode integer, ags text,
     geom geometry(LineString, {srid}));
@@ -270,26 +289,28 @@ def write_source_data(cur, source_schema: str = "basedata", opendata_schema: str
     rows, lines = [], []
     for i, b in enumerate(buildings(), start=1):
         k = b.kind
-        nonres = b.floor_area * k.nonresidential_floors
-        res = b.floor_area * (k.floors - k.nonresidential_floors)
-        occupants = None if k.households is None else 2 * k.households
-        population[b.plz] += occupants or 0
+        nonres = b.floor_area * k.nonresidential_floors if k.floor_space else 0.0
+        res = b.floor_area * (k.floors - k.nonresidential_floors) if k.floor_space else 0.0
+        residents = occupants(k)
+        population[b.plz] += residents or 0
         street = b.street if k.address else None
         rows.append((i, 100_000 + i, b.objectid, 3.0 * k.floors, b.floor_area, k.floors, res, nonres,
-                     k.building_use, k.building_use_id, k.building_type, occupants, k.households,
+                     k.building_use, k.building_use_id, k.building_type, residents, k.households,
                      str(1950 + (i * 7) % 70), b.plz, STREETS.index(_street(b.street)) + 1, street,
                      str(b.house_number) if k.address else None,
                      _box(b.centre[0] - b.half[0], b.centre[1] - b.half[1], b.centre[0] + b.half[0],
                           b.centre[1] + b.half[1]),
-                     f"SRID={SRID};POINT({_point(b.centre)})", str(AGS[b.plz])))
+                     f"SRID={SRID};POINT({_point(b.centre)})", str(AGS[b.plz]),
+                     "A1" if k.building_use == "Auxiliary" else None))
         if connected(b):
             lines.append((len(lines) + 1, "connection_line", abs(b.centre[0] - b.foot[0]) + abs(b.centre[1] - b.foot[1]),
                           b.plz, str(AGS[b.plz]), b.objectid, _line(b.centre, b.foot)))
     cur.executemany(sql.SQL("""
         INSERT INTO {} (id, feature_id, objectid, height, floor_area, floor_number, residential_floor_area,
             nonresidential_floor_area, building_use, building_use_id, building_type, occupants, households,
-            construction_year, postcode, address_street_id, street, house_number, geom, centroid, gemeindeschluessel)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            construction_year, postcode, address_street_id, street, house_number, geom, centroid, gemeindeschluessel,
+            auxiliary_rule)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """).format(table("buildings")), rows)
     cur.executemany(sql.SQL("""INSERT INTO {} (id, klasse, length_geo, postcode, ags, building_objectid, geom)
                                VALUES (%s, %s, %s, %s, %s, %s, %s)""").format(table("connection_lines")), lines)
@@ -322,7 +343,7 @@ def write_municipal_register(cur) -> None:
     for plz, (x, y) in centres.items():
         area = (POSTCODES[plz][3] - POSTCODES[plz][1]) * (POSTCODES[plz][4] - POSTCODES[plz][2]) / 1e6 \
             if plz in POSTCODES else 0.2
-        pop = sum(2 * (b.kind.households or 0) for b in buildings() if b.plz == plz)
+        pop = sum(occupants(b.kind) or 0 for b in buildings() if b.plz == plz)
         cur.execute(f"""
             INSERT INTO pylovo.municipal_register (plz, pop, area, lat, lon, ags, name_city, fed_state, regio7, regio5,
                                                    pop_den)

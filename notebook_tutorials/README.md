@@ -1,9 +1,9 @@
 # Notebook tutorials
 
 Jupyter notebooks that show what pylovo produces and how to use it. Start with the learning path below. The
-folders hold the classification notebooks (`classification/`), the development notebooks of the MV stage
-(`mv_grids/`) and the previous LV notebooks (`grid_generation/`). The notebooks only read; grids are generated on
-the command line with `pylovo-generate` and `pylovo-mv`.
+folders hold the comparison of two grid datasets (`analysis/`), the classification notebooks (`classification/`),
+the development notebooks of the MV stage (`mv_grids/`) and the previous LV notebooks (`grid_generation/`). The
+notebooks only read; grids are generated on the command line with `pylovo-generate` and `pylovo-mv`.
 
 ## Learning path
 
@@ -29,6 +29,20 @@ which runs the notebooks without a database, stores the figures as small palette
 errors, local paths or credentials.
 
 ## Folders
+
+### `analysis/`
+
+`basic_comparison.ipynb` compares the grids of two datasets that supply the same buildings, as a validation compares
+pylovo with the grids of a distribution system operator (DSO): eight metrics per grid, a scorecard with the
+Wasserstein-1 distance and a permutation test, totals over the area, distribution figures, correlations, cable choice
+and several versions against one reference. Without DSO data it compares pylovo versions of the example data; its
+last section shows how to load a DSO's cables and stations instead. The computations are in
+`pylovo.analysis.comparison`, the figures in `pylovo.plotting.comparison`. Like the learning path, it runs on the
+example data; its stored outputs are refreshed with
+
+```bash
+uv run --extra notebooks python notebook_tutorials/refresh_outputs.py analysis/basic_comparison.ipynb
+```
 
 ### `grid_generation/`
 

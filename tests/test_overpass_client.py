@@ -55,7 +55,7 @@ def test_a_complete_answer_is_converted(server):
     assert len(geojson["features"]) == 1
 
 
-@pytest.mark.parametrize("status", [429, 504])
+@pytest.mark.parametrize("status", [429, 502, 503, 504])
 def test_a_busy_server_is_asked_again_after_growing_pauses(server, status):
     server.queue = [Response(status), Response(status), Response(200, {"elements": [NODE]})]
     geojson = utils.query_overpass_for_geojson("https://overpass.example/api/interpreter", "[out:json];")

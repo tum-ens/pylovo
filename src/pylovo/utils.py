@@ -32,8 +32,9 @@ PYLOVO_USER_AGENT = "pylovo (https://github.com/tum-ens/pylovo)"
 # (connect, read) timeout in seconds. The read timeout is longer than the
 # server-side [timeout:500] of the queries in data/transformer_data/overpass_queries.
 OVERPASS_TIMEOUT_S = (30, 600)
-# An overloaded server answers with these statuses: ask again after a pause that doubles every time.
-OVERPASS_RETRY_STATUS = (429, 504)
+# An overloaded server answers with these statuses (502 and 503 from the gateway of overpass-api.de under load):
+# ask again after a pause that doubles every time.
+OVERPASS_RETRY_STATUS = (429, 502, 503, 504)
 OVERPASS_ATTEMPTS = 3
 OVERPASS_RETRY_PAUSE_S = 30
 
@@ -468,7 +469,7 @@ def query_overpass_for_geojson(overpass_url: str, query: str) -> dict:
 
     The query is sent as a form-encoded POST (long queries do not fit into a URL)
     with a descriptive User-Agent, which the public Overpass instances require.
-    An overloaded server (HTTP 429 or 504) is asked again up to :data:`OVERPASS_ATTEMPTS` times.
+    An overloaded server (HTTP 429, 502, 503 or 504) is asked again up to :data:`OVERPASS_ATTEMPTS` times.
 
     Args:
         overpass_url: Overpass API interpreter URL,
@@ -480,7 +481,7 @@ def query_overpass_for_geojson(overpass_url: str, query: str) -> dict:
 
     Raises:
         requests.HTTPError: If the server answers with an error status
-            (after the last attempt for 429 or 504).
+            (after the last attempt for 429, 502, 503 or 504).
         requests.Timeout: If the server does not answer within
             :data:`OVERPASS_TIMEOUT_S`.
         RuntimeError: If the answer carries a ``remark``: the server ran into its time or

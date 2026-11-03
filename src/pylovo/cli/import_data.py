@@ -1,7 +1,7 @@
 """Import data into the pylovo database (``pylovo-import``).
 
 Subcommands:
-    transformers-osm: fetch transformers of an OSM relation from the Overpass API and add them.
+    transformers-osm: fetch transformers of an OSM relation (or of federal states) from the Overpass API and add them.
     transformers-dso-csv: add DSO transformer positions from a CSV file.
     transformers-ui: browser map for checking and editing transformer positions (needs the extra legacy-ui).
     egon-substations: load the eGon-data HV/MV substations of the MV stage (downloaded from the Open Energy
@@ -14,7 +14,9 @@ import time
 from pylovo.cli import parsers
 from pylovo.data_import.dso_transformers import import_dso_transformers_csv
 from pylovo.data_import.import_transformers import (
+    STATE_RELATION_IDS,
     fetch_trafos,
+    fetched_trafos_exist,
     get_trafos_processed_target_geojson_path,
     process_trafos,
 )
@@ -28,21 +30,33 @@ def _count_features(geojson_path) -> int:
         return len(json.load(file)["features"])
 
 
-def import_transformers_osm(relation_id: int):
+def osm_relation_ids(relation_id: int | None, states: list[str] | None) -> list[int]:
+    """The OSM relations to import: ``relation_id``, or those of the federal states (keys such as ``"09"``), each once."""
+    if relation_id is not None:
+        return [relation_id]
+    return list(dict.fromkeys(STATE_RELATION_IDS[key] for key in states or []))
+
+
+def import_transformers_osm(relation_id: int, reuse_fetched: bool = False):
     """Fetch, filter and import the transformers of an OSM relation (existing rows are kept).
 
     Prints how many transformers were added and how many were skipped (their id exists already).
 
     Args:
         relation_id: OSM relation id of the area, e.g. 62464.
+        reuse_fetched: Process the raw files of an earlier download of the relation if both exist, instead of
+            querying the Overpass API again.
 
     Raises:
         RuntimeError: If ``ogr2ogr`` reported errors other than duplicate keys.
     """
     start_time = time.time()
 
-    print("Fetching transformers...")
-    fetch_trafos(relation_id)
+    if reuse_fetched and fetched_trafos_exist(relation_id):
+        print(f"Reusing the transformers of relation {relation_id} fetched before...")
+    else:
+        print(f"Fetching transformers of relation {relation_id}...")
+        fetch_trafos(relation_id)
 
     print("Processing transformers...")
     process_trafos(relation_id)
@@ -108,7 +122,8 @@ def main():
 
     try:
         if args.command == "transformers-osm":
-            import_transformers_osm(args.relation_id)
+            for relation_id in osm_relation_ids(args.relation_id, args.state):
+                import_transformers_osm(relation_id, reuse_fetched=args.reuse_fetched)
         elif args.command == "transformers-dso-csv":
             import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
         elif args.command == "egon-substations":

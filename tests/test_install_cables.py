@@ -205,7 +205,8 @@ def test_a_cabinet_network_plans_cabinets_and_connects_every_house_from_one(monk
 
 def test_the_power_flow_statuses_of_every_grid_are_counted(monkeypatch, caplog):
     statuses = iter(["converged", "voltage_violation", "not_converged"])
-    monkeypatch.setattr(GridGenerator, "save_net", lambda self, backend, kcid, bcid, planning_diagnostics=None: next(statuses))
+    monkeypatch.setattr(GridGenerator, "save_net",
+                        lambda self, backend, kcid, bcid, planning_diagnostics=None, validation=None: next(statuses))
     dbc = FakeDbc(clusters=[(1, 1), (1, 2), (1, 3)])
     with caplog.at_level(logging.INFO, logger=LOGGER.name):
         install(dbc)

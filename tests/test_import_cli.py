@@ -13,8 +13,9 @@ DUPLICATE = 'ERROR:  duplicate key value violates unique constraint "transformer
 
 @pytest.fixture
 def ogr():
-    """What the fake table and ogr2ogr answer: rows before and after the append, GeoJSON features, errors."""
-    return SimpleNamespace(before=100, after=100, features=100, errors=[])
+    """What the fake table and ogr2ogr answer: rows before and after the append, GeoJSON features, errors, and
+    the relations with raw files of an earlier download."""
+    return SimpleNamespace(before=100, after=100, features=100, errors=[], fetched=set())
 
 
 @pytest.fixture
@@ -34,6 +35,7 @@ def calls(monkeypatch, ogr):
             return ogr.errors
 
     monkeypatch.setattr(import_data, "fetch_trafos", lambda relation_id: recorded.append(("fetch", relation_id)))
+    monkeypatch.setattr(import_data, "fetched_trafos_exist", lambda relation_id: relation_id in ogr.fetched)
     monkeypatch.setattr(import_data, "process_trafos", lambda relation_id: recorded.append(("process", relation_id)))
     monkeypatch.setattr(import_data, "get_trafos_processed_target_geojson_path", lambda relation_id: f"/data/{relation_id}.geojson")
     monkeypatch.setattr(import_data, "DatabaseConstructor", Constructor)
@@ -54,6 +56,38 @@ def test_osm_transformers_are_fetched_processed_and_appended_without_failing_on_
     run(monkeypatch, "transformers-osm", "--relation-id", "62464")
     assert calls == [("fetch", 62464), ("process", 62464),
                      ("ogr_to_db", [{"path": "/data/62464.geojson", "table_name": "transformers"}], True)]
+
+
+def test_the_transformers_of_federal_states_are_imported_one_after_the_other(monkeypatch, calls):
+    # by code or key; Bremen named twice (hb and 04) is imported once
+    run(monkeypatch, "transformers-osm", "--state", "hb", "HH", "04")
+    assert [call[:2] for call in calls if call[0] != "ogr_to_db"] == [
+        ("fetch", 62718), ("process", 62718), ("fetch", 62782), ("process", 62782)]
+    assert [call[1][0]["path"] for call in calls if call[0] == "ogr_to_db"] == ["/data/62718.geojson",
+                                                                               "/data/62782.geojson"]
+
+
+def test_reuse_fetched_processes_an_earlier_download_and_fetches_only_what_is_missing(monkeypatch, calls, ogr):
+    ogr.fetched = {62718}
+    run(monkeypatch, "transformers-osm", "--state", "hb", "hh", "--reuse-fetched")
+    assert [call[:2] for call in calls if call[0] != "ogr_to_db"] == [
+        ("process", 62718), ("fetch", 62782), ("process", 62782)]
+
+
+def test_without_reuse_fetched_the_overpass_api_is_queried_again(monkeypatch, calls, ogr):
+    ogr.fetched = {62718}
+    run(monkeypatch, "transformers-osm", "--state", "hb")
+    assert [call[:2] for call in calls if call[0] != "ogr_to_db"] == [("fetch", 62718), ("process", 62718)]
+
+
+def test_every_federal_state_has_its_osm_relation():
+    from pylovo.cli.parsers import FEDERAL_STATES
+    from pylovo.data_import.import_transformers import RELATION_ID, STATE_RELATION_IDS
+
+    assert sorted(STATE_RELATION_IDS) == sorted(set(FEDERAL_STATES.values())) == [f"{k:02d}" for k in range(1, 17)]
+    assert len(set(STATE_RELATION_IDS.values())) == 16
+    # the setup relation (the shipped processed file) is the one of Bavaria
+    assert RELATION_ID == STATE_RELATION_IDS["09"] == 2145268
 
 
 @pytest.mark.parametrize("before, after, features, errors, summary", [
@@ -101,6 +135,8 @@ def test_the_transformer_map_gets_its_options_and_binds_to_the_local_host_by_def
 
 
 @pytest.mark.parametrize("args", [["transformers-osm"], ["transformers-osm", "--relation-id", "abc"],
+                                  ["transformers-osm", "--state", "xx"], ["transformers-osm", "--state"],
+                                  ["transformers-osm", "--relation-id", "62464", "--state", "by"],
                                   ["transformers-dso-csv"], ["unknown"]])
 def test_invalid_arguments_are_refused_before_anything_is_imported(monkeypatch, calls, args):
     with pytest.raises(SystemExit) as refused:

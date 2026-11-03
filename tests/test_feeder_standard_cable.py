@@ -21,9 +21,10 @@ def installer():
                           pd.DataFrame({"name": [name for name, *_ in CABLES]}), pd.DataFrame())
 
 
-def use(monkeypatch, standard, maximum=4):
+def use(monkeypatch, standard, maximum=4, voltage_parallel=1):
     monkeypatch.setattr(feeder_planning, "FEEDER_STANDARD_CABLE", standard)
     monkeypatch.setattr(feeder_planning, "MAX_PARALLEL_FEEDER_CABLES", maximum)
+    monkeypatch.setattr(feeder_planning, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", voltage_parallel)
     monkeypatch.setattr(feeder_planning, "CABLE_PLANNING_UTILIZATION", 1.0)
 
 
@@ -74,6 +75,15 @@ def test_without_a_standard_cable_voltage_upgrades_keep_the_parallel_count(insta
     first, second = options(installer, design("NAYY_4_150", 1, 0.2))
     assert first == [("NAYY_4_150", 1), ("NAYY_4_185", 1), ("NAYY_4_240", 1), ("NAYY_4_300", 1)]
     assert second == []
+
+
+def test_without_a_standard_cable_the_second_stage_lays_more_cables_in_parallel(installer, monkeypatch):
+    use(monkeypatch, None, voltage_parallel=3)
+    first, second = options(installer, design("NAYY_4_185", 2, 0.6))
+    assert first == [("NAYY_4_185", 2), ("NAYY_4_240", 2), ("NAYY_4_300", 2)]   # each carries 0.3 kA
+    assert second == [(name, 3) for name, *_ in sorted(CABLES)]
+    # a section whose ampacity needs as many cables as allowed gets no second stage
+    assert options(installer, design("NAYY_4_185", 3, 0.9))[1] == []
 
 
 def test_voltage_upgrades_add_standard_cables_first(installer, monkeypatch):

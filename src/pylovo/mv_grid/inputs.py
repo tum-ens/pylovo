@@ -222,7 +222,10 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
     nonresidential_floor_area)`` (flag ``hall_one_storey`` where this lowers it). ``installed_kw`` = that area x
     the W/m² of the category in the
     LV snapshot (``lv.peak_load_per_m2``); the stored LV value is kept as ``lv_installed_kw``. A row without a
-    floor area takes the area of its LV load (``lv_installed_kw / W/m²``).
+    floor area takes the area of its LV load (``lv_installed_kw / W/m²``). A row of an LV version with
+    ``NONRESIDENTIAL_LOAD_MODEL: load_class`` keeps the W/m² of its LV load, ``lv_installed_kw`` / its floor area,
+    instead of the category's: that of its load class, of ``UNCLASSIFIED_LOAD_CLASS`` (its ``load_class`` stays NULL)
+    or of its category.
 
     ``p_own_kw = p_fixed_kw = g_c x installed_kw`` with the LV-version sim factor of the customer's
     non-residential use (the asymptote of pylovo's law). Class (``connection_hint``, on these corrected values):
@@ -237,7 +240,7 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
             (``mv_customers`` or ``buildings_result`` for versions without ``pylovo.mv_customers`` rows; those get no
             ``customer_objectid``, which references ``pylovo.mv_customers``, and the flag ``not_in_mv_customers``).
             A use outside Commercial, Public, Unknown counts as Unknown (flag ``use_unknown``).
-        lv: Parameters of the LV version (sim factors, ``peak_load_per_m2``).
+        lv: Parameters of the LV version (sim factors, ``peak_load_per_m2``, ``nonresidential_load_model``).
         params: MV parameters (``customer_hall_min_footprint_m2``, ``dedicated_feeder_kw``, ``hv_customer_kw``).
 
     Returns:
@@ -273,6 +276,8 @@ def customer_table(rows: pd.DataFrame, lv: "LvVersionParameters", params: "MvPar
                          "(LvVersionParameters.peak_load_per_m2)")
     lv_installed = frame["installed_kw"].astype(float)
     area = _num(frame, "nonresidential_floor_area")
+    if lv.nonresidential_load_model == "load_class":                # the W/m² the LV stage applied
+        w_per_m2 = w_per_m2.where(~(area > 0), lv_installed * 1000.0 / area)
     area = area.where(area > 0, lv_installed * 1000.0 / w_per_m2)
     footprint = _num(frame, "footprint_m2")
     hall_m2 = params.customer_hall_min_footprint_m2                       # None: no hall rule

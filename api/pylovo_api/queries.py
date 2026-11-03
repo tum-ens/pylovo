@@ -710,6 +710,7 @@ def _grid_detail(cur, grid_result_id: int, offsets: bool) -> dict[str, Any] | No
         """SELECT br.objectid, br.type, br.households, round(br.peak_load_in_kw::numeric, 1)::float AS peak_kw,
                   br.street, br.house_number, br.building_use, round(br.height::numeric, 1)::float AS height,
                   br.floor_number, round(br.floor_area::numeric, 0)::float AS floor_area, br.vertice_id,
+                  br.load_class, br.connection_level,
                   ST_AsGeoJSON(ST_Transform(br.geom, 4326), 6)::json AS geometry
            FROM pylovo.buildings_result br WHERE br.grid_result_id = %(g)s""", params, cur)
     trafo = db.fetch_all("SELECT pp_index, name, std_type, sn_mva, vn_hv_kv, vn_lv_kv, vk_percent, vkr_percent, "

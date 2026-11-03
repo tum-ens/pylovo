@@ -176,7 +176,8 @@ still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and the dist
 ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` only pairs whose smaller cluster has at most that many
 buildings, so small fragments join a neighbour while larger clusters stay as split. Where existing
 stations are used, a greenfield cluster that still has at most that many buildings joins the nearest
-existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE``, without checking its rating again. The
+existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE`` that it does not overload (the planning
+reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used, the rating not). The
 clusters are numbered 1, 2, ... in the order of their smallest vertex id, so equal partitions get
 equal ids.
 
@@ -253,6 +254,32 @@ A converged result inside ``POWER_FLOW_VOLTAGE_LIMITS`` is stored as ``converged
 result outside the band as ``voltage_violation``, otherwise ``not_converged``. The solved feeder,
 service and total voltage drops are stored in ``grid_result``. Grids are kept in every case.
 
+.. _voltage-repair:
+
+With ``MAX_VOLTAGE_REPAIRS`` > 0 the check runs before anything of the grid is stored, and a grid
+outside the band is planned again if a consumer is below the band because of the feeders: its
+street node is below ``MIN_VM_PU`` plus the share of ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``.
+The street nodes below that limit, the far ends of the feeders, are too far out for the station:
+
+* an existing station keeps its other buildings (an unrated one is sized again for them); the
+  buildings at those nodes, also the ones still within the band, are clustered greenfield (step 6,
+  as few clusters as the load and distance limits allow, no merge) and get their own stations, which
+  so take over the area such a station would supply;
+* a greenfield grid gives up all its buildings, which are clustered again into at least two grids.
+
+A consumer below the band whose street node is within that limit is below it because of its own
+house cable, typically a large building far from the street. Its building becomes its own planning
+node: its connection line is then a feeder section, planned and sized like the others (feeder share,
+parallel cables up to ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES``), and only a short house cable stays at
+the building. If even that leaves the building below the band, it is a far feeder end itself, and
+the greenfield area of the building alone gets its station at the building: a station of its own
+(a compact or customer station), as the MV-direct customers above
+``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` have one.
+
+The changed and the new grids are built and checked in turn, each line of repairs at most
+``MAX_VOLTAGE_REPAIRS`` times. A greenfield grid whose only planning node is its station's own vertex
+is stored with ``voltage_violation``: neither a split nor another station would help it.
+
 Phase 5: persist
 ----------------
 
@@ -271,7 +298,8 @@ reads the committed buildings immediately.
    :width: 85%
 
    The generated grids of version ``1``. Buildings without a grid have no address
-   (``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``) or are large commercial loads supplied from the MV grid.
+   (``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` when the figure was made) or are large commercial loads supplied
+   from the MV grid.
 
 After the pipeline: the MV stage
 --------------------------------

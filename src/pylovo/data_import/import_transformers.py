@@ -20,6 +20,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 
 from pylovo.config_loader import TARGET_EPSG
 from pylovo.utils import get_user_data_dir, query_overpass_for_geojson, reference_data_path
@@ -27,8 +28,30 @@ from pylovo.utils import get_user_data_dir, query_overpass_for_geojson, referenc
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 RELATION_ID_BASE = 3600000000  # Overpass area id = 3600000000 + OSM relation id; do not change
 
+#: OSM relation ids of the 16 federal states (``boundary=administrative``, ``admin_level=4``) by state key, the first
+#: two digits of the AGS (``pylovo-import transformers-osm --state``). Checked on 2026-10-30 against the tags
+#: ``ISO3166-2`` and ``de:regionalschluessel`` of the relations.
+STATE_RELATION_IDS = {
+    "01": 51529,    # Schleswig-Holstein
+    "02": 62782,    # Hamburg
+    "03": 62771,    # Niedersachsen
+    "04": 62718,    # Bremen
+    "05": 62761,    # Nordrhein-Westfalen
+    "06": 62650,    # Hessen
+    "07": 62341,    # Rheinland-Pfalz
+    "08": 62611,    # Baden-Württemberg
+    "09": 2145268,  # Bayern
+    "10": 62372,    # Saarland
+    "11": 62422,    # Berlin
+    "12": 62504,    # Brandenburg
+    "13": 28322,    # Mecklenburg-Vorpommern
+    "14": 62467,    # Sachsen
+    "15": 62607,    # Sachsen-Anhalt
+    "16": 62366,    # Thüringen
+}
+
 # OSM relation used by pylovo-setup (see docs); Bavaria --> 2145268
-RELATION_ID = 2145268
+RELATION_ID = STATE_RELATION_IDS["09"]
 SHIPPED_EPSG = 25832  # CRS of the processed transformer GeoJSON of Bavaria that ships with pylovo
 
 # Filter thresholds of process_trafos()
@@ -89,7 +112,7 @@ def get_processed_trafos(relation_id: int) -> str:
     2. Otherwise the processed 25832 file that ships with pylovo (Bavaria) is reprojected to ``TARGET_EPSG`` and
        written to the data directory: offline and fast.
     3. Only if there is no such file either (another relation), the transformers are fetched from the Overpass API
-       and processed, which takes 30 to 50 minutes for a federal state.
+       and processed, which takes minutes for a federal state (mostly the download).
 
     Delete the file of ``TARGET_EPSG`` in the data directory to create it again.
 
@@ -138,10 +161,56 @@ def fetch_trafos(relation_id: int) -> None:
 
     substations_path = get_substations_geojson_path(relation_id)
     os.makedirs(os.path.dirname(substations_path), exist_ok=True)
-    with open(substations_path, "w") as f:
-        json.dump(geojson_substations, f, indent=2)
-    with open(get_shopping_mall_geojson_path(relation_id), "w") as f:
-        json.dump(geojson_mall, f, indent=2)
+    # each file is written under a temporary name and renamed, so an interrupted run leaves no truncated file
+    # that fetched_trafos_exist would take for a complete download
+    for path, geojson in ((substations_path, geojson_substations),
+                          (get_shopping_mall_geojson_path(relation_id), geojson_mall)):
+        with open(f"{path}.part", "w") as f:
+            json.dump(geojson, f, indent=2)
+        os.replace(f"{path}.part", path)
+
+
+def fetched_trafos_exist(relation_id: int) -> bool:
+    """Whether both raw files of :func:`fetch_trafos` exist for the relation (an earlier download)."""
+    return all(os.path.isfile(path) for path in (get_substations_geojson_path(relation_id),
+                                                 get_shopping_mall_geojson_path(relation_id)))
+
+
+def close_duplicates(points: gpd.GeoSeries, min_distance: float) -> pd.Index:
+    """The labels of the points that have a later point (in table order) closer than ``min_distance``.
+
+    Of transformers closer than ``min_distance`` to each other only the last one of the table is kept, as with the
+    upper triangle of the full distance matrix that this replaces. A spatial index finds the close pairs, so memory
+    and time grow with the number of points and close pairs; the matrix of a federal state (10,000 to 40,000
+    points) took 1 to 13 GB per copy.
+
+    Args:
+        points: The transformer points; empty or missing geometries have no neighbours.
+        min_distance: Distance (exclusive) below which two points are duplicates, in the units of the CRS.
+
+    Returns:
+        The index labels of the points to drop.
+    """
+    geometries = np.asarray(points.values, dtype=object)
+    first, second = shapely.STRtree(geometries).query(geometries, predicate="dwithin", distance=min_distance)
+    later = second > first
+    first, second = first[later], second[later]
+    closer = shapely.distance(geometries[first], geometries[second]) < min_distance
+    return points.index[np.unique(first[closer])]
+
+
+def within_union(geometries: gpd.GeoSeries, areas: gpd.GeoSeries) -> np.ndarray:
+    """Whether each geometry lies within the union of ``areas``, as ``geometries.within(areas.union_all())``.
+
+    The union is prepared once and asked ``contains`` (the converse of ``within``), so the areas of a federal state
+    (tens of thousands of polygons) are not walked through again for every transformer.
+
+    Returns:
+        A boolean array in the order of ``geometries``; missing or empty geometries give False.
+    """
+    union = areas.union_all()
+    shapely.prepare(union)
+    return shapely.contains(union, np.asarray(geometries.values, dtype=object))
 
 
 def _print_count(step: str, gdf: gpd.GeoDataFrame) -> None:
@@ -176,8 +245,7 @@ def process_trafos(relation_id: int) -> None:
     gdf_points = gdf_substations[gdf_substations['geom_type'] == 'Point']
     gdf_polygon = gdf_substations[gdf_substations['geom_type'] == 'Polygon']
     if not gdf_polygon.empty:
-        union_of_polygons = gdf_polygon.geometry.union_all()
-        gdf_substations = gdf_substations.drop(gdf_points[gdf_points.within(union_of_polygons)].index)
+        gdf_substations = gdf_substations.drop(gdf_points.index[within_union(gdf_points.geometry, gdf_polygon.geometry)])
     _print_count("After step 1 (points inside polygons)", gdf_substations)
 
     # 2. large substation areas (Umspannwerke) are not LV transformers
@@ -197,13 +265,10 @@ def process_trafos(relation_id: int) -> None:
         raise ValueError(f"No transformer is left in relation {relation_id} after the filters of steps 1 to 3")
 
     # 4. transformers closer than MIN_DISTANCE_BETWEEN_TRAFOS: drop every row that has a close
-    #    neighbour further down the table (upper triangle of the distance matrix)
+    #    neighbour further down the table
     gdf_substations['centroid'] = gdf_substations.centroid
-    distance_matrix = gdf_substations['centroid'].apply(lambda c: gdf_substations['centroid'].distance(c))
-    distance_matrix = distance_matrix.where(np.triu(np.ones(distance_matrix.shape)).astype(bool))
-    np.fill_diagonal(distance_matrix.values, float('nan'))
-    distance_matrix = distance_matrix[(distance_matrix < MIN_DISTANCE_BETWEEN_TRAFOS).any(axis=1)]
-    gdf_substations = gdf_substations.drop(index=list(distance_matrix.index))
+    gdf_substations = gdf_substations.drop(
+        index=close_duplicates(gdf_substations['centroid'], MIN_DISTANCE_BETWEEN_TRAFOS))
     _print_count("After step 4 (close duplicates)", gdf_substations)
 
     # 5. transformers inside shopping malls
@@ -211,8 +276,8 @@ def process_trafos(relation_id: int) -> None:
     if gdf_shopping.empty:
         gdf_substations['within_shopping'] = False
     else:
-        union_of_shopping = gdf_shopping.to_crs(epsg=TARGET_EPSG).geometry.union_all()
-        gdf_substations['within_shopping'] = gdf_substations.within(union_of_shopping)
+        gdf_substations['within_shopping'] = within_union(gdf_substations.geometry,
+                                                          gdf_shopping.to_crs(epsg=TARGET_EPSG).geometry)
     gdf_substations = gdf_substations.drop(gdf_substations[gdf_substations['within_shopping']].index)
     _print_count("After step 5 (shopping malls)", gdf_substations)
 

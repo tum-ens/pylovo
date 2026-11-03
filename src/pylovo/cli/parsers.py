@@ -363,6 +363,12 @@ Examples:
   # Import transformers from OSM by relation ID
   pylovo-import transformers-osm --relation-id 62464
 
+  # Import the transformers of federal states by their code or key, one after the other
+  pylovo-import transformers-osm --state hb hh 01
+
+  # Process and load the raw files of an earlier download again, without querying the Overpass API
+  pylovo-import transformers-osm --state hb --reuse-fetched
+
   # Import DSO transformer positions from CSV
   pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
 
@@ -381,11 +387,26 @@ Examples:
         "transformers-osm",
         help="Fetch and import transformers from OpenStreetMap"
     )
-    osm_parser.add_argument(
+    osm_area = osm_parser.add_mutually_exclusive_group(required=True)
+    osm_area.add_argument(
         "--relation-id",
         type=int,
-        required=True,
         help="OSM relation ID of the area"
+    )
+    osm_area.add_argument(
+        "--state",
+        nargs="+",
+        type=_federal_state,
+        metavar="STATE",
+        help="Federal state(s) by code (e.g. by, nw or nrw) or key (e.g. 09): the OSM relation of the state "
+             "(STATE_RELATION_IDS in pylovo/data_import/import_transformers.py); several are imported one after "
+             "the other"
+    )
+    osm_parser.add_argument(
+        "--reuse-fetched",
+        action="store_true",
+        help="Process the raw files of an earlier download of the relation (transformer_data/fetched_trafos of "
+             "the data directory) instead of querying the Overpass API again; without them the API is queried"
     )
 
     dso_csv_parser = subparsers.add_parser(

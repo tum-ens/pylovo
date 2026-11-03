@@ -14,6 +14,7 @@ from pylovo.config_loader import (
     INFDB_SOURCE_SCHEMA,
     INFDB_USER,
     LOG_LEVEL,
+    NONRESIDENTIAL_LOAD_MODEL,
 )
 
 
@@ -48,8 +49,21 @@ def _clazz_case_sql() -> str:
         """
 
 
+#: Column of the InfDB buildings with the rule that made a building ``Auxiliary`` (garages, sheds, barns and other
+#: outbuildings without a load of their own, which ``_consumer_buildings_sql`` leaves out by their use). InfDB data
+#: without it predate that class: their outbuildings are Residential, Commercial or Public buildings.
+AUXILIARY_RULE_COLUMN = "auxiliary_rule"
+
+#: Column of the InfDB buildings with the load class of the non-residential part (``pylovo.load_classes``); NULL is no
+#: evidence. Read with ``NONRESIDENTIAL_LOAD_MODEL: load_class`` only; older InfDB data lack it.
+LOAD_CLASS_COLUMN = "load_class"
+
+
 def _consumer_buildings_sql() -> str:
-    """The SQL condition on ``buildings`` columns that selects the buildings generation loads as consumers."""
+    """The SQL condition on ``buildings`` columns that selects the buildings generation loads as consumers.
+
+    ``Auxiliary`` buildings (outbuildings) are no consumers: the condition lists the uses that are.
+    """
     condition = ("building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown') "
                  "AND COALESCE(building_use_id, '') != '31001_2523'")
     if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
@@ -58,6 +72,25 @@ def _consumer_buildings_sql() -> str:
         # building allowlist must not apply this filter.
         condition += " AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''"
     return condition
+
+
+def address_filter_warning(exclude_without_address: bool, has_auxiliary_class: bool) -> str | None:
+    """Why ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`` does not suit the InfDB data, or ``None`` if it does.
+
+    Args:
+        exclude_without_address: The value of ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``.
+        has_auxiliary_class: Whether the InfDB buildings have the column :data:`AUXILIARY_RULE_COLUMN`
+            (:meth:`InfdbClient.has_auxiliary_class`).
+    """
+    if not exclude_without_address and not has_auxiliary_class:
+        return ("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS is False, but the InfDB buildings have no class Auxiliary (no "
+                f"column {AUXILIARY_RULE_COLUMN}): garages, sheds and barns without an address are loaded as "
+                "consumers. Run the current infdb-basedata-buildings, or set EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True.")
+    if exclude_without_address and has_auxiliary_class:
+        return ("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS is True, although the InfDB marks the outbuildings as Auxiliary: "
+                "the address filter also leaves out every consumer without a house number, in the states whose LoD2 "
+                "has no addresses all buildings. Set EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False.")
+    return None
 
 
 class InfdbClient:
@@ -122,6 +155,34 @@ class InfdbClient:
     def __del__(self):
         self.close()
 
+    def has_auxiliary_class(self) -> bool:
+        """Whether ``INFDB_SOURCE_SCHEMA.buildings`` has the column :data:`AUXILIARY_RULE_COLUMN`.
+
+        InfDB basedata with it mark garages, sheds, barns and other outbuildings as ``Auxiliary``, which pylovo leaves
+        out by their use; see :func:`address_filter_warning`.
+        """
+        return self._has_buildings_column(AUXILIARY_RULE_COLUMN)
+
+    def _has_buildings_column(self, column: str) -> bool:
+        query = """SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_schema = %(schema)s AND table_name = 'buildings'
+                                    AND column_name = %(column)s)"""
+        with self.conn:
+            self.cur.execute(query, {"schema": INFDB_SOURCE_SCHEMA, "column": column})
+            return bool(self.cur.fetchone()[0])
+
+    def reads_load_class(self) -> bool:
+        """Whether the buildings are read with their load class: ``NONRESIDENTIAL_LOAD_MODEL: load_class`` and the
+        column :data:`LOAD_CLASS_COLUMN` exists (checked once; without it every class is NULL, with a warning)."""
+        if NONRESIDENTIAL_LOAD_MODEL != "load_class":
+            return False
+        if getattr(self, "_load_class_column", None) is None:
+            self._load_class_column = self._has_buildings_column(LOAD_CLASS_COLUMN)
+            if not self._load_class_column:
+                self.logger.warning(f"NONRESIDENTIAL_LOAD_MODEL is load_class, but {INFDB_SOURCE_SCHEMA}.buildings has "
+                                    f"no column {LOAD_CLASS_COLUMN}: every non-residential part keeps the load of its use")
+        return self._load_class_column
+
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """
         Retrieve all buildings whose centroids are contained within a specified postcode (PLZ).
@@ -131,7 +192,8 @@ class InfdbClient:
 
         Returns:
             list[tuple]: A list of tuples containing the source building columns plus
-                a derived type used by the generation pipeline.
+                a derived type used by the generation pipeline and the load class (NULL unless
+                :meth:`reads_load_class`).
         """
         query = sql.SQL("""
             SELECT
@@ -145,6 +207,8 @@ class InfdbClient:
                 nonresidential_floor_area,
                 CASE
                     WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
+                    -- the barns of a farmstead that InfDB split off a dwelling (step 08_z) carry no load
+                    WHEN mix_rule = 'farmstead' THEN 'Unknown'
                     WHEN building_use = 'Residential' THEN 'Commercial'
                     WHEN building_use = 'Mixed' THEN
                         CASE {classify}(building_use_id)
@@ -173,13 +237,15 @@ class InfdbClient:
                 gemeindeschluessel,
                 changelog_id,
                 assigned_way_id,
-                COALESCE(building_type, building_use) AS type
+                COALESCE(building_type, building_use) AS type,
+                {load_class} AS load_class
             FROM {buildings}
             WHERE postcode = %(p)s
             AND {consumers}
         """).format(classify=sql.Identifier(INFDB_SOURCE_SCHEMA, "classify_building_use"),
                     buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"),
-                    consumers=sql.SQL(_consumer_buildings_sql()))
+                    consumers=sql.SQL(_consumer_buildings_sql()),
+                    load_class=sql.Identifier(LOAD_CLASS_COLUMN) if self.reads_load_class() else sql.SQL("NULL::text"))
         with self.conn:
             self.cur.execute(query, {"p": plz})
             buildings = self.cur.fetchall()

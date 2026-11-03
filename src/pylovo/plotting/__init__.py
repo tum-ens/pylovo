@@ -5,6 +5,7 @@ Subpackages by workflow:
 - ``generation``: plots of single generated grids (maps, plotly, tree layouts).
 - ``classification``: classification and clustering plots.
 - ``validation``: metric, geographic and power-flow plots for grid comparisons.
+- ``comparison``: figures of the comparison of two grid datasets (``pylovo.analysis.comparison``).
 - ``gis_preparation``: export of grid geometries for QGIS (used by ``pylovo-export``).
 - ``mv_grid``: maps and statistics of the MV grids of the MV stage (districts, rings, voltages, taps,
   variant comparisons and plausibility against literature ranges).

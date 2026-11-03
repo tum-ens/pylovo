@@ -18,7 +18,8 @@ Sources of transformer candidates
      - How it gets into ``pylovo.transformers``
    * - OpenStreetMap
      - ``node/<id>``, ``way/<id>`` (a multipolygon relation: ``multipolygon/<id>``)
-     - ``pylovo-setup`` (Bavaria) or ``pylovo-import transformers-osm --relation-id <id>``.
+     - ``pylovo-setup`` (Bavaria), ``pylovo-import transformers-osm --state <code>`` or
+       ``pylovo-import transformers-osm --relation-id <id>``.
    * - LoD2 stations
      - ``lod2/<objectid>``
      - Added during generation (InfDB mode) from LoD2 buildings with function code ``31001_2523``
@@ -80,11 +81,100 @@ file does the setup fetch the data from the Overpass API, see below.
    holds no pole-mounted stations. ``pylovo-import transformers-osm --relation-id 2145268`` fetches
    Bavaria again with the current query and adds the stations that are not in ``pylovo.transformers`` yet.
 
-To add another area, import it by the id of its OSM boundary relation:
+To add a federal state, import it by its code or key; several states are imported one after the other:
 
 .. code-block:: bash
 
-   uv run pylovo-import transformers-osm --relation-id 62611      # Baden-Württemberg
+   uv run pylovo-import transformers-osm --state bw               # Baden-Württemberg
+   uv run pylovo-import transformers-osm --state sh hh ni hb      # four states
+
+pylovo knows the OSM boundary relations of the 16 states (``STATE_RELATION_IDS`` in
+``src/pylovo/data_import/import_transformers.py``, checked on 2026-10-30 against the tags ``ISO3166-2`` and
+``de:regionalschluessel`` of each relation):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 12 12 40 36
+   :class: fixed-table
+
+   * - Code
+     - Key
+     - State
+     - OSM relation
+   * - ``sh``
+     - 01
+     - Schleswig-Holstein
+     - 51529
+   * - ``hh``
+     - 02
+     - Hamburg
+     - 62782
+   * - ``ni``
+     - 03
+     - Niedersachsen
+     - 62771
+   * - ``hb``
+     - 04
+     - Bremen
+     - 62718
+   * - ``nw``, ``nrw``
+     - 05
+     - Nordrhein-Westfalen
+     - 62761
+   * - ``he``
+     - 06
+     - Hessen
+     - 62650
+   * - ``rp``
+     - 07
+     - Rheinland-Pfalz
+     - 62341
+   * - ``bw``
+     - 08
+     - Baden-Württemberg
+     - 62611
+   * - ``by``
+     - 09
+     - Bayern
+     - 2145268
+   * - ``sl``
+     - 10
+     - Saarland
+     - 62372
+   * - ``be``
+     - 11
+     - Berlin
+     - 62422
+   * - ``bb``
+     - 12
+     - Brandenburg
+     - 62504
+   * - ``mv``
+     - 13
+     - Mecklenburg-Vorpommern
+     - 28322
+   * - ``sn``
+     - 14
+     - Sachsen
+     - 62467
+   * - ``st``
+     - 15
+     - Sachsen-Anhalt
+     - 62607
+   * - ``th``
+     - 16
+     - Thüringen
+     - 62366
+
+Any other area is imported by the id of its OSM boundary relation:
+
+.. code-block:: bash
+
+   uv run pylovo-import transformers-osm --relation-id 62428      # Munich
+
+The raw answers of the Overpass API stay in ``transformer_data/fetched_trafos/`` of the data directory.
+``--reuse-fetched`` processes and loads them again without a new download (for a relation without them it queries
+the API), for example after a failed database load or to load the same state into another database.
 
 To find the relation id, **search for the area by name** (for example ``Munich``) on
 `openstreetmap.org <https://www.openstreetmap.org/>`_. Open the matching boundary relation in
@@ -132,9 +222,10 @@ of the data directory and appended to ``pylovo.transformers``; the raw downloads
 
 .. note::
 
-   Processing all transformers of a federal state takes a long time (30 to 50 minutes). The
-   Overpass API is a shared service; avoid repeated large downloads. When the server answers with
-   HTTP 429 or 504, pylovo asks again (3 attempts, after 30 s and 60 s). An answer that carries a
+   The download of a federal state takes minutes, depending on the load of the Overpass API; the processing
+   takes seconds (close duplicates are found with a spatial index, the areas of steps 1 and 5 are prepared once).
+   The Overpass API is a shared service; avoid repeated large downloads (``--reuse-fetched``). When the server
+   answers with HTTP 429, 502, 503 or 504, pylovo asks again (3 attempts, after 30 s and 60 s). An answer that carries a
    ``remark`` means that the server ran into its time or memory limit and the result is incomplete:
    the import stops with that remark and writes no files, so no truncated result is kept.
 

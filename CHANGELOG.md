@@ -11,6 +11,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
 
+## [1.2.0] - 2026-11-03
+### Changed
+- Let small greenfield clusters join an existing station only within its rating
+- Build the documentation on Python 3.13, which Sphinx 9.2 needs
+
+### Added
+- Import the OSM transformers of federal states by their code with `pylovo-import transformers-osm --state`
+- Lay feeder cables in parallel for the voltage drop also without a standard cable, once the largest conductor is not enough (`MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`)
+- Load non-residential parts by their InfDB load class from the federal benchmarks and the BDEW load profiles
+- Add `pylovo.analysis.comparison`, `pylovo.plotting.comparison` and the notebook `notebook_tutorials/analysis/basic_comparison.ipynb` to show an exemplary comparison of two grid datasets of the same buildings
+
 ## [1.1.0] - 2026-10-30
 ### Changed
 - Support Python 3.14 and upgrade the locked dependencies, e.g. pandapower 3.5 (minimum 3.5.2), NumPy 2.4, SciPy 1.18 and SQLAlchemy 2.1

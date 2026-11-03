@@ -518,6 +518,9 @@ class LvVersionParameters:
     # lv_parameters of variants stored before they were read)
     transformer_planning_utilization: float = 1.0
     transformer_mapping: dict[str, list[float]] = field(default_factory=dict)
+    # NONRESIDENTIAL_LOAD_MODEL of the LV version: with load_class the non-residential loads are not the W/m² of their
+    # category (building_use in the lv_parameters of variants stored before it was read)
+    nonresidential_load_model: str = "building_use"
 
     @classmethod
     def from_generation_parameters(cls, version_id: str, gp: dict | str | None) -> "LvVersionParameters":
@@ -587,6 +590,7 @@ class LvVersionParameters:
             peak_load_per_m2=peak_load_per_m2,
             transformer_planning_utilization=utilization,
             transformer_mapping={k: v for k, v in mapping.items() if v},
+            nonresidential_load_model=str(load.get("nonresidential_load_model") or "building_use"),
         )
 
     @classmethod

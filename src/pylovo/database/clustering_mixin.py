@@ -700,6 +700,73 @@ class ClusteringMixin(BaseMixin):
                    WHERE version_id = %(v)s AND plz = %(pc)s AND kcid = %(kc)s AND bcid = %(b)s;"""
         self.cur.execute(query, {"v": VERSION_ID, "pc": plz, "kc": kcid, "b": bcid, "t": target_bcid})
 
+    def release_buildings(self, plz: int, kcid: int, bcid: int, connection_points: list[int] | None = None) -> int:
+        """Take the loaded buildings of a grid out of it again (``bcid`` NULL), all or those at the given points.
+
+        The released buildings are clustered again like the unassigned buildings of a kcid
+        (``get_buildings_from_kcid``, ``get_distance_matrix_from_kcid``).
+
+        Args:
+            plz: Postcode.
+            kcid: K-means cluster ID.
+            bcid: Building cluster ID.
+            connection_points: Planning nodes (``COALESCE(agg_connection_point, connection_point)``) whose
+                buildings leave the grid; ``None`` releases every loaded building of the grid.
+
+        Returns:
+            The number of released buildings.
+        """
+        query = """UPDATE buildings_tem
+                   SET bcid = NULL
+                   WHERE plz = %(p)s
+                     AND kcid = %(k)s
+                     AND bcid = %(b)s
+                     AND type IS DISTINCT FROM 'Transformer'
+                     AND peak_load_in_kw != 0
+                     AND (%(all)s OR COALESCE(agg_connection_point, connection_point) = ANY(%(points)s));"""
+        self.cur.execute(query, {"p": plz, "k": kcid, "b": bcid, "all": connection_points is None,
+                                 "points": [int(point) for point in connection_points or []]})
+        return self.cur.rowcount
+
+    def route_connections_as_feeders(self, plz: int, kcid: int, bcid: int, vertices: list[int]) -> int:
+        """Make the buildings at the given vertices their own planning nodes (``agg_connection_point``).
+
+        Their connection lines (building to street) then belong to the feeder tree and are sized as
+        feeders; the house cable is left at the building (voltage repair of a house connection).
+
+        Returns:
+            The number of buildings changed.
+        """
+        query = """UPDATE buildings_tem
+                   SET agg_connection_point = vertice_id
+                   WHERE plz = %(p)s
+                     AND kcid = %(k)s
+                     AND bcid = %(b)s
+                     AND vertice_id = ANY(%(vertices)s)
+                     AND type IS DISTINCT FROM 'Transformer'
+                     AND peak_load_in_kw != 0;"""
+        self.cur.execute(query, {"p": plz, "k": kcid, "b": bcid, "vertices": [int(v) for v in vertices]})
+        return self.cur.rowcount
+
+    def delete_grid(self, plz: int, kcid: int, bcid: int) -> None:
+        """Delete the ``grid_result`` row of a grid that has no buildings any more (cascades to its station row).
+
+        An existing transformer of the grid leaves ``buildings_tem``, as the unused ones do.
+        """
+        query = """DELETE FROM buildings_tem
+                   WHERE plz = %(p)s AND kcid = %(k)s AND bcid = %(b)s AND type = 'Transformer';
+                   DELETE FROM pylovo.grid_result
+                   WHERE version_id = %(v)s AND plz = %(p)s AND kcid = %(k)s AND bcid = %(b)s;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid})
+
+    def get_next_greenfield_bcid(self, plz: int, kcid: int) -> int:
+        """Return the bcid after the largest greenfield bcid of a kcid (1 if it has none)."""
+        query = """SELECT COALESCE(MAX(bcid), 0) + 1
+                   FROM pylovo.grid_result
+                   WHERE version_id = %(v)s AND plz = %(p)s AND kcid = %(k)s AND bcid >= 0;"""
+        self.cur.execute(query, {"v": VERSION_ID, "p": plz, "k": kcid})
+        return int(self.cur.fetchone()[0])
+
     def get_brownfield_transformer_capacity_map(self, transformer_list: list) -> dict[int, int]:
         """Known ratings (kVA) of existing transformers, keyed by their temporary vertex ID.
 

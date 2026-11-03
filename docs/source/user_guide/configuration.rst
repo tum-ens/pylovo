@@ -248,8 +248,9 @@ Loads and general grid settings
      - Keep only residential buildings and components; non-residential loads are ignored.
      - ✓
    * - ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``
-     - ``True``
-     - InfDB mode: skip buildings without street and house number (sheds, garages, barns).
+     - ``False``
+     - InfDB mode: skip buildings without street and house number. ``True`` for InfDB data without the class
+       ``Auxiliary`` (outbuildings), see :doc:`input_data`.
      - ✓
    * - ``PEAK_LOAD_HOUSEHOLD``
      - ``16.825``
@@ -265,6 +266,24 @@ Loads and general grid settings
      - 4 rows
      - Electrical load categories, see below.
      - ✓
+   * - ``NONRESIDENTIAL_LOAD_MODEL``
+     - ``building_use``
+     - ``building_use``: every non-residential floor area gets the ``peak_load_per_m2`` of its use (the versions
+       before the load classes). ``load_class``: a Commercial or Public part with an InfDB load class
+       (``basedata.buildings.load_class``) gets the load of its class in ``LOAD_CLASSES``
+       (:doc:`../concepts/nonresidential_loads`); parts without a class keep the W/m² of their use.
+     - ✓
+   * - ``UNCLASSIFIED_LOAD_CLASS``
+     - ``null``
+     - With ``load_class``: the class whose load a Commercial or Public part without a load class takes (``other``:
+       the benchmark's rule for uses it does not cover); ``null`` keeps the W/m² of the use.
+     - ✓ (with ``load_class``)
+   * - ``LOAD_CLASSES``
+     - 14 classes
+     - Annual electricity per m² of net floor area of the federal benchmarks (BMWi/BMUB 2015), the net floor area
+       per gross floor area, the BDEW standard load profile with its full-load hours and the source of each value;
+       read with ``NONRESIDENTIAL_LOAD_MODEL: load_class``, see below.
+     - ✓ (with ``load_class``)
    * - ``VN``
      - ``400``
      - Nominal LV voltage in V.
@@ -285,8 +304,19 @@ Loads and general grid settings
      - ``200``
      - Commercial or public load components above this peak (kW) are assumed to have their own
        MV connection and are left out of the LV grid (eGon-data: 200 kW boundary between the
-       MV/LV station level and the MV level). The buildings are stored in ``pylovo.mv_customers``
-       for the MV stage. The default was 100 kW before the MV stage.
+       MV/LV station level and the MV level; grid operators connect up to 250–300 kW at LV and
+       from 100–300 kVA at MV, :ref:`mv-customers`). It acts on the installed load, so at the
+       shipped specific peaks it is 2,532 m² of commercial or 6,897 m² of public gross floor area.
+       The buildings are stored in ``pylovo.mv_customers`` for the MV stage. The default was 100 kW
+       before the MV stage.
+     - ✓
+   * - ``CONNECTION_LEVEL_THRESHOLDS_KW``
+     - ``null``
+     - ``{station_busbar: kW, hv: kW}``, e.g. ``{station_busbar: 100, hv: 20000}`` after eGon-data: every
+       building gets a connection level (``buildings_result.connection_level``, ``mv_customers.connection_level``)
+       on its own peak: ``lv_feeder`` up to ``station_busbar``, ``station_busbar`` above it, ``mv`` for an
+       MV-direct non-residential part (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), ``hv`` from ``hv``
+       (:ref:`connection-levels`). The level is stored only; the LV planning is the same. ``null``: no levels.
      - ✓
    * - ``CABLE_PLANNING_UTILIZATION``
      - ``0.8``
@@ -310,6 +340,13 @@ Loads and general grid settings
      - ``4``
      - Most parallel standard cables per feeder section, only used with
        ``FEEDER_STANDARD_CABLE``.
+     - ✓
+   * - ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES``
+     - ``2``
+     - Without ``FEEDER_STANDARD_CABLE``: when the largest conductor at the parallel count of the
+       ampacity design still leaves a feeder above ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``,
+       the voltage-drop pass may lay sections in parallel (Parallelkabel) up to this many cables.
+       ``1`` (also without the key) lays larger conductors only.
      - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - ``0.4``
@@ -379,6 +416,32 @@ Loads and general grid settings
    * - ``sim_factor``
      - Coincidence (simultaneity) factor *f* of the category, a number from 0 to 1, see
        :doc:`../concepts/grid_dimensioning`.
+
+``LOAD_CLASSES`` has ``net_floor_area_factor`` (net per gross floor area), ``load_profiles`` (full-load hours of each
+standard load profile) and ``classes``, one row per load class with these fields
+(values and sources: :doc:`../concepts/nonresidential_loads`):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+   :class: fixed-table
+
+   * - Field
+     - Meaning
+   * - ``load_class``
+     - Name of the class as in ``basedata.buildings.load_class`` of the InfDB.
+   * - ``consumer_category``
+     - ``Commercial`` or ``Public``: the category the class counts in (its ``sim_factor``; it becomes the
+       ``nonresidential_use`` of the building). ``null``: the use of the building.
+   * - ``electricity_kwh_per_m2_net``
+     - Annual electricity in kWh/(m²·a) of net floor area of the benchmark.
+   * - ``large``
+     - Optional ``{from_m2_net, electricity_kwh_per_m2_net, source}``: the benchmark's value for buildings above
+       ``from_m2_net`` of net floor area (of the non-residential part).
+   * - ``load_profile``
+     - Standard load profile of ``load_profiles``.
+   * - ``source``
+     - Sources of the benchmark and the profile.
 
 Transformer placement and settlement type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -467,8 +530,9 @@ Clustering
        one transformer of the ratings below and the distance limit. Where existing
        (brownfield) stations are used, a greenfield cluster that still has at most
        ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` buildings afterwards joins the nearest
-       existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE``, without checking that
-       station's rating (a few buildings at the edge of its area). Needs a building limit.
+       existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE`` that it does not overload: the
+       planning reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used (a few buildings at
+       the edge of its area), the station's rating not. Needs a building limit.
      - ✓
    * - ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``
      - ``[250, 400, 630]``
@@ -489,6 +553,18 @@ Clustering
      - A building joins only its nearest existing station. When that station is full, the
        building gets a greenfield station instead of joining a farther existing station that still
        has capacity, so existing stations do not reach far beyond their own area.
+     - ✓
+   * - ``MAX_VOLTAGE_REPAIRS``
+     - ``0``
+     - A grid whose validation power flow leaves ``POWER_FLOW_VOLTAGE_LIMITS`` is planned again,
+       up to this many times in a row (``0``, also without the key, stores it as it is), if a
+       consumer is below the band because of the feeders: its street node is below the band plus
+       the share of ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``. The buildings at all street nodes
+       below that (the far ends of the feeders) get greenfield stations and an existing station
+       keeps the others; a greenfield grid is clustered again into at least two. A consumer below the
+       band because of its own house cable gets its connection line planned as a feeder, and if that
+       is not enough either, a station of its own at the building. See
+       :ref:`voltage repair <voltage-repair>`.
      - ✓
    * - ``USE_OPEN_TRANSFORMER_POSITIONS``
      - ``False``
@@ -531,12 +607,14 @@ revision 1 is not extended.
 .. note::
 
    ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``,
-   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS`` and
-   ``BROWNFIELD_NEAREST_ONLY`` were added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
+   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS``,
+   ``BROWNFIELD_NEAREST_ONLY``, ``MAX_VOLTAGE_REPAIRS`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`` were
+   added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
    accepts the current values of the first two with a warning (the values used for the existing
    grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null``,
-   ``USE_MANUAL_TRANSFORMER_POSITIONS: False`` and ``BROWNFIELD_NEAREST_ONLY: False``, the behaviour
-   before these keys existed.
+   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, ``BROWNFIELD_NEAREST_ONLY: False``,
+   ``MAX_VOLTAGE_REPAIRS: 0`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES: 1``, the behaviour before
+   these keys existed.
 
 Station voltage
 ~~~~~~~~~~~~~~~

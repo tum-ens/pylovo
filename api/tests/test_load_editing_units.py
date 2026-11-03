@@ -58,6 +58,7 @@ def building(**kw) -> dict:
 
 # --------------------------------------------------------------------------- parameters and peaks
 def test_parameters_from_snapshot():
+    assert params(load_calculation={**GP["load_calculation"], "nonresidential_load_model": "building_use"})
     p = params()
     assert p.residential_peak_kw == 16.825 and p.peak_load_per_m2_w == {"Commercial": 79.0, "Public": 29.0}
     assert p.sim_factor["Residential"] == 0.07 and p.vn_v == 400 and p.planning_utilization == 0.8
@@ -76,6 +77,8 @@ def test_residential_peak_comes_from_the_category_record():
     (lambda gp: gp.update(electrical_backend="opendss"), "backend"),
     (lambda gp: gp["load_calculation"].pop("default_power_factor"), "power_factor"),
     (lambda gp: gp["cable_dimensioning"].pop("mv_direct_connection_load_threshold_kw"), "threshold"),
+    # the editor computes the W/m² per use; a version of the class model would change its loads on any edit
+    (lambda gp: gp["load_calculation"].update(nonresidential_load_model="load_class"), "load model"),
 ])
 def test_not_editable_snapshots(change, reason):
     gp = json.loads(json.dumps(GP))
@@ -83,6 +86,7 @@ def test_not_editable_snapshots(change, reason):
     with pytest.raises(le.LoadEditConflict) as err:
         LoadParameters.from_generation_parameters("t", gp)
     assert err.value.code == "not_editable" and err.value.status == 409
+    assert any(reason in r for r in err.value.as_dict().get("reasons", [reason]))
     with pytest.raises(le.LoadEditConflict):
         LoadParameters.from_generation_parameters("t", None)
 

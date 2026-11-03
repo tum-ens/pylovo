@@ -450,3 +450,19 @@ def test_load_stats_follow_the_categories():
     stats = inputs.load_stats_dicts(np.array([[1.0, 0.0, 0.0, 2.0]]), np.array([[3.0, 0.0, 0.0, 1.0]]))
     assert stats == [{"Residential": [1.0, 3.0], "Unknown": [2.0, 1.0]}]
     assert list(CATEGORIES) == ["Residential", "Commercial", "Public", "Unknown"]
+
+
+def test_a_customer_of_a_load_class_version_keeps_the_w_per_m2_of_its_lv_load():
+    # an LV version of the class model: c0 an office hall (28.55 W/m² own peak), c1 without a class (79 W/m² of its
+    # category), c2 without a class that took UNCLASSIFIED_LOAD_CLASS other (14.2 W/m², its load_class stays NULL)
+    rows = _customer_rows(nonresidential_use=["Commercial"] * 3, footprint_m2=[2500.0] * 3,
+                          nonresidential_floor_area=[10000.0] * 3, installed_kw=[285.5, 790.0, 142.0],
+                          load_class=["office", None, None])
+    table = inputs.customer_table(rows, _lv(nonresidential_load_model="load_class"), PARAMS).set_index("objectid")
+    assert table.loc["c0", "installed_kw"] == pytest.approx(2500.0 * 28.55 / 1000.0)
+    assert table.loc["c0", "p_fixed_kw"] == pytest.approx(0.5 * 2500.0 * 28.55 / 1000.0)
+    assert table.loc["c1", "installed_kw"] == pytest.approx(2500.0 * 79.0 / 1000.0)
+    assert table.loc["c2", "installed_kw"] == pytest.approx(2500.0 * 14.2 / 1000.0)
+    # an LV version of the model building_use: the W/m² of the category
+    table = inputs.customer_table(rows, _lv(), PARAMS).set_index("objectid")
+    assert table["installed_kw"].tolist() == pytest.approx([2500.0 * 79.0 / 1000.0] * 3)

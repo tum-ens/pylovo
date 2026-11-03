@@ -30,6 +30,8 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("transformer_placement", "greenfield_cluster_merge_transformer_kva"): UNKNOWN,
     # Before this switch existed, a building could join any existing station with capacity in reach.
     ("transformer_placement", "brownfield_nearest_only"): False,
+    # Before the voltage repair existed, a grid outside the voltage band was stored as it was.
+    ("transformer_placement", "max_voltage_repairs"): 0,
     # Before the size limit existed, merged clusters could have any size.
     ("transformer_placement", "greenfield_cluster_merge_max_buildings"): None,
     # Before the feeder utilization existed, feeder cables were sized at their full ampacity.
@@ -43,12 +45,20 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("cable_dimensioning", "feeder_standard_cable"): None,
     ("cable_dimensioning", "max_parallel_feeder_cables"): UNKNOWN,
     ("cable_dimensioning", "house_connection"): "joint",
+    # Before parallel voltage upgrades without a standard cable existed, only larger conductors were laid.
+    ("cable_dimensioning", "max_voltage_parallel_feeder_cables"): 1,
     ("cable_dimensioning", "cabinet_spacing_m"): UNKNOWN,
     # Before ROUTE_ACROSS_POSTCODE_BORDERS every PLZ routed over its own streets only.
     ("postcode_border", "route_across_postcode_borders"): False,
     ("postcode_border", "neighboring_street_width_m"): None,
     ("postcode_border", "neighboring_street_margin_m"): None,
     ("postcode_border", "rule_revision"): None,
+    # Before the load classes every non-residential floor area got the W/m² of its use.
+    ("load_calculation", "nonresidential_load_model"): "building_use",
+    # Before UNCLASSIFIED_LOAD_CLASS a part without a load class kept the W/m² of its use.
+    ("load_calculation", "unclassified_load_class"): None,
+    # Before the connection levels no building had one.
+    ("connection_levels",): None,
     # The input data was not recorded: which data an older version was built from is not known.
     ("input_data", "use_infdb"): UNKNOWN,
     ("input_data", "target_epsg"): UNKNOWN,

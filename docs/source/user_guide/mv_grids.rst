@@ -52,7 +52,11 @@ and bounding boxes); the rows the stage processes in SQL (the streets and addres
 routing graph, the land use) are copied into temporary tables of the pylovo database for the run,
 and every exact test against the planning region runs there. The results are the same as with the
 InfDB schemas in the pylovo database. ``pylovo-generate --mv``, ``pylovo-mv generate`` and
-``pylovo-mv graph`` check the required InfDB tables before they start.
+``pylovo-mv graph`` check the required InfDB tables before they start. The routing graph takes the ways of
+every municipality within 5 km of the planning region (``region_buffer_m``), and the HV/MV
+substations are searched in the same distance: import the streets of these municipalities too, or
+the substations around the region get no connection to the streets and supply nothing (flag
+``long_attach``, a warning of the run summary).
 
 LV version
 ~~~~~~~~~~

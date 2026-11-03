@@ -69,6 +69,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0015_egon_substations",
             "0016_key_figure_names",
             "0017_key_figures_version",
+            "0018_building_load_class",
         ]
         db.cur.execute("""
             SELECT conname, convalidated
