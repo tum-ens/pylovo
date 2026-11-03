@@ -176,7 +176,8 @@ still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and the dist
 ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` only pairs whose smaller cluster has at most that many
 buildings, so small fragments join a neighbour while larger clusters stay as split. Where existing
 stations are used, a greenfield cluster that still has at most that many buildings joins the nearest
-existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE``, without checking its rating again. The
+existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE`` that it does not overload (the planning
+reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used, the rating not). The
 clusters are numbered 1, 2, ... in the order of their smallest vertex id, so equal partitions get
 equal ids.
 

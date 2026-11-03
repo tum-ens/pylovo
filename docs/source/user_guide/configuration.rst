@@ -468,8 +468,9 @@ Clustering
        one transformer of the ratings below and the distance limit. Where existing
        (brownfield) stations are used, a greenfield cluster that still has at most
        ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` buildings afterwards joins the nearest
-       existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE``, without checking that
-       station's rating (a few buildings at the edge of its area). Needs a building limit.
+       existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE`` that it does not overload: the
+       planning reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used (a few buildings at
+       the edge of its area), the station's rating not. Needs a building limit.
      - ✓
    * - ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``
      - ``[250, 400, 630]``

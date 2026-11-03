@@ -72,13 +72,30 @@ def test_small_clusters_join_the_nearest_station_and_stations_never_move(monkeyp
 
 
 def test_the_brownfield_distance_limit_holds(monkeypatch):
-    count, db = merged(monkeypatch, 3, distance=100)
+    count, db = merged(monkeypatch, 3, distance=100, node_kw=50.0)
     assert count == 1 and db.moves == [(3, -1)]
+
+
+def test_a_station_takes_no_cluster_that_would_overload_it(monkeypatch):
+    # cluster 3 (3 nodes) is nearest to -1, rated 250 kVA: with its own node 400 kW, so it joins -2 (400 kW <= 630)
+    count, db = merged(monkeypatch, 3, distance=100)
+    assert count == 1 and db.moves == [(3, -2)]
+    assert db.ratings == {-2: 630}   # 400 kW / 0.8 = 500 -> 630
 
 
 def test_unrated_stations_are_sized_again_up_to_the_largest_rating(monkeypatch):
     monkeypatch.setattr(FakeDb, "get_brownfield_transformer_capacity_map", lambda self, vertices: {})
     count, db = merged(monkeypatch, 3, node_kw=150.0)
-    assert count == 3 and db.moves == [(1, -1), (2, -2), (3, -1)]
-    # -2: 3 nodes, 450 kW / 0.8 = 562.5 -> 630; -1 ends with 5 nodes, 937.5 kVA: beyond the catalogue, keeps 630
-    assert db.ratings == {-1: 630, -2: 630}
+    # -1: 2 nodes, 300 kW / 0.8 = 375 -> 400; -2: 3 nodes, 450 kW / 0.8 = 562.5 -> 630. Cluster 3 would bring -1
+    # to 750 kW and -2 to 900 kW, both above the largest rating of 630 kVA: it stays a greenfield cluster.
+    assert count == 2 and db.moves == [(1, -1), (2, -2)]
+    assert db.ratings == {-1: 400, -2: 630}
+
+
+def test_a_load_between_planning_and_full_rating_may_join(monkeypatch):
+    # the planning reserve may be used: -1 (unrated) with cluster 1 reaches 2 x 300 = 600 kW <= 630 kVA,
+    # above 630 x 0.8 = 504; the rating stays the largest one
+    monkeypatch.setattr(FakeDb, "get_brownfield_transformer_capacity_map", lambda self, vertices: {})
+    count, db = merged(monkeypatch, 1, node_kw=300.0)
+    assert count == 1 and db.moves == [(1, -1)]
+    assert db.ratings == {-1: 630}

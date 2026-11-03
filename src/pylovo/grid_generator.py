@@ -1088,12 +1088,15 @@ class GridGenerator:
         that still has at most ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` loaded buildings joins
         the existing station with the shortest routed distance from one of its connection
         points, if that distance is below ``MAX_BROWNFIELD_TRAFO_DISTANCE`` (the distance within
-        which existing stations take buildings anyway). The station's rating is not checked
-        again: the brownfield step fills stations nearest first, so a station can be full
-        before the last few buildings at the edge of its area come, and real stations run well
-        below their rating. An imported rating is kept; a station without one gets the smallest
+        which existing stations take buildings anyway) and the station is not overloaded then.
+        The planning reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used: the brownfield
+        step fills stations nearest first, so a station can be full before the last few
+        buildings at the edge of its area come, and real stations run well below their rating.
+        The coincident load must stay within the rating, though: an imported rating, or else
+        the largest catalogue rating. A cluster that would overload its nearest station tries
+        the next one. An imported rating is kept; a station without one gets the smallest
         catalogue rating above its new load (after ``TRANSFORMER_PLANNING_UTILIZATION``), or
-        keeps the largest.
+        the largest.
 
         Returns:
             The number of clusters that joined a station.
@@ -1116,19 +1119,23 @@ class GridGenerator:
             costs = costs[costs["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE]
             if costs.empty:
                 continue
-            vertex = int(costs.sort_values(by=["agg_cost", "end_vid"]).iloc[0]["end_vid"])
-            target = bcid_by_vertex[vertex]
-            self.dbc.move_building_cluster(plz, kcid, bcid, target)
-            if vertex not in known_capacities:
+            # each station once, nearest first (from the nearest connection point of the cluster)
+            candidates = costs.sort_values(by=["agg_cost", "end_vid"]).drop_duplicates("end_vid")["end_vid"]
+            for vertex in map(int, candidates):
+                target = bcid_by_vertex[vertex]
                 station_buildings = self.dbc.get_buildings_from_bcid(plz, kcid, target)
+                joined = pd.concat([station_buildings, buildings])
                 load = utils.simultaneous_peak_load(
-                    station_buildings, consumer_cat_df,
-                    utils.planning_nodes(station_buildings).dropna().astype(int).unique().tolist(),
-                ) / TRANSFORMER_PLANNING_UTILIZATION
-                feasible = capacities[capacities > load]
-                self.dbc._set_transformer_rated_power(
-                    plz, kcid, target, int(feasible[0] if len(feasible) else capacities.max()))
-            merged += 1
+                    joined, consumer_cat_df, utils.planning_nodes(joined).dropna().astype(int).unique().tolist())
+                if load > known_capacities.get(vertex, capacities.max()):
+                    continue   # the station would be overloaded: try the next one
+                self.dbc.move_building_cluster(plz, kcid, bcid, target)
+                if vertex not in known_capacities:
+                    feasible = capacities[capacities > load / TRANSFORMER_PLANNING_UTILIZATION]
+                    self.dbc._set_transformer_rated_power(
+                        plz, kcid, target, int(feasible[0] if len(feasible) else capacities.max()))
+                merged += 1
+                break
         if merged:
             self.logger.info(f"Greenfield merge for PLZ {plz}, KCID {kcid}: {merged} small clusters joined their "
                              f"nearest existing station (max_buildings={GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS})")
