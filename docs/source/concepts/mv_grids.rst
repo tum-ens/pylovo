@@ -172,8 +172,8 @@ two rules in the MV stage decide which customers become MV nodes:
    load, a building with a footprint of at least ``customer_hall_min_footprint_m2`` (2,000 m²)
    counts one storey: its non-residential floor area is the smaller of its footprint and its floor
    area (flag ``hall_one_storey`` where this lowers it). The installed load is this area times the
-   specific peak of the category in the LV snapshot, or for a customer with a load class the W/m² of its LV load
-   (:doc:`nonresidential_loads`).
+   specific peak of the category in the LV snapshot, or for an LV version of the load classes the W/m² of its LV
+   load (:doc:`nonresidential_loads`).
 #. The MV threshold acts on the corrected own peak. A customer whose own peak is below
    ``customer_min_mv_kw`` (200 kW, as in eGon-data) gets no MV node. The own peak of one building
    is its installed load after the hall rule, because pylovo's law gives a single load unit the

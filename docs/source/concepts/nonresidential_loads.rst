@@ -286,8 +286,9 @@ version of the model ``load_class`` stores the classes with their inputs, derive
 ``building_use`` runs the same SQL as before the classes. ``load_calculation.unclassified_load_class`` was added later
 (``null`` unless the model is ``load_class``); a version without it kept the W/m² of the use (legacy value ``null``).
 
-The MV stage takes the W/m² of a customer with a load class from its LV load (installed load over floor area) for the
-hall rule (:ref:`mv-customers`). The load editor of the HTTP API refuses versions of the model ``load_class``: it
+The MV stage takes the W/m² of the customers of a version of the model ``load_class`` from their LV load (installed
+load over floor area) for the hall rule (:ref:`mv-customers`), also of a part without a class that took
+``UNCLASSIFIED_LOAD_CLASS``, so both voltage levels give a customer the same W/m². The load editor of the HTTP API refuses versions of the model ``load_class``: it
 computes the W/m² of the use.
 
 Limitations

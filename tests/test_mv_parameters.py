@@ -595,6 +595,15 @@ def test_lv_parameters_from_the_snapshot_of_this_code(lv_snapshot):
     old = LvVersionParameters.from_json(older)
     assert old.transformer_planning_utilization == 1.0 and old.transformer_mapping == {}
     assert old.station_ratings(2) == [250.0, 400.0, 630.0]                 # pylovo's default catalogue
+    # the non-residential load model of the LV version (the W/m² of the MV customers)
+    assert lv.nonresidential_load_model == config_loader.NONRESIDENTIAL_LOAD_MODEL
+    legacy = {key: value for key, value in data.items() if key != "nonresidential_load_model"}
+    assert LvVersionParameters.from_json(legacy).nonresidential_load_model == "building_use"
+    classes = copy.deepcopy(lv_snapshot)
+    classes["load_calculation"]["nonresidential_load_model"] = "load_class"
+    assert LvVersionParameters.from_generation_parameters("mv1", classes).nonresidential_load_model == "load_class"
+    del classes["load_calculation"]["nonresidential_load_model"]           # versions before the load classes
+    assert LvVersionParameters.from_generation_parameters("mv1", classes).nonresidential_load_model == "building_use"
 
 
 def test_lv_parameters_fallbacks(lv_snapshot, caplog):
