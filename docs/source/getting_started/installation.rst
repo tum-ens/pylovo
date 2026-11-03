@@ -110,14 +110,15 @@ Without uv, a virtual environment with pip works as well:
 Install without a checkout (pip)
 --------------------------------
 
-The wheel runs outside a checkout. Install it into a virtual environment, with the extras you need
-(see the table above):
+The wheel runs outside a checkout. pylovo is not on PyPI yet, so pip builds the wheel from the GitHub
+repository. Install it into a virtual environment, with the extras you need (see the table above):
 
 .. code-block:: bash
 
    python3.12 -m venv .venv      # or python3.13
    source .venv/bin/activate
-   pip install pylovo            # or: pip install "pylovo[plots,api]"
+   pip install "pylovo @ git+https://github.com/tum-ens/pylovo.git"
+   # with extras: pip install "pylovo[plots,api] @ git+https://github.com/tum-ens/pylovo.git"
 
 Then work in a project directory of your own: put the ``.env`` (:ref:`env-variables`) there and run the
 ``pylovo-*`` commands from it. The wheel ships the default configuration and the read-only reference

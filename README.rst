@@ -46,8 +46,9 @@ Key features
   <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_), QGIS templates, CSV and
   pandapower JSON export, plotting helpers, and a headless HTTP API for browser clients and scripts.
 
-The shipped data cover Bavaria; other regions need the corresponding InfDB data and transformer
-download.
+pylovo runs for every German postcode area that the InfDB covers. For brownfield grids outside Bavaria, import
+the OpenStreetMap transformers of the region first (see the `transformer data guide
+<https://pylovo.readthedocs.io/en/latest/user_guide/transformer_data.html>`_).
 
 Quick start
 -----------
@@ -63,11 +64,6 @@ recommended setup the InfDB database with processed buildings and streets (see t
    cd pylovo
    uv sync                                   # add --extra plots for the plotting helpers
    cp .env.example .env                      # enter the database connection
-
-Without a checkout the wheel works as well: ``pip install pylovo`` into a virtual environment, put the ``.env`` into
-your project directory and run the commands from there. The wheel ships the default configuration and the reference
-data that the setup needs (see the
-`installation page <https://pylovo.readthedocs.io/en/latest/getting_started/installation.html#install-wheel>`_).
 
 Set up the schema ``pylovo`` and generate grids (run the commands from the repository root):
 
