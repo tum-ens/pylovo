@@ -186,6 +186,8 @@ class InfdbClient:
                 nonresidential_floor_area,
                 CASE
                     WHEN COALESCE(nonresidential_floor_area, 0) <= 0 THEN NULL
+                    -- the barns of a farmstead that InfDB split off a dwelling (step 08_z) carry no load
+                    WHEN mix_rule = 'farmstead' THEN 'Unknown'
                     WHEN building_use = 'Residential' THEN 'Commercial'
                     WHEN building_use = 'Mixed' THEN
                         CASE {classify}(building_use_id)

@@ -1,4 +1,6 @@
 """SQL of ``InfdbClient`` that the diagnostics use, checked on a fake connection (no database)."""
+import inspect
+
 import pylovo.infdb.infdb_client as infdb_client
 from pylovo.infdb.infdb_client import InfdbClient
 
@@ -142,3 +144,10 @@ def test_close_closes_the_cursor_and_the_connection_and_may_be_repeated(monkeypa
 
 def test_close_is_safe_when_the_constructor_failed_before_the_connection_existed():
     InfdbClient.__new__(InfdbClient).close()
+
+
+def test_the_farm_part_of_a_farmstead_carries_no_load():
+    source = inspect.getsource(InfdbClient.fetch_buildings_from_infdb)
+    # InfDB step 08_z moves the barns of a farmstead to the non-residential floor area; Unknown has no load
+    farm = source.index("WHEN mix_rule = 'farmstead' THEN 'Unknown'")
+    assert farm < source.index("WHEN building_use = 'Residential' THEN 'Commercial'")
