@@ -300,6 +300,8 @@ CREATE_QUERIES = {
         vertice_id integer,
         connection_point integer,
         agg_connection_point integer,
+        load_class text,
+        connection_level varchar(20),
         CONSTRAINT buildings_result_pkey PRIMARY KEY (version_id, objectid),
         CONSTRAINT fk_buildings_result_grid_result
             FOREIGN KEY (version_id, grid_result_id)
@@ -327,6 +329,8 @@ CREATE_QUERIES = {
         gemeindeschluessel text,
         geom geometry(MultiPolygon,{TARGET_EPSG}),
         centroid geometry(Point,{TARGET_EPSG}),
+        load_class text,
+        connection_level varchar(20),
         CONSTRAINT mv_customers_pkey PRIMARY KEY (version_id, objectid),
         CONSTRAINT fk_mv_customers_version
             FOREIGN KEY (version_id)
@@ -1232,7 +1236,9 @@ TEMP_CREATE_QUERIES = {
         bcid integer,
         kcid integer,
         connection_point integer,
-        agg_connection_point integer
+        agg_connection_point integer,
+        load_class text,
+        connection_level varchar(20)
     )""",
     "ways_tem": """CREATE TEMP TABLE IF NOT EXISTS ways_tem
     (

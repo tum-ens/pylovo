@@ -34,6 +34,48 @@ CONSUMER_CATEGORIES:
   - {consumer_category_id: 3, definition: Residential, peak_load: PEAK_LOAD_HOUSEHOLD, yearly_consumption: 0.00, peak_load_per_m2: null, yearly_consumption_per_m2: null, sim_factor: 0.07}
   - {consumer_category_id: 4, definition: Unknown, peak_load: null, yearly_consumption: null, peak_load_per_m2: 0.00, yearly_consumption_per_m2: 0.00, sim_factor: 0.60}
 
+### Non-residential load model (docs: concepts/nonresidential_loads)
+# building_use: every non-residential floor area gets the peak_load_per_m2 of its use (Commercial, Public, Unknown) above.
+# load_class: a Commercial or Public part with an InfDB load class (basedata.buildings.load_class) gets the load of its
+# class in LOAD_CLASSES; parts without a class (NULL: no evidence) and Unknown parts keep the W/m² of their use.
+NONRESIDENTIAL_LOAD_MODEL: building_use
+# load_class only: the class whose load a Commercial or Public part without a load class takes; null keeps the W/m² of
+# its use. other follows the benchmark, where a use it does not cover counts as Tab. 2.2 Nr. 9.1 (BMWi/BMUB 2015).
+# The stored load_class of such a part stays NULL (no evidence).
+UNCLASSIFIED_LOAD_CLASS: null
+
+# Load classes, read with NONRESIDENTIAL_LOAD_MODEL: load_class. Per class the annual electricity of the federal benchmark
+# in kWh/(m² net floor area · a) (BMWi/BMUB 2015: Bekanntmachung der Regeln für Energieverbrauchswerte und der
+# Vergleichswerte im Nichtwohngebäudebestand vom 7. April 2015, BAnz AT 21.05.2015 B3, Anlage 2, column "Strom"), the
+# BDEW standard load profile and the category whose sim_factor applies (null: the use of the building). pylovo derives:
+# kWh/(m² gross · a) = benchmark x net_floor_area_factor; coincident W/m² = that / full-load hours x 1000 (a standard
+# load profile is the mean of many customers); own peak W/m² (the installed load) = coincident W/m² / sim_factor.
+# large: from this net floor area of the non-residential part the benchmark's value for large buildings applies.
+LOAD_CLASSES:
+  # Net floor area (NGF) per gross floor area: BMWi/BMUB 2015, Anlage 1 ("Umrechnung von der Bruttogeschossfläche über den
+  # Faktor 0,85"; the factors per BWZK category of its Tabelle 1 are 0.83-0.91)
+  net_floor_area_factor: 0.85
+  # Full-load hours (annual energy / maximum) of the BDEW standard load profiles G0-G6, L0-L2 (Meier, Fünfgeld, Adam,
+  # Schieferdecker 1999: Repräsentative VDEW-Lastprofile, VDEW M-28/99), from their typical days (selp_series.csv of
+  # oemof demandlib, MIT) with the BDEW seasons, public holidays as Sundays, mean of the years 2015-2025
+  # (docs/scripts/slp_full_load_hours.py; the years differ by less than 1 %)
+  load_profiles: {G0: 4191, G1: 2084, G2: 3993, G3: 6495, G4: 4370, G5: 3935, G6: 3332, L0: 4165, L1: 3285, L2: 4681}
+  classes:
+    - {load_class: office, consumer_category: Commercial, electricity_kwh_per_m2_net: 35, load_profile: G1, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 9.1 Bürogebäude, nur beheizt (the default of Tab. 2.2); BDEW G1 Gewerbe werktags 8-18 Uhr (offices)"}
+    - {load_class: retail, consumer_category: Commercial, electricity_kwh_per_m2_net: 45, large: {from_m2_net: 300, electricity_kwh_per_m2_net: 60, source: "Tab. 2.2 Nr. 6.2 Handel Non-Food über 300 m²"}, load_profile: G4, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 6.1 Handel Non-Food bis 300 m²; BDEW G4 Laden"}
+    - {load_class: food_retail, consumer_category: Commercial, electricity_kwh_per_m2_net: 75, large: {from_m2_net: 300, electricity_kwh_per_m2_net: 265, source: "Tab. 2.2 Nr. 6.4 Handel Food über 300 m² sowie Metzgerei mit Produktion"}, load_profile: G4, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 6.3 Handel Food bis 300 m²; BDEW G4 Laden"}
+    - {load_class: hospitality, consumer_category: Commercial, electricity_kwh_per_m2_net: 60, load_profile: G0, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 1.3 Hotels mit 3 Sternen (hotels 50-65, restaurants 70-95); BDEW G0 Gewerbe allgemein"}
+    - {load_class: education, consumer_category: Public, electricity_kwh_per_m2_net: 10, load_profile: G1, source: "BMWi/BMUB 2015 Tab. 2.1 BWZK 4100 Allgemeinbildende Schulen (other schools 15-20, universities 30-95); BDEW G1 Gewerbe werktags 8-18 Uhr"}
+    - {load_class: health_care, consumer_category: Public, electricity_kwh_per_m2_net: 50, load_profile: G0, source: "BMWi/BMUB 2015 Tab. 2.1 BWZK 3000 Gebäude des Gesundheitswesens (acute hospitals BWZK 3200: 125); BDEW G0 Gewerbe allgemein"}
+    - {load_class: sports, consumer_category: Public, electricity_kwh_per_m2_net: 35, load_profile: G2, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 5.1 Sporthallen; BDEW G2 Gewerbe mit Verbrauch in den Abendstunden (sports clubs)"}
+    - {load_class: culture_leisure, consumer_category: Public, electricity_kwh_per_m2_net: 40, load_profile: G0, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 3.2/3.3 Opernhäuser, Theater, Saalbauten (= Tab. 2.1 BWZK 9120-9140); BDEW G0 Gewerbe allgemein"}
+    - {load_class: worship, consumer_category: Public, electricity_kwh_per_m2_net: 20, load_profile: G6, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 3.4 Freizeitzentren, Jugendhäuser, Gemeindehäuser (no category for churches; closest use); BDEW G6 Wochenendbetrieb"}
+    - {load_class: public_administration, consumer_category: Public, electricity_kwh_per_m2_net: 20, large: {from_m2_net: 3500, electricity_kwh_per_m2_net: 30, source: "Tab. 2.1 BWZK 1300 über 3 500 m²"}, load_profile: G1, source: "BMWi/BMUB 2015 Tab. 2.1 BWZK 1300 Verwaltungsgebäude, normale technische Ausstattung, bis 3 500 m²; BDEW G1 Gewerbe werktags 8-18 Uhr"}
+    - {load_class: production, consumer_category: Commercial, electricity_kwh_per_m2_net: 20, large: {from_m2_net: 3500, electricity_kwh_per_m2_net: 65, source: "Tab. 2.1 BWZK 7000 über 3 500 m²"}, load_profile: G0, source: "BMWi/BMUB 2015 Tab. 2.1 BWZK 7000 Gebäude für Produktion, Werkstätten, Lagergebäude bis 3 500 m²; BDEW G0 Gewerbe allgemein"}
+    - {load_class: warehouse, consumer_category: Commercial, electricity_kwh_per_m2_net: 35, load_profile: G0, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 6.6 Geschlossene Lagerhäuser, Speditionen; BDEW G0 Gewerbe allgemein"}
+    - {load_class: agriculture, consumer_category: Commercial, electricity_kwh_per_m2_net: 20, large: {from_m2_net: 3500, electricity_kwh_per_m2_net: 65, source: "Tab. 2.1 BWZK 7000 über 3 500 m²"}, load_profile: L0, source: "BMWi/BMUB 2015 Tab. 2.1 BWZK 7100 Land- und forstwirtschaftliche Produktionsstätten, not listed, so its main category BWZK 7000 bis 3 500 m² (hint to Tab. 2.1); BDEW L0 Landwirtschaftsbetriebe allgemein"}
+    - {load_class: other, consumer_category: null, electricity_kwh_per_m2_net: 35, load_profile: G0, source: "BMWi/BMUB 2015 Tab. 2.2 Nr. 9.1 Bürogebäude, nur beheizt (Tab. 2.2: a use it does not cover counts as 9.1); BDEW G0 Gewerbe allgemein"}
+
 ### CABLE DIMENSIONING PARAMETERS
 VN: 400  # Nominal voltage in the low voltage grid
 
@@ -51,6 +93,15 @@ TRANSFORMER_PLANNING_UTILIZATION: 0.8
 # Commercial/Public buildings above this peak load (kW) are assumed to use a dedicated MV-side connection (eGon-data: 200 kW boundary between the MV/LV station level and the MV level; grid operators connect up to 250-300 kW at LV and from 100-300 kVA at MV)
 # It acts on the installed load (floor area x peak_load_per_m2): 200 kW are 2,532 m2 of Commercial or 6,897 m2 of Public gross floor area
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 200
+
+# Connection level of every building (buildings_result.connection_level, mv_customers.connection_level) on its own peak, after
+# eGon-data (voltage levels of demand by peak load: up to 0.1 MW LV, 0.1-0.2 MW MV/LV station, 0.2-5.5 MW MV, 5.5-20 MW
+# HV/MV station, from 20 MW HV): lv_feeder up to station_busbar kW, station_busbar above it, mv for a non-residential part
+# above MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW (it leaves the LV grid; the HV/MV station level counts as mv), hv from hv kW.
+# The own peak of the LV part is that of its households with pylovo's law plus a non-residential part that stays in LV.
+# The level is stored only; the LV planning connects a station_busbar building like any other.
+# null: no connection level (versions before it); e.g. {station_busbar: 100, hv: 20000}
+CONNECTION_LEVEL_THRESHOLDS_KW: null
 
 # Planned coincident current / ampacity of the feeder and service cable designs, as for the transformers (cable sizing only; voltage drops use the current itself)
 CABLE_PLANNING_UTILIZATION: 0.8

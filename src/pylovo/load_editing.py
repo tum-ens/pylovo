@@ -218,6 +218,10 @@ class LoadParameters:
         vn = cd.get("vn")
         if vn is None:
             reasons.append("cable_dimensioning.vn is missing")
+        if lc.get("nonresidential_load_model", "building_use") != "building_use":
+            # component_peaks computes the W/m² of the use; the class loads of such a version would change on any edit
+            reasons.append(f"non-residential load model {lc.get('nonresidential_load_model')!r}: the load editor "
+                           "knows the W/m² per use only")
         if "residential_only_generation" not in gp:
             notes.append("residential_only_generation is not in the snapshot; assumed false")
         if reasons:

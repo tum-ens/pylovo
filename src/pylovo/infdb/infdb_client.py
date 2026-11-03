@@ -14,6 +14,7 @@ from pylovo.config_loader import (
     INFDB_SOURCE_SCHEMA,
     INFDB_USER,
     LOG_LEVEL,
+    NONRESIDENTIAL_LOAD_MODEL,
 )
 
 
@@ -52,6 +53,10 @@ def _clazz_case_sql() -> str:
 #: outbuildings without a load of their own, which ``_consumer_buildings_sql`` leaves out by their use). InfDB data
 #: without it predate that class: their outbuildings are Residential, Commercial or Public buildings.
 AUXILIARY_RULE_COLUMN = "auxiliary_rule"
+
+#: Column of the InfDB buildings with the load class of the non-residential part (``pylovo.load_classes``); NULL is no
+#: evidence. Read with ``NONRESIDENTIAL_LOAD_MODEL: load_class`` only; older InfDB data lack it.
+LOAD_CLASS_COLUMN = "load_class"
 
 
 def _consumer_buildings_sql() -> str:
@@ -156,12 +161,27 @@ class InfdbClient:
         InfDB basedata with it mark garages, sheds, barns and other outbuildings as ``Auxiliary``, which pylovo leaves
         out by their use; see :func:`address_filter_warning`.
         """
+        return self._has_buildings_column(AUXILIARY_RULE_COLUMN)
+
+    def _has_buildings_column(self, column: str) -> bool:
         query = """SELECT EXISTS (SELECT 1 FROM information_schema.columns
                                   WHERE table_schema = %(schema)s AND table_name = 'buildings'
                                     AND column_name = %(column)s)"""
         with self.conn:
-            self.cur.execute(query, {"schema": INFDB_SOURCE_SCHEMA, "column": AUXILIARY_RULE_COLUMN})
+            self.cur.execute(query, {"schema": INFDB_SOURCE_SCHEMA, "column": column})
             return bool(self.cur.fetchone()[0])
+
+    def reads_load_class(self) -> bool:
+        """Whether the buildings are read with their load class: ``NONRESIDENTIAL_LOAD_MODEL: load_class`` and the
+        column :data:`LOAD_CLASS_COLUMN` exists (checked once; without it every class is NULL, with a warning)."""
+        if NONRESIDENTIAL_LOAD_MODEL != "load_class":
+            return False
+        if getattr(self, "_load_class_column", None) is None:
+            self._load_class_column = self._has_buildings_column(LOAD_CLASS_COLUMN)
+            if not self._load_class_column:
+                self.logger.warning(f"NONRESIDENTIAL_LOAD_MODEL is load_class, but {INFDB_SOURCE_SCHEMA}.buildings has "
+                                    f"no column {LOAD_CLASS_COLUMN}: every non-residential part keeps the load of its use")
+        return self._load_class_column
 
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """
@@ -172,7 +192,8 @@ class InfdbClient:
 
         Returns:
             list[tuple]: A list of tuples containing the source building columns plus
-                a derived type used by the generation pipeline.
+                a derived type used by the generation pipeline and the load class (NULL unless
+                :meth:`reads_load_class`).
         """
         query = sql.SQL("""
             SELECT
@@ -216,13 +237,15 @@ class InfdbClient:
                 gemeindeschluessel,
                 changelog_id,
                 assigned_way_id,
-                COALESCE(building_type, building_use) AS type
+                COALESCE(building_type, building_use) AS type,
+                {load_class} AS load_class
             FROM {buildings}
             WHERE postcode = %(p)s
             AND {consumers}
         """).format(classify=sql.Identifier(INFDB_SOURCE_SCHEMA, "classify_building_use"),
                     buildings=sql.Identifier(INFDB_SOURCE_SCHEMA, "buildings"),
-                    consumers=sql.SQL(_consumer_buildings_sql()))
+                    consumers=sql.SQL(_consumer_buildings_sql()),
+                    load_class=sql.Identifier(LOAD_CLASS_COLUMN) if self.reads_load_class() else sql.SQL("NULL::text"))
         with self.conn:
             self.cur.execute(query, {"p": plz})
             buildings = self.cur.fetchall()

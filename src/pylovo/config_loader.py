@@ -48,6 +48,7 @@ import pandas as pd
 import yaml
 from dotenv import find_dotenv, load_dotenv
 
+from pylovo import load_classes as _load_classes
 from pylovo.mv_grid import options as _mv_options
 
 
@@ -461,6 +462,22 @@ DEFAULT_POWER_FACTOR = CONFIG_GENERATION["DEFAULT_POWER_FACTOR"]
 CONSUMER_CATEGORIES = _consumer_categories_from_config(CONFIG_GENERATION, PEAK_LOAD_HOUSEHOLD)
 SIM_FACTOR = CONSUMER_CATEGORIES.set_index("definition")["sim_factor"].astype(float).to_dict()
 
+# Non-residential load model: "building_use" (the W/m² of CONSUMER_CATEGORIES per use) or "load_class" (the load of the
+# InfDB load class from LOAD_CLASSES where a Commercial or Public part has one). LOAD_CLASS_TABLE holds the classes with
+# the derived kWh/m² and W/m² (pylovo.load_classes); it is None unless the model is "load_class".
+NONRESIDENTIAL_LOAD_MODEL = CONFIG_GENERATION.get("NONRESIDENTIAL_LOAD_MODEL", "building_use")
+if NONRESIDENTIAL_LOAD_MODEL not in _load_classes.NONRESIDENTIAL_LOAD_MODELS:
+    raise ValueError(f"NONRESIDENTIAL_LOAD_MODEL must be one of {list(_load_classes.NONRESIDENTIAL_LOAD_MODELS)}, "
+                     f"got {NONRESIDENTIAL_LOAD_MODEL!r}")
+LOAD_CLASSES = CONFIG_GENERATION.get("LOAD_CLASSES")
+if LOAD_CLASSES is None and NONRESIDENTIAL_LOAD_MODEL == "load_class":
+    raise ValueError("NONRESIDENTIAL_LOAD_MODEL load_class needs LOAD_CLASSES")
+_LOAD_CLASS_TABLE = None if LOAD_CLASSES is None else _load_classes.load_class_table(LOAD_CLASSES, SIM_FACTOR)
+LOAD_CLASS_TABLE = _LOAD_CLASS_TABLE if NONRESIDENTIAL_LOAD_MODEL == "load_class" else None
+# The class whose load a Commercial or Public part without a load class takes (None: the W/m² of its use).
+UNCLASSIFIED_LOAD_CLASS = _load_classes.unclassified_load_class(CONFIG_GENERATION.get("UNCLASSIFIED_LOAD_CLASS"),
+                                                                _LOAD_CLASS_TABLE)
+
 # Equipment catalogues; grid_role tells the three pools apart in CONFIG_EQUIPMENT_DATA.
 TRANSFORMERS = pd.DataFrame(CONFIG_GENERATION["TRANSFORMERS"])
 TRANSFORMERS["grid_role"] = "transformer"
@@ -540,6 +557,9 @@ MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
 
 # Commercial/Public loads above this threshold are assumed to connect through a dedicated MV-side supply.
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
+# Connection level per building (lv_feeder, station_busbar, mv, hv) on its own peak; None: no connection levels.
+CONNECTION_LEVEL_THRESHOLDS_KW = _load_classes.connection_thresholds(
+    CONFIG_GENERATION.get("CONNECTION_LEVEL_THRESHOLDS_KW"), MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW)
 
 # Consumer connection cables are defined directly by CONSUMER_CONNECTION_CABLES.
 

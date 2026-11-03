@@ -41,7 +41,7 @@ STATION_STATS_COLUMNS: tuple[str, ...] = (
 #: Columns of :meth:`MvInputMixin.mv_customer_rows`.
 CUSTOMER_ROW_COLUMNS: tuple[str, ...] = (
     "objectid", "plz", "nonresidential_use", "installed_kw", "x", "y", "mapped_station", "source", "footprint_m2",
-    "nonresidential_floor_area",
+    "nonresidential_floor_area", "load_class",
 )
 #: Columns of :meth:`MvInputMixin.plz_population`.
 POPULATION_COLUMNS: tuple[str, ...] = ("plz", "pop", "area_km2", "polygon_km2")
@@ -112,7 +112,7 @@ _CUSTOMERS_SQL = sql.SQL("""
 SELECT mc.objectid, mc.plz, mc.nonresidential_use, mc.nonresidential_peak_load_in_kw AS installed_kw,
        ST_X(COALESCE(st.geom, mc.centroid)) AS x, ST_Y(COALESCE(st.geom, mc.centroid)) AS y,
        (st.geom IS NOT NULL) AS mapped_station, 'mv_customers' AS source, ST_Area(mc.geom) AS footprint_m2,
-       mc.nonresidential_floor_area
+       mc.nonresidential_floor_area, mc.load_class
 FROM pylovo.mv_customers mc
 LEFT JOIN LATERAL (
     SELECT ST_GeometryN(t.geom, 1) AS geom FROM pylovo.transformers t
@@ -129,7 +129,7 @@ SELECT br.objectid, br.postcode AS plz, br.nonresidential_use, br.nonresidential
        ST_X(COALESCE(br.centroid, ST_PointOnSurface(br.geom))) AS x,
        ST_Y(COALESCE(br.centroid, ST_PointOnSurface(br.geom))) AS y,
        false AS mapped_station, 'buildings_result' AS source, ST_Area(br.geom) AS footprint_m2,
-       br.nonresidential_floor_area
+       br.nonresidential_floor_area, br.load_class
 FROM pylovo.buildings_result br
 WHERE br.version_id = %(v)s AND br.postcode = ANY(%(plz)s) AND br.nonresidential_mv_direct
   AND br.nonresidential_peak_load_in_kw > 0

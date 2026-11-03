@@ -266,6 +266,24 @@ Loads and general grid settings
      - 4 rows
      - Electrical load categories, see below.
      - ✓
+   * - ``NONRESIDENTIAL_LOAD_MODEL``
+     - ``building_use``
+     - ``building_use``: every non-residential floor area gets the ``peak_load_per_m2`` of its use (the versions
+       before the load classes). ``load_class``: a Commercial or Public part with an InfDB load class
+       (``basedata.buildings.load_class``) gets the load of its class in ``LOAD_CLASSES``
+       (:doc:`../concepts/nonresidential_loads`); parts without a class keep the W/m² of their use.
+     - ✓
+   * - ``UNCLASSIFIED_LOAD_CLASS``
+     - ``null``
+     - With ``load_class``: the class whose load a Commercial or Public part without a load class takes (``other``:
+       the benchmark's rule for uses it does not cover); ``null`` keeps the W/m² of the use.
+     - ✓ (with ``load_class``)
+   * - ``LOAD_CLASSES``
+     - 14 classes
+     - Annual electricity per m² of net floor area of the federal benchmarks (BMWi/BMUB 2015), the net floor area
+       per gross floor area, the BDEW standard load profile with its full-load hours and the source of each value;
+       read with ``NONRESIDENTIAL_LOAD_MODEL: load_class``, see below.
+     - ✓ (with ``load_class``)
    * - ``VN``
      - ``400``
      - Nominal LV voltage in V.
@@ -291,6 +309,14 @@ Loads and general grid settings
        shipped specific peaks it is 2,532 m² of commercial or 6,897 m² of public gross floor area.
        The buildings are stored in ``pylovo.mv_customers`` for the MV stage. The default was 100 kW
        before the MV stage.
+     - ✓
+   * - ``CONNECTION_LEVEL_THRESHOLDS_KW``
+     - ``null``
+     - ``{station_busbar: kW, hv: kW}``, e.g. ``{station_busbar: 100, hv: 20000}`` after eGon-data: every
+       building gets a connection level (``buildings_result.connection_level``, ``mv_customers.connection_level``)
+       on its own peak: ``lv_feeder`` up to ``station_busbar``, ``station_busbar`` above it, ``mv`` for an
+       MV-direct non-residential part (``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``), ``hv`` from ``hv``
+       (:ref:`connection-levels`). The level is stored only; the LV planning is the same. ``null``: no levels.
      - ✓
    * - ``CABLE_PLANNING_UTILIZATION``
      - ``0.8``
@@ -390,6 +416,32 @@ Loads and general grid settings
    * - ``sim_factor``
      - Coincidence (simultaneity) factor *f* of the category, a number from 0 to 1, see
        :doc:`../concepts/grid_dimensioning`.
+
+``LOAD_CLASSES`` has ``net_floor_area_factor`` (net per gross floor area), ``load_profiles`` (full-load hours of each
+standard load profile) and ``classes``, one row per load class with these fields
+(values and sources: :doc:`../concepts/nonresidential_loads`):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+   :class: fixed-table
+
+   * - Field
+     - Meaning
+   * - ``load_class``
+     - Name of the class as in ``basedata.buildings.load_class`` of the InfDB.
+   * - ``consumer_category``
+     - ``Commercial`` or ``Public``: the category the class counts in (its ``sim_factor``; it becomes the
+       ``nonresidential_use`` of the building). ``null``: the use of the building.
+   * - ``electricity_kwh_per_m2_net``
+     - Annual electricity in kWh/(m²·a) of net floor area of the benchmark.
+   * - ``large``
+     - Optional ``{from_m2_net, electricity_kwh_per_m2_net, source}``: the benchmark's value for buildings above
+       ``from_m2_net`` of net floor area (of the non-residential part).
+   * - ``load_profile``
+     - Standard load profile of ``load_profiles``.
+   * - ``source``
+     - Sources of the benchmark and the profile.
 
 Transformer placement and settlement type
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

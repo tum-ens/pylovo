@@ -126,6 +126,9 @@ skipped with the reason otherwise.
    * - ``tests/test_postgis_fixtures.py``: SQL of the postcode border and the left-out buildings
      - ``PYLOVO_FIXTURE_DB`` = libpq connection string
      - an empty database with PostGIS and pgRouting available
+   * - ``tests/test_load_classes_db.py``: SQL of the load classes and the connection levels
+     - ``PYLOVO_FIXTURE_DB`` = libpq connection string
+     - the same
    * - ``tests/test_database_review.py``: migrations, locks and schema checks
      - ``PYLOVO_REVIEW_TEST_DSN`` = libpq connection string
      - an empty database; the role needs ``CREATEDB`` and may create PostGIS and pgRouting

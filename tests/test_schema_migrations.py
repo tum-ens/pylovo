@@ -200,8 +200,8 @@ def test_migration_0017_stamps_the_key_figures_and_the_classifications_clustered
     """Old rows become version 1 and keep no default; the columns match a fresh setup; old classifications read as made."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, key_figures_version
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0017_key_figures_version", key_figures_version)
-    assert MIGRATION_NAMES[-1] == "0017_key_figures_version"
+    assert ("0017_key_figures_version", key_figures_version) in POST_SCHEMA_MIGRATIONS
+    assert MIGRATION_NAMES.count("0017_key_figures_version") == 1
     conn = Connection()
     key_figures_version(Cursor(conn))
     sql = " ".join(conn.log)
@@ -220,3 +220,33 @@ def test_migration_0017_stamps_the_key_figures_and_the_classifications_clustered
     assert ("SET key_figures_version = 1, transform = 'none', exclude_infeasible = false "
             "WHERE list_of_clustering_parameters IS NOT NULL AND key_figures_version IS NULL;") in sql
     assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row
+
+
+def test_migration_0018_adds_the_load_class_and_the_connection_level_and_rebuilds_the_buildings_view():
+    """Old tables get the two nullable columns of a fresh setup; the view with ``br.*`` is built again, once."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, building_load_class
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0018_building_load_class", building_load_class)
+    assert MIGRATION_NAMES[-1] == "0018_building_load_class"
+
+    class Answering(Cursor):
+        def __init__(self, conn, view_lacks_columns):
+            super().__init__(conn)
+            self.view_lacks_columns = view_lacks_columns
+
+        def fetchone(self):
+            if "buildings_result_with_grid" in self.last:
+                return (self.view_lacks_columns,)
+            return ("pylovo.table",)                                  # to_regclass: the table exists
+
+    for lacks in (True, False):
+        conn = Connection()
+        building_load_class(Answering(conn, lacks))
+        sql = " ".join(conn.log)
+        for table in ("buildings_result", "mv_customers"):
+            assert (f"ALTER TABLE pylovo.{table} ADD COLUMN IF NOT EXISTS load_class text, "
+                    "ADD COLUMN IF NOT EXISTS connection_level varchar(20)") in sql
+            fresh = re.findall(r"^\s*(load_class|connection_level) ([\w()]+),$", CREATE_QUERIES[table], re.M)
+            assert fresh == [("load_class", "text"), ("connection_level", "varchar(20)")]
+        assert ("DROP VIEW pylovo.buildings_result_with_grid" in sql) is lacks
+        assert sql.count("CREATE OR REPLACE VIEW pylovo.buildings_result_with_grid") == int(lacks)

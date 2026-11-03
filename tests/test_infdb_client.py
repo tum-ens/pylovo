@@ -1,5 +1,6 @@
 """SQL of ``InfdbClient`` that the diagnostics use, checked on a fake connection (no database)."""
 import inspect
+import logging
 
 import pylovo.infdb.infdb_client as infdb_client
 from pylovo.infdb.infdb_client import InfdbClient
@@ -151,3 +152,42 @@ def test_the_farm_part_of_a_farmstead_carries_no_load():
     # InfDB step 08_z moves the barns of a farmstead to the non-residential floor area; Unknown has no load
     farm = source.index("WHEN mix_rule = 'farmstead' THEN 'Unknown'")
     assert farm < source.index("WHEN building_use = 'Residential' THEN 'Commercial'")
+
+
+
+def _selected_load_class(infdb):
+    """The SQL part that ``fetch_buildings_from_infdb`` selects as ``load_class``."""
+    infdb.fetch_buildings_from_infdb(80331)
+    query, params = infdb.cur.executed[-1]
+    assert params == {"p": 80331}
+    parts = list(query.seq)
+    after = next(i for i, p in enumerate(parts) if isinstance(p, infdb_client.sql.SQL)
+                 and p.string.lstrip().startswith("AS load_class"))
+    return parts[after - 1]
+
+
+def test_the_load_class_is_read_only_with_the_class_model_and_its_column(monkeypatch, caplog):
+    def fresh():
+        infdb = InfdbClient.__new__(InfdbClient)
+        infdb.conn, infdb.cur, infdb.logger = FakeConnection(), FakeCursor(), logging.getLogger("load-class-read")
+        return infdb
+
+    infdb = fresh()
+    # the model of the versions before the classes: NULL, without asking for the column
+    monkeypatch.setattr(infdb_client, "NONRESIDENTIAL_LOAD_MODEL", "building_use")
+    assert not infdb.reads_load_class() and infdb.cur.executed == []
+    assert _selected_load_class(infdb) == infdb_client.sql.SQL("NULL::text")
+    # the class model with the column: the column
+    monkeypatch.setattr(infdb_client, "NONRESIDENTIAL_LOAD_MODEL", "load_class")
+    infdb = fresh()
+    infdb.cur.fetchone = lambda: (True,)
+    assert infdb.reads_load_class()
+    assert infdb.cur.executed[-1][1] == {"schema": infdb_client.INFDB_SOURCE_SCHEMA, "column": "load_class"}
+    assert _selected_load_class(infdb) == infdb_client.sql.Identifier("load_class")
+    # an older InfDB without the column: NULL and one warning
+    infdb = fresh()
+    infdb.cur.fetchone = lambda: (False,)
+    with caplog.at_level(logging.WARNING, logger="load-class-read"):
+        assert not infdb.reads_load_class() and not infdb.reads_load_class()
+    assert len(infdb.cur.executed) == 1 and "has no column load_class" in caplog.text
+    assert _selected_load_class(infdb) == infdb_client.sql.SQL("NULL::text")

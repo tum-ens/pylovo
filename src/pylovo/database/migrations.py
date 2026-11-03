@@ -647,6 +647,31 @@ def key_figures_version(cur: cursor) -> None:
     """)
 
 
+def building_load_class(cur: cursor) -> None:
+    """Add the load class and the connection level of a building to ``buildings_result`` and ``mv_customers``.
+
+    Both are nullable: versions before them keep NULL (``NONRESIDENTIAL_LOAD_MODEL`` and
+    ``CONNECTION_LEVEL_THRESHOLDS_KW`` fill them). The view ``buildings_result_with_grid`` lists ``br.*`` before the grid
+    columns, so it is built again where it lacks the new columns (without CASCADE, like ``drop_rebuilt_views``). A
+    no-op on a fresh schema.
+    """
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.database.config_table_structure import CREATE_QUERIES
+
+    for table in ("buildings_result", "mv_customers"):
+        cur.execute("SELECT to_regclass(%s)", (f"pylovo.{table}",))
+        if cur.fetchone()[0] is not None:
+            cur.execute(f"ALTER TABLE pylovo.{table} ADD COLUMN IF NOT EXISTS load_class text, "
+                        "ADD COLUMN IF NOT EXISTS connection_level varchar(20)")
+    cur.execute("""SELECT to_regclass('pylovo.buildings_result_with_grid') IS NOT NULL
+                          AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                          WHERE table_schema = 'pylovo' AND table_name = 'buildings_result_with_grid'
+                                            AND column_name = 'connection_level')""")
+    if cur.fetchone()[0]:
+        cur.execute("DROP VIEW pylovo.buildings_result_with_grid")
+        cur.execute(CREATE_QUERIES["buildings_result_with_grid"])
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -668,6 +693,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0015_egon_substations", egon_substations),
     ("0016_key_figure_names", key_figure_names),
     ("0017_key_figures_version", key_figures_version),
+    ("0018_building_load_class", building_load_class),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

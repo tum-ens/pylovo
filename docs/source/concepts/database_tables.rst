@@ -1034,6 +1034,12 @@ Check ``chk_buildings_result_geom``: ``geom IS NOT NULL``.
    * - ``agg_connection_point``
      - ``integer``
      -
+   * - ``load_class``
+     - ``text``
+     -
+   * - ``connection_level``
+     - ``varchar(20)``
+     -
 
 ``transformer_positions``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1899,6 +1905,12 @@ Foreign key (version_id) references ``version`` (version_id), ON DELETE CASCADE.
    * - ``centroid``
      - ``geometry(Point,<TARGET_EPSG>)``
      -
+   * - ``load_class``
+     - ``text``
+     -
+   * - ``connection_level``
+     - ``varchar(20)``
+     -
 
 ``mv_variant``
 ~~~~~~~~~~~~~~
@@ -2689,6 +2701,12 @@ Temporary building table of one postcode, created as ``buildings_tem_<plz>`` and
      -
    * - ``agg_connection_point``
      - ``integer``
+     -
+   * - ``load_class``
+     - ``text``
+     -
+   * - ``connection_level``
+     - ``varchar(20)``
      -
 
 ``ways_tem_<plz>``

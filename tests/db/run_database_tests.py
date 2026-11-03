@@ -29,7 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = "pgrouting/pgrouting:17-3.5-4.0.1"
 CONTAINER = "pylovo-test-db"
-TESTS = ["tests/test_toy_town.py", "tests/test_postgis_fixtures.py", "tests/test_database_review.py", "api/tests"]
+TESTS = ["tests/test_toy_town.py", "tests/test_postgis_fixtures.py", "tests/test_load_classes_db.py",
+         "tests/test_database_review.py", "api/tests"]
 
 
 def _environment(port: int) -> dict:

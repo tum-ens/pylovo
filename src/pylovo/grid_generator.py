@@ -468,6 +468,8 @@ class GridGenerator:
         self.logger.debug(
             f"{too_large_consumers} non-residential components assumed MV-direct and excluded from LV modeling"
         )
+        # the connection level of every building (CONNECTION_LEVEL_THRESHOLDS_KW), before the MV customers are stored
+        self.dbc.set_connection_levels()
         if too_large_consumers:
             saved = self.dbc.save_mv_customers(self.plz)
             self.logger.info(f"{saved} MV customers stored in pylovo.mv_customers")

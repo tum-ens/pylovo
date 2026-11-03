@@ -53,6 +53,12 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("postcode_border", "neighboring_street_width_m"): None,
     ("postcode_border", "neighboring_street_margin_m"): None,
     ("postcode_border", "rule_revision"): None,
+    # Before the load classes every non-residential floor area got the W/m² of its use.
+    ("load_calculation", "nonresidential_load_model"): "building_use",
+    # Before UNCLASSIFIED_LOAD_CLASS a part without a load class kept the W/m² of its use.
+    ("load_calculation", "unclassified_load_class"): None,
+    # Before the connection levels no building had one.
+    ("connection_levels",): None,
     # The input data was not recorded: which data an older version was built from is not known.
     ("input_data", "use_infdb"): UNKNOWN,
     ("input_data", "target_epsg"): UNKNOWN,

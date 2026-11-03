@@ -9,12 +9,13 @@ import pandas as pd
 from psycopg2 import sql
 from psycopg2.extras import execute_batch
 
-from pylovo import postcode_border
+from pylovo import load_classes, postcode_border
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
     CABLE_PLANNING_UTILIZATION,
     CONFIG_EQUIPMENT_DATA,
+    CONNECTION_LEVEL_THRESHOLDS_KW,
     CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS,
     CONNECTION_POINT_AGGREGATION_RADIUS_M,
     CONSUMER_CATEGORIES,
@@ -29,6 +30,8 @@ from pylovo.config_loader import (
     HOUSE_CONNECTION,
     INFDB_SOURCE_SCHEMA,
     K_MEANS_SEED,
+    LOAD_CLASS_TABLE,
+    LOAD_CLASSES,
     LV_REFERENCE_VOLTAGE_PU,
     BROWNFIELD_NEAREST_ONLY,
     MAX_BROWNFIELD_TRAFO_DISTANCE,
@@ -43,6 +46,7 @@ from pylovo.config_loader import (
     MERGE_GREENFIELD_CLUSTERS,
     MIN_SHARED_PREFIX_LENGTH_M,
     MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW,
+    NONRESIDENTIAL_LOAD_MODEL,
     PEAK_LOAD_HOUSEHOLD,
     POWER_FLOW_MAX_VM_PU,
     POWER_FLOW_MIN_VM_PU,
@@ -53,6 +57,7 @@ from pylovo.config_loader import (
     TARGET_EPSG,
     TRANSFORMER_MAPPING,
     TRANSFORMER_PLANNING_UTILIZATION,
+    UNCLASSIFIED_LOAD_CLASS,
     URBAN_MAX_BUILDING_DISTANCE,
     URBAN_MIN_HOUSEHOLDS,
     USE_DSO_TRANSFORMER_POSITIONS,
@@ -93,6 +98,11 @@ class PreprocessingMixin(BaseMixin):
                 "default_power_factor": DEFAULT_POWER_FACTOR,
                 "household_fallback": self._household_fallback_parameters(),
                 "consumer_categories": self._dataframe_records(CONSUMER_CATEGORIES),
+                "nonresidential_load_model": NONRESIDENTIAL_LOAD_MODEL,
+                "unclassified_load_class": UNCLASSIFIED_LOAD_CLASS if NONRESIDENTIAL_LOAD_MODEL == "load_class" else None,
+                # the classes only where they act, so that a version of the model building_use keeps its snapshot
+                **({"load_classes": load_classes.snapshot(LOAD_CLASSES, LOAD_CLASS_TABLE, SIM_FACTOR)}
+                   if NONRESIDENTIAL_LOAD_MODEL == "load_class" else {}),
             },
             "equipment_data": self._dataframe_records(CONFIG_EQUIPMENT_DATA),
             "cable_dimensioning": {
@@ -143,6 +153,8 @@ class PreprocessingMixin(BaseMixin):
                 "k_means_seed": K_MEANS_SEED,
             },
             "postcode_border": postcode_border.snapshot(),
+            # None: no connection level per building (CONNECTION_LEVEL_THRESHOLDS_KW)
+            "connection_levels": CONNECTION_LEVEL_THRESHOLDS_KW,
             # which data the grids are built from, not a parameter of the YAML files
             "input_data": {
                 "use_infdb": USE_INFDB,
@@ -419,8 +431,8 @@ class PreprocessingMixin(BaseMixin):
         Args:
             buildings_data: Rows in the column order of ``InfdbClient.fetch_buildings_from_infdb``
                 (``id``, ``feature_id``, ``objectid``, ..., ``geom``, ``centroid``, ...,
-                ``assigned_way_id``, ``type``); both geometries are transformed to ``TARGET_EPSG``. The ``plz`` of
-                the buildings is set later by ``set_buildings_tem_plz``.
+                ``assigned_way_id``, ``type``, ``load_class``); both geometries are transformed to ``TARGET_EPSG``.
+                The ``plz`` of the buildings is set later by ``set_buildings_tem_plz``.
         """
         insert_query = f"""
             INSERT INTO buildings_tem
@@ -428,11 +440,11 @@ class PreprocessingMixin(BaseMixin):
              nonresidential_floor_area, nonresidential_use, mix_rule,
              building_use, building_use_id,
              building_type, occupants, households, construction_year, postcode, address_street_id, street,
-             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type)
+             house_number, geom, centroid, gemeindeschluessel, changelog_id, assigned_way_id, type, load_class)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     ST_Transform(%s::geometry, {TARGET_EPSG}), ST_Transform(%s::geometry, {TARGET_EPSG}),
-                    %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s)
         """
         execute_batch(self.cur, insert_query, buildings_data, page_size=500)
         # self.conn.commit() only for debugging
@@ -644,7 +656,9 @@ class PreprocessingMixin(BaseMixin):
         Validates the source floor-area split, fills missing household counts from the
         ``_household_fallback_parameters`` assumptions, derives residential and non-residential
         floor areas and peak loads from ``consumer_categories``, and sums them into
-        ``peak_load_in_kw`` (residential only if ``RESIDENTIAL_ONLY_GENERATION``).
+        ``peak_load_in_kw`` (residential only if ``RESIDENTIAL_ONLY_GENERATION``). With
+        ``NONRESIDENTIAL_LOAD_MODEL: load_class`` a Commercial or Public part with a load class then
+        takes the load of its class (:meth:`apply_load_classes`).
 
         Returns:
             Number of buildings deleted because their peak load is zero.
@@ -787,6 +801,8 @@ class PreprocessingMixin(BaseMixin):
                 ],
             },
         )
+        if NONRESIDENTIAL_LOAD_MODEL == "load_class":
+            self.apply_load_classes()
 
         self.cur.execute(
             """
@@ -830,6 +846,139 @@ class PreprocessingMixin(BaseMixin):
         self.cur.execute(delete_query)
 
         return count
+
+    def apply_load_classes(self) -> dict[str, int]:
+        """Give the Commercial and Public parts with a configured load class the load of their class.
+
+        Runs inside :meth:`set_building_peak_load`, after the loads per use. The own peak of such a part is
+        ``nonresidential_floor_area`` x the coincident W/m² of its class (the value for large buildings above the
+        class's floor area) / the sim factor of its category, the class's ``consumer_category`` or else the use of
+        the building, which becomes ``nonresidential_use`` (:mod:`pylovo.load_classes`). Parts without a class
+        (NULL: no evidence) take the class ``UNCLASSIFIED_LOAD_CLASS`` (their ``load_class`` stays NULL), or keep their
+        load without it; parts with a class that ``LOAD_CLASSES`` does not list and Unknown parts keep their load;
+        ``peak_load_in_kw`` is summed again.
+
+        Returns:
+            Counts: ``classified`` parts that took a class load (the unclassified ones included), ``unclassified``
+            parts without a class that took ``UNCLASSIFIED_LOAD_CLASS``, ``unconfigured`` parts whose class is not
+            configured and ``not_classified_use`` parts with a class whose use is neither Commercial nor Public.
+        """
+        params = {
+            **load_classes.sql_parameters(LOAD_CLASS_TABLE),
+            "sim_categories": list(load_classes.CLASSIFIED_USES),
+            "sim_factors": [float(SIM_FACTOR[c]) for c in load_classes.CLASSIFIED_USES],
+            "uses": list(load_classes.CLASSIFIED_USES),
+            "unclassified": UNCLASSIFIED_LOAD_CLASS,
+            "include_nonresidential": not RESIDENTIAL_ONLY_GENERATION,
+        }
+        self.cur.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE b.nonresidential_use = ANY(%(uses)s) AND NOT b.load_class = ANY(%(classes)s)),
+                COUNT(*) FILTER (WHERE NOT COALESCE(b.nonresidential_use = ANY(%(uses)s), false))
+            FROM buildings_tem b
+            WHERE b.load_class IS NOT NULL AND COALESCE(b.nonresidential_floor_area, 0) > 0;
+            """,
+            params,
+        )
+        unconfigured, other_use = self.cur.fetchone()
+        unclassified = 0
+        if UNCLASSIFIED_LOAD_CLASS is not None:
+            self.cur.execute(
+                """
+                SELECT COUNT(*) FROM buildings_tem b
+                WHERE b.load_class IS NULL AND b.nonresidential_use = ANY(%(uses)s)
+                  AND COALESCE(b.nonresidential_floor_area, 0) > 0;
+                """,
+                params,
+            )
+            unclassified = self.cur.fetchone()[0]
+        self.cur.execute(
+            """
+            WITH classes AS (
+                SELECT *
+                FROM unnest(%(classes)s::text[], %(categories)s::text[], %(coincident)s::double precision[],
+                            %(large_from)s::double precision[], %(large_coincident)s::double precision[])
+                     AS c(load_class, consumer_category, coincident, large_from, large_coincident)
+            ), sim AS (
+                SELECT * FROM unnest(%(sim_categories)s::text[], %(sim_factors)s::double precision[])
+                    AS s(category, sim_factor)
+            )
+            UPDATE buildings_tem b
+            SET nonresidential_use = s.category,
+                -- the value for large buildings above the class's gross floor area
+                nonresidential_peak_load_in_kw = b.nonresidential_floor_area
+                    * CASE WHEN b.nonresidential_floor_area > c.large_from THEN c.large_coincident
+                           ELSE c.coincident END
+                    / s.sim_factor / 1000
+            FROM classes c, sim s
+            WHERE c.load_class = COALESCE(b.load_class, %(unclassified)s::text)
+              AND s.category = COALESCE(c.consumer_category, b.nonresidential_use)
+              AND b.nonresidential_use = ANY(%(uses)s) AND COALESCE(b.nonresidential_floor_area, 0) > 0;
+            """,
+            params,
+        )
+        classified = self.cur.rowcount
+        self.cur.execute(
+            """
+            UPDATE buildings_tem
+            SET peak_load_in_kw = COALESCE(residential_peak_load_in_kw, 0)
+                + CASE WHEN %(include_nonresidential)s
+                       THEN COALESCE(nonresidential_peak_load_in_kw, 0)
+                       ELSE 0 END;
+            """,
+            params,
+        )
+        if unconfigured:
+            self.logger.warning(f"{unconfigured} non-residential parts have a load class that LOAD_CLASSES does not "
+                                "list; they keep the load of their use")
+        self.logger.info(f"Load classes: {classified} non-residential parts take the load of their class"
+                         + (f" ({unclassified} without a class that of {UNCLASSIFIED_LOAD_CLASS})" if unclassified else "")
+                         + (f", {other_use} with a class keep their use (not Commercial or Public)" if other_use else ""))
+        return {"classified": classified, "unclassified": unclassified, "unconfigured": unconfigured,
+                "not_classified_use": other_use}
+
+    def set_connection_levels(self) -> dict[str, int]:
+        """Store the connection level of every building in ``buildings_tem.connection_level``.
+
+        Needs ``CONNECTION_LEVEL_THRESHOLDS_KW``; runs after :meth:`update_too_large_consumers_to_zero`. An MV-direct
+        non-residential part makes the building ``mv``, or ``hv`` from the HV threshold (on its own peak, the
+        installed load). Otherwise the own peak of what stays in the LV grid decides: the households with pylovo's law
+        (``g + (1 - g) n^(-3/4)`` of the Residential sim factor) plus the non-residential part, ``station_busbar``
+        above the station-busbar threshold, else ``lv_feeder`` (:func:`pylovo.load_classes.connection_level`).
+
+        Returns:
+            Buildings per connection level; empty without connection levels.
+        """
+        if CONNECTION_LEVEL_THRESHOLDS_KW is None:
+            return {}
+        self.cur.execute(
+            """
+            UPDATE buildings_tem
+            SET connection_level = CASE
+                    WHEN nonresidential_mv_direct AND nonresidential_peak_load_in_kw >= %(hv)s THEN 'hv'
+                    WHEN nonresidential_mv_direct THEN 'mv'
+                    WHEN CASE WHEN COALESCE(households, 0) > 0 AND COALESCE(residential_peak_load_in_kw, 0) > 0
+                              THEN residential_peak_load_in_kw
+                                   * (%(g_res)s + (1 - %(g_res)s) * power(households::double precision, -0.75))
+                              ELSE 0 END
+                         + CASE WHEN %(include_nonresidential)s THEN COALESCE(nonresidential_peak_load_in_kw, 0)
+                                ELSE 0 END
+                         > %(busbar)s THEN 'station_busbar'
+                    ELSE 'lv_feeder'
+                END;
+            SELECT connection_level, COUNT(*) FROM buildings_tem GROUP BY connection_level;
+            """,
+            {
+                "hv": CONNECTION_LEVEL_THRESHOLDS_KW["hv"],
+                "busbar": CONNECTION_LEVEL_THRESHOLDS_KW["station_busbar"],
+                "g_res": float(SIM_FACTOR["Residential"]),
+                "include_nonresidential": not RESIDENTIAL_ONLY_GENERATION,
+            },
+        )
+        levels = {str(level): int(n) for level, n in self.cur.fetchall()}
+        self.logger.info("Connection levels: " + ", ".join(f"{n} {level}" for level, n in sorted(levels.items())))
+        return levels
 
     def update_too_large_consumers_to_zero(self) -> int:
         """Exclude non-residential loads above ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` from the LV model.
@@ -889,11 +1038,13 @@ class PreprocessingMixin(BaseMixin):
             INSERT INTO pylovo.mv_customers
                 (version_id, objectid, plz, id, building_use, building_use_id, building_type, type,
                  nonresidential_use, nonresidential_floor_area, nonresidential_peak_load_in_kw,
-                 residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid)
+                 residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid,
+                 load_class, connection_level)
             SELECT DISTINCT ON (objectid)
                    %(v)s, objectid, %(p)s, id, building_use, building_use_id, building_type, type,
                    nonresidential_use, nonresidential_floor_area, nonresidential_peak_load_in_kw,
-                   residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid
+                   residential_peak_load_in_kw, households, gemeindeschluessel, geom, centroid,
+                   load_class, connection_level
             FROM buildings_tem
             WHERE nonresidential_mv_direct AND COALESCE(nonresidential_peak_load_in_kw, 0) > 0
             ORDER BY objectid, id

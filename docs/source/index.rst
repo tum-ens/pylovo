@@ -137,6 +137,7 @@ Soner Candas, Deniz Tepe, Tong Ye, Daniel Baur, Julian Zimmer and Berkay Olgun.
    concepts/architecture
    concepts/pipeline
    concepts/grid_dimensioning
+   concepts/nonresidential_loads
    concepts/mv_grids
    concepts/database_schema
    concepts/database_tables
