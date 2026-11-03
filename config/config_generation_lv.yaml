@@ -48,7 +48,8 @@ LV_REFERENCE_VOLTAGE_PU: 0.96 # LV busbar voltage at the load of the validation 
 # Planned coincident load / transformer rating for sizing and cluster splitting
 TRANSFORMER_PLANNING_UTILIZATION: 0.8
 
-# Commercial/Public buildings above this peak load (kW) are assumed to use a dedicated MV-side connection (eGon-data: 200 kW boundary between the MV/LV station level and the MV level)
+# Commercial/Public buildings above this peak load (kW) are assumed to use a dedicated MV-side connection (eGon-data: 200 kW boundary between the MV/LV station level and the MV level; grid operators connect up to 250-300 kW at LV and from 100-300 kVA at MV)
+# It acts on the installed load (floor area x peak_load_per_m2): 200 kW are 2,532 m2 of Commercial or 6,897 m2 of Public gross floor area
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW: 200
 
 # Planned coincident current / ampacity of the feeder and service cable designs, as for the transformers (cable sizing only; voltage drops use the current itself)

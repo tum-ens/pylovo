@@ -154,8 +154,14 @@ two rules in the MV stage decide which customers become MV nodes:
 #. In the LV stage, a non-residential load component above
    ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW`` (200 kW installed, the boundary between the MV/LV
    station level and the MV level in eGon-data) leaves the LV grid, and the building is stored in
-   ``pylovo.mv_customers``. The residential part of a mixed building stays in its LV grid. The
-   threshold is a parameter of the LV version, not of the MV variant. A building with a
+   ``pylovo.mv_customers``. The technical connection rules of German grid operators give similar
+   orientation values for one customer: LV connections up to 250 to 300 kW (Stadtwerke
+   Bietigheim-Bissingen 2026, Netze Magdeburg 2023), MV connections from 100 to 300 kVA (SWL 2022,
+   e-regio 2026, Regionetz 2023). At the shipped specific peaks the threshold is 2,532 m² of
+   commercial or 6,897 m² of public gross floor area over all storeys, so the number of MV
+   customers depends on the storeys of large buildings as much as on the threshold. The
+   residential part of a mixed building stays in its LV grid. The threshold is a parameter of the
+   LV version, not of the MV variant. A building with a
    transformer candidate inside (a customer substation) is stored too before it leaves the LV
    input, and so are the MV customers of a postcode that gets no LV grid. A load edit of a mixed building
    (:ref:`http-api-load-editing`) that moves its non-residential part across the threshold inserts or
@@ -259,8 +265,12 @@ the substations it cannot reach with straight lines. Without the OSM table
 ``infrastructure_line`` the check is skipped.
 
 A substation whose busbar lies more than ``substation_max_attach_m`` (2 km) from the routing graph
-supplies nothing (flag ``long_attach``). A substation that supplies no node gets no MV grid (flag
-``no_nodes``) but stays in ``mv_substation``. Transformer ratings mapped in OSM are not read, so
+supplies nothing (flag ``long_attach``), and the run summary warns about it. Usually the InfDB has
+no streets around it, e.g. where only the municipalities of the postcodes were imported: the
+routing graph holds the ways of the municipalities within ``region_buffer_m`` (5 km) of the
+region that the InfDB has, so the nodes near such a substation go to substations farther away.
+A substation that supplies no node gets no MV grid (flag ``no_nodes``) but stays in
+``mv_substation``. Transformer ratings mapped in OSM are not read, so
 every substation is sized by the rule of :ref:`mv-equipment`.
 
 .. _mv-supply-areas:
@@ -989,6 +999,20 @@ Methods and models:
   construction and local search algorithms, *Transportation Science* 39(1), 104–118.
 
 Planning principles and statistics:
+
+* Orientation values of the connection level of one customer in the technical connection rules
+  (TAB) of grid operators: Netze Magdeburg, `TAB Mitteldeutschland für den Anschluss an das
+  Niederspannungsnetz <https://www.netze-magdeburg.de/wp-content/uploads/pdf/tab_ns_juli2023.pdf>`_
+  (July 2023, LV connections usually up to 300 kVA, a house connection cable of 250 A for 130 to
+  150 kW); Stadtwerke Bietigheim-Bissingen, `Preisblatt Netzanschluss
+  <https://www.sw-bb.de/_Resources/Persistent/c/d/f/e/cdfe7bd06fa2547c6107f38bc837508411346a46/Preisblatt_Netzanschluss_Strom_Bi-Bi_Version.pdf>`_
+  (2026, LV connections up to 250 kW, above a customer station); SWL Verteilungsnetzgesellschaft,
+  `TAB ab Mittelspannung <https://netzinfo.swl-unser-stadtwerk.de/wp-content/uploads/2023/11/TAB-MSP_ENEG.pdf>`_
+  (2022, 10 kV network 100 kVA to 3 MVA); e-regio Netz, `TAB Mittelspannung
+  <https://cms.e-regio.de/assets/global/Dokumente/e-regio-netz.de/01012026/202512_tab_ms.pdf>`_
+  (2026, MV network 170 kVA to 2.8 MVA at 10 kV and to 5.5 MVA at 20 kV); Regionetz, `TAB
+  Mittelspannung <https://www.regionetz.de/de/Geschaeftskunden/Stromanschluss/TAB-MS-2023-Regionetz.pdf>`_
+  (2023, MV network 300 kVA to 3 MVA at 10 kV and to 5.5 MVA at 20 kV).
 
 * S. Meinecke et al. (2020), `SimBench: A benchmark dataset of electric power systems to compare
   innovative solutions based on power flow analysis <https://doi.org/10.3390/en13123290>`_,

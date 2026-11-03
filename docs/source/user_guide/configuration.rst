@@ -286,8 +286,11 @@ Loads and general grid settings
      - ``200``
      - Commercial or public load components above this peak (kW) are assumed to have their own
        MV connection and are left out of the LV grid (eGon-data: 200 kW boundary between the
-       MV/LV station level and the MV level). The buildings are stored in ``pylovo.mv_customers``
-       for the MV stage. The default was 100 kW before the MV stage.
+       MV/LV station level and the MV level; grid operators connect up to 250–300 kW at LV and
+       from 100–300 kVA at MV, :ref:`mv-customers`). It acts on the installed load, so at the
+       shipped specific peaks it is 2,532 m² of commercial or 6,897 m² of public gross floor area.
+       The buildings are stored in ``pylovo.mv_customers`` for the MV stage. The default was 100 kW
+       before the MV stage.
      - ✓
    * - ``CABLE_PLANNING_UTILIZATION``
      - ``0.8``

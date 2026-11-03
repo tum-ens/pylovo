@@ -653,7 +653,23 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert records[900]["scope"] == "municipality" and records[900]["dense_share"] == pytest.approx(1.0)
     assert (records[900]["n_stations"], records[900]["n_customers"]) == (2, 1)
     assert info == {"n_sites": 3, "n_grids": 1, "kinds": {"station": 2, "customer": 1}}
-    assert warnings == [] and any("SAVEPOINT" in s for s in db.calls["sql"])
+    # the substation that the street graph does not reach is a warning of the summary, which names the likely cause
+    assert warnings == ["1 of 3 HV/MV substations are more than 2000 m from the street graph and supply nothing "
+                        "(long_attach), so the supply areas go to the other 2; check that the InfDB has the streets "
+                        "of the municipalities within 5 km of the region"]
+    assert any("SAVEPOINT" in s for s in db.calls["sql"])
+
+
+def test_region_step_without_long_attach_has_no_warning(region_modules, monkeypatch):
+    db = RegionDb()
+    attach = db.attach_points
+    monkeypatch.setattr(db, "attach_points", lambda graph_id, points: attach(graph_id, points).assign(
+        offset_m=lambda f: f["offset_m"].clip(upper=1000.0)))
+    warnings: list[str] = []
+    stage._region_step(db, "mv1", "d0", [1, 2], shapely.box(0, 0, 1, 1).wkb, "g1", MvParameters(), LV,
+                       stage.logging.getLogger("t"), warnings)
+    flags = {flag: ids for ids, flag in db.calls["flag_substations"]}
+    assert flags["long_attach"] == [] and warnings == []
 
 
 # ---------------------------------------------------------------------------------------------- OSM coverage
