@@ -13,4 +13,4 @@ myst-nb==1.4.0
 myst-parser==5.1.0
 # parse the docstrings (sphinx-autoapi: astroid, Sphinx: docutils)
 astroid==4.3.4
-docutils==0.22.4
+docutils==0.23
