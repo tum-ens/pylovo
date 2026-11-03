@@ -499,6 +499,18 @@ Clustering
        building gets a greenfield station instead of joining a farther existing station that still
        has capacity, so existing stations do not reach far beyond their own area.
      - ✓
+   * - ``MAX_VOLTAGE_REPAIRS``
+     - ``0``
+     - A grid whose validation power flow leaves ``POWER_FLOW_VOLTAGE_LIMITS`` is planned again,
+       up to this many times in a row (``0``, also without the key, stores it as it is), if a
+       consumer is below the band because of the feeders: its street node is below the band plus
+       the share of ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``. The buildings at all street nodes
+       below that (the far ends of the feeders) get greenfield stations and an existing station
+       keeps the others; a greenfield grid is clustered again into at least two. A consumer below the
+       band because of its own house cable gets its connection line planned as a feeder, and if that
+       is not enough either, a station of its own at the building. See
+       :ref:`voltage repair <voltage-repair>`.
+     - ✓
    * - ``USE_OPEN_TRANSFORMER_POSITIONS``
      - ``False``
      - Use open transformer positions (OSM, LoD2 stations, manual edits) from
@@ -540,12 +552,14 @@ revision 1 is not extended.
 .. note::
 
    ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``,
-   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS`` and
-   ``BROWNFIELD_NEAREST_ONLY`` were added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
+   ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS``,
+   ``BROWNFIELD_NEAREST_ONLY``, ``MAX_VOLTAGE_REPAIRS`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`` were
+   added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
    accepts the current values of the first two with a warning (the values used for the existing
    grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null``,
-   ``USE_MANUAL_TRANSFORMER_POSITIONS: False`` and ``BROWNFIELD_NEAREST_ONLY: False``, the behaviour
-   before these keys existed.
+   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, ``BROWNFIELD_NEAREST_ONLY: False``,
+   ``MAX_VOLTAGE_REPAIRS: 0`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES: 1``, the behaviour before
+   these keys existed.
 
 Station voltage
 ~~~~~~~~~~~~~~~

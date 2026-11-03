@@ -41,6 +41,10 @@ from pylovo.utils import design_current_ka
 
 # Service connections longer than this are flagged for review (not changed).
 SERVICE_LENGTH_REVIEW_THRESHOLD_M = 100.0
+# Shortest house cable (km). A building that is its own feeder node or has a station of its own (voltage repair of a
+# house connection, GridGenerator.repair_voltage_violation) has its connection bus at its house connection: the cable
+# there has no length of its own, and a line without impedance stops the power flow.
+MIN_SERVICE_LENGTH_KM = 0.001
 
 
 class CableInstaller:
@@ -540,6 +544,7 @@ class CableInstaller:
         sim_load = service_design_load_per_consumer[end_vid]
         Imax = design_current_ka(sim_load)
         upstream_drop_percent = 0.0 if shared_cable is None else shared_cable["drop_percent"]
+        length_km = max(float(length_km), MIN_SERVICE_LENGTH_KM)
 
         connection_available_cables = self._consumer_connection_cables
         # Direct transformer connection point may use feeder cables as well.

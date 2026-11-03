@@ -259,7 +259,9 @@ The shipped limits follow the band split of the validation power flow
 their limit binds only for long connections. Both drops are linear estimates at
 nominal voltage and cable-level coincidence, so the solved snapshot can differ
 slightly. A feeder that misses its limit with the largest configured cable needs
-more outlets or another station, which cable sizing does not add.
+more outlets or another station, which cable sizing does not add; with
+``MAX_VOLTAGE_REPAIRS`` a grid whose validation power flow then leaves the band
+gets more stations (:ref:`voltage repair <voltage-repair>`).
 
 .. figure:: /images/generation/grid_detail_sizing_basis.png
    :alt: One grid with feeder sections sized by ampacity in blue and sections upsized for the voltage-drop limit in orange

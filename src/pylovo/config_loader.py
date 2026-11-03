@@ -571,6 +571,11 @@ GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION.get("GREENFIELD_TR
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
 # A building joins only its nearest existing station; when that one is full it is left for greenfield.
 BROWNFIELD_NEAREST_ONLY = bool(CONFIG_GENERATION.get("BROWNFIELD_NEAREST_ONLY", False))
+# How often a grid whose validation power flow leaves the voltage band is planned again (GridGenerator.install_cables);
+# 0 (also without the key) stores it as it is.
+MAX_VOLTAGE_REPAIRS = CONFIG_GENERATION.get("MAX_VOLTAGE_REPAIRS", 0)
+if isinstance(MAX_VOLTAGE_REPAIRS, bool) or not isinstance(MAX_VOLTAGE_REPAIRS, int) or MAX_VOLTAGE_REPAIRS < 0:
+    raise ValueError(f"MAX_VOLTAGE_REPAIRS must be a non-negative integer, got {MAX_VOLTAGE_REPAIRS!r}")
 USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSITIONS", False)
 USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
