@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - Import the OSM transformers of federal states by their code with `pylovo-import transformers-osm --state`
 - Lay feeder cables in parallel for the voltage drop also without a standard cable, once the largest conductor is not enough (`MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`)
-- Load non-residential parts by their InfDB load class from the federal benchmarks (BAnz 2015) and the BDEW load profiles
+- Load non-residential parts by their InfDB load class from the federal benchmarks and the BDEW load profiles
 - Add `pylovo.analysis.comparison`, `pylovo.plotting.comparison` and the notebook `notebook_tutorials/analysis/basic_comparison.ipynb` to show an exemplary comparison of two grid datasets of the same buildings
 
 ## [1.1.0] - 2026-10-30
