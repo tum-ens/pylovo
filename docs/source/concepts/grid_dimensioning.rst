@@ -238,8 +238,10 @@ selection. It is a diagnostic operating point, while the asset-specific
 coincidence calculation is the planning basis.
 
 If a path exceeds the configured limit, pylovo can increase conductor size
-within the ampacity-required parallel count. Without a standard cable it does
-not add voltage-driven parallel circuits. With ``FEEDER_STANDARD_CABLE`` it
+within the ampacity-required parallel count. Without a standard cable it adds
+voltage-driven parallel cables only when no larger conductor helps any more, up
+to ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`` (2 in the shipped configuration; 1
+adds none). With ``FEEDER_STANDARD_CABLE`` it
 first adds parallel standard cables, up to ``MAX_PARALLEL_FEEDER_CABLES``, and
 uses larger conductors from ``FEEDER_CABLES`` only when no such upgrade helps
 any more. Upgrades are chosen greedily: in each iteration the section

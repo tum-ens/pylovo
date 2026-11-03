@@ -31,10 +31,11 @@ is connected behind them:
       from the transformer to some load node exceeds
       ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``, apply the upgrade with the
       largest reduction of the excess drops per euro of extra cable cost. Without a
-      standard cable an upgrade is a larger conductor at the same parallel count.
-      With one, it first adds parallel standard cables (up to
-      ``MAX_PARALLEL_FEEDER_CABLES``), and only when no such upgrade helps any
-      more, larger conductors from ``FEEDER_CABLES``.
+      standard cable an upgrade is a larger conductor at the same parallel count,
+      and only when no such upgrade helps any more, more cables in parallel (up to
+      ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES``). With one, it first adds parallel
+      standard cables (up to ``MAX_PARALLEL_FEEDER_CABLES``), and only when no such
+      upgrade helps any more, larger conductors from ``FEEDER_CABLES``.
 
 With ``HOUSE_CONNECTION: cabinet`` (Kabelverteilertechnik), :func:`plan_cabinets` turns the planned
 tree into a tree of cable distribution cabinets before sizing: cabinets at the split points, at
@@ -64,6 +65,7 @@ from pylovo.config_loader import (
     FEEDER_STANDARD_CABLE,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
     MAX_PARALLEL_FEEDER_CABLES,
+    MAX_VOLTAGE_PARALLEL_FEEDER_CABLES,
     MIN_SHARED_PREFIX_LENGTH_M,
     VN,
 )
@@ -588,8 +590,8 @@ def size_feeder_tree(
             f"selected_max_drop_percent={final_max_drop_percent:.3f}, "
             f"limit_percent={MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT:.3f}. "
             "Every remaining useful section is already at the lowest-impedance design allowed "
-            "(the largest configured conductor at its ampacity-required parallel count, or "
-            "MAX_PARALLEL_FEEDER_CABLES with a standard cable); topology or transformer "
+            "(the largest configured conductor at its ampacity-required parallel count or at "
+            "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES, or MAX_PARALLEL_FEEDER_CABLES with a standard cable); topology or transformer "
             "placement would have to change."
         )
 
@@ -774,7 +776,8 @@ def _ampacity_option(installer: CableInstaller, planned_current_ka: float) -> di
 def _voltage_upgrade_options(installer: CableInstaller, design: dict) -> tuple[list[dict], list[dict]]:
     """The voltage upgrade options of a section in two stages, the second used only when the first cannot help.
 
-    Without ``FEEDER_STANDARD_CABLE``: larger conductors at the ampacity's parallel count, no second stage.
+    Without ``FEEDER_STANDARD_CABLE``: (1) larger conductors at the ampacity's parallel count; (2) the feeder cables
+    with more cables in parallel, up to ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`` (none if that is not above the count).
     With it: (1) more parallel standard cables, up to ``MAX_PARALLEL_FEEDER_CABLES``, if the section is a
     standard-cable section; (2) the other cables of ``FEEDER_CABLES`` with at most that many in parallel.
     Every option carries the planned current; ``_best_voltage_upgrade`` keeps the lower-impedance ones.
@@ -786,7 +789,11 @@ def _voltage_upgrade_options(installer: CableInstaller, design: dict) -> tuple[l
             option for option in installer.get_feeder_cable_options(planned_current_ka, parallel)
             if option["parallel"] == parallel
         ]
-        return same_count, []
+        more_parallel = [
+            option for option in installer.get_feeder_cable_options(planned_current_ka, MAX_VOLTAGE_PARALLEL_FEEDER_CABLES)
+            if option["parallel"] > parallel
+        ]
+        return same_count, more_parallel
     options = installer.get_feeder_cable_options(planned_current_ka, MAX_PARALLEL_FEEDER_CABLES)
     standard = [
         option for option in options

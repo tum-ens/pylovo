@@ -312,6 +312,13 @@ Loads and general grid settings
      - Most parallel standard cables per feeder section, only used with
        ``FEEDER_STANDARD_CABLE``.
      - ✓
+   * - ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES``
+     - ``2``
+     - Without ``FEEDER_STANDARD_CABLE``: when the largest conductor at the parallel count of the
+       ampacity design still leaves a feeder above ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``,
+       the voltage-drop pass may lay sections in parallel (Parallelkabel) up to this many cables.
+       ``1`` (also without the key) lays larger conductors only.
+     - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - ``0.4``
      - Topology parameter: maximum coincident current (kA) while connection points are grouped

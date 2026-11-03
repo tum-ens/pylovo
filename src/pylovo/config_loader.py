@@ -520,6 +520,13 @@ if FEEDER_STANDARD_CABLE is not None and FEEDER_STANDARD_CABLE not in set(FEEDER
 MAX_PARALLEL_FEEDER_CABLES = int(CONFIG_GENERATION.get("MAX_PARALLEL_FEEDER_CABLES", 4))
 if MAX_PARALLEL_FEEDER_CABLES < 1:
     raise ValueError(f"MAX_PARALLEL_FEEDER_CABLES must be at least 1, got {MAX_PARALLEL_FEEDER_CABLES}")
+# Without a standard cable: most parallel cables per feeder section that the voltage-drop pass may lay once the largest
+# conductor at the ampacity's parallel count is not enough; 1 (also without the key) = larger conductors only.
+MAX_VOLTAGE_PARALLEL_FEEDER_CABLES = CONFIG_GENERATION.get("MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", 1)
+if (isinstance(MAX_VOLTAGE_PARALLEL_FEEDER_CABLES, bool) or not isinstance(MAX_VOLTAGE_PARALLEL_FEEDER_CABLES, int)
+        or MAX_VOLTAGE_PARALLEL_FEEDER_CABLES < 1):
+    raise ValueError(f"MAX_VOLTAGE_PARALLEL_FEEDER_CABLES must be a positive integer, "
+                     f"got {MAX_VOLTAGE_PARALLEL_FEEDER_CABLES!r}")
 
 # End-to-end transformer-to-connection-point feeder voltage-drop planning envelope.
 MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[

@@ -43,6 +43,8 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     ("cable_dimensioning", "feeder_standard_cable"): None,
     ("cable_dimensioning", "max_parallel_feeder_cables"): UNKNOWN,
     ("cable_dimensioning", "house_connection"): "joint",
+    # Before parallel voltage upgrades without a standard cable existed, only larger conductors were laid.
+    ("cable_dimensioning", "max_voltage_parallel_feeder_cables"): 1,
     ("cable_dimensioning", "cabinet_spacing_m"): UNKNOWN,
     # Before ROUTE_ACROSS_POSTCODE_BORDERS every PLZ routed over its own streets only.
     ("postcode_border", "route_across_postcode_borders"): False,

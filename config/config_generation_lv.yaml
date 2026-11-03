@@ -68,6 +68,9 @@ FEEDER_STANDARD_CABLE: null
 # Most parallel standard cables per feeder section (only with FEEDER_STANDARD_CABLE)
 MAX_PARALLEL_FEEDER_CABLES: 4
 
+# Without a standard cable (FEEDER_STANDARD_CABLE: null): when the largest conductor at the parallel count of the ampacity design still leaves a feeder above MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT, the voltage-drop pass may lay sections in parallel (Parallelkabel, a second cable in the trench) up to this many cables. 1 = larger conductors only.
+MAX_VOLTAGE_PARALLEL_FEEDER_CABLES: 2
+
 # Max. simultaneous current allowed while grouping nodes into one planned feeder branch.
 # This is a topology-only splitting parameter. Cable sizing is based on the feeder-cable catalogue
 FEEDER_SPLIT_MAX_CURRENT_KA: 0.4
