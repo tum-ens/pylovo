@@ -1,5 +1,5 @@
-# Requirements for building the documentation: Read the Docs, the CI and local builds
-# (uv run --no-project --with-requirements docs/requirements.txt sphinx-build ...).
+# Requirements for building the documentation on Python 3.13 (Sphinx 9.2 and newer need it): Read the Docs, the CI
+# and local builds (uv run --no-project --python 3.13 --with-requirements docs/requirements.txt sphinx-build ...).
 # Exact versions, because the build turns warnings into errors (-W) and a new Sphinx, sphinx-autoapi, docutils or
 # astroid can add warnings without any change in pylovo; Dependabot proposes updates (.github/dependabot.yml).
 # sphinx-autoapi parses src/pylovo statically, so pylovo itself is not installed.

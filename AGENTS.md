@@ -54,7 +54,7 @@ corrects files, add the corrections and commit again. Then run the checks of the
 uv run ruff check
 uv run --extra api --extra plots --extra viewer --extra opendss pytest
 uv run --extra api --extra plots python tests/db/run_database_tests.py   # needs Docker
-uv run --no-project --with-requirements docs/requirements.txt sphinx-build -W --keep-going -b html docs/source docs/build/html
+uv run --no-project --python 3.13 --with-requirements docs/requirements.txt sphinx-build -W --keep-going -b html docs/source docs/build/html
 ```
 
 ## Lint and tests
