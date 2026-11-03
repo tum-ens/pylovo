@@ -271,7 +271,8 @@ reads the committed buildings immediately.
    :width: 85%
 
    The generated grids of version ``1``. Buildings without a grid have no address
-   (``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``) or are large commercial loads supplied from the MV grid.
+   (``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` when the figure was made) or are large commercial loads supplied
+   from the MV grid.
 
 After the pipeline: the MV stage
 --------------------------------

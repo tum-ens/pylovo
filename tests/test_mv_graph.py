@@ -2,6 +2,7 @@
 
 import dataclasses
 import heapq
+import json
 import logging
 import re
 
@@ -868,3 +869,34 @@ def test_edge_municipalities_give_the_ags_per_street_edge():
     assert ags.to_dict() == {5: "09474126", 7: "9474127"} and ags.index.name == "edge_id"
     text, params = client.cur.statements[-1]
     assert "ags IS NOT NULL" in text and params["osm"] == ["osm_mv_line", "osm_mv_connector"]
+
+
+def _settlement_build(*extra):
+    answers = BASE_ANSWERS + [
+        (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
+        (r"WITH lone AS", [(3,)]),
+        (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
+        *extra,
+    ]
+    client = _client(answers)
+    graph_id = client.ensure_graph(b"\x01", STREETS)
+    staged = next(t for t, _ in client.cur.statements if 'CREATE TEMP TABLE "mvg_bld_raw"' in t)
+    insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
+    return graph_id, staged, json.loads(insert["params"])
+
+
+def test_settlement_buildings_need_an_address_without_the_auxiliary_class():
+    graph_id, staged, params = _settlement_build((r"information_schema\.columns", [(False,)]))
+    assert "COALESCE(b.house_number, '') <> ''" in staged and "b.building_use = ANY(%(uses)s)" in staged
+    assert "settlement_buildings" not in params     # the graphs of the address rule keep their ids
+    assert graph_id == _settlement_build()[0]        # no answer: no Auxiliary class either
+
+
+def test_settlement_buildings_are_the_consumers_with_the_auxiliary_class(monkeypatch):
+    address_graph = _settlement_build()[0]
+    graph_id, staged, params = _settlement_build((r"information_schema\.columns", [(True,)]))
+    assert "house_number" not in staged and "b.building_use = ANY(%(uses)s)" in staged   # Auxiliary is no use of it
+    assert params["settlement_buildings"] == "consumers" and graph_id != address_graph
+    # the address filter of the LV stage keeps the address rule here too
+    monkeypatch.setattr(mixin_module, "EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", True)
+    assert _settlement_build((r"information_schema\.columns", [(True,)]))[0] == address_graph

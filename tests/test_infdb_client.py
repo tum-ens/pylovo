@@ -112,6 +112,27 @@ def test_the_consumer_buildings_need_an_address_only_with_the_address_filter(mon
         "AND COALESCE(building_use_id, '') != '31001_2523'")
 
 
+def test_the_auxiliary_class_is_recognised_by_its_column_in_the_source_schema(monkeypatch):
+    infdb = client(monkeypatch)
+    infdb.cur.fetchone = lambda: (True,)
+    assert infdb.has_auxiliary_class() is True
+    (query, params), = infdb.cur.executed
+    assert "information_schema.columns" in query and "table_name = 'buildings'" in query
+    assert params == {"schema": infdb_client.INFDB_SOURCE_SCHEMA, "column": "auxiliary_rule"}
+    infdb.cur.fetchone = lambda: (False,)
+    assert infdb.has_auxiliary_class() is False
+
+
+def test_the_address_filter_warning_names_the_mismatch_with_the_infdb_data():
+    # suitable: the filter off for InfDB data with the class Auxiliary, on for older data
+    assert infdb_client.address_filter_warning(False, True) is None
+    assert infdb_client.address_filter_warning(True, False) is None
+    # off without the class: outbuildings become consumers
+    assert "garages, sheds and barns" in infdb_client.address_filter_warning(False, False)
+    # on with the class: every consumer without a house number is lost
+    assert "Set EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False" in infdb_client.address_filter_warning(True, True)
+
+
 def test_close_closes_the_cursor_and_the_connection_and_may_be_repeated(monkeypatch):
     infdb = client(monkeypatch)
     infdb.close()

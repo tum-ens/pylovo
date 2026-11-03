@@ -248,8 +248,9 @@ Loads and general grid settings
      - Keep only residential buildings and components; non-residential loads are ignored.
      - ✓
    * - ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``
-     - ``True``
-     - InfDB mode: skip buildings without street and house number (sheds, garages, barns).
+     - ``False``
+     - InfDB mode: skip buildings without street and house number. ``True`` for InfDB data without the class
+       ``Auxiliary`` (outbuildings), see :doc:`input_data`.
      - ✓
    * - ``PEAK_LOAD_HOUSEHOLD``
      - ``16.825``

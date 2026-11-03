@@ -104,6 +104,35 @@ def test_missing_household_counts_follow_the_building_type(q):
     assert {kinds[objectid]: households for objectid, households in rows} == expected
 
 
+def test_auxiliary_buildings_are_never_consumers(q):
+    # the InfDB class Auxiliary (garage, farm shed, transformer station) is left out by its use, whatever its
+    # address: in no grid and without an exclusion reason, in every version
+    auxiliary = [b.objectid for b in toy_town.buildings() if b.kind.building_use == "Auxiliary"]
+    assert len(auxiliary) == 3
+    assert q("""SELECT count(*) FROM (SELECT objectid FROM pylovo.buildings_result
+                                     UNION ALL SELECT objectid FROM pylovo.building_exclusion) x
+                WHERE objectid = ANY(%s)""", (auxiliary,)) == [(0,)]
+
+
+def test_a_leisure_building_gets_one_household_load_without_residents(q):
+    # InfDB leisure buildings (1310 to 1312) have one household and no census residents
+    from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD
+
+    leisure = [b.objectid for b in toy_town.buildings() if b.kind is toy_town.KINDS["LEISURE"]]
+    rows = q("""SELECT version_id, households, occupants, residential_peak_load_in_kw, nonresidential_peak_load_in_kw
+                FROM pylovo.buildings_result WHERE objectid = ANY(%s) ORDER BY version_id""", (leisure,))
+    assert [row[:3] for row in rows] == [(version, 1, 0) for version in VERSIONS]
+    assert all(math.isclose(res, PEAK_LOAD_HOUSEHOLD) and nonres == 0 for *_, res, nonres in rows)
+
+
+def test_a_house_without_address_is_a_consumer(q):
+    # the shipped configuration has no address filter (EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False): with the class
+    # Auxiliary the InfDB has left out the outbuildings already, and in states without addresses no house has one
+    house = [b.objectid for b in toy_town.buildings() if b.kind is toy_town.KINDS["HOUSE_NO_ADDRESS"]]
+    assert q("SELECT version_id FROM pylovo.buildings_result WHERE objectid = ANY(%s) ORDER BY 1", (house,)) \
+        == [(version,) for version in VERSIONS]
+
+
 def test_the_manual_station_keeps_its_rated_power(q):
     # version 5 uses only the manual positions; the rating entered for the station wins over the catalogue
     # (ClusteringMixin.get_existing_transformer_capacity_trafo_ui), which would choose 400 or 630 kVA here

@@ -134,8 +134,10 @@ skipped with the reason otherwise.
 pylovo reads (``basedata.buildings``, ``ways_per_connection``, ``connection_lines``,
 ``classify_building_use`` and ``opendata.postcodes_germany``): postcode 99001 with a street grid,
 apartment blocks, mixed buildings with shops, a school, a plant above the MV-direct threshold,
-single-family houses, a LoD2 transformer station, three residential buildings without a household count
-and a cycle path, the neighbouring village 99002 and 99003, a postcode without a polygon. The data are
+single-family houses, a LoD2 transformer station, a garage and a farm shed of the InfDB class ``Auxiliary`` (no
+consumers), a weekend house with one household and no residents, a house without address, three residential
+buildings without a household count and a cycle path, the neighbouring village 99002 and 99003, a postcode without
+a polygon. The data are
 synthetic (no geodata files) and lie in the North Sea, far from real buildings and OSM transformers.
 ``tests/db/build_test_database.py`` writes the toy town into an empty database and runs ``pylovo-setup``,
 ``pylovo-generate`` and ``pylovo-analyze --per-grid`` for five versions: ``1`` with the ``config/`` of the

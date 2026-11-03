@@ -48,8 +48,17 @@ def _clazz_case_sql() -> str:
         """
 
 
+#: Column of the InfDB buildings with the rule that made a building ``Auxiliary`` (garages, sheds, barns and other
+#: outbuildings without a load of their own, which ``_consumer_buildings_sql`` leaves out by their use). InfDB data
+#: without it predate that class: their outbuildings are Residential, Commercial or Public buildings.
+AUXILIARY_RULE_COLUMN = "auxiliary_rule"
+
+
 def _consumer_buildings_sql() -> str:
-    """The SQL condition on ``buildings`` columns that selects the buildings generation loads as consumers."""
+    """The SQL condition on ``buildings`` columns that selects the buildings generation loads as consumers.
+
+    ``Auxiliary`` buildings (outbuildings) are no consumers: the condition lists the uses that are.
+    """
     condition = ("building_use IN ('Commercial', 'Public', 'Residential', 'Mixed', 'Unknown') "
                  "AND COALESCE(building_use_id, '') != '31001_2523'")
     if EXCLUDE_BUILDINGS_WITHOUT_ADDRESS:
@@ -58,6 +67,25 @@ def _consumer_buildings_sql() -> str:
         # building allowlist must not apply this filter.
         condition += " AND COALESCE(street, '') <> '' AND COALESCE(house_number, '') <> ''"
     return condition
+
+
+def address_filter_warning(exclude_without_address: bool, has_auxiliary_class: bool) -> str | None:
+    """Why ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`` does not suit the InfDB data, or ``None`` if it does.
+
+    Args:
+        exclude_without_address: The value of ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS``.
+        has_auxiliary_class: Whether the InfDB buildings have the column :data:`AUXILIARY_RULE_COLUMN`
+            (:meth:`InfdbClient.has_auxiliary_class`).
+    """
+    if not exclude_without_address and not has_auxiliary_class:
+        return ("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS is False, but the InfDB buildings have no class Auxiliary (no "
+                f"column {AUXILIARY_RULE_COLUMN}): garages, sheds and barns without an address are loaded as "
+                "consumers. Run the current infdb-basedata-buildings, or set EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True.")
+    if exclude_without_address and has_auxiliary_class:
+        return ("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS is True, although the InfDB marks the outbuildings as Auxiliary: "
+                "the address filter also leaves out every consumer without a house number, in the states whose LoD2 "
+                "has no addresses all buildings. Set EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False.")
+    return None
 
 
 class InfdbClient:
@@ -121,6 +149,19 @@ class InfdbClient:
 
     def __del__(self):
         self.close()
+
+    def has_auxiliary_class(self) -> bool:
+        """Whether ``INFDB_SOURCE_SCHEMA.buildings`` has the column :data:`AUXILIARY_RULE_COLUMN`.
+
+        InfDB basedata with it mark garages, sheds, barns and other outbuildings as ``Auxiliary``, which pylovo leaves
+        out by their use; see :func:`address_filter_warning`.
+        """
+        query = """SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_schema = %(schema)s AND table_name = 'buildings'
+                                    AND column_name = %(column)s)"""
+        with self.conn:
+            self.cur.execute(query, {"schema": INFDB_SOURCE_SCHEMA, "column": AUXILIARY_RULE_COLUMN})
+            return bool(self.cur.fetchone()[0])
 
     def fetch_buildings_from_infdb(self, plz: int) -> list[tuple]:
         """

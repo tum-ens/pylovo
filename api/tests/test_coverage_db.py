@@ -13,7 +13,13 @@ from pylovo_api import db
 from pylovo_api.coverage import InputCoverage, building_counts
 
 pytestmark = requires_db
-ADDRESS_ONLY = {"exclude_buildings_without_address": True, "residential_only": False}
+
+
+def configured_flags() -> dict[str, bool]:
+    """The address filter of the shipped configuration (which the region gate of the API reads), all uses."""
+    from pylovo import config_loader as cl
+
+    return {"exclude_buildings_without_address": cl.EXCLUDE_BUILDINGS_WITHOUT_ADDRESS, "residential_only": False}
 
 
 @pytest.fixture(scope="module")
@@ -30,17 +36,14 @@ def no_geometry(region) -> int:
 
 @pytest.fixture(scope="module")
 def library(plz):
-    """What the library reads for ``plz``: importable buildings (address required), ways, station buildings."""
+    """What the library reads for ``plz`` with the shipped configuration: importable buildings, ways, stations."""
     import pylovo.infdb.infdb_client as ic
 
     client = ic.InfdbClient()
-    saved = ic.EXCLUDE_BUILDINGS_WITHOUT_ADDRESS
-    ic.EXCLUDE_BUILDINGS_WITHOUT_ADDRESS = True
     try:
         result = {"buildings": client.fetch_buildings_from_infdb(plz), "ways": client.fetch_ways_from_infdb(plz),
                   "stations": client.fetch_transformer_station_buildings_from_infdb(plz)}
     finally:
-        ic.EXCLUDE_BUILDINGS_WITHOUT_ADDRESS = saved
         client.close()
     return result
 
@@ -73,7 +76,7 @@ def source_buildings(conn, plz: int) -> int:
 
 
 def test_region_counts_equal_the_library(engine, conn, plz, library):
-    st = engine.status_of(plz, ADDRESS_ONLY)
+    st = engine.status_of(plz, configured_flags())
     assert st["status"] == "ready" and st["exact"]
     lines = sum(1 for w in library["ways"] if w[0] == 110)     # klasse 'connection_line'
     counts = st["counts"]

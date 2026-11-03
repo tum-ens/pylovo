@@ -29,7 +29,7 @@ from sklearn.cluster import KMeans
 from concurrent.futures import ProcessPoolExecutor, as_completed  # lightweight parallel execution
 
 import pylovo.database.database_client as dbc
-from pylovo.infdb.infdb_client import InfdbClient
+from pylovo.infdb.infdb_client import InfdbClient, address_filter_warning
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo import utils
 from pylovo.config_loader import (
@@ -42,6 +42,7 @@ from pylovo.config_loader import (
     CONSUMER_CATEGORIES,
     CONSUMER_CONNECTION_CABLES,
     ELECTRICAL_BACKEND,
+    EXCLUDE_BUILDINGS_WITHOUT_ADDRESS,
     FEEDER_CABLES,
     GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
     GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
@@ -429,6 +430,9 @@ class GridGenerator:
         INTO: buildings_tem
         """
         if USE_INFDB:
+            warning = address_filter_warning(EXCLUDE_BUILDINGS_WITHOUT_ADDRESS, self.inf_dbc.has_auxiliary_class())
+            if warning:
+                self.logger.warning(warning)
             buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
             self.dbc.set_buildings_table(buildings_data)
         else:

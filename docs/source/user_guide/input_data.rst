@@ -70,12 +70,24 @@ Selection
 ~~~~~~~~~
 
 From ``<INFDB_SOURCE_SCHEMA>.buildings`` pylovo takes the buildings of the postcode whose ``building_use`` is
-``Residential``, ``Commercial``, ``Public`` or ``Mixed``. Further rules:
+``Residential``, ``Commercial``, ``Public``, ``Mixed`` or ``Unknown``. Further rules:
 
-* Buildings with function code ``31001_2523`` (transformer stations in LoD2) are not consumers;
-  with open or manual transformer positions they are added to the transformer candidates
+* ``Auxiliary`` buildings are no consumers: InfDB gives this use to garages, sheds, barns and other outbuildings
+  without a load of their own (by function code, address and geometry; the column ``auxiliary_rule`` names the
+  rule).
+* Buildings with function code ``31001_2523`` (transformer stations in LoD2, in InfDB ``Auxiliary``) are not
+  consumers; with open or manual transformer positions they are added to the transformer candidates
   (:doc:`transformer_data`).
-* ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` leaves out buildings without street or house number.
+* ``Unknown`` buildings have no non-residential load (``peak_load_per_m2`` 0 in ``CONSUMER_CATEGORIES``); one
+  without residential floor area is left out as unloaded.
+* Leisure buildings (function codes ``31001_1310`` to ``31001_1312``, weekend and holiday houses) are
+  ``Residential`` with one household and no residents in InfDB: each gets the load of one household.
+* ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` leaves out buildings without street or house number. The shipped
+  configuration sets it ``False``: with the class ``Auxiliary`` the outbuildings are out already, and the filter
+  would leave out every building in the states whose LoD2 has no addresses (Bremen, Hessen, Saarland, Berlin,
+  Brandenburg, Mecklenburg-Vorpommern and Sachsen in 2026). Set it ``True`` for InfDB data without the class
+  ``Auxiliary`` (no column ``auxiliary_rule``), whose garages, sheds and barns are ``Residential``, ``Commercial``
+  or ``Public``. A run logs a warning when the value does not suit the InfDB data.
 * ``RESIDENTIAL_ONLY_GENERATION: True`` keeps only residential buildings and components.
 * Non-residential buildings that overlap a transformer candidate are removed; so are duplicates
   and buildings without geometry or ``objectid``. A removed building whose non-residential load is
