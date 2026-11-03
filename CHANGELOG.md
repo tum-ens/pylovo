@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
 
+### Added
+- Add `pylovo.analysis.comparison`, `pylovo.plotting.comparison` and the notebook `notebook_tutorials/analysis/basic_comparison.ipynb` to compare two grid datasets of the same buildings, e.g. pylovo grids and the grids of a DSO
+
 ## [1.1.0] - 2026-10-30
 ### Changed
 - Support Python 3.14 and upgrade the locked dependencies, e.g. pandapower 3.5 (minimum 3.5.2), NumPy 2.4, SciPy 1.18 and SQLAlchemy 2.1
