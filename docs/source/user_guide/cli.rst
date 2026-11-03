@@ -223,11 +223,19 @@ pylovo-import
 
 Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
 
-``pylovo-import transformers-osm --relation-id RELATION_ID``
+``pylovo-import transformers-osm (--relation-id RELATION_ID | --state STATE [STATE ...]) [--reuse-fetched]``
    Download the transformers inside the OSM relation from the Overpass API, process them and
    append them to ``pylovo.transformers``. Works for federal states as well as small areas.
    Transformers whose id exists already are kept and counted as skipped; the command prints
    ``added N, skipped M`` and exits with 1 if ``ogr2ogr`` reports errors other than duplicate keys.
+
+   ``--state STATE [STATE ...]``
+      Federal states by code (``by``, ``nw`` or ``nrw``) or key (``09``) instead of a relation id, imported one
+      after the other; the relations are listed in :doc:`transformer_data`. The first failing state stops the
+      command; the states before it stay imported.
+   ``--reuse-fetched``
+      Process the raw files of an earlier download (``transformer_data/fetched_trafos/``) instead of querying the
+      Overpass API again; a relation without them is downloaded.
 
 ``pylovo-import transformers-dso-csv [--source SOURCE] [--replace-source] csv_path``
    Import DSO transformer positions from a CSV file with the columns ``external_id``, ``lon``,
