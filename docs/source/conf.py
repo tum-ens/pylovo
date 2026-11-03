@@ -70,6 +70,9 @@ autoapi_ignore = [
     "*/classification/*",
     "*/plotting/classification/*",
     "*/cli/classify.py",
+    # the comparison of grid datasets is described in the validation paper, not in these docs
+    "*/analysis/comparison.py",
+    "*/plotting/comparison.py",
     "*/__pycache__/*",
 ]
 
