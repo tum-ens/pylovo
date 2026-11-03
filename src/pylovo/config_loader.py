@@ -22,7 +22,8 @@ with the rules of :mod:`pylovo.mv_grid.options`.
     current working directory or its parents is used. A ``.env`` above the installed package
     therefore still wins over the one in the working directory. Because of ``override=True`` the
     values in that ``.env`` **replace** environment variables of the same name that are already set
-    in the shell.
+    in the shell. ``PYLOVO_ENV_FILE`` (from the shell) replaces this search: it names the file to load, and
+    an empty value loads none.
 
 YAML lookup:
     See :func:`get_config_search_paths`. The first location is ``./config`` of the
@@ -64,10 +65,15 @@ def get_packaged_defaults_dir() -> Path:
 def find_env_file() -> str:
     """Return the path of the ``.env`` to load, or an empty string if there is none.
 
-    The first ``.env`` above the directory of this file wins (a checkout: its root). Only if there is
+    ``PYLOVO_ENV_FILE`` of the shell replaces the search: it names the file, and an empty value loads none
+    (the database tests use this to keep the ``.env`` of a checkout away from their test database).
+    Otherwise the first ``.env`` above the directory of this file wins (a checkout: its root). Only if there is
     none, the ``.env`` of the current working directory or its parents is used (a wheel installed
     outside the project, where the first walk starts in ``site-packages``).
     """
+    explicit = os.environ.get("PYLOVO_ENV_FILE")
+    if explicit is not None:
+        return explicit
     return find_dotenv() or find_dotenv(usecwd=True)
 
 
@@ -631,6 +637,8 @@ def _mv_value(key: str):
 
 # Execution flag (in no snapshot): run the MV stage after the LV grids in pylovo-generate (--mv / --no-mv)
 MV_GRID_GENERATION = _mv_value("MV_GRID_GENERATION")
+# Execution flag (in no snapshot): the OSM coverage report of an MV run (pylovo-mv generate --no-osm-coverage)
+MV_OSM_COVERAGE = _mv_value("MV_OSM_COVERAGE")
 MV_VARIANT_ID = _mv_value("MV_VARIANT_ID")
 MV_VARIANT_COMMENT = _mv_value("MV_VARIANT_COMMENT")
 MV_NOMINAL_VOLTAGE_KV = _mv_value("MV_NOMINAL_VOLTAGE_KV")
@@ -654,6 +662,10 @@ CLASSIFICATION_VERSION_COMMENT = CONFIG_CLASSIFICATION["CLASSIFICATION_VERSION_C
 CLASSIFICATION_REGION = CONFIG_CLASSIFICATION["CLASSIFICATION_REGION"]
 NO_OF_CLUSTERS_ALLOWED = CONFIG_CLASSIFICATION["NO_OF_CLUSTERS_ALLOWED"]
 N_SAMPLES = CONFIG_CLASSIFICATION["N_SAMPLES"]
+# PLZ bootstrap resamples of the selection report of pylovo-classify (0: the report of the sample only)
+SELECTION_BOOTSTRAP = CONFIG_CLASSIFICATION.get("SELECTION_BOOTSTRAP", 100)
+if isinstance(SELECTION_BOOTSTRAP, bool) or not isinstance(SELECTION_BOOTSTRAP, int) or SELECTION_BOOTSTRAP < 0:
+    raise ValueError(f"SELECTION_BOOTSTRAP must be a whole number of 0 or more, got {SELECTION_BOOTSTRAP!r}")
 REGION_DICT = CONFIG_CLASSIFICATION["REGION_DICT"]
 REGIO7_REGIO5_GEM_DICT = CONFIG_CLASSIFICATION["REGIO7_REGIO5_GEM_DICT"]
 
@@ -662,8 +674,36 @@ REGIO7_REGIO5_GEM_DICT = CONFIG_CLASSIFICATION["REGIO7_REGIO5_GEM_DICT"]
 # =============================================================================
 CLUSTERING_PARAMETERS = CONFIG_CLUSTERING["CLUSTERING_PARAMETERS"]
 LIST_OF_CLUSTERING_PARAMETERS = CONFIG_CLUSTERING["LIST_OF_CLUSTERING_PARAMETERS"]
+# Key figures renamed by migration 0016_key_figure_names: former name -> name
+RENAMED_KEY_FIGURES = {
+    "no_households_per_branch": "no_household_equ_per_branch",
+    "max_no_of_households_of_a_branch": "max_household_equ_of_a_branch",
+}
+
+
+def _check_key_figure_names(config: dict) -> None:
+    """Reject the former names of renamed key figures in the parameter lists of ``config_clustering.yaml``."""
+    for key in ("CLUSTERING_PARAMETERS", "LIST_OF_CLUSTERING_PARAMETERS"):
+        renamed = [name for name in config[key] if name in RENAMED_KEY_FIGURES]
+        if renamed:
+            raise ValueError(f"{key} of config_clustering.yaml lists renamed key figures: "
+                             + ", ".join(f"{name} is now {RENAMED_KEY_FIGURES[name]}" for name in renamed))
+
+
+_check_key_figure_names(CONFIG_CLUSTERING)
 N_CLUSTERS_KMEANS = CONFIG_CLUSTERING["N_CLUSTERS_KMEANS"]
 N_CLUSTERS_GMM = CONFIG_CLUSTERING["N_CLUSTERS_GMM"]
+
+# Transform of the key figures before the factor analysis and the clustering
+TRANSFORMS = ("none", "log1p", "yeo-johnson")
+TRANSFORM = CONFIG_CLUSTERING.get("TRANSFORM", "yeo-johnson")
+if TRANSFORM not in TRANSFORMS:
+    raise ValueError(f"TRANSFORM must be one of {', '.join(TRANSFORMS)}, got {TRANSFORM!r}")
+
+# Leave out the grids with a voltage violation or no converged power flow
+EXCLUDE_INFEASIBLE = CONFIG_CLUSTERING.get("EXCLUDE_INFEASIBLE", True)
+if not isinstance(EXCLUDE_INFEASIBLE, bool):
+    raise ValueError(f"EXCLUDE_INFEASIBLE must be true or false, got {EXCLUDE_INFEASIBLE!r}")
 
 # Also filter the grids below the four lower thresholds (pylovo-classify writes the answer of its question)
 ADDITIONAL_FILTERING = CONFIG_CLUSTERING.get("ADDITIONAL_FILTERING", False)

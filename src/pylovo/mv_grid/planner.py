@@ -194,4 +194,3 @@ def plan_tables(inp: DistrictInput, plan: TopologyPlan) -> tuple[pd.DataFrame, p
         columns=["line_id", "from_node", "to_node", "length_km", "kind", "cable_km", "overhead_km",
                  "normally_open", "parallel", "open_at_node", "role"])
     return table, lines
-

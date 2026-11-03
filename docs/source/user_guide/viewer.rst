@@ -92,7 +92,10 @@ on an LV feeder cable selects its whole feeder section, from the station or a ca
 next cabinet or the end of the feeder, with its length, cable types and house connections. Clicking
 section by section follows the feeder through the grid. A click on an MV line selects its whole ring
 with the stubs, marks the normally-open point on it and adds the ring's length, overhead length,
-stations and highest (n-1) loading to the facts.
+stations and highest (n-1) loading to the facts. A click on a transformer selects the lines it
+supplies, at any zoom: an MV/LV substation the cables of its LV grid (feeder and service length,
+feeders, buildings), an HV/MV substation the MV lines of its supply area in the MV run (length,
+rings, stations). The normally-open ties and links of the area are counted but not selected.
 
 **Colours and legend.** Layers with several colour modes have a small menu next to their name
 (for example cables by grid, feeder, type or feeder/service). By default the LV grid areas, cables
@@ -101,7 +104,8 @@ counts. Colours that only tell grids, rings or supply areas apart have no legend
 
 **3D.** The map starts in 3D, tilted by 25°, on the Streets basemap of OpenFreeMap (another basemap is kept
 in the address bar, not between visits). The *3D* button switches
-to the flat map and back; buildings are extruded by their height in 3D. With a
+to the flat map and back; buildings are extruded by their height in 3D. The buildings of the
+basemap stay flat, so they never hide the pylovo buildings. With a
 ``citydb`` schema (3DCityDB v5, see :doc:`input_data`) the buildings in view are drawn as their LoD2
 models with roofs and walls from zoom 15 (up to 5,000 buildings).
 
@@ -143,10 +147,16 @@ says so.
    * - HV grid
      - HV and EHV lines
      - The 110, 220 and 380 kV grid of Germany from eGon-data (see below).
+   * - HV grid
+     - Links to the HV grid
+     - From each HV/MV substation of the MV run a straight line to its eTraGo 110 kV bus, or, for a
+       substation without one, a dashed artificial link to the nearest eTraGo 110 kV line (see below).
+       Shown with the HV/MV substations.
    * - HV and MV grids
      - HV/MV substations
-     - ``pylovo.mv_substation`` of the MV run with their site outlines; candidates the run did not use
-       are hollow. The facts give the eTraGo 110 kV bus of each substation. From zoom 15 the busbar
+     - ``pylovo.mv_substation`` of the MV run with their site outlines, as white badges with a frame
+       (dark in the dark theme) that are larger than the MV/LV substations; candidates the run did not
+       use are faded. The facts give the eTraGo 110 kV bus of each substation. From zoom 15 the busbar
        circle shows where the MV lines end (display geometry of the MV stage).
    * - MV grids
      - MV lines
@@ -195,8 +205,17 @@ OpenStreetMap (2021) and published on the Open Energy Platform. Download it once
    uv run --extra viewer pylovo-viewer fetch etrago      # scenario eGon2035
 
 The 110 kV grid is the reason for this source: the prebuilt OpenStreetMap network of PyPSA-Eur
-covers 220 kV and above only. The data derive from OpenStreetMap (ODbL); the map shows the
-attribution.
+covers 220 kV and above only.
+
+The layer *Links to the HV grid* joins the HV/MV substations of the MV run to this grid. A
+substation with an eTraGo bus (``mv_substation.egon_bus_id``) gets a short line to it. A substation
+without one gets a dashed link to the nearest eTraGo 110 kV line, wider beyond 1 km and labelled
+with its length from zoom 11. eTraGo has no line to such a substation, so the link is artificial:
+either the substation is missing from the OpenStreetMap data of 2021, or its supply line is not
+mapped at all, which the facts show with the flag ``no_osm_hv_line``.
+
+eGon-data publishes the grid under the ODbL 1.0 with the credit "© eGon development team", and it
+derives from OpenStreetMap (© OpenStreetMap contributors). The map shows both credits.
 
 .. figure:: /images/viewer/viewer-overview.png
    :alt: MV supply areas, rings and substations of a test region with the eTraGo high-voltage grid
@@ -204,13 +223,18 @@ attribution.
 
    MV supply areas, rings and HV/MV substations of an MV run in a test region generated from open
    data, with the eTraGo 110, 220 and 380 kV lines (LV level switched off). Basemap OpenFreeMap
-   © OpenMapTiles, map data © OpenStreetMap contributors (ODbL), eGon-data eTraGo grid.
+   © OpenMapTiles, map data © OpenStreetMap contributors (ODbL), eGon-data eTraGo grid © eGon
+   development team (ODbL).
 
 Data and limits
 ---------------
 
 * Data travel as GeoJSON per version, per MV run or for the map view, gzipped. A layer returns at
-  most 60,000 features per request and says so when it is cut.
+  most 60,000 features per request. A version or MV run with more (all MV lines, MV/LV substations or
+  LV grid areas of Bavaria) loads these layers for the map view from zoom 10 and asks you to zoom in
+  below. MV lines come by whole supply areas, so a ring is never cut at the edge of the view. A map
+  view with more (LV cables of a city centre at zoom 14) shows nothing of that layer and asks you to
+  zoom in: a cut set would show grids without cables.
 * The server keeps loaded data in memory. After a new generation or MV run, the reload button in
   the top bar reads everything from the database again.
 * The browser needs internet access: it loads MapLibre GL JS 6.11.2 and Vue 3.5.43 from

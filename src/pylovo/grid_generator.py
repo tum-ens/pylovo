@@ -802,10 +802,10 @@ class GridGenerator:
 
         # At this point, a valid clustering solution (minimum number of transformers) was found.
         # The valid_cluster_dict maps building cluster IDs to tuples of (building_vertices_list, optimal_transformer_size)
-        # Each cluster 1) Contains buildings that can be supplied by a single transformer and 2) has an appropriately sized 
-        # transformer assigned. The hierarchical split procedure guarantees feasibility, but not minimality of the resulting 
-        # feasible partition as the splitting is iterative and path-dependent. 
-        # Therefore we add a conservative local merge step to test whether neighboring feasible clusters can be 
+        # Each cluster 1) Contains buildings that can be supplied by a single transformer and 2) has an appropriately sized
+        # transformer assigned. The hierarchical split procedure guarantees feasibility, but not minimality of the resulting
+        # feasible partition as the splitting is iterative and path-dependent.
+        # Therefore we add a conservative local merge step to test whether neighboring feasible clusters can be
         # recombined without violating the same load and distance constraints.
         valid_cluster_dict = self._merge_feasible_greenfield_clusters(
             valid_cluster_dict,

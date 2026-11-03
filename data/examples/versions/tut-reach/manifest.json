@@ -1,0 +1,397 @@
+{
+ "description": "Example grids of the pylovo tutorials (TutorialData without a database)",
+ "version_id": "tut-reach",
+ "crs": "EPSG:25832",
+ "created": "2026-10-28",
+ "pylovo": "1.0.0",
+ "attribution": "Data: \u00a9 Bayerische Vermessungsverwaltung (LoD2), \u00a9 basemap.de / BKG, \u00a9 OpenStreetMap contributors",
+ "postcodes": "postcodes.csv",
+ "grid_summary": "grid_summary.csv",
+ "areas": {
+  "80805": {
+   "name": "M\u00fcnchen (Schwabing-Freimann)",
+   "settlement": "urban",
+   "grid": [
+    2,
+    13
+   ],
+   "nets": {},
+   "voltage_levels": {}
+  },
+  "85256": {
+   "name": "Vierkirchen",
+   "settlement": "semi-urban",
+   "grid": [
+    2,
+    1
+   ],
+   "nets": {},
+   "voltage_levels": {},
+   "file": "85256.gpkg.zip",
+   "building_assignment": "85256_buildings.csv",
+   "layers": [
+    "grids",
+    "lines"
+   ],
+   "exclusions": "85256_exclusions.csv"
+  },
+  "85307": {
+   "name": "Paunzhausen",
+   "settlement": "rural",
+   "grid": [
+    1,
+    6
+   ],
+   "nets": {},
+   "voltage_levels": {}
+  }
+ },
+ "variant_of": "1",
+ "version_comment": "tutorial: greenfield stations may reach 1500 m instead of 1000 m",
+ "generation_parameters": {
+  "input_data": {
+   "use_infdb": true,
+   "target_epsg": 25832,
+   "infdb_source_schema": "basedata"
+  },
+  "equipment_data": [
+   {
+    "typ": "Transformer",
+    "name": "Tr_100",
+    "max_i_a": null,
+    "cost_eur": 3000,
+    "grid_role": "transformer",
+    "s_max_kva": 100.0,
+    "r_mohm_per_km": null,
+    "x_mohm_per_km": null,
+    "z_mohm_per_km": null
+   },
+   {
+    "typ": "Transformer",
+    "name": "Tr_160",
+    "max_i_a": null,
+    "cost_eur": 3800,
+    "grid_role": "transformer",
+    "s_max_kva": 160.0,
+    "r_mohm_per_km": null,
+    "x_mohm_per_km": null,
+    "z_mohm_per_km": null
+   },
+   {
+    "typ": "Transformer",
+    "name": "Tr_250",
+    "max_i_a": null,
+    "cost_eur": 5000,
+    "grid_role": "transformer",
+    "s_max_kva": 250.0,
+    "r_mohm_per_km": null,
+    "x_mohm_per_km": null,
+    "z_mohm_per_km": null
+   },
+   {
+    "typ": "Transformer",
+    "name": "Tr_400",
+    "max_i_a": null,
+    "cost_eur": 8000,
+    "grid_role": "transformer",
+    "s_max_kva": 400.0,
+    "r_mohm_per_km": null,
+    "x_mohm_per_km": null,
+    "z_mohm_per_km": null
+   },
+   {
+    "typ": "Transformer",
+    "name": "Tr_630",
+    "max_i_a": null,
+    "cost_eur": 12000,
+    "grid_role": "transformer",
+    "s_max_kva": 630.0,
+    "r_mohm_per_km": null,
+    "x_mohm_per_km": null,
+    "z_mohm_per_km": null
+   },
+   {
+    "typ": "Transformer",
+    "name": "Tr_800",
+    "max_i_a": null,
+    "cost_eur": 16000,
+    "grid_role": "transformer",
+    "s_max_kva": 800.0,
+    "r_mohm_per_km": null,
+    "x_mohm_per_km": null,
+    "z_mohm_per_km": null
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_150",
+    "max_i_a": 270.0,
+    "cost_eur": 25,
+    "grid_role": "feeder",
+    "s_max_kva": null,
+    "r_mohm_per_km": 208.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 223.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_185",
+    "max_i_a": 313.0,
+    "cost_eur": 38,
+    "grid_role": "feeder",
+    "s_max_kva": null,
+    "r_mohm_per_km": 164.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 181.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_240",
+    "max_i_a": 357.0,
+    "cost_eur": 45,
+    "grid_role": "feeder",
+    "s_max_kva": null,
+    "r_mohm_per_km": 127.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 150.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_300",
+    "max_i_a": 425.0,
+    "cost_eur": 58,
+    "grid_role": "feeder",
+    "s_max_kva": null,
+    "r_mohm_per_km": 100.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 128.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_50",
+    "max_i_a": 142.0,
+    "cost_eur": 11,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 642.0,
+    "x_mohm_per_km": 83.0,
+    "z_mohm_per_km": 647.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_70",
+    "max_i_a": 173.0,
+    "cost_eur": 16,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 443.0,
+    "x_mohm_per_km": 82.0,
+    "z_mohm_per_km": 451.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_95",
+    "max_i_a": 215.0,
+    "cost_eur": 18,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 320.0,
+    "x_mohm_per_km": 82.0,
+    "z_mohm_per_km": 330.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_120",
+    "max_i_a": 242.0,
+    "cost_eur": 24,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 225.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 239.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_150",
+    "max_i_a": 270.0,
+    "cost_eur": 25,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 208.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 223.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_185",
+    "max_i_a": 313.0,
+    "cost_eur": 38,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 164.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 181.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_240",
+    "max_i_a": 357.0,
+    "cost_eur": 45,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 127.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 150.0
+   },
+   {
+    "typ": "Cable",
+    "name": "NAYY_4_300",
+    "max_i_a": 425.0,
+    "cost_eur": 58,
+    "grid_role": "consumer_connection",
+    "s_max_kva": null,
+    "r_mohm_per_km": 100.0,
+    "x_mohm_per_km": 80.0,
+    "z_mohm_per_km": 128.0
+   }
+  ],
+  "postcode_border": {
+   "rule_revision": 2,
+   "neighboring_street_width_m": 600.0,
+   "neighboring_street_margin_m": 100.0,
+   "route_across_postcode_borders": true
+  },
+  "load_calculation": {
+   "sim_factor": {
+    "Public": 0.6,
+    "Unknown": 0.6,
+    "Commercial": 0.5,
+    "Residential": 0.07
+   },
+   "household_fallback": {
+    "AB": {
+     "minimum_households": 5,
+     "residential_area_per_household_m2": 146
+    },
+    "TH": {
+     "fixed_households": 1
+    },
+    "MFH": {
+     "minimum_households": 2,
+     "residential_area_per_household_m2": 181
+    },
+    "SFH": {
+     "fixed_households": 1
+    },
+    "untyped_residential": {
+     "minimum_households": 1,
+     "residential_area_per_household_m2": 181
+    }
+   },
+   "consumer_categories": [
+    {
+     "peak_load": null,
+     "definition": "Commercial",
+     "sim_factor": 0.5,
+     "peak_load_per_m2": 79.0,
+     "yearly_consumption": null,
+     "consumer_category_id": 1,
+     "yearly_consumption_per_m2": 245.7
+    },
+    {
+     "peak_load": null,
+     "definition": "Public",
+     "sim_factor": 0.6,
+     "peak_load_per_m2": 29.0,
+     "yearly_consumption": null,
+     "consumer_category_id": 2,
+     "yearly_consumption_per_m2": 155.7
+    },
+    {
+     "peak_load": 16.825,
+     "definition": "Residential",
+     "sim_factor": 0.07,
+     "peak_load_per_m2": null,
+     "yearly_consumption": 0.0,
+     "consumer_category_id": 3,
+     "yearly_consumption_per_m2": null
+    },
+    {
+     "peak_load": null,
+     "definition": "Unknown",
+     "sim_factor": 0.6,
+     "peak_load_per_m2": 0.0,
+     "yearly_consumption": null,
+     "consumer_category_id": 4,
+     "yearly_consumption_per_m2": 0.0
+    }
+   ],
+   "peak_load_household": 16.825,
+   "default_power_factor": 0.95
+  },
+  "cable_dimensioning": {
+   "vn": 400,
+   "house_connection": "joint",
+   "cabinet_spacing_m": 100.0,
+   "feeder_standard_cable": null,
+   "max_parallel_feeder_cables": 4,
+   "min_shared_prefix_length_m": 50,
+   "feeder_planning_utilization": 0.8,
+   "feeder_split_max_current_ka": 0.4,
+   "service_planning_utilization": 0.8,
+   "mv_direct_connection_load_threshold_kw": 200,
+   "max_service_design_voltage_drop_percent": 1,
+   "max_end_to_end_feeder_voltage_drop_percent": 5
+  },
+  "electrical_backend": "pandapower",
+  "power_flow_assessment": {
+   "max_vm_pu": 1.1,
+   "min_vm_pu": 0.9,
+   "lv_reference_voltage_pu": 0.96
+  },
+  "transformer_placement": {
+   "k_means_seed": 3329829316,
+   "transformer_mapping": {
+    "1": [
+     250,
+     400
+    ],
+    "2": [
+     400,
+     630
+    ],
+    "3": [
+     400,
+     630
+    ]
+   },
+   "rural_max_households": 1.0,
+   "urban_min_households": 2.85,
+   "max_buildings_per_kcid": 1000,
+   "brownfield_nearest_only": false,
+   "merge_greenfield_clusters": true,
+   "rural_min_building_distance": 44,
+   "urban_max_building_distance": 29,
+   "max_brownfield_trafo_distance": 1000,
+   "max_greenfield_trafo_distance": 1500,
+   "use_dso_transformer_positions": false,
+   "use_open_transformer_positions": false,
+   "transformer_planning_utilization": 0.8,
+   "use_manual_transformer_positions": false,
+   "max_greenfield_trafo_distance_std": 250.0,
+   "greenfield_trafo_position_tolerance": 0.3,
+   "greenfield_cluster_merge_max_buildings": 4,
+   "greenfield_cluster_merge_transformer_kva": [
+    250,
+    400,
+    630
+   ]
+  },
+  "residential_only_generation": false,
+  "connection_point_aggregation": {
+   "enabled": false,
+   "radius_m": 15,
+   "max_buildings": 4
+  },
+  "exclude_buildings_without_address": true
+ }
+}

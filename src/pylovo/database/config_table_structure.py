@@ -19,7 +19,7 @@ INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
 CREATE_QUERIES = {
     "version": """CREATE TABLE IF NOT EXISTS pylovo.version (
         version_id varchar(10) PRIMARY KEY,
-        version_comment varchar, 
+        version_comment varchar,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         generation_parameters jsonb
     );
@@ -46,7 +46,7 @@ CREATE_QUERIES = {
     "classification_version": """
     CREATE TABLE IF NOT EXISTS pylovo.classification_version (
         classification_id integer NOT NULL,
-        classification_version_comment varchar, 
+        classification_version_comment varchar,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         classification_region varchar,
         -- the choices of step 7 (classification.rst); NULL for classifications clustered before 0014
@@ -54,6 +54,11 @@ CREATE_QUERIES = {
         n_clusters_kmeans integer,
         n_clusters_gmm integer,
         additional_filtering boolean,
+        -- the key-figure definitions, transform, filter and selection report of the clustering (0017)
+        key_figures_version smallint,
+        transform text,
+        exclude_infeasible boolean,
+        selection_report jsonb,
         CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
     )
     """,
@@ -69,14 +74,14 @@ CREATE_QUERIES = {
     )
     """,
     "postcode_result": """
-    CREATE TABLE IF NOT EXISTS pylovo.postcode_result (   
+    CREATE TABLE IF NOT EXISTS pylovo.postcode_result (
         version_id varchar(10) NOT NULL,
         postcode_result_plz integer NOT NULL,
         geom geometry(MultiPolygon,{TARGET_EPSG}),
         house_distance double precision,
         avg_households_per_building double precision,
         settlement_type integer,
-        
+
         CONSTRAINT "postcode_result_pkey" PRIMARY KEY (version_id, postcode_result_plz),
         CONSTRAINT fk_postcode_result_version_id
             FOREIGN KEY (version_id)
@@ -457,7 +462,8 @@ CREATE_QUERIES = {
         peak_feed_in_mw double precision,
         loading_n0_percent double precision,
         loading_n1_percent double precision,
-        flags text[] NOT NULL DEFAULT ARRAY[]::text[],   -- ehv_uncertain, long_attach, over_capacity, no_nodes
+        flags text[] NOT NULL DEFAULT ARRAY[]::text[],   -- ehv_uncertain, long_attach, over_capacity, no_nodes,
+                                                         -- no_egon_bus, no_osm_hv_line
         geom geometry(Point,{TARGET_EPSG}) NOT NULL,     -- busbar point
         footprint geometry(MultiPolygon,{TARGET_EPSG}),
         display_geom geometry(Polygon,{TARGET_EPSG}),    -- busbar circle the display lines end on
@@ -701,6 +707,26 @@ CREATE_QUERIES = {
         CONSTRAINT municipal_register_pkey PRIMARY KEY (plz, ags)
     )
     """,
+    # eGon-data HV/MV substations of Germany (Open Energy Platform), the eTraGo 110 kV bus of each MV supply site;
+    # filled by pylovo-setup or pylovo-import egon-substations (pylovo.data_import.import_egon)
+    "egon_hvmv_substation": """
+    CREATE TABLE IF NOT EXISTS pylovo.egon_hvmv_substation (
+        bus_id bigint PRIMARY KEY,
+        voltage text,
+        power_type text,
+        substation text,
+        osm_id text,
+        subst_name text,
+        operator text,
+        frequency text,
+        ref text,
+        dbahn text,
+        status integer,
+        geom geometry(Point,{TARGET_EPSG}) NOT NULL,
+        footprint geometry(MultiPolygon,{TARGET_EPSG})
+    );
+    CREATE INDEX IF NOT EXISTS idx_egon_hvmv_substation_geom ON pylovo.egon_hvmv_substation USING gist (geom)
+    """,
     "sample_set": """CREATE TABLE IF NOT EXISTS pylovo.sample_set (
         classification_id integer NOT NULL,
         plz integer NOT NULL,
@@ -729,8 +755,8 @@ CREATE_QUERIES = {
         no_house_connections_per_branch double precision,
         no_households integer,
         no_household_equ double precision,
-        no_households_per_branch double precision,
-        max_no_of_households_of_a_branch double precision,
+        no_household_equ_per_branch double precision,
+        max_household_equ_of_a_branch double precision,
         house_distance_km double precision,
         transformer_mva double precision,
         osm_trafo bool,
@@ -745,7 +771,9 @@ CREATE_QUERIES = {
         ratio double precision,
         vsw_per_branch double precision,
         max_vsw_of_a_branch double precision,
-        filtered boolean,
+        no_branch_ends integer,
+        max_route_resistance_ohm double precision,
+        key_figures_version smallint NOT NULL,      -- definitions the row was computed with (KEY_FIGURES_VERSION)
         CONSTRAINT fk_clustering_parameters_grid_result
             FOREIGN KEY (grid_result_id)
             REFERENCES pylovo.grid_result (grid_result_id)
@@ -1126,7 +1154,7 @@ CREATE_QUERIES = {
     """,
     "transformer_classified_with_grid": """
             CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid AS (
-        SELECT 
+        SELECT
             tc.*,
             gr.version_id,
             gr.kcid,
@@ -1143,8 +1171,8 @@ CREATE_QUERIES = {
             ed.typ AS equipment_type
         FROM pylovo.transformer_classified tc
         JOIN pylovo.grid_result gr ON tc.grid_result_id = gr.grid_result_id
-        LEFT JOIN pylovo.equipment_data ed 
-            ON gr.version_id = ed.version_id 
+        LEFT JOIN pylovo.equipment_data ed
+            ON gr.version_id = ed.version_id
             AND gr.transformer_equipment_name = ed.name
     );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_transformer_classified_with_grid_uq_grid_result_id_classification_id

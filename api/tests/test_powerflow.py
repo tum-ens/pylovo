@@ -74,3 +74,10 @@ def test_the_download_is_the_stored_text_and_not_a_serialisation_of_it(client, m
     res = client.get("/api/grids/7/pandapower.json")
     assert res.status_code == 200 and res.text == text
     assert res.headers["content-disposition"] == 'attachment; filename="pylovo_v1_80803_k2_b-3.json"'
+
+
+def test_a_grid_of_the_opendss_backend_is_reported_not_solved(monkeypatch):
+    altdss_json = '{"$schema": "https://dss-extensions.org/altdss-schema/2023-12-13.schema.json", "Name": "plz1"}'
+    monkeypatch.setattr(queries, "grid_json", lambda grid_result_id: (altdss_json, dict(IDENT)))
+    result = powerflow.run(7)
+    assert not result["converged"] and "OpenDSS backend" in result["error"]

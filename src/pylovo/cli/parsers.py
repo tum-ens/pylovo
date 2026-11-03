@@ -32,6 +32,22 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument("--yes", action="store_true", help="skip interactive reset confirmation")
     return parser
 
+#: Federal states of ``pylovo-generate --all``: ISO 3166-2:DE code (and NRW) -> state key, the first two AGS digits
+FEDERAL_STATES = {"sh": "01", "hh": "02", "ni": "03", "hb": "04", "nw": "05", "nrw": "05", "he": "06", "rp": "07",
+                  "bw": "08", "by": "09", "sl": "10", "be": "11", "bb": "12", "mv": "13", "sn": "14", "st": "15",
+                  "th": "16"}
+
+
+def _federal_state(value: str) -> str:
+    """The two-digit state key of a federal state given by its code (``by``, ``nw``, ``nrw``) or key (``9``, ``09``)."""
+    code = value.strip().lower()
+    if code in FEDERAL_STATES:
+        return FEDERAL_STATES[code]
+    if code.isdigit() and 1 <= int(code) <= 16:
+        return f"{int(code):02d}"
+    raise argparse.ArgumentTypeError(f"unknown federal state {value!r}: use its code (e.g. by, nw or nrw) "
+                                     "or its key (e.g. 09)")
+
 def generate_parser() -> argparse.ArgumentParser:
     """The ``pylovo-generate`` argument parser."""
     parser = argparse.ArgumentParser(
@@ -51,6 +67,12 @@ Examples:
 
   # Generate for multiple municipalities
   pylovo-generate --ags 09162000 09161000
+
+  # Generate every postcode with buildings in the InfDB (USE_INFDB=True), the largest first
+  pylovo-generate --all
+
+  # Only the postcodes with buildings in Bavaria and North Rhine-Westphalia
+  pylovo-generate --all by nrw
 
   # Disable parallel processing (useful for debugging); PARALLEL in the config sets the default
   pylovo-generate --plz 80803 80802 --no-parallel
@@ -74,6 +96,9 @@ For more information, see the README: https://github.com/tum-ens/pylovo
                         help='Postal code(s) to generate grids for (e.g., 80803 or 80803 80802)')
     region.add_argument('--ags', type=int, nargs='+',
                         help='Municipality code(s) (AGS) to generate grids for (e.g., 09162000)')
+    region.add_argument('--all', dest='all_states', nargs='*', type=_federal_state, metavar='STATE',
+                        help='Every postcode with buildings in the InfDB, or with buildings in the given federal '
+                             'states (e.g. by nrw), the largest first (USE_INFDB=True only)')
     parallelism = parser.add_mutually_exclusive_group()
     parallelism.add_argument('--parallel', dest='parallel', action='store_true', default=None,
                              help='Generate several regions in parallel worker processes')
@@ -95,10 +120,12 @@ def classify_parser() -> argparse.ArgumentParser:
                     "on the terminal unless an option answers them, so a run can also be scripted.",
         epilog=(
             "The pipeline then:\n"
-            "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml),\n"
+            "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml) or copies\n"
+            "     the one of --same-sample-as,\n"
             "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
-            "  3. selects the clustering parameters and numbers of clusters (asked, given or computed) and writes\n"
-            "     them to config/config_clustering.yaml together with the answer on additional filtering,\n"
+            "  3. selects the clustering parameters and numbers of clusters (asked, given or computed), writes\n"
+            "     them to config/config_clustering.yaml together with the answer on additional filtering and\n"
+            "     prints the selection report (log/selection_report_<classification>.md),\n"
             "  4. clusters the grids that the filters leave, writes pylovo.transformer_classified, stores the\n"
             "     choices with the classification (pylovo.classification_version) and prints the grids per stage.\n"
             "Set a new CLASSIFICATION_VERSION before each run; an existing version is rejected.\n\n"
@@ -112,6 +139,9 @@ def classify_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restrict-to-generated", action=argparse.BooleanOptionalAction, default=None,
                         help="sample only PLZ that already have grids (postcode_result) for VERSION_ID, so nothing "
                              "is generated (default: ask)")
+    parser.add_argument("--same-sample-as", type=int, metavar="CLASSIFICATION",
+                        help="copy the sample set of this classification instead of drawing one, to compare two "
+                             "classifications of the same PLZ (no question about the sample)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--auto", action="store_true",
                       help="compute the clustering parameters and the numbers of clusters (default: ask)")
@@ -123,6 +153,12 @@ def classify_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clusters", metavar="KMEANS,GMM",
                         help="with --manual: number of clusters of k-means and of the GMM, both from "
                              "NO_OF_CLUSTERS_ALLOWED")
+    parallelism = parser.add_mutually_exclusive_group()
+    parallelism.add_argument("--parallel", dest="parallel", action="store_true", default=None,
+                             help="generate the grids and compute their parameters in worker processes, several PLZ "
+                                  "at a time (default: PARALLEL of config_generation_lv.yaml)")
+    parallelism.add_argument("--no-parallel", dest="parallel", action="store_false",
+                             help="generate the grids and compute their parameters one PLZ after the other")
     return parser
 
 def analyze_parser() -> argparse.ArgumentParser:
@@ -332,6 +368,9 @@ Examples:
 
   # Check and edit transformer positions on a browser map (needs uv sync --extra legacy-ui)
   pylovo-import transformers-ui
+
+  # Load the eGon-data HV/MV substations of the MV stage again (--refresh: download them again first)
+  pylovo-import egon-substations --refresh
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -373,6 +412,16 @@ Examples:
         help="Browser map for checking and editing transformer positions (needs the extra legacy-ui)"
     )
     add_ui_arguments(ui_parser)
+
+    egon_parser = subparsers.add_parser(
+        "egon-substations",
+        help="Load the eGon-data HV/MV substations (eTraGo buses of the MV stage) from the Open Energy Platform"
+    )
+    egon_parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Download them again instead of using the cached file of the data directory"
+    )
     return parser
 
 

@@ -388,7 +388,7 @@ def ring_net(grid: int, base: int, load_mw: float, length_km: float = 1.0, vn_kv
     net.bus["node_key"] = [base + i for i in range(4)]
     pp.create_ext_grid(net, buses[0], vm_pu=1.0)
     sections = [(0, 1, 0, "a"), (1, 2, 0, None), (2, 3, 1, None), (3, 0, 1, "b")]
-    for a, b, feeder, exit_ in sections:
+    for a, b, _, _ in sections:
         pp.create_line_from_parameters(net, buses[a], buses[b], length_km, r_ohm_per_km=0.122, x_ohm_per_km=0.112,
                                        c_nf_per_km=304.0, max_i_ka=0.421)
     net.line["ring_id"] = 0.0
@@ -447,6 +447,26 @@ def test_ties_take_the_line_types_of_their_districts_voltage(monkeypatch):
     check = ic.takeover_checks(ties, {1: ring_net(1, 100, 0.2, vn_kv=10.0), 2: ring_net(2, 200, 0.2, vn_kv=10.0)},
                                PARAMS)
     assert used == [10.0] and check["converged"].all() and check["error"].isna().all()
+
+
+def test_the_takeover_reads_evicted_nets_again_with_the_same_result(monkeypatch):
+    ties = pd.DataFrame([tie_row(), tie_row(from_grid=2, to_grid=3, from_node=202, to_node=302),
+                         tie_row(from_grid=1, to_grid=3, from_node=102, to_node=302)], columns=list(ic.TIE_COLUMNS))
+    nets = {1: ring_net(1, 100, 0.5), 2: ring_net(2, 200, 0.5), 3: ring_net(3, 300, 0.5)}
+    reads = []
+
+    class Counting:
+        def get(self, g):
+            reads.append(g)
+            return nets.get(g)
+
+    full = ic.takeover_checks(ties, Counting(), PARAMS)
+    assert sorted(reads) == [1, 2, 3]                                       # each net read once
+    monkeypatch.setattr(ic, "TAKEOVER_NETS_CACHED", 0)                      # keep only the pair of the tie
+    reads.clear()
+    small = ic.takeover_checks(ties, Counting(), PARAMS)
+    assert len(reads) > 3
+    pd.testing.assert_frame_equal(small, full)
 
 
 def test_the_takeover_does_not_change_the_normal_flow():
@@ -630,8 +650,8 @@ class TieDb:
     def tie_candidate_nodes(self, version_id, variant_id):
         return self.nodes
 
-    def subgraph_edges(self, graph_id, hull_wkb, buffer_m, must):
-        self.calls.append(("subgraph", graph_id, len(shapely.from_wkb(hull_wkb).geoms), buffer_m, list(must)))
+    def subgraph_edges_near(self, graph_id, xy, buffer_m, must):
+        self.calls.append(("subgraph", graph_id, len(xy), buffer_m, list(must)))
         return self.edges
 
     def edge_geometries(self, graph_id, ids):
@@ -714,6 +734,12 @@ class StageDb:
 
     def try_lock_variant(self, version_id, variant_id):
         return True
+
+    def check_mv_sources(self):
+        return []
+
+    def source_reader(self):
+        return SimpleNamespace(where="the pylovo database", close=lambda: None)
 
     def generated_plz(self, version_id, plz):
         return [1]

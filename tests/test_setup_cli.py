@@ -63,6 +63,9 @@ class FakeConstructor:
     def load_postcode_from_infdb(self):
         self._record("postcode")
 
+    def egon_to_db(self):
+        self._record("egon")
+
     def load_ways_preprocessing_functions(self):
         self._record("functions")
 
@@ -95,10 +98,10 @@ def _fake_setup(monkeypatch, tmp_path, fake):
 
 
 def test_setup_imports_every_empty_reference_table(monkeypatch, tmp_path):
-    fake = FakeConstructor(empty={"transformers", "postcode", "municipal_register"})
+    fake = FakeConstructor(empty={"transformers", "postcode", "municipal_register", "egon_hvmv_substation"})
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup()
-    assert fake.calls == ["lock", "migrate", "transformers", "postcode", "register", "functions", "unlock"]
+    assert fake.calls == ["lock", "migrate", "transformers", "postcode", "register", "egon", "functions", "unlock"]
 
 
 def test_rerun_completes_an_interrupted_setup_and_keeps_filled_tables(monkeypatch, tmp_path):
@@ -126,14 +129,14 @@ def test_missing_inputs_stop_setup_and_reset_before_any_change(monkeypatch, tmp_
     assert fake.calls == ["lock", "migrate", "functions", "unlock"]
 
 
-ALL = {"transformers", "postcode", "municipal_register"}
+ALL = {"transformers", "postcode", "municipal_register", "egon_hvmv_substation"}
 
 
 def test_reset_drops_the_backup_after_a_complete_rebuild(monkeypatch, tmp_path):
     fake = FakeConstructor(empty=ALL)
     _fake_setup(monkeypatch, tmp_path, fake)
     setup.run_setup(reset=True)
-    assert fake.calls == ["lock", "backup", "migrate", "transformers", "postcode", "register", "functions",
+    assert fake.calls == ["lock", "backup", "migrate", "transformers", "postcode", "register", "egon", "functions",
                           "drop pylovo_backup_x", "unlock"]
 
 

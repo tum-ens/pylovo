@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import numpy as np
 import pandas as pd
 
+from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION
 from pylovo.config_loader import CLUSTERING_PARAMETERS
 
 # four grid archetypes: rural, village, suburb, urban (centre of the log-normal parameter distributions)
@@ -40,8 +41,8 @@ def synthetic_clustering_parameters(n_per_archetype=(40, 40, 30, 20), seed=0) ->
                 no_house_connections_per_branch=conn / branches,
                 no_households=households,
                 no_household_equ=power * 1000 / 4.2,
-                no_households_per_branch=households / branches,
-                max_no_of_households_of_a_branch=households / branches * rng.uniform(1.1, 1.8),
+                no_household_equ_per_branch=households / branches,
+                max_household_equ_of_a_branch=households / branches * rng.uniform(1.1, 1.8),
                 house_distance_km=rng.uniform(0.01, 0.05),
                 transformer_mva=arch["mva"],
                 osm_trafo=bool(rng.integers(0, 2)),
@@ -56,6 +57,8 @@ def synthetic_clustering_parameters(n_per_archetype=(40, 40, 30, 20), seed=0) ->
                 ratio=3.3,
                 vsw_per_branch=res / branches,
                 max_vsw_of_a_branch=res * rng.uniform(0.3, 0.8),
+                no_branch_ends=int(branches * rng.integers(1, 4)),
+                max_route_resistance_ohm=max_dis * 0.2 * rng.uniform(0.8, 1.2),
             ))
     df = pd.DataFrame(rows)
     df.insert(0, "version_id", "1")
@@ -152,9 +155,11 @@ def ddl_columns(create_query: str) -> list[str]:
 # --------------------------------------------------------------------------------------- SQLite stand-in for the SQL
 SQLITE_TABLES = """
 ATTACH DATABASE ':memory:' AS pylovo;
-CREATE TABLE pylovo.grid_result (grid_result_id INTEGER, version_id TEXT, plz INTEGER, kcid INTEGER, bcid INTEGER);
+CREATE TABLE pylovo.grid_result (grid_result_id INTEGER, version_id TEXT, plz INTEGER, kcid INTEGER, bcid INTEGER,
+    power_flow_status TEXT);
 CREATE TABLE pylovo.clustering_parameters (grid_result_id INTEGER, no_households INTEGER, avg_trafo_dis REAL,
-    max_trafo_dis REAL, no_house_connections INTEGER, vsw_per_branch REAL, filtered INTEGER);
+    max_trafo_dis REAL, no_house_connections INTEGER, vsw_per_branch REAL, key_figures_version INTEGER);
+CREATE TABLE pylovo.classification_version (classification_id INTEGER, key_figures_version INTEGER);
 CREATE TABLE pylovo.buildings_result (grid_result_id INTEGER, households INTEGER);
 CREATE TABLE pylovo.sample_set (classification_id INTEGER, plz INTEGER, ags INTEGER);
 CREATE TABLE pylovo.municipal_register (plz INTEGER, ags INTEGER, pop INTEGER, area REAL, lat REAL, lon REAL,
@@ -172,7 +177,7 @@ SQLITE_FIGURES = {
     1: (100, 0.30, 1.0, 40, 0.50),   # normal
     2: (100, 0.30, 3.0, 40, 0.50),   # transformer distance above the upper limit
     3: (100, 0.30, 1.0, 40, 0.50),   # has a building with 200 households
-    4: (10, 0.05, 1.0, 5, 0.10),     # small filling grid, below all four lower bounds
+    4: (10, 0.05, 1.0, 5, 0.05),     # small filling grid, below all four lower bounds
     5: (100, 0.30, 1.0, 40, 0.50),   # normal
     6: (100, 0.30, None, 40, 0.50),  # no max_trafo_dis: a missing value never filters
 }
@@ -188,9 +193,10 @@ def sqlite_classification_db() -> sqlite3.Connection:
     db = sqlite3.connect(":memory:")
     db.executescript(SQLITE_TABLES)
     for grid_id, (plz, kcid, bcid) in SQLITE_GRIDS.items():
-        db.execute("INSERT INTO pylovo.grid_result VALUES (?, 'v1', ?, ?, ?)", (grid_id, plz, kcid, bcid))
+        db.execute("INSERT INTO pylovo.grid_result VALUES (?, 'v1', ?, ?, ?, 'converged')", (grid_id, plz, kcid, bcid))
     for grid_id, figures in SQLITE_FIGURES.items():
-        db.execute("INSERT INTO pylovo.clustering_parameters VALUES (?, ?, ?, ?, ?, ?, NULL)", (grid_id, *figures))
+        db.execute("INSERT INTO pylovo.clustering_parameters VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   (grid_id, *figures, KEY_FIGURES_VERSION))
     db.executemany("INSERT INTO pylovo.buildings_result VALUES (?, ?)", [(1, 3), (3, 200), (3, 4)])
     db.executemany("INSERT INTO pylovo.sample_set VALUES (?, ?, ?)",
                    [(1, plz, 9000000 + plz) for plz in range(80001, 80006)] + [(2, 80001, 9080001)])

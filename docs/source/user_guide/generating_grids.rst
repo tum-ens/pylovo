@@ -39,7 +39,7 @@ Sequential and parallel runs
 ----------------------------
 
 A single postcode runs in the current process. With several postcodes (``--plz`` with more than
-one value, or ``--ags``), pylovo starts up to ``N_JOBS`` worker processes, one postcode per
+one value, ``--ags`` or ``--all``), pylovo starts up to ``N_JOBS`` worker processes, one postcode per
 process, where ``N_JOBS`` is ``N_JOBS_PERCENT`` percent of the CPU cores, rounded (at least 1).
 Every worker has its own database connection. If ``N_JOBS`` is 1 (for example 50 % of 2 cores),
 the postcodes run sequentially.

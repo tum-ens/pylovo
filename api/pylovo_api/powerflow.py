@@ -53,13 +53,16 @@ def run(grid_result_id: int, load_scaling: float = 1.0) -> dict[str, Any] | None
         raise Busy(f"Both power-flow slots have been busy for {SLOT_WAIT_S:.0f} s. Try again in a moment.")
     try:
         net = pp.from_json_string(text)
-        if len(net.load):
-            net.load["scaling"] = net.load["scaling"].fillna(1.0) * float(load_scaling)
-        error = None
-        try:
-            pp.runpp(net, algorithm="nr", init="auto")
-        except Exception as exc:  # reported to the user
-            error = f"{type(exc).__name__}: {exc}"
+        if not isinstance(net, pp.pandapowerNet):       # AltDSS JSON of the OpenDSS backend
+            error = "The grid was generated with the OpenDSS backend; the power flow needs a pandapower grid."
+        else:
+            if len(net.load):
+                net.load["scaling"] = net.load["scaling"].fillna(1.0) * float(load_scaling)
+            error = None
+            try:
+                pp.runpp(net, algorithm="nr", init="auto")
+            except Exception as exc:  # reported to the user
+                error = f"{type(exc).__name__}: {exc}"
     finally:
         _PF_LOCK.release()
     converged = bool(getattr(net, "converged", False)) and error is None

@@ -2,14 +2,13 @@
 ``GridGenerator._install_feeder_lines``; recording fakes instead of a backend and a database."""
 
 import logging
-from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
 from pylovo import feeder_planning
 from pylovo.cable_installer import CableInstaller
-from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, TransformerSpec
+from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec
 from pylovo.feeder_planning import FeederBranch
 from pylovo.grid_generator import GridGenerator
 

@@ -20,7 +20,8 @@
    ``failed`` with its error; the others continue. A broken pool (e.g. out of memory) leaves the remaining grids
    ``pending``; a rerun with fewer ``jobs`` resumes them.
 5. **Post:** normally-open ties between districts and links inside them, then the summary (``mv_variant.summary``)
-   and the final status ``done``, ``partial`` or ``failed``.
+   and the final status ``done``, ``partial`` or ``failed`` of the districts. A failed tie or link step (out of
+   memory included) keeps the districts and becomes a warning of the summary; a rerun of the variant plans it again.
 
 The planning modules (``graph``, ``substations``, ``inputs``, ``districts``, ...) are imported when they are used,
 so this module imports quickly.
@@ -41,7 +42,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo.mv_grid.model import CASES, DistrictInput, GridOutcome, MvRunSummary, demand_line
-from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, require_local_source_data
+from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError
 
 #: Memory of one district worker after its imports plus a large district (GB), measured ~0.3 + district data.
 WORKER_GB: float = 0.6
@@ -312,8 +313,8 @@ def _optional(dbc: Any, name: str, logger: logging.Logger, func, *args, **kwargs
 
 
 def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger: logging.Logger) -> pd.DataFrame:
-    """The HV/MV substation sites of the region from OSM, matched to the eGon-data substations (eTraGo buses), as a
-    table for ``insert_substations``."""
+    """The HV/MV substation sites of the region from OSM, matched to the eGon-data substations (eTraGo buses) and
+    checked for an OSM HV line that feeds them, as a table for ``insert_substations``."""
     substations = _module("substations")
     egon_ok, egon_why = dbc.egon_available()
     egon = dbc.egon_substations(region_wkb, params.region_buffer_m) if egon_ok else None
@@ -324,12 +325,18 @@ def _substation_sites(dbc: Any, region_wkb: bytes, params: MvParameters, logger:
     if not egon_ok:
         logger.warning(f"eGon cross-check disabled: {egon_why}")
     matches = substations.match_egon(sites, egon, params.egon_match_m) if egon is not None else None
-    frame = substations.sites_frame(sites, region_wkb=region_wkb, matches=matches)
+    lines = _optional(dbc, "mv_osm_hv_lines", logger, dbc.osm_hv_lines, region_wkb,
+                      params.region_buffer_m + substations.HV_LINE_END_M)
+    fed = substations.hv_line_ends(sites, lines) if lines is not None else None
+    frame = substations.sites_frame(sites, region_wkb=region_wkb, matches=matches, hv_lines=fed)
     if matches is not None:
         unmatched = int(frame["egon_bus_id"].isna().sum())
         if unmatched:
             logger.info(f"{unmatched} of {len(frame)} OSM sites have no eGon substation within "
                         f"{params.egon_match_m:g} m")
+    if fed is not None and not all(fed):
+        logger.info(f"{len(fed) - sum(fed)} of {len(fed)} OSM sites have no 60 or 110 kV line or cable of OSM ending "
+                    f"within {substations.HV_LINE_END_M:g} m (flag no_osm_hv_line)")
     return frame.reset_index(drop=True)
 
 
@@ -486,6 +493,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     rows = _node_rows(dbc, version_id, plz, sites, params, lv, logger)
     rows["mv_node_id"] = dbc.insert_nodes(version_id, variant_id, rows)
     # attachment to the routing graph (one KNN query for all nodes and busbars)
+    logger.info(f"Region: attaching {len(rows)} nodes to the routing graph")
     attach = dbc.attach_points(graph_id, pd.DataFrame({"key": rows["mv_node_id"].to_numpy(),
                                                        "x": rows["x"].astype(float).to_numpy(),
                                                        "y": rows["y"].astype(float).to_numpy()}))
@@ -512,6 +520,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     members = nodes[nodes["kind"].isin(_KINDS_WITH_GRID)]
     # every node gets a district; excluded nodes (HV customers) do not count for the capacity
     if len(members):
+        logger.info(f"Region: supply areas of {len(members)} nodes and {len(usable)} substations")
         owner, bridged, overloaded = _assign_supply_areas(dbc, graph_id, members, usable, params, lv, logger)
     else:
         owner, bridged, overloaded = np.zeros(0, dtype=np.int64), np.zeros(0, dtype=bool), []
@@ -530,6 +539,7 @@ def _region_step(dbc: Any, version_id: str, variant_id: str, plz: Sequence[int],
     unassigned = int((owner_sub < 0).sum())
     if unassigned:
         warnings.append(f"{unassigned} MV nodes were assigned to no HV/MV substation")
+    logger.info(f"Region: areas of {len(grids)} districts")
     dbc.write_grid_areas(version_id, variant_id, plz)
     _set_district_voltages(dbc, version_id, variant_id, rows,
                            dict(zip(members.index.to_numpy(dtype=np.int64).tolist(), grid_of_node)), params, logger,
@@ -549,7 +559,7 @@ def _status(totals: dict) -> str:
 
 def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvParameters | None = None, *,
                  parallel: bool = True, jobs: int | None = None, replace: bool = False,
-                 log_file: str = "log/log.txt") -> MvRunSummary:
+                 log_file: str = "log/log.txt", osm_coverage: bool | None = None) -> MvRunSummary:
     """Run the MV stage for one MV variant of a stored LV version (see the module docstring).
 
     Args:
@@ -560,6 +570,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
         jobs: Number of workers (default ``min(4, N_JOBS)``, capped by the free memory).
         replace: Delete the variant first and build it from scratch.
         log_file: Log file of the run (workers log next to it).
+        osm_coverage: Add the OSM coverage report to the summary (default ``MV_OSM_COVERAGE``).
 
     Returns:
         The run summary (also stored in ``mv_variant.summary``); ``status`` is ``done``, ``partial`` or ``failed``.
@@ -571,7 +582,6 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
     """
     params = params if params is not None else MvParameters.from_config()
     config = _config()
-    require_local_source_data(config)
     variant_id = params.variant_id
     start = time.time()
     logger = _logger("MvGrid", log_file)
@@ -580,12 +590,16 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
     locked = False
     try:
         dbc.ensure_grid_persistence_schema()
+        for message in dbc.check_mv_sources():
+            logger.warning(message)
+        logger.info(f"InfDB source data read from {dbc.source_reader().where}")
         if not dbc.try_lock_variant(version_id, variant_id):
             raise MvStageError(f"another MV run of variant {variant_id} of version {version_id} is active")
         locked = True
         dbc.commit_changes()
         return _run_locked(dbc, version_id, params, plz_list, parallel=parallel, jobs=jobs, replace=replace,
-                           log_file=log_file, logger=logger, start=start)
+                           log_file=log_file, logger=logger, start=start,
+                           osm_coverage=config.MV_OSM_COVERAGE if osm_coverage is None else bool(osm_coverage))
     finally:
         if locked:
             try:
@@ -599,7 +613,7 @@ def run_mv_stage(version_id: str, plz_list: Sequence[int] | None, params: MvPara
 
 def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Sequence[int] | None, *, parallel: bool,
                 jobs: int | None, replace: bool, log_file: str, logger: logging.Logger,
-                start: float) -> MvRunSummary:
+                start: float, osm_coverage: bool = True) -> MvRunSummary:
     variant_id = params.variant_id
     warnings: list[str] = []
     logger.info(f"MV planning cases: {', '.join(CASES)} (load-only)")
@@ -655,16 +669,23 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
         # 4. districts
         pending = dbc.pending_grids(version_id, variant_id)
         dbc.commit_changes()                       # no open transaction is inherited by the workers
+        dbc.source_reader().close()                # nor the InfDB connection (opened again when needed)
         _run_districts(dbc, version_id, variant_id, pending, params, lv, graph_id, parallel=parallel, jobs=jobs,
                        log_file=log_file, logger=logger, warnings=warnings)
-        # 5. post
-        ties = _plan_ties(dbc, version_id, variant_id, graph_id, params, logger)
-        links = _plan_links(dbc, version_id, variant_id, graph_id, params, logger)
+        # 5. post: a failure here keeps the done districts; a rerun of the variant plans the step again
+        ties = _post_step(dbc, "Ties", logger, warnings, _plan_ties, dbc, version_id, variant_id, graph_id, params,
+                          logger)
+        links = _post_step(dbc, "Links", logger, warnings, _plan_links, dbc, version_id, variant_id, graph_id, params,
+                           logger)
         display_geometry(dbc, version_id, variant_id, logger)
         totals = dbc.variant_totals(version_id, variant_id)
         dbc.commit_changes()
         demand = _demand_anchor(dbc, version_id, variant_id, union, lv, logger)
-        coverage = _osm_coverage(dbc, version_id, variant_id, region_wkb, graph_id, logger)
+        if osm_coverage:
+            coverage = _osm_coverage(dbc, version_id, variant_id, region_wkb, graph_id, logger)
+        else:
+            coverage = {}
+            logger.info("OSM coverage report skipped (MV_OSM_COVERAGE: False)")
     except BaseException as exc:                   # also Ctrl-C: the variant must not stay 'running'
         totals = None
         try:
@@ -686,6 +707,21 @@ def _run_locked(dbc: Any, version_id: str, params: MvParameters, plz_list: Seque
     return summary
 
 
+def _post_step(dbc: Any, name: str, logger: logging.Logger, warnings: list[str], func, *args) -> dict | None:
+    """Run a post step of the districts (ties, links); an error (out of memory included) is logged, rolled back and
+    kept as a warning of the summary, so the done districts stay and the variant keeps the status of its districts.
+    Ctrl-C still stops the run."""
+    try:
+        return func(*args)
+    except Exception as exc:
+        message = (f"{name} failed: {_one_line(exc)}; the districts are kept, rerun pylovo-mv generate of the variant "
+                   "to plan them again")
+        logger.error(message)
+        warnings.append(message)
+        dbc.rollback_changes()
+        return None
+
+
 def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params: MvParameters,
                logger: logging.Logger) -> dict:
     """Plan and store the normally-open ties between the districts (post step).
@@ -697,6 +733,7 @@ def _plan_ties(dbc: Any, version_id: str, variant_id: str, graph_id: str, params
         ``mv_variant.summary['ties']``).
     """
     interconnection = _module("interconnection")
+    logger.info("Planning the ties between the districts")
     summary = interconnection.plan_and_save_ties(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_ties(summary))
     return summary
@@ -711,6 +748,7 @@ def _plan_links(dbc: Any, version_id: str, variant_id: str, graph_id: str, param
         ``mv_variant.summary['links']``).
     """
     interconnection = _module("interconnection")
+    logger.info("Planning the links inside the districts")
     summary = interconnection.plan_and_save_links(dbc, version_id, variant_id, graph_id, params, logger=logger)
     logger.info(interconnection.describe_links(summary))
     return summary
@@ -725,6 +763,7 @@ def display_geometry(dbc: Any, version_id: str, variant_id: str,
     circles, or None after an error.
     """
     try:
+        logger.info("Display geometry of the lines")
         lines, busbars = dbc.display_input(version_id, variant_id)
         result = _module("display").layout(lines, busbars)
         dbc.save_display_geometry(version_id, variant_id, result.lines, result.busbar_polygons())

@@ -4,7 +4,7 @@
  * This function adds a new way record to the ways_tem table
  * with an automatically generated unique identifier. It's a utility function designed
  * to simplify the insertion of new way geometries while ensuring proper ID management.
- * 
+ *
  * The function automatically calculates the next available way_id by finding the current
  * maximum ID in the table and incrementing it by 1, ensuring no ID conflicts occur.
  *
@@ -12,7 +12,7 @@
  * - p_clazz: Integer classification/type code for the way
  * - p_geom: PostGIS geometry object representing the way's spatial data
  *
- * OUTPUT: 
+ * OUTPUT:
  * - Inserts one new record into ways_tem table
  * - Returns void (no return value)
  */
@@ -27,12 +27,12 @@ BEGIN
         clazz,     -- Way classification
         geom       -- Geometric representation of the way
     )
-    SELECT 
+    SELECT
         MAX(way_id) + 1,  -- Find current highest ID and increment by 1
         p_clazz,          -- Use provided classification parameter
         p_geom            -- Use provided geometry parameter
     FROM ways_tem;        -- Source table for finding maximum ID
-    
-    
+
+
 END;
 $$ LANGUAGE plpgsql;

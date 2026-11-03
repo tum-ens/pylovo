@@ -17,6 +17,7 @@ try:
     from pylovo.classification.clustering.prepare_data_for_clustering import prepare_data_for_clustering
     from pylovo.classification.clustering.get_parameters_for_clustering import get_parameters_for_clustering
     from pylovo.classification.clustering.report_grid_counts import report_grid_counts
+    from pylovo.classification.clustering.selection_report import report_selection
     from pylovo.classification.sampling.sample import classification_version_exists
 except ModuleNotFoundError as exc:
     if (exc.name or "").split(".")[0] not in PLOTS_EXTRA_PACKAGES:
@@ -182,7 +183,7 @@ def get_custom_clustering_parameters():
     """Gets custom clustering parameters from user input; the names must be columns of the parameter table."""
     while True:
         user_input = _ask("\nPlease enter desired clustering parameters (comma-separated). "
-                          "For example: no_branches,max_no_of_households_of_a_branch,avg_trafo_dis\n> ")
+                          "For example: no_branches,max_household_equ_of_a_branch,avg_trafo_dis\n> ")
         try:
             return parse_parameter_names(user_input)
         except ValueError as exc:
@@ -286,12 +287,16 @@ def main():
         apply_additional_filtering = ask_yes_no(
             "Do you want to apply additional filtering on top of the default filters?")
     sample_from_postcode_result_only = args.restrict_to_generated
-    if sample_from_postcode_result_only is None:
+    if args.same_sample_as is not None:
+        sample_from_postcode_result_only = False        # the copied sample needs no draw
+        print(f"Using the sample set of classification {args.same_sample_as}")
+    elif sample_from_postcode_result_only is None:
         sample_from_postcode_result_only = ask_yes_no(
             "Do you want to restrict sampling to PLZ present in postcode_result for the configured VERSION_ID?")
 
     print("\nRunning prepare_data_for_clustering.py...")
-    plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only)
+    plz_without_grids = prepare_data_for_clustering(sample_from_postcode_result_only=sample_from_postcode_result_only,
+                                                    parallel=args.parallel, same_sample_as=args.same_sample_as)
 
     # Step 3: Manual input or automatic assignment
     manual = args.manual or (not args.auto and ask_yes_no(
@@ -321,6 +326,10 @@ def main():
     config["ADDITIONAL_FILTERING"] = apply_additional_filtering
     save_yaml(CONFIG_CLUSTERING_PATH, config)
     print("\nClustering parameters, number of clusters and the filter choice written to config_clustering.yaml")
+
+    # How close and how stable the choices are (SELECTION_BOOTSTRAP resamples; stored with the classification)
+    print("\nComputing the selection report...")
+    report_selection(clustering_parameters, apply_additional_filtering)
 
     # Step 5: Run apply_clustering_for_visualisation.py with the values just written;
     # pylovo.config_loader still holds the values loaded at start-up.

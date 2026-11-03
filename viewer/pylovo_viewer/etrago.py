@@ -11,7 +11,9 @@ out these files (:func:`read`, :func:`status`), so the browser never calls the O
 GeoJSON in EPSG:4326, coordinates rounded to :data:`DECIMALS` decimals (about 1 m). A line follows its
 OSM route (``geom``; the straight ``topo`` line when ``geom`` is missing), merged into one LineString
 where its parts join up and simplified by :data:`SIMPLIFY_TOLERANCE_DEG`. The OEP metadata of these
-tables names no licence; the data derives from OpenStreetMap, hence :data:`ATTRIBUTION` (ODbL).
+tables names no licence. eGon-data publishes its eTraGo tables under ODbL 1.0 with the credit "© eGon
+development team" (``license_egon_data_odbl`` of its metadata code), and they derive from OpenStreetMap,
+hence :data:`ATTRIBUTION`.
 """
 from __future__ import annotations
 
@@ -32,7 +34,8 @@ import requests
 import shapely
 
 DEFAULT_SCENARIO = "eGon2035"
-ATTRIBUTION = "eGon-data eTraGo grid (osmTGmod, OSM 2021), © OpenStreetMap contributors, ODbL"
+ATTRIBUTION = ("eGon-data eTraGo grid (osmTGmod, OSM 2021), © eGon development team, ODbL 1.0, derived from "
+               "OpenStreetMap, © OpenStreetMap contributors")
 PARTS = ("lines", "buses")
 
 API = "https://openenergyplatform.org/api/v0/schema/data/tables/"

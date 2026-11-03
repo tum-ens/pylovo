@@ -55,7 +55,7 @@ def get_color_map(sources: List[str]) -> Dict[str, str]:
         if s in COLOR_MAP:
             cmap[s] = COLOR_MAP[s]
             continue
-        
+
         # Check partial matches
         found = False
         for k, v in COLOR_MAP.items():
@@ -63,7 +63,7 @@ def get_color_map(sources: List[str]) -> Dict[str, str]:
                 cmap[s] = v
                 found = True
                 break
-        
+
         if not found:
             cmap[s] = FALLBACK_COLORS[fallback_idx % len(FALLBACK_COLORS)]
             fallback_idx += 1

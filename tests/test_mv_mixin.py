@@ -292,9 +292,17 @@ def test_attachment_and_grid_updates_are_typed(recorded):
 def test_write_grid_areas_partitions_the_region():
     client = make_client()
     client.write_grid_areas("mv1", "d0", [80801, "80804"])
-    sql, params = client.cur.statements[0]
+    texts = [s for s, _ in client.cur.statements]
+    stage, stage_params = next((s, p) for s, p in client.cur.statements if "CREATE TEMP TABLE mv_area_point" in s)
+    assert "kind IN ('station', 'customer')" in stage and stage_params == {"v": "mv1", "var": "d0"}
+    assert any("ON mv_area_point USING gist (geom)" in s for s in texts)    # the cells find their points by index
+    sql, params = client.cur.statements[-1]
     assert "ST_VoronoiPolygons(ST_Collect(p.geom), 0.0, (SELECT geom FROM region))" in sql
+    assert "JOIN mv_area_point p ON ST_Intersects(v.geom, p.geom)" in sql
     assert "ST_CollectionExtract(ST_Intersection" in sql and "< 0.10" in sql
+    # the cells are united per district before the clip, so no row of the grouping carries the region
+    assert "FROM lab GROUP BY mv_grid_id" in sql and "r.geom)" not in sql.split("cell AS")[0]
+    assert "GROUP BY l.mv_grid_id, r.geom" not in sql
     assert params == {"v": "mv1", "var": "d0", "plz": [80801, 80804]}
 
 
@@ -367,6 +375,12 @@ def test_plot_readers_never_read_the_net(monkeypatch):
     assert "metrics" in grids_sql and "SELECT *" not in grids_sql
     nodes_sql = next(s for s, _ in queries if "FROM pylovo.mv_node " in s and "mv_node_id" in s.split("FROM")[0])
     assert "load_stats" in nodes_sql                                    # the busbar customers for pylovo-mv couple
+    queries.clear()
+    some = client.read_mv_layers("mv1", "d0", layers=("grids", "nodes"))   # the coupling reads only these
+    assert list(some) == ["grids", "nodes"] and len(queries) == 2
+    assert "FROM pylovo.mv_grid " in queries[0][0] and "FROM pylovo.mv_node " in queries[1][0]
+    with pytest.raises(ValueError, match="unknown MV layer net"):
+        client.read_mv_layers("mv1", "d0", layers=("net",))
 
 
 def test_list_variants_flags_stale_fingerprints():
@@ -559,6 +573,7 @@ def test_variant_totals_and_pending_grids():
                           ("GROUP BY g.mv_grid_id", (["g", "n"], [(7, 30), (6, 10)], 2))])
     out = client.variant_totals("mv1", "d0")
     assert out["grids_total"] == 3 and out["cable_share"] == pytest.approx(0.6) and out["n_band_conflicts"] == 4
+    assert "sum(circuit_km ORDER BY mv_grid_id)" in client.cur.statements[0][0]     # independent of the row order
     assert out["grids_by_kv"] == {"20": 2, "10": 1}
     assert client.pending_grids("mv1", "d0") == [(7, 30), (6, 10)]
     assert "status IN ('pending', 'failed')" in client.cur.statements[-1][0]
@@ -807,4 +822,3 @@ def test_a_failed_variant_extension_is_rebuilt_by_the_next_run(region_steps):
     summary = run(dbc, [1, 2])                                                # the same command again
     assert dbc.modes == ["new", "grow", "resume"] and built == [([1, 2], "g2")] and summary.status == "done"
     assert [s[1] for s in dbc.tables.state["subs"]] == ["PLZ [1, 2] on g2"]
-

@@ -1,9 +1,10 @@
-"""read_net_db(..., tables=...) deserializes only the requested tables, exactly as the full read."""
+"""read_net_db: a pruned read (tables=...) equals the full read, and grids of the OpenDSS backend are refused."""
 
 import json
 import logging
 
 import pandapower as pp
+import pytest
 
 from pylovo.database.analysis_mixin import AnalysisMixin
 
@@ -31,3 +32,12 @@ def test_pruned_read_gives_the_requested_tables_of_the_full_read():
     pruned = client.read_net_db(1, 1, 1, tables=frozenset({"bus", "load"}))
     assert pruned.bus.equals(full.bus) and pruned.load.equals(full.load)
     assert pruned.line.empty and len(full.line) == 1
+
+
+def test_an_opendss_grid_is_refused_with_a_clear_message():
+    altdss_json = json.dumps({"$schema": "https://dss-extensions.org/altdss-schema/2023-12-13.schema.json",
+                              "Name": "plz1_kcid1_bcid1", "Bus": []})
+    client = object.__new__(AnalysisMixin)
+    client.cur, client.logger = _Cursor(altdss_json), logging.getLogger("read-net-test")
+    with pytest.raises(ValueError, match="generated with the OpenDSS backend"):
+        client.read_net_db(1, 1, 1)

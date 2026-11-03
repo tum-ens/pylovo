@@ -578,6 +578,75 @@ def classification_choices(cur: cursor) -> None:
     """)
 
 
+def egon_substations(cur: cursor) -> None:
+    """Create the table of the eGon-data HV/MV substations (the baseline creates it on new schemas); pylovo-setup
+    fills it afterwards."""
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.database.config_table_structure import CREATE_QUERIES
+
+    cur.execute(CREATE_QUERIES["egon_hvmv_substation"])
+
+
+def key_figure_names(cur: cursor) -> None:
+    """Rename the household-equivalent key figures of ``clustering_parameters`` and drop its unused ``filtered``.
+
+    ``no_households_per_branch`` and ``max_no_of_households_of_a_branch`` hold household equivalents (installed
+    power over the peak load of one household), not households. They become ``no_household_equ_per_branch`` and
+    ``max_household_equ_of_a_branch``, also in the parameter lists stored with the classifications. A no-op on a
+    fresh schema.
+    """
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema='pylovo' AND table_name='clustering_parameters'
+                         AND column_name='no_households_per_branch') THEN
+                ALTER TABLE pylovo.clustering_parameters
+                    RENAME COLUMN no_households_per_branch TO no_household_equ_per_branch;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema='pylovo' AND table_name='clustering_parameters'
+                         AND column_name='max_no_of_households_of_a_branch') THEN
+                ALTER TABLE pylovo.clustering_parameters
+                    RENAME COLUMN max_no_of_households_of_a_branch TO max_household_equ_of_a_branch;
+            END IF;
+        END $$;
+        ALTER TABLE pylovo.clustering_parameters DROP COLUMN IF EXISTS filtered;
+        UPDATE pylovo.classification_version
+        SET list_of_clustering_parameters = array_replace(
+                array_replace(list_of_clustering_parameters, 'no_households_per_branch', 'no_household_equ_per_branch'),
+                'max_no_of_households_of_a_branch', 'max_household_equ_of_a_branch')
+        WHERE list_of_clustering_parameters && ARRAY['no_households_per_branch', 'max_no_of_households_of_a_branch'];
+    """)
+
+
+def key_figures_version(cur: cursor) -> None:
+    """Stamp the key figures and the classifications with the version of the key-figure definitions.
+
+    ``clustering_parameters`` gets the two key figures of version 2 (``no_branch_ends``, ``max_route_resistance_ohm``,
+    empty in older rows) and ``key_figures_version``, which says which definitions a row was computed with; the rows
+    of older schemas are version 1 (pylovo 1.0.0). ``classification_version`` gets the
+    version its clustering read, its transform, whether infeasible grids were left out, and its selection report.
+    The classifications clustered before are stamped as made with version 1, no transform and no such filter, so
+    that reading them gives what they were clustered with. A no-op on a fresh schema.
+    """
+    cur.execute("""
+        ALTER TABLE pylovo.clustering_parameters
+            ADD COLUMN IF NOT EXISTS no_branch_ends integer,
+            ADD COLUMN IF NOT EXISTS max_route_resistance_ohm double precision,
+            ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL DEFAULT 1;
+        ALTER TABLE pylovo.clustering_parameters ALTER COLUMN key_figures_version DROP DEFAULT;
+        ALTER TABLE pylovo.classification_version
+            ADD COLUMN IF NOT EXISTS key_figures_version smallint,
+            ADD COLUMN IF NOT EXISTS transform text,
+            ADD COLUMN IF NOT EXISTS exclude_infeasible boolean,
+            ADD COLUMN IF NOT EXISTS selection_report jsonb;
+        UPDATE pylovo.classification_version
+        SET key_figures_version = 1, transform = 'none', exclude_infeasible = false
+        WHERE list_of_clustering_parameters IS NOT NULL AND key_figures_version IS NULL;
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -596,6 +665,9 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0012_indexes", indexes_and_cleanup),
     ("0013_schema_cleanup", schema_cleanup),
     ("0014_classification_choices", classification_choices),
+    ("0015_egon_substations", egon_substations),
+    ("0016_key_figure_names", key_figure_names),
+    ("0017_key_figures_version", key_figures_version),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

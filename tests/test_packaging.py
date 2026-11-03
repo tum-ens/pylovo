@@ -12,6 +12,8 @@ from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 
+from check_data_licenses import listed_paths, tracked_files, unlisted
+
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
@@ -24,12 +26,13 @@ def test_every_sql_file_of_the_package_is_in_the_wheel_and_sdist():
     assert not missing, f"SQL files that DatabaseConstructor loads but the build leaves out: {missing}"
 
 
-def test_requires_python_matches_the_interpreter_and_the_numba_wheels():
-    # numba 0.62.1 and llvmlite 0.45.1 have no Python 3.14 wheels: lift the cap together with the numba bump.
+def test_requires_python_matches_the_interpreter_and_the_available_wheels():
+    # Python 3.15 (October 2026): PyYAML 6.0.3 has no 3.15 wheels yet. Lift the cap when
+    # `uv sync --python 3.15` installs without compiling, and test 3.15 in CI instead of 3.14.
     supported = SpecifierSet(PYPROJECT["project"]["requires-python"])
     assert (ROOT / ".python-version").read_text().strip() in supported
-    assert "3.13" in supported
-    assert "3.14" not in supported
+    assert "3.14" in supported
+    assert "3.15" not in supported
 
 
 def declared_packages(extra):
@@ -78,6 +81,12 @@ def test_requirements_txt_pins_the_locked_versions():
     assert pins
     assert {name: pin for name, pin in pins.items() if locked.get(name) != pin} == {}, \
         "requirements.txt is stale: uv export --format requirements-txt --no-hashes --no-annotate --no-dev"
+
+
+def test_every_data_file_in_git_has_a_licence():
+    # the check of the pre-commit hook data-licenses, for commits made without the hook
+    assert unlisted(tracked_files(), listed_paths()) == [], "list these data files in DATA_LICENSES.md"
+    assert unlisted(["data/a/b.csv", "data/c.CSV", "src/d.py"], {"data/a/"}) == ["data/c.CSV"]
 
 
 def test_pytest_runs_the_three_test_folders_and_shows_the_skip_reasons():

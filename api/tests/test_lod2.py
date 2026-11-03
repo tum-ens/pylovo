@@ -28,11 +28,15 @@ def decode(blob: bytes) -> tuple[dict, dict]:
     nv, nt = head["vertices"], head["triangles"]
     out: dict = {}
     if nv:
-        out["pos"] = np.frombuffer(blob, "<f4", nv * 3, o).reshape(-1, 3); o += nv * 12
-        out["idx"] = np.frombuffer(blob, "<u4", nt * 3, o).reshape(-1, 3); o += nt * 12
+        out["pos"] = np.frombuffer(blob, "<f4", nv * 3, o).reshape(-1, 3)
+        o += nv * 12
+        out["idx"] = np.frombuffer(blob, "<u4", nt * 3, o).reshape(-1, 3)
+        o += nt * 12
         width = head["building_index_bytes"]
-        out["bld"] = np.frombuffer(blob, "<u2" if width == 2 else "<u4", nv, o); o += nv * width
-        out["cls"] = np.frombuffer(blob, "u1", nv, o); o += nv
+        out["bld"] = np.frombuffer(blob, "<u2" if width == 2 else "<u4", nv, o)
+        o += nv * width
+        out["cls"] = np.frombuffer(blob, "u1", nv, o)
+        o += nv
         assert len(blob) == o + (-o % 4)
     return head, out
 

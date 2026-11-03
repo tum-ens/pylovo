@@ -40,9 +40,11 @@ def test_the_stored_rating_is_kept_or_rounded_up_to_whole_630_kva_units(stored, 
     db = FakeDb(stored)
     ClusteringMixin.update_transformer_rated_power(db, 80331, 1, 0)
     assert db.set_to == expected
+    # a plain int: psycopg2 cannot bind the NumPy number np.ceil returns (4eecfcba)
+    assert expected is None or type(db.set_to) is int
 
 
 def test_a_rated_transformer_in_the_cluster_wins():
-    db = FakeDb(stored=700, existing=160)
+    db = FakeDb(stored=700, existing=np.float64(160))
     ClusteringMixin.update_transformer_rated_power(db, 80331, 1, 0)
-    assert db.set_to == 160
+    assert db.set_to == 160 and type(db.set_to) is int

@@ -9,8 +9,8 @@
  * at intersection points. It takes overlapping or crossing line geometries and splits
  * them at their intersection points, ensuring that the network topology is properly
  * segmented.
- * 
- * The main goal is to convert a network where ways may cross without being 
+ *
+ * The main goal is to convert a network where ways may cross without being
  * topologically connected into a properly segmented network where intersections
  * are represented by shared endpoints between line segments.
  *

@@ -82,6 +82,9 @@ def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
     # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
     steps.append(ImportStep("FILL municipal_register TABLE", "municipal_register", create_municipal_register,
                             lambda: [f"missing input file {path}" for path in missing_input_files()]))
+    # eGon-data HV/MV substations for the eTraGo buses of the MV stage (optional: a failed download only warns).
+    steps.append(ImportStep("IMPORT EGON-DATA HV/MV SUBSTATIONS (the first time from the Open Energy Platform)",
+                            "egon_hvmv_substation", lambda: sgc.egon_to_db()))
     return steps
 
 

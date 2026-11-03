@@ -1,9 +1,9 @@
-# Config Version 1
-CLASSIFICATION_VERSION: 1
-CLASSIFICATION_VERSION_COMMENT: "set sample with inspected building quality"
-CLASSIFICATION_REGION: Bayern
-NO_OF_CLUSTERS_ALLOWED: [3, 4, 5, 6, 7]
-N_SAMPLES: 100  # default value
+# Config Version 1 (commented out)
+# CLASSIFICATION_VERSION: 1
+# CLASSIFICATION_VERSION_COMMENT: "set sample with inspected building quality"
+# CLASSIFICATION_REGION: Bayern
+# NO_OF_CLUSTERS_ALLOWED: [3, 4, 5, 6, 7]
+# N_SAMPLES: 100  # default value
 
 # Config Version 2 (commented out)
 # CLASSIFICATION_VERSION: 2

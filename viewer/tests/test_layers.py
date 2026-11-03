@@ -1,6 +1,7 @@
 """Tests of the layer registry: scopes, filters, availability, GeoJSON and attributes (fake database)."""
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import date
 from decimal import Decimal
@@ -32,6 +33,8 @@ def test_registry():
             assert "AS fid" in layer.sql and "AS geometry" in layer.sql
         if layer.scope == "view":
             assert "{env}" in layer.sql
+        assert ("{extent}" in layer.sql) == bool(layer.extent)          # a layer above its cap follows the view
+        assert not layer.extent or layer.scope in {"version", "run"}
 
 
 def test_view_filter_and_station_mv_data(service, fake_db):
@@ -112,6 +115,41 @@ def test_mv_lines_draw_their_display_geometry_where_the_database_has_one(service
     assert "ST_LineInterpolatePoint(COALESCE(l.display_geom, l.geom)" in service.sql(opens, q)
 
 
+def _etrago_files(folder: Path) -> None:
+    """A downloaded eTraGo grid: bus 7 and one 110 kV line along 48.5° N."""
+    folder.mkdir(parents=True)
+    (folder / "meta.json").write_text("{}", encoding="utf-8")
+    (folder / "buses.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"fid": 7, "v_nom": 110}, "geometry": {"type": "Point", "coordinates": [11.0, 48.5]}}]}))
+    (folder / "lines.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"fid": 1, "v_nom": 110},
+         "geometry": {"type": "LineString", "coordinates": [[11.0, 48.5], [11.2, 48.5]]}}]}))
+
+
+def test_links_of_the_hv_mv_substations_to_the_etrago_grid(service, fake_db, tmp_path):
+    links = service.layers["hv_links"]
+    assert links.parent == "hv_substations" and links.etrago and "NULL AS geometry" in links.sql
+    assert service.unavailable(links) == "no table pylovo.mv_substation in this database"
+    service.catalog.columns["pylovo.mv_substation"] = {"substation_id": "int8", "geom": "geometry"}
+    service.catalog.has_rows["pylovo.mv_variant"] = True
+    assert "not downloaded yet" in service.unavailable(links)
+    _etrago_files(tmp_path / "etrago" / "eGon2035")
+    assert service.unavailable(links) is None
+    fake_db.rows = {"AS etrago_bus,": [
+        {"fid": 11, "name": "A", "etrago_bus": 7, "flags": "", "x": 11.001, "y": 48.501, "geometry": None},
+        {"fid": 12, "name": "B", "etrago_bus": None, "flags": "no_egon_bus, no_osm_hv_line", "x": 11.1, "y": 48.48,
+         "geometry": None}]}
+    out = json.loads(service.geojson("hv_links", Query(version="v1", mv="d1")))
+    props = {f["properties"]["fid"]: f["properties"] for f in out["features"]}
+    assert (props[11]["link"], props[11]["target"]) == ("bus", 7) and (props[12]["link"], props[12]["target"]) == ("nearest_line", 1)
+    assert props[12]["flags"] == "no_egon_bus, no_osm_hv_line" and "x" not in props[12] and props[12]["length_m"] > 2000
+    assert out["features"][1]["geometry"]["coordinates"][1] == pytest.approx([11.1, 48.5], abs=1e-6)
+    assert "WHERE s.version_id = %(version)s AND s.mv_variant_id = %(mv)s" in fake_db.calls[-1][0]
+    grid = next(iter(service._etrago._data.values()))
+    service.geojson("hv_links", Query(version="v1", mv="d1"))
+    assert next(iter(service._etrago._data.values())) is grid             # the indexed grid is reused
+
+
 def test_overhead_parts_of_mixed_lines(service, fake_db):
     rows = [{"fid": 1, "kind": "mixed"}, {"fid": 2, "kind": "cable"}, {"fid": 3, "kind": "mixed"}]
     service._overhead_parts(rows, Query(version="v1", mv="d1"))   # no routing graph in the database: left out
@@ -155,11 +193,95 @@ def test_geojson_with_colour_slots(service, fake_db):
     assert "LIMIT 60001" in sql and params["version"] == "v1"
 
 
+def test_large_layers_follow_the_map_view(service, fake_db):
+    point = '{"type":"Point","coordinates":[11,48]}'
+    fake_db.rows = {"count(*) AS buildings": [{"fid": 1, "geometry": point}, {"fid": 2, "geometry": point}]}
+    service.layers["lv_areas"] = dataclasses.replace(service.layers["lv_areas"], cap=1)
+    fake_db.calls.clear()
+    fc = json.loads(service.geojson("lv_areas", Query(version="v1")))
+    assert fc == {"type": "FeatureCollection", "truncated": True, "by_view": True, "features": []}
+    assert len(fake_db.calls) == 1 and fake_db.calls[0][0].rstrip().endswith(") AS probe")   # no geometries read
+    fake_db.calls.clear()
+    fc = json.loads(service.geojson("lv_areas", Query(version="v1", bbox=(11.0, 48.0, 11.1, 48.1))))
+    assert fc == {"type": "FeatureCollection", "truncated": True, "zoom_in": True, "features": []}   # never cut
+    sql = fake_db.calls[0][0]
+    assert "AND (EXISTS (SELECT 1 FROM pylovo.transformer_positions tp" in sql and "{" not in sql
+    assert sql.index("ST_MakeEnvelope") < sql.index("GROUP BY g.grid_result_id")
+    fake_db.rows["count(*) AS buildings"].pop()
+    fc = json.loads(service.geojson("lv_areas", Query(version="v1", bbox=(11.0, 48.0, 11.05, 48.05))))
+    assert fc["truncated"] is False and len(fc["features"]) == 1 and "zoom_in" not in fc
+
+
+def test_a_crowded_map_view_asks_to_zoom_in(service, fake_db):
+    # LV cables of central Munich at zoom 14: a cut set would show grids without cables
+    line = '{"type":"LineString","coordinates":[[11,48],[11.001,48]]}'
+    fake_db.rows = {"FROM pylovo.lines_result_cache c": [{"fid": i, "grid": 7, "geometry": line} for i in range(3)]}
+    service.layers["lv_cables"] = dataclasses.replace(service.layers["lv_cables"], cap=2)
+    fake_db.calls.clear()
+    fc = json.loads(service.geojson("lv_cables", Query(version="v1", bbox=(11.0, 48.0, 11.1, 48.1))))
+    assert fc["zoom_in"] is True and fc["features"] == [] and len(fake_db.calls) == 1   # the probe only
+
+
+def test_extent_by_supply_areas_and_stations(service, fake_db):
+    view = (11.0, 48.0, 11.1, 48.1)
+    areas = ("IN (SELECT ra.mv_grid_id FROM pylovo.mv_grid ra WHERE ra.version_id = %(version)s "
+             "AND ra.mv_variant_id = %(mv)s AND ra.geom && ST_Transform(ST_MakeEnvelope(")
+    lines = service.layers["mv_lines"]
+    assert "ra.mv_grid_id" not in service.sql(lines, Query(version="v1", mv="d1"))      # whole run: no extent
+    in_view = service.sql(lines, Query(version="v1", mv="d1", bbox=view))
+    assert "AND (l.mv_grid_id " + areas in in_view and "OR l.geom && ST_Transform" in in_view and "{" not in in_view
+    stations = service.layers["mv_stations"]
+    plain = service.sql(stations, Query(version="v1", bbox=view))
+    assert "AND (tp.geom && ST_Transform(ST_MakeEnvelope(" in plain and "n.mv_grid_id IN" not in plain
+    service.catalog.columns["pylovo.mv_node"] = {"grid_result_id": "int8", "ring_id": "int4"}
+    with_mv = service.sql(stations, Query(version="v1", mv="d1", bbox=view))
+    assert "OR n.mv_grid_id " + areas in with_mv and "{" not in with_mv            # whole rings of the areas in view
+    flags = {d["id"]: d["by_view"] for d in service.describe()}
+    assert flags["mv_lines"] and flags["lv_areas"] and not flags["postcodes"] and not flags["lv_cables"]
+
+
+def test_lines_supplied_by_a_transformer(service, fake_db):
+    line = '{"type":"LineString","coordinates":[[11,48],[11.001,48]]}'
+    multi = '{"type":"MultiLineString","coordinates":[[[11,48],[11.002,48]]]}'
+    fake_db.rows = {
+        "FROM pylovo.lines_result_cache c WHERE c.grid_result_id": [
+            {"id": 10, "km": 0.05, "feeder": True, "geometry": line}, {"id": 11, "km": 0.02, "feeder": False, "geometry": line}],
+        "count(*) AS n FROM pylovo.buildings_result": [{"n": 3}],
+        "SELECT grid_result_id, ont_vertice_id": [{"grid_result_id": 7, "ont_vertice_id": 1}],
+        "AS g, id, from_bus": [{"g": 7, "id": 10, "from_bus": 1, "to_bus": 2, "length_km": 0.05},
+                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02}],
+    }
+    lv = service.supplied("mv_stations", 7, Query(version="v1"))
+    assert lv["geometry"] == {"type": "MultiLineString", "coordinates": [[[11, 48], [11.001, 48]]] * 2}
+    assert lv["supplied_cables"] == 2 and lv["supplied_buildings"] == 3 and lv["supplied_feeders"] == 1
+    assert lv["supplied_feeder_km"] == 0.05 and lv["supplied_service_km"] == 0.02
+    fake_db.rows = {"FROM pylovo.mv_line l JOIN pylovo.mv_grid g": [
+        {"role": "ring", "ring_id": 1, "km": 1.5, "area": 186, "n_stations": 221, "geometry": line},
+        {"role": "stub", "ring_id": 1, "km": 0.2, "area": 186, "n_stations": 221, "geometry": multi},
+        {"role": "ring", "ring_id": 2, "km": 1.0, "area": 186, "n_stations": 221, "geometry": line},
+        {"role": "tie", "ring_id": None, "km": 0.8, "area": 186, "n_stations": 221, "geometry": line},
+        {"role": "link", "ring_id": None, "km": 0.3, "area": 186, "n_stations": 221, "geometry": line}]}
+    mv = service.supplied("hv_substations", 5, Query(version="v1", mv="d1"))
+    assert len(mv["geometry"]["coordinates"]) == 3                       # the ties and links supply nothing
+    assert (mv["supplied_area"], mv["supplied_lines"], mv["supplied_km"], mv["supplied_rings"]) == (186, 3, 2.7, 2)
+    assert (mv["supplied_stations"], mv["open_ties"], mv["open_links"]) == (221, 1, 1)
+    sql, params = fake_db.calls[-1]
+    assert "g.substation_id = %(fid)s AND l.version_id = %(version)s AND l.mv_variant_id = %(mv)s" in sql
+    assert params["fid"] == 5 and params["mv"] == "d1"
+    fake_db.rows = {}
+    assert service.supplied("hv_substations", 6, Query(version="v1", mv="d1"))["geometry"] is None   # not used
+    with pytest.raises(ValueError, match="need version and mv"):
+        service.supplied("hv_substations", 5, Query(version="v1"))
+    with pytest.raises(LookupError, match="no transformers"):
+        service.supplied("lv_cables", 5, Query(version="v1"))
+
+
 def test_feature_collection():
     rows = [{"fid": "a", "n": Decimal("1.5"), "d": date(2026, 1, 2), "geometry": '{"type":"Point","coordinates":[1,2]}'},
             {"fid": "b", "geometry": None}]
     fc = json.loads(feature_collection(rows, truncated=True))
-    assert fc["truncated"] is True and len(fc["features"]) == 1
+    assert fc["truncated"] is True and "by_view" not in fc and len(fc["features"]) == 1
+    assert json.loads(feature_collection([], truncated=True, by_view=True))["by_view"] is True
     assert fc["features"][0]["properties"] == {"fid": "a", "n": 1.5, "d": "2026-01-02"}
 
 

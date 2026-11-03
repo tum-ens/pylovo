@@ -12,6 +12,7 @@ from pylovo.database.analysis_mixin import AnalysisMixin
 from pylovo.database.clustering_mixin import ClusteringMixin
 from pylovo.database.grid_mixin import GridMixin
 from pylovo.database.load_edit_mixin import LoadEditMixin
+from pylovo.database.lv_layer_mixin import LvLayerMixin
 from pylovo.database.mv_graph_mixin import MvGraphMixin
 from pylovo.database.mv_input_mixin import MvInputMixin
 from pylovo.database.mv_result_mixin import MvResultMixin
@@ -20,6 +21,7 @@ from pylovo.database.preprocessing_mixin import PreprocessingMixin
 from pylovo.database.results_mixin import ResultsMixin
 from pylovo.database.transformer_ui_mixin import TransformerUiMixin
 from pylovo.database.utils_mixin import UtilsMixin
+from pylovo.infdb.source_reader import SourceReader
 
 # pandas warns at every read_sql_query on a psycopg2 connection, which the mixins use; every other UserWarning stays visible
 warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy connectable", category=UserWarning)
@@ -33,6 +35,7 @@ class DatabaseClient(
     ResultsMixin,
     TransformerUiMixin,
     UtilsMixin,
+    LvLayerMixin,
     LoadEditMixin,
     MvGraphMixin,
     MvSourceMixin,
@@ -51,13 +54,16 @@ class DatabaseClient(
     * ``ResultsMixin``: saving working tables as results and deleting results.
     * ``TransformerUiMixin``: queries of the transformer map UI.
     * ``UtilsMixin``: PLZ working tables, transactions and shared lookups.
+    * ``LvLayerMixin``: read-only map layers and key figures of the LV grids (plots and notebooks).
     * ``LoadEditMixin``: manual load edits of stored grids and their audit table (:mod:`pylovo.load_editing`).
     * ``MvGraphMixin``: the persistent MV routing graph with settlement flags (MV stage).
     * ``MvSourceMixin``: OSM and eGon inputs of the MV stage.
     * ``MvInputMixin``: LV results of a version as MV inputs (stations, loads, MV customers).
     * ``MvResultMixin``: MV variants and their results (substations, grids, nodes, lines, rings).
 
-    All queries share one psycopg2 connection (``search_path`` ``pylovo, public``) and cursor.
+    All queries share one psycopg2 connection (``search_path`` ``pylovo, public``) and cursor. The InfDB source
+    data of the MV stage are read through :meth:`source_reader`: on this connection, or with
+    ``USE_EXTERNAL_BASEDATA`` and another database on a separate read-only connection.
     Most methods do not commit; call ``commit_changes()`` or ``rollback_changes()``. Use the
     client as a context manager or call ``close()`` when done.
 
@@ -67,13 +73,16 @@ class DatabaseClient(
         pw: Password; defaults to ``PASSWORD``.
         host: Host; defaults to ``HOST``.
         port: Port; defaults to ``PORT``.
+        read_only: Start every transaction read-only (``default_transaction_read_only``), on the psycopg2
+            connection and the SQLAlchemy engine alike.
         **kwargs: ``log_file``: log file path (default ``log/log.txt``).
 
     Raises:
         psycopg2.OperationalError: If the database cannot be reached.
     """
 
-    def __init__(self, dbname=DBNAME, user=DBUSER, pw=PASSWORD, host=HOST, port=PORT, **kwargs):
+    def __init__(self, dbname=DBNAME, user=DBUSER, pw=PASSWORD, host=HOST, port=PORT, read_only: bool = False,
+                 **kwargs):
         self.logger = utils.create_logger(
             "DatabaseClient", log_file=kwargs.get("log_file", "log/log.txt"), log_level=LOG_LEVEL
         )
@@ -83,12 +92,15 @@ class DatabaseClient(
             "password": pw,
             "host": host,
             "port": port,
-            "options": "-c search_path=pylovo,public",
+            "options": "-c search_path=pylovo,public" + (" -c default_transaction_read_only=on" if read_only else ""),
         }
         self.db_path = URL.create(
             "postgresql+psycopg2", username=user, password=pw,
             host=host, port=int(port), database=dbname,
         )
+        # the InfDB source schemas of the MV stage: on this connection, or with USE_EXTERNAL_BASEDATA on a
+        # separate read-only one (opened on first use)
+        self._source_reader = SourceReader.from_config(lambda: self.cur)
         try:
             self._connect()
         except psy.OperationalError as err:
@@ -98,6 +110,14 @@ class DatabaseClient(
             raise err
 
         self.logger.debug("DatabaseClient connected to %s.", self.db_path.render_as_string(hide_password=True))
+
+    @classmethod
+    def read_only(cls, **kwargs) -> "DatabaseClient":
+        """A client whose transactions are read-only (notebooks, plots): the server refuses every write.
+
+        Same as ``DatabaseClient(read_only=True, ...)``; the setting also holds after a reconnect.
+        """
+        return cls(read_only=True, **kwargs)
 
     def _connect(self) -> None:
         """Open the psycopg2 connection, its shared cursor and the SQLAlchemy engine."""
@@ -109,7 +129,13 @@ class DatabaseClient(
         )
 
     def _close_handles(self) -> None:
-        """Close cursor, connection and engine; safe on a partly constructed or closed client."""
+        """Close cursor, connection, engine and the source connection; safe on a partly constructed or closed client."""
+        try:
+            if getattr(self, "_source_reader", None) is not None:
+                self._source_reader.close()
+        except Exception as e:
+            print(f"Warning: Error closing the InfDB source connection: {e}")
+
         try:
             if hasattr(self, 'cur') and self.cur:
                 self.cur.close()

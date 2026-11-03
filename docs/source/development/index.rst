@@ -28,7 +28,7 @@ Project layout
    |-- QGIS/                     QGIS project templates
    |-- tests/                    unit tests (no database needed; database tests are opt-in)
    |   `-- db/                   the toy-town test database (builder and build script)
-   |-- .github/                  CI workflows (documentation, tests, API contract, image), issue and PR templates
+   |-- .github/                  CI workflows (documentation, tests, API contract, image), Dependabot, issue and PR templates
    |-- src/pylovo/               the Python package
    |   |-- cli/                  pylovo-* commands (setup, generate, mv, analyze, classify, import, export, delete)
    |   |-- database/             DatabaseClient, mixins, DatabaseConstructor, table definitions, migrations
@@ -47,7 +47,9 @@ Project layout
    |   |-- postcode_border.py, station_voltage.py, version_snapshot.py
    |   |-- config_loader.py      configuration constants
    |   `-- utils.py              load model, logging
-   |-- pyproject.toml            package metadata, dependencies, extras, console scripts
+   |-- pyproject.toml            package metadata, dependencies, extras, console scripts, ruff and pytest settings
+   |-- .pre-commit-config.yaml   checks of every commit (pre-commit install)
+   |-- AGENTS.md                 notes for coding agents: databases, checks before a push, tests
    `-- CHANGELOG.md
 
 The wheel carries ``config/`` and the reference data of ``data/`` (municipal register, Overpass queries,
@@ -60,7 +62,7 @@ build, run ``uv build``, install the wheel into a fresh virtual environment and 
 Code conventions
 ----------------
 
-* Python 3.12, formatted and linted with ruff (``uvx ruff check src``).
+* Python 3.12, linted with ruff (``uv run ruff check``; version and rules in ``pyproject.toml``).
 * Docstrings in Google style (``Args:``, ``Returns:``, ``Raises:``); they are rendered in the
   :doc:`../api_reference` with napoleon.
 * Import configuration values explicitly (``from pylovo.config_loader import VERSION_ID, ...``).
@@ -73,21 +75,33 @@ Code conventions
 Tests
 -----
 
-Quick checks without a database:
+The CI (``.github/workflows``) runs on every push to ``main``, ``dev``, ``feature/**`` and ``fix/**`` and on
+pull requests: ruff, the unit tests on Python 3.12 and 3.14, the database tests on the toy-town test database
+(below) and the documentation build; on pull requests it also checks the HTTP API contract. Run the same checks
+before you push:
 
 .. code-block:: bash
 
-   uvx ruff check src
-   uv run python -m compileall -q src
+   uv run ruff check
+   uv run --extra api --extra plots --extra viewer --extra opendss pytest
+   uv run --extra api --extra plots python tests/db/run_database_tests.py   # needs Docker
+   uv run --no-project --with-requirements docs/requirements.txt \
+       sphinx-build -W --keep-going -b html docs/source docs/build/html
 
-The unit tests in ``tests`` and ``api/tests`` need no database. The HTTP API has an OpenAPI contract
-snapshot ``api/openapi.json`` (see ``api/README.md``). On pull requests the CI builds the documentation,
-runs the unit tests, runs the database tests on the toy-town test database (below) and checks the contract:
+``uv tool install pre-commit`` (once per machine) and ``pre-commit install`` (once per clone) let every commit run
+the checks of ``.pre-commit-config.yaml`` on its staged files: ruff, file syntax, large files, merge conflict markers,
+trailing whitespace, passwords and keys (gitleaks), the GitHub workflows (actionlint, zizmor), ``requirements.txt``
+as the export of ``uv.lock``, and a licence in ``DATA_LICENSES.md`` for every data file. A check that corrects files
+stops the commit: add the corrections and commit again. Do not install the hook with ``uvx pre-commit install``:
+the hook would then point to the uv cache and stop every commit once the cache is cleaned.
+
+The unit tests in ``tests``, ``api/tests`` and ``viewer/tests`` need no database; the database tests skip
+themselves unless their variables are set (below). The HTTP API has an OpenAPI contract snapshot
+``api/openapi.json`` (see ``api/README.md``); write it again after changing a route:
 
 .. code-block:: bash
 
-   uv run --extra api --extra plots pytest
-   uv run --extra api python api/scripts/export_openapi.py   # after changing a route
+   uv run --extra api python api/scripts/export_openapi.py
 
 Database tests
 ~~~~~~~~~~~~~~
@@ -103,7 +117,7 @@ skipped with the reason otherwise.
    * - Tests
      - Variable
      - Database
-   * - ``tests/test_toy_town.py``: end-to-end smoke test of the generation (reads)
+   * - ``tests/test_toy_town.py``: end-to-end test of the generation, with the result snapshot (reads)
      - ``PYLOVO_TOY_TOWN_DATABASE`` = database name
      - the toy-town test database; the name must be the database pylovo's configuration points to
    * - ``api/tests`` marked ``requires_db``: regions, results, diagnostics, load editing (writes)
@@ -120,36 +134,46 @@ skipped with the reason otherwise.
 pylovo reads (``basedata.buildings``, ``ways_per_connection``, ``connection_lines``,
 ``classify_building_use`` and ``opendata.postcodes_germany``): postcode 99001 with a street grid,
 apartment blocks, mixed buildings with shops, a school, a plant above the MV-direct threshold,
-single-family houses, a LoD2 transformer station and a cycle path, the neighbouring village 99002 and
-99003, a postcode without a polygon. The data are synthetic (no geodata files) and lie in the North Sea,
-far from real buildings and OSM transformers. ``tests/db/build_test_database.py`` writes the toy town into
-an empty database and runs ``pylovo-setup``, ``pylovo-generate`` and ``pylovo-analyze --per-grid`` for three
-versions: ``1`` with the ``config/`` of the checkout, ``2`` with the existing transformer positions
-(``USE_OPEN_TRANSFORMER_POSITIONS``) and ``3`` residential-only. It takes less than a minute. The API
+single-family houses, a LoD2 transformer station, three residential buildings without a household count
+and a cycle path, the neighbouring village 99002 and 99003, a postcode without a polygon. The data are
+synthetic (no geodata files) and lie in the North Sea, far from real buildings and OSM transformers.
+``tests/db/build_test_database.py`` writes the toy town into an empty database and runs ``pylovo-setup``,
+``pylovo-generate`` and ``pylovo-analyze --per-grid`` for five versions: ``1`` with the ``config/`` of the
+checkout, ``2`` with the existing transformer positions (``USE_OPEN_TRANSFORMER_POSITIONS``), ``3``
+residential-only, ``4`` as ``1`` in parallel worker processes (it must give the same grids) and ``5`` with
+a manual station of a given rated power (``USE_MANUAL_TRANSFORMER_POSITIONS``). It takes about a minute. The API
 tests derive their expectations from this database; they write (a manual transformer, load edits that
 are undone again), but they can be repeated on the same database.
 
-Locally, with the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 3.8) and GDAL's ``ogr2ogr``
-installed (``pylovo-setup`` needs it):
+Locally, with Docker and GDAL's ``ogr2ogr`` installed (``pylovo-setup`` needs it), one command runs them as
+the CI does:
 
 .. code-block:: bash
 
-   docker run -d --name pylovo-test-db -p 127.0.0.1:55432:5432 \
-       -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=pylovo_test pgrouting/pgrouting:17-3.5-3.8.0
-   docker exec pylovo-test-db psql -U postgres -c "CREATE DATABASE pylovo_fixture" -c "CREATE DATABASE pylovo_review"
-   export DBNAME=pylovo_test DBUSER=postgres PASSWORD=postgres HOST=127.0.0.1 PORT=55432
-   uv run --extra api --extra plots python tests/db/build_test_database.py --database pylovo_test
-   PYLOVO_TOY_TOWN_DATABASE=pylovo_test PYLOVO_API_TEST_DATABASE=pylovo_test \
-   PYLOVO_FIXTURE_DB="host=127.0.0.1 port=55432 dbname=pylovo_fixture user=postgres password=postgres" \
-   PYLOVO_REVIEW_TEST_DSN="host=127.0.0.1 port=55432 dbname=pylovo_review user=postgres password=postgres" \
-       uv run --extra api --extra plots pytest tests/test_toy_town.py tests/test_postgis_fixtures.py \
-       tests/test_database_review.py api/tests
-   docker rm -f pylovo-test-db   # start again from scratch
+   uv run --extra api --extra plots python tests/db/run_database_tests.py
+   uv run --extra api --extra plots python tests/db/run_database_tests.py -- -x -k toy_town   # pytest arguments
 
-pylovo reads ``.env`` with ``override=True``: a ``.env`` in the checkout replaces the exported variables.
-Then put the test database into ``.env`` instead (and switch it back afterwards). The build script refuses
-to run unless ``--database`` names the database the configuration points to, and it refuses a database
-that already has the ``pylovo`` or the ``basedata`` schema; drop and create the database to build it again.
+It starts the image of the CI (PostgreSQL 17, PostGIS 3.5, pgRouting 4.0) as the container ``pylovo-test-db``
+on ``127.0.0.1:55432``, creates the databases of the table above, builds the toy town, runs the tests and removes
+the container again (``--keep`` keeps it for a look with ``psql``). It takes about a minute and a half.
+
+All its commands get ``PYLOVO_ENV_FILE=`` (empty): the ``.env`` of the checkout is not read, so nothing reaches
+the database it points to. Without that variable, pylovo reads ``.env`` with ``override=True``, and a ``.env``
+in the checkout replaces exported variables; set ``PYLOVO_ENV_FILE=`` also when you run single database tests by
+hand against a test database. The build script refuses to run unless ``--database`` names the database the
+configuration points to, and it refuses a database that already has the ``pylovo`` or the ``basedata`` schema.
+
+**The result snapshot.** ``tests/test_toy_town.py`` compares the key figures of the toy-town grids with
+``tests/db/toy_town_results.json``: per version and postcode the number of grids and of converged grids, the
+transformers per rating, the cable length per type and number of parallel cables, the connected buildings with
+their summed peak load and the largest LV voltage drop. Version ``1`` uses the ``config/`` of the checkout, so a
+change of the code, of the shipped configuration or of the reference data that alters the generated grids fails
+this test with a list of the changed figures. If the change is intended, write the snapshot again and commit it
+with the change (and a changelog line), so that the diff of the file shows the effect on the results:
+
+.. code-block:: bash
+
+   PYLOVO_UPDATE_TOY_TOWN_SNAPSHOT=1 uv run --extra api --extra plots python tests/db/run_database_tests.py -- -k snapshot
 
 For behaviour-preserving changes of the generation, generate the same postcode before and after the change
 in a disposable database and compare ``grid_result``, ``buildings_result``, ``lines_result`` and the
@@ -161,12 +185,12 @@ Building the documentation
 
 .. code-block:: bash
 
-   uv sync --extra docs
-   uv run sphinx-build -W --keep-going -b html docs/source docs/build/html
+   uv run --no-project --with-requirements docs/requirements.txt \
+       sphinx-build -W --keep-going -b html docs/source docs/build/html
 
 The build needs neither a database nor ``.env``: the API reference is generated by sphinx-autoapi,
 which parses ``src/pylovo`` without importing it. ``-W`` turns warnings into errors, as on Read the
-Docs (``.readthedocs.yaml``, requirements in ``docs/requirements.txt``). The HTML output in
+Docs (``.readthedocs.yaml``) and in the CI, with the same exact versions (``docs/requirements.txt``). The HTML output in
 ``docs/build`` is not committed.
 
 Figures
@@ -202,8 +226,18 @@ Run them from the repository root with the ``plots`` extra installed:
      - yes
      - ``images/analysis/*`` (charts of stored results)
    * - ``plot_pylovo_examples.py``
-     - yes, and internet
-     - ``images/plotting/*`` (made with pylovo's own plotting functions)
+     - no
+     - ``images/plotting/*`` (made with pylovo's own plotting functions from the example data of the
+       tutorials)
+   * - ``plot_synthetic_metrics.py``
+     - yes (reads)
+     - ``images/analysis/synthetic_comparison_metrics.png`` for PLZ 85256 of the Bavaria run
+       (version ``1``)
+   * - ``make_tutorial_versions.py``
+     - yes (writes)
+     - the version variants of the tutorials (``tut-osm``, ``tut-reach``, ``tut-cabin``, ``tut-large``) for
+       the three example areas, then exports them to ``data/examples/versions``; ``--database`` must name the
+       target database
 
 The database-backed scripts expect a pylovo database with the demo region PLZ 85653 (Aying): an
 OpenStreetMap-derived extract (ODbL) in the InfDB-shaped schemas ``basedata`` and ``opendata``,
@@ -211,3 +245,21 @@ a completed ``pylovo-setup`` and the versions created by ``make_demo_versions.py
 from the database, except ``make_demo_versions.py``. Maps derived from these data must carry the
 attribution "© OpenStreetMap contributors, ODbL". The demo extract is not part of the repository:
 the committed figures are the reference, and regenerating them needs a database with the demo region.
+
+Tutorial notebooks
+~~~~~~~~~~~~~~~~~~
+
+The notebooks of the learning path (``notebook_tutorials/0*.ipynb``) store their outputs, which the documentation
+renders with myst-nb without executing anything (``docs/source/conf.py`` copies them into the git-ignored
+``docs/source/tutorials/`` at build time). Their outputs are made from the example data, so everyone gets the same:
+
+.. code-block:: bash
+
+   uv run --extra notebooks python notebook_tutorials/refresh_outputs.py            # all six
+   uv run --extra notebooks python notebook_tutorials/refresh_outputs.py 05_versions.ipynb
+
+The script runs each notebook without a database, stores the figures as 8-bit palette PNGs (about a third of the
+size) and refuses outputs with errors, output on stderr, home paths, IP addresses or credentials, and notebooks above
+1000 kB, the limit of the pre-commit hook. The example data in ``data/examples`` come from the Bavaria run:
+``export_example_data`` in :mod:`pylovo.examples` writes them read-only from a database that holds it, and
+``make_tutorial_versions.py`` adds the version variants (``data/examples/README.md``).

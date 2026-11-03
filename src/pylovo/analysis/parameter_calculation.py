@@ -22,10 +22,12 @@ projected coordinates are auto-detected where spatial distance calculations need
 """
 
 from collections import deque
+from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from itertools import pairwise
 import json
 import re
-from typing import Tuple, Dict, Any, List, Optional
+from typing import NamedTuple, Tuple, Dict, Any, List, Optional
 
 import networkx as nx
 import numpy as np
@@ -35,9 +37,9 @@ import pandapower.topology as top
 from sklearn.metrics.pairwise import haversine_distances
 
 import pylovo.database.database_client as dbc
-from pylovo.analysis.grid_analysis import compute_clustering_metrics
+from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION, compute_clustering_metrics
 from pylovo import utils
-from pylovo.config_loader import PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
+from pylovo.config_loader import LOG_LEVEL, N_JOBS, PARALLEL, PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
 
 
 # ---------------------------------------------------------------------------
@@ -143,8 +145,23 @@ def _empty_impedance_summary() -> Dict[str, float]:
         "total_resistance": 0.0,
         "total_reactance": 0.0,
         "max_branch_resistance": 0.0,
+        "branch_resistance": 0.0,
         "total_weight": 0.0,
     }
+
+
+class GridParameterCounts(NamedTuple):
+    """What the per-grid analysis of one PLZ did (:meth:`ParameterCalculator.calculate_grid_parameters`)."""
+
+    #: ``"analysed"``, ``"not_analysed"`` (no PLZ-level parameters, nothing done) or ``"failed"`` (the PLZ could not
+    #: be processed, see the log)
+    status: str
+    #: grids whose parameters were calculated and stored
+    calculated: int = 0
+    #: grids that already had parameters
+    skipped: int = 0
+    #: grids whose calculation failed (logged)
+    failed: int = 0
 
 
 class ParameterCalculator:
@@ -261,6 +278,9 @@ class ParameterCalculator:
     def analyze_grid_parameters_for_plz(self, plz: int | None = None) -> str:
         """Compute and store per-grid parameters for all grids of an analyzed PLZ.
 
+        Prints the number of grids, one line per calculated grid and a summary.
+        :func:`analyze_grid_parameters_for_multiple_plz` analyses several PLZ, in worker processes if possible.
+
         Args:
             plz (int): Postcode area ID
 
@@ -272,39 +292,60 @@ class ParameterCalculator:
         """
         if plz is None:
             raise ValueError("analyze_grid_parameters_for_plz requires an explicit PLZ value.")
+        return self.calculate_grid_parameters(plz, progress=True).status
 
+    def calculate_grid_parameters(self, plz: int, progress: bool = False) -> "GridParameterCounts":
+        """Compute and store the per-grid parameters of every grid of ``plz`` that has none of the current definitions.
+
+        Grids that already have a row of ``KEY_FIGURES_VERSION`` in ``clustering_parameters`` are skipped; a row of
+        older definitions is computed again and replaced. A grid whose calculation fails is logged, its open
+        transaction is rolled back and the next grid is calculated.
+
+        Args:
+            plz: Postcode area; its PLZ-level parameters (:meth:`analyze_parameters_for_plz`) must exist.
+            progress: Print the number of grids, one line per calculated grid and a summary.
+
+        Returns:
+            The counts. Status ``"not_analysed"`` (nothing is done) if the PLZ-level parameters are missing.
+        """
         self.plz = plz
         grid_analysed = self.dbc.is_grid_analyzed(self.plz)
         if not grid_analysed:
             self.dbc.logger.info(
                 f"PLZ parameters for the postcode area {self.plz} missing. Please run analyze_parameters_for_plz() first.")
-            return "not_analysed"
+            return GridParameterCounts("not_analysed")
 
         cluster_list = self.dbc.get_list_from_plz(self.plz)
-        total_grids = len(cluster_list)
-        print(f"Checking {total_grids} grids for PLZ {self.plz}...")
+        if progress:
+            print(f"Checking {len(cluster_list)} grids for PLZ {self.plz}...")
 
         skipped = 0
         calculated = 0
+        failed = 0
 
         for kcid, bcid in cluster_list:
             # Check if this specific grid already has parameters
             try:
-                if self.dbc.has_clustering_parameters(self.plz, kcid, bcid):
+                if self.dbc.has_clustering_parameters(self.plz, kcid, bcid, KEY_FIGURES_VERSION):
                     skipped += 1
                     continue
 
-                print(f"Calculating parameters for grid kcid={kcid}, bcid={bcid}")
+                if progress:
+                    print(f"Calculating parameters for grid kcid={kcid}, bcid={bcid}")
                 self.analyze_single_grid(bcid, kcid)
                 calculated += 1
 
             except Exception as e:
+                failed += 1
                 self.dbc.logger.error(
                     f"Failed to calculate/insert parameters for grid {kcid},{bcid} in PLZ {self.plz}: {e}"
                 )
+                # a failed statement aborts the transaction: without the rollback every later grid would fail too
+                self.dbc.rollback_changes()
 
-        print(f"Finished PLZ {self.plz}. Calculated new: {calculated}, Skipped existing: {skipped}.")
-        return "analysed"
+        if progress:
+            print(f"Finished PLZ {self.plz}. Calculated new: {calculated}, Skipped existing: {skipped}.")
+        return GridParameterCounts("analysed", calculated, skipped, failed)
 
     # -------------------------------------------------------------------------
     # Shared Comparison-Parameter Helpers
@@ -328,6 +369,96 @@ class ParameterCalculator:
         if net.load.empty or "bus" not in net.load.columns:
             return []
         return net.load["bus"].unique().tolist()
+
+    #: Links from the busbar of at most this length (km) belong to the station, as in the structural metrics of the
+    #: validation (station stubs); the feeders start where they end.
+    STATION_LINK_KM = 0.002
+
+    @staticmethod
+    def _line_tree(net: pp.pandapowerNet, root_idx: int) -> Tuple[Dict[int, int | None], List[int], Dict[int, Tuple[float, float]]]:
+        """Return the radial line network seen from ``root_idx``.
+
+        Lines between the same two buses form one link: the shortest length and the resistances in parallel. The
+        resistance of a line is divided by its parallel cables.
+
+        Returns:
+            ``(parent, order, link)``: the parent of every reached bus (``None`` for the root), the buses in
+            breadth-first order and, per bus except the root, ``(length_km, resistance_ohm)`` of the link to its parent.
+        """
+        graph = nx.Graph()
+        for line in net.line.itertuples():
+            parallel = float(getattr(line, "parallel", 1) or 1)
+            length = float(line.length_km)
+            resistance = float(line.r_ohm_per_km) * length / (parallel if parallel > 0 else 1.0)
+            u, v = int(line.from_bus), int(line.to_bus)
+            if graph.has_edge(u, v):
+                old = graph.edges[u, v]
+                length = min(length, old["length_km"])
+                resistance = 0.0 if 0.0 in (resistance, old["r_ohm"]) else 1 / (1 / resistance + 1 / old["r_ohm"])
+            graph.add_edge(u, v, length_km=length, r_ohm=resistance)
+        if root_idx not in graph:
+            return {root_idx: None}, [root_idx], {}
+        parent, order, link = {root_idx: None}, [root_idx], {}
+        for u, v in nx.bfs_edges(graph, root_idx, sort_neighbors=sorted):
+            parent[v] = u
+            order.append(v)
+            link[v] = (graph.edges[u, v]["length_km"], graph.edges[u, v]["r_ohm"])
+        return parent, order, link
+
+    @classmethod
+    def feeder_structure(cls, net: pp.pandapowerNet, root_idx: int,
+                         consumer_buses: List[int]) -> Tuple[Dict[int, int], int]:
+        """Return the feeders and the branch ends of the label-free boundary of the structural metrics.
+
+        A bus belongs to the shared network if at least two consumer buses lie at or beyond it. The cable from the last
+        shared bus to a building is the building's dedicated path. The station is the busbar ``root_idx`` with the
+        buses it reaches over links of at most :attr:`STATION_LINK_KM`. A feeder is a cable that leaves the station
+        towards at least two consumer buses: a building at the busbar, or on its own cable from the station, belongs
+        to no feeder. The branch ends are the shared buses from which no shared bus continues, the busbar excluded.
+        The structural comparison of :func:`~pylovo.analysis.grid_analysis.compute_comparison_parameters` counts
+        feeders with :meth:`count_feeders` instead.
+
+        Args:
+            net: A radial net.
+            root_idx: The LV busbar.
+            consumer_buses: Consumer buses of the net.
+
+        Returns:
+            ``({consumer bus: first bus of its feeder}, number of branch ends)``. A consumer of no feeder has no entry.
+        """
+        parent, order, link = cls._line_tree(net, root_idx)
+        consumers = {int(bus) for bus in consumer_buses} & set(parent)
+        downstream = {bus: int(bus in consumers) for bus in order}
+        for bus in reversed(order[1:]):
+            downstream[parent[bus]] += downstream[bus]
+        station = {root_idx}
+        for bus in order[1:]:                    # parents come first in breadth-first order
+            if parent[bus] in station and link[bus][0] <= cls.STATION_LINK_KM:
+                station.add(bus)
+        feeders = {bus for bus in order[1:]
+                   if parent[bus] in station and bus not in station and downstream[bus] >= 2}
+        feeder_of_bus = {}
+        for consumer in consumers:
+            bus = consumer
+            while bus not in station and parent[bus] not in station:
+                bus = parent[bus]
+            if bus in feeders:
+                feeder_of_bus[consumer] = bus
+        shared = {bus for bus in order if downstream[bus] >= 2}
+        continued = {parent[bus] for bus in shared if parent[bus] is not None}
+        branch_ends = sum(bus != root_idx and bus not in continued for bus in shared)
+        return feeder_of_bus, int(branch_ends)
+
+    @classmethod
+    def calculate_max_route_resistance(cls, net: pp.pandapowerNet, root_idx: int, consumer_buses: List[int]) -> float:
+        """Highest series resistance (ohm) of the cables from the busbar to a consumer bus, the most exposed building of
+        the structural metrics; parallel cables divide the resistance of their line. 0.0 without a reached consumer."""
+        parent, order, link = cls._line_tree(net, root_idx)
+        resistance = {root_idx: 0.0}
+        for bus in order[1:]:
+            resistance[bus] = resistance[parent[bus]] + link[bus][1]
+        values = [resistance[int(bus)] for bus in consumer_buses if int(bus) in resistance]
+        return float(max(values)) if values else 0.0
 
     def count_feeders(
         self,
@@ -774,7 +905,7 @@ class ParameterCalculator:
             kcid (int): Grid cluster ID
 
         Writes a record to the clustering-parameters table including metadata
-        (plz, bcid, kcid, version, osm_trafo flag).
+        (plz, bcid, kcid, version, osm_trafo flag, ``KEY_FIGURES_VERSION``), replacing a stored one.
         """
         self._require_plz_context("analyze_single_grid")
         self.bcid = bcid
@@ -788,7 +919,8 @@ class ParameterCalculator:
             "plz": self.plz,
             "bcid": self.bcid,
             "kcid": self.kcid,
-            "osm_trafo": bool(osm_trafo)
+            "osm_trafo": bool(osm_trafo),
+            "key_figures_version": KEY_FIGURES_VERSION,
         })
 
         self.dbc.insert_clustering_parameters(params)
@@ -1097,18 +1229,19 @@ class ParameterCalculator:
         to their four nearest neighbouring consumer buses. Consumer buses are the
         ``Consumer Nodebus`` buses of pylovo grids and the load buses of other nets
         (:meth:`resolve_consumer_buses`). The method auto-detects whether the available
-        geometry coordinates are geographic or projected.
+        geometry coordinates are geographic or projected. Without two consumer buses with a location (e.g. a
+        single-building grid) the distance is undefined: NaN.
         """
         consumer_buses = self.resolve_consumer_buses(pandapower_net, self.uses_synthetic_bus_naming(pandapower_net))
         bus = pandapower_net.bus.loc[pandapower_net.bus.index.intersection(consumer_buses)]
 
         if "geo" not in bus.columns:
-            self.dbc.logger.debug("Bus table has no geo column; returning 0.0 for house-distance proxy.")
-            return 0.0
+            self.dbc.logger.debug("Bus table has no geo column; returning NaN for house-distance proxy.")
+            return float("nan")
 
         if bus["geo"].isna().all():
-            self.dbc.logger.debug("Bus table has no populated geo values; returning 0.0 for house-distance proxy.")
-            return 0.0
+            self.dbc.logger.debug("Bus table has no populated geo values; returning NaN for house-distance proxy.")
+            return float("nan")
 
         geometries = []
         invalid_geometry_count = 0
@@ -1127,7 +1260,7 @@ class ParameterCalculator:
                     len(geometries),
                     invalid_geometry_count,
                 )
-            return 0.0
+            return float("nan")
 
         coords = np.array(geometries)
 
@@ -1142,8 +1275,6 @@ class ParameterCalculator:
             dis_mat = cdist(coords, coords, metric="euclidean") / 1000.0
 
         k = min(len(dis_mat) - 1, 4)
-        if k == 0:
-            return 0.0
 
         dis_mat.sort(axis=1)
         avg_dists = dis_mat[:, 1:k+1].mean(axis=1)
@@ -1309,12 +1440,14 @@ class ParameterCalculator:
         line_table: pd.DataFrame,
         apply_simultaneity: bool,
         bus_type_config: Optional[Dict[str, Optional[str]]] = None,
+        branch_of_bus: Optional[Dict[int, int]] = None,
     ) -> Dict[str, float]:
         """Run the source-to-consumer path impedance aggregation of the VSW metric.
 
         The caller provides the bus weights and decides whether cumulated
         simultaneity should affect line resistance.
-        Paths are grouped by feeder branch; a first-hop bus of type ``kvs`` in
+        Paths are grouped by the branch of their consumer in ``branch_of_bus``; consumers without an entry count in
+        the totals but in no branch. Without it, by feeder branch: a first-hop bus of type ``kvs`` in
         ``bus_type_config`` (default: by the bus naming) splits its feeders.
         """
         if bus_weights.empty or line_table.empty:
@@ -1345,7 +1478,10 @@ class ParameterCalculator:
             except (nx.NetworkXNoPath, nx.NodeNotFound):
                 continue
 
-            branch = self._resolve_branch_from_path(path, kvs_buses)
+            if branch_of_bus is None:
+                branch = self._resolve_branch_from_path(path, kvs_buses)
+            else:
+                branch = branch_of_bus.get(consumer_bus)
             path_resistance = 0.0
             path_reactance = 0.0
 
@@ -1363,8 +1499,9 @@ class ParameterCalculator:
                 parallel = float(line_data.get("parallel", 1) or 1)
                 parallel = parallel if parallel > 0 else 1.0        # NaN or 0: one cable
 
+                # R and X alike, so their ratio is a weighted mean of the R/X of the lines
                 path_resistance += length_km * resistance_per_km / parallel * sim_factor
-                path_reactance += length_km * reactance_per_km / parallel
+                path_reactance += length_km * reactance_per_km / parallel * sim_factor
 
             records.append({
                 "branch": branch,
@@ -1385,23 +1522,34 @@ class ParameterCalculator:
             return _empty_impedance_summary()
 
         df_records = pd.DataFrame(records)
-        branch_weights = df_records.groupby("branch", dropna=False)["path_weight"].sum()
-        branch_resistance = df_records.groupby("branch", dropna=False)["weighted_resistance"].sum()
+        in_branch = df_records if branch_of_bus is None else df_records[df_records["branch"].notna()]
+        branch_weights = in_branch.groupby("branch", dropna=False)["path_weight"].sum()
+        branch_resistance = in_branch.groupby("branch", dropna=False)["weighted_resistance"].sum()
         return {
             "max_branch_weight": float(branch_weights.max()) if not branch_weights.empty else 0.0,
             "total_resistance": float(df_records["weighted_resistance"].sum()),
             "total_reactance": float(df_records["weighted_reactance"].sum()),
             "max_branch_resistance": float(branch_resistance.max()) if not branch_resistance.empty else 0.0,
+            "branch_resistance": float(in_branch["weighted_resistance"].sum()),
             "total_weight": float(df_records["path_weight"].sum()),
         }
 
-    def calculate_impedance_metrics(self, pandapower_net: pp.pandapowerNet, networkx_graph: nx.Graph) -> Tuple[float, float, float, float, float]:
+    def calculate_impedance_metrics(
+        self,
+        pandapower_net: pp.pandapowerNet,
+        networkx_graph: nx.Graph,
+        branch_of_bus: Optional[Dict[int, int]] = None,
+    ) -> Tuple[float, float, float, float, float, float]:
         """Calculate the legacy VSW-style impedance metrics used by clustering.
 
         Returns maximum household equivalents per branch, total resistance, total
-        reactance, the resistance-to-reactance ratio, and the maximum branch
-        resistance proxy. The resistance and reactance of a line are divided by its
-        number of parallel cables.
+        reactance, the resistance-to-reactance ratio, the maximum branch
+        resistance proxy and the resistance of the consumers in a branch.
+        Resistance and reactance of a line are weighted alike (household equivalents behind it
+        times its cumulated simultaneity), so the ratio lies between the smallest and the largest
+        R/X of the lines. They are divided by the number of parallel cables. The branches are the
+        feeders of ``branch_of_bus`` (:meth:`feeder_structure`), else the feeder branches of
+        :meth:`_calculate_path_impedance_summary`.
         """
         load_table = self._prepare_legacy_impedance_loads(pandapower_net)
         if load_table.empty or "max_p_mw" not in load_table.columns:
@@ -1421,6 +1569,7 @@ class ParameterCalculator:
             bus_weights,
             line_table,
             apply_simultaneity=True,
+            branch_of_bus=branch_of_bus,
         )
         total_reactance = result["total_reactance"]
         ratio = result["total_resistance"] / total_reactance if total_reactance > 0 else 0.0
@@ -1430,6 +1579,7 @@ class ParameterCalculator:
             total_reactance,
             ratio,
             result["max_branch_resistance"],
+            result["branch_resistance"],
         )
 
     def _augment_line_table_with_simultaneity(
@@ -1820,3 +1970,91 @@ class ParameterCalculator:
             json.dumps(trafo_max_distance_dict),
             json.dumps(trafo_avg_distance_dict)
         )
+
+
+def _grid_parameters_of_plz(plz: int) -> GridParameterCounts:
+    """Compute and store the per-grid parameters of one PLZ in a worker process, with its own database connection."""
+    calculator = ParameterCalculator()
+    try:
+        return calculator.calculate_grid_parameters(plz)
+    finally:
+        calculator.dbc.close()
+
+
+def analyze_grid_parameters_for_multiple_plz(plz_list: Iterable[int],
+                                             parallel: bool | None = None) -> dict[int, GridParameterCounts]:
+    """Compute and store the per-grid parameters of every grid of several PLZ, in worker processes if possible.
+
+    Workers are used as for the grid generation: when ``parallel`` is set, there is more than one PLZ and ``N_JOBS``
+    (``N_JOBS_PERCENT`` of the CPU cores) is above one. Every worker computes whole PLZ with its own database
+    connection. The rows are those of the serial path: one per grid without parameters, computed by
+    :meth:`ParameterCalculator.calculate_grid_parameters` and written in the grid order of their PLZ. Only the order
+    in which the PLZ finish differs; the table has no column that depends on it. One line per finished PLZ is
+    printed and errors go to the log. A PLZ that cannot be processed (for example a lost connection) is logged and
+    counted as ``"failed"``, the other PLZ go on.
+
+    Args:
+        plz_list: The PLZ (analysed once each, in the given order without workers).
+        parallel: Allow worker processes. None takes ``PARALLEL`` of ``config_generation_lv.yaml``.
+
+    Returns:
+        The counts of every PLZ, in the order of ``plz_list``.
+
+    Raises:
+        KeyboardInterrupt: If the run is interrupted; the PLZ not started yet are cancelled.
+    """
+    plz_list = list(dict.fromkeys(int(plz) for plz in plz_list))
+    parallel = PARALLEL if parallel is None else parallel
+    workers = min(N_JOBS, len(plz_list)) if parallel and len(plz_list) > 1 and N_JOBS > 1 else 1
+    logger = utils.create_logger("ParameterCalculator", log_file="log/log.txt", log_level=LOG_LEVEL)
+    print(f"Per-grid parameters of {len(plz_list)} PLZ in "
+          + (f"{workers} worker processes" if workers > 1 else "one process"))
+    counts: dict[int, GridParameterCounts] = {}
+
+    def finished(plz: int, result: GridParameterCounts) -> None:
+        counts[plz] = result
+        line = (f"Per-grid parameters of PLZ {plz} ({len(counts)}/{len(plz_list)}): {result.calculated} calculated, "
+                f"{result.skipped} existing")
+        if result.failed:
+            line += f", {result.failed} failed"
+        if result.status != "analysed":
+            line += f" ({result.status.replace('_', ' ')})"
+        print(line)
+
+    def failure(plz: int) -> GridParameterCounts:
+        logger.exception(f"Per-grid parameters of PLZ {plz} could not be computed")
+        return GridParameterCounts("failed")
+
+    if workers == 1:
+        calculator = ParameterCalculator()
+        try:
+            for plz in plz_list:
+                try:
+                    result = calculator.calculate_grid_parameters(plz)
+                except Exception:
+                    result = failure(plz)
+                    calculator.dbc.rollback_changes()
+                finished(plz, result)
+        finally:
+            calculator.dbc.close()
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_grid_parameters_of_plz, plz): plz for plz in plz_list}
+            try:
+                for future in as_completed(futures):
+                    plz = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception:
+                        result = failure(plz)
+                    finished(plz, result)
+            except KeyboardInterrupt:
+                logger.warning(f"Interrupted after {len(counts)}/{len(plz_list)} PLZ; cancelling the others.")
+                for future in futures:
+                    future.cancel()
+                raise
+
+    totals = [sum(getattr(result, field) for result in counts.values()) for field in ("calculated", "skipped", "failed")]
+    print(f"Per-grid parameters of {len(plz_list)} PLZ: {totals[0]} calculated, {totals[1]} existing, "
+          f"{totals[2]} failed")
+    return {plz: counts[plz] for plz in plz_list}

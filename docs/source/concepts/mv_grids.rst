@@ -250,6 +250,14 @@ MV grid to the HV grid (``pylovo-mv boundary``). A site without a match gets the
 ``no_egon_bus``. Without the eGon-data table ``egon_hvmv_substation`` the match is skipped with a
 warning, and no site has a bus.
 
+The same OSM data show whether a line feeds each site. A site where no 60 kV or 110 kV line or
+cable of OSM ends within 50 m of its footprint or point gets the flag ``no_osm_hv_line``. Lines in
+service count, cables included, but no substation internals (``line=bay|busbar|internal``, or a way
+that lies wholly inside the footprint) and no railway current. Such a site is fed by a line OSM does not show, often an underground cable in a
+city. Its link to the HV grid, its eTraGo bus included, is then not confirmed by OSM: eTraGo joins
+the substations it cannot reach with straight lines. Without the OSM table
+``infrastructure_line`` the check is skipped.
+
 A substation whose busbar lies more than ``substation_max_attach_m`` (2 km) from the routing graph
 supplies nothing (flag ``long_attach``). A substation that supplies no node gets no MV grid (flag
 ``no_nodes``) but stays in ``mv_substation``. Transformer ratings mapped in OSM are not read, so
@@ -351,9 +359,10 @@ The graph id is a hash of the municipalities, the build parameters and a fingerp
 rows. A graph is therefore reused by every variant with the same inputs, and a changed source gives
 a new graph instead of changing a stored one.
 
-Every node and substation is attached to its nearest graph edge. A node lies in the settlement of
-that edge and is urban if the settlement is urban. A node on an edge outside settlements is in open
-field and rural.
+Every node and substation is attached to its nearest graph edge. Of equally near edges, such as the
+edges that meet at a vertex, the one with the lowest id is taken, so the attachment does not depend
+on the storage order of the graph. A node lies in the settlement of that edge and is urban if the
+settlement is urban. A node on an edge outside settlements is in open field and rural.
 
 District graph
 ~~~~~~~~~~~~~~

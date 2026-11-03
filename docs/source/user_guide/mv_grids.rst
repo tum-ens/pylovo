@@ -39,15 +39,20 @@ Prerequisites
      - ``<INFDB_SOURCE_SCHEMA>.ways_per_junction`` and ``.buildings``
    * - eGon-data HV/MV substations (optional)
      - The eTraGo 110 kV bus of every substation (``pylovo-mv boundary``)
-     - ``egon_hvmv_substation`` (:ref:`mv-egon-data`)
+     - Loaded by ``pylovo-setup`` (:ref:`mv-egon-data`)
    * - Municipal register
      - Population of the demand anchor in the run summary
      - Loaded by ``pylovo-setup``
 
-The stage needs ``USE_INFDB=True``: it reads the InfDB schemas in the pylovo database
-(:doc:`input_data`). ``USE_EXTERNAL_BASEDATA`` with the InfDB in another database is not supported
-yet: ``pylovo-generate --mv``, ``pylovo-mv generate`` and ``pylovo-mv graph`` stop before they
-start. Run the MV stage on a database that holds both the InfDB schemas and the schema ``pylovo``.
+The stage needs ``USE_INFDB=True``: it reads the InfDB schemas, by default in the pylovo
+database (:doc:`input_data`). With ``USE_EXTERNAL_BASEDATA`` and the InfDB in another database
+(:doc:`database_setup`), the stage reads it through a separate read-only connection, in short
+transactions, also through PgBouncer. The source queries filter by index only (municipality keys
+and bounding boxes); the rows the stage processes in SQL (the streets and address buildings of the
+routing graph, the land use) are copied into temporary tables of the pylovo database for the run,
+and every exact test against the planning region runs there. The results are the same as with the
+InfDB schemas in the pylovo database. ``pylovo-generate --mv``, ``pylovo-mv generate`` and
+``pylovo-mv graph`` check the required InfDB tables before they start.
 
 LV version
 ~~~~~~~~~~
@@ -125,12 +130,16 @@ eGon-data (optional)
 ~~~~~~~~~~~~~~~~~~~~
 
 The eGon-data HV/MV substations (``egon_hvmv_substation``: ``bus_id``, ``voltage``, ``osm_id``,
-``geom``) are read from the schema ``pylovo`` if the table exists there and holds rows, else from
-``INFDB_OPENDATA_SCHEMA``. Every OSM site gets the bus id of the nearest one within
-``egon_match_m`` (300 m), which is the id of its 110 kV bus in the eTraGo grid model
+``geom``) are read from the schema ``pylovo`` if the table holds rows there, else from
+``INFDB_OPENDATA_SCHEMA`` of the InfDB source. ``pylovo-setup`` downloads the table of eGon-data
+(``grid.egon_hvmv_substation``, all of Germany, served by the Open Energy Platform as
+``data.edut_00_077``) once into ``egon_data/`` of the data directory and loads it into
+``pylovo.egon_hvmv_substation``; ``pylovo-import egon-substations`` loads it again, with
+``--refresh`` after a new download (:doc:`cli`). Without internet access setup only warns and the
+table stays empty until the next ``pylovo-setup``. Every OSM site gets the bus id of the nearest
+one within ``egon_match_m`` (300 m), which is the id of its 110 kV bus in the eTraGo grid model
 (``pylovo-mv boundary``). Without the table the stage runs, the match is skipped (warning) and no
-substation has a bus. pylovo has no importer for this table yet. Copy it from the eGon-data
-database or the Open Energy Platform.
+substation has a bus.
 
 The eGon substations are processed OSM-derived records. Keep the source release and the typed OSM
 identifiers when comparing them with another grid dataset. The stored ``egon_bus_id`` of an OSM
@@ -216,13 +225,19 @@ variant. The summary at the end has this form (``<...>`` stands for the values o
 
 The OSM coverage line compares the station sites and MV lines mapped in OpenStreetMap with the planned
 stations (:ref:`mv-osm-coverage`); the full tables per settlement and land-use class are in the log and
-in ``mv_variant.summary['osm_coverage']``. Without an OSM power layer the line is missing.
+in ``mv_variant.summary['osm_coverage']``. Without an OSM power layer, or with
+``MV_OSM_COVERAGE: False`` (``--no-osm-coverage``), the line is missing. The report merges the
+land-use polygons of the planning region per class and needs about three times the memory of the rest
+of the run: switch it off for a whole federal state.
 
 The exit code is 0 when the variant is ``done`` and 1 otherwise (2 for a usage error). A variant is
 ``partial`` when some supply areas failed. Every supply area is one database transaction, and a
 failed one keeps its error in ``mv_grid.error`` while the others continue. If the worker pool breaks
 (for example when the system runs out of memory), the remaining supply areas stay ``pending``. The
-same command with fewer ``--jobs`` then plans only the pending and failed supply areas.
+same command with fewer ``--jobs`` then plans only the pending and failed supply areas. A failure of
+the ties or links after the supply areas (out of memory included) keeps the supply areas and their
+status and is reported as a ``✗`` warning of the summary; the same command plans the ties and links
+again.
 
 The stage takes a lock per variant, so a second run of the same variant stops at once. It also stops
 before any write when a requested postcode is being generated by ``pylovo-generate`` at that moment.
@@ -261,8 +276,8 @@ transformer types and the version of the stage code (``mv_stage_version``). The 
 not part of the snapshot of the LV version, so MV variants never require a new ``VERSION_ID``.
 
 ``--set KEY=VALUE`` changes a parameter for one variant. KEY is an ``MV_*`` key of
-``config_generation_mv.yaml`` (except ``MV_GRID_GENERATION``, ``MV_VARIANT_ID`` and
-``MV_VARIANT_COMMENT``). VALUE is read as YAML (``null``, numbers, text) and checked against the
+``config_generation_mv.yaml`` (except ``MV_GRID_GENERATION``, ``MV_OSM_COVERAGE``, ``MV_VARIANT_ID``
+and ``MV_VARIANT_COMMENT``). VALUE is read as YAML (``null``, numbers, text) and checked against the
 rules of the key. A value with spaces needs quotes in the shell. The constants of
 :doc:`mv_parameters` are changed in Python with ``MvParameters.replace``.
 
@@ -578,10 +593,12 @@ important ones:
      - Customer whose dedicated feeder would need more than ``max_parallel_cables`` parallel cables.
    * - ``unsupplied``, ``unconnected``
      - Node without a voltage in the load case, or without any line.
-   * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``, ``no_egon_bus``
+   * - ``ehv_uncertain``, ``long_attach``, ``over_capacity``, ``no_nodes``, ``no_egon_bus``,
+       ``no_osm_hv_line``
      - Substation flags: extra-high-voltage site without an HV/MV partner, busbar too far from the
        streets, load above the (n-1) capacity (more transformer units), no node assigned, no
-       eGon-data substation (eTraGo bus) within reach.
+       eGon-data substation (eTraGo bus) within reach, no 60 kV or 110 kV line or cable of OSM
+       ending at the site (its feed is not mapped).
 
 SQL examples
 ~~~~~~~~~~~~
@@ -682,8 +699,10 @@ Troubleshooting
 ``MV variant(s) <version>/<variant> are being generated or coupled right now; delete them when the run has finished``
    ``pylovo-mv delete`` and the ``pylovo-delete`` commands refuse to delete a variant, a postcode or a
    version while a ``generate`` or ``couple`` of an affected variant runs. Wait for the run.
-``the MV stage reads the InfDB source data on the pylovo connection, but USE_EXTERNAL_BASEDATA points to ...``
-   The InfDB schemas are in another database (:ref:`mv-prerequisites`).
+``the MV stage needs <schema>.<table>, ... in <database>``
+   A required InfDB table is missing in the database of the InfDB source data (the pylovo
+   database, or with ``USE_EXTERNAL_BASEDATA`` the ``INFDB_*`` database), or the user may not read
+   it (:ref:`mv-prerequisites`).
 ``none of the requested PLZ has LV grids in version <version>``
    Generate the LV grids first, or check ``--version``. ``pylovo-mv`` never uses ``VERSION_ID``.
 ``PLZ ... of version <version> are being generated right now``

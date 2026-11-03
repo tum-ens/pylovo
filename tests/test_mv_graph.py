@@ -1,5 +1,6 @@
 """MV routing graph: region CSR, weighted Voronoi, run graph, distances, paths, geometry, trench, mixin SQL."""
 
+import dataclasses
 import heapq
 import logging
 import re
@@ -424,6 +425,86 @@ def test_vertex_paths_between_node_rows():
     assert paths[(1, 1)] == [rg.terminal_vertex[1]]
 
 
+def test_vertex_paths_with_a_limit_find_the_same_paths_within_it():
+    edges = _edge_set([(11, 1, 2), (12, 2, 3)], LINE)
+    nodes = _nodes([
+        {"kind": "busbar", "x": 0.0, "y": 0.0, "attach_edge_id": 11, "attach_fraction": 0.0, "attach_offset_m": 0},
+        {"x": 150.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 0.5, "attach_offset_m": 0.0},
+        {"x": 200.0, "y": 0.0, "attach_edge_id": 12, "attach_fraction": 1.0, "attach_offset_m": 0.0},
+    ])
+    rg = graph.build_run_graph(edges, nodes)
+    vertex = [int(v) for v in rg.terminal_vertex]
+    pairs = [(vertex[0], vertex[1]), (vertex[0], vertex[2]), (vertex[1], vertex[2])]
+    unbounded = graph.vertex_paths(rg, pairs)
+    assert graph.vertex_paths(rg, pairs, limit=200.0) == unbounded           # every route costs at most 200 m
+    near = graph.vertex_paths(rg, pairs, limit=160.0, chunk=1)
+    assert near[pairs[0]] == unbounded[pairs[0]] and near[pairs[2]] == unbounded[pairs[2]]
+    assert near[pairs[1]] == []                                              # 200 m: beyond the limit
+
+
+def _grid_run_graph(side: int, teleports: int = 0) -> "graph.RunGraph":
+    """Run graph of a square street grid (50 m, all edges the same length: many routes cost the same) with
+    ``teleports`` short edges (10 m) between random far vertices, which the radius of a bounded search misses."""
+    coords = {i: (float(i % side) * 50.0, float(i // side) * 50.0) for i in range(side * side)}
+    edges = [(len(coords) + i, i, i + 1) for i in range(side * side) if i % side < side - 1]
+    edges += [(2 * len(coords) + i, i, i + side) for i in range(side * (side - 1))]
+    rng = np.random.default_rng(3)
+    edges += [(3 * len(coords) + k, int(a), int(b), 10.0)
+              for k, (a, b) in enumerate(rng.integers(0, side * side, (teleports, 2))) if a != b]
+    nodes = _nodes([{"kind": "busbar", "x": 0.0, "y": 0.0, "attach_edge_id": edges[0][0], "attach_fraction": 0.0,
+                     "attach_offset_m": 0.0}])
+    return graph.build_run_graph(_edge_set(edges, coords), nodes)
+
+
+@pytest.mark.parametrize("teleports", [0, 40])
+def test_bounded_searches_on_local_parts_equal_the_whole_graph(teleports):
+    from scipy.sparse.csgraph import dijkstra
+
+    rg = _grid_run_graph(60, teleports)
+    sources = np.unique(np.random.default_rng(1).integers(0, rg.n_vertices, 150))
+    seen, sizes = [], []
+    for batch, vertices, dist, pred in graph.bounded_searches(rg, sources, 400.0, chunk=8, return_predecessors=True):
+        full_dist, full_pred = dijkstra(rg.csr, directed=False, indices=batch, limit=400.0, return_predecessors=True)
+        assert np.array_equal(full_dist[:, vertices], dist)
+        assert np.isinf(np.delete(full_dist, vertices, axis=1)).all()        # nothing reached outside the part
+        assert np.array_equal(full_pred[:, vertices], np.where(pred >= 0, vertices[np.maximum(pred, 0)], pred))
+        seen += batch.tolist()
+        sizes.append(len(vertices))
+    assert sorted(seen) == sources.tolist()                                  # every source exactly once
+    assert min(sizes) < rg.n_vertices / 4                                    # the parts are local
+    if teleports:
+        assert max(sizes) > min(sizes)                                       # searches through teleports ran again
+
+
+def test_bounded_distances_and_paths_equal_the_whole_graph():
+    from scipy.sparse.csgraph import dijkstra
+
+    rg = _grid_run_graph(40, teleports=20)
+    rng = np.random.default_rng(2)
+    pairs = [(int(a), int(b)) for a, b in rng.integers(0, rg.n_vertices, (300, 2))] + [(5, 5)]
+    full = dijkstra(rg.csr, directed=False, limit=600.0)
+    expected = np.array([full[a, b] for a, b in pairs])
+    np.testing.assert_array_equal(graph.bounded_distances(rg, pairs, 600.0, chunk=16), expected)
+    whole = graph.vertex_paths(dataclasses.replace(rg, vertex_xy=np.zeros_like(rg.vertex_xy)), pairs, limit=600.0)
+    assert graph.vertex_paths(rg, pairs, limit=600.0, chunk=16) == whole     # same predecessors as one part
+
+
+def test_subgraph_edges_near_points_go_through_the_edge_index():
+    rows = [(5, 100, 101, 12.5, True, 3, False), (7, 101, 102, 20.0, False, -1, True)]
+    vertex_rows = [(100, 0.0, 0.0), (101, 12.5, 0.0), (102, 12.5, 20.0)]
+    client = _client([(r"FROM mv_subgraph_point p", rows), (r"FROM pylovo\.mv_graph_vertex v", vertex_rows)])
+    edges = client.subgraph_edges_near(GRAPH_ID, np.array([[1.0, 2.0], [3.0, 4.0]]), 2100.0, [7, None])
+    assert edges.edge_id.tolist() == [5, 7] and edges.vertex_id.tolist() == [100, 101, 102]
+    texts = [t for t, _ in client.cur.statements]
+    points = next(p for t, p in client.cur.statements if "CREATE TEMP TABLE mv_subgraph_point" in t)
+    assert points == {"x": [1.0, 3.0], "y": [2.0, 4.0]}
+    query, params = next((t, p) for t, p in client.cur.statements if "FROM mv_subgraph_point p" in t)
+    assert "ST_DWithin(n.geom, p.pt, %(buffer_m)s)" in query and "SELECT unnest(%(must)s::bigint[])" in query
+    assert "UNION" in query and " OR " not in query       # an OR would rerun the subquery per edge of a large graph
+    assert params == {"g": GRAPH_ID, "buffer_m": 2100.0, "must": [7], "line": "osm_mv_line"}
+    assert any("USING gist (pt)" in t for t in texts) and texts[-2].startswith("DROP TABLE pg_temp.mv_subgraph_point")
+
+
 def test_trench_counts_shared_pieces_once():
     edges = _edge_set([(11, 1, 2), (12, 2, 3)], LINE)
     nodes = _nodes([
@@ -504,10 +585,20 @@ GRAPH_ID = "g0123456789abcdef"
 STREETS = MvParameters()
 BASE_ANSWERS = [
     (r"SELECT ST_SRID\(geom\)", [(25832,)]),
-    (r"array_agg\(DISTINCT w\.ags", [(["09000001", "09000002"],)]),
-    (r"max\(w\.changelog_id\)", [(10, 12345, 7)]),
+    # the municipalities of the graph: the box of the buffered region, the extent of the ways per AGS, their class
+    (r"FROM mv_ags_region WHERE NOT ST_IsEmpty", [(0.0, 0.0, 1000.0, 1000.0)]),
+    (r"ST_Extent\(w\.geom\) AS b", [("09000001", 0.0, 0.0, 400.0, 400.0), ("09000002", 500.0, 500.0, 900.0, 900.0)]),
+    (r"THEN 0 WHEN ST_Contains", [("09000001", 1), ("09000002", 1)]),
+    (r"max\(w\.changelog_id\)", [(10, 12345, 7, 0.0, 0.0, 1000.0, 1000.0)]),
     (r"max\(b\.changelog_id\)", [(20, 9)]),
+    (r"SELECT ST_AsEWKB\(ST_Transform", [(b"box",)]),
+    (r'SELECT count\(\*\) FROM "mvg', [(100,)]),                     # rows staged from the source
 ]
+
+
+def _tables(*present: str):
+    """Answer of the existence probe of the source reader: only the given ``schema.table`` exist."""
+    return (r"to_regclass", lambda params: [(params[0].replace('"', "") in present,)])
 
 
 def test_prune_graphs_deletes_the_unreferenced_graphs_under_their_build_lock():
@@ -549,11 +640,30 @@ def test_ensure_graph_reuses_a_stored_graph_without_writing():
     graph_id = client.ensure_graph(b"\x01", MvParameters())
     assert re.fullmatch(r"g[0-9a-f]{16}", graph_id)
     texts = [t for t, _ in client.cur.statements]
-    assert not any(re.search(r"\b(INSERT|UPDATE|CREATE|DELETE)\b", t) for t in texts)
+    assert not any(re.search(r"\b(INSERT|UPDATE|DELETE)\b", t) for t in texts)        # temporary tables only
+    assert all("CREATE TEMP TABLE" in t for t in texts if re.search(r"\bCREATE\b", t))
     assert client.conn.commits == 0
-    ags_text, ags_params = next((t, p) for t, p in client.cur.statements if "array_agg(DISTINCT w.ags" in t)
-    assert '"basedata"."ways_per_junction"' in ags_text and "ST_Buffer(ST_GeomFromWKB(%(region)s, 25832)" in ags_text
-    assert ags_params == {"region": b"\x01", "src_srid": 25832, "buffer_m": 5000.0}
+    # the buffered region is computed in the pylovo database, the source is read by box and AGS only
+    region_text, region_params = next((t, p) for t, p in client.cur.statements if "mv_ags_region ON COMMIT" in t)
+    assert "ST_Buffer(ST_GeomFromWKB(%(region)s, 25832)" in region_text
+    assert region_params == {"region": b"\x01", "src_srid": 25832, "buffer_m": 5000.0}
+    ags_text, ags_params = next((t, p) for t, p in client.cur.statements if "ST_Extent(w.geom) AS b" in t)
+    assert '"basedata"."ways_per_junction"' in ags_text and "%(region)s" not in ags_text
+    assert ags_params == {"x0": 0.0, "y0": 0.0, "x1": 1000.0, "y1": 1000.0, "src_srid": 25832}
+    # both AGS lie inside the buffer by their extent: no way is read one by one
+    assert not any("mvg_ags_ways" in t and "CREATE" in t for t in texts)
+
+
+def test_graph_ags_reads_the_ways_of_the_municipalities_at_the_border_of_the_buffer():
+    answers = [a for a in BASE_ANSWERS if "THEN 0" not in a[0]] + [
+        (r"THEN 0 WHEN ST_Contains", [("09000001", 1), ("09000002", 2), ("09000003", 0)]),
+        (r"FROM mvg_ags_ways w, mv_ags_region r", [("09000002",)])]
+    client = _client(answers)
+    assert client.graph_ags(b"\x01", 5000.0) == ["09000001", "09000002"]
+    stage, params = next((t, p) for t, p in client.cur.statements if 'CREATE TEMP TABLE "mvg_ags_ways"' in t)
+    assert '"basedata"."ways_per_junction"' in stage and params["ags"] == ["09000002"]       # the border AGS only
+    assert "w.geom && ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, %(src_srid)s)" in stage
+    assert client.cur.statements[-1][0].startswith("DROP TABLE IF EXISTS pg_temp.mv_ags_region")
 
 
 def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
@@ -567,7 +677,7 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
     assert client.conn.commits == 1 and client.conn.rollbacks == 0
     texts = [t for t, _ in client.cur.statements]
     lock = next(i for i, t in enumerate(texts) if "pg_advisory_xact_lock" in t)
-    first_write = next(i for i, t in enumerate(texts) if re.search(r"\bINSERT\b|CREATE TEMP", t))
+    first_write = next(i for i, t in enumerate(texts) if re.search(r"\bINSERT\b|CREATE TEMP TABLE \"?mvg_", t))
     assert lock < first_write
     assert client.cur.statements[lock][1] == {"key": 907363, "g": graph_id}
     # source tables only through the configured schema, MV tables always schema-qualified
@@ -580,6 +690,12 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
     assert len(pgr) == 2
     assert pgr[0]["edges_sql"] == edges_sql(graph_id)
     assert pgr[1]["settlement_edges_sql"] == edges_sql(graph_id, settlement_only=True)
+    # fresh edge statistics between the settlement ids and the settlement polygons (stale ones give a quadratic plan)
+    ids = next(i for i, t in enumerate(texts) if "SET settlement_id" in t)
+    polygons = next(i for i, t in enumerate(texts) if "INSERT INTO pylovo.mv_graph_settlement" in t)
+    assert "ANALYZE pylovo.mv_graph_edge" in texts[ids + 1:polygons]
+    assert "sum(length_m ORDER BY edge_id)" in texts[polygons]
+    assert "ST_Collect(geom ORDER BY edge_id)" in texts[polygons]
     summary = next(p for t, p in client.cur.statements if "UPDATE pylovo.mv_graph g" in t)
     assert summary["seams"] == 3 and summary["seconds"] >= 0
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
@@ -599,8 +715,8 @@ def test_ensure_graph_builds_in_one_locked_transaction_with_qualified_tables():
 def test_settlement_flags_use_built_up_osm_landuse_when_present():
     answers = BASE_ANSWERS + [
         (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
-        (r"information_schema\.tables", [(True,)]),
-        (r'FROM "osm"\."landuse_polygon" l WHERE l\.osm_type', [(4107,)]),
+        _tables("osm.landuse_polygon"),
+        (r'SELECT count\(\*\) FROM "osm"\."landuse_polygon" l WHERE l\.osm_type', [(4107,)]),
         (r"WITH lone AS", [(3,)]),
         (r"ST_Extent", [(0.0, 0.0, 1000.0, 1000.0)]),
     ]
@@ -608,11 +724,16 @@ def test_settlement_flags_use_built_up_osm_landuse_when_present():
     graph_id = client.ensure_graph(b"\x01", STREETS)
     texts = [t for t, _ in client.cur.statements]
     insert = next(p for t, p in client.cur.statements if "INSERT INTO pylovo.mv_graph (" in t)
-    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107|osm_lines 0:0:"
+    assert insert["fingerprint"] == "ways 10:12345:7|buildings 20:9|landuse 4107|osm_lines none"
     assert '"settlement_landuse": ["commercial", "industrial", "residential", "retail"]' in insert["params"]
-    landuse, params = next((t, p) for t, p in client.cur.statements if "CREATE TEMP TABLE mvg_lu ON COMMIT DROP" in t)
-    assert '"osm"."landuse_polygon"' in landuse and params["types"] == ["commercial", "industrial", "residential",
-                                                                      "retail"]
+    # the count of the fingerprint and the staged rows use the extent of the ways (EWKB box in the layer's SRID)
+    count = next(p for t, p in client.cur.statements if 'SELECT count(*) FROM "osm"."landuse_polygon"' in t)
+    assert count == {"types": ["commercial", "industrial", "residential", "retail"], "box": b"box"}
+    staged, params = next((t, p) for t, p in client.cur.statements if 'CREATE TEMP TABLE "mvg_lu_raw"' in t)
+    assert '"osm"."landuse_polygon"' in staged and params["types"] == ["commercial", "industrial", "residential",
+                                                                     "retail"]
+    landuse = next(t for t in texts if "CREATE TEMP TABLE mvg_lu ON COMMIT DROP" in t)
+    assert "FROM pg_temp.mvg_lu_raw r" in landuse
     # the land-use table is filled before the settlement flags, which test the edge midpoints against it
     flags = next(i for i, t in enumerate(texts) if "SET in_settlement" in t)
     assert texts.index(landuse) < flags
@@ -630,7 +751,7 @@ def test_osm_mv_lines_join_the_graph_at_crossings_branches_and_loose_ends(monkey
              (14, "line", {"voltage": "110000;20000"}, mv)]                     # shared towers: MV corridor
     answers = BASE_ANSWERS + [
         (r"SELECT 1 FROM pylovo\.mv_graph WHERE", []),
-        (r"table_name IN \('infrastructure_line', 'tags'\)", [(True,)]),
+        _tables("osm.infrastructure_line", "osm.tags"),
         (r'FROM "osm"\.infrastructure_line l\s+WHERE l\.osm_type', [(1000, 2500, 99)]),
         (r'FROM "osm"\.infrastructure_line l\s+LEFT JOIN', lines),
         (r"WITH lone AS", [(0,)]),
@@ -719,7 +840,9 @@ def test_attach_points_returns_one_typed_row_per_key(monkeypatch):
     assert frame.in_settlement.dtype == bool and frame.offset_m.dtype == np.float64
     assert calls[0][1] == [(2, 5.0, 35.0), (1, 10.0, 0.0)] and "25832" in calls[0][2]["template"]
     texts = [t for t, _ in client.cur.statements]
-    assert any("ON COMMIT DROP" in t for t in texts) and any("ORDER BY e.geom <-> p.geom LIMIT 1" in t for t in texts)
+    # equally near edges go to the lowest edge id
+    assert any("ON COMMIT DROP" in t for t in texts) and any("ORDER BY e.geom <-> p.geom, e.edge_id LIMIT 1" in t
+                                                             for t in texts)
 
 
 def test_subgraph_edges_and_region_arrays_build_typed_arrays():

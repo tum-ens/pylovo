@@ -21,7 +21,9 @@ source checkout: the repository root) is used -- in an interactive session or a 
 in the current working directory instead. If that search finds none, as for a wheel installed in a virtual
 environment outside the project (:ref:`install-wheel`), the ``.env`` of the current working directory or its
 parents is used. A ``.env`` above the installed package therefore wins over the one in the working directory.
-The values of the ``.env`` **override** environment variables with the same name.
+The values of the ``.env`` **override** environment variables with the same name. ``PYLOVO_ENV_FILE``, set in
+the shell, replaces the search: it names the file to read, and an empty value (``PYLOVO_ENV_FILE=``) reads
+no ``.env`` at all, so that only the variables of the shell count.
 
 .. list-table::
    :header-rows: 1
@@ -57,8 +59,8 @@ The values of the ``.env`` **override** environment variables with the same name
      - ``True``/``1``/``yes``: read the InfDB schemas from the database given by ``INFDB_DBNAME``,
        ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT`` and ``INFDB_PASSWORD``, e.g. a central InfDB
        on another server, while the schema ``pylovo`` and the results stay in ``DBNAME``.
-       PgBouncer in front of InfDB is supported. LV grids only: the MV stage needs the InfDB
-       schemas in ``DBNAME`` (:ref:`mv-prerequisites`).
+       PgBouncer in front of InfDB is supported. The LV grids and the MV stage
+       (:ref:`mv-prerequisites`) read it the same way.
    * - ``INFDB_DBNAME``, ``INFDB_USER``, ``INFDB_HOST``, ``INFDB_PORT``, ``INFDB_PASSWORD``
      - pylovo connection
      - Connection of the external InfDB (``USE_EXTERNAL_BASEDATA`` only). Unset values take the
@@ -79,6 +81,9 @@ The values of the ``.env`` **override** environment variables with the same name
      - ``25832``
      - Projected CRS (metres) of all geometries stored by pylovo. Choose it before the first
        ``pylovo-setup``; the table definitions use it. Part of the version snapshot.
+   * - ``PYLOVO_ENV_FILE``
+     - --
+     - Optional, only from the shell: the ``.env`` to read instead of the search above; empty: none.
    * - ``PYLOVO_ROOT``
      - --
      - Optional project root for installations outside a checkout: ``$PYLOVO_ROOT/config`` is
@@ -194,12 +199,14 @@ Execution
    * - ``PARALLEL``
      - ``True``
      - Generate several postcodes in parallel worker processes (``N_JOBS_PERCENT``); the default of
-       ``pylovo-generate``, overridden by ``--parallel`` or ``--no-parallel``. Does not change results.
+       ``pylovo-generate`` and of ``pylovo-classify`` (grids and key figures of the sample), overridden by
+       ``--parallel`` or ``--no-parallel``. Does not change results.
      -
    * - ``N_JOBS_PERCENT``
      - ``50``
-     - Share of CPU cores used as worker processes for multi-postcode runs
-       (at least one worker; about 0.4 GB of memory per worker).
+     - Share of CPU cores used as worker processes for multi-postcode runs, also by ``pylovo-classify``
+       (at least one worker). Memory per worker: about 0.4 GB for the grid generation and about 0.3 GB for the key
+       figures of ``pylovo-classify`` (peak resident memory, about half of it shared with the main process).
      -
    * - ``ANALYZE_GRIDS``
      - ``True``
@@ -234,7 +241,7 @@ Loads and general grid settings
    * - ``ELECTRICAL_BACKEND``
      - ``pandapower``
      - Electrical model used to build and solve the grids: ``pandapower`` or ``opendss``
-       (work in progress, :doc:`../concepts/electrical_backends`).
+       (``opendss`` extra, :doc:`../concepts/electrical_backends`).
      - ✓
    * - ``RESIDENTIAL_ONLY_GENERATION``
      - ``False``

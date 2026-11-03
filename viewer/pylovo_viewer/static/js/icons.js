@@ -25,10 +25,11 @@ function luminance(text) {
 }
 
 /** Colours of a station symbol on `fill`: the windings (dark or white, whichever reads better) and the edge. */
-export function stationColours(fill, surface) {
+export function stationColours(fill, surface, kind = 'mvlv') {
   const l = luminance(fill);
   const ink = (1.05 / (l + 0.05) >= (l + 0.05) / (luminance(DARK) + 0.05)) ? LIGHT : DARK;
-  return { ink, edge: ink === DARK ? DARK : surface };   // a light badge gets a dark edge
+  // a light badge gets a dark edge, an HV/MV substation always an edge in its winding colour
+  return { ink, edge: kind === 'hvmv' || ink === DARK ? ink : surface };
 }
 
 function draw(size, paint) {
@@ -45,7 +46,7 @@ function draw(size, paint) {
 function drawStation(kind, surface, fill) {
   const hv = kind === 'hvmv';
   const size = hv ? 34 : 26;
-  const { ink, edge } = stationColours(fill, surface);
+  const { ink, edge } = stationColours(fill, surface, kind);
   return draw(size, (ctx) => {
     const pad = hv ? 2.5 : 2;
     ctx.beginPath();

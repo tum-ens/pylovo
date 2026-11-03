@@ -28,6 +28,8 @@ const prettyCable = (t) => String(t || '').replace(/_(\d+)_(\d+)$/, ' $1×$2').r
 // Station symbols: always drawn, never hidden by other symbols.
 const symbol = (image, size) => ({ 'icon-image': image, 'icon-size': size, 'icon-allow-overlap': true, 'icon-ignore-placement': true });
 
+// The title of an HV/MV substation, its site and busbar: the level first, as their OSM names rarely say it.
+const hvmv = (name) => (name ? `HV/MV: ${name}` : 'HV/MV substation');
 // The ends of a feeder section.
 const sectionEnd = (e) => ({ station: 'station', cabinet: `cabinet ${e?.id}` }[e?.kind] || 'end of the feeder');
 
@@ -55,6 +57,8 @@ const voltageScheme = (prop, numeric) => {
     : levels.map(([k, c, l]) => [k, c, l]);
   return { type: 'match', prop, entries, fallback: [pal().ink.neutral, 'Other'] };
 };
+// The colour of the 110 kV level (the HV links share it).
+const hv110 = () => voltageLevels().find(([k]) => k === '110')[1];
 const voltageWidth = (prop, numeric) => ['match', ['get', prop],
   ...voltageLevels().filter(([k]) => !numeric || ['380', '220', '110'].includes(k))
     .flatMap(([k, , , w]) => [numeric ? Number(k) : k, w]), 1];
@@ -95,20 +99,56 @@ export const STYLES = {
       ['Length', f.km(o.length_km)], ['Capacity', `${f.num(o.s_nom)} MVA`], ['Cables', f.num(o.cables)]] }),
   },
   hv_substations: {
+    // badges in the surface colour (the reverse of the dark MV/LV ones) and larger at every zoom;
+    // candidates the run did not use are faded
     layers: ({ id, p }) => [
-      { id, type: 'symbol', layout: symbol(stationIcon('hvmv', ['case', ['get', 'used'], p.ink.primary, p.surface], p.surface),
-        ['interpolate', ['linear'], ['zoom'], 5, 0.45, 9, 0.7, 12, 0.9, 15, 1.1]) },
+      { id, type: 'symbol', layout: symbol(stationIcon('hvmv', p.surface, p.surface),
+        ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 0.75, 12, 0.95, 15, 1.2, 19, 1.6]),
+        paint: { 'icon-opacity': ['case', ['get', 'used'], 1, 0.45] } },
       { id: `${id}:label`, type: 'symbol', pick: false, minzoom: 10,
-        layout: { ...label(['coalesce', ['get', 'name'], ''], 11.5), 'text-offset': [0, 1.9], 'text-anchor': 'top' },
+        layout: { ...label(['coalesce', ['get', 'name'], ''], 11.5), 'text-anchor': 'top',
+          'text-offset': ['interpolate', ['linear'], ['zoom'], 10, ['literal', [0, 1.7]], 19, ['literal', [0, 2.5]]] },
         paint: { 'text-color': p.ink.primary, 'text-halo-color': p.surface, 'text-halo-width': 1.8 } },
     ],
-    legend: () => [{ kind: 'station', colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
-      { kind: 'station', colour: pal().surface, label: 'Candidate, not used' }],
-    facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
+    // `colour` is the dot of the panel and the inspector, `fill` the badge
+    legend: () => [{ kind: 'station', hv: true, fill: pal().surface, colour: pal().ink.primary, label: 'HV/MV substation (supplies an area)' },
+      { kind: 'station', hv: true, faded: true, fill: pal().surface, colour: pal().ink.primary, label: 'Candidate, not used (faded)' }],
+    facts: (o) => ({ title: hvmv(o.name), subtitle: `${o.source}${o.used ? '' : ' · not used'}`, rows: [
       ['Transformers', o.transformers ? `${o.transformers} × ${f.num(o.mva / Math.max(o.transformers, 1), 0)} MVA` : '–'],
       ['Loading (n-0 / n-1)', `${f.pct(o.loading)} / ${f.pct(o.loading_n1)}`], ['Voltage tag', o.voltage || '–'],
       ['eTraGo 110 kV bus', o.etrago_bus ?? 'none (no eGon match)'],
-      ['Operator', o.operator || '–'], ...(o.flags ? [['Flags', o.flags]] : [])] }),
+      ['Operator', o.operator || '–'], ...(o.flags ? [['Flags', o.flags]] : []),
+      // after a click: the MV lines of its supply area (highlighted), see main.js
+      ...(o.supplied_lines ? [['Supplies (area ' + o.supplied_area + ')', `${f.num(o.supplied_lines)} MV lines · ${f.km(o.supplied_km)}`],
+        ['Rings / MV/LV substations', `${f.num(o.supplied_rings)} / ${f.num(o.supplied_stations)}`],
+        ['Normally open (not highlighted)', `${f.count(o.open_ties, 'tie')} · ${f.count(o.open_links, 'link')}`]] : [])] }),
+  },
+  hv_links: {
+    // a straight link from each HV/MV substation to the eTraGo grid: solid to its 110 kV bus, dashed where
+    // eTraGo has no bus for it (artificial, to the nearest 110 kV line; wider beyond 1 km, with its length)
+    layers: ({ id, p }) => {
+      const long = ['>', ['get', 'length_m'], 1000];
+      const width = (k) => ['interpolate', ['linear'], ['zoom'], 7, ['*', 0.6, k], 11, ['*', 1.4, k], 15, ['*', 2.4, k]];
+      const artificial = ['!=', ['get', 'link'], 'bus'];
+      return [
+        { id, type: 'line', filter: ['==', ['get', 'link'], 'bus'], layout: { 'line-cap': 'round' },
+          paint: { 'line-color': hv110(), 'line-width': width(1) } },
+        { id: `${id}:artificial`, type: 'line', filter: artificial,
+          paint: { 'line-color': hv110(), 'line-width': width(['case', long, 1.8, 1]), 'line-dasharray': [1.6, 1.4] } },
+        { id: `${id}:label`, type: 'symbol', pick: false, minzoom: 11, filter: ['all', artificial, ['>=', ['get', 'length_m'], 100]],
+          layout: { ...label(['case', long,
+            ['concat', ['number-format', ['/', ['get', 'length_m'], 1000], { 'max-fraction-digits': 1 }], ' km'],
+            ['concat', ['to-string', ['get', 'length_m']], ' m']], 10.5), 'symbol-placement': 'line-center' },
+          paint: { 'text-color': hv110(), 'text-halo-color': p.surface, 'text-halo-width': 1.6 } },
+      ];
+    },
+    legend: () => [{ kind: 'line', colour: hv110(), label: 'Link to its eTraGo 110 kV bus' },
+      { kind: 'line', dash: true, colour: hv110(), label: 'No eTraGo bus: artificial link to the nearest 110 kV line (wider beyond 1 km)' }],
+    facts: (o) => ({ title: hvmv(o.name),
+      subtitle: o.link === 'bus' ? `link to eTraGo bus ${o.target}` : `artificial link to eTraGo line ${o.target}`, rows: [
+        ['Length', f.meters(o.length_m)],
+        ['eTraGo', o.link === 'bus' ? 'its 110 kV bus' : 'no bus for this substation: nearest 110 kV line'],
+        ...(String(o.flags || '').includes('no_osm_hv_line') ? [['OSM', 'no 60 or 110 kV line ends at the substation']] : [])] }),
   },
   hv_sites: {
     layers: ({ id, p }) => [
@@ -116,7 +156,7 @@ export const STYLES = {
       { id: `${id}:line`, type: 'line', pick: false, paint: { 'line-color': p.ink.primary, 'line-width': 1.4 } },
     ],
     legend: () => [{ kind: 'fill', colour: pal().ink.primary, label: 'Substation site' }],
-    facts: (o) => ({ title: o.name || 'Substation site', subtitle: o.source, rows: [] }),
+    facts: (o) => ({ title: hvmv(o.name), subtitle: `site · ${o.source}`, rows: [] }),
   },
   hv_busbars: {
     // the circle the MV lines of a substation end on (their display geometry), under the substation symbol
@@ -126,7 +166,7 @@ export const STYLES = {
         'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 19, 3] } },
     ],
     legend: () => [{ kind: 'circle', hollow: true, colour: pal().ink.primary, label: 'Busbar: the MV lines end on it' }],
-    facts: (o) => ({ title: o.name || 'HV/MV substation', subtitle: 'busbar', rows: [] }),
+    facts: (o) => ({ title: hvmv(o.name), subtitle: 'busbar', rows: [] }),
   },
   mv_lines: {
     modes: { ring: { label: 'Ring', scheme: () => slot('ring_slot') },
@@ -220,7 +260,10 @@ export const STYLES = {
       ['Rated power', f.kva(o.kva)],
       ['Origin', { new: 'new (greenfield)', osm: 'existing (OSM)', lod2: 'existing (LoD2)' }[o.origin] || '–'],
       ...(o.area !== null && o.area !== undefined ? [['MV supply area / ring', `${o.area} / ${o.ring ?? '–'}`],
-        ['MV voltage (load case)', f.pu(o.vm)], ['LV busbar voltage', f.pu(o.lv_vm)]] : [])] }),
+        ['MV voltage (load case)', f.pu(o.vm)], ['LV busbar voltage', f.pu(o.lv_vm)]] : []),
+      // after a click: the cables of its LV grid (highlighted), see main.js
+      ...(o.supplied_cables ? [['Supplies', `${f.count(o.supplied_cables, 'cable')} · ${f.km(o.supplied_feeder_km)} feeders + ${f.km(o.supplied_service_km)} service`],
+        ['Feeders / buildings', `${o.supplied_feeders ?? '–'} / ${f.num(o.supplied_buildings)}`]] : [])] }),
   },
   mv_areas: {
     modes: { area: { label: 'Supply area', scheme: () => slot() },
@@ -235,7 +278,7 @@ export const STYLES = {
         paint: { 'line-color': selected(p.accent, p.ink.secondary), 'line-width': selected(3.5, 1.2), 'line-opacity': 0.85, 'line-dasharray': [3, 2] } },
     ],
     extraLegend: () => [{ kind: 'line', dash: true, colour: pal().ink.secondary, label: 'Incomplete (cut by the region border)' }],
-    facts: (o) => ({ title: `Supply area ${o.fid}`, subtitle: o.substation || 'HV/MV substation', rows: [
+    facts: (o) => ({ title: `Supply area ${o.fid}`, subtitle: hvmv(o.substation), rows: [
       ['Voltage', f.kv(o.vn_kv)], ['MV/LV stations', f.num(o.stations)], ['MV customers', f.num(o.customers)],
       ['Rings', f.num(o.rings)], ['Peak load', f.mw(o.peak_mw)], ['Max loading', f.pct(o.max_loading)],
       ['Max voltage drop', f.pct(o.max_drop, 2)], ['Complete', o.complete ? 'yes' : 'no (border)']] }),

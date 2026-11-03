@@ -1,7 +1,7 @@
 
 # Changelog
 
-All notable changes to this project will be documented in this file. 
+All notable changes to this project will be documented in this file.
 See below for the format and guidelines for updating the changelog.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
@@ -10,6 +10,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 - Add new changes here before merging into the next official version.
+
+## [1.1.0] - 2026-10-30
+### Changed
+- Support Python 3.14 and upgrade the locked dependencies, e.g. pandapower 3.5 (minimum 3.5.2), NumPy 2.4, SciPy 1.18 and SQLAlchemy 2.1
+- Speed up the MV stage in large regions, e.g. the routing graph, the district areas, the ties and links
+- Keep the finished MV supply areas when the ties or links fail, and identify an MV routing graph only by the OSM data within its extent
+- Rework the classification, e.g. transformed key figures, no grids with a voltage violation or a failed power flow, key figures computed in worker processes and default parameters from a classification of 501 Bavarian PLZ
+- Draw the networkx trees with a leaf-based layout, the cables colored by type and the cable distance as axis or radius
+
+### Fixed
+- Fix the OpenDSS backend, e.g. bus names with blanks, parallel cables, the base frequency, constant-power loads and the LV reference voltage, so that its LV power flow matches pandapower's, and drop its experimental status
+- Show all MV lines, MV/LV substations and LV grid areas of large versions in `pylovo-viewer`
+- Attach an MV node at a vertex of several equally near street edges always to the same edge, so two MV runs on the same data give the same grids
+
+### Added
+- Add a learning path of six tutorial notebooks with stored outputs, which run without a database on example data of three Bavarian postcode areas (`pylovo.examples.TutorialData`; see [Tutorial notebooks](https://pylovo.readthedocs.io/en/latest/getting_started/tutorials.html))
+- Add `pylovo-generate --all [STATE ...]` to generate every postcode with buildings in the InfDB, or those of federal states, e.g. `--all by`
+- Import the eGon-data HV/MV substations in `pylovo-setup` and with `pylovo-import egon-substations`, so the MV stage finds the eTraGo bus of each substation
+- Run the MV stage with `USE_EXTERNAL_BASEDATA` through a separate read-only connection to the InfDB
+- Link each HV/MV substation to the eTraGo grid in `pylovo-viewer` and flag those that no 60 kV or 110 kV line of OSM ends at (`no_osm_hv_line`)
+- Select the lines a transformer supplies with a click in `pylovo-viewer`
+- Add the `opendss` extra for the OpenDSS backend
+- Add `DATA_LICENSES.md` with the sources and licenses of the data files in the repository, which the MIT License does not cover
+- Add pre-commit hooks, e.g. ruff, gitleaks and a license check of the data files, and a result snapshot of the synthetic test database (see [Development](https://pylovo.readthedocs.io/en/latest/development/index.html))
+
+### Removed
+- Remove the deprecated plotting functions, e.g. `plot_contextily`, the spacing trees and the pie, histogram and box plots of `pylovo.plotting.validation`
+- Remove the statistics report and CSV files that the OpenDSS backend wrote into the working directory
 
 ## [1.0.0] - 2026-10-22
 ### Changed
@@ -74,7 +102,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Rework transformer placement and cluster validation by adding a maximum greenfield transformer distance for transformer locations
 - Introduce separated feeder and consumer connection cable sets
 - Update the grid default generation configuration, e.g. a higher household peak load, revised settlement thresholds, and an updated brownfield assignment distance
-- Reduce heavy and add optional dependencies 
+- Reduce heavy and add optional dependencies
 - Update database table structures to include analysis parameters and powerflow status in grid results
 - Adjust ways query to latest InfDB version v4.0.0
 - Added metrics calculation functions for grid comparison
@@ -186,7 +214,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Explanation of bugs or issues that have been resolved.
-  
+
 ### Deprecated
 - Note any features that are marked for future removal.
 
@@ -223,4 +251,3 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 3. **Link Issues or MRs**: Where possible, reference related issues or merge requests for easy tracking.
 4. **Date Each Release**: Add the release date in `YYYY-MM-DD` format for each version.
 5. **Organize Unreleased Changes**: Document ongoing changes under the `[Unreleased]` section, which can be merged into the next release version.
-

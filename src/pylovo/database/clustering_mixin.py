@@ -261,7 +261,7 @@ class ClusteringMixin(BaseMixin):
             centroid coordinates in ``TARGET_EPSG``.
         """
         query = """
-                SELECT vertice_id, ST_AsText(centroid) as wkt 
+                SELECT vertice_id, ST_AsText(centroid) as wkt
                 FROM buildings_tem
                 WHERE vertice_id IN %(v)s
                   AND peak_load_in_kw != 0
@@ -848,16 +848,16 @@ class ClusteringMixin(BaseMixin):
         """
         self.cur.execute(cluster_geom_query, {"kcid": kcid, "bcid": bcid})
         result = self.cur.fetchone()
-        
+
         if not result or not result[0]:
             return None
-            
+
         cluster_geom_wkt = result[0]
         # transformer rows of buildings_tem carry the candidate's osm_id as objectid
         own_station_first = """(t.osm_id NOT IN (SELECT objectid FROM buildings_tem
                                                   WHERE kcid = %(kcid)s AND bcid = %(bcid)s
                                                     AND type = 'Transformer' AND objectid IS NOT NULL))"""
-        
+
         # Check if there's a transformer with a specific capacity in this area
         # Use a more robust approach to handle GEOS topology issues
         transformer_query = f"""
@@ -869,7 +869,7 @@ class ClusteringMixin(BaseMixin):
             ORDER BY {own_station_first}, t.osm_id
             LIMIT 1
         """
-        
+
         fallback_query = f"""
             SELECT transformer_rated_power
             FROM pylovo.transformers t

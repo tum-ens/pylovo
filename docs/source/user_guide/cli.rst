@@ -64,22 +64,26 @@ pylovo-generate
 
 .. code-block:: text
 
-   pylovo-generate [-h] [--plz PLZ [PLZ ...]] [--ags AGS [AGS ...]] [--parallel | --no-parallel]
-                   [--mv | --no-mv]
+   pylovo-generate [-h] (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all [STATE ...])
+                   [--parallel | --no-parallel] [--mv | --no-mv]
 
 Generates the grids of the given regions under the ``VERSION_ID`` of the configuration
-(:doc:`generating_grids`). Exactly one of ``--plz`` and ``--ags`` is required; they cannot be
-combined. Several postcodes run in parallel when ``PARALLEL`` in the configuration is ``True``
-(the default); the flags override it.
+(:doc:`generating_grids`). Exactly one of ``--plz``, ``--ags`` and ``--all`` is required; they
+cannot be combined. Several postcodes run in parallel when ``PARALLEL`` in the configuration is
+``True`` (the default); the flags override it.
 
 ``--plz PLZ [PLZ ...]``
    One or more postcodes (5 digits, integers).
 ``--ags AGS [AGS ...]``
    One or more municipality keys (8 digits, integers); all postcodes of the municipalities are
    generated (:doc:`region_selection`).
+``--all [STATE ...]``
+   Every postcode with buildings in the InfDB, or with buildings in the given federal states
+   (``by``, ``nrw``, ...; :doc:`region_selection`), the one with the most buildings first. Only with
+   ``USE_INFDB=True``; postcodes that already have grids are skipped, so a rerun resumes.
 ``--parallel`` / ``--no-parallel``
-   Process several postcodes (also those of ``--ags``) in worker processes, or one after the
-   other in the main process, whatever ``PARALLEL`` says.
+   Process several postcodes (also those of ``--ags`` and ``--all``) in worker processes, or one
+   after the other in the main process, whatever ``PARALLEL`` says.
 ``--mv`` / ``--no-mv``
    Run the MV stage after the LV grids of all postcodes, for the configured MV variant, or skip it,
    whatever ``MV_GRID_GENERATION`` says (:doc:`mv_grids`). The MV parameters are checked before the
@@ -91,6 +95,7 @@ combined. Several postcodes run in parallel when ``PARALLEL`` in the configurati
    pylovo-generate --plz 80803
    pylovo-generate --plz 80803 80802 80801 --no-parallel
    pylovo-generate --ags 09162000
+   pylovo-generate --all by --no-mv
    pylovo-generate --plz 80803 80802 --mv
 
 pylovo-mv
@@ -106,7 +111,8 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
 ``pylovo-mv generate --version VERSION (--plz PLZ [PLZ ...] | --ags AGS [AGS ...] | --all) [OPTIONS]``
    Run the MV stage for one MV variant of the version. The options are ``--variant``,
    ``--comment``, ``--set KEY=VALUE ...`` (``MV_*`` keys of this variant, :ref:`mv-variants`),
-   ``--parallel`` or ``--no-parallel``, ``--jobs`` and ``--replace``.
+   ``--parallel`` or ``--no-parallel``, ``--jobs``, ``--replace`` and ``--osm-coverage`` or
+   ``--no-osm-coverage`` (the OSM coverage report of the summary, default ``MV_OSM_COVERAGE``).
 ``pylovo-mv couple --version VERSION --variant VARIANT [--grid GRIDS ...] [--jobs JOBS] [--no-merged]``
    Check the done MV grids with the stored LV grids and solve the merged MV and LV operating point.
 ``pylovo-mv list [--version VERSION]``
@@ -179,6 +185,7 @@ pylovo-classify
    pylovo-classify [-h] [--additional-filtering | --no-additional-filtering]
                    [--restrict-to-generated | --no-restrict-to-generated]
                    [--auto | --manual] [--parameters NAME[,NAME...]] [--clusters KMEANS,GMM]
+                   [--parallel | --no-parallel]
 
 Runs the classification of :doc:`classification`: it draws the sample set of ``CLASSIFICATION_VERSION``, generates and
 analyses the sample grids, chooses the clustering parameters and the numbers of clusters, clusters the grids that the
@@ -200,6 +207,9 @@ the filter choice with the classification (``classification_version``) and also 
    With ``--manual``: the columns of ``clustering_parameters`` to cluster on, comma-separated.
 ``--clusters KMEANS,GMM``
    With ``--manual``: the number of clusters of k-means and of the GMM, both from ``NO_OF_CLUSTERS_ALLOWED``.
+``--parallel``, ``--no-parallel``
+   Generate the sample grids and compute their key figures in worker processes (``N_JOBS_PERCENT``), several PLZ at a
+   time, or one after the other. Default: ``PARALLEL`` of the configuration. The results are the same.
 
 The names and numbers are checked before anything runs: a wrong name or number and an inconsistent combination of
 options are usage errors (exit code 2). An existing ``CLASSIFICATION_VERSION`` stops the command with exit code 1. A closed standard input with an open question stops the command with a message.
@@ -209,7 +219,7 @@ pylovo-import
 
 .. code-block:: text
 
-   pylovo-import [-h] {transformers-osm,transformers-dso-csv,transformers-ui} ...
+   pylovo-import [-h] {transformers-osm,transformers-dso-csv,transformers-ui,egon-substations} ...
 
 Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
 
@@ -227,6 +237,15 @@ Imports data into the database (:doc:`transformer_data`). Without a subcommand t
       Source label for the ids ``dso/<source>/<external_id>``; overrides a ``source`` column.
    ``--replace-source``
       Delete the existing rows ``dso/<source>/...`` before the import.
+
+``pylovo-import egon-substations [--refresh]``
+   Replace ``pylovo.egon_hvmv_substation`` by the eGon-data HV/MV substations, which the MV stage needs
+   for the eTraGo 110 kV bus of each substation (:ref:`mv-egon-data`). ``pylovo-setup`` loads them once;
+   use this command to load them again.
+
+   ``--refresh``
+      Download them again from the Open Energy Platform instead of using the cached file of the data
+      directory.
 
 ``pylovo-import transformers-ui [--host HOST] [--port PORT] [--debug] [--cleanup] [--auto-cleanup]``
    Start a browser map for checking and editing the transformer positions of ``pylovo.transformers``

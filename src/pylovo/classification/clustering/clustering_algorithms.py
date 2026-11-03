@@ -12,6 +12,23 @@ from sklearn import preprocessing
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 
+from pylovo.classification.clustering.transform import transform_key_figures
+from pylovo.config_loader import TRANSFORM
+
+
+def scaled_key_figures(df_parameters_of_grids: pd.DataFrame, list_of_clustering_parameters: list,
+                       transform: str | None = None) -> np.ndarray:
+    """Return the clustering parameters transformed (:func:`transform_key_figures`) and standardised.
+
+    Args:
+        df_parameters_of_grids: Grid parameters.
+        list_of_clustering_parameters: Columns used for clustering.
+        transform: Transform of the key figures; ``None`` uses ``TRANSFORM`` of ``config_clustering.yaml``.
+    """
+    transformed = transform_key_figures(df_parameters_of_grids[list(list_of_clustering_parameters)],
+                                        TRANSFORM if transform is None else transform)
+    return preprocessing.scale(transformed)
+
 
 def representatives_in_clusters(X: np.ndarray, labels: np.ndarray, centers: np.ndarray) -> np.ndarray:
     """Return the row position of the representative grid of every cluster.
@@ -68,25 +85,26 @@ def reindex_cluster_indices(
 
 
 def gmm_tied_clustering(
-    df_parameters_of_grids: pd.DataFrame, list_of_clustering_parameters: list, n_clusters: int
+    df_parameters_of_grids: pd.DataFrame, list_of_clustering_parameters: list, n_clusters: int,
+    transform: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Cluster the grids with a Gaussian mixture model with tied covariance.
 
-    The parameters are standardized first. The representative grid of a cluster
-    is the member closest to the component mean.
+    The parameters are transformed and standardized first (:func:`scaled_key_figures`). The representative grid of a
+    cluster is the member closest to the component mean.
 
     Args:
         df_parameters_of_grids: Grid parameters; a ``clusters`` column is added in place.
         list_of_clustering_parameters: Columns used for clustering.
         n_clusters: Number of mixture components.
+        transform: Transform of the key figures; ``None`` uses ``TRANSFORM`` of ``config_clustering.yaml``.
 
     Returns:
         Tuple ``(df_parameters_of_grids, representative_networks)``, see
         :func:`reindex_cluster_indices`.
     """
-    # scaling and clustering
-    X = df_parameters_of_grids[list_of_clustering_parameters]
-    X = preprocessing.scale(X)
+    # transform, scaling and clustering
+    X = scaled_key_figures(df_parameters_of_grids, list_of_clustering_parameters, transform)
     gm = GaussianMixture(n_components=n_clusters, covariance_type='tied', random_state=1).fit(X)
     print('converged:', gm.converged_)
     print('no of iterations', gm.n_iter_)
@@ -105,25 +123,26 @@ def gmm_tied_clustering(
 
 
 def kmeans_clustering(
-    df_parameters_of_grids: pd.DataFrame, list_of_clustering_parameters: list, n_clusters: int
+    df_parameters_of_grids: pd.DataFrame, list_of_clustering_parameters: list, n_clusters: int,
+    transform: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Cluster the grids with k-means.
 
-    The parameters are standardized first. The representative grid of a cluster
-    is the member closest to the centroid.
+    The parameters are transformed and standardized first (:func:`scaled_key_figures`). The representative grid of a
+    cluster is the member closest to the centroid.
 
     Args:
         df_parameters_of_grids: Grid parameters; a ``clusters`` column is added in place.
         list_of_clustering_parameters: Columns used for clustering.
         n_clusters: Number of clusters.
+        transform: Transform of the key figures; ``None`` uses ``TRANSFORM`` of ``config_clustering.yaml``.
 
     Returns:
         Tuple ``(df_parameters_of_grids, representative_networks)``, see
         :func:`reindex_cluster_indices`.
     """
-    # scaling and clustering
-    X = df_parameters_of_grids[list_of_clustering_parameters]
-    X = preprocessing.scale(X)
+    # transform, scaling and clustering
+    X = scaled_key_figures(df_parameters_of_grids, list_of_clustering_parameters, transform)
     kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(X)
     # we store the cluster labels
     labels = kmeans.labels_

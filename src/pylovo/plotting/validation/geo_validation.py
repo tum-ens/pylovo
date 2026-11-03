@@ -15,13 +15,12 @@ Note:
 
 import json
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pandapower as pp
 import plotly
-import pandapower.plotting.plotly as pp_plotly
 from pandapower.plotting.plotly import vlevel_plotly
 from pandapower.plotting.plotly.mapbox_plot import set_mapbox_token
 
@@ -105,41 +104,3 @@ def plot_trafo_on_map(plz: int, save_plots: bool = False) -> Any:
         plotly.offline.plot(figure, filename=str(savepath_file), auto_open=False)
 
     return figure
-
-
-def plot_grid_on_map_plotly(
-    plz: int,
-    kcid: int,
-    bcid: int,
-    title: Optional[str] = None
-) -> Any:
-    """Visualize a single grid on a map using ``pandapower.plotting.plotly.simple_plotly``.
-
-    Args:
-        plz: Postal code.
-        kcid: K-means cluster ID.
-        bcid: Building cluster ID.
-        title: Title of the plot.
-
-    Returns:
-        plotly.graph_objects.Figure | None: The figure, or ``None`` if the grid
-        could not be loaded or plotted (the reason is printed).
-    """
-    try:
-        with DatabaseClient() as dbc_client:
-            net = dbc_client.read_net_db(plz, kcid, bcid)
-    except Exception as e:
-        print(f"Could not load grid {kcid}-{bcid}: {e}")
-        return None
-
-    # on_map=True enables the map background
-    try:
-        with pandapower_on_map():
-            fig = pp_plotly.simple_plotly(net, on_map=True, filename=None, auto_open=False)
-        if title:
-            fig.update_layout(title_text=title)
-        return fig
-
-    except Exception as e:
-        print(f"Plotting failed: {e}")
-        return None

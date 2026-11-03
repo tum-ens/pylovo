@@ -75,6 +75,7 @@ def test_a_missing_config_file_lists_the_searched_folders(installed):
 
 
 def test_the_env_lookup_tries_the_working_directory_only_if_the_package_walk_finds_none(monkeypatch):
+    monkeypatch.delenv("PYLOVO_ENV_FILE", raising=False)
     calls = []
 
     def walk(usecwd=False):
@@ -89,6 +90,15 @@ def test_the_env_lookup_tries_the_working_directory_only_if_the_package_walk_fin
     monkeypatch.setattr(config_loader, "find_dotenv", lambda usecwd=False: calls.append(usecwd) or "/venv/.env")
     assert config_loader.find_env_file() == "/venv/.env"            # the first walk keeps its precedence
     assert calls == [False]
+
+
+
+def test_pylovo_env_file_replaces_the_env_lookup(monkeypatch):
+    monkeypatch.setattr(config_loader, "find_dotenv", lambda usecwd=False: pytest.fail("the .env was searched"))
+    monkeypatch.setenv("PYLOVO_ENV_FILE", "/elsewhere/test.env")
+    assert config_loader.find_env_file() == "/elsewhere/test.env"
+    monkeypatch.setenv("PYLOVO_ENV_FILE", "")
+    assert config_loader.find_env_file() == ""                      # empty: no .env at all
 
 
 def test_reference_data_comes_from_the_data_dir_before_the_packaged_copy(installed):

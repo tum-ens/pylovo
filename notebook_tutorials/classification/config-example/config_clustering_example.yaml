@@ -3,7 +3,7 @@
 # LIST_OF_CLUSTERING_PARAMETERS:
 #   - no_branches
 #   - avg_trafo_dis
-#   - max_no_of_households_of_a_branch
+#   - max_household_equ_of_a_branch
 #   - no_house_connections_per_branch
 
 # set number of clusters
@@ -17,7 +17,7 @@
 # LIST_OF_CLUSTERING_PARAMETERS:
 #   - no_branches
 #   - avg_trafo_dis
-#   - max_no_of_households_of_a_branch
+#   - max_household_equ_of_a_branch
 
 # set number of clusters
 # N_CLUSTERS_KMEANS: 6

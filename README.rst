@@ -46,13 +46,14 @@ Key features
   <https://pylovo.readthedocs.io/en/latest/user_guide/viewer.html>`_), QGIS templates, CSV and
   pandapower JSON export, plotting helpers, and a headless HTTP API for browser clients and scripts.
 
-The shipped data cover Bavaria; other regions need the corresponding InfDB data and transformer
-download.
+pylovo runs for every German postcode area that the InfDB covers. For brownfield grids outside Bavaria, import
+the OpenStreetMap transformers of the region first (see the `transformer data guide
+<https://pylovo.readthedocs.io/en/latest/user_guide/transformer_data.html>`_).
 
 Quick start
 -----------
 
-Requirements: Linux or WSL2, Python 3.12 or 3.13, `uv <https://docs.astral.sh/uv/>`_, GDAL (``ogr2ogr``)
+Requirements: Linux or WSL2, Python 3.12 to 3.14, `uv <https://docs.astral.sh/uv/>`_, GDAL (``ogr2ogr``)
 and a PostgreSQL database (version 15 or newer) with PostGIS and pgRouting 3.8 or newer -- in the
 recommended setup the InfDB database with processed buildings and streets (see the
 `InfDB documentation <https://tum-ens.github.io/InfDB/usage/>`_).
@@ -63,11 +64,6 @@ recommended setup the InfDB database with processed buildings and streets (see t
    cd pylovo
    uv sync                                   # add --extra plots for the plotting helpers
    cp .env.example .env                      # enter the database connection
-
-Without a checkout the wheel works as well: ``pip install pylovo`` into a virtual environment, put the ``.env`` into
-your project directory and run the commands from there. The wheel ships the default configuration and the reference
-data that the setup needs (see the
-`installation page <https://pylovo.readthedocs.io/en/latest/getting_started/installation.html#install-wheel>`_).
 
 Set up the schema ``pylovo`` and generate grids (run the commands from the repository root):
 
@@ -121,6 +117,7 @@ License
 
 | The code of this repository is licensed under the **MIT License** (MIT).
 | See `LICENSE.txt <LICENSE.txt>`_ for rights and obligations.
+| The data files in the repository are not covered by the MIT License: see `DATA_LICENSES.md <DATA_LICENSES.md>`_.
 | Copyright: `pylovo <https://github.com/tum-ens/pylovo/>`_ © TUM ENS | `MIT <LICENSE.txt>`_
 
 Citation

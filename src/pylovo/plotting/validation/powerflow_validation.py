@@ -161,57 +161,6 @@ def plot_all_voltages_for_plz(
     return fig
 
 
-def plot_voltage_profile(
-    net: pp.pandapowerNet,
-    figsize: Tuple[int, int] = (12, 6),
-    show_limits: bool = True,
-    ax: Optional[plt.Axes] = None
-) -> Figure:
-    """
-    Plot voltage profile across all buses.
-
-    Args:
-        net: Pandapower network with completed power flow results.
-        figsize: Figure size in inches (width, height). Default: (12, 6).
-        show_limits: Whether to show voltage limit lines. Default: True.
-        ax: Axes object for subplot integration. If None, creates a new figure.
-
-    Returns:
-        matplotlib.figure.Figure: The Figure object containing the voltage profile plot.
-
-    Raises:
-        ValueError: If power flow has not been run on the network.
-    """
-    if net.res_bus.empty:
-        raise ValueError("No power flow results found. Run pp.runpp(net) first.")
-
-    if ax is None:
-        fig, ax = plt.subplots(1, 1, figsize=figsize)
-    else:
-        fig = ax.get_figure()
-
-    bus_indices = net.res_bus.index.tolist()
-    voltages = net.res_bus['vm_pu'].tolist()
-
-    # Plot voltage profile
-    ax.plot(bus_indices, voltages, 'bo-', linewidth=2, markersize=4, label='Bus Voltage')
-
-    if show_limits:
-        voltage_limits = {
-            0.9: {'label': 'Min limit (0.9 p.u.)', 'color': 'red', 'linestyle': '--', 'linewidth': 1.5},
-            1.1: {'label': 'Max limit (1.1 p.u.)', 'color': 'red', 'linestyle': '--', 'linewidth': 1.5},
-            1.0: {'label': 'Nominal (1.0 p.u.)', 'color': 'green', 'linestyle': ':', 'linewidth': 1}
-        }
-        add_limit_lines(ax, voltage_limits, orientation='horizontal')
-
-    setup_axes(ax, xlabel='Bus Index', ylabel='Voltage (p.u.)',
-               title='Bus Voltage Profile', grid=True)
-    ax.legend()
-    fig.tight_layout()
-
-    return fig
-
-
 def plot_line_loading_distribution(
     net: pp.pandapowerNet,
     figsize: Tuple[int, int] = (12, 6),
@@ -264,4 +213,3 @@ def plot_line_loading_distribution(
 
     fig.tight_layout()
     return fig
-

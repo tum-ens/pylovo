@@ -1,7 +1,8 @@
 // The viewer app: database, version and MV run, one switch per voltage level (with optional detail
 // per layer), regions for navigation and key figures, search, inspector, legend, 3D and the URL hash.
-// Map drawing lives in map.js. LV detail and LoD2 always follow the map view. Every request names
-// the database of this page (`db`), so tabs on different databases never mix.
+// Map drawing lives in map.js. LV detail and LoD2 always follow the map view, and so does a layer that
+// is too large to load whole (the API answers `by_view`, e.g. all MV lines of Bavaria). Every request
+// names the database of this page (`db`), so tabs on different databases never mix.
 import { createApp, markRaw } from 'vue';
 import { getJson } from './api.js';
 import * as f from './format.js';
@@ -14,8 +15,10 @@ import { stationColours } from './icons.js';
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const REGION_SOURCE = { plz: 'postcodes', area: 'mv_areas', grid: 'lv_areas' };
 const GRID_LAYERS = new Set(['lv_areas', 'mv_stations']);
+const SUPPLYING = new Set(['mv_stations', 'hv_substations']);   // a click highlights the lines they supply
 const KIND = { point: 'circle', line: 'line', polygon: 'fill' };
 const LOD2_ZOOM = 15;
+const VIEW_ZOOM = 10;   // a layer too large to load whole follows the map view from this zoom
 const STORE = 'pylovo-viewer';
 
 function readHash() {
@@ -74,8 +77,8 @@ createApp({
       const out = [];
       for (const id of [...Z_ORDER].reverse()) {
         const m = this.metaById[id];
-        const st = this.layers[id];
-        if (!m || !this.visible(id) || st.status !== 'ok' || !st.count || this.zoom < (m.min_zoom || 0)) continue;
+        // what is drawn, whatever the state of its latest request (a reload keeps the data until it is answered)
+        if (!m || !this.visible(id) || !this.map?.data(id)?.features.length || this.zoom < (m.min_zoom || 0)) continue;
         const style = STYLES[id];
         const entries = [...(style.legend ? style.legend() : [])];
         const scheme = schemeOf(id, this.modeOf(id));
@@ -100,7 +103,7 @@ createApp({
           entries.push({ kind, colour: scheme.colour, label: scheme.label });
         }
         if (style.extraLegend) entries.push(...style.extraLegend(this.modeOf(id)));
-        for (const e of entries) if (e.kind === 'station') Object.assign(e, stationColours(e.colour, pal().surface));
+        for (const e of entries) if (e.kind === 'station') Object.assign(e, stationColours(e.fill || e.colour, pal().surface, e.hv ? 'hvmv' : 'mvlv'));
         if (entries.length) out.push({ id, title: m.title, entries });
       }
       return out;
@@ -140,7 +143,7 @@ createApp({
     const modes = Object.fromEntries((h.m || '').split(',').filter(Boolean).map((x) => x.split(':')));
     for (const m of this.meta) {
       this.layers[m.id] = { on: wanted && !m.parent ? wanted.has(m.id) : m.default, mode: modes[m.id] || defaultMode(m.id),
-        status: 'idle', count: null, note: '', truncated: false };
+        status: 'idle', count: null, note: '', truncated: false, byView: null, inView: false };
     }
     this.version = this.versions.some((v) => v.version_id === h.v) ? h.v : this.versions[0]?.version_id || null;
     this.mv = this.runs.some((r) => r.id === h.mv) ? h.mv : this.defaultRun();
@@ -225,9 +228,12 @@ createApp({
       this.tick++;
       this.saveHash();
     },
+    viewBbox() {
+      return this.map.bbox(0.25).map((v) => Number(v.toFixed(4))).join(',');
+    },
     params(m) {
       const need = (cond, note) => (cond ? null : note);
-      const bbox = () => this.map.bbox(0.25).map((v) => Number(v.toFixed(4))).join(',');
+      const bbox = () => this.viewBbox();
       const zoomed = () => need(this.zoom >= m.min_zoom, `Zoom in to see them (from zoom ${m.min_zoom})`);
       switch (m.scope) {
         case 'version':
@@ -240,29 +246,39 @@ createApp({
           return {};
       }
     },
+    /** A layer that cannot be loaded now: empty, with the reason. */
+    wait(id, note) {
+      Object.assign(this.layers[id], { status: 'wait', note, count: null });
+      if (this.map.data(id)?.features.length) { this.map.setData(id, EMPTY); this.loaded[id] = null; this.tick++; }
+    },
     async load(id, force = false) {
       const m = this.metaById[id];
       const st = this.layers[id];
       if (!m || !this.visible(id)) return;
-      const params = this.params(m);
-      if (typeof params === 'string') {
-        st.status = 'wait'; st.note = params; st.count = null;
-        if (this.map.data(id)?.features.length) { this.map.setData(id, EMPTY); this.loaded[id] = null; this.tick++; }
-        return;
+      let params = this.params(m);
+      if (typeof params === 'string') { this.wait(id, params); return; }
+      const base = JSON.stringify({ db: this.db, ...params, bbox: undefined });
+      if (!params.bbox && st.byView === base) {   // too large to load whole: the map view only
+        const from = Math.max(VIEW_ZOOM, m.min_zoom || 0);
+        if (this.zoom < from) { this.wait(id, `Too many to show at once: zoom in (from zoom ${from})`); return; }
+        params = { ...params, bbox: this.viewBbox() };
       }
-      const { bbox, ...rest } = params;
-      const base = JSON.stringify({ db: this.db, ...rest });
+      const { bbox } = params;
       const last = this.loaded[id];
-      if (!force && last && last.base === base && (!bbox || inside(this.map.bbox(0), last.bbox))) return;
+      // a complete load of a larger box still holds the view; a cut one never does
+      if (!force && last && last.base === base && !last.truncated && (!bbox || inside(this.map.bbox(0), last.bbox))) return;
       const token = `${base}|${bbox || ''}`;
       this.pending[id] = token;
       st.status = 'loading';
       try {
         const fc = await this.api(`/api/layer/${id}`, params);
         if (this.pending[id] !== token) return;
+        if (fc.by_view) { st.byView = base; this.load(id, true); return; }
+        if (fc.zoom_in) { this.wait(id, 'Too many in this view: zoom in'); this.loaded[id] = null; return; }
         this.map.setData(id, fc);
-        this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null };
-        Object.assign(st, { status: 'ok', count: fc.features.length, truncated: fc.truncated, note: '' });
+        this.loaded[id] = { base, bbox: bbox ? bbox.split(',').map(Number) : null, truncated: fc.truncated };
+        Object.assign(st, { status: 'ok', count: fc.features.length, truncated: fc.truncated,
+          inView: !!bbox && m.scope !== 'view', note: '' });
         this.tick++;
         if (id === 'lv_buildings') this.refreshLod2(true);
       } catch (err) {
@@ -294,9 +310,16 @@ createApp({
       if (!this.groups[g.id]?.on) return g.description;
       const loading = g.layers.some((m) => this.layers[m.id]?.status === 'loading');
       const waiting = g.layers.filter((m) => this.visible(m.id) && this.layers[m.id]?.status === 'wait');
+      const cut = this.groupCut(g);
       if (loading) return 'loading …';
+      if (cut.length) return `${cut.map((m) => m.title).join(' and ')}: only the first ${f.num(this.layers[cut[0].id].count)} shown, zoom in`;
       if (waiting.length) return `${waiting.map((m) => m.title).join(' and ')}: ${this.layers[waiting[0].id].note.toLowerCase()}`;
       return g.description;
+    },
+    /** The shown layers of a group that hold more features than were sent. */
+    groupCut(g) {
+      if (!this.groups[g.id]?.on) return [];
+      return g.layers.filter((m) => this.visible(m.id) && this.layers[m.id]?.status === 'ok' && this.layers[m.id].truncated);
     },
 
     // ---------------------------------------------------------------------------- selection
@@ -342,7 +365,7 @@ createApp({
       this.map.select(null, null);
       this.closeInspector();
       for (const m of this.meta) {
-        this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
+        this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false, byView: null, inView: false };
         this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });
         this.map.setData(m.id, EMPTY);
       }
@@ -436,7 +459,11 @@ createApp({
       this.zoom = view.zoom;
       this.tooltip = null;
       clearTimeout(this.moveTimer);
-      this.moveTimer = setTimeout(() => { this.reload(['view']); this.refreshLod2(); this.saveHash(); }, 250);
+      this.moveTimer = setTimeout(() => {
+        for (const m of this.meta) if (m.scope === 'view' || this.layers[m.id]?.byView) this.load(m.id);
+        this.refreshLod2();
+        this.saveHash();
+      }, 250);
     },
     facts(hit) {
       const style = STYLES[hit.layer];
@@ -465,6 +492,18 @@ createApp({
       this.map.setHighlight(hit.group || this.map.feature(hit.layer, hit.fid), hit.group?.open_points);
       if (ins.attrsOpen) this.loadAttrs();
       if (hit.layer === 'lv_cables' && hit.props.role === 'feeder' && !hit.group) this.loadSection(ins, hit);
+      if (SUPPLYING.has(hit.layer) && !hit.group) this.loadSupplied(ins, hit);
+    },
+    /** A transformer stands for the lines it supplies: the cables of its LV grid, or the MV lines of its area. */
+    async loadSupplied(ins, hit) {
+      try {
+        const supplied = await this.api(`/api/supplied/${hit.layer}/${encodeURIComponent(hit.fid)}`, { version: this.version, mv: this.mv });
+        if (!supplied.geometry) return;
+        hit.group = supplied;
+        if (this.inspector === ins && ins.hits[ins.index] === hit) this.map.setHighlight(supplied);
+      } catch (err) {
+        this.notify(err.message);
+      }
     },
     /** A feeder cable stands for its section, from a split point (or the station) to the next. */
     async loadSection(ins, hit) {
@@ -587,7 +626,7 @@ createApp({
         Object.assign(this, { meta: catalog.layers, groupMeta: catalog.groups, lod2Available: catalog.lod2,
           mvVariants: catalog.mv_variants, versions: await this.api('/api/versions') });
         for (const m of this.meta) {
-          this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false };
+          this.layers[m.id] ||= { on: m.default, mode: defaultMode(m.id), status: 'idle', count: null, note: '', truncated: false, byView: null, inView: false };
           this.map.setLayer(m.id, { attribution: m.attribution, minZoom: m.min_zoom });
         }
         if (!this.versions.some((v) => v.version_id === this.version)) this.version = this.versions[0]?.version_id || null;

@@ -65,13 +65,52 @@ def summarize_grid_counts(
     return counts, warnings
 
 
+def filtered_by_class(grids: pd.DataFrame, filters: Sequence[str]) -> pd.DataFrame:
+    """What the filters leave out per RegioStaR 7 class, and the small grids that stay in.
+
+    The classes of the clustering must stand for all grids of the region, so the share that the filters remove is
+    reported, in grids and in the buildings and households they supply. Grids with one building and grids without
+    households are counted among the grids that pass the filters: they stay in the clustering.
+
+    Args:
+        grids: Status of the grids of the sampled PLZ (:meth:`DatabaseCommunication.get_grid_status_of_sample_set`).
+        filters: Labels of the filters that applied (boolean columns of ``grids``).
+
+    Returns:
+        pd.DataFrame: One row per class and a row ``all``: ``grids`` (with key figures), ``filtered``,
+        ``filtered_pct``, ``buildings_filtered``, ``households_filtered``, one column ``F1``, ``F2``, ... per filter
+        (grids, in the order of ``filters``), ``one_building`` and ``no_households``.
+    """
+    analysed = grids[grids["grid_result_id"].notna() & grids["analysed"].astype(bool)].copy()
+    matched = analysed[list(filters)].astype(bool) if filters else pd.DataFrame(index=analysed.index)
+    filtered = matched.any(axis=1) if filters else pd.Series(False, index=analysed.index)
+    kept = ~filtered
+    table = pd.DataFrame({
+        "regio7": analysed["regio7"].fillna(-1).astype(int),
+        "grids": 1,
+        "filtered": filtered.astype(int),
+        "buildings_filtered": analysed["buildings"].where(filtered, 0).fillna(0),
+        "households_filtered": analysed["households"].where(filtered, 0).fillna(0),
+        **{f"F{i}": matched[label].astype(int) for i, label in enumerate(filters, start=1)},
+        "one_building": (kept & (analysed["buildings"] == 1)).astype(int),
+        "no_households": (kept & (analysed["households"] == 0)).astype(int),
+    })
+    by_class = table.groupby("regio7").sum()
+    by_class.loc["all"] = by_class.sum()
+    by_class = by_class.astype(int)
+    by_class.insert(2, "filtered_pct", (100 * by_class["filtered"] / by_class["grids"].where(by_class["grids"] > 0)).round(1))
+    return by_class.rename(index={-1: "?"})
+
+
 def report_grid_counts(additional_filtering: bool | None = None, plz_without_grids: Sequence[int] = ()) -> dict:
     """Print how many grids each stage of the classification kept and log a warning for every loss.
 
     Run it after step 7 (``apply_clustering_for_visualisation``). The stages are the sampled PLZ, their
     grids, the grids with key figures, the grids the filters leave out and the grids in
     ``transformer_classified``. Grids without key figures (the PLZ analysis is missing or the calculation failed)
-    and a mismatch with the result table are warnings, the filters are listed per rule.
+    and a mismatch with the result table are warnings, the filters are listed per rule and, per RegioStaR 7 class,
+    with the buildings and households of the grids they leave out (:func:`filtered_by_class`). The power-flow
+    filter follows the choice of the classification.
 
     Args:
         additional_filtering: Whether the lower thresholds apply. ``None`` uses the choice of the classification
@@ -79,13 +118,17 @@ def report_grid_counts(additional_filtering: bool | None = None, plz_without_gri
         plz_without_grids: The PLZ that ``prepare_data_for_clustering`` removed from the sample set.
 
     Returns:
-        dict: The counts of :func:`summarize_grid_counts`.
+        dict: The counts of :func:`summarize_grid_counts` and the table of :func:`filtered_by_class` (``by_class``).
     """
     dc = DatabaseCommunication()
+    choices = dc.get_classification_choices()
     if additional_filtering is None:
-        additional_filtering = dc.get_classification_choices()["additional_filtering"]
-    grids = dc.get_grid_status_of_sample_set(additional_filtering)
-    counts, warnings = summarize_grid_counts(grids, list(filter_reasons(additional_filtering)), plz_without_grids)
+        additional_filtering = choices["additional_filtering"]
+    exclude_infeasible = choices["exclude_infeasible"]
+    grids = dc.get_grid_status_of_sample_set(additional_filtering, exclude_infeasible)
+    filters = list(filter_reasons(additional_filtering, exclude_infeasible))
+    counts, warnings = summarize_grid_counts(grids, filters, plz_without_grids)
+    counts["by_class"] = filtered_by_class(grids, filters)
     rows = [("PLZ drawn", counts["plz_drawn"]), ("PLZ in the sample set", counts["plz_in_sample"]),
             ("Grids of these PLZ", counts["grids"]), ("Grids with key figures", counts["analysed"]),
             ("Grids filtered", counts["filtered"])]
@@ -94,6 +137,10 @@ def report_grid_counts(additional_filtering: bool | None = None, plz_without_gri
     width = max(len(label) for label, _ in rows)
     print(f"\nGrids of classification {CLASSIFICATION_VERSION} (VERSION_ID {VERSION_ID})")
     print("\n".join(f"  {label:<{width}}  {value:>6}" for label, value in rows))
+    print("\nGrids with key figures per RegioStaR 7 class: left out by the filters (grids, buildings, households, "
+          "per filter F) and kept with one building or without households")
+    print(counts["by_class"].to_string())
+    print("\n".join(f"  F{i}: {label}" for i, label in enumerate(filters, start=1)))
     for text in warnings:
         dc.dbc.logger.warning(text)
     return counts

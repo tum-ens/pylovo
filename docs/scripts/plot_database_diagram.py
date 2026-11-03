@@ -96,6 +96,9 @@ DESCRIPTIONS = {
     "mv_graph_vertex": "Vertices of an MV routing graph with their degree and connected component.",
     "mv_graph_edge": "Edges of an MV routing graph (street pieces) with length, component and the settlement flags "
                      "``in_settlement``, ``settlement_id`` and ``settlement_urban``.",
+    "egon_hvmv_substation": "eGon-data HV/MV substations of Germany from the Open Energy Platform (``pylovo-setup``, "
+                            "``pylovo-import egon-substations``); the MV stage takes the ``bus_id`` of the nearest one "
+                            "as the eTraGo 110 kV bus of a substation.",
     "mv_graph_settlement": "Settlements of an MV routing graph (connected settlement edges) with building count, "
                            "length, urban class and buffer geometry.",
     "mv_variant": "One row per MV variant of a version: the MV parameter snapshot (``mv_parameters``), the PLZ set, "
@@ -344,7 +347,7 @@ ZONES = [
         ["mv_graph_vertex", "mv_graph", "mv_graph_edge"],
         ["mv_graph_settlement", "mv_variant", "mv_substation"],
         ["mv_customers", "mv_node", "mv_grid"],
-        [None, "mv_line", "mv_ring"],
+        ["egon_hvmv_substation", "mv_line", "mv_ring"],
     ]),
     ("Standalone tables (municipal register, migration ledger; file-based input with USE_INFDB=False)", 0.2, [
         ["municipal_register", "ags_log", "schema_migrations"],
@@ -550,7 +553,8 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
         ("Reference and input tables", ["version", "equipment_data", "consumer_categories", "postcode",
                                         "municipal_register", "transformers", "mv_graph", "mv_graph_vertex",
                                         "mv_graph_edge",
-                                        "mv_graph_settlement", "ags_log", "res", "oth", "ways",
+                                        "mv_graph_settlement", "egon_hvmv_substation", "ags_log", "res", "oth",
+                                        "ways",
                                         "schema_migrations"]),
         ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "building_exclusion",
                            "buildings_result",

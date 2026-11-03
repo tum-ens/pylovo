@@ -14,20 +14,17 @@ Note:
     to be created before lines. This is handled internally via _create_line_code().
 
 Optional dependency:
-    The engine bindings come from the ``altdss`` package, which is *not* a pylovo
-    dependency (it is commented out in ``pyproject.toml``). This module always
-    imports; without ``altdss`` the name ``altdss`` is ``None`` and constructing
-    :class:`OpenDSSBackend` (``ELECTRICAL_BACKEND: opendss``) raises
-    :class:`OpenDSSBackendError`; install ``altdss`` separately to use it.
-    The backend is not covered by the regression runs; parts of ``GridGenerator``
-    (voltage-drop diagnostics, SQL network tables) only work with pandapower.
+    The engine bindings come from the ``altdss`` package of the ``opendss`` extra
+    (``uv sync --extra opendss``). This module always imports; without ``altdss`` the
+    name ``altdss`` is ``None`` and constructing :class:`OpenDSSBackend`
+    (``ELECTRICAL_BACKEND: opendss``) raises :class:`OpenDSSBackendError`.
+
+Differences from pandapower (transformer and source model, stored grid, tools that need
+pandapower grids): see the "OpenDSS" section of the electrical backend docs.
 """
 
 import logging
-import os
 import re
-import shutil
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from ..core.backend_base import IElectricalBackend
@@ -60,12 +57,18 @@ def _empty_component_registry() -> Dict[str, list]:
     }
 
 
-#: Known defects of this backend; see the "OpenDSS (experimental)" section of the electrical backend docs.
-EXPERIMENTAL_WARNING = (
-    "The OpenDSS backend is experimental: bus names with blanks give a wrong power flow, parallel cables are "
-    "ignored and its results cannot be stored for the analysis, the API, the MV stage or the viewer. "
-    "Use ELECTRICAL_BACKEND: pandapower for results."
-)
+def _dss_name(name: str) -> str:
+    """Name of a pylovo bus or element in OpenDSS.
+
+    The DSS parser splits names at blanks and reads ``.`` as a node separator, and OpenDSS
+    lowercases every name: ``"Consumer Nodebus 21"`` becomes ``"consumer_nodebus_21"``.
+    """
+    return re.sub(r"[\s.]", "_", str(name)).lower()
+
+
+#: Voltage range (p.u.) in which a load keeps constant power. OpenDSS switches a load to constant
+#: impedance outside it (default 0.95 to 1.05, inside the check band), pandapower never does.
+LOAD_CONSTANT_POWER_RANGE_PU = (0.7, 1.3)
 
 
 class OpenDSSBackendError(Exception):
@@ -89,21 +92,28 @@ class OpenDSSBackend(IElectricalBackend):
         # Line codes by name, so each cable type is defined only once per circuit
         self._line_codes: Dict[str, Any] = {}
         self._components_created: Dict[str, list] = _empty_component_registry()
+        # pylovo bus name by OpenDSS bus name, and the OpenDSS names in use per element class
+        self._bus_names: Dict[str, str] = {}
+        self._element_names: Dict[str, set] = {}
 
         if altdss is None:
             raise OpenDSSBackendError(
-                "OpenDSS not available. Install altdss: pip install altdss"
+                "OpenDSS not available. Install the opendss extra: uv sync --extra opendss"
             )
-        self.logger.warning(EXPERIMENTAL_WARNING)
 
     def initialize_circuit(
         self, name: str, source_bus: str, primary_kv: float
     ) -> None:
         """Initialize OpenDSS circuit with German distribution standards."""
         try:
+            self._bus_names = {}
+            self._element_names = {}
+            source_bus = self._bus(source_bus)
             altdss.altdss("Clear")
+            # before the circuit: its source takes the default base frequency (60 Hz in a new process)
+            altdss.altdss("Set DefaultBaseFrequency=50")
             altdss.altdss(
-                f"New Circuit.{name} basekv={primary_kv} pu=1.0 phases=3 bus1={source_bus}"
+                f"New Circuit.{_dss_name(name)} basekv={primary_kv} pu=1.0 phases=3 bus1={source_bus}"
             )
 
             # Set German distribution voltage bases
@@ -111,7 +121,6 @@ class OpenDSSBackend(IElectricalBackend):
             bases_str = ",".join(str(v) for v in voltage_bases)
             altdss.altdss(f"Set VoltageBases=[{bases_str}]")
             altdss.altdss("CalcVoltageBases")
-            altdss.altdss("Set DefaultBaseFrequency=50")
 
             self.dss = altdss.altdss
             self._circuit_name = name
@@ -147,10 +156,12 @@ class OpenDSSBackend(IElectricalBackend):
                 return self._create_load(spec)
             elif isinstance(spec, BusSpec):
                 # OpenDSS creates buses implicitly; only track them for get_component_count()
+                self._bus(spec.name)
                 self._components_created["buses"].append(spec.name)
                 return spec.name
             elif isinstance(spec, ExtGridSpec):
-                # External grid is created in initialize_circuit
+                # The circuit's source (created in initialize_circuit) is the external grid
+                self.set_source_voltage(spec.vm_pu)
                 return "source"
             else:
                 raise OpenDSSBackendError(
@@ -164,9 +175,34 @@ class OpenDSSBackend(IElectricalBackend):
     # Private Component Creation Methods (merged from OpenDSSComponentFactory)
     # =========================================================================
 
-    def _create_line_code(self, cable: CableEquipment) -> Any:
-        """Create OpenDSS line code from cable equipment (with caching)."""
-        code_name = f"LC_{cable.name}"
+    def _bus(self, name: str) -> str:
+        """OpenDSS name of a pylovo bus; two pylovo buses must not get the same one."""
+        dss_name = _dss_name(name)
+        known = self._bus_names.setdefault(dss_name, name)
+        if known != name:
+            raise OpenDSSBackendError(
+                f"Buses {known!r} and {name!r} have the same OpenDSS name {dss_name!r}"
+            )
+        return dss_name
+
+    def _element_name(self, element_class: str, name: str) -> str:
+        """Unique OpenDSS name of a new element (OpenDSS refuses duplicates, pandapower allows them)."""
+        used = self._element_names.setdefault(element_class, set())
+        base = dss_name = _dss_name(name)
+        count = 1
+        while dss_name in used:
+            count += 1
+            dss_name = f"{base}_{count}"
+        used.add(dss_name)
+        return dss_name
+
+    def _create_line_code(self, cable: CableEquipment, parallel: int = 1) -> Any:
+        """Create the OpenDSS line code of ``parallel`` cables of one type (with caching).
+
+        Parallel cables are one line code with the impedances divided and the ampacity
+        multiplied by ``parallel``.
+        """
+        code_name = _dss_name(f"LC_{cable.name}" + (f"_x{parallel}" if parallel > 1 else ""))
 
         if code_name in self._line_codes:
             return self._line_codes[code_name]
@@ -174,15 +210,15 @@ class OpenDSSBackend(IElectricalBackend):
         line_code = self.dss.LineCode.new(
             code_name,
             NPhases=cable.n_phases,
-            R1=cable.r_ohm_per_km,
-            X1=cable.x_ohm_per_km,
-            R0=cable.r_ohm_per_km * 3,  # Zero sequence approximation
-            X0=cable.x_ohm_per_km * 3,
+            R1=cable.r_ohm_per_km / parallel,
+            X1=cable.x_ohm_per_km / parallel,
+            R0=cable.r_ohm_per_km * 3 / parallel,  # Zero sequence approximation
+            X0=cable.x_ohm_per_km * 3 / parallel,
             C1=0.0,
             C0=0.0,
             Units="km",
-            NormAmps=cable.max_i_a,
-            EmergAmps=cable.max_i_a * 1.25,
+            NormAmps=cable.max_i_a * parallel,
+            EmergAmps=cable.max_i_a * 1.25 * parallel,
         )
 
         self._line_codes[code_name] = line_code
@@ -208,10 +244,10 @@ class OpenDSSBackend(IElectricalBackend):
         xhl = equipment.reactance_pu * 100 if equipment.reactance_pu else 7.0
 
         transformer = self.dss.Transformer.new(
-            spec.name,
+            self._element_name("transformer", spec.name),
             Phases=equipment.n_phases,
             Windings=2,
-            Buses=[spec.bus1, spec.bus2],
+            Buses=[self._bus(spec.bus1), self._bus(spec.bus2)],
             Conns=["delta", "wye"],
             kVs=[equipment.primary_voltage_kv, equipment.secondary_voltage_kv],
             kVAs=[equipment.s_max_kva, equipment.s_max_kva],
@@ -242,16 +278,18 @@ class OpenDSSBackend(IElectricalBackend):
                     f"Available: {available}... Call register_cable_types first."
                 )
 
-        # Ensure line code exists
-        line_code = self._create_line_code(cable_equipment)
+        parallel = int(spec.parallel)
+        if parallel < 1:
+            raise OpenDSSBackendError(f"Line {spec.name!r} has {spec.parallel} parallel cables")
+        line_code = self._create_line_code(cable_equipment, parallel)
 
         # Enforce minimum length
         length_km = max(spec.length_km, 0.001)
 
         line = self.dss.Line.new(
-            spec.name,
-            Bus1=spec.bus1,
-            Bus2=spec.bus2,
+            self._element_name("line", spec.name),
+            Bus1=self._bus(spec.bus1),
+            Bus2=self._bus(spec.bus2),
             LineCode=line_code,
             Length=length_km,
             Units="km",
@@ -261,21 +299,23 @@ class OpenDSSBackend(IElectricalBackend):
         self._components_created["lines"].append(line)
         self.logger.debug(
             f"Created line: {spec.name} (length={length_km:.3f}km, "
-            f"type={cable_equipment.name})"
+            f"type={cable_equipment.name}, parallel={parallel})"
         )
         return line
 
     def _create_load(self, spec: LoadSpec) -> Any:
         """Create load from specification."""
         load = self.dss.Load.new(
-            spec.name,
-            Bus1=spec.bus,
+            self._element_name("load", spec.name),
+            Bus1=self._bus(spec.bus),
             Phases=3,
             kV=0.4,  # German LV
             kW=spec.kw,
             kvar=spec.kvar,
             Conn="wye",
             Model=1,
+            VMinpu=LOAD_CONSTANT_POWER_RANGE_PU[0],
+            VMaxpu=LOAD_CONSTANT_POWER_RANGE_PU[1],
         )
 
         self._components_created["loads"].append(load)
@@ -341,27 +381,15 @@ class OpenDSSBackend(IElectricalBackend):
             raise OpenDSSBackendError("No OpenDSS instance available for analysis")
 
         try:
-            self.logger.info("Calculating voltage bases...")
             self.dss("CalcVoltageBases")
             self.logger.debug("Solving power flow...")
             self.dss.Solution.Solve()
 
             converged = self.dss.Solution.Converged
             if converged:
-                self.logger.info("Power flow converged")
+                self.logger.debug("Power flow converged")
             else:
-                self.logger.error("Power flow did not converge")
-
-            try:
-                report_filename = (
-                    f"{self._circuit_name}_electrical_statistics.txt"
-                    if self._circuit_name
-                    else "electrical_statistics.txt"
-                )
-                self._generate_statistics_report(report_filename)
-            except Exception as diag_err:
-                self.logger.warning(f"Statistics report failed: {diag_err}")
-
+                self.logger.warning("Power flow did not converge")
             return converged
 
         except Exception as e:
@@ -433,6 +461,8 @@ class OpenDSSBackend(IElectricalBackend):
 
         self._line_codes = {}
         self._components_created = _empty_component_registry()
+        self._bus_names = {}
+        self._element_names = {}
         self._circuit_name = None
         self.logger.debug("OpenDSS cleanup completed")
 
@@ -453,6 +483,23 @@ class OpenDSSBackend(IElectricalBackend):
         return None
 
     # =========================================================================
+    # Station voltage (see pylovo.station_voltage)
+    # =========================================================================
+
+    def get_source_voltage(self) -> float:
+        """Voltage of the external grid (MV side of the station) in p.u."""
+        return float(self.dss.Vsource["source"].pu)
+
+    def set_source_voltage(self, vm_pu: float) -> None:
+        """Set the voltage of the external grid (MV side of the station) in p.u."""
+        self.dss(f"Edit Vsource.source pu={float(vm_pu)!r}")
+
+    def get_bus_voltage_pu(self, bus_name: str) -> float:
+        """Solved voltage magnitude of a bus in p.u. (mean of its three phases)."""
+        magnitudes = self.dss.Bus[_dss_name(bus_name)].puVMagAngle[0::2]
+        return float(sum(magnitudes) / len(magnitudes))
+
+    # =========================================================================
     # Update Methods (no-ops for OpenDSS)
     # =========================================================================
 
@@ -467,90 +514,3 @@ class OpenDSSBackend(IElectricalBackend):
     def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
         """Set transformer rating (no-op - sized at creation)."""
         pass
-
-    # =========================================================================
-    # Statistics Report (internal)
-    # =========================================================================
-
-    def _generate_statistics_report(
-        self, output_filename: str = "electrical_statistics.txt"
-    ) -> None:
-        """Generate electrical statistics report after power flow solve."""
-        if self.dss is None:
-            return
-
-        circuit_name = self._circuit_name or "unknown"
-        m = re.search(r"K\d+_S\d+", circuit_name or "")
-        subfolder = m.group(0) if m else circuit_name
-        stats_dir = os.path.abspath(os.path.join(os.getcwd(), "statistics", subfolder))
-        os.makedirs(stats_dir, exist_ok=True)
-        out_path = os.path.join(stats_dir, output_filename)
-
-        converged = bool(self.dss.Solution.Converged)
-        total_power = self.dss.TotalPower()
-        total_losses = self.dss.Losses()
-
-        try:
-            raw_bus_vmags = self.dss.BusVMagPU()
-            bus_vmags = list(raw_bus_vmags) if raw_bus_vmags else []
-        except Exception:
-            bus_vmags = []
-
-        min_v = min(bus_vmags) if bus_vmags else None
-        max_v = max(bus_vmags) if bus_vmags else None
-        avg_v = sum(bus_vmags) / len(bus_vmags) if bus_vmags else None
-
-        # Export CSVs
-        export_types = ["Voltages", "Currents", "Powers", "Losses", "Loads"]
-        exported_files = []
-
-        for export_type in export_types:
-            try:
-                self.dss(f"Export {export_type}")
-                base_name = f"{export_type}.csv"
-                root_base = os.path.join(os.getcwd(), base_name)
-                tagged_name = f"{circuit_name}_EXP_{export_type.upper()}.csv"
-                stats_tagged = os.path.join(stats_dir, tagged_name)
-
-                if os.path.exists(root_base):
-                    shutil.move(root_base, stats_tagged)
-                    exported_files.append(stats_tagged)
-            except Exception:
-                continue
-
-        # Write report
-        def _to_kw(value: Any) -> float | None:
-            try:
-                if hasattr(value, "real"):
-                    return float(value.real)
-                if isinstance(value, (list, tuple)) and len(value) > 0:
-                    return float(value[0])
-                return float(value)
-            except Exception:
-                return None
-
-        with open(out_path, "w") as f:
-            f.write("=" * 80 + "\n")
-            f.write("Electrical Statistics Report\n")
-            f.write("=" * 80 + "\n\n")
-            f.write(f"Timestamp: {datetime.now(timezone.utc).replace(tzinfo=None).isoformat()}Z\n")
-            f.write(f"Circuit: {self._circuit_name or 'unknown'}\n")
-            f.write(f"Converged: {converged}\n")
-
-            tp_kw = _to_kw(total_power)
-            tl_w = _to_kw(total_losses)
-            tl_kw = (tl_w / 1000.0) if tl_w is not None else None
-
-            if tp_kw is not None:
-                f.write(f"Total Power kW: {tp_kw:.3f}\n")
-            if tl_kw is not None:
-                f.write(f"Total Losses kW: {tl_kw:.3f}\n")
-
-            f.write("\nVoltage stats (pu):\n")
-            f.write(f"  min: {min_v if min_v is not None else 'n/a'}\n")
-            f.write(f"  avg: {avg_v if avg_v is not None else 'n/a'}\n")
-            f.write(f"  max: {max_v if max_v is not None else 'n/a'}\n")
-
-            f.write("\nExported files:\n")
-            for p in exported_files:
-                f.write(f"  - {p}\n")

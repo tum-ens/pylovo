@@ -10,7 +10,8 @@ import sys
 
 import pandas as pd
 
-from pylovo.classification.database_communication.database_communication import LOWER_FILTER_THRESHOLDS
+from pylovo.classification.database_communication.database_communication import (
+    LOWER_FILTER_THRESHOLDS, checked_key_figures)
 from pylovo.config_loader import CLASSIFICATION_VERSION, LIST_OF_CLUSTERING_PARAMETERS
 from pylovo.database.database_client import DatabaseClient
 
@@ -24,24 +25,19 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
 
     Cluster 0 is the cluster whose representative grid has the fewest households. It is meant to hold
     these filling grids, which the additional filtering removes. The thresholds are the means of
-    the four parameters of ``LOWER_FILTER_THRESHOLDS`` over cluster 0 of one classification that
-    clustered with exactly these four parameters and without additional filtering:
+    the four parameters of ``LOWER_FILTER_THRESHOLDS`` over cluster 0 of one classification without additional
+    filtering:
 
     - avg_trafo_dis
     - no_house_connections
     - vsw_per_branch
     - no_households
 
-    The shipped values (0.115, 14.332, 0.258 and 35.316) come from one such classification over 100
-    postcodes on grids generated in May 2025 (the values ship since pylovo 0.3.0). The generator has changed
-    since (transformer sizing, cable catalogue, connection aggregation), pylovo 1.0.0 counts parallel cables in
-    ``vsw_per_branch`` and households in ``no_households``, and those grids are not stored, so a classification of
-    today's grids gives other values. Check that cluster 0 holds the small grids before you use its means: on
-    pylovo 1.0.0 grids of three Bavarian test regions, k-means with k = 4 put long rural grids (mean
-    ``avg_trafo_dis`` 0.45 km) into cluster 0, whose means would filter 99 % of the grids (see the classification
-    user guide). An earlier version of this helper averaged the parameters of
-    ``LIST_OF_CLUSTERING_PARAMETERS`` (three in the shipped file, without ``no_households``) over
-    cluster 0 of all classifications, which cannot reproduce them.
+    The shipped values (0.071, 6.763, 0.087 and 12.012) come from classification 2 of 501 Bavarian postcodes
+    (2026-10-30, key figures version 2), whose cluster 0 holds the small filling grids (median 6 buildings).
+    Cluster 0 depends on the clustering parameters and the number of clusters: check that it holds the small grids
+    before you use its means. With other choices it can be a cluster of long rural grids, whose means would filter
+    most of the grids (see the classification user guide).
 
     Args:
         classification_id: The classification. ``None`` uses ``CLASSIFICATION_VERSION``.
@@ -50,15 +46,17 @@ def get_clustering_parameters_for_kmeans_cluster_0(classification_id: int | None
         pd.DataFrame: Clustering parameters of the grids in k-means cluster 0 of that classification.
     """
     query = """
-        SELECT cp.*
+        SELECT cp.*, cv.key_figures_version AS classification_key_figures_version
         FROM pylovo.clustering_parameters cp
         JOIN pylovo.transformer_classified tc ON tc.grid_result_id = cp.grid_result_id
+        JOIN pylovo.classification_version cv ON cv.classification_id = tc.classification_id
         WHERE tc.classification_id = %(c)s AND tc.kmeans_clusters = 0;
     """
     if classification_id is None:
         classification_id = CLASSIFICATION_VERSION
     with DatabaseClient() as dbc:
-        return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
+        return checked_key_figures(pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id}),
+                                   classification_id)
 
 
 def get_clustering_parameters_by_kmeans_cluster(classification_id: int | None = None) -> pd.DataFrame:
@@ -71,15 +69,17 @@ def get_clustering_parameters_by_kmeans_cluster(classification_id: int | None = 
         pd.DataFrame: Clustering parameters with the k-means cluster in the column ``kmeans_clusters``.
     """
     query = """
-        SELECT tc.kmeans_clusters, cp.*
+        SELECT tc.kmeans_clusters, cp.*, cv.key_figures_version AS classification_key_figures_version
         FROM pylovo.clustering_parameters cp
         JOIN pylovo.transformer_classified tc ON tc.grid_result_id = cp.grid_result_id
+        JOIN pylovo.classification_version cv ON cv.classification_id = tc.classification_id
         WHERE tc.classification_id = %(c)s;
     """
     if classification_id is None:
         classification_id = CLASSIFICATION_VERSION
     with DatabaseClient() as dbc:
-        return pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id})
+        return checked_key_figures(pd.read_sql_query(query, con=dbc.sqla_engine, params={"c": classification_id}),
+                                   classification_id)
 
 
 def cluster_means(df: pd.DataFrame, parameters: list) -> pd.DataFrame:

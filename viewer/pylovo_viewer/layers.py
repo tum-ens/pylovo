@@ -16,6 +16,12 @@ Scopes (which request parameters a layer needs):
 * ``view``: LV detail (cables, cabinets, buildings) of one version in the map view (``bbox``).
 * ``run``: one MV run (``version`` + ``mv``).
 * ``file``: the downloaded eTraGo grid (``pylovo-viewer fetch etrago``).
+
+A ``version`` or ``run`` layer with an ``extent`` that holds more than ``cap`` features (all MV lines of
+Bavaria) is not sent whole: the API answers ``by_view`` and the page asks again with the map view
+(``bbox``), which the ``extent`` condition applies. MV lines and open points come by whole supply areas,
+so a ring is never cut at the edge of the view. A map view with more than ``cap`` features (LV cables of
+central Munich at zoom 14) gets ``zoom_in`` and no features: a cut set would show grids without cables.
 """
 from __future__ import annotations
 
@@ -56,6 +62,8 @@ def run(alias: str = "") -> str:
 
 
 RUN = run()
+# The supply areas of the MV run that reach into the map view ({env}), for the extent of a layer.
+RUN_AREAS = "(SELECT ra.mv_grid_id FROM pylovo.mv_grid ra WHERE " + run("ra") + " AND ra.geom && {env})"
 
 
 def geo(expr: str, digits: int = 6) -> str:
@@ -113,10 +121,14 @@ class Layer:
     scope: str
     source: str
     sql: str = ""                     # placeholders: {env} (map view), {mv_cols} {mv_join} (station MV data),
-    #                                   {line_geom} (an MV line's display geometry where the database has one)
+    #                                   {line_geom} (an MV line's display geometry where the database has one),
+    #                                   {extent} (the extent condition with a bbox, else nothing)
+    extent: str = ""                  # condition on the map view ({env}; {run_areas}: supply areas in view;
+    #                                   {mv_extent}: more of the station MV data) for a layer above the cap
     detail: str = ""                  # one feature, parameter %(fid)s
     requires: tuple[str, ...] = ()    # "schema.table" or "schema.table(col, col)"
     rows: tuple[str, ...] = ()        # tables that must hold rows
+    etrago: bool = False              # also needs the downloaded eTraGo grid (pylovo-viewer fetch etrago)
     parent: str | None = None         # shown and hidden with this layer
     also: tuple[str, ...] = ()        # further groups that list the layer (substations: both levels)
     with_run: bool = False            # a version layer that adds data of the MV run when one is given
@@ -154,10 +166,10 @@ def build_layers() -> list[Layer]:
               "The 110, 220 and 380 kV grid of Germany from eGon-data (eTraGo, PyPSA format). Download it "
               "once with: pylovo-viewer fetch etrago",
               "line", "file", "eGon-data eTraGo (Open Energy Platform)",
-              attribution="eGon-data eTraGo grid (osmTGmod), © OpenStreetMap contributors (ODbL)"),
+              attribution="eGon-data eTraGo grid © eGon development team (ODbL), from OpenStreetMap © OpenStreetMap contributors"),
         Layer("hv_substations", "hv", "HV/MV substations",
               "The HV/MV substations of the MV run that supply the MV grids; candidates the run did not use "
-              "are drawn hollow. Their site outlines show from zoom 12.",
+              "are faded. Their site outlines show from zoom 12.",
               "point", "run", "pylovo.mv_substation",
               sql=f"""SELECT s.substation_id AS fid, s.source, s.name, s.operator, s.voltage_tag AS voltage,
                              s.egon_bus_id AS etrago_bus, s.n_transformers AS transformers, s.transformer_mva AS mva,
@@ -182,6 +194,21 @@ def build_layers() -> list[Layer]:
               detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
               requires=("pylovo.mv_substation(display_geom)",), rows=("pylovo.mv_variant",),
               parent="hv_substations", min_zoom=15),
+        Layer("hv_links", "hv", "Links to the HV grid",
+              "A straight link from each HV/MV substation of the run to the eTraGo grid as drawn: to its 110 kV "
+              "bus, or, for a substation without one, to the nearest eTraGo 110 kV line (dashed: eTraGo has no "
+              "line to it, so the link is artificial).",
+              "line", "run", "pylovo.mv_substation and the eGon-data eTraGo grid",
+              sql=f"""SELECT s.substation_id AS fid, s.name, s.egon_bus_id AS etrago_bus,
+                             array_to_string(s.flags, ', ') AS flags,
+                             {num("ST_X(ST_Transform(s.geom, 4326))", 6)} AS x,
+                             {num("ST_Y(ST_Transform(s.geom, 4326))", 6)} AS y,
+                             NULL AS geometry
+                      FROM pylovo.mv_substation s WHERE {run('s')}""",
+              detail="SELECT * FROM pylovo.mv_substation WHERE substation_id = %(fid)s",
+              requires=("pylovo.mv_substation",), rows=("pylovo.mv_variant",), etrago=True,
+              parent="hv_substations", post=("hv_links",),
+              attribution="eGon-data eTraGo grid © eGon development team (ODbL), from OpenStreetMap © OpenStreetMap contributors"),
         # -------------------------------------------------------------------------------- MV grids
         Layer("mv_lines", "mv", "MV lines",
               "MV cables and overhead lines of the run: open rings, stubs, dedicated feeders, ties between supply "
@@ -193,9 +220,10 @@ def build_layers() -> list[Layer]:
                              {num("l.overhead_km", 3)} AS overhead_km, l.normally_open AS open,
                              {num("l.loading_load_percent", 1)} AS loading, {num("l.loading_n1_percent", 1)} AS loading_n1,
                              {geo("ST_Simplify({line_geom}, 0.5)")} AS geometry
-                      FROM pylovo.mv_line l WHERE {run('l')}""",
+                      FROM pylovo.mv_line l WHERE {run('l')} {{extent}}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
-              requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts")),
+              requires=("pylovo.mv_line",), rows=("pylovo.mv_variant",), post=("area_slots", "ring_slots", "overhead_parts"),
+              extent="l.mv_grid_id IN {run_areas} OR l.geom && {env}"),
         Layer("mv_osm_lines", "mv", "OSM MV lines",
               "The MV overhead lines mapped in OpenStreetMap, as corridors in the routing graph of the run: "
               "an MV line is an overhead line where it runs on them, else a cable.",
@@ -205,14 +233,14 @@ def build_layers() -> list[Layer]:
                       FROM pylovo.mv_graph_edge e
                       WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
                                           WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
-                        AND e.klasse = 'osm_mv_line'""",
+                        AND e.klasse = 'osm_mv_line' {{extent}}""",
               detail="""SELECT e.edge_id, e.src_id AS osm_way, e.objektart AS osm_type, e.length_m, e.graph_id
                         FROM pylovo.mv_graph_edge e
                         WHERE e.graph_id = (SELECT v.graph_id FROM pylovo.mv_variant v
                                             WHERE v.version_id = %(version)s AND v.mv_variant_id = %(mv)s)
                           AND e.edge_id = %(fid)s""",
               requires=("pylovo.mv_graph_edge", "pylovo.mv_variant"), rows=("pylovo.mv_variant",), default=False,
-              attribution="© OpenStreetMap contributors (ODbL)"),
+              attribution="© OpenStreetMap contributors (ODbL)", extent="e.geom && {env}"),
         Layer("mv_open_points", "mv", "Normally-open points",
               "Where each open ring is opened, drawn next to the node it opens at.",
               "point", "run", "pylovo.mv_line",
@@ -222,10 +250,11 @@ def build_layers() -> list[Layer]:
                                    THEN LEAST(0.5, 12 / NULLIF(ST_Length({line_geom}), 0))
                                  ELSE GREATEST(0.5, 1 - 12 / NULLIF(ST_Length({line_geom}), 0)) END)''')} AS geometry
                       FROM pylovo.mv_line l JOIN pylovo.mv_node n ON n.mv_node_id = COALESCE(l.open_at_node, l.to_node)
-                      WHERE {run('l')} AND l.normally_open AND l.role NOT IN ('tie', 'link') AND ST_Length(l.geom) > 0""",
+                      WHERE {run('l')} AND l.normally_open AND l.role NOT IN ('tie', 'link') AND ST_Length(l.geom) > 0
+                        {{extent}}""",
               detail="SELECT * FROM pylovo.mv_line WHERE mv_line_id = %(fid)s",
               requires=("pylovo.mv_line", "pylovo.mv_node"), rows=("pylovo.mv_variant",),
-              parent="mv_lines", min_zoom=11),
+              parent="mv_lines", min_zoom=11, extent="l.mv_grid_id IN {run_areas}"),
         Layer("mv_stations", "mv", "MV/LV substations",
               "The transformer station of every LV grid: size, origin and, with an MV run, its MV ring and voltage. "
               "Shown from zoom 10.2 (a scale bar of about 3 km).",
@@ -236,9 +265,9 @@ def build_layers() -> list[Layer]:
                       FROM pylovo.grid_result g
                       JOIN pylovo.transformer_positions tp ON tp.grid_result_id = g.grid_result_id
                       {{mv_join}}
-                      WHERE g.version_id = %(version)s""",
+                      WHERE g.version_id = %(version)s {{extent}}""",
               detail="grid", requires=("pylovo.grid_result", "pylovo.transformer_positions"),
-              with_run=True, post=("ring_slots",), also=("lv",), min_zoom=10.2),
+              with_run=True, post=("ring_slots",), also=("lv",), min_zoom=10.2, extent="tp.geom && {env}{mv_extent}"),
         Layer("mv_areas", "mv", "Supply areas",
               "Area supplied by each HV/MV substation (MV grid district), with its voltage. Areas cut "
               "by the border of the planning region have a dashed outline.",
@@ -259,9 +288,10 @@ def build_layers() -> list[Layer]:
               sql=f"""SELECT c.objectid AS fid, c.building_use AS use, c.nonresidential_use AS nonres_use,
                              {num("COALESCE(c.nonresidential_peak_load_in_kw, 0) + COALESCE(c.residential_peak_load_in_kw, 0)", 1)}
                                AS peak_kw, c.households, {geo("c.geom")} AS geometry
-                      FROM pylovo.mv_customers c WHERE c.version_id = %(version)s""",
+                      FROM pylovo.mv_customers c WHERE c.version_id = %(version)s {{extent}}""",
               detail="SELECT * FROM pylovo.mv_customers WHERE version_id = %(version)s AND objectid = %(fid)s",
-              requires=("pylovo.mv_customers",), rows=("pylovo.mv_customers",), min_zoom=12),
+              requires=("pylovo.mv_customers",), rows=("pylovo.mv_customers",), min_zoom=12,
+              extent="c.centroid && {env}"),
         # -------------------------------------------------------------------------------- LV grids
         Layer("lv_areas", "lv", "Grid areas",
               "Area of each LV grid (convex hull of its buildings), coloured so that neighbours differ.",
@@ -271,8 +301,10 @@ def build_layers() -> list[Layer]:
                              {geo("ST_SimplifyPreserveTopology(ST_Buffer(ST_ConvexHull(ST_Collect(b.centroid)), 8, 2), 2)")}
                                AS geometry
                       FROM pylovo.grid_result g JOIN pylovo.buildings_result b ON b.grid_result_id = g.grid_result_id
-                      WHERE g.version_id = %(version)s GROUP BY g.grid_result_id""",
-              detail="grid", requires=("pylovo.grid_result", "pylovo.buildings_result"), post=("grid_slots",)),
+                      WHERE g.version_id = %(version)s {{extent}} GROUP BY g.grid_result_id""",
+              detail="grid", requires=("pylovo.grid_result", "pylovo.buildings_result"), post=("grid_slots",),
+              extent="""EXISTS (SELECT 1 FROM pylovo.transformer_positions tp
+                                 WHERE tp.grid_result_id = g.grid_result_id AND tp.geom && {env})"""),
         Layer("lv_cables", "lv", "Cables",
               "LV feeder cables along the streets and service cables to the buildings, with the cable cabinets. "
               "An arrow marks the cable that supplies each cabinet. Shown when zoomed in.",
@@ -325,8 +357,10 @@ def to_json(value: Any) -> Any:
     return str(value)
 
 
-def feature_collection(rows: list[dict[str, Any]], truncated: bool = False) -> str:
-    """GeoJSON text; ``geometry`` is already GeoJSON text, ``fid`` stays a property (``promoteId``)."""
+def feature_collection(rows: list[dict[str, Any]], truncated: bool = False, by_view: bool = False,
+                       zoom_in: bool = False) -> str:
+    """GeoJSON text; ``geometry`` is already GeoJSON text, ``fid`` stays a property (``promoteId``). ``by_view``:
+    the layer holds more than its cap, ask again with the map view; ``zoom_in``: so does the map view."""
     dumps = json.JSONEncoder(default=to_json, separators=(",", ":"), ensure_ascii=False).encode
     parts = []
     for row in rows:
@@ -334,7 +368,8 @@ def feature_collection(rows: list[dict[str, Any]], truncated: bool = False) -> s
         if geometry:
             parts.append(f'{{"type":"Feature","geometry":{geometry},"properties":{dumps(row)}}}')
     flag = "true" if truncated else "false"
-    return f'{{"type":"FeatureCollection","truncated":{flag},"features":[{",".join(parts)}]}}'
+    view = (',"by_view":true' if by_view else "") + (',"zoom_in":true' if zoom_in else "")
+    return f'{{"type":"FeatureCollection","truncated":{flag}{view},"features":[{",".join(parts)}]}}'
 
 
 class LRU:
@@ -377,6 +412,7 @@ class LayerService:
         self._slots = LRU(64)
         self._feeders = LRU(20_000)
         self._overhead = LRU(16)   # overhead parts of mixed MV lines per run (their query takes about 0.5 s)
+        self._etrago = LRU(2)      # the eTraGo grid of the HV links by file times (indexing takes about 1 s)
 
     # ------------------------------------------------------------------------------ availability
     def unavailable(self, layer: Layer) -> str | None:
@@ -393,6 +429,10 @@ class LayerService:
         for table in layer.rows:
             if not self.catalog.has_rows.get(table, False):
                 return f"{table} is empty"
+        if layer.etrago:
+            from pylovo_viewer import etrago
+            if not etrago.status(self.data_dir)["available"]:
+                return "the eTraGo grid is not downloaded yet: run pylovo-viewer fetch etrago"
         return None
 
     def describe(self) -> list[dict[str, Any]]:
@@ -402,7 +442,7 @@ class LayerService:
             out.append({"id": layer.id, "groups": [layer.group, *layer.also], "title": layer.title, "description": layer.description,
                         "geometry": layer.geometry, "scope": layer.scope, "source": layer.source,
                         "parent": layer.parent, "with_run": layer.with_run, "default": layer.default,
-                        "min_zoom": layer.min_zoom,
+                        "min_zoom": layer.min_zoom, "by_view": bool(layer.extent),
                         "attribution": layer.attribution, "available": reason is None, "reason": reason})
         return out
 
@@ -415,6 +455,7 @@ class LayerService:
         self._slots.clear()
         self._feeders.clear()
         self._overhead.clear()
+        self._etrago.clear()
 
     # -------------------------------------------------------------------------------------- data
     def _check(self, layer: Layer, q: Query) -> None:
@@ -433,7 +474,11 @@ class LayerService:
         mv = self.station_mv(q)
         cols = (f", n.mv_grid_id AS area, n.ring_id AS ring, n.feeder_id AS feeder, n.connection AS mv_connection, "
                 f"{num('n.vm_load_pu', 4)} AS vm, {num('n.lv_busbar_vm_pu', 4)} AS lv_vm") if mv else ""
-        return (layer.sql.replace("{env}", env).replace("{mv_cols}", cols)
+        extent = ""
+        if layer.extent and q.bbox:
+            extent = "AND (" + layer.extent.replace("{mv_extent}", " OR n.mv_grid_id IN {run_areas}" if mv else "") \
+                .replace("{run_areas}", RUN_AREAS) + ")"
+        return (layer.sql.replace("{extent}", extent).replace("{env}", env).replace("{mv_cols}", cols)
                 .replace("{mv_join}", STATION_MV_JOIN if mv else "").replace("{line_geom}", self.line_geom()))
 
     def line_geom(self) -> str:
@@ -449,7 +494,12 @@ class LayerService:
             if blob is None:
                 raise LookupError(self.unavailable(layer) or "not available")
             return blob.decode()
-        rows = self.db.query(self.sql(layer, q) + f"\nLIMIT {layer.cap + 1}", q.params())
+        sql = self.sql(layer, q)
+        if layer.extent or q.bbox is not None:   # count first (no geometries): more than the cap is never cut
+            probe = self.db.one(f"SELECT count(*) AS n FROM ({sql}\nLIMIT {layer.cap + 1}) AS probe", q.params())
+            if probe and probe["n"] > layer.cap:
+                return feature_collection([], truncated=True, by_view=q.bbox is None, zoom_in=q.bbox is not None)
+        rows = self.db.query(sql + f"\nLIMIT {layer.cap + 1}", q.params())
         truncated = len(rows) > layer.cap
         rows = rows[:layer.cap]
         for step in layer.post:
@@ -611,6 +661,46 @@ class LayerService:
                 "geometry": {"type": "MultiLineString",
                              "coordinates": [json.loads(r["geometry"])["coordinates"] for r in rows if r["geometry"]]}}
 
+    def supplied(self, layer_id: str, fid: int, q: Query) -> dict[str, Any]:
+        """The lines a transformer supplies, for the highlight of a clicked one: the cables of the LV grid of an MV/LV
+        substation (``mv_stations``, ``fid`` = grid id), or the MV lines of the supply area of an HV/MV substation in
+        the MV run (``hv_substations``) as drawn, without the normally-open ties and links (they supply nothing)."""
+        if layer_id == "mv_stations":
+            rows = self.db.query(f"""SELECT c.id, c.length_km * COALESCE(c.parallel, 1) AS km,
+                                            c.feeder_section_id IS NOT NULL AS feeder, {geo("c.geom")} AS geometry
+                                     FROM pylovo.lines_result_cache c WHERE c.grid_result_id = %s""", (fid,))
+            buildings = self.db.one("SELECT count(*) AS n FROM pylovo.buildings_result WHERE grid_result_id = %s", (fid,))
+            feeders = self.feeder_maps({fid}).get(fid, ({}, {}))[0]
+            out = {"supplied_cables": len(rows), "supplied_buildings": buildings["n"] if buildings else 0,
+                   "supplied_feeders": len(set(feeders.values())) if feeders else None,
+                   "supplied_feeder_km": round(sum(float(r["km"] or 0) for r in rows if r["feeder"]), 3),
+                   "supplied_service_km": round(sum(float(r["km"] or 0) for r in rows if not r["feeder"]), 3)}
+        elif layer_id == "hv_substations":
+            if q.version is None or q.mv is None:
+                raise ValueError("the MV lines of a substation need version and mv")
+            rows = self.db.query(f"""SELECT l.role, l.ring_id, l.length_km * COALESCE(l.parallel, 1) AS km,
+                                            g.mv_grid_id AS area, g.n_stations,
+                                            {geo(f"ST_Simplify({self.line_geom()}, 0.5)")} AS geometry
+                                     FROM pylovo.mv_line l JOIN pylovo.mv_grid g ON g.mv_grid_id = l.mv_grid_id
+                                     WHERE g.substation_id = %(fid)s AND {run('l')}""", {**q.params(), "fid": fid})
+            open_lines = [r for r in rows if r["role"] in ("tie", "link")]
+            rows = [r for r in rows if r["role"] not in ("tie", "link")]
+            out = {"supplied_area": rows[0]["area"] if rows else None, "supplied_lines": len(rows),
+                   "supplied_km": round(sum(float(r["km"] or 0) for r in rows), 3),
+                   "supplied_rings": len({r["ring_id"] for r in rows if r["ring_id"] is not None}),
+                   "supplied_stations": rows[0]["n_stations"] if rows else 0,
+                   "open_ties": sum(r["role"] == "tie" for r in open_lines),
+                   "open_links": sum(r["role"] == "link" for r in open_lines)}
+        else:
+            raise LookupError(f"layer {layer_id} has no transformers")
+        parts = []
+        for r in rows:
+            if r["geometry"]:
+                g = json.loads(r["geometry"])
+                parts += [g["coordinates"]] if g["type"] == "LineString" else g["coordinates"]
+        out["geometry"] = {"type": "MultiLineString", "coordinates": parts} if parts else None
+        return out
+
     def _overhead_parts(self, rows: list[dict[str, Any]], q: Query) -> None:
         """Overhead parts of mixed MV lines (``overhead``, MultiLineString coordinates): where they run on the OSM
         MV lines of the run's routing graph, moved onto the line's display geometry where it has one."""
@@ -627,6 +717,27 @@ class LayerService:
         for row in mixed:
             if row["fid"] in parts:
                 row["overhead"] = parts[row["fid"]]
+
+    def _hv_links(self, rows: list[dict[str, Any]], q: Query) -> None:
+        """The straight link of each substation to the eTraGo grid (:func:`pylovo_viewer.hv_links.link`); a
+        substation without one (no bus and no 110 kV line) is left out."""
+        from pylovo_viewer import etrago, hv_links
+
+        folder = etrago.dataset_dir(self.data_dir)
+        try:
+            key = tuple((folder / f"{part}.geojson").stat().st_mtime_ns for part in etrago.PARTS)
+        except OSError:
+            key = None
+        grid = None if key is None else self._etrago.get(key)
+        if grid is None and key is not None:
+            buses, lines = (etrago.read(self.data_dir, part) for part in ("buses", "lines"))
+            if buses is not None and lines is not None:
+                grid = self._etrago.put(key, hv_links.EtragoGrid.from_geojson(buses, lines))
+        for row in rows:
+            x, y = row.pop("x", None), row.pop("y", None)
+            made = None if grid is None or x is None or y is None else \
+                hv_links.link(grid, float(x), float(y), row.get("etrago_bus"))
+            row.update(made or {"geometry": None})
 
     def _building_feeders(self, rows: list[dict[str, Any]], q: Query) -> None:
         maps = self.feeder_maps({row["grid"] for row in rows if row.get("grid") is not None})
@@ -674,4 +785,3 @@ WHERE g.grid_result_id = %(fid)s"""
 STATION_MV_COLUMNS = """, n.mv_node_id, n.mv_grid_id AS mv_supply_area, n.ring_id AS mv_ring, n.feeder_id AS mv_feeder,
        n.connection AS mv_connection, n.vm_load_pu AS mv_vm_load_pu, n.vm_n1_pu AS mv_vm_n1_pu, n.lv_busbar_vm_pu,
        n.mv_lv_tap_pos, array_to_string(n.flags, ', ') AS mv_flags"""
-

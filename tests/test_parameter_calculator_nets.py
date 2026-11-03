@@ -2,7 +2,8 @@
 (real offline ``PandapowerBackend``, fake database client; no database).
 
 Net: LVbus 1 -f0 (100 m)- Connection Nodebus 10, which feeds 11 (f1, 50 m) and 12 (f2, 60 m); each of those has two
-17 kW households on service cables (10 to 13 m). Station 400 kVA.
+17 kW households on service cables (10 to 13 m). Station 400 kVA. Options: f2 starts at the busbar, buildings connected
+at the busbar (15 m service cables), no street at all.
 """
 import json
 import logging
@@ -11,7 +12,6 @@ import math
 import numpy as np
 import pandapower as pp
 import pandapower.topology as top
-import pandas as pd
 import pytest
 
 from pylovo.analysis import grid_analysis, parameter_calculation
@@ -27,7 +27,10 @@ R, X = 0.206, 0.080
 SIM_FACTOR = parameter_calculation.SIM_FACTOR["Residential"]
 
 
-def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0):
+def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0, f2_at_busbar=False, busbar=(), street=True,
+          f0_km=0.1, drop=()):
+    """The test net; ``busbar`` are the vertices of buildings connected at the busbar, ``street=False`` leaves out the
+    feeders and their four households, ``f0_km`` is the length of f0 and ``drop`` removes consumers with their cable."""
     backend = create_backend("pandapower", logger=LOGGER)
     backend.initialize_circuit("c", "MVbus 1", 20.0)
     backend.register_cable_types(CABLES)
@@ -37,10 +40,13 @@ def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0):
         backend.create_component(ExtGridSpec(name="External grid", bus="MVbus 1", vm_pu=1))
     backend.create_component(TransformerSpec(name="t", bus1="MVbus 1", bus2="LVbus 1", kva=kva, parallel=parallel_trafo))
     with backend.batch():
-        for vertex, dx, dy in [(10, 0.0005, 0), (11, 0.001, 0.0002), (12, 0.001, -0.0002)]:
-            backend.create_component(BusSpec(name=f"Connection Nodebus {vertex}", voltage_kv=0.4,
-                                             coordinates=(LON + dx, LAT + dy)))
-        for vertex, dx, dy in [(21, 0.0012, 0.0003), (22, 0.0013, 0.0001), (23, 0.0012, -0.0003), (24, 0.0011, -0.0001)]:
+        consumers = [(21, 0.0012, 0.0003), (22, 0.0013, 0.0001), (23, 0.0012, -0.0003), (24, 0.0011, -0.0001)] if street else []
+        consumers += [(vertex, -0.0002 * (i + 1), 0.0001) for i, vertex in enumerate(busbar)]
+        if street:
+            for vertex, dx, dy in [(10, 0.0005, 0), (11, 0.001, 0.0002), (12, 0.001, -0.0002)]:
+                backend.create_component(BusSpec(name=f"Connection Nodebus {vertex}", voltage_kv=0.4,
+                                                 coordinates=(LON + dx, LAT + dy)))
+        for vertex, dx, dy in consumers:
             backend.create_component(BusSpec(name=f"Consumer Nodebus {vertex}", voltage_kv=0.4,
                                              coordinates=(LON + dx, LAT + dy), zone="Residential"))
             backend.create_component(LoadSpec(name=f"Load {vertex} Residential", bus=f"Consumer Nodebus {vertex}", kw=3.0,
@@ -51,14 +57,19 @@ def build(parallel_feeder=1, kva=400, parallel_trafo=1, load_kw=17.0):
             backend.create_component(LineSpec(name=name, bus1=a, bus2=b, cable_name="NAYY_4_150", length_km=length,
                                               parallel=parallel))
 
-        line("f0", "LVbus 1", "Connection Nodebus 10", 0.1, parallel_feeder)
-        line("f1", "Connection Nodebus 10", "Connection Nodebus 11", 0.05, parallel_feeder)
-        line("f2", "Connection Nodebus 10", "Connection Nodebus 12", 0.06)
-        line("s21", "Connection Nodebus 11", "Consumer Nodebus 21", 0.01)
-        line("s22", "Connection Nodebus 11", "Consumer Nodebus 22", 0.012)
-        line("s23", "Connection Nodebus 12", "Consumer Nodebus 23", 0.011)
-        line("s24", "Connection Nodebus 12", "Consumer Nodebus 24", 0.013)
-    return backend.net
+        if street:
+            line("f0", "LVbus 1", "Connection Nodebus 10", f0_km, parallel_feeder)
+            line("f1", "Connection Nodebus 10", "Connection Nodebus 11", 0.05, parallel_feeder)
+            line("f2", "LVbus 1" if f2_at_busbar else "Connection Nodebus 10", "Connection Nodebus 12", 0.06)
+            line("s21", "Connection Nodebus 11", "Consumer Nodebus 21", 0.01)
+            line("s22", "Connection Nodebus 11", "Consumer Nodebus 22", 0.012)
+            line("s23", "Connection Nodebus 12", "Consumer Nodebus 23", 0.011)
+            line("s24", "Connection Nodebus 12", "Consumer Nodebus 24", 0.013)
+        for vertex in busbar:
+            line(f"s{vertex}", "LVbus 1", f"Consumer Nodebus {vertex}", 0.015)
+    net = backend.net
+    pp.toolbox.drop_buses(net, [int(net.bus.index[net.bus["name"] == f"Consumer Nodebus {v}"][0]) for v in drop])
+    return net
 
 
 class Database:
@@ -99,7 +110,7 @@ def test_clustering_metrics_of_a_pylovo_grid():
     assert metrics["no_branches"] == 1 and metrics["no_house_connections_per_branch"] == 4.0
     assert metrics["max_power_mw"] == pytest.approx(0.068)
     assert metrics["no_household_equ"] == pytest.approx(68.0 / peak)                 # installed kW over a household peak
-    assert metrics["no_households_per_branch"] == pytest.approx(68.0 / peak)
+    assert metrics["no_household_equ_per_branch"] == pytest.approx(68.0 / peak)
     assert metrics["cable_length_km"] == pytest.approx(0.256)
     assert metrics["cable_len_per_house"] == pytest.approx(0.256 / 4)
     assert metrics["transformer_mva"] == pytest.approx(0.4)
@@ -108,6 +119,61 @@ def test_clustering_metrics_of_a_pylovo_grid():
     assert metrics["simultaneous_peak_load_mw"] == pytest.approx(coincident(4, 68.0) / 1000)    # the grid's own loads
     assert metrics["ratio"] == pytest.approx(metrics["resistance"] / metrics["reactance"])
     assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"])         # one branch
+
+
+def metrics_and_feeders(**options):
+    """Key figures of ``build(**options)`` and the feeder count of the structural comparison."""
+    pc, net = calculator(), build(**options)
+    root = net.bus.index[net.bus["name"] == "LVbus 1"][0]
+    feeders = pc.count_feeders(net, top.create_nxgraph(net, respect_switches=True), root, uses_synthetic_naming=True)
+    return compute_clustering_metrics(pc, net), feeders
+
+
+@pytest.mark.parametrize("options, branches, behind, ends, feeders", [
+    ({}, 1, 4, 2, 1),                                            # one feeder, two branch ends (nodes 11 and 12)
+    ({"busbar": (31,)}, 1, 4, 2, 1),                             # a building at the busbar belongs to no feeder
+    ({"f2_at_busbar": True, "busbar": (31, 32)}, 2, 4, 2, 2),    # two feeders of two houses each
+    ({"f0_km": 0.001}, 2, 4, 2, None),                           # a 1 m stub belongs to the station: two feeders
+    ({"f2_at_busbar": True, "drop": (24,)}, 1, 2, 1, None),      # a cable from the station to one house: no feeder
+    ({"street": False, "busbar": (31, 32, 33)}, 0, 0, 0, 1),     # a star grid: buildings at the busbar only
+    ({"street": False, "busbar": (31,)}, 0, 0, 0, 1),            # a single-building grid
+])
+def test_a_branch_is_a_feeder_of_the_structural_metrics(options, branches, behind, ends, feeders):
+    """A feeder leaves the station towards at least two buildings; the per-feeder figures count the buildings
+    behind the feeders and are 0 without a feeder."""
+    metrics, structural_feeders = metrics_and_feeders(**options)
+    assert (metrics["no_branches"], metrics["no_branch_ends"]) == (branches, ends)
+    per_branch = behind / branches if branches else 0.0
+    assert metrics["no_house_connections_per_branch"] == pytest.approx(per_branch)
+    assert metrics["no_household_equ_per_branch"] == pytest.approx(per_branch * 17.0 / grid_analysis.PEAK_LOAD_HOUSEHOLD)
+    assert metrics["no_house_connections_per_branch"] <= metrics["no_house_connections"]
+    assert 0 <= metrics["vsw_per_branch"] <= metrics["resistance"]
+    if not branches:
+        assert metrics["vsw_per_branch"] == metrics["max_vsw_of_a_branch"] == metrics["max_household_equ_of_a_branch"] == 0
+    if feeders is not None:
+        assert structural_feeders == feeders       # the feeder count of the structural comparison stays as it was
+
+
+@pytest.mark.parametrize("parallel, metres", [(1, 100 + 60 + 13), (2, 50 + 60 + 13)])
+def test_the_route_resistance_is_the_highest_series_resistance_to_a_house(parallel, metres):
+    metrics, _ = metrics_and_feeders(parallel_feeder=parallel)   # f0 and f1 doubled: house 24 behind f2 is the worst
+    assert metrics["max_route_resistance_ohm"] == pytest.approx(metres / 1000 * R)
+    assert metrics_and_feeders(street=False, busbar=(31,))[0]["max_route_resistance_ohm"] == pytest.approx(0.015 * R)
+
+
+def test_a_single_building_grid_has_no_house_distance():
+    metrics, _ = metrics_and_feeders(street=False, busbar=(31,))
+    assert metrics["house_distance_km"] is None                                       # stored as NULL, not 0 km
+    assert metrics_and_feeders(street=False, busbar=(31, 32))[0]["house_distance_km"] > 0
+
+
+def test_the_largest_branch_is_one_of_the_same_feeders():
+    peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
+    metrics, _ = metrics_and_feeders(busbar=(31,))
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(4 * 17.0 / peak)    # not the busbar building
+    metrics, _ = metrics_and_feeders(f2_at_busbar=True, busbar=(31, 32))
+    assert metrics["max_household_equ_of_a_branch"] == pytest.approx(2 * 17.0 / peak)    # two houses per feeder
+    assert metrics["vsw_per_branch"] < metrics["max_vsw_of_a_branch"] < metrics["resistance"]
 
 
 def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distance():
@@ -130,10 +196,10 @@ def test_the_house_distance_of_geographic_coordinates_is_the_great_circle_distan
 def test_the_house_distance_of_projected_coordinates_is_in_km_and_needs_two_consumers():
     pc = calculator()
     net = pp.create_empty_network()
-    assert pc.calculate_average_house_distance(net) == 0.0                           # no bus
+    assert math.isnan(pc.calculate_average_house_distance(net))                      # no bus: undefined
     pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500000.0, 5300000.0)), 0.01)
     pp.create_bus(net, 0.4, geodata=(500100.0, 5300000.0))                          # no consumer: not counted
-    assert pc.calculate_average_house_distance(net) == 0.0                           # one consumer
+    assert math.isnan(pc.calculate_average_house_distance(net))                      # one consumer: undefined
     pp.create_load(net, pp.create_bus(net, 0.4, geodata=(500300.0, 5300000.0)), 0.01)
     assert pc.calculate_average_house_distance(net) == pytest.approx(0.3)            # 300 m
 
@@ -162,15 +228,23 @@ def test_the_legacy_impedance_metrics_weight_each_path_with_its_cumulated_simult
     paths = {"s21": ("f0", "f1"), "s22": ("f0", "f1"), "s23": ("f0", "f2"), "s24": ("f0", "f2")}
     resistance = sum(weight * (sum(length[c] * R / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * R * factor["s"])
                      for s, feeders in paths.items())
-    reactance = sum(weight * sum(length[c] * X / cables.get(c, 1) for c in (*feeders, s)) for s, feeders in paths.items())
+    reactance = sum(weight * (sum(length[c] * X / cables.get(c, 1) * factor[c] for c in feeders) + length[s] * X * factor["s"])
+                    for s, feeders in paths.items())
 
-    max_branch, total_r, total_x, ratio, max_branch_r = pc.calculate_impedance_metrics(
+    max_branch, total_r, total_x, ratio, max_branch_r, branch_r = pc.calculate_impedance_metrics(
         net, top.create_nxgraph(net, respect_switches=True))
 
     assert (total_r, total_x) == (pytest.approx(resistance), pytest.approx(reactance))
-    assert ratio == pytest.approx(resistance / reactance)
+    assert ratio == pytest.approx(resistance / reactance) == pytest.approx(R / X)    # one cable type: its R/X
     assert max_branch == pytest.approx(households)       # every consumer hangs behind the one feeder f0
-    assert max_branch_r == pytest.approx(resistance)
+    assert max_branch_r == pytest.approx(resistance) == pytest.approx(branch_r)
+
+
+def test_the_ratio_lies_within_the_r_x_of_the_lines():
+    net, pc = build(), calculator()
+    net.line.loc[net.line["name"] == "f2", ["r_ohm_per_km", "x_ohm_per_km"]] = (0.125, 0.078)    # NAYY_4_240
+    ratio = pc.calculate_impedance_metrics(net, top.create_nxgraph(net, respect_switches=True))[3]
+    assert 0.125 / 0.078 < ratio < R / X
 
 
 def test_graph_length_and_resistance_describe_the_backbone_unless_service_lines_are_asked_for():
@@ -258,7 +332,7 @@ def test_feeders_leave_the_busbar_and_houses_at_the_busbar_do_not_count(edges, e
 
 def test_a_cable_distribution_cabinet_is_expanded_into_its_outgoing_feeders():
     cabinet_config = {"name_column": "name", "house_connection_pattern": "Consumer Nodebus", "kvs_pattern": "Cabinet"}
-    net, bus = topology(("LVbus 1", "Cabinet 1"), *[(f"Cabinet 1", f"Connection Nodebus {i}") for i in (1, 2, 3)],
+    net, bus = topology(("LVbus 1", "Cabinet 1"), *[("Cabinet 1", f"Connection Nodebus {i}") for i in (1, 2, 3)],
                         *[(f"Connection Nodebus {i}", f"Consumer Nodebus {i}") for i in (1, 2, 3)])
     # the busbar has one neighbour, the cabinet: with expansion each outgoing cable is a feeder, without it the cabinet is one
     assert feeders(net, bus, bus_type_config=cabinet_config) == 3
@@ -355,7 +429,8 @@ class Workflow:
     logger = LOGGER
 
     def __init__(self, generated=True, analyzed=False, grids=((1, 1), (1, 2), (1, 3)), done=()):
-        self.generated, self.analyzed, self.grids, self.done = generated, analyzed, list(grids), set(done)
+        self.generated, self.analyzed, self.grids = generated, analyzed, list(grids)
+        self.done = dict(done)           # (kcid, bcid) -> key-figure version of the stored row
         self.events, self.conn = [], type("Conn", (), {"commit": lambda s: self.events.append("commit")})()
 
     def is_grid_generated(self, plz):
@@ -367,11 +442,14 @@ class Workflow:
     def get_list_from_plz(self, plz):
         return self.grids
 
-    def has_clustering_parameters(self, plz, kcid, bcid):
-        return (kcid, bcid) in self.done
+    def has_clustering_parameters(self, plz, kcid, bcid, key_figures_version):
+        return self.done.get((kcid, bcid)) == key_figures_version
 
     def delete_plz_from_sample_set_table(self, classification_id, plz):
         self.events.append(("sample set cleared", plz))
+
+    def rollback_changes(self):
+        self.events.append("rollback")
 
 
 def workflow(dbc, monkeypatch, fail_on=None):
@@ -415,9 +493,17 @@ def test_a_failing_step_raises_without_touching_the_sample_set(monkeypatch):
 
 
 def test_the_per_grid_analysis_skips_stored_grids_and_goes_on_after_a_failing_one(monkeypatch):
-    dbc = Workflow(analyzed=True, done=[(1, 1)])
+    dbc = Workflow(analyzed=True, done={(1, 1): grid_analysis.KEY_FIGURES_VERSION})
     workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
-    assert dbc.events == [("grid", 1, 2), ("grid", 1, 3)]          # (1, 1) is stored, (1, 2) fails, (1, 3) is still done
+    # (1, 1) is stored, (1, 2) fails and its transaction is rolled back, (1, 3) is still done
+    assert dbc.events == [("grid", 1, 2), "rollback", ("grid", 1, 3)]
+
+
+def test_the_per_grid_analysis_computes_rows_of_older_definitions_again(monkeypatch):
+    current = grid_analysis.KEY_FIGURES_VERSION
+    dbc = Workflow(analyzed=True, grids=((1, 1), (1, 3)), done={(1, 1): current - 1, (1, 3): current})
+    workflow(dbc, monkeypatch).analyze_grid_parameters_for_plz(80803)
+    assert dbc.events == [("grid", 1, 1)]
 
 
 def test_the_per_grid_analysis_needs_the_plz_analysis_first(monkeypatch):
@@ -437,4 +523,5 @@ def test_a_single_grid_is_stored_with_its_context_and_the_origin_of_its_transfor
 
     assert [(p["plz"], p["kcid"], p["bcid"], p["osm_trafo"], p["version_id"]) for p in stored] == [
         (80803, 7, -3, True, "1"), (80803, 7, 4, False, "1")]
+    assert all(p["key_figures_version"] == grid_analysis.KEY_FIGURES_VERSION for p in stored)
     assert stored[0]["no_house_connections"] == 4

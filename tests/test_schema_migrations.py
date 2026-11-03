@@ -150,15 +150,73 @@ def test_migration_0014_appends_the_classification_choices_of_a_fresh_setup():
     """A fresh setup creates the four columns with the table, an older schema gets them appended: same names, types, order."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, classification_choices
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0014_classification_choices", classification_choices)
-    assert MIGRATION_NAMES[-1] == "0014_classification_choices"
+    assert ("0014_classification_choices", classification_choices) in POST_SCHEMA_MIGRATIONS
     assert MIGRATION_NAMES.count("0014_classification_choices") == 1
     conn = Connection()
     classification_choices(Cursor(conn))
     sql = " ".join(conn.log)
     added = re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) ([\w\[\]]+)", sql)
     fresh = re.findall(r"^\s*(\w+) ([\w\[\]]+),$", CREATE_QUERIES["classification_version"], re.M)
-    assert added == fresh[-4:] == [("list_of_clustering_parameters", "text[]"), ("n_clusters_kmeans", "integer"),
+    assert added == fresh[-8:-4] == [("list_of_clustering_parameters", "text[]"), ("n_clusters_kmeans", "integer"),
                                    ("n_clusters_gmm", "integer"), ("additional_filtering", "boolean")]
     assert sql.startswith("ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS")
     assert len(conn.log) == 1                                # one statement: it commits with its ledger row
+
+
+def test_migration_0015_creates_the_egon_table_of_a_fresh_setup():
+    """The eGon-data HV/MV substations: the same DDL for a fresh setup and an older schema, filled by pylovo-setup."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, egon_substations
+
+    assert ("0015_egon_substations", egon_substations) in POST_SCHEMA_MIGRATIONS
+    assert MIGRATION_NAMES.count("0015_egon_substations") == 1
+    conn = Connection()
+    egon_substations(Cursor(conn))
+    assert conn.log == [" ".join(CREATE_QUERIES["egon_hvmv_substation"].split())]
+    ddl = CREATE_QUERIES["egon_hvmv_substation"]
+    assert "CREATE TABLE IF NOT EXISTS pylovo.egon_hvmv_substation" in ddl and "bus_id bigint PRIMARY KEY" in ddl
+    assert "USING gist (geom)" in ddl
+
+
+def test_migration_0016_renames_the_household_equivalent_key_figures_and_their_stored_choices():
+    """Older schemas get the names of a fresh setup, only where the former column exists, and lose ``filtered``."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, key_figure_names
+
+    assert ("0016_key_figure_names", key_figure_names) in POST_SCHEMA_MIGRATIONS
+    assert MIGRATION_NAMES.count("0016_key_figure_names") == 1
+    conn = Connection()
+    key_figure_names(Cursor(conn))
+    sql = " ".join(conn.log)
+    fresh = CREATE_QUERIES["clustering_parameters"]
+    for former, name in (("no_households_per_branch", "no_household_equ_per_branch"),
+                         ("max_no_of_households_of_a_branch", "max_household_equ_of_a_branch")):
+        assert f"AND column_name='{former}') THEN ALTER TABLE pylovo.clustering_parameters RENAME COLUMN {former} TO {name};" in sql
+        assert f"'{former}', '{name}'" in sql                 # the stored parameter lists of the classifications
+        assert f" {name} double precision," in fresh and former not in fresh
+    assert "DROP COLUMN IF EXISTS filtered;" in sql and "filtered" not in fresh
+    assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row
+
+
+def test_migration_0017_stamps_the_key_figures_and_the_classifications_clustered_before():
+    """Old rows become version 1 and keep no default; the columns match a fresh setup; old classifications read as made."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, key_figures_version
+
+    assert POST_SCHEMA_MIGRATIONS[-1] == ("0017_key_figures_version", key_figures_version)
+    assert MIGRATION_NAMES[-1] == "0017_key_figures_version"
+    conn = Connection()
+    key_figures_version(Cursor(conn))
+    sql = " ".join(conn.log)
+    assert ("ALTER TABLE pylovo.clustering_parameters ADD COLUMN IF NOT EXISTS no_branch_ends integer, "
+            "ADD COLUMN IF NOT EXISTS max_route_resistance_ohm double precision, "
+            "ADD COLUMN IF NOT EXISTS key_figures_version smallint NOT NULL DEFAULT 1; "
+            "ALTER TABLE pylovo.clustering_parameters ALTER COLUMN key_figures_version DROP DEFAULT;") in sql
+    # an older table ends with the same three columns as a fresh one
+    fresh_key_figures = re.findall(r"^\s*(\w+) ([\w ]+?),(?:\s*--.*)?$", CREATE_QUERIES["clustering_parameters"], re.M)
+    assert fresh_key_figures[-3:] == [("no_branch_ends", "integer"), ("max_route_resistance_ohm", "double precision"),
+                                      ("key_figures_version", "smallint NOT NULL")]
+    added = re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) (\w+)", sql.split("ALTER TABLE pylovo.classification_version")[1])
+    fresh = re.findall(r"^\s*(\w+) ([\w\[\]]+),$", CREATE_QUERIES["classification_version"], re.M)
+    assert added == fresh[-4:] == [("key_figures_version", "smallint"), ("transform", "text"),
+                                   ("exclude_infeasible", "boolean"), ("selection_report", "jsonb")]
+    assert ("SET key_figures_version = 1, transform = 'none', exclude_infeasible = false "
+            "WHERE list_of_clustering_parameters IS NOT NULL AND key_figures_version IS NULL;") in sql
+    assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row

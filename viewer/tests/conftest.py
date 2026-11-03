@@ -40,6 +40,11 @@ class FakeDB:
 
     def query(self, sql: str, params: Any = None) -> list[dict[str, Any]]:
         self.calls.append((sql, params))
+        return self._answer(sql)
+
+    def _answer(self, sql: str) -> list[dict[str, Any]]:
+        if sql.rstrip().endswith(") AS probe"):   # count probe of a layer: the rows of the inner query
+            return [{"n": len(self._answer(sql[sql.index("FROM (") + 6:sql.rindex(") AS probe")]))}]
         for marker, error in self.errors.items():
             if marker in sql:
                 raise error

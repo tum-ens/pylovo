@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -97,6 +98,12 @@ class FakeDb:
 
     def ensure_grid_persistence_schema(self):
         self._call("schema")
+
+    def check_mv_sources(self):
+        return []
+
+    def source_reader(self):
+        return SimpleNamespace(where="the pylovo database", close=lambda: self._call("close_source"))
 
     def try_lock_variant(self, version_id, variant_id):
         self._call("lock", version_id, variant_id)
@@ -204,6 +211,30 @@ def test_a_new_variant_runs_every_step(run, capsys):
     assert capsys.readouterr().out.startswith("✓ MV stage on ")
 
 
+def test_the_osm_coverage_report_follows_its_switch(run, monkeypatch):
+    reports = []
+    monkeypatch.setattr(stage, "_osm_coverage", lambda *a, **k: reports.append(a[1:3]) or {"n_classes": 4})
+    assert run(FakeDb(generated=(1, 2)), plz=(1, 2), osm_coverage=False).osm_coverage == {} and reports == []
+    assert run(FakeDb(generated=(1, 2)), plz=(1, 2), osm_coverage=True).osm_coverage == {"n_classes": 4}
+    monkeypatch.setattr(stage._config(), "MV_OSM_COVERAGE", False)          # the configuration is the default
+    assert run(FakeDb(generated=(1, 2)), plz=(1, 2)).osm_coverage == {} and reports == [("mv1", "d0")]
+
+
+def test_a_failed_tie_or_link_step_keeps_the_done_districts(run, monkeypatch):
+    def out_of_memory(*args):
+        raise MemoryError("ties")
+
+    links = []
+    monkeypatch.setattr(stage, "_plan_ties", out_of_memory)
+    monkeypatch.setattr(stage, "_plan_links", lambda *a: links.append(a[1:3]) or {"n_links": 3})
+    db = FakeDb(generated=(1, 2))
+    summary = run(db, plz=(1, 2))
+    assert summary.status == "done" and db.finished is summary                  # the districts decide the status
+    assert summary.ties == {} and summary.links == {"n_links": 3} and links == [("mv1", "d0")]
+    assert any(w.startswith("Ties failed: MemoryError: ties; the districts are kept") for w in summary.warnings)
+    assert "rollback_changes" in db.names()
+
+
 def test_the_summary_carries_the_demand_anchor(run, capsys):
     summary = run(FakeDb(generated=(1, 2)), plz=(1, 2))
     demand = summary.demand
@@ -279,16 +310,16 @@ def test_partial_and_failed_runs(run):
     assert run(FakeDb(totals={"grids_total": 0, "grids_done": 0})).status == "failed"
 
 
-def test_a_failure_after_the_districts_keeps_the_grid_counts_in_the_summary(run, monkeypatch):
+def test_a_failed_tie_step_keeps_the_grid_counts_and_the_status_of_the_districts(run, monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("tie step failed")
 
     monkeypatch.setattr(stage, "_plan_ties", broken)
     db = FakeDb()
-    with pytest.raises(RuntimeError, match="tie step failed"):
-        run(db, plz=(1, 2))
-    assert db.finished.status == "failed" and db.finished.warnings[-1] == "RuntimeError: tie step failed"
-    assert (db.finished.grids_total, db.finished.grids_done, db.finished.circuit_km) == (2, 2, 12.0)
+    summary = run(db, plz=(1, 2))
+    assert db.finished is summary and summary.status == "done"
+    assert summary.warnings[-1].startswith("Ties failed: RuntimeError: tie step failed; the districts are kept")
+    assert (summary.grids_total, summary.grids_done, summary.circuit_km) == (2, 2, 12.0)
 
 
 def test_an_interrupted_run_does_not_stay_running(run, monkeypatch):
@@ -438,6 +469,10 @@ class RegionDb:
     def osm_substation_candidates(self, region, buffer_m):
         return pd.DataFrame({"source_id": ["way/1", "way/2", "way/3"]})
 
+    def osm_hv_lines(self, region, reach_m):
+        self._record("osm_hv_lines", reach_m)
+        return pd.DataFrame({"subtype": ["line"], "tags": [{"voltage": "110000"}], "wkb": [None]})
+
     def insert_substations(self, version_id, variant_id, sites):
         self._record("insert_substations", sites.copy())
         return np.array([11, 12, 13])
@@ -515,10 +550,18 @@ def region_modules(monkeypatch):
     sites = [types.SimpleNamespace(key=f"way/{i}") for i in (1, 2, 3)]
     subs.select_osm_sites = lambda candidates, params: types.SimpleNamespace(sites=sites, describe=lambda: "3 sites")
     subs.match_egon = lambda s, egon, max_m: [(1, 0.0), (None, None), (None, None)]
-    subs.sites_frame = lambda s, region_wkb=None, matches=None: pd.DataFrame({
-        "source": "osm", "source_ids": [[x.key] for x in s], "egon_bus_id": pd.array([1, None, None], dtype="Int64"),
-        "in_region": [True, False, True], "osm_ratings_mva": None, "flags": [[], [], []],
-        "x": [0.0, 5000.0, 900.0], "y": [0.0, 0.0, 0.0], "footprint_wkb": None})
+    subs.HV_LINE_END_M = 50.0
+    subs.hv_line_ends = lambda s, lines: [True, False, True] if len(lines) else [False] * len(s)
+
+    def sites_frame(s, region_wkb=None, matches=None, hv_lines=None):
+        recorded["hv_lines"] = hv_lines
+        return pd.DataFrame({
+            "source": "osm", "source_ids": [[x.key] for x in s],
+            "egon_bus_id": pd.array([1, None, None], dtype="Int64"), "in_region": [True, False, True],
+            "osm_ratings_mva": None, "flags": [[], [], []], "x": [0.0, 5000.0, 900.0], "y": [0.0, 0.0, 0.0],
+            "footprint_wkb": None})
+
+    subs.sites_frame = sites_frame
     inputs = types.ModuleType("pylovo.mv_grid.inputs")
     inputs.station_table = lambda st, stats, lv: pd.DataFrame({
         "kind": "station", "connection_hint": "ring", "grid_result_id": [7, 8], "x": [10.0, 20.0], "y": 0.0,
@@ -578,6 +621,8 @@ def test_region_step_writes_substations_nodes_and_districts(region_modules):
     assert region_modules["stations"]["grid_result_id"].tolist() == [7, 8]
     assert region_modules["split"] == 1                                   # the small customers are split off
     assert region_modules["upsize_lv"] is LV                              # then overloaded stations are upsized
+    # the OSM HV lines are read within the search buffer plus the end distance and checked at the sites
+    assert db.calls["osm_hv_lines"] == [(5050.0,)] and region_modules["hv_lines"] == [True, False, True]
     nodes = db.inserted_nodes
     assert nodes["kind"].tolist() == ["busbar"] * 3 + ["station", "station", "customer"]
 

@@ -84,12 +84,13 @@ def test_only_cluster_0_of_one_classification_is_read(monkeypatch):
 
     def fake_read(query, con=None, params=None):
         seen.update(query=" ".join(query.split()), params=params)
-        return pd.DataFrame()
+        return pd.DataFrame(columns=["key_figures_version", "classification_key_figures_version"])
 
     monkeypatch.setattr(avg, "DatabaseClient", FakeClient)
     monkeypatch.setattr(avg.pd, "read_sql_query", fake_read)
     avg.get_clustering_parameters_for_kmeans_cluster_0(7)
     assert "WHERE tc.classification_id = %(c)s AND tc.kmeans_clusters = 0" in seen["query"] and seen["params"] == {"c": 7}
+    assert "cv.key_figures_version AS classification_key_figures_version" in seen["query"]     # checked like the readers
     avg.get_clustering_parameters_for_kmeans_cluster_0()
     assert seen["params"] == {"c": avg.CLASSIFICATION_VERSION}
 

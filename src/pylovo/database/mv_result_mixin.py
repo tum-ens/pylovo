@@ -616,25 +616,37 @@ class MvResultMixin(BaseMixin):
         planning region (the PLZ polygons); the cells partition the region. A district is complete when its
         substation lies in the region and less than 10 % of its cell boundary runs along the region border (within
         1 m of it).
+
+        The points are staged in a temporary table with a spatial index (``mv_area_point``, dropped at commit), so
+        each cell finds its points through the index instead of testing every point.
         """
+        self.cur.execute("DROP TABLE IF EXISTS pg_temp.mv_area_point")
+        self.cur.execute(
+            """CREATE TEMP TABLE mv_area_point ON COMMIT DROP AS
+               SELECT mv_grid_id, geom FROM pylovo.mv_node
+               WHERE version_id = %(v)s AND mv_variant_id = %(var)s AND kind IN ('station', 'customer')
+                 AND mv_grid_id IS NOT NULL""",
+            {"v": version_id, "var": variant_id})
+        self.cur.execute("CREATE INDEX ON mv_area_point USING gist (geom)")
+        self.cur.execute("ANALYZE mv_area_point")
         self.cur.execute(
             """
             WITH region AS (
                 SELECT u.geom, ST_Buffer(ST_Boundary(u.geom), 1.0) AS border
                 FROM (SELECT ST_UnaryUnion(ST_Collect(geom)) AS geom FROM pylovo.postcode
                       WHERE plz = ANY(%(plz)s)) u),
-            pts AS (SELECT mv_grid_id, geom FROM pylovo.mv_node
-                    WHERE version_id = %(v)s AND mv_variant_id = %(var)s AND kind IN ('station', 'customer')
-                      AND mv_grid_id IS NOT NULL),
             vor AS (SELECT row_number() OVER () AS cid, d.geom
                     FROM ST_Dump((SELECT ST_VoronoiPolygons(ST_Collect(p.geom), 0.0, (SELECT geom FROM region))
-                                  FROM pts p)) d),
+                                  FROM mv_area_point p)) d),
             lab AS (SELECT DISTINCT ON (v.cid) v.cid, p.mv_grid_id, v.geom
-                    FROM vor v JOIN pts p ON ST_Intersects(v.geom, p.geom) ORDER BY v.cid, p.mv_grid_id),
-            cell AS (SELECT l.mv_grid_id,
-                            ST_Multi(ST_CollectionExtract(ST_Intersection(ST_UnaryUnion(ST_Collect(l.geom)),
-                                                                          r.geom), 3)) AS geom
-                     FROM lab l CROSS JOIN region r GROUP BY l.mv_grid_id, r.geom)
+                    FROM vor v JOIN mv_area_point p ON ST_Intersects(v.geom, p.geom) ORDER BY v.cid, p.mv_grid_id),
+            -- the cells are united per district first and each district is clipped once: grouping the cells
+            -- together with the region would copy the region into every cell row of the sort (106 GB of temporary
+            -- files for Bavaria)
+            merged AS (SELECT mv_grid_id, ST_UnaryUnion(ST_Collect(geom ORDER BY cid)) AS geom
+                       FROM lab GROUP BY mv_grid_id),
+            cell AS (SELECT m.mv_grid_id, ST_Multi(ST_CollectionExtract(ST_Intersection(m.geom, r.geom), 3)) AS geom
+                     FROM merged m CROSS JOIN region r)
             UPDATE pylovo.mv_grid g
             SET geom = c.geom, area_km2 = ST_Area(c.geom) / 1e6,
                 complete = s.in_region AND COALESCE(
@@ -987,12 +999,13 @@ class MvResultMixin(BaseMixin):
 
     def variant_totals(self, version_id: str, variant_id: str) -> dict:
         """Grid counts by status and the summed results of a variant (for :class:`MvRunSummary`); ``grids_by_kv``
-        counts the grids per nominal voltage (``{"20": n, "10": m}``)."""
+        counts the grids per nominal voltage (``{"20": n, "10": m}``). The lengths are summed in grid order, so the
+        last digits do not depend on the order of the rows in the table."""
         self.cur.execute(
             """SELECT count(*), count(*) FILTER (WHERE status = 'done'), count(*) FILTER (WHERE status = 'failed'),
                        count(*) FILTER (WHERE status = 'pending'),
-                       COALESCE(sum(n_stations), 0), COALESCE(sum(n_customers), 0), COALESCE(sum(circuit_km), 0),
-                       COALESCE(sum(cable_km), 0),
+                       COALESCE(sum(n_stations), 0), COALESCE(sum(n_customers), 0),
+                       COALESCE(sum(circuit_km ORDER BY mv_grid_id), 0), COALESCE(sum(cable_km ORDER BY mv_grid_id), 0),
                        count(*) FILTER (WHERE power_flow_status = ANY(%s)), COALESCE(sum(n_band_conflicts), 0)
                 FROM pylovo.mv_grid WHERE version_id = %s AND mv_variant_id = %s""",
             (list(_VIOLATION_STATUSES), version_id, variant_id))
@@ -1128,48 +1141,53 @@ class MvResultMixin(BaseMixin):
         with self.sqla_engine.begin() as connection:
             return gpd.read_postgis(query, con=connection, params=params, geom_col=geom_col)
 
-    def read_mv_layers(self, version_id: str, variant_id: str, mv_grid_id: int | None = None
-                       ) -> dict[str, "gpd.GeoDataFrame"]:
+    def read_mv_layers(self, version_id: str, variant_id: str, mv_grid_id: int | None = None,
+                       layers: Sequence[str] | None = None) -> dict[str, "gpd.GeoDataFrame"]:
         """The map layers of a variant (or of one of its grids) for plots: never reads ``mv_grid.net``.
 
+        Args:
+            layers: Only these layers (default all); the coupling reads ``grids`` and ``nodes`` only, which matters
+                for a variant of a whole federal state.
+
         Returns:
-            ``{"nodes", "lines", "substations", "grids", "settlements"}``, each a GeoDataFrame in TARGET_EPSG
-            (``settlements``: the settlements of the variant's routing graph that touch its nodes).
+            ``{"nodes", "lines", "substations", "grids", "settlements"}`` (or the requested ones), each a
+            GeoDataFrame in TARGET_EPSG (``settlements``: the settlements of the variant's routing graph that touch
+            its nodes).
         """
         params = {"v": version_id, "var": variant_id, "g": None if mv_grid_id is None else int(mv_grid_id)}
         grid_filter = "" if mv_grid_id is None else " AND mv_grid_id = %(g)s"
-        layers = {
-            "nodes": self._read_geo(
-                f"SELECT {', '.join(_NODE_LAYER_COLUMNS)} FROM pylovo.mv_node "
-                f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_node_id", params),
-            "lines": self._read_geo(
-                "SELECT mv_line_id, version_id, mv_variant_id, mv_grid_id, from_node, to_node, role, kind, feeder_id,"
-                " ring_id, std_type, parallel, length_km, cable_km, overhead_km, straight_km, bridge_m,"
-                " normally_open, open_at_node, loading_load_percent, loading_n1_percent, loading_feed_in_percent,"
-                " geom FROM pylovo.mv_line "
-                f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_line_id", params),
-            "grids": self._read_geo(
-                f"SELECT {', '.join(_GRID_LAYER_COLUMNS)} FROM pylovo.mv_grid "
-                f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_grid_id", params),
-        }
         substation_filter = "" if mv_grid_id is None else \
             " AND substation_id IN (SELECT substation_id FROM pylovo.mv_grid WHERE mv_grid_id = %(g)s)"
-        layers["substations"] = self._read_geo(
-            "SELECT substation_id, version_id, mv_variant_id, source, source_ids, name, operator, voltage_tag,"
-            " egon_bus_id, egon_distance_m, in_region, attach_offset_m, osm_ratings_mva, n_transformers,"
-            " transformer_mva, transformer_sizing, peak_load_mw, peak_feed_in_mw, loading_n0_percent,"
-            " loading_n1_percent, flags, geom FROM pylovo.mv_substation "
-            f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{substation_filter} ORDER BY substation_id", params)
-        layers["settlements"] = self._read_geo(
-            f"""SELECT st.graph_id, st.settlement_id, st.n_buildings, st.length_km, st.urban, st.geom
+        queries = {
+            "nodes": f"SELECT {', '.join(_NODE_LAYER_COLUMNS)} FROM pylovo.mv_node "
+                     f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_node_id",
+            "lines": "SELECT mv_line_id, version_id, mv_variant_id, mv_grid_id, from_node, to_node, role, kind, "
+                     "feeder_id, ring_id, std_type, parallel, length_km, cable_km, overhead_km, straight_km, "
+                     "bridge_m, normally_open, open_at_node, loading_load_percent, loading_n1_percent, "
+                     "loading_feed_in_percent, geom FROM pylovo.mv_line "
+                     f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_line_id",
+            "grids": f"SELECT {', '.join(_GRID_LAYER_COLUMNS)} FROM pylovo.mv_grid "
+                     f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter} ORDER BY mv_grid_id",
+            "substations": "SELECT substation_id, version_id, mv_variant_id, source, source_ids, name, operator, "
+                           "voltage_tag, egon_bus_id, egon_distance_m, in_region, attach_offset_m, osm_ratings_mva, "
+                           "n_transformers, transformer_mva, transformer_sizing, peak_load_mw, peak_feed_in_mw, "
+                           "loading_n0_percent, loading_n1_percent, flags, geom FROM pylovo.mv_substation "
+                           f"WHERE version_id = %(v)s AND mv_variant_id = %(var)s{substation_filter} "
+                           "ORDER BY substation_id",
+            "settlements": f"""SELECT st.graph_id, st.settlement_id, st.n_buildings, st.length_km, st.urban, st.geom
                 FROM pylovo.mv_graph_settlement st
                 JOIN pylovo.mv_variant v ON v.graph_id = st.graph_id
                 WHERE v.version_id = %(v)s AND v.mv_variant_id = %(var)s
                   AND st.settlement_id IN (SELECT DISTINCT settlement_id FROM pylovo.mv_node
                                            WHERE version_id = %(v)s AND mv_variant_id = %(var)s{grid_filter}
                                              AND settlement_id IS NOT NULL)
-                ORDER BY st.settlement_id""", params)
-        return layers
+                ORDER BY st.settlement_id""",
+        }
+        wanted = list(queries) if layers is None else list(layers)
+        unknown = [name for name in wanted if name not in queries]
+        if unknown:
+            raise ValueError(f"unknown MV layer {', '.join(unknown)} (one of {', '.join(queries)})")
+        return {name: self._read_geo(queries[name], params) for name in wanted}
 
     def read_mv_rings(self, version_id: str, variant_id: str) -> pd.DataFrame:
         """The ``pylovo.mv_ring`` rows of a variant."""

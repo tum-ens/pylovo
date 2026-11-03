@@ -16,6 +16,8 @@ adapted:
    ``substation_drop_m``, keeps the one with the larger footprint.
 3. :func:`match_egon` gives each site the nearest eGon-data HV/MV substation within ``egon_match_m``, whose bus id
    is the 110 kV bus of eTraGo.
+4. :func:`hv_line_ends` checks in the same OSM data whether a 60 kV or 110 kV line or cable ends at each site
+   (:func:`is_hv_line`, within :data:`HV_LINE_END_M`), so OSM shows how the site is fed.
 
 :func:`select_osm_sites` runs steps 1 and 2 with the parameters of an MV variant; :func:`sites_frame` gives the
 sites as a table (columns of ``pylovo.mv_substation``).
@@ -38,7 +40,7 @@ from scipy.sparse.csgraph import connected_components
 from shapely.errors import GEOSException
 from shapely.strtree import STRtree
 
-from pylovo.mv_grid.osm_lines import parse_voltages
+from pylovo.mv_grid.osm_lines import INTERNAL_LINES, LIFECYCLE_PREFIXES, is_railway_current, parse_voltages
 from pylovo.mv_grid.parameters import MvStageError
 
 if TYPE_CHECKING:   # pragma: no cover
@@ -50,6 +52,12 @@ HV_LEVELS_V: frozenset[int] = frozenset({60000, 110000})
 EHV_MIN_V: int = 220000
 #: Voltage range (V, inclusive) of the MV level (1 kV to 36 kV).
 MV_RANGE_V: tuple[int, int] = (1000, 36000)
+#: OSM subtypes (``power`` values) of the HV lines that feed a site: overhead lines and cables.
+HV_LINE_SUBTYPES: tuple[str, ...] = ("line", "cable")
+#: Distance (m) from a site within which an HV line of OSM must end to feed it (MapYourGrid's checks use 50 m).
+HV_LINE_END_M: float = 50.0
+#: Tolerance (m) around a site's footprint within which a whole OSM line is a stub inside the yard, not a feed.
+YARD_TOLERANCE_M: float = 10.0
 
 #: ``substation=*`` values that are no public HV/MV substation (rule 2).
 DROPPED_SUBSTATION_TAGS: frozenset[str] = frozenset(
@@ -439,9 +447,89 @@ def match_egon(sites: Sequence[Site], egon: pd.DataFrame, max_m: float) -> list[
     return matches
 
 
+# ---------------------------------------------------------------------------------------------- OSM HV lines
+def _frequencies(frequency: Any) -> list[str]:
+    return [] if frequency is None else [part.strip() for part in str(frequency).split(";")]
+
+
+def is_hv_line(subtype: Any, tags: Mapping[str, Any] | None) -> bool:
+    """Whether an OSM power way is a 60 kV or 110 kV line or cable in service, which can feed an HV/MV substation.
+
+    The rules of :func:`~pylovo.mv_grid.osm_lines.is_mv_overhead_line` for a way in service, with cables and the HV
+    levels: ``power=line`` or ``power=cable``, no lifecycle prefix on the power key, no substation internals
+    (``line=bay|busbar|internal``), no railway current (16.7 Hz without 50 Hz, or only railway operators without
+    50 Hz), and a ``voltage`` tag with 60 kV or 110 kV, also on shared towers (``380000;110000``, ``110000;20000``).
+
+    Args:
+        subtype: The power value of the way (``osm_subtype`` of the InfDB OSM layer).
+        tags: Its OSM tags (missing: none).
+    """
+    if subtype not in HV_LINE_SUBTYPES:
+        return False
+    tags = tags or {}
+    if any(str(key).partition(":")[0] in LIFECYCLE_PREFIXES and str(key).endswith(":power") for key in tags):
+        return False
+    if tags.get("line") in INTERNAL_LINES:
+        return False
+    frequency = tags.get("frequency")
+    if is_railway_current(frequency):
+        return False
+    operators = [part.strip() for part in str(tags.get("operator") or "").split(";") if part.strip()]
+    if operators and all(_RAILWAY_OPERATOR.search(op) for op in operators) and "50" not in _frequencies(frequency):
+        return False
+    return bool(parse_voltages(tags.get("voltage")) & HV_LEVELS_V)
+
+
+def hv_line_ends(sites: Sequence[Site], lines: pd.DataFrame | None, max_m: float = HV_LINE_END_M) -> list[bool]:
+    """Whether a 60 kV or 110 kV line or cable of OSM (:func:`is_hv_line`) ends within ``max_m`` of each site.
+
+    A line counts at the two ends of each of its parts, measured from the site's footprint (0 if an end lies inside
+    it) or from its busbar point. A line that only passes a site does not count: OSM lines end at the substations
+    they feed. Nor does a line that lies wholly within the footprint (:data:`YARD_TOLERANCE_M`): a stub inside the
+    yard, which OSM often maps without ``line=bay``. A site without such an end is fed by a line OSM does not show,
+    often an unmapped underground cable.
+
+    Args:
+        sites: The sites.
+        lines: OSM power ways with ``subtype``, ``tags`` (dict or None) and ``wkb`` (``TARGET_EPSG``), as
+            :meth:`MvSourceMixin.osm_hv_lines <pylovo.database.mv_source_mixin.MvSourceMixin.osm_hv_lines>` reads
+            them.
+        max_m: :data:`HV_LINE_END_M`.
+
+    Returns:
+        One bool per site, in the given order.
+    """
+    geoms: list[shapely.Geometry] = []
+    ends: list[np.ndarray] = []
+    owner: list[int] = []                      # the line of each end
+    if lines is not None and len(lines):
+        for subtype, tags, wkb in zip(lines["subtype"], lines["tags"], lines["wkb"]):
+            if wkb is None or not is_hv_line(subtype, tags if isinstance(tags, Mapping) else {}):
+                continue
+            geom = shapely.from_wkb(bytes(wkb))
+            for part in shapely.get_parts(geom):
+                if shapely.get_type_id(part) in (1, 2) and not part.is_empty:       # LineString, LinearRing
+                    coords = shapely.get_coordinates(part)
+                    ends.extend((coords[0], coords[-1]))
+                    owner.extend((len(geoms), len(geoms)))
+            geoms.append(geom)
+    if not ends:
+        return [False] * len(sites)
+    tree = STRtree(shapely.points(np.asarray(ends)))
+    owners = np.asarray(owner)
+    fed = []
+    for site in sites:
+        geom = site.geometry()
+        near = tree.query(geom, predicate="dwithin", distance=float(max_m))
+        yard = shapely.buffer(geom, YARD_TOLERANCE_M) if len(near) else None
+        fed.append(any(not shapely.covers(yard, geoms[k]) for k in sorted(set(owners[near].tolist()))))
+    return fed
+
+
 # ---------------------------------------------------------------------------------------------- tables
 def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
-                matches: Sequence[tuple[int | None, float | None]] | None = None) -> pd.DataFrame:
+                matches: Sequence[tuple[int | None, float | None]] | None = None,
+                hv_lines: Sequence[bool] | None = None) -> pd.DataFrame:
     """The sites as a table with the columns of :data:`SITE_COLUMNS` (one row per site, in the given order).
 
     Args:
@@ -451,10 +539,16 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         matches: The result of :func:`match_egon` (``egon_bus_id``, ``egon_distance_m``); None leaves them empty.
             With matches, a site without one gets the flag ``no_egon_bus``: it has no bus in the eGon-data grid
             model, whose HV/MV bus ids are the 110 kV buses of eTraGo.
+        hv_lines: The result of :func:`hv_line_ends`; None skips the check. A site without an HV line end gets the
+            flag ``no_osm_hv_line``: OSM does not show the line that feeds it, so its link to the HV grid (also its
+            eTraGo bus) is not confirmed by OSM.
     """
     n = len(sites)
     if matches is not None and len(matches) != n:
         raise ValueError(f"matches has {len(matches)} entries for {n} sites")
+    if hv_lines is not None and len(hv_lines) != n:
+        raise ValueError(f"hv_lines has {len(hv_lines)} entries for {n} sites")
+    fed = list(hv_lines) if hv_lines is not None else [True] * n
     points = shapely.points([site.x for site in sites], [site.y for site in sites]) if n else np.array([])
     if region_wkb is not None and n:
         region = shapely.from_wkb(bytes(region_wkb))
@@ -476,7 +570,7 @@ def sites_frame(sites: Sequence[Site], region_wkb: bytes | None = None,
         "in_region": pd.Series(in_region, dtype=object),
         "osm_ratings_mva": [None] * n,                  # no OSM transformer ratings are read (column kept)
         "flags": [list(site.flags) + (["no_egon_bus"] if matches is not None and bus is None else [])
-                  for site, (bus, _) in zip(sites, egon)],
+                  + ([] if line else ["no_osm_hv_line"]) for site, (bus, _), line in zip(sites, egon, fed)],
         "x": pd.Series([site.x for site in sites], dtype=float),
         "y": pd.Series([site.y for site in sites], dtype=float),
         "area_m2": pd.Series([site.area_m2 for site in sites], dtype=float),

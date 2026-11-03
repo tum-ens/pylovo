@@ -39,53 +39,15 @@ def no_show_and_no_leftover_figures(monkeypatch):
     plt.close("all")
 
 
-class FakeClient:
-    """The reads of the PLZ plots."""
-
-    def __init__(self, *args, **kwargs):
-        self.cur = types.SimpleNamespace(execute=lambda *a, **k: None,
-                                         fetchall=lambda: [("NAYY 4x150 SE", 1.5), ("NAYY 4x35 SE", 0.5)])
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def read_per_trafo_dict(self, plz):
-        per_size = {400: [3.0, 5.0], 630: [4.0]}
-        return [per_size, per_size], ["load_count", "bus_count"], {400: 2, 630: 1}
-
-    def read_cable_dict(self, plz):
-        return {"NAYY 4x150 SE": 1.5, "NAYY 4x35 SE": 0.5}
-
-
-@pytest.mark.parametrize("name", ["plot_pie_of_trafo_cables", "plot_hist_trafos", "plot_boxplot_plz",
-                                  "plot_cable_length_of_types"])
-def test_the_plz_plots_return_an_open_figure_and_do_not_show_it(monkeypatch, name):
-    monkeypatch.setattr(metric_validation, "DatabaseClient", FakeClient)
-    fig = getattr(metric_validation, name)(85653)
-    assert isinstance(fig, Figure)
-    assert plt.get_fignums() == [fig.number]
-
-
 def _tree():
     return nx.Graph([(1, 2), (2, 3), (2, 4), (1, 5)])
 
 
-@pytest.mark.parametrize("draw", [networks.draw_tree_network, networks.draw_tree_network_spacing,
-                                  networks.draw_radial_network])
+@pytest.mark.parametrize("draw", [networks.draw_tree_network, networks.draw_radial_network])
 def test_the_tree_drawings_return_their_figure_and_do_not_show_it(draw):
     fig = draw(_tree())
     assert isinstance(fig, Figure)
     assert plt.get_fignums() == [fig.number]
-
-
-def test_the_tree_drawing_of_a_stored_grid_returns_the_figure(monkeypatch):
-    monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid: object())
-    monkeypatch.setattr(networks, "create_nxgraph", lambda net: _tree())
-    fig = networks.draw_tree_network_with_spacing_from_grid_id(85653, 1, 2)
-    assert isinstance(fig, Figure)
 
 
 def _net_with_results():
@@ -115,9 +77,18 @@ def _station_net(parallel=2):
     return net
 
 
-class GridClient(FakeClient):
-    """One stored grid per PLZ."""
+class GridClient:
+    """A database client with one stored grid per PLZ."""
     net = None
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
     def get_list_from_plz(self, plz):
         return [(1, 1)]
@@ -167,15 +138,15 @@ def no_file_and_no_browser(monkeypatch, tmp_path):
 def test_the_plotly_grid_plots_return_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser, plot):
     if plot == "plot_with_generic_coordinates":
         pytest.importorskip("igraph")
-    monkeypatch.setattr(networks, "read_net_with_grid_generator", lambda plz, kcid, bcid: _grid_net())
+    monkeypatch.setattr(networks, "read_net_with_grid_generator",
+                        lambda plz, kcid, bcid, version_id=None: _grid_net())
     assert isinstance(getattr(networks, plot)(85653, 1, 1), go.Figure)
 
 
-@pytest.mark.parametrize("plot, args", [("plot_trafo_on_map", (85653,)), ("plot_grid_on_map_plotly", (85653, 1, 1))])
-def test_the_plotly_maps_return_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser, plot, args):
+def test_the_station_map_returns_the_figure_without_a_file_or_a_browser(monkeypatch, no_file_and_no_browser):
     GridClient.net = _grid_net()
     monkeypatch.setattr(geo_validation, "DatabaseClient", GridClient)
-    assert isinstance(getattr(geo_validation, plot)(*args), go.Figure)
+    assert isinstance(geo_validation.plot_trafo_on_map(85653), go.Figure)
 
 
 # --- smoke tests of the comparison and power-flow plots (pylovo itself does not call them) ------------------------------
@@ -214,7 +185,6 @@ def test_the_power_flow_plots_of_a_solved_net_return_their_figures():
     net = pn.example_simple()
     pp.runpp(net)
     figures = [powerflow_validation.plot_load_and_voltage_distribution(net),
-               powerflow_validation.plot_voltage_profile(net),
                powerflow_validation.plot_line_loading_distribution(net),
                powerflow_validation.plot_all_voltages_for_plz(net.res_bus[["vm_pu"]])]
     assert all(isinstance(fig, Figure) for fig in figures)

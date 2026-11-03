@@ -3,18 +3,20 @@ requires = ["hatchling>=1.27"]  # 1.27 reads the SPDX license expression (PEP 63
 build-backend = "hatchling.build"
 [project]
 name = "pylovo"
-version = "1.0.0"
+version = "1.1.0"
 description = "Python tool for generating synthetic low-voltage distribution grids"
 readme = "README.rst"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 license = "MIT"
+# DATA_LICENSES.md: the licences of the data files that the wheel ships in pylovo/_defaults
+license-files = ["LICENSE.txt", "DATA_LICENSES.md"]
 authors = [
     {name = "Beneharo Reveron Baecker", email = "beneharo.reveron-baecker@tum.de"},
 ]
 
 keywords = [
     "power-grid",
-    "synthetic-grid", 
+    "synthetic-grid",
     "low-voltage",
     "energy-systems",
     "distribution-grid",
@@ -26,18 +28,19 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 dependencies = [
     # Data manipulation & analysis
     "pandas>=2.2.3",
     "numpy>=1.26.4",
-    "numba==0.62.1",
+    "numba>=0.62.1",
     "scipy>=1.13.1",
     # Core electrical grid generation
-    "pandapower>=3.4.0,<4.0.0",
+    "pandapower>=3.5.2,<4.0.0",
     "networkx>=3.6",
-    # "altdss>=0.2.0",
     # GIS & Geospatial
     "geopandas>=1.1.3,<1.2.0",
     "shapely>=2.1",
@@ -88,6 +91,12 @@ docs = [
     "sphinx-autoapi>=3.4.0",
     "sphinx-copybutton>=0.5.2",
     "sphinx-design>=0.6.1",
+    # the tutorial notebooks as pages, with their stored outputs
+    "myst-nb>=1.4",
+]
+opendss = [
+    # OpenDSS electrical backend (ELECTRICAL_BACKEND: opendss)
+    "altdss>=0.2.4",
 ]
 legacy-ui = [
     # Flask browser map for checking and editing transformer positions (pylovo-import transformers-ui)
@@ -114,7 +123,9 @@ viewer = [
 [dependency-groups]
 # Installed by `uv sync` / `uv run` (not by `pip install pylovo`, not in the image: `uv sync --no-dev`)
 dev = [
-    "pytest>=8.3",
+    "pytest>=9.0",
+    # pinned: a new ruff can enable new rules; upgrade with `uv lock --upgrade-package ruff`
+    "ruff==0.17.3",
 ]
 
 [project.scripts]
@@ -169,11 +180,28 @@ include = [
     "viewer/pylovo_viewer/static/**",
 ]
 
+[tool.ruff.lint]
+# `uv run ruff check` (also in CI and in the pre-commit hook). The rules are listed explicitly because the
+# default rule set changes with ruff versions: syntax errors, undefined and unused names, statement style and the
+# likely bugs of flake8-bugbear (B). B905 (zip() without strict=) is left out: it would change 200 working calls.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = ["B905"]
+
+[tool.ruff.lint.per-file-ignores]
+# notebooks import where a step needs it; tests assign lambdas as fakes
+"*.ipynb" = ["E402"]
+"{tests,api/tests,viewer/tests}/**" = ["E731"]
+
 [tool.pytest.ini_options]
 # Plain `pytest` runs the three test folders and says why tests were skipped. Keep the default import
 # mode: the API tests import `from conftest import requires_db`.
 testpaths = ["tests", "api/tests", "viewer/tests"]
 addopts = "-ra"
+minversion = "9.0"
+# unknown markers and configuration keys are errors, an xfail test that passes fails
+strict_config = true
+strict_markers = true
+strict_xfail = true
 
 [project.urls]
 Homepage = "https://github.com/tum-ens/pylovo"
