@@ -13,18 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [1.2.0] - 2026-11-03
 ### Changed
-- Leave out buildings without an address only on request (`EXCLUDE_BUILDINGS_WITHOUT_ADDRESS`), as the InfDB marks outbuildings as Auxiliary; the MV stage counts settlement buildings by their use
 - Let small greenfield clusters join an existing station only within its rating
-- Give the farm part of an InfDB farmstead no load
 - Build the documentation on Python 3.13, which Sphinx 9.2 needs
 
 ### Added
-- Import the OSM transformers of federal states by their code with `pylovo-import transformers-osm --state`; close duplicates are found with a spatial index, and the Overpass API is asked again after HTTP 502 and 503
+- Import the OSM transformers of federal states by their code with `pylovo-import transformers-osm --state`
 - Lay feeder cables in parallel for the voltage drop also without a standard cable, once the largest conductor is not enough (`MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`)
-- Plan a grid again when its feeders or house connections leave the voltage band (`MAX_VOLTAGE_REPAIRS`, off by default)
-- Load non-residential parts by their InfDB load class from the federal benchmarks (BAnz 2015) and the BDEW load profiles (`NONRESIDENTIAL_LOAD_MODEL: load_class`, `UNCLASSIFIED_LOAD_CLASS`), and store a connection level per building (`CONNECTION_LEVEL_THRESHOLDS_KW`)
-- Warn in the MV run summary when HV/MV substations near the region cannot reach the street graph, and document the sources of the MV-direct threshold
-- Add `pylovo.analysis.comparison`, `pylovo.plotting.comparison` and the notebook `notebook_tutorials/analysis/basic_comparison.ipynb` to compare two grid datasets of the same buildings, e.g. pylovo grids and the grids of a DSO
+- Load non-residential parts by their InfDB load class from the federal benchmarks (BAnz 2015) and the BDEW load profiles
+- Add `pylovo.analysis.comparison`, `pylovo.plotting.comparison` and the notebook `notebook_tutorials/analysis/basic_comparison.ipynb` to show an exemplary comparison of two grid datasets of the same buildings
 
 ## [1.1.0] - 2026-10-30
 ### Changed
