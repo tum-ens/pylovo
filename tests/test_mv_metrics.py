@@ -135,6 +135,59 @@ def test_two_leg_radial_tie_island_and_mesh():
     assert list(mesh["kind"]) == ["mesh"] and mesh.iloc[0]["ring_members"] == 3
 
 
+def _two_rings_with_stub():
+    """Two open rings of four stations each on one busbar, and a stub station 5 off station 1."""
+    nodes = _nodes([(0, "busbar", 0.0, 0.0)]
+                   + [(n, "station", 1000.0 * (n % 10), 1000.0 * (n // 10)) for n in (1, 2, 3, 4, 5, 11, 12, 13, 14)])
+    lines = _lines([
+        (10, 0, 1, 1.0, "cable", False, None),
+        (11, 1, 2, 1.0, "cable", False, None),
+        (12, 2, 3, 1.0, "cable", True, 2),          # NOP of ring A, open switch at station 2
+        (13, 3, 4, 1.0, "cable", False, None),
+        (14, 4, 0, 1.0, "cable", False, None),
+        (15, 1, 5, 0.5, "cable", False, None),      # stub of ring A
+        (20, 0, 11, 1.0, "cable", False, None),
+        (21, 11, 12, 1.0, "cable", False, None),
+        (22, 12, 13, 1.0, "cable", True, 12),       # NOP of ring B
+        (23, 13, 14, 1.0, "cable", False, None),
+        (24, 14, 0, 1.0, "cable", False, None),
+    ])
+    return nodes, lines
+
+
+def _with_link(lines, line_id, from_node, to_node):
+    """The lines plus a normally-open line with role link (open switch at ``to_node``) and no role elsewhere."""
+    lines = lines.assign(role="ring")
+    link = pd.DataFrame([(line_id, from_node, to_node, 2.0, "cable", True, to_node, "link")],
+                        columns=[*lines.columns[:7], "role"])
+    return pd.concat([lines, link], ignore_index=True)
+
+
+def test_link_between_rings_changes_no_ring_metric():
+    nodes, lines = _two_rings_with_stub()
+    linked = _with_link(lines, 30, 3, 13)
+    plain = lines.assign(role="ring")
+    for table in (m.feeder_table, m.ring_table, m.node_roles):
+        pd.testing.assert_frame_equal(table(nodes, linked), table(nodes, plain))
+    metrics, with_link = m.topology_metrics(nodes, plain), m.topology_metrics(nodes, linked)
+    assert metrics["n_rings"] == 2 and metrics["n_meshes"] == 0 and metrics["ring_members_mean"] == 4
+    # links count in none of the inventory totals (as ties) and are no ties: the planner stores its metrics without them
+    assert with_link == metrics
+    assert with_link["n_ties"] == 0 and with_link["n_nops"] == 2
+    a = m._analyse(nodes, linked)
+    assert a.lines.set_index("line_id").loc[30, "nop_class"] == "link"
+    assert not a.lines.set_index("line_id").loc[30, "on_main"] and pd.isna(a.lines.set_index("line_id").loc[30, "feeder"])
+
+
+def test_link_end_on_a_stub_keeps_the_stub():
+    nodes, lines = _two_rings_with_stub()
+    plain = m.node_roles(nodes, lines).set_index("node_id")
+    assert plain.loc[5, "position"] == "stub"
+    linked = m.node_roles(nodes, _with_link(lines, 30, 5, 13)).set_index("node_id")
+    assert linked.loc[5, "position"] == "stub"
+    assert list(linked["position"]) == list(plain["position"])
+
+
 def test_metrics_are_deterministic_and_independent_of_row_order():
     nodes, lines = _ring_toy()
     first = m.topology_metrics(nodes, lines)

@@ -13,7 +13,8 @@ module.
 - ``lines``: ``line_id``, ``from_node``, ``to_node``, ``length_km`` (length of one line route),
   ``kind`` (``cable``, ``overhead`` or ``mixed``), ``cable_km``, ``overhead_km``, ``normally_open``, ``parallel``.
   Optional: ``open_at_node`` (the end of a normally-open line that holds the open switch) and ``role``
-  (``ring``, ``stub``, ``dedicated``, ``generator`` or ``tie``; ``tie`` marks a tie to another substation).
+  (``ring``, ``stub``, ``dedicated``, ``generator``, ``tie`` or ``link``; ``tie`` marks a tie to another
+  substation, ``link`` a normally-open line between two rings of one substation).
 
 ``cable_km`` and ``overhead_km`` default to the line length by ``kind``; ``normally_open`` defaults to False and
 ``parallel`` to 1. Inventory totals multiply each line length by ``parallel``; geometric feeder and ring
@@ -29,7 +30,8 @@ as in some Ding0 grids); a feeder with two or more closed outlets is a closed ri
 (``closed_ring``); a feeder without any of these is ``radial``; a component without an outlet is an ``island``
 (unsupplied in normal operation). NOP lines between feeders of different busbars, lines with role ``tie`` and
 normally-open lines to a node outside the table (a district's ties to its neighbours) are ties; a feeder with a tie
-end has ``has_tie``. The **main path** of a feeder runs from the busbar along the shortest closed path to every end of its NOP
+end has ``has_tie``. A normally-open line with role ``link`` is not a ring edge, belongs to no feeder and does not
+change the main paths. The **main path** of a feeder runs from the busbar along the shortest closed path to every end of its NOP
 lines (radial and closed-ring feeders also to their farthest node). Nodes off the main paths are stub nodes and
 lines off the main paths are stub lines. The **ring members** of a ring are the stations, customers and generators
 on the main paths of its feeders (the cap definition of the MV stage; generators on a main path are looped in);
@@ -247,6 +249,8 @@ def _analyse(nodes: pd.DataFrame, lines: pd.DataFrame) -> _Analysis:
         assigned: int | None = None
         if roles.get(idx) == "tie":
             cls = "tie"
+        elif roles.get(idx) == "link":
+            cls = "link"                                    # belongs to no ring: no ring edge, no main-path target
         elif side_u[0] == "f" and side_v[0] == "f":
             fu, fv = side_u[1], side_v[1]
             if fu == fv:
@@ -267,6 +271,8 @@ def _analyse(nodes: pd.DataFrame, lines: pd.DataFrame) -> _Analysis:
             cls = "tie"
         lines.at[idx, "nop_class"] = cls
         lines.at[idx, "feeder"] = assigned
+        if cls == "link":
+            continue
         for end, side in ((u, side_u), (v, side_v)):
             if side[0] == "f":
                 feeder_targets[side[1]].add(end)
@@ -596,6 +602,8 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
     between feeders of different busbars, lines with role ``tie`` and lines to nodes outside the table) are
     excluded from ``circuit_km`` and reported as ``n_ties`` and ``tie_km``. Circuit and material lengths
     count installed parallel circuits; ``route_km`` sums each included line once, including open lines.
+    Links (role ``link``) are left out of the line counts and lengths as well, so the metrics of a stored variant
+    with links equal the metrics the planner stored before it laid them. They are not counted as ties.
 
     Args:
         nodes: Generic node table.
@@ -618,7 +626,7 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
     kinds = Counter(nodes_n["kind"])
     n_busbars = kinds.get("busbar", 0)
     n_supply = kinds.get("station", 0) + kinds.get("customer", 0)
-    circuits = internal[internal["nop_class"] != "tie"]
+    circuits = internal[~internal["nop_class"].isin(["tie", "link"])]
     route_km = float(circuits["length_km"].sum())
     circuit_km = float((circuits["length_km"] * circuits["parallel"]).sum())
     cable_km = float((circuits["cable_km"] * circuits["parallel"]).sum())
@@ -631,7 +639,7 @@ def topology_metrics(nodes: pd.DataFrame, lines: pd.DataFrame) -> dict:
     n_secure = int(secure["n_main_supply_points"].sum())
     n_unsupplied = int(feeders.loc[feeders["busbar"].isna(), "feeder_supply_points"].sum())
     n_stub_side = n_supply - n_secure - n_unsupplied
-    n_nops = int((internal["normally_open"] & (internal["nop_class"] != "tie")).sum())
+    n_nops = int((internal["normally_open"] & ~internal["nop_class"].isin(["tie", "link"])).sum())
     plain_rings = rings[rings["kind"] == "ring"]
     sections = float((plain_rings["ring_members"] + 1).sum())
     out: dict[str, Any] = {
