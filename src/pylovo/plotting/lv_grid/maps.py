@@ -3,6 +3,7 @@
 - :func:`plot_lv_overview`: all grids of a postcode area, coloured by grid, station rating, cable type or
   power-flow status.
 - :func:`plot_lv_grid`: one grid, coloured by cable type, feeder, sizing basis, line loading or voltage.
+- :func:`plot_house_connections`: one grid with its house-connection cables and their tee joints or cable cabinets.
 - :func:`plot_building_uses`: the buildings by use, the MV customers and the stations.
 - :func:`plot_partition`: the k-means clusters (``kcid``) or building clusters (``bcid``) with their stations.
 - :func:`plot_connections`: a detail of the street graph and the connection lines from the buildings.
@@ -29,7 +30,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
+from matplotlib.patches import Patch, Rectangle
 
 from pylovo.plotting import style as st
 from pylovo.plotting.lv_grid.electrical import _feeder_numbers, feeder_ids
@@ -39,6 +40,7 @@ __all__ = [
     "grid_colors",
     "plot_building_uses",
     "plot_connections",
+    "plot_house_connections",
     "plot_lv_grid",
     "plot_lv_overview",
     "plot_partition",
@@ -454,6 +456,173 @@ def _feeders_of_lines(lines: gpd.GeoDataFrame, grid_row: Optional[gpd.GeoDataFra
     for row in lines.itertuples():
         graph.add_edge(int(row.from_bus), int(row.to_bus), index=int(row.pp_index))
     return _feeder_numbers(graph, root)
+
+
+# --------------------------------------------------------------------------- house connections
+def _point_key(xy: Sequence[float]) -> tuple[float, float]:
+    """A point rounded to 0.1 m: the ends of cables that meet at one bus get the same key."""
+    return round(float(xy[0]), 1), round(float(xy[1]), 1)
+
+
+def _connection_points(lines: gpd.GeoDataFrame, station: Optional[Tuple[float, float]],
+                       house_connection: str) -> tuple[list, list]:
+    """``(cabinets, joints)``: the cable cabinets and the tee joints of one grid as point keys, read from its cables.
+
+    A cabinet network (``"cabinet"``) runs its feeder cables from cabinet to cabinet, so every end of a feeder cable
+    is a cabinet. A joint network (``"joint"``) has cabinets only where a feeder splits (three or more feeder ends);
+    its house-connection cables leave the feeders at tee joints. The station is neither.
+    """
+    service = lines["is_service"].fillna(False).astype(bool)
+    ends = pd.Series([_point_key(xy) for geom in lines.loc[~service].geometry for xy in (geom.coords[0],
+                                                                                         geom.coords[-1])])
+    counts = ends.value_counts()
+
+    def at_station(point: tuple[float, float]) -> bool:
+        return station is not None and np.hypot(point[0] - station[0], point[1] - station[1]) < 1.0
+
+    minimum = 1 if house_connection == "cabinet" else 3
+    cabinets = sorted(point for point, count in counts.items() if count >= minimum and not at_station(point))
+    starts = {_point_key(geom.coords[0]) for geom in lines.loc[service].geometry} - set(cabinets)
+    joints = sorted(point for point in starts if not at_station(point))
+    return cabinets, joints
+
+
+def _cable_lanes(lines: gpd.GeoDataFrame, spacing_m: float) -> gpd.GeoSeries:
+    """Display geometry of the cables of one grid: cables that share a street side by side in lanes.
+
+    The layout of the MV lines (:func:`pylovo.mv_grid.display.layout`): each cable lies on the side where it leaves
+    the bundle, the feeder cables of one path keep their lane through the cabinets, and the band of a bundle is at
+    most ten lanes wide. Cables that share nothing keep their geometry.
+    """
+    from pylovo.mv_grid.display import DisplayLine, DisplayParameters, layout
+
+    service = lines["is_service"].fillna(False).astype(bool)
+    cables = [DisplayLine(id=int(index), geom=geom, from_node=_point_key(geom.coords[0]),
+                          to_node=_point_key(geom.coords[-1]), path_key=None if is_service else "feeder")
+              for index, geom, is_service in zip(range(len(lines)), lines.geometry, service)]
+    parameters = DisplayParameters(spacing_m=spacing_m, max_band_m=10 * spacing_m, transition_m=3 * spacing_m,
+                                   snap_m=min(0.2, spacing_m / 5))
+    display = layout(cables, {}, parameters).lines
+    return gpd.GeoSeries([display.get(index, geom) for index, geom in enumerate(lines.geometry)], index=lines.index,
+                         crs=lines.crs)
+
+
+def _mark_extent(ax: plt.Axes, bounds: Sequence[float]) -> None:
+    """A framed box with a white halo: the extent of a detail map."""
+    minx, miny, maxx, maxy = bounds
+    for width, edge, zorder in ((3.4, "white", 29), (1.5, st.INK_SECONDARY, 30)):
+        ax.add_patch(Rectangle((minx, miny), maxx - minx, maxy - miny, fill=False, ec=edge, lw=width, zorder=zorder))
+
+
+def plot_house_connections(layers: Mapping[str, Any], kcid: int, bcid: int, house_connection: str = "joint",
+                           extent: Optional[Sequence[float]] = None, detail: Optional[Sequence[float]] = None,
+                           lane_spacing_m: Optional[float] = None, legend: bool = True,
+                           ax: Optional[plt.Axes] = None, figsize: Tuple[float, float] = (7.4, 6.6),
+                           title: Optional[str] = None, attribution: Optional[str] = None) -> Figure:
+    """One LV grid with its house connections: where the house-connection cables leave the feeders and their route.
+
+    With tee joints (``HOUSE_CONNECTION: joint``) every house-connection cable leaves the feeder at a tee joint in
+    front of its building. With cable cabinets (``cabinet``) the feeder runs from cabinet to cabinet, and every
+    house-connection cable runs from its cabinet along the street beside the feeder
+    (:ref:`house-connection-technique`); it takes the colour of its cabinet. Cables that share a street are drawn
+    side by side in lanes, each on the side where it leaves the bundle; the lengths in the legend are those of the
+    cables. The joints and cabinets are read from the cables, so the layers need no ``split_points``.
+
+    A shared house-connection cable to a joint (``AGGREGATE_NEARBY_CONNECTION_POINTS`` of a cabinet network) has no
+    service annotation and is drawn as a feeder cable.
+
+    Args:
+        layers: The layers of the postcode area or of the grid (``read_lv_layers``).
+        kcid: K-means cluster id of the grid.
+        bcid: Building cluster id of the grid.
+        house_connection: ``"joint"`` or ``"cabinet"``, the ``HOUSE_CONNECTION`` of the version
+            (``parameters["cable_dimensioning"]["house_connection"]``).
+        extent: Map extent ``(minx, miny, maxx, maxy)``; default the cables of the grid. A map with an extent gets
+            the frame that ``detail`` draws.
+        detail: Mark the extent of a detail map with a frame.
+        lane_spacing_m: Distance of the lanes; default 1/150 of the larger side of the map, at most 2 m (a detail
+            spreads its bundles, an overview keeps them narrow).
+        legend: Draw the legend below the map.
+        ax: Axes to draw into; a new figure if None.
+        figsize: Size of a new figure.
+        title: Title; default names the grid and the technique.
+        attribution: Data attribution; default :data:`pylovo.plotting.style.DATA_ATTRIBUTION`.
+
+    Returns:
+        The figure.
+
+    Raises:
+        ValueError: An unknown ``house_connection`` or a grid without cables.
+    """
+    if house_connection not in ("joint", "cabinet"):
+        raise ValueError("house_connection must be 'joint' or 'cabinet'")
+    lines = _grid_rows(_layer(layers, "lines"), kcid, bcid)
+    if lines is None or len(lines) == 0:
+        raise ValueError(f"no cables of grid kcid={kcid}, bcid={bcid} in the layers")
+    grid_buildings = _grid_rows(_layer(layers, "buildings"), kcid, bcid)
+    grid_row = _grid_rows(_layer(layers, "grids"), kcid, bcid)
+    station = None
+    if grid_row is not None and len(grid_row) and grid_row.geometry.iloc[0] is not None:
+        station = (grid_row.geometry.iloc[0].x, grid_row.geometry.iloc[0].y)
+    bounds = st.padded_bounds(lines.total_bounds, pad=0.06, min_size=150) if extent is None else tuple(extent)
+    spacing = lane_spacing_m if lane_spacing_m is not None else \
+        min(2.0, max(bounds[2] - bounds[0], bounds[3] - bounds[1]) / 150)
+    service = lines["is_service"].fillna(False).astype(bool)
+    cabinets, joints = _connection_points(lines, station, house_connection)
+    with st.style():
+        fig, ax = _figure(ax, figsize)
+        _base(ax, layers, bounds, postcode=False)
+        if grid_buildings is not None and len(grid_buildings):
+            grid_buildings.plot(ax=ax, color="#cfd9e6", edgecolor=st.BUILDING_EDGE, lw=0.3, zorder=4)
+
+        display = _cable_lanes(lines, spacing)
+        starts = [_point_key(geom.coords[0]) for geom in lines.geometry]
+        if house_connection == "cabinet":
+            sources = {point: point for point, is_service in zip(starts, service) if is_service}
+            source_colors = st.neighbour_colors(sources)
+            service_colors = [source_colors.get(point, st.CATEGORICAL[0]) for point in starts]
+        else:
+            service_colors = [st.CATEGORICAL[0]] * len(lines)
+        for geom, is_service, color in zip(display, service, service_colors):
+            x, y = geom.xy
+            if is_service:
+                ax.plot(x, y, color=color, lw=0.8, zorder=5, solid_capstyle="round")
+            else:
+                ax.plot(x, y, color=st.INK, lw=2.0, zorder=6, solid_capstyle="round")
+        if joints:
+            xy = np.array(joints)
+            ax.scatter(xy[:, 0], xy[:, 1], marker="o", s=9, color="white", edgecolor=st.INK, lw=0.7, zorder=8)
+        if cabinets:
+            xy = np.array(cabinets)
+            ax.scatter(xy[:, 0], xy[:, 1], marker="s", s=30, color="white", edgecolor=st.INK, lw=1.1, zorder=9)
+        _stations(ax, grid_row, labels=False, size=220)
+        _finish(ax, bounds, attribution)
+        if detail is not None:
+            _mark_extent(ax, detail)
+        if extent is not None:
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_edgecolor(st.INK_SECONDARY)
+                spine.set_linewidth(1.5)
+
+        if legend:
+            km = _installed_km(lines).groupby(service).sum()
+            service_label = "House connection" + (", colour of its cabinet" if house_connection == "cabinet" else "")
+            handles = [Line2D([], [], color=st.INK, lw=2.5, label=f"Feeder cable ({km.get(False, 0):.2f} km)"),
+                       Line2D([], [], color=st.CATEGORICAL[0], lw=1.2,
+                              label=f"{service_label} ({km.get(True, 0):.2f} km)")]
+            if joints:
+                handles.append(Line2D([], [], marker="o", ls="", color="white", markeredgecolor=st.INK, markersize=4,
+                                      label=f"Tee joint ({len(joints)})"))
+            handles.append(Line2D([], [], marker="s", ls="", color="white", markeredgecolor=st.INK, markersize=6,
+                                  label=f"Cable cabinet ({len(cabinets)})"))
+            handles.append(_station_handle())
+            st.legend_below(ax, handles, ncol=3)
+        if title is None:
+            technique = "tee joints" if house_connection == "joint" else "cable cabinets"
+            title = f"Grid {int(kcid)}/{int(bcid)} · {technique}"
+        ax.set_title(title)
+    return fig
 
 
 # --------------------------------------------------------------------------- pipeline steps

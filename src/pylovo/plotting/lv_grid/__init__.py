@@ -1,7 +1,8 @@
 """Maps, voltage profiles and statistics of the generated LV grids.
 
 - :mod:`pylovo.plotting.lv_grid.maps`: all grids of a postcode area, one grid by cable type, feeder, sizing basis,
-  loading or voltage, the buildings by use, the k-means and building clusters, the connection lines.
+  loading or voltage, the house connections of one grid, the buildings by use, the k-means and building clusters,
+  the connection lines.
 - :mod:`pylovo.plotting.lv_grid.electrical`: feeders, cable distances and the voltage profile along the feeders.
 - :mod:`pylovo.plotting.lv_grid.statistics`: settlement type, station ratings, cable inventory, the voltage-drop
   check of the design, distributions of key figures per grid, building exclusions.
@@ -17,6 +18,7 @@ from pylovo.plotting.lv_grid.maps import (
     grid_colors,
     plot_building_uses,
     plot_connections,
+    plot_house_connections,
     plot_lv_grid,
     plot_lv_overview,
     plot_partition,
@@ -44,6 +46,7 @@ __all__ = [
     "plot_exclusions",
     "plot_feeder_voltage_profile",
     "plot_grid_distributions",
+    "plot_house_connections",
     "plot_lv_grid",
     "plot_lv_overview",
     "plot_partition",

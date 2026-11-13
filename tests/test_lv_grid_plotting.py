@@ -187,6 +187,54 @@ def test_maps_draw_into_given_axes(layers):
     assert maps.plot_lv_overview(layers, ax=ax) is fig
 
 
+# --------------------------------------------------------------------------- house connections
+def _legend_texts(fig: Figure) -> list[str]:
+    return [text.get_text() for text in fig.axes[0].get_legend().get_texts()]
+
+
+@pytest.mark.parametrize("house_connection, expected", [
+    ("joint", ["Tee joint (2)", "Cable cabinet (0)"]),
+    ("cabinet", ["Cable cabinet (2)"]),
+])
+def test_house_connections_count_the_joints_and_cabinets(layers, house_connection, expected):
+    fig = maps.plot_house_connections(layers, 1, 1, house_connection, detail=(-10, -160, 120, 30))
+    texts = _legend_texts(fig)
+    assert all(text in texts for text in expected)
+    assert "Feeder cable (0.50 km)" in texts            # 0.1 km + 2 parallel x 0.2 km
+
+
+def test_house_connections_detail_without_legend(layers):
+    fig = maps.plot_house_connections(layers, 1, 1, "cabinet", extent=(-10, -160, 120, 30), legend=False)
+    assert fig.axes[0].get_legend() is None
+    assert fig.axes[0].get_xlim() == (-10, 120)
+
+
+def test_house_connections_need_a_known_technique(layers):
+    with pytest.raises(ValueError, match="joint"):
+        maps.plot_house_connections(layers, 1, 1, "muff")
+
+
+def test_a_joint_network_has_cabinets_only_where_a_feeder_splits():
+    lines = gpd.GeoDataFrame({"is_service": [False, False, False, True, True]}, geometry=[
+        LineString([(0, 0), (50, 0)]), LineString([(50, 0), (100, 0)]), LineString([(50, 0), (50, 60)]),
+        LineString([(50, 0), (55, 20)]), LineString([(80, 0), (80, 20)])], crs=CRS)
+    assert maps._connection_points(lines, (0, 0), "joint") == ([(50.0, 0.0)], [(80.0, 0.0)])
+    assert maps._connection_points(lines, (0, 0), "cabinet") == ([(50.0, 0.0), (50.0, 60.0), (100.0, 0.0)],
+                                                                 [(80.0, 0.0)])
+
+
+def test_house_cables_along_a_feeder_lie_beside_it_on_the_side_of_their_building():
+    lines = gpd.GeoDataFrame({"is_service": [False, True, True]}, geometry=[
+        LineString([(0, 0), (100, 0)]),
+        LineString([(0, 0), (60, 0), (60, 15)]),             # to a building north of the street
+        LineString([(0, 0), (40, 0), (40, -15)])], crs=CRS)  # to a building south of it
+    display = maps._cable_lanes(lines, spacing_m=2.0)
+    assert display.iloc[1].interpolate(20).y == pytest.approx(2.0)
+    assert display.iloc[2].interpolate(20).y == pytest.approx(-2.0)
+    assert display.iloc[0].interpolate(20).y == pytest.approx(0.0)
+    assert display.iloc[1].coords[-1] == (60.0, 15.0)        # each cable still ends at its building
+
+
 # --------------------------------------------------------------------------- electrical
 def test_feeders_and_distances(net):
     feeders = electrical.feeder_ids(net)

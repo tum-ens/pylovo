@@ -143,6 +143,9 @@ and draw streets and buildings from pylovo's own layers, so they work offline.
    * - :func:`~pylovo.plotting.lv_grid.plot_lv_grid`
      - One grid: cables by type, by feeder, by sizing basis (ampacity or voltage drop), by loading or voltage of
        the validation power flow; buildings by peak load or use.
+   * - :func:`~pylovo.plotting.lv_grid.plot_house_connections`
+     - One grid with its house connections: tee joints or cable cabinets (``HOUSE_CONNECTION``), the
+       house-connection cables side by side where they share a street, optionally a detail.
    * - :func:`~pylovo.plotting.lv_grid.plot_feeder_voltage_profile`
      - The voltage along every feeder over the cable distance from the station, in the voltage band of the
        version (:func:`~pylovo.plotting.lv_grid.voltage_band`).
