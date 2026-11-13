@@ -66,7 +66,7 @@ def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
 
     steps = [ImportStep("IMPORT OSM TRANSFORMERS (a relation without a processed GeoJSON is fetched from "
                         "the Overpass API, this can take more than 30 min)", "transformers",
-                        lambda: sgc.transformers_to_db(clear_existing=False))]
+                        lambda: sgc.transformers_to_db())]
     if USE_INFDB:
         # Copy the postcode polygons from the InfDB into the local 'postcode' table.
         steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb,

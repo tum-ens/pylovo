@@ -11,6 +11,7 @@ import pandas as pd
 import psycopg2 as psy
 import sqlparse
 from psycopg2 import sql
+from sqlalchemy import text
 
 import pylovo.database.database_client as dbc
 from pylovo.config_loader import (
@@ -378,25 +379,18 @@ class DatabaseConstructor:
             print(f"{file_name} is successfully imported to db in {int(et - st)} s")
         return sorted(skipped_errors)
 
-    def transformers_to_db(self, clear_existing: bool = True):
+    def transformers_to_db(self):
         """Import the OSM transformers of ``RELATION_ID`` into ``pylovo.transformers`` and commit.
+
+        Existing rows are kept: rows imported from a grid operator or placed by hand also have
+        ``osm = true`` and cannot be recreated from OpenStreetMap.
 
         The processed GeoJSON of ``TARGET_EPSG`` in ``data/transformer_data/processed_trafos/`` is
         reused if it exists. Otherwise the processed 25832 file that ships with pylovo is reprojected
         to it, and only without that file the transformers are fetched from the Overpass API and
         processed first (can take more than 30 minutes), see
         :func:`pylovo.data_import.import_transformers.get_processed_trafos`.
-
-        Args:
-            clear_existing: Replace OSM source rows only. Stored transformer positions
-                retain their geometry and lose only their raw osm_id reference.
         """
-        if clear_existing and self.table_exists(table_name="transformers"):
-            warnings.warn("transformers table is overwritten!", stacklevel=2)
-            with self.dbc.conn.cursor() as cur:
-                cur.execute("DELETE FROM pylovo.transformers WHERE osm IS TRUE;")
-            self.dbc.conn.commit()
-
         trafo_dict = [
             {
                 "path": get_processed_trafos(RELATION_ID),
@@ -408,8 +402,9 @@ class DatabaseConstructor:
     def csv_to_db(self, csv_file_list):
         """Replace the content of ``pylovo`` tables with CSV files (file-based input, ``USE_INFDB=False``).
 
-        Existing rows are deleted (and committed) first. The columns ``einwohner`` and ``gid``
-        are renamed to ``population`` and ``postcode_id``.
+        Per file, the existing rows are deleted and the CSV is inserted in one transaction, so a failed
+        insert leaves the old rows. The columns ``einwohner`` and ``gid`` are renamed to ``population``
+        and ``postcode_id``.
 
         Args:
             csv_file_list: Dicts with ``path`` and optionally ``table_name`` (default: file stem),
@@ -417,6 +412,7 @@ class DatabaseConstructor:
 
         Raises:
             FileNotFoundError: If a file does not exist.
+            RuntimeError: If ``postcode`` is to be replaced while ``postcode_result`` has rows.
         """
         for file_dict in csv_file_list:
             st = time.time()
@@ -426,23 +422,38 @@ class DatabaseConstructor:
             file_name = file_path.stem
             table_name = file_dict.get("table_name", file_name)
 
-            if self.table_exists(table_name=table_name):
-                warnings.warn(f"{table_name} table is overwritten!", stacklevel=2)
-                with self.dbc.conn.cursor() as cur:
-                    cur.execute(sql.SQL("DELETE FROM {}").format(sql.Identifier("pylovo", table_name)))
-                    self.dbc.conn.commit()
-            # read and write
+            exists = self.table_exists(table_name=table_name)
+            if exists and table_name == "postcode" and self._has_rows("postcode_result"):
+                raise RuntimeError(
+                    "The postcode table is not replaced: pylovo.postcode_result has rows, and deleting the "
+                    "postcodes would delete the stored grids of all versions through the foreign key. Delete the "
+                    "versions first or set up a new database.")
             df = pd.read_csv(file_path, index_col=False)
             df = df.rename(columns={"einwohner": "population", "gid": "postcode_id"})
-            df.to_sql(
-                name=table_name,
-                con=self.dbc.sqla_engine,
-                if_exists="append",
-                index=False,
-            )
+            with self.dbc.sqla_engine.begin() as connection:
+                if exists:
+                    warnings.warn(f"{table_name} table is overwritten!", stacklevel=2)
+                    quoted = connection.dialect.identifier_preparer.quote_identifier(table_name)
+                    connection.execute(text(f"DELETE FROM pylovo.{quoted}"))
+                df.to_sql(
+                    name=table_name,
+                    con=connection,
+                    if_exists="append",
+                    index=False,
+                )
 
             et = time.time()
             print(f"{file_name} is successfully imported to db in {int(et - st)} s")
+
+    def _has_rows(self, table_name: str) -> bool:
+        """Return whether ``pylovo.<table_name>`` exists and has a row."""
+        if not self.table_exists(table_name):
+            return False
+        with self.dbc.conn.cursor() as cur:
+            cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM pylovo.{})").format(sql.Identifier(table_name)))
+            found = cur.fetchone()[0]
+        self.dbc.conn.commit()
+        return found
 
     def infdb_postcodes_problem(self) -> str | None:
         """Explain why ``load_postcode_from_infdb`` would fail, or return None if it can run."""
@@ -492,7 +503,11 @@ class DatabaseConstructor:
         print(f"{count} eGon-data HV/MV substations imported in {time.time() - st:.0f} s")
 
     def load_postcode_from_infdb(self):
-        """Replace the local ``postcode`` table with all postcodes of InfDB and commit.
+        """Insert all postcodes of InfDB into the local ``postcode`` table, update existing ones, and commit.
+
+        Postcodes that InfDB no longer has stay in the table: the result tables reference its rows and
+        deleting one would delete the stored grids of all versions (``ON DELETE CASCADE``). Insert and
+        update run in one transaction.
 
         Raises:
             ValueError: If InfDB returns no postcodes.
@@ -505,19 +520,19 @@ class DatabaseConstructor:
         if not rows:
             raise ValueError("No postcode data retrieved from InfDB")
 
-        if self.table_exists(table_name="postcode"):
-            warnings.warn("postcode table is overwritten!", stacklevel=2)
-            with self.dbc.conn.cursor() as cur:
-                cur.execute("DELETE FROM pylovo.postcode")
-                self.dbc.conn.commit()
-
-        insert_query = f"""
+        upsert_query = f"""
             INSERT INTO pylovo.postcode (plz, note, qkm, population, geom)
             VALUES (%s, %s, %s, %s, ST_Transform(%s::geometry, {TARGET_EPSG}))
+            ON CONFLICT (plz) DO UPDATE SET note = EXCLUDED.note, qkm = EXCLUDED.qkm,
+                                            population = EXCLUDED.population, geom = EXCLUDED.geom
         """
-        with self.dbc.conn.cursor() as cur:
-            cur.executemany(insert_query, rows)
+        try:
+            with self.dbc.conn.cursor() as cur:
+                cur.executemany(upsert_query, rows)
             self.dbc.conn.commit()
+        except Exception:
+            self.dbc.conn.rollback()
+            raise
 
         et = time.time()
         print(f"Postcode data imported from InfDB in {int(et - st)} s")

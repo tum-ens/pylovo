@@ -57,7 +57,7 @@ class FakeConstructor:
     def migrate_schema(self):
         self._record("migrate")
 
-    def transformers_to_db(self, clear_existing):
+    def transformers_to_db(self):
         self._record("transformers")
 
     def load_postcode_from_infdb(self):

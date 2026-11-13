@@ -95,7 +95,7 @@ def test_setup_loads_the_reprojected_transformers_without_a_download(monkeypatch
     loaded = []
     constructor.ogr_to_db = lambda files: loaded.extend(files)
 
-    constructor.transformers_to_db(clear_existing=False)
+    constructor.transformers_to_db()
 
     assert loaded == [{"path": str(data / "processed_trafos" / "7_trafos_processed_3035.geojson"),
                        "table_name": "transformers"}]

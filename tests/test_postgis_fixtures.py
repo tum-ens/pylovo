@@ -205,3 +205,33 @@ def test_a_plz_loads_the_connection_lines_of_its_buildings_whatever_postcode_the
     # own and border building (once, though two buildings share its centroid), not the shed that is not loaded;
     # a neighbour's line filed under the PLZ stays as before, the neighbour's own line does not come
     assert sorted((clazz, cost) for clazz, _, _, cost, *_ in rows) == [(41, 50), (110, 1), (110, 2), (110, 3)]
+
+
+def test_postcode_import_updates_a_postcode_and_keeps_its_results(client, monkeypatch):
+    from pylovo.database import database_constructor
+    from pylovo.database.database_constructor import DatabaseConstructor
+
+    plz, version = 99002, "fx_upsert"
+    square = "SRID=25832;MULTIPOLYGON(((0 0, 0 100, 100 100, 100 0, 0 0)))"
+
+    class InfdbStub:
+        def fetch_all_postcodes_from_infdb(self):
+            return [(plz, "new note", 1.0, 20, square)]
+
+    monkeypatch.setattr(database_constructor, "InfdbClient", InfdbStub)
+    client.cur.execute("INSERT INTO pylovo.version (version_id, version_comment) VALUES (%s, 'fixture')", (version,))
+    client.cur.execute("INSERT INTO pylovo.postcode (plz, note, geom) VALUES (%s, 'old note', %s)", (plz, square))
+    client.cur.execute("INSERT INTO pylovo.postcode_result (version_id, postcode_result_plz) VALUES (%s, %s)",
+                       (version, plz))
+    client.commit_changes()
+    try:
+        DatabaseConstructor(client).load_postcode_from_infdb()
+        client.cur.execute("SELECT note, population FROM pylovo.postcode WHERE plz = %s", (plz,))
+        assert client.cur.fetchall() == [("new note", 20)]
+        client.cur.execute("SELECT count(*) FROM pylovo.postcode_result WHERE postcode_result_plz = %s", (plz,))
+        assert client.cur.fetchone()[0] == 1
+    finally:
+        client.rollback_changes()
+        client.cur.execute("DELETE FROM pylovo.version WHERE version_id = %s", (version,))
+        client.cur.execute("DELETE FROM pylovo.postcode WHERE plz = %s", (plz,))
+        client.commit_changes()
