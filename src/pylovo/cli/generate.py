@@ -17,7 +17,8 @@ with code 1. The MV stage runs for the PLZ that have LV grids. The MV modules ar
 
 Exit codes: 0 if every PLZ has LV grids (generated now or before), 1 after an error (including an MV stage that
 does not end ``done``), 2 for wrong arguments and :data:`EXIT_PLZ_NOT_GENERATED` if the run finished but some PLZ
-failed or have no grids (named in one summary line; the reasons are in the log).
+failed or have no grids, or if the grids of some PLZ are stored but their analysis failed (each group is named in
+one summary line; the reasons are in the log). The MV stage also includes the PLZ whose analysis failed.
 """
 import sys
 import time
@@ -33,8 +34,9 @@ from pylovo.data_import.region_resolver import resolve_regions
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
 from pylovo.infdb.infdb_client import InfdbClient
 
-#: Exit code of a run that finished but left PLZ failed or without grids (1 stays "crashed", 2 "wrong arguments",
-#: 3 is the code of ``pylovo-analyze --coverage``). ``pylovo-api`` counts such a generate job as succeeded.
+#: Exit code of a run that finished but left PLZ failed, without grids or without analysis (1 stays "crashed",
+#: 2 "wrong arguments", 3 is the code of ``pylovo-analyze --coverage``). ``pylovo-api`` counts such a generate
+#: job as succeeded.
 EXIT_PLZ_NOT_GENERATED = 4
 _NOT_GENERATED = (GenerationOutcome.FAILED, GenerationOutcome.EMPTY)
 
@@ -221,13 +223,18 @@ def main(argv: list[str] | None = None):
     if not_generated:
         listed = ", ".join(f"{plz} ({outcome.value})" for plz, outcome in sorted(not_generated.items()))
         print(f"✗ {len(not_generated)} of {len(outcomes)} PLZ not generated: {listed}")
+    not_analysed = sorted(plz for plz, outcome in outcomes.items() if outcome == GenerationOutcome.ANALYSIS_FAILED)
+    if not_analysed:
+        listed = ", ".join(str(plz) for plz in not_analysed)
+        print(f"✗ {len(not_analysed)} of {len(outcomes)} PLZ generated but not analysed: {listed} "
+              "(pylovo-analyze --plz ... repeats the analysis)")
     if run_mv:
         with_grids = sorted(set(outcomes) - set(not_generated))
         if with_grids:
             run_mv_stage_after_lv(with_grids, parallel, mv_params)
         else:
             print("MV stage skipped: no PLZ of this run has LV grids")
-    if not_generated:
+    if not_generated or not_analysed:
         sys.exit(EXIT_PLZ_NOT_GENERATED)
 
 

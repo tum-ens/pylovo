@@ -50,6 +50,64 @@ def test_failures_empty_and_existing_results_are_reported_instead_of_hidden():
     assert generator(FakeDb(), exists).generate_grid_for_single_plz(80331) == GenerationOutcome.EXISTS
 
 
+class AnalysisDb(FakeDb):
+    """Records the order of the database calls; ``get_list_from_plz`` finds grids."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: self.calls.append(name)
+
+
+def test_a_failing_analysis_keeps_the_committed_grids_and_reports_analysis_failed(monkeypatch, caplog):
+    db = AnalysisDb()
+
+    class FailingAnalysis:
+        def analyze_parameters_for_plz(self, plz):
+            db.calls.append("analysis")
+            raise RuntimeError("key figures broke")
+
+    monkeypatch.setattr(grid_generator, "ParameterCalculator", FailingAnalysis)
+    with caplog.at_level(logging.INFO, logger="outcome-test"):
+        outcome = generator(db, lambda: None).generate_grid_for_single_plz(80331, analyze_grids=True)
+
+    assert outcome == GenerationOutcome.ANALYSIS_FAILED
+    assert db.saved
+    calls = db.calls
+    assert calls.index("commit_changes") < calls.index("analysis")          # the grids are committed first
+    assert "rollback_changes" not in calls[:calls.index("analysis") + 1]
+    after_analysis = calls[calls.index("analysis") + 1:]
+    assert after_analysis.index("rollback_changes") < after_analysis.index("drop_temp_tables")
+    assert after_analysis.index("drop_temp_tables") < after_analysis.index("release_plz_lock")
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("The grids of PLZ 80331 are stored, but their analysis failed: key figures broke" in m
+               and "pylovo-analyze --plz 80331" in m for m in messages)
+    assert not any("due to generation error" in m or "Error during grid generation" in m for m in messages)
+
+
+def test_a_successful_analysis_stays_generated(monkeypatch):
+    class Analysis:
+        def analyze_parameters_for_plz(self, plz):
+            return "analysed"
+
+    monkeypatch.setattr(grid_generator, "ParameterCalculator", Analysis)
+    assert generator(AnalysisDb(), lambda: None).generate_grid_for_single_plz(
+        80331, analyze_grids=True) == GenerationOutcome.GENERATED
+
+
+def test_a_run_names_the_plz_whose_analysis_failed(monkeypatch, caplog):
+    gg = generator(FakeDb(), lambda: None)
+    results = {80331: GenerationOutcome.GENERATED, 80333: GenerationOutcome.ANALYSIS_FAILED}
+    monkeypatch.setattr(gg, "generate_grid_for_single_plz", lambda plz, **kwargs: results[plz])
+    with caplog.at_level(logging.INFO, logger="outcome-test"):
+        assert gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": list(results)}), parallel=False) == results
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("stored the grids of 1 PLZ whose analysis failed: 80333" in m for m in messages)
+    assert "Grid generation finished with no failed PLZ." in messages
+
+
 class RecordingDb(FakeDb):
     """Records the order of the database calls."""
 

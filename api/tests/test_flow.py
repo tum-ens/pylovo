@@ -62,6 +62,16 @@ def test_generate_outcomes_from_log():
     assert items["85655"]["state"] == "cancelled"
 
 
+def test_a_failed_analysis_leaves_the_plz_generated():
+    job = _job([85654])
+    for line in ["-------------------- start 85654 ---------------------------",
+                 "2026-09-25 - GridGenerator - ERROR - The grids of PLZ 85654 are stored, but their analysis failed: "
+                 "boom. 'pylovo-analyze --plz 85654' repeats the analysis.",
+                 "-------------------- end 85654 -----------------------------"]:
+        job_outcomes.observe(job, line)
+    assert job.plz_outcomes["items"]["85654"] == {"state": "generated", "error": None}
+
+
 def test_generate_outcomes_when_the_job_fails_before_any_plz():
     job = _job([85653])
     job_outcomes.observe(job, "ValueError: Generation parameters differ from the stored snapshot for version 1.")

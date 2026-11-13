@@ -98,6 +98,8 @@ class GenerationOutcome(StrEnum):
     EXISTS = "exists"
     EMPTY = "empty"
     FAILED = "failed"
+    #: The grids are stored, but their analysis (``ANALYZE_GRIDS``) failed; ``pylovo-analyze`` repeats it.
+    ANALYSIS_FAILED = "analysis_failed"
 
 
 class GridGenerator:
@@ -135,9 +137,10 @@ class GridGenerator:
         """Generates the grid for a single PLZ.
 
         A failing PLZ is logged, rolled back and skipped (the exception is not raised); the returned
-        outcome tells callers what happened. A PLZ without any grid (``EMPTY``) stores its
-        ``postcode_result`` row, its building exclusions and its MV customers, so a rerun reports it
-        as ``EMPTY`` again.
+        outcome tells callers what happened. If only the analysis fails after the grids were committed, the
+        outcome is ``ANALYSIS_FAILED``: the grids stay stored and count as generated. A PLZ without any grid
+        (``EMPTY``) stores its ``postcode_result`` row, its building exclusions and its MV customers, so a rerun
+        reports it as ``EMPTY`` again.
 
         :param plz: Postal code for which the grid should be generated.
         :type plz: int
@@ -169,9 +172,16 @@ class GridGenerator:
                 self.dbc.save_building_exclusions(plz)
             self.dbc.commit_changes()
             if analyze_grids and outcome == GenerationOutcome.GENERATED:
-                pc = ParameterCalculator()
-                pc.analyze_parameters_for_plz(plz)
-                self.dbc.commit_changes()  # commit the changes to the database
+                # The grids are committed: a failing analysis must not roll them back or report the PLZ as FAILED.
+                try:
+                    pc = ParameterCalculator()
+                    pc.analyze_parameters_for_plz(plz)
+                    self.dbc.commit_changes()  # commit the changes to the database
+                except Exception as e:
+                    outcome = GenerationOutcome.ANALYSIS_FAILED
+                    self.logger.error(f"The grids of PLZ {plz} are stored, but their analysis failed: {e}. "
+                                      f"'pylovo-analyze --plz {plz}' repeats the analysis.")
+                    traceback.print_exc()
         except ResultExistsError:
             if self.dbc.get_list_from_plz(plz):
                 outcome = GenerationOutcome.EXISTS
@@ -274,7 +284,8 @@ class GridGenerator:
                             # Raises the worker's exception, if any.
                             outcome = GenerationOutcome(future.result())
                             outcomes[plz] = outcome
-                            log = self.logger.warning if outcome == GenerationOutcome.FAILED else self.logger.info
+                            incomplete = outcome in (GenerationOutcome.FAILED, GenerationOutcome.ANALYSIS_FAILED)
+                            log = self.logger.warning if incomplete else self.logger.info
                             log(f"Completed PLZ {plz} ({completed_count}/{total_count}): {outcome.value}")
                         except Exception as exc:
                             # Record the failure and continue with the other PLZ.
@@ -324,6 +335,11 @@ class GridGenerator:
             self.logger.warning(f"{run} finished with {len(failed_plz)} failed PLZ: {failed_plz_str}")
         else:
             self.logger.info(f"{run} finished with no failed PLZ.")
+        unanalysed_plz = sorted(plz for plz, outcome in outcomes.items() if outcome == GenerationOutcome.ANALYSIS_FAILED)
+        if unanalysed_plz:
+            unanalysed_plz_str = ", ".join(str(plz) for plz in unanalysed_plz)
+            self.logger.warning(f"{run} stored the grids of {len(unanalysed_plz)} PLZ whose analysis failed: "
+                                f"{unanalysed_plz_str}. 'pylovo-analyze --plz <plz>' repeats the analysis.")
         counts = {outcome.value: sum(1 for value in outcomes.values() if value == outcome)
                   for outcome in GenerationOutcome}
         self.logger.info("Generation outcomes: " + ", ".join(f"{key}={value}" for key, value in counts.items()))

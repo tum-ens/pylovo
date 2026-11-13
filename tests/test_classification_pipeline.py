@@ -104,6 +104,17 @@ def test_plz_without_grids_leave_the_sample_and_are_not_analysed(pipeline):
     assert pipeline["analysed"] == [80001, 80004], "an already generated PLZ stays in the sample"
 
 
+def test_a_plz_whose_analysis_failed_stays_in_the_sample(pipeline, capsys, monkeypatch):
+    monkeypatch.setattr(pdc, "GridGenerator", type("Generator", (), {
+        "generate_grid_for_multiple_plz": lambda self, df_plz, analyze_grids, parallel: {
+            80001: GenerationOutcome.ANALYSIS_FAILED, 80002: GenerationOutcome.FAILED,
+            80003: GenerationOutcome.EMPTY, 80004: GenerationOutcome.EXISTS}}))
+    assert pdc.prepare_data_for_clustering() == [80002, 80003]
+    assert sorted(pipeline["deleted"]) == [("7", 80002), ("7", 80003)]
+    assert pipeline["analysed"] == [80001, 80004]
+    assert "analysis of PLZ [80001] failed during the generation" in capsys.readouterr().out
+
+
 def test_the_sample_of_another_classification_is_copied_instead_of_drawn(pipeline):
     pdc.prepare_data_for_clustering(same_sample_as=1)
     assert pipeline["copied_from"] == 1 and "drawn" not in pipeline

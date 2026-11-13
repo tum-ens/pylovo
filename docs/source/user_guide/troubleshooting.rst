@@ -67,6 +67,11 @@ Generation
    names the postcode in its last line; read the error line and the context above it in
    ``log/log.txt`` (``log/log_<plz>.txt`` for parallel runs).
 
+``The grids of PLZ <plz> are stored, but their analysis failed: ...``
+   The grids are stored and count as generated, only the analysis after the generation failed.
+   ``pylovo-generate`` exits with 4 and names the postcode in a ``generated but not analysed`` line.
+   Fix the cause and run ``pylovo-analyze --plz <plz>``.
+
 ``Grid for the postcode area <plz> has already been generated.``
    The postcode is skipped because grids exist in the active version. Delete them with
    ``pylovo-delete networks --plz <plz> --version <id>`` or use a new version.

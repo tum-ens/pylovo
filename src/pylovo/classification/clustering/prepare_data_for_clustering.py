@@ -73,6 +73,13 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False, 
                 dbc_client.delete_plz_from_sample_set_table(str(CLASSIFICATION_VERSION), plz)
         samples = samples[~samples['plz'].isin(without_grids)]
 
+    # The grids of these PLZ are stored and stay in the sample. Step 4 needs the PLZ-level key figures and leaves
+    # their grids out until pylovo-analyze has repeated the analysis.
+    analysis_failed = sorted(plz for plz, outcome in outcomes.items() if outcome == GenerationOutcome.ANALYSIS_FAILED)
+    if analysis_failed:
+        print(f"Warning: the analysis of PLZ {analysis_failed} failed during the generation. Their grids are stored "
+              "and stay in the sample, but get no key figures: run pylovo-analyze --plz for them and classify again")
+
     # %% 4. calculate grid parameters (one worker process per PLZ at a time if parallel)
     start_time = time.time()
     analyze_grid_parameters_for_multiple_plz(samples['plz'], parallel=parallel)

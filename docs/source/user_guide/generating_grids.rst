@@ -50,9 +50,13 @@ the postcodes run sequentially.
 * A failing postcode does not stop the others. The run ends with a summary such as
   ``Parallel grid generation finished with 1 failed PLZ: 80805`` (without worker processes:
   ``Grid generation finished with 1 failed PLZ: 80805``) and the counts
-  ``Generation outcomes: generated=..., exists=..., empty=..., failed=...``. The command then
-  prints ``✗ N of M PLZ not generated: ...`` and exits with 4; with ``--mv`` the MV stage runs only
-  for the postcodes with LV grids.
+  ``Generation outcomes: generated=..., exists=..., empty=..., failed=..., analysis_failed=...``.
+  The command then prints ``✗ N of M PLZ not generated: ...`` and exits with 4; with ``--mv`` the
+  MV stage runs only for the postcodes with LV grids.
+* If only the analysis (``ANALYZE_GRIDS``) of a postcode fails, its grids stay stored and count as
+  generated. The command prints ``✗ N of M PLZ generated but not analysed: ...``, exits with 4 as
+  well and includes these postcodes in the MV stage. ``pylovo-analyze --plz <plz>`` repeats the
+  analysis.
 * :kbd:`Ctrl+C` cancels pending postcodes and waits for the running ones to finish. The working
   tables of an interrupted postcode are session-local and disappear with their connection.
 * Every postcode is one database transaction: either all its grids are stored or none. A failed

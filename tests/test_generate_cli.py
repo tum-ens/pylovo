@@ -5,6 +5,7 @@ from pylovo.cli import generate, parsers
 from pylovo.grid_generator import GenerationOutcome as Outcome
 
 GENERATED, EXISTS, EMPTY, FAILED = Outcome.GENERATED, Outcome.EXISTS, Outcome.EMPTY, Outcome.FAILED
+ANALYSIS_FAILED = Outcome.ANALYSIS_FAILED
 
 
 class SourcesFound:
@@ -115,6 +116,16 @@ def test_the_mv_stage_runs_only_for_the_plz_with_lv_grids(lv, capsys):
     code, _ = run(["--plz", "80805", "80803", "80804", "80802", "--mv"], capsys)
     assert lv.mv == [[80802, 80805]]            # the PLZ that failed or are empty are left out
     assert code == 4                            # and the run still reports them
+
+
+def test_a_plz_with_stored_grids_and_a_failed_analysis_exits_with_code_4_and_gets_its_mv_stage(lv, capsys):
+    lv.outcomes = {80803: ANALYSIS_FAILED, 80804: GENERATED, 80805: ANALYSIS_FAILED}
+    code, out = run(["--plz", "80805", "80804", "80803", "--mv"], capsys)
+    summary = [line for line in out.splitlines() if line.startswith("✗")]
+    assert summary == ["✗ 2 of 3 PLZ generated but not analysed: 80803, 80805 "
+                       "(pylovo-analyze --plz ... repeats the analysis)"]
+    assert code == generate.EXIT_PLZ_NOT_GENERATED
+    assert lv.mv == [[80803, 80804, 80805]]
 
 
 def test_the_mv_stage_is_skipped_when_no_plz_has_lv_grids(lv, capsys):

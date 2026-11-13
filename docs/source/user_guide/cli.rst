@@ -14,6 +14,9 @@ stage that does not end ``done``, ``pylovo-analyze`` for a postcode without grid
 when the run finished but postcodes failed or got no grids. Such postcodes are logged and
 skipped, the others are generated, and one line ``✗ N of M PLZ not generated: ...`` names them;
 the reasons are in the log (``Skipped PLZ <plz> due to generation error.``, :doc:`troubleshooting`).
+Code 4 is also used when the grids of a postcode are stored but their analysis failed. A second line
+``✗ N of M PLZ generated but not analysed: ...`` names these postcodes, and ``pylovo-analyze --plz <plz>``
+repeats the analysis.
 
 .. list-table::
    :header-rows: 1
