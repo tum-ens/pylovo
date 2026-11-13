@@ -134,3 +134,16 @@ def test_the_model_building_use_ignores_the_classes(tem, monkeypatch):
     assert result["school_in_commercial"][:2] == ("Commercial", pytest.approx(3000.0 * 79.0 / 1000.0))
     assert result["shop_in_block"][1] == pytest.approx(500.0 * 79.0 / 1000.0)
     assert {r[4] for r in result.values()} == {None}
+
+
+def test_the_loads_follow_the_configuration_not_the_table_of_another_run(tem, monkeypatch):
+    # another run of the same database has rewritten the table with other load parameters (rolled back at the end)
+    tem.cur.execute("UPDATE pylovo.consumer_categories SET peak_load = 99, peak_load_per_m2 = 1000 "
+                    "WHERE definition IN ('Residential', 'Commercial', 'Public', 'Unknown')")
+    monkeypatch.setattr(preprocessing_mixin, "NONRESIDENTIAL_LOAD_MODEL", "building_use")
+    tem.set_building_peak_load()
+    tem.cur.execute("SELECT objectid, residential_peak_load_in_kw, nonresidential_peak_load_in_kw FROM buildings_tem")
+    result = {r[0]: r[1:] for r in tem.cur.fetchall()}
+    assert result["shop_in_block"][0] == 50 * config_loader.PEAK_LOAD_HOUSEHOLD
+    assert result["office"][1] == pytest.approx(10000.0 * 79.0 / 1000.0)
+    assert result["no_class"][1] == pytest.approx(2000.0 * 29.0 / 1000.0)

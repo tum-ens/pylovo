@@ -18,9 +18,6 @@ class FakeDb:
     def get_buildings_from_kcid(self, kcid):
         return pd.DataFrame({"vertice_id": [1, 2]})
 
-    def get_consumer_categories(self):
-        return None
-
     def get_consumer_to_transformer_df(self, kcid, transformers):
         return pd.DataFrame([(1, 100, 10.0), (2, 100, 20.0)], columns=["start_vid", "end_vid", "agg_cost"])
 
@@ -60,6 +57,7 @@ def fill(monkeypatch, kw, known=None):
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger = FakeDb(known), logging.getLogger("brownfield-rating-boundary-test")
+    generator.consumer_categories = None     # FakeLoads ignores them
     generator.position_brownfield_transformers(84000, 1, [100])
     return generator.dbc.clusters
 

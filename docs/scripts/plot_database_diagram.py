@@ -37,7 +37,8 @@ DESCRIPTIONS = {
     "equipment_data": "Transformer and cable catalogue of a version, copied from ``TRANSFORMERS``, "
                       "``FEEDER_CABLES`` and ``CONSUMER_CONNECTION_CABLES``.",
     "consumer_categories": "Electrical load categories (Residential, Commercial, Public, Unknown) from "
-                           "``CONSUMER_CATEGORIES``; synchronised at the start of every generation run.",
+                           "``CONSUMER_CATEGORIES`` of the last generation run. The generation itself uses the configuration, the "
+                           "values of a version are in its snapshot (``version.generation_parameters``).",
     "schema_migrations": "Ledger of the applied schema migrations: one row per migration name with the time it was "
                          "applied (``pylovo-setup``). Created before the other tables.",
     "postcode": "Postcode polygons. Filled by ``pylovo-setup`` (from InfDB or ``data/postcode.csv``); "

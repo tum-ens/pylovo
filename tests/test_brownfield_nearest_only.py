@@ -21,9 +21,6 @@ class FakeDb:
     def get_buildings_from_kcid(self, kcid):
         return pd.DataFrame({"vertice_id": range(1, 8)})
 
-    def get_consumer_categories(self):
-        return None
-
     def get_consumer_to_transformer_df(self, kcid, transformers):
         return pd.DataFrame(self.costs, columns=["start_vid", "end_vid", "agg_cost"])
 
@@ -62,6 +59,7 @@ def test_overflow_joins_a_farther_station_only_without_nearest_only(monkeypatch,
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger = FakeDb(), logging.getLogger("brownfield-nearest-only-test")
+    generator.consumer_categories = None     # FakeLoads ignores them
     generator.position_brownfield_transformers(84000, 1, [100, 200])
     assert generator.dbc.clusters[100][0] == [1, 2, 3, 4, 5]
     assert generator.dbc.clusters[200][0] == station_200

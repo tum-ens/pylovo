@@ -146,6 +146,21 @@ LOAD_COMPONENT_COLUMNS = (
 )
 
 
+def index_consumer_categories(categories: pd.DataFrame) -> pd.DataFrame:
+    """Return the consumer categories indexed by ``definition`` (kept as a column) and sorted by it.
+
+    This is the shape the load functions below expect, for the categories of the configuration
+    (``CONSUMER_CATEGORIES``) and of a version snapshot alike.
+
+    Args:
+        categories: One row per category with a ``definition`` column.
+
+    Returns:
+        A new frame, the input stays unchanged.
+    """
+    return categories.set_index("definition", drop=False).sort_index()
+
+
 def _get_sim_factor(consumer_cat_df, definition):
     """Return the simultaneity factor of consumer category ``definition``.
 

@@ -90,7 +90,7 @@ Check ``chk_equipment_positive_ampacity``: ``max_i_a IS NULL OR max_i_a > 0``.
 ``consumer_categories``
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Electrical load categories (Residential, Commercial, Public, Unknown) from ``CONSUMER_CATEGORIES``; synchronised at the start of every generation run.
+Electrical load categories (Residential, Commercial, Public, Unknown) from ``CONSUMER_CATEGORIES`` of the last generation run. The generation itself uses the configuration, the values of a version are in its snapshot (``version.generation_parameters``).
 
 Unique: (definition).
 

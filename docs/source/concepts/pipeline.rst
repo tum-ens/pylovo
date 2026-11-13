@@ -19,7 +19,9 @@ Before the first step, the :class:`~pylovo.grid_generator.GridGenerator` stores 
 parameter snapshot of ``VERSION_ID`` (:ref:`versions`). A postcode that already has grids in the
 version is skipped. The postcode gets its temporary tables ``buildings_tem_<plz>`` and
 ``ways_tem_<plz>``, and the equipment catalogue and consumer categories of the configuration are
-written to ``equipment_data`` and ``consumer_categories``.
+written to ``equipment_data`` and ``consumer_categories``. The generation reads the consumer categories
+from the configuration, not from that table: the table only records the categories of the last run, the
+values of a version are in its snapshot.
 
 Phase 1: prepare
 ----------------

@@ -31,9 +31,6 @@ class FakeDb:
     def get_settlement_type_from_plz(self, plz):
         return 1
 
-    def get_consumer_categories(self):
-        return None
-
     def get_greenfield_bcids(self, plz, kcid):
         return [-2, -1, 1, 2, 3]   # like the database: the unfinished brownfield grids are listed too
 
@@ -60,6 +57,7 @@ def merged(monkeypatch, limit, distance=1000, node_kw=100.0):
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda buildings, categories, nodes: node_kw * len(nodes))
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger = FakeDb(), logging.getLogger("brownfield-merge-test")
+    generator.consumer_categories = None     # the load function is replaced
     count = generator.merge_small_greenfield_into_brownfield(84000, 1)
     return count, generator.dbc
 

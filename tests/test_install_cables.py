@@ -81,9 +81,6 @@ class FakeDbc(Saver):
     def get_list_from_plz(self, plz):
         return self.clusters
 
-    def get_consumer_categories(self):
-        return CONSUMERS
-
     def fetch_node_coordinates(self, plz):
         return dict(COORDINATES)
 
@@ -129,6 +126,7 @@ class FakeDbc(Saver):
 def install(dbc, caplog=None):
     generator = GridGenerator.__new__(GridGenerator)
     generator.plz, generator.dbc, generator.logger = 80803, dbc, LOGGER
+    generator.consumer_categories = CONSUMERS
     generator.install_cables()
     return generator
 

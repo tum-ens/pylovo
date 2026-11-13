@@ -307,6 +307,9 @@ class PreprocessingMixin(BaseMixin):
         placeholder ``'PEAK_LOAD_HOUSEHOLD'`` in the ``peak_load`` column is replaced by the
         configured value. Building classifications deliberately do not constrain this table.
 
+        The table records the categories of the last generation run. The generation itself does not read it
+        (it uses ``CONSUMER_CATEGORIES``), and the values of a version are in its snapshot.
+
         Args:
             consumer_categories: Category table, normally ``CONSUMER_CATEGORIES``.
 
@@ -655,7 +658,7 @@ class PreprocessingMixin(BaseMixin):
 
         Validates the source floor-area split, fills missing household counts from the
         ``_household_fallback_parameters`` assumptions, derives residential and non-residential
-        floor areas and peak loads from ``consumer_categories``, and sums them into
+        floor areas and peak loads from the configured ``CONSUMER_CATEGORIES``, and sums them into
         ``peak_load_in_kw`` (residential only if ``RESIDENTIAL_ONLY_GENERATION``). With
         ``NONRESIDENTIAL_LOAD_MODEL: load_class`` a Commercial or Public part with a load class then
         takes the load of its class (:meth:`apply_load_classes`).
@@ -698,6 +701,12 @@ class PreprocessingMixin(BaseMixin):
             )
 
         household_fallback = self._household_fallback_parameters()
+        # The loads come from the configuration of this process, not from pylovo.consumer_categories: that table
+        # is rewritten by every run on the database. A missing value is NULL, like the sub-select of a missing row.
+        categories = CONSUMER_CATEGORIES.reindex(columns=["definition", "peak_load", "peak_load_per_m2"])
+        categories = categories.set_index("definition")
+        household_peak_load = categories["peak_load"].get("Residential")
+        peak_load_per_m2 = categories["peak_load_per_m2"]
         query = """
                 UPDATE buildings_tem
                 SET floor_area = ST_Area(geom)
@@ -762,18 +771,16 @@ class PreprocessingMixin(BaseMixin):
 
                 UPDATE buildings_tem b
                 SET residential_peak_load_in_kw = CASE
-                        WHEN COALESCE(b.residential_floor_area, 0) > 0 THEN b.households * (
-                            SELECT peak_load
-                            FROM pylovo.consumer_categories
-                            WHERE definition = 'Residential'
-                        )
+                        WHEN COALESCE(b.residential_floor_area, 0) > 0
+                            THEN b.households * %(household_peak_load)s::double precision
                         ELSE 0
                     END,
                     nonresidential_peak_load_in_kw = CASE
                         WHEN COALESCE(b.nonresidential_floor_area, 0) > 0 THEN b.nonresidential_floor_area * (
-                            SELECT peak_load_per_m2
-                            FROM pylovo.consumer_categories
-                            WHERE definition = b.nonresidential_use
+                            SELECT u.peak_load_per_m2
+                            FROM unnest(%(use_names)s::text[], %(use_peak_load_per_m2)s::double precision[])
+                                AS u(definition, peak_load_per_m2)
+                            WHERE u.definition = b.nonresidential_use
                         ) / 1000
                         ELSE 0
                     END;
@@ -787,6 +794,9 @@ class PreprocessingMixin(BaseMixin):
             query,
             {
                 "include_nonresidential": not RESIDENTIAL_ONLY_GENERATION,
+                "household_peak_load": None if pd.isna(household_peak_load) else float(household_peak_load),
+                "use_names": peak_load_per_m2.index.tolist(),
+                "use_peak_load_per_m2": [None if pd.isna(w) else float(w) for w in peak_load_per_m2],
                 "sfh_households": household_fallback["SFH"]["fixed_households"],
                 "th_households": household_fallback["TH"]["fixed_households"],
                 "mfh_minimum_households": household_fallback["MFH"]["minimum_households"],

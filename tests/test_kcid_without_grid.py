@@ -33,9 +33,6 @@ class FakeDb:
     def get_buildings_from_kcid(self, kcid):
         return pd.DataFrame({"connection_point": pd.Series(dtype=float)})
 
-    def get_consumer_categories(self):
-        return None
-
     def get_settlement_type_from_plz(self, plz):
         return 2
 
@@ -62,5 +59,6 @@ def test_a_skipped_kcid_does_not_hold_back_the_kcids_after_it(monkeypatch):
     monkeypatch.setattr(GridGenerator, "dimension_bcid_for_kcid", dimension)
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger, generator.plz = FakeDb(), logging.getLogger("kcid-without-grid-test"), 91301
+    generator.consumer_categories = None
     generator.position_all_transformers()
     assert dimensioned == [1, 2, 3]

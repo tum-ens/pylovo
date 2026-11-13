@@ -107,9 +107,6 @@ class ClusterDb:
     def get_settlement_type_from_plz(self, plz):
         return 2
 
-    def get_consumer_categories(self):
-        return None
-
     def _set_transformer_rated_power(self, plz, kcid, bcid, rating):
         self.calls.append(("rating", bcid, rating))
 
@@ -124,6 +121,7 @@ class ClusterDb:
 def repaired(monkeypatch, bcid, building_rows, low_points, rated=None, new_bcids=(4,), connections=(), ont=900):
     generator = GridGenerator.__new__(GridGenerator)
     generator.plz, generator.dbc, generator.logger = 80803, ClusterDb(rated), LOGGER
+    generator.consumer_categories = None
     monkeypatch.setattr(GridGenerator, "_repair_targets",
                         lambda self, backend, df, ont_vertice: (list(low_points), list(connections)))
     dimensioned = []

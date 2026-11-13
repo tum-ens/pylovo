@@ -177,18 +177,6 @@ class UtilsMixin(BaseMixin):
                 WHERE type IS DISTINCT FROM 'Transformer' AND peak_load_in_kw IS DISTINCT FROM -1;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
 
-    def get_consumer_categories(self):
-        """
-        Returns: A dataframe with self-defined consumer categories and typical values
-        """
-        query = """SELECT *
-                   FROM pylovo.consumer_categories"""
-        cc_df = pd.read_sql_query(query, self.conn)
-        cc_df.set_index("definition", drop=False, inplace=True)
-        cc_df.sort_index(inplace=True)
-        self.logger.debug("Consumer categories fetched.")
-        return cc_df
-
     def get_municipal_register(self) -> pd.DataFrame:
         """Return the complete municipal register as a DataFrame with the ``MUNICIPAL_REGISTER`` columns."""
         query = """SELECT *

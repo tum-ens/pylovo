@@ -19,9 +19,6 @@ class FakeDb:
     def get_buildings_from_kcid(self, kcid):
         return pd.DataFrame({"vertice_id": [1, 2]})
 
-    def get_consumer_categories(self):
-        return None
-
     def get_consumer_to_transformer_df(self, kcid, transformers):
         return pd.DataFrame(self.costs, columns=["start_vid", "end_vid", "agg_cost"])
 
@@ -60,6 +57,7 @@ def test_equal_distances_are_visited_by_consumer_then_station(monkeypatch, costs
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger = FakeDb(costs), logging.getLogger("brownfield-fill-order-test")
+    generator.consumer_categories = None     # FakeLoads ignores them
     generator.position_brownfield_transformers(84000, 1, [100, 200])
     # the same answer for every row order of the routing result: consumer 1 takes station 100 first
     assert generator.dbc.clusters == {100: [1], 200: [2]}

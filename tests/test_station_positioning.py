@@ -37,6 +37,7 @@ def pinned_configuration(monkeypatch):
 def generator_with(dbc):
     generator = GridGenerator.__new__(GridGenerator)
     generator.plz, generator.dbc, generator.logger = 80803, dbc, LOGGER
+    generator.consumer_categories = CONSUMERS
     return generator
 
 
@@ -64,9 +65,6 @@ class Street(ClusteringMixin):
 
     def delete_isolated_building(self, plz, kcid):
         self.written.append(("delete unassigned", kcid))
-
-    def get_consumer_categories(self):
-        return CONSUMERS
 
     def get_settlement_type_from_plz(self, plz):
         return 2
@@ -333,9 +331,6 @@ class BrownfieldDb:
 
     def get_buildings_from_kcid(self, kcid):
         return pd.DataFrame({"vertice_id": [1, 2]})
-
-    def get_consumer_categories(self):
-        return None
 
     def get_consumer_to_transformer_df(self, kcid, transformers):
         return pd.DataFrame([(1, 100, 10.0), (2, 100, 20.0)], columns=["start_vid", "end_vid", "agg_cost"])

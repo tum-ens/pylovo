@@ -117,6 +117,9 @@ class GridGenerator:
         self.log_file = kwargs.get("log_file", "log/log.txt")
         self.dbc = dbc.DatabaseClient(log_file=self.log_file)
         self.dbc.insert_version_if_not_exists()
+        # The loads of the generation come from the configuration of this process: the table
+        # pylovo.consumer_categories is rewritten by every run on the database.
+        self.consumer_categories = utils.index_consumer_categories(CONSUMER_CATEGORIES)
         self.logger = utils.create_logger(
             name="GridGenerator", log_file=self.log_file, log_level=LOG_LEVEL
         )
@@ -732,7 +735,7 @@ class GridGenerator:
         """
         # Get data needed for clustering
         buildings = self.dbc.get_buildings_from_kcid(kcid)
-        consumer_cat_df = self.dbc.get_consumer_categories()
+        consumer_cat_df = self.consumer_categories
         settlement_type = self.dbc.get_settlement_type_from_plz(plz)
         transformer_capacities, _ = self.dbc.get_transformer_data(settlement_type)
         self.logger.info(f"Start BCID dimensioning for PLZ {plz}, KCID {kcid}")
@@ -1031,7 +1034,7 @@ class GridGenerator:
         """
         self.logger.info(f"{len(transformer_list)} Transformers found for kcid {kcid}")
         buildings = self.dbc.get_buildings_from_kcid(kcid)
-        consumer_cat_df = self.dbc.get_consumer_categories()
+        consumer_cat_df = self.consumer_categories
         loads = utils.CoincidentLoads(buildings, consumer_cat_df)
 
         # Get cost dataframe between consumers and transformers
@@ -1145,7 +1148,7 @@ class GridGenerator:
         bcid_by_vertex = {vertex: bcid for bcid, vertex in stations.items()}
         known_capacities = self.dbc.get_brownfield_transformer_capacity_map(list(stations.values()))
         capacities, _ = self.dbc.get_transformer_data(self.dbc.get_settlement_type_from_plz(plz))
-        consumer_cat_df = self.dbc.get_consumer_categories()
+        consumer_cat_df = self.consumer_categories
         merged = 0
         # get_greenfield_bcids lists every unfinished grid, the brownfield ones (bcid < 0) too
         for bcid in [b for b in self.dbc.get_greenfield_bcids(plz, kcid) if b >= 0]:
@@ -1289,7 +1292,7 @@ class GridGenerator:
             ``(vertices_dict, ont_vertice, vertices_list, buildings_df, consumer_df,
             consumer_list, connection_nodes, paths_to_transformer)``: routed distance
             from the transformer per vertex, the transformer vertex, the vertices,
-            the buildings, the consumer categories (fetched if not given), the
+            the buildings, the consumer categories (the configured ones if not given), the
             consumer vertices, the connection nodes (the street-side vertices that are
             not consumers, and the buildings that are their own planning node) and the
             routed path of each vertex to the transformer.
@@ -1309,7 +1312,7 @@ class GridGenerator:
         vertices_list = list(vertices_dict.keys())
 
         if consumer_df is None:
-            consumer_df = self.dbc.get_consumer_categories()
+            consumer_df = self.consumer_categories
         consumer_list = buildings_df.vertice_id.to_list()
         consumer_list = list(dict.fromkeys(consumer_list))  # removing duplicates
 
@@ -1500,7 +1503,7 @@ class GridGenerator:
 
         # These inputs are invariant for every grid in a PLZ. Fetch them once after
         # pgRouting topology creation and pass immutable snapshots into each installer.
-        consumer_df = self.dbc.get_consumer_categories()
+        consumer_df = self.consumer_categories
         node_coordinates = self.dbc.fetch_node_coordinates(self.plz)
         # House cables end at the house connection box on the facade, not at the building centroid.
         node_coordinates.update(self.dbc.fetch_house_connection_points(self.plz))
@@ -1872,7 +1875,7 @@ class GridGenerator:
                     capacities, _ = self.dbc.get_transformer_data(self.dbc.get_settlement_type_from_plz(self.plz))
                     kept = buildings_df[~utils.planning_nodes(buildings_df).astype(int).isin(points)]
                     load = utils.simultaneous_peak_load(
-                        kept, self.dbc.get_consumer_categories(),
+                        kept, self.consumer_categories,
                         utils.planning_nodes(kept).astype(int).unique().tolist()) / TRANSFORMER_PLANNING_UTILIZATION
                     feasible = capacities[capacities > load]
                     self.dbc._set_transformer_rated_power(

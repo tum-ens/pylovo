@@ -198,8 +198,9 @@ def mixin(cursor=None):
 
 
 #: sha256 of the statements (whitespace normalised) that set_building_peak_load and
-#: update_too_large_consumers_to_zero executed at 2dfba770, before the load classes
-OLD_LOAD_SQL = "ce0ea1e76ae366abbe1d8e76f9bb51ae330f8b52330fab3f9f51d3485addb457"
+#: update_too_large_consumers_to_zero executed at 2dfba770, before the load classes. Written again when the two
+#: sub-selects of pylovo.consumer_categories became the query parameters of the configured loads (nothing else changed)
+OLD_LOAD_SQL = "915b35e33bc4ad7edaa5451e26c72498c2ace504dbb5984874823d7a421b4f6d"
 
 
 def test_the_model_building_use_runs_the_load_sql_of_the_versions_before_the_classes():
