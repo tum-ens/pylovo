@@ -24,8 +24,10 @@ Sources of transformer candidates
      - ``lod2/<objectid>``
      - Added during generation (InfDB mode) from LoD2 buildings with function code ``31001_2523``
        when open or manual positions are used, in a short transaction before each postcode. If an
-       OSM transformer lies within 3 m or inside the building, that OSM row is flagged
-       ``lod2 = true`` instead of creating a new row.
+       OSM or manual transformer lies within 3 m or inside the building, that row is flagged
+       ``lod2 = true`` instead of creating a new row. A DSO row in reach is flagged too, but a
+       ``lod2/<objectid>`` row is still created: open data do not depend on the DSO import. If both
+       sources are used, the ``lod2/...`` row of a building that a DSO row marks is not a candidate.
    * - DSO list
      - ``dso/<source>/<external_id>``
      - ``pylovo-import transformers-dso-csv <file.csv>``.

@@ -235,3 +235,81 @@ def test_postcode_import_updates_a_postcode_and_keeps_its_results(client, monkey
         client.cur.execute("DELETE FROM pylovo.version WHERE version_id = %s", (version,))
         client.cur.execute("DELETE FROM pylovo.postcode WHERE plz = %s", (plz,))
         client.commit_changes()
+
+
+def lod2_station(db, objectid="B1", x=50.0, y=50.0, half=5.0):
+    """Upsert one LoD2 station building (square around x, y) and return what the upsert wrote."""
+    db.upsert_lod2_transformer_stations([(
+        objectid,
+        f"SRID=25832;POLYGON(({x - half} {y - half}, {x + half} {y - half}, {x + half} {y + half}, "
+        f"{x - half} {y + half}, {x - half} {y - half}))",
+        f"SRID=25832;POINT({x} {y})")])
+    db.cur.execute("SELECT osm_id, lod2, lod2_objectid FROM pylovo.transformers ORDER BY osm_id")
+    return db.cur.fetchall()
+
+
+@pytest.fixture()
+def clean_transformers(tem):
+    tem.cur.execute("DELETE FROM pylovo.transformers")        # inside the test transaction
+    return tem
+
+
+def test_a_dso_station_in_a_lod2_building_does_not_replace_the_open_data_row(clean_transformers):
+    transformer(clean_transformers, "dso/fixture/1", 50, 50)
+    assert lod2_station(clean_transformers) == [("dso/fixture/1", True, "B1"), ("lod2/B1", True, "B1")]
+
+
+def test_an_osm_and_a_dso_station_in_reach_are_both_marked_and_nothing_is_inserted(clean_transformers):
+    transformer(clean_transformers, "node/1", 51, 50)
+    transformer(clean_transformers, "dso/fixture/1", 50, 51)
+    assert lod2_station(clean_transformers) == [("dso/fixture/1", True, "B1"), ("node/1", True, "B1")]
+
+
+def test_the_nearest_station_of_each_kind_is_marked_and_ties_go_to_the_lower_osm_id(clean_transformers):
+    for osm_id, x, y in (("node/2", 52, 50), ("node/1", 48, 50),         # both 2 m from the centroid
+                         ("node/3", 50, 54),                              # farther
+                         ("dso/fixture/2", 50, 53), ("dso/fixture/1", 50, 47)):    # both 3 m
+        transformer(clean_transformers, osm_id, x, y)
+    assert lod2_station(clean_transformers) == [
+        ("dso/fixture/1", True, "B1"), ("dso/fixture/2", False, None),
+        ("node/1", True, "B1"), ("node/2", False, None), ("node/3", False, None)]
+
+
+def test_an_osm_station_only_is_marked_without_insert_and_a_second_upsert_changes_nothing(clean_transformers):
+    transformer(clean_transformers, "node/1", 50, 50)
+    first = lod2_station(clean_transformers)
+    assert first == [("node/1", True, "B1")]
+    assert lod2_station(clean_transformers) == first
+
+
+def test_a_dso_station_only_gets_an_open_data_row_that_a_second_upsert_keeps(clean_transformers):
+    transformer(clean_transformers, "dso/fixture/1", 50, 50)
+    first = lod2_station(clean_transformers)
+    assert lod2_station(clean_transformers) == first == [("dso/fixture/1", True, "B1"), ("lod2/B1", True, "B1")]
+
+
+@pytest.mark.parametrize("include_dso, include_open, expected", [
+    (False, True, ["lod2/B1"]),
+    (True, False, ["dso/fixture/1"]),
+    (True, True, ["dso/fixture/1"]),                 # the building is the DSO station: one candidate
+    (False, False, []),
+])
+def test_a_lod2_building_around_a_dso_station_is_a_candidate_only_when_the_dso_row_is_not_used(
+        clean_transformers, include_dso, include_open, expected):
+    from pylovo.config_loader import VERSION_ID
+
+    db = clean_transformers
+    db.cur.execute("""INSERT INTO pylovo.version (version_id, version_comment)
+                      VALUES (%s, 'fixture') ON CONFLICT DO NOTHING""", (VERSION_ID,))
+    db.cur.execute("""INSERT INTO pylovo.postcode (plz, geom)
+                      VALUES (%s, ST_Multi(ST_MakeEnvelope(0, 0, 100, 100, 25832))) ON CONFLICT (plz) DO NOTHING""",
+                   (PLZ,))
+    db.copy_postcode_result_table(PLZ)
+    transformer(db, "dso/fixture/1", 50, 50)
+    transformer(db, "node/9", 20, 20)                                  # unrelated OSM station
+    lod2_station(db)
+    db.insert_transformers(PLZ, include_dso=include_dso, include_open=include_open)
+    db.cur.execute("SELECT objectid FROM buildings_tem ORDER BY objectid")
+    used = [r[0] for r in db.cur.fetchall()]
+    assert [objectid for objectid in used if objectid != "node/9"] == expected
+    assert ("node/9" in used) is include_open

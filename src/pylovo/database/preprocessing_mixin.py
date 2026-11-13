@@ -70,7 +70,7 @@ from pylovo.config_loader import (
 )
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.transformer_sources import IS_DSO_TRANSFORMER_SQL as _IS_DSO_TRANSFORMER_SQL
-from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
+from pylovo.database.transformer_sources import NOT_LOD2_TWIN_OF_DSO_SQL, SOURCE_ENABLED_SQL, source_params
 from pylovo.version_snapshot import compare_snapshots
 
 
@@ -1064,8 +1064,10 @@ class PreprocessingMixin(BaseMixin):
     def upsert_lod2_transformer_stations(self, transformer_buildings: list[tuple]) -> int:
         """Add LoD2 transformer-station buildings to the raw transformer candidates.
 
-        A building within 3 m of an existing candidate (or intersecting it) marks the nearest
-        candidate as LoD2-confirmed; otherwise its centroid is inserted as ``lod2/<objectid>``.
+        The open data must not depend on imported DSO stations. A building within 3 m of an
+        existing non-DSO candidate (or intersecting it) marks the nearest one as LoD2-confirmed;
+        otherwise its centroid is inserted as ``lod2/<objectid>``. The nearest DSO station in reach
+        is marked as well, but never replaces the insert: a run with open data only does not see it.
 
         Args:
             transformer_buildings: ``(objectid, geom, centroid)`` rows of
@@ -1084,21 +1086,26 @@ class PreprocessingMixin(BaseMixin):
                     ST_Transform(%(geom)s::geometry, {TARGET_EPSG}) AS building_geom,
                     ST_Transform(%(centroid)s::geometry, {TARGET_EPSG}) AS centroid_geom
             ),
-            matched AS (
-                SELECT t.osm_id
+            in_reach AS (
+                SELECT t.osm_id,
+                       {_IS_DSO_TRANSFORMER_SQL} AS is_dso,
+                       t.geom <-> c.centroid_geom AS distance
                 FROM pylovo.transformers t
                 JOIN candidate c
                   ON ST_Intersects(t.geom, c.building_geom)
                   OR ST_DWithin(t.geom, c.centroid_geom, 3.0)
-                ORDER BY t.geom <-> c.centroid_geom
-                LIMIT 1
+            ),
+            nearest_open AS (
+                SELECT osm_id FROM in_reach WHERE NOT is_dso ORDER BY distance, osm_id LIMIT 1
+            ),
+            nearest_dso AS (
+                SELECT osm_id FROM in_reach WHERE is_dso ORDER BY distance, osm_id LIMIT 1
             ),
             updated AS (
                 UPDATE pylovo.transformers t
                 SET lod2 = true,
                     lod2_objectid = COALESCE(t.lod2_objectid, (SELECT objectid FROM candidate))
-                FROM matched
-                WHERE t.osm_id = matched.osm_id
+                WHERE t.osm_id IN (SELECT osm_id FROM nearest_open UNION SELECT osm_id FROM nearest_dso)
                 RETURNING t.osm_id
             )
             INSERT INTO pylovo.transformers (
@@ -1125,7 +1132,7 @@ class PreprocessingMixin(BaseMixin):
                 objectid,
                 ST_Multi(centroid_geom)
             FROM candidate
-            WHERE NOT EXISTS (SELECT 1 FROM updated)
+            WHERE NOT EXISTS (SELECT 1 FROM nearest_open)
             ON CONFLICT (osm_id) DO UPDATE SET
                 lod2 = true,
                 lod2_objectid = EXCLUDED.lod2_objectid;
@@ -1207,6 +1214,9 @@ class PreprocessingMixin(BaseMixin):
             include_dso: Include imported DSO transformer positions.
             include_open: Include all other (OSM, LoD2 and manual) transformer positions.
             include_manual: Include the manual (UI) positions, also without ``include_open``.
+
+        A ``lod2/...`` row whose station building is already marked by an enabled DSO row is left
+        out, so that the building does not become a second candidate next to the DSO station.
         """
         insert_query = f"""
                        INSERT INTO buildings_tem (objectid, geom)
@@ -1216,7 +1226,8 @@ class PreprocessingMixin(BaseMixin):
                                                 FROM pylovo.postcode_result
                                                 WHERE postcode_result_plz = %(p)s
                                                   AND version_id = %(v)s))
-                         AND {SOURCE_ENABLED_SQL};
+                         AND {SOURCE_ENABLED_SQL}
+                         AND {NOT_LOD2_TWIN_OF_DSO_SQL};
                        UPDATE buildings_tem
                        SET plz = %(p)s
                        WHERE plz ISNULL;

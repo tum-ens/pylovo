@@ -18,18 +18,39 @@ survives psycopg2 parameter substitution as a single LIKE wildcard.
 """
 from __future__ import annotations
 
-# NULL-safe: manual rows usually have ``type`` NULL, and ``NULL IN (...)`` would make the whole
-# predicate (and ``NOT`` of it) NULL, which silently dropped such rows from every source.
-IS_DSO_TRANSFORMER_SQL = (
-    "(COALESCE(t.type, '') IN ('dso', 'dso_validation') OR COALESCE(t.osm_id, '') LIKE 'dso/%%'"
-    " OR COALESCE(t.osm_id, '') LIKE 'dso_validation/%%')"
-)
+
+def is_dso_transformer_sql(alias: str) -> str:
+    """The predicate "this row of ``pylovo.transformers`` is an imported DSO station" for a table alias.
+
+    NULL-safe: manual rows usually have ``type`` NULL, and ``NULL IN (...)`` would make the whole
+    predicate (and ``NOT`` of it) NULL, which silently dropped such rows from every source.
+
+    Args:
+        alias: Alias of ``pylovo.transformers`` in the statement.
+
+    Returns:
+        SQL text with ``%%`` as the LIKE wildcard (for psycopg2 parameter substitution).
+    """
+    return (f"(COALESCE({alias}.type, '') IN ('dso', 'dso_validation')"
+            f" OR COALESCE({alias}.osm_id, '') LIKE 'dso/%%'"
+            f" OR COALESCE({alias}.osm_id, '') LIKE 'dso_validation/%%')")
+
+
+IS_DSO_TRANSFORMER_SQL = is_dso_transformer_sql("t")
 IS_MANUAL_TRANSFORMER_SQL = "(COALESCE(t.osm_id, '') LIKE 'manual/%%')"
 
 SOURCE_ENABLED_SQL = (
     f"((%(include_dso)s AND {IS_DSO_TRANSFORMER_SQL})"
     f" OR (%(include_open)s AND NOT {IS_DSO_TRANSFORMER_SQL})"
     f" OR (%(include_manual)s AND {IS_MANUAL_TRANSFORMER_SQL} AND NOT {IS_DSO_TRANSFORMER_SQL}))"
+)
+
+# With DSO stations enabled, the ``lod2/<objectid>`` row of a station building that a DSO row already
+# marks (same ``lod2_objectid``) would be a second candidate a few metres from the DSO station.
+NOT_LOD2_TWIN_OF_DSO_SQL = (
+    "(COALESCE(t.osm_id, '') NOT LIKE 'lod2/%%' OR NOT %(include_dso)s OR NOT EXISTS ("
+    "SELECT 1 FROM pylovo.transformers d"
+    f" WHERE {is_dso_transformer_sql('d')} AND d.lod2_objectid = t.lod2_objectid))"
 )
 
 

@@ -176,6 +176,19 @@ def test_transformer_source_predicate():
     assert "manual/%%" in SOURCE_ENABLED_SQL and "dso/%%" in SOURCE_ENABLED_SQL
 
 
+def test_the_dso_predicate_is_written_once_for_any_alias():
+    from pylovo.database.transformer_sources import (
+        IS_DSO_TRANSFORMER_SQL,
+        NOT_LOD2_TWIN_OF_DSO_SQL,
+        is_dso_transformer_sql,
+    )
+
+    assert is_dso_transformer_sql("t") == IS_DSO_TRANSFORMER_SQL
+    assert is_dso_transformer_sql("d").replace("d.", "t.") == IS_DSO_TRANSFORMER_SQL
+    assert "t." not in is_dso_transformer_sql("d") and "%%" in is_dso_transformer_sql("d")
+    assert is_dso_transformer_sql("d") in NOT_LOD2_TWIN_OF_DSO_SQL
+
+
 def test_station_voltage_keys_of_older_snapshots():
     stored = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1}}
     legacy = {"power_flow_assessment": {"min_vm_pu": 0.9, "max_vm_pu": 1.1, "lv_reference_voltage_pu": None}}
