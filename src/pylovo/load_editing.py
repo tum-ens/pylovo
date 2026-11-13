@@ -56,6 +56,7 @@ import numpy as np
 import pandas as pd
 
 from pylovo import utils
+from pylovo.database.load_edit_mixin import MvCustomerInUse
 from pylovo.electrical_backend.core.specs import LoadSpec
 
 logger = logging.getLogger(__name__)
@@ -1322,6 +1323,15 @@ class LoadEditor:
         try:
             result["analysis_to_remove"] = self.db.load_dependent_analysis_rows(
                 state.params.version_id, state.head["plz"], grid_result_id)
+            if result["valid"]:
+                before, after = (result["building"][when]["peaks"] for when in ("before", "after"))
+                if before["nonresidential_mv_direct"] and not after["nonresidential_mv_direct"]:
+                    variants = self.db.mv_variants_of_customer(state.params.version_id, objectid)
+                    if variants:
+                        result["errors"].append(_issue("mv_customer_in_variant",
+                                                       _mv_customer_message(objectid, variants),
+                                                       None, "error", mv_variants=variants))
+                        result["valid"] = False
         finally:
             self._end_read()
         result["took_s"] = round(time.time() - started, 3)
@@ -1377,6 +1387,14 @@ class LoadEditor:
             raise LoadEditNotFound("grid_not_found", f"Grid {grid_result_id} not found")
         return row
 
+    def _sync_mv_customer(self, version_id: str, plz: int, objectid: str) -> None:
+        """Run ``sync_mv_customer`` and turn its refusal into a conflict (the caller rolls the transaction back)."""
+        try:
+            self.db.sync_mv_customer(version_id, plz, objectid)
+        except MvCustomerInUse as exc:
+            raise LoadEditConflict("mv_customer_in_variant", _mv_customer_message(exc.objectid, exc.variants),
+                                   objectid=exc.objectid, mv_variants=exc.variants) from exc
+
     def apply(self, grid_result_id: int, objectid: str, changes: dict, *, if_match: str, reason: str | None = None,
               acknowledge: Iterable[str] = (), first_version_edit_confirm: str | None = None,
               write_guard: AbstractContextManager | None = None, action: str = "edit") -> dict[str, Any]:
@@ -1402,7 +1420,8 @@ class LoadEditor:
 
         Raises:
             LoadEditValidationError: Invalid or empty change.
-            LoadEditConflict: ``etag_mismatch``, ``locked``, ``ack_required`` or a failed guard.
+            LoadEditConflict: ``etag_mismatch``, ``locked``, ``ack_required``, ``mv_customer_in_variant`` or a
+                failed guard.
         """
         state = self.state(grid_result_id)
         self.require_editable(state)
@@ -1465,7 +1484,7 @@ class LoadEditor:
                 })
                 self.db.update_building_load_inputs(version_id, grid_result_id, objectid,
                                                     {**check.inputs.as_dict(), **check.peaks.as_dict()})
-                self.db.sync_mv_customer(version_id, state.head["plz"], objectid)
+                self._sync_mv_customer(version_id, state.head["plz"], objectid)
                 self.db.replace_pandapower_load_rows(grid_result_id, net.load)
                 self.db.update_pandapower_bus_zones(grid_result_id, [(i, new) for i, _, new in result["_zone_changes"]])
                 after_md5 = self.db.save_revalidated_grid(grid_result_id, json_text, validation.status, validation.drops)
@@ -1497,7 +1516,7 @@ class LoadEditor:
         before = edit["before_building"]
         self.db.update_building_load_inputs(edit["version_id"], gid, edit["objectid"],
                                             {k: before.get(k) for k in (*_BUILDING_INPUTS, *_BUILDING_PEAKS)})
-        self.db.sync_mv_customer(edit["version_id"], edit["plz"], edit["objectid"])
+        self._sync_mv_customer(edit["version_id"], edit["plz"], edit["objectid"])
         self.db.restore_pandapower_load_rows(gid, edit["before_loads"])
         self.db.update_pandapower_bus_zones(gid, [(int(i), z) for i, z in edit["before_bus_zones"]])
         self.db.mark_load_edit_undone(edit["load_edit_id"], undone_by)
@@ -1509,7 +1528,8 @@ class LoadEditor:
 
         Raises:
             LoadEditNotFound: Unknown edit.
-            LoadEditConflict: ``already_undone``, ``not_latest``, ``etag_mismatch`` or ``locked``.
+            LoadEditConflict: ``already_undone``, ``not_latest``, ``etag_mismatch``, ``locked`` or
+                ``mv_customer_in_variant``.
         """
         try:
             edit = self.db.fetch_load_edit(load_edit_id)
@@ -1577,6 +1597,13 @@ class LoadEditor:
         if objectid:
             rows = [r for r in rows if r["objectid"] == objectid]
         return rows
+
+
+def _mv_customer_message(objectid: str, variants: list[str]) -> str:
+    """The text of the refusal ``mv_customer_in_variant`` for the user."""
+    return (f"Building {objectid} is an MV customer in the stored MV variant(s) {', '.join(variants)}. Without MV "
+            "customer status its node and lines would be missing there. Delete the variant(s) with "
+            "'pylovo-mv delete' first, then repeat this.")
 
 
 def _clean(value: Any) -> Any:

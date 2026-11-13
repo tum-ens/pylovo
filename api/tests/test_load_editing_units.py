@@ -391,8 +391,10 @@ def test_a_lock_timeout_inside_the_write_transaction_is_a_locked_conflict():
 class MvCustomerCursor:
     """The statements of ``LoadEditMixin.sync_mv_customer`` on two dicts: ``buildings_result`` and ``mv_customers`` rows."""
 
-    def __init__(self, buildings: dict, customers: dict, table: bool = True):
+    def __init__(self, buildings: dict, customers: dict, table: bool = True, variants: dict | None = None,
+                 node_table: bool = True):
         self.buildings, self.customers, self.table = buildings, customers, table
+        self.variants, self.node_table = variants or {}, node_table  # variants: objectid -> MV variants with its node
         self.statements: list[str] = []
         self.inserted: list[str] = []
         self.updated: list[str] = []
@@ -411,7 +413,11 @@ class MvCustomerCursor:
         self.description = None
         objectid = params.get("o") if isinstance(params, dict) else None
         if text.startswith("SELECT to_regclass"):
-            self.description, self.rows = [("ok",)], [{"ok": self.table}]
+            exists = self.node_table if params == ("pylovo.mv_node",) else self.table
+            self.description, self.rows = [("ok",)], [{"ok": exists}]
+        elif "FROM pylovo.mv_node" in text:
+            self.description = [("mv_variant_id",)]
+            self.rows = [{"mv_variant_id": v} for v in sorted(self.variants.get(objectid, []))]
         elif "AS stored" in text:
             others = any(self.is_customer(b) for key, b in self.buildings.items() if key != objectid)
             self.description, self.rows = [("stored",)], [{"stored": bool(self.customers), "others": others}]
@@ -420,7 +426,8 @@ class MvCustomerCursor:
             self.rowcount = int(self.is_customer(building))
             if self.rowcount:
                 row = {k: building[k] for k in ("nonresidential_use", "nonresidential_floor_area",
-                                                "nonresidential_peak_load_in_kw", "residential_peak_load_in_kw", "households")}
+                                                "nonresidential_peak_load_in_kw", "residential_peak_load_in_kw", "households",
+                                                "load_class", "connection_level")}
                 (self.updated if objectid in self.customers else self.inserted).append(objectid)
                 self.customers[objectid] = {**self.customers.get(objectid, {"plz": params["plz"]}), **row}
         elif text.startswith("DELETE FROM pylovo.mv_customers"):
@@ -433,18 +440,18 @@ class MvCustomerCursor:
         return self.rows
 
 
-def mv_client(buildings: dict, customers: dict, table: bool = True):
+def mv_client(buildings: dict, customers: dict, table: bool = True, variants: dict | None = None, node_table: bool = True):
     from pylovo.database.load_edit_mixin import LoadEditMixin
 
     client = LoadEditMixin.__new__(LoadEditMixin)
-    client.cur = MvCustomerCursor(buildings, customers, table)
+    client.cur = MvCustomerCursor(buildings, customers, table, variants, node_table)
     return client
 
 
 def stored(kw: float, *, direct: bool, households: int = 4, use: str | None = "Commercial") -> dict:
     return {"nonresidential_mv_direct": direct, "nonresidential_peak_load_in_kw": kw, "nonresidential_use": use,
             "nonresidential_floor_area": kw / 0.079, "residential_peak_load_in_kw": households * 16.825,
-            "households": households}
+            "households": households, "load_class": "retail", "connection_level": "mv"}
 
 
 def test_an_edit_across_the_mv_direct_threshold_moves_the_building_between_lv_and_mv_and_the_undo_restores_it():
@@ -479,7 +486,45 @@ def test_a_building_that_flips_back_to_mv_direct_by_an_undo_gets_its_row_again()
     client.sync_mv_customer("v1", 85653, "b1")
     assert customers == {"b1": {"plz": 85653, **{k: kept[k] for k in ("nonresidential_use", "nonresidential_floor_area",
                                                                       "nonresidential_peak_load_in_kw",
-                                                                      "residential_peak_load_in_kw", "households")}}}
+                                                                      "residential_peak_load_in_kw", "households",
+                                                                      "load_class", "connection_level")}}}
+    assert customers["b1"]["load_class"] == "retail" and customers["b1"]["connection_level"] == "mv"  # not lost by the insert
+
+
+def test_a_building_that_no_variant_uses_leaves_the_mv_customers():
+    other = stored(300.0, direct=True)
+    buildings = {"b1": stored(50.0, direct=False), "x1": other}
+    customers = {"b1": {"plz": 85653, **stored(120.0, direct=True)}, "x1": {"plz": 85653, **other}}
+    client = mv_client(buildings, customers, variants={"x1": ["d0"]})  # a variant uses another customer only
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert set(customers) == {"x1"} and client.cur.deleted == ["b1"]
+
+
+def test_a_building_that_a_stored_mv_variant_uses_is_not_deleted_from_the_mv_customers():
+    """The delete would cascade to its node and lines: rings with holes that still look up to date after an undo."""
+    from pylovo.database.load_edit_mixin import MvCustomerInUse
+
+    other = stored(300.0, direct=True)
+    buildings = {"b1": stored(50.0, direct=False), "x1": other}
+    row = {"plz": 85653, **stored(120.0, direct=True)}
+    customers = {"b1": dict(row), "x1": {"plz": 85653, **other}}
+    client = mv_client(buildings, customers, variants={"b1": ["d1", "d0"]})
+    with pytest.raises(MvCustomerInUse) as caught:
+        client.sync_mv_customer("v1", 85653, "b1")
+    assert caught.value.objectid == "b1" and caught.value.variants == ["d0", "d1"]
+    assert customers == {"b1": row, "x1": {"plz": 85653, **other}} and buildings["b1"] == stored(50.0, direct=False)
+    assert client.cur.deleted == [] and client.cur.inserted == [] and client.cur.updated == []
+    buildings["b1"] = stored(150.0, direct=True)  # still an MV customer: updated in place, however many variants use it
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert client.cur.updated == ["b1"] and customers["b1"]["nonresidential_peak_load_in_kw"] == 150.0
+
+
+def test_a_database_without_the_mv_node_table_deletes_as_before():
+    buildings = {"b1": stored(50.0, direct=False), "x1": stored(300.0, direct=True)}
+    customers = {"b1": {"plz": 85653, **stored(120.0, direct=True)}, "x1": {"plz": 85653, **stored(300.0, direct=True)}}
+    client = mv_client(buildings, customers, variants={"b1": ["d0"]}, node_table=False)
+    client.sync_mv_customer("v1", 85653, "b1")
+    assert set(customers) == {"x1"} and client.cur.deleted == ["b1"]
 
 
 def test_a_version_from_before_the_mv_customers_table_is_left_alone():
@@ -507,14 +552,15 @@ class RecordingDb:
             self.calls.append(("commit",))
 
         def rollback(self):
-            pass
+            self.calls.append(("rollback",))
 
     class Cur:
         def execute(self, *args):
             pass
 
-    def __init__(self, building: dict):
+    def __init__(self, building: dict, raises: dict | None = None):
         self.calls: list[tuple] = []
+        self.raises = raises or {}  # method name -> exception to raise
         self.conn, self.cur = self.Conn(self.calls), self.Cur()
         self.answers = {"version_has_load_edits": True, "load_edit_table_exists": True, "insert_load_edit": 11,
                         "lock_load_edit_grid": {"grid_md5": "m1", "last_edit_id": None}, "snapshot_pandapower_loads": [],
@@ -524,6 +570,8 @@ class RecordingDb:
     def __getattr__(self, name):
         def call(*args, **kwargs):
             self.calls.append((name, *args))
+            if name in self.raises:
+                raise self.raises[name]
             return self.answers.get(name)
         return call
 
@@ -561,6 +609,76 @@ def test_apply_and_undo_keep_the_mv_customer_in_the_transaction_of_the_edit(monk
     names = [call[0] for call in db.calls]
     sync = names.index("sync_mv_customer")
     assert names[sync - 1] == "update_building_load_inputs" and db.calls[sync] == ("sync_mv_customer", "v1", 85653, "b1")
+
+
+def test_apply_and_undo_are_refused_with_a_409_when_a_stored_mv_variant_uses_the_customer(monkeypatch):
+    from types import SimpleNamespace
+
+    import pandapower as pp
+
+    from pylovo.database.load_edit_mixin import MvCustomerInUse
+
+    before = building(nonresidential_floor_area=2000.0, nonresidential_use="Commercial", nonresidential_mv_direct=True)
+    after = BuildingInputs.from_row({**before, "nonresidential_floor_area": 400.0})
+    peaks = component_peaks(after, params())
+    state = SimpleNamespace(etag="m1-0", params=SimpleNamespace(version_id="v1", as_json=dict), head={"plz": 85653},
+                            reproduction=SimpleNamespace(tier="exact", max_rel_diff=0.0, max_abs_diff_mw=0.0))
+    result = {"valid": True, "_validation": SimpleNamespace(status="converged", drops={}), "_net": pp.create_empty_network(),
+              "_check": le.ChangeCheck(after, peaks, {"nonresidential_floor_area": [2000.0, 400.0]}),
+              "warnings": [], "categories": {}, "loads": {}, "grid": {}, "power_flow": {}, "service": {},
+              "_zone_changes": []}
+    monkeypatch.setattr(le.LoadEditor, "state", lambda self, grid_result_id: state)
+    monkeypatch.setattr(le.LoadEditor, "require_editable", staticmethod(lambda state: None))
+    monkeypatch.setattr(le.LoadEditor, "_compute", lambda self, state, objectid, changes: result)
+    monkeypatch.setattr(le.LoadEditor, "_building", lambda self, state, objectid: before)
+    refusal = {"sync_mv_customer": MvCustomerInUse("b1", ["d0", "d1"])}
+
+    def refused(db, call):
+        with pytest.raises(le.LoadEditConflict) as caught:
+            call(le.LoadEditor(db))
+        assert caught.value.status == 409
+        assert caught.value.as_dict()["code"] == "mv_customer_in_variant" and caught.value.detail["mv_variants"] == ["d0", "d1"]
+        assert "d0, d1" in caught.value.message and "pylovo-mv delete" in caught.value.message
+        names = [c[0] for c in db.calls]
+        assert "commit" not in names and names[names.index("sync_mv_customer") + 1:] == ["rollback"]  # nothing after it is written
+        assert "save_revalidated_grid" not in names and "replace_pandapower_load_rows" not in names
+
+    db = RecordingDb(before, refusal)
+    refused(db, lambda editor: editor.apply(5, "b1", {"nonresidential_floor_area": 400.0}, if_match="m1-0"))
+    edit = {"load_edit_id": 11, "grid_result_id": 5, "version_id": "v1", "plz": 85653, "objectid": "b1", "undone_at": None,
+            "before_net_md5": "m1", "after_net_md5": "m1", "before_building": before, "after_building": {},
+            "before_loads": [], "before_bus_zones": []}
+    db = RecordingDb(before, refusal)
+    db.answers.update({"fetch_load_edit": edit, "latest_active_load_edit": edit})
+    refused(db, lambda editor: editor.undo(11))
+    db = RecordingDb(before, refusal)
+    db.answers.update({"fetch_load_edit": edit, "latest_active_load_edit": edit})
+    refused(db, lambda editor: editor.undo_all(5))
+
+
+def test_the_preview_reports_a_customer_that_a_stored_mv_variant_uses(monkeypatch):
+    from types import SimpleNamespace
+
+    before = building(nonresidential_floor_area=2000.0, nonresidential_use="Commercial", nonresidential_mv_direct=True)
+    after = BuildingInputs.from_row({**before, "nonresidential_floor_area": 400.0})
+    peaks = component_peaks(after, params())
+    assert not peaks.nonresidential_mv_direct
+    state = SimpleNamespace(etag="m1-0", params=SimpleNamespace(version_id="v1"), head={"plz": 85653})
+
+    def preview(variants):
+        result = {"valid": True, "errors": [], "warnings": [], "_check": le.ChangeCheck(after, peaks, {}),
+                  "building": {"before": {"peaks": le._stored_peaks(before).as_dict()}, "after": {"peaks": peaks.as_dict()}}}
+        monkeypatch.setattr(le.LoadEditor, "state", lambda self, grid_result_id: state)
+        monkeypatch.setattr(le.LoadEditor, "require_editable", staticmethod(lambda state: None))
+        monkeypatch.setattr(le.LoadEditor, "_compute", lambda self, state, objectid, changes: result)
+        db = RecordingDb(before)
+        db.answers.update({"mv_variants_of_customer": variants, "load_dependent_analysis_rows": {}})
+        return le.LoadEditor(db).preview(5, "b1", {})
+
+    blocked = preview(["d0"])
+    assert not blocked["valid"] and [e["code"] for e in blocked["errors"]] == ["mv_customer_in_variant"]
+    assert blocked["errors"][0]["detail"]["mv_variants"] == ["d0"]
+    assert preview([])["valid"]
 
 
 def test_the_mv_direct_warning_says_where_the_load_goes():

@@ -348,6 +348,69 @@ def test_conflicts(client, conn, picks):
         assert "first_version_edit" in need.json()["detail"]["acknowledge"]
 
 
+def test_an_mv_customer_that_a_stored_mv_variant_uses_stays_an_mv_customer(client, conn):
+    """Without MV customer status the node and its lines would leave the variant (ON DELETE CASCADE): 409."""
+    import pylovo.load_editing as le
+
+    if not q(conn, "SELECT to_regclass('pylovo.mv_node') IS NOT NULL AND to_regclass('pylovo.mv_customers') IS NOT NULL")[0][0]:
+        pytest.skip("the database has no MV tables")
+    undo_everything(client, conn)
+    rows = q(conn, """SELECT b.grid_result_id, b.objectid, b.nonresidential_floor_area, b.nonresidential_use
+                      FROM pylovo.buildings_result b
+                      WHERE b.version_id = '1' AND b.households >= 1 AND b.residential_floor_area > 0
+                        AND b.nonresidential_floor_area > 0 AND b.nonresidential_use IS NOT NULL
+                        AND NOT COALESCE(b.nonresidential_mv_direct, false)
+                      ORDER BY b.grid_result_id, b.objectid LIMIT 1""")
+    if not rows:
+        pytest.skip("version 1 has no mixed building below the MV-direct threshold")
+    gid, objectid, small_area, use = rows[0]
+    plz = q(conn, "SELECT plz FROM pylovo.grid_result WHERE grid_result_id = %s", (gid,))[0][0]
+    gp = q(conn, "SELECT generation_parameters FROM pylovo.version WHERE version_id = '1'")[0][0]
+    params = le.LoadParameters.from_generation_parameters("1", gp)
+    large_area = 1.5 * params.mv_direct_threshold_kw * 1000 / params.peak_load_per_m2_w[use]
+    variant = "zzedit"
+
+    def state():
+        return {
+            "grid": fingerprint(conn, gid, plz=plz),
+            "customers": q(conn, "SELECT to_jsonb(c)::text FROM pylovo.mv_customers c WHERE version_id = '1' AND objectid = %s",
+                           (objectid,)),
+            "nodes": q(conn, "SELECT count(*) FROM pylovo.mv_node WHERE version_id = '1' AND customer_objectid = %s",
+                       (objectid,)),
+            "audit": q(conn, "SELECT count(*) FROM pylovo.load_edit WHERE grid_result_id = %s", (gid,)),
+        }
+
+    try:
+        up = apply(client, gid, objectid, {"nonresidential_floor_area": large_area}, acknowledge=["non_convergence"])
+        assert up.status_code == 201, up.text
+        assert q(conn, "SELECT count(*) FROM pylovo.mv_customers WHERE version_id = '1' AND objectid = %s", (objectid,))[0][0] == 1
+        q(conn, """INSERT INTO pylovo.mv_variant (version_id, mv_variant_id, mv_parameters, plz_list)
+                   VALUES ('1', %s, '{}'::jsonb, ARRAY[%s]::integer[])""", (variant, plz))
+        q(conn, """INSERT INTO pylovo.mv_node (version_id, mv_variant_id, kind, connection_hint, customer_objectid, geom)
+                   SELECT version_id, %s, 'customer', 'ring', objectid, centroid FROM pylovo.mv_customers
+                   WHERE version_id = '1' AND objectid = %s""", (variant, objectid))
+        before = state()
+        assert before["nodes"][0][0] == 1
+        # the preview names the variant, the edit and the undo of the edit that made it an MV customer are refused
+        preview_down = client.post(f"/api/grids/{gid}/load-edit/preview",
+                                   json={"objectid": objectid, "changes": {"nonresidential_floor_area": small_area}})
+        assert preview_down.status_code == 200 and not preview_down.json()["valid"]
+        assert [e["code"] for e in preview_down.json()["errors"]] == ["mv_customer_in_variant"]
+        down = apply(client, gid, objectid, {"nonresidential_floor_area": small_area})
+        assert down.status_code == 409, down.text
+        assert down.json()["detail"]["code"] == "mv_customer_in_variant" and down.json()["detail"]["mv_variants"] == [variant]
+        assert state() == before
+        undo = client.post(f"/api/load-edits/{up.json()['load_edit_id']}/undo", json={})
+        assert undo.status_code == 409 and undo.json()["detail"]["code"] == "mv_customer_in_variant"
+        assert state() == before
+    finally:
+        q(conn, "DELETE FROM pylovo.mv_variant WHERE version_id = '1' AND mv_variant_id = %s", (variant,))  # cascades to the node
+        undo_everything(client, conn)
+    assert q(conn, "SELECT count(*) FROM pylovo.mv_node WHERE mv_variant_id = %s", (variant,))[0][0] == 0
+    # with the variant gone the undo goes through and the building is an LV-only building again
+    assert q(conn, "SELECT count(*) FROM pylovo.mv_customers WHERE version_id = '1' AND objectid = %s", (objectid,))[0][0] == 0
+
+
 def test_non_convergence_needs_acknowledgement(client, conn, picks):
     undo_everything(client, conn)
     gid, building = picks["gid"], picks["building"]

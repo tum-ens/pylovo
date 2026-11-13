@@ -228,7 +228,10 @@ generated: to redimension the grid, correct the input and regenerate the PLZ as 
 mixed building whose non-residential part is or becomes larger than ``MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW``
 of the version moves between the grid and the MV customers: the edit inserts, updates or deletes its row
 in ``pylovo.mv_customers`` in the same transaction, and the undo restores it. MV variants of the
-version are then ``stale`` (:doc:`mv_grids`). The
+version are then ``stale`` (:doc:`mv_grids`). An MV customer that a stored MV variant uses is never
+deleted, because the variant would lose its node and lines. The preview reports this, and the edit and
+the undo are refused (409, code ``mv_customer_in_variant``, with the variant ids). Delete the variants
+with ``pylovo-mv delete`` first, then repeat the edit. The
 first edit of a version needs its id as confirmation. Analysis rows of the PLZ are removed because
 they no longer match; a re-analysis rebuilds them. Every edit can be undone exactly (the latest
 first), or all edits of a grid at once, and edited grids and versions are flagged in the results.

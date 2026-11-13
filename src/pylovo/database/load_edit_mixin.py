@@ -42,6 +42,20 @@ def _dumps(value: Any) -> str:
     return json.dumps(value, allow_nan=False)
 
 
+class MvCustomerInUse(RuntimeError):
+    """A building would stop being an MV customer while stored MV variants hold a node for it.
+
+    Attributes:
+        objectid: The building.
+        variants: IDs of the MV variants that hold a node of this customer.
+    """
+
+    def __init__(self, objectid: str, variants: list[str]):
+        super().__init__(f"MV customer {objectid} is used by MV variants {', '.join(variants)}")
+        self.objectid = objectid
+        self.variants = variants
+
+
 class LoadEditMixin(BaseMixin):
     """Read and write the data of one grid for a load edit, and keep its audit rows."""
 
@@ -163,6 +177,15 @@ class LoadEditMixin(BaseMixin):
         if self.cur.rowcount != 1:
             raise RuntimeError(f"expected to update 1 building row, updated {self.cur.rowcount}")
 
+    def mv_variants_of_customer(self, version_id: str, objectid: str) -> list[str]:
+        """IDs of the stored MV variants that hold a node for an MV customer (empty without the MV tables)."""
+        if not self._le_regclass("pylovo.mv_node"):
+            return []
+        return [r["mv_variant_id"] for r in self._le_rows(
+            """SELECT DISTINCT mv_variant_id FROM pylovo.mv_node
+               WHERE version_id = %(v)s AND customer_objectid = %(o)s ORDER BY mv_variant_id""",
+            {"v": version_id, "o": objectid})]
+
     def sync_mv_customer(self, version_id: str, plz: int, objectid: str) -> None:
         """Make the row of a building in ``pylovo.mv_customers`` agree with its ``buildings_result`` row.
 
@@ -170,7 +193,10 @@ class LoadEditMixin(BaseMixin):
         is an MV customer when its non-residential part is MV-direct and has a positive peak (the rule of
         ``PreprocessingMixin.save_mv_customers``): its row is inserted, updated in place or deleted. An
         update never deletes and inserts the row, because the MV nodes of stored variants refer to it
-        (``ON DELETE CASCADE``); a deleted row takes the node of that customer out of them.
+        (``ON DELETE CASCADE``). For the same reason the row is never deleted while a stored MV variant
+        holds a node for the customer: the delete would take the node and its lines out of the variant
+        and leave a ring with a hole. The method raises then and changes nothing; the variant has to
+        be deleted first (``pylovo-mv delete``).
 
         A version without any row (generated before the table existed) whose buildings hold MV-direct
         components is left alone: the MV stage reads those buildings then, and a first row would make
@@ -180,6 +206,10 @@ class LoadEditMixin(BaseMixin):
             version_id: Version of the building.
             plz: PLZ of the building's grid.
             objectid: Building.
+
+        Raises:
+            MvCustomerInUse: If the building is no longer an MV customer but stored MV variants hold a
+                node for it.
         """
         if not self._le_regclass("pylovo.mv_customers"):
             return
@@ -195,10 +225,11 @@ class LoadEditMixin(BaseMixin):
             """INSERT INTO pylovo.mv_customers
                    (version_id, objectid, plz, id, building_use, building_use_id, building_type, type, nonresidential_use,
                     nonresidential_floor_area, nonresidential_peak_load_in_kw, residential_peak_load_in_kw, households,
-                    gemeindeschluessel, geom, centroid)
+                    gemeindeschluessel, geom, centroid, load_class, connection_level)
                SELECT br.version_id, br.objectid, %(plz)s, br.id, br.building_use, br.building_use_id, br.building_type,
                       br.type, br.nonresidential_use, br.nonresidential_floor_area, br.nonresidential_peak_load_in_kw,
-                      br.residential_peak_load_in_kw, br.households, br.gemeindeschluessel, br.geom, br.centroid
+                      br.residential_peak_load_in_kw, br.households, br.gemeindeschluessel, br.geom, br.centroid,
+                      br.load_class, br.connection_level
                FROM pylovo.buildings_result br
                WHERE br.version_id = %(v)s AND br.objectid = %(o)s AND br.nonresidential_mv_direct
                  AND COALESCE(br.nonresidential_peak_load_in_kw, 0) > 0
@@ -209,6 +240,9 @@ class LoadEditMixin(BaseMixin):
                    residential_peak_load_in_kw = EXCLUDED.residential_peak_load_in_kw,
                    households = EXCLUDED.households""", params)
         if self.cur.rowcount == 0:  # not (or no longer) an MV customer
+            variants = self.mv_variants_of_customer(version_id, objectid)
+            if variants:
+                raise MvCustomerInUse(objectid, variants)
             self.cur.execute("DELETE FROM pylovo.mv_customers WHERE version_id = %(v)s AND objectid = %(o)s", params)
 
     def snapshot_pandapower_loads(self, grid_result_id: int) -> list[dict]:
