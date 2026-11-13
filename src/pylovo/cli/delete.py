@@ -3,7 +3,7 @@ import sys
 import traceback
 
 from pylovo.cli import parsers
-from pylovo.cli.confirm import confirm_deletion
+from pylovo.cli.confirm import confirm_deletion, show_target, target_is_unambiguous
 from pylovo.config_loader import DBNAME, HOST, PORT
 from pylovo.database.database_client import DatabaseClient
 
@@ -65,7 +65,11 @@ def main():
     if not args.command and not args.versions:
         parser.print_help()
         return
-    if not args.yes and not confirm_deletion(_scope(args), DBNAME, HOST, PORT):
+    if not target_is_unambiguous():
+        sys.exit(1)
+    if args.yes:
+        show_target(DBNAME, HOST, PORT)
+    elif not confirm_deletion(_scope(args), DBNAME, HOST, PORT):
         sys.exit(1)
 
     try:

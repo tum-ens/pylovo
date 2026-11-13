@@ -23,7 +23,10 @@ environment outside the project (:ref:`install-wheel`), the ``.env`` of the curr
 parents is used. A ``.env`` above the installed package therefore wins over the one in the working directory.
 The values of the ``.env`` **override** environment variables with the same name. ``PYLOVO_ENV_FILE``, set in
 the shell, replaces the search: it names the file to read, and an empty value (``PYLOVO_ENV_FILE=``) reads
-no ``.env`` at all, so that only the variables of the shell count.
+no ``.env`` at all, so that only the variables of the shell count. If the ``.env`` replaces a connection
+variable (``DBNAME``, ``DBUSER``, ``HOST``, ``PORT`` or ``PASSWORD``) that the shell had set, pylovo warns
+once and names the variables, never their values. The commands that delete data stop in that case if
+``DBNAME``, ``HOST`` or ``PORT`` is among them.
 
 .. list-table::
    :header-rows: 1

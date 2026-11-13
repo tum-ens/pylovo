@@ -197,3 +197,59 @@ def test_mv_delete_with_yes_does_not_ask(monkeypatch, mv_deleted):
     terminal(monkeypatch, False)
     mv_cli.main(["delete", "--version", "mv1", "--variant", "d0", "--yes"])
     assert mv_deleted == [("mv1", ["d0"])]
+
+
+# --- an unclear target and --yes ----------------------------------------------------------------------------------
+@pytest.fixture
+def host_replaced(monkeypatch):
+    monkeypatch.setattr(config_loader, "ENV_FILE_REPLACED", ("HOST", "PASSWORD"))
+
+
+@pytest.mark.parametrize("yes", [[], ["--yes"]])
+@pytest.mark.parametrize("command", COMMANDS)
+def test_delete_refuses_when_the_env_file_replaced_the_host(monkeypatch, opened, capsys, host_replaced, command, yes):
+    terminal(monkeypatch, bool(not yes), "sandbox")
+    with pytest.raises(SystemExit) as refused:
+        run(monkeypatch, *command, *yes)
+    shown = capsys.readouterr().out
+    assert refused.value.code == 1 and opened == []
+    assert shown.startswith("✗") and "HOST" in shown and "PASSWORD" not in shown and "PYLOVO_ENV_FILE=" in shown
+
+
+@pytest.mark.parametrize("replaced", [(), ("DBUSER", "PASSWORD")])
+def test_a_replaced_user_or_password_alone_does_not_refuse(monkeypatch, opened, replaced):
+    monkeypatch.setattr(config_loader, "ENV_FILE_REPLACED", replaced)
+    terminal(monkeypatch, False)
+    run(monkeypatch, "transformers", "--yes")
+    assert opened == ["open"]
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+def test_yes_prints_the_target_before_the_deletion(monkeypatch, opened, capsys, command):
+    terminal(monkeypatch, False)
+    run(monkeypatch, *command, "--yes")
+    shown = capsys.readouterr().out
+    assert shown.index("database sandbox on db.example:5432") < shown.index("✓ Deleted")
+
+
+def test_without_yes_the_output_is_as_before(monkeypatch, opened, capsys):
+    terminal(monkeypatch, True, "sandbox")
+    run(monkeypatch, "transformers")
+    shown = capsys.readouterr().out
+    assert "Target:" not in shown and "This deletes data of the database sandbox (host db.example, port 5432):" in shown
+
+
+def test_mv_delete_refuses_when_the_env_file_replaced_the_port(monkeypatch, mv_deleted, capsys):
+    monkeypatch.setattr(config_loader, "ENV_FILE_REPLACED", ("PORT",))
+    terminal(monkeypatch, False)
+    with pytest.raises(SystemExit) as refused:
+        mv_cli.main(["delete", "--version", "mv1", "--variant", "d0", "--yes"])
+    shown = capsys.readouterr().out
+    assert refused.value.code == 1 and mv_deleted == [] and shown.startswith("✗") and "PORT" in shown
+
+
+def test_mv_delete_with_yes_prints_the_target_first(monkeypatch, mv_deleted, capsys):
+    terminal(monkeypatch, False)
+    mv_cli.main(["delete", "--version", "mv1", "--variant", "d0", "--yes"])
+    shown = capsys.readouterr().out
+    assert shown.index("database sandbox on db.example:5432") < shown.index("✓ Deleted")

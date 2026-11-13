@@ -23,7 +23,9 @@ with the rules of :mod:`pylovo.mv_grid.options`.
     therefore still wins over the one in the working directory. Because of ``override=True`` the
     values in that ``.env`` **replace** environment variables of the same name that are already set
     in the shell. ``PYLOVO_ENV_FILE`` (from the shell) replaces this search: it names the file to load, and
-    an empty value loads none.
+    an empty value loads none. If the ``.env`` replaces a connection variable (``DBNAME``, ``DBUSER``,
+    ``HOST``, ``PORT``, ``PASSWORD``) of the environment, one warning names the variables (never the values)
+    and :data:`ENV_FILE_REPLACED` holds them, so the commands that delete data can refuse an unclear target.
 
 YAML lookup:
     See :func:`get_config_search_paths`. The first location is ``./config`` of the
@@ -362,7 +364,16 @@ def _check_transformer_mapping(mapping: dict, transformers: pd.DataFrame) -> Non
 # =============================================================================
 # Load .env first, so PYLOVO_ROOT / PYLOVO_CONFIG_DIR set there also apply to the
 # YAML search below. override=True: the .env wins over variables of the shell.
-load_dotenv(find_env_file(), override=True)
+_ENV_FILE = find_env_file()
+_CONNECTION_VARIABLES = ("DBNAME", "DBUSER", "HOST", "PORT", "PASSWORD")
+_BEFORE_ENV_FILE = {name: os.environ[name] for name in _CONNECTION_VARIABLES if name in os.environ}
+load_dotenv(_ENV_FILE, override=True)
+#: Connection variables that were set in the environment and that the .env replaced with another value (names only).
+ENV_FILE_REPLACED: tuple[str, ...] = tuple(name for name, value in _BEFORE_ENV_FILE.items()
+                                           if os.environ.get(name) != value)
+if ENV_FILE_REPLACED:
+    warnings.warn(f"{_ENV_FILE} replaced {', '.join(ENV_FILE_REPLACED)} of the environment. Set PYLOVO_ENV_FILE= "
+                  "(empty) to use the environment instead of the .env file", stacklevel=2)
 
 # Current working directory at import time (not the package location).
 PROJECT_ROOT = Path.cwd()

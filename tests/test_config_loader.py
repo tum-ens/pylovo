@@ -1,4 +1,6 @@
 """Checks of the generation configuration at load time (no database)."""
+import json
+import os
 import shutil
 import subprocess
 import sys
@@ -220,3 +222,56 @@ def test_a_misspelled_key_of_each_file_is_reported_once_and_the_import_goes_on(t
     config_copy_with(tmp_path, file, line)
     messages = import_config(tmp_path)
     assert len(messages) == 1 and file in messages[0] and key in messages[0]
+
+
+# --- connection variables replaced by the .env ---------------------------------------------------------------------
+CONNECTION = {"DBNAME": "env_db", "DBUSER": "env_user", "HOST": "env.host", "PORT": "1111", "PASSWORD": "env-secret"}
+
+
+def replaced_by_env_file(tmp_path, environment: dict[str, str], env_file: str | None) -> tuple[tuple[str, ...], list[str]]:
+    """``ENV_FILE_REPLACED`` and the warnings about it of a fresh import of the module (``None``: no .env at all)."""
+    path = tmp_path / ".env"
+    path.write_text(env_file or "")
+    code = ("import json, warnings\n"
+            "with warnings.catch_warnings(record=True) as caught:\n"
+            "    warnings.simplefilter('always')\n"
+            "    import pylovo.config_loader as c\n"
+            "print(json.dumps(c.ENV_FILE_REPLACED))\n"
+            "print(*[str(w.message) for w in caught if '.env' in str(w.message)], sep='\\n')\n")
+    env = {**os.environ, **CONNECTION, **environment, "PYLOVO_ENV_FILE": str(path) if env_file is not None else ""}
+    proc = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], env=env,
+                          capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    first, *messages = proc.stdout.splitlines()
+    return tuple(json.loads(first)), [line for line in messages if line]
+
+
+ENV_FILE = "DBNAME=env_db\nDBUSER=env_user\nHOST=file.host\nPORT=1111\nPASSWORD=file-secret\n"
+
+
+def test_an_env_file_that_changes_connection_variables_of_the_environment_is_reported_without_values(tmp_path):
+    replaced, messages = replaced_by_env_file(tmp_path, {}, ENV_FILE)
+    assert replaced == ("HOST", "PASSWORD")
+    assert len(messages) == 1 and "HOST, PASSWORD" in messages[0] and "PYLOVO_ENV_FILE=" in messages[0]
+    for value in ("file.host", "env.host", "file-secret", "env-secret"):
+        assert value not in messages[0]
+
+
+def test_equal_values_give_no_report(tmp_path):
+    same = "".join(f"{name}={value}\n" for name, value in CONNECTION.items())
+    assert replaced_by_env_file(tmp_path, {}, same) == ((), [])
+
+
+def test_variables_that_the_environment_did_not_set_give_no_report(tmp_path):
+    env = {name: value for name, value in os.environ.items() if name not in CONNECTION}
+    env["PYLOVO_ENV_FILE"] = str(tmp_path / ".env")
+    (tmp_path / ".env").write_text(ENV_FILE)
+    code = "import pylovo.config_loader as c; print(c.ENV_FILE_REPLACED, c.HOST)"
+    proc = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], env=env,
+                          capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "() file.host"
+
+
+def test_without_an_env_file_nothing_is_replaced(tmp_path):
+    assert replaced_by_env_file(tmp_path, {}, None) == ((), [])

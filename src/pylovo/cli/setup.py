@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pylovo.cli import parsers
+from pylovo.cli.confirm import show_target, target_is_unambiguous
 from pylovo import utils
 from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
 from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
@@ -173,7 +174,11 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("reset requires --database matching DBNAME in .env")
         if args.database != DBNAME:
             parser.error(f"reset target {args.database!r} does not match configured database {DBNAME!r}")
-        if not args.yes and not confirm_schema_reset(DBNAME, HOST, PORT):
+        if not target_is_unambiguous():
+            sys.exit(1)
+        if args.yes:
+            show_target(DBNAME, HOST, PORT)
+        elif not confirm_schema_reset(DBNAME, HOST, PORT):
             print("Reset aborted. Nothing was changed.")
             sys.exit(1)
     try:

@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+from pylovo import config_loader
 from pylovo.cli import setup
 
 
@@ -102,3 +103,24 @@ def test_the_only_reset_is_the_one_of_pylovo_setup_with_its_backup():
     assert not hasattr(DatabaseConstructor, "reset_schema")      # it dropped the schema without a backup
     assert hasattr(DatabaseConstructor, "move_schema_to_backup") and hasattr(DatabaseConstructor, "drop_backup")
     assert not hasattr(transformer_sources, "any_source")
+
+
+def test_a_reset_refuses_when_the_env_file_replaced_the_host(monkeypatch, reset_calls, capsys):
+    monkeypatch.setattr(config_loader, "ENV_FILE_REPLACED", ("HOST",))
+    for extra in ([], ["--yes"]):
+        monkeypatch.setattr(sys, "stdin", Stdin(tty=False))
+        with pytest.raises(SystemExit) as refused:
+            setup.main(["reset", "--database", "sandbox", *extra])
+        shown = capsys.readouterr().out
+        assert refused.value.code == 1 and reset_calls == []
+        assert shown.startswith("✗") and "HOST" in shown and "PYLOVO_ENV_FILE=" in shown
+
+
+def test_a_reset_with_yes_prints_the_target_and_without_yes_the_output_is_as_before(monkeypatch, reset_calls, capsys):
+    setup.main(["reset", "--database", "sandbox", "--yes"])
+    assert "database sandbox on db.example:5432" in capsys.readouterr().out and reset_calls == [True]
+    monkeypatch.setattr(sys, "stdin", Stdin(tty=True))
+    monkeypatch.setattr(builtins, "input", lambda prompt="": "sandbox")
+    setup.main(["reset", "--database", "sandbox"])
+    shown = capsys.readouterr().out
+    assert "Target:" not in shown and "database: sandbox" in shown and reset_calls == [True, True]

@@ -201,11 +201,15 @@ def _couple(args: argparse.Namespace) -> int:
 
 
 def _delete(args: argparse.Namespace) -> int:
-    from pylovo.cli.confirm import confirm_deletion
+    from pylovo.cli.confirm import confirm_deletion, show_target, target_is_unambiguous
     from pylovo.config_loader import DBNAME, HOST, PORT
 
     which = ", ".join(args.variants) if args.variants else "all"
-    if not args.yes and not confirm_deletion(
+    if not target_is_unambiguous():
+        return 1
+    if args.yes:
+        show_target(DBNAME, HOST, PORT)
+    elif not confirm_deletion(
             [f"the MV variants of version {args.version} ({which}) with all their results"], DBNAME, HOST, PORT):
         return 1
     with _database_client() as dbc:

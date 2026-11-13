@@ -194,7 +194,8 @@ def test_deleting_a_variant_that_does_not_exist_is_an_error(monkeypatch, capsys,
     with pytest.raises(SystemExit) as exc:
         cli.main(["delete", "--version", "mv1", *variant_args, "--yes"])
     assert exc.value.code == 1
-    assert capsys.readouterr().out.strip() == f"✗ No MV variant of version mv1 to delete ({which})"
+    # --yes prints the target first, the message about the variants comes last
+    assert capsys.readouterr().out.strip().splitlines()[-1] == f"✗ No MV variant of version mv1 to delete ({which})"
 
 
 def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
@@ -215,8 +216,8 @@ def test_delete_and_list(monkeypatch, capsys, no_grid_generator):
     monkeypatch.setattr(cli, "_database_client", lambda: client)
     cli.main(["delete", "--version", "mv1", "--variant", "d0", "d1", "--yes"])
     cli.main(["list", "--version", "mv1"])
-    out = capsys.readouterr().out.splitlines()
-    assert deleted == [("mv1", ["d0", "d1"])]
+    target, *out = capsys.readouterr().out.splitlines()       # --yes prints the target first
+    assert target.startswith("Target: database ") and deleted == [("mv1", ["d0", "d1"])]
     assert out[0] == "✓ Deleted 2 MV variants of version mv1 (d0, d1)"
     assert out[1].startswith("✓ mv1/d0: generation done, 2 PLZ, 3 grids (3 done, 0 failed); "
                              "electrical: 2 pass, 1 violation, 0 not checked, 120 km")
@@ -429,7 +430,7 @@ def test_every_command_on_the_mv_tables_stops_with_pending_migrations(monkeypatc
                  ["export", "--version", "mv1", "--variant", "d1", "--grid", "3", "--output", "g.json"]):
         with pytest.raises(SystemExit) as exc:
             cli.main(argv)
-        assert exc.value.code == 1 and capsys.readouterr().out.strip() == f"✗ {pending}", argv
+        assert exc.value.code == 1 and capsys.readouterr().out.strip().splitlines()[-1] == f"✗ {pending}", argv
 
 
 def test_display_stores_the_display_geometry_of_each_variant(monkeypatch, capsys):

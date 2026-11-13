@@ -57,7 +57,9 @@ imports every reference table that is still empty. The database server must run
 PostgreSQL 15 or newer, which the command checks before it changes anything
 (:doc:`../getting_started/installation`). Only ``reset --database NAME``
 deletes the PyLovo schema; the name must match ``DBNAME`` in ``.env``. Reset asks
-you to type the database name unless ``--yes`` is supplied; it keeps the previous
+you to type the database name unless ``--yes`` is supplied, which prints the target (database, host and
+port) instead. Reset stops without a change if the ``.env`` replaced ``DBNAME``, ``HOST`` or ``PORT`` of
+the environment, because then it is unclear which database is meant (see :doc:`configuration`). It keeps the previous
 schema as a backup until the rebuild is complete and restores it if the rebuild
 fails. The HTTP API's reset job runs this command after its
 own typed confirmation; its setup job runs the non-destructive ``pylovo-setup``. See :doc:`database_setup`.
@@ -122,8 +124,9 @@ the LV version explicitly with ``--version``; ``VERSION_ID`` of the configuratio
    List the MV variants with status, postcodes, grids, length, stale flag and the stage version of older variants.
 ``pylovo-mv delete --version VERSION [--variant VARIANTS ...] [--yes]``
    Delete MV variants with all their results (all variants of the version without ``--variant``).
-   Asks you to type the database name first, like ``pylovo-delete``; ``--yes`` skips the question and
-   is required without a terminal on stdin. When no variant matches the command exits with 1.
+   Asks you to type the database name first, like ``pylovo-delete``; ``--yes`` skips the question, prints
+   the target and is required without a terminal on stdin. It stops if the ``.env`` replaced ``DBNAME``,
+   ``HOST`` or ``PORT`` of the environment. When no variant matches the command exits with 1.
 ``pylovo-mv export --version VERSION --variant VARIANT --grid GRID --output OUTPUT [--case CASE] [--coupled]``
    Write the pandapower net of one MV grid (case ``load``, ``n1a`` or ``n1b``) to a JSON file.
 ``pylovo-mv boundary --version VERSION --variant VARIANT --output OUTPUT``
@@ -311,9 +314,12 @@ Deletes data from the database. Without arguments the help is shown. Deleting ve
 postcodes cascades to all dependent result tables and refreshes the materialised views.
 
 Every command that deletes shows the database (host, port and name) and what it deletes, and asks
-you to type the database name, like ``pylovo-setup reset``. ``--yes`` skips the question. Without a
+you to type the database name, like ``pylovo-setup reset``. ``--yes`` skips the question and prints the
+target (``database NAME on HOST:PORT``) instead. Without a
 terminal on stdin (a script, a job) and without ``--yes`` nothing is deleted and the command exits
-with 1. The HTTP API passes ``--yes`` after its own typed confirmation.
+with 1. The command also exits with 1 and deletes nothing if the ``.env`` replaced ``DBNAME``, ``HOST``
+or ``PORT`` of the environment: then the shell and the ``.env`` name different databases. Unset these
+variables or set ``PYLOVO_ENV_FILE=`` (empty). The HTTP API passes ``--yes`` after its own typed confirmation.
 
 ``pylovo-delete --version VERSION_ID [VERSION_ID ...] [--yes]``
    Delete one or more versions with all their grids in all postcodes, their equipment data and
