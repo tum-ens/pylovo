@@ -26,6 +26,9 @@ job runs there, exactly like the CLI). The database is the one in the project's 
 environment variables `DBNAME`, `DBUSER`, `PASSWORD`, `HOST`, `PORT` when there is no `.env`
 (pylovo needs them at start-up, even for `/api/health`).
 
+Only one `pylovo-api` can run per project directory. A second one stops with a message that names the
+first. A second server would stop the running job of the first one on exit and write into its job log.
+
 | Option | Default | |
 | --- | --- | --- |
 | `--host` | `127.0.0.1` | interface to bind; `0.0.0.0` or `::` makes the API reachable from other machines and prints a warning |

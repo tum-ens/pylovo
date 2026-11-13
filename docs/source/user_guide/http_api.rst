@@ -29,6 +29,9 @@ database is the one in the project's ``.env`` (or in the environment variables `
 ``--host`` (default ``127.0.0.1``), ``--port`` (default ``8765``), ``--log-level`` and
 ``--allowed-host`` (also ``PYLOVO_API_ALLOWED_HOSTS``) for the host name of a reverse proxy.
 
+Only one ``pylovo-api`` can run per project directory. A second one stops with a message that names
+the first. A second server would stop the running job of the first one on exit and write into its job log.
+
 The API answers a request only when its ``Host`` header names localhost, the ``--host`` value or an
 ``--allowed-host`` (otherwise 421), also with ``--host 0.0.0.0``. Behind a reverse proxy, allow the name
 that the proxy sends: the name the browser used if the proxy forwards the ``Host`` header unchanged
