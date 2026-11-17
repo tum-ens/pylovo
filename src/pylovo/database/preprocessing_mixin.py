@@ -1109,6 +1109,8 @@ class PreprocessingMixin(BaseMixin):
         Imported DSO stations count only when they are in use
         (`include_dso`): they stay in `pylovo.transformers` after the run that
         imported them, and must not remove buildings from a run that ignores them.
+        All other positions (OSM, LoD2, manual) count also when this run does not use them
+        (``include_open`` and ``include_manual`` are not passed on): unlike :meth:`insert_transformers`.
 
         Args:
             include_dso: Whether imported DSO stations are used in this run.
@@ -1126,7 +1128,7 @@ class PreprocessingMixin(BaseMixin):
                       SELECT 1
                       FROM pylovo.transformers t
                       WHERE (ST_Intersects(t.geom, b.geom) OR ST_Within(t.geom, b.geom))
-                        AND (%(include_dso)s OR NOT {_IS_DSO_TRANSFORMER_SQL})
+                        AND {SOURCE_ENABLED_SQL}
                   )
                 RETURNING b.objectid, b.nonresidential_mv_direct
             )
@@ -1134,7 +1136,7 @@ class PreprocessingMixin(BaseMixin):
             SELECT objectid, CASE WHEN nonresidential_mv_direct THEN 'mv_direct' ELSE 'overlaps_transformer' END
             FROM deleted;
         """
-        self.cur.execute(query, {"include_dso": include_dso})
+        self.cur.execute(query, source_params(include_dso, include_open=True, include_manual=True))
         return self.cur.rowcount
 
     def remove_non_residential_buildings_from_buildings_tem(self) -> int:

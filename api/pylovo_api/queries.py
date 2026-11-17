@@ -9,12 +9,13 @@ import re
 from collections import defaultdict
 from typing import Any
 
+from pylovo.database.transformer_sources import is_dso_transformer_sql, manual_osm_id_sql
 from pylovo_api import cabinets, db, grid_metrics, topology
 
-# Same classification the generator uses (preprocessing_mixin.insert_transformers).
-TRAFO_SOURCE_SQL = """CASE
-    WHEN t.type IN ('dso', 'dso_validation') OR t.osm_id LIKE 'dso/%%' OR t.osm_id LIKE 'dso_validation/%%' THEN 'dso'
-    WHEN t.osm_id LIKE 'manual/%%' THEN 'manual'
+# The source of a row of pylovo.transformers, with the predicates the generation uses (transformer_sources).
+TRAFO_SOURCE_SQL = f"""CASE
+    WHEN {is_dso_transformer_sql('t')} THEN 'dso'
+    WHEN {manual_osm_id_sql('t.osm_id')} THEN 'manual'
     WHEN NOT t.osm AND t.lod2 THEN 'lod2'
     ELSE 'osm' END"""
 

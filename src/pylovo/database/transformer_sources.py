@@ -19,6 +19,19 @@ survives psycopg2 parameter substitution as a single LIKE wildcard.
 from __future__ import annotations
 
 
+def dso_osm_id_sql(column: str) -> str:
+    """The predicate "this ``osm_id`` is an imported DSO station" (``dso/…``, ``dso_validation/…``), NULL-safe.
+
+    Also for tables without the ``type`` column, such as ``pylovo.transformer_positions``.
+    """
+    return f"(COALESCE({column}, '') LIKE 'dso/%%' OR COALESCE({column}, '') LIKE 'dso_validation/%%')"
+
+
+def manual_osm_id_sql(column: str) -> str:
+    """The predicate "this ``osm_id`` is a position placed by hand" (``manual/…``), NULL-safe."""
+    return f"(COALESCE({column}, '') LIKE 'manual/%%')"
+
+
 def is_dso_transformer_sql(alias: str) -> str:
     """The predicate "this row of ``pylovo.transformers`` is an imported DSO station" for a table alias.
 
@@ -31,13 +44,11 @@ def is_dso_transformer_sql(alias: str) -> str:
     Returns:
         SQL text with ``%%`` as the LIKE wildcard (for psycopg2 parameter substitution).
     """
-    return (f"(COALESCE({alias}.type, '') IN ('dso', 'dso_validation')"
-            f" OR COALESCE({alias}.osm_id, '') LIKE 'dso/%%'"
-            f" OR COALESCE({alias}.osm_id, '') LIKE 'dso_validation/%%')")
+    return f"(COALESCE({alias}.type, '') IN ('dso', 'dso_validation') OR {dso_osm_id_sql(f'{alias}.osm_id')})"
 
 
 IS_DSO_TRANSFORMER_SQL = is_dso_transformer_sql("t")
-IS_MANUAL_TRANSFORMER_SQL = "(COALESCE(t.osm_id, '') LIKE 'manual/%%')"
+IS_MANUAL_TRANSFORMER_SQL = manual_osm_id_sql("t.osm_id")
 
 SOURCE_ENABLED_SQL = (
     f"((%(include_dso)s AND {IS_DSO_TRANSFORMER_SQL})"

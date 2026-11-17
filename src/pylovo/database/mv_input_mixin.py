@@ -17,7 +17,12 @@ from psycopg2 import sql
 
 from pylovo.config_loader import TARGET_EPSG
 from pylovo.database.base_mixin import BaseMixin
-from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
+from pylovo.database.transformer_sources import (
+    SOURCE_ENABLED_SQL,
+    dso_osm_id_sql,
+    manual_osm_id_sql,
+    source_params,
+)
 
 if TYPE_CHECKING:   # imported lazily at run time: an LV-only run never loads the MV stage or pandapower here
     import pandapower as pp
@@ -53,8 +58,8 @@ SELECT gr.grid_result_id, gr.plz, gr.kcid, gr.bcid,
        pr.settlement_type AS plz_settlement_type,
        CASE WHEN tp.grid_result_id IS NULL THEN 'lv_bus_fallback'
             WHEN tp.comment = 'on_way' THEN 'greenfield'
-            WHEN tp.osm_id LIKE 'dso/%%' OR tp.osm_id LIKE 'dso_validation/%%' THEN 'dso'
-            WHEN tp.osm_id LIKE 'manual/%%' THEN 'manual'
+            WHEN """ + dso_osm_id_sql("tp.osm_id") + """ THEN 'dso'
+            WHEN """ + manual_osm_id_sql("tp.osm_id") + """ THEN 'manual'
             WHEN tp.osm_id LIKE 'lod2/%%' THEN 'lod2'
             WHEN tp.osm_id ~ '^(node|way|relation)/' THEN 'osm'
             ELSE 'brownfield_unlinked' END AS station_source,
