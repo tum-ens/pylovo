@@ -51,11 +51,6 @@ SUMMARY_LABELS = {
 }
 
 
-def _figure(ax: Optional[plt.Axes], figsize: Tuple[float, float]):
-    if ax is None:
-        return plt.subplots(figsize=figsize)
-    return ax.get_figure(), ax
-
 
 # --------------------------------------------------------------------------- settlement type
 def settlement_score(households: float | None, distance: float | None, thresholds: Mapping[str, float]) -> dict:
@@ -123,7 +118,7 @@ def plot_settlement_type(postcodes: pd.DataFrame, parameters: Optional[Mapping[s
     thresholds = _thresholds(parameters)
     mapping = thresholds.get("transformer_mapping") or {}
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         band_colors = {kind: st.mix_with_surface(color, 0.13) for kind, color in st.SETTLEMENT_COLORS.items()}
         corners = {1: [(0, 0), (2 / 3, 0), (0, 2 / 3)],
                    2: [(2 / 3, 0), (1, 0), (1, 1 / 3), (1 / 3, 1), (0, 1), (0, 2 / 3)],
@@ -178,7 +173,7 @@ def plot_rating_counts(grids: pd.DataFrame, ax: Optional[plt.Axes] = None, figsi
     counts = pd.to_numeric(grids["transformer_rated_power"], errors="coerce").dropna().value_counts().sort_index()
     colors = st.rating_colors(counts.index)
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         labels = [f"{r:g}" for r in counts.index]
         bars = ax.bar(labels, counts.to_numpy(), color=[colors[r] for r in counts.index], width=0.62, zorder=3)
         ax.bar_label(bars, padding=2, fontsize=8, color=st.INK_SECONDARY)
@@ -204,7 +199,7 @@ def plot_cable_inventory(lines: pd.DataFrame, ax: Optional[plt.Axes] = None,
     pivot = pivot.loc[sorted(pivot.index, key=st.cross_section)]
     colors = st.cable_colors(pivot.index)
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         y = np.arange(len(pivot))
         ax.barh(y, pivot["feeder"], color=[colors[t] for t in pivot.index], height=0.62, zorder=3)
         ax.barh(y, pivot["service"], left=pivot["feeder"], color=st.SURFACE, height=0.62, zorder=3, hatch="//////",
@@ -250,7 +245,7 @@ def plot_voltage_drop_check(grids: pd.DataFrame, limit_percent: Optional[float] 
     table = table.dropna(subset=["selected"]).sort_values("selected")
     figsize = figsize or (6.8, 1.0 + 0.16 * len(table))
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         y = np.arange(len(table))
         upsized = table["ampacity"] > table["selected"] + 1e-6
         for yi, (a, s, up) in enumerate(zip(table["ampacity"], table["selected"], upsized)):
@@ -357,7 +352,7 @@ def plot_exclusions(exclusions: pd.DataFrame, supplied: Optional[int] = None, ax
     """
     counts = exclusions["reason"].value_counts().sort_values()
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         y = np.arange(len(counts))
         bars = ax.barh(y, counts.to_numpy(), color=st.INK_MUTED, height=0.6, zorder=3)
         ax.bar_label(bars, padding=2, fontsize=7.5, color=st.INK_SECONDARY)

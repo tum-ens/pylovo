@@ -53,12 +53,6 @@ _SIZING_LABELS = {"ampacity": "Feeder sized by ampacity",
 
 
 # --------------------------------------------------------------------------- helpers
-def _figure(ax: Optional[plt.Axes], figsize: Tuple[float, float]) -> tuple[Figure, plt.Axes]:
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-        return fig, ax
-    return ax.get_figure(), ax
-
 
 def _layer(layers: Mapping[str, Any], name: str) -> Optional[gpd.GeoDataFrame]:
     frame = layers.get(name)
@@ -130,23 +124,17 @@ def _extent(layers: Mapping[str, Any], extent: Any) -> tuple:
     return tuple(float(v) for v in extent)
 
 
-def _clip(frame: Optional[gpd.GeoDataFrame], bounds: Sequence[float]) -> Optional[gpd.GeoDataFrame]:
-    if frame is None:
-        return None
-    minx, miny, maxx, maxy = bounds
-    return frame.cx[minx:maxx, miny:maxy]
-
 
 def _base(ax: plt.Axes, layers: Mapping[str, Any], bounds: Sequence[float], buildings: bool = True,
           postcode: bool = True) -> None:
     """Postcode boundary, streets and (neutral) buildings."""
     if postcode and _layer(layers, "postcode") is not None:
         layers["postcode"].boundary.plot(ax=ax, color=st.INK_MUTED, lw=0.8, ls="--", zorder=1)
-    streets = _clip(_layer(layers, "streets"), bounds)
+    streets = st.clip(_layer(layers, "streets"), bounds)
     if streets is not None and len(streets):
         streets.plot(ax=ax, color=st.STREET, lw=0.8, zorder=2)
     if buildings:
-        frame = _clip(_layer(layers, "buildings"), bounds)
+        frame = st.clip(_layer(layers, "buildings"), bounds)
         if frame is not None and len(frame):
             frame.plot(ax=ax, color=st.BUILDING_NEUTRAL, edgecolor=st.BUILDING_EDGE, lw=0.2, zorder=3)
 
@@ -241,7 +229,7 @@ def plot_lv_overview(layers: Mapping[str, Any], color_by: str = "grid", labels: 
     n_grids = 0 if grids is None else len(grids)
     labels = n_grids <= 20 if labels is None else labels
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         bounds = _extent(layers, extent)
         handles: list = []
         _base(ax, layers, bounds, buildings=color_by != "grid")
@@ -349,7 +337,7 @@ def plot_lv_grid(layers: Mapping[str, Any], kcid: int, bcid: int, color_by: str 
     grid_buildings = _grid_rows(_layer(layers, "buildings"), kcid, bcid)
     grid_row = _grid_rows(_layer(layers, "grids"), kcid, bcid)
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         minx, miny, maxx, maxy = lines.total_bounds
         bounds = st.padded_bounds((minx, miny, maxx, maxy), pad=0.06, min_size=150)
         _base(ax, layers, bounds, postcode=False)
@@ -570,7 +558,7 @@ def plot_house_connections(layers: Mapping[str, Any], kcid: int, bcid: int, hous
     service = lines["is_service"].fillna(False).astype(bool)
     cabinets, joints = _connection_points(lines, station, house_connection)
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         _base(ax, layers, bounds, postcode=False)
         if grid_buildings is not None and len(grid_buildings):
             grid_buildings.plot(ax=ax, color="#cfd9e6", edgecolor=st.BUILDING_EDGE, lw=0.3, zorder=4)
@@ -635,7 +623,7 @@ def plot_building_uses(layers: Mapping[str, Any], extent: Any = None, ax: Option
     """
     buildings = _layer(layers, "buildings")
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         bounds = _extent(layers, extent)
         _base(ax, layers, bounds, buildings=False)
         handles: list = []
@@ -678,7 +666,7 @@ def plot_partition(layers: Mapping[str, Any], level: str = "bcid", labels: Optio
     if buildings is None:
         raise ValueError("the layers hold no buildings")
     with st.style():
-        fig, ax = _figure(ax, figsize)
+        fig, ax = st.figure(ax, figsize)
         bounds = _extent(layers, extent)
         _base(ax, layers, bounds, buildings=False)
         handles: list = []
@@ -745,14 +733,14 @@ def plot_connections(layers: Mapping[str, Any], center: Optional[Tuple[float, fl
     half_w, half_h = size_m[0] / 2, size_m[1] / 2
     bounds = (center[0] - half_w, center[1] - half_h, center[0] + half_w, center[1] + half_h)
     with st.style():
-        fig, ax = _figure(ax, figsize)
-        streets = _clip(_layer(layers, "streets"), bounds)
+        fig, ax = st.figure(ax, figsize)
+        streets = st.clip(_layer(layers, "streets"), bounds)
         if streets is not None and len(streets):
             streets.plot(ax=ax, color=st.STREET, lw=1.6, zorder=2)
-        visible = _clip(buildings, bounds)
+        visible = st.clip(buildings, bounds)
         if visible is not None and len(visible):
             visible.plot(ax=ax, color=st.BUILDING_NEUTRAL, edgecolor=st.BUILDING_EDGE, lw=0.4, zorder=3)
-        connections = _clip(_layer(layers, "connections"), bounds)
+        connections = st.clip(_layer(layers, "connections"), bounds)
         if connections is not None and buildings is not None and "vertice_id" in buildings and "source" in connections:
             vertices = set(buildings["vertice_id"].dropna().astype(int))
             connections = connections[connections["source"].isin(vertices) | connections["target"].isin(vertices)]

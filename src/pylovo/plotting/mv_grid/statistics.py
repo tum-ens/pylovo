@@ -31,6 +31,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.ticker import NullFormatter, ScalarFormatter
 
+from pylovo.plotting import style as st
 from pylovo.analysis import mv_validation
 from pylovo.plotting.mv_grid.maps import _HALF_COLORS, _as_bool, _column, _line_table, _node_table, ring_paths
 from pylovo.plotting.utils import add_limit_lines, add_statistics_box, get_color_map, setup_axes
@@ -112,13 +113,6 @@ def metric_label(name: str) -> str:
     """Readable axis label of a metric or statistics column (the name itself if it is unknown)."""
     return METRIC_LABELS.get(name, name.replace("_", " "))
 
-
-def _figure(ax: Optional[plt.Axes], figsize: Tuple[float, float]) -> tuple[Figure, plt.Axes]:
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.get_figure()
-    return fig, ax
 
 
 def _opt(value: Any) -> Optional[float]:
@@ -217,7 +211,7 @@ def plot_metric_distribution(df: pd.DataFrame, metric: str, by: str = "variant",
             raise ValueError(f"the data frame has no column {column!r}")
     groups = list(order) if order is not None else list(pd.unique(df[by]))
     colors = get_color_map([str(g) for g in groups])
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     numbers = pd.to_numeric(df[metric], errors="coerce")
     values = [numbers[(df[by] == g).to_numpy()].dropna().to_numpy(dtype=float) for g in groups]
     positions = np.arange(1, len(groups) + 1)
@@ -346,7 +340,7 @@ def plot_voltage_profile(nodes: Any, lines: Any, mv_grid_id: int, ring_id: int, 
     vm_n1 = pd.to_numeric(_column(table, "vm_n1_pu"), errors="coerce").reindex(node_t.index)
     busbar = node_t.index[node_t["kind"] == "busbar"]
     v0 = float(vm_load[busbar].dropna().iloc[0]) if len(busbar) and vm_load[busbar].notna().any() else busbar_vm_pu
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     for half in ("a", "b"):
         sel = node_t[(node_t["half"] == half) & vm_load.notna() & node_t["dist_km"].notna()]
         if sel.empty:
@@ -428,7 +422,7 @@ def plot_loading_histogram(lines: pd.DataFrame, case: str = "load", ax: Optional
         keep &= ~_as_bool(_column(frame, "normally_open", False))
     frame = frame[keep.to_numpy()]
     values = pd.to_numeric(frame[column], errors="coerce")
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     finite = values.dropna()
     edges = np.histogram_bin_edges(finite, bins=bins) if len(finite) else bins
     if by is not None and by in frame.columns:
@@ -523,7 +517,7 @@ def plot_voltage_budget(nodes: Any, ax: Optional[plt.Axes] = None, figsize: Tupl
               "LV busbar", "lowest LV\nvoltage"]
     taps = sorted(set(tap))
     tap_color = _tap_colors(taps)
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     n = len(frame)
     alpha = float(min(0.9, max(0.08, 25.0 / max(n, 1))))
     for flag in (False, True):
@@ -594,7 +588,7 @@ def plot_tap_distribution(nodes_by_variant: Mapping[str, Any] | pd.DataFrame, ax
     observed = [int(t) for taps, _ in data.values() for t in taps]
     positions = list(range(min(-2, *observed) if observed else -2, (max(2, *observed) if observed else 2) + 1))
     colors = get_color_map(list(data))
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     width = 0.8 / max(len(data), 1)
     x = np.arange(len(positions))
     for i, (variant, (taps, conflict)) in enumerate(data.items()):
@@ -662,7 +656,7 @@ def plot_plausibility(table: pd.DataFrame, ax: Optional[plt.Axes] = None,
     xmin, xmax = _PLAUSIBILITY_RATIO_LIMITS
     if figsize is None:
         figsize = (11, max(3.0, 0.42 * len(keys) + 1.6))
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     labels = []
     for i, key in enumerate(keys):
         y = len(keys) - 1 - i

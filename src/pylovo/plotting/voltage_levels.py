@@ -101,12 +101,6 @@ def _square(bounds: Sequence[float], pad: float, min_size: float, aspect: float 
     return cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2
 
 
-def _clip(frame: Optional[gpd.GeoDataFrame], bounds: Sequence[float]) -> Optional[gpd.GeoDataFrame]:
-    if frame is None or len(frame) == 0:
-        return None
-    minx, miny, maxx, maxy = bounds
-    return frame.cx[minx:maxx, miny:maxy]
-
 
 def _draw(frame: Optional[gpd.GeoDataFrame], ax: plt.Axes, **kwargs) -> None:
     """``frame.plot`` that skips an empty layer (geopandas warns on those)."""
@@ -244,7 +238,7 @@ def plot_voltage_levels(chain: Mapping[str, Any], hv: Mapping[str, gpd.GeoDataFr
 
         # 1: HV grid and MV supply areas
         ax = axes[0]
-        areas = _clip(mv_context.get("grids"), region_box)
+        areas = st.clip(mv_context.get("grids"), region_box)
         if areas is not None and len(areas):
             _draw(areas, ax, color="#f1f0eb", edgecolor=st.BASELINE, lw=0.5, zorder=1)
         if district is not None and len(district):
@@ -252,7 +246,7 @@ def plot_voltage_levels(chain: Mapping[str, Any], hv: Mapping[str, gpd.GeoDataFr
                           zorder=2)
         connected = None
         if hv_lines is not None and len(hv_lines):
-            lines = _clip(hv_lines, region_box)
+            lines = st.clip(hv_lines, region_box)
             kv = pd.to_numeric(lines["v_nom"], errors="coerce")
             _draw(lines[kv <= 110], ax, color=st.LEVEL_COLORS["HV"], lw=0.9, zorder=3)
             _draw(lines[kv > 110], ax, color=st.LEVEL_COLORS["EHV"], lw=1.8, zorder=3)
@@ -263,7 +257,7 @@ def plot_voltage_levels(chain: Mapping[str, Any], hv: Mapping[str, gpd.GeoDataFr
                 if len(connected):
                     _draw(connected, ax, color="white", lw=4.4, zorder=3.4)
                     _draw(connected, ax, color=st.LEVEL_COLORS["HV"], lw=2.6, zorder=3.5)
-        subs = _clip(mv_context.get("substations"), region_box)
+        subs = st.clip(mv_context.get("substations"), region_box)
         if subs is not None and len(subs):
             ax.scatter(subs.geometry.x, subs.geometry.y, marker="s", s=16, color=st.LEVEL_COLORS["HV"],
                        edgecolor="white", lw=0.6, zorder=4)
@@ -345,10 +339,10 @@ def plot_voltage_levels(chain: Mapping[str, Any], hv: Mapping[str, gpd.GeoDataFr
 
         # 3: the LV grid
         ax = axes[2]
-        streets = _clip(lv.get("streets"), lv_box)
+        streets = st.clip(lv.get("streets"), lv_box)
         if streets is not None and len(streets):
             _draw(streets, ax, color=st.STREET, lw=0.9, zorder=1)
-        buildings = _clip(lv.get("buildings"), lv_box)
+        buildings = st.clip(lv.get("buildings"), lv_box)
         if buildings is not None and len(buildings):
             mine = (buildings["kcid"].astype(int) == kcid) & (buildings["bcid"].astype(int) == bcid)
             _draw(buildings[~mine], ax, color=st.BUILDING_NEUTRAL, edgecolor=st.BUILDING_EDGE, lw=0.2, zorder=2)

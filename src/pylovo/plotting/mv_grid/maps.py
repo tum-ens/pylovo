@@ -45,6 +45,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from pylovo.plotting import style as st
 from pylovo.config_loader import TARGET_EPSG
 from pylovo.database.database_client import DatabaseClient
 from pylovo.plotting.utils import OSM_TILE_HEADERS, pandapower_on_map
@@ -203,13 +204,6 @@ def _segments(lines: pd.DataFrame, nodes: pd.DataFrame) -> list[list[np.ndarray]
         out.append(parts)
     return out
 
-
-def _figure(ax: Optional[plt.Axes], figsize: Tuple[float, float]) -> tuple[Figure, plt.Axes]:
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.get_figure()
-    return fig, ax
 
 
 def _draw_lines(ax: plt.Axes, lines: pd.DataFrame, nodes: pd.DataFrame, colors: Sequence[Any],
@@ -594,7 +588,7 @@ def plot_mv_overview(layers: Mapping[str, Any], ax: Optional[plt.Axes] = None, f
     Returns:
         The figure that contains the map.
     """
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     nodes = _node_table(_layer(layers, "nodes"))
     lines = _line_table(_layer(layers, "lines"))
     grids = _layer(layers, "grids")
@@ -699,7 +693,7 @@ def plot_mv_grid_map(layers: Mapping[str, Any], mv_grid_id: int, color_by: str =
     lines = _grid_lines(_line_table(_layer(layers, "lines")), nodes.index, mv_grid_id)
     if nodes.empty and lines.empty:
         raise ValueError(f"MV grid {mv_grid_id} has no nodes or lines in the layers")
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     bounds = _bounds(nodes, lines)
     if settlements:
         _draw_settlements(ax, layers, bounds)
@@ -814,7 +808,7 @@ def plot_mv_ring(layers: Mapping[str, Any], mv_grid_id: int, ring_id: int, ax: O
     all_nodes = _node_table(_layer(layers, "nodes"))
     all_lines = _line_table(_layer(layers, "lines"))
     node_t, line_t = ring_paths(all_nodes, all_lines, mv_grid_id, ring_id)
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     grid_nodes = _grid_of_nodes(all_nodes, mv_grid_id)
     context = _grid_lines(all_lines, grid_nodes.index, mv_grid_id).drop(index=line_t.index, errors="ignore")
     if not context.empty:
@@ -911,7 +905,7 @@ def plot_lv_busbar_voltage_map(layers: Mapping[str, Any], column: str = "lv_busb
     if mv_grid_id is not None:
         nodes = _grid_of_nodes(nodes, mv_grid_id)
         lines = _grid_lines(lines, nodes.index, mv_grid_id)
-    fig, ax = _figure(ax, figsize)
+    fig, ax = st.figure(ax, figsize)
     if not lines.empty:
         widths, styles = _line_styles(lines)
         _draw_lines(ax, lines, all_nodes, [_MUTED_LINE_COLOR] * len(lines),

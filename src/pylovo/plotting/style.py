@@ -137,6 +137,21 @@ def style() -> Iterator[None]:
 
 
 # --------------------------------------------------------------------------- colours
+def figure(ax: Optional[plt.Axes], figsize: tuple[float, float]) -> tuple[plt.Figure, plt.Axes]:
+    """``(figure, axes)``: a new figure of ``figsize``, or the figure of ``ax``."""
+    if ax is None:
+        return plt.subplots(figsize=figsize)
+    return ax.get_figure(), ax
+
+
+def clip(frame, bounds: Sequence[float]):
+    """The rows of a GeoDataFrame inside ``bounds`` (minx, miny, maxx, maxy); None for a missing or empty frame."""
+    if frame is None or len(frame) == 0:
+        return None
+    minx, miny, maxx, maxy = bounds
+    return frame.cx[minx:maxx, miny:maxy]
+
+
 def cross_section(std_type: str) -> float:
     """The conductor cross-section in mm² of a cable type name such as ``NAYY_4_150`` (0 if unknown)."""
     for part in reversed(str(std_type).replace("x", "_").replace(" ", "_").split("_")):
