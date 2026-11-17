@@ -20,7 +20,6 @@ from pylovo.config_loader import (
     MAX_GREENFIELD_TRAFO_DISTANCE_STD,
     TARGET_EPSG,
     TRANSFORMER_MAPPING,
-    TRANSFORMER_PLANNING_UTILIZATION,
     USE_DSO_TRANSFORMER_POSITIONS,
     USE_MANUAL_TRANSFORMER_POSITIONS,
     USE_OPEN_TRANSFORMER_POSITIONS,
@@ -526,7 +525,7 @@ class ClusteringMixin(BaseMixin):
         invalid_cluster_dict = {}
         for cluster_id in range(cluster_count):
             vid_list = [localid2vid[lid[0]] for lid in np.argwhere(flat_groups == cluster_id)]
-            total_sim_load = utils.simultaneous_peak_load(buildings, consumer_cat_df, vid_list) / TRANSFORMER_PLANNING_UTILIZATION
+            total_sim_load = utils.planned_station_load(utils.simultaneous_peak_load(buildings, consumer_cat_df, vid_list))
             distance_feasible = True
             if dist_mat is not None and vid2localid is not None:
                 distance_feasible = self.cluster_has_feasible_transformer_position(
@@ -540,8 +539,7 @@ class ClusteringMixin(BaseMixin):
             elif not distance_feasible:
                 invalid_cluster_dict[cluster_id] = vid_list
             elif total_sim_load < max(transformer_capacities):
-                # the smallest standard transformer that satisfies the load
-                opt_transformer = transformer_capacities[transformer_capacities > total_sim_load][0]
+                opt_transformer = utils.smallest_rating_above(transformer_capacities, total_sim_load)
                 cluster_dict[cluster_id] = (vid_list, opt_transformer)
             else:
                 opt_transformer = math.ceil(total_sim_load)

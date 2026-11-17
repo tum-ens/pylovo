@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pylovo import utils
 from pylovo import grid_generator
 from pylovo.database.clustering_mixin import ClusteringMixin
 
@@ -43,7 +44,7 @@ def merge(monkeypatch, max_buildings, distance_limit=None):
     monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [400, 630])
     monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", max_buildings)
     monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
-    monkeypatch.setattr(grid_generator, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
 
     vertices, offset = {}, 100
     for name, positions in POSITIONS.items():

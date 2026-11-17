@@ -36,7 +36,7 @@ class Backend:
 def band(monkeypatch):
     monkeypatch.setattr(grid_generator, "POWER_FLOW_MIN_VM_PU", 0.90)
     monkeypatch.setattr(grid_generator, "MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", 1.0)
-    monkeypatch.setattr(grid_generator, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
 
 
 def buildings(*rows):

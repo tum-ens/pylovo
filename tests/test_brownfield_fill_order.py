@@ -53,7 +53,7 @@ class FakeLoads:
 def test_equal_distances_are_visited_by_consumer_then_station(monkeypatch, costs):
     monkeypatch.setattr(grid_generator, "BROWNFIELD_NEAREST_ONLY", False)
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
-    monkeypatch.setattr(grid_generator, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger = FakeDb(costs), logging.getLogger("brownfield-fill-order-test")

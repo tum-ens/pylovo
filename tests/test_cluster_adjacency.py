@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 
+from pylovo import utils
 from pylovo.database import clustering_mixin
 from pylovo.database.clustering_mixin import ClusteringMixin
 
@@ -38,7 +39,7 @@ class Split(ClusteringMixin):
 
 
 def split(monkeypatch, kw_by_vertex, x_by_vertex, capacities=(250, 400), limit=1000, cut=2):
-    monkeypatch.setattr(clustering_mixin, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(clustering_mixin, "MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0)
     vertices = sorted(x_by_vertex)
     x = np.array([x_by_vertex[v] for v in vertices], dtype=float)

@@ -67,7 +67,6 @@ from pylovo.config_loader import (
     RURAL_MIN_BUILDING_DISTANCE,
     SAVE_GRID_FOLDER,
     TARGET_EPSG,
-    TRANSFORMER_PLANNING_UTILIZATION,
     URBAN_MAX_BUILDING_DISTANCE,
     URBAN_MIN_HOUSEHOLDS,
     USE_DSO_TRANSFORMER_POSITIONS,
@@ -736,9 +735,10 @@ class GridGenerator:
             planning_points = utils.planning_nodes(buildings)
             vertices = sorted(planning_points.dropna().astype(int).unique().tolist())
             if len(vertices) == 1:
-                total_sim_load = utils.simultaneous_peak_load(buildings, consumer_cat_df, vertices) / TRANSFORMER_PLANNING_UTILIZATION
-                feasible_transformers = transformer_capacities[transformer_capacities > total_sim_load]
-                transformer_size = int(feasible_transformers[0]) if len(feasible_transformers) else int(math.ceil(total_sim_load))
+                total_sim_load = utils.planned_station_load(utils.simultaneous_peak_load(buildings, consumer_cat_df, vertices))
+                transformer_size = utils.smallest_rating_above(transformer_capacities, total_sim_load)
+                if transformer_size is None:
+                    transformer_size = int(math.ceil(total_sim_load))
                 if replace:
                     self.dbc.clear_grid_result_in_kmean_cluster(plz, kcid)
                 self.dbc.upsert_bcid(plz, kcid, first_bcid, vertices=vertices, transformer_rated_power=transformer_size)
@@ -936,9 +936,10 @@ class GridGenerator:
                         continue
 
                     combined_vertices = list(dict.fromkeys(left_vertices + right_vertices))
-                    combined_load = utils.simultaneous_peak_load(buildings, consumer_cat_df, combined_vertices) / TRANSFORMER_PLANNING_UTILIZATION
-                    feasible_capacities = merge_capacities[merge_capacities > combined_load]
-                    if len(feasible_capacities) == 0:
+                    combined_load = utils.planned_station_load(
+                        utils.simultaneous_peak_load(buildings, consumer_cat_df, combined_vertices))
+                    merged_rating = utils.smallest_rating_above(merge_capacities, combined_load)
+                    if merged_rating is None:
                         continue
 
                     if not self.dbc.cluster_has_feasible_transformer_position(
@@ -955,7 +956,7 @@ class GridGenerator:
                     candidate = (
                         nearest_distance,
                         combined_load,
-                        int(feasible_capacities[0]),
+                        merged_rating,
                         left_id,
                         right_id,
                         combined_vertices,
@@ -1064,7 +1065,7 @@ class GridGenerator:
             # A catalogue rating must lie strictly above load / utilization (the rating pick below and the
             # greenfield split say the same), so a load exactly at the largest rating already fills the station.
             if (float(sim_load) > known) if known is not None else (
-                    float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION >= max(possible_transformers)):
+                    utils.planned_station_load(float(sim_load)) >= max(possible_transformers)):
                 # Remove consumer and mark transformer as full
                 pre_result_dict[end_transformer_id].pop()
                 full_transformer_list.append(end_transformer_id)
@@ -1098,9 +1099,9 @@ class GridGenerator:
             if int(transformer_id) in known_capacities:
                 transformer_rated_power = known_capacities[int(transformer_id)]
             else:
-                # Select the smallest transformer that is larger than the simulated load
-                transformer_rated_power = possible_transformers[
-                    possible_transformers > float(sim_load) / TRANSFORMER_PLANNING_UTILIZATION][0].item()
+                # the loop above filled the station only below its largest rating, so a rating always fits
+                transformer_rated_power = utils.smallest_rating_above(possible_transformers,
+                                                                      utils.planned_station_load(float(sim_load)))
 
             # Update database with new building cluster
             self.dbc.update_building_cluster(transformer_id, pre_result_dict[transformer_id], building_cluster_count, kcid,
@@ -1159,9 +1160,9 @@ class GridGenerator:
                     continue   # the station would be overloaded: try the next one
                 self.dbc.move_building_cluster(plz, kcid, bcid, target)
                 if vertex not in known_capacities:
-                    feasible = capacities[capacities > load / TRANSFORMER_PLANNING_UTILIZATION]
+                    rating = utils.smallest_rating_above(capacities, utils.planned_station_load(load))
                     self.dbc._set_transformer_rated_power(
-                        plz, kcid, target, int(feasible[0] if len(feasible) else capacities.max()))
+                        plz, kcid, target, rating if rating is not None else int(capacities.max()))
                 merged += 1
                 break
         if merged:
@@ -1861,12 +1862,11 @@ class GridGenerator:
                 if int(ont_vertice) not in self.dbc.get_brownfield_transformer_capacity_map([int(ont_vertice)]):
                     capacities, _ = self.dbc.get_transformer_data(self.dbc.get_settlement_type_from_plz(self.plz))
                     kept = buildings_df[~utils.planning_nodes(buildings_df).astype(int).isin(points)]
-                    load = utils.simultaneous_peak_load(
-                        kept, self.consumer_categories,
-                        utils.planning_nodes(kept).astype(int).unique().tolist()) / TRANSFORMER_PLANNING_UTILIZATION
-                    feasible = capacities[capacities > load]
+                    load = utils.planned_station_load(utils.simultaneous_peak_load(
+                        kept, self.consumer_categories, utils.planning_nodes(kept).astype(int).unique().tolist()))
+                    rating = utils.smallest_rating_above(capacities, load)
                     self.dbc._set_transformer_rated_power(
-                        self.plz, kcid, bcid, int(feasible[0] if len(feasible) else capacities.max()))
+                        self.plz, kcid, bcid, rating if rating is not None else int(capacities.max()))
         else:
             released = self.dbc.release_buildings(self.plz, kcid, bcid)
             self.dbc.delete_grid(self.plz, kcid, bcid)

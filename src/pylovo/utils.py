@@ -21,7 +21,7 @@ import osm2geojson
 import pandas as pd
 import requests
 
-from pylovo.config_loader import DEFAULT_POWER_FACTOR, VN, get_packaged_defaults_dir
+from pylovo.config_loader import DEFAULT_POWER_FACTOR, TRANSFORMER_PLANNING_UTILIZATION, VN, get_packaged_defaults_dir
 
 # Log timestamps are written in German local time (CET/CEST).
 LOG_TIMEZONE = ZoneInfo("Europe/Berlin")
@@ -452,6 +452,21 @@ def design_current_ka(load_kw: float) -> float:
         Current in kA.
     """
     return load_kw / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
+
+
+def planned_station_load(coincident_kw: float) -> float:
+    """Return the load a station is planned for: the coincident load divided by ``TRANSFORMER_PLANNING_UTILIZATION``.
+
+    It is compared with the ratings of ``TRANSFORMERS`` (kVA) as it is (see ``concepts/grid_dimensioning``).
+    """
+    return coincident_kw / TRANSFORMER_PLANNING_UTILIZATION
+
+
+def smallest_rating_above(ratings, planned_load: float) -> int | None:
+    """Return the first rating of ``ratings`` (kVA, ascending) strictly above ``planned_load``, or None if none is."""
+    ratings = np.asarray(ratings)
+    feasible = ratings[ratings > planned_load]
+    return int(feasible[0]) if len(feasible) else None
 
 
 # =============================================================================

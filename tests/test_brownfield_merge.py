@@ -52,7 +52,7 @@ class FakeDb:
 def merged(monkeypatch, limit, distance=1000, node_kw=100.0):
     monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", limit)
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", distance)
-    monkeypatch.setattr(grid_generator, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "planning_nodes", lambda buildings: buildings["connection_point"])
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda buildings, categories, nodes: node_kw * len(nodes))
     generator = GridGenerator.__new__(GridGenerator)

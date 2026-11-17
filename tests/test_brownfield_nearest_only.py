@@ -55,7 +55,7 @@ class FakeLoads:
 def test_overflow_joins_a_farther_station_only_without_nearest_only(monkeypatch, nearest_only, station_200):
     monkeypatch.setattr(grid_generator, "BROWNFIELD_NEAREST_ONLY", nearest_only)
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
-    monkeypatch.setattr(grid_generator, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
     generator = GridGenerator.__new__(GridGenerator)
     generator.dbc, generator.logger = FakeDb(), logging.getLogger("brownfield-nearest-only-test")

@@ -24,8 +24,7 @@ UTILIZATION = 0.8
 
 @pytest.fixture(autouse=True)
 def pinned_configuration(monkeypatch):
-    monkeypatch.setattr(grid_generator, "TRANSFORMER_PLANNING_UTILIZATION", UTILIZATION)
-    monkeypatch.setattr(clustering_mixin, "TRANSFORMER_PLANNING_UTILIZATION", UTILIZATION)
+    monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", UTILIZATION)
     monkeypatch.setattr(clustering_mixin, "MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0)
     monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(grid_generator, "GREENFIELD_TRAFO_POSITION_TOLERANCE", 0)
