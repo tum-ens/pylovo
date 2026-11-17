@@ -6,6 +6,7 @@ from pylovo import postcode_border
 from pylovo.config_loader import VERSION_ID
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.mv_result_mixin import refuse_busy_variants
+from pylovo.database.buildings_tem_sql import IN_LV_GRID, outside_lv_grid
 
 
 class ResultsMixin(BaseMixin):
@@ -64,7 +65,7 @@ class ResultsMixin(BaseMixin):
             FROM {buildings} bt
             JOIN pylovo.grid_result gr
                 ON bt.plz = gr.plz AND bt.kcid = gr.kcid AND bt.bcid = gr.bcid and gr.version_id = %(v)s
-                WHERE peak_load_in_kw != 0 AND peak_load_in_kw != -1;""").format(buildings=buildings_table)
+                WHERE {in_lv_grid} AND peak_load_in_kw != -1;""").format(in_lv_grid=sql.SQL(IN_LV_GRID), buildings=buildings_table)
         self.cur.execute(query, {"v": VERSION_ID})
 
         # Routing across postcode borders saves only the ways touching the PLZ (the routing graph also held the
@@ -99,7 +100,7 @@ class ResultsMixin(BaseMixin):
             WHERE objectid IS NOT NULL
             UNION ALL
             SELECT %(v)s, bt.objectid, %(p)s,
-                   CASE WHEN bt.peak_load_in_kw = 0 THEN 'mv_direct'
+                   CASE WHEN {outside_lv_grid_bt} THEN 'mv_direct'
                         WHEN bt.kcid IS NULL THEN 'isolated_component'
                         ELSE 'not_clustered' END
             FROM {buildings} bt
@@ -108,7 +109,7 @@ class ResultsMixin(BaseMixin):
               AND bt.type IS DISTINCT FROM 'Transformer'
               AND NOT EXISTS (SELECT 1 FROM pylovo.buildings_result br
                               WHERE br.version_id = %(v)s AND br.objectid = bt.objectid)
-            ON CONFLICT (version_id, objectid) DO NOTHING;""").format(excluded=excluded, buildings=buildings)
+            ON CONFLICT (version_id, objectid) DO NOTHING;""").format(outside_lv_grid_bt=sql.SQL(outside_lv_grid("bt")), excluded=excluded, buildings=buildings)
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
 
     def delete_plz_from_all_tables(self, plz: int, version_id: str) -> None:

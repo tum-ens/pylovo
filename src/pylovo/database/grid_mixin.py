@@ -6,6 +6,7 @@ from shapely.geometry import LineString
 
 from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin, plz_table_name
+from pylovo.database.buildings_tem_sql import IN_LV_GRID, LV_LOAD_BUILDING, PLANNING_NODE, lv_load_building
 
 # Visualisation helper geometry of a line ``lr``: its offset curve (subquery ``offset_geom`` of
 # _offset_line_lateral_sql), oriented like the line and extended to the line's own end points so
@@ -144,12 +145,11 @@ class GridMixin(BaseMixin):
                             ELSE ST_StartPoint(w.geom) END AS street
             ) c
             CROSS JOIN LATERAL (SELECT ST_ClosestPoint(c.crossing, c.street) AS point) x
-            WHERE b.type != 'Transformer'
-              AND b.peak_load_in_kw != 0
+            WHERE {lv_load_building_b}
               AND b.geom IS NOT NULL
               AND NOT ST_IsEmpty(c.crossing)
             ORDER BY b.vertice_id
-        """).format(buildings=buildings, ways=ways)
+        """).format(lv_load_building_b=sql.SQL(lv_load_building("b")), buildings=buildings, ways=ways)
         self.cur.execute(query)
         return {int(node_id): (float(lon), float(lat)) for node_id, lon, lat in self.cur.fetchall()}
 
@@ -161,15 +161,14 @@ class GridMixin(BaseMixin):
         """
         buildings = sql.Identifier("pg_temp", plz_table_name("buildings_tem", plz))
         query = sql.SQL("""
-            SELECT COALESCE(agg_connection_point, connection_point) AS connection_point,
+            SELECT {planning_node} AS connection_point,
                    vertice_id
             FROM {buildings}
-            WHERE type != 'Transformer'
-              AND peak_load_in_kw != 0
-              AND COALESCE(agg_connection_point, connection_point) IS NOT NULL
+            WHERE {lv_load_building}
+              AND {planning_node} IS NOT NULL
               AND vertice_id IS NOT NULL
             ORDER BY connection_point, vertice_id
-        """).format(buildings=buildings)
+        """).format(planning_node=sql.SQL(PLANNING_NODE), lv_load_building=sql.SQL(LV_LOAD_BUILDING), buildings=buildings)
         self.cur.execute(query)
         mapping: dict[int, list[int]] = {}
         for connection_point, vertice_id in self.cur.fetchall():
@@ -194,21 +193,21 @@ class GridMixin(BaseMixin):
         """
         ont = self.get_ont_info_from_bc(plz, kcid, bcid)["ont_vertice_id"]
 
-        consumer_query = """SELECT vertice_id
+        consumer_query = f"""SELECT vertice_id
                             FROM buildings_tem
                             WHERE plz = %(p)s
                               AND kcid = %(k)s
                               AND bcid = %(b)s
-                              AND peak_load_in_kw != 0;"""
+                              AND {IN_LV_GRID};"""
         self.cur.execute(consumer_query, {"p": plz, "k": kcid, "b": bcid})
         consumer = [t[0] for t in self.cur.fetchall()]
 
-        connection_query = """SELECT DISTINCT COALESCE(agg_connection_point, connection_point) AS connection_point
+        connection_query = f"""SELECT DISTINCT {PLANNING_NODE} AS connection_point
                               FROM buildings_tem
                               WHERE plz = %(p)s
                                 AND kcid = %(k)s
                                 AND bcid = %(b)s
-                                AND peak_load_in_kw != 0;"""
+                                AND {IN_LV_GRID};"""
         self.cur.execute(connection_query, {"p": plz, "k": kcid, "b": bcid})
         connection = [t[0] for t in self.cur.fetchall()]
 

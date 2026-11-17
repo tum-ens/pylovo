@@ -71,6 +71,7 @@ from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.transformer_sources import IS_DSO_TRANSFORMER_SQL as _IS_DSO_TRANSFORMER_SQL
 from pylovo.database.transformer_sources import NOT_LOD2_TWIN_OF_DSO_SQL, SOURCE_ENABLED_SQL, source_params
 from pylovo.version_snapshot import compare_snapshots
+from pylovo.database.buildings_tem_sql import IN_LV_GRID, OUTSIDE_LV_GRID, in_lv_grid
 
 
 class PreprocessingMixin(BaseMixin):
@@ -789,13 +790,13 @@ class PreprocessingMixin(BaseMixin):
                 f"missing component peaks={missing_peak}."
             )
 
-        count_query = """SELECT COUNT(*)
+        count_query = f"""SELECT COUNT(*)
                           FROM buildings_tem
-                          WHERE peak_load_in_kw = 0;"""
+                          WHERE {OUTSIDE_LV_GRID};"""
         self.cur.execute(count_query)
         count = self.cur.fetchone()[0]
 
-        delete_query = """WITH deleted AS (DELETE FROM buildings_tem WHERE peak_load_in_kw = 0 RETURNING objectid)
+        delete_query = f"""WITH deleted AS (DELETE FROM buildings_tem WHERE {OUTSIDE_LV_GRID} RETURNING objectid)
                           INSERT INTO excluded_tem (objectid, reason)
                           SELECT objectid, 'unloaded' FROM deleted;"""
         self.cur.execute(delete_query)
@@ -1459,18 +1460,18 @@ class PreprocessingMixin(BaseMixin):
                          AND agg_connection_point IS NULL;"""
         self.cur.execute(agg_query)
 
-        count_query = """ SELECT COUNT(*)
+        count_query = f""" SELECT COUNT(*)
                           FROM buildings_tem
                           WHERE connection_point IS NULL
-                            AND peak_load_in_kw != 0;"""
+                            AND {IN_LV_GRID};"""
         self.cur.execute(count_query)
         count = self.cur.fetchone()[0]
 
-        delete_query = """WITH deleted AS (
+        delete_query = f"""WITH deleted AS (
                               DELETE
                               FROM buildings_tem
                               WHERE connection_point IS NULL
-                                AND peak_load_in_kw != 0
+                                AND {IN_LV_GRID}
                               RETURNING objectid, peak_load_in_kw
                           )
                           INSERT INTO excluded_tem (objectid, reason)
@@ -1505,7 +1506,7 @@ class PreprocessingMixin(BaseMixin):
         Returns:
             Number of buildings whose ``agg_connection_point`` was changed.
         """
-        query = """
+        query = f"""
             WITH building_points AS (
                 SELECT
                     b.objectid,
@@ -1518,7 +1519,7 @@ class PreprocessingMixin(BaseMixin):
                     v.geom AS connection_geom
                 FROM buildings_tem b
                 JOIN ways_tem_vertices_pgr v ON v.id = b.connection_point
-                WHERE b.peak_load_in_kw != 0
+                WHERE {in_lv_grid("b")}
                   AND b.connection_point IS NOT NULL
             ), clustered AS (
                 SELECT
@@ -1580,7 +1581,7 @@ class PreprocessingMixin(BaseMixin):
                 SET agg_connection_point = m.representative_connection_point
                 FROM mapping m
                 WHERE b.connection_point = m.old_connection_point
-                  AND b.peak_load_in_kw != 0
+                  AND {in_lv_grid("b")}
                 RETURNING 1
             )
             SELECT COUNT(*) FROM updated;

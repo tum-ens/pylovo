@@ -10,6 +10,7 @@ from psycopg2 import sql
 from pylovo.config_loader import MUNICIPAL_REGISTER, VERSION_ID
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.config_table_structure import REFRESH_QUERIES, TEMP_CREATE_QUERIES
+from pylovo.database.buildings_tem_sql import OUTSIDE_LV_GRID
 
 
 class UtilsMixin(BaseMixin):
@@ -164,7 +165,7 @@ class UtilsMixin(BaseMixin):
         Args:
             vertices: Vertex IDs.
         """
-        query = """
+        query = f"""
                 WITH deleted AS (
                     DELETE
                     FROM buildings_tem
@@ -172,7 +173,7 @@ class UtilsMixin(BaseMixin):
                     RETURNING objectid, type, peak_load_in_kw
                 )
                 INSERT INTO excluded_tem (objectid, reason)
-                SELECT objectid, CASE WHEN peak_load_in_kw = 0 THEN 'mv_direct' ELSE 'isolated_component' END
+                SELECT objectid, CASE WHEN {OUTSIDE_LV_GRID} THEN 'mv_direct' ELSE 'isolated_component' END
                 FROM deleted
                 WHERE type IS DISTINCT FROM 'Transformer' AND peak_load_in_kw IS DISTINCT FROM -1;"""
         self.cur.execute(query, {"v": tuple(map(int, vertices))})
