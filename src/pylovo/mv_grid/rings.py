@@ -62,7 +62,7 @@ from pylovo.mv_grid import coincidence
 from pylovo.mv_grid.model import DistanceModel, DistrictInput, RingCheck, RingLimits, member_weights
 
 if TYPE_CHECKING:
-    from pylovo.mv_grid.parameters import MvParameters
+    pass
 
 #: Terminal index of the busbar in the matrices of a :class:`RingEvaluator` (as in the distance model).
 BUSBAR = 0
@@ -82,23 +82,6 @@ def _urban(rows: Any) -> np.ndarray:
     if "urban" not in rows.columns:
         return np.zeros(len(rows), dtype=bool)
     return np.array([bool(u) if u is not None and u == u else False for u in rows["urban"]], dtype=bool)
-
-
-def ring_limits(params: "MvParameters") -> RingLimits:
-    """The ring limits of an MV variant.
-
-    ``max_members = MV_MAX_STATIONS_PER_RING``, ``max_drop = MV_MAX_VOLTAGE_DROP_PERCENT / 100``,
-    ``max_drop_n1 = max_drop_n1_percent / 100``, ``utilization = MV_LINE_PLANNING_UTILIZATION``,
-    ``n1_utilization`` and ``max_half_m = max_half_ring_length_m``.
-    """
-    return RingLimits(
-        max_members=int(params.max_stations_per_ring),
-        max_drop=float(params.max_drop_percent) / 100.0,
-        max_drop_n1=float(params.max_drop_n1_percent) / 100.0,
-        utilization=float(params.line_utilization),
-        n1_utilization=float(params.n1_utilization),
-        max_half_m=float(params.max_half_ring_length_m),
-    )
 
 
 # ---------------------------------------------------------------------------------------------- results
@@ -277,7 +260,7 @@ def check_ring(installed: np.ndarray, units: np.ndarray, fixed_kw: np.ndarray,
         g: Sim factors, shape (4,).
         power_factor: cos(phi) of the loads (0 < cos(phi) <= 1).
         vn_kv: Nominal voltage in kV.
-        limits: The ring limits (:func:`ring_limits`).
+        limits: The ring limits (:meth:`RingLimits.of`).
         parallel: Parallel circuits per section, shape (k + 1,) (default 1): ``r`` and ``x`` are divided by it,
             the ampacity is multiplied by it.
 
@@ -375,7 +358,7 @@ class RingEvaluator:
             g: Sim factors, shape (4,).
             power_factor: cos(phi) of the loads.
             vn_kv: Nominal voltage in kV.
-            limits: The ring limits (:func:`ring_limits`).
+            limits: The ring limits (:meth:`RingLimits.of`).
             cache_size: Most memoised rings; the memo is cleared when it is full (0: no memo).
             length_m: True link lengths in m for the electrics and the half-ring limit, shape (n, n), where
                 ``dist_m`` is a routing cost (default: ``dist_m``); ``dist_m`` stays the ring length of the solvers.
@@ -459,7 +442,7 @@ class RingEvaluator:
           (``inp.params.cable_at(inp.vn_kv)``); with ``model.overhead_m`` (links on OSM MV lines) r and x are
           length-weighted by the overhead share of each link and the ampacity is the smaller one of its parts;
         * ``g`` and the power factor of the LV version (``inp.lv``), the nominal voltage ``inp.vn_kv`` and the
-          limits of :func:`ring_limits`.
+          limits of :meth:`RingLimits.of`.
         """
         rows = inp.nodes.iloc[np.asarray(model.terminals, dtype=np.int64)]
         installed, units, fixed = coincidence.node_stats(rows)
@@ -484,7 +467,7 @@ class RingEvaluator:
                 r_ohm_km=share * overhead.r_ohm_per_km + (1.0 - share) * cable.r_ohm_per_km,
                 x_ohm_km=share * overhead.x_ohm_per_km + (1.0 - share) * cable.x_ohm_per_km,
                 imax_ka=imax, g=inp.lv.g(), power_factor=inp.lv.power_factor, vn_kv=inp.vn_kv,
-                limits=ring_limits(params), cache_size=cache_size, length_m=model.length_m,
+                limits=RingLimits.of(params), cache_size=cache_size, length_m=model.length_m,
             )
         return cls(
             installed=installed, units=units, fixed_kw=fixed,
@@ -494,7 +477,7 @@ class RingEvaluator:
             r_ohm_km=np.where(oh, overhead.r_ohm_per_km, cable.r_ohm_per_km),
             x_ohm_km=np.where(oh, overhead.x_ohm_per_km, cable.x_ohm_per_km),
             imax_ka=np.where(oh, overhead.max_i_ka, cable.max_i_ka),
-            g=inp.lv.g(), power_factor=inp.lv.power_factor, vn_kv=inp.vn_kv, limits=ring_limits(params),
+            g=inp.lv.g(), power_factor=inp.lv.power_factor, vn_kv=inp.vn_kv, limits=RingLimits.of(params),
             cache_size=cache_size,
         )
 

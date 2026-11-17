@@ -403,12 +403,7 @@ class _Ctx:
         self.cable = self.p.cable_at(self.vn_kv)            # the types of the district's nominal voltage
         self.overhead = self.p.overhead_at(self.vn_kv)
         self.costed = self.p.osm_line_cost_factor != 1.0   # router distances are costs, not lengths
-        self.limits = RingLimits(max_members=int(self.p.max_stations_per_ring),
-                                 max_drop=self.p.max_drop_percent / 100.0,
-                                 max_drop_n1=self.p.max_drop_n1_percent / 100.0,
-                                 utilization=float(self.p.line_utilization),
-                                 n1_utilization=float(self.p.n1_utilization),
-                                 max_half_m=float(self.p.max_half_ring_length_m))
+        self.limits = RingLimits.of(self.p)
         self.relaxed = RingLimits(max_members=10 ** 9, max_drop=math.inf, max_drop_n1=math.inf,
                                   utilization=math.inf, n1_utilization=math.inf, max_half_m=math.inf)
         pieces = rg.pieces

@@ -596,17 +596,6 @@ def _bus(net: "pp.pandapowerNet", mv_grid_id: int, node: int) -> int:
     return int(sel[0])
 
 
-def _runpp(net: "pp.pandapowerNet") -> bool:
-    import pandapower as pp
-    from pandapower.auxiliary import LoadflowNotConverged
-
-    try:
-        pp.runpp(net, algorithm="nr", init="auto")
-    except LoadflowNotConverged:
-        return False
-    return bool(net.converged)
-
-
 def _takeover_end(net: "pp.pandapowerNet", tie_line: int, end: dict, params: "MvParameters") -> dict:
     """One end of a tie: its half-ring out of its busbar exit, supplied through the closed tie."""
     line = net.line
@@ -619,10 +608,12 @@ def _takeover_end(net: "pp.pandapowerNet", tie_line: int, end: dict, params: "Mv
                           f"{end['feeder_id']}")
     lines = line.index[own | partner].append(pd.Index([tie_line]))
     buses = pd.Index(np.unique(np.r_[line.loc[lines, "from_bus"].to_numpy(), line.loc[lines, "to_bus"].to_numpy()]))
+    from pylovo.mv_grid.electrical import run_power_flow   # imports pandapower: only when a tie is checked
+
     result = {"converged": False, "drop_percent": None, "loading_percent": None, "ok": False, "error": None}
     line.loc[exits, "in_service"] = False
     try:
-        if _runpp(net):
+        if run_power_flow(net):
             vm = net.res_bus.loc[buses, "vm_pu"].astype(float)
             loading = net.res_line.loc[lines, "loading_percent"].astype(float)
             result["converged"] = True

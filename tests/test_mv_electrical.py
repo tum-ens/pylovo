@@ -800,7 +800,7 @@ def test_mv_oberrhein_cases_reproduce_the_pandapower_load_case():
     assert closed.number_of_edges() > closed.number_of_nodes() - nx.number_connected_components(closed)
     for case in ("n1a", "n1b"):
         current = electrical.case_net(net, case, params)
-        assert electrical._runpp(current), case
+        assert electrical.run_power_flow(current), case
 
 
 def test_end_to_end_design_net_is_deterministic():

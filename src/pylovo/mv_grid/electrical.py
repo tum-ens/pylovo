@@ -43,6 +43,7 @@ from pandapower.auxiliary import LoadflowNotConverged
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
+from pylovo.electrical_backend.pandapower.backend import empty_network
 from pylovo.mv_grid import coincidence, equipment
 from pylovo.mv_grid.model import (
     CASES,
@@ -89,18 +90,6 @@ def _module(name: str) -> Any:
 
 def _topology() -> Any:
     return _module("topology")
-
-
-@functools.cache
-def _empty_network_template() -> pp.pandapowerNet:
-    return pp.create_empty_network()
-
-
-def _empty_network(name: str) -> pp.pandapowerNet:
-    """A copy of a cached empty pandapower net (``create_empty_network`` takes about 50 ms, a copy 4 ms)."""
-    net = copy.deepcopy(_empty_network_template())
-    net["name"] = name
-    return net
 
 
 @functools.lru_cache(maxsize=8)
@@ -429,7 +418,7 @@ def build_design_net(inp: DistrictInput, plan: TopologyPlan, *, epsg: int = DEFA
     lon, lat = _to_wgs84(epsg).transform(points[:, 0], points[:, 1])
     lonlat = np.column_stack([lon, lat]).round(8).tolist()   # plain floats: pandapower writes their repr
 
-    net = _empty_network(f"MV grid {inp.mv_grid_id}")
+    net = empty_network(f"MV grid {inp.mv_grid_id}")
     names = [f"MV busbar {inp.substation_id}" if key == busbar else f"MV node {key}" for key in keys]
     bus_index = pp.create_buses(net, len(keys), vn_kv=float(inp.vn_kv), name=names,
                                 type=["b" if key == busbar else "n" for key in keys],
@@ -571,12 +560,21 @@ def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: flo
     return out
 
 
-def _runpp(net: pp.pandapowerNet) -> bool:
-    try:
-        pp.runpp(net, algorithm="nr", init="auto")
-    except LoadflowNotConverged:
-        return False
-    return bool(net.converged)
+def run_power_flow(net: pp.pandapowerNet, algorithms: Sequence[str] = ("nr",)) -> bool:
+    """Run the power flow of an MV net; non-convergence is a result (False), not an error.
+
+    The algorithms are tried in turn until one converges. Planning and the interconnection checks use
+    Newton-Raphson alone; the coupling retries with Iwamoto-damped Newton-Raphson
+    (:func:`pylovo.mv_grid.coupling.run_coupled_cases`), so a net that fails here can converge there.
+    """
+    for algorithm in algorithms:
+        try:
+            pp.runpp(net, algorithm=algorithm, init="auto")
+        except LoadflowNotConverged:
+            continue
+        if net.converged:
+            return True
+    return False
 
 
 def _case_result(net: pp.pandapowerNet, case: str, converged: bool) -> CaseResult:
@@ -610,7 +608,7 @@ def run_cases(net: pp.pandapowerNet, inp: DistrictInput) -> dict[str, CaseResult
     results: dict[str, CaseResult] = {}
     for case in CASES:
         current = case_net(net, case, inp.params)
-        converged = _runpp(current)
+        converged = run_power_flow(current)
         if not converged:
             logger.warning(f"MV grid {inp.mv_grid_id}: the {case} case did not converge")
         results[case] = _case_result(current, case, converged)
@@ -1135,7 +1133,7 @@ def build_stored_net(design_net: pp.pandapowerNet, units: int, unit_mva: float, 
                                   tap_pos=int(item.tap_neutral)) for i in range(max(int(units), 1))]
     tap = int(item.tap_neutral)
     step = float(item.tap_step_percent) / 100.0
-    converged = _runpp(net)
+    converged = run_power_flow(net)
     for _ in range(OLTC_MAX_ITERATIONS):
         if not converged or step <= 0:
             break
@@ -1145,7 +1143,7 @@ def build_stored_net(design_net: pp.pandapowerNet, units: int, unit_mva: float, 
             break
         tap = new
         net.trafo.loc[rows, "tap_pos"] = tap
-        converged = _runpp(net)
+        converged = run_power_flow(net)
     if not converged:
         logger.warning(f"MV grid {inp.mv_grid_id}: the stored net does not converge at OLTC tap {tap}")
     return net, tap

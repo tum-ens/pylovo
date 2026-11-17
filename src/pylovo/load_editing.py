@@ -706,9 +706,6 @@ def _backend_for(net):
     return backend
 
 
-_EMPTY_LOAD: pd.DataFrame | None = None
-
-
 def replace_net_loads(net, table: LoadTable) -> list[tuple[int, str | None, str]]:
     """Replace all loads of ``net`` by ``table`` and update the consumer bus zones.
 
@@ -719,13 +716,10 @@ def replace_net_loads(net, table: LoadTable) -> list[tuple[int, str | None, str]
     Returns:
         ``[(bus pp_index, old zone, new zone)]`` of the consumer buses whose zone changed.
     """
-    import pandapower as pp
+    from pylovo.electrical_backend.pandapower.backend import empty_network
 
-    global _EMPTY_LOAD
-    if _EMPTY_LOAD is None:
-        _EMPTY_LOAD = pp.create_empty_network().load
     backend = _backend_for(net)
-    net.load = _EMPTY_LOAD.copy()
+    net.load = empty_network().load
     with backend.batch():
         for spec in table.specs:
             backend.create_component(spec)

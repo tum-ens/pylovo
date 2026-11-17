@@ -173,6 +173,23 @@ class RingLimits:
     n1_utilization: float
     max_half_m: float
 
+    @classmethod
+    def of(cls, params: Any) -> RingLimits:
+        """The ring limits of an MV variant (:class:`~pylovo.mv_grid.parameters.MvParameters`).
+
+        ``max_members = MV_MAX_STATIONS_PER_RING``, ``max_drop = MV_MAX_VOLTAGE_DROP_PERCENT / 100``,
+        ``max_drop_n1 = max_drop_n1_percent / 100``, ``utilization = MV_LINE_PLANNING_UTILIZATION``,
+        ``n1_utilization`` and ``max_half_m = max_half_ring_length_m``.
+        """
+        return cls(
+            max_members=int(params.max_stations_per_ring),
+            max_drop=float(params.max_drop_percent) / 100.0,
+            max_drop_n1=float(params.max_drop_n1_percent) / 100.0,
+            utilization=float(params.line_utilization),
+            n1_utilization=float(params.n1_utilization),
+            max_half_m=float(params.max_half_ring_length_m),
+        )
+
 
 @dataclass(frozen=True)
 class RingCheck:

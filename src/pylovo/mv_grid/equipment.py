@@ -65,8 +65,8 @@ def _apparent_mva(value: float | None) -> float:
 
 
 @functools.lru_cache(maxsize=1)
-def _std_types() -> dict[str, dict[str, Any]]:
-    """The standard type tables of pandapower (the types of every new pandapower net)."""
+def pandapower_std_types() -> dict[str, dict[str, Any]]:
+    """The standard type tables of pandapower (the types of every new pandapower net), cached; do not change them."""
     import pandapower as pp
 
     return pp.create_empty_network().std_types
@@ -99,7 +99,7 @@ def line_type(name: str) -> LineType:
         ValueError: If pandapower has no line type of this name (with the closest names), or if the type is
             neither a cable nor an overhead line or names no rated voltage.
     """
-    catalogue = _std_types()["line"]
+    catalogue = pandapower_std_types()["line"]
     data = catalogue.get(name) if isinstance(name, str) else None
     if data is None:
         close = difflib.get_close_matches(str(name), list(catalogue), n=3)
@@ -142,7 +142,7 @@ def line_type_name_at(name: str, vn_kv: float) -> str:
         other = f"{name[:cable.start()]}{CABLE_INSULATION[vn]} kV"
     else:
         other = f"{name[:_OVERHEAD_VOLTAGE.search(name).start()]} {vn:.1f}"
-    if other not in _std_types()["line"]:
+    if other not in pandapower_std_types()["line"]:
         raise ValueError(f"pandapower has no {vn:g} kV type of the conductor of {name!r} ({other!r})")
     return other
 
@@ -152,7 +152,7 @@ def upgrade_ladder(kind: str, vn_kv: float) -> tuple[LineType, ...]:
     """The pandapower conductors of one kind (``cable`` or ``overhead``) rated for ``vn_kv``, by ampacity: the steps
     of the conductor upgrade in the repair loop (Ding0's reinforcement takes the next larger type)."""
     found = []
-    for name, data in _std_types()["line"].items():
+    for name, data in pandapower_std_types()["line"].items():
         rated = rated_kv(name)
         if PANDAPOWER_LINE_KIND.get(data.get("type")) == kind and rated is not None and math.isclose(rated, vn_kv):
             found.append(line_type(name))
@@ -313,7 +313,7 @@ def _hv_mv_record(name: str, data: dict[str, Any]) -> HvMvType:
 def _catalogue_hv_mv(vn_lv_kv: float) -> dict[float, HvMvType]:
     """The pandapower HV/MV types (110 kV to ``vn_lv_kv``) by rating."""
     catalogue: dict[float, HvMvType] = {}
-    for name, data in _std_types()["trafo"].items():
+    for name, data in pandapower_std_types()["trafo"].items():
         if math.isclose(float(data["vn_hv_kv"]), HV_KV) and math.isclose(float(data["vn_lv_kv"]), vn_lv_kv):
             catalogue[float(data["sn_mva"])] = _hv_mv_record(name, data)
     return dict(sorted(catalogue.items()))

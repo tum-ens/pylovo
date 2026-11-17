@@ -589,7 +589,7 @@ def test_from_model_uses_the_variant_line_types_and_limits():
                         params=params, lv=lv, edge_geometry=lambda ids: {})
     ev = rings.RingEvaluator.from_model(inp, model)
     assert ev.limits == RingLimits(max_members=20, max_drop=0.05, max_drop_n1=0.10, utilization=0.6,
-                                   n1_utilization=1.0, max_half_m=28000.0) == rings.ring_limits(params)
+                                   n1_utilization=1.0, max_half_m=28000.0) == RingLimits.of(params)
     assert ev.r_ohm_km[1, 2] == params.overhead.r_ohm_per_km and ev.imax_ka[1, 2] == params.overhead.max_i_ka
     assert ev.r_ohm_km[0, 1] == params.cable.r_ohm_per_km and ev.x_ohm_km[2, 3] == params.cable.x_ohm_per_km
     assert ev.member.tolist() == [0.0, 0.5, 1.0, 0.5, 0.5]

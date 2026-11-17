@@ -29,8 +29,6 @@ The helpers are pure (pandapower, pandas and the MV stage modules; no database o
 from __future__ import annotations
 
 import copy
-import functools
-import importlib
 import logging
 import math
 import multiprocessing
@@ -40,18 +38,16 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 import pandapower as pp
 import pandas as pd
-from pandapower.auxiliary import LoadflowNotConverged
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from pylovo.electrical_backend.core.specs import MIN_LINE_KM
-from pylovo.mv_grid import coincidence, electrical
+from pylovo.mv_grid import coincidence, electrical, equipment, stage
 from pylovo.mv_grid.inputs import busbar_record
 from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, check_stage_version
@@ -104,17 +100,8 @@ def _number(value: Any, default: float = math.nan) -> float:
     return default if number is None else number
 
 
-def _runpp(net: pp.pandapowerNet) -> bool:
-    """Newton-Raphson as in the electrical module, then Iwamoto-damped Newton-Raphson if that fails;
-    non-convergence is a result, not an error."""
-    for algorithm in ("nr", "iwamoto_nr"):
-        try:
-            pp.runpp(net, algorithm=algorithm, init="auto")
-        except LoadflowNotConverged:
-            continue
-        if net.converged:
-            return True
-    return False
+#: Power-flow algorithms of the coupled nets: Newton-Raphson as in planning, then Iwamoto-damped Newton-Raphson.
+COUPLING_ALGORITHMS: tuple[str, ...] = ("nr", "iwamoto_nr")
 
 
 def _min_line_length(lines: pd.DataFrame) -> pd.DataFrame:
@@ -164,17 +151,11 @@ def station_units(sn_kva: float) -> tuple[float, int]:
     return rating / units, units
 
 
-@functools.lru_cache(maxsize=1)
-def _trafo_types() -> dict[str, dict]:
-    """pandapower's standard transformer types."""
-    return pp.create_empty_network().std_types["trafo"]
-
-
 def _unit_type(unit_kva: float) -> tuple[str, dict]:
     """Name and data of the pandapower 20/0.4 kV type of a station unit (pylovo's names). A unit without its own
     type takes the next larger 20/0.4 kV type (below 250 kVA the 0.25 MVA type, as ``PandapowerBackend.SMALL_TRANSFORMER_BASE``) with the
     rating replaced and the no-load losses scaled."""
-    types = _trafo_types()
+    types = equipment.pandapower_std_types()["trafo"]
     name = f"{unit_kva / 1000.0:g} MVA 20/0.4 kV"
     if name in types:
         return name, dict(types[name])
@@ -269,7 +250,7 @@ def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, tap: int, *,
     lv_buses = net.bus.index[net.bus.index != mv_bus]
     if math.isfinite(_number(vm_low)):
         net.ext_grid["vm_pu"] = float(vm_low)
-        converged = _runpp(net)
+        converged = electrical.run_power_flow(net, COUPLING_ALGORITHMS)
         out["design_converged"] = float(converged)
         if converged:
             vm = net.res_bus["vm_pu"]
@@ -678,7 +659,7 @@ def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters) -> pd.DataFra
     slack: float | None = None
     mv_vm = pd.Series(dtype=float)
     current = electrical.case_net(net, "load", params, busbar_vm_pu=operating_busbar_vm(params))
-    converged = _runpp(current)
+    converged = electrical.run_power_flow(current, COUPLING_ALGORITHMS)
     if converged:
         slack = _finite(current.res_ext_grid["p_mw"].sum())
         vm = current.res_bus["vm_pu"]
@@ -857,7 +838,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         op = run_coupled_cases(net, params)
         reference = mv_part(stored_net)
         reference = electrical.case_net(reference, "load", params, busbar_vm_pu=operating_busbar_vm(params))
-        ref_ok = _runpp(reference)
+        ref_ok = electrical.run_power_flow(reference, COUPLING_ALGORITHMS)
         op_by_node = op.rename(index={g: node_of_grid[int(g)] for g in op.index if int(g) in node_of_grid})
         rows["coupled_op_lv_busbar_vm_pu"] = op_by_node["op_lv_busbar_vm_pu"].reindex(rows.index)
         mv_vm = op.attrs.get("mv_vm_pu", pd.Series(dtype=float))
@@ -924,35 +905,13 @@ class CouplingSummary:
         return asdict(self)
 
 
-def _config() -> ModuleType:
-    return importlib.import_module("pylovo.config_loader")
-
-
-def _database_client(log_file: str):
-    from pylovo.database.database_client import DatabaseClient
-
-    return DatabaseClient(log_file=log_file)
-
-
-def _logger(name: str, log_file: str) -> logging.Logger:
-    from pylovo import utils
-
-    return utils.create_logger(name, log_file, _config().LOG_LEVEL)
-
-
-def _close_logger(log: logging.Logger) -> None:
-    for handler in list(log.handlers):
-        handler.close()
-    log.handlers.clear()
-
-
-def _one_line(exc: BaseException) -> str:
-    return " ".join(f"{type(exc).__name__}: {exc}".split())[:2000]
+# The driver helpers of the stage; the coupling has its own name for the database client, which tests replace.
+_config, _logger, _close_logger, _one_line = stage._config, stage._logger, stage._close_logger, stage._one_line
+_database_client = stage._database_client
 
 
 def _worker_count(jobs: int, n_grids: int) -> int:
     """``min(jobs, n_grids)`` capped by the free memory at :data:`WORKER_GB` per worker (``stage.worker_count``)."""
-    stage = importlib.import_module("pylovo.mv_grid.stage")
     return stage.worker_count(max(int(jobs), 1), n_grids, per_worker_gb=WORKER_GB)
 
 
@@ -1225,7 +1184,7 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
     net = build_coupled_net(stored, frames, taps, lv, vn_kv, include_open=case in electrical.N1_CASES,
                             busbar_loads=busbar_customer_loads(table))
     net = electrical.case_net(net, case, params, busbar_vm_pu=operating_busbar_vm(params))
-    if not _runpp(net):
+    if not electrical.run_power_flow(net, COUPLING_ALGORITHMS):
         logger.warning(f"Case {case} of the coupled MV grid {mv_grid_id} did not converge: written without results")
     output.parent.mkdir(parents=True, exist_ok=True)
     pp.to_json(net, str(output))
