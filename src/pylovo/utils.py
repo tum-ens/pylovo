@@ -454,6 +454,16 @@ def design_current_ka(load_kw: float) -> float:
     return load_kw / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
 
 
+def voltage_drop_impedance(r_ohm_per_km: float, x_ohm_per_km: float, parallel: int) -> float:
+    """Return the impedance of the voltage-drop approximation of a cable in ohm/km: ``(R cos(phi) + X sin(phi)) / n``.
+
+    ``cos(phi) = DEFAULT_POWER_FACTOR`` and ``n`` cables in parallel. The drop in percent of a cable section is
+    ``sqrt(3) * I * L * Z / VN * 100`` (``I`` in kA, ``L`` in km, ``VN`` in kV).
+    """
+    sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
+    return (r_ohm_per_km * DEFAULT_POWER_FACTOR + x_ohm_per_km * sin_phi) / parallel
+
+
 def planned_station_load(coincident_kw: float) -> float:
     """Return the load a station is planned for: the coincident load divided by ``TRANSFORMER_PLANNING_UTILIZATION``.
 

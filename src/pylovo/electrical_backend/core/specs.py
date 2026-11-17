@@ -23,6 +23,12 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+#: Shortest line in km. A line between two buses at one point (a building that is its own feeder node, a station on
+#: a house connection, two buses of a stored net a few micrometres apart) has no impedance of its own, which stops
+#: the power flow; it gets this length, which changes no voltage noticeably. Used by both backends, the cable
+#: installer and the MV coupling.
+MIN_LINE_KM: float = 0.001
+
 
 def normalize_cable_name(name: str) -> str:
     """

@@ -60,7 +60,7 @@ def buildings(*connection_points):
 
 def drop_percent(current_ka, length_km, cable, parallel):
     """The documented approximation sqrt(3) I L (R cos(phi) + X sin(phi)) / n / VN, in percent."""
-    pf = feeder_planning.DEFAULT_POWER_FACTOR
+    pf = utils.DEFAULT_POWER_FACTOR
     r, x = IMPEDANCE[cable]
     return math.sqrt(3) * current_ka * length_km * (r * pf + x * math.sqrt(1 - pf ** 2)) / parallel / 0.4 * 100
 
@@ -288,7 +288,7 @@ def test_a_section_on_several_violated_paths_benefits_each_of_them():
 
 
 def test_equal_candidates_prefer_fewer_parallel_cables_then_the_smaller_cross_section(monkeypatch):
-    monkeypatch.setattr(feeder_planning, "DEFAULT_POWER_FACTOR", 0.5)   # x = 0 below: exact arithmetic
+    monkeypatch.setattr(utils, "DEFAULT_POWER_FACTOR", 0.5)   # x = 0 below: exact arithmetic
     designs = {0: section(option("A", 1, 0.6, 5, x=0.0))}
     one, two = option("B", 1, 0.2, 10, x=0.0), option("C", 2, 0.4, 5, x=0.0)   # same impedance, same cost per metre
     assert best(designs, {0: [two, one]}, {5: 5.0}, {5: {0: 10.0}}) == (0, one)

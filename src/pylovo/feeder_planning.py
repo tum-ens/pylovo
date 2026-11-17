@@ -60,7 +60,6 @@ from pylovo import utils
 from pylovo.cable_installer import CableInstaller
 from pylovo.config_loader import (
     CABLE_PLANNING_UTILIZATION,
-    DEFAULT_POWER_FACTOR,
     FEEDER_SPLIT_MAX_CURRENT_KA,
     FEEDER_STANDARD_CABLE,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
@@ -825,15 +824,9 @@ def _load_planning_nodes(buildings_df: pd.DataFrame) -> set[int]:
     return set(consumer_to_planning_node.values())
 
 
-_SIN_PHI = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
-
-
 def _effective_voltage_impedance(option: dict) -> float:
-    """Return ``(R cos(phi) + X sin(phi)) / parallel`` of a cable option in ohm/km."""
-    return (
-        option["r_ohm_per_km"] * DEFAULT_POWER_FACTOR
-        + option["x_ohm_per_km"] * _SIN_PHI
-    ) / option["parallel"]
+    """Return the voltage-drop impedance of a cable option in ohm/km (:func:`pylovo.utils.voltage_drop_impedance`)."""
+    return utils.voltage_drop_impedance(option["r_ohm_per_km"], option["x_ohm_per_km"], option["parallel"])
 
 
 def _is_voltage_upgraded(design: dict) -> bool:

@@ -36,6 +36,7 @@ from ..core.specs import (
     TransformerSpec,
     ExtGridSpec,
     normalize_cable_name,
+    MIN_LINE_KM,
 )
 from ..core.equipment import CableEquipment, TransformerEquipment
 
@@ -283,8 +284,7 @@ class OpenDSSBackend(IElectricalBackend):
             raise OpenDSSBackendError(f"Line {spec.name!r} has {spec.parallel} parallel cables")
         line_code = self._create_line_code(cable_equipment, parallel)
 
-        # Enforce minimum length
-        length_km = max(spec.length_km, 0.001)
+        length_km = max(spec.length_km, MIN_LINE_KM)
 
         line = self.dss.Line.new(
             self._element_name("line", spec.name),

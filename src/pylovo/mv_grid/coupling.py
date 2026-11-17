@@ -50,6 +50,7 @@ from pandapower.auxiliary import LoadflowNotConverged
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
+from pylovo.electrical_backend.core.specs import MIN_LINE_KM
 from pylovo.mv_grid import coincidence, electrical
 from pylovo.mv_grid.inputs import busbar_record
 from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
@@ -82,9 +83,6 @@ OPERATING_COLUMNS: tuple[str, ...] = ("op_mv_vm_pu", "op_lv_busbar_vm_pu", "op_l
 AGREEMENT_PU: float = 0.005
 #: ``load`` column that marks the station-busbar customers of the merged net (fixed loads, never scaled).
 BUSBAR_CUSTOMER_COLUMN: str = "busbar_customer"
-#: Shortest LV line of a coupled net (km). Stored LV nets can hold lines of a few micrometres (two buses at one
-#: point), whose admittance stops Newton-Raphson; they get 1 m, which changes no voltage noticeably.
-MIN_LINE_KM: float = 0.001
 #: Station ratings that pylovo builds as one unit, and as two units of half the rating; any other rating is
 #: ``int(rating / 630)`` units of 630 kVA (``cable_installer.create_transformer``).
 SINGLE_UNIT_KVA: tuple[float, ...] = (100.0, 160.0, 250.0, 400.0, 630.0)

@@ -33,9 +33,7 @@ from ..core.specs import (
     normalize_cable_name,
 )
 from pylovo.config_loader import POWER_FLOW_MAX_VM_PU, POWER_FLOW_MIN_VM_PU
-
-#: Shortest line in km, as in the OpenDSS backend: shorter lines (co-located buses) get this length.
-MIN_LINE_KM: float = 0.001
+from pylovo.electrical_backend.core.specs import MIN_LINE_KM
 
 
 class PandapowerBackendError(Exception):

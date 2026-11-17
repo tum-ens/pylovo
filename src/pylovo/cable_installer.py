@@ -37,15 +37,11 @@ from pylovo.electrical_backend import (
     TransformerSpec,
     normalize_cable_name,
 )
-from pylovo.utils import design_current_ka
+from pylovo.electrical_backend.core.specs import MIN_LINE_KM
+from pylovo.utils import design_current_ka, voltage_drop_impedance
 
 # Service connections longer than this are flagged for review (not changed).
 SERVICE_LENGTH_REVIEW_THRESHOLD_M = 100.0
-# Shortest house cable (km). A building that is its own feeder node or has a station of its own (voltage repair of a
-# house connection, GridGenerator.repair_voltage_violation) has its connection bus at its house connection: the cable
-# there has no length of its own, and a line without impedance stops the power flow.
-MIN_SERVICE_LENGTH_KM = 0.001
-
 
 class CableInstaller:
     """Builds the backend network of one LV grid and records its lines.
@@ -355,11 +351,7 @@ class CableInstaller:
     ) -> float:
         """Calculate approximate three-phase service drop at local design load."""
         row = self._cable_rows[cable]
-        sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
-        effective_impedance = (
-            float(row["r_ohm_per_km"]) * DEFAULT_POWER_FACTOR
-            + float(row["x_ohm_per_km"]) * sin_phi
-        ) / parallel
+        effective_impedance = voltage_drop_impedance(float(row["r_ohm_per_km"]), float(row["x_ohm_per_km"]), parallel)
         nominal_voltage_kv = VN * 1e-3
         return float(
             np.sqrt(3)
@@ -369,6 +361,25 @@ class CableInstaller:
             / nominal_voltage_kv
             * 100
         )
+
+    def _ampacity_options(self, cables: list[str], planned_current_ka: float) -> tuple[list[str], int]:
+        """Return the cables that carry ``planned_current_ka`` with the smallest parallel count, and that count.
+
+        ``cables`` must be non-empty and in the catalogue. The order of ``cables`` is kept.
+        """
+        parallel = 1
+        while True:
+            options = [cable for cable in cables if self._cable_rows[cable]["max_i_ka"] >= planned_current_ka / parallel]
+            if options:
+                return options, parallel
+            parallel += 1
+
+    def _cost_order(self, cable: str) -> tuple:
+        """Sort key of the cable choice: cheapest first, then the smallest cross-section.
+
+        Used with ``min()``, which keeps the first (catalogue order) of equal keys.
+        """
+        return self._cable_rows[cable]["cost_eur"], self._cable_rows[cable]["q_mm2"]
 
     def select_service_cable_design(
         self,
@@ -408,21 +419,8 @@ class CableInstaller:
         if not line_options:
             raise ValueError("No configured service cable is available for selection.")
 
-        planned_current_ka = design_current_ka / CABLE_PLANNING_UTILIZATION
-        parallel = 1
-        while True:
-            ampacity_options = [
-                cable for cable in line_options
-                if self._cable_rows[cable]["max_i_ka"] >= planned_current_ka / parallel
-            ]
-            if ampacity_options:
-                break
-            parallel += 1
-
-        def cost_order(cable: str) -> tuple:
-            return self._cable_rows[cable]["cost_eur"], self._cable_rows[cable]["q_mm2"]
-
-        # min() keeps the first of equal keys, like the stable sort it replaces.
+        ampacity_options, parallel = self._ampacity_options(line_options, design_current_ka / CABLE_PLANNING_UTILIZATION)
+        cost_order = self._cost_order
         ampacity_cable = min(ampacity_options, key=cost_order)
         ampacity_drop_percent = self._service_voltage_drop_percent(
             design_current_ka, length_km, ampacity_cable, parallel
@@ -537,7 +535,8 @@ class CableInstaller:
         sim_load = service_design_load_per_consumer[end_vid]
         Imax = design_current_ka(sim_load)
         upstream_drop_percent = 0.0 if shared_cable is None else shared_cable["drop_percent"]
-        length_km = max(float(length_km), MIN_SERVICE_LENGTH_KM)
+        # a building that is its own feeder node or has its own station has no house cable length of its own
+        length_km = max(float(length_km), MIN_LINE_KM)
 
         connection_available_cables = self._consumer_connection_cables
         # Direct transformer connection point may use feeder cables as well.
@@ -846,18 +845,12 @@ class CableInstaller:
             ValueError: If no configured feeder cable is in the catalogue (this
                 used to loop forever).
         """
-        feeder_df = self._cable_df.loc[self._cable_df.index.isin(self._feeder_available_cables)]
-        if feeder_df.empty:
+        available = set(self._feeder_available_cables)
+        feeder_cables = [cable for cable in self._cable_rows if cable in available]
+        if not feeder_cables:
             raise ValueError("No configured feeder cable is available for selection.")
-
-        count = 1
-        while True:
-            current_available_cables = feeder_df.loc[feeder_df["max_i_ka"] >= Imax / count]
-            if len(current_available_cables) == 0:
-                count += 1
-                continue
-            cable = current_available_cables.sort_values(by=["cost_eur", "q_mm2"]).index.tolist()[0]
-            return cable, count
+        options, count = self._ampacity_options(feeder_cables, Imax)
+        return min(options, key=self._cost_order), count
 
     def create_line_start_to_lv_bus(self, plz: int, bcid: int, kcid: int,
                                      branch_start_node: int,

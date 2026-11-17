@@ -7,7 +7,7 @@ import pandas as pd
 
 import pytest
 
-from pylovo import cable_installer
+from pylovo import cable_installer, utils
 from pylovo.cable_installer import CableInstaller
 from pylovo.config_loader import MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT
 
@@ -69,7 +69,7 @@ def test_the_service_drop_is_the_three_phase_drop_in_percent_of_the_nominal_volt
     sqrt(3) * 0.1 kA * 0.05 km * (0.642 * 0.95 + 0.083 * sin(phi)) Ohm/km = 5.51 V, 1.377 % of 400 V; the
     150 mm2 cable drops 0.482 %. Above a 1 % limit the larger cable is chosen for the voltage drop.
     """
-    monkeypatch.setattr(cable_installer, "DEFAULT_POWER_FACTOR", 0.95)
+    monkeypatch.setattr(utils, "DEFAULT_POWER_FACTOR", 0.95)
     monkeypatch.setattr(cable_installer, "VN", 400)
     installer = CableInstaller(None, None, logging.getLogger("service-drop-test"), CABLES, pd.DataFrame(), pd.DataFrame())
     assert installer._service_voltage_drop_percent(0.1, 0.05, "NAYY_4_50", 1) == pytest.approx(1.3766, abs=1e-4)
