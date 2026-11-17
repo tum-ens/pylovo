@@ -79,7 +79,7 @@ from pylovo.config_loader import (
 from pylovo.electrical_backend import IElectricalBackend, create_backend
 from pylovo.cable_installer import CableInstaller
 from pylovo import feeder_planning, postcode_border
-from pylovo.station_voltage import solve_validation_power_flow
+from pylovo.station_voltage import validate_operating_point
 
 class ResultExistsError(Exception):
     """Raised when the grids of a PLZ already exist for the current ``VERSION_ID``."""
@@ -1902,84 +1902,39 @@ class GridGenerator:
             ``(power-flow status, voltage-drop diagnostics)``; the diagnostics are the largest feeder,
             service and total LV voltage drops in p.u. (``None`` unless the pandapower power flow converged).
         """
-        powerflow_status = "not_converged"
-        voltage_drop_diagnostics = {
-            "max_feeder_voltage_drop_pu": None,
-            "max_service_voltage_drop_pu": None,
-            "max_total_lv_voltage_drop_pu": None,
-        }
-        try:
-            self.logger.debug(
-                "Running synthetic transformer-coincident validation operating point "
-                f"for kcid={kcid}, bcid={bcid}."
-            )
-            station = solve_validation_power_flow(backend, LV_REFERENCE_VOLTAGE_PU, logger=self.logger)
-            converged = station.converged
-            if station.applied:
-                self.logger.debug(f"Station voltage for kcid={kcid}, bcid={bcid}: {station.describe()}")
-            if converged:
-                metrics = backend.get_circuit_metrics()
-                min_voltage_pu = metrics.get("min_voltage_pu")
-                max_voltage_pu = metrics.get("max_voltage_pu")
-
-                if ELECTRICAL_BACKEND == "pandapower" and getattr(backend, "net", None) is not None:
-                    net = backend.net
-                    lv_buses = net.bus.index[net.bus.name == "LVbus 1"]
-                    consumer_buses = set(
-                        net.bus.index[
-                            net.bus.name.fillna("").str.startswith("Consumer Nodebus ")
-                        ]
-                    )
-                    service_lines = net.line.loc[net.line.to_bus.isin(consumer_buses)]
-                    if len(lv_buses) == 1 and not service_lines.empty:
-                        lv_voltage_pu = float(net.res_bus.at[int(lv_buses[0]), "vm_pu"])
-                        feeder_drops = []
-                        service_drops = []
-                        total_drops = []
-                        for line in service_lines.itertuples():
-                            connection_voltage_pu = float(net.res_bus.at[line.from_bus, "vm_pu"])
-                            consumer_voltage_pu = float(net.res_bus.at[line.to_bus, "vm_pu"])
-                            feeder_drops.append(lv_voltage_pu - connection_voltage_pu)
-                            service_drops.append(connection_voltage_pu - consumer_voltage_pu)
-                            total_drops.append(lv_voltage_pu - consumer_voltage_pu)
-                        voltage_drop_diagnostics = {
-                            "max_feeder_voltage_drop_pu": max(feeder_drops),
-                            "max_service_voltage_drop_pu": max(service_drops),
-                            "max_total_lv_voltage_drop_pu": max(total_drops),
-                        }
-
-                voltage_out_of_band = False
-                if min_voltage_pu is not None and min_voltage_pu < POWER_FLOW_MIN_VM_PU:
-                    voltage_out_of_band = True
-                if max_voltage_pu is not None and max_voltage_pu > POWER_FLOW_MAX_VM_PU:
-                    voltage_out_of_band = True
-
-                if voltage_out_of_band:
-                    powerflow_status = "voltage_violation"
-                    self.logger.warning(
-                        "Synthetic transformer-coincident validation power flow converged "
-                        f"but violated the voltage band for kcid={kcid}, bcid={bcid} "
-                        f"(min_vm_pu={min_voltage_pu}, max_vm_pu={max_voltage_pu}, "
-                        f"allowed=[{POWER_FLOW_MIN_VM_PU}, {POWER_FLOW_MAX_VM_PU}])."
-                    )
-                else:
-                    self.logger.info(
-                        "Synthetic transformer-coincident validation power flow converged "
-                        f"for kcid={kcid}, bcid={bcid}"
-                    )
-                    powerflow_status = "converged"
-            else:
-                self.logger.warning(
-                    "Synthetic transformer-coincident validation power flow did NOT converge "
-                    f"for kcid={kcid}, bcid={bcid}"
-                )
-                powerflow_status = "not_converged"
-        except Exception as e:
+        self.logger.debug(
+            "Running synthetic transformer-coincident validation operating point "
+            f"for kcid={kcid}, bcid={bcid}."
+        )
+        validation = validate_operating_point(
+            backend, POWER_FLOW_MIN_VM_PU, POWER_FLOW_MAX_VM_PU, LV_REFERENCE_VOLTAGE_PU, logger=self.logger
+        )
+        station = validation.station
+        if station is not None and station.applied:
+            self.logger.debug(f"Station voltage for kcid={kcid}, bcid={bcid}: {station.describe()}")
+        if validation.error is not None:
             self.logger.warning(
                 "Synthetic transformer-coincident validation power flow failed "
-                f"for kcid={kcid}, bcid={bcid}: {e}"
+                f"for kcid={kcid}, bcid={bcid}: {validation.error}"
             )
-        return powerflow_status, voltage_drop_diagnostics
+        elif validation.status == "voltage_violation":
+            self.logger.warning(
+                "Synthetic transformer-coincident validation power flow converged "
+                f"but violated the voltage band for kcid={kcid}, bcid={bcid} "
+                f"(min_vm_pu={validation.min_voltage_pu}, max_vm_pu={validation.max_voltage_pu}, "
+                f"allowed=[{POWER_FLOW_MIN_VM_PU}, {POWER_FLOW_MAX_VM_PU}])."
+            )
+        elif validation.status == "converged":
+            self.logger.info(
+                "Synthetic transformer-coincident validation power flow converged "
+                f"for kcid={kcid}, bcid={bcid}"
+            )
+        else:
+            self.logger.warning(
+                "Synthetic transformer-coincident validation power flow did NOT converge "
+                f"for kcid={kcid}, bcid={bcid}"
+            )
+        return validation.status, validation.drops
 
     def save_net(
         self,

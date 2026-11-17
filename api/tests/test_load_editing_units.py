@@ -1,7 +1,8 @@
-"""Load editing without a database: peak formula, validation, the replicated generation code, guards, lease.
+"""Load editing without a database: peak formula, validation, the shared generation code, guards, lease.
 
-The replication tests compare :mod:`pylovo.load_editing` with the generation code it mirrors
-(``CableInstaller.create_consumer_bus_and_load`` on a real pandapower backend).
+The generation tests compare the loads of :mod:`pylovo.load_editing` with the ones generation creates
+(``CableInstaller.create_consumer_bus_and_load`` on a real pandapower backend); both use
+:func:`pylovo.cable_installer.consumer_load_specs`.
 """
 from __future__ import annotations
 
@@ -173,7 +174,7 @@ def test_validation_residential_only_nonresidential_edit_is_allowed():
     assert check.peaks.peak_load_in_kw == b["peak_load_in_kw"]
 
 
-# --------------------------------------------------------------------------- replicated generation code
+# --------------------------------------------------------------------------- generation code
 def _grid_buildings() -> pd.DataFrame:
     rows = []
     for i, (hh, res, nonres, use) in enumerate([(1, 150.0, 0.0, None), (6, 500.0, 0.0, None), (2, 120.0, 90.0, "Commercial"),

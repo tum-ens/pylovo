@@ -17,19 +17,14 @@ generation derived from these inputs, with the parameters stored for the grid's 
 Cables, the transformer and the design diagnostics of ``grid_result`` stay as generated: an edit
 re-validates the grid, it does not re-plan it. Regenerating the PLZ as a new version does that.
 
-Two parts of generation are replicated here instead of being refactored, because
-``grid_generator.py`` and ``cable_installer.py`` are shared with other development branches:
+The loads and the validation power flow use the functions of generation, with the parameters of the
+grid's version passed in: :func:`pylovo.cable_installer.consumer_load_specs` and
+:func:`pylovo.station_voltage.validate_operating_point`. The component peaks
+(:func:`component_peaks`) mirror SQL of the preprocessing in Python.
 
-* :func:`build_load_specs` repeats the ``LoadSpec`` arithmetic of
-  ``CableInstaller.create_consumer_bus_and_load`` character for character (the power factor is
-  passed in instead of read from the config),
-* :func:`validate_operating_point` repeats the classification and the voltage-drop diagnostics of
-  ``GridGenerator.save_net`` (the voltage band is passed in).
-
-The guards make this safe: an edit is refused unless the stored loads of the grid are reproduced
-from ``buildings_result`` and the version snapshot (:func:`compare_loads`), and unless the network
-JSON agrees with the ``pandapower_*`` SQL tables (:func:`check_storage_consistency`). The tests in
-``api/tests/test_load_editing_*.py`` check both replications against generation.
+The guards keep an edit consistent with generation: it is refused unless the stored loads of the grid are
+reproduced from ``buildings_result`` and the version snapshot (:func:`compare_loads`), and unless the network
+JSON agrees with the ``pandapower_*`` SQL tables (:func:`check_storage_consistency`).
 
 :class:`LoadEditor` combines these functions with the queries of
 :class:`~pylovo.database.load_edit_mixin.LoadEditMixin`: context, preview, apply (one short write
@@ -52,18 +47,18 @@ from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from pylovo import utils
+from pylovo.cable_installer import consumer_load_specs
 from pylovo.database.load_edit_mixin import MvCustomerInUse
 from pylovo.electrical_backend.core.specs import LoadSpec
+from pylovo.station_voltage import Validation, validate_operating_point
 
 logger = logging.getLogger(__name__)
 
 EDITABLE_FIELDS = ("households", "residential_floor_area", "nonresidential_floor_area", "nonresidential_use")
 NONRESIDENTIAL_USES = ("Commercial", "Public")
-OPERATING_POINT_BASIS = "synthetic_transformer_coincident_proportional"
 
 MAX_HOUSEHOLDS = 5000
 MAX_FLOOR_AREA_M2 = 1e6
@@ -526,53 +521,6 @@ class LoadTable:
                  "load_units": s.load_units, "consumer_vertex": s.consumer_vertex} for s in self.specs]
 
 
-def build_load_specs(consumer_list: list, powerflow_snapshot_components: dict,
-                     power_factor: float) -> tuple[list[LoadSpec], dict[int, str]]:
-    """Load specs and bus zones of the consumer vertices, as ``CableInstaller.create_consumer_bus_and_load``.
-
-    The expressions are the ones of the installer; only ``DEFAULT_POWER_FACTOR`` is replaced by the
-    version's ``power_factor``.
-
-    Args:
-        consumer_list: Consumer vertices in generation order.
-        powerflow_snapshot_components: Output of :func:`pylovo.utils.allocate_consumer_simultaneous_loads`.
-        power_factor: Power factor of the version.
-
-    Returns:
-        ``(specs, zones)``: the load specs in creation order and the zone of each consumer bus.
-
-    Raises:
-        ValueError: If a consumer has no LV load component.
-    """
-    specs: list[LoadSpec] = []
-    zones: dict[int, str] = {}
-    for consumer in consumer_list:
-        components = powerflow_snapshot_components.get(consumer, [])
-        if not components:
-            raise ValueError(f"Consumer vertex {consumer} has no LV load components.")
-        categories = [component["category"] for component in components]
-        load_type = categories[0] if len(categories) == 1 else "Mixed"
-        zones[int(consumer)] = load_type
-        for component in components:
-            simultaneous_load_kw = float(component["simultaneous_kw"])
-            phi = np.arccos(power_factor)
-            kvar = simultaneous_load_kw * np.tan(phi)
-            load_spec = LoadSpec(
-                name=f"Load {consumer} {component['category']}",
-                bus=f"Consumer Nodebus {consumer}",
-                kw=simultaneous_load_kw,
-                kvar=kvar,
-                max_p_mw=float(component["installed_kw"]) * 1e-3,
-                service_design_p_mw=float(component["service_design_kw"]) * 1e-3,
-                operating_point_basis=OPERATING_POINT_BASIS,
-                category=component["category"],
-                load_units=float(component["load_units"]),
-                consumer_vertex=int(consumer),
-            )
-            specs.append(load_spec)
-    return specs, zones
-
-
 def snapshot_loads(buildings: pd.DataFrame, params: LoadParameters) -> LoadTable:
     """Recompute the power-flow snapshot loads of a grid from its buildings.
 
@@ -586,7 +534,12 @@ def snapshot_loads(buildings: pd.DataFrame, params: LoadParameters) -> LoadTable
     consumer_list = list(dict.fromkeys(buildings["vertice_id"].to_list()))
     consumer_df = params.consumer_categories_df()
     _, components = utils.allocate_consumer_simultaneous_loads(consumer_list, buildings, consumer_df)
-    specs, zones = build_load_specs(consumer_list, components, params.power_factor)
+    specs: list[LoadSpec] = []
+    zones: dict[int, str] = {}
+    for consumer in consumer_list:
+        zones[int(consumer)], consumer_specs = consumer_load_specs(consumer, components.get(consumer, []),
+                                                                   params.power_factor)
+        specs.extend(consumer_specs)
     categories: dict[str, dict[str, float]] = {}
     for comps in components.values():
         for c in comps:
@@ -745,85 +698,6 @@ def check_storage_consistency(net, sql_loads: list[dict], sql_buses: list[dict],
 
 
 # --------------------------------------------------------------------------- power flow
-@dataclass
-class Validation:
-    """Outcome of the validation power flow (the ``grid_result`` columns written by ``save_net``)."""
-
-    status: str
-    min_voltage_pu: float | None = None
-    max_voltage_pu: float | None = None
-    max_feeder_voltage_drop_pu: float | None = None
-    max_service_voltage_drop_pu: float | None = None
-    max_total_lv_voltage_drop_pu: float | None = None
-    error: str | None = None
-
-    @property
-    def drops(self) -> dict[str, float | None]:
-        return {"max_feeder_voltage_drop_pu": self.max_feeder_voltage_drop_pu,
-                "max_service_voltage_drop_pu": self.max_service_voltage_drop_pu,
-                "max_total_lv_voltage_drop_pu": self.max_total_lv_voltage_drop_pu}
-
-
-def validate_operating_point(backend, min_vm_pu: float, max_vm_pu: float,
-                             lv_reference_voltage_pu: float | None = None) -> Validation:
-    """Run and classify the validation power flow, as ``GridGenerator.save_net``.
-
-    Status ``converged``, ``voltage_violation`` (a bus outside ``[min_vm_pu, max_vm_pu]``) or
-    ``not_converged`` (also when the solver raises). The voltage drops are measured over the
-    service lines (to ``Consumer Nodebus`` buses) relative to ``LVbus 1``.
-
-    Args:
-        backend: :class:`~pylovo.electrical_backend.pandapower.backend.PandapowerBackend` holding the net.
-        min_vm_pu: Lower voltage limit (``POWER_FLOW_MIN_VM_PU`` of the version).
-        max_vm_pu: Upper voltage limit.
-        lv_reference_voltage_pu: Station voltage of :mod:`pylovo.station_voltage` (version snapshot).
-    """
-    from pylovo.station_voltage import solve_validation_power_flow
-
-    result = Validation("not_converged")
-    try:
-        converged = solve_validation_power_flow(backend, lv_reference_voltage_pu, logger=_QUIET).converged
-        if converged:
-            metrics = backend.get_circuit_metrics()
-            min_voltage_pu = metrics.get("min_voltage_pu")
-            max_voltage_pu = metrics.get("max_voltage_pu")
-            result.min_voltage_pu, result.max_voltage_pu = min_voltage_pu, max_voltage_pu
-
-            if getattr(backend, "net", None) is not None:
-                net = backend.net
-                lv_buses = net.bus.index[net.bus.name == "LVbus 1"]
-                consumer_buses = set(
-                    net.bus.index[
-                        net.bus.name.fillna("").str.startswith("Consumer Nodebus ")
-                    ]
-                )
-                service_lines = net.line.loc[net.line.to_bus.isin(consumer_buses)]
-                if len(lv_buses) == 1 and not service_lines.empty:
-                    lv_voltage_pu = float(net.res_bus.at[int(lv_buses[0]), "vm_pu"])
-                    feeder_drops = []
-                    service_drops = []
-                    total_drops = []
-                    for line in service_lines.itertuples():
-                        connection_voltage_pu = float(net.res_bus.at[line.from_bus, "vm_pu"])
-                        consumer_voltage_pu = float(net.res_bus.at[line.to_bus, "vm_pu"])
-                        feeder_drops.append(lv_voltage_pu - connection_voltage_pu)
-                        service_drops.append(connection_voltage_pu - consumer_voltage_pu)
-                        total_drops.append(lv_voltage_pu - consumer_voltage_pu)
-                    result.max_feeder_voltage_drop_pu = max(feeder_drops)
-                    result.max_service_voltage_drop_pu = max(service_drops)
-                    result.max_total_lv_voltage_drop_pu = max(total_drops)
-
-            voltage_out_of_band = False
-            if min_voltage_pu is not None and min_voltage_pu < min_vm_pu:
-                voltage_out_of_band = True
-            if max_voltage_pu is not None and max_voltage_pu > max_vm_pu:
-                voltage_out_of_band = True
-            result.status = "voltage_violation" if voltage_out_of_band else "converged"
-    except Exception as exc:  # save_net stores such grids as not_converged
-        result.error = f"{type(exc).__name__}: {exc}"
-    return result
-
-
 def _backend_for(net):
     from pylovo.electrical_backend.pandapower.backend import PandapowerBackend
 
@@ -873,7 +747,7 @@ def run_validation(net, params: LoadParameters) -> Validation:
     min_vm = params.min_vm_pu if params.min_vm_pu is not None else float(net.bus.min_vm_pu.min())
     max_vm = params.max_vm_pu if params.max_vm_pu is not None else float(net.bus.max_vm_pu.max())
     return validate_operating_point(_backend_for(net), min_vm, max_vm,
-                                    params.lv_reference_voltage_pu)
+                                    params.lv_reference_voltage_pu, logger=_QUIET)
 
 
 def power_flow_summary(net, validation: Validation) -> dict[str, Any]:
@@ -913,12 +787,12 @@ def service_design_check(net, vertex: int, params: LoadParameters) -> dict[str, 
         return None
     line = lines.iloc[0]
     design_kw = float(net.load.loc[net.load.bus == buses[0], "service_design_p_mw"].sum() * 1000)
-    current_ka = design_kw / (params.vn_v * params.power_factor * np.sqrt(3))
+    current_ka = utils.design_current_ka(design_kw, params.vn_v, params.power_factor)
     parallel = int(line.get("parallel", 1) or 1)
     capacity_ka = float(line.max_i_ka) * parallel
-    sin_phi = np.sqrt(1 - params.power_factor ** 2)
-    impedance = (float(line.r_ohm_per_km) * params.power_factor + float(line.x_ohm_per_km) * sin_phi) / parallel
-    drop = float(np.sqrt(3) * current_ka * float(line.length_km) * impedance / (params.vn_v * 1e-3) * 100)
+    impedance = utils.voltage_drop_impedance(float(line.r_ohm_per_km), float(line.x_ohm_per_km), parallel,
+                                             params.power_factor)
+    drop = utils.voltage_drop_percent(current_ka, float(line.length_km), impedance, params.vn_v)
     return {"line_index": int(lines.index[0]), "std_type": _py(line.get("std_type")), "parallel": parallel,
             "length_m": float(line.length_km) * 1000, "design_kw": design_kw, "design_current_a": current_ka * 1000,
             "capacity_a": capacity_ka * 1000, "design_drop_percent": drop}
@@ -1636,7 +1510,6 @@ __all__ = [
     "LoadEditor",
     "LoadParameters",
     "NetCache",
-    "build_load_specs",
     "buildings_frame",
     "check_building_peaks",
     "check_storage_consistency",
@@ -1647,5 +1520,6 @@ __all__ = [
     "run_validation",
     "snapshot_loads",
     "validate_changes",
+    "Validation",
     "validate_operating_point",
 ]

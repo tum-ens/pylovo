@@ -6,7 +6,7 @@ run it against a throwaway test database (``tests/db/build_test_database.py``: t
 The edited grid and buildings are chosen by query (see ``picks``); the expected values are read from the
 database or compared before and after an edit.
 
-The first tests are the equivalence proof of the replicated generation code: for every stored grid
+The first tests prove that an edit starts from what generation stored: for every stored grid
 the loads rebuilt from ``buildings_result`` and the version snapshot equal the stored loads, the
 rebuilt network JSON is byte-identical, and the validation power flow reproduces the stored status
 and voltage drops.
@@ -109,7 +109,7 @@ def undo_everything(client, conn):
 
 # --------------------------------------------------------------------------- equivalence with generation
 def test_every_stored_grid_is_reproduced(client, conn):
-    """The replicated LoadSpec mapping and save_net validation reproduce all stored grids."""
+    """The load specs and the validation power flow rebuilt by the editor reproduce all stored grids."""
     ids = [r[0] for r in q(conn, "SELECT grid_result_id FROM pylovo.grid_result ORDER BY 1")]
     assert ids
     for gid in ids:

@@ -439,29 +439,46 @@ def category_simultaneous_load(installed_power, load_count, sim_factor):
     return sim_load
 
 
-def design_current_ka(load_kw: float) -> float:
+def design_current_ka(load_kw: float, vn_v: float | None = None, power_factor: float | None = None) -> float:
     """Return the three-phase line current in kA of an active power at nominal voltage.
 
-    ``I = P / (sqrt(3) * VN * cos(phi))`` with ``VN`` in V and ``cos(phi) =
-    DEFAULT_POWER_FACTOR``, so kW / V gives kA.
+    ``I = P / (sqrt(3) * VN * cos(phi))`` with ``VN`` in V, so kW / V gives kA.
 
     Args:
         load_kw: Active power in kW, e.g. a coincident peak load.
+        vn_v: Nominal voltage in V; ``None`` is ``VN`` of the configuration (the load editor passes its version's).
+        power_factor: ``cos(phi)``; ``None`` is ``DEFAULT_POWER_FACTOR``.
 
     Returns:
         Current in kA.
     """
-    return load_kw / (VN * DEFAULT_POWER_FACTOR * np.sqrt(3))
+    vn_v = VN if vn_v is None else vn_v
+    power_factor = DEFAULT_POWER_FACTOR if power_factor is None else power_factor
+    return load_kw / (vn_v * power_factor * np.sqrt(3))
 
 
-def voltage_drop_impedance(r_ohm_per_km: float, x_ohm_per_km: float, parallel: int) -> float:
+def voltage_drop_impedance(r_ohm_per_km: float, x_ohm_per_km: float, parallel: int,
+                           power_factor: float | None = None) -> float:
     """Return the impedance of the voltage-drop approximation of a cable in ohm/km: ``(R cos(phi) + X sin(phi)) / n``.
 
-    ``cos(phi) = DEFAULT_POWER_FACTOR`` and ``n`` cables in parallel. The drop in percent of a cable section is
-    ``sqrt(3) * I * L * Z / VN * 100`` (``I`` in kA, ``L`` in km, ``VN`` in kV).
+    ``n`` cables in parallel; ``power_factor`` (``cos(phi)``) ``None`` is ``DEFAULT_POWER_FACTOR``. The drop in
+    percent is :func:`voltage_drop_percent`.
     """
-    sin_phi = np.sqrt(1 - DEFAULT_POWER_FACTOR ** 2)
-    return (r_ohm_per_km * DEFAULT_POWER_FACTOR + x_ohm_per_km * sin_phi) / parallel
+    power_factor = DEFAULT_POWER_FACTOR if power_factor is None else power_factor
+    sin_phi = np.sqrt(1 - power_factor ** 2)
+    return (r_ohm_per_km * power_factor + x_ohm_per_km * sin_phi) / parallel
+
+
+def voltage_drop_percent(current_ka: float, length_km: float, impedance_ohm_per_km: float,
+                         vn_v: float | None = None) -> float:
+    """Return the approximate three-phase voltage drop of a cable in percent of the nominal voltage.
+
+    ``sqrt(3) * I * L * Z / VN * 100`` with ``I`` in kA, ``L`` in km, ``Z`` from :func:`voltage_drop_impedance` and
+    ``VN`` in kV; ``vn_v`` (in V) ``None`` is ``VN`` of the configuration. Feeder planning factors the same expression
+    per edge (:mod:`pylovo.feeder_planning`).
+    """
+    vn_v = VN if vn_v is None else vn_v
+    return float(np.sqrt(3) * current_ka * length_km * impedance_ohm_per_km / (vn_v * 1e-3) * 100)
 
 
 def planned_station_load(coincident_kw: float) -> float:

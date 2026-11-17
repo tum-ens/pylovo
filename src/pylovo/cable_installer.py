@@ -38,10 +38,47 @@ from pylovo.electrical_backend import (
     normalize_cable_name,
 )
 from pylovo.electrical_backend.core.specs import MIN_LINE_KM
-from pylovo.utils import design_current_ka, voltage_drop_impedance
+from pylovo.utils import design_current_ka, voltage_drop_impedance, voltage_drop_percent
 
 # Service connections longer than this are flagged for review (not changed).
 SERVICE_LENGTH_REVIEW_THRESHOLD_M = 100.0
+
+OPERATING_POINT_BASIS = "synthetic_transformer_coincident_proportional"
+
+
+def consumer_load_specs(consumer: int, components: list[dict], power_factor: float) -> tuple[str, list[LoadSpec]]:
+    """Return the bus zone and the power-flow snapshot loads of one consumer vertex.
+
+    One load per use component of :func:`pylovo.utils.allocate_consumer_simultaneous_loads`. The zone records the
+    consumer type: the category, or ``"Mixed"`` for a mixed-use building. Generation passes
+    ``DEFAULT_POWER_FACTOR``, the load editor (:mod:`pylovo.load_editing`) the power factor of the grid's version.
+
+    Raises:
+        ValueError: If the consumer has no LV load component.
+    """
+    if not components:
+        raise ValueError(f"Consumer vertex {consumer} has no LV load components.")
+    categories = [component["category"] for component in components]
+    zone = categories[0] if len(categories) == 1 else "Mixed"
+    specs = []
+    for component in components:
+        simultaneous_load_kw = float(component["simultaneous_kw"])
+        phi = np.arccos(power_factor)
+        kvar = simultaneous_load_kw * np.tan(phi)
+        specs.append(LoadSpec(
+            name=f"Load {consumer} {component['category']}",
+            bus=f"Consumer Nodebus {consumer}",
+            kw=simultaneous_load_kw,
+            kvar=kvar,
+            max_p_mw=float(component["installed_kw"]) * 1e-3,
+            service_design_p_mw=float(component["service_design_kw"]) * 1e-3,
+            operating_point_basis=OPERATING_POINT_BASIS,
+            category=component["category"],
+            load_units=float(component["load_units"]),
+            consumer_vertex=int(consumer),
+        ))
+    return zone, specs
+
 
 class CableInstaller:
     """Builds the backend network of one LV grid and records its lines.
@@ -309,37 +346,17 @@ class CableInstaller:
         """
         for consumer in consumer_list:
             node_geodata = self._get_line_node_coordinates(consumer, f"Consumer Nodebus {consumer}")
-            components = powerflow_snapshot_components.get(consumer, [])
-            if not components:
-                raise ValueError(f"Consumer vertex {consumer} has no LV load components.")
-            categories = [component["category"] for component in components]
-            load_type = categories[0] if len(categories) == 1 else "Mixed"
-
-            # The bus zone records the consumer type ("Mixed" for mixed-use buildings).
+            zone, load_specs = consumer_load_specs(
+                consumer, powerflow_snapshot_components.get(consumer, []), DEFAULT_POWER_FACTOR
+            )
             bus_spec = BusSpec(
                 name=f"Consumer Nodebus {consumer}",
                 voltage_kv=VN * 1e-3,
                 coordinates=node_geodata,
-                zone=load_type
+                zone=zone
             )
             self.backend.create_component(bus_spec)
-
-            for component in components:
-                simultaneous_load_kw = float(component["simultaneous_kw"])
-                phi = np.arccos(DEFAULT_POWER_FACTOR)
-                kvar = simultaneous_load_kw * np.tan(phi)
-                load_spec = LoadSpec(
-                    name=f"Load {consumer} {component['category']}",
-                    bus=f"Consumer Nodebus {consumer}",
-                    kw=simultaneous_load_kw,
-                    kvar=kvar,
-                    max_p_mw=float(component["installed_kw"]) * 1e-3,
-                    service_design_p_mw=float(component["service_design_kw"]) * 1e-3,
-                    operating_point_basis="synthetic_transformer_coincident_proportional",
-                    category=component["category"],
-                    load_units=float(component["load_units"]),
-                    consumer_vertex=int(consumer),
-                )
+            for load_spec in load_specs:
                 self.backend.create_component(load_spec)
 
     def _service_voltage_drop_percent(
@@ -352,15 +369,7 @@ class CableInstaller:
         """Calculate approximate three-phase service drop at local design load."""
         row = self._cable_rows[cable]
         effective_impedance = voltage_drop_impedance(float(row["r_ohm_per_km"]), float(row["x_ohm_per_km"]), parallel)
-        nominal_voltage_kv = VN * 1e-3
-        return float(
-            np.sqrt(3)
-            * design_current_ka
-            * length_km
-            * effective_impedance
-            / nominal_voltage_kv
-            * 100
-        )
+        return voltage_drop_percent(design_current_ka, length_km, effective_impedance)
 
     def _ampacity_options(self, cables: list[str], planned_current_ka: float) -> tuple[list[str], int]:
         """Return the cables that carry ``planned_current_ka`` with the smallest parallel count, and that count.
