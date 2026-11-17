@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pylovo.cli import parsers
-from pylovo.cli.confirm import show_target, target_is_unambiguous
+from pylovo.cli.confirm import show_target, stdin_is_interactive, target_is_unambiguous, typed_database_name
 from pylovo import utils
 from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT
 from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
@@ -32,15 +32,10 @@ def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
     print(f"  port:     {port}")
     print(f"  database: {dbname}")
     print("All grids, results and transformers stored in this schema will be deleted.")
-    if sys.stdin is None or not sys.stdin.isatty():
+    if not stdin_is_interactive():
         print("stdin is not interactive: aborting. Use reset --database NAME --yes for a non-interactive reset.")
         return False
-    try:
-        answer = input(f"Type the database name '{dbname}' to continue: ")
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return False
-    return answer.strip() == dbname
+    return typed_database_name(dbname)
 
 
 @dataclass

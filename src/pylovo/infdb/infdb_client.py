@@ -16,6 +16,7 @@ from pylovo.config_loader import (
     LOG_LEVEL,
     NONRESIDENTIAL_LOAD_MODEL,
 )
+from pylovo.infdb.source_reader import SRID_SQL, connect_readonly
 
 
 #: InfDB road classes (``klasse``) as pylovo's integer ``clazz``; unknown classes become 99.
@@ -124,16 +125,7 @@ class InfdbClient:
             "DatabaseClient", log_file=kwargs.get("log_file", "log/log.txt"), log_level=LOG_LEVEL
         )
         try:
-            self.conn = psy.connect(
-                database=dbname,
-                user=user,
-                password=pw,
-                host=host,
-                port=port,
-            )
-            # BEGIN READ ONLY per transaction; with autocommit psycopg2 would SET it for the session,
-            # which a PgBouncer in transaction mode can pass on to other clients
-            self.conn.set_session(readonly=True)
+            self.conn = connect_readonly(dbname, user, pw, host, port)
             self.cur = self.conn.cursor()
             self.db_path = f"{host}:{port}/{dbname}"
         except psy.OperationalError as err:
@@ -413,17 +405,16 @@ class InfdbClient:
 
         return ways
 
-    def source_srid(self, table: str, schema: str | None = None) -> int:
-        """SRID of the geometries of an InfDB table, read from a row (``geometry_columns`` may say 0)."""
+    def source_srid(self, table: str, schema: str | None = None) -> int | None:
+        """SRID of the geometries of an InfDB table, read from a row (``geometry_columns`` may say 0); None without
+        geometries with an SRID. Cached per table (as :meth:`~pylovo.infdb.source_reader.SourceReader.srid`)."""
         cache = self.__dict__.setdefault("_srid_cache", {})
         key = (schema or INFDB_SOURCE_SCHEMA, table)
         if key not in cache:
-            query = sql.SQL("SELECT ST_SRID(geom) FROM {t} WHERE geom IS NOT NULL LIMIT 1").format(
-                t=sql.Identifier(*key))
             with self.conn:
-                self.cur.execute(query)
+                self.cur.execute(SRID_SQL.format(table=sql.Identifier(*key)))
                 row = self.cur.fetchone()
-            cache[key] = int(row[0]) if row and row[0] else 0
+            cache[key] = int(row[0]) if row and row[0] else None
         return cache[key]
 
     def fetch_neighboring_ways(self, plz: int, polygon_wkb: bytes, polygon_srid: int, ring_m: float,

@@ -33,6 +33,26 @@ def show_target(dbname: str, host: str, port: str) -> None:
     print(f"Target: database {dbname} on {host}:{port}")
 
 
+def stdin_is_interactive() -> bool:
+    """Whether the user can be asked (stdin is a terminal)."""
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
+def typed_database_name(dbname: str) -> bool:
+    """Ask the user to type the database name.
+
+    Returns:
+        True only if the user typed exactly ``dbname`` (surrounding blanks ignored). End of input (Ctrl-D) and
+        Ctrl-C return False.
+    """
+    try:
+        answer = input(f"Type the database name '{dbname}' to continue: ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer.strip() == dbname
+
+
 def confirm_deletion(what: list[str], dbname: str, host: str, port: str) -> bool:
     """Show what is deleted and where, and ask the user to type the database name.
 
@@ -49,18 +69,13 @@ def confirm_deletion(what: list[str], dbname: str, host: str, port: str) -> bool
         True only if stdin is interactive and the user typed exactly ``dbname``. A mismatch, end of input (Ctrl-D)
         or a non-interactive stdin return False.
     """
-    if sys.stdin is None or not sys.stdin.isatty():
+    if not stdin_is_interactive():
         print("✗ stdin is not interactive, nothing was deleted: add --yes to delete without the question")
         return False
     print(f"This deletes data of the database {dbname} (host {host}, port {port}):")
     for line in what:
         print(f"  - {line}")
-    try:
-        answer = input(f"Type the database name '{dbname}' to continue: ")
-    except (EOFError, KeyboardInterrupt):
-        print()
-        answer = None
-    if answer is None or answer.strip() != dbname:
+    if not typed_database_name(dbname):
         print("✗ Aborted, nothing was deleted")
         return False
     return True

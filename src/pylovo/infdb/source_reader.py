@@ -53,14 +53,19 @@ def source_is_remote(config: Any) -> bool:
     return source != (config.DBNAME, config.HOST, str(config.PORT))
 
 
-def connect_infdb(config: Any) -> Any:
-    """A connection to the InfDB of the ``INFDB_*`` settings, read-only, without startup ``options``."""
-    conn = psycopg2.connect(database=config.INFDB_DBNAME, user=config.INFDB_USER, password=config.INFDB_PASSWORD,
-                            host=config.INFDB_HOST, port=config.INFDB_PORT)
+def connect_readonly(dbname: str, user: str, password: str, host: str, port: Any) -> Any:
+    """A read-only connection to an InfDB, without startup ``options`` (PgBouncer rejects them)."""
+    conn = psycopg2.connect(database=dbname, user=user, password=password, host=host, port=port)
     # BEGIN READ ONLY per transaction; with autocommit psycopg2 would SET it for the session, which a PgBouncer in
     # transaction mode can pass on to other clients
     conn.set_session(readonly=True)
     return conn
+
+
+def connect_infdb(config: Any) -> Any:
+    """:func:`connect_readonly` to the InfDB of the ``INFDB_*`` settings."""
+    return connect_readonly(config.INFDB_DBNAME, config.INFDB_USER, config.INFDB_PASSWORD, config.INFDB_HOST,
+                            config.INFDB_PORT)
 
 
 class SourceReader:
