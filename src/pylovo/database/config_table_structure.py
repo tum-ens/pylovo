@@ -251,9 +251,7 @@ CREATE_QUERIES = {
         consumer_category_id integer PRIMARY KEY,
         definition varchar(30) UNIQUE NOT NULL,
         peak_load double precision,
-        yearly_consumption double precision,
         peak_load_per_m2 double precision,
-        yearly_consumption_per_m2 double precision,
         sim_factor double precision NOT NULL
     )
     """,
@@ -1004,8 +1002,6 @@ CREATE_QUERIES = {
     CREATE TABLE IF NOT EXISTS pylovo.transformer_classified (
         grid_result_id bigint NOT NULL,
         geom geometry(Point,{TARGET_EPSG}),
-        kmedoid_clusters integer,
-        kmedoid_representative_grid bool,
         kmeans_clusters integer,
         kmeans_representative_grid bool,
         gmm_clusters integer,

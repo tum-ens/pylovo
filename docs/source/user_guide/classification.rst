@@ -424,8 +424,6 @@ clusters, the filter choices, the transform and the version of the key figures o
      - K-means cluster of the grid and whether the grid is its representative.
    * - ``gmm_clusters``, ``gmm_representative_grid``
      - The same for the Gaussian mixture model (tied).
-   * - ``kmedoid_clusters``, ``kmedoid_representative_grid``
-     - Always empty (``NULL`` and ``false``), kept for old databases.
 
 The materialized view ``pylovo.transformer_classified_with_grid`` adds ``version_id``, ``plz``, ``kcid``,
 ``bcid``, the transformer rating and its equipment to every row and is refreshed after the write. Add it as a

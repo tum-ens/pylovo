@@ -113,13 +113,7 @@ Check ``chk_consumer_sim_factor``: ``sim_factor BETWEEN 0 AND 1``.
    * - ``peak_load``
      - ``double precision``
      -
-   * - ``yearly_consumption``
-     - ``double precision``
-     -
    * - ``peak_load_per_m2``
-     - ``double precision``
-     -
-   * - ``yearly_consumption_per_m2``
      - ``double precision``
      -
    * - ``sim_factor``

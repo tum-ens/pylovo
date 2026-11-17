@@ -255,7 +255,7 @@ def test_migration_0018_adds_the_load_class_and_the_connection_level_and_rebuild
 def test_migration_0019_drops_the_tables_and_functions_of_the_removed_file_based_input():
     from pylovo.database.migrations import MIGRATION_NAMES, file_input_removed
 
-    assert MIGRATION_NAMES[-1] == "0019_file_input_removed"
+    assert "0019_file_input_removed" in MIGRATION_NAMES
     conn = Connection()
     file_input_removed(conn.cursor())
     sql = " ".join(" ".join(conn.log).split())
@@ -263,3 +263,28 @@ def test_migration_0019_drops_the_tables_and_functions_of_the_removed_file_based
     for function in ("segment_intersecting_ways", "generate_building_to_way_connections",
                      "generate_building_way_connection_candidates"):
         assert f"DROP FUNCTION IF EXISTS pylovo.{function}();" in sql
+
+
+def test_migration_0020_drops_the_unused_columns_and_rebuilds_the_classified_view():
+    from pylovo.database.migrations import MIGRATION_NAMES, unused_columns
+
+    assert MIGRATION_NAMES[-1] == "0020_unused_columns"
+
+    class Answering(Cursor):
+        def fetchone(self):
+            return (True,) if "information_schema.columns" in self.last else super().fetchone()
+
+    class Conn(Connection):
+        def cursor(self):
+            return Answering(self)
+
+    conn = Conn()
+    unused_columns(conn.cursor())
+    sql = conn.log
+    assert any("DROP COLUMN IF EXISTS yearly_consumption, DROP COLUMN IF EXISTS yearly_consumption_per_m2" in s
+               for s in sql)
+    drop_view = next(i for i, s in enumerate(sql) if s == "DROP MATERIALIZED VIEW IF EXISTS pylovo.transformer_classified_with_grid")
+    drop_cols = next(i for i, s in enumerate(sql) if "DROP COLUMN IF EXISTS kmedoid_clusters" in s)
+    rebuild = next(i for i, s in enumerate(sql) if "CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid" in s)
+    assert drop_view < drop_cols < rebuild
+    assert not any("CASCADE" in s for s in sql)

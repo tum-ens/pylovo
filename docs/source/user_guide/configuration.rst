@@ -411,7 +411,7 @@ Loads and general grid settings
    * - ``peak_load_per_m2``
      - Installed peak per m² of non-residential floor area in W/m² (Commercial, Public).
    * - ``yearly_consumption``, ``yearly_consumption_per_m2``
-     - Stored in ``pylovo.consumer_categories``; not used by the grid generation.
+     - Not used by the grid generation; recorded in the version snapshot only.
    * - ``sim_factor``
      - Coincidence (simultaneity) factor *f* of the category, a number from 0 to 1, see
        :doc:`../concepts/grid_dimensioning`.

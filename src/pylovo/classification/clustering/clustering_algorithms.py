@@ -4,7 +4,7 @@ Each algorithm assigns the grids to clusters and picks one representative grid
 per cluster: the member of the cluster closest to the cluster center.
 
 KMedoids clustering was removed to avoid the ``scikit-learn-extra`` dependency
-(commit d66e7ed); the ``kmedoid_*`` columns of ``transformer_classified`` stay empty.
+(commit d66e7ed).
 """
 import numpy as np
 import pandas as pd

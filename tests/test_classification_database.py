@@ -220,7 +220,6 @@ def test_transformer_classified_frame_matches_the_table(run_save):
     assert set(frame.columns) == set(ddl_columns(CREATE_QUERIES["transformer_classified"]))
     assert len(frame) == len(df) and frame["grid_result_id"].is_unique
     assert (frame["classification_id"] == dcm.CLASSIFICATION_VERSION).all()
-    assert frame["kmedoid_clusters"].isna().all() and not frame["kmedoid_representative_grid"].any()
 
 
 def test_a_repeated_run_replaces_the_rows_of_the_classification_in_one_transaction(run_save):

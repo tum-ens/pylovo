@@ -688,6 +688,29 @@ def file_input_removed(cur: cursor) -> None:
     """)
 
 
+def unused_columns(cur: cursor) -> None:
+    """Drop four columns that nothing reads.
+
+    ``consumer_categories.yearly_consumption`` and ``yearly_consumption_per_m2`` (the YAML keys stay: the version
+    snapshot records them) and ``transformer_classified.kmedoid_clusters`` and ``kmedoid_representative_grid`` (always
+    empty since KMedoids was removed). The materialized view ``transformer_classified_with_grid`` lists ``tc.*``, so it
+    is dropped (without CASCADE) and built again. A no-op on a fresh schema.
+    """
+    # Deferred import: keeps this module config-free (pylovo-api imports pending_migrations).
+    from pylovo.database.config_table_structure import CREATE_QUERIES
+
+    cur.execute("ALTER TABLE IF EXISTS pylovo.consumer_categories "
+                "DROP COLUMN IF EXISTS yearly_consumption, DROP COLUMN IF EXISTS yearly_consumption_per_m2")
+    cur.execute("""SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                                  WHERE table_schema = 'pylovo' AND table_name = 'transformer_classified'
+                                    AND column_name IN ('kmedoid_clusters', 'kmedoid_representative_grid'))""")
+    if cur.fetchone()[0]:
+        cur.execute("DROP MATERIALIZED VIEW IF EXISTS pylovo.transformer_classified_with_grid")
+        cur.execute("ALTER TABLE pylovo.transformer_classified "
+                    "DROP COLUMN IF EXISTS kmedoid_clusters, DROP COLUMN IF EXISTS kmedoid_representative_grid")
+        cur.execute(CREATE_QUERIES["transformer_classified_with_grid"])
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -711,6 +734,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0017_key_figures_version", key_figures_version),
     ("0018_building_load_class", building_load_class),
     ("0019_file_input_removed", file_input_removed),
+    ("0020_unused_columns", unused_columns),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

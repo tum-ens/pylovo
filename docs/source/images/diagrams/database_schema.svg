@@ -4873,11 +4873,11 @@ z
     </g>
    </g>
    <g id="text_32">
-    <!-- + 6 columns -->
+    <!-- + 4 columns -->
     <g style="fill: #898781" transform="translate(29.52 278.263) scale(0.064 -0.064)">
      <use xlink:href="#DejaVuSansMono-2b"/>
      <use xlink:href="#DejaVuSansMono-20" transform="translate(60.205078 0)"/>
-     <use xlink:href="#DejaVuSansMono-36" transform="translate(120.410156 0)"/>
+     <use xlink:href="#DejaVuSansMono-34" transform="translate(120.410156 0)"/>
      <use xlink:href="#DejaVuSansMono-20" transform="translate(180.615234 0)"/>
      <use xlink:href="#DejaVuSansMono-63" transform="translate(240.820312 0)"/>
      <use xlink:href="#DejaVuSansMono-6f" transform="translate(301.025391 0)"/>

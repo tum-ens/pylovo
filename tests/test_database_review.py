@@ -71,6 +71,7 @@ def test_migrations_are_repeatable_and_catalog_is_valid():
             "0017_key_figures_version",
             "0018_building_load_class",
             "0019_file_input_removed",
+            "0020_unused_columns",
         ]
         db.cur.execute("""
             SELECT conname, convalidated

@@ -425,13 +425,8 @@ class DatabaseCommunication:
         df_parameters_of_grids['gmm_clusters'] = df_parameters_of_grids[
             'gmm_clusters'].astype('int')
 
-        # KMedoids is disabled: keep the table columns, but leave them empty
-        df_parameters_of_grids['kmedoid_clusters'] = pd.NA
-        df_parameters_of_grids['kmedoid_representative_grid'] = False
-
         # reduce columns and convert datatypes
         df_parameters_of_grids = df_parameters_of_grids[['version_id', 'plz', 'kcid', 'bcid',
-                                                         'kmedoid_clusters', 'kmedoid_representative_grid',
                                                          'kmeans_clusters', 'kmeans_representative_grid',
                                                          'gmm_clusters', 'gmm_representative_grid']]
         df_parameters_of_grids['version_id'] = df_parameters_of_grids['version_id'].astype('string')

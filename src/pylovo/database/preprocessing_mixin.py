@@ -323,16 +323,14 @@ class PreprocessingMixin(BaseMixin):
             df['peak_load'] = s
 
         # Expected target table columns
-        expected_cols = ["consumer_category_id", "definition", "peak_load", "yearly_consumption", "peak_load_per_m2",
-                         "yearly_consumption_per_m2", "sim_factor"]
+        expected_cols = ["consumer_category_id", "definition", "peak_load", "peak_load_per_m2", "sim_factor"]
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = None
         df = df[expected_cols]
 
         # Convert numeric columns
-        numeric_cols = ['peak_load', 'yearly_consumption', 'peak_load_per_m2', 'yearly_consumption_per_m2',
-                        'sim_factor']
+        numeric_cols = ['peak_load', 'peak_load_per_m2', 'sim_factor']
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -342,16 +340,13 @@ class PreprocessingMixin(BaseMixin):
         configured_ids = [int(row["consumer_category_id"]) for row in rows]
         upsert_sql = ("""
                       INSERT INTO pylovo.consumer_categories
-                      (consumer_category_id, definition, peak_load, yearly_consumption, peak_load_per_m2,
-                       yearly_consumption_per_m2, sim_factor)
-                      VALUES (%(consumer_category_id)s, %(definition)s, %(peak_load)s, %(yearly_consumption)s,
-                              %(peak_load_per_m2)s, %(yearly_consumption_per_m2)s, %(sim_factor)s)
-                      ON CONFLICT (consumer_category_id) DO UPDATE SET definition                = EXCLUDED.definition,
-                                                                       peak_load                 = EXCLUDED.peak_load,
-                                                                       yearly_consumption        = EXCLUDED.yearly_consumption,
-                                                                       peak_load_per_m2          = EXCLUDED.peak_load_per_m2,
-                                                                       yearly_consumption_per_m2 = EXCLUDED.yearly_consumption_per_m2,
-                                                                       sim_factor                = EXCLUDED.sim_factor;""")
+                      (consumer_category_id, definition, peak_load, peak_load_per_m2, sim_factor)
+                      VALUES (%(consumer_category_id)s, %(definition)s, %(peak_load)s, %(peak_load_per_m2)s,
+                              %(sim_factor)s)
+                      ON CONFLICT (consumer_category_id) DO UPDATE SET definition       = EXCLUDED.definition,
+                                                                       peak_load        = EXCLUDED.peak_load,
+                                                                       peak_load_per_m2 = EXCLUDED.peak_load_per_m2,
+                                                                       sim_factor       = EXCLUDED.sim_factor;""")
         try:
             self.cur.execute(
                 "DELETE FROM pylovo.consumer_categories "
