@@ -36,6 +36,7 @@ import pandapower.topology as top
 from sklearn.metrics.pairwise import haversine_distances
 
 import pylovo.database.database_client as dbc
+from pylovo.analysis import comparison
 from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION, compute_clustering_metrics
 from pylovo import utils
 from pylovo.config_loader import LOG_LEVEL, N_JOBS, PARALLEL, PEAK_LOAD_HOUSEHOLD, SIM_FACTOR, VERSION_ID
@@ -354,10 +355,6 @@ class ParameterCalculator:
             return []
         return net.load["bus"].unique().tolist()
 
-    #: Links from the busbar of at most this length (km) belong to the station, as in the structural metrics of the
-    #: validation (station stubs); the feeders start where they end.
-    STATION_LINK_KM = 0.002
-
     @staticmethod
     def _line_tree(net: pp.pandapowerNet, root_idx: int) -> Tuple[Dict[int, int | None], List[int], Dict[int, Tuple[float, float]]]:
         """Return the radial line network seen from ``root_idx``.
@@ -392,13 +389,9 @@ class ParameterCalculator:
     @classmethod
     def feeder_structure(cls, net: pp.pandapowerNet, root_idx: int,
                          consumer_buses: List[int]) -> Tuple[Dict[int, int], int]:
-        """Return the feeders and the branch ends of the label-free boundary of the structural metrics.
+        """Return the feeders and the branch ends of a net, by the rule of :func:`pylovo.analysis.comparison.feeder_structure`.
 
-        A bus belongs to the shared network if at least two consumer buses lie at or beyond it. The cable from the last
-        shared bus to a building is the building's dedicated path. The station is the busbar ``root_idx`` with the
-        buses it reaches over links of at most :attr:`STATION_LINK_KM`. A feeder is a cable that leaves the station
-        towards at least two consumer buses: a building at the busbar, or on its own cable from the station, belongs
-        to no feeder. The branch ends are the shared buses from which no shared bus continues, the busbar excluded.
+        The consumer buses are the houses, ``root_idx`` is the busbar.
 
         Args:
             net: A radial net.
@@ -413,12 +406,10 @@ class ParameterCalculator:
         downstream = {bus: int(bus in consumers) for bus in order}
         for bus in reversed(order[1:]):
             downstream[parent[bus]] += downstream[bus]
-        station = {root_idx}
-        for bus in order[1:]:                    # parents come first in breadth-first order
-            if parent[bus] in station and link[bus][0] <= cls.STATION_LINK_KM:
-                station.add(bus)
-        feeders = {bus for bus in order[1:]
-                   if parent[bus] in station and bus not in station and downstream[bus] >= 2}
+        station, feeder_list, branch_ends = comparison.feeder_structure(
+            order, parent, {bus: link[bus][0] for bus in order[1:]}, downstream
+        )
+        feeders = set(feeder_list)
         feeder_of_bus = {}
         for consumer in consumers:
             bus = consumer
@@ -426,10 +417,7 @@ class ParameterCalculator:
                 bus = parent[bus]
             if bus in feeders:
                 feeder_of_bus[consumer] = bus
-        shared = {bus for bus in order if downstream[bus] >= 2}
-        continued = {parent[bus] for bus in shared if parent[bus] is not None}
-        branch_ends = sum(bus != root_idx and bus not in continued for bus in shared)
-        return feeder_of_bus, int(branch_ends)
+        return feeder_of_bus, branch_ends
 
     @classmethod
     def calculate_max_route_resistance(cls, net: pp.pandapowerNet, root_idx: int, consumer_buses: List[int]) -> float:

@@ -83,8 +83,8 @@ BY_KEY = {m.key: m for m in METRICS}
 #: versus aluminium decides a comparison of feeder capacities.
 REFERENCE_CABLES = ((50, .642, 142), (70, .443, 173), (95, .320, 215), (120, .225, 242),
                     (150, .208, 270), (185, .164, 313), (240, .127, 357), (300, .100, 425))
-#: Links from the station this short (m) belong to the station; the feeders start where they end.
-STATION_LINK_M = 2.0
+#: Links from the station at most this long (km) belong to the station (station stubs); the feeders start where they end.
+STATION_LINK_KM = 0.002
 #: Cable ends closer than this (m) are one node.
 NODE_PRECISION_M = 0.01
 
@@ -128,6 +128,43 @@ def equivalent_cross_section(r_ohm_per_km: Optional[float]) -> Optional[int]:
     return min(REFERENCE_CABLES, key=lambda row: abs(math.log(row[1] / r_ohm_per_km)))[0]
 
 
+def feeder_structure(order: Sequence, parent: Mapping, link_km: Mapping, behind: Mapping) -> tuple[set, list, int]:
+    """Station, feeders and branch ends of a radial cable tree, as the paper defines them.
+
+    The shared network is every node with at least two houses at or beyond it. The station is the root (busbar) with
+    the nodes it reaches over links of at most :data:`STATION_LINK_KM`. A feeder is a cable that leaves the station
+    towards at least two houses: a house at the busbar, or on its own cable from the station, belongs to no feeder.
+    The branch ends are the shared nodes from which no shared node continues, the root excluded. Used for measured
+    and synthetic cables (:func:`grid_metrics`) and for pandapower nets
+    (:meth:`~pylovo.analysis.parameter_calculation.ParameterCalculator.feeder_structure`).
+
+    Args:
+        order: The nodes in breadth-first order from the root (``order[0]``).
+        parent: The parent of every node except the root.
+        link_km: The length (km) of the link of every node except the root to its parent.
+        behind: The number of houses at or beyond every node.
+
+    Returns:
+        ``(station nodes, first nodes of the feeders, number of branch ends)``.
+    """
+    root = order[0]
+    children = defaultdict(list)
+    for node in order[1:]:
+        children[parent[node]].append(node)
+    station, stack = {root}, [root]
+    while stack:
+        node = stack.pop()
+        for child in children[node]:
+            if link_km[child] <= STATION_LINK_KM:
+                station.add(child)
+                stack.append(child)
+    feeders = [c for s in station for c in children[s] if c not in station and behind[c] >= 2]
+    shared = [n for n in order if behind[n] >= 2]
+    continued = {parent[n] for n in shared if n != root}
+    branch_ends = sum(n != root and n not in continued for n in shared)
+    return station, feeders, int(branch_ends)
+
+
 def _node(point) -> tuple[int, int]:
     return round(point[0] / NODE_PRECISION_M), round(point[1] / NODE_PRECISION_M)
 
@@ -147,17 +184,15 @@ def _grid(lines: pd.DataFrame, station, capacity_kva: float, resistance: Mapping
     # breadth-first from the station: a spanning tree if the cables form loops
     parent = {node: up for up, node in nx.bfs_edges(graph, root)}
     order = [root, *parent]
-    children = defaultdict(list)
-    for node, up in parent.items():
-        children[up].append(node)
 
     def section(node):
         return bundles[min(node, parent[node]), max(node, parent[node])]
 
-    distance, ohm_to = {root: 0.0}, {root: 0.0}
+    distance, ohm_to, link_km = {root: 0.0}, {root: 0.0}, {}
     for node in order[1:]:
         cables = section(node)
-        distance[node] = distance[parent[node]] + 1000 * min(length for length, _, _ in cables)
+        link_km[node] = min(length for length, _, _ in cables)
+        distance[node] = distance[parent[node]] + 1000 * link_km[node]
         ohm = [None if r is None else r * length / p for length, r, p in cables]
         if ohm_to[parent[node]] is None or None in ohm:
             ohm_to[node] = None
@@ -168,17 +203,7 @@ def _grid(lines: pd.DataFrame, station, capacity_kva: float, resistance: Mapping
     behind = dict.fromkeys(order, 0) | dict.fromkeys(houses, 1)
     for node in reversed(order[1:]):
         behind[parent[node]] += behind[node]
-    # the shared network carries at least two houses; its ends are the branch ends
-    shared = [n for n in order if behind[n] >= 2]
-    continued = {parent[n] for n in shared if n != root}
-    station_nodes, stack = {root}, [root]
-    while stack:
-        node = stack.pop()
-        for child in children[node]:
-            if distance[child] - distance[node] <= STATION_LINK_M:
-                station_nodes.add(child)
-                stack.append(child)
-    feeders = [c for s in station_nodes for c in children[s] if c not in station_nodes and behind[c] >= 2]
+    _, feeders, branch_ends = feeder_structure(order, parent, link_km, behind)
     ratings = [[None if r is None else reference_rating_a(r) * p for _, r, p in section(c)] for c in feeders]
     head = None if any(None in r for r in ratings) else sum(sum(r) for r in ratings)
     buildings = len(houses)
@@ -186,7 +211,7 @@ def _grid(lines: pd.DataFrame, station, capacity_kva: float, resistance: Mapping
     resistances = [ohm_to[n] for n in houses]
     return {
         "building_count": buildings,
-        "feeder_branching_endpoints": sum(n != root and n not in continued for n in shared),
+        "feeder_branching_endpoints": branch_ends,
         "cable_length_per_building_m": 1000 * cable_km / buildings if buildings else None,
         "max_supply_path_m": max(distance[n] for n in houses) if houses else None,
         "transformer_bank_capacity_kva": capacity_kva,
