@@ -157,12 +157,10 @@ def two_unit_net(parallel: int) -> pp.pandapowerNet:
 
 @pytest.mark.parametrize("parallel, expected", [(1, 0.4), (2, 0.8)])
 def test_station_rating_counts_parallel_units(parallel, expected):
-    from pylovo.analysis.grid_analysis import _get_transformer_mva
     from pylovo.analysis.parameter_calculation import station_mva
 
     net = two_unit_net(parallel)
     assert station_mva(net) == pytest.approx(expected)
-    assert _get_transformer_mva(net) == pytest.approx(expected)
     assert str(int(round(station_mva(net) * 1000))) == str(int(expected * 1000))   # the plz_parameters key
 
 

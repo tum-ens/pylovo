@@ -15,7 +15,7 @@ import pandapower.topology as top
 import pytest
 
 from pylovo.analysis import grid_analysis, parameter_calculation
-from pylovo.analysis.grid_analysis import compute_clustering_metrics, compute_comparison_parameters
+from pylovo.analysis.grid_analysis import compute_clustering_metrics
 from pylovo.analysis.parameter_calculation import ParameterCalculator, station_mva
 from pylovo.database.analysis_mixin import AnalysisMixin
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, create_backend
@@ -121,27 +121,24 @@ def test_clustering_metrics_of_a_pylovo_grid():
     assert metrics["vsw_per_branch"] == pytest.approx(metrics["resistance"])         # one branch
 
 
-def metrics_and_feeders(**options):
-    """Key figures of ``build(**options)`` and the feeder count of the structural comparison."""
-    pc, net = calculator(), build(**options)
-    root = net.bus.index[net.bus["name"] == "LVbus 1"][0]
-    feeders = pc.count_feeders(net, top.create_nxgraph(net, respect_switches=True), root, uses_synthetic_naming=True)
-    return compute_clustering_metrics(pc, net), feeders
+def key_figures(**options):
+    """Key figures of ``build(**options)``."""
+    return compute_clustering_metrics(calculator(), build(**options))
 
 
-@pytest.mark.parametrize("options, branches, behind, ends, feeders", [
-    ({}, 1, 4, 2, 1),                                            # one feeder, two branch ends (nodes 11 and 12)
-    ({"busbar": (31,)}, 1, 4, 2, 1),                             # a building at the busbar belongs to no feeder
-    ({"f2_at_busbar": True, "busbar": (31, 32)}, 2, 4, 2, 2),    # two feeders of two houses each
-    ({"f0_km": 0.001}, 2, 4, 2, None),                           # a 1 m stub belongs to the station: two feeders
-    ({"f2_at_busbar": True, "drop": (24,)}, 1, 2, 1, None),      # a cable from the station to one house: no feeder
-    ({"street": False, "busbar": (31, 32, 33)}, 0, 0, 0, 1),     # a star grid: buildings at the busbar only
-    ({"street": False, "busbar": (31,)}, 0, 0, 0, 1),            # a single-building grid
+@pytest.mark.parametrize("options, branches, behind, ends", [
+    ({}, 1, 4, 2),                                            # one feeder, two branch ends (nodes 11 and 12)
+    ({"busbar": (31,)}, 1, 4, 2),                             # a building at the busbar belongs to no feeder
+    ({"f2_at_busbar": True, "busbar": (31, 32)}, 2, 4, 2),    # two feeders of two houses each
+    ({"f0_km": 0.001}, 2, 4, 2),                              # a 1 m stub belongs to the station: two feeders
+    ({"f2_at_busbar": True, "drop": (24,)}, 1, 2, 1),         # a cable from the station to one house: no feeder
+    ({"street": False, "busbar": (31, 32, 33)}, 0, 0, 0),     # a star grid: buildings at the busbar only
+    ({"street": False, "busbar": (31,)}, 0, 0, 0),            # a single-building grid
 ])
-def test_a_branch_is_a_feeder_of_the_structural_metrics(options, branches, behind, ends, feeders):
+def test_a_branch_is_a_feeder_of_the_structural_metrics(options, branches, behind, ends):
     """A feeder leaves the station towards at least two buildings; the per-feeder figures count the buildings
     behind the feeders and are 0 without a feeder."""
-    metrics, structural_feeders = metrics_and_feeders(**options)
+    metrics = key_figures(**options)
     assert (metrics["no_branches"], metrics["no_branch_ends"]) == (branches, ends)
     per_branch = behind / branches if branches else 0.0
     assert metrics["no_house_connections_per_branch"] == pytest.approx(per_branch)
@@ -150,28 +147,26 @@ def test_a_branch_is_a_feeder_of_the_structural_metrics(options, branches, behin
     assert 0 <= metrics["vsw_per_branch"] <= metrics["resistance"]
     if not branches:
         assert metrics["vsw_per_branch"] == metrics["max_vsw_of_a_branch"] == metrics["max_household_equ_of_a_branch"] == 0
-    if feeders is not None:
-        assert structural_feeders == feeders       # the feeder count of the structural comparison stays as it was
 
 
 @pytest.mark.parametrize("parallel, metres", [(1, 100 + 60 + 13), (2, 50 + 60 + 13)])
 def test_the_route_resistance_is_the_highest_series_resistance_to_a_house(parallel, metres):
-    metrics, _ = metrics_and_feeders(parallel_feeder=parallel)   # f0 and f1 doubled: house 24 behind f2 is the worst
+    metrics = key_figures(parallel_feeder=parallel)   # f0 and f1 doubled: house 24 behind f2 is the worst
     assert metrics["max_route_resistance_ohm"] == pytest.approx(metres / 1000 * R)
-    assert metrics_and_feeders(street=False, busbar=(31,))[0]["max_route_resistance_ohm"] == pytest.approx(0.015 * R)
+    assert key_figures(street=False, busbar=(31,))["max_route_resistance_ohm"] == pytest.approx(0.015 * R)
 
 
 def test_a_single_building_grid_has_no_house_distance():
-    metrics, _ = metrics_and_feeders(street=False, busbar=(31,))
+    metrics = key_figures(street=False, busbar=(31,))
     assert metrics["house_distance_km"] is None                                       # stored as NULL, not 0 km
-    assert metrics_and_feeders(street=False, busbar=(31, 32))[0]["house_distance_km"] > 0
+    assert key_figures(street=False, busbar=(31, 32))["house_distance_km"] > 0
 
 
 def test_the_largest_branch_is_one_of_the_same_feeders():
     peak = grid_analysis.PEAK_LOAD_HOUSEHOLD
-    metrics, _ = metrics_and_feeders(busbar=(31,))
+    metrics = key_figures(busbar=(31,))
     assert metrics["max_household_equ_of_a_branch"] == pytest.approx(4 * 17.0 / peak)    # not the busbar building
-    metrics, _ = metrics_and_feeders(f2_at_busbar=True, busbar=(31, 32))
+    metrics = key_figures(f2_at_busbar=True, busbar=(31, 32))
     assert metrics["max_household_equ_of_a_branch"] == pytest.approx(2 * 17.0 / peak)    # two houses per feeder
     assert metrics["vsw_per_branch"] < metrics["max_vsw_of_a_branch"] < metrics["resistance"]
 
@@ -247,18 +242,8 @@ def test_the_ratio_lies_within_the_r_x_of_the_lines():
     assert 0.125 / 0.078 < ratio < R / X
 
 
-def test_graph_length_and_resistance_describe_the_backbone_unless_service_lines_are_asked_for():
-    net, pc = build(), calculator()
-    # service stubs and the terminal attachments with two consumers are not backbone: only the feeder f0 remains
-    assert pc.calculate_graph_length(net) == pytest.approx(0.1)
-    assert pc.calculate_graph_length(net, with_service_lines=True) == pytest.approx(0.256)
-    assert pc.calculate_graph_resistance(net) == pytest.approx(0.1 * R)
-    assert pc.calculate_graph_resistance(net, with_service_lines=True) == pytest.approx(0.256 * R)
-    # parallel cables divide the resistance of their section; the cable length is the installed length (x parallel)
-    doubled = build(parallel_feeder=2)
-    assert pc.calculate_graph_resistance(doubled) == pytest.approx(0.1 * R / 2)
-    assert pc.calculate_graph_length(doubled) == pytest.approx(0.1)
-    assert pc.calculate_cable_length(doubled) == pytest.approx(0.256 + 0.1 + 0.05)
+def test_the_cable_length_is_the_installed_length_with_parallel_cables():
+    assert calculator().calculate_cable_length(build(parallel_feeder=2)) == pytest.approx(0.256 + 0.1 + 0.05)
 
 
 def test_the_cable_length_can_be_restricted_to_lines_in_service():
@@ -266,24 +251,6 @@ def test_the_cable_length_can_be_restricted_to_lines_in_service():
     net.line.loc[net.line["name"] == "f2", "in_service"] = False
     assert pc.calculate_cable_length(net) == pytest.approx(0.256)
     assert pc.calculate_cable_length(net, only_in_service=True) == pytest.approx(0.256 - 0.06)
-
-
-@pytest.mark.parametrize("parallel_trafo, mva", [(1, 0.4), (2, 0.8)])
-def test_comparison_parameters_of_a_pylovo_grid(parallel_trafo, mva):
-    net, pc = build(parallel_trafo=parallel_trafo), calculator()
-    result = compute_comparison_parameters(pc, net)
-    assert result["metric_status"] == "ok" and result["uses_synthetic_naming"] is True
-    assert result["root_bus"] == net.bus.index[net.bus["name"] == "LVbus 1"][0]
-    assert (result["bus_count"], result["line_count"], result["load_count"], result["consumer_bus_count"]) == (9, 7, 4, 4)
-    assert result["transformer_mva"] == pytest.approx(mva)                        # the station rating
-    # backbone only: the service stubs and the two attachment nodes are pruned, f0 (100 m) remains
-    assert result["feeder_lines"] == 1 and result["buildings_per_feeder"] == 4.0
-    assert result["graph_length"] == pytest.approx(0.1) and result["graph_resistance"] == pytest.approx(0.1 * R)
-    assert result["avg_trafo_distance"] == pytest.approx(0.1) and result["max_trafo_distance"] == pytest.approx(0.1)
-    # with the service lines: the routed distances to the consumers, as in the clustering metrics
-    full = compute_comparison_parameters(pc, net, with_service_lines=True)
-    assert full["graph_length"] == pytest.approx(0.256) and full["graph_resistance"] == pytest.approx(0.256 * R)
-    assert full["avg_trafo_distance"] == pytest.approx(0.1665) and full["max_trafo_distance"] == pytest.approx(0.173)
 
 
 def test_the_station_rating_counts_the_parallel_units_and_a_net_without_transformer_is_an_error():
@@ -294,49 +261,6 @@ def test_the_station_rating_counts_the_parallel_units_and_a_net_without_transfor
     net.trafo.drop(net.trafo.index, inplace=True)
     with pytest.raises(ValueError, match="No transformer found"):
         pc.get_transformer_power(net)
-
-
-# --- counting feeders ----------------------------------------------------------------------------------------------
-def topology(*edges):
-    """A net with a station (MV bus, LVbus 1) and the given buses and 100 m lines; names are the bus names."""
-    net = pp.create_empty_network()
-    bus = {}
-
-    def get(name):
-        if name not in bus:
-            bus[name] = pp.create_bus(net, 20.0 if name == "MV" else 0.4, name=name)
-        return bus[name]
-
-    pp.create_transformer(net, get("MV"), get("LVbus 1"), std_type="0.4 MVA 20/0.4 kV")
-    for a, b in edges:
-        pp.create_line_from_parameters(net, get(a), get(b), 0.1, R, X, 0.0, 0.275)
-    return net, bus
-
-
-def feeders(net, bus, **options):
-    graph = top.create_nxgraph(net, respect_switches=True)
-    return calculator().count_feeders(net, graph, bus["LVbus 1"], uses_synthetic_naming=True, **options)
-
-
-@pytest.mark.parametrize("edges, expected", [
-    ([("LVbus 1", "Connection Nodebus 1"), ("Connection Nodebus 1", "Consumer Nodebus 1")], 1),
-    ([("LVbus 1", "Connection Nodebus 1"), ("Connection Nodebus 1", "Consumer Nodebus 1"),
-      ("LVbus 1", "Connection Nodebus 2"), ("Connection Nodebus 2", "Consumer Nodebus 2")], 2),
-    # houses connected directly at the busbar are no feeders, but a grid with downstream buses has at least one
-    ([("LVbus 1", "Consumer Nodebus 1"), ("LVbus 1", "Consumer Nodebus 2"), ("LVbus 1", "Consumer Nodebus 3")], 1),
-])
-def test_feeders_leave_the_busbar_and_houses_at_the_busbar_do_not_count(edges, expected):
-    net, bus = topology(*edges)
-    assert feeders(net, bus) == expected
-
-
-def test_a_cable_distribution_cabinet_is_expanded_into_its_outgoing_feeders():
-    cabinet_config = {"name_column": "name", "house_connection_pattern": "Consumer Nodebus", "kvs_pattern": "Cabinet"}
-    net, bus = topology(("LVbus 1", "Cabinet 1"), *[("Cabinet 1", f"Connection Nodebus {i}") for i in (1, 2, 3)],
-                        *[(f"Connection Nodebus {i}", f"Consumer Nodebus {i}") for i in (1, 2, 3)])
-    # the busbar has one neighbour, the cabinet: with expansion each outgoing cable is a feeder, without it the cabinet is one
-    assert feeders(net, bus, bus_type_config=cabinet_config) == 3
-    assert feeders(net, bus, bus_type_config=cabinet_config, expand_kvs=False) == 1
 
 
 # --- the coincident peak load of a grid ---------------------------------------------------------------------------------

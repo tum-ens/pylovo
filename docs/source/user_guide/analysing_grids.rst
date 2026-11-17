@@ -6,62 +6,63 @@ key figures computed by ``pylovo-analyze``, and your own analyses on the pandapo
 
 .. _structural-metrics:
 
-Six structural metrics for synthetic grids
-------------------------------------------
+Eight structural metrics
+------------------------
 
-The comparison metric set in :func:`pylovo.analysis.grid_analysis.compute_comparison_parameters`
-summarises feeder topology, extent and electrical equipment. These values describe a grid's
-structure; they are not a power-flow result or a claim that the synthetic grid matches an
-operator's grid. The default calculation excludes terminal building service connections from
-length, distance and resistance and considers the active, switch-aware network. It counts
-terminal backbone branches after pruning service stubs.
+:mod:`pylovo.analysis.comparison` describes every grid by eight metrics, the definitions of the structural validation
+of pylovo against grids of distribution system operators. They form a matrix of two categories (network topology,
+electrical sizing) and four parts of the grid (station, feeders, per building, route).
+:func:`~pylovo.analysis.comparison.grid_metrics` computes them from the cables and the station of each grid. The
+topology is rebuilt from the cable geometries, so cables and stations exported from the GIS of a grid operator work
+the same way as pylovo grids. The values describe a grid's structure; they are not a power-flow result.
 
 .. list-table::
    :header-rows: 1
-   :widths: 29 71
+   :widths: 30 14 56
    :class: fixed-table
 
    * - Metric
-     - Interpretation
-   * - ``feeder_lines`` (count)
-     - Terminal feeder/backbone branches, including splits beyond the transformer. A larger
-       value suggests a more branched supply structure, not necessarily more first-hop cables.
-   * - ``graph_length`` (km)
-     - Total unique routed backbone length. Parallel line rows between the same buses are
-       collapsed so physical routes are not counted twice.
-   * - ``avg_trafo_distance`` (km)
-     - Mean shortest-path distance from the LV transformer bus to terminal backbone nodes.
-   * - ``max_trafo_distance`` (km)
-     - Longest such path; useful for identifying grids with a distant feeder endpoint.
-   * - ``transformer_mva`` (MVA)
-     - Rating of the transformer station: the unit rating times the number of parallel units
-       (0.8 MVA for two 400 kVA units).
-   * - ``graph_resistance`` (Ω)
-     - Aggregate routed-line resistance proxy over the feeder backbone. It sums the equivalent
-       resistance of segments, accounting for parallel conductors; it is not an end-to-end
-       path resistance or a load-flow loss.
+     - Unit
+     - Meaning
+   * - ``building_count``
+     - buildings
+     - Size of a transformer supply area.
+   * - ``feeder_branching_endpoints``
+     - count
+     - Ends of the feeder network without house connection cables; more means more branched.
+   * - ``cable_length_per_building_m``
+     - m
+     - Installed cable to the houses, parallel cables counted.
+   * - ``max_supply_path_m``
+     - m
+     - Cable distance from the station to the farthest house.
+   * - ``transformer_bank_capacity_kva``
+     - kVA
+     - Rated capacity of the station.
+   * - ``feeder_capacity_a``
+     - A per feeder
+     - Current rating of a cable leaving the station; parallel cables add up.
+   * - ``transformer_capacity_per_building_kva``
+     - kVA
+     - Station capacity divided by its buildings.
+   * - ``max_series_resistance_ohm``
+     - mΩ
+     - Cable resistance from the station to the worst-supplied house.
 
-The metrics also work for grids without the pylovo bus names, for example exports of real grids:
-their load buses count as house connections and every other bus as backbone. To mark service
-buses, cable distribution cabinets and service cables by the names of an export, pass
-``bus_type_config`` with its name patterns
-(:func:`~pylovo.analysis.parameter_calculation.classify_bus_types`).
+:func:`~pylovo.analysis.comparison.compare` scores two datasets of grids against each other, metric by metric; the
+notebook ``notebook_tutorials/analysis/basic_comparison.ipynb`` shows the workflow.
 
 .. figure:: /images/analysis/synthetic_comparison_metrics.png
-   :alt: Six histograms of feeder count, feeder length, mean and maximum transformer distance, transformer capacity and resistance for synthetic grids
+   :alt: Histograms of the eight structural metrics for the synthetic grids of one example area
    :width: 100%
 
-   Distributions for **synthetic grids only**, version 1 of the Bavaria run, PLZ 85256 (Vierkirchen, the
-   semi-urban example area of the tutorials). All 26 stored grids have at least five buses and enter the figure.
-   The orange lines mark medians. The read-only source script is ``docs/scripts/plot_synthetic_metrics.py``; run
-   it with ``uv run --extra plots python docs/scripts/plot_synthetic_metrics.py`` against a database with this
-   version and postcode.
+   The eight metrics for **synthetic grids only**: version 1 of the semi-urban example area of the tutorials (PLZ
+   85256), the 25 of its 26 grids with at least five buildings. The script ``docs/scripts/plot_synthetic_metrics.py``
+   reads the example data, no database is needed.
 
-In this synthetic set, the median grid has three to four terminal feeder branches, 0.44 km of backbone and a
-0.4 MVA transformer station. Its mean and maximum transformer-to-terminal distances are 0.14 and 0.21 km, and the
-median resistance proxy is 0.09 Ω. The 10th–90th percentile range of backbone length is 0.03–1.75 km, showing
-substantial variation between local networks. These summaries describe this one generated postcode and version; use
-a broader regional sample for population-level conclusions.
+In this example area the median grid supplies 57 buildings from a 400 kVA station over four feeder branch ends. It
+has 40 m of cable per building, its longest route is 0.4 km and the highest route resistance is 85 mΩ. These
+summaries describe this one postcode area and version; use a broader regional sample for conclusions about a region.
 
 Stored diagnostics
 ------------------
@@ -146,8 +147,8 @@ lie at or beyond it. The cable from the last shared bus to a building is the bui
 *station* is the busbar with the buses it reaches over links of at most 2 m. A **feeder** is a cable that leaves the
 station towards at least two buildings. A building at the busbar, or on its own cable from the station, belongs to
 no feeder, and a grid without a feeder (one building, or one cable per building) has 0 branches. The per-branch
-figures count only the buildings behind the feeders and are 0 without a feeder. The six structural metrics above
-count feeders differently (:ref:`structural-metrics`).
+figures count only the buildings behind the feeders and are 0 without a feeder, as for the eight structural metrics
+(:ref:`structural-metrics`).
 
 A **household equivalent** is the installed power of a consumer divided by ``PEAK_LOAD_HOUSEHOLD`` (16.825 kW): a
 load measure that makes residential, commercial and public buildings comparable. It is no household count and no

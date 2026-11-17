@@ -238,8 +238,8 @@ Validation plots
 :mod:`pylovo.plotting.validation` holds plots to check generated grids and to compare them with other
 grids; pylovo itself does not call them. The postcode plots read the results of the active
 ``VERSION_ID``, the power-flow plots take a net after ``pandapower.runpp``, and the comparison plots a
-metrics table with one row per grid and a ``source`` column (for example the results of
-:func:`~pylovo.analysis.grid_analysis.compute_comparison_parameters` for synthetic and other grids).
+metrics table with one row per grid and a ``source`` column (for example the tables of
+:func:`~pylovo.analysis.comparison.grid_metrics` for synthetic and other grids, concatenated).
 
 .. list-table::
    :header-rows: 1

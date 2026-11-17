@@ -1,87 +1,42 @@
-"""Plot the six comparison metrics for stored synthetic grids only.
+"""Histograms of the eight structural metrics for the grids of one example area (synthetic grids only).
 
-Read-only: loads version 1 of the semi-urban example area of the tutorials (PLZ 85256) through a read-only database
-session and never invokes the comparison export, which drops and recreates ``pylovo.grid_parameters``. Needs the
-database of the Bavaria run in ``.env``. Run from the repository root::
+Needs no database and no internet: :class:`pylovo.examples.TutorialData` reads version 1 of the semi-urban example
+area of the tutorials (PLZ 85256) from ``data/examples``, and :func:`pylovo.analysis.comparison.grid_metrics`
+computes the metrics from its cables and stations. Run from the repository root::
 
     uv run --extra plots python docs/scripts/plot_synthetic_metrics.py
+
+Output: ``docs/source/images/analysis/synthetic_comparison_metrics.png``. The script also prints the medians of the
+metrics, which ``docs/source/user_guide/analysing_grids.rst`` quotes.
 """
 from __future__ import annotations
 
-import _figure_style as style
-import matplotlib.pyplot as plt
+import _figure_style as st
 import numpy as np
 
-from pylovo.analysis.grid_analysis import compute_comparison_parameters
-from pylovo.analysis.parameter_calculation import ParameterCalculator
-from pylovo.database.database_client import DatabaseClient
+from pylovo.analysis import comparison
+from pylovo.examples import TutorialData
+from pylovo.plotting import comparison as comparison_plots
 
-VERSION_ID = "1"
 PLZ = 85256
-MIN_BUSES = 5
-METRICS = (
-    ("feeder_lines", "Terminal feeder branches", "count"),
-    ("graph_length", "Feeder network length", "km"),
-    ("avg_trafo_distance", "Mean transformer distance", "km"),
-    ("max_trafo_distance", "Maximum transformer distance", "km"),
-    ("transformer_mva", "Transformer capacity", "MVA"),
-    ("graph_resistance", "Feeder resistance", "Ω"),
-)
+VERSION_ID = "1"
+MIN_BUILDINGS = 5    # smaller grids are left out, as in the comparison notebook
 
 
 def main() -> None:
-    style.apply_style()
-    calculator = ParameterCalculator()
-    calculator.dbc.close()
-    calculator.dbc = DatabaseClient.read_only()       # every statement of the script runs read-only
-    dbc = calculator.dbc
-    try:
-        dbc.cur.execute(
-            "SELECT kcid, bcid FROM pylovo.grid_result "
-            "WHERE version_id = %s AND plz = %s ORDER BY kcid, bcid",
-            (VERSION_ID, PLZ),
-        )
-        identities = dbc.cur.fetchall()
-        if not identities:
-            raise RuntimeError(f"No synthetic grids for version {VERSION_ID}, PLZ {PLZ}")
-        rows = []
-        failed = []
-        skipped = 0
-        for kcid, bcid in identities:
-            try:
-                net = dbc.read_net_db(PLZ, kcid, bcid, version_id=VERSION_ID)
-                if len(net.bus) < MIN_BUSES:
-                    skipped += 1
-                    continue
-                rows.append(compute_comparison_parameters(calculator, net))
-            except Exception as exc:
-                failed.append((kcid, bcid, str(exc)))
-        if failed:
-            raise RuntimeError(f"Metric calculation failed for {len(failed)} grids: {failed[:3]}")
-        if not rows:
-            raise RuntimeError("No eligible synthetic grids")
-        fig, axes = plt.subplots(2, 3, figsize=(11, 5.8), constrained_layout=True)
-        for ax, (field, title, unit) in zip(axes.flat, METRICS):
-            values = np.array([row[field] for row in rows], dtype=float)
-            values = values[np.isfinite(values)]
-            if not len(values):
-                raise RuntimeError(f"No finite values for {field}")
-            print(f"{field}: median={np.median(values):.3f}, p10={np.percentile(values, 10):.3f}, p90={np.percentile(values, 90):.3f}")
-            ax.hist(values, bins=min(18, max(4, int(np.sqrt(len(values))))),
-                    color=style.CATEGORICAL[0], edgecolor=style.SURFACE)
-            ax.axvline(np.median(values), color=style.CATEGORICAL[1], lw=1.8,
-                       label=f"Median {np.median(values):.2g} {unit}")
-            ax.set_title(title)
-            ax.set_xlabel(unit)
-            ax.set_ylabel("Grids")
-            ax.legend(loc="upper right", fontsize=7)
-            ax.grid(axis="y", color=style.GRID, lw=0.7)
-            ax.set_axisbelow(True)
-        fig.suptitle(f"Synthetic LV grids · PLZ {PLZ} · version {VERSION_ID} · n={len(rows)}")
-        style.save(fig, "analysis", "synthetic_comparison_metrics")
-        print(f"Eligible grids: {len(rows)}; skipped (<{MIN_BUSES} buses): {skipped}")
-    finally:
-        dbc.close()
+    data = TutorialData(PLZ, VERSION_ID, source="examples")
+    layers = data.layers
+    table = comparison.grid_metrics(layers["lines"], layers["grids"], comparison.cable_resistances(data.parameters))
+    metrics = table[table["building_count"] >= MIN_BUILDINGS].reset_index(drop=True)
+    print(f"{len(metrics)} of {len(table)} grids have at least {MIN_BUILDINGS} buildings")
+    for metric in comparison.METRICS:
+        values = comparison.metric_values(metrics, metric) * metric.factor
+        print(f"{metric.key}: median {np.median(values):.{metric.decimals}f} {metric.unit}")
+    name = f"version {VERSION_ID}"
+    fig = comparison_plots.plot_histograms({name: metrics}, {name: comparison_plots.group_colors([name], name)[name]},
+                                           title=f"Synthetic LV grids · PLZ {PLZ} · version {VERSION_ID} · "
+                                                 f"{len(metrics)} grids")
+    st.save(fig, "analysis", "synthetic_comparison_metrics", dpi=110)
 
 
 if __name__ == "__main__":

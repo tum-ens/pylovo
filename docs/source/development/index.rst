@@ -234,9 +234,9 @@ Run them from the repository root with the ``plots`` extra installed:
      - ``images/plotting/*`` (made with pylovo's own plotting functions from the example data of the
        tutorials)
    * - ``plot_synthetic_metrics.py``
-     - yes (reads)
-     - ``images/analysis/synthetic_comparison_metrics.png`` for PLZ 85256 of the Bavaria run
-       (version ``1``)
+     - no
+     - ``images/analysis/synthetic_comparison_metrics.png``: the eight structural metrics for version ``1`` of the
+       example area 85256 (example data of the tutorials)
    * - ``make_tutorial_versions.py``
      - yes (writes)
      - the version variants of the tutorials (``tut-osm``, ``tut-reach``, ``tut-cabin``, ``tut-large``) for
