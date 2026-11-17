@@ -129,7 +129,7 @@ def status() -> dict[str, Any]:
                             info["infdb_buildings"] = estimate
                         else:
                             info["infdb_buildings"] = None
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     if not s["use_external_basedata"]:
                         raise
                     info["infdb_buildings"], info["infdb_error"] = None, f"InfDB {s['infdb_target']}: {type(exc).__name__}: {exc}"

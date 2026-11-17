@@ -11,7 +11,7 @@ pytest.importorskip("matplotlib")  # pylovo-classify imports the plotting stack 
 pytest.importorskip("seaborn")
 pytest.importorskip("plotly")
 
-import pylovo.cli.classify as cl  # noqa: E402
+import pylovo.cli.classify as cl
 
 REPO_CONFIG = Path(cl.CONFIG_CLUSTERING_PATH).parent
 

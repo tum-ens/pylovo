@@ -712,11 +712,6 @@ together with the constants of the stage, which are changed in Python only.
      - TUM colour palettes; ``TUMPalette`` becomes the seaborn default palette if seaborn is
        installed.
      -
-   * - ``NETWORK_COLORS``
-     - three colours
-     - Node colours of the graph plots (transformer, consumer, connection bus) in
-       :mod:`pylovo.plotting.generation.networks`.
-     -
    * - ``MUNICIPAL_REGISTER``
      - column list
      - Column names of ``pylovo.municipal_register`` in table order; used to read the register.

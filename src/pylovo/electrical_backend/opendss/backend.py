@@ -448,24 +448,6 @@ class OpenDSSBackend(IElectricalBackend):
             self.logger.error(f"JSON export failed: {e}")
             raise OpenDSSBackendError(f"JSON export failed: {e}") from e
 
-    def cleanup(self) -> None:
-        """Clean up OpenDSS resources and reset state."""
-        if self.dss:
-            try:
-                self.dss("Clear")
-                self.logger.debug("Cleared OpenDSS circuit")
-            except Exception as e:
-                self.logger.warning(f"Error clearing OpenDSS circuit: {e}")
-            finally:
-                self.dss = None
-
-        self._line_codes = {}
-        self._components_created = _empty_component_registry()
-        self._bus_names = {}
-        self._element_names = {}
-        self._circuit_name = None
-        self.logger.debug("OpenDSS cleanup completed")
-
     # =========================================================================
     # Query Methods
     # =========================================================================
@@ -502,14 +484,6 @@ class OpenDSSBackend(IElectricalBackend):
     # =========================================================================
     # Update Methods (no-ops for OpenDSS)
     # =========================================================================
-
-    def set_bus_coordinates(self, bus_name: str, x: float, y: float) -> None:
-        """Set bus coordinates (no-op - OpenDSS doesn't store geodata)."""
-        pass
-
-    def set_bus_zone(self, bus_name: str, zone: str) -> None:
-        """Set bus zone (no-op - zone concept not used in OpenDSS)."""
-        pass
 
     def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
         """Set transformer rating (no-op - sized at creation)."""

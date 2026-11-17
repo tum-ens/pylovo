@@ -7,13 +7,13 @@ import pytest
 
 pytest.importorskip("matplotlib")  # the selection uses the factor analysis of the plotting module (extra "plots")
 
-import pylovo.classification.clustering.get_parameters_for_clustering as get_params  # noqa: E402
-import pylovo.classification.clustering.selection_report as sr  # noqa: E402
-import pylovo.classification.database_communication.database_communication as dcm  # noqa: E402
-from classification_helpers import FakeDbc, synthetic_clustering_parameters  # noqa: E402
-from pylovo.classification.clustering.transform import transform_key_figures  # noqa: E402
-from pylovo.plotting.classification import get_parameters_for_clustering as select_parameters  # noqa: E402
-from pylovo.plotting.classification import plot_ch_index_for_clustering_algos  # noqa: E402
+import pylovo.classification.clustering.get_parameters_for_clustering as get_params
+import pylovo.classification.clustering.selection_report as sr
+import pylovo.classification.database_communication.database_communication as dcm
+from classification_helpers import FakeDbc, synthetic_clustering_parameters
+from pylovo.classification.clustering.transform import transform_key_figures
+from pylovo.plotting.classification import get_parameters_for_clustering as select_parameters
+from pylovo.plotting.classification import plot_ch_index_for_clustering_algos
 
 ALLOWED = [3, 4, 5]
 

@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("geopandas")
 
-from pylovo import examples  # noqa: E402
+from pylovo import examples
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "data" / "examples"
 

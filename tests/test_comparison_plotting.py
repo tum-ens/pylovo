@@ -5,14 +5,14 @@ import pytest
 
 pytest.importorskip("matplotlib")
 
-import matplotlib  # noqa: E402
+import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from pylovo.analysis import comparison  # noqa: E402
-from pylovo.plotting import comparison as plots  # noqa: E402
+from pylovo.analysis import comparison
+from pylovo.plotting import comparison as plots
 
 
 @pytest.fixture

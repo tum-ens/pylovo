@@ -16,7 +16,6 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pyproj import CRS, Transformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
@@ -554,78 +553,5 @@ def plot_representative_grids(
     text = st.DATA_ATTRIBUTION if attribution is None else attribution
     if text:
         fig.text(0.995, 0.004, text, ha='right', va='bottom', fontsize=6.3, color=st.INK_SECONDARY)
-
-    return fig
-
-
-def get_min_max_data_for_clusters(n_clusters: int, df_networks: pd.DataFrame) -> pd.DataFrame:
-    """
-    Get minimum and maximum values for each cluster and parameter.
-
-    Args:
-        n_clusters: Number of clusters.
-        df_networks: Network parameters with 'clusters' column.
-
-    Returns:
-        pd.DataFrame: Min/max per cluster of attribute 1 ``no_house_connections``,
-        attribute 2 ``cable_len_per_house`` and attribute 3 ``transformer_mva``.
-    """
-    df_min_max = pd.DataFrame(
-        columns=['attribute1_min', 'attribute1_max', 'attribute2_min', 'attribute2_max',
-                 'attribute3_min', 'attribute3_max'])
-
-    for n in range(0, n_clusters):
-        networks_cluster_n = df_networks.groupby('clusters').get_group(n)
-        df_min_max.at[n, 'attribute1_min'] = networks_cluster_n['no_house_connections'].min()
-        df_min_max.at[n, 'attribute1_max'] = networks_cluster_n['no_house_connections'].max()
-        df_min_max.at[n, 'attribute2_min'] = networks_cluster_n['cable_len_per_house'].min()
-        df_min_max.at[n, 'attribute2_max'] = networks_cluster_n['cable_len_per_house'].max()
-        df_min_max.at[n, 'attribute3_min'] = networks_cluster_n['transformer_mva'].min()
-        df_min_max.at[n, 'attribute3_max'] = networks_cluster_n['transformer_mva'].max()
-
-    return df_min_max
-
-
-def plot_clusters_3D(df_min_max: pd.DataFrame, df_centroids: pd.DataFrame) -> Figure:
-    """
-    Plot clusters as 3D boxes with centroids.
-
-    Args:
-        df_min_max: Min/max values per cluster from :func:`get_min_max_data_for_clusters`.
-        df_centroids: Cluster centroids with columns ``0``, ``1``, ``2`` in the attribute
-            order of ``df_min_max``; an optional ``color`` column in ``df_min_max`` sets
-            the box colors.
-
-    Returns:
-        matplotlib.figure.Figure: The Figure object containing the 3D cluster plot.
-    """
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='3d')
-
-    for _index, row in df_min_max.iterrows():
-        Z = np.array([[row['attribute1_min'], row['attribute2_min'], row['attribute3_min']],
-                      [row['attribute1_max'], row['attribute2_min'], row['attribute3_min']],
-                      [row['attribute1_max'], row['attribute2_max'], row['attribute3_min']],
-                      [row['attribute1_min'], row['attribute2_max'], row['attribute3_min']],
-                      [row['attribute1_min'], row['attribute2_min'], row['attribute3_max']],
-                      [row['attribute1_max'], row['attribute2_min'], row['attribute3_max']],
-                      [row['attribute1_max'], row['attribute2_max'], row['attribute3_max']],
-                      [row['attribute1_min'], row['attribute2_max'], row['attribute3_max']]])
-        ax.scatter3D(Z[:, 0], Z[:, 1], Z[:, 2])
-        verts = [[Z[0], Z[1], Z[2], Z[3]],
-                 [Z[4], Z[5], Z[6], Z[7]],
-                 [Z[0], Z[1], Z[5], Z[4]],
-                 [Z[2], Z[3], Z[7], Z[6]],
-                 [Z[1], Z[2], Z[6], Z[5]],
-                 [Z[4], Z[7], Z[3], Z[0]]]
-        color = row.get('color', 'blue')
-        ax.add_collection3d(Poly3DCollection(verts, facecolors=color, linewidths=1,
-                                             edgecolors='r', alpha=.20))
-
-    ax.scatter(df_centroids[0], df_centroids[1], df_centroids[2], color='black', marker='*')
-    ax.set_xlabel('House connections')
-    ax.set_ylabel('Cable length per house (km)')
-    ax.set_zlabel('Transformer rating (MVA)')
-    ax.zaxis.labelpad = -0.7
 
     return fig

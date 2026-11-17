@@ -62,7 +62,7 @@ def test_requests_name_their_database(server, tmp_path):
     client = TestClient(create_app(server.default.settings, tmp_path, db=server.default, connect=server.connect),
                         base_url="http://127.0.0.1:8770")
     assert client.get("/api/databases").json() == {"default": "infdb_mv", "databases": ["infdb_mv", "infdb", "infdb_test"]}
-    fid = lambda url: [f["properties"]["fid"] for f in client.get(url).json()["features"]]   # noqa: E731
+    fid = lambda url: [f["properties"]["fid"] for f in client.get(url).json()["features"]]
     assert fid("/api/layer/mv_stations?version=v1") == [1]
     assert fid("/api/layer/mv_stations?version=v1&db=infdb") == [2]          # its own pool and cache
     assert fid("/api/layer/mv_stations?version=v1&db=infdb_mv") == [1]

@@ -415,7 +415,7 @@ class GridGenerator:
         Load data from config.
         """
         self.dbc.insert_equipment_data_from_config(equipment_data=CONFIG_EQUIPMENT_DATA)
-        self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
+        self.dbc.commit_changes()
         self.dbc.insert_consumer_categories_from_config(consumer_categories=CONSUMER_CATEGORIES)
 
     def prepare_postcodes(self):
@@ -457,7 +457,6 @@ class GridGenerator:
             self.logger.info(
                 f"Residential-only generation enabled: removed {removed_non_residential} non-residential buildings"
             )
-        # self.dbc.commit_changes() # only activate for debugging - otherwise multiprocessing does not work
         self.logger.info("Buildings_tem table prepared")
         self.dbc.remove_duplicate_buildings()
         self.logger.info("Duplicate buildings removed from buildings_tem")

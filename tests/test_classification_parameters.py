@@ -11,19 +11,19 @@ pytest.importorskip("seaborn")
 pytest.importorskip("plotly")
 os.environ.setdefault("MPLBACKEND", "Agg")
 
-import matplotlib  # noqa: E402
+import matplotlib
 
 matplotlib.use("Agg")
 
-from sklearn import preprocessing  # noqa: E402
-from sklearn.cluster import KMeans  # noqa: E402
-from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score  # noqa: E402
+from sklearn import preprocessing
+from sklearn.cluster import KMeans
+from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 
-import pylovo.classification.clustering.get_no_clusters_for_clustering as get_no  # noqa: E402
-import pylovo.classification.clustering.get_parameters_for_clustering as get_params  # noqa: E402
-from pylovo.classification.clustering.transform import transform_key_figures  # noqa: E402
-from classification_helpers import synthetic_clustering_parameters  # noqa: E402
-from pylovo.plotting.classification import (  # noqa: E402
+import pylovo.classification.clustering.get_no_clusters_for_clustering as get_no
+import pylovo.classification.clustering.get_parameters_for_clustering as get_params
+from pylovo.classification.clustering.transform import transform_key_figures
+from classification_helpers import synthetic_clustering_parameters
+from pylovo.plotting.classification import (
     get_parameters_for_clustering as select_parameters,
     plot_ch_index_for_clustering_algos,
     plot_db_index_for_clustering_algos,

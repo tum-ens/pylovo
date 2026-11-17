@@ -45,7 +45,7 @@ def gable_building(x0: float, y0: float, base: float) -> list[tuple[int, list]]:
     """(class code, rings) of a 10 x 6 m house: two long walls, two gable walls, two roof planes, ground."""
     p = [(x0, y0), (x0 + 10, y0), (x0 + 10, y0 + 6), (x0, y0 + 6)]
     he, hr = 3.0, 6.0
-    P = lambda i, z: (*p[i], base + z)  # noqa: E731
+    P = lambda i, z: (*p[i], base + z)
     r1, r0 = (x0 + 10, y0 + 3, base + hr), (x0, y0 + 3, base + hr)
     walls = [[P(0, 0), P(1, 0), P(1, he), P(0, he)], [P(2, 0), P(3, 0), P(3, he), P(2, he)],
              [P(1, 0), P(2, 0), P(2, he), r1, P(1, he)], [P(3, 0), P(0, 0), P(0, he), r0, P(3, he)]]

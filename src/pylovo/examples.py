@@ -114,7 +114,7 @@ def _open_database(plz: int, version_id: Optional[str]) -> tuple[Any, str]:
         return None, f"no database configured ({err})"
     try:
         dbc = DatabaseClient.read_only(log_file=str(Path(tempfile.gettempdir()) / "pylovo-tutorials.log"))
-    except Exception as err:   # noqa: BLE001 - any connection error means: use the example data
+    except Exception as err:   # any connection error means: use the example data
         return None, f"the database is not reachable ({type(err).__name__})"
     from pylovo.config_loader import VERSION_ID
 
@@ -205,7 +205,7 @@ class TutorialData:
     def __del__(self):
         try:      # no module globals here: they may be gone when the interpreter shuts down
             self.close()
-        except Exception:   # noqa: BLE001
+        except Exception:
             pass
 
     # ------------------------------------------------------------------ data

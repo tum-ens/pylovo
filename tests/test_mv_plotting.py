@@ -13,21 +13,21 @@ pytest.importorskip("matplotlib")
 pytest.importorskip("contextily")
 os.environ.setdefault("MPLBACKEND", "Agg")
 
-import matplotlib  # noqa: E402
+import matplotlib
 
 matplotlib.use("Agg")
 
-import geopandas as gpd  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
-from shapely.geometry import LineString, Point, box  # noqa: E402
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib.figure import Figure
+from shapely.geometry import LineString, Point, box
 
-from pylovo.analysis import mv_validation  # noqa: E402
-from pylovo.plotting import mv_grid as mvplot  # noqa: E402
-from pylovo.plotting.mv_grid import maps, statistics  # noqa: E402
-from pylovo.plotting.utils import OSM_TILE_HEADERS  # noqa: E402
+from pylovo.analysis import mv_validation
+from pylovo.plotting import mv_grid as mvplot
+from pylovo.plotting.mv_grid import maps, statistics
+from pylovo.plotting.utils import OSM_TILE_HEADERS
 
 EPSG = 25832
 

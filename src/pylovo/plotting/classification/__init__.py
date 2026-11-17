@@ -15,8 +15,6 @@ from .clustering import (
     plot_bar_distribution_of_clusters_per_regio_5,
     plot_clusters_in_parameter_space,
     plot_representative_grids,
-    get_min_max_data_for_clusters,
-    plot_clusters_3D,
 )
 
 from .features import (
@@ -45,8 +43,6 @@ __all__ = [
     'plot_bar_distribution_of_clusters_per_regio_5',
     'plot_clusters_in_parameter_space',
     'plot_representative_grids',
-    'get_min_max_data_for_clusters',
-    'plot_clusters_3D',
     # Features
     'REGIOSTAR7_NAMES',
     'regiostar7_color',

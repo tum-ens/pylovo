@@ -255,7 +255,7 @@ def feeder_table(detail: dict, validation: dict | None) -> list[dict[str, Any]]:
     """Per-feeder figures for the Inspector (trunk and service km, shares, cable types, cabinets).
 
     Args:
-        detail: Output of :func:`pylovo_api.queries.grid_detail` (lines, buses, splits, feeders).
+        detail: Output of :func:`pylovo_api.queries.grid_detail` (lines, buses, cabinets, feeders).
         validation: This grid's :func:`validation_results` entry (for the first-section loading).
     """
     lines = [f["properties"] for f in detail["lines"]["features"]]
@@ -263,15 +263,7 @@ def feeder_table(detail: dict, validation: dict | None) -> list[dict[str, Any]]:
     station = set(detail.get("station_buses") or [])
     total_hh = sum(b.get("households") or 0 for b in buses.values()) or 0
     total_kw = sum(b.get("p_kw") or 0 for b in buses.values()) or 0
-    # split_points.split_bus is the ways vertex in the bus name ("Connection Nodebus <vertex>").
-    vertex_bus = {}
-    for b in buses.values():
-        match = re.search(r"(\d+)$", b.get("name") or "")
-        if match and (b.get("name") or "").startswith("Connection"):
-            vertex_bus[int(match.group(1))] = b["pp_index"]
-    splits_by_bus = {vertex_bus.get(f["properties"]["split_bus"]) for f in detail["splits"]["features"]}
-    if detail.get("cabinets") is not None:  # K1…Kn of pylovo_api.cabinets (station splits excluded)
-        splits_by_bus = {c["bus"] for c in detail["cabinets"]}
+    splits_by_bus = {c["bus"] for c in detail["cabinets"]}   # K1…Kn of pylovo_api.cabinets (station splits excluded)
     stored_loading = {}
     if validation and validation.get("solved"):
         stored_loading = validation.get("line_loading", {})

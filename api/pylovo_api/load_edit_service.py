@@ -155,13 +155,6 @@ def annotate_grid_detail(detail: dict | None) -> dict | None:
     extra = {r.pop("objectid"): r for r in rows}
     flags = grid_flags(grid_ids=[gid]).get(gid)
     edited = set((flags or {}).get("edited_objectids") or [])
-    loads_by_vertex: dict[int, float] = {}
-    for f in detail["buses"]["features"]:
-        p = f["properties"]
-        if p.get("role") == "consumer" and p.get("installed_kw") is not None:
-            match = (p.get("name") or "").rsplit(" ", 1)[-1]
-            if match.isdigit():
-                loads_by_vertex[int(match)] = p["installed_kw"]
     for f in detail["buildings"]["features"]:
         p = f["properties"]
         p.update(extra.get(p["objectid"], {}))

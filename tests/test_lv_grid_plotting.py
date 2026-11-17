@@ -8,22 +8,22 @@ import pytest
 pytest.importorskip("matplotlib")
 pytest.importorskip("geopandas")
 
-import matplotlib  # noqa: E402
+import matplotlib
 
 matplotlib.use("Agg")
 
-import geopandas as gpd  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-import pandapower as pp  # noqa: E402
-import pandapower.topology as top  # noqa: E402
-import pandas as pd  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
-from shapely.geometry import LineString, Point, box  # noqa: E402
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import pandapower as pp
+import pandapower.topology as top
+import pandas as pd
+from matplotlib.figure import Figure
+from shapely.geometry import LineString, Point, box
 
-from pylovo.plotting import style as st  # noqa: E402
-from pylovo.plotting import voltage_levels as vl  # noqa: E402
-from pylovo.plotting.generation import networks  # noqa: E402
-from pylovo.plotting.lv_grid import electrical, maps, statistics  # noqa: E402
+from pylovo.plotting import style as st
+from pylovo.plotting import voltage_levels as vl
+from pylovo.plotting.generation import networks
+from pylovo.plotting.lv_grid import electrical, maps, statistics
 
 CRS = "EPSG:25832"
 PARAMETERS = {

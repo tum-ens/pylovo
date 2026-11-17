@@ -12,19 +12,19 @@ pytest.importorskip("matplotlib")
 pytest.importorskip("contextily")
 pytest.importorskip("plotly")
 
-import matplotlib  # noqa: E402
+import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.figure import Figure  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
-import pandapower as pp  # noqa: E402
-import plotly.graph_objects as go  # noqa: E402
+import pandapower as pp
+import plotly.graph_objects as go
 
-from pylovo.plotting.generation import networks  # noqa: E402
-from pylovo.plotting.utils import COLOR_MAP  # noqa: E402
-from pylovo.plotting.validation import geo_validation, metric_validation, powerflow_validation  # noqa: E402
+from pylovo.plotting.generation import networks
+from pylovo.plotting.utils import COLOR_MAP
+from pylovo.plotting.validation import geo_validation, metric_validation, powerflow_validation
 
 
 @pytest.fixture(autouse=True)

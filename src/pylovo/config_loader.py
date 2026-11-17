@@ -759,11 +759,6 @@ ACCESS_TOKEN_PLOTLY = os.getenv("ACCESS_TOKEN_PLOTLY")
 TUMPalette = CONFIG_ANALYSIS["PALETTES"]["TUMPalette"]
 TUMPalette1 = CONFIG_ANALYSIS["PALETTES"]["TUMPalette1"]
 
-# Network visualization colors
-NODE_COLOR_TRAFO = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_TRAFO"]
-NODE_COLOR_CONSUMER = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_CONSUMER"]
-NODE_COLOR_CONNECTION_BUS = CONFIG_ANALYSIS["NETWORK_COLORS"]["NODE_COLOR_CONNECTION_BUS"]
-
 # =============================================================================
 # KEYS THAT NO CODE READ
 # =============================================================================
