@@ -81,7 +81,7 @@ notebooks = [
     "pylovo[plots]",
     "ipykernel>=6.29",
     "nbclient>=0.10",
-    # pandas Styler (DataFrame.style) in the classification notebooks; came with Flask before
+    # pandas Styler (DataFrame.style) in the classification notebooks
     "jinja2>=3.1",
 ]
 docs = [
@@ -97,10 +97,6 @@ docs = [
 opendss = [
     # OpenDSS electrical backend (ELECTRICAL_BACKEND: opendss)
     "altdss>=0.2.4",
-]
-legacy-ui = [
-    # Flask browser map for checking and editing transformer positions (pylovo-import transformers-ui)
-    "flask>=3.1.2,<4.0.0",
 ]
 api = [
     # Headless HTTP API (pylovo-api) for browser clients and scripts: web server, job runner with live logs, CSV upload

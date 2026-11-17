@@ -7,8 +7,6 @@ modules call the same functions to read their arguments.
 """
 import argparse
 
-DEFAULT_HOST = "127.0.0.1"   # of the transformer UI (``pylovo-import transformers-ui``)
-DEFAULT_PORT = 8080
 DEFAULT_OUTPUT = "results/diagnostics"   # of ``pylovo-analyze --output``
 
 DESCRIPTION_SETUP = """Create new PyLovo tables or migrate an existing schema.
@@ -372,9 +370,6 @@ Examples:
   # Import DSO transformer positions from CSV
   pylovo-import transformers-dso-csv path/to/transformers.csv --source my_region --replace-source
 
-  # Check and edit transformer positions on a browser map (needs uv sync --extra legacy-ui)
-  pylovo-import transformers-ui
-
   # Load the eGon-data HV/MV substations of the MV stage again (--refresh: download them again first)
   pylovo-import egon-substations --refresh
         """,
@@ -428,12 +423,6 @@ Examples:
         help="Delete existing dso/<source>/... rows before importing this source"
     )
 
-    ui_parser = subparsers.add_parser(
-        "transformers-ui",
-        help="Browser map for checking and editing transformer positions (needs the extra legacy-ui)"
-    )
-    add_ui_arguments(ui_parser)
-
     egon_parser = subparsers.add_parser(
         "egon-substations",
         help="Load the eGon-data HV/MV substations (eTraGo buses of the MV stage) from the Open Energy Platform"
@@ -444,18 +433,3 @@ Examples:
         help="Download them again instead of using the cached file of the data directory"
     )
     return parser
-
-
-def add_ui_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add the transformer UI options to ``parser`` (shared with ``pylovo-import transformers-ui``)."""
-    parser.add_argument('--host', default=DEFAULT_HOST,
-                        help=f'Interface to bind to (default: {DEFAULT_HOST}, local only; '
-                             '0.0.0.0 exposes the UI and its write access to the network)')
-    parser.add_argument('--port', type=int, default=DEFAULT_PORT,
-                        help=f'Port number (default: {DEFAULT_PORT}, 0 for the first free port)')
-    parser.add_argument('--debug', action='store_true', help='Enable Flask debug mode and debug logging')
-    parser.add_argument('--cleanup', action='store_true',
-                        help='Check the database connection before starting')
-    parser.add_argument('--auto-cleanup', action='store_true',
-                        help='Terminate (kill) any process that already listens on --port before starting '
-                             '(uses lsof; off by default)')

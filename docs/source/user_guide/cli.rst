@@ -225,7 +225,7 @@ pylovo-import
 
 .. code-block:: text
 
-   pylovo-import [-h] {transformers-osm,transformers-dso-csv,transformers-ui,egon-substations} ...
+   pylovo-import [-h] {transformers-osm,transformers-dso-csv,egon-substations} ...
 
 Imports data into the database (:doc:`transformer_data`). Without a subcommand the help is shown.
 
@@ -260,25 +260,6 @@ Imports data into the database (:doc:`transformer_data`). Without a subcommand t
    ``--refresh``
       Download them again from the Open Energy Platform instead of using the cached file of the data
       directory.
-
-``pylovo-import transformers-ui [--host HOST] [--port PORT] [--debug] [--cleanup] [--auto-cleanup]``
-   Start a browser map for checking and editing the transformer positions of ``pylovo.transformers``
-   (:ref:`transformer-map`). It needs the extra ``legacy-ui`` (``uv sync --extra legacy-ui``), the
-   database of the ``.env`` and internet access for the map tiles and for Leaflet. Open the printed
-   address (default ``http://127.0.0.1:8080``).
-
-   ``--host HOST``
-      Interface to bind to (default ``127.0.0.1``, this computer only). The map has no login: with
-      ``0.0.0.0`` everyone who can reach the port can change ``pylovo.transformers``.
-   ``--port PORT``
-      Port (default 8080, ``0`` takes the first free port from 8080 on).
-   ``--debug``
-      Flask debug mode and debug logging.
-   ``--cleanup``
-      Check the database connection before starting.
-   ``--auto-cleanup``
-      Terminate (``kill``) every process that listens on ``--port`` before starting. Needs ``lsof``,
-      off by default.
 
 pylovo-export
 -------------

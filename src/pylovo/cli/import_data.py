@@ -3,7 +3,6 @@
 Subcommands:
     transformers-osm: fetch transformers of an OSM relation (or of federal states) from the Overpass API and add them.
     transformers-dso-csv: add DSO transformer positions from a CSV file.
-    transformers-ui: browser map for checking and editing transformer positions (needs the extra legacy-ui).
     egon-substations: load the eGon-data HV/MV substations of the MV stage (downloaded from the Open Energy
     Platform when not cached or with --refresh).
 """
@@ -20,7 +19,6 @@ from pylovo.data_import.import_transformers import (
     get_trafos_processed_target_geojson_path,
     process_trafos,
 )
-from pylovo.data_import.transformers_ui import run_transformers_ui
 from pylovo.database.database_constructor import DUPLICATE_KEY_ERROR, DatabaseConstructor
 
 
@@ -128,14 +126,6 @@ def main():
             import_transformers_dso_csv(args.csv_path, args.source, args.replace_source)
         elif args.command == "egon-substations":
             import_egon(args.refresh)
-        elif args.command == "transformers-ui":
-            run_transformers_ui(
-                host=args.host,
-                port=args.port,
-                debug=args.debug,
-                cleanup=args.cleanup,
-                auto_cleanup=args.auto_cleanup,
-            )
     except Exception as e:
         print(f"✗ Error: {e}")
         import traceback

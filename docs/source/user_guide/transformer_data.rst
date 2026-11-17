@@ -33,8 +33,7 @@ Sources of transformer candidates
      - ``pylovo-import transformers-dso-csv <file.csv>``.
    * - Manual edits
      - ``manual/<unix-time>``
-     - Browser map ``pylovo-import transformers-ui`` (:ref:`transformer-map`) or the HTTP API
-       (:doc:`http_api`).
+     - The transformer editor of the HTTP API (:ref:`transformer-map`).
 
 Which candidates are used
 -------------------------
@@ -299,24 +298,13 @@ and generate the grids in a new ``VERSION_ID``.
 Manual editing
 --------------
 
-``pylovo-import transformers-ui`` starts a browser map on which the candidates of
-``pylovo.transformers`` can be checked and edited. It needs the extra ``legacy-ui`` (Flask), the
-database of the ``.env`` and internet access for the map tiles and for Leaflet:
-
-.. code-block:: bash
-
-   uv sync --extra legacy-ui
-   uv run pylovo-import transformers-ui        # then open http://127.0.0.1:8080
-
-Enter a PLZ to load the transformers inside it (at most 1000, imported ones blue, manual ones red).
-With *Start Adding Transformers* a click on the map adds a transformer (id ``manual/<unix-time>``,
-with the rating that is selected beforehand). A click on a marker opens its pop-up to set the rating of
-this transformer or to delete it. The bulk tools set the rating of all transformers of the PLZ: one rating
-for all, a percentage distribution of the ratings of ``TRANSFORMERS`` in ``config_generation_lv.yaml``
-(assigned at random: applying it again gives another assignment), or no rating. Every change is
-written to the database at once and cannot be undone. The map has no login and listens on this
-computer only (``--host``, see :doc:`cli`). The HTTP API (:doc:`http_api`) is the counterpart of
-this map for browser clients: it adds, rates and deletes candidates the same way.
+The HTTP API (:doc:`http_api`, routes ``/api/transformers``) lists the candidates of
+``pylovo.transformers`` and adds, rates and deletes them; the GridPlanner UI shows them on a map. A new
+position gets the id ``manual/<unix-time>``. The bulk routes set the rating of all candidates of a PLZ: one
+rating for all, a percentage distribution of the ratings of ``TRANSFORMERS`` in ``config_generation_lv.yaml``
+(assigned at random: applying it again gives another assignment), or no rating. Every change is written to the
+database at once and cannot be undone. Versions 1.2 and earlier had a separate Flask map for this
+(``pylovo-import transformers-ui``).
 
 Manual positions are used with ``USE_OPEN_TRANSFORMER_POSITIONS`` (together with all OSM and LoD2
 candidates) or alone with ``USE_MANUAL_TRANSFORMER_POSITIONS``. A rating set on a candidate sizes the

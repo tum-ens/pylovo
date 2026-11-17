@@ -13,7 +13,7 @@ from pylovo.cli import launch
 
 SCRIPTS = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"]["scripts"]
 #: Help of subcommands, too: their parsers are built before the command runs.
-SUBCOMMAND_HELP = [("pylovo-delete", "networks"), ("pylovo-import", "transformers-ui"), ("pylovo-mv", "generate")]
+SUBCOMMAND_HELP = [("pylovo-delete", "networks"), ("pylovo-import", "transformers-dso-csv"), ("pylovo-mv", "generate")]
 
 #: Runs the entry points in a fresh interpreter in which every import of the configuration fails
 #: (``None`` in ``sys.modules``), like a missing ``DBNAME`` or ``config/`` would, and prints what each one did.

@@ -52,7 +52,7 @@ class DatabaseClient(
     * ``GridMixin``: routing and line queries for cable installation and visualisation rows.
     * ``AnalysisMixin``: pandapower persistence, analysis parameters and GeoDataFrame readers.
     * ``ResultsMixin``: saving working tables as results and deleting results.
-    * ``TransformerUiMixin``: queries of the transformer map UI.
+    * ``TransformerUiMixin``: queries of the transformer editor of the HTTP API.
     * ``UtilsMixin``: PLZ working tables, transactions and shared lookups.
     * ``LvLayerMixin``: read-only map layers and key figures of the LV grids (plots and notebooks).
     * ``LoadEditMixin``: manual load edits of stored grids and their audit table (:mod:`pylovo.load_editing`).

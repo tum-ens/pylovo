@@ -4,7 +4,7 @@
 the ``osm_id`` prefix:
 
 * DSO stations imported with ``pylovo-import transformers-dso-csv`` (``dso/…``, ``dso_validation/…``);
-* positions placed by hand with the transformer map (``pylovo-import transformers-ui``) or the HTTP API
+* positions placed by hand with the HTTP API
   (``manual/…``);
 * all other open data: OSM stations and LoD2 station buildings.
 

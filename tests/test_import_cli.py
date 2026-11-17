@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 
 from pylovo.cli import import_data
-from pylovo.data_import.transformers_ui import DEFAULT_HOST
 
 
 DUPLICATE = 'ERROR:  duplicate key value violates unique constraint "transformers_pkey"'
@@ -43,7 +42,6 @@ def calls(monkeypatch, ogr):
     monkeypatch.setattr(import_data, "import_dso_transformers_csv",
                         lambda csv_path, source=None, replace_source=False: recorded.append(
                             ("dso", csv_path, source, replace_source)) or 3)
-    monkeypatch.setattr(import_data, "run_transformers_ui", lambda **options: recorded.append(("ui", options)))
     return recorded
 
 
@@ -121,17 +119,6 @@ def test_dso_positions_are_imported_from_the_csv_with_source_and_replace_flag(mo
     run(monkeypatch, *args)
     assert calls == [expected]
     assert "Imported 3 DSO transformer positions" in capsys.readouterr().out
-
-
-def test_the_transformer_map_gets_its_options_and_binds_to_the_local_host_by_default(monkeypatch, calls):
-    run(monkeypatch, "transformers-ui")
-    (_, defaults), = calls
-    assert defaults["host"] == DEFAULT_HOST and DEFAULT_HOST in ("127.0.0.1", "localhost", "::1")
-    assert defaults["debug"] is False and defaults["cleanup"] is False and defaults["auto_cleanup"] is False
-
-    calls.clear()
-    run(monkeypatch, "transformers-ui", "--host", "0.0.0.0", "--port", "5055", "--debug", "--cleanup", "--auto-cleanup")
-    assert calls == [("ui", {"host": "0.0.0.0", "port": 5055, "debug": True, "cleanup": True, "auto_cleanup": True})]
 
 
 @pytest.mark.parametrize("args", [["transformers-osm"], ["transformers-osm", "--relation-id", "abc"],

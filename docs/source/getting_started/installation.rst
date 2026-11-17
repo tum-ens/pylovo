@@ -79,9 +79,6 @@ Optional dependency groups (extras):
    * - ``opendss``
      - altdss (OpenDSS via DSS-Extensions)
      - ``ELECTRICAL_BACKEND: opendss`` (:doc:`../concepts/electrical_backends`)
-   * - ``legacy-ui``
-     - Flask
-     - The browser map ``pylovo-import transformers-ui`` for checking and editing transformer positions
 
 .. code-block:: bash
 
