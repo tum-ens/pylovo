@@ -1,9 +1,9 @@
 # Notebook tutorials
 
 Jupyter notebooks that show what pylovo produces and how to use it. Start with the learning path below. The
-folders hold the comparison of two grid datasets (`analysis/`), the classification notebooks (`classification/`),
-the development notebooks of the MV stage (`mv_grids/`) and the previous LV notebooks (`grid_generation/`). The
-notebooks only read; grids are generated on the command line with `pylovo-generate` and `pylovo-mv`.
+folders hold the comparison of two grid datasets (`analysis/`), the classification notebooks (`classification/`)
+and the development notebooks of the MV stage (`mv_grids/`). The notebooks only read; grids are generated on the
+command line with `pylovo-generate` and `pylovo-mv`.
 
 ## Learning path
 
@@ -43,26 +43,6 @@ example data; its stored outputs are refreshed with
 ```bash
 uv run --extra notebooks python notebook_tutorials/refresh_outputs.py analysis/basic_comparison.ipynb
 ```
-
-### `grid_generation/`
-
-The LV notebooks before the learning path, kept with their stored outputs for comparison. Four of them call
-plotting functions that were removed (`plot_contextily`, the spacing trees and the pie, histogram and box plots), so
-they no longer run. In this order: Each has a parameter cell
-at the top (`plz`, and `kcid`/`bcid` of one grid; `None` selects the first grid of the PLZ).
-
-| Notebook | Content |
-| --- | --- |
-| `0_basic_grid_generation.ipynb` | How grids are identified (`plz`, `kcid`, `bcid`), read one pandapower network from the database and plot it. |
-| `1_map_visualization_examples.ipynb` | Build up a grid on a map: postcode area, buildings, building clusters, peak loads, transformer, streets and cables. |
-| `2_0_LV_pandapower_network.ipynb` | The pandapower tables of a grid: buses, lines, transformer, loads, power flow results and geometries. |
-| `2_1_pandapower_networks_generic_coord.ipynb` | Plot a grid with generic (topology-based) coordinates instead of geographic ones. |
-| `3_LV_networkx_graph.ipynb` | Convert a grid into a networkx graph, draw it as a tree or radially and compute the cable length from the transformer to the consumers. |
-| `4_basic_plotting.ipynb` | Statistics of all grids of a PLZ: transformer sizes, cable types and lengths, parameters per transformer size, transformers on a map. |
-
-The stored outputs were generated for the demo postcode area 85653 (Aying), whose buildings,
-streets and transformers are derived from OpenStreetMap. Map data © OpenStreetMap contributors
-(ODbL).
 
 ### `classification/`
 
@@ -158,7 +138,7 @@ Use the Python interpreter of the project environment, `.venv/bin/python`
 - **Headless**, e.g. to refresh the stored outputs:
 
   ```bash
-  uv run jupyter execute --inplace notebook_tutorials/grid_generation/*.ipynb
+  uv run jupyter execute --inplace notebook_tutorials/mv_grids/*.ipynb
   ```
 
 How pylovo finds its settings when it runs in a notebook (the kernel runs in the notebook's
