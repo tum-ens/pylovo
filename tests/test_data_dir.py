@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from pylovo import utils
-from pylovo.cli import setup
 from pylovo.config_loader import TARGET_EPSG
 from pylovo.data_import import import_transformers, municipal_register
 
@@ -116,27 +115,3 @@ def test_register_files_without_a_data_dir_variable(monkeypatch, work_dir):
     monkeypatch.setenv("PYLOVO_ROOT", str(work_dir))
     expected = [str(work_dir / "data" / "municipal_register" / name) for name in municipal_register.REGISTER_FILES]
     assert municipal_register.missing_input_files() == expected
-
-
-class PostcodeConstructor:
-    """Records the CSV files that setup imports instead of touching a database."""
-
-    def __init__(self):
-        self.csv_files = None
-
-    def csv_to_db(self, csv_file_list):
-        self.csv_files = csv_file_list
-
-
-def test_setup_reads_the_postcode_csv_from_the_data_dir(monkeypatch, work_dir):
-    monkeypatch.setattr(setup, "USE_INFDB", False)
-    monkeypatch.setenv("PYLOVO_DATA_DIR", str(work_dir / "elsewhere"))
-    constructor = PostcodeConstructor()
-    step = next(step for step in setup.import_steps(constructor) if step.table == "postcode")
-    postcode_csv = work_dir / "elsewhere" / "postcode.csv"
-
-    assert step.check() == [f"missing input file {postcode_csv}"]
-    touch(postcode_csv)
-    assert step.check() == []
-    step.run()
-    assert constructor.csv_files == [{"path": postcode_csv, "table_name": "postcode"}]

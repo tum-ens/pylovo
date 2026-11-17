@@ -26,27 +26,22 @@ How regions are resolved
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 39 39
+   :widths: 22 78
    :class: fixed-table
 
    * - Input
-     - InfDB mode
-     - File-based mode
+     - Resolved to
    * - ``--plz``
      - Used directly. The postcode polygon is taken from ``pylovo.postcode`` or fetched from
        InfDB; the buildings and streets are selected by their ``postcode`` column.
-     - The PLZ must exist in ``pylovo.municipal_register``; its AGS select the building
-       shapefiles to import.
    * - ``--ags``
      - All PLZ of the AGS in ``pylovo.municipal_register``.
-     - Same, plus the import of the building shapefiles of the AGS.
    * - ``--all``
      - Every ``postcode`` of the buildings in ``INFDB_SOURCE_SCHEMA.buildings`` (with
        ``USE_EXTERNAL_BASEDATA`` those of the external InfDB), the PLZ with the most buildings
        first. Buildings without a postcode belong to no PLZ. With states, only the buildings whose
        ``gemeindeschluessel`` starts with a state key count, so a PLZ across a state border
        belongs to both states.
-     - Not available: pass ``--plz`` or ``--ags``.
 
 The municipal register is filled by ``pylovo-setup`` from the Gemeindeverzeichnis
 (``municipal_register/gemeindeverzeichnis`` of the data directory) and the RegioStaR table
@@ -63,9 +58,7 @@ PLZ without a class (:doc:`classification`).
 .. note::
 
    Postcode areas and municipal boundaries do not match exactly. ``--ags`` generates complete
-   postcode areas, which may extend beyond the municipality, and in the file-based mode only the
-   buildings of the imported municipalities are available inside a postcode area. In the same
-   way, ``--all`` takes the extent of the InfDB: a postcode area cut by the edge of the imported
+   postcode areas, which may extend beyond the municipality. In the same way, ``--all`` takes the extent of the InfDB: a postcode area cut by the edge of the imported
    region is generated with the buildings inside it.
 
 Finding codes

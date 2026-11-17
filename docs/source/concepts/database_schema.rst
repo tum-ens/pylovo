@@ -42,8 +42,7 @@ within their grid; dependent elements are deleted before buses.
 
 Reference and input tables are not versioned: ``postcode``, ``transformers``,
 ``consumer_categories`` (the categories of the last run, rewritten at every run), ``municipal_register``,
-the MV routing graphs ``mv_graph*`` and, in the file-based mode, ``res``, ``oth`` and ``ways``.
-``ags_log`` is created in every mode but only filled in the file-based mode. The ledger of the
+and the MV routing graphs ``mv_graph*``. The ledger of the
 applied migrations is ``schema_migrations``.
 
 Result tables in short

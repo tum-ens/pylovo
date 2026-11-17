@@ -7,11 +7,8 @@ import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
 import psycopg2 as psy
-import sqlparse
 from psycopg2 import sql
-from sqlalchemy import text
 
 import pylovo.database.database_client as dbc
 from pylovo.config_loader import (
@@ -25,12 +22,11 @@ from pylovo.config_loader import (
     PASSWORD,
     PORT,
     TARGET_EPSG,
-    USE_INFDB,
 )
 from pylovo.data_import.import_transformers import RELATION_ID, get_processed_trafos
 
 # Import table structure from packaged module (reliable for installed/editable usage)
-from pylovo.database.config_table_structure import CREATE_QUERIES, INFDB_OPTIONAL_TABLES
+from pylovo.database.config_table_structure import CREATE_QUERIES
 from pylovo.database.migrations import (
     LEGACY_COLUMNS_MIGRATION,
     POST_SCHEMA_MIGRATIONS,
@@ -38,7 +34,6 @@ from pylovo.database.migrations import (
     legacy_columns,
 )
 from pylovo.infdb.infdb_client import InfdbClient
-from pylovo.utils import get_user_data_dir
 
 
 # Session advisory lock held by setup, migrations and resets (pg_advisory_lock key pair).
@@ -67,11 +62,8 @@ class DatabaseConstructor:
     Several methods delete or replace existing data; they are meant for ``pylovo-setup`` and
     the raw-data import, not for normal generation runs.
 
-    Two raw-data paths exist. With ``USE_INFDB=True`` (default) buildings and ways are read
-    from InfDB during generation, and setup only imports postcodes from InfDB. With
-    ``USE_INFDB=False`` setup imports postcodes from CSV (``csv_to_db``) and the street
-    network from the osm2po SQL file (``create_public_2po_table`` and ``ways_to_db``); building
-    shapefiles are imported per municipality with ``ogr_to_db``.
+    Buildings and ways are read from the InfDB during generation; the setup imports the postcodes
+    of the InfDB, the transformers and the reference tables.
 
     Args:
         dbc_obj: Existing ``DatabaseClient`` to use; a new one is created if omitted.
@@ -129,8 +121,7 @@ class DatabaseConstructor:
 
         Also creates the extensions ``postgis`` and ``pgRouting`` in schema ``public`` on the first
         call (never in ``pylovo``, which a reset drops). With
-        ``table_name="all"`` the queries run in the order of ``CREATE_QUERIES``; with
-        ``USE_INFDB=True`` the file-based input tables (``INFDB_OPTIONAL_TABLES``) are skipped.
+        ``table_name="all"`` the queries run in the order of ``CREATE_QUERIES``.
 
         Args:
             table_name: Key of ``CREATE_QUERIES``, or ``"all"``.
@@ -152,15 +143,7 @@ class DatabaseConstructor:
 
         if table_name == "all":
             with self.dbc.conn.cursor() as cur:
-                create_queries = CREATE_QUERIES
-                if USE_INFDB:
-                    create_queries = {
-                        name: query
-                        for name, query in CREATE_QUERIES.items()
-                        if name not in INFDB_OPTIONAL_TABLES
-                    }
-
-                for name, query in create_queries.items():
+                for name, query in CREATE_QUERIES.items():
                     cur.execute(query)
                     print(f"CREATE TABLE {name}")
             self.dbc.conn.commit()
@@ -308,8 +291,7 @@ class DatabaseConstructor:
     def ogr_to_db(self, ogr_file_list, skip_failures: bool = False) -> list[str]:
         """Import geodata files into ``pylovo`` tables with ``ogr2ogr`` (GDAL).
 
-        Used for the transformer GeoJSON and, with ``USE_INFDB=False``, for building
-        shapefiles. Rows are appended if the table exists; otherwise ``ogr2ogr`` creates it.
+        Used for the transformer GeoJSON. Rows are appended if the table exists; otherwise ``ogr2ogr`` creates it.
         Geometries are promoted to multi-geometries and transformed to ``TARGET_EPSG``.
 
         Args:
@@ -399,62 +381,6 @@ class DatabaseConstructor:
         ]
         self.ogr_to_db(trafo_dict)
 
-    def csv_to_db(self, csv_file_list):
-        """Replace the content of ``pylovo`` tables with CSV files (file-based input, ``USE_INFDB=False``).
-
-        Per file, the existing rows are deleted and the CSV is inserted in one transaction, so a failed
-        insert leaves the old rows. The columns ``einwohner`` and ``gid`` are renamed to ``population``
-        and ``postcode_id``.
-
-        Args:
-            csv_file_list: Dicts with ``path`` and optionally ``table_name`` (default: file stem),
-                normally the ``postcode.csv`` of the data directory.
-
-        Raises:
-            FileNotFoundError: If a file does not exist.
-            RuntimeError: If ``postcode`` is to be replaced while ``postcode_result`` has rows.
-        """
-        for file_dict in csv_file_list:
-            st = time.time()
-            file_path = Path(file_dict["path"])
-            if not file_path.exists():
-                raise FileNotFoundError(file_path)
-            file_name = file_path.stem
-            table_name = file_dict.get("table_name", file_name)
-
-            exists = self.table_exists(table_name=table_name)
-            if exists and table_name == "postcode" and self._has_rows("postcode_result"):
-                raise RuntimeError(
-                    "The postcode table is not replaced: pylovo.postcode_result has rows, and deleting the "
-                    "postcodes would delete the stored grids of all versions through the foreign key. Delete the "
-                    "versions first or set up a new database.")
-            df = pd.read_csv(file_path, index_col=False)
-            df = df.rename(columns={"einwohner": "population", "gid": "postcode_id"})
-            with self.dbc.sqla_engine.begin() as connection:
-                if exists:
-                    warnings.warn(f"{table_name} table is overwritten!", stacklevel=2)
-                    quoted = connection.dialect.identifier_preparer.quote_identifier(table_name)
-                    connection.execute(text(f"DELETE FROM pylovo.{quoted}"))
-                df.to_sql(
-                    name=table_name,
-                    con=connection,
-                    if_exists="append",
-                    index=False,
-                )
-
-            et = time.time()
-            print(f"{file_name} is successfully imported to db in {int(et - st)} s")
-
-    def _has_rows(self, table_name: str) -> bool:
-        """Return whether ``pylovo.<table_name>`` exists and has a row."""
-        if not self.table_exists(table_name):
-            return False
-        with self.dbc.conn.cursor() as cur:
-            cur.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM pylovo.{})").format(sql.Identifier(table_name)))
-            found = cur.fetchone()[0]
-        self.dbc.conn.commit()
-        return found
-
     def infdb_postcodes_problem(self) -> str | None:
         """Explain why ``load_postcode_from_infdb`` would fail, or return None if it can run."""
         table = sql.Identifier(INFDB_OPENDATA_SCHEMA, "postcodes_germany")
@@ -536,110 +462,6 @@ class DatabaseConstructor:
 
         et = time.time()
         print(f"Postcode data imported from InfDB in {int(et - st)} s")
-
-    def create_public_2po_table(self):
-        """Run the osm2po street SQL file ``<data dir>/ways/ways_public_2po_4pgr.sql`` (file-based input).
-
-        The file creates and fills ``public_2po_4pgr``; ``ways_to_db`` converts it afterwards.
-        It is read in chunks of 1 % of its size; complete statements are executed and committed
-        immediately, an incomplete last statement is kept for the next chunk.
-        """
-        cur = self.dbc.conn.cursor()
-
-        user_data = get_user_data_dir()
-        sc_path = str(user_data / "ways" / "ways_public_2po_4pgr.sql")
-        file_size = os.path.getsize(sc_path)
-
-        chunk_size = max(1, file_size // 100)
-        chars_read = 0
-
-        leftover = ""  # Holds any partial statement that didn't end with a semicolon
-
-        print("\nStart inserting ways into public_2po_4pgr table.")
-        with open(sc_path, 'r', encoding='utf-8') as sc_file:
-            while True:
-                data = sc_file.read(chunk_size)
-                if not data:
-                    break
-
-                chars_read += len(data)
-                progress = round(chars_read * 100 / file_size)
-                print(f"\rProgress: {progress}%", end="", flush=True)
-
-                # Combine leftover from previous read with current chunk
-                combined = leftover + data
-
-                # Use sqlparse to split out complete statements
-                statements = sqlparse.split(combined)
-
-                # If sqlparse.split() returns multiple statements, the last one
-                # might be incomplete. We’ll keep it as leftover if needed.
-                if len(statements) > 1:
-                    # Execute all statements except possibly the last
-                    for stmt in statements[:-1]:
-                        stmt = stmt.strip()
-                        if stmt:
-                            cur.execute(stmt)
-                            self.dbc.conn.commit()
-
-                    # Check if the last statement ends with a semicolon or not
-                    last_stmt = statements[-1].strip()
-                    if last_stmt.endswith(';'):
-                        # It's a complete statement
-                        cur.execute(last_stmt)
-                        self.dbc.conn.commit()
-                        leftover = ""
-                    else:
-                        leftover = last_stmt
-                else:
-                    # 0 or 1 statements from sqlparse
-                    if len(statements) == 1:
-                        # Could be complete or incomplete
-                        stmt = statements[0].strip()
-                        if stmt.endswith(';'):
-                            # It's complete, execute it
-                            cur.execute(stmt)
-                            self.dbc.conn.commit()
-                            leftover = ""
-                        else:
-                            # It's incomplete, keep it
-                            leftover = stmt
-                    else:
-                        # No statements found. This can happen if combined was empty or whitespace.
-                        # Just continue reading next chunk
-                        pass
-        print("\nInserted all ways into public_2po_4pgr table.")
-
-    def ways_to_db(self):
-        """Copy the osm2po ways from ``public_2po_4pgr`` into ``pylovo.ways``, drop the source table and commit.
-
-        File-based input (``USE_INFDB=False``): the osm2po dump creates ``public_2po_4pgr``; its columns are
-        copied one by one and the geometry is transformed to ``TARGET_EPSG``.
-        """
-        st = time.time()
-
-        cur = self.dbc.conn.cursor()
-
-        # Transform to ways table
-        query = f"""INSERT INTO pylovo.ways
-            SELECT  clazz,
-                    source,
-                    target,
-                    cost,
-                    reverse_cost,
-                ST_Transform(geom_way, {TARGET_EPSG}) as geom,
-                    id AS way_id
-            FROM public_2po_4pgr"""
-        cur.execute(query)
-
-        # Drop public_2po_4pgr table, as it is not needed anymore
-        query = "DROP TABLE public_2po_4pgr"
-        cur.execute(query)
-
-        self.dbc.conn.commit()
-
-        et = time.time()
-        print(f"Ways are successfully imported to db in {int(et - st)} s")
 
     def load_ways_preprocessing_functions(self):
         """Create or replace the SQL functions of ``pylovo/ways_preprocessing_functions`` and commit.

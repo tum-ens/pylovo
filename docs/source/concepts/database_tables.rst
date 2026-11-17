@@ -129,7 +129,7 @@ Check ``chk_consumer_sim_factor``: ``sim_factor BETWEEN 0 AND 1``.
 ``postcode``
 ~~~~~~~~~~~~
 
-Postcode polygons. Filled by ``pylovo-setup`` (from InfDB or ``data/postcode.csv``); missing InfDB postcodes are added on demand during generation.
+Postcode polygons. Filled by ``pylovo-setup`` from the InfDB; missing InfDB postcodes are added on demand during generation.
 
 Unique: (plz).
 
@@ -165,7 +165,7 @@ Check ``chk_postcode_geom``: ``geom IS NOT NULL``.
 ``municipal_register``
 ~~~~~~~~~~~~~~~~~~~~~~
 
-PLZ to AGS mapping with population, area and RegioStaR classes; used to resolve ``--ags`` and to select building files in file-based mode.
+PLZ to AGS mapping with population, area and RegioStaR classes; used to resolve ``--ags``.
 
 .. list-table::
    :header-rows: 1
@@ -496,146 +496,6 @@ eGon-data HV/MV substations of Germany from the Open Energy Platform (``pylovo-s
    * - ``footprint``
      - ``geometry(MultiPolygon,<TARGET_EPSG>)``
      -
-
-``ags_log``
-~~~~~~~~~~~
-
-AGS codes whose building files were imported (file-based mode).
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``ags``
-     - ``bigint``
-     - PK
-
-``res``
-~~~~~~~
-
-Residential building polygons imported from shapefiles (file-based mode only).
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``osm_id``
-     - ``varchar``
-     - PK
-   * - ``area``
-     - ``double precision``
-     -
-   * - ``use``
-     - ``varchar(80)``
-     -
-   * - ``comment``
-     - ``varchar(80)``
-     -
-   * - ``free_walls``
-     - ``integer``
-     -
-   * - ``building_t``
-     - ``varchar(80)``
-     -
-   * - ``occupants``
-     - ``double precision``
-     -
-   * - ``floors``
-     - ``integer``
-     -
-   * - ``constructi``
-     - ``varchar(80)``
-     -
-   * - ``refurb_wal``
-     - ``double precision``
-     -
-   * - ``refurb_roo``
-     - ``double precision``
-     -
-   * - ``refurb_bas``
-     - ``double precision``
-     -
-   * - ``refurb_win``
-     - ``double precision``
-     -
-   * - ``geom``
-     - ``geometry(MultiPolygon, <TARGET_EPSG>)``
-     -
-
-``oth``
-~~~~~~~
-
-Other building polygons imported from shapefiles (file-based mode only).
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``osm_id``
-     - ``varchar``
-     - PK
-   * - ``area``
-     - ``double precision``
-     -
-   * - ``use``
-     - ``varchar(80)``
-     -
-   * - ``comment``
-     - ``varchar(80)``
-     -
-   * - ``free_walls``
-     - ``integer``
-     -
-   * - ``geom``
-     - ``geometry(MultiPolygon, <TARGET_EPSG>)``
-     -
-
-``ways``
-~~~~~~~~
-
-Street network imported from the osm2po SQL dump (file-based mode only).
-
-.. list-table::
-   :header-rows: 1
-   :widths: 34 38 28
-   :class: fixed-table
-
-   * - Column
-     - Type
-     - Key
-   * - ``clazz``
-     - ``integer``
-     -
-   * - ``source``
-     - ``integer``
-     -
-   * - ``target``
-     - ``integer``
-     -
-   * - ``cost``
-     - ``double precision``
-     -
-   * - ``reverse_cost``
-     - ``double precision``
-     -
-   * - ``geom``
-     - ``geometry(LineString,<TARGET_EPSG>)``
-     -
-   * - ``way_id``
-     - ``integer``
-     - PK
 
 ``schema_migrations``
 ~~~~~~~~~~~~~~~~~~~~~
@@ -1654,7 +1514,7 @@ Check ``chk_pp_load_const_i_percent``: ``const_i_percent IS NULL OR const_i_perc
 ``clustering_parameters``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Per-grid key figures written by ``pylovo-analyze --per-grid``, defined in :doc:`/user_guide/analysing_grids`.
+Per-grid key figures written by ``pylovo-analyze --per-grid``.
 
 Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
@@ -1735,9 +1595,15 @@ Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DEL
    * - ``max_vsw_of_a_branch``
      - ``double precision``
      -
+   * - ``no_branch_ends``
+     - ``integer``
+     -
+   * - ``max_route_resistance_ohm``
+     - ``double precision``
+     -
    * - ``key_figures_version``
      - ``smallint``
-     - NOT NULL. Version of the definitions the row was computed with.
+     -
 
 ``load_edit``
 ~~~~~~~~~~~~~

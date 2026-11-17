@@ -2,7 +2,7 @@
 # Build from the repository root:
 #   docker build -f api/docker/Dockerfile --build-arg PYLOVO_REVISION=$(git rev-parse HEAD) -t pylovo .
 # The database is not part of the image: point the mounted .env to your InfDB/PostgreSQL, or pass
-# DBNAME, DBUSER, PASSWORD, HOST, PORT (USE_INFDB, INFDB_*_SCHEMA, TARGET_EPSG) as environment
+# DBNAME, DBUSER, PASSWORD, HOST, PORT (INFDB_*_SCHEMA, TARGET_EPSG) as environment
 # variables. CI publishes ghcr.io/tum-ens/pylovo (.github/workflows/pylovo-image.yml).
 FROM python:3.12-slim
 

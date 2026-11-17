@@ -92,7 +92,6 @@ class FakeConstructor:
 def _fake_setup(monkeypatch, tmp_path, fake):
     monkeypatch.chdir(tmp_path)  # run_setup logs to ./log/log.txt
     monkeypatch.setattr(setup, "DatabaseConstructor", lambda: fake)
-    monkeypatch.setattr(setup, "USE_INFDB", True)
     monkeypatch.setattr(setup, "create_municipal_register", lambda: fake._record("register"))
     monkeypatch.setattr(setup, "missing_input_files", lambda: [])
 

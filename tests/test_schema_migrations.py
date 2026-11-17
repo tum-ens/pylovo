@@ -226,8 +226,8 @@ def test_migration_0018_adds_the_load_class_and_the_connection_level_and_rebuild
     """Old tables get the two nullable columns of a fresh setup; the view with ``br.*`` is built again, once."""
     from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, building_load_class
 
-    assert POST_SCHEMA_MIGRATIONS[-1] == ("0018_building_load_class", building_load_class)
-    assert MIGRATION_NAMES[-1] == "0018_building_load_class"
+    assert ("0018_building_load_class", building_load_class) in POST_SCHEMA_MIGRATIONS
+    assert "0018_building_load_class" in MIGRATION_NAMES
 
     class Answering(Cursor):
         def __init__(self, conn, view_lacks_columns):
@@ -250,3 +250,16 @@ def test_migration_0018_adds_the_load_class_and_the_connection_level_and_rebuild
             assert fresh == [("load_class", "text"), ("connection_level", "varchar(20)")]
         assert ("DROP VIEW pylovo.buildings_result_with_grid" in sql) is lacks
         assert sql.count("CREATE OR REPLACE VIEW pylovo.buildings_result_with_grid") == int(lacks)
+
+
+def test_migration_0019_drops_the_tables_and_functions_of_the_removed_file_based_input():
+    from pylovo.database.migrations import MIGRATION_NAMES, file_input_removed
+
+    assert MIGRATION_NAMES[-1] == "0019_file_input_removed"
+    conn = Connection()
+    file_input_removed(conn.cursor())
+    sql = " ".join(" ".join(conn.log).split())
+    assert "DROP TABLE IF EXISTS pylovo.ags_log, pylovo.ways, pylovo.res, pylovo.oth;" in sql
+    for function in ("segment_intersecting_ways", "generate_building_to_way_connections",
+                     "generate_building_way_connection_candidates"):
+        assert f"DROP FUNCTION IF EXISTS pylovo.{function}();" in sql

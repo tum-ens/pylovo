@@ -672,6 +672,22 @@ def building_load_class(cur: cursor) -> None:
         cur.execute(CREATE_QUERIES["buildings_result_with_grid"])
 
 
+def file_input_removed(cur: cursor) -> None:
+    """Drop the tables and SQL functions of the file-based input, which pylovo no longer has.
+
+    Dropped: the tables ``ags_log`` and ``ways`` (created by every setup until 1.2.0), ``res`` and ``oth`` (file-based
+    setups only) with their rows, which are copies of input files, and the functions ``segment_intersecting_ways``,
+    ``generate_building_to_way_connections`` and ``generate_building_way_connection_candidates``. A no-op on a fresh
+    schema.
+    """
+    cur.execute("""
+        DROP TABLE IF EXISTS pylovo.ags_log, pylovo.ways, pylovo.res, pylovo.oth;
+        DROP FUNCTION IF EXISTS pylovo.segment_intersecting_ways();
+        DROP FUNCTION IF EXISTS pylovo.generate_building_to_way_connections();
+        DROP FUNCTION IF EXISTS pylovo.generate_building_way_connection_candidates();
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -694,6 +710,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0016_key_figure_names", key_figure_names),
     ("0017_key_figures_version", key_figures_version),
     ("0018_building_load_class", building_load_class),
+    ("0019_file_input_removed", file_input_removed),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

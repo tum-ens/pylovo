@@ -642,7 +642,7 @@ def graph_id_for(source_table: str, ags: Sequence[str], parameters: dict[str, An
 
 def _source(table: str) -> sql.Identifier:
     if not INFDB_SOURCE_SCHEMA:
-        raise MvStageError("the MV routing graph needs the InfDB source tables: set USE_INFDB and "
+        raise MvStageError("the MV routing graph needs the InfDB source tables: set "
                            "INFDB_SOURCE_SCHEMA in the .env file")
     return sql.Identifier(INFDB_SOURCE_SCHEMA, table)
 

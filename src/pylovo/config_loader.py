@@ -401,36 +401,25 @@ HOST = get_required_env_var("HOST", "Database host address")
 PORT = get_required_env_var("PORT", "Database port number")
 PASSWORD = get_required_env_var("PASSWORD", "Database password")
 
-# INFDB (external database) connection (recommended)
-USE_INFDB = os.getenv("USE_INFDB", "True").lower() in ("true", "1", "yes")
+# InfDB: the source of buildings, streets and postcodes
 # InfDB source data in another database than the pylovo schema; unset INFDB_* values fall back to the pylovo connection
 USE_EXTERNAL_BASEDATA = os.getenv("USE_EXTERNAL_BASEDATA", "False").lower() in ("true", "1", "yes")
-if USE_INFDB:
-    if USE_EXTERNAL_BASEDATA:
-        INFDB_DBNAME = os.getenv("INFDB_DBNAME") or DBNAME
-        INFDB_USER = os.getenv("INFDB_USER") or DBUSER
-        INFDB_HOST = os.getenv("INFDB_HOST") or HOST
-        INFDB_PORT = os.getenv("INFDB_PORT") or PORT
-        INFDB_PASSWORD = os.getenv("INFDB_PASSWORD") or PASSWORD
-    else:
-        INFDB_DBNAME = DBNAME
-        INFDB_USER = DBUSER
-        INFDB_HOST = HOST
-        INFDB_PORT = PORT
-        INFDB_PASSWORD = PASSWORD
-    INFDB_SOURCE_SCHEMA = os.getenv("INFDB_SOURCE_SCHEMA", "basedata")
-    INFDB_OPENDATA_SCHEMA = os.getenv("INFDB_OPENDATA_SCHEMA", "opendata")
-    # OSM layers of the InfDB OSM importer (pgosm-flex): HV/MV substations for the MV stage
-    INFDB_OSM_SCHEMA = os.getenv("INFDB_OSM_SCHEMA", "osm")
+if USE_EXTERNAL_BASEDATA:
+    INFDB_DBNAME = os.getenv("INFDB_DBNAME") or DBNAME
+    INFDB_USER = os.getenv("INFDB_USER") or DBUSER
+    INFDB_HOST = os.getenv("INFDB_HOST") or HOST
+    INFDB_PORT = os.getenv("INFDB_PORT") or PORT
+    INFDB_PASSWORD = os.getenv("INFDB_PASSWORD") or PASSWORD
 else:
-    INFDB_DBNAME = None
-    INFDB_USER = None
-    INFDB_HOST = None
-    INFDB_PORT = None
-    INFDB_PASSWORD = None
-    INFDB_SOURCE_SCHEMA = None
-    INFDB_OPENDATA_SCHEMA = None
-    INFDB_OSM_SCHEMA = None
+    INFDB_DBNAME = DBNAME
+    INFDB_USER = DBUSER
+    INFDB_HOST = HOST
+    INFDB_PORT = PORT
+    INFDB_PASSWORD = PASSWORD
+INFDB_SOURCE_SCHEMA = os.getenv("INFDB_SOURCE_SCHEMA", "basedata")
+INFDB_OPENDATA_SCHEMA = os.getenv("INFDB_OPENDATA_SCHEMA", "opendata")
+# OSM layers of the InfDB OSM importer (pgosm-flex): HV/MV substations for the MV stage
+INFDB_OSM_SCHEMA = os.getenv("INFDB_OSM_SCHEMA", "osm")
 
 # Geospatial CRS configuration
 TARGET_EPSG = get_int_env_var("TARGET_EPSG", 25832)
@@ -612,11 +601,10 @@ USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POS
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
 USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_MANUAL_TRANSFORMER_POSITIONS", False)
 # Postcode borders (see pylovo.postcode_border): a PLZ also routes over the InfDB streets of its neighboring PLZ.
-# A configuration without the key keeps the PLZ graph; file input (no InfDB) has no neighboring streets.
+# A configuration without the key keeps the PLZ graph.
 ROUTE_ACROSS_POSTCODE_BORDERS = CONFIG_GENERATION.get("ROUTE_ACROSS_POSTCODE_BORDERS", False)
 if not isinstance(ROUTE_ACROSS_POSTCODE_BORDERS, bool):
     raise ValueError(f"ROUTE_ACROSS_POSTCODE_BORDERS must be true or false, got {ROUTE_ACROSS_POSTCODE_BORDERS!r}")
-ROUTE_ACROSS_POSTCODE_BORDERS = ROUTE_ACROSS_POSTCODE_BORDERS and USE_INFDB
 
 # Station voltage of the validation power flow (pylovo.station_voltage). Missing keys keep the
 # behaviour from before they existed: MV side at 1.0 p.u., neutral tap.

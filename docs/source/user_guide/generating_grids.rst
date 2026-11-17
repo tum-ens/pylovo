@@ -166,5 +166,4 @@ The command-line tool is a thin wrapper around :class:`pylovo.grid_generator.Gri
    )
 
 Configuration values are read when :mod:`pylovo.config_loader` is imported, so start a new Python
-process after editing the YAML files. In the file-based mode, import the building shapefiles
-first with :func:`pylovo.data_import.import_buildings.import_buildings_for_single_plz`.
+process after editing the YAML files.

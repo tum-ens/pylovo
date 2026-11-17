@@ -24,10 +24,10 @@ class Db:
 
 
 def prepared(monkeypatch, raises=()):
-    monkeypatch.setattr(grid_generator, "USE_INFDB", False)
     monkeypatch.setattr(grid_generator, "RESIDENTIAL_ONLY_GENERATION", False)
     gg = GridGenerator.__new__(GridGenerator)
     gg.plz, gg.dbc, gg.logger = 80331, Db(raises), logging.getLogger("prepare-test")
+    gg.inf_dbc = gg.dbc                                      # the InfDB reads are recorded with the rest
     gg.prepare_buildings()
     return gg.dbc.calls
 

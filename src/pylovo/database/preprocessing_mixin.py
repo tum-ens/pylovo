@@ -61,7 +61,6 @@ from pylovo.config_loader import (
     URBAN_MAX_BUILDING_DISTANCE,
     URBAN_MIN_HOUSEHOLDS,
     USE_DSO_TRANSFORMER_POSITIONS,
-    USE_INFDB,
     USE_MANUAL_TRANSFORMER_POSITIONS,
     USE_OPEN_TRANSFORMER_POSITIONS,
     VERSION_COMMENT,
@@ -77,10 +76,7 @@ from pylovo.version_snapshot import compare_snapshots
 class PreprocessingMixin(BaseMixin):
     """Fill the PLZ working tables and the configuration tables of the active version.
 
-    Two input paths exist. With ``USE_INFDB=True`` (default) buildings and ways come from InfDB
-    through :class:`~pylovo.infdb.infdb_client.InfdbClient`; with ``USE_INFDB=False`` they are
-    read from the local tables ``res``, ``oth`` and ``ways`` that ``pylovo-setup`` and the
-    building import fill from files.
+    Buildings and ways come from the InfDB through :class:`~pylovo.infdb.infdb_client.InfdbClient`.
     """
 
     @staticmethod
@@ -157,7 +153,8 @@ class PreprocessingMixin(BaseMixin):
             "connection_levels": CONNECTION_LEVEL_THRESHOLDS_KW,
             # which data the grids are built from, not a parameter of the YAML files
             "input_data": {
-                "use_infdb": USE_INFDB,
+                # always true since the file-based input was removed; kept so that stored snapshots still match
+                "use_infdb": True,
                 "target_epsg": TARGET_EPSG,
                 "infdb_source_schema": INFDB_SOURCE_SCHEMA,
             },
@@ -406,30 +403,8 @@ class PreprocessingMixin(BaseMixin):
 
         self.cur.execute(query, {"v": VERSION_ID, "p": plz})
 
-    def set_residential_buildings_table(self, plz: int):
-        """Fill ``buildings_tem`` with the residential buildings of the PLZ (file-based input).
-
-        Used when ``USE_INFDB=False``: reads the imported shapefile table ``res`` and keeps the
-        buildings whose centroid lies inside the PLZ polygon of ``postcode_result``.
-
-        Args:
-            plz: Postcode to fill.
-        """
-        query = """INSERT INTO buildings_tem (objectid, floor_area, building_use, type, geom, centroid, floor_number)
-                   SELECT osm_id, area, building_t, building_t, geom, ST_Centroid(geom), floors::int
-                   FROM res
-                   WHERE ST_Contains((SELECT post.geom
-                                      FROM pylovo.postcode_result as post
-                                      WHERE version_id = %(v)s
-                                        AND postcode_result_plz = %(plz)s
-                                      LIMIT 1), ST_Centroid(res.geom));
-        UPDATE buildings_tem
-        SET plz = %(plz)s
-        WHERE plz ISNULL;"""
-        self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
-
     def set_buildings_table(self, buildings_data: list[tuple]) -> None:
-        """Insert InfDB buildings into ``buildings_tem`` (``USE_INFDB=True``).
+        """Insert InfDB buildings into ``buildings_tem``.
 
         Args:
             buildings_data: Rows in the column order of ``InfdbClient.fetch_buildings_from_infdb``
@@ -451,31 +426,6 @@ class PreprocessingMixin(BaseMixin):
         """
         execute_batch(self.cur, insert_query, buildings_data, page_size=500)
         # self.conn.commit() only for debugging
-
-    def set_other_buildings_table(self, plz: int):
-        """Add the commercial and public buildings of the PLZ to ``buildings_tem`` (file-based input).
-
-        Used when ``USE_INFDB=False``: reads the imported shapefile table ``oth``. Buildings
-        without a floor count get one floor.
-
-        Args:
-            plz: Postcode to fill.
-        """
-        query = """INSERT INTO buildings_tem(objectid, floor_area, building_use, type, geom, centroid)
-                   SELECT osm_id, area, use, use, geom, ST_Centroid(geom)
-                   FROM oth AS o
-                   WHERE o.use in ('Commercial', 'Public')
-                     AND ST_Contains((SELECT post.geom
-                                      FROM pylovo.postcode_result as post
-                                      WHERE version_id = %(v)s
-                                        AND postcode_result_plz = %(plz)s), ST_Centroid(o.geom));;
-        UPDATE buildings_tem
-        SET plz = %(plz)s
-        WHERE plz ISNULL;
-        UPDATE buildings_tem
-        SET floor_number = 1
-        WHERE floor_number ISNULL;"""
-        self.cur.execute(query, {"v": VERSION_ID, "plz": plz})
 
     def remove_duplicate_buildings(self):
         """Delete buildings without geometry or objectid, and ``*copy*`` duplicates of identical geometries."""
@@ -1324,7 +1274,7 @@ class PreprocessingMixin(BaseMixin):
 
 
     def set_ways_tem_table_infdb(self, ways_data: list[tuple]) -> int:
-        """Insert the InfDB ways into ``ways_tem`` (``USE_INFDB=True``).
+        """Insert the InfDB ways into ``ways_tem``.
 
         Args:
             ways_data: ``(clazz, source, target, cost, reverse_cost, geom, way_id)`` rows of
@@ -1355,37 +1305,6 @@ class PreprocessingMixin(BaseMixin):
         self.cur.execute("SELECT COUNT(*) FROM ways_tem")
         return self.cur.fetchone()[0]
 
-    def set_ways_tem_table(self, plz: int) -> int:
-        """Copy the ways that intersect the PLZ polygon from ``ways`` into ``ways_tem`` (file-based input).
-
-        Used when ``USE_INFDB=False``; ``pylovo-setup`` fills ``ways`` from the osm2po SQL file.
-
-        Args:
-            plz: Postcode.
-
-        Returns:
-            Number of rows in ``ways_tem``.
-
-        Raises:
-            ValueError: If no way intersects the PLZ.
-        """
-        query = """INSERT INTO ways_tem
-                   SELECT *
-                   FROM pylovo.ways AS w
-                   WHERE ST_Intersects(w.geom, (SELECT geom
-                                                FROM pylovo.postcode_result
-                                                WHERE version_id = %(v)s
-                                                  AND postcode_result_plz = %(p)s));
-        SELECT COUNT(*)
-        FROM ways_tem;"""
-        self.cur.execute(query, {"v": VERSION_ID, "p": plz})
-        count = self.cur.fetchone()[0]
-
-        if count == 0:
-            raise ValueError(f"Ways table is empty for the given plz: {plz}")
-
-        return count
-
     def index_and_analyze_staging(self, plz: int) -> None:
         """Index loaded session-local roads before nearest-road searches."""
         roads = sql.Identifier("pg_temp", plz_table_name("ways_tem", plz))
@@ -1400,27 +1319,11 @@ class PreprocessingMixin(BaseMixin):
 
         Calls the SQL functions of ``ways_preprocessing_functions`` (loaded by ``pylovo-setup``).
 
-        With ``USE_INFDB=True``, InfDB already delivers segmented ways and the building
-        connection lines, so only ``generate_transformer_to_way_connections_infdb()`` runs: it
-        connects the transformer rows of ``buildings_tem`` to their nearest way.
-
-        With ``USE_INFDB=False`` two functions run in sequence:
-
-        1. ``segment_intersecting_ways()`` splits crossing ways at their intersection point
-           (via ``insert_way_segment()``).
-        2. ``generate_building_to_way_connections()`` adds a connection line from every loaded
-           building to its nearest way and splits that way at the connection point (via
-           ``generate_building_way_connection_candidates()``, ``insert_way_segment()`` and
-           ``split_way_at_connection_points()``).
-
-        Running them in this order ensures that all intersecting ways are split before every
-        building gets its own connection segment.
+        The InfDB already delivers segmented ways and the building connection lines, so only
+        ``generate_transformer_to_way_connections_infdb()`` runs: it connects the transformer rows of
+        ``buildings_tem`` to their nearest way.
         """
-        if USE_INFDB:
-            self.cur.execute("SELECT generate_transformer_to_way_connections_infdb();")
-        else:
-            self.cur.execute("SELECT segment_intersecting_ways();")
-            self.cur.execute("SELECT generate_building_to_way_connections();")
+        self.cur.execute("SELECT generate_transformer_to_way_connections_infdb();")
 
     def build_pgr_network_topology(self, plz: int) -> None:
         """Build the pgRouting topology of ``ways_tem_<plz>``.
@@ -1687,28 +1590,3 @@ class PreprocessingMixin(BaseMixin):
         """
         self.cur.execute(query, {"radius_m": radius_m, "max_buildings": max_buildings})
         return int(self.cur.fetchone()[0])
-
-    def get_ags_log(self) -> pd.DataFrame:
-        """Return the AGS log of the file-based building import.
-
-        The log lists the official municipal keys (Amtlicher Gemeindeschlüssel) of the
-        municipalities whose building shapefiles were already imported (``USE_INFDB=False``).
-
-        Returns:
-            DataFrame with the column ``ags``.
-        """
-        query = """SELECT *
-                   FROM pylovo.ags_log;"""
-        df_query = pd.read_sql_query(query, con=self.conn, )
-        return df_query
-
-    def write_ags_log(self, ags: int) -> None:
-        """Record that the buildings of a municipality were imported, and commit.
-
-        Args:
-            ags: Official municipal key (Amtlicher Gemeindeschlüssel).
-        """
-        query = """INSERT INTO pylovo.ags_log (ags)
-                   VALUES (%(a)s); """
-        self.cur.execute(query, {"a": int(ags), })
-        self.conn.commit()

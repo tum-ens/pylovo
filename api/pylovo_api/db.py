@@ -24,11 +24,11 @@ class DatabaseUnavailable(RuntimeError):
 def external_basedata() -> bool:
     """Whether the InfDB source schemas (``basedata``, ``opendata``, ``citydb``) are in another database than pylovo's.
 
-    That is ``USE_INFDB`` with ``USE_EXTERNAL_BASEDATA``; the other database is described by the ``INFDB_*`` settings.
+    That is ``USE_EXTERNAL_BASEDATA``; the other database is described by the ``INFDB_*`` settings.
     """
     from pylovo import config_loader as cl
 
-    return bool(cl.USE_INFDB and cl.USE_EXTERNAL_BASEDATA)
+    return bool(cl.USE_EXTERNAL_BASEDATA)
 
 
 def settings() -> dict[str, Any]:
@@ -44,7 +44,7 @@ def settings() -> dict[str, Any]:
         "port": str(cl.PORT),
         "dbname": cl.DBNAME,
         "user": cl.DBUSER,
-        "use_infdb": bool(cl.USE_INFDB),
+        "use_infdb": True,  # always since the file-based input was removed; the GridPlanner UI shows it
         "use_external_basedata": external,
         "infdb_target": f"{cl.INFDB_HOST}:{cl.INFDB_PORT}/{cl.INFDB_DBNAME}" if external else None,
         "infdb_source_schema": cl.INFDB_SOURCE_SCHEMA,

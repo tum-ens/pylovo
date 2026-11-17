@@ -10,10 +10,9 @@ from pathlib import Path
 from pylovo.cli import parsers
 from pylovo.cli.confirm import show_target, target_is_unambiguous
 from pylovo import utils
-from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT, USE_INFDB
+from pylovo.config_loader import DBNAME, HOST, LOG_LEVEL, PORT
 from pylovo.data_import.municipal_register import create_municipal_register, missing_input_files
 from pylovo.database.database_constructor import DatabaseConstructor
-from pylovo.utils import get_user_data_dir
 
 
 def confirm_schema_reset(dbname: str, host: str, port: str) -> bool:
@@ -61,25 +60,12 @@ def _missing(paths: list[Path]) -> list[str]:
 def import_steps(sgc: DatabaseConstructor) -> list[ImportStep]:
     """Return the reference tables of a complete schema in import order."""
 
-    def ways() -> None:
-        sgc.create_public_2po_table()
-        sgc.ways_to_db()
-
     steps = [ImportStep("IMPORT OSM TRANSFORMERS (a relation without a processed GeoJSON is fetched from "
                         "the Overpass API, this can take more than 30 min)", "transformers",
                         lambda: sgc.transformers_to_db())]
-    if USE_INFDB:
-        # Copy the postcode polygons from the InfDB into the local 'postcode' table.
-        steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb,
-                                lambda: [problem] if (problem := sgc.infdb_postcodes_problem()) else []))
-    else:
-        # File-based data path: postcode CSV plus the OSM ways table.
-        postcode_csv = get_user_data_dir() / "postcode.csv"
-        steps.append(ImportStep("POPULATE DB WITH CSV RAW DATA", "postcode",
-                                lambda: sgc.csv_to_db([{"path": postcode_csv, "table_name": "postcode"}]),
-                                lambda: _missing([postcode_csv])))
-        steps.append(ImportStep("POPULATE public_2po_4pgr AND THE ways TABLE (~30 min)", "ways", ways,
-                                lambda: _missing([get_user_data_dir() / "ways" / "ways_public_2po_4pgr.sql"])))
+    # Copy the postcode polygons from the InfDB into the local 'postcode' table.
+    steps.append(ImportStep("FETCH AND POPULATE POSTCODE DATA FROM INFDB", "postcode", sgc.load_postcode_from_infdb,
+                            lambda: [problem] if (problem := sgc.infdb_postcodes_problem()) else []))
     # Table with all German municipalities (PLZ <-> AGS, RegioStaR classes).
     steps.append(ImportStep("FILL municipal_register TABLE", "municipal_register", create_municipal_register,
                             lambda: [f"missing input file {path}" for path in missing_input_files()]))

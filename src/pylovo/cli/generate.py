@@ -1,14 +1,12 @@
 """Generate synthetic LV grids for postcodes (PLZ) or municipalities (AGS) (``pylovo-generate``).
 
-- One PLZ: :func:`create_grid_single_plz` (sequential, with building import in file mode).
+- One PLZ: :func:`create_grid_single_plz`.
 - Several PLZ: :func:`create_grid_multiple_plz` (in parallel unless ``PARALLEL: False`` or ``--no-parallel``).
 - One or more AGS: :func:`create_grids_for_ags` generates all PLZ of the municipalities.
-- ``--all [STATE ...]``: :func:`create_grids_for_all_plz` generates every PLZ with buildings in the InfDB
-  (``USE_INFDB=True``), or with buildings in the given federal states.
+- ``--all [STATE ...]``: :func:`create_grids_for_all_plz` generates every PLZ with buildings in the InfDB,
+  or with buildings in the given federal states.
 
-With ``USE_INFDB=False`` the building shapefiles are imported first (see
-:mod:`pylovo.data_import.import_buildings`). ``ANALYZE_GRIDS`` in ``config_generation_lv.yaml``
-controls whether the basic analysis runs after generation.
+``ANALYZE_GRIDS`` in ``config_generation_lv.yaml`` controls whether the basic analysis runs after generation.
 
 With ``MV_GRID_GENERATION: True`` (or ``--mv``) the MV stage (:func:`pylovo.mv_grid.stage.run_mv_stage`)
 runs once after all PLZ of the call, for the configured MV variant of ``VERSION_ID``. The LV grids are
@@ -28,8 +26,7 @@ import pandas as pd
 
 import pylovo.database.database_client as dbc
 from pylovo.cli import parsers
-from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, USE_INFDB, VERSION_ID
-from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz, import_buildings_for_single_plz
+from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, VERSION_ID
 from pylovo.data_import.region_resolver import resolve_regions
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
 from pylovo.infdb.infdb_client import InfdbClient
@@ -55,10 +52,6 @@ def create_grid_single_plz(plz: int) -> dict[int, GenerationOutcome]:
     """
     print(f"Creating grid for single PLZ: {plz}")
     gg = GridGenerator(plz=plz)
-
-    if not USE_INFDB:
-        import_buildings_for_single_plz(gg)
-
     outcome = gg.generate_grid_for_single_plz(plz=plz, analyze_grids=ANALYZE_GRIDS)
     return {int(plz): outcome}
 
@@ -81,14 +74,7 @@ def create_grid_multiple_plz(plz_list: list, parallel: bool = True) -> dict[int,
         The outcome of every PLZ of the call.
     """
     print(f"Creating grids for multiple PLZ: {plz_list}")
-    plz_list = [int(p) for p in plz_list]
-
-    if not USE_INFDB:
-        with dbc.DatabaseClient() as dbc_client:
-            _, df_plz_ags = resolve_regions(dbc_client, plz=plz_list)
-            import_buildings_for_multiple_plz(df_plz_ags, dbc_client=dbc_client)
-
-    return _generate_plz_list(plz_list, parallel)
+    return _generate_plz_list([int(p) for p in plz_list], parallel)
 
 
 def create_grids_for_ags(ags_list: list, parallel: bool = True) -> dict[int, GenerationOutcome]:
@@ -106,15 +92,13 @@ def create_grids_for_ags(ags_list: list, parallel: bool = True) -> dict[int, Gen
     """
     print(f"Creating grids for AGS: {ags_list}")
     with dbc.DatabaseClient() as dbc_client:
-        plz_list, df_plz_ags = resolve_regions(dbc_client, ags=[int(a) for a in ags_list])
-        if not USE_INFDB:
-            import_buildings_for_multiple_plz(df_plz_ags, dbc_client=dbc_client)
+        plz_list, _ = resolve_regions(dbc_client, ags=[int(a) for a in ags_list])
 
     return _generate_plz_list(plz_list, parallel)
 
 
 def create_grids_for_all_plz(states: list[str] | None = None, parallel: bool = True) -> dict[int, GenerationOutcome]:
-    """Generate the grids of every PLZ with buildings in the InfDB (``USE_INFDB=True``), or in the given states.
+    """Generate the grids of every PLZ with buildings in the InfDB, or in the given states.
 
     The PLZ with the most buildings go first, so the longest ones do not end a parallel run on few workers.
     PLZ that already have grids for ``VERSION_ID`` are skipped as with ``--plz``, so a rerun resumes.
@@ -177,8 +161,6 @@ def main(argv: list[str] | None = None):
     parser = parsers.generate_parser()
 
     args = parser.parse_args(argv)
-    if args.all_states is not None and not USE_INFDB:
-        parser.error("--all needs USE_INFDB=True; in the file-based mode, pass --plz or --ags")
     # PARALLEL in config_generation_lv.yaml is the default; the flags override it
     parallel = PARALLEL if args.parallel is None else args.parallel
     run_mv = MV_GRID_GENERATION if args.mv is None else args.mv

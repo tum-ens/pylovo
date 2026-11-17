@@ -10,12 +10,6 @@
 .venv
 venv/
 
-### Input data of the file-based mode (USE_INFDB: False), not shipped with the repository
-/data/buildings/*
-!/data/buildings/note.txt
-/data/ways/ways_public_2po_4pgr.sql
-/data/postcode.csv
-
 # Transformers: keep the processed ones of Bavaria (EPSG 25832), ignore raw downloads and other CRS
 /data/transformer_data/fetched_trafos/*
 /data/transformer_data/processed_trafos/*

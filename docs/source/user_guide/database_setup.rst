@@ -22,12 +22,12 @@ rows before committing new foreign keys and checks.
    The HTTP API's reset job (typed confirmation) invokes this reset; its setup
    job runs the non-destructive setup.
 
-Set up InfDB first (USE_INFDB=True)
------------------------------------
+Set up InfDB first
+------------------
 
 InfDB provides buildings, streets and postcode polygons in PostgreSQL/PostGIS.
-Import the intended region and run its PyLovo preprocessing first. Set
-``USE_INFDB=True`` in PyLovo's ``.env`` and point it at the same database. A new
+Import the intended region and run its PyLovo preprocessing first. Point
+PyLovo's ``.env`` at the same database. A new
 PyLovo schema copies postcode polygons from InfDB; later runs add missing
 postcodes on demand.
 
@@ -38,13 +38,6 @@ and give the central InfDB as ``INFDB_DBNAME``, ``INFDB_HOST``, ``INFDB_PORT``,
 ``INFDB_USER`` and ``INFDB_PASSWORD``. PyLovo only reads from the central InfDB,
 in short read-only transactions, also through PgBouncer. This covers the LV grids, the MV
 stage and the HTTP API.
-
-File-based setup (USE_INFDB=False)
-----------------------------------
-
-Prepare ``postcode.csv``, the osm2po street SQL dump and the building
-shapefiles in the data directory, as described in :ref:`file-based-input`. On a new schema, setup loads
-the postcode and street files; generation imports buildings by region.
 
 Running setup
 -------------
@@ -61,12 +54,10 @@ Setup first checks that the server runs PostgreSQL 15 or newer (the schema uses 
 keys with ``ON DELETE SET NULL (column)``) and stops before any change otherwise. It
 creates PostGIS and pgRouting in ``public`` if needed, creates missing
 tables and applies pending migrations. It then imports every reference table
-that is still empty: transformer candidates, postcode data (and the street
-network with ``USE_INFDB=False``) and the municipal register. Tables that have
+that is still empty: transformer candidates, postcode data and the municipal register. Tables that have
 rows are kept, so running setup again completes an interrupted setup. Before
 it changes anything, setup checks the input data of the tables it will import
-(the InfDB table ``postcodes_germany``, the CSV and street files, the municipal
-register files) and stops with a list of what is missing. Finally
+(the InfDB table ``postcodes_germany``, the municipal register files) and stops with a list of what is missing. Finally
 it installs or updates the street preprocessing functions. The OSM transformer
 import reprojects the shipped Bavarian GeoJSON for another ``TARGET_EPSG`` and fetches data only
 for another relation (``RELATION_ID``) without a processed GeoJSON.

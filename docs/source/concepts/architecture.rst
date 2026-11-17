@@ -65,8 +65,8 @@ Modules
      - :class:`~pylovo.infdb.infdb_client.InfdbClient`: reads buildings, streets and postcodes from
        the InfDB schemas.
    * - :mod:`pylovo.data_import`
-     - Transformer download and processing (OSM), DSO CSV import, municipal register, building
-       shapefiles (file-based mode) and region resolution.
+     - Transformer download and processing (OSM), DSO CSV import, municipal register and region
+       resolution.
    * - :mod:`pylovo.mv_grid`
      - The MV stage (:doc:`mv_grids`): parameters (:mod:`~pylovo.mv_grid.options`,
        :mod:`~pylovo.mv_grid.parameters`), the stage driver :func:`~pylovo.mv_grid.stage.run_mv_stage`

@@ -84,8 +84,8 @@ cannot be combined. Several postcodes run in parallel when ``PARALLEL`` in the c
    generated (:doc:`region_selection`).
 ``--all [STATE ...]``
    Every postcode with buildings in the InfDB, or with buildings in the given federal states
-   (``by``, ``nrw``, ...; :doc:`region_selection`), the one with the most buildings first. Only with
-   ``USE_INFDB=True``; postcodes that already have grids are skipped, so a rerun resumes.
+   (``by``, ``nrw``, ...; :doc:`region_selection`), the one with the most buildings first. Postcodes
+   that already have grids are skipped, so a rerun resumes.
 ``--parallel`` / ``--no-parallel``
    Process several postcodes (also those of ``--ags`` and ``--all``) in worker processes, or one
    after the other in the main process, whatever ``PARALLEL`` says.

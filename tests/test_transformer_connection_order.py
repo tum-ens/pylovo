@@ -11,18 +11,11 @@ def test_connection_loops_are_ordered():
     assert "FOR s IN SELECT * FROM grouped_splits ORDER BY old_way_id LOOP" in text
 
 
-FILE_CANDIDATES = SQL.parents[1] / "utils" / "generate_building_way_connection_candidates.sql"
-FILE_CONNECTIONS = SQL.parent / "generate_building_to_way_connections.sql"
-
-
 def test_a_transformer_on_a_street_is_placed_on_it_instead_of_linked_to_a_farther_street():
     infdb = " ".join(SQL.read_text().split())
     assert "ST_Distance(t.centroid, w.geom) > 0.1" not in infdb       # the street it stands on is not skipped
     assert "IF ST_Distance(r.centroid, r.old_geom) <= 0.1 THEN" in infdb
     assert "UPDATE buildings_tem SET centroid = r.connection_point WHERE objectid = r.objectid AND type = 'Transformer';" in infdb
-    # file-based input: the same for transformer rows, buildings keep skipping the way they stand on
-    assert "AND (b.is_transformer OR ST_Distance(b.centroid, w.geom) > 0.1)" in " ".join(FILE_CANDIDATES.read_text().split())
-    assert "IF r.is_transformer AND ST_Distance(r.centroid, r.old_geom) <= 0.1 THEN" in FILE_CONNECTIONS.read_text()
 
 
 def test_a_transformer_on_a_street_is_its_own_connection_point():

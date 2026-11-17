@@ -89,7 +89,6 @@ def pipeline(monkeypatch):
     monkeypatch.setattr(pdc, "create_sample_set", lambda restrict_to_postcode_result: record.update(drawn=True))
     monkeypatch.setattr(pdc, "copy_sample_set", lambda source: record.update(copied_from=source))
     monkeypatch.setattr(pdc, "get_sample_set", lambda: samples)
-    monkeypatch.setattr(pdc, "USE_INFDB", True)
     monkeypatch.setattr(pdc, "CLASSIFICATION_VERSION", 7)
     monkeypatch.setattr(pdc, "GridGenerator", FakeGenerator)
     monkeypatch.setattr(pdc, "analyze_grid_parameters_for_multiple_plz", fake_key_figures)

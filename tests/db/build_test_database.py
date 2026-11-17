@@ -11,7 +11,7 @@ replaces environment variables, see :mod:`pylovo.config_loader`); ``--database``
 of a real database is never used by accident. The script refuses a database that already has the pylovo
 or the InfDB source schema. ``run_database_tests.py`` runs it, and the tests, on a disposable container. It
 
-1. writes the toy town into the InfDB source schemas (``USE_INFDB=True``, no ``USE_EXTERNAL_BASEDATA``),
+1. writes the toy town into the InfDB source schemas (no ``USE_EXTERNAL_BASEDATA``),
 2. runs ``pylovo-setup`` (schema, transformers, postcodes and municipal register), then adds the toy
    postcodes to ``pylovo.municipal_register``,
 3. runs ``pylovo-generate --plz 99001 99002`` and the per-grid analysis (``pylovo-analyze --per-grid``)
@@ -95,8 +95,8 @@ def main(argv: list[str] | None = None) -> None:
     if cl.DBNAME != args.database:
         sys.exit(f"pylovo's configuration points to the database {cl.DBNAME!r} (environment or .env), "
                  f"not to {args.database!r}: nothing was changed.")
-    if not cl.USE_INFDB or cl.USE_EXTERNAL_BASEDATA:
-        sys.exit("The toy town needs USE_INFDB=True and USE_EXTERNAL_BASEDATA=False: nothing was changed.")
+    if cl.USE_EXTERNAL_BASEDATA:
+        sys.exit("The toy town needs USE_EXTERNAL_BASEDATA=False: nothing was changed.")
     conn = psycopg2.connect(dbname=cl.DBNAME, user=cl.DBUSER, password=cl.PASSWORD, host=cl.HOST, port=cl.PORT)
     with conn, conn.cursor() as cur:
         cur.execute("SELECT nspname FROM pg_namespace WHERE nspname IN ('pylovo', %s)", (cl.INFDB_SOURCE_SCHEMA,))

@@ -2,7 +2,6 @@
 
 * ``CREATE_QUERIES``: tables and views, run by ``DatabaseConstructor.create_table("all")`` in
   dict order. They define new tables; migrations.py upgrades existing databases.
-* ``INFDB_OPTIONAL_TABLES``: file-based input tables that are only created with ``USE_INFDB=False``.
 * ``TEMP_CREATE_QUERIES``: templates of the per-PLZ working tables; ``UtilsMixin.create_temp_tables``
   replaces the base name by ``<name>_<plz>``.
 * ``REFRESH_QUERIES``: refresh of the materialized views after results changed.
@@ -13,9 +12,6 @@ contain other literal curly braces.
 from pylovo.config_loader import TARGET_EPSG
 
 # Raw input tables of the file-based data path (shapefile buildings and osm2po ways).
-INFDB_OPTIONAL_TABLES = {"res", "oth", "ways"}
-
-
 CREATE_QUERIES = {
     "version": """CREATE TABLE IF NOT EXISTS pylovo.version (
         version_id varchar(10) PRIMARY KEY,
@@ -1026,22 +1022,6 @@ CREATE_QUERIES = {
             ON DELETE CASCADE
     )
     """,
-    "ags_log": """
-    CREATE TABLE IF NOT EXISTS pylovo.ags_log (
-        ags bigint PRIMARY KEY
-    )
-    """,
-    "ways": """
-    CREATE TABLE IF NOT EXISTS pylovo.ways (
-        clazz integer,
-        source integer,
-        target integer,
-        cost double precision,
-        reverse_cost double precision,
-        geom geometry(LineString,{TARGET_EPSG}),
-        way_id integer PRIMARY KEY
-    )
-    """,
     "ways_result": """
     CREATE TABLE IF NOT EXISTS pylovo.ways_result (
         version_id varchar(10) NOT NULL,
@@ -1100,34 +1080,6 @@ CREATE_QUERIES = {
             REFERENCES pylovo.postcode_result (version_id, postcode_result_plz)
             ON DELETE CASCADE
     )
-    """,
-    "res": """CREATE TABLE IF NOT EXISTS pylovo.res
-                   (
-                       osm_id     varchar PRIMARY KEY,
-                       area       double precision,
-                       use        varchar(80),
-                       comment    varchar(80),
-                       free_walls integer,
-                       building_t varchar(80),
-                       occupants  double precision,
-                       floors     integer,
-                       constructi varchar(80),
-                       refurb_wal double precision,
-                       refurb_roo double precision,
-                       refurb_bas double precision,
-                       refurb_win double precision,
-                      geom       geometry(MultiPolygon, {TARGET_EPSG})
-                   )
-    """,
-    "oth": """CREATE TABLE IF NOT EXISTS pylovo.oth
-                               (
-                                   osm_id     varchar PRIMARY KEY,
-                                   area       double precision,
-                                   use        varchar(80),
-                                   comment    varchar(80),
-                                   free_walls integer,
-                                   geom       geometry(MultiPolygon, {TARGET_EPSG})
-                               )
     """,
     # GIS views. Only transformer_classified_with_grid is materialized and refreshed.
     # Equipment columns are present when the selected unit has a unique catalog match. They

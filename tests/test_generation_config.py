@@ -242,13 +242,13 @@ def with_input_data(**changes) -> dict:
 def test_the_snapshot_records_the_input_data(monkeypatch):
     from pylovo.database import preprocessing_mixin
 
-    monkeypatch.setattr(preprocessing_mixin, "USE_INFDB", False)
     monkeypatch.setattr(preprocessing_mixin, "TARGET_EPSG", 25833)
     monkeypatch.setattr(preprocessing_mixin, "INFDB_SOURCE_SCHEMA", None)
     mixin = object.__new__(preprocessing_mixin.PreprocessingMixin)
     monkeypatch.setattr(mixin, "_household_fallback_parameters", lambda: {}, raising=False)
     recorded = mixin._generation_parameters_snapshot()
-    assert recorded["input_data"] == {"use_infdb": False, "target_epsg": 25833, "infdb_source_schema": None}
+    # use_infdb is always true since the file-based input was removed: stored snapshots keep matching
+    assert recorded["input_data"] == {"use_infdb": True, "target_epsg": 25833, "infdb_source_schema": None}
     json.dumps(recorded, allow_nan=False)                         # it is stored as JSON
 
 

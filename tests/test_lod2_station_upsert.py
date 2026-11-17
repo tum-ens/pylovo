@@ -23,7 +23,6 @@ class Recorder:
 
 
 def generated_steps(monkeypatch, open_positions, manual_positions):
-    monkeypatch.setattr(grid_generator, "USE_INFDB", True)
     monkeypatch.setattr(grid_generator, "USE_OPEN_TRANSFORMER_POSITIONS", open_positions)
     monkeypatch.setattr(grid_generator, "USE_MANUAL_TRANSFORMER_POSITIONS", manual_positions)
     calls = []
@@ -50,7 +49,6 @@ def test_a_run_without_open_or_manual_positions_writes_no_lod2_stations(monkeypa
 
 
 def test_preparing_the_buildings_no_longer_writes_the_shared_candidates(monkeypatch):
-    monkeypatch.setattr(grid_generator, "USE_INFDB", True)
     monkeypatch.setattr(grid_generator, "RESIDENTIAL_ONLY_GENERATION", False)
     calls = []
     gg = GridGenerator.__new__(GridGenerator)

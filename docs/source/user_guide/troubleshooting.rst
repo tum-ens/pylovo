@@ -94,8 +94,7 @@ Generation
    ``floor_area * floor_number`` (:doc:`input_data`). Fix the input data.
 
 ``PLZ not found in municipal_register`` or ``AGS not found in municipal_register``
-   The code is unknown to the register filled by ``pylovo-setup`` (needed for ``--ags`` and in the
-   file-based mode).
+   The code is unknown to the register filled by ``pylovo-setup`` (needed for ``--ags``).
 
 A parallel run processes one postcode at a time
    ``N_JOBS_PERCENT`` of the CPU cores rounds to 1 worker. Increase ``N_JOBS_PERCENT``.

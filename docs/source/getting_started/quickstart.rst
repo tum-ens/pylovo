@@ -15,8 +15,7 @@ From the pylovo repository root:
 
    cp .env.example .env
 
-Set ``USE_INFDB=True`` and enter your InfDB connection values in ``.env``. For file-based input,
-see :ref:`file-based-input`. All settings are listed under :ref:`env-variables`.
+Enter your InfDB connection values in ``.env``. All settings are listed under :ref:`env-variables`.
 
 2. Review the configuration
 ---------------------------

@@ -29,11 +29,9 @@ Requirements
        and ``pgr_connectedComponents``. It is tested with PostgreSQL 17.10, PostGIS 3.6.4 and
        pgRouting 4.0.1.
    * - GDAL (``ogr2ogr``)
-     - Required by ``pylovo-setup``: the transformer GeoJSON is loaded with ``ogr2ogr``, and so
-       are building shapefiles in the file-based mode. On Ubuntu: ``sudo apt install gdal-bin``.
-   * - InfDB (recommended)
+     - Required by ``pylovo-setup``: the transformer GeoJSON is loaded with ``ogr2ogr``. On Ubuntu: ``sudo apt install gdal-bin``.
+   * - InfDB
      - Provides buildings, streets and postcode polygons, see :doc:`../user_guide/input_data`.
-       Without InfDB you provide these data as files (``USE_INFDB=False``).
    * - Internet access
      - Only for downloading transformers from the Overpass API and map tiles for plots.
 
@@ -201,7 +199,6 @@ directory, see :ref:`env-variables` for where pylovo looks for it) and enter the
 
 .. code-block:: ini
 
-   USE_INFDB=True
    DBNAME="infdb"
    DBUSER="infdb_user"
    HOST="localhost"

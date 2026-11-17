@@ -31,7 +31,7 @@ class FakeDb:
 @pytest.fixture()
 def generator(monkeypatch, tmp_path):
     monkeypatch.setattr(grid_generator.dbc, "DatabaseClient", FakeDb)
-    monkeypatch.setattr(grid_generator, "USE_INFDB", False)
+    monkeypatch.setattr(grid_generator, "InfdbClient", lambda **kwargs: None)
     return GridGenerator(plz=80803, log_file=str(tmp_path / "log.txt"))
 
 

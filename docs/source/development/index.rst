@@ -17,8 +17,7 @@ Project layout
    |-- config/                   YAML configuration (config_generation_lv.yaml, config_generation_mv.yaml, ...)
    |-- data/                     input data shipped with the repository
    |   |-- municipal_register/   Gemeindeverzeichnis and RegioStaR tables (xlsx)
-   |   |-- transformer_data/     Overpass queries and the processed OSM transformers of Bavaria (EPSG 25832)
-   |   `-- buildings/, ways/     file-based input (not in git)
+   |   `-- transformer_data/     Overpass queries and the processed OSM transformers of Bavaria (EPSG 25832)
    |-- docs/
    |   |-- source/               this documentation (Sphinx)
    |   `-- scripts/              scripts that create the figures

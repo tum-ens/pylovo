@@ -204,8 +204,7 @@ def _stage_error(message: str) -> Exception:
 
 def _schema(name: str | None, key: str) -> sql.Identifier:
     if not name:
-        raise _stage_error(f"{key} is not set: the MV stage reads the InfDB schemas in the pylovo database "
-                           "(USE_INFDB=True)")
+        raise _stage_error(f"{key} is not set: the MV stage reads the InfDB schemas")
     return sql.Identifier(name)
 
 
@@ -273,7 +272,7 @@ class MvSourceMixin(BaseMixin):
                     (INFDB_OSM_SCHEMA, "building_polygon"): "no transformer towers in the OSM coverage report",
                     (INFDB_OPENDATA_SCHEMA, "scope"): "MV_NOMINAL_VOLTAGE_KV auto finds no municipality areas"}
         if not INFDB_SOURCE_SCHEMA or not INFDB_OSM_SCHEMA:
-            raise _stage_error("the MV stage reads the InfDB schemas: set USE_INFDB, INFDB_SOURCE_SCHEMA and "
+            raise _stage_error("the MV stage reads the InfDB schemas: set INFDB_SOURCE_SCHEMA and "
                                "INFDB_OSM_SCHEMA in the .env file")
         missing = [f"{s}.{t}" for s, t in required if not reader.table_exists(s, t)]
         if missing:

@@ -148,17 +148,6 @@ def test_a_transformer_between_two_equally_near_streets_connects_to_the_lower_wa
     ]
 
 
-def test_crossing_ways_are_split_once_at_every_crossing(tem):
-    way(tem, 1, "LINESTRING(0 0, 30 0)")
-    way(tem, 2, "LINESTRING(10 -5, 10 5)")
-    way(tem, 3, "LINESTRING(20 -5, 20 5)")
-    tem.cur.execute("SELECT segment_intersecting_ways()")
-    tem.cur.execute("SELECT ST_AsText(ST_SnapToGrid(geom, 0.001)) FROM ways_tem")
-    assert sorted(row[0] for row in tem.cur.fetchall()) == sorted([
-        "LINESTRING(0 0,10 0)", "LINESTRING(10 0,20 0)", "LINESTRING(20 0,30 0)",
-        "LINESTRING(10 -5,10 0)", "LINESTRING(10 0,10 5)", "LINESTRING(20 -5,20 0)", "LINESTRING(20 0,20 5)",
-    ])
-
 
 def test_a_plz_loads_the_connection_lines_of_its_buildings_whatever_postcode_they_are_filed_under(client, monkeypatch):
     import pylovo.infdb.infdb_client as infdb_client

@@ -44,7 +44,7 @@ Prerequisites
      - Population of the demand anchor in the run summary
      - Loaded by ``pylovo-setup``
 
-The stage needs ``USE_INFDB=True``: it reads the InfDB schemas, by default in the pylovo
+The stage reads the InfDB schemas, by default in the pylovo
 database (:doc:`input_data`). With ``USE_EXTERNAL_BASEDATA`` and the InfDB in another database
 (:doc:`database_setup`), the stage reads it through a separate read-only connection, in short
 transactions, also through PgBouncer. The source queries filter by index only (municipality keys

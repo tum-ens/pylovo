@@ -94,7 +94,7 @@ def address_filter_warning(exclude_without_address: bool, has_auxiliary_class: b
 
 
 class InfdbClient:
-    """Connection to InfDB, the source of buildings, ways and postcodes when ``USE_INFDB=True``.
+    """Connection to InfDB, the source of buildings, ways and postcodes.
 
     The connection defaults to the pylovo database itself; with ``USE_EXTERNAL_BASEDATA=True``
     ``config_loader`` takes the ``INFDB_*`` connection settings of the ``.env`` file instead.

@@ -77,20 +77,10 @@ def test_a_municipality_run_reports_its_plz_too(lv, capsys):
     assert code == 4 and "✗ 1 of 2 PLZ not generated: 80804 (failed)" in out
 
 
-def test_an_all_run_reports_its_plz_too(lv, monkeypatch, capsys):
-    monkeypatch.setattr(generate, "USE_INFDB", True)
+def test_an_all_run_reports_its_plz_too(lv, capsys):
     lv.outcomes = {80803: GENERATED, 80804: EMPTY}
     code, out = run(["--all"], capsys)
     assert code == 4 and "✗ 1 of 2 PLZ not generated: 80804 (empty)" in out
-
-
-def test_all_is_refused_in_the_file_based_mode(lv, monkeypatch, capsys):
-    monkeypatch.setattr(generate, "USE_INFDB", False)
-    with pytest.raises(SystemExit) as stopped:
-        generate.main(["--all"])
-    out, err = capsys.readouterr()
-    assert stopped.value.code == 2 and "--all needs USE_INFDB=True" in err
-    assert "Pylovo Grid Creation Script" not in out
 
 
 def test_all_cannot_be_combined_with_plz(lv, capsys):
@@ -164,7 +154,6 @@ def test_the_create_functions_return_the_outcome_of_every_plz(monkeypatch):
             return {int(p): FAILED for p in df_plz["plz"]}
 
     monkeypatch.setattr(generate, "GridGenerator", FakeGenerator)
-    monkeypatch.setattr(generate, "USE_INFDB", True)
     assert generate.create_grid_single_plz(80803) == {80803: EMPTY}
     assert generate.create_grid_multiple_plz([80803, 80804]) == {80803: FAILED, 80804: FAILED}
 

@@ -1,7 +1,7 @@
 """Input coverage: which postcodes (PLZ) have the input data ``pylovo-generate`` needs.
 
 The region gate of the UI (Regions step, map, Generate step and ``POST /api/jobs/generate``)
-asks this module whether a PLZ can be generated. With ``USE_INFDB=True`` that needs
+asks this module whether a PLZ can be generated. That needs
 
 * a postcode polygon (``pylovo.postcode``, or ``<INFDB_OPENDATA_SCHEMA>.postcodes_germany``
   which generation copies on demand),
@@ -45,7 +45,6 @@ The filter rules below replicate the library (``infdb_client.py`` and the
 """
 from __future__ import annotations
 
-import glob
 import hashlib
 import json
 import logging
@@ -242,15 +241,6 @@ def building_counts(bc: list[int] | None, flags: dict[str, bool]) -> dict[str, i
     }
 
 
-def ui_data_dir(root: Path) -> Path:
-    """The data directory of file mode, as ``pylovo.utils.get_user_data_dir`` sees it in a job."""
-    if os.getenv("PYLOVO_DATA_DIR"):
-        return Path(os.environ["PYLOVO_DATA_DIR"])
-    if os.getenv("PYLOVO_ROOT"):
-        return Path(os.environ["PYLOVO_ROOT"]) / "data"
-    return Path(root) / "data"
-
-
 # --------------------------------------------------------------------------- state
 @dataclass
 class TableState:
@@ -351,7 +341,7 @@ class InputCoverage:
     Args:
         cache_file: JSON cache of the counters (``.pylovo-api/cache/input-coverage.json``).
         jobs: The :class:`~pylovo_api.jobs.JobManager` (throttling while ``generate`` runs).
-        root: Project root (file mode reads ``<data dir>/buildings`` relative to it).
+        root: Project root.
         small_rows: Row estimate below which a table is read with one statement.
         conn_options: Extra ``-c`` options for the worker connection (tests).
     """
@@ -363,7 +353,6 @@ class InputCoverage:
         self.root = Path(root) if root else Path.cwd()
         self.small_rows = small_rows
         self.conn_options = conn_options
-        self.mode = "infdb"
         self.tables = {name: TableState(name) for name in TABLES}
         self.register: dict[int, list[int]] = {}
         self.ags_names: dict[int, str] = {}
@@ -372,7 +361,6 @@ class InputCoverage:
         self.tokens: dict[str, str] = {}
         self.changelog: dict[tuple[str, int], tuple[int, float | None]] = {}
         self.changelog_present = False
-        self.files: dict[str, Any] = {}
         self.sources_error: str | None = None
         self.state = "starting"
         self.error: str | None = None
@@ -459,9 +447,6 @@ class InputCoverage:
         deadline = time.monotonic() + max(0.0, min(float(wait_s), ENSURE_MAX_WAIT_S))
         since = time.time() if fresh else None
         with self._cond:
-            if fresh and self.mode == "files":
-                self.tokens = {}
-                self._check_requested = True
             wanted: list[tuple[TableState, str]] | None = None
             while True:
                 if wanted is None and self.initialized:
@@ -502,7 +487,7 @@ class InputCoverage:
         flags = read_flags()
         s = self._summary(flags)
         with self._lock:
-            return {"mode": self.mode, "state": self.state, "version": self.version, "flags_key": flags_key(flags),
+            return {"mode": "infdb", "state": self.state, "version": self.version, "flags_key": flags_key(flags),
                     "building": self.state == "building", "stale": any(t.stale for t in self.tables.values()),
                     "published_at": self.published_at, "error": self.error, **s["counts"],
                     "progress": self._progress(), "buildings_total": s["buildings_total"]}
@@ -526,7 +511,7 @@ class InputCoverage:
                     suggested.append(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx} ON {t.rel} ({col});")
             src = self.settings.get("infdb_source_schema")
             return {
-                "mode": self.mode, "state": self.state, "version": self.version, "published_at": self.published_at,
+                "mode": "infdb", "state": self.state, "version": self.version, "published_at": self.published_at,
                 "age_s": round(time.time() - self.published_at, 1) if self.published_at else None,
                 "progress": self._progress(), "error": self.error or self.sources_error,
                 "counts": s["counts"], "ready_bounds": s["ready_bounds"], "tables": tables,
@@ -534,8 +519,8 @@ class InputCoverage:
                 "filters": flags, "flags_key": flags_key(flags), "suggested_sql": suggested,
                 "schema_note": (f"INFDB_SOURCE_SCHEMA is '{src}': buildings are still read from basedata.buildings, "
                                 "streets and connection lines from that schema (as pylovo-generate does).")
-                if self.mode == "infdb" and src and src != "basedata" else None,
-                "enforce": ENFORCE, "files": self.files if self.mode == "files" else None,
+                if src and src != "basedata" else None,
+                "enforce": ENFORCE,
             }
 
     # ------------------------------------------------------------------ evaluation
@@ -564,8 +549,6 @@ class InputCoverage:
 
     def _evaluate(self, plz: int, flags: dict[str, bool], detail: bool = True) -> dict:
         """InputStatus of one PLZ from the in-memory counters (caller holds the lock)."""
-        if self.mode == "files":
-            return self._evaluate_files(plz, flags, detail)
         warnings: list[dict] = []
         checked = [t.last_check for t in self.tables.values() if t.last_check]
         stale = any(t.stale for t in self.tables.values())
@@ -707,50 +690,6 @@ class InputCoverage:
             rows.append(entry)
         return rows
 
-    def _evaluate_files(self, plz: int, flags: dict[str, bool], detail: bool) -> dict:
-        warnings: list[dict] = []
-        base = {"plz": plz, "warnings": warnings, "actions": [], "counts": None, "by_ags": None, "exact": True,
-                "preliminary": False, "stale": False, "checked_at": self.files.get("checked_at"), "missing": []}
-
-        def result(status: str, **extra) -> dict:
-            return _finish(dict(base, status=status, **extra), flags)
-
-        if not self.initialized:
-            return result("unknown", error=self.error) if self.error else result("pending")
-        if self.sources_error:
-            return result("no_setup", error=self.sources_error)
-        if plz not in self.local_bbox:
-            return result("no_geometry", files=True)
-        reg = self.register.get(plz, [])
-        if not reg:
-            return result("not_in_register")
-        res = set(self.files.get("res_ags", []))
-        oth = set(self.files.get("oth_ags", []))
-        logged = set(self.files.get("ags_log", []))
-        covered = [a for a in reg if a in res or a in logged]
-        if detail:
-            base["by_ags"] = [{"ags": ags8(a), "name_city": self.ags_names.get(a), "in_register": True,
-                               "buildings": {"state": "ok" if a in res or a in logged else "not_processed",
-                                             "n": None, "imported": a in logged, "res_file": a in res,
-                                             "oth_file": a in oth}} for a in reg]
-        if not covered:
-            return result("no_buildings", files=True, ags=[ags8(a) for a in reg],
-                          data_dir=str(self.files.get("data_dir")))
-        absent = [a for a in reg if a not in covered]
-        if absent:
-            warnings.append({"code": "partial:buildings", "table": "buildings", "ags": [ags8(a) for a in absent],
-                             "text": "No building shapefile for " + ", ".join(
-                                 f"{self.ags_names.get(a, '?')} (AGS {ags8(a)})" for a in absent) + "."})
-        if not flags["residential_only"]:
-            no_oth = [a for a in covered if a not in oth and a not in logged]
-            if no_oth:
-                warnings.append({"code": "no_other_buildings", "text": "No Oth_* shapefile for AGS "
-                                 + ", ".join(ags8(a) for a in no_oth) + ": commercial and public buildings are missing."})
-        if not self.files.get("ways_rows"):
-            return result("no_streets", files=True)
-        return result("ready")
-
-    # ------------------------------------------------------------------ summaries
     def _summary(self, flags: dict[str, bool]) -> dict:
         """Counts over all PLZ with a polygon, the selectable set and the extent of ready PLZ (cached)."""
         with self._lock:
@@ -784,15 +723,13 @@ class InputCoverage:
                     minx, miny, maxx, maxy = min(minx, b[0]), min(miny, b[1]), max(maxx, b[2]), max(maxy, b[3])
             ready_bounds = [round(v, 6) for v in (minx, miny, maxx, maxy)] if counts["ready"] else None
             total_buildings = sum(sum((c or [0])[0] for c in rows.values())
-                                  for rows in self.tables["buildings"].plz_rows.values()) if self.mode == "infdb" else None
+                                  for rows in self.tables["buildings"].plz_rows.values())
             summary = {"counts": counts, "selectable": selectable, "ready": ready, "ready_bounds": ready_bounds,
                        "buildings_total": total_buildings}
             self._summary_cache = (key, summary)
             return summary
 
     def _progress(self) -> dict | None:
-        if self.mode != "infdb":
-            return None
         tables = {n: {"done": t.done(), "total": t.total()} for n, t in self.tables.items()}
         done = sum(v["done"] for v in tables.values())
         total = sum(v["total"] for v in tables.values())
@@ -872,7 +809,7 @@ class InputCoverage:
                     backoff = 5.0
                 elif self._check_due():
                     self._check()
-                batch = self._next_batch() if self.mode == "infdb" else None
+                batch = self._next_batch()
                 if batch:
                     self._process(*batch)
                     if self._generate_running():
@@ -908,11 +845,10 @@ class InputCoverage:
     def _connect(self) -> None:
         from pylovo import config_loader as cl
 
-        self.settings = {"host": cl.HOST, "port": str(cl.PORT), "dbname": cl.DBNAME, "use_infdb": bool(cl.USE_INFDB),
+        self.settings = {"host": cl.HOST, "port": str(cl.PORT), "dbname": cl.DBNAME,
                          "infdb_source_schema": cl.INFDB_SOURCE_SCHEMA, "infdb_opendata_schema": cl.INFDB_OPENDATA_SCHEMA,
                          "infdb_target": db.settings()["infdb_target"]}
-        self.mode = "infdb" if cl.USE_INFDB else "files"
-        search_path = f"{cl.INFDB_SOURCE_SCHEMA},public" if cl.USE_INFDB and cl.INFDB_SOURCE_SCHEMA else "pylovo,public"
+        search_path = f"{cl.INFDB_SOURCE_SCHEMA},public" if cl.INFDB_SOURCE_SCHEMA else "pylovo,public"
         options = (f"-c search_path={search_path} -c statement_timeout={CHUNK_TIMEOUT_MS} "
                    f"-c lock_timeout={LOCK_TIMEOUT_MS} -c default_transaction_read_only=on {self.conn_options}")
         conn = psycopg2.connect(dbname=cl.DBNAME, user=cl.DBUSER, password=cl.PASSWORD, host=cl.HOST, port=cl.PORT,
@@ -962,25 +898,16 @@ class InputCoverage:
 
     def _signature(self) -> dict:
         s = self.settings
-        signature = {"format": FORMAT_VERSION, "mode": self.mode, "host": s.get("host"), "port": s.get("port"),
+        signature = {"format": FORMAT_VERSION, "mode": "infdb", "host": s.get("host"), "port": s.get("port"),
                      "dbname": s.get("dbname"), "source_schema": s.get("infdb_source_schema"),
-                     "opendata_schema": s.get("infdb_opendata_schema"), "rules": RULES_HASH,
-                     "data_dir": str(ui_data_dir(self.root)) if self.mode == "files" else None}
+                     "opendata_schema": s.get("infdb_opendata_schema"), "rules": RULES_HASH}
         if s.get("infdb_target"):  # counts of one InfDB must not be reused for another
             signature["infdb_target"] = s["infdb_target"]
         return signature
 
     def _initialize(self) -> None:
-        cached = self._load() if self.mode == "infdb" else None
+        cached = self._load()
         self._read_sources(force=True)
-        if self.mode == "files":
-            with self._cond:
-                self.initialized = True
-                self.error = None
-                self.state = "ready"
-                self._last_check = time.time()
-                self._publish()
-            return
         probes = self._probe()
         with self._cond:
             for name, t in self.tables.items():
@@ -1012,25 +939,24 @@ class InputCoverage:
             requeue_all = self._requeue_all
             self._requeue_all = False
         self._read_sources(force=requeue_all)
-        if self.mode == "infdb":
-            probes = self._probe()
-            with self._cond:
-                for name, t in self.tables.items():
-                    self._apply_probe(t, probes.get(name), None)
-            self._refresh_keys()
-            self._read_changelog()
-            with self._cond:
-                self._apply_ttl()
-                for t in self.tables.values():
-                    if t.strategy == "full":          # one cheap statement: always recount
-                        t.pending[FULL] = min(t.pending.get(FULL, 9), 3)
-                    if requeue_all:
-                        for key in (t.keys if not t.full else [FULL]):
-                            t.pending[key] = min(t.pending.get(key, 9), 3)
-                        t.backoff.clear()
-                if self._has_backlog() and self.state != "building":
-                    self.state = "building"
-                    self._pass_started, self._pass_done0 = time.time(), sum(t.done() for t in self.tables.values())
+        probes = self._probe()
+        with self._cond:
+            for name, t in self.tables.items():
+                self._apply_probe(t, probes.get(name), None)
+        self._refresh_keys()
+        self._read_changelog()
+        with self._cond:
+            self._apply_ttl()
+            for t in self.tables.values():
+                if t.strategy == "full":          # one cheap statement: always recount
+                    t.pending[FULL] = min(t.pending.get(FULL, 9), 3)
+                if requeue_all:
+                    for key in (t.keys if not t.full else [FULL]):
+                        t.pending[key] = min(t.pending.get(key, 9), 3)
+                    t.backoff.clear()
+            if self._has_backlog() and self.state != "building":
+                self.state = "building"
+                self._pass_started, self._pass_done0 = time.time(), sum(t.done() for t in self.tables.values())
         with self._cond:
             self._last_check = time.time()
             self.error = None
@@ -1233,7 +1159,7 @@ class InputCoverage:
             return
         tokens = {"postcode": tok[0], "register": tok[1]}
         od = self.settings.get("infdb_opendata_schema")
-        if self.mode == "infdb" and od:
+        if od:
             rel = f'"{od}".postcodes_germany'
             try:
                 if self._source_query("SELECT to_regclass(%s) IS NOT NULL", (rel,))[0][0]:
@@ -1241,8 +1167,6 @@ class InputCoverage:
                         f"SELECT count(*) || ':' || max(plz) FROM {rel} WHERE geom IS NOT NULL")[0][0]
             except psycopg2.Error:
                 pass
-        if self.mode == "files":
-            tokens["files"] = self._files_token()
         if not force and tokens == self.tokens:
             return
         bbox = {int(r[0]): (float(r[1]), float(r[2]), float(r[3]), float(r[4])) for r in self._query(
@@ -1257,58 +1181,12 @@ class InputCoverage:
         if "opendata" in tokens:
             polygons = {str(r[0]).strip() for r in self._source_query(
                 f'SELECT plz FROM "{od}".postcodes_germany WHERE geom IS NOT NULL')}
-        files = self._read_files(register) if self.mode == "files" else {}
         with self._cond:
             self.local_bbox, self.register, self.ags_names, self.infdb_polygons = bbox, register, names, polygons
             self.tokens = tokens
             self.sources_error = None
-            if self.mode == "files":
-                self.files = files
             self._publish()
 
-    def _files_token(self) -> str:
-        directory = ui_data_dir(self.root) / "buildings"
-        try:
-            entries = sorted((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in directory.glob("*.shp"))
-        except OSError:
-            entries = []
-        try:
-            ways = self._query("SELECT to_regclass('pylovo.ways') IS NOT NULL")[0][0]
-            ways_tok = self._query("SELECT c.relfilenode || ':' || pg_relation_size(c.oid) FROM pg_class c "
-                                   "WHERE c.oid = 'pylovo.ways'::regclass")[0][0] if ways else "none"
-            log_tok = self._query("SELECT count(*) || ':' || COALESCE(sum(ags), 0) FROM pylovo.ags_log")[0][0] \
-                if self._query("SELECT to_regclass('pylovo.ags_log') IS NOT NULL")[0][0] else "none"
-        except psycopg2.Error:
-            ways_tok = log_tok = "error"
-        return hashlib.sha1(json.dumps([entries, ways_tok, log_tok]).encode()).hexdigest()
-
-    def _read_files(self, register: dict[int, list[int]] | None = None) -> dict:
-        """File mode: which AGS have building shapefiles, which are imported, whether ways exist."""
-        data_dir = ui_data_dir(self.root)
-        files = glob.glob(str(data_dir / "buildings" / "*.shp"))
-        register_ags = {a for agss in (register if register is not None else self.register).values() for a in agss}
-        res_ags, oth_ags = set(), set()
-        for path in files:
-            base = os.path.basename(path)
-            # import_buildings: a file belongs to an AGS if str(ags) is in its name; 'Oth' before 'Res'
-            kind = "oth" if "Oth" in path else "res" if "Res" in path else None
-            if kind is None:
-                continue
-            for ags in register_ags:
-                if str(ags) in base:
-                    (oth_ags if kind == "oth" else res_ags).add(ags)
-        try:
-            logged = [int(r[0]) for r in self._query("SELECT ags FROM pylovo.ags_log")] \
-                if self._query("SELECT to_regclass('pylovo.ags_log') IS NOT NULL")[0][0] else []
-            ways_rows = self._query("SELECT EXISTS (SELECT 1 FROM pylovo.ways)")[0][0] \
-                if self._query("SELECT to_regclass('pylovo.ways') IS NOT NULL")[0][0] else False
-        except psycopg2.Error:
-            logged, ways_rows = [], False
-        return {"data_dir": str(data_dir), "shapefiles": len(files), "res_ags": sorted(res_ags),
-                "oth_ags": sorted(oth_ags), "ags_log": sorted(set(logged)), "ags_with_res": len(res_ags),
-                "ags_logged": len(set(logged)), "ways_rows": bool(ways_rows), "checked_at": time.time()}
-
-    # ------------------------------------------------------------------ worker: counting
     def _process(self, t: TableState, keys: list[str]) -> None:
         full = t.full
         sql = _chunk_sql(t.name, t.rel, t.key_col, t.key_type, not full)
@@ -1377,7 +1255,7 @@ class InputCoverage:
 
     # ------------------------------------------------------------------ persistence
     def _save(self, force: bool = False) -> None:
-        if not self.cache_file or self.mode != "infdb" or not self.initialized:
+        if not self.cache_file or not self.initialized:
             return
         if not force and (not self._dirty or time.time() - self._last_save < SAVE_INTERVAL_S):
             return
@@ -1468,7 +1346,6 @@ TEXTS: dict[str, tuple[str, str]] = {
     "no_setup": ("block", "setup needed"),
     "no_source": ("block", "InfDB missing"),
     "no_geometry": ("block", "no polygon"),
-    "not_in_register": ("block", "not in register"),
     "no_buildings": ("block", "no buildings"),
     "no_consumers": ("block", "no consumers"),
     "too_few_buildings": ("block", "1 building"),
@@ -1516,26 +1393,14 @@ def _finish(out: dict, flags: dict[str, bool]) -> dict:
         reason = f"InfDB input table {tables} not found or not readable ({where}). Every PLZ is blocked."
         actions.append({"kind": "step", "step": "database", "label": "Open the Database step"})
     elif status == "no_geometry":
-        if out.get("files"):
-            reason = f"PLZ {plz} is not in pylovo.postcode."
-        else:
-            reason = f"PLZ {plz} is neither in pylovo.postcode nor in {out.get('opendata_schema')}.postcodes_germany."
+        reason = f"PLZ {plz} is neither in pylovo.postcode nor in {out.get('opendata_schema')}.postcodes_germany."
         actions.append({"kind": "step", "step": "database", "label": "Run the database setup to load all postcodes"})
-    elif status == "not_in_register":
-        reason = (f"PLZ {plz} is not in pylovo.municipal_register; in file mode pylovo-generate needs the register "
-                  "to find the building shapefiles.")
     elif status == "no_buildings":
-        if out.get("files"):
-            reason = (f"No building shapefile for AGS {', '.join(ags)} in {out.get('data_dir')}/buildings and none "
-                      "imported yet (pylovo.ags_log).")
-            actions.append({"kind": "files", "label": f"Copy Res_{ags[0] if ags else '<ags>'}.shp (and Oth_…) into "
-                            f"{out.get('data_dir')}/buildings", "path": f"{out.get('data_dir')}/buildings", "ags": ags})
-        else:
-            reason = f"No building with postcode {plz} in basedata.buildings."
-            if ags:
-                reason += f" Its municipalities ({', '.join(ags)}) are not processed in InfDB"
-                reason += " (preliminary: the full check is still running)." if out.get("preliminary") else "."
-            actions.append(_infdb_action("infdb-basedata-buildings", ags))
+        reason = f"No building with postcode {plz} in basedata.buildings."
+        if ags:
+            reason += f" Its municipalities ({', '.join(ags)}) are not processed in InfDB"
+            reason += " (preliminary: the full check is still running)." if out.get("preliminary") else "."
+        actions.append(_infdb_action("infdb-basedata-buildings", ags))
     elif status == "no_consumers":
         filters = "use Residential/Commercial/Public/Mixed"
         if ra:
@@ -1557,10 +1422,8 @@ def _finish(out: dict, flags: dict[str, bool]) -> dict:
             actions.append(_config_action("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", False,
                                           f"{out['residential_plain']} residential buildings"))
     elif status == "no_streets":
-        reason = ("No street network: pylovo.ways is empty." if out.get("files") else
-                  f"No street segments with postcode {plz} in ways_per_connection (cycle and footpaths are not used).")
-        if not out.get("files"):
-            actions.append(_infdb_action("infdb-basedata-ways", ags))
+        reason = f"No street segments with postcode {plz} in ways_per_connection (cycle and footpaths are not used)."
+        actions.append(_infdb_action("infdb-basedata-ways", ags))
     for w in out["warnings"]:
         if w["code"].startswith("partial:") and w.get("tool"):
             actions.append(_infdb_action(w["tool"], w.get("ags") or []))

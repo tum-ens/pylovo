@@ -91,7 +91,7 @@ def configure(monkeypatch, external: bool):
     values = dict(INFDB) if external else {"INFDB_HOST": cl.HOST, "INFDB_PORT": cl.PORT, "INFDB_DBNAME": cl.DBNAME,
                                            "INFDB_USER": cl.DBUSER, "INFDB_PASSWORD": cl.PASSWORD,
                                            "INFDB_SOURCE_SCHEMA": "basedata", "INFDB_OPENDATA_SCHEMA": "opendata"}
-    for name, value in {**values, "USE_INFDB": True, "USE_EXTERNAL_BASEDATA": external}.items():
+    for name, value in {**values, "USE_EXTERNAL_BASEDATA": external}.items():
         monkeypatch.setattr(cl, name, value, raising=False)
 
 
@@ -112,8 +112,6 @@ def test_the_infdb_is_external_only_with_the_switch_and_is_shown_in_the_settings
     configure(monkeypatch, True)
     assert db.external_basedata() and db.settings()["use_external_basedata"]
     assert db.settings()["infdb_target"] == "infdb.example:5060/infdb" and "secret" not in str(db.settings())
-    monkeypatch.setattr(cl, "USE_INFDB", False)  # file mode has no InfDB at all
-    assert not db.external_basedata()
 
 
 def test_the_infdb_connection_is_made_like_infdb_client_does(external, connections):

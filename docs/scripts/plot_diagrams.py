@@ -177,7 +177,7 @@ def architecture() -> None:
     _text(ax, left + 0.12, band_top - 0.09, "config_loader", size=8.4, weight="bold")
     _text(ax, left + 1.3, band_top - 0.1,
           "config/config_generation_lv.yaml, config_generation_mv.yaml, config_analysis.yaml and .env\n"
-          "(database, USE_INFDB, TARGET_EPSG); read once at import and used by all layers below",
+          "(database, InfDB schemas, TARGET_EPSG); read once at import and used by all layers below",
           size=7.4, color=st.INK_SECONDARY)
 
     y = band_top - band_h - 0.25

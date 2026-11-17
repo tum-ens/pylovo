@@ -1,6 +1,6 @@
 """Synthetic "toy town" in the layout of the InfDB source tables, the input of pylovo's database tests.
 
-With ``USE_INFDB=True`` (the default) ``pylovo-setup`` and ``pylovo-generate`` read their input from these
+``pylovo-setup`` and ``pylovo-generate`` read their input from these
 relations of the InfDB schemas (see :mod:`pylovo.infdb.infdb_client`):
 
 * ``<INFDB_SOURCE_SCHEMA>.buildings``: buildings with use, floor areas, households, address, footprint and

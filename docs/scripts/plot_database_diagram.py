@@ -41,10 +41,10 @@ DESCRIPTIONS = {
                            "values of a version are in its snapshot (``version.generation_parameters``).",
     "schema_migrations": "Ledger of the applied schema migrations: one row per migration name with the time it was "
                          "applied (``pylovo-setup``). Created before the other tables.",
-    "postcode": "Postcode polygons. Filled by ``pylovo-setup`` (from InfDB or ``data/postcode.csv``); "
+    "postcode": "Postcode polygons. Filled by ``pylovo-setup`` from the InfDB; "
                 "missing InfDB postcodes are added on demand during generation.",
     "municipal_register": "PLZ to AGS mapping with population, area and RegioStaR classes; used to resolve "
-                          "``--ags`` and to select building files in file-based mode.",
+                          "``--ags``.",
     "transformers": "Transformer candidates: OSM download, LoD2 transformer-station buildings, DSO CSV imports "
                     "and manual edits. Not versioned.",
     "postcode_result": "Postcode geometry per version plus the settlement metrics (house distance, households "
@@ -75,10 +75,6 @@ DESCRIPTIONS = {
     "load_edit": "Audit rows of manual load edits made through the HTTP API (``pylovo.load_editing``): the changed "
                  "inputs, the building, loads and pandapower net before the edit (for the exact undo) and the "
                  "removed analysis rows. Append-only; an undo stamps ``undone_at``.",
-    "ags_log": "AGS codes whose building files were imported (file-based mode).",
-    "res": "Residential building polygons imported from shapefiles (file-based mode only).",
-    "oth": "Other building polygons imported from shapefiles (file-based mode only).",
-    "ways": "Street network imported from the osm2po SQL dump (file-based mode only).",
     "buildings_tem": "Temporary building table of one postcode, created as ``buildings_tem_<plz>`` and "
                      "dropped after the run.",
     "ways_tem": "Temporary street table of one postcode, created as ``ways_tem_<plz>``; pgRouting adds "
@@ -350,9 +346,8 @@ ZONES = [
         ["mv_customers", "mv_node", "mv_grid"],
         ["egon_hvmv_substation", "mv_line", "mv_ring"],
     ]),
-    ("Standalone tables (municipal register, migration ledger; file-based input with USE_INFDB=False)", 0.2, [
-        ["municipal_register", "ags_log", "schema_migrations"],
-        ["res", "oth", "ways"],
+    ("Standalone tables (municipal register, migration ledger)", 0.2, [
+        ["municipal_register", "schema_migrations"],
     ]),
     ("Temporary tables of one generation run (dropped afterwards)", 0.2, [
         ["buildings_tem", "ways_tem", "excluded_tem"],
@@ -392,7 +387,7 @@ def _draw_table(ax, table: Table, x: float, y: float) -> tuple[float, float, flo
     lines = _box_lines(table)
     h = _box_height(table)
     y = y - h
-    dashed = table.temporary or table.name in {"res", "oth", "ways", "ags_log"}
+    dashed = table.temporary
     ax.add_patch(FancyBboxPatch((x, y), BOX_W, h, boxstyle="round,pad=0,rounding_size=0.05", fc="white",
                                 ec=st.BASELINE, lw=0.9, ls="--" if dashed else "-", zorder=3))
     ax.add_patch(FancyBboxPatch((x, y + h - TITLE_H), BOX_W, TITLE_H, boxstyle="round,pad=0,rounding_size=0.05",
@@ -446,8 +441,8 @@ def draw_diagram(tables: dict[str, Table]) -> None:
     ax.set_ylim(0, height)
     ax.axis("off")
     ax.text(0.25, height - 0.2, "pylovo database schema (schema pylovo)", fontsize=10.5, fontweight="bold", va="top")
-    ax.text(0.25, height - 0.42, "Arrows point from a foreign key to the referenced table. Dashed boxes: file-based "
-            "input or temporary tables.", fontsize=7, color=st.INK_SECONDARY, va="top")
+    ax.text(0.25, height - 0.42, "Arrows point from a foreign key to the referenced table. Dashed boxes: temporary "
+            "tables.", fontsize=7, color=st.INK_SECONDARY, va="top")
 
     boxes = {}
     zone_tops = {}
@@ -554,9 +549,7 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
         ("Reference and input tables", ["version", "equipment_data", "consumer_categories", "postcode",
                                         "municipal_register", "transformers", "mv_graph", "mv_graph_vertex",
                                         "mv_graph_edge",
-                                        "mv_graph_settlement", "egon_hvmv_substation", "ags_log", "res", "oth",
-                                        "ways",
-                                        "schema_migrations"]),
+                                        "mv_graph_settlement", "egon_hvmv_substation", "schema_migrations"]),
         ("Result tables", ["postcode_result", "grid_result", "ways_result", "plz_parameters", "building_exclusion",
                            "buildings_result",
                            "transformer_positions", "lines_result", "lines_result_helper", "lines_result_cache",

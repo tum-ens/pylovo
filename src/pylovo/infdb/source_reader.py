@@ -41,13 +41,13 @@ def regclass_text(schema: str, table: str) -> str:
 
 
 def source_is_remote(config: Any) -> bool:
-    """Whether the InfDB source schemas lie in another database than the schema ``pylovo``: ``USE_INFDB`` and
-    ``USE_EXTERNAL_BASEDATA`` with ``INFDB_DBNAME``, ``INFDB_HOST`` or ``INFDB_PORT`` of another database.
+    """Whether the InfDB source schemas lie in another database than the schema ``pylovo``: ``USE_EXTERNAL_BASEDATA``
+    with ``INFDB_DBNAME``, ``INFDB_HOST`` or ``INFDB_PORT`` of another database.
 
     Args:
         config: The module :mod:`pylovo.config_loader` (or an object with its connection attributes).
     """
-    if not getattr(config, "USE_INFDB", False) or not getattr(config, "USE_EXTERNAL_BASEDATA", False):
+    if not getattr(config, "USE_EXTERNAL_BASEDATA", False):
         return False
     source = (config.INFDB_DBNAME, config.INFDB_HOST, str(config.INFDB_PORT))
     return source != (config.DBNAME, config.HOST, str(config.PORT))

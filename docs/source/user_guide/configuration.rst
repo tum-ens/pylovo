@@ -52,11 +52,6 @@ once and names the variables, never their values. The commands that delete data 
    * - ``PASSWORD``
      - required
      - Password of ``DBUSER``.
-   * - ``USE_INFDB``
-     - ``True``
-     - ``True``/``1``/``yes``: read buildings, streets and postcodes from the InfDB schemas in the
-       same database. Anything else: file-based mode (:ref:`file-based-input`). Part of the version
-       snapshot.
    * - ``USE_EXTERNAL_BASEDATA``
      - ``False``
      - ``True``/``1``/``yes``: read the InfDB schemas from the database given by ``INFDB_DBNAME``,
@@ -93,8 +88,8 @@ once and names the variables, never their values. The commands that delete data 
        searched for configuration files and ``$PYLOVO_ROOT/data`` is used as data directory.
    * - ``PYLOVO_DATA_DIR``
      - ``$PYLOVO_ROOT/data``, else ``./data``
-     - Optional data directory with all input data: ``transformer_data/``, ``municipal_register/``
-       and, in the file-based mode, ``postcode.csv``, ``ways/`` and ``buildings/``. The municipal
+     - Optional data directory with the reference data: ``transformer_data/``, ``municipal_register/``
+       and the eGon-data download ``egon_data/``. The municipal
        register also finds the ``data/`` folder of the checkout. Reference data that is missing here
        (municipal register, Overpass queries, processed Bavarian transformers) is read from the copy
        in the wheel (``pylovo/_defaults/data``); pylovo writes only into this directory.
@@ -160,8 +155,9 @@ the snapshot. ``VERSION_ID`` is stored as ``varchar(10)``: use 1 to 10 letters, 
 start for any other value. Quote an id that YAML would read as another type: ``1.0`` is refused,
 ``"1.0"`` is the text.
 
-The snapshot also records which data the grids are built from: ``USE_INFDB``, ``TARGET_EPSG`` and
-``INFDB_SOURCE_SCHEMA`` of the ``.env`` (``input_data`` in the snapshot). Changing one of them needs a
+The snapshot also records which data the grids are built from: ``TARGET_EPSG`` and
+``INFDB_SOURCE_SCHEMA`` of the ``.env`` (``input_data`` in the snapshot; its entry ``use_infdb`` is always
+true since the file-based input was removed). Changing one of them needs a
 new ``VERSION_ID`` as well. A version stored before these entries existed is not blocked: pylovo logs
 that the values used for its existing grids are not recorded.
 
@@ -595,8 +591,7 @@ Clustering
        every brownfield route up to ``MAX_BROWNFIELD_TRAFO_DISTANCE`` whose ends lie in the PLZ
        (any route of length L lies within L/2 of one of its ends); longer greenfield routes are not
        guaranteed. A configuration
-       without the key keeps the PLZ graph (``False``); with file input (``USE_INFDB=False``) the
-       switch has no effect.
+       without the key keeps the PLZ graph (``False``).
      - ✓
 
 Ratings of candidates count only for the sources that are switched on: a rated candidate of a

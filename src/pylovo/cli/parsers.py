@@ -68,7 +68,7 @@ Examples:
   # Generate for multiple municipalities
   pylovo-generate --ags 09162000 09161000
 
-  # Generate every postcode with buildings in the InfDB (USE_INFDB=True), the largest first
+  # Generate every postcode with buildings in the InfDB, the largest first
   pylovo-generate --all
 
   # Only the postcodes with buildings in Bavaria and North Rhine-Westphalia
@@ -98,7 +98,7 @@ For more information, see the README: https://github.com/tum-ens/pylovo
                         help='Municipality code(s) (AGS) to generate grids for (e.g., 09162000)')
     region.add_argument('--all', dest='all_states', nargs='*', type=_federal_state, metavar='STATE',
                         help='Every postcode with buildings in the InfDB, or with buildings in the given federal '
-                             'states (e.g. by nrw), the largest first (USE_INFDB=True only)')
+                             'states (e.g. by nrw), the largest first')
     parallelism = parser.add_mutually_exclusive_group()
     parallelism.add_argument('--parallel', dest='parallel', action='store_true', default=None,
                              help='Generate several regions in parallel worker processes')
@@ -122,7 +122,7 @@ def classify_parser() -> argparse.ArgumentParser:
             "The pipeline then:\n"
             "  1. creates the sample set of CLASSIFICATION_VERSION (config/config_classification.yaml) or copies\n"
             "     the one of --same-sample-as,\n"
-            "  2. imports buildings (USE_INFDB=False only), generates and analyses the sample grids,\n"
+            "  2. generates and analyses the sample grids,\n"
             "  3. selects the clustering parameters and numbers of clusters (asked, given or computed), writes\n"
             "     them to config/config_clustering.yaml together with the answer on additional filtering and\n"
             "     prints the selection report (log/selection_report_<classification>.md),\n"

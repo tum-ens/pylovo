@@ -8,9 +8,8 @@ import time
 import pylovo.database.database_client as dbc
 
 from pylovo.analysis.parameter_calculation import analyze_grid_parameters_for_multiple_plz
-from pylovo.data_import.import_buildings import import_buildings_for_multiple_plz
 from pylovo.classification.sampling.sample import copy_sample_set, create_sample_set, get_sample_set
-from pylovo.config_loader import CLASSIFICATION_VERSION, PARALLEL, USE_INFDB
+from pylovo.config_loader import CLASSIFICATION_VERSION, PARALLEL
 from pylovo.grid_generator import GenerationOutcome, GridGenerator
 
 
@@ -18,16 +17,15 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False, 
                                 same_sample_as: int | None = None) -> list:
     """Prepare the grid parameters of a new sample set for clustering.
 
-    Creates the sample set of ``CLASSIFICATION_VERSION``, imports the building
-    shapefiles (only with ``USE_INFDB=False``), generates and analyses the grids of all sampled PLZ and computes the
-    clustering parameters. This can take hours for a full sample set. A PLZ for which no grids could be generated
+    Creates the sample set of ``CLASSIFICATION_VERSION``, generates and analyses the grids of all sampled PLZ and
+    computes the clustering parameters. This can take hours for a full sample set. A PLZ for which no grids could be generated
     is removed from the sample set. The filters are not applied here: the readers of the clustering parameters
     apply them (see ``DatabaseCommunication``).
 
     Args:
         sample_from_postcode_result_only: Only sample PLZ that already have a
             ``postcode_result`` entry for ``VERSION_ID``.
-        parallel: Generate the grids (step 3) and compute the clustering parameters (step 4) of several PLZ in
+        parallel: Generate the grids (steps 2 and 3) and compute the clustering parameters (step 4) of several PLZ in
             worker processes (``N_JOBS_PERCENT`` of the CPU cores). None takes ``PARALLEL`` of
             ``config_generation_lv.yaml``.
         same_sample_as: Copy the sample set of this classification instead of drawing one
@@ -45,22 +43,13 @@ def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False, 
         copy_sample_set(same_sample_as)
     samples = get_sample_set()
 
-    # %% 2. file-based data path only (USE_INFDB=False): import the building shapefiles
-    # importing a single shape file takes a few minutes. Importing the buildings for a whole set will take a few hours
-    # With InfDB the grid generation reads the buildings directly (same as pylovo-generate).
-    if not USE_INFDB:
-        start_time = time.time()
-        with dbc.DatabaseClient() as dbc_client:
-            import_buildings_for_multiple_plz(samples, dbc_client)
-        print("--- %s seconds for step 2: building import---" % (time.time() - start_time))
-
-    # %% 3. generate the grids for your set
+    # %% 2. and 3. generate the grids of the set and analyse its PLZ
     # this takes around a quarter of an hour for a grid and might take a whole day for an entire set.
     parallel = PARALLEL if parallel is None else parallel
     start_time = time.time()
     gg = GridGenerator()
     outcomes = gg.generate_grid_for_multiple_plz(df_plz=samples, analyze_grids=True, parallel=parallel)
-    print("--- %s seconds for step 3: grid generation---" % (time.time() - start_time))
+    print("--- %s seconds for steps 2 and 3: grid generation and PLZ analysis---" % (time.time() - start_time))
 
     # A PLZ without grids is no part of this classification: remove it from the stored sample as well.
     without_grids = [plz for plz, outcome in outcomes.items()

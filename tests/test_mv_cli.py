@@ -475,7 +475,7 @@ def test_missing_source_tables_stop_the_mv_stage_before_any_grid(monkeypatch, ca
 
 
 def test_source_data_are_remote_only_in_another_database():
-    pylovo = {"USE_INFDB": True, "DBNAME": "pylovo", "HOST": "localhost", "PORT": "5432"}
+    pylovo = {"DBNAME": "pylovo", "HOST": "localhost", "PORT": "5432"}
     same = SimpleNamespace(USE_EXTERNAL_BASEDATA=True, INFDB_DBNAME="pylovo", INFDB_HOST="localhost", INFDB_PORT=5432,
                            **pylovo)
     assert not source_is_remote(same)                                  # unset INFDB_* values fall back to pylovo's

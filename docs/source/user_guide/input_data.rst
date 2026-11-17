@@ -3,8 +3,9 @@ Input data
 
 A grid is built from three inputs per postcode area: **buildings** (geometry, use, households,
 floor areas), the **street network** and the **postcode polygon**. Transformer positions are an
-optional fourth input (:doc:`transformer_data`). pylovo reads the first three either from InfDB
-(``USE_INFDB=True``, default) or from files (``USE_INFDB=False``).
+optional fourth input (:doc:`transformer_data`). pylovo reads the first three from an InfDB. Version 1.2
+and earlier also read them from files (shapefiles and an osm2po street dump); that mode was removed, as an
+InfDB can be prepared for any region.
 
 .. figure:: /images/generation/step1_inputs.png
    :alt: Buildings coloured by use, street network and transformer candidates of PLZ 85653
@@ -14,8 +15,8 @@ optional fourth input (:doc:`transformer_data`). pylovo reads the first three ei
    candidates. Demo extract derived from OpenStreetMap, © OpenStreetMap contributors, ODbL;
    figure made with ``docs/scripts/plot_generation_steps.py``.
 
-InfDB input (``USE_INFDB=True``)
---------------------------------
+InfDB input
+-----------
 
 `InfDB <https://github.com/tum-ens/InfDB>`_ prepares the geographically referenced inputs before
 pylovo generates grids. It consolidates LoD2 building geometry and attributes, allocates
@@ -32,7 +33,7 @@ owned by InfDB and the results go into a new ``pylovo`` schema. See :doc:`databa
 Required InfDB tables
 ~~~~~~~~~~~~~~~~~~~~~
 
-With ``USE_INFDB=True`` pylovo reads these tables from the database configured in ``.env``:
+pylovo reads these tables from the database configured in ``.env``:
 
 .. list-table::
    :header-rows: 1
@@ -182,154 +183,4 @@ Postcode polygons
 
 ``pylovo-setup`` copies all postcode polygons into ``pylovo.postcode``. A postcode that is still
 missing when grids are generated is fetched from ``<INFDB_OPENDATA_SCHEMA>.postcodes_germany``
-on demand. The polygon defines the area in which transformer candidates are selected; in the
-file-based mode it also selects buildings and streets.
-
-.. _file-based-input:
-
-File-based input (``USE_INFDB=False``)
---------------------------------------
-
-This mode does not read InfDB schemas. The inputs are files in the data directory (``./data``, or
-``PYLOVO_DATA_DIR``, see :ref:`env-variables`). The repository holds the folders ``buildings/`` and
-``ways/`` with a note each; ``postcode.csv`` and your own files are not in git. The reference data
-(municipal register, transformers) ships with pylovo.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 38 62
-   :class: fixed-table
-
-   * - File
-     - Content
-   * - ``postcode.csv``
-     - Postcode polygons for ``pylovo.postcode``, loaded by ``pylovo-setup`` (see below).
-   * - ``ways/ways_public_2po_4pgr.sql``
-     - Street network as SQL dump created with osm2po, loaded by ``pylovo-setup`` into
-       ``pylovo.ways`` (see below).
-   * - ``buildings/Res_<AGS>.shp``, ``buildings/Oth_<AGS>.shp``
-     - Building shapefiles per municipality, imported when a postcode is generated (see below).
-
-``pylovo-setup`` stops before it changes anything if ``postcode.csv`` or the street dump is missing.
-
-Buildings are imported when a postcode is generated: pylovo looks up the AGS of the postcode in
-``pylovo.municipal_register``, imports the matching shapefiles with ``ogr2ogr`` into the tables
-``res`` and ``oth`` and records the AGS in ``ags_log`` so that it is imported only once. A
-postcode can span several municipalities; all of them are imported. When you generate one postcode
-(``pylovo-generate --plz <plz>``), every AGS of it that is not in ``ags_log`` yet needs a shapefile: if one has
-none, pylovo stops with a ``FileNotFoundError`` that names the AGS and the folder, before it imports
-anything, so you can add the files and run again. With several postcodes or ``--ags``, AGS without a
-file are skipped and tried again at the next run; the grids then contain only the buildings that were
-imported. Buildings are assigned to the postcode by their centroid, streets by intersection with the
-postcode polygon. In this mode pylovo creates the building connection lines itself (functions
-``segment_intersecting_ways`` and ``generate_building_to_way_connections``).
-
-Postcode polygons (``postcode.csv``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The file is a comma-separated text file with a header line, read with ``pandas.read_csv``. ``pylovo-setup``
-renames the column ``einwohner`` to ``population`` and ``gid`` to ``postcode_id`` and appends all rows to
-``pylovo.postcode`` as they are. The header must therefore name columns of that table: columns that the file
-does not have stay empty (the database numbers ``postcode_id`` itself), a column that is not in the table
-makes the import fail.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 24 12 64
-   :class: fixed-table
-
-   * - Column
-     - Required
-     - Content
-   * - ``plz``
-     - yes
-     - Postcode as a whole number, unique.
-   * - ``geom``
-     - yes
-     - Polygon of the postcode area as text that PostGIS reads as a geometry: hexadecimal EWKB (what
-       ``psql \copy`` writes for a PostGIS column) or EWKT such as
-       ``SRID=25832;MULTIPOLYGON(((x y, x y, ...)))``. The table column is
-       ``geometry(MultiPolygon, <TARGET_EPSG>)``: the file is not reprojected, so the coordinates and the SRID
-       must be those of ``TARGET_EPSG`` (metres), and a ``POLYGON`` has to be written as a ``MULTIPOLYGON``.
-       The polygon selects the buildings and streets of the postcode.
-   * - ``note``
-     - no
-     - Name of the postcode area (text).
-   * - ``qkm``
-     - no
-     - Area in km² (number).
-   * - ``einwohner``
-     - no
-     - Inhabitants (whole number), stored as ``population``.
-   * - ``gid``
-     - no
-     - Row number (whole number), stored as ``postcode_id``.
-
-A file of this form can be exported from a PostGIS table of postcode polygons, for example with
-``\copy (SELECT plz, note, qkm, einwohner, ST_Multi(ST_Transform(geom, 25832)) AS geom FROM <table>) TO
-'postcode.csv' CSV HEADER`` in ``psql``.
-
-Building shapefiles (``buildings/``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Put one pair of shapefiles per municipality into ``buildings/``, for example ``Res_9162000.shp`` and
-``Oth_9162000.shp`` with their ``.shx``, ``.dbf`` and ``.prj`` files. A file belongs to an AGS if the AGS as it is
-stored in ``pylovo.municipal_register.ags`` appears in its name (the municipality key without a leading zero, for
-example 9162000 for Munich; ``09162000`` in the name matches as well). It goes into the table ``oth`` if its name
-contains ``Oth`` and into ``res`` if it contains ``Res``; the folder names do not count, and a name with neither
-is refused.
-
-The polygons need a CRS (the ``.prj`` file): ``ogr2ogr`` reprojects them to ``TARGET_EPSG`` and promotes them to
-multipolygons. The attributes are matched by name to the columns of ``res`` and ``oth``
-(:doc:`../concepts/database_tables`); a DBF field name has at most 10 characters, hence ``building_t``. The
-generation reads only these attributes, the other columns are not used:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 24 16 60
-   :class: fixed-table
-
-   * - File
-     - Attribute
-     - Content
-   * - ``Res_<AGS>.shp``
-     - ``osm_id``
-     - Id of the building (text), unique over all files because it is the primary key of ``res``.
-   * - ``Res_<AGS>.shp``
-     - ``building_t``
-     - Building type ``SFH`` (single-family house), ``TH`` (terraced house), ``MFH`` (multi-family house)
-       or ``AB`` (apartment block). It decides the households: one for ``SFH`` and ``TH``, at least two for
-       ``MFH`` and at least five for ``AB``, from the floor area.
-   * - ``Res_<AGS>.shp``
-     - ``area``
-     - Footprint in m²; the polygon area if empty.
-   * - ``Res_<AGS>.shp``
-     - ``floors``
-     - Number of floors (whole number); one if empty.
-   * - ``Oth_<AGS>.shp``
-     - ``osm_id``
-     - Id of the building, unique as above (primary key of ``oth``).
-   * - ``Oth_<AGS>.shp``
-     - ``use``
-     - ``Commercial`` or ``Public``; other rows are ignored.
-   * - ``Oth_<AGS>.shp``
-     - ``area``
-     - Footprint in m²; the polygon area if empty. These buildings have one floor.
-
-Street network with osm2po
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The SQL dump is created from an OpenStreetMap extract with osm2po 5.3.6 (later versions are not
-supported by these instructions):
-
-#. Download the OSM extract (``.pbf``) from `Geofabrik <https://download.geofabrik.de/>`_ and
-   osm2po 5.3.6 from `osm2po.de <https://osm2po.de/releases/>`_.
-#. In ``osm2po.config`` set ``tilesize=x``, comment out ``.default.wtr.finalMask = car``, keep
-   only ``ferry`` commented out in the way-type section, and keep the SQL writer line active.
-#. Run ``java -Xmx1g -jar osm2po-core-5.3.6-signed.jar prefix=public path/to/extract.pbf``.
-#. Copy the resulting ``public_2po_4pgr.sql`` to ``ways/ways_public_2po_4pgr.sql`` in the data
-   directory and run ``pylovo-setup``.
-
-The dump creates the table ``public_2po_4pgr`` (osm2po's standard output with the columns ``id``, ``source``,
-``target``, ``clazz``, ``cost``, ``reverse_cost`` and ``geom_way``). ``pylovo-setup`` copies it into
-``pylovo.ways`` with the geometry transformed to ``TARGET_EPSG`` and drops it.
+on demand. The polygon defines the area in which transformer candidates are selected.

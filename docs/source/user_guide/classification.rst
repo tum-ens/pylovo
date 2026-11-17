@@ -26,11 +26,11 @@ At a glance
      - Sample set: PLZ drawn per RegioStaR 7 class, or copied from another classification.
      - ``classification_version``, ``sample_set``
    * - 2
-     - Buildings imported from shapefiles (only with ``USE_INFDB=False``).
-     - ``res``, ``oth``
+     - Grids generated for the sample (PLZ that already exist for ``VERSION_ID`` are kept).
+     - ``grid_result``, ``lines_result``, ...
    * - 3
-     - Grids generated and the PLZ analysed for the sample (PLZ that already exist for ``VERSION_ID`` are kept).
-     - ``grid_result``, ``plz_parameters``, ...
+     - PLZ analysed during the generation (key figures per postcode).
+     - ``plz_parameters``
    * - 4
      - Key figures per grid (:doc:`analysing_grids`), of the current definitions (``key_figures_version``).
      - ``clustering_parameters``
@@ -277,13 +277,10 @@ With ``--same-sample-as N`` nothing is drawn: the classification is registered w
 rows of classification ``N``, in one transaction. Two classifications of the same PLZ differ only by what changed
 between them, for example the key-figure definitions, the transform or the filters.
 
-Steps 2 and 3: buildings and grids
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Steps 2 and 3: grids and PLZ analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With ``USE_INFDB=False`` the building shapefiles of the sampled municipalities are imported first. With InfDB
-the generation reads the buildings itself.
-
-Then ``GridGenerator.generate_grid_for_multiple_plz`` generates the grids of the sample like ``pylovo-generate``
+``GridGenerator.generate_grid_for_multiple_plz`` generates the grids of the sample like ``pylovo-generate``
 does (:doc:`generating_grids`), in parallel worker processes (``N_JOBS_PERCENT`` of the CPU cores) unless
 ``PARALLEL`` is ``False`` or ``--no-parallel`` is given, and with the PLZ analysis (``analyze_grids=True``). A PLZ that already has grids for ``VERSION_ID``
 is kept as it is and not analysed again, so grids that were generated without ``ANALYZE_GRIDS`` need

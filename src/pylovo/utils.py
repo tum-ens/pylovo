@@ -42,9 +42,8 @@ OVERPASS_RETRY_PAUSE_S = 30
 def get_user_data_dir() -> Path:
     """Return the directory with user-provided input data.
 
-    The directory holds the reference data (``transformer_data/``, ``municipal_register/``)
-    and the inputs of the file-based (``USE_INFDB=False``) data path (``postcode.csv``,
-    ``ways/``, ``buildings/``). The first match wins:
+    The directory holds the reference data (``transformer_data/``, ``municipal_register/``) and the
+    eGon-data download (``egon_data/``). The first match wins:
 
     1. ``PYLOVO_DATA_DIR`` environment variable (explicit data directory),
     2. ``PYLOVO_ROOT`` environment variable + ``/data`` (Docker-friendly),

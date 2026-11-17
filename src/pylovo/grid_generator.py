@@ -71,7 +71,6 @@ from pylovo.config_loader import (
     URBAN_MAX_BUILDING_DISTANCE,
     URBAN_MIN_HOUSEHOLDS,
     USE_DSO_TRANSFORMER_POSITIONS,
-    USE_INFDB,
     USE_MANUAL_TRANSFORMER_POSITIONS,
     USE_OPEN_TRANSFORMER_POSITIONS,
     VERSION_ID,
@@ -107,7 +106,7 @@ class GridGenerator:
     Generates the synthetic LV grids of postcode areas (PLZ).
 
     One instance holds a :class:`~pylovo.database.database_client.DatabaseClient`
-    (and an ``InfdbClient`` if ``USE_INFDB``) and logs to ``log_file``
+    and an ``InfdbClient`` and logs to ``log_file``
     (keyword argument, default ``log/log.txt``). Generate grids with
     :meth:`generate_grid_for_single_plz` or :meth:`generate_grid_for_multiple_plz`.
     """
@@ -123,9 +122,7 @@ class GridGenerator:
         self.logger = utils.create_logger(
             name="GridGenerator", log_file=self.log_file, log_level=LOG_LEVEL
         )
-        self.inf_dbc = None
-        if USE_INFDB:
-            self.inf_dbc = InfdbClient(log_file=self.log_file)
+        self.inf_dbc = InfdbClient(log_file=self.log_file)
 
     def __del__(self):
         # Close the database connection. A destructor must not raise: dbc is missing if __init__
@@ -399,12 +396,11 @@ class GridGenerator:
     def prepare_lod2_transformer_stations(self):
         """Add the LoD2 transformer-station buildings of the PLZ to the shared transformer candidates.
 
-        Only in InfDB mode and only when open or manual positions are used: a run without them does not
-        use the candidates. ``pylovo.transformers`` is shared by all PLZ, so the rows are written and
+        Only when open or manual positions are used: a run without them does not use the candidates. ``pylovo.transformers`` is shared by all PLZ, so the rows are written and
         committed in a short transaction of their own before the PLZ is generated (the long PLZ
         transaction would hold their row locks for minutes and could deadlock with a neighbouring PLZ).
         """
-        if not (USE_INFDB and (USE_OPEN_TRANSFORMER_POSITIONS or USE_MANUAL_TRANSFORMER_POSITIONS)):
+        if not (USE_OPEN_TRANSFORMER_POSITIONS or USE_MANUAL_TRANSFORMER_POSITIONS):
             return
         transformer_station_buildings = self.inf_dbc.fetch_transformer_station_buildings_from_infdb(self.plz)
         transformer_candidate_count = self.dbc.upsert_lod2_transformer_stations(transformer_station_buildings)
@@ -428,12 +424,12 @@ class GridGenerator:
         FROM: postcode (local) or InfDB opendata.postcodes_germany
         INTO: postcode_result
 
-        In USE_INFDB mode, the local postcode table may be empty or stale for new PLZ
+        The local postcode table may be empty or stale for new PLZ
         regions added after the initial pylovo-setup run.  To avoid requiring a full
         re-run of setup, the postcode geometry is fetched on-demand from InfDB and
         inserted into the local postcode table before copying to postcode_result.
         """
-        if USE_INFDB and not self.dbc.postcode_exists_locally(self.plz):
+        if not self.dbc.postcode_exists_locally(self.plz):
             postcode_row = self.inf_dbc.fetch_postcode_from_infdb(self.plz)
             if postcode_row is None:
                 raise ValueError(
@@ -448,19 +444,14 @@ class GridGenerator:
     def prepare_buildings(self):
         """
         Caches buildings from raw data tables and stores in temporary tables.
-        FROM: res, oth
+        FROM: the InfDB buildings
         INTO: buildings_tem
         """
-        if USE_INFDB:
-            warning = address_filter_warning(EXCLUDE_BUILDINGS_WITHOUT_ADDRESS, self.inf_dbc.has_auxiliary_class())
-            if warning:
-                self.logger.warning(warning)
-            buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
-            self.dbc.set_buildings_table(buildings_data)
-        else:
-            self.dbc.set_residential_buildings_table(self.plz)
-            if not RESIDENTIAL_ONLY_GENERATION:
-                self.dbc.set_other_buildings_table(self.plz)
+        warning = address_filter_warning(EXCLUDE_BUILDINGS_WITHOUT_ADDRESS, self.inf_dbc.has_auxiliary_class())
+        if warning:
+            self.logger.warning(warning)
+        buildings_data = self.inf_dbc.fetch_buildings_from_infdb(self.plz)
+        self.dbc.set_buildings_table(buildings_data)
         if RESIDENTIAL_ONLY_GENERATION:
             removed_non_residential = self.dbc.remove_non_residential_buildings_from_buildings_tem()
             self.logger.info(
@@ -546,22 +537,19 @@ class GridGenerator:
     def prepare_ways(self):
         """
         Cache ways, create network, connect buildings to the ways network
-        FROM: ``ways`` (or the InfDB street tables), ``buildings_tem``
+        FROM: the InfDB street tables, ``buildings_tem``
         INTO: ``ways_tem``, ``buildings_tem``, ``ways_tem_vertices_pgr``
         """
-        if USE_INFDB:
-            ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
-            if postcode_border.enabled():
-                width_m = postcode_border.neighboring_street_width_m()
-                neighboring_rows = self.inf_dbc.fetch_neighboring_ways(
-                    self.plz, self.dbc.get_postcode_polygon_wkb(self.plz), TARGET_EPSG,
-                    width_m, first_way_id=max(int(row[-1]) for row in ways_rows))
-                self.logger.info(
-                    f"Neighboring streets: {len(neighboring_rows)} ways of other PLZ within {width_m:.0f} m added")
-                ways_rows = list(ways_rows) + list(neighboring_rows)
-            ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows)
-        else:
-            ways_count = self.dbc.set_ways_tem_table(self.plz)
+        ways_rows = self.inf_dbc.fetch_ways_from_infdb(self.plz)
+        if postcode_border.enabled():
+            width_m = postcode_border.neighboring_street_width_m()
+            neighboring_rows = self.inf_dbc.fetch_neighboring_ways(
+                self.plz, self.dbc.get_postcode_polygon_wkb(self.plz), TARGET_EPSG,
+                width_m, first_way_id=max(int(row[-1]) for row in ways_rows))
+            self.logger.info(
+                f"Neighboring streets: {len(neighboring_rows)} ways of other PLZ within {width_m:.0f} m added")
+            ways_rows = list(ways_rows) + list(neighboring_rows)
+        ways_count = self.dbc.set_ways_tem_table_infdb(ways_rows)
         self.logger.info(f"The ways_tem table filled with {ways_count} ways")
 
         # Index loaded roads before nearest-road searches.
