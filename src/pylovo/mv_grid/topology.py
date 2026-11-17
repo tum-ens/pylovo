@@ -155,16 +155,13 @@ def distance_model(inp: DistrictInput, rg: RunGraph, terminals: np.ndarray) -> D
 
 
 # ============================================================================================ public: plan and repairs
-def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any,
-               routes: list[list[int]]) -> TopologyPlan:
+def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, routes: list[list[int]]) -> TopologyPlan:
     """The topology of a district from the solver's rings (the steps of the module docstring).
 
     Args:
         inp: The district input.
         rg: Its run graph.
         model: The distance model of :func:`distance_model`.
-        ev: The ring evaluator of the solver (kept for the contract; the build checks rings with joints through
-            :func:`pylovo.mv_grid.rings.check_ring` on explicit sections).
         routes: Rings as terminal indices in ring order, busbar excluded. A ring candidate missing from every route
             becomes a single-station ring (flag ``unrouted``). The satellites of the model are connected after the
             stubs (:func:`_attach_satellites`).
@@ -200,7 +197,7 @@ def build_plan(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any,
     return plan
 
 
-def move_nop(inp: DistrictInput, rg: RunGraph, model: DistanceModel, ev: Any, plan: TopologyPlan,
+def move_nop(inp: DistrictInput, rg: RunGraph, model: DistanceModel, plan: TopologyPlan,
              ring_id: int) -> tuple[TopologyPlan, bool]:
     """Move the open point of ring ``ring_id`` to its best allowed position for the plan's current sections.
 
@@ -1105,20 +1102,15 @@ class _Network:
             return base + float(line.route.cum[att.pos])
         return base + line.route.detour * float(np.hypot(*(att.foot - line.route.p0)))
 
-    def stub_attachment(self, row: int, ring_id: int, limit: float | None = None) -> _Attach | None:
+    def stub_attachment(self, row: int, ring_id: int) -> _Attach | None:
         """The nearest allowed attachment of a stub: on the main path of the ring (or radial) or on one of its stub
         trees, within the stub limits: the tree's coincident load at most ``stub_max_kva`` and every node of the tree
-        within the length limit of that load (:meth:`_Ctx.stub_limit_m`; ``limit`` caps it further)."""
+        within the length limit of that load (:meth:`_Ctx.stub_limit_m`)."""
         ctx, p = self.ctx, self.ctx.p
-
-        def allowed(load_kva: float) -> float:
-            cap = ctx.stub_limit_m(load_kva)
-            return cap if limit is None else min(cap, float(limit))
-
         best: tuple[float, int, int, _Attach] | None = None
         load = ctx.coincident_kva([row])
         if load <= p.stub_max_kva:
-            att = self.nearest(row, allowed(load), self.chain.get(ring_id, []))
+            att = self.nearest(row, ctx.stub_limit_m(load), self.chain.get(ring_id, []))
             if att is not None:
                 best = (att.dist, 0, 0, att)
         for tree_id, line_ids in sorted(self.trees(ring_id).items()):
@@ -1126,7 +1118,7 @@ class _Network:
             load = ctx.coincident_kva([ctx.row_of_key[k] for k in keys] + [row])
             if load > p.stub_max_kva:
                 continue
-            lim = allowed(load)
+            lim = ctx.stub_limit_m(load)
             if max((self.depth.get(k, 0.0) for k in keys), default=0.0) > lim:
                 continue                                # the heavier tree would be too long already
             att = self.nearest(row, lim, line_ids)

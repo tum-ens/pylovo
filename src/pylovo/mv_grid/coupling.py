@@ -174,7 +174,7 @@ def _trafo_types() -> dict[str, dict]:
 
 def _unit_type(unit_kva: float) -> tuple[str, dict]:
     """Name and data of the pandapower 20/0.4 kV type of a station unit (pylovo's names). A unit without its own
-    type takes the next larger 20/0.4 kV type (below 250 kVA :data:`SMALL_UNIT_BASE`, as pylovo's backend) with the
+    type takes the next larger 20/0.4 kV type (below 250 kVA the 0.25 MVA type, as ``PandapowerBackend.SMALL_TRANSFORMER_BASE``) with the
     rating replaced and the no-load losses scaled."""
     types = _trafo_types()
     name = f"{unit_kva / 1000.0:g} MVA 20/0.4 kV"

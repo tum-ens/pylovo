@@ -1028,7 +1028,7 @@ def repair(inp: DistrictInput, rg: Any, model: Any, ev: Any, plan: TopologyPlan,
         if name in ("move_nop", "split_ring") and target not in ring_ids:
             continue
         if name == "move_nop":
-            new_plan, moved = topology.move_nop(inp, rg, model, ev, plan, target)
+            new_plan, moved = topology.move_nop(inp, rg, model, plan, target)
             if moved:
                 plan = new_plan
                 actions.append(_record(round_no, "move_nop", v, ring_id=target))

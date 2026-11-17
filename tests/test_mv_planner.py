@@ -101,7 +101,7 @@ def fakes(monkeypatch):
         return SolverResult([[1, 2, 3]], 500.0, 400.0, 3, 7, False, 0.1, {"ls_gain_percent": 20.0})
 
     s.solve = solve
-    t.build_plan = lambda inp, rg, model, ev, routes: (calls.append(f"plan:{routes}") or ring_topology())
+    t.build_plan = lambda inp, rg, model, routes: (calls.append(f"plan:{routes}") or ring_topology())
     e.build_design_net = lambda inp, plan: (calls.append("net") or f"net-{plan.rings[0].nop_key}")
     e.run_cases = lambda net, inp: (calls.append(f"cases:{net}") or {
         "load": case("load"), "n1a": case("n1a"), "n1b": case("n1b")})

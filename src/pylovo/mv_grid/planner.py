@@ -83,7 +83,7 @@ def plan_district(inp: DistrictInput) -> DistrictPlan:
     ev = rings.RingEvaluator.from_model(inp, model)
     result = solvers.solve(ev, model.dist_m, model.candidates, rounds=params.local_search_rounds,
                            neighbours=params.neighbours, time_guard_s=params.ls_time_guard_s)
-    plan = topology.build_plan(inp, rg, model, ev, result.routes)
+    plan = topology.build_plan(inp, rg, model, result.routes)
 
     repairs: list[dict] = []
     rounds_used = 0

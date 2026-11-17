@@ -416,7 +416,7 @@ class FakeTopology:
         self.moved = moved
         self.calls: list[tuple] = []
 
-    def move_nop(self, inp, rg, model, ev, plan, ring_id):
+    def move_nop(self, inp, rg, model, plan, ring_id):
         self.calls.append(("move_nop", ring_id))
         return plan, self.moved
 

@@ -240,7 +240,7 @@ def plan_of(district: District, routes: list[list[int]], *, cap: int = 20, satel
     keys = list(inp.nodes.index[terminals])
     route_t = [[keys.index(k) for k in route] for route in routes]
     ev = FakeEvaluator(cap)
-    plan = topology.build_plan(inp, rg, model, ev, route_t)
+    plan = topology.build_plan(inp, rg, model, route_t)
     return plan, (inp, rg, model, ev)
 
 
@@ -803,7 +803,7 @@ def balanced_ring() -> District:
 def test_move_nop_follows_stronger_sections_and_reassigns_feeders():
     plan, (inp, rg, model, ev) = plan_of(balanced_ring(), [[11, 12, 13]])
     ring = plan.rings[0]
-    unchanged, moved = topology.move_nop(inp, rg, model, ev, plan, ring.ring_id)
+    unchanged, moved = topology.move_nop(inp, rg, model, plan, ring.ring_id)
     assert not moved and unchanged is plan
     assert ring.nop_key == 12 and plan.node_feeder[12] == ring.feeder_a
     # four cables on the B half (12 -> 13 -> busbar): the B half takes 12 and 13, the open point moves to 11
@@ -811,7 +811,7 @@ def test_move_nop_follows_stronger_sections_and_reassigns_feeders():
     stronger = plan
     for _ in range(3):
         stronger, _ = topology.add_parallel(stronger, b_half, max_parallel=4)
-    new, moved = topology.move_nop(inp, rg, model, ev, stronger, ring.ring_id)
+    new, moved = topology.move_nop(inp, rg, model, stronger, ring.ring_id)
     assert moved
     assert new.rings[0].nop_key == 11
     assert_plan_valid(new, inp)

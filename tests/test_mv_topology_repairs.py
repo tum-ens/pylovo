@@ -83,7 +83,7 @@ def plan_with_routes(district: District, routes: list[list[int]]):
     model = topology.distance_model(inp, rg, terminals)
     ev = rings.RingEvaluator.from_model(inp, model)
     keys = list(inp.nodes.index[terminals])
-    plan = topology.build_plan(inp, rg, model, ev, [[keys.index(k) for k in route] for route in routes])
+    plan = topology.build_plan(inp, rg, model, [[keys.index(k) for k in route] for route in routes])
     return plan, (inp, rg, model, ev)
 
 
