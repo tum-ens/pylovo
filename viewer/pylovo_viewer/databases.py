@@ -20,7 +20,9 @@ from pathlib import Path
 
 from pylovo_viewer.catalog import Catalog
 from pylovo_viewer.db import Database, DatabaseError
-from pylovo_viewer.layers import LRU, LayerService
+from pylovo_api.lru import LRU
+
+from pylovo_viewer.layers import LayerService
 from pylovo_viewer.settings import Settings
 
 ON_SERVER = """SELECT datname FROM pg_database

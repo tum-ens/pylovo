@@ -25,10 +25,10 @@ import subprocess
 import sys
 import threading
 import uuid
-from collections import OrderedDict
 from typing import Any
 
 from pylovo_api import db
+from pylovo_api.lru import LRU
 from pylovo_api.settings import paths
 
 _MARK = "PYLOVO_API_SNAPSHOT="
@@ -42,9 +42,7 @@ snapshot = json.loads(json.dumps(snapshot, allow_nan=False, sort_keys=True))
 print({_MARK!r} + json.dumps({{"version_id": str(c.VERSION_ID), "version_comment": c.VERSION_COMMENT,
                                 "snapshot": snapshot}}))
 """
-_CACHE: OrderedDict[str, dict] = OrderedDict()
-_CACHE_SIZE = 24
-_LOCK = threading.Lock()        # guards _CACHE
+_CACHE = LRU(24)                # snapshots per configuration
 _BUILD_LOCK = threading.Lock()  # one probe at a time: concurrent requests then share the cached result
 
 
@@ -73,11 +71,8 @@ def config_snapshot(text: str | None = None) -> dict[str, Any]:
     """
     key = _config_key(text)
     with _BUILD_LOCK:
-        with _LOCK:
-            if key in _CACHE:
-                _CACHE.move_to_end(key)
-                return _CACHE[key]
-        return _build_snapshot(key, text)
+        cached = _CACHE.get(key)
+        return cached if cached is not None else _build_snapshot(key, text)
 
 
 def _build_snapshot(key: str, text: str | None) -> dict[str, Any]:
@@ -102,12 +97,7 @@ def _build_snapshot(key: str, text: str | None) -> dict[str, Any]:
     if proc.returncode != 0 or line is None:
         errors = [ln for ln in proc.stderr.strip().splitlines() if ln.strip()]
         raise SnapshotError("pylovo rejects this configuration: " + (errors[-1] if errors else "unknown error"))
-    result = json.loads(line[len(_MARK):])
-    with _LOCK:
-        _CACHE[key] = result
-        while len(_CACHE) > _CACHE_SIZE:
-            _CACHE.popitem(last=False)
-    return result
+    return _CACHE.put(key, json.loads(line[len(_MARK):]))
 
 
 # --------------------------------------------------------------------------- comparison

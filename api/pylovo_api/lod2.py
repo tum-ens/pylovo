@@ -23,7 +23,6 @@ import math
 import struct
 import threading
 import time
-from collections import OrderedDict
 from typing import Any
 
 import numpy as np
@@ -31,6 +30,7 @@ import shapely
 from shapely import wkb
 
 from pylovo_api import db
+from pylovo_api.lru import LRU
 
 log = logging.getLogger(__name__)
 
@@ -43,9 +43,7 @@ _SCHEMA_TTL_S = 300.0
 
 _schema_lock = threading.Lock()
 _schema: dict[str, Any] = {"checked_at": 0.0, "value": None}
-_cache: OrderedDict[int, bytes] = OrderedDict()
-_cache_lock = threading.Lock()
-_CACHE_SIZE = 24
+_cache = LRU(24)                     # encoded meshes per grid
 
 
 # --------------------------------------------------------------------------- schema
@@ -86,25 +84,47 @@ def grid_objectids(grid_result_id: int) -> list[str]:
     return [str(r["objectid"]) for r in rows]
 
 
-def fetch_surfaces(objectids: list[str], classes: dict[str, int]) -> list[tuple[str, int, bytes]]:
-    """``(objectid, class code, WKB in EPSG:3857 with Z)`` of the roof, wall and ground surfaces."""
-    if not objectids:
-        return []
+#: The surfaces of buildings (``%(ids)s`` objectids, ``%(classes)s`` surface class ids, ``%(building)s`` the class id of
+#: Building) as ``objectid``, ``cls`` and ``geom`` (WKB in EPSG:3857 with Z); also used by ``pylovo-viewer``.
+SURFACES_SQL = """
+SELECT b.objectid, s.objectclass_id AS cls, ST_AsBinary(ST_Transform(g.geometry, 3857)) AS geom
+FROM citydb.feature b
+JOIN citydb.property p ON p.feature_id = b.id AND p.name = 'boundary'
+JOIN citydb.feature s ON s.id = p.val_feature_id AND s.objectclass_id = ANY(%(classes)s)
+JOIN citydb.geometry_data g ON g.feature_id = s.id
+WHERE b.objectid = ANY(%(ids)s) AND b.objectclass_id = %(building)s AND g.geometry IS NOT NULL"""
+
+
+def surface_codes(classes: dict[str, int]) -> dict[int, int]:
+    """The citydb class id of each drawn surface (and of the ground surface) -> its class code in the mesh."""
     wanted = {classes[name]: code for name, code in CLASS_CODES.items() if name in classes}
     if "GroundSurface" in classes:
         wanted[classes["GroundSurface"]] = 0
-    if not wanted:
+    return wanted
+
+
+def surfaces_query(objectids: list[str], classes: dict[str, int]) -> tuple[str, dict] | None:
+    """:data:`SURFACES_SQL` and its parameters for some buildings, or None if there is nothing to read."""
+    wanted = surface_codes(classes)
+    if not objectids or not wanted:
+        return None
+    return SURFACES_SQL, {"ids": objectids, "classes": list(wanted), "building": classes["Building"]}
+
+
+def surface_rows(rows: list[dict], classes: dict[str, int]) -> list[tuple[str, int, bytes]]:
+    """``(objectid, class code, WKB)`` of the rows of :data:`SURFACES_SQL`."""
+    wanted = surface_codes(classes)
+    return [(str(r["objectid"]), wanted[int(r["cls"])], bytes(r["geom"])) for r in rows]
+
+
+def fetch_surfaces(objectids: list[str], classes: dict[str, int]) -> list[tuple[str, int, bytes]]:
+    """``(objectid, class code, WKB in EPSG:3857 with Z)`` of the roof, wall and ground surfaces."""
+    query = surfaces_query(objectids, classes)
+    if query is None:
         return []
     with db.source_cursor() as cur:
-        rows = db.fetch_all(
-            """SELECT b.objectid, s.objectclass_id AS cls, ST_AsBinary(ST_Transform(g.geometry, 3857)) AS geom
-               FROM citydb.feature b
-               JOIN citydb.property p ON p.feature_id = b.id AND p.name = 'boundary'
-               JOIN citydb.feature s ON s.id = p.val_feature_id AND s.objectclass_id = ANY(%(classes)s)
-               JOIN citydb.geometry_data g ON g.feature_id = s.id
-               WHERE b.objectid = ANY(%(ids)s) AND b.objectclass_id = %(building)s AND g.geometry IS NOT NULL""",
-            {"ids": objectids, "classes": list(wanted), "building": classes["Building"]}, cur)
-    return [(str(r["objectid"]), wanted[int(r["cls"])], bytes(r["geom"])) for r in rows]
+        rows = db.fetch_all(*query, cur)
+    return surface_rows(rows, classes)
 
 
 # --------------------------------------------------------------------------- geometry
@@ -235,10 +255,9 @@ def encode(header: dict[str, Any], mesh: dict[str, Any] | None = None) -> bytes:
 
 def grid_lod2(grid_result_id: int) -> bytes:
     """The encoded LoD2 mesh of one grid (cached per grid; an empty mesh when there is no LoD2)."""
-    with _cache_lock:
-        if grid_result_id in _cache:
-            _cache.move_to_end(grid_result_id)
-            return _cache[grid_result_id]
+    cached = _cache.get(grid_result_id)
+    if cached is not None:
+        return cached
     started = time.time()
     objectids = grid_objectids(grid_result_id)
     header: dict[str, Any] = {"grid_result_id": grid_result_id, "requested": len(objectids)}
@@ -250,12 +269,7 @@ def grid_lod2(grid_result_id: int) -> bytes:
     mesh = build_mesh(fetch_surfaces(objectids[:MAX_BUILDINGS], classes))
     header.update(available=True, with_lod2=len(mesh["buildings"]), truncated=len(objectids) > MAX_BUILDINGS,
                   ms=round((time.time() - started) * 1000))
-    blob = encode(header, mesh)
-    with _cache_lock:
-        _cache[grid_result_id] = blob
-        while len(_cache) > _CACHE_SIZE:
-            _cache.popitem(last=False)
-    return blob
+    return _cache.put(grid_result_id, encode(header, mesh))
 
 
 def gzipped(blob: bytes) -> bytes:

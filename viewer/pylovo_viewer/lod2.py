@@ -11,20 +11,11 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from pylovo_api.lod2 import CLASS_CODES, MAX_BUILDINGS, build_mesh, encode
+from pylovo_api.lod2 import MAX_BUILDINGS, build_mesh, encode, surface_rows, surfaces_query
 
 from pylovo_viewer.catalog import Catalog
 from pylovo_viewer.db import Database
 from pylovo_viewer.layers import Query
-
-SURFACES = """
-SELECT b.objectid, s.objectclass_id AS cls, ST_AsBinary(ST_Transform(g.geometry, 3857)) AS geom
-FROM citydb.feature b
-JOIN citydb.property p ON p.feature_id = b.id AND p.name = 'boundary'
-JOIN citydb.feature s ON s.id = p.val_feature_id AND s.objectclass_id = ANY(%(classes)s)
-JOIN citydb.geometry_data g ON g.feature_id = s.id
-WHERE b.objectid = ANY(%(ids)s) AND b.objectclass_id = %(building)s AND g.geometry IS NOT NULL"""
-
 
 def view_mesh(db: Database, catalog: Catalog, q: Query) -> bytes:
     """The encoded LoD2 mesh of the version's buildings in the view (empty when there is no LoD2)."""
@@ -41,13 +32,8 @@ def view_mesh(db: Database, catalog: Catalog, q: Query) -> bytes:
                           AND geom && ST_Transform(ST_MakeEnvelope(%(minx)s, %(miny)s, %(maxx)s, %(maxy)s, 4326), {epsg})
                         ORDER BY 1 LIMIT {MAX_BUILDINGS + 1}""", q.params())
     ids = [str(r["objectid"]) for r in rows]
-    wanted = {classes[name]: code for name, code in CLASS_CODES.items() if name in classes}
-    if "GroundSurface" in classes:
-        wanted[classes["GroundSurface"]] = 0
-    surfaces = []
-    if ids and wanted:
-        surfaces = [(str(r["objectid"]), wanted[int(r["cls"])], bytes(r["geom"])) for r in db.query(
-            SURFACES, {"ids": ids[:MAX_BUILDINGS], "classes": list(wanted), "building": classes["Building"]})]
+    query = surfaces_query(ids[:MAX_BUILDINGS], classes)
+    surfaces = surface_rows(db.query(*query), classes) if query else []
     mesh = build_mesh(surfaces)
     header.update(requested=min(len(ids), MAX_BUILDINGS), available=True, with_lod2=len(mesh["buildings"]),
                   truncated=len(ids) > MAX_BUILDINGS, ms=round((time.time() - started) * 1000))

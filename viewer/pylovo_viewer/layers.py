@@ -27,8 +27,6 @@ from __future__ import annotations
 
 import json
 import re
-import threading
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -36,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from pylovo_api.lru import LRU
 
 from pylovo_viewer.catalog import Catalog
 from pylovo_viewer.db import Database
@@ -370,32 +369,6 @@ def feature_collection(rows: list[dict[str, Any]], truncated: bool = False, by_v
     flag = "true" if truncated else "false"
     view = (',"by_view":true' if by_view else "") + (',"zoom_in":true' if zoom_in else "")
     return f'{{"type":"FeatureCollection","truncated":{flag}{view},"features":[{",".join(parts)}]}}'
-
-
-class LRU:
-    """A small thread-safe least-recently-used cache."""
-
-    def __init__(self, size: int) -> None:
-        self.size, self._data, self._lock = size, OrderedDict(), threading.Lock()
-
-    def get(self, key: Any) -> Any:
-        with self._lock:
-            if key in self._data:
-                self._data.move_to_end(key)
-                return self._data[key]
-        return None
-
-    def put(self, key: Any, value: Any) -> Any:
-        with self._lock:
-            self._data[key] = value
-            self._data.move_to_end(key)
-            while len(self._data) > self.size:
-                self._data.popitem(last=False)
-        return value
-
-    def clear(self) -> None:
-        with self._lock:
-            self._data.clear()
 
 
 @dataclass

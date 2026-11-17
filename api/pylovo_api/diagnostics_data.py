@@ -17,39 +17,21 @@ from __future__ import annotations
 
 import json
 import math
-import threading
 import time
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
 from pylovo_api import db, diagnostics, queries
+from pylovo_api.lru import LRU
 
 MAX_CONTEXT_GRIDS = 300   # version statistics are sampled from at most this many grids
 MAX_BATCH_GRIDS = 500     # the Statistics panel scans at most this many grids at once
 _CHUNK = 100
 
-_lock = threading.Lock()
-_pf_cache: OrderedDict[tuple, dict] = OrderedDict()
-_context_cache: OrderedDict[tuple, dict] = OrderedDict()
-_batch_cache: OrderedDict[tuple, dict] = OrderedDict()
+_pf_cache = LRU(24)
+_context_cache = LRU(8)
+_batch_cache = LRU(8)
 _overrides: dict[str, Any] = {"mtime": None, "value": {}}
-
-
-def _remember(cache: OrderedDict, key: tuple, value: Any, size: int) -> None:
-    with _lock:
-        cache[key] = value
-        cache.move_to_end(key)
-        while len(cache) > size:
-            cache.popitem(last=False)
-
-
-def _recall(cache: OrderedDict, key: tuple) -> Any:
-    with _lock:
-        value = cache.get(key)
-        if value is not None:
-            cache.move_to_end(key)
-        return value
 
 
 # --------------------------------------------------------------------------- fingerprints
@@ -252,7 +234,7 @@ def version_context(version_id: str, plz: int | None = None) -> dict:
     grids are sampled evenly (the grids of ``plz`` first).
     """
     key = ("ctx", str(version_id), _version_token(version_id))
-    cached = _recall(_context_cache, key)
+    cached = _context_cache.get(key)
     if cached is not None:
         return cached
     grids = _version_grids(version_id)
@@ -284,7 +266,7 @@ def version_context(version_id: str, plz: int | None = None) -> dict:
          "coincident_kw": r["coincident_kw"]}
         for r in (queries._grid_record(row) for row in queries._grid_rows(str(version_id), None))
         if r["lon"] is not None]
-    _remember(_context_cache, key, context, 8)
+    _context_cache.put(key, context)
     return context
 
 
@@ -298,11 +280,11 @@ def remember_powerflow(result: dict) -> None:
     if not result or not result.get("converged"):
         return
     gid = int(result["grid_result_id"])
-    _remember(_pf_cache, (gid, round(float(result.get("load_scaling") or 1.0), 4), result["fingerprint"]), result, 24)
+    _pf_cache.put((gid, round(float(result.get("load_scaling") or 1.0), 4), result["fingerprint"]), result)
 
 
 def cached_powerflow(grid_result_id: int, load_scaling: float, fingerprint: str | None) -> dict | None:
-    return _recall(_pf_cache, (int(grid_result_id), round(float(load_scaling), 4), fingerprint))
+    return _pf_cache.get((int(grid_result_id), round(float(load_scaling), 4), fingerprint))
 
 
 # --------------------------------------------------------------------------- entry points
@@ -360,7 +342,7 @@ def version_diagnostics(version_id: str, plz: list[int] | None = None) -> dict:
     """Findings of the rules that need no power flow for all grids of a version (Statistics)."""
     started = time.time()
     key = ("batch", str(version_id), tuple(plz or ()), _version_token(version_id))
-    cached = _recall(_batch_cache, key)
+    cached = _batch_cache.get(key)
     if cached is not None:
         return cached
     grids = _version_grids(version_id, plz)
@@ -385,5 +367,5 @@ def version_diagnostics(version_id: str, plz: list[int] | None = None) -> dict:
                "rules": diagnostics.rule_frequency(rows), "truncated": truncated,
                "took_s": round(time.time() - started, 2),
                "basis": "Rules that need no power flow: design data and the stored generation check."}
-    _remember(_batch_cache, key, payload, 8)
+    _batch_cache.put(key, payload)
     return payload

@@ -734,8 +734,8 @@ def _grid_detail(cur, grid_result_id: int, offsets: bool) -> dict[str, Any] | No
         bus["distance_m"] = num(topo["distance_km"].get(bus["pp_index"], 0) * 1000, 1) \
             if bus["pp_index"] in topo["distance_km"] else None
         if bus["role"] == "consumer":
-            match = re.search(r"(\d+)$", bus["name"] or "")
-            linked = by_vertex.get(int(match.group(1)), []) if match else []
+            vertex = cabinets.vertex_of(bus["name"])
+            linked = by_vertex.get(vertex, []) if vertex is not None else []
             bus["households"] = sum(b["households"] or 0 for b in linked) or None
             bus["address"] = ", ".join(f"{b['street']} {b['house_number'] or ''}".strip() for b in linked if b["street"]) or None
             bus["building_type"] = ", ".join(sorted({b["type"] for b in linked if b["type"]})) or None
