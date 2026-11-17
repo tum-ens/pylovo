@@ -299,27 +299,6 @@ class GridMixin(BaseMixin):
         self.cur.execute(query, {"v": VERSION_ID, "p": plz, "k": kcid, "b": bcid})
         return self.cur.fetchone()[0]
 
-    def get_node_geom(self, vid: int):
-        """Return the WGS84 ``(lon, lat)`` of a vertex of ``ways_tem_vertices_pgr``, or ``None``."""
-        query = """SELECT ST_X(ST_Transform(geom, 4326)), ST_Y(ST_Transform(geom, 4326))
-                   FROM ways_tem_vertices_pgr
-                   WHERE id = %(id)s;"""
-        self.cur.execute(query, {"id": vid})
-        return self.cur.fetchone()
-
-    def get_consumer_vertices_from_connection_points(self, connection_points: list[int]) -> list[tuple[int, int]]:
-        """Return ``(connection_point, vertice_id)`` of the loaded consumer buildings at the given connection points."""
-        query = """SELECT COALESCE(agg_connection_point, connection_point) AS connection_point, vertice_id
-                   FROM buildings_tem
-                   WHERE COALESCE(agg_connection_point, connection_point) IN %(c)s
-                     AND type != 'Transformer'
-                     AND peak_load_in_kw != 0;"""
-        self.cur.execute(query, {'c': tuple(connection_points)})
-        return [
-            (int(connection_point), int(vertice_id))
-            for connection_point, vertice_id in self.cur.fetchall()
-        ]
-
     def get_path_to_bus(self, vertice: int, ont: int) -> list:
         """Return the nodes of the shortest street path from ``vertice`` to the transformer vertex ``ont``."""
         query = f"""SELECT node

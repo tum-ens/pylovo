@@ -120,7 +120,7 @@ SQLAlchemy engine with the search path ``pylovo, public``. Its methods are group
      - Copying buildings and streets to the result tables (``save_tables``) and deleting postcodes,
        versions and transformers.
    * - :class:`~pylovo.database.transformer_ui_mixin.TransformerUiMixin`
-     - The ``*_trafo_ui`` methods of the transformer editors (view, add, delete, set ratings).
+     - The ``*_trafo_ui`` methods of the transformer editor of the HTTP API (add, delete, set ratings).
    * - :class:`~pylovo.database.utils_mixin.UtilsMixin`
      - Temporary tables, materialised views, consumer categories and the municipal register.
    * - :class:`~pylovo.database.load_edit_mixin.LoadEditMixin`

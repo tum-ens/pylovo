@@ -72,7 +72,6 @@ class CableInstaller:
         transformer_rated_power: int | None = None,
         consumer_connection_mapping: dict[int, list[int]] | None = None,
         paths_to_transformer: dict[int, tuple[int, ...]] | None = None,
-        line_records: list[dict] | None = None,
         context: tuple[int, int, int] | None = None,
     ):
         """Initialize cable installer.
@@ -90,7 +89,6 @@ class CableInstaller:
             consumer_connection_mapping: ``{connection point: [consumer vertices]}``.
             paths_to_transformer: Routed node path of each vertex towards the
                 transformer, ordered from the vertex to the transformer.
-            line_records: Initial content of the line queue (default: empty).
             context: ``(plz, kcid, bcid)``, only used in error messages.
         """
         self.backend = backend
@@ -103,7 +101,7 @@ class CableInstaller:
         self._transformer_rated_power = transformer_rated_power
         self._consumer_connection_mapping = consumer_connection_mapping
         self._paths_to_transformer = paths_to_transformer or {}
-        self._line_records = line_records if line_records is not None else []
+        self._line_records: list[dict] = []
         self._context = context
         self._station_vertex: int | None = None   # set by create_connection_bus
 
@@ -182,16 +180,13 @@ class CableInstaller:
         Raises:
             ValueError: If bulk coordinates were given but lack ``node_id``.
         """
-        if self._node_coordinates is not None:
-            fallback = self._node_coordinates.get(int(node_id))
-            if fallback is None:
-                context = self._context or ("?", "?", "?")
-                raise ValueError(
-                    f"Missing bulk routing-node coordinate for node_id={node_id}, "
-                    f"plz={context[0]}, kcid={context[1]}, bcid={context[2]}"
-                )
-        else:
-            fallback = self.dbc.get_node_geom(node_id)
+        fallback = (self._node_coordinates or {}).get(int(node_id))
+        if fallback is None:
+            context = self._context or ("?", "?", "?")
+            raise ValueError(
+                f"Missing bulk routing-node coordinate for node_id={node_id}, "
+                f"plz={context[0]}, kcid={context[1]}, bcid={context[2]}"
+            )
         if bus_name is None:
             return float(fallback[0]), float(fallback[1])
         coords = self._get_bus_coordinates(bus_name, fallback=fallback)
@@ -493,14 +488,12 @@ class CableInstaller:
             ``(material_length_by_cable_km, service_diagnostics)`` with one
             diagnostics dict per installed service line.
         """
-        if self._consumer_connection_mapping is None:
-            consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(branch_node_list)
-        else:
-            consumer_connections = [
-                (int(connection_point), int(consumer_vertex))
-                for connection_point in branch_node_list
-                for consumer_vertex in self._consumer_connection_mapping.get(int(connection_point), [])
-            ]
+        mapping = self._consumer_connection_mapping or {}
+        consumer_connections = [
+            (int(connection_point), int(consumer_vertex))
+            for connection_point in branch_node_list
+            for consumer_vertex in mapping.get(int(connection_point), [])
+        ]
         branch_consumer_connections = [
             (connection_point, vertice_id)
             for connection_point, vertice_id in consumer_connections
@@ -668,14 +661,12 @@ class CableInstaller:
             ``(material_length_by_cable_km, service_diagnostics)``.
         """
         nodes = sorted(cabinet_by_node)
-        if self._consumer_connection_mapping is None:
-            consumer_connections = self.dbc.get_consumer_vertices_from_connection_points(nodes)
-        else:
-            consumer_connections = [
-                (node, int(consumer_vertex))
-                for node in nodes
-                for consumer_vertex in self._consumer_connection_mapping.get(int(node), [])
-            ]
+        mapping = self._consumer_connection_mapping or {}
+        consumer_connections = [
+            (node, int(consumer_vertex))
+            for node in nodes
+            for consumer_vertex in mapping.get(int(node), [])
+        ]
         consumers_by_node: dict[int, list[int]] = {}
         for node, end_vid in consumer_connections:
             if int(node) in vertices_dict and end_vid in vertices_dict:

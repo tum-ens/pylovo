@@ -139,7 +139,7 @@ def test_new_notebooks_have_one_parameter_cell_no_warning_filter_and_no_sql(path
     assert len(tagged) == 1 and tagged[0]["cell_type"] == "code"
     code = notebook_code(path)
     assert "filterwarnings" not in code and "simplefilter" not in code, "warnings stay visible"
-    assert not re.search(r"\bSELECT\b|\bFROM pylovo\.|get_geo_df_join|\._\w+\(", code), "public API only"
+    assert not re.search(r"\bSELECT\b|\bFROM pylovo\.|\._\w+\(", code), "public API only"
     assert not GERMAN.search("".join("".join(c["source"]) for c in nb["cells"]))
     for cell in nb["cells"]:
         for output in cell.get("outputs", []):

@@ -1,16 +1,13 @@
 """Persistence of pandapower networks, analysis parameters and GeoDataFrame readers."""
 
 import json
-import re
 from typing import Any
 
-import geopandas as gpd
 import pandapower as pp
 import pandas as pd
-from psycopg2 import sql
 from psycopg2.extras import execute_batch
 
-from pylovo.config_loader import TARGET_EPSG, VERSION_ID
+from pylovo.config_loader import VERSION_ID
 from pylovo.database.base_mixin import BaseMixin
 from pylovo.database.migrations import pending_migrations
 from pylovo.electrical_backend.pandapower.backend import empty_network
@@ -594,35 +591,6 @@ class AnalysisMixin(BaseMixin):
         self.cur.execute(query, (plz, kcid, bcid, VERSION_ID, key_figures_version))
         return bool(self.cur.fetchone())
 
-    def read_per_trafo_dict(self, plz: int) -> tuple[list[dict], list[str], dict]:
-        """Read the per-transformer statistics of a PLZ from ``plz_parameters`` for plotting.
-
-        Returns:
-            ``(data_list, data_labels, trafo_dict)``: the load count, bus count, simultaneous peak
-            load, maximum and average transformer distance dicts (each keyed by transformer size,
-            ascending), their axis labels, and the transformer count per size (descending).
-        """
-        result = [self._fetch_plz_parameters(
-            plz,
-            "load_count_per_trafo, bus_count_per_trafo, sim_peak_load_per_trafo, "
-            "max_distance_per_trafo, avg_distance_per_trafo",
-        )]
-
-        # Sort all parameters according to transformer size
-        load_dict = dict(sorted(result[0][0].items(), key=lambda x: int(x[0])))
-        bus_dict = dict(sorted(result[0][1].items(), key=lambda x: int(x[0])))
-        peak_dict = dict(sorted(result[0][2].items(), key=lambda x: int(x[0])))
-        max_dict = dict(sorted(result[0][3].items(), key=lambda x: int(x[0])))
-        avg_dict = dict(sorted(result[0][4].items(), key=lambda x: int(x[0])))
-
-        trafo_dict = dict(sorted(self.read_trafo_dict(plz).items(), key=lambda x: int(x[0]), reverse=True))
-        # Create list with all parameter dicts
-        data_list = [load_dict, bus_dict, peak_dict, max_dict, avg_dict]
-        data_labels = ['Load Number [-]', 'Bus Number [-]', 'Simultaneous peak load [kW]', 'Max. Trafo-Distance [m]',
-                       'Avg. Trafo-Distance [m]']
-
-        return data_list, data_labels, trafo_dict
-
     def read_net_db(self, plz: int, kcid: int, bcid: int, version_id: str | None = None,
                     tables: frozenset[str] | None = None) -> pp.pandapowerNet:
         """Read the pandapower network of a grid from ``grid_result.grid``.
@@ -687,114 +655,6 @@ class AnalysisMixin(BaseMixin):
 
         self.cur.execute(insert_query, params)
         self.conn.commit()
-
-    @staticmethod
-    def _geo_identifier(value: str) -> bool:
-        """Accept a plain SQL identifier, optionally qualified once."""
-        return bool(re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)?", value))
-
-    def _geo_relation(self, value: str) -> tuple[str, str]:
-        """Quote a PyLovo relation and its optional alias for plotting queries."""
-        parts = value.split()
-        if len(parts) not in (1, 2):
-            raise ValueError("Expected a PyLovo table and optional alias")
-        name = parts[0]
-        if "." in name:
-            schema, table = name.split(".", 1)
-            if schema != "pylovo":
-                raise ValueError("Plotting queries only accept PyLovo tables")
-        else:
-            table = name
-        if not self._geo_identifier(table):
-            raise ValueError("Invalid table name")
-        qualified = sql.Identifier("pylovo", table).as_string(self.cur)
-        if len(parts) == 1:
-            return qualified, qualified
-        alias = parts[1]
-        if not self._geo_identifier(alias) or "." in alias:
-            raise ValueError("Invalid table alias")
-        quoted_alias = sql.Identifier(alias).as_string(self.cur)
-        return f"{qualified} AS {quoted_alias}", quoted_alias
-
-    def _equality_filters(self, filters: dict) -> tuple[str, dict]:
-        """Return equality predicates with validated column names and bound values."""
-        clauses = ""
-        params = {}
-        for index, (column, value) in enumerate(filters.items()):
-            if not self._geo_identifier(column):
-                raise ValueError(f"Invalid filter column: {column!r}")
-            identifier = sql.Identifier(*column.split(".")).as_string(self.cur)
-            clauses += f" AND {identifier} = %(f{index})s"
-            params[f"f{index}"] = self._normalize_sql_scalar(value)
-        return clauses, params
-
-    def get_geo_df(self, table: str, **kwargs) -> gpd.GeoDataFrame:
-        """Read a PyLovo geometry table with version and equality filters."""
-        version = kwargs.pop("version_id", VERSION_ID)
-        filters, params = self._equality_filters(kwargs)
-        relation, _ = self._geo_relation(table)
-        query = f"SELECT * FROM {relation} WHERE version_id = %(v)s " + filters
-        params["v"] = version
-        with self.sqla_engine.begin() as connection:
-            return gpd.read_postgis(query, con=connection, params=params)
-
-    def get_geo_df_join(
-        self, select: list[str], from_table: str, join_table: str,
-        on: tuple[str, str], **kwargs
-    ) -> gpd.GeoDataFrame:
-        """Read the supported plotting join with quoted relations and safe columns."""
-        version = kwargs.pop("version_id", VERSION_ID)
-        filters, params = self._equality_filters(kwargs)
-        from_relation, _ = self._geo_relation(from_table)
-        join_relation, join_prefix = self._geo_relation(join_table)
-        if any(not self._geo_identifier(column) for column in on):
-            raise ValueError("Invalid join column")
-        on_sql = [sql.Identifier(*column.split(".")).as_string(self.cur) for column in on]
-        geo_expression = (
-            "ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(pl.geo::text), 4326), "
-            f"{TARGET_EPSG}) AS geom"
-        )
-        for column in select:
-            if not (
-                column == "*"
-                or re.fullmatch(r"[a-z][a-z0-9_]*(?:\.(?:[a-z][a-z0-9_]*|\*))?", column)
-                or column == geo_expression
-            ):
-                raise ValueError(f"Unsupported plotting select expression: {column!r}")
-        query = (
-            f"SELECT {', '.join(select)} FROM {from_relation} "
-            f"JOIN {join_relation} ON {on_sql[0]} = {on_sql[1]} "
-            f"WHERE {join_prefix}.version_id = %(v)s " + filters
-        )
-        params["v"] = version
-        with self.sqla_engine.begin() as connection:
-            return gpd.read_postgis(query, con=connection, params=params)
-
-    def read_trafo_dict(self, plz: int) -> dict:
-        """Return the transformer count per transformer size of a PLZ from ``plz_parameters``."""
-        return self._fetch_plz_parameters(plz, "trafo_num")[0]
-
-    def read_cable_dict(self, plz: int) -> dict:
-        """Return the cable length per cable type of a PLZ from ``plz_parameters``."""
-        return self._fetch_plz_parameters(plz, "cable_length")[0]
-
-    def _fetch_plz_parameters(self, plz: int, columns: str) -> tuple:
-        """Return the given ``plz_parameters`` columns of a PLZ in the active version.
-
-        Raises:
-            LookupError: If the PLZ has not been analysed for ``VERSION_ID`` yet.
-        """
-        self.cur.execute(
-            f"SELECT {columns} FROM pylovo.plz_parameters WHERE version_id = %(v)s AND plz = %(p)s;",
-            {"v": VERSION_ID, "p": plz},
-        )
-        row = self.cur.fetchone()
-        if row is None:
-            raise LookupError(
-                f"PLZ {plz} has no plz_parameters for version {VERSION_ID}; "
-                f"run `pylovo-analyze --plz {plz}` first."
-            )
-        return row
 
     def is_grid_analyzed(self, plz: int):
         """Return whether the PLZ has a ``plz_parameters`` row in the active version."""

@@ -23,37 +23,8 @@ _TRANSFORMERS_IN_PLZ_SQL = """
 
 
 class TransformerUiMixin(BaseMixin):
-    """Read and edit raw transformer candidates for the transformer map UI.
-
-    The method names end in ``_trafo_ui`` because the frontend calls them by these names.
-    """
-
-    def get_transformer_positions_for_plz_trafo_ui(self, plz: int) -> list[dict]:
-        """Return the raw transformers inside a PLZ (at most 1000).
-
-        Args:
-            plz: Postcode whose transformers are returned.
-
-        Returns:
-            One dict per transformer with the keys ``osm_id``, ``transformer_rated_power``,
-            ``type``, ``geom_type``, ``within_shopping`` and ``geom_wkt`` (WGS84 WKT).
-        """
-        query = """
-            SELECT
-                t.osm_id,
-                t.transformer_rated_power,
-                t.type,
-                t.geom_type,
-                t.within_shopping,
-                ST_AsText(ST_Transform(t.geom, 4326)) as geom_wkt
-            FROM pylovo.transformers t
-            JOIN pylovo.postcode p ON ST_Intersects(t.geom, p.geom)
-            WHERE p.plz = %(plz)s
-            LIMIT 1000
-        """
-        self.cur.execute(query, {"plz": plz})
-        columns = [desc[0] for desc in self.cur.description]
-        return [dict(zip(columns, row)) for row in self.cur.fetchall()]
+    """Edit the raw transformer candidates for the transformer editor of the HTTP API (its reads are in
+    :mod:`pylovo_api.queries`)."""
 
     def add_transformer_position_trafo_ui(self, plz: int, geom_wkt: str, osm_id: str | None = None,
                                           comment: str = "Manual",
@@ -144,42 +115,6 @@ class TransformerUiMixin(BaseMixin):
             self.conn.rollback()
             self.logger.error(f"Error in clear_capacities_trafo_ui: {e}")
             return False
-
-    def get_plz_bounds_trafo_ui(self, plz: int) -> dict | None:
-        """Return the WGS84 bounding box of a PLZ.
-
-        Args:
-            plz: Postcode.
-
-        Returns:
-            Dict with ``minx``, ``miny``, ``maxx`` and ``maxy``, or ``None`` if the PLZ is unknown.
-        """
-        query = """
-            SELECT ST_XMin(ST_Transform(geom, 4326)) as minx, ST_YMin(ST_Transform(geom, 4326)) as miny,
-                   ST_XMax(ST_Transform(geom, 4326)) as maxx, ST_YMax(ST_Transform(geom, 4326)) as maxy
-            FROM pylovo.postcode
-            WHERE plz = %(plz)s
-        """
-        self.cur.execute(query, {"plz": plz})
-        row = self.cur.fetchone()
-        if row:
-            return {
-                "minx": float(row[0]),
-                "miny": float(row[1]),
-                "maxx": float(row[2]),
-                "maxy": float(row[3])
-            }
-        return None
-
-    def get_available_plz_list_trafo_ui(self) -> list[int]:
-        """Return all PLZ of the local ``postcode`` table in ascending order (not only generated ones)."""
-        query = """
-            SELECT DISTINCT plz
-            FROM pylovo.postcode
-            ORDER BY plz
-        """
-        self.cur.execute(query)
-        return [row[0] for row in self.cur.fetchall()]
 
     def update_transformer_capacity_trafo_ui(self, osm_id: str, transformer_rated_power: int) -> bool:
         """Set the rated power of one raw transformer and commit.

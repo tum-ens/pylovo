@@ -516,7 +516,6 @@ def test_a_single_grid_is_stored_with_its_context_and_the_origin_of_its_transfor
     stored = []
     pc = calculator(plz=80803)
     pc.dbc = type("Dbc", (), {"logger": LOGGER, "read_net_db": lambda s, plz, kcid, bcid: build(),
-                              "read_per_trafo_dict": lambda s, plz: ([{}, {}, {}, {}, {}], [], {}),
                               "insert_clustering_parameters": lambda s, params: stored.append(params)})()
     pc.analyze_single_grid(-3, 7)       # a negative bcid is a grid around an existing (OSM) transformer
     pc.analyze_single_grid(4, 7)
