@@ -241,6 +241,9 @@ _PHRASES = {
     "cable_dimensioning.max_service_design_voltage_drop_percent": lambda v: f"service drop {v} %",
     "connection_point_aggregation.enabled": lambda v: "CP aggregation " + ("on" if v else "off"),
 }
+#: Snapshot entries that record where pylovo's supply-area rules act (``pylovo.supply_areas``): they follow from
+#: other keys, which name the change, or, against a version stored before the rules, the rules themselves.
+_DERIVED = {"transformer_placement.brownfield_nearest_only", "transformer_placement.greenfield_contiguous_areas"}
 
 
 def summarise(diff: list[dict[str, Any]], limit: int = 120) -> str:
@@ -251,8 +254,12 @@ def summarise(diff: list[dict[str, Any]], limit: int = 120) -> str:
     if mapping:
         diff = [row for row in diff if not row["key"].startswith(mapping_prefix)] + [
             {"key": "transformer_placement.transformer_mapping", "config": mapping}]
+    if diff and all(row["key"] in _DERIVED for row in diff):
+        return "supply-area rules"
     for row in diff:
         key, value = row["key"], row["config"]
+        if key in _DERIVED:
+            continue
         phrase = _PHRASES.get(key)
         text = phrase(value) if phrase else f"{key.split('.')[-1].split('[')[0]} {json.dumps(value) if isinstance(value, (dict, list)) else value}"
         if text not in parts:

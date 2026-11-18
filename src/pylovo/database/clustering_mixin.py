@@ -5,6 +5,7 @@ import hashlib
 import heapq
 import math
 import time
+from collections.abc import Callable
 from typing import Optional, Union
 
 import numpy as np
@@ -369,6 +370,24 @@ class ClusteringMixin(BaseMixin):
         )
         return self.street_distance_matrix([row[0] for row in self.cur.fetchall()])
 
+    def get_consumer_positions(self, kcid: int) -> pd.DataFrame:
+        """Return the loaded consumer buildings of a kcid with planning node, grid and centroid.
+
+        Returns:
+            One row per building: ``point`` (``COALESCE(agg_connection_point, connection_point)``),
+            ``bcid`` (NaN without a grid), ``x`` and ``y``.
+        """
+        self.cur.execute("""SELECT COALESCE(agg_connection_point, connection_point), bcid,
+                                   ST_X(centroid), ST_Y(centroid)
+                            FROM buildings_tem
+                            WHERE kcid = %(k)s
+                              AND type IS DISTINCT FROM 'Transformer'
+                              AND peak_load_in_kw != 0
+                              AND COALESCE(agg_connection_point, connection_point) IS NOT NULL
+                              AND centroid IS NOT NULL;""", {"k": kcid})
+        return pd.DataFrame(self.cur.fetchall(), columns=["point", "bcid", "x", "y"]).astype(
+            {"point": "int64", "bcid": "float64", "x": "float64", "y": "float64"})
+
     def street_distance_matrix(self, points: list[int], chunk_size: int = 256) -> tuple[dict, np.ndarray, dict]:
         """Return the street-distance matrix between vertices of ``ways_tem``, computed in memory.
 
@@ -488,7 +507,8 @@ class ClusteringMixin(BaseMixin):
     def load_constrained_hierarchical_clustering(self, Z: np.ndarray, cluster_amount: int, localid2vid: dict, buildings: pd.DataFrame,
             consumer_cat_df: pd.DataFrame, transformer_capacities: np.ndarray,
             dist_mat: np.ndarray | None = None, vid2localid: dict[int, int] | None = None,
-            max_transformer_distance: float | None = None, ) -> tuple[
+            max_transformer_distance: float | None = None,
+            contiguity: Callable[[list[int]], bool] | None = None, ) -> tuple[
         dict, dict, int]:
         """
         Attempts to cluster buildings based on hierarchical clustering linkage matrix Z and assigns transformers.
@@ -509,6 +529,9 @@ class ClusteringMixin(BaseMixin):
             vid2localid (dict[int, int], optional): Reverse mapping for ``dist_mat`` lookup.
             max_transformer_distance (float, optional): Maximum allowed distance from a greenfield
                 transformer point to any connection point in the cluster.
+            contiguity (callable, optional): Returns whether the buildings at the given connection points
+                form one piece among the buildings of other grids (:class:`pylovo.supply_areas.AreaContiguity`);
+                a cluster in several pieces is invalid and split again like a too large one.
 
         Returns:
             tuple[dict, dict, int]:
@@ -538,6 +561,8 @@ class ClusteringMixin(BaseMixin):
             if (total_sim_load >= max(transformer_capacities) and len(vid_list) >= 5):  # the cluster is too big
                 invalid_cluster_dict[cluster_id] = vid_list
             elif not distance_feasible:
+                invalid_cluster_dict[cluster_id] = vid_list
+            elif contiguity is not None and len(vid_list) > 1 and not contiguity(vid_list):
                 invalid_cluster_dict[cluster_id] = vid_list
             elif total_sim_load < max(transformer_capacities):
                 opt_transformer = utils.smallest_rating_above(transformer_capacities, total_sim_load)

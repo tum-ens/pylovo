@@ -174,7 +174,6 @@ GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: 4 # Merge a pair only if its smaller clu
 
 ## Brownfield
 MAX_BROWNFIELD_TRAFO_DISTANCE: 1000 # Maximum assignment distance to an existing brownfield transformer
-BROWNFIELD_NEAREST_ONLY: False # A building joins only its nearest existing station; when that one is full, the building gets a greenfield station
 
 ## Voltage repair
 # A grid whose validation power flow leaves the voltage band (POWER_FLOW_VOLTAGE_LIMITS) is planned again, up to this

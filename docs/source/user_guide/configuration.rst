@@ -547,12 +547,6 @@ Clustering
      - ``1000``
      - Maximum routed distance (m) between an existing transformer and a building assigned to it.
      - ✓
-   * - ``BROWNFIELD_NEAREST_ONLY``
-     - ``False``
-     - A building joins only its nearest existing station. When that station is full, the
-       building gets a greenfield station instead of joining a farther existing station that still
-       has capacity, so existing stations do not reach far beyond their own area.
-     - ✓
    * - ``MAX_VOLTAGE_REPAIRS``
      - ``0``
      - A grid whose validation power flow leaves ``POWER_FLOW_VOLTAGE_LIMITS`` is planned again,
@@ -596,6 +590,14 @@ Clustering
 Ratings of candidates count only for the sources that are switched on: a rated candidate of a
 disabled source never sizes a station.
 
+A building joins only its nearest existing station; when that station is full, the building gets a
+greenfield station. Greenfield areas and the merges keep their buildings in one piece among the
+other grids (:doc:`../concepts/pipeline`, step 6). Neither rule has a configuration key. The version
+snapshot records where they act: ``transformer_placement.brownfield_nearest_only`` with existing
+stations, ``transformer_placement.greenfield_contiguous_areas`` with existing stations or a voltage
+repair (``MAX_VOLTAGE_REPAIRS`` above 0). A version stored before the rules is extended only if neither
+acts, i.e. without existing stations and voltage repair, where its grids do not change.
+
 ``ROUTE_ACROSS_POSTCODE_BORDERS`` is recorded in the version snapshot with its effective values (width
 of the neighboring streets and a rule revision); versions stored before it require ``False``. Rule revision 2 also
 loads the connection lines of a PLZ's buildings that the InfDB files under a neighboring postcode; a version of
@@ -605,13 +607,12 @@ revision 1 is not extended.
 
    ``MERGE_GREENFIELD_CLUSTERS``, ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``,
    ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``, ``USE_MANUAL_TRANSFORMER_POSITIONS``,
-   ``BROWNFIELD_NEAREST_ONLY``, ``MAX_VOLTAGE_REPAIRS`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`` were
+   ``MAX_VOLTAGE_REPAIRS`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES`` were
    added to the version snapshot later. Snapshots of older versions do not contain them: pylovo then
    accepts the current values of the first two with a warning (the values used for the existing
    grids are unknown) and requires ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS: null``,
-   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, ``BROWNFIELD_NEAREST_ONLY: False``,
-   ``MAX_VOLTAGE_REPAIRS: 0`` and ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES: 1``, the behaviour before
-   these keys existed.
+   ``USE_MANUAL_TRANSFORMER_POSITIONS: False``, ``MAX_VOLTAGE_REPAIRS: 0`` and
+   ``MAX_VOLTAGE_PARALLEL_FEEDER_CABLES: 1``, the behaviour before these keys existed.
 
 Station voltage
 ~~~~~~~~~~~~~~~

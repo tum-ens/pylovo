@@ -27,8 +27,12 @@ def test_summarise_and_flags():
     diff = [{"key": "transformer_placement.use_open_transformer_positions", "stored": False, "config": True},
             {"key": "transformer_placement.transformer_mapping.1", "stored": [100], "config": [100, 160, 250]},
             {"key": "transformer_placement.transformer_mapping.2", "stored": [100], "config": [250, 400]},
-            {"key": "transformer_placement.k_means_seed", "stored": 1, "config": 2}]
+            {"key": "transformer_placement.k_means_seed", "stored": 1, "config": 2},
+            {"key": "transformer_placement.brownfield_nearest_only", "stored": False, "config": True}]
+    # the supply-area rules follow from the open positions and are not named
     assert preflight.summarise(diff) == "open positions on; k_means_seed 2; sizes 1:100-250 2:250-400"
+    # against a version stored before the rules, only they differ
+    assert preflight.summarise(diff[-1:]) == "supply-area rules"
     gp = {"transformer_placement": {"use_open_transformer_positions": True, "transformer_mapping": {"1": [100, 250]}},
           "residential_only_generation": True}
     assert preflight.version_flags(gp) == ["open positions", "residential only", "100–250 kVA"]
@@ -110,8 +114,10 @@ def test_preflight_matches_the_stored_snapshot(client, region):
     candidate = client.post("/api/flow/config-preflight",
                             json={"changes": {"USE_OPEN_TRANSFORMER_POSITIONS": True}}).json()
     assert candidate["comparison"]["matches"] is False
-    assert [d["key"] for d in candidate["comparison"]["differences"]] == \
-        ["transformer_placement.use_open_transformer_positions"]
+    # with existing stations the supply-area rules act, so the snapshot records them too (pylovo.supply_areas)
+    assert [d["key"] for d in candidate["comparison"]["differences"]] == [
+        "transformer_placement.brownfield_nearest_only", "transformer_placement.greenfield_contiguous_areas",
+        "transformer_placement.use_open_transformer_positions"]
     assert "+USE_OPEN_TRANSFORMER_POSITIONS: True" in candidate["diff"]
     renamed = client.post("/api/flow/config-preflight", json={"changes": {
         "USE_OPEN_TRANSFORMER_POSITIONS": True, "VERSION_ID": candidate["next_free_version_id"]}}).json()

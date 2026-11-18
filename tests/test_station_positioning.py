@@ -82,6 +82,11 @@ class Street(ClusteringMixin):
         edges = [(a, b, abs(self.positions[b] - self.positions[a])) for a, b in zip(vertices, vertices[1:])]
         return self._cluster_adjacency_from_street_edges(cluster_dict, edges)
 
+    def get_consumer_positions(self, kcid):
+        # no building has a grid yet (no existing station): the areas are in one piece whatever they hold
+        return pd.DataFrame([(vertex, np.nan, x, 0.0) for vertex, x in self.positions.items()],
+                            columns=["point", "bcid", "x", "y"])
+
     def clear_grid_result_in_kmean_cluster(self, plz, kcid):
         self.written.append(("clear", plz, kcid))
 
@@ -359,7 +364,6 @@ class FixedLoads:
 
 
 def test_a_station_loaded_exactly_to_its_largest_rating_does_not_fail_the_plz(monkeypatch):
-    monkeypatch.setattr(grid_generator, "BROWNFIELD_NEAREST_ONLY", False)
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "CoincidentLoads", FixedLoads)
     database = BrownfieldDb()

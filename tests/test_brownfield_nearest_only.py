@@ -1,10 +1,9 @@
-"""BROWNFIELD_NEAREST_ONLY in the brownfield fill (``GridGenerator.position_brownfield_transformers``, no database)."""
+"""The brownfield fill takes a building only to its nearest existing station (``position_brownfield_transformers``, no database)."""
 
 import logging
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from pylovo import grid_generator, utils
 from pylovo.grid_generator import GridGenerator
@@ -48,12 +47,7 @@ class FakeLoads:
         return 100.0 * len(consumers)
 
 
-@pytest.mark.parametrize("nearest_only, station_200", [
-    (False, [6, 7]),     # station 100 is full after five consumers (600 kW / 0.8 > 630 kVA): 6 joins station 200
-    (True, [7]),         # 6 may only join its nearest station, which is full: it is left for greenfield
-])
-def test_overflow_joins_a_farther_station_only_without_nearest_only(monkeypatch, nearest_only, station_200):
-    monkeypatch.setattr(grid_generator, "BROWNFIELD_NEAREST_ONLY", nearest_only)
+def test_a_building_whose_nearest_station_is_full_is_left_for_greenfield(monkeypatch):
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
@@ -61,5 +55,6 @@ def test_overflow_joins_a_farther_station_only_without_nearest_only(monkeypatch,
     generator.dbc, generator.logger = FakeDb(), logging.getLogger("brownfield-nearest-only-test")
     generator.consumer_categories = None     # FakeLoads ignores them
     generator.position_brownfield_transformers(84000, 1, [100, 200])
-    assert generator.dbc.clusters[100][0] == [1, 2, 3, 4, 5]
-    assert generator.dbc.clusters[200][0] == station_200
+    # station 100 is full after five consumers (600 kW / 0.8 > 630 kVA); 6 does not join station 200, which still
+    # has capacity, as station 100 is its nearest: it is left for greenfield
+    assert generator.dbc.clusters == {100: ([1, 2, 3, 4, 5], 630), 200: ([7], 250)}

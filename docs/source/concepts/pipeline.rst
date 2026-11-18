@@ -146,16 +146,20 @@ thus one per grid. Loads are compared as coincident peak loads (:doc:`grid_dimen
 ``TRANSFORMER_PLANNING_UTILIZATION``.
 
 **Brownfield** (k-means clusters with transformer candidates). The routed distances between all
-connection points and all transformers are computed (``pgr_dijkstraCost``). Pairs are processed
-from the shortest distance up to ``MAX_BROWNFIELD_TRAFO_DISTANCE`` (equal distances by connection
-point, then by transformer vertex): a connection point is assigned to the transformer unless the
-load would exceed its known rating or, without a known rating, reach the largest rating allowed for
-the settlement type. Transformers without buildings are dropped. Each remaining transformer forms a
+connection points and all transformers are computed (``pgr_dijkstraCost``). A connection point may
+only join its nearest transformer (all transformers at the same distance count), and only within
+``MAX_BROWNFIELD_TRAFO_DISTANCE``. The pairs are processed from the shortest distance up (equal
+distances by connection point, then by transformer vertex): a connection point is assigned to the
+transformer unless the load would exceed its known rating or, without a known rating, reach the
+largest rating allowed for the settlement type; that connection point marks the transformer as
+full. A connection point whose nearest transformer is full is not passed on to a farther one with
+capacity left, which would reach behind or through the area of the full one. As every connection
+point on the street path to the nearest transformer has the same nearest transformer and is closer,
+the area of a transformer is connected along the streets. Transformers without buildings are dropped. Each remaining transformer forms a
 cluster with a negative ``bcid`` (-1, -2, ... in the order of the transformer vertex; transformers at
 one point form one cluster) and keeps its known rating or gets the smallest allowed rating above
 the planned load.
-With ``BROWNFIELD_NEAREST_ONLY`` a connection point joins only its nearest transformer. Connection
-points that no transformer could take are clustered greenfield; a single remaining connection point
+Connection points that no transformer could take are clustered greenfield; a single remaining connection point
 gets its own greenfield grid.
 
 **Greenfield** (all remaining connection points). A routed distance matrix between the connection
@@ -167,18 +171,27 @@ the tree into two clusters and checks each:
   least five connection points, or
 * too far -- no connection point of the cluster reaches all others within the greenfield distance
   limit (``MAX_GREENFIELD_TRAFO_DISTANCE``; with ``MAX_GREENFIELD_TRAFO_DISTANCE_STD`` > 0 a
-  per-cluster limit drawn around it).
+  per-cluster limit drawn around it), or
+* in pieces -- buildings that other grids of the k-means cluster supply already lie between its
+  buildings (:mod:`pylovo.supply_areas`). Neighbouring buildings are linked by the Delaunay
+  triangulation of the building centroids of the cluster and of the other grids; the buildings of the
+  cluster must form one piece over the links between them. A row of other buildings separates, open
+  land does not, so the check needs no distance. The other grids are the existing stations' areas
+  (the gaps between them would otherwise be joined across an existing station) and, in the voltage
+  repair, all other grids; in a k-means cluster without existing stations no grid exists yet and the
+  check changes nothing.
 
 Invalid clusters are split again until every cluster is valid. A valid cluster gets the smallest
 allowed rating above its planned load; a small cluster (fewer than five connection points) above
 the largest rating is rated in multiples of 630 kVA (parallel units). With
 ``MERGE_GREENFIELD_CLUSTERS``, neighbouring clusters are merged afterwards if the merged cluster
-still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA`` and the distance limit; with
-``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` only pairs whose smaller cluster has at most that many
-buildings, so small fragments join a neighbour while larger clusters stay as split. Where existing
+still fits a rating of ``GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA``, the distance limit and is in one
+piece; with ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` only pairs whose smaller cluster has at most that
+many buildings, so small fragments join a neighbour while larger clusters stay as split. Where existing
 stations are used, a greenfield cluster that still has at most that many buildings joins the nearest
 existing station within ``MAX_BROWNFIELD_TRAFO_DISTANCE`` that it does not overload (the planning
-reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used, the rating not). The
+reserve of ``TRANSFORMER_PLANNING_UTILIZATION`` may be used, the rating not) and whose area forms one
+piece with it. The
 clusters are numbered 1, 2, ... in the order of their smallest vertex id, so equal partitions get
 equal ids.
 

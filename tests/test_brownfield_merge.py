@@ -41,6 +41,10 @@ class FakeDb:
     def get_connection_point_to_transformer_costs(self, points, transformers):
         return pd.DataFrame([dict(start_vid=p, end_vid=t, agg_cost=self.costs[p][t]) for p in points for t in transformers])
 
+    def get_consumer_positions(self, kcid):
+        # no building positions: every merge is in one piece (tests/test_greenfield_contiguous_areas.py checks that rule)
+        return pd.DataFrame(columns=["point", "bcid", "x", "y"])
+
     def move_building_cluster(self, plz, kcid, bcid, target):
         self.moves.append((bcid, target))
         self.members[target] += self.members.pop(bcid)

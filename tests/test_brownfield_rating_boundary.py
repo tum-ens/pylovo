@@ -50,7 +50,6 @@ class FakeLoads:
 
 
 def fill(monkeypatch, kw, known=None):
-    monkeypatch.setattr(grid_generator, "BROWNFIELD_NEAREST_ONLY", False)
     monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(FakeLoads, "kw", kw)

@@ -9,7 +9,7 @@ import pandas as pd
 from psycopg2 import sql
 from psycopg2.extras import execute_batch
 
-from pylovo import load_classes, postcode_border
+from pylovo import load_classes, postcode_border, supply_areas
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
@@ -33,7 +33,6 @@ from pylovo.config_loader import (
     LOAD_CLASS_TABLE,
     LOAD_CLASSES,
     LV_REFERENCE_VOLTAGE_PU,
-    BROWNFIELD_NEAREST_ONLY,
     MAX_BROWNFIELD_TRAFO_DISTANCE,
     MAX_BUILDINGS_PER_KCID,
     MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT,
@@ -134,7 +133,10 @@ class PreprocessingMixin(BaseMixin):
                 "urban_max_building_distance": URBAN_MAX_BUILDING_DISTANCE,
                 "transformer_mapping": TRANSFORMER_MAPPING,
                 "max_brownfield_trafo_distance": MAX_BROWNFIELD_TRAFO_DISTANCE,
-                "brownfield_nearest_only": BROWNFIELD_NEAREST_ONLY,
+                # the supply-area rules (nearest station, greenfield areas in one piece) where they act
+                **supply_areas.snapshot(
+                    USE_DSO_TRANSFORMER_POSITIONS or USE_OPEN_TRANSFORMER_POSITIONS or USE_MANUAL_TRANSFORMER_POSITIONS,
+                    MAX_VOLTAGE_REPAIRS),
                 "max_voltage_repairs": MAX_VOLTAGE_REPAIRS,
                 "use_dso_transformer_positions": USE_DSO_TRANSFORMER_POSITIONS,
                 "use_open_transformer_positions": USE_OPEN_TRANSFORMER_POSITIONS,

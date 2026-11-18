@@ -32,9 +32,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed  # lightweight 
 import pylovo.database.database_client as dbc
 from pylovo.infdb.infdb_client import InfdbClient, address_filter_warning
 from pylovo.analysis.parameter_calculation import ParameterCalculator
-from pylovo import utils
+from pylovo import supply_areas, utils
 from pylovo.config_loader import (
-    BROWNFIELD_NEAREST_ONLY,
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,
     CONFIG_EQUIPMENT_DATA,
@@ -697,9 +696,10 @@ class GridGenerator:
 
         Average-linkage hierarchical clustering on the routed distance matrix is cut
         into two clusters at a time; a cluster that exceeds the largest allowed
-        transformer (after ``TRANSFORMER_PLANNING_UTILIZATION``) or has no station
-        position within the greenfield distance limit is split again, until all
-        clusters are feasible. Optionally neighbouring clusters are merged again
+        transformer (after ``TRANSFORMER_PLANNING_UTILIZATION``), has no station
+        position within the greenfield distance limit or lies in several pieces among the
+        buildings that other grids supply already (:mod:`pylovo.supply_areas`) is split again,
+        until all clusters are feasible. Optionally neighbouring clusters are merged again
         (``MERGE_GREENFIELD_CLUSTERS``, limited to small clusters with
         ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``). The bcids are numbered from ``first_bcid`` by
         their smallest vertex id and written to ``grid_result`` with their rating.
@@ -756,6 +756,9 @@ class GridGenerator:
             self.dbc.delete_isolated_building(plz, kcid)
             return []
 
+        # an area in several pieces among the buildings of other grids is split again
+        contiguity = supply_areas.AreaContiguity(self.dbc.get_consumer_positions(kcid))
+
         # Initialize hierarchical clustering
         Z = linkage(dist_vector, method="average")
         valid_cluster_dict = {}
@@ -779,6 +782,7 @@ class GridGenerator:
                 dist_mat=new_dist_mat,
                 vid2localid={value: key for key, value in new_localid2vid.items()},
                 max_transformer_distance=MAX_GREENFIELD_TRAFO_DISTANCE,
+                contiguity=contiguity,
             )
 
             # Process valid clusters
@@ -845,6 +849,7 @@ class GridGenerator:
                 vid2localid,
                 plz,
                 kcid,
+                contiguity,
             )
 
         # Reorder bcids for consistency
@@ -870,6 +875,7 @@ class GridGenerator:
         vid2localid: dict[int, int],
         plz: int,
         kcid: int,
+        contiguity: supply_areas.AreaContiguity | None = None,
     ) -> dict:
         """Merge neighboring undersized greenfield clusters if still feasible.
 
@@ -880,7 +886,8 @@ class GridGenerator:
         ``greenfield_distance_limit`` that the split and the station placement use). With
         ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS`` a pair is only merged if its
         smaller cluster has at most that many loaded buildings, so small
-        fragments join a neighbour while larger clusters stay as split.
+        fragments join a neighbour while larger clusters stay as split. With ``contiguity`` the merged
+        area must also form one piece among the buildings of other grids.
         """
         if not MERGE_GREENFIELD_CLUSTERS or len(cluster_dict) <= 1:
             return cluster_dict
@@ -949,6 +956,8 @@ class GridGenerator:
                         self.dbc.greenfield_distance_limit(combined_vertices, MAX_GREENFIELD_TRAFO_DISTANCE),
                     ):
                         continue
+                    if contiguity is not None and not contiguity(combined_vertices):
+                        continue
 
                     nearest_distance = float(
                         dist_mat[np.ix_(left_local_ids, right_local_ids)].min()
@@ -1005,15 +1014,19 @@ class GridGenerator:
         """
         Assign buildings to the existing transformers and store them as bcid in buildings_tem.
 
-        Consumer-transformer pairs closer than ``MAX_BROWNFIELD_TRAFO_DISTANCE`` are
-        visited from the shortest routed distance up (with ``BROWNFIELD_NEAREST_ONLY`` only the
-        pairs of each consumer's nearest transformer); a consumer joins the
-        transformer unless the coincident load would exceed the transformer's
-        imported rating or, without one, reach the largest allowed catalogue rating
-        (after ``TRANSFORMER_PLANNING_UTILIZATION``). Every used transformer becomes a
-        bcid with a negative id (-1, -2, ...) and keeps its imported rating or gets
-        the smallest sufficient catalogue rating; unused transformers are removed.
-        Unassigned consumers stay for greenfield clustering.
+        A consumer may only join its nearest transformer (routed, closer than
+        ``MAX_BROWNFIELD_TRAFO_DISTANCE``; transformers at the same distance all count): when that
+        one is full, the consumer is left for greenfield instead of joining a farther transformer
+        behind or through the area of the full one. The pairs are visited from the shortest routed
+        distance up; a consumer joins the transformer unless the coincident load would exceed the
+        transformer's imported rating or, without one, reach the largest allowed catalogue rating
+        (after ``TRANSFORMER_PLANNING_UTILIZATION``), and the first consumer that does not fit
+        marks the transformer as full. A consumer on the street path between another consumer and
+        its nearest transformer has the same nearest transformer (apart from ties) and is closer to
+        it, so it is visited first: the area of each transformer is connected along the streets.
+        Every used transformer becomes a bcid with a negative id (-1, -2, ...) and keeps its
+        imported rating or gets the smallest sufficient catalogue rating; unused transformers are
+        removed. Unassigned consumers stay for greenfield clustering.
 
         Args:
             plz: Postal code
@@ -1031,7 +1044,7 @@ class GridGenerator:
         # metres, so ties are common: then the lower consumer and station vertex, not the routing row order)
         cost_df = cost_df[cost_df["agg_cost"] < MAX_BROWNFIELD_TRAFO_DISTANCE].sort_values(
             by=["agg_cost", "start_vid", "end_vid"])
-        if BROWNFIELD_NEAREST_ONLY and not cost_df.empty:
+        if not cost_df.empty:
             # only each consumer's nearest station: when it is full, the consumer is left for greenfield
             # instead of joining a farther station that still has capacity
             cost_df = cost_df[cost_df["agg_cost"] <= cost_df.groupby("start_vid")["agg_cost"].transform("min")]
@@ -1125,7 +1138,8 @@ class GridGenerator:
         the largest catalogue rating. A cluster that would overload its nearest station tries
         the next one. An imported rating is kept; a station without one gets the smallest
         catalogue rating above its new load (after ``TRANSFORMER_PLANNING_UTILIZATION``), or
-        the largest.
+        the largest. The station's area and the cluster must form one piece among the buildings of
+        the other grids (:func:`pylovo.supply_areas.is_contiguous`), otherwise the next station is tried.
 
         Returns:
             The number of clusters that joined a station.
@@ -1133,6 +1147,7 @@ class GridGenerator:
         stations = self.dbc.get_brownfield_stations(plz, kcid)
         if not stations:
             return 0
+        positions = self.dbc.get_consumer_positions(kcid)
         bcid_by_vertex = {vertex: bcid for bcid, vertex in stations.items()}
         known_capacities = self.dbc.get_brownfield_transformer_capacity_map(list(stations.values()))
         capacities, _ = self.dbc.get_transformer_data(self.dbc.get_settlement_type_from_plz(plz))
@@ -1158,6 +1173,11 @@ class GridGenerator:
                     joined, consumer_cat_df, utils.planning_nodes(joined).dropna().astype(int).unique().tolist())
                 if load > known_capacities.get(vertex, capacities.max()):
                     continue   # the station would be overloaded: try the next one
+                joined_area = positions["bcid"].isin([bcid, target])
+                if not supply_areas.is_contiguous(positions.loc[joined_area, ["x", "y"]],
+                                                  positions.loc[~joined_area & positions["bcid"].notna(), ["x", "y"]]):
+                    continue   # the station's area and the cluster would be in several pieces
+                positions.loc[positions["bcid"] == bcid, "bcid"] = target
                 self.dbc.move_building_cluster(plz, kcid, bcid, target)
                 if vertex not in known_capacities:
                     rating = utils.smallest_rating_above(capacities, utils.planned_station_load(load))

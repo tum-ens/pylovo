@@ -589,8 +589,6 @@ GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION.get("GREENFIELD_TR
 # GRID GENERATION PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
-# A building joins only its nearest existing station; when that one is full it is left for greenfield.
-BROWNFIELD_NEAREST_ONLY = bool(CONFIG_GENERATION.get("BROWNFIELD_NEAREST_ONLY", False))
 # How often a grid whose validation power flow leaves the voltage band is planned again (GridGenerator.install_cables);
 # 0 (also without the key) stores it as it is.
 MAX_VOLTAGE_REPAIRS = CONFIG_GENERATION.get("MAX_VOLTAGE_REPAIRS", 0)
