@@ -70,7 +70,7 @@ def test_the_service_drop_is_the_three_phase_drop_in_percent_of_the_nominal_volt
     150 mm2 cable drops 0.482 %. Above a 1 % limit the larger cable is chosen for the voltage drop.
     """
     monkeypatch.setattr(utils, "DEFAULT_POWER_FACTOR", 0.95)
-    monkeypatch.setattr(cable_installer, "VN", 400)
+    monkeypatch.setattr(utils, "VN", 400)
     installer = CableInstaller(None, None, logging.getLogger("service-drop-test"), CABLES, pd.DataFrame(), pd.DataFrame())
     assert installer._service_voltage_drop_percent(0.1, 0.05, "NAYY_4_50", 1) == pytest.approx(1.3766, abs=1e-4)
     assert installer._service_voltage_drop_percent(0.1, 0.05, "NAYY_4_50", 2) == pytest.approx(1.3766 / 2, abs=1e-4)

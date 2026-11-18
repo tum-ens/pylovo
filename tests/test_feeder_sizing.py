@@ -49,7 +49,7 @@ def planning_rules(monkeypatch):
     monkeypatch.setattr(feeder_planning, "MAX_PARALLEL_FEEDER_CABLES", 4)
     monkeypatch.setattr(feeder_planning, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", 1)
     monkeypatch.setattr(feeder_planning, "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT", 5.0)
-    monkeypatch.setattr(feeder_planning, "VN", 400)
+    monkeypatch.setattr(utils, "VN", 400)
 
 
 def buildings(*connection_points):

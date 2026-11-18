@@ -53,7 +53,6 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 
 from pylovo import utils
@@ -66,7 +65,6 @@ from pylovo.config_loader import (
     MAX_PARALLEL_FEEDER_CABLES,
     MAX_VOLTAGE_PARALLEL_FEEDER_CABLES,
     MIN_SHARED_PREFIX_LENGTH_M,
-    VN,
 )
 
 #: Directed feeder edge ``(parent, child)``; the parent is closer to the transformer.
@@ -502,12 +500,10 @@ def size_feeder_tree(
             f"{unreachable_load_nodes[:10]}"
         )
 
-    # Drop in percent of an edge = edge_factor * effective impedance (ohm/km) of its cable.
-    nominal_voltage_kv = VN * 1e-3
+    # Drop in percent of an edge = edge_factor * effective impedance (ohm/km) of its cable: the edge factor is the drop
+    # at 1 ohm/km (utils.voltage_drop_percent is linear in the impedance), so cable options compare by impedance alone.
     edge_factor = {
-        edge: np.sqrt(3) * current_ka * edge_length_km[edge]
-        / nominal_voltage_kv
-        * 100
+        edge: utils.voltage_drop_percent(current_ka, edge_length_km[edge], 1.0)
         for edge, current_ka in edge_current_ka.items()
     }
 
