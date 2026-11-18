@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pylovo import utils
+from pylovo import config_loader, utils
 from pylovo.config_loader import TARGET_EPSG
 from pylovo.data_import import import_transformers, municipal_register
 
@@ -13,10 +13,11 @@ EMPTY_COLLECTION = {"type": "FeatureCollection", "features": []}
 
 @pytest.fixture
 def work_dir(monkeypatch, tmp_path):
-    """A working directory without ``data/`` and no data directory variable set."""
+    """A working directory without ``data/``, no data directory variable set and no checkout above the package."""
     monkeypatch.delenv("PYLOVO_DATA_DIR", raising=False)
     monkeypatch.delenv("PYLOVO_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config_loader, "__file__", str(tmp_path / "site-packages" / "pylovo" / "config_loader.py"))
     return tmp_path
 
 
@@ -109,9 +110,22 @@ def test_missing_register_file_names_the_data_dir_variable(monkeypatch, work_dir
 
 
 def test_register_files_without_a_data_dir_variable(monkeypatch, work_dir):
-    # Nothing set: the data folder of the checkout, whatever the working directory is.
-    assert municipal_register.missing_input_files() == []
-    # Only PYLOVO_ROOT: its data folder.
+    # Only PYLOVO_ROOT: its data folder (no checkout and no wheel copy in this test).
     monkeypatch.setenv("PYLOVO_ROOT", str(work_dir))
     expected = [str(work_dir / "data" / "municipal_register" / name) for name in municipal_register.REGISTER_FILES]
     assert municipal_register.missing_input_files() == expected
+
+
+def test_reference_data_missing_in_the_data_dir_is_read_from_the_checkout(monkeypatch, tmp_path):
+    """An editable install run outside its checkout reads the checkout's data/, for every reference file."""
+    monkeypatch.delenv("PYLOVO_DATA_DIR", raising=False)
+    monkeypatch.delenv("PYLOVO_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    checkout_data = config_loader.checkout_dir("data")
+    assert checkout_data is not None                                  # the tests run from a checkout
+    assert municipal_register.missing_input_files() == []
+    assert municipal_register._get_data_file_path("regiostar/regiostar.xlsx") == str(
+        checkout_data / "municipal_register" / "regiostar" / "regiostar.xlsx")
+    query = utils.reference_data_path(tmp_path / "data" / "transformer_data" / "overpass_queries" / "x.txt",
+                                      "transformer_data/overpass_queries/substations_query.txt")
+    assert query == checkout_data / "transformer_data" / "overpass_queries" / "substations_query.txt"

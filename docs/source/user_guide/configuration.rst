@@ -89,10 +89,11 @@ once and names the variables, never their values. The commands that delete data 
    * - ``PYLOVO_DATA_DIR``
      - ``$PYLOVO_ROOT/data``, else ``./data``
      - Optional data directory with the reference data: ``transformer_data/``, ``municipal_register/``
-       and the eGon-data download ``egon_data/``. The municipal
-       register also finds the ``data/`` folder of the checkout. Reference data that is missing here
-       (municipal register, Overpass queries, processed Bavarian transformers) is read from the copy
-       in the wheel (``pylovo/_defaults/data``); pylovo writes only into this directory.
+       and the eGon-data download ``egon_data/``. Reference data that is missing here (municipal
+       register, Overpass queries, processed Bavarian transformers) is read from ``data/`` of the
+       checkout pylovo runs from (also outside it), else from the copy in the wheel
+       (``pylovo/_defaults/data``), as for the configuration files; pylovo writes only into this
+       directory.
    * - ``PYLOVO_CONFIG_DIR``
      - ``~/.config/pylovo``
      - Optional directory with the YAML files, searched after ``./config`` and

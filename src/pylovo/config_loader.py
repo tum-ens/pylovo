@@ -80,6 +80,16 @@ def find_env_file() -> str:
     return find_dotenv() or find_dotenv(usecwd=True)
 
 
+def checkout_dir(name: str) -> Path | None:
+    """Return the folder ``name`` (``config``, ``data``) of the source checkout this module was imported from, or None.
+
+    In the src layout ``src/pylovo/config_loader.py`` the checkout is three levels up. A wheel installed in
+    ``site-packages`` has no such folder there (it ships its defaults in :func:`get_packaged_defaults_dir`).
+    """
+    folder = Path(__file__).parent.parent.parent / name
+    return folder if folder.is_dir() else None
+
+
 def get_config_search_paths():
     """Return the directories searched for the YAML files, in priority order.
 
@@ -117,8 +127,8 @@ def get_config_search_paths():
         search_paths.append(Path.cwd() / ".pylovo")  # Project-local config
 
     # 4. Source checkout (src layout: src/pylovo/config_loader.py -> <repo>/config)
-    checkout_config = Path(__file__).parent.parent.parent / "config"
-    if checkout_config.exists():
+    checkout_config = checkout_dir("config")
+    if checkout_config is not None:
         search_paths.append(checkout_config)
 
     # 5. Defaults shipped in the wheel (pip install pylovo); a checkout or an editable install has none

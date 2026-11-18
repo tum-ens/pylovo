@@ -1,14 +1,14 @@
 """Build the ``municipal_register`` table (PLZ, AGS, population, RegioStaR classes).
 
-The register joins three files in ``data/municipal_register`` (``$PYLOVO_DATA_DIR/municipal_register``
-if ``PYLOVO_DATA_DIR`` is set; a file that is missing there is read from the copy in the wheel):
+The register joins three files in ``municipal_register/`` of the data directory
+(:func:`pylovo.utils.get_user_data_dir`); a file that is missing there is read from the copy of the checkout or the
+wheel (:func:`pylovo.utils.reference_data_path`):
 
 - ``gemeindeverzeichnis/plz_einwohner.xlsx``: population and area per PLZ,
 - ``gemeindeverzeichnis/zuordnung_plz_ort.xlsx``: PLZ to AGS mapping
   (both from suche-postleitzahl.org),
 - ``regiostar/regiostar.xlsx``: RegioStaR 5/7 classes per municipality (BMDV).
 """
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -18,35 +18,9 @@ import pylovo.database.database_client as dbc
 from pylovo.utils import get_user_data_dir, reference_data_path
 
 
-def _get_repo_root() -> Path:
-    """Return the directory that contains ``data/``.
-
-    Priority: ``$PYLOVO_ROOT``, then the first parent of this package that contains ``data/``,
-    then the current working directory.
-    """
-    env_root = os.getenv("PYLOVO_ROOT")
-    if env_root:
-        root_path = Path(env_root)
-        if root_path.exists():
-            return root_path
-
-    current = Path(__file__).parent
-    while current != current.parent:
-        if (current / "data").exists():
-            return current
-        current = current.parent
-
-    return Path.cwd()
-
-
 def _get_register_dir() -> Path:
-    """Return the ``municipal_register`` folder.
-
-    ``$PYLOVO_DATA_DIR`` wins if it is set, otherwise it is ``data/`` of :func:`_get_repo_root`.
-    """
-    if os.getenv("PYLOVO_DATA_DIR"):
-        return get_user_data_dir() / "municipal_register"
-    return _get_repo_root() / "data" / "municipal_register"
+    """Return the ``municipal_register`` folder of the data directory (:func:`pylovo.utils.get_user_data_dir`)."""
+    return get_user_data_dir() / "municipal_register"
 
 
 REGISTER_FILES = (
