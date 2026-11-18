@@ -52,7 +52,9 @@ import yaml
 #: (OSM-discounted) exceeds their reach, ``peak_load_mw`` is the load of the HV/MV sizing (without unconnected nodes),
 #: and one parser reads the OSM voltage tags of lines and substations (``20000/400``, ``20_kv``, ``20``: 20 kV); the
 #: snapshot no longer records the options removed before.
-MV_STAGE_VERSION: int = 14
+#: 15: planning and the interconnection checks retry a power flow that Newton-Raphson does not solve with
+#: Iwamoto-damped Newton-Raphson, as the coupling did (``electrical.POWER_FLOW_ALGORITHMS``).
+MV_STAGE_VERSION: int = 15
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "nullable_str", "float_tuple", "str_tuple",
                           "mapping", "voltage", "nullable_float")

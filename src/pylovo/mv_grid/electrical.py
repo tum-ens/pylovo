@@ -560,12 +560,16 @@ def case_net(net: pp.pandapowerNet, case: str, params: Any, *, busbar_vm_pu: flo
     return out
 
 
-def run_power_flow(net: pp.pandapowerNet, algorithms: Sequence[str] = ("nr",)) -> bool:
+#: Power-flow algorithms of the MV stage, tried in turn: Newton-Raphson, then Iwamoto-damped Newton-Raphson (a step
+#: multiplier that keeps Newton-Raphson from diverging on heavily loaded nets; the same solution where both converge).
+POWER_FLOW_ALGORITHMS: tuple[str, ...] = ("nr", "iwamoto_nr")
+
+
+def run_power_flow(net: pp.pandapowerNet, algorithms: Sequence[str] = POWER_FLOW_ALGORITHMS) -> bool:
     """Run the power flow of an MV net; non-convergence is a result (False), not an error.
 
-    The algorithms are tried in turn until one converges. Planning and the interconnection checks use
-    Newton-Raphson alone; the coupling retries with Iwamoto-damped Newton-Raphson
-    (:func:`pylovo.mv_grid.coupling.run_coupled_cases`), so a net that fails here can converge there.
+    The algorithms are tried in turn until one converges. Planning, the interconnection checks and the coupling all
+    use :data:`POWER_FLOW_ALGORITHMS`, so a net that converges in one of them converges in the others.
     """
     for algorithm in algorithms:
         try:

@@ -807,7 +807,7 @@ types only overhead lines can grow; the cables then get parallel cables.
    * - Loading or voltage on a dedicated feeder or busbar radial
      - Larger conductors (the overloaded line, or every line of the feeder for voltage), then one
        more parallel cable, else the report ``dedicated_overload``.
-   * - A case does not converge
+   * - A case does not converge (Newton-Raphson, then Iwamoto-damped Newton-Raphson)
      - Report, the topology is kept.
 
 A supply area is stored with its remaining violations, as the LV stage stores its grids, and
@@ -889,7 +889,7 @@ In 10 kV supply areas the LV transformers are re-typed to 10 kV on their MV side
 upsized for its busbar customers gets the larger transformer. Every LV net is merged, also one
 whose own check does not converge. Lines shorter than 1 m get 1 m, because stored LV nets can hold
 lines of a few micrometres that stop Newton-Raphson, and a failed Newton-Raphson is repeated with
-Iwamoto damping. The merged net is not stored, but ``pylovo-mv export --coupled`` rebuilds it for
+Iwamoto damping, as in planning. The merged net is not stored, but ``pylovo-mv export --coupled`` rebuilds it for
 one supply area.
 
 A supply area is ``partial`` when a station with an LV grid could not be coupled, has no voltage

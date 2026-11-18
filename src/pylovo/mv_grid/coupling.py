@@ -100,10 +100,6 @@ def _number(value: Any, default: float = math.nan) -> float:
     return default if number is None else number
 
 
-#: Power-flow algorithms of the coupled nets: Newton-Raphson as in planning, then Iwamoto-damped Newton-Raphson.
-COUPLING_ALGORITHMS: tuple[str, ...] = ("nr", "iwamoto_nr")
-
-
 def _min_line_length(lines: pd.DataFrame) -> pd.DataFrame:
     """``lines`` with every ``length_km`` below :data:`MIN_LINE_KM` raised to it (in place; returned)."""
     if len(lines) and "length_km" in lines.columns:
@@ -250,7 +246,7 @@ def design_point_check(lv_net: pp.pandapowerNet, vm_low: float, tap: int, *,
     lv_buses = net.bus.index[net.bus.index != mv_bus]
     if math.isfinite(_number(vm_low)):
         net.ext_grid["vm_pu"] = float(vm_low)
-        converged = electrical.run_power_flow(net, COUPLING_ALGORITHMS)
+        converged = electrical.run_power_flow(net)
         out["design_converged"] = float(converged)
         if converged:
             vm = net.res_bus["vm_pu"]
@@ -659,7 +655,7 @@ def run_coupled_cases(net: pp.pandapowerNet, params: MvParameters) -> pd.DataFra
     slack: float | None = None
     mv_vm = pd.Series(dtype=float)
     current = electrical.case_net(net, "load", params, busbar_vm_pu=operating_busbar_vm(params))
-    converged = electrical.run_power_flow(current, COUPLING_ALGORITHMS)
+    converged = electrical.run_power_flow(current)
     if converged:
         slack = _finite(current.res_ext_grid["p_mw"].sum())
         vm = current.res_bus["vm_pu"]
@@ -838,7 +834,7 @@ def couple_district(stored_net: pp.pandapowerNet, stations: pd.DataFrame,
         op = run_coupled_cases(net, params)
         reference = mv_part(stored_net)
         reference = electrical.case_net(reference, "load", params, busbar_vm_pu=operating_busbar_vm(params))
-        ref_ok = electrical.run_power_flow(reference, COUPLING_ALGORITHMS)
+        ref_ok = electrical.run_power_flow(reference)
         op_by_node = op.rename(index={g: node_of_grid[int(g)] for g in op.index if int(g) in node_of_grid})
         rows["coupled_op_lv_busbar_vm_pu"] = op_by_node["op_lv_busbar_vm_pu"].reindex(rows.index)
         mv_vm = op.attrs.get("mv_vm_pu", pd.Series(dtype=float))
@@ -1184,7 +1180,7 @@ def export_coupled_net(version_id: str, variant_id: str, mv_grid_id: int, output
     net = build_coupled_net(stored, frames, taps, lv, vn_kv, include_open=case in electrical.N1_CASES,
                             busbar_loads=busbar_customer_loads(table))
     net = electrical.case_net(net, case, params, busbar_vm_pu=operating_busbar_vm(params))
-    if not electrical.run_power_flow(net, COUPLING_ALGORITHMS):
+    if not electrical.run_power_flow(net):
         logger.warning(f"Case {case} of the coupled MV grid {mv_grid_id} did not converge: written without results")
     output.parent.mkdir(parents=True, exist_ok=True)
     pp.to_json(net, str(output))
