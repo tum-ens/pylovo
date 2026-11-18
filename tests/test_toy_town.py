@@ -126,7 +126,7 @@ def test_a_leisure_building_gets_one_household_load_without_residents(q):
 
 
 def test_a_house_without_address_is_a_consumer(q):
-    # the shipped configuration has no address filter (EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False): with the class
+    # the toy town runs without the address filter (EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False): with the class
     # Auxiliary the InfDB has left out the outbuildings already, and in states without addresses no house has one
     house = [b.objectid for b in toy_town.buildings() if b.kind is toy_town.KINDS["HOUSE_NO_ADDRESS"]]
     assert q("SELECT version_id FROM pylovo.buildings_result WHERE objectid = ANY(%s) ORDER BY 1", (house,)) \

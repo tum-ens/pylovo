@@ -19,11 +19,11 @@ RESULT_DIR: results # Directory for storing analysis results and outputs
 
 ELECTRICAL_BACKEND: pandapower # Electrical backend: 'pandapower' or 'opendss' (needs the opendss extra installation; differences in the docs)
 RESIDENTIAL_ONLY_GENERATION: False # apply grid generation based on residential buildings only
-# InfDB mode: leave out the buildings without street and house number. InfDB basedata with the class Auxiliary
-# (outbuildings, no consumers) need no address filter, which would drop every building of the states whose LoD2
-# has no addresses; set True for older InfDB data, whose garages, sheds and barns are consumers. A run warns when
-# the value does not suit the InfDB data.
-EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: False
+# InfDB mode: leave out the buildings without street and house number. True for InfDB basedata without the class
+# Auxiliary, such as the central InfDB, whose garages, sheds and barns would be consumers. Set False for InfDB data
+# with Auxiliary (outbuildings, no consumers): there the filter would drop every building of the states whose LoD2
+# has no addresses. A run warns when the value does not suit the InfDB data.
+EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True
 PEAK_LOAD_HOUSEHOLD: 16.825 # 14.5kW, ~15% of buildings have 30 kW with electric hot water supply
 DEFAULT_POWER_FACTOR: 0.95  # cos(phi) for residential loads
 

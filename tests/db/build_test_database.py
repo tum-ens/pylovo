@@ -39,7 +39,9 @@ from pathlib import Path
 import toy_town
 
 ROOT = Path(__file__).resolve().parents[2]
-#: version id -> changes of config_generation_lv.yaml
+#: changes of config_generation_lv.yaml in every version: the toy town is InfDB data with the class Auxiliary
+TOY_TOWN_SETTINGS = {"EXCLUDE_BUILDINGS_WITHOUT_ADDRESS": False}
+#: version id -> further changes of config_generation_lv.yaml
 VERSIONS = {
     "1": {},
     "2": {"VERSION_COMMENT": "toy town, open transformer positions", "USE_OPEN_TRANSFORMER_POSITIONS": True},
@@ -119,9 +121,8 @@ def main(argv: list[str] | None = None) -> None:
         path = project / "config" / "config_generation_lv.yaml"
         default = yaml.safe_load(path.read_text(encoding="utf-8"))
         for version_id, changes in VERSIONS.items():
-            if changes:
-                config = {**default, **changes, "VERSION_ID": version_id}
-                path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+            config = {**default, **TOY_TOWN_SETTINGS, **changes, "VERSION_ID": version_id}
+            path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
             if version_id == MANUAL_STATION_VERSION:
                 _place_manual_station()
             plz = list(map(str, toy_town.GENERATED_PLZ))

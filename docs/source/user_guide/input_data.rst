@@ -84,11 +84,12 @@ From ``<INFDB_SOURCE_SCHEMA>.buildings`` pylovo takes the buildings of the postc
 * Leisure buildings (function codes ``31001_1310`` to ``31001_1312``, weekend and holiday houses) are
   ``Residential`` with one household and no residents in InfDB: each gets the load of one household.
 * ``EXCLUDE_BUILDINGS_WITHOUT_ADDRESS: True`` leaves out buildings without street or house number. The shipped
-  configuration sets it ``False``: with the class ``Auxiliary`` the outbuildings are out already, and the filter
-  would leave out every building in the states whose LoD2 has no addresses (Bremen, Hessen, Saarland, Berlin,
-  Brandenburg, Mecklenburg-Vorpommern and Sachsen in 2026). Set it ``True`` for InfDB data without the class
-  ``Auxiliary`` (no column ``auxiliary_rule``), whose garages, sheds and barns are ``Residential``, ``Commercial``
-  or ``Public``. A run logs a warning when the value does not suit the InfDB data.
+  configuration sets it ``True``, as the central InfDB has no class ``Auxiliary`` yet (no column
+  ``auxiliary_rule``): its garages, sheds and barns are ``Residential``, ``Commercial`` or ``Public`` and mostly have
+  no address. Set it ``False`` for InfDB data with the class ``Auxiliary``: the outbuildings are out already, and the
+  filter would leave out every building in the states whose LoD2 has no addresses (Bremen, Hessen, Saarland, Berlin,
+  Brandenburg, Mecklenburg-Vorpommern and Sachsen in 2026). A run logs a warning when the value does not suit the
+  InfDB data.
 * ``RESIDENTIAL_ONLY_GENERATION: True`` keeps only residential buildings and components.
 * Non-residential buildings that overlap a transformer candidate are removed; so are duplicates
   and buildings without geometry or ``objectid``. A removed building whose non-residential load is

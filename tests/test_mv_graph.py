@@ -893,6 +893,7 @@ def test_settlement_buildings_need_an_address_without_the_auxiliary_class():
 
 
 def test_settlement_buildings_are_the_consumers_with_the_auxiliary_class(monkeypatch):
+    monkeypatch.setattr(mixin_module, "EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", False)
     address_graph = _settlement_build()[0]
     graph_id, staged, params = _settlement_build((r"information_schema\.columns", [(True,)]))
     assert "house_number" not in staged and "b.building_use = ANY(%(uses)s)" in staged   # Auxiliary is no use of it

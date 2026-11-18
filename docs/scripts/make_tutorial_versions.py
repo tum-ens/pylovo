@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AREAS = (80805, 85256, 85307)
 MAP_AREA = 85256
 
-#: Settings of version 1 that differ from config/config_generation_lv.yaml: the Bavaria run left out buildings
+#: Settings of version 1, kept when config/config_generation_lv.yaml changes: the Bavaria run left out buildings
 #: without address, which the InfDB of that run (infdb-bynrw) files as Commercial, not as Auxiliary outbuildings,
 #: and laid no parallel feeder cables for the voltage drop (pylovo 1.0.0).
 VERSION_1_SETTINGS = {"EXCLUDE_BUILDINGS_WITHOUT_ADDRESS": True, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES": 1}
