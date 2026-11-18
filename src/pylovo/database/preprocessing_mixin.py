@@ -1110,8 +1110,10 @@ class PreprocessingMixin(BaseMixin):
         Imported DSO stations count only when they are in use
         (`include_dso`): they stay in `pylovo.transformers` after the run that
         imported them, and must not remove buildings from a run that ignores them.
-        All other positions (OSM, LoD2, manual) count also when this run does not use them
-        (``include_open`` and ``include_manual`` are not passed on): unlike :meth:`insert_transformers`.
+        All other positions (OSM, LoD2, manual) count also when this run does not use them as candidates
+        (unlike :meth:`insert_transformers`), on purpose: a building with a known station in it is a station
+        building, not a consumer, whichever candidates a run plans with. So runs with different station sources
+        (for example open data versus DSO stations) start from the same consumer buildings.
 
         Args:
             include_dso: Whether imported DSO stations are used in this run.
