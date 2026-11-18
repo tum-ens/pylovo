@@ -1,7 +1,7 @@
 """Pure-Python topology helpers for one radial LV grid (no pandapower import needed).
 
-pylovo grids are radial: every street cable leaving the station busbar (``LVbus``) starts one
-outgoing feeder (a house connection directly at the station is not a feeder). Grids generated
+pylovo grids are radial: every cable leaving the station busbar (``LVbus``) towards at least two houses starts one
+outgoing feeder, as in the structural metrics (a house on its own cable from the station is not a feeder). Grids generated
 before pylovo merged the transformer's street node into the busbar link that node to ``LVbus``
 with a 1 m cable; both buses then count as *station buses*. These
 helpers label buses and lines with that feeder and compute the cable distance of every bus
@@ -51,8 +51,8 @@ def analyse(buses: Iterable[dict], lines: Iterable[dict]) -> dict:
         ``{"station": [...], "bus_feeder": {bus: n}, "line_feeder": {line: n},
         "distance_km": {bus: km}, "feeders": [{"feeder": n, "buses": .., "lines": ..,
         "length_km": ..}], "direct": [{"line": .., "bus": ..}]}`` with feeders numbered
-        1..n by descending cable length. ``direct`` lists service cables that start at a
-        station bus; their lines and consumer buses carry no feeder number.
+        1..n by descending cable length. ``direct`` lists the cables from a station bus towards fewer than two
+        consumer buses (a house on its own cable); their lines and buses carry no feeder number.
     """
     buses = list(buses)
     lines = list(lines)
@@ -82,36 +82,37 @@ def analyse(buses: Iterable[dict], lines: Iterable[dict]) -> dict:
                 distance[other] = new
                 heapq.heappush(heap, (new, other))
 
-    # Every feeder cable leaving a station bus starts a feeder; flood-fill away from the station.
-    # A house connection (service cable) straight at the station is not a feeder: it is listed
-    # in "direct" and its consumer bus gets no feeder number (pylovo's no_branches agrees).
-    roles = {line["pp_index"]: line_role(line) for line in lines}
+    # Every cable leaving a station bus starts a branch; flood-fill away from the station. As in the structural
+    # metrics (pylovo.analysis.comparison.feeder_structure), a branch is a feeder only if it supplies at least two
+    # consumer buses. A house on its own cable from the station is listed in "direct" and gets no feeder number.
+    consumers = {b["pp_index"] for b in buses if bus_role(b.get("name")) == "consumer"}
     bus_feeder: dict[int, int] = {}
     line_feeder: dict[int, int] = {}
     direct: list[dict] = []
-    direct_lines: set[int] = set()
+    taken: set[int] = set()
     provisional = 0
     for bus in sorted(station):
         for other, line_id, _ in adjacency[bus]:
-            if other in station or line_id in line_feeder or line_id in direct_lines:
+            if other in station or line_id in taken:
                 continue
-            if roles.get(line_id) == "service":
-                direct_lines.add(line_id)
-                direct.append({"line": line_id, "bus": other})
-                continue
-            provisional += 1
-            line_feeder[line_id] = provisional
-            stack = [other]
-            bus_feeder.setdefault(other, provisional)
+            branch_lines, branch_buses, stack = {line_id}, {other}, [other]
             while stack:
                 current = stack.pop()
                 for nxt, lid, _ in adjacency[current]:
-                    if lid in line_feeder or nxt in station:
+                    if lid in branch_lines or lid in taken or nxt in station:
                         continue
-                    line_feeder[lid] = provisional
-                    if nxt not in bus_feeder:
-                        bus_feeder[nxt] = provisional
+                    branch_lines.add(lid)
+                    if nxt not in branch_buses:
+                        branch_buses.add(nxt)
                         stack.append(nxt)
+            taken |= branch_lines
+            if len(branch_buses & consumers) < 2:
+                direct.append({"line": line_id, "bus": other})
+                continue
+            provisional += 1
+            line_feeder.update(dict.fromkeys(branch_lines, provisional))
+            for b in branch_buses:
+                bus_feeder.setdefault(b, provisional)
 
     lengths: dict[int, float] = defaultdict(float)
     counts_lines: dict[int, int] = defaultdict(int)

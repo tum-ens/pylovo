@@ -167,8 +167,9 @@ on-demand power flows run at a time: a request that finds no free slot within 30
 
 **Cable cabinets.** pylovo's feeder split points are reported as cable cabinets with their number
 of outgoing cables, never at the station busbar. They are named K1 … Kn by cable distance from the
-station, the same names the diagnostics use. Service connections directly at the station busbar
-are direct connections, not feeders.
+station, the same names the diagnostics use. As in the structural metrics, a feeder is a cable from the
+station towards at least two houses: a house on its own cable from the station busbar is a direct connection,
+not a feeder.
 
 .. _http-api-lod2:
 

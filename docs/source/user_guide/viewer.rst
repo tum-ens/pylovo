@@ -185,7 +185,8 @@ says so.
      - Cables, Buildings
      - ``pylovo.lines_result_cache`` with the cable cabinets of ``pylovo.split_points``, and
        ``pylovo.buildings_result``, for the map view from zoom 13. Feeders are numbered from the
-       station along the cables, 1 being the longest. From zoom 15 an arrow at each cabinet marks
+       station along the cables, 1 being the longest. As in the structural metrics, a feeder supplies at
+       least two houses: a house on its own cable from the station has no feeder number. From zoom 15 an arrow at each cabinet marks
        the cable that supplies it.
 
 Grids, supply areas and rings are coloured so that neighbours never share a colour. Voltage levels

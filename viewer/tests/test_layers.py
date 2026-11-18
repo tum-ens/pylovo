@@ -91,7 +91,9 @@ def test_feeder_section(service, fake_db):
         "feeder_section_id IS NULL AND from_bus": [{"n": 4}],
         "SELECT grid_result_id, ont_vertice_id": [{"grid_result_id": 7, "ont_vertice_id": 1}],
         "AS g, id, from_bus": [{"g": 7, "id": 10, "from_bus": 1, "to_bus": 2, "length_km": 0.05},
-                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02}],
+                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02},
+                               {"g": 7, "id": 12, "from_bus": 3, "to_bus": 4, "length_km": 0.01},    # two houses
+                               {"g": 7, "id": 13, "from_bus": 3, "to_bus": 5, "length_km": 0.01}],
     }
     out = service.section(10)
     assert out["from"] == {"kind": "station", "id": 7} and out["to"] == {"kind": "cabinet", "id": 42}
@@ -249,7 +251,8 @@ def test_lines_supplied_by_a_transformer(service, fake_db):
         "count(*) AS n FROM pylovo.buildings_result": [{"n": 3}],
         "SELECT grid_result_id, ont_vertice_id": [{"grid_result_id": 7, "ont_vertice_id": 1}],
         "AS g, id, from_bus": [{"g": 7, "id": 10, "from_bus": 1, "to_bus": 2, "length_km": 0.05},
-                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02}],
+                               {"g": 7, "id": 11, "from_bus": 2, "to_bus": 3, "length_km": 0.02},
+                               {"g": 7, "id": 12, "from_bus": 2, "to_bus": 4, "length_km": 0.02}],
     }
     lv = service.supplied("mv_stations", 7, Query(version="v1"))
     assert lv["geometry"] == {"type": "MultiLineString", "coordinates": [[[11, 48], [11.001, 48]]] * 2}

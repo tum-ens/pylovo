@@ -69,17 +69,23 @@ def test_config_save_requires_confirm_and_makes_a_backup(client, project):
 def test_topology_labels_feeders_and_distances():
     buses = [{"pp_index": 0, "name": "LVbus 1"}, {"pp_index": 1, "name": "MVbus 1"}, {"pp_index": 2, "name": "Connection Nodebus 9"},
              {"pp_index": 3, "name": "Connection Nodebus 3"}, {"pp_index": 4, "name": "Consumer Nodebus 4"},
-             {"pp_index": 5, "name": "Consumer Nodebus 5"}]
+             {"pp_index": 5, "name": "Consumer Nodebus 5"}, {"pp_index": 6, "name": "Consumer Nodebus 6"},
+             {"pp_index": 7, "name": "Connection Nodebus 7"}, {"pp_index": 8, "name": "Consumer Nodebus 8"}]
     lines = [{"pp_index": 0, "from_bus": 0, "to_bus": 2, "length_km": 0.001},                     # busbar link
              {"pp_index": 1, "from_bus": 2, "to_bus": 3, "length_km": 0.2, "feeder_section_id": 1},
              {"pp_index": 2, "from_bus": 3, "to_bus": 4, "length_km": 0.02, "service_sizing_basis": "ampacity"},
-             {"pp_index": 3, "from_bus": 0, "to_bus": 5, "length_km": 0.05, "service_sizing_basis": "ampacity"}]
+             {"pp_index": 3, "from_bus": 0, "to_bus": 5, "length_km": 0.05, "service_sizing_basis": "ampacity"},
+             {"pp_index": 4, "from_bus": 3, "to_bus": 6, "length_km": 0.02, "service_sizing_basis": "ampacity"},
+             {"pp_index": 5, "from_bus": 2, "to_bus": 7, "length_km": 0.1, "feeder_section_id": 2},
+             {"pp_index": 6, "from_bus": 7, "to_bus": 8, "length_km": 0.02, "service_sizing_basis": "ampacity"}]
     topo = topology.analyse(buses, lines)
     assert topo["station"] == [0, 2]
-    # The service cable straight from the busbar (line 3) is a direct connection, not a feeder.
+    # As in the structural metrics, a feeder needs two houses: the service cable straight from the busbar (line 3)
+    # and the street cable to the single house 8 (lines 5, 6) are direct connections, not feeders.
     assert [f["feeder"] for f in topo["feeders"]] == [1]
-    assert topo["line_feeder"][1] == topo["line_feeder"][2] == 1 and 3 not in topo["line_feeder"]
-    assert topo["direct"] == [{"line": 3, "bus": 5}] and 5 not in topo["bus_feeder"]
+    assert topo["line_feeder"][1] == topo["line_feeder"][2] == topo["line_feeder"][4] == 1
+    assert not {3, 5, 6} & set(topo["line_feeder"])
+    assert topo["direct"] == [{"line": 3, "bus": 5}, {"line": 5, "bus": 7}] and not {5, 7, 8} & set(topo["bus_feeder"])
     assert abs(topo["distance_km"][4] - 0.22) < 1e-9
     assert topology.line_role(lines[0]) == "link" and topology.line_role(lines[2]) == "service"
 
