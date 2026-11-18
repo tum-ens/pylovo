@@ -112,7 +112,7 @@ Postcode key figures (``plz_parameters``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 One row per version and postcode; the values are JSON objects keyed by station rating (kVA). A
-station of two parallel units counts with its total rating (800 for 2 × 400 kVA):
+station of two parallel units counts with its total rating (1260 for 2 × 630 kVA):
 
 .. list-table::
    :header-rows: 1

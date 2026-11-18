@@ -169,7 +169,7 @@ def plot_settlement_type(postcodes: pd.DataFrame, parameters: Optional[Mapping[s
 # --------------------------------------------------------------------------- one postcode area
 def plot_rating_counts(grids: pd.DataFrame, ax: Optional[plt.Axes] = None, figsize: Tuple[float, float] = (5.2, 3.2),
                        title: Optional[str] = None) -> Figure:
-    """The number of grids per station rating (kVA); a station of two 400 kVA units counts as 800 kVA."""
+    """The number of grids per station rating (kVA); a station of two 630 kVA units counts as 1260 kVA."""
     counts = pd.to_numeric(grids["transformer_rated_power"], errors="coerce").dropna().value_counts().sort_index()
     colors = st.rating_colors(counts.index)
     with st.style():

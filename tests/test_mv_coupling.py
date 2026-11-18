@@ -915,13 +915,6 @@ def test_the_budget_drop_carries_the_busbar_customers_as_the_design_point_check(
     assert 1.0 - d_t == pytest.approx(check["coupled_lv_busbar_vm_pu"], abs=1e-3)
 
 
-def test_station_units_total_the_rating_as_pylovo_builds_them():
-    assert coupling.station_units(400.0) == (400.0, 1) and coupling.station_units(1260.0) == (630.0, 2)
-    assert coupling.station_units(1890.0) == (630.0, 3)
-    assert coupling.station_units(1000.0) == (1000.0, 1)                 # a custom TRANSFORMER_MAPPING rating
-    assert coupling.station_units(1600.0) == (800.0, 2)
-
-
 def test_operating_busbar_voltage_uses_the_lower_band_edge():
     params = MvParameters()
     assert coupling.operating_busbar_vm(params) == pytest.approx(1.005)

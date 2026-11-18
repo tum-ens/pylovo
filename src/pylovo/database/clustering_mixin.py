@@ -27,6 +27,7 @@ from pylovo.config_loader import (
 )
 from pylovo.database.base_mixin import WAYS_TEM_EDGES_SQL, BaseMixin
 from pylovo.database.transformer_sources import SOURCE_ENABLED_SQL, source_params
+from pylovo.station_transformers import MULTI_UNIT_KVA
 from pylovo.database.buildings_tem_sql import IN_LV_GRID, LV_LOAD_BUILDING, OUTSIDE_LV_GRID, PLANNING_NODE, planning_node
 
 # Street distances between the distinct connection points of the loaded buildings of one kcid;
@@ -1000,7 +1001,7 @@ class ClusteringMixin(BaseMixin):
         transformer_rated_power = self.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
         if transformer_rated_power in combined.tolist():
             return None
-        new_transformer_rated_power = int(np.ceil(transformer_rated_power / 630) * 630)
+        new_transformer_rated_power = int(np.ceil(transformer_rated_power / MULTI_UNIT_KVA) * MULTI_UNIT_KVA)
         self._set_transformer_rated_power(plz, kcid, bcid, new_transformer_rated_power)
         self.logger.info(
             f"Updated transformer_rated_power (multi/group mode): plz={plz}, kcid={kcid}, bcid={bcid}, "

@@ -147,7 +147,7 @@ Statistics and grid details
 ---------------------------
 
 For a version and postcode area the API returns key figures: stations and their sizes (a station
-of two parallel 400 kVA units counts once, as ``2 × 400 kVA``), transformer loading, the voltage
+of two parallel 630 kVA units counts once, as ``2 × 630 kVA``), transformer loading, the voltage
 budget of the weakest consumer against the voltage band, design compliance (feeder and service
 voltage-drop limits), cable length by type, households, feeders and distances, and a comparison
 of two versions including the generation parameters that differ. The grids of a PLZ and the

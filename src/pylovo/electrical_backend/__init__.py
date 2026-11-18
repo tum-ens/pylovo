@@ -31,7 +31,7 @@ from .core.specs import (
     ExtGridSpec,
     normalize_cable_name,
 )
-from .core.equipment import CableEquipment, TransformerEquipment
+from .core.equipment import CableEquipment
 from .factory import (
     create_backend,
     register_backend,
@@ -74,7 +74,6 @@ __all__ = [
     "normalize_cable_name",
     # Equipment classes
     "CableEquipment",
-    "TransformerEquipment",
     # Factory
     "create_backend",
     "register_backend",

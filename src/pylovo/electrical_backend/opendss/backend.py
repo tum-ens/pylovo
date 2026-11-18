@@ -24,6 +24,7 @@ pandapower grids): see the "OpenDSS" section of the electrical backend docs.
 """
 
 import logging
+import math
 import re
 from typing import Any, Dict, Optional
 
@@ -38,7 +39,9 @@ from ..core.specs import (
     normalize_cable_name,
     MIN_LINE_KM,
 )
-from ..core.equipment import CableEquipment, TransformerEquipment
+from pylovo import station_transformers
+
+from ..core.equipment import CableEquipment
 
 try:
     import altdss
@@ -230,30 +233,30 @@ class OpenDSSBackend(IElectricalBackend):
     def _create_transformer(self, spec: TransformerSpec) -> Any:
         """Create the station transformer from its specification.
 
-        ``spec.kva`` is the rating of one unit. A station of ``spec.parallel``
-        identical units is modelled as one equivalent transformer with the summed
-        rating (same per-unit impedance), because ``set_transformer_rating`` is a
-        no-op for this backend.
+        ``spec.kva`` is the rating of one unit; its data come from :mod:`pylovo.station_transformers`, as for the
+        pandapower backend: short-circuit voltage ``vk`` and its resistive part ``vkr`` (split over both windings,
+        ``XHL = sqrt(vk^2 - vkr^2)``), no-load losses ``pfe`` and the magnetising part of the no-load current ``i0``.
+        A station of ``spec.parallel`` identical units is modelled as one equivalent transformer with the summed
+        rating (same per-unit impedance).
         """
-        equipment = TransformerEquipment(
-            name=spec.name,
-            s_max_kva=spec.kva * spec.parallel,
-            primary_voltage_kv=20.0,  # German MV
-            secondary_voltage_kv=0.4,  # German LV
-        )
-
-        xhl = equipment.reactance_pu * 100 if equipment.reactance_pu else 7.0
+        _, unit = station_transformers.unit_type(spec.kva)
+        kva = float(unit["sn_mva"]) * 1000.0 * spec.parallel
+        vk, vkr = float(unit["vk_percent"]), float(unit["vkr_percent"])
+        no_load_loss = float(unit["pfe_kw"]) / (float(unit["sn_mva"]) * 1000.0) * 100.0
+        magnetising = math.sqrt(max(float(unit["i0_percent"]) ** 2 - no_load_loss ** 2, 0.0))
 
         transformer = self.dss.Transformer.new(
             self._element_name("transformer", spec.name),
-            Phases=equipment.n_phases,
+            Phases=3,
             Windings=2,
             Buses=[self._bus(spec.bus1), self._bus(spec.bus2)],
             Conns=["delta", "wye"],
-            kVs=[equipment.primary_voltage_kv, equipment.secondary_voltage_kv],
-            kVAs=[equipment.s_max_kva, equipment.s_max_kva],
-            pctRs=[0.5, 0.5],
-            XHL=xhl,
+            kVs=[float(unit["vn_hv_kv"]), float(unit["vn_lv_kv"])],
+            kVAs=[kva, kva],
+            pctRs=[vkr / 2.0, vkr / 2.0],
+            XHL=math.sqrt(vk ** 2 - vkr ** 2),
+            pctNoLoadLoss=no_load_loss,
+            pctIMag=magnetising,
         )
 
         self._components_created["transformers"].append(transformer)
@@ -484,7 +487,3 @@ class OpenDSSBackend(IElectricalBackend):
     # =========================================================================
     # Update Methods (no-ops for OpenDSS)
     # =========================================================================
-
-    def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
-        """Set transformer rating (no-op - sized at creation)."""
-        pass

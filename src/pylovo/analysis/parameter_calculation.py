@@ -78,7 +78,7 @@ def station_mva(net: pp.pandapowerNet) -> float:
     """Rating in MVA of the (first) transformer station of a net: ``sn_mva x parallel``.
 
     pandapower's ``sn_mva`` is the rating of one unit; pylovo builds some stations from two
-    parallel units (800 kVA as 2 x 400 kVA), so the station size is the product.
+    parallel units (1260 kVA as 2 x 630 kVA), so the station size is the product.
     """
     row = net.trafo.iloc[0]
     parallel = row["parallel"] if "parallel" in net.trafo.columns and pd.notna(row["parallel"]) else 1
@@ -486,7 +486,7 @@ class ParameterCalculator:
         """Return the station rating in MVA for a grid with exactly one LV transformer element.
 
         pandapower's ``sn_mva`` is the rating of one unit; a station of two parallel units
-        (``parallel = 2``, e.g. 800 kVA as 2 x 400 kVA) is rated ``sn_mva x parallel``.
+        (``parallel = 2``, e.g. 1260 kVA as 2 x 630 kVA) is rated ``sn_mva x parallel``.
         """
         if pandapower_net.trafo.empty or "sn_mva" not in pandapower_net.trafo.columns:
             raise ValueError(f"No transformer found for PLZ {self.plz}, kcid {self.kcid}, bcid {self.bcid}.")

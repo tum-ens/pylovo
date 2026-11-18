@@ -43,6 +43,7 @@ from pandapower.auxiliary import LoadflowNotConverged
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
+from pylovo import station_transformers
 from pylovo.electrical_backend.pandapower.backend import empty_network
 from pylovo.mv_grid import coincidence, equipment
 from pylovo.mv_grid.model import (
@@ -67,13 +68,6 @@ N1_EXIT: dict[str, str] = {"n1a": "a", "n1b": "b"}
 OLTC_MAX_ITERATIONS: int = 3
 #: Default CRS of node and line coordinates (pylovo's ``TARGET_EPSG`` default).
 DEFAULT_EPSG: int = 25832
-#: MV/LV station transformers of the stored LV grids, pandapower 20/0.4 kV types used by pylovo's backend
-#: ``(sn_kva, vk_percent, vkr_percent)``: 0.25, 0.4 and 0.63 MVA; smaller ratings take the 0.25 MVA values (as the
-#: backend does), larger ones the 0.63 MVA values. 10 kV districts keep these percentages (budgets use percentages
-#: only); real 10/0.4 kV units have about 4 % instead of 6 % short-circuit voltage, so their budget is on the safe
-#: side.
-STATION_TRANSFORMERS: tuple[tuple[float, float, float], ...] = ((250.0, 6.0, 1.44), (400.0, 6.0, 1.425),
-                                                               (630.0, 6.0, 1.206))
 #: Comparison tolerance of the criteria (p.u. for voltages, percent for loadings).
 TOLERANCE: float = 1e-6
 #: Node roles whose node has no (n-1) requirement.
@@ -1155,12 +1149,11 @@ def build_stored_net(design_net: pp.pandapowerNet, units: int, unit_mva: float, 
 
 # ---------------------------------------------------------------------------------------------- voltage budget
 def station_transformer(sn_kva: float) -> tuple[float, float]:
-    """``(vk_percent, vkr_percent)`` of an MV/LV station transformer of the stored LV grids
-    (:data:`STATION_TRANSFORMERS`: the smallest type at least as large, else the largest)."""
-    for rating, vk, vkr in STATION_TRANSFORMERS:
-        if sn_kva <= rating + 1e-9:
-            return vk, vkr
-    return STATION_TRANSFORMERS[-1][1], STATION_TRANSFORMERS[-1][2]
+    """``(vk_percent, vkr_percent)`` of the units of an MV/LV station of rating ``sn_kva``, as the LV grids build it
+    (:mod:`pylovo.station_transformers`). 10 kV districts keep these percentages (budgets use percentages only); real
+    10/0.4 kV units have about 4 % instead of 6 % short-circuit voltage, so their budget is on the safe side."""
+    _, unit = station_transformers.unit_type(station_transformers.station_units(sn_kva)[0])
+    return float(unit["vk_percent"]), float(unit["vkr_percent"])
 
 
 def station_drop_ratio(lv_sn_kva: float, sn_kva: float, power_factor: float, own_kw: float = 0.0,

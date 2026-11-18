@@ -159,6 +159,21 @@ def test_opendss_gives_the_lv_voltages_and_line_loadings_of_pandapower():
         assert dss_loading == pytest.approx(loading, abs=0.1), name
 
 
+@pytest.mark.parametrize("kva, parallel", [(400.0, 1), (800.0, 1), (630.0, 2)])
+def test_the_station_transformer_has_the_impedance_of_the_pandapower_type(kva, parallel):
+    """Both backends take the unit data from pylovo.station_transformers: with the LV busbar at 0.96 p.u., the MV side
+    (the drop over the transformer) agrees."""
+    def specs():
+        return [spec if not isinstance(spec, TransformerSpec) else
+                TransformerSpec(name=spec.name, bus1=spec.bus1, bus2=spec.bus2, kva=kva, parallel=parallel)
+                for spec in feeder_specs()]
+    reference = build(PandapowerBackend(logger=LOGGER), specs())
+    assert solve_validation_power_flow(reference, 0.96).converged
+    backend = opendss(specs())
+    assert solve_validation_power_flow(backend, 0.96).converged
+    assert backend.get_source_voltage() == pytest.approx(reference.get_source_voltage(), abs=2e-4)
+
+
 def test_the_power_flow_writes_no_files(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     backend = opendss()

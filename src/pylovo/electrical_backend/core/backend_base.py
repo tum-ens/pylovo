@@ -156,16 +156,3 @@ class IElectricalBackend(ABC):
     def get_bus_voltage_pu(self, bus_name: str) -> float:
         """Solved voltage magnitude of a bus in p.u."""
         raise NotImplementedError(f"{type(self).__name__} does not support the station voltage")
-
-    @abstractmethod
-    def set_transformer_rating(self, trafo_name: str, rating_mva: float) -> None:
-        """
-        Set transformer rated power.
-
-        Args:
-            trafo_name: Name of the transformer
-            rating_mva: Rated power in MVA
-
-        Note:
-            No-op for backends that set rating at creation
-        """

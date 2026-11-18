@@ -38,6 +38,7 @@ from pylovo.electrical_backend import (
     normalize_cable_name,
 )
 from pylovo.electrical_backend.core.specs import MIN_LINE_KM
+from pylovo.station_transformers import station_units
 from pylovo.utils import design_current_ka, voltage_drop_impedance, voltage_drop_percent
 
 # Service connections longer than this are flagged for review (not changed).
@@ -265,33 +266,23 @@ class CableInstaller:
         self.backend.create_component(ExtGridSpec(name="External grid", bus="MVbus 1", vm_pu=1))
 
     def create_transformer(self, plz: int, kcid: int, bcid: int) -> None:
-        """
-        Create a transformer based on the required rated power.
+        """Create the station transformer of the grid's rated power.
 
-        Maps the required capacity to either a single standard transformer
-        or a parallel configuration (2x) for specific larger loads:
-        100-630 kVA -> one unit, 500/800/1260 kVA -> two units of half the rating,
-        anything else -> ``int(rating / 630)`` (at least one) 630 kVA units. The
-        unit rating is then set to ``rating / units``, so the station always
-        totals the requested rating.
+        The units and their type come from :mod:`pylovo.station_transformers`: a standard size
+        (100 to 800 kVA) is one unit; any other rating is ``int(rating / 630)`` units (at least
+        one) of ``rating / units`` each, so the station always totals the requested rating.
         """
         transformer_rated_power = self._transformer_rated_power
         if transformer_rated_power is None:
             transformer_rated_power = self.dbc.get_transformer_rated_power_from_bcid(plz, kcid, bcid)
 
-        if transformer_rated_power in (100, 160, 250, 400, 630):
-            trafo_name = f"single {str(transformer_rated_power)} kva transformer"
-            kva = transformer_rated_power
-            parallel = 1
-        elif transformer_rated_power in (500, 800, 1260):
-            trafo_name = f"double {str(transformer_rated_power * 0.5)} transformer"
-            kva = transformer_rated_power * 0.5
-            parallel = 2
+        kva, parallel = station_units(transformer_rated_power)
+        if parallel == 1:
+            trafo_name = f"single {transformer_rated_power} kva transformer"
+        elif parallel == 2:
+            trafo_name = f"double {kva} transformer"
         else:
-            # Fallback: use 630 kVA transformers in parallel for large parallel transormers
-            kva = 630
-            parallel = max(1, int(transformer_rated_power / 630))
-            trafo_name = f"{str(parallel)}-fold 630 transformer"
+            trafo_name = f"{parallel}-fold {kva:g} transformer"
 
         trafo_spec = TransformerSpec(
             name=trafo_name,
@@ -302,8 +293,7 @@ class CableInstaller:
         )
 
         self.backend.create_component(trafo_spec)
-        self.backend.set_transformer_rating(trafo_spec.name, transformer_rated_power * 1e-3 / parallel)
-        self.dbc.set_transformer_equipment_name(plz, kcid, bcid, transformer_rated_power / parallel)
+        self.dbc.set_transformer_equipment_name(plz, kcid, bcid, kva)
 
     def _node_bus(self, vertex: int) -> str:
         """Bus name of a street vertex: ``LVbus 1`` for the station's own vertex, else its connection node."""

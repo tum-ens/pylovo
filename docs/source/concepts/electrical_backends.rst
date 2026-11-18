@@ -37,10 +37,14 @@ pandapower (default)
      - At ``MVbus 1``; ``vm_pu`` is set so that ``LVbus 1`` is at ``LV_REFERENCE_VOLTAGE_PU`` at the
        validation operating point (1.0 without a reference).
    * - Transformer
-     - 20/0.4 kV pandapower standard types. 100, 160, 250, 400 and 630 kVA are single units;
-       500, 800 and 1260 kVA are two parallel units of half the rating; other ratings become
-       parallel 630 kVA units. pandapower has no standard types below 0.25 MVA, so 100 and 160 kVA
-       reuse the 0.25 MVA data with the rating and no-load losses scaled. The off-load tap (HV side,
+     - 20/0.4 kV units of :mod:`pylovo.station_transformers`, the table that both backends, the MV
+       stage and the coupling use. The standard sizes 100, 160, 250, 400, 630 and 800 kVA are one
+       unit; any other rating is ``int(rating / 630)`` parallel units (at least one) of
+       ``rating / units`` each (1260 kVA: 2 × 630 kVA). 250, 400 and 630 kVA are pandapower's
+       standard types; 100 and 160 kVA reuse the 0.25 MVA data with the rating and no-load losses
+       scaled; 800 kVA has 6 % short-circuit voltage and the maximum losses of Ecodesign Tier 2
+       (regulation (EU) No 548/2014: 6.0 kW load, 0.585 kW no-load losses); any other unit takes the
+       next larger type with the rating and no-load losses scaled. The off-load tap (HV side,
        ±2 steps of 2.5 %) stays neutral.
    * - Lines
      - Standard types registered from the cable catalogue (``r``, ``x``, ``max_i_ka``; capacitance
@@ -90,9 +94,10 @@ pandapower's: on the same grid with the LV reference voltage, the LV bus voltage
      - The circuit's source at ``MVbus 1`` with a short-circuit power of 1000 MVA (pandapower: an ideal
        slack). Its ``pu`` is set so that ``LVbus 1`` is at ``LV_REFERENCE_VOLTAGE_PU``, as in pandapower.
    * - Transformer
-     - One transformer with the summed rating of the parallel units, 4 % reactance, 1 % resistance and no
-       no-load losses (pandapower: the standard type's ``vk_percent``, ``vkr_percent``, ``pfe_kw``,
-       ``i0_percent``).
+     - One transformer with the summed rating of the parallel units and the data of the unit type of
+       :mod:`pylovo.station_transformers`, as in pandapower: ``vkr_percent`` split over both windings,
+       reactance ``sqrt(vk² - vkr²)``, no-load losses from ``pfe_kw`` and the magnetising current from
+       ``i0_percent``. The vector group is always delta-wye.
    * - Lines
      - One line code per cable type and number of parallel cables: impedances divided, ampacity
        multiplied. Capacitance 0 as in pandapower. An unknown cable type falls back to the strongest

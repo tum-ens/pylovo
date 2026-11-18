@@ -47,7 +47,8 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from pylovo.electrical_backend.core.specs import MIN_LINE_KM
-from pylovo.mv_grid import coincidence, electrical, equipment, stage
+from pylovo import station_transformers
+from pylovo.mv_grid import coincidence, electrical, stage
 from pylovo.mv_grid.inputs import busbar_record
 from pylovo.mv_grid.model import CASES, CATEGORIES, GridOutcome
 from pylovo.mv_grid.parameters import LvVersionParameters, MvParameters, MvStageError, check_stage_version
@@ -79,10 +80,6 @@ OPERATING_COLUMNS: tuple[str, ...] = ("op_mv_vm_pu", "op_lv_busbar_vm_pu", "op_l
 AGREEMENT_PU: float = 0.005
 #: ``load`` column that marks the station-busbar customers of the merged net (fixed loads, never scaled).
 BUSBAR_CUSTOMER_COLUMN: str = "busbar_customer"
-#: Station ratings that pylovo builds as one unit, and as two units of half the rating; any other rating is
-#: ``int(rating / 630)`` units of 630 kVA (``cable_installer.create_transformer``).
-SINGLE_UNIT_KVA: tuple[float, ...] = (100.0, 160.0, 250.0, 400.0, 630.0)
-DOUBLE_UNIT_KVA: tuple[float, ...] = (500.0, 800.0, 1260.0)
 
 
 # ---------------------------------------------------------------------------------------------- small helpers
@@ -134,41 +131,12 @@ def _trafo_buses(trafo: pd.DataFrame) -> tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------------------------- upsized stations
-def station_units(sn_kva: float) -> tuple[float, int]:
-    """``(unit kVA, units)`` of a station rating as pylovo builds its transformer (:data:`SINGLE_UNIT_KVA`,
-    :data:`DOUBLE_UNIT_KVA`, else ``int(rating / 630)`` units, at least one, of ``rating / units`` each, so the
-    units always total the rating)."""
-    rating = float(sn_kva)
-    if any(math.isclose(rating, r) for r in SINGLE_UNIT_KVA):
-        return rating, 1
-    if any(math.isclose(rating, r) for r in DOUBLE_UNIT_KVA):
-        return rating / 2.0, 2
-    units = max(1, int(rating / 630.0 + 1e-9))
-    return rating / units, units
-
-
-def _unit_type(unit_kva: float) -> tuple[str, dict]:
-    """Name and data of the pandapower 20/0.4 kV type of a station unit (pylovo's names). A unit without its own
-    type takes the next larger 20/0.4 kV type (below 250 kVA the 0.25 MVA type, as ``PandapowerBackend.SMALL_TRANSFORMER_BASE``) with the
-    rating replaced and the no-load losses scaled."""
-    types = equipment.pandapower_std_types()["trafo"]
-    name = f"{unit_kva / 1000.0:g} MVA 20/0.4 kV"
-    if name in types:
-        return name, dict(types[name])
-    candidates = sorted((float(d["sn_mva"]), n) for n, d in types.items()
-                        if float(d["vn_hv_kv"]) == 20.0 and float(d["vn_lv_kv"]) == 0.4)
-    larger = [n for sn, n in candidates if sn * 1000.0 >= unit_kva]
-    base = dict(types[larger[0] if larger else candidates[-1][1]])
-    scale = unit_kva / 1000.0 / float(base["sn_mva"])
-    return name, {**base, "sn_mva": unit_kva / 1000.0, "pfe_kw": float(base["pfe_kw"]) * scale}
-
-
 def upsize_station_transformer(lv_net: pp.pandapowerNet, sn_kva: float) -> pp.pandapowerNet:
     """A copy of a stored LV net with the station transformer of the rating ``sn_kva``: the rating of a station
     that the MV model upsized for its station-busbar customers (``inputs.upsize_busbar_stations``).
 
-    The transformer becomes pylovo's units of that rating (:func:`station_units`) of the 20/0.4 kV type of the unit
-    (:func:`_unit_type`): ``std_type``, ``sn_mva``, ``vk_percent``, ``vkr_percent``, ``pfe_kw``, ``i0_percent``
+    The transformer becomes pylovo's units of that rating with the 20/0.4 kV type of the unit
+    (:mod:`pylovo.station_transformers`): ``std_type``, ``sn_mva``, ``vk_percent``, ``vkr_percent``, ``pfe_kw``, ``i0_percent``
     and ``parallel`` change; its buses, tap settings and ``vn_hv_kv`` stay. A net with several transformer rows keeps
     the first one.
 
@@ -178,8 +146,8 @@ def upsize_station_transformer(lv_net: pp.pandapowerNet, sn_kva: float) -> pp.pa
     station_buses(lv_net)
     if not (math.isfinite(float(sn_kva)) and float(sn_kva) > 0):
         raise ValueError(f"a station rating must be positive, got {sn_kva!r}")
-    unit_kva, parallel = station_units(sn_kva)
-    name, data = _unit_type(unit_kva)
+    unit_kva, parallel = station_transformers.station_units(sn_kva)
+    name, data = station_transformers.unit_type(unit_kva)
     net = copy.deepcopy(lv_net)
     first = net.trafo.index[0]
     net.trafo = net.trafo.loc[[first]].copy()

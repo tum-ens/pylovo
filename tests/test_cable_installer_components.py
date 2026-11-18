@@ -28,19 +28,16 @@ def planning_rules(monkeypatch):
 
 
 class Recorder:
-    """Collects the created components, transformer ratings and queued line rows."""
+    """Collects the created components and queued line rows."""
 
     def __init__(self):
-        self.components, self.ratings = [], []
+        self.components = []
 
     def create_component(self, spec):
         self.components.append(spec)
 
     def get_bus_coordinates(self, name):
         return None
-
-    def set_transformer_rating(self, name, rating_mva):
-        self.ratings.append((name, rating_mva))
 
 
 class Database:
@@ -66,13 +63,13 @@ def make_installer(rated_power=None, database=None):
 @pytest.mark.parametrize("rated_power, name, kva, parallel", [
     (100, "single 100 kva transformer", 100, 1),
     (630, "single 630 kva transformer", 630, 1),
-    (500, "double 250.0 transformer", 250.0, 2),
-    (800, "double 400.0 transformer", 400.0, 2),
+    (800, "single 800 kva transformer", 800, 1),   # a standard size: one unit
+    (500, "single 500 kva transformer", 500, 1),   # off the type list, below two units of 630 kVA: one unit
     (1260, "double 630.0 transformer", 630.0, 2),
     (1890, "3-fold 630 transformer", 630, 3),      # above the catalogue: units of 630 kVA
-    (315, "1-fold 630 transformer", 630, 1),       # off the catalogue and below one unit
+    (1500, "double 750.0 transformer", 750.0, 2),  # int(1500 / 630) units of rating / units
 ])
-def test_the_station_rating_decides_between_a_single_a_double_and_a_multiple_of_630_kva_units(
+def test_the_station_rating_decides_between_one_unit_and_units_of_about_630_kva(
         rated_power, name, kva, parallel):
     database = Database()
     installer, backend = make_installer(rated_power, database)
@@ -80,8 +77,8 @@ def test_the_station_rating_decides_between_a_single_a_double_and_a_multiple_of_
 
     (spec,) = backend.components
     assert (spec.name, spec.kva, spec.parallel, spec.bus1, spec.bus2) == (name, kva, parallel, "MVbus 1", "LVbus 1")
-    # the unit rating is set so that the station always totals the requested rating
-    assert backend.ratings == [(name, pytest.approx(rated_power * 1e-3 / parallel))]
+    # the units always total the requested rating
+    assert spec.kva * spec.parallel == pytest.approx(rated_power)
     assert database.equipment == [(80803, 1, 2, rated_power / parallel)]
 
 

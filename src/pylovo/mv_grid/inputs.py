@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 import numpy as np
 import pandas as pd
 
+from pylovo import station_transformers
 from pylovo.mv_grid.coincidence import INSTALLED_COLUMNS, UNITS_COLUMNS, coincident_kw, node_stats, pooled_kw
 from pylovo.mv_grid.model import CATEGORIES
 
@@ -55,7 +56,7 @@ CUSTOMER_COLUMNS: tuple[str, ...] = (
 #: Key of the station-busbar customers in ``load_stats`` of a station node (:func:`busbar_customers`).
 BUSBAR_CUSTOMERS: str = "busbar_customers"
 #: Unit rating of pylovo's stations above the catalogue (kVA): they get n x 630 kVA (``update_transformer_rated_power``).
-STATION_UNIT_KVA: float = 630.0
+STATION_UNIT_KVA: float = station_transformers.MULTI_UNIT_KVA
 #: A PLZ polygon with less than this share of the PLZ area of the municipal register lies only partly in the
 #: planning region (the data extent cuts it): its population counts pro rata and the demand anchor is approximate.
 PLZ_FULL_AREA_SHARE: float = 0.95

@@ -7,7 +7,7 @@ implementations (Pandapower, OpenDSS, etc.).
 Contents:
     - IElectricalBackend: Abstract interface all backends must implement
     - Component specs: BusSpec, LineSpec, LoadSpec, TransformerSpec, ExtGridSpec
-    - Equipment classes: CableEquipment, TransformerEquipment
+    - Equipment classes: CableEquipment
 
 Usage:
     from pylovo.electrical_backend.core import IElectricalBackend, BusSpec
@@ -25,7 +25,7 @@ from .specs import (
     ExtGridSpec,
     normalize_cable_name,
 )
-from .equipment import CableEquipment, TransformerEquipment
+from .equipment import CableEquipment
 
 __all__ = [
     "IElectricalBackend",
@@ -37,5 +37,4 @@ __all__ = [
     "ExtGridSpec",
     "normalize_cable_name",
     "CableEquipment",
-    "TransformerEquipment",
 ]
