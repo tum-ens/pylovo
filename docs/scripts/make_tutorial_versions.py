@@ -30,7 +30,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AREAS = (80805, 85256, 85307)
 MAP_AREA = 85256
 
-#: Version id -> configuration overrides (on top of config/config_generation_lv.yaml).
+#: Settings of version 1 that differ from config/config_generation_lv.yaml: the Bavaria run left out buildings
+#: without address, which the InfDB of that run (infdb-bynrw) files as Commercial, not as Auxiliary outbuildings,
+#: and laid no parallel feeder cables for the voltage drop (pylovo 1.0.0).
+VERSION_1_SETTINGS = {"EXCLUDE_BUILDINGS_WITHOUT_ADDRESS": True, "MAX_VOLTAGE_PARALLEL_FEEDER_CABLES": 1}
+
+#: Version id -> configuration overrides (on top of config/config_generation_lv.yaml and VERSION_1_SETTINGS).
 TUTORIAL_VERSIONS: dict[str, dict] = {
     "tut-base": {"VERSION_COMMENT": "tutorial baseline: the settings of the Bavaria run (version 1)"},
     "tut-osm": {"VERSION_COMMENT": "tutorial: existing station positions from open data (OSM, LoD2)",
@@ -71,7 +76,7 @@ def main() -> None:
             with tempfile.TemporaryDirectory(prefix=f"pylovo_{version_id}_") as tmp:
                 workdir = Path(tmp)
                 shutil.copytree(REPO_ROOT / "config", workdir / "config")
-                config = dict(base_config, VERSION_ID=version_id, **overrides)
+                config = dict(base_config, **VERSION_1_SETTINGS, VERSION_ID=version_id, **overrides)
                 with open(workdir / "config" / "config_generation_lv.yaml", "w", encoding="utf-8") as handle:
                     yaml.safe_dump(config, handle, sort_keys=False, allow_unicode=True)
                 command = [_pylovo_command("pylovo-generate"), "--plz", *map(str, AREAS), "--no-mv"]

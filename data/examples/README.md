@@ -39,7 +39,7 @@ settings of version `1` reproduced its 91 grids and every line length exactly, s
 | Version | Changed setting | Grids 80805 / 85256 / 85307 |
 | --- | --- | --- |
 | `1` | (the Bavaria run) | 50 / 26 / 15 |
-| `tut-osm` | `USE_OPEN_TRANSFORMER_POSITIONS: True`: existing stations from OSM and LoD2 | 42 / 23 / 14 |
+| `tut-osm` | `USE_OPEN_TRANSFORMER_POSITIONS: True`: existing stations from OSM and LoD2 | 48 / 23 / 19 |
 | `tut-reach` | `MAX_GREENFIELD_TRAFO_DISTANCE: 1500` instead of 1000 m | 50 / 24 / 13 |
 | `tut-cabin` | `HOUSE_CONNECTION: cabinet` instead of `joint` | 50 / 26 / 15 |
 | `tut-large` | `TRANSFORMER_MAPPING` one rating step larger: rural 400/630, otherwise 630/800 kVA | 37 / 21 / 13 |

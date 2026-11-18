@@ -2,8 +2,8 @@
  "description": "Example grids of the pylovo tutorials (TutorialData without a database)",
  "version_id": "tut-osm",
  "crs": "EPSG:25832",
- "created": "2026-10-28",
- "pylovo": "1.0.0",
+ "created": "2026-11-18",
+ "pylovo": "1.2.0",
  "attribution": "Data: \u00a9 Bayerische Vermessungsverwaltung (LoD2), \u00a9 basemap.de / BKG, \u00a9 OpenStreetMap contributors",
  "postcodes": "postcodes.csv",
  "grid_summary": "grid_summary.csv",
@@ -326,8 +326,11 @@
     }
    ],
    "peak_load_household": 16.825,
-   "default_power_factor": 0.95
+   "default_power_factor": 0.95,
+   "unclassified_load_class": null,
+   "nonresidential_load_model": "building_use"
   },
+  "connection_levels": null,
   "cable_dimensioning": {
    "vn": 400,
    "house_connection": "joint",
@@ -338,6 +341,7 @@
    "feeder_planning_utilization": 0.8,
    "feeder_split_max_current_ka": 0.4,
    "service_planning_utilization": 0.8,
+   "max_voltage_parallel_feeder_cables": 1,
    "mv_direct_connection_load_threshold_kw": 200,
    "max_service_design_voltage_drop_percent": 1,
    "max_end_to_end_feeder_voltage_drop_percent": 5
@@ -350,6 +354,7 @@
   },
   "transformer_placement": {
    "k_means_seed": 3329829316,
+   "max_voltage_repairs": 0,
    "transformer_mapping": {
     "1": [
      250,
@@ -367,8 +372,9 @@
    "rural_max_households": 1.0,
    "urban_min_households": 2.85,
    "max_buildings_per_kcid": 1000,
-   "brownfield_nearest_only": false,
+   "brownfield_nearest_only": true,
    "merge_greenfield_clusters": true,
+   "greenfield_contiguous_areas": true,
    "rural_min_building_distance": 44,
    "urban_max_building_distance": 29,
    "max_brownfield_trafo_distance": 1000,

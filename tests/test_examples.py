@@ -66,7 +66,7 @@ def test_the_example_data_hold_only_the_typical_nets():
         data.net(*other)
 
 
-VARIANTS = {"tut-osm": (23, 14, 42), "tut-reach": (24, 13, 50), "tut-cabin": (26, 15, 50), "tut-large": (21, 13, 37)}
+VARIANTS = {"tut-osm": (23, 19, 48), "tut-reach": (24, 13, 50), "tut-cabin": (26, 15, 50), "tut-large": (21, 13, 37)}
 
 
 @pytest.mark.parametrize("version", sorted(VARIANTS))
