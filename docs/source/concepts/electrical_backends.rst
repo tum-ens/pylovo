@@ -40,12 +40,11 @@ pandapower (default)
      - 20/0.4 kV units of :mod:`pylovo.station_transformers`, the table that both backends, the MV
        stage and the coupling use. The standard sizes 100, 160, 250, 400, 630 and 800 kVA are one
        unit; any other rating is ``int(rating / 630)`` parallel units (at least one) of
-       ``rating / units`` each (1260 kVA: 2 × 630 kVA). 250, 400 and 630 kVA are pandapower's
-       standard types; 100 and 160 kVA reuse the 0.25 MVA data with the rating and no-load losses
-       scaled; 800 kVA has 6 % short-circuit voltage and the maximum losses of Ecodesign Tier 2
-       (regulation (EU) No 548/2014: 6.0 kW load, 0.585 kW no-load losses); any other unit takes the
-       next larger type with the rating and no-load losses scaled. The off-load tap (HV side,
-       ±2 steps of 2.5 %) stays neutral.
+       ``rating / units`` each (1260 kVA: 2 × 630 kVA). All types describe the older units of the
+       installed stock (pandapower's standard types, Trafo Union data sheets): 250, 400 and 630 kVA
+       are pandapower's types; 100 and 160 kVA reuse the 0.25 MVA data, 800 kVA and any other unit
+       the next larger type (else the 0.63 MVA one), with the rating and no-load losses scaled. The
+       off-load tap (HV side, ±2 steps of 2.5 %) stays neutral.
    * - Lines
      - Standard types registered from the cable catalogue (``r``, ``x``, ``max_i_ka``; capacitance
        0). Feeder lines follow the street routes; service lines are straight connections. Extra

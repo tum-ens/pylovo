@@ -10,19 +10,17 @@ the standard sizes of EN 50588-1 that pylovo uses) is one transformer, as in a c
 is ``int(rating / 630)`` units (at least one) of ``rating / units`` each: stations above the largest allowed
 rating are planned as ``n x 630 kVA`` (:data:`MULTI_UNIT_KVA`, ``ClusteringMixin.update_transformer_rated_power``).
 
-**Unit types** (:func:`unit_type`, 20/0.4 kV):
+**Unit types** (:func:`unit_type`, 20/0.4 kV). pylovo models the transformers that are installed today, most of
+them older than the Ecodesign limits (EU) No 548/2014 (2015, tightened 2021). All types therefore come from one
+family of older units, pandapower's standard types (Trafo Union data sheets):
 
-* 250, 400 and 630 kVA: pandapower's standard types.
+* 250, 400 and 630 kVA: pandapower's standard types (630 kVA: 6 % short-circuit voltage, 7.6 kW load losses,
+  1.65 kW no-load losses; Ecodesign allows 6.5 / 0.6 kW from 2015 and 4.6 / 0.54 kW from 2021).
 * 100 and 160 kVA: pandapower has none; the 0.25 MVA type with the rating replaced and the no-load losses scaled
   with the rating.
-* 800 kVA: short-circuit voltage 6 % (EN 50588-1 above 630 kVA), load losses 6.0 kW and no-load losses 0.585 kW,
-  the maximum losses of Tier 2 (from July 2021) of the Ecodesign regulation (EU) No 548/2014, Annex I, Table I.1;
-  no-load current, vector group and tap changer as the 0.63 MVA type.
-* any other unit rating: the next larger type (else the largest) with the rating replaced and the no-load losses
-  scaled.
-
-pandapower's types describe older units: its 0.63 MVA type has 7.6 kW load losses and 1.65 kW no-load losses,
-where Tier 2 allows 4.6 kW and 0.54 kW.
+* 800 kVA and any other unit rating: the next larger type, else the largest (0.63 MVA), with the rating replaced and
+  the no-load losses scaled with the rating (800 kVA: 9.6 kW load and 2.1 kW no-load losses; Ecodesign allows
+  8.4 / 0.65 kW from 2015).
 """
 from __future__ import annotations
 
@@ -34,8 +32,6 @@ from typing import Any
 UNIT_RATINGS_KVA: tuple[float, ...] = (100.0, 160.0, 250.0, 400.0, 630.0, 800.0)
 #: Unit rating (kVA) of the stations above the largest allowed rating (``n x 630 kVA``).
 MULTI_UNIT_KVA: float = 630.0
-#: The 800 kVA unit: Ecodesign Tier 2 losses (6.0 kW load, 0.585 kW no-load) and 6 % short-circuit voltage.
-_UNIT_800_KVA: dict[str, float] = {"sn_mva": 0.8, "vk_percent": 6.0, "vkr_percent": 6.0 / 8.0, "pfe_kw": 0.585}
 #: The type that the units below 250 kVA are derived from.
 _SMALL_UNIT_BASE_KVA: float = 250.0
 
@@ -65,7 +61,6 @@ def _types() -> dict[float, dict[str, Any]]:
 
     pandapower = basic_trafo_std_types()
     types = {kva: dict(pandapower[type_name(kva)]) for kva in (250.0, 400.0, 630.0)}
-    types[800.0] = {**types[630.0], **_UNIT_800_KVA}
     for kva in (100.0, 160.0):
         types[kva] = _scaled(types[_SMALL_UNIT_BASE_KVA], kva / 1000.0)
     return dict(sorted(types.items()))

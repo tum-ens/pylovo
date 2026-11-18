@@ -31,17 +31,18 @@ def test_the_pandapower_sizes_are_pandapower_types_and_the_small_ones_are_derive
     assert data == {**base, "sn_mva": 0.16, "pfe_kw": base["pfe_kw"] * 0.16 / 0.25}
 
 
-def test_the_800_kva_unit_has_the_ecodesign_tier_2_losses():
+def test_the_800_kva_unit_is_the_630_kva_type_of_the_same_family_scaled():
     name, data = st.unit_type(800)
-    assert name == "0.8 MVA 20/0.4 kV" and data["sn_mva"] == 0.8 and data["vk_percent"] == 6.0
-    assert data["vkr_percent"] / 100 * 800 == pytest.approx(6.0)     # load losses 6.0 kW
-    assert data["pfe_kw"] == 0.585
+    _, base = st.unit_type(630)
+    assert name == "0.8 MVA 20/0.4 kV"
+    assert data == {**base, "sn_mva": 0.8, "pfe_kw": base["pfe_kw"] * 0.8 / 0.63}
+    assert data["vkr_percent"] / 100 * 800 == pytest.approx(9.648)   # load losses about 9.6 kW, older than Ecodesign
 
 
 def test_a_unit_without_a_type_takes_the_next_larger_one_with_scaled_no_load_losses():
-    _, data = st.unit_type(750)
-    _, base = st.unit_type(800)
-    assert data == {**base, "sn_mva": 0.75, "pfe_kw": base["pfe_kw"] * 0.75 / 0.8}
+    _, data = st.unit_type(315)
+    _, base = st.unit_type(400)
+    assert data == {**base, "sn_mva": 0.315, "pfe_kw": base["pfe_kw"] * 0.315 / 0.4}
     _, above = st.unit_type(1000)                                    # above the largest type: the largest one
     assert above["vk_percent"] == base["vk_percent"] and above["sn_mva"] == 1.0
 

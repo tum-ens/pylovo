@@ -54,7 +54,7 @@ import yaml
 #: snapshot no longer records the options removed before.
 #: 15: planning and the interconnection checks retry a power flow that Newton-Raphson does not solve with
 #: Iwamoto-damped Newton-Raphson, as the coupling did (``electrical.POWER_FLOW_ALGORITHMS``); station transformers
-#: come from ``pylovo.station_transformers`` (800 and 500 kVA are one unit, 800 kVA with Ecodesign losses).
+#: come from ``pylovo.station_transformers`` (800 and 500 kVA are one unit).
 MV_STAGE_VERSION: int = 15
 
 KINDS: tuple[str, ...] = ("bool", "int", "float", "str", "nullable_str", "float_tuple", "str_tuple",
