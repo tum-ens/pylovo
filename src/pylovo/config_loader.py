@@ -9,9 +9,15 @@ Importing this module (which every pylovo module does, directly or through
   ``config_classification.yaml`` and ``config_clustering.yaml``,
 
 and exposes their entries as module-level constants (``VERSION_ID``, ``VN``,
-``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process. A top-level key that
-nothing reads (a typo) is reported once per file with a warning. The ``MV_*`` keys of the MV stage are checked
-with the rules of :mod:`pylovo.mv_grid.options`.
+``TRANSFORMERS``, ...). Changing a YAML file therefore needs a new Python process.
+
+Default values:
+    The shipped YAML files are the only place of default values (:func:`default_config_file`): this module has
+    none of its own. A key that a configuration file does not have takes the value of the shipped file, and one
+    warning per file names these keys. A top-level key that pylovo does not know (a typo) is an error, so a
+    misspelled setting cannot silently keep its default; a key that an earlier release shipped
+    (:data:`RETIRED_KEYS`) only gives a warning. The ``MV_*`` keys of the MV stage are checked with the rules of
+    :mod:`pylovo.mv_grid.options`, which also holds their defaults.
 
 ``.env`` lookup:
     ``load_dotenv(find_env_file(), override=True)``. ``find_dotenv`` walks up from the
@@ -39,6 +45,7 @@ of the package; relative output paths (``log/``, ``RESULT_DIR``, ``QGIS/``) are 
 against it as well.
 """
 
+import copy
 import difflib
 import os
 import re
@@ -190,56 +197,137 @@ def _warn_about_former_generation_config(config_file: Path, search_paths: list[P
         warnings.warn(f"{config_file.parent / former} is not read: {config_file.name} in the same folder replaces it", stacklevel=2)
 
 
-class _ReadKeys(dict):
-    """The content of a YAML file that remembers which of its top-level keys were looked up (``[]``, ``get``, ``in``)."""
+#: Top-level keys that a pylovo release shipped in one of the YAML files read here and that this version no longer
+#: reads, with the last release that had them (all releases from 0.4.0 on). A project file that still has one gets
+#: a warning instead of the error of an unknown key, so that a configuration carried along over releases keeps
+#: loading. Add a key here when it is removed from a shipped file.
+RETIRED_KEYS: dict[str, str] = {
+    # config_generation.yaml / config_generation_lv.yaml
+    "BROWNFIELD_NEAREST_ONLY": "1.2.0", "CONSUMER_CONNECTION_AVAILABLE_CABLES": "0.6.0", "EQUIPMENT_DATA": "0.6.0",
+    "LARGE_COMPONENT_DIVIDER": "0.7.0", "LARGE_COMPONENT_LOWER_BOUND": "0.7.0", "PLZ": "0.6.0", "SIM_FACTOR": "0.8.0",
+    "SMALL_LOAD_THRESHOLD_KW": "0.7.0", "TESTING": "0.7.0", "VOLTAGE_DROP_DISTRIBUTION_PERCENT": "0.7.0",
+    "VOLTAGE_DROP_LARGE_LOAD_PERCENT_PER_KM": "0.7.0", "VOLTAGE_DROP_LOAD_PERCENT_PER_KM": "0.8.0",
+    "VOLTAGE_DROP_SMALL_LOAD_PERCENT_PER_KM": "0.7.0", "V_BAND_HIGH": "0.8.0", "V_BAND_LOW": "0.8.0",
+    # config_analysis.yaml
+    "COLORS": "0.8.0", "NETWORK_COLORS": "1.2.0", "PLOT_DEFAULTS": "0.8.0",
+    # config_classification.yaml and config_clustering.yaml
+    "REGIOSTAR7_DICT": "0.8.0", "N_CLUSTERS_KMEDOID": "0.8.0",
+}
 
-    def __init__(self, path: Path, content: dict):
+
+class MissingConfigKey(KeyError):
+    """A key that neither a configuration file nor pylovo's default configuration has."""
+
+    def __str__(self) -> str:
+        return str(self.args[0])
+
+
+class ConfigFile(dict):
+    """The content of one YAML configuration file, with pylovo's default configuration behind it.
+
+    ``config[key]`` is the value of the file. A key that the file does not have takes the value of the default
+    configuration (``defaults``, read from ``defaults_path``), so that the shipped YAML files are the only place
+    of default values. ``key in config``, ``config.items()`` and iteration ask the file alone. The object remembers
+    which keys were looked up (``read``, see :func:`check_keys`) and which of them came from the defaults
+    (``defaulted``, see :func:`_warn_about_defaulted_keys`).
+    """
+
+    def __init__(self, path: Path, content: dict, defaults: dict | None = None, defaults_path: Path | None = None):
         super().__init__(content)
         self.path = path
+        self.defaults = defaults or {}
+        self.defaults_path = defaults_path
         self.read: set = set()
+        self.defaulted: set = set()
 
     def __getitem__(self, key):
         self.read.add(key)
-        return super().__getitem__(key)
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        if key in self.defaults:
+            self.defaulted.add(key)
+            return copy.deepcopy(self.defaults[key])
+        where = f" and in pylovo's default configuration {self.defaults_path}" if self.defaults_path else ""
+        raise MissingConfigKey(f"{key} is missing in {self.path}{where}")
 
     def get(self, key, default=None):
-        self.read.add(key)
-        return super().get(key, default)
+        try:
+            return self[key]
+        except MissingConfigKey:
+            return default
 
     def __contains__(self, key):
         self.read.add(key)
         return super().__contains__(key)
 
 
-def read_yaml(path: Path) -> dict:
+def default_config_file(filename: str) -> Path | None:
+    """Return a configuration file as pylovo ships it, or None.
+
+    That is ``config/<filename>`` of the source checkout this module was imported from (a checkout or an editable
+    install), else of the wheel (:func:`get_packaged_defaults_dir`). It is the last file that
+    :func:`find_config_file` would find, whatever the working directory is.
+    """
+    for folder in (checkout_dir("config"), get_packaged_defaults_dir() / "config"):
+        if folder is not None and (folder / filename).is_file():
+            return folder / filename
+    return None
+
+
+def _load_yaml(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}
+
+
+def read_yaml(path: Path, defaults: Path | None = None) -> ConfigFile:
     """Read one YAML configuration file (an empty file gives an empty dictionary).
 
-    The dictionary remembers which top-level keys are looked up, see :func:`_warn_about_unread_keys`.
+    Args:
+        path: The file to read.
+        defaults: The same file of pylovo's default configuration (:func:`default_config_file`), whose values the
+            keys missing in ``path`` take. None, or ``path`` itself: the file has no defaults behind it.
     """
-    with open(path, "r", encoding="utf-8") as file:
-        return _ReadKeys(path, yaml.safe_load(file) or {})
+    if defaults is None or defaults.resolve() == path.resolve():
+        return ConfigFile(path, _load_yaml(path))
+    return ConfigFile(path, _load_yaml(path), _load_yaml(defaults), defaults)
 
 
-def _warn_about_unread_keys(config: _ReadKeys, also_read=()) -> None:
-    """Warn once about the top-level keys of ``config`` that nothing read: a misspelled key has no effect.
+def check_keys(config: ConfigFile, also_read=()) -> None:
+    """Refuse the top-level keys of ``config`` that pylovo does not know: a misspelled key would have no effect.
 
-    Call it after the last look-up. A close name among the keys that were looked up is suggested.
+    Call it after the last look-up: the known keys are the ones that were looked up. A key of
+    :data:`RETIRED_KEYS` gives a warning only.
 
     Args:
         config: A file read by :func:`read_yaml`.
         also_read: Keys that are read some other way than by looking them up in ``config`` (the ``MV_*`` keys).
+
+    Raises:
+        ValueError: If the file has an unknown key. The message suggests a close known name.
     """
     unread = sorted(set(config) - config.read - set(also_read), key=str)
-    if not unread:
+    retired = [key for key in unread if key in RETIRED_KEYS]
+    if retired:
+        warnings.warn(f"{config.path} has keys of earlier pylovo releases that are no longer read; remove them: "
+                      + ", ".join(f"{key} (until {RETIRED_KEYS[key]})" for key in retired), stacklevel=2)
+    unknown = [key for key in unread if key not in RETIRED_KEYS]
+    if not unknown:
         return
-    known = sorted(config.read | set(also_read), key=str)
+    known = sorted({str(name) for name in config.read | set(also_read) | set(config.defaults)})
 
     def named(key) -> str:
-        close = difflib.get_close_matches(str(key), [str(name) for name in known], n=1)
+        close = difflib.get_close_matches(str(key), known, n=1)
         return f"{key} (did you mean {close[0]}?)" if close else str(key)
 
-    warnings.warn(f"{config.path} has keys that pylovo does not read, so they have no effect: "
-                  f"{', '.join(named(key) for key in unread)}", stacklevel=2)
+    raise ValueError(f"{config.path} has keys that pylovo does not know: {', '.join(named(key) for key in unknown)}. "
+                     "Correct or remove them: a misspelled key would leave its setting at the default value")
+
+
+def _warn_about_defaulted_keys(config: ConfigFile) -> None:
+    """Warn once about the keys that ``config`` does not have and that took the value of the default configuration."""
+    if config.defaulted:
+        warnings.warn(f"{config.path} does not have {', '.join(sorted(map(str, config.defaulted)))}: the values of "
+                      f"pylovo's default configuration {config.defaults_path} are used", stacklevel=2)
 
 
 def load_yaml_config(filename: str):
@@ -249,9 +337,10 @@ def load_yaml_config(filename: str):
         filename: Name of the config file (e.g., "config_analysis.yaml")
 
     Returns:
-        Loaded configuration dictionary
+        Loaded configuration dictionary, with the same file of the default configuration behind it
+        (:class:`ConfigFile`)
     """
-    return read_yaml(find_config_file(filename))
+    return read_yaml(find_config_file(filename), default_config_file(filename))
 
 
 def get_required_env_var(var_name: str, description: str) -> str:
@@ -394,7 +483,7 @@ GENERATION_CONFIG_FILES: tuple[str, ...] = ("config_generation_lv.yaml", "config
 GENERATION_MV_CONFIG_FILE = "config_generation_mv.yaml"
 CONFIG_GENERATION_FILE = find_config_file(*GENERATION_CONFIG_FILES)
 _warn_about_former_generation_config(CONFIG_GENERATION_FILE, get_config_search_paths())
-CONFIG_GENERATION = read_yaml(CONFIG_GENERATION_FILE)
+CONFIG_GENERATION = read_yaml(CONFIG_GENERATION_FILE, default_config_file(GENERATION_CONFIG_FILES[0]))
 CONFIG_GENERATION_MV_FILE = CONFIG_GENERATION_FILE.parent / GENERATION_MV_CONFIG_FILE
 CONFIG_GENERATION_MV = read_yaml(CONFIG_GENERATION_MV_FILE) if CONFIG_GENERATION_MV_FILE.exists() else {}
 CONFIG_ANALYSIS = load_yaml_config("config_analysis.yaml")
@@ -443,19 +532,19 @@ LOG_LEVEL = CONFIG_GENERATION["LOG_LEVEL"]
 
 # Parallel execution configuration: PARALLEL is the default of ``pylovo-generate`` for several
 # PLZ (``--parallel`` / ``--no-parallel`` override it), N_JOBS_PERCENT the share of cores used.
-PARALLEL = bool(CONFIG_GENERATION.get("PARALLEL", True))
-N_JOBS_PERCENT = CONFIG_GENERATION.get("N_JOBS_PERCENT", 50)
+PARALLEL = bool(CONFIG_GENERATION["PARALLEL"])
+N_JOBS_PERCENT = CONFIG_GENERATION["N_JOBS_PERCENT"]
 AVAILABLE_CORES = os.cpu_count() or 1
 N_JOBS = max(1, round(AVAILABLE_CORES * N_JOBS_PERCENT / 100))
 
 # Result directory configuration
-RESULT_DIR = os.path.join(os.getcwd(), CONFIG_GENERATION.get("RESULT_DIR", "results"))
+RESULT_DIR = os.path.join(os.getcwd(), CONFIG_GENERATION["RESULT_DIR"])
 
 # Electrical backend configuration
-ELECTRICAL_BACKEND = CONFIG_GENERATION.get("ELECTRICAL_BACKEND", "pandapower")
-RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION.get("RESIDENTIAL_ONLY_GENERATION", False)
+ELECTRICAL_BACKEND = CONFIG_GENERATION["ELECTRICAL_BACKEND"]
+RESIDENTIAL_ONLY_GENERATION = CONFIG_GENERATION["RESIDENTIAL_ONLY_GENERATION"]
 # Leave out buildings without street and house number (outbuildings such as sheds, garages, barns).
-EXCLUDE_BUILDINGS_WITHOUT_ADDRESS = CONFIG_GENERATION.get("EXCLUDE_BUILDINGS_WITHOUT_ADDRESS", False)
+EXCLUDE_BUILDINGS_WITHOUT_ADDRESS = CONFIG_GENERATION["EXCLUDE_BUILDINGS_WITHOUT_ADDRESS"]
 
 # =============================================================================
 # GRID GENERATION CONFIGURATION (from CONFIG_GENERATION)
@@ -475,17 +564,17 @@ SIM_FACTOR = CONSUMER_CATEGORIES.set_index("definition")["sim_factor"].astype(fl
 # Non-residential load model: "building_use" (the W/m² of CONSUMER_CATEGORIES per use) or "load_class" (the load of the
 # InfDB load class from LOAD_CLASSES where a Commercial or Public part has one). LOAD_CLASS_TABLE holds the classes with
 # the derived kWh/m² and W/m² (pylovo.load_classes); it is None unless the model is "load_class".
-NONRESIDENTIAL_LOAD_MODEL = CONFIG_GENERATION.get("NONRESIDENTIAL_LOAD_MODEL", "building_use")
+NONRESIDENTIAL_LOAD_MODEL = CONFIG_GENERATION["NONRESIDENTIAL_LOAD_MODEL"]
 if NONRESIDENTIAL_LOAD_MODEL not in _load_classes.NONRESIDENTIAL_LOAD_MODELS:
     raise ValueError(f"NONRESIDENTIAL_LOAD_MODEL must be one of {list(_load_classes.NONRESIDENTIAL_LOAD_MODELS)}, "
                      f"got {NONRESIDENTIAL_LOAD_MODEL!r}")
-LOAD_CLASSES = CONFIG_GENERATION.get("LOAD_CLASSES")
+LOAD_CLASSES = CONFIG_GENERATION["LOAD_CLASSES"]
 if LOAD_CLASSES is None and NONRESIDENTIAL_LOAD_MODEL == "load_class":
     raise ValueError("NONRESIDENTIAL_LOAD_MODEL load_class needs LOAD_CLASSES")
 _LOAD_CLASS_TABLE = None if LOAD_CLASSES is None else _load_classes.load_class_table(LOAD_CLASSES, SIM_FACTOR)
 LOAD_CLASS_TABLE = _LOAD_CLASS_TABLE if NONRESIDENTIAL_LOAD_MODEL == "load_class" else None
 # The class whose load a Commercial or Public part without a load class takes (None: the W/m² of its use).
-UNCLASSIFIED_LOAD_CLASS = _load_classes.unclassified_load_class(CONFIG_GENERATION.get("UNCLASSIFIED_LOAD_CLASS"),
+UNCLASSIFIED_LOAD_CLASS = _load_classes.unclassified_load_class(CONFIG_GENERATION["UNCLASSIFIED_LOAD_CLASS"],
                                                                 _LOAD_CLASS_TABLE)
 
 # Equipment catalogues; grid_role tells the three pools apart in CONFIG_EQUIPMENT_DATA.
@@ -526,30 +615,32 @@ if (
     and CONFIG_GENERATION["CABLE_PLANNING_UTILIZATION"] != CONFIG_GENERATION["FEEDER_PLANNING_UTILIZATION"]
 ):
     raise ValueError("Set CABLE_PLANNING_UTILIZATION only; FEEDER_PLANNING_UTILIZATION is its former name")
+_FORMER_UTILIZATION_KEY = ("FEEDER_PLANNING_UTILIZATION" in CONFIG_GENERATION
+                           and "CABLE_PLANNING_UTILIZATION" not in CONFIG_GENERATION)
 CABLE_PLANNING_UTILIZATION = float(
-    CONFIG_GENERATION.get("CABLE_PLANNING_UTILIZATION", CONFIG_GENERATION.get("FEEDER_PLANNING_UTILIZATION", 1.0))
+    CONFIG_GENERATION["FEEDER_PLANNING_UTILIZATION" if _FORMER_UTILIZATION_KEY else "CABLE_PLANNING_UTILIZATION"]
 )
 if not CABLE_PLANNING_UTILIZATION > 0:
     raise ValueError(f"CABLE_PLANNING_UTILIZATION must be positive, got {CABLE_PLANNING_UTILIZATION}")
 # House-connection technique: "joint" (tee joints on the street cable, cabinets only at split points) or
 # "cabinet" (houses connected from cable distribution cabinets along the feeders, CABINET_SPACING_M apart at most).
-HOUSE_CONNECTION = str(CONFIG_GENERATION.get("HOUSE_CONNECTION", "joint"))
+HOUSE_CONNECTION = str(CONFIG_GENERATION["HOUSE_CONNECTION"])
 if HOUSE_CONNECTION not in ("joint", "cabinet"):
     raise ValueError(f"HOUSE_CONNECTION must be 'joint' or 'cabinet', got {HOUSE_CONNECTION!r}")
-CABINET_SPACING_M = float(CONFIG_GENERATION.get("CABINET_SPACING_M", 100))
+CABINET_SPACING_M = float(CONFIG_GENERATION["CABINET_SPACING_M"])
 if not CABINET_SPACING_M > 0:
     raise ValueError(f"CABINET_SPACING_M must be positive, got {CABINET_SPACING_M}")
 # Standard feeder cable, laid in parallel for load and voltage before larger cables are used; None = smallest sufficient design (previous behaviour).
-FEEDER_STANDARD_CABLE = CONFIG_GENERATION.get("FEEDER_STANDARD_CABLE")
+FEEDER_STANDARD_CABLE = CONFIG_GENERATION["FEEDER_STANDARD_CABLE"]
 if FEEDER_STANDARD_CABLE is not None and FEEDER_STANDARD_CABLE not in set(FEEDER_CABLES["name"]):
     raise ValueError(f"FEEDER_STANDARD_CABLE must name a FEEDER_CABLES entry, got {FEEDER_STANDARD_CABLE!r}")
 # Most parallel standard cables per feeder section (only used with FEEDER_STANDARD_CABLE).
-MAX_PARALLEL_FEEDER_CABLES = int(CONFIG_GENERATION.get("MAX_PARALLEL_FEEDER_CABLES", 4))
+MAX_PARALLEL_FEEDER_CABLES = int(CONFIG_GENERATION["MAX_PARALLEL_FEEDER_CABLES"])
 if MAX_PARALLEL_FEEDER_CABLES < 1:
     raise ValueError(f"MAX_PARALLEL_FEEDER_CABLES must be at least 1, got {MAX_PARALLEL_FEEDER_CABLES}")
 # Without a standard cable: most parallel cables per feeder section that the voltage-drop pass may lay once the largest
-# conductor at the ampacity's parallel count is not enough; 1 (also without the key) = larger conductors only.
-MAX_VOLTAGE_PARALLEL_FEEDER_CABLES = CONFIG_GENERATION.get("MAX_VOLTAGE_PARALLEL_FEEDER_CABLES", 1)
+# conductor at the ampacity's parallel count is not enough; 1 = larger conductors only.
+MAX_VOLTAGE_PARALLEL_FEEDER_CABLES = CONFIG_GENERATION["MAX_VOLTAGE_PARALLEL_FEEDER_CABLES"]
 if (isinstance(MAX_VOLTAGE_PARALLEL_FEEDER_CABLES, bool) or not isinstance(MAX_VOLTAGE_PARALLEL_FEEDER_CABLES, int)
         or MAX_VOLTAGE_PARALLEL_FEEDER_CABLES < 1):
     raise ValueError(f"MAX_VOLTAGE_PARALLEL_FEEDER_CABLES must be a positive integer, "
@@ -569,7 +660,7 @@ MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT = CONFIG_GENERATION[
 MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW = CONFIG_GENERATION["MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW"]
 # Connection level per building (lv_feeder, station_busbar, mv, hv) on its own peak; None: no connection levels.
 CONNECTION_LEVEL_THRESHOLDS_KW = _load_classes.connection_thresholds(
-    CONFIG_GENERATION.get("CONNECTION_LEVEL_THRESHOLDS_KW"), MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW)
+    CONFIG_GENERATION["CONNECTION_LEVEL_THRESHOLDS_KW"], MV_DIRECT_CONNECTION_LOAD_THRESHOLD_KW)
 
 # Consumer connection cables are defined directly by CONSUMER_CONNECTION_CABLES.
 
@@ -582,41 +673,36 @@ RURAL_MIN_BUILDING_DISTANCE = CONFIG_GENERATION["RURAL_MIN_BUILDING_DISTANCE"]
 URBAN_MAX_BUILDING_DISTANCE = CONFIG_GENERATION["URBAN_MAX_BUILDING_DISTANCE"]
 
 # Transformer mapping: Settlement Type -> Allowed Transformer Capacities (s_max_kva)
-TRANSFORMER_MAPPING = CONFIG_GENERATION.get("TRANSFORMER_MAPPING", {
-    1: [250, 400, 630],
-    2: [250, 400, 630],
-    3: [250, 400, 630]
-})
+TRANSFORMER_MAPPING = CONFIG_GENERATION["TRANSFORMER_MAPPING"]
 _check_transformer_mapping(TRANSFORMER_MAPPING, TRANSFORMERS)
 # Planned coincident load / rated power of a catalogue transformer.
-# 1.0 sizes and splits at the full rating (previous behaviour).
-TRANSFORMER_PLANNING_UTILIZATION = float(CONFIG_GENERATION.get("TRANSFORMER_PLANNING_UTILIZATION", 1.0))
+# 1.0 sizes and splits at the full rating.
+TRANSFORMER_PLANNING_UTILIZATION = float(CONFIG_GENERATION["TRANSFORMER_PLANNING_UTILIZATION"])
 # Greenfield stations are drawn at random among the distance-feasible positions whose
 # load-weighted distance cost is at most (1 + tolerance) times the optimum. 0 keeps the optimal position.
-GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION.get("GREENFIELD_TRAFO_POSITION_TOLERANCE", 0.0))
+GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION["GREENFIELD_TRAFO_POSITION_TOLERANCE"])
 
 # =============================================================================
 # GRID GENERATION PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
 # How often a grid whose validation power flow leaves the voltage band is planned again (GridGenerator.install_cables);
-# 0 (also without the key) stores it as it is.
-MAX_VOLTAGE_REPAIRS = CONFIG_GENERATION.get("MAX_VOLTAGE_REPAIRS", 0)
+# 0 stores it as it is.
+MAX_VOLTAGE_REPAIRS = CONFIG_GENERATION["MAX_VOLTAGE_REPAIRS"]
 if isinstance(MAX_VOLTAGE_REPAIRS, bool) or not isinstance(MAX_VOLTAGE_REPAIRS, int) or MAX_VOLTAGE_REPAIRS < 0:
     raise ValueError(f"MAX_VOLTAGE_REPAIRS must be a non-negative integer, got {MAX_VOLTAGE_REPAIRS!r}")
-USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_DSO_TRANSFORMER_POSITIONS", False)
-USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_OPEN_TRANSFORMER_POSITIONS", True)
+USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION["USE_DSO_TRANSFORMER_POSITIONS"]
+USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION["USE_OPEN_TRANSFORMER_POSITIONS"]
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
-USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION.get("USE_MANUAL_TRANSFORMER_POSITIONS", False)
+USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION["USE_MANUAL_TRANSFORMER_POSITIONS"]
 # Postcode borders (see pylovo.postcode_border): a PLZ also routes over the InfDB streets of its neighboring PLZ.
-# A configuration without the key keeps the PLZ graph.
-ROUTE_ACROSS_POSTCODE_BORDERS = CONFIG_GENERATION.get("ROUTE_ACROSS_POSTCODE_BORDERS", False)
+ROUTE_ACROSS_POSTCODE_BORDERS = CONFIG_GENERATION["ROUTE_ACROSS_POSTCODE_BORDERS"]
 if not isinstance(ROUTE_ACROSS_POSTCODE_BORDERS, bool):
     raise ValueError(f"ROUTE_ACROSS_POSTCODE_BORDERS must be true or false, got {ROUTE_ACROSS_POSTCODE_BORDERS!r}")
 
-# Station voltage of the validation power flow (pylovo.station_voltage). Missing keys keep the
-# behaviour from before they existed: MV side at 1.0 p.u., neutral tap.
-LV_REFERENCE_VOLTAGE_PU = CONFIG_GENERATION.get("LV_REFERENCE_VOLTAGE_PU")
+# Station voltage of the validation power flow (pylovo.station_voltage): the LV busbar voltage at the operating
+# point; null keeps the MV side at 1.0 p.u.
+LV_REFERENCE_VOLTAGE_PU = CONFIG_GENERATION["LV_REFERENCE_VOLTAGE_PU"]
 if LV_REFERENCE_VOLTAGE_PU is not None:
     LV_REFERENCE_VOLTAGE_PU = float(LV_REFERENCE_VOLTAGE_PU)
     if not 0.8 <= LV_REFERENCE_VOLTAGE_PU <= 1.2:
@@ -624,11 +710,11 @@ if LV_REFERENCE_VOLTAGE_PU is not None:
 MAX_GREENFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_GREENFIELD_TRAFO_DISTANCE"]
 # Standard deviation (m) of a per-cluster greenfield distance limit drawn around
 # MAX_GREENFIELD_TRAFO_DISTANCE and clipped to +/- 2 standard deviations. 0 keeps one fixed limit.
-MAX_GREENFIELD_TRAFO_DISTANCE_STD = float(CONFIG_GENERATION.get("MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0.0))
-MERGE_GREENFIELD_CLUSTERS = CONFIG_GENERATION.get("MERGE_GREENFIELD_CLUSTERS", False)
-GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA = CONFIG_GENERATION.get("GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [400, 630])
+MAX_GREENFIELD_TRAFO_DISTANCE_STD = float(CONFIG_GENERATION["MAX_GREENFIELD_TRAFO_DISTANCE_STD"])
+MERGE_GREENFIELD_CLUSTERS = CONFIG_GENERATION["MERGE_GREENFIELD_CLUSTERS"]
+GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA = CONFIG_GENERATION["GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA"]
 # A merged pair needs a smaller cluster of at most this many loaded buildings; None merges clusters of any size.
-GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS = CONFIG_GENERATION.get("GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS")
+GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS = CONFIG_GENERATION["GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS"]
 if GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS is not None and (
         isinstance(GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS, bool)
         or not isinstance(GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS, int)
@@ -636,10 +722,10 @@ if GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS is not None and (
     raise ValueError(
         f"GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS must be a positive integer or null, got {GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS!r}")
 MAX_BUILDINGS_PER_KCID = CONFIG_GENERATION["MAX_BUILDINGS_PER_KCID"]
-MIN_SHARED_PREFIX_LENGTH_M = CONFIG_GENERATION.get("MIN_SHARED_PREFIX_LENGTH_M", 0)
-AGGREGATE_NEARBY_CONNECTION_POINTS = CONFIG_GENERATION.get("AGGREGATE_NEARBY_CONNECTION_POINTS", False)
-CONNECTION_POINT_AGGREGATION_RADIUS_M = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_RADIUS_M", 25)
-CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS = CONFIG_GENERATION.get("CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS", 8)
+MIN_SHARED_PREFIX_LENGTH_M = CONFIG_GENERATION["MIN_SHARED_PREFIX_LENGTH_M"]
+AGGREGATE_NEARBY_CONNECTION_POINTS = CONFIG_GENERATION["AGGREGATE_NEARBY_CONNECTION_POINTS"]
+CONNECTION_POINT_AGGREGATION_RADIUS_M = CONFIG_GENERATION["CONNECTION_POINT_AGGREGATION_RADIUS_M"]
+CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS = CONFIG_GENERATION["CONNECTION_POINT_AGGREGATION_MAX_BUILDINGS"]
 K_MEANS_SEED = CONFIG_GENERATION["K_MEANS_SEED"]
 
 # =============================================================================
@@ -702,7 +788,7 @@ CLASSIFICATION_REGION = CONFIG_CLASSIFICATION["CLASSIFICATION_REGION"]
 NO_OF_CLUSTERS_ALLOWED = CONFIG_CLASSIFICATION["NO_OF_CLUSTERS_ALLOWED"]
 N_SAMPLES = CONFIG_CLASSIFICATION["N_SAMPLES"]
 # PLZ bootstrap resamples of the selection report of pylovo-classify (0: the report of the sample only)
-SELECTION_BOOTSTRAP = CONFIG_CLASSIFICATION.get("SELECTION_BOOTSTRAP", 100)
+SELECTION_BOOTSTRAP = CONFIG_CLASSIFICATION["SELECTION_BOOTSTRAP"]
 if isinstance(SELECTION_BOOTSTRAP, bool) or not isinstance(SELECTION_BOOTSTRAP, int) or SELECTION_BOOTSTRAP < 0:
     raise ValueError(f"SELECTION_BOOTSTRAP must be a whole number of 0 or more, got {SELECTION_BOOTSTRAP!r}")
 REGION_DICT = CONFIG_CLASSIFICATION["REGION_DICT"]
@@ -735,17 +821,17 @@ N_CLUSTERS_GMM = CONFIG_CLUSTERING["N_CLUSTERS_GMM"]
 
 # Transform of the key figures before the factor analysis and the clustering
 TRANSFORMS = ("none", "log1p", "yeo-johnson")
-TRANSFORM = CONFIG_CLUSTERING.get("TRANSFORM", "yeo-johnson")
+TRANSFORM = CONFIG_CLUSTERING["TRANSFORM"]
 if TRANSFORM not in TRANSFORMS:
     raise ValueError(f"TRANSFORM must be one of {', '.join(TRANSFORMS)}, got {TRANSFORM!r}")
 
 # Leave out the grids with a voltage violation or no converged power flow
-EXCLUDE_INFEASIBLE = CONFIG_CLUSTERING.get("EXCLUDE_INFEASIBLE", True)
+EXCLUDE_INFEASIBLE = CONFIG_CLUSTERING["EXCLUDE_INFEASIBLE"]
 if not isinstance(EXCLUDE_INFEASIBLE, bool):
     raise ValueError(f"EXCLUDE_INFEASIBLE must be true or false, got {EXCLUDE_INFEASIBLE!r}")
 
 # Also filter the grids below the four lower thresholds (pylovo-classify writes the answer of its question)
-ADDITIONAL_FILTERING = CONFIG_CLUSTERING.get("ADDITIONAL_FILTERING", False)
+ADDITIONAL_FILTERING = CONFIG_CLUSTERING["ADDITIONAL_FILTERING"]
 if not isinstance(ADDITIONAL_FILTERING, bool):
     raise ValueError(f"ADDITIONAL_FILTERING must be true or false, got {ADDITIONAL_FILTERING!r}")
 
@@ -768,14 +854,15 @@ TUMPalette = CONFIG_ANALYSIS["PALETTES"]["TUMPalette"]
 TUMPalette1 = CONFIG_ANALYSIS["PALETTES"]["TUMPalette1"]
 
 # =============================================================================
-# KEYS THAT NO CODE READ
+# UNKNOWN KEYS AND KEYS TAKEN FROM THE DEFAULT CONFIGURATION
 # =============================================================================
 # Typo protection: a misspelled key would silently keep the value of its default. The MV file needs no check,
 # _mv_config refuses its unknown keys; the MV_* keys of the LV file are read from there.
-_warn_about_unread_keys(CONFIG_GENERATION, set(_mv_options.YAML_KEYS))
-_warn_about_unread_keys(CONFIG_ANALYSIS)
-_warn_about_unread_keys(CONFIG_CLASSIFICATION)
-_warn_about_unread_keys(CONFIG_CLUSTERING)
+check_keys(CONFIG_GENERATION, set(_mv_options.YAML_KEYS))
+for _config in (CONFIG_ANALYSIS, CONFIG_CLASSIFICATION, CONFIG_CLUSTERING):
+    check_keys(_config)
+for _config in (CONFIG_GENERATION, CONFIG_ANALYSIS, CONFIG_CLASSIFICATION, CONFIG_CLUSTERING):
+    _warn_about_defaulted_keys(_config)
 
 # Setup seaborn palette (optional "plots" extra)
 try:

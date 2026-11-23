@@ -127,12 +127,29 @@ of ``config_generation_lv.yaml``, with its ``MV_*`` keys. pylovo warns about it,
 the former file hides ``config_generation_lv.yaml`` or ``config_generation_mv.yaml`` of a folder
 that is searched later.
 
-pylovo also warns, once per file, about a top-level key that nothing reads, for example a
-misspelled ``HOUSE_CONECTION`` or a key of an older release, and suggests the closest key it does
-read. Such a key has no effect: the setting keeps its default, which differs from the shipped value
-for some keys. The warning covers ``config_generation_lv.yaml``, ``config_analysis.yaml``,
+.. _config-default-values:
+
+Default values and unknown keys
+-------------------------------
+
+The YAML files that pylovo ships are the only place of default values. A key that your file does
+not have, for example in a project configuration copied from an older release, takes the value of
+the shipped file (``config/`` of the checkout, or the copy in the wheel), and pylovo names these
+keys in one warning per file. For some keys the shipped value is not the behaviour of the release
+before the key existed (``TRANSFORMER_PLANNING_UTILIZATION`` is ``0.8``, where older releases sized
+at the full rating): add the key with the value you want. Grids of an existing ``VERSION_ID`` are
+never changed this way, because a run whose parameters differ from the stored snapshot of its
+version is refused (:ref:`versions`).
+
+A top-level key that pylovo does not know, for example a misspelled ``HOUSE_CONECTION``, stops
+pylovo with an error that names the key and the closest known one: a misspelled setting would
+otherwise silently keep its default. A key that an earlier release shipped and this one no longer
+reads (for example ``BROWNFIELD_NEAREST_ONLY`` or ``NETWORK_COLORS``, until 1.2.0) only gives a
+warning that asks you to remove it, so a project configuration carried along over releases keeps
+loading.
+This holds for ``config_generation_lv.yaml``, ``config_analysis.yaml``,
 ``config_classification.yaml`` and ``config_clustering.yaml``; ``config_generation_mv.yaml`` refuses
-an unknown key with an error.
+an unknown key as well.
 
 .. _versions:
 
@@ -346,7 +363,7 @@ Loads and general grid settings
      - Without ``FEEDER_STANDARD_CABLE``: when the largest conductor at the parallel count of the
        ampacity design still leaves a feeder above ``MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT``,
        the voltage-drop pass may lay sections in parallel (Parallelkabel) up to this many cables.
-       ``1`` (also without the key) lays larger conductors only.
+       ``1`` lays larger conductors only.
      - ✓
    * - ``FEEDER_SPLIT_MAX_CURRENT_KA``
      - ``0.4``
@@ -551,7 +568,7 @@ Clustering
    * - ``MAX_VOLTAGE_REPAIRS``
      - ``0``
      - A grid whose validation power flow leaves ``POWER_FLOW_VOLTAGE_LIMITS`` is planned again,
-       up to this many times in a row (``0``, also without the key, stores it as it is), if a
+       up to this many times in a row (``0`` stores it as it is), if a
        consumer is below the band because of the feeders: its street node is below the band plus
        the share of ``MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT``. The buildings at all street nodes
        below that (the far ends of the feeders) get greenfield stations and an existing station
@@ -584,8 +601,7 @@ Clustering
        there; without the switch it is usually left out as ``isolated_component``. The strip holds
        every brownfield route up to ``MAX_BROWNFIELD_TRAFO_DISTANCE`` whose ends lie in the PLZ
        (any route of length L lies within L/2 of one of its ends); longer greenfield routes are not
-       guaranteed. A configuration
-       without the key keeps the PLZ graph (``False``).
+       guaranteed. ``False`` keeps the PLZ graph.
      - ✓
 
 Ratings of candidates count only for the sources that are switched on: a rated candidate of a

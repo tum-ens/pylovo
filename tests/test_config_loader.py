@@ -10,11 +10,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
 
 from pylovo import config_loader
-from pylovo.config_loader import (_check_cable_ampacities, _check_key_figure_names, _check_transformer_mapping,
-                                  _consumer_categories_from_config, _ReadKeys, _version_id,
-                                  _warn_about_former_generation_config, _warn_about_unread_keys)
+from pylovo.config_loader import (ConfigFile, MissingConfigKey, _check_cable_ampacities, _check_key_figure_names,
+                                  _check_transformer_mapping, _consumer_categories_from_config, _version_id,
+                                  _warn_about_defaulted_keys, _warn_about_former_generation_config, check_keys)
 
 
 def categories(sim_factor) -> dict:
@@ -153,64 +154,131 @@ def test_current_files_give_no_warning_even_if_a_former_file_follows_in_another_
     assert warnings_for(first / LV, [first, second]) == []
 
 
-# --- keys that nothing reads ----------------------------------------------------------------------------------------
-def unread_warnings(config: _ReadKeys, *also_read) -> list[str]:
+# --- default values and unknown keys ---------------------------------------------------------------------------------
+def messages_of(action) -> list[str]:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        _warn_about_unread_keys(config, *also_read)
+        action()
     return [str(w.message) for w in caught]
 
 
-def test_a_key_that_nothing_read_gives_one_warning_with_the_closest_name():
-    config = _ReadKeys(Path("config/config_generation_lv.yaml"),
-                       {"HOUSE_CONECTION": "cabinet", "OLD_KEY": 1, "VN": 400, "FEEDER": 1, "N_JOBS_PERCENT": 50})
+def test_a_key_that_the_file_does_not_have_takes_the_value_of_the_default_configuration():
+    config = ConfigFile(Path("project/lv.yaml"), {"VN": 230, "A": None},
+                        {"VN": 400, "A": 1, "TRANSFORMER_MAPPING": {1: [250]}}, Path("shipped/lv.yaml"))
+    assert config["VN"] == 230 and config["A"] is None           # the file wins, also with an explicit null
+    assert config["TRANSFORMER_MAPPING"] == {1: [250]} and config.get("TRANSFORMER_MAPPING") == {1: [250]}
+    config["TRANSFORMER_MAPPING"][1].append(400)                  # a copy: the defaults stay as shipped
+    assert config.defaults["TRANSFORMER_MAPPING"] == {1: [250]}
+    assert "TRANSFORMER_MAPPING" not in config and set(config) == {"VN", "A"}      # "in" asks the file alone
+    assert config.defaulted == {"TRANSFORMER_MAPPING"}
+    (message,) = messages_of(lambda: _warn_about_defaulted_keys(config))
+    assert "project/lv.yaml does not have TRANSFORMER_MAPPING" in message and "shipped/lv.yaml" in message
+
+
+def test_a_key_in_neither_file_is_an_error_that_names_both_files():
+    config = ConfigFile(Path("project/lv.yaml"), {}, {"VN": 400}, Path("shipped/lv.yaml"))
+    with pytest.raises(MissingConfigKey, match="VM is missing in project/lv.yaml and in pylovo's default "
+                                               "configuration shipped/lv.yaml"):
+        config["VM"]
+    assert config.get("VM") is None and config.get("VM", 1) == 1
+    with pytest.raises(KeyError, match="VN is missing in lv.yaml$"):          # the default file itself: no fallback
+        ConfigFile(Path("lv.yaml"), {})["VN"]
+
+
+def test_a_file_without_missing_keys_gives_no_warning():
+    config = ConfigFile(Path("lv.yaml"), {"VN": 400}, {"VN": 400}, Path("shipped/lv.yaml"))
+    config["VN"]
+    assert messages_of(lambda: _warn_about_defaulted_keys(config)) == []
+
+
+def test_an_unknown_key_is_an_error_with_the_closest_known_name():
+    config = ConfigFile(Path("config/config_generation_lv.yaml"),
+                        {"HOUSE_CONECTION": "cabinet", "OLD_KEY": 1, "VN": 400, "FEEDER": 1, "N_JOBS_PERCENT": 50},
+                        {"HOUSE_CONNECTION": "joint"}, Path("shipped/lv.yaml"))
     config["VN"]                                     # every kind of look-up counts as a read
-    config.get("HOUSE_CONNECTION", "joint")
     config.get("N_JOBS_PERCENT")
     assert "FEEDER" in config
-    messages = unread_warnings(config)
-    assert len(messages) == 1
-    assert "config/config_generation_lv.yaml has keys that pylovo does not read" in messages[0]
-    assert "HOUSE_CONECTION (did you mean HOUSE_CONNECTION?)" in messages[0] and "OLD_KEY," not in messages[0]
-    assert messages[0].endswith("OLD_KEY") and "VN" not in messages[0] and "FEEDER" not in messages[0]
+    with pytest.raises(ValueError) as error:
+        check_keys(config)
+    message = str(error.value)
+    assert "config/config_generation_lv.yaml has keys that pylovo does not know" in message
+    assert "HOUSE_CONECTION (did you mean HOUSE_CONNECTION?), OLD_KEY." in message
+    assert "VN" not in message and "FEEDER" not in message
 
 
-def test_keys_that_are_read_some_other_way_are_not_reported():
-    config = _ReadKeys(Path("lv.yaml"), {"MV_STANDARD_CABLE": "a", "VN": 400})
+def test_a_key_of_an_earlier_version_gives_a_warning_only():
+    config = ConfigFile(Path("lv.yaml"), {"BROWNFIELD_NEAREST_ONLY": True, "NETWORK_COLORS": {}, "VN": 400})
     config["VN"]
-    assert unread_warnings(config, {"MV_STANDARD_CABLE", "MV_VARIANT_ID"}) == []
-    assert len(unread_warnings(config)) == 1
+    (message,) = messages_of(lambda: check_keys(config))
+    assert "lv.yaml has keys of earlier pylovo releases that are no longer read" in message
+    assert "BROWNFIELD_NEAREST_ONLY (until 1.2.0), NETWORK_COLORS (until 1.2.0)" in message
 
 
-def test_a_file_whose_keys_were_all_read_gives_no_warning():
-    config = _ReadKeys(Path("lv.yaml"), {})
-    assert unread_warnings(config) == []
-    config = _ReadKeys(Path("lv.yaml"), {"A": 1})
+def test_keys_that_are_read_some_other_way_are_known():
+    config = ConfigFile(Path("lv.yaml"), {"MV_STANDARD_CABLE": "a", "VN": 400})
+    config["VN"]
+    check_keys(config, {"MV_STANDARD_CABLE", "MV_VARIANT_ID"})
+    with pytest.raises(ValueError, match="MV_STANDARD_CABLE"):
+        check_keys(config)
+
+
+def test_a_file_whose_keys_were_all_read_passes():
+    check_keys(ConfigFile(Path("lv.yaml"), {}))
+    config = ConfigFile(Path("lv.yaml"), {"A": 1})
     config["A"]
-    assert unread_warnings(config) == []
+    assert messages_of(lambda: check_keys(config)) == []
 
 
-def config_copy_with(tmp_path, file: str, extra_line: str) -> None:
-    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
-    path = tmp_path / "config" / file
-    path.write_text(path.read_text() + extra_line)
+CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
 
 
-def import_config(tmp_path) -> list[str]:
-    """The warnings of ``pylovo.config_loader`` about unread keys when it is imported in ``tmp_path``."""
-    code = ("import warnings\n"
+def import_config(tmp_path, expression: str = "None") -> subprocess.CompletedProcess:
+    """Import ``pylovo.config_loader`` in ``tmp_path``; stdout: the value of ``expression`` (JSON), then its warnings."""
+    code = ("import json, warnings\n"
             "with warnings.catch_warnings(record=True) as caught:\n"
             "    warnings.simplefilter('always')\n"
-            "    import pylovo.config_loader\n"
-            "print(*[str(w.message) for w in caught if 'does not read' in str(w.message)], sep='\\n')\n")
-    proc = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=False)
+            "    import pylovo.config_loader as cl\n"
+            f"print(json.dumps({expression}))\n"
+            "print(*[str(w.message) for w in caught if 'config' in str(w.message)], sep='\\n')\n")
+    return subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=False)
+
+
+def test_the_shipped_configuration_has_every_key_and_no_unknown_one(tmp_path):
+    shutil.copytree(CONFIG_DIR, tmp_path / "config")
+    proc = import_config(tmp_path)
     assert proc.returncode == 0, proc.stderr
-    return [line for line in proc.stdout.splitlines() if line]
+    assert [line for line in proc.stdout.splitlines() if line] == ["null"]   # no warning: nothing unknown or missing
 
 
-def test_the_shipped_configuration_has_no_key_that_nothing_reads(tmp_path):
-    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
-    assert import_config(tmp_path) == []
+def test_the_loader_has_no_default_values_of_its_own():
+    """Every look-up of a YAML key is ``CONFIG[...]``: a ``.get(key, default)`` would be a second place of defaults."""
+    import ast
+
+    tree = ast.parse(Path(config_loader.__file__).read_text(encoding="utf-8"))
+    with_default = [ast.unparse(node) for node in ast.walk(tree)
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get"
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id.startswith("CONFIG_")
+                    and node.func.value.id != "CONFIG_MV"]      # the MV keys: defaults of pylovo.mv_grid.options
+    assert with_default == []
+
+
+def test_a_project_file_without_newer_keys_gets_the_shipped_values_and_one_warning(tmp_path):
+    """An older project configuration: three keys are missing, among them one whose shipped value is not the
+    behaviour from before the key existed (TRANSFORMER_PLANNING_UTILIZATION 0.8, not 1.0)."""
+    shutil.copytree(CONFIG_DIR, tmp_path / "config")
+    path = tmp_path / "config" / "config_generation_lv.yaml"
+    missing = ("TRANSFORMER_PLANNING_UTILIZATION", "MAX_VOLTAGE_REPAIRS", "TRANSFORMER_MAPPING")
+    shipped = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path.write_text(yaml.safe_dump({k: v for k, v in shipped.items() if k not in missing}, sort_keys=False),
+                    encoding="utf-8")
+    proc = import_config(tmp_path, "[cl.TRANSFORMER_PLANNING_UTILIZATION, cl.MAX_VOLTAGE_REPAIRS, "
+                                   "cl.TRANSFORMER_MAPPING[1], cl.VERSION_ID]")
+    assert proc.returncode == 0, proc.stderr
+    values, *messages = proc.stdout.splitlines()
+    assert json.loads(values) == [shipped["TRANSFORMER_PLANNING_UTILIZATION"], shipped["MAX_VOLTAGE_REPAIRS"],
+                                  shipped["TRANSFORMER_MAPPING"][1], str(shipped["VERSION_ID"])]
+    assert len(messages) == 1 and "config_generation_lv.yaml does not have " + ", ".join(sorted(missing)) in messages[0]
+    assert str(CONFIG_DIR / "config_generation_lv.yaml") in messages[0]
 
 
 @pytest.mark.parametrize("file, line, key", [
@@ -218,10 +286,37 @@ def test_the_shipped_configuration_has_no_key_that_nothing_reads(tmp_path):
     ("config_analysis.yaml", "PLOT_COLORS: {}\n", "PLOT_COLORS"),
     ("config_classification.yaml", "N_SAMPELS: 5\n", "N_SAMPELS (did you mean N_SAMPLES?)"),
     ("config_clustering.yaml", "N_CLUSTER_GMM: 3\n", "N_CLUSTER_GMM (did you mean N_CLUSTERS_GMM?)")])
-def test_a_misspelled_key_of_each_file_is_reported_once_and_the_import_goes_on(tmp_path, file, line, key):
-    config_copy_with(tmp_path, file, line)
-    messages = import_config(tmp_path)
-    assert len(messages) == 1 and file in messages[0] and key in messages[0]
+def test_a_misspelled_key_of_each_file_stops_the_import_and_names_the_key(tmp_path, file, line, key):
+    shutil.copytree(CONFIG_DIR, tmp_path / "config")
+    path = tmp_path / "config" / file
+    path.write_text(path.read_text() + line)
+    proc = import_config(tmp_path)
+    assert proc.returncode != 0
+    error = proc.stderr.strip().splitlines()[-1]
+    assert error.startswith("ValueError: ") and file in error and key in error and "does not know" in error
+
+
+def test_keys_of_earlier_releases_in_project_files_do_not_stop_the_import(tmp_path):
+    """A project configuration carried along since 0.8.0 (as GridPlanner's) keeps loading, with one warning per file."""
+    shutil.copytree(CONFIG_DIR, tmp_path / "config")
+    former = {"config_generation_lv.yaml": "BROWNFIELD_NEAREST_ONLY: true\nV_BAND_LOW: 0.9\n",
+              "config_analysis.yaml": "COLORS: {}\nPLOT_DEFAULTS: {}\nNETWORK_COLORS: {}\n",
+              "config_classification.yaml": "REGIOSTAR7_DICT: {}\n", "config_clustering.yaml": "N_CLUSTERS_KMEDOID: 5\n"}
+    for file, lines in former.items():
+        path = tmp_path / "config" / file
+        path.write_text(path.read_text() + lines)
+    proc = import_config(tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    _, *messages = proc.stdout.splitlines()
+    assert len(messages) == 4 and all("no longer read" in message for message in messages)
+    assert "BROWNFIELD_NEAREST_ONLY (until 1.2.0), V_BAND_LOW (until 0.8.0)" in messages[0]
+
+
+def test_every_retired_key_is_gone_from_the_shipped_files():
+    shipped = set()
+    for path in CONFIG_DIR.glob("*.yaml"):
+        shipped |= set(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
+    assert not shipped & set(config_loader.RETIRED_KEYS)
 
 
 # --- connection variables replaced by the .env ---------------------------------------------------------------------
