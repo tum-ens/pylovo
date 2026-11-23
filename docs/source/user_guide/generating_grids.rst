@@ -150,12 +150,12 @@ Example: grids and diagnostics of a postcode
 Using the Python API
 --------------------
 
-The command-line tool is a thin wrapper around :class:`pylovo.grid_generator.GridGenerator`:
+The command-line tool is a thin wrapper around :class:`pylovo.lv_grid.generator.GridGenerator`:
 
 .. code-block:: python
 
    import pandas as pd
-   from pylovo.grid_generator import GridGenerator
+   from pylovo.lv_grid.generator import GridGenerator
 
    gg = GridGenerator(plz=85653)
    gg.generate_grid_for_single_plz(plz=85653, analyze_grids=True)

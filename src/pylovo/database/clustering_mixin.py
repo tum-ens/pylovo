@@ -530,7 +530,7 @@ class ClusteringMixin(BaseMixin):
             max_transformer_distance (float, optional): Maximum allowed distance from a greenfield
                 transformer point to any connection point in the cluster.
             contiguity (callable, optional): Returns whether the buildings at the given connection points
-                form one piece among the buildings of other grids (:class:`pylovo.supply_areas.AreaContiguity`);
+                form one piece among the buildings of other grids (:class:`pylovo.lv_grid.supply_areas.AreaContiguity`);
                 a cluster in several pieces is invalid and split again like a too large one.
 
         Returns:

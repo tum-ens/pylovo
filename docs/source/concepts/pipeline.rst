@@ -1,7 +1,7 @@
 Grid generation pipeline
 ========================
 
-This page follows :meth:`GridGenerator.generate_grid <pylovo.grid_generator.GridGenerator.generate_grid>`
+This page follows :meth:`GridGenerator.generate_grid <pylovo.lv_grid.generator.GridGenerator.generate_grid>`
 through one postcode area. The figures show the OSM-derived demo region PLZ 85653 (Aying): 522
 input buildings, of which 468 are supplied. Unless stated otherwise they use the shipped
 configuration (version ``1``); two illustrative versions change one setting each:
@@ -15,7 +15,7 @@ from the result tables; demo data derived from OpenStreetMap, © OpenStreetMap c
 
    The five phases of the pipeline and the tables they write.
 
-Before the first step, the :class:`~pylovo.grid_generator.GridGenerator` stores or checks the
+Before the first step, the :class:`~pylovo.lv_grid.generator.GridGenerator` stores or checks the
 parameter snapshot of ``VERSION_ID`` (:ref:`versions`). A postcode that already has grids in the
 version is skipped. The postcode gets its temporary tables ``buildings_tem_<plz>`` and
 ``ways_tem_<plz>``, and the equipment catalogue and consumer categories of the configuration are
@@ -173,7 +173,7 @@ the tree into two clusters and checks each:
   limit (``MAX_GREENFIELD_TRAFO_DISTANCE``; with ``MAX_GREENFIELD_TRAFO_DISTANCE_STD`` > 0 a
   per-cluster limit drawn around it), or
 * in pieces -- buildings that other grids of the k-means cluster supply already lie between its
-  buildings (:mod:`pylovo.supply_areas`). Neighbouring buildings are linked by the Delaunay
+  buildings (:mod:`pylovo.lv_grid.supply_areas`). Neighbouring buildings are linked by the Delaunay
   triangulation of the building centroids of the cluster and of the other grids; the buildings of the
   cluster must form one piece over the links between them. A row of other buildings separates, open
   land does not, so the check needs no distance. The other grids are the existing stations' areas
@@ -225,13 +225,13 @@ Phase 4: design
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Each grid is built in its own electrical backend by a
-:class:`~pylovo.cable_installer.CableInstaller`: MV bus (20 kV) with external grid, transformer,
+:class:`~pylovo.lv_grid.cable_installer.CableInstaller`: MV bus (20 kV) with external grid, transformer,
 LV bus, one connection bus per connection point of the grid (the street-side end of a building
 connection) and one consumer bus with one load per category for every supplied building
 (:doc:`electrical_backends`).
 
 The feeder topology is planned before any cable is chosen
-(:func:`~pylovo.feeder_planning.plan_feeder_branches`):
+(:func:`~pylovo.lv_grid.feeder_planning.plan_feeder_branches`):
 
 #. pgRouting computes the shortest routes from the transformer to all connection points and
    consumer vertices of the cluster.
@@ -246,7 +246,7 @@ The feeder topology is planned before any cable is chosen
 
 Then the feeder edges between hard nodes (transformer and branching points) are grouped into
 uniform sections, sized for ampacity and upsized where the end-to-end voltage-drop limit requires
-it (:func:`~pylovo.feeder_planning.size_feeder_tree`). Service cables run in a straight line from the connection bus to the house connection on the
+it (:func:`~pylovo.lv_grid.feeder_planning.size_feeder_tree`). Service cables run in a straight line from the connection bus to the house connection on the
 facade and are sized for the building's own load. The complete method is described in :doc:`grid_dimensioning`.
 
 pylovo also writes GIS helper geometries: ``split_points`` at branching nodes and offset copies of

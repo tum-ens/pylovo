@@ -1,4 +1,4 @@
-"""Grid generation for one or more postcode areas (PLZ).
+"""LV grid generation for one or more postcode areas (PLZ).
 
 :class:`GridGenerator` controls a run: it locks the PLZ, creates its temporary tables, runs the
 stages of :mod:`pylovo.lv_grid` (:meth:`GridGenerator.generate_grid`), copies the results into the

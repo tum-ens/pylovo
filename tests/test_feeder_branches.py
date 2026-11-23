@@ -4,7 +4,8 @@ import logging
 
 import pytest
 
-from pylovo import feeder_planning, utils
+from pylovo import utils
+from pylovo.lv_grid import feeder_planning
 
 # Transformer 0; a street 0-1-2-3 and a side street 1-4.
 DISTANCE = {0: 0.0, 1: 100.0, 2: 200.0, 3: 300.0, 4: 150.0}

@@ -5,8 +5,9 @@ import logging
 import pandas as pd
 import pytest
 
-from pylovo import feeder_planning, utils
-from pylovo.cable_installer import CableInstaller
+from pylovo import utils
+from pylovo.lv_grid import feeder_planning
+from pylovo.lv_grid.cable_installer import CableInstaller
 
 # (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur): the shipped feeder catalogue.
 CABLES = [

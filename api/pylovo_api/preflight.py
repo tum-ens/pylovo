@@ -241,7 +241,7 @@ _PHRASES = {
     "cable_dimensioning.max_service_design_voltage_drop_percent": lambda v: f"service drop {v} %",
     "connection_point_aggregation.enabled": lambda v: "CP aggregation " + ("on" if v else "off"),
 }
-#: Snapshot entries that record where pylovo's supply-area rules act (``pylovo.supply_areas``): they follow from
+#: Snapshot entries that record where pylovo's supply-area rules act (``pylovo.lv_grid.supply_areas``): they follow from
 #: other keys, which name the change, or, against a version stored before the rules, the rules themselves.
 _DERIVED = {"transformer_placement.brownfield_nearest_only", "transformer_placement.greenfield_contiguous_areas"}
 

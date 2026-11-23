@@ -15,6 +15,14 @@ which use the database access layer and the electrical backends. Configuration i
 Modules
 -------
 
+The two voltage levels have one package each: :mod:`pylovo.lv_grid` generates the LV grids of a postcode,
+:mod:`pylovo.mv_grid` builds the MV grids on a stored LV version. The MV stage reads the LV results from the
+database, and the two packages do not import each other. Both use the modules at the top level of ``pylovo``
+(configuration, load model, station transformers, version snapshot) and the packages ``database``,
+``electrical_backend``, ``analysis``, ``plotting`` and ``cli``. In these shared packages, the files of the MV
+stage carry ``mv`` in their name (``mv_result_mixin.py``, ``mv_validation.py``, ``plotting/mv_grid``,
+``cli/mv.py``).
+
 .. list-table::
    :header-rows: 1
    :widths: 34 66
@@ -32,23 +40,29 @@ Modules
    * - :mod:`pylovo.version_snapshot`
      - Comparison of the stored generation-parameter snapshot of a version with the current
        configuration (:ref:`versions`).
-   * - :mod:`pylovo.grid_generator`
-     - :class:`~pylovo.grid_generator.GridGenerator`: control of a generation run for one postcode
-       (lock, temporary tables, storage of the results, analysis), sequential and parallel runs for
-       many postcodes.
    * - :mod:`pylovo.lv_grid`
-     - The stages of the generation of one postcode, one class each: input preparation, street
-       clustering, supply areas and stations, the electrical network of every grid, the voltage
-       repair and the validation and storage of a grid.
-   * - :mod:`pylovo.postcode_border`
+     - The LV grid generation. Its stages for one postcode are one class each: input preparation,
+       street clustering, supply areas and stations, the electrical network of every grid, the
+       voltage repair and the validation and storage of a grid.
+   * - :mod:`pylovo.lv_grid.generator`
+     - :class:`~pylovo.lv_grid.generator.GridGenerator`: control of an LV generation run for one
+       postcode (lock, temporary tables, storage of the results, analysis), sequential and parallel
+       runs for many postcodes.
+   * - :mod:`pylovo.lv_grid.postcode_border`
      - Routing over the streets of the neighbouring postcodes (``ROUTE_ACROSS_POSTCODE_BORDERS``).
-   * - :mod:`pylovo.feeder_planning`
+   * - :mod:`pylovo.lv_grid.supply_areas`
+     - Supply areas in one piece: an existing station takes the buildings for which it is the nearest
+       station, and a new area must not lie on both sides of the buildings of another grid.
+   * - :mod:`pylovo.lv_grid.feeder_planning`
      - Feeder topology and feeder cable sizing of one grid:
-       :func:`~pylovo.feeder_planning.plan_feeder_branches` and
-       :func:`~pylovo.feeder_planning.size_feeder_tree` (pure functions, no database writes).
-   * - :mod:`pylovo.cable_installer`
-     - :class:`~pylovo.cable_installer.CableInstaller`: creates buses, transformer, loads and lines
+       :func:`~pylovo.lv_grid.feeder_planning.plan_feeder_branches` and
+       :func:`~pylovo.lv_grid.feeder_planning.size_feeder_tree` (pure functions, no database writes).
+   * - :mod:`pylovo.lv_grid.cable_installer`
+     - :class:`~pylovo.lv_grid.cable_installer.CableInstaller`: creates buses, transformer, loads and lines
        of one grid in the electrical backend and selects feeder and service cables.
+   * - :mod:`pylovo.station_transformers`
+     - The MV/LV transformers of the stations, one table for the LV generation, both electrical
+       backends and the MV stage: the units of a station rating and the data of each unit.
    * - :mod:`pylovo.station_voltage`
      - Station voltage of the validation power flow: the LV busbar reference
        (``LV_REFERENCE_VOLTAGE_PU``) and the MV-side voltage that follows from it.
@@ -146,7 +160,7 @@ Control flow of ``pylovo-generate``
 -----------------------------------
 
 #. :mod:`pylovo.cli.generate` resolves the regions (:doc:`../user_guide/region_selection`) and
-   creates a :class:`~pylovo.grid_generator.GridGenerator`, which opens a ``DatabaseClient``
+   creates a :class:`~pylovo.lv_grid.generator.GridGenerator`, which opens a ``DatabaseClient``
    (and an ``InfdbClient`` in InfDB mode) and stores or checks the version snapshot.
 #. For several postcodes, ``generate_grid_for_multiple_plz`` starts worker processes; each creates
    its own ``GridGenerator`` and database connections.
@@ -154,7 +168,7 @@ Control flow of ``pylovo-generate``
    ``generate_grid``, which runs the stages of :mod:`pylovo.lv_grid`: ``InputPreparation``,
    ``StreetClustering``, ``StationPlanner`` and ``NetworkBuilder`` (:doc:`pipeline`).
 #. ``NetworkBuilder`` builds every grid in a fresh electrical backend: the ``CableInstaller``
-   creates buses, transformer and loads, :mod:`pylovo.feeder_planning` plans and sizes the feeder
+   creates buses, transformer and loads, :mod:`pylovo.lv_grid.feeder_planning` plans and sizes the feeder
    tree, the ``CableInstaller`` adds feeder and service lines, and ``GridStorage`` runs the
    power-flow check and writes the grid rows.
 #. ``save_tables`` copies buildings and streets to the result tables, the transaction is committed,

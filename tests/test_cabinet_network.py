@@ -4,10 +4,10 @@ import logging
 
 import pandas as pd
 
-from pylovo import feeder_planning
-from pylovo.cable_installer import CableInstaller
+from pylovo.lv_grid import feeder_planning
+from pylovo.lv_grid.cable_installer import CableInstaller
 from pylovo.utils import design_current_ka
-from pylovo.feeder_planning import FeederBranch
+from pylovo.lv_grid.feeder_planning import FeederBranch
 
 # Transformer 0; main street 0-1-2-3-4-5, side street 2-6-7 (distances in m from the station).
 DISTANCE = {1: 40.0, 2: 90.0, 3: 150.0, 4: 210.0, 5: 260.0, 6: 130.0, 7: 170.0}

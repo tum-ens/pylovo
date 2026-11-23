@@ -10,7 +10,7 @@ import pylovo.database.database_client as dbc
 from pylovo.analysis.parameter_calculation import analyze_grid_parameters_for_multiple_plz
 from pylovo.classification.sampling.sample import copy_sample_set, create_sample_set, get_sample_set
 from pylovo.config_loader import CLASSIFICATION_VERSION, PARALLEL
-from pylovo.grid_generator import GenerationOutcome, GridGenerator
+from pylovo.lv_grid.generator import GenerationOutcome, GridGenerator
 
 
 def prepare_data_for_clustering(sample_from_postcode_result_only: bool = False, parallel: bool | None = None,

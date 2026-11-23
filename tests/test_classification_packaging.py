@@ -16,7 +16,7 @@ CLASSIFICATION_FILES = [*sorted((SRC / "classification").rglob("*.py")), SRC / "
 
 
 def test_generation_and_analysis_do_not_touch_the_sample_set():
-    for name in ("grid_generator.py", "analysis/parameter_calculation.py"):
+    for name in ("lv_grid/generator.py", "analysis/parameter_calculation.py"):
         assert "delete_plz_from_sample_set_table" not in (SRC / name).read_text()
 
 

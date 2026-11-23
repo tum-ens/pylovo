@@ -12,7 +12,7 @@ code relies on:
 - ``"Consumer Nodebus <vertex>"``: a building connection (one per consumer vertex).
 
 Feeder topology and feeder cable sizing are planned beforehand in
-:mod:`pylovo.feeder_planning`; this class only offers the cable catalogue queries
+:mod:`pylovo.lv_grid.feeder_planning`; this class only offers the cable catalogue queries
 (:meth:`CableInstaller.find_minimal_available_cable`,
 :meth:`CableInstaller.get_feeder_cable_options`) and sizes service cables itself.
 """
@@ -644,7 +644,7 @@ class CableInstaller:
         """Install the house-connection cables of a cabinet network (``HOUSE_CONNECTION: cabinet``).
 
         Every consumer gets its own cable from the cabinet (or the station) that serves its
-        connection node (``cabinet_by_node``, see :func:`pylovo.feeder_planning.plan_cabinets`).
+        connection node (``cabinet_by_node``, see :func:`pylovo.lv_grid.feeder_planning.plan_cabinets`).
         The cable follows the street from the cabinet to the connection node, alongside the
         feeder, and then runs to the building; its length is the routed distance between the
         cabinet and the node plus the straight connection to the building. Sizing as in

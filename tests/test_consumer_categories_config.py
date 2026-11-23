@@ -7,9 +7,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylovo import config_loader, grid_generator, utils
+from pylovo import config_loader, utils
+from pylovo.lv_grid import generator as lv_generator
 from pylovo.database.database_client import DatabaseClient
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid.generator import GridGenerator
 
 
 class FakeDb:
@@ -30,8 +31,8 @@ class FakeDb:
 
 @pytest.fixture()
 def generator(monkeypatch, tmp_path):
-    monkeypatch.setattr(grid_generator.dbc, "DatabaseClient", FakeDb)
-    monkeypatch.setattr(grid_generator, "InfdbClient", lambda **kwargs: None)
+    monkeypatch.setattr(lv_generator.dbc, "DatabaseClient", FakeDb)
+    monkeypatch.setattr(lv_generator, "InfdbClient", lambda **kwargs: None)
     return GridGenerator(plz=80803, log_file=str(tmp_path / "log.txt"))
 
 
@@ -65,5 +66,5 @@ def test_the_load_functions_get_the_same_numbers_as_from_the_table(generator):
 
 def test_the_generation_has_no_table_reader_for_the_categories():
     assert not hasattr(DatabaseClient, "get_consumer_categories")
-    source = open(grid_generator.__file__, encoding="utf-8").read()
+    source = open(lv_generator.__file__, encoding="utf-8").read()
     assert "get_consumer_categories" not in source

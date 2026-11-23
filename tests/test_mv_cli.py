@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import pylovo.grid_generator as grid_generator
+from pylovo.lv_grid import generator as lv_generator
 from pylovo.cli import generate
 from pylovo.cli import mv as cli
 from pylovo.mv_grid import stage
@@ -32,7 +32,7 @@ def no_grid_generator(monkeypatch):
     def refuse(*args, **kwargs):
         raise AssertionError("GridGenerator must not be constructed")
 
-    monkeypatch.setattr(grid_generator.GridGenerator, "__init__", refuse)
+    monkeypatch.setattr(lv_generator.GridGenerator, "__init__", refuse)
 
 
 class _SourceClient:
@@ -323,8 +323,8 @@ def test_export_delegates_to_the_stage(monkeypatch, capsys, tmp_path):
 def test_generate_hook_runs_only_with_mv(monkeypatch, capsys, config_params, source_check):
     hook = []
     monkeypatch.setattr(generate, "create_grid_multiple_plz",
-                        lambda plz, parallel=True: {p: grid_generator.GenerationOutcome.GENERATED for p in plz})
-    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: {plz: grid_generator.GenerationOutcome.GENERATED})
+                        lambda plz, parallel=True: {p: lv_generator.GenerationOutcome.GENERATED for p in plz})
+    monkeypatch.setattr(generate, "create_grid_single_plz", lambda plz: {plz: lv_generator.GenerationOutcome.GENERATED})
     monkeypatch.setattr(generate, "run_mv_stage_after_lv", lambda plz, parallel, params: hook.append((plz, parallel)))
     monkeypatch.setattr(generate, "MV_GRID_GENERATION", False)
     generate.main(["--plz", "80803", "80802", "--mv", "--no-parallel"])
@@ -385,7 +385,7 @@ def test_lv_only_runs_do_not_import_the_mv_stage():
     code = (
         "import sys\n"
         "from pylovo.cli import generate\n"
-        "from pylovo.grid_generator import GenerationOutcome\n"
+        "from pylovo.lv_grid.generator import GenerationOutcome\n"
         "generate.create_grid_multiple_plz = lambda plz_list, parallel=True: {p: GenerationOutcome.GENERATED for p in plz_list}\n"
         "generate.MV_GRID_GENERATION = False\n"
         "generate.main(['--plz', '1', '2', '--no-mv'])\n"
@@ -399,7 +399,7 @@ def test_lv_only_runs_do_not_import_the_mv_stage():
 
 def test_mv_cli_never_constructs_a_grid_generator():
     source = Path(cli.__file__).read_text(encoding="utf-8") + Path(stage.__file__).read_text(encoding="utf-8")
-    assert "GridGenerator(" not in source and "grid_generator" not in source
+    assert "GridGenerator(" not in source and "lv_grid.generator" not in source and "import generator" not in source
     assert not re.search(r"config_loader import[^\n]*\bVERSION_ID\b", source) and ".VERSION_ID" not in source
 
 
@@ -456,7 +456,7 @@ def test_missing_source_tables_stop_the_mv_stage_before_any_grid(monkeypatch, ca
     monkeypatch.setattr(generate.dbc, "DatabaseClient", lambda *a, **k: _SourceClient(missing))
     lv = []
     monkeypatch.setattr(generate, "create_grid_single_plz",
-                        lambda plz: lv.append(plz) or {plz: grid_generator.GenerationOutcome.GENERATED})
+                        lambda plz: lv.append(plz) or {plz: lv_generator.GenerationOutcome.GENERATED})
     with pytest.raises(SystemExit) as stopped:
         generate.main(["--plz", "80803", "--mv"])
     assert stopped.value.code == 1 and lv == []                          # no LV grids before the MV stage fails

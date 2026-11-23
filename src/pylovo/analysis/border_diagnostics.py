@@ -27,7 +27,7 @@ import shapely
 from shapely import wkb as shapely_wkb
 from shapely.ops import unary_union
 
-from pylovo import postcode_border
+from pylovo.lv_grid import postcode_border
 from pylovo.config_loader import TARGET_EPSG, VERSION_ID
 
 #: Grids with at most this many buildings count as small (the validation cohort drops them).

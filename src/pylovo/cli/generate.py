@@ -28,7 +28,7 @@ import pylovo.database.database_client as dbc
 from pylovo.cli import parsers
 from pylovo.config_loader import ANALYZE_GRIDS, MV_GRID_GENERATION, N_JOBS, PARALLEL, VERSION_ID
 from pylovo.data_import.region_resolver import resolve_regions
-from pylovo.grid_generator import GenerationOutcome, GridGenerator
+from pylovo.lv_grid.generator import GenerationOutcome, GridGenerator
 from pylovo.infdb.infdb_client import InfdbClient
 
 #: Exit code of a run that finished but left PLZ failed, without grids or without analysis (1 stays "crashed",

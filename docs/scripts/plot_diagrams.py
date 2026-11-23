@@ -125,7 +125,7 @@ def architecture() -> None:
             ("Python API, notebooks", "GridGenerator, DatabaseClient;\nnotebook_tutorials/"),
         ]),
         ("Workflows", [
-            ("GridGenerator", "grid_generator.py:\npipeline per postcode"),
+            ("GridGenerator", "lv_grid/: LV pipeline\nper postcode, one class per stage"),
             ("MV stage", "mv_grid/: rings, lines, HV/MV\ntransformers, coupling"),
             ("Load editing", "load_editing.py: manual load\nedits with exact undo"),
             ("ParameterCalculator", "analysis/: postcode and\nper-grid key figures"),
@@ -135,8 +135,8 @@ def architecture() -> None:
             ("Data import", "data_import/: OSM, DSO,\nmunicipal register, files"),
         ]),
         ("Engines", [
-            ("Feeder planning", "feeder_planning.py: branches,\nsections, cable sizing"),
-            ("CableInstaller", "cable_installer.py: buses,\nloads, feeder, service lines"),
+            ("Feeder planning", "lv_grid/feeder_planning.py:\nbranches, sections, cable sizing"),
+            ("CableInstaller", "lv_grid/cable_installer.py: buses,\nloads, feeder, service lines"),
             ("Electrical backends", "pandapower (default),\nOpenDSS (in progress)"),
             ("Load model", "utils.py: load components,\ncoincidence factor"),
         ]),

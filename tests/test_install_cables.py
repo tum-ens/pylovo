@@ -13,7 +13,7 @@ import pandapower as pp
 import pandas as pd
 import pytest
 
-from pylovo import feeder_planning
+from pylovo.lv_grid import feeder_planning
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, create_backend
 from pylovo.lv_grid import grid_storage, network_builder, voltage_repair
 from pylovo.lv_grid.context import GenerationContext

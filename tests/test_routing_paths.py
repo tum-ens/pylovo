@@ -1,4 +1,4 @@
-from pylovo.cable_installer import CableInstaller
+from pylovo.lv_grid.cable_installer import CableInstaller
 from pylovo.database.grid_mixin import GridMixin
 
 

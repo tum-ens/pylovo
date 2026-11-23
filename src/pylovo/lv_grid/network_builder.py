@@ -1,8 +1,8 @@
 """Stage 4 of the LV generation: the electrical network of every supply area.
 
 :class:`NetworkBuilder` builds, validates and stores one network per grid (``kcid``, ``bcid``) of the postcode:
-buses, the station transformer and the loads, the feeders (:mod:`pylovo.feeder_planning`) and the service cables
-(:class:`~pylovo.cable_installer.CableInstaller`). A grid outside the voltage band goes to the
+buses, the station transformer and the loads, the feeders (:mod:`pylovo.lv_grid.feeder_planning`) and the service cables
+(:class:`~pylovo.lv_grid.cable_installer.CableInstaller`). A grid outside the voltage band goes to the
 :class:`~pylovo.lv_grid.voltage_repair.VoltageRepair`, and the grids it changes are built again.
 """
 from __future__ import annotations
@@ -13,8 +13,9 @@ from typing import Any
 
 import pandas as pd  # type: ignore
 
-from pylovo import feeder_planning, utils
-from pylovo.cable_installer import CableInstaller
+from pylovo import utils
+from pylovo.lv_grid import feeder_planning
+from pylovo.lv_grid.cable_installer import CableInstaller
 from pylovo.config_loader import (
     CABINET_SPACING_M,
     CONSUMER_CONNECTION_CABLES,
@@ -132,7 +133,7 @@ class NetworkBuilder(Stage):
         1. load its buildings and routed distances (:meth:`load`),
         2. build its network on the configured electrical backend (:meth:`build`): buses, the station
            transformer and the snapshot loads, the planned and sized feeders
-           (:mod:`pylovo.feeder_planning`) and the service cables,
+           (:mod:`pylovo.lv_grid.feeder_planning`) and the service cables,
         3. run the validation power flow (``GridStorage.validate_net``); a grid outside the voltage band is
            planned again by ``VoltageRepair.repair`` (at most ``MAX_VOLTAGE_REPAIRS`` times
            in a row), and the grids it changed or added are built in turn,

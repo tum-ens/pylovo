@@ -483,7 +483,7 @@ def voltage_drop_percent(current_ka: float, length_km: float, impedance_ohm_per_
 
     ``sqrt(3) * I * L * Z / VN * 100`` with ``I`` in kA, ``L`` in km, ``Z`` from :func:`voltage_drop_impedance` and
     ``VN`` in kV; ``vn_v`` (in V) ``None`` is ``VN`` of the configuration. Feeder planning factors the same expression
-    per edge (:mod:`pylovo.feeder_planning`).
+    per edge (:mod:`pylovo.lv_grid.feeder_planning`).
     """
     vn_v = VN if vn_v is None else vn_v
     return float(np.sqrt(3) * current_ka * length_km * impedance_ohm_per_km / (vn_v * 1e-3) * 100)

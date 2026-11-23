@@ -122,7 +122,7 @@ def test_preflight_matches_the_stored_snapshot(client, region):
     candidate = client.post("/api/flow/config-preflight",
                             json={"changes": {"USE_OPEN_TRANSFORMER_POSITIONS": True}}).json()
     assert candidate["comparison"]["matches"] is False
-    # with existing stations the supply-area rules act, so the snapshot records them too (pylovo.supply_areas)
+    # with existing stations the supply-area rules act, so the snapshot records them too (pylovo.lv_grid.supply_areas)
     assert [d["key"] for d in candidate["comparison"]["differences"]] == [
         "transformer_placement.brownfield_nearest_only", "transformer_placement.greenfield_contiguous_areas",
         "transformer_placement.use_open_transformer_positions"]

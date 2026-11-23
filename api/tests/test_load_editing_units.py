@@ -2,7 +2,7 @@
 
 The generation tests compare the loads of :mod:`pylovo.load_editing` with the ones generation creates
 (``CableInstaller.create_consumer_bus_and_load`` on a real pandapower backend); both use
-:func:`pylovo.cable_installer.consumer_load_specs`.
+:func:`pylovo.lv_grid.cable_installer.consumer_load_specs`.
 """
 from __future__ import annotations
 
@@ -188,7 +188,7 @@ def _grid_buildings() -> pd.DataFrame:
 def _installer_net(buildings: pd.DataFrame, p: LoadParameters):
     """The loads generation creates: CableInstaller.create_consumer_bus_and_load on a pandapower backend."""
     from pylovo import utils
-    from pylovo.cable_installer import CableInstaller
+    from pylovo.lv_grid.cable_installer import CableInstaller
     from pylovo.electrical_backend import create_backend
 
     backend = create_backend("pandapower", logger=logging.getLogger("test"))

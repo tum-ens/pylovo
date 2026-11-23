@@ -570,7 +570,7 @@ class GridMixin(BaseMixin):
             split_nodes: Bus IDs where a feeder splits (``split_type = 'feeder_split_topology'``).
             cabinet_kinds: The cabinets of a cabinet network (``HOUSE_CONNECTION: cabinet``) with
                 their kind as ``split_type`` (``feeder_split_topology``, ``end_cabinet`` or
-                ``added_cabinet``); see :func:`pylovo.feeder_planning.plan_cabinets`.
+                ``added_cabinet``); see :func:`pylovo.lv_grid.feeder_planning.plan_cabinets`.
         """
         selected_grid_query = """
             SELECT grid_result_id, ont_vertice_id

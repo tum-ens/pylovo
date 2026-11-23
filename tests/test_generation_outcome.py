@@ -7,8 +7,8 @@ import re
 import pandas as pd
 import pytest
 
-from pylovo import grid_generator
-from pylovo.grid_generator import GenerationOutcome, GridGenerator, ResultExistsError
+from pylovo.lv_grid import generator as lv_generator
+from pylovo.lv_grid.generator import GenerationOutcome, GridGenerator, ResultExistsError
 
 
 class FakeDb:
@@ -69,7 +69,7 @@ def test_a_failing_analysis_keeps_the_committed_grids_and_reports_analysis_faile
             db.calls.append("analysis")
             raise RuntimeError("key figures broke")
 
-    monkeypatch.setattr(grid_generator, "ParameterCalculator", FailingAnalysis)
+    monkeypatch.setattr(lv_generator, "ParameterCalculator", FailingAnalysis)
     with caplog.at_level(logging.INFO, logger="outcome-test"):
         outcome = generator(db, lambda: None).generate_grid_for_single_plz(80331, analyze_grids=True)
 
@@ -92,7 +92,7 @@ def test_a_successful_analysis_stays_generated(monkeypatch):
         def analyze_parameters_for_plz(self, plz):
             return "analysed"
 
-    monkeypatch.setattr(grid_generator, "ParameterCalculator", Analysis)
+    monkeypatch.setattr(lv_generator, "ParameterCalculator", Analysis)
     assert generator(AnalysisDb(), lambda: None).generate_grid_for_single_plz(
         80331, analyze_grids=True) == GenerationOutcome.GENERATED
 
@@ -162,14 +162,14 @@ def test_the_worker_returns_the_outcome(monkeypatch, tmp_path):
             return GenerationOutcome.EMPTY
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(grid_generator, "GridGenerator", Stub)
+    monkeypatch.setattr(lv_generator, "GridGenerator", Stub)
     assert GridGenerator._worker(80331, False) == GenerationOutcome.EMPTY
 
 
 def parallel_generator(monkeypatch, run_worker):
     # Threads instead of processes: the bookkeeping of the parent is the same.
-    monkeypatch.setattr(grid_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
-    monkeypatch.setattr(grid_generator, "N_JOBS", 2)
+    monkeypatch.setattr(lv_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
+    monkeypatch.setattr(lv_generator, "N_JOBS", 2)
     monkeypatch.setattr(GridGenerator, "_worker", staticmethod(lambda plz, analyze: run_worker(plz)))
     return generator(FakeDb(), lambda: None)
 
@@ -250,9 +250,9 @@ def test_an_interrupt_cancels_the_pending_plz_and_does_not_wait_for_a_grace_peri
         waits.append(timeout)
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(grid_generator, "ProcessPoolExecutor", FakeExecutor)
-    monkeypatch.setattr(grid_generator, "as_completed", interrupted)
-    monkeypatch.setattr(grid_generator, "N_JOBS", 2)
+    monkeypatch.setattr(lv_generator, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(lv_generator, "as_completed", interrupted)
+    monkeypatch.setattr(lv_generator, "N_JOBS", 2)
     gg = generator(FakeDb(), lambda: None)
     with pytest.raises(KeyboardInterrupt, match="Grid generation interrupted by user"):
         gg.generate_grid_for_multiple_plz(pd.DataFrame({"plz": [80331, 80333]}), parallel=True)

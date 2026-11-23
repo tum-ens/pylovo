@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 import pylovo.database.grid_mixin as grid_mixin
-from pylovo.cable_installer import CableInstaller
+from pylovo.lv_grid.cable_installer import CableInstaller
 
 
 def test_cable_installer_uses_bulk_coordinates_without_scalar_fallback():

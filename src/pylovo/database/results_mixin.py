@@ -2,7 +2,7 @@
 
 from psycopg2 import sql
 
-from pylovo import postcode_border
+from pylovo.lv_grid import postcode_border
 from pylovo.config_loader import VERSION_ID
 from pylovo.database.base_mixin import BaseMixin, plz_table_name
 from pylovo.database.mv_result_mixin import refuse_busy_variants

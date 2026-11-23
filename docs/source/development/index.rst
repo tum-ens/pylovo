@@ -34,17 +34,15 @@ Project layout
    |   |-- infdb/                InfdbClient
    |   |-- data_import/          transformer, DSO, municipal register and building imports
    |   |-- electrical_backend/   backend interface, pandapower and OpenDSS
-   |   |-- mv_grid/              MV stage (pylovo-mv)
+   |   |-- lv_grid/              LV grid generation: GridGenerator (run control), one class per stage,
+   |   |                         supply-area rules, feeder planning, CableInstaller
+   |   |-- mv_grid/              MV stage on a stored LV version (pylovo-mv)
    |   |-- classification/       grid classification (pylovo-classify)
    |   |-- analysis/             key figures, coverage and border diagnostics, MV validation, power-flow helpers
    |   |-- plotting/             plots and GIS export
    |   |-- ways_preprocessing_functions/   SQL functions installed by the setup
-   |   |-- grid_generator.py     GridGenerator: control of a generation run
-   |   |-- lv_grid/              the stages of the LV generation (one class per stage)
-   |   |-- cable_installer.py    CableInstaller
-   |   |-- feeder_planning.py    feeder topology and cable sizing
    |   |-- load_editing.py       manual load edits of stored grids (used by pylovo-api)
-   |   |-- postcode_border.py, station_voltage.py, version_snapshot.py
+   |   |-- load_classes.py, station_transformers.py, station_voltage.py, version_snapshot.py
    |   |-- config_loader.py      configuration constants
    |   `-- utils.py              load model, logging
    |-- pyproject.toml            package metadata, dependencies, extras, console scripts, ruff and pytest settings

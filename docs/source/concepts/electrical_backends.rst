@@ -2,7 +2,7 @@ Electrical backends
 ===================
 
 pylovo separates the grid construction from the electrical simulation software. The
-:class:`~pylovo.cable_installer.CableInstaller` describes every element with a component
+:class:`~pylovo.lv_grid.cable_installer.CableInstaller` describes every element with a component
 specification (:class:`~pylovo.electrical_backend.core.specs.BusSpec`,
 :class:`~pylovo.electrical_backend.core.specs.TransformerSpec`,
 :class:`~pylovo.electrical_backend.core.specs.LineSpec`,

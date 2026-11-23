@@ -56,7 +56,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from pylovo import utils
-from pylovo.cable_installer import CableInstaller
+from pylovo.lv_grid.cable_installer import CableInstaller
 from pylovo.config_loader import (
     CABLE_PLANNING_UTILIZATION,
     FEEDER_SPLIT_MAX_CURRENT_KA,

@@ -28,9 +28,9 @@ ADDED_LATER: dict[tuple[str, ...], Any] = {
     # These config keys existed before they were recorded: the value used is not known.
     ("transformer_placement", "merge_greenfield_clusters"): UNKNOWN,
     ("transformer_placement", "greenfield_cluster_merge_transformer_kva"): UNKNOWN,
-    # The supply-area rules, recorded where they act (pylovo.supply_areas.snapshot). Before the nearest-station rule
-    # a building could join any existing station with capacity in reach, and before the greenfield rule a greenfield
-    # area could be in several pieces among the buildings of other grids.
+    # The supply-area rules, recorded where they act (pylovo.lv_grid.supply_areas.snapshot). Before the
+    # nearest-station rule a building could join any existing station with capacity in reach, and before the
+    # greenfield rule a greenfield area could be in several pieces among the buildings of other grids.
     ("transformer_placement", "brownfield_nearest_only"): False,
     ("transformer_placement", "greenfield_contiguous_areas"): False,
     # Before the voltage repair existed, a grid outside the voltage band was stored as it was.

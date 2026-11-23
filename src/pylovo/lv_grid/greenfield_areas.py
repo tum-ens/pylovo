@@ -11,7 +11,8 @@ import pandas as pd  # type: ignore
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 
-from pylovo import supply_areas, utils
+from pylovo import utils
+from pylovo.lv_grid import supply_areas
 from pylovo.config_loader import (
     GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
     GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA,
@@ -32,7 +33,7 @@ class GreenfieldAreas(Stage):
         into two clusters at a time; a cluster that exceeds the largest allowed
         transformer (after ``TRANSFORMER_PLANNING_UTILIZATION``), has no station
         position within the greenfield distance limit or lies in several pieces among the
-        buildings that other grids supply already (:mod:`pylovo.supply_areas`) is split again,
+        buildings that other grids supply already (:mod:`pylovo.lv_grid.supply_areas`) is split again,
         until all clusters are feasible. Optionally neighbouring clusters are merged again
         (``MERGE_GREENFIELD_CLUSTERS``, limited to small clusters with
         ``GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS``). The bcids are numbered from ``first_bcid`` by

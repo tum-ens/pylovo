@@ -18,7 +18,7 @@ Cables, the transformer and the design diagnostics of ``grid_result`` stay as ge
 re-validates the grid, it does not re-plan it. Regenerating the PLZ as a new version does that.
 
 The loads and the validation power flow use the functions of generation, with the parameters of the
-grid's version passed in: :func:`pylovo.cable_installer.consumer_load_specs` and
+grid's version passed in: :func:`pylovo.lv_grid.cable_installer.consumer_load_specs` and
 :func:`pylovo.station_voltage.validate_operating_point`. The component peaks
 (:func:`component_peaks`) mirror SQL of the preprocessing in Python.
 
@@ -50,7 +50,7 @@ from typing import Any
 import pandas as pd
 
 from pylovo import utils
-from pylovo.cable_installer import consumer_load_specs
+from pylovo.lv_grid.cable_installer import consumer_load_specs
 from pylovo.database.load_edit_mixin import MvCustomerInUse
 from pylovo.electrical_backend.core.specs import LoadSpec
 from pylovo.station_voltage import Validation, validate_operating_point

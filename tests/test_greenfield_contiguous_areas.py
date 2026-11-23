@@ -1,4 +1,5 @@
-"""Supply areas in one piece (``pylovo.supply_areas``): greenfield areas among the buildings of other grids (no database)."""
+"""Supply areas in one piece (``pylovo.lv_grid.supply_areas``): greenfield areas among the buildings of other grids
+(no database)."""
 
 import logging
 
@@ -6,13 +7,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylovo import supply_areas, utils
+from pylovo import utils
+from pylovo.lv_grid import supply_areas
 from pylovo.database import clustering_mixin
 from pylovo.database.clustering_mixin import ClusteringMixin
 from pylovo.lv_grid import greenfield_areas, station_planning
 from pylovo.lv_grid.context import GenerationContext
 from pylovo.lv_grid.station_planning import StationPlanner
-from pylovo.supply_areas import AreaContiguity, is_contiguous
+from pylovo.lv_grid.supply_areas import AreaContiguity, is_contiguous
 from pylovo.version_snapshot import compare_snapshots
 
 LOGGER = logging.getLogger("greenfield-contiguity-test")

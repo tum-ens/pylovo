@@ -695,7 +695,8 @@ USE_DSO_TRANSFORMER_POSITIONS = CONFIG_GENERATION["USE_DSO_TRANSFORMER_POSITIONS
 USE_OPEN_TRANSFORMER_POSITIONS = CONFIG_GENERATION["USE_OPEN_TRANSFORMER_POSITIONS"]
 # Manual (UI) positions alone, without the OSM and LoD2 candidates (see database.transformer_sources)
 USE_MANUAL_TRANSFORMER_POSITIONS = CONFIG_GENERATION["USE_MANUAL_TRANSFORMER_POSITIONS"]
-# Postcode borders (see pylovo.postcode_border): a PLZ also routes over the InfDB streets of its neighboring PLZ.
+# Postcode borders (see pylovo.lv_grid.postcode_border): a PLZ also routes over the InfDB streets of its
+# neighboring PLZ.
 ROUTE_ACROSS_POSTCODE_BORDERS = CONFIG_GENERATION["ROUTE_ACROSS_POSTCODE_BORDERS"]
 if not isinstance(ROUTE_ACROSS_POSTCODE_BORDERS, bool):
     raise ValueError(f"ROUTE_ACROSS_POSTCODE_BORDERS must be true or false, got {ROUTE_ACROSS_POSTCODE_BORDERS!r}")

@@ -22,7 +22,7 @@ except PackageNotFoundError:
 _LAZY = {
     # Core components
     "DatabaseClient": "pylovo.database.database_client",
-    "GridGenerator": "pylovo.grid_generator",
+    "GridGenerator": "pylovo.lv_grid.generator",
     "DatabaseConstructor": "pylovo.database.database_constructor",
     # Electrical backend utilities
     "IElectricalBackend": "pylovo.electrical_backend",
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
         create_backend,
         normalize_cable_name,
     )
-    from pylovo.grid_generator import GridGenerator
+    from pylovo.lv_grid.generator import GridGenerator
 
 
 def __getattr__(name: str):

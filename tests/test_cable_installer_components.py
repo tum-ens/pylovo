@@ -6,10 +6,10 @@ import logging
 import pandas as pd
 import pytest
 
-from pylovo import feeder_planning
-from pylovo.cable_installer import CableInstaller
+from pylovo.lv_grid import feeder_planning
+from pylovo.lv_grid.cable_installer import CableInstaller
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec
-from pylovo.feeder_planning import FeederBranch
+from pylovo.lv_grid.feeder_planning import FeederBranch
 from pylovo.lv_grid.context import GenerationContext
 from pylovo.lv_grid.network_builder import GridInput, NetworkBuilder
 

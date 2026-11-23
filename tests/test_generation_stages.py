@@ -1,10 +1,13 @@
 """GridGenerator.generate_grid runs the stages of pylovo.lv_grid in order, on the context of the postcode (no database)."""
 
 import logging
+import re
+from pathlib import Path
 
 import pytest
 
-from pylovo.grid_generator import GridGenerator, ResultExistsError
+import pylovo
+from pylovo.lv_grid.generator import GridGenerator, ResultExistsError
 from pylovo.lv_grid.network_builder import NetworkBuilder
 from pylovo.lv_grid.preparation import InputPreparation
 from pylovo.lv_grid.station_planning import StationPlanner
@@ -62,3 +65,13 @@ def test_a_stage_has_the_objects_of_its_context():
     builder = NetworkBuilder(context)
     assert builder.repair.context is context and builder.storage.context is context
     assert builder.repair.areas is builder.repair.stations.areas
+
+
+@pytest.mark.parametrize("package, other", [("lv_grid", "mv_grid"), ("mv_grid", "lv_grid")])
+def test_the_lv_and_the_mv_package_do_not_import_each_other(package, other):
+    """MV works on the stored LV results; what both levels need lies outside the two packages."""
+    imports = re.compile(rf"^\s*(?:from\s+pylovo\.{other}\b|import\s+pylovo\.{other}\b"
+                         rf"|from\s+pylovo\s+import\s[^\n]*\b{other}\b)", re.M)
+    files = sorted((Path(pylovo.__file__).parent / package).rglob("*.py"))
+    assert files
+    assert [path.name for path in files if imports.search(path.read_text(encoding="utf-8"))] == []

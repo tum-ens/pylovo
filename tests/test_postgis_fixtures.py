@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from pylovo import postcode_border
+from pylovo.lv_grid import postcode_border
 
 DSN = os.getenv("PYLOVO_FIXTURE_DB")
 pytestmark = pytest.mark.skipif(not DSN, reason="set PYLOVO_FIXTURE_DB to a disposable PostGIS/pgRouting database")

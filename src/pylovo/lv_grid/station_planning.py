@@ -8,7 +8,8 @@ them first (brownfield, negative ``bcid``); the remaining buildings are split in
 import numpy as np
 import pandas as pd  # type: ignore
 
-from pylovo import supply_areas, utils
+from pylovo import utils
+from pylovo.lv_grid import supply_areas
 from pylovo.config_loader import (
     GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS,
     GREENFIELD_TRAFO_POSITION_TOLERANCE,
@@ -203,7 +204,7 @@ class StationPlanner(Stage):
         the next one. An imported rating is kept; a station without one gets the smallest
         catalogue rating above its new load (after ``TRANSFORMER_PLANNING_UTILIZATION``), or
         the largest. The station's area and the cluster must form one piece among the buildings of
-        the other grids (:func:`pylovo.supply_areas.is_contiguous`), otherwise the next station is tried.
+        the other grids (:func:`pylovo.lv_grid.supply_areas.is_contiguous`), otherwise the next station is tried.
 
         Returns:
             The number of clusters that joined a station.

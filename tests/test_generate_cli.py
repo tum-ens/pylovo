@@ -2,7 +2,7 @@
 import pytest
 
 from pylovo.cli import generate, parsers
-from pylovo.grid_generator import GenerationOutcome as Outcome
+from pylovo.lv_grid.generator import GenerationOutcome as Outcome
 
 GENERATED, EXISTS, EMPTY, FAILED = Outcome.GENERATED, Outcome.EXISTS, Outcome.EMPTY, Outcome.FAILED
 ANALYSIS_FAILED = Outcome.ANALYSIS_FAILED

@@ -1,8 +1,8 @@
 """The MV/LV transformers of pylovo's stations: the units of a station rating and the data of each unit.
 
 One table for every part of pylovo that builds or evaluates a station transformer: LV generation
-(:meth:`pylovo.cable_installer.CableInstaller.create_transformer`), both electrical backends, the voltage budget of
-the MV stage (:func:`pylovo.mv_grid.electrical.station_transformer`) and the MV coupling
+(:meth:`pylovo.lv_grid.cable_installer.CableInstaller.create_transformer`), both electrical backends, the voltage
+budget of the MV stage (:func:`pylovo.mv_grid.electrical.station_transformer`) and the MV coupling
 (:func:`pylovo.mv_grid.coupling.upsize_station_transformer`).
 
 **Units of a station** (:func:`station_units`). A rating that has its own unit type (:data:`UNIT_RATINGS_KVA`,

@@ -9,7 +9,8 @@ import pandas as pd
 from psycopg2 import sql
 from psycopg2.extras import execute_batch
 
-from pylovo import load_classes, postcode_border, supply_areas
+from pylovo import load_classes
+from pylovo.lv_grid import postcode_border, supply_areas
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CABINET_SPACING_M,

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from pylovo import postcode_border
+from pylovo.lv_grid import postcode_border
 from pylovo.analysis.border_diagnostics import BORDER_TOLERANCE_M, border_kinds, summarize
 from pylovo.version_snapshot import compare_snapshots
 

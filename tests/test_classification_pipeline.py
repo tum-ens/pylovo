@@ -7,7 +7,7 @@ import pytest
 
 import pylovo.classification.clustering.prepare_data_for_clustering as pdc
 from pylovo.analysis.parameter_calculation import ParameterCalculator
-from pylovo.grid_generator import GenerationOutcome, GridGenerator
+from pylovo.lv_grid.generator import GenerationOutcome, GridGenerator
 
 
 class RecordingDb:

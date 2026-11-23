@@ -7,8 +7,9 @@ import pandas as pd
 
 import pytest
 
-from pylovo import cable_installer, utils
-from pylovo.cable_installer import CableInstaller
+from pylovo import utils
+from pylovo.lv_grid import cable_installer
+from pylovo.lv_grid.cable_installer import CableInstaller
 from pylovo.config_loader import MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT
 
 # (name, r_ohm_per_km, x_ohm_per_km, max_i_ka, cost_eur); two cables share cost and cross-section.

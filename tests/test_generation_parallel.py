@@ -6,8 +6,8 @@ import logging
 import pandas as pd
 import pytest
 
-from pylovo import grid_generator
-from pylovo.grid_generator import GenerationOutcome, GridGenerator
+from pylovo.lv_grid import generator as lv_generator
+from pylovo.lv_grid.generator import GenerationOutcome, GridGenerator
 
 LOGGER = logging.getLogger("generation-parallel-test")
 
@@ -27,8 +27,8 @@ def generator():
 
 
 def run(monkeypatch, outcomes, parallel, jobs=2):
-    monkeypatch.setattr(grid_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
-    monkeypatch.setattr(grid_generator, "N_JOBS", jobs)
+    monkeypatch.setattr(lv_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
+    monkeypatch.setattr(lv_generator, "N_JOBS", jobs)
     monkeypatch.setattr(GridGenerator, "_worker", staticmethod(lambda plz, analyze: outcomes[plz]))
     return generator().generate_grid_for_multiple_plz(pd.DataFrame({"plz": list(outcomes)}), parallel=parallel)
 
@@ -44,8 +44,8 @@ def test_a_worker_that_raises_counts_as_a_failed_plz_and_the_others_still_run(mo
             raise RuntimeError("worker died")
         return GenerationOutcome.GENERATED
 
-    monkeypatch.setattr(grid_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
-    monkeypatch.setattr(grid_generator, "N_JOBS", 2)
+    monkeypatch.setattr(lv_generator, "ProcessPoolExecutor", concurrent.futures.ThreadPoolExecutor)
+    monkeypatch.setattr(lv_generator, "N_JOBS", 2)
     monkeypatch.setattr(GridGenerator, "_worker", staticmethod(worker))
     with caplog.at_level(logging.INFO, logger=LOGGER.name):
         result = generator().generate_grid_for_multiple_plz(pd.DataFrame({"plz": [80331, 80333]}), parallel=True)
@@ -60,7 +60,7 @@ def test_without_parallelism_the_plz_are_generated_one_after_the_other_and_the_v
     calls, refreshed = [], []
     gen = generator()
     gen.dbc.refresh_materialized_views = lambda: refreshed.append(True)
-    monkeypatch.setattr(grid_generator, "N_JOBS", jobs)
+    monkeypatch.setattr(lv_generator, "N_JOBS", jobs)
     monkeypatch.setattr(GridGenerator, "generate_grid_for_single_plz",
                         lambda self, plz, analyze_grids=False, refresh_mv=True: calls.append((plz, refresh_mv)) or
                         GenerationOutcome.GENERATED)
