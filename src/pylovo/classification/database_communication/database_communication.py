@@ -3,6 +3,7 @@ import json
 
 import geopandas as gpd
 import pandas as pd
+import sklearn
 from geoalchemy2 import Geometry, WKTElement
 from sqlalchemy import text
 import pylovo.database.database_client as dbc
@@ -26,7 +27,7 @@ from pylovo.config_loader import (
     VERSION_ID,
 )
 from pylovo.analysis.grid_analysis import KEY_FIGURES_VERSION
-from pylovo.classification.clustering.clustering_algorithms import gmm_tied_clustering, kmeans_clustering
+from pylovo.classification.clustering.clustering_algorithms import gmm_tied_clustering, kmeans_clustering, scaling_record
 
 # Lower bounds of the additional filtering: clustering parameter -> threshold of config_clustering.yaml. A grid below
 # one of them is a small "filling" grid, see classification/utils/get_average_values_clustering_parameters.py.
@@ -392,7 +393,9 @@ class DatabaseCommunication:
         of its cluster. The KMedoids columns stay empty. The rows of
         the classification are replaced in one transaction, so the step can be repeated
         and a failing write keeps the previous result. The same transaction stores the six
-        values used and the version of the key figures in ``classification_version``. ``None`` uses the stored
+        values used, the version of the key figures and the fitted model (``model``: transform, scaler, k-means
+        centres, GMM parameters, label maps, scikit-learn version; see ``assign_clusters``) in
+        ``classification_version``. ``None`` uses the stored
         value of the classification (:meth:`get_classification_choices`, ``config_clustering.yaml`` if none is
         stored).
 
@@ -422,6 +425,10 @@ class DatabaseCommunication:
         df_parameters_of_grids = self.get_clustering_parameters_for_classification_version(additional_filtering,
                                                                                             exclude_infeasible)
         key_figures_version = df_parameters_of_grids.attrs.get("key_figures_version", KEY_FIGURES_VERSION)
+        model = {"format": 1, "scikit_learn": sklearn.__version__, "version_id": self.version_id,
+                 "key_figures_version": int(key_figures_version), "grids": int(len(df_parameters_of_grids)),
+                 "additional_filtering": bool(additional_filtering), "exclude_infeasible": bool(exclude_infeasible),
+                 **scaling_record(df_parameters_of_grids, list_of_clustering_parameters, transform)}
 
         # load transformer positions from database, preserve geo-datatype of geom column
         query = """
@@ -458,6 +465,8 @@ class DatabaseCommunication:
             df_parameters_of_grids.at[i, 'gmm_representative_grid'] = True
         df_parameters_of_grids['gmm_clusters'] = df_parameters_of_grids[
             'gmm_clusters'].astype('int')
+        model["kmeans"] = representative_networks_kmeans.attrs["model"]
+        model["gmm_tied"] = representative_networks_gmm.attrs["model"]
 
         # reduce columns and convert datatypes
         df_parameters_of_grids = df_parameters_of_grids[['version_id', 'plz', 'kcid', 'bcid',
@@ -497,13 +506,14 @@ class DatabaseCommunication:
             connection.execute(
                 text("UPDATE pylovo.classification_version SET "
                      + ", ".join(f"{name} = :{name}" for name in (*CLASSIFICATION_CHOICES, "key_figures_version"))
-                     + " WHERE classification_id = :c"),
+                     + ", model = CAST(:model AS jsonb) WHERE classification_id = :c"),
                 {"c": self.classification_id,
                  "list_of_clustering_parameters": [str(name) for name in list_of_clustering_parameters],
                  "n_clusters_kmeans": int(n_clusters_kmeans), "n_clusters_gmm": int(n_clusters_gmm),
                  "additional_filtering": bool(additional_filtering), "transform": str(transform),
                  "exclude_infeasible": bool(exclude_infeasible),
-                 "key_figures_version": int(key_figures_version)})
+                 "key_figures_version": int(key_figures_version),
+                 "model": json.dumps(model, allow_nan=False)})
         self.dbc.refresh_materialized_views()
         print(self.dbc.cur.statusmessage)
         self.dbc.conn.commit()

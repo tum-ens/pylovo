@@ -60,6 +60,8 @@ CREATE_QUERIES = {
         selection_report jsonb,
         -- the grid version of the sample and the clusters (0021); NULL for a classification of several versions
         version_id varchar(10),
+        -- the fitted clustering model of step 7 (0022): transform, scaler, centres, GMM, label maps
+        model jsonb,
         CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
     )
     """,

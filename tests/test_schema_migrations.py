@@ -157,7 +157,7 @@ def test_migration_0014_appends_the_classification_choices_of_a_fresh_setup():
     sql = " ".join(conn.log)
     added = re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) ([\w\[\]]+)", sql)
     fresh = re.findall(r"^\s*(\w+) ([\w\[\]]+),$", CREATE_QUERIES["classification_version"], re.M)
-    assert added == fresh[-8:-4] == [("list_of_clustering_parameters", "text[]"), ("n_clusters_kmeans", "integer"),
+    assert added == fresh[-9:-5] == [("list_of_clustering_parameters", "text[]"), ("n_clusters_kmeans", "integer"),
                                    ("n_clusters_gmm", "integer"), ("additional_filtering", "boolean")]
     assert sql.startswith("ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS")
     assert len(conn.log) == 1                                # one statement: it commits with its ledger row
@@ -215,7 +215,7 @@ def test_migration_0017_stamps_the_key_figures_and_the_classifications_clustered
                                       ("key_figures_version", "smallint NOT NULL")]
     added = re.findall(r"ADD COLUMN IF NOT EXISTS (\w+) (\w+)", sql.split("ALTER TABLE pylovo.classification_version")[1])
     fresh = re.findall(r"^\s*(\w+) ([\w\[\]]+),$", CREATE_QUERIES["classification_version"], re.M)
-    assert added == fresh[-4:] == [("key_figures_version", "smallint"), ("transform", "text"),
+    assert added == fresh[-5:-1] == [("key_figures_version", "smallint"), ("transform", "text"),
                                    ("exclude_infeasible", "boolean"), ("selection_report", "jsonb")]
     assert ("SET key_figures_version = 1, transform = 'none', exclude_infeasible = false "
             "WHERE list_of_clustering_parameters IS NOT NULL AND key_figures_version IS NULL;") in sql
@@ -305,3 +305,15 @@ def test_migration_0021_adds_the_grid_version_of_a_classification_with_a_backfil
     assert not re.search(r"\b(DROP|DELETE|TRUNCATE)\b", sql) and sql.count("UPDATE ") == 1
     assert "UPDATE pylovo.classification_version cv" in sql
     assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row
+
+
+def test_migration_0022_adds_the_fitted_model_of_a_classification():
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, classification_model
+
+    assert ("0022_classification_model", classification_model) in POST_SCHEMA_MIGRATIONS
+    assert MIGRATION_NAMES[-1] == "0022_classification_model"
+    conn = Connection()
+    classification_model(Cursor(conn))
+    assert conn.log == ["ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS model jsonb;"]
+    fresh = re.findall(r"^\s*(\w+) ([\w\[\]()]+),$", CREATE_QUERIES["classification_version"], re.M)
+    assert fresh[-2:] == [("version_id", "varchar(10)"), ("model", "jsonb")], "an older schema appends them in this order"

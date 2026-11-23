@@ -690,6 +690,17 @@ def classification_grid_version(cur: cursor) -> None:
     """)
 
 
+def classification_model(cur: cursor) -> None:
+    """Add ``classification_version.model``, the fitted clustering model of step 7 as jsonb.
+
+    It holds what places a grid in the clusters of the classification: the parameters, the transform with its
+    exponents at full precision, the standardisation, the k-means centres, the parameters of the tied GMM, the label
+    maps and the scikit-learn version. Classifications clustered before keep NULL (their model was not kept). Adds a
+    column, nothing else. A no-op on a fresh schema.
+    """
+    cur.execute("ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS model jsonb;")
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -715,6 +726,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0019_file_input_removed", file_input_removed),
     ("0020_unused_columns", unused_columns),
     ("0021_classification_grid_version", classification_grid_version),
+    ("0022_classification_model", classification_model),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

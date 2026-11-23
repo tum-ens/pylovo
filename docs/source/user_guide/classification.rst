@@ -419,7 +419,14 @@ of the classification are deleted and inserted in one transaction, so the step c
 numbers, and a failing write keeps the previous result. The same transaction stores the parameters, the numbers of
 clusters, the filter choices, the transform and the version of the key figures of the run in
 ``classification_version`` (columns ``list_of_clustering_parameters``, ``n_clusters_kmeans``, ``n_clusters_gmm``,
-``additional_filtering``, ``exclude_infeasible``, ``transform`` and ``key_figures_version``):
+``additional_filtering``, ``exclude_infeasible``, ``transform`` and ``key_figures_version``), and the fitted model in
+``model`` (jsonb, migration ``0022_classification_model``): the parameters, the transform with its exponents at full
+precision, the mean and standard deviation of the standardisation, the k-means centres, the weights, means and tied
+covariance of the GMM, the map from the labels of the algorithms to the cluster numbers, the settings (seeds,
+initialisations) and the scikit-learn version. ``assign_clusters(df, model, algorithm)`` in
+``pylovo.classification.clustering.clustering_algorithms`` places grids with these values, so a grid outside the
+clustered set (left out by a filter, or of another region) gets a cluster of the classification, and the clustered
+grids get their stored cluster again. Classifications clustered before keep an empty ``model``.
 
 .. list-table::
    :header-rows: 1

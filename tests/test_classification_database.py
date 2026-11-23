@@ -1,5 +1,6 @@
 """``DatabaseCommunication`` and the filter step against a fake cursor, plus static SQL-to-DDL consistency checks."""
 import inspect
+import json
 import re
 
 import geopandas as gpd
@@ -292,11 +293,32 @@ def test_the_values_used_are_stored_with_the_classification_in_the_same_transact
                          "list_of_clustering_parameters = :list_of_clustering_parameters, "
                          "n_clusters_kmeans = :n_clusters_kmeans, n_clusters_gmm = :n_clusters_gmm, "
                          "additional_filtering = :additional_filtering, transform = :transform, "
-                         "exclude_infeasible = :exclude_infeasible, key_figures_version = :key_figures_version "
-                         "WHERE classification_id = :c")
+                         "exclude_infeasible = :exclude_infeasible, key_figures_version = :key_figures_version, "
+                         "model = CAST(:model AS jsonb) WHERE classification_id = :c")
+    model = params.pop("model")
     assert params == {"c": dcm.CLASSIFICATION_VERSION, "list_of_clustering_parameters": PARAMS, "n_clusters_kmeans": 4,
                       "n_clusters_gmm": 4, "additional_filtering": dcm.ADDITIONAL_FILTERING, "transform": dcm.TRANSFORM,
                       "exclude_infeasible": dcm.EXCLUDE_INFEASIBLE, "key_figures_version": dcm.KEY_FIGURES_VERSION}
+    assert isinstance(model, str) and json.loads(model)["parameters"] == PARAMS
+
+
+@pytest.mark.parametrize("transform", ["none", "log1p", "yeo-johnson"])
+def test_the_stored_model_reproduces_the_clusters_of_every_grid(monkeypatch, transform):
+    """S5: transform, scaler, centres, GMM parameters and label maps stored in the step-7 transaction place every
+    clustered grid in its stored cluster again."""
+    from pylovo.classification.clustering.clustering_algorithms import assign_clusters
+
+    dc, captured, df = prepare_save(monkeypatch)
+    dc.save_transformers_with_classification_info(PARAMS, 4, 3, transform=transform)
+    model = json.loads(dc.dbc.sqla_engine.log[3][2]["model"])
+    assert model["format"] == 1 and model["scikit_learn"] == dcm.sklearn.__version__
+    assert model["parameters"] == PARAMS and model["transform"]["method"] == transform and model["grids"] == len(df)
+    assert ("lambdas" in model["transform"]) is (transform == "yeo-johnson")
+    assert model["kmeans"]["n_init"] == 10 and model["gmm_tied"]["n_init"] == 5
+    assert len(model["kmeans"]["centers"]) == 4 and len(model["gmm_tied"]["weights"]) == 3
+    frame = captured["frame"]
+    assert (assign_clusters(df, model, "kmeans") == frame["kmeans_clusters"].to_numpy()).all()
+    assert (assign_clusters(df, model, "gmm_tied") == frame["gmm_clusters"].to_numpy()).all()
 
 
 def test_a_repeated_step_7_without_values_clusters_with_the_stored_choices(monkeypatch):
