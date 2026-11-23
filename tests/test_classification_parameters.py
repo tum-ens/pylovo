@@ -109,6 +109,41 @@ def test_plotting_selector_returns_one_parameter_per_factor():
             assert len(select_parameters(df_plz_parameters=frame, n_comps=n)) == n
 
 
+@pytest.mark.parametrize("transform", ["none", "yeo-johnson"])
+def test_the_compact_factor_analysis_gives_the_loadings_and_picks_of_the_fit_on_all_grids(transform):
+    """E1: the fit on 2p rows with the covariance of the data equals the fit on all rows (same order of the factors)."""
+    from sklearn.decomposition import FactorAnalysis
+
+    from pylovo.plotting.classification.features import FACTOR_ANALYSIS_MAX_ITER, compact_fa_input, varimax_factor_analysis
+
+    frame = synthetic_clustering_parameters(n_per_archetype=(400, 400, 300, 200), seed=3)
+    candidates = transform_key_figures(get_params.factor_analysis_input(frame), transform)
+    n_factors = get_params.number_of_factors(candidates)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        loadings, model = varimax_factor_analysis(candidates, n_factors)
+        full = FactorAnalysis(n_components=n_factors, rotation="varimax", svd_method="lapack",
+                              max_iter=FACTOR_ANALYSIS_MAX_ITER).fit(preprocessing.scale(candidates))
+    expected = full.components_.T
+    signs = np.sign((expected * loadings.to_numpy()).sum(axis=0))
+    assert np.abs(loadings.to_numpy() * signs - expected).max() < 1e-8
+    assert np.abs(model.noise_variance_ - full.noise_variance_).max() < 1e-8 and model.n_iter_ == full.n_iter_
+    picks = [loadings[f].abs().idxmax() for f in loadings]
+    assert picks == [candidates.columns[i] for i in np.abs(expected).argmax(axis=0)]
+    compact = compact_fa_input(candidates)
+    assert compact.shape == (2 * candidates.shape[1], candidates.shape[1])
+    assert np.allclose(np.cov(compact, rowvar=False, bias=True), candidates.corr().to_numpy())
+
+
+def test_the_compact_factor_analysis_rejects_missing_values():
+    from pylovo.plotting.classification.features import compact_fa_input
+
+    frame = synthetic_clustering_parameters()[PARAMS]
+    frame.loc[3, "avg_trafo_dis"] = np.nan
+    with pytest.raises(ValueError, match=r"missing values \(NaN\) in: avg_trafo_dis"):
+        compact_fa_input(frame)
+
+
 # ---------------------------------------------------------------------------------------- number of clusters
 ALLOWED = [3, 4, 5, 6, 7]
 

@@ -340,7 +340,8 @@ Many key figures are strongly correlated, so the clustering uses a few independe
 #. transforms every candidate with ``TRANSFORM``,
 #. takes the number of factors as the number of eigenvalues of the correlation matrix above 1 (Kaiser criterion),
 #. runs a varimax-rotated factor analysis on the standardised data with that many factors (up to 10,000
-   iterations) and
+   iterations; the fit runs on 2p rows with the correlation matrix of all grids as covariance and the stopping
+   tolerance scaled to their number, which gives the loadings of the fit on all grids in a fraction of the time) and
 #. picks for every factor the parameter with the largest absolute loading.
 
 The key figures have long tails: a few large or long grids reach many times the median, with a skewness of 2 to 5.
