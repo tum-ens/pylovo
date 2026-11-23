@@ -1,7 +1,7 @@
 """Feeder topology planning and feeder cable sizing for one LV grid.
 
 One LV grid is the street network behind one station (one ``kcid``/``bcid``
-cluster). ``GridGenerator.install_cables`` plans its feeders in two passes, so
+cluster). ``NetworkBuilder.run`` plans its feeders in two passes, so
 that feeder segments shared by several branches are sized for everything that
 is connected behind them:
 

@@ -33,9 +33,13 @@ Modules
      - Comparison of the stored generation-parameter snapshot of a version with the current
        configuration (:ref:`versions`).
    * - :mod:`pylovo.grid_generator`
-     - :class:`~pylovo.grid_generator.GridGenerator`: the generation pipeline for one postcode,
-       sequential and parallel runs for many postcodes, building clustering, transformer placement
-       and persistence of each grid.
+     - :class:`~pylovo.grid_generator.GridGenerator`: control of a generation run for one postcode
+       (lock, temporary tables, storage of the results, analysis), sequential and parallel runs for
+       many postcodes.
+   * - :mod:`pylovo.lv_grid`
+     - The stages of the generation of one postcode, one class each: input preparation, street
+       clustering, supply areas and stations, the electrical network of every grid, the voltage
+       repair and the validation and storage of a grid.
    * - :mod:`pylovo.postcode_border`
      - Routing over the streets of the neighbouring postcodes (``ROUTE_ACROSS_POSTCODE_BORDERS``).
    * - :mod:`pylovo.feeder_planning`
@@ -145,11 +149,11 @@ Control flow of ``pylovo-generate``
 #. For several postcodes, ``generate_grid_for_multiple_plz`` starts worker processes; each creates
    its own ``GridGenerator`` and database connections.
 #. ``generate_grid_for_single_plz`` creates the temporary tables of the postcode and runs
-   ``generate_grid``: ``prepare_*`` steps, ``apply_kmeans_clustering``,
-   ``position_all_transformers`` and ``install_cables`` (:doc:`pipeline`).
-#. ``install_cables`` builds every grid in a fresh electrical backend: the ``CableInstaller``
+   ``generate_grid``, which runs the stages of :mod:`pylovo.lv_grid`: ``InputPreparation``,
+   ``StreetClustering``, ``StationPlanner`` and ``NetworkBuilder`` (:doc:`pipeline`).
+#. ``NetworkBuilder`` builds every grid in a fresh electrical backend: the ``CableInstaller``
    creates buses, transformer and loads, :mod:`pylovo.feeder_planning` plans and sizes the feeder
-   tree, the ``CableInstaller`` adds feeder and service lines, and ``save_net`` runs the
+   tree, the ``CableInstaller`` adds feeder and service lines, and ``GridStorage`` runs the
    power-flow check and writes the grid rows.
 #. ``save_tables`` copies buildings and streets to the result tables, the transaction is committed,
    the optional analysis runs and the temporary tables are dropped.

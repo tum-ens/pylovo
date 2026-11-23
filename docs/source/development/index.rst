@@ -39,7 +39,8 @@ Project layout
    |   |-- analysis/             key figures, coverage and border diagnostics, MV validation, power-flow helpers
    |   |-- plotting/             plots and GIS export
    |   |-- ways_preprocessing_functions/   SQL functions installed by the setup
-   |   |-- grid_generator.py     GridGenerator
+   |   |-- grid_generator.py     GridGenerator: control of a generation run
+   |   |-- lv_grid/              the stages of the LV generation (one class per stage)
    |   |-- cable_installer.py    CableInstaller
    |   |-- feeder_planning.py    feeder topology and cable sizing
    |   |-- load_editing.py       manual load edits of stored grids (used by pylovo-api)

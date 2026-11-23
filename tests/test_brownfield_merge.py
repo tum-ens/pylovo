@@ -5,8 +5,10 @@ import logging
 import numpy as np
 import pandas as pd
 
-from pylovo import grid_generator, utils
-from pylovo.grid_generator import GridGenerator
+from pylovo import utils
+from pylovo.lv_grid import station_planning
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
 
 
 class FakeDb:
@@ -54,15 +56,14 @@ class FakeDb:
 
 
 def merged(monkeypatch, limit, distance=1000, node_kw=100.0):
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", limit)
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", distance)
+    monkeypatch.setattr(station_planning, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", limit)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", distance)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "planning_nodes", lambda buildings: buildings["connection_point"])
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda buildings, categories, nodes: node_kw * len(nodes))
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.dbc, generator.logger = FakeDb(), logging.getLogger("brownfield-merge-test")
-    generator.consumer_categories = None     # the load function is replaced
-    count = generator.merge_small_greenfield_into_brownfield(84000, 1)
+    generator = StationPlanner(GenerationContext(plz=84000, dbc=FakeDb(),            # the load function is replaced
+                                                 logger=logging.getLogger("brownfield-merge-test")))
+    count = generator.merge_small_areas_into_stations(84000, 1)
     return count, generator.dbc
 
 

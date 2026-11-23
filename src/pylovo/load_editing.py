@@ -12,7 +12,7 @@ generation derived from these inputs, with the parameters stored for the grid's 
    grid (:func:`pylovo.utils.allocate_consumer_simultaneous_loads`), so one household more changes
    every residential load of the grid,
 3. the validation power flow at the transformer-coincident operating point
-   (``GridGenerator.save_net``).
+   (``GridStorage.save_net``).
 
 Cables, the transformer and the design diagnostics of ``grid_result`` stay as generated: an edit
 re-validates the grid, it does not re-plan it. Regenerating the PLZ as a new version does that.
@@ -487,7 +487,7 @@ BUILDING_FRAME_COLUMNS = ("objectid", "vertice_id", "households", "residential_f
 
 
 def buildings_frame(buildings: Iterable[dict]) -> pd.DataFrame:
-    """Building rows as generation sees them in ``install_cables`` (indexed by ``vertice_id``).
+    """Building rows as generation sees them in ``NetworkBuilder.run`` (indexed by ``vertice_id``).
 
     ``get_buildings_from_bcid`` reads the rows without ORDER BY and sorts them with pandas'
     unstable default sort, so buildings that share a vertex come in arbitrary order. The rows

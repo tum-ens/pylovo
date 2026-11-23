@@ -103,7 +103,7 @@ def validate_operating_point(backend, min_vm_pu: float, max_vm_pu: float,
                              logger: logging.Logger | None = None) -> Validation:
     """Run and classify the validation power flow of a finished grid.
 
-    Generation (``GridGenerator.validate_net``) and the load editor (:mod:`pylovo.load_editing`, with the
+    Generation (``GridStorage.validate_net``) and the load editor (:mod:`pylovo.load_editing`, with the
     parameters of the grid's version) both use this function. Status ``converged``, ``voltage_violation`` (a bus
     outside ``[min_vm_pu, max_vm_pu]``) or ``not_converged`` (also when the solver raises; ``error`` then holds the
     exception). For a pandapower net the largest feeder, service and total LV voltage drops are measured over the

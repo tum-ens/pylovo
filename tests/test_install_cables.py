@@ -1,4 +1,4 @@
-"""``GridGenerator.install_cables`` and ``save_net`` on a small grid: fake database client, real offline pandapower backend.
+"""``NetworkBuilder.run`` and ``GridStorage.save_net`` on a small grid: fake database client, real offline pandapower backend.
 
 Grid (the station is vertex 1, 250 kVA): a street 1 - 2 (100 m) - 3 (200 m); one household of 17 kW at vertex 12 (connected
 at 2) and two at 13 and 14 (connected at 3). The planning rules asserted are the documented ones: the cheapest feeder
@@ -13,9 +13,12 @@ import pandapower as pp
 import pandas as pd
 import pytest
 
-from pylovo import feeder_planning, grid_generator
+from pylovo import feeder_planning
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec, LoadSpec, TransformerSpec, create_backend
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid import grid_storage, network_builder, voltage_repair
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.grid_storage import GridStorage
+from pylovo.lv_grid.network_builder import NetworkBuilder
 
 LOGGER = logging.getLogger("install-cables-test")
 CONSUMERS = pd.DataFrame({"definition": ["Commercial", "Public", "Residential"], "sim_factor": [0.5, 0.6, 0.07]})
@@ -38,21 +41,23 @@ BUILDINGS = pd.DataFrame({
 
 @pytest.fixture(autouse=True)
 def pinned_configuration(monkeypatch):
-    for module in (feeder_planning, grid_generator):
+    for module in (feeder_planning, network_builder):
         for name, value in {"CABLE_PLANNING_UTILIZATION": 0.8, "FEEDER_STANDARD_CABLE": None,
                             "MAX_PARALLEL_FEEDER_CABLES": 4, "MAX_END_TO_END_FEEDER_VOLTAGE_DROP_PERCENT": 5.0,
                             "MIN_SHARED_PREFIX_LENGTH_M": 50, "FEEDER_SPLIT_MAX_CURRENT_KA": 0.4}.items():
             if hasattr(module, name):
                 monkeypatch.setattr(module, name, value)
-    monkeypatch.setattr(grid_generator, "ELECTRICAL_BACKEND", "pandapower")
-    monkeypatch.setattr(grid_generator, "HOUSE_CONNECTION", "joint")
-    monkeypatch.setattr(grid_generator, "CABINET_SPACING_M", 100)
-    monkeypatch.setattr(grid_generator, "LV_REFERENCE_VOLTAGE_PU", 0.96)
-    monkeypatch.setattr(grid_generator, "POWER_FLOW_MIN_VM_PU", 0.90)
-    monkeypatch.setattr(grid_generator, "POWER_FLOW_MAX_VM_PU", 1.10)
-    monkeypatch.setattr(grid_generator, "SAVE_GRID_FOLDER", False)
-    monkeypatch.setattr(grid_generator, "FEEDER_CABLES", pd.DataFrame({"name": [c[0] for c in CABLES[:4]]}))
-    monkeypatch.setattr(grid_generator, "CONSUMER_CONNECTION_CABLES", pd.DataFrame({"name": [c[0] for c in CABLES[4:]]}))
+    monkeypatch.setattr(grid_storage, "ELECTRICAL_BACKEND", "pandapower")
+    monkeypatch.setattr(network_builder, "ELECTRICAL_BACKEND", "pandapower")
+    monkeypatch.setattr(network_builder, "HOUSE_CONNECTION", "joint")
+    monkeypatch.setattr(network_builder, "CABINET_SPACING_M", 100)
+    monkeypatch.setattr(grid_storage, "LV_REFERENCE_VOLTAGE_PU", 0.96)
+    monkeypatch.setattr(grid_storage, "POWER_FLOW_MIN_VM_PU", 0.90)
+    monkeypatch.setattr(voltage_repair, "POWER_FLOW_MIN_VM_PU", 0.90)
+    monkeypatch.setattr(grid_storage, "POWER_FLOW_MAX_VM_PU", 1.10)
+    monkeypatch.setattr(grid_storage, "SAVE_GRID_FOLDER", False)
+    monkeypatch.setattr(network_builder, "FEEDER_CABLES", pd.DataFrame({"name": [c[0] for c in CABLES[:4]]}))
+    monkeypatch.setattr(network_builder, "CONSUMER_CONNECTION_CABLES", pd.DataFrame({"name": [c[0] for c in CABLES[4:]]}))
 
 
 class Saver:
@@ -124,11 +129,9 @@ class FakeDbc(Saver):
 
 
 def install(dbc, caplog=None):
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.plz, generator.dbc, generator.logger = 80803, dbc, LOGGER
-    generator.consumer_categories = CONSUMERS
-    generator.install_cables()
-    return generator
+    builder = NetworkBuilder(GenerationContext(plz=80803, dbc=dbc, logger=LOGGER, consumer_categories=CONSUMERS))
+    builder.run()
+    return builder
 
 
 def stored_net(dbc):
@@ -187,7 +190,7 @@ def test_a_failing_gis_helper_rolls_back_its_savepoint_and_the_grid_is_still_sto
 
 
 def test_a_cabinet_network_plans_cabinets_and_connects_every_house_from_one(monkeypatch):
-    monkeypatch.setattr(grid_generator, "HOUSE_CONNECTION", "cabinet")
+    monkeypatch.setattr(network_builder, "HOUSE_CONNECTION", "cabinet")
     dbc = FakeDbc()
     install(dbc)
 
@@ -203,7 +206,7 @@ def test_a_cabinet_network_plans_cabinets_and_connects_every_house_from_one(monk
 
 def test_the_power_flow_statuses_of_every_grid_are_counted(monkeypatch, caplog):
     statuses = iter(["converged", "voltage_violation", "not_converged"])
-    monkeypatch.setattr(GridGenerator, "save_net",
+    monkeypatch.setattr(GridStorage, "save_net",
                         lambda self, backend, kcid, bcid, planning_diagnostics=None, validation=None: next(statuses))
     dbc = FakeDbc(clusters=[(1, 1), (1, 2), (1, 3)])
     with caplog.at_level(logging.INFO, logger=LOGGER.name):
@@ -244,9 +247,8 @@ def small_backend(load_kw, feeder_km):
 
 def save(backend, saver=None, **kwargs):
     saver = saver or Saver()
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.plz, generator.dbc, generator.logger = 80803, saver, LOGGER
-    status = generator.save_net(backend, 1, 2, **kwargs)
+    storage = GridStorage(GenerationContext(plz=80803, dbc=saver, logger=LOGGER))
+    status = storage.save_net(backend, 1, 2, **kwargs)
     return status, saver
 
 
@@ -333,9 +335,9 @@ def test_without_planning_diagnostics_the_stored_columns_are_null():
 
 
 def test_the_grid_file_is_written_when_save_grid_folder_is_set(monkeypatch, tmp_path):
-    monkeypatch.setattr(grid_generator, "SAVE_GRID_FOLDER", True)
-    monkeypatch.setattr(grid_generator, "RESULT_DIR", str(tmp_path))
-    monkeypatch.setattr(grid_generator, "VERSION_ID", "7")
+    monkeypatch.setattr(grid_storage, "SAVE_GRID_FOLDER", True)
+    monkeypatch.setattr(grid_storage, "RESULT_DIR", str(tmp_path))
+    monkeypatch.setattr(grid_storage, "VERSION_ID", "7")
     save(small_backend(load_kw=10.0, feeder_km=0.2))
 
     assert pp.from_json(str(tmp_path / "grids" / "version_7" / "80803" / "kcid1bcid2.json")).bus.shape[0] == 4

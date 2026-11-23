@@ -5,8 +5,10 @@ import logging
 import numpy as np
 import pandas as pd
 
-from pylovo import grid_generator, utils
-from pylovo.grid_generator import GridGenerator
+from pylovo import utils
+from pylovo.lv_grid import station_planning
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
 
 
 class FakeDb:
@@ -48,13 +50,12 @@ class FakeLoads:
 
 
 def test_a_building_whose_nearest_station_is_full_is_left_for_greenfield(monkeypatch):
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.dbc, generator.logger = FakeDb(), logging.getLogger("brownfield-nearest-only-test")
-    generator.consumer_categories = None     # FakeLoads ignores them
-    generator.position_brownfield_transformers(84000, 1, [100, 200])
+    generator = StationPlanner(GenerationContext(plz=84000, dbc=FakeDb(),            # FakeLoads ignores the categories
+                                                 logger=logging.getLogger("brownfield-nearest-only-test")))
+    generator.assign_to_existing_stations(84000, 1, [100, 200])
     # station 100 is full after five consumers (600 kW / 0.8 > 630 kVA); 6 does not join station 200, which still
     # has capacity, as station 100 is its nearest: it is left for greenfield
     assert generator.dbc.clusters == {100: ([1, 2, 3, 4, 5], 630), 200: ([7], 250)}

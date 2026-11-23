@@ -1,5 +1,5 @@
-"""Greenfield station dimensioning and positioning (``GridGenerator.dimension_bcid_for_kcid``,
-``position_greenfield_transformers``, ``position_all_transformers``) without a database.
+"""Greenfield station dimensioning and positioning (``GreenfieldAreas.split``, ``StationPlanner.place_station``,
+``StationPlanner.run``) without a database.
 
 The street is a line along the x axis; the database lookups are replaced by fixed data, the clustering rules
 (hierarchical split, load and distance limits, merge) are the real ones.
@@ -12,10 +12,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylovo import grid_generator, utils
+from pylovo import utils
 from pylovo.database import clustering_mixin
 from pylovo.database.clustering_mixin import ClusteringMixin
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid import greenfield_areas, station_planning
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
 
 CONSUMERS = pd.DataFrame({"definition": ["Commercial", "Public", "Residential"], "sim_factor": [0.5, 0.6, 0.07]})
 LOGGER = logging.getLogger("station-positioning-test")
@@ -26,18 +28,18 @@ UTILIZATION = 0.8
 def pinned_configuration(monkeypatch):
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", UTILIZATION)
     monkeypatch.setattr(clustering_mixin, "MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0)
-    monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
-    monkeypatch.setattr(grid_generator, "GREENFIELD_TRAFO_POSITION_TOLERANCE", 0)
-    monkeypatch.setattr(grid_generator, "MERGE_GREENFIELD_CLUSTERS", True)
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [250, 400, 630])
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", None)
+    monkeypatch.setattr(greenfield_areas, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "GREENFIELD_TRAFO_POSITION_TOLERANCE", 0)
+    monkeypatch.setattr(greenfield_areas, "MERGE_GREENFIELD_CLUSTERS", True)
+    monkeypatch.setattr(station_planning, "MERGE_GREENFIELD_CLUSTERS", True)
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [250, 400, 630])
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", None)
+    monkeypatch.setattr(station_planning, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", None)
 
 
-def generator_with(dbc):
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.plz, generator.dbc, generator.logger = 80803, dbc, LOGGER
-    generator.consumer_categories = CONSUMERS
-    return generator
+def planner_with(dbc):
+    return StationPlanner(GenerationContext(plz=80803, dbc=dbc, logger=LOGGER, consumer_categories=CONSUMERS))
 
 
 def buildings_at(vertices, kw):
@@ -97,7 +99,7 @@ class Street(ClusteringMixin):
 
 def dimension(positions, kw):
     street = Street(positions, buildings_at(sorted(positions), kw))
-    generator_with(street).dimension_bcid_for_kcid(80803, 4)
+    planner_with(street).areas.split(80803, 4)
     return street
 
 
@@ -133,7 +135,8 @@ def test_an_overloaded_area_is_split_until_every_station_fits_the_largest_rating
 
 @pytest.mark.parametrize("merge", [False, True])
 def test_every_station_has_a_position_within_the_greenfield_distance_limit(monkeypatch, merge):
-    monkeypatch.setattr(grid_generator, "MERGE_GREENFIELD_CLUSTERS", merge)
+    monkeypatch.setattr(greenfield_areas, "MERGE_GREENFIELD_CLUSTERS", merge)
+    monkeypatch.setattr(station_planning, "MERGE_GREENFIELD_CLUSTERS", merge)
     positions = {vertex: 500.0 * (vertex - 1) for vertex in range(1, 13)}   # 5.5 km, a load that fits one station
     result = stations(dimension(positions, 1.0))
 
@@ -158,7 +161,7 @@ def test_a_single_connection_point_becomes_one_bcid_without_clustering():
 def test_connection_points_without_a_routed_distance_are_skipped_with_a_warning(caplog):
     street = Street({7: 0.0}, buildings_at([7, 8], 50.0))    # two loaded points, the matrix knows one
     with caplog.at_level(logging.WARNING, logger=LOGGER.name):
-        generator_with(street).dimension_bcid_for_kcid(80803, 4)
+        planner_with(street).areas.split(80803, 4)
 
     assert street.written == [("delete unassigned", 4)]                 # so the kcid is not picked again
     assert any("Skipped BCID dimensioning" in message for message in caplog.messages)
@@ -190,7 +193,7 @@ class Cluster:
 
 
 def position(cluster, bcid=3):
-    generator_with(cluster).position_greenfield_transformers(80803, 4, bcid)
+    planner_with(cluster).place_station(80803, 4, bcid)
     return cluster.selected
 
 
@@ -213,7 +216,8 @@ def test_candidates_beyond_the_distance_limit_are_ignored_while_one_is_in_reach(
 
 
 def test_without_any_candidate_in_reach_the_weighted_minimum_is_taken_with_a_warning(monkeypatch, caplog):
-    monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 500)
+    monkeypatch.setattr(greenfield_areas, "MAX_GREENFIELD_TRAFO_DISTANCE", 500)
+    monkeypatch.setattr(station_planning, "MAX_GREENFIELD_TRAFO_DISTANCE", 500)
     cluster = Cluster({1: 0.0, 2: 900.0, 3: 1900.0}, loads={1: 1.0, 2: 1.0, 3: 100.0})
     with caplog.at_level(logging.WARNING, logger=LOGGER.name):
         assert position(cluster) == [(80803, 4, 3, 3)]
@@ -221,11 +225,11 @@ def test_without_any_candidate_in_reach_the_weighted_minimum_is_taken_with_a_war
 
 
 def test_the_tolerance_draws_a_seeded_station_among_the_nearly_optimal_candidates(monkeypatch):
-    monkeypatch.setattr(grid_generator, "GREENFIELD_TRAFO_POSITION_TOLERANCE", 0.3)
+    monkeypatch.setattr(station_planning, "GREENFIELD_TRAFO_POSITION_TOLERANCE", 0.3)
     x = {vertex: 100.0 * (vertex - 1) for vertex in range(1, 6)}   # costs 1000, 700, 600, 700, 1000
     first = position(Cluster(x))
     assert first == position(Cluster(x))                           # a rerun places the same station
-    rng = np.random.default_rng([grid_generator.K_MEANS_SEED, 80803, 4, 3])
+    rng = np.random.default_rng([station_planning.K_MEANS_SEED, 80803, 4, 3])
     assert first == [(80803, 4, 3, [2, 3, 4][int(rng.integers(3))])]   # vertices within 1.3 x the optimum (600)
 
 
@@ -285,17 +289,19 @@ class Kcids:
 
 
 def run_all(monkeypatch, remaining, merge=True):
-    monkeypatch.setattr(grid_generator, "MERGE_GREENFIELD_CLUSTERS", merge)
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 4)
+    monkeypatch.setattr(greenfield_areas, "MERGE_GREENFIELD_CLUSTERS", merge)
+    monkeypatch.setattr(station_planning, "MERGE_GREENFIELD_CLUSTERS", merge)
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 4)
+    monkeypatch.setattr(station_planning, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 4)
     events = []
     kcids = Kcids({1: [], 2: [7, 8]}, {1: [1, 2], 2: [-1, -2, 1]}, {2: remaining}, events)
-    generator = generator_with(kcids)
-    generator.dimension_bcid_for_kcid = lambda plz, kcid: events.append(("dimension", kcid))
-    generator.position_brownfield_transformers = lambda plz, kcid, transformers: events.append(
+    planner = planner_with(kcids)
+    planner.areas.split = lambda plz, kcid: events.append(("dimension", kcid))
+    planner.assign_to_existing_stations = lambda plz, kcid, transformers: events.append(
         ("brownfield", kcid, transformers))
-    generator.merge_small_greenfield_into_brownfield = lambda plz, kcid: events.append(("merge", kcid))
-    generator.position_greenfield_transformers = lambda plz, kcid, bcid: events.append(("position", kcid, bcid))
-    generator.position_all_transformers()
+    planner.merge_small_areas_into_stations = lambda plz, kcid: events.append(("merge", kcid))
+    planner.place_station = lambda plz, kcid, bcid: events.append(("position", kcid, bcid))
+    planner.run()
     return events
 
 
@@ -364,10 +370,10 @@ class FixedLoads:
 
 
 def test_a_station_loaded_exactly_to_its_largest_rating_does_not_fail_the_plz(monkeypatch):
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "CoincidentLoads", FixedLoads)
     database = BrownfieldDb()
-    generator_with(database).position_brownfield_transformers(84000, 1, [100])
+    planner_with(database).assign_to_existing_stations(84000, 1, [100])
 
     (consumers, rating), = database.clusters
     assert rating * UTILIZATION >= 252.0 * len(consumers)    # whichever consumers the station took, its rating covers them

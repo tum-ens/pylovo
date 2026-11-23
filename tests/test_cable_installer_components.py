@@ -1,5 +1,5 @@
 """Backend components created by ``CableInstaller`` (station, buses, feeder lines) and the feeder line orchestration of
-``GridGenerator._install_feeder_lines``; recording fakes instead of a backend and a database."""
+``NetworkBuilder._install_feeder_lines``; recording fakes instead of a backend and a database."""
 
 import logging
 
@@ -10,7 +10,8 @@ from pylovo import feeder_planning
 from pylovo.cable_installer import CableInstaller
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec
 from pylovo.feeder_planning import FeederBranch
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.network_builder import NetworkBuilder
 
 LOGGER = logging.getLogger("installer-components-test")
 LON, LAT = 11.5, 48.1
@@ -148,7 +149,7 @@ def test_a_line_at_the_transformer_vertex_starts_on_the_busbar_at_the_station_co
     assert line.coordinates[0] == COORDINATES[1] and line.length_km == pytest.approx(0.1)
 
 
-# --- GridGenerator._install_feeder_lines ------------------------------------------------------------------------------
+# --- NetworkBuilder._install_feeder_lines ------------------------------------------------------------------------------
 def test_feeder_lines_follow_the_branches_one_by_one_and_start_at_the_busbar_or_a_split_node():
     installer, backend = make_installer()
     installer.create_connection_bus([2, 3, 4], station_vertex=1)
@@ -163,8 +164,7 @@ def test_feeder_lines_follow_the_branches_one_by_one_and_start_at_the_busbar_or_
     branches = [FeederBranch(0, [3, 2], 1), FeederBranch(1, [4], 2)]
     design = feeder_planning.size_feeder_tree(installer, branches, 1, distances, buildings, consumers, LOGGER, 80803)
 
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.plz, generator.logger = 80803, LOGGER
+    generator = NetworkBuilder(GenerationContext(plz=80803, dbc=None, logger=LOGGER))
     material = {name: 0.0 for name, *_ in CABLES}
     material = generator._install_feeder_lines(installer, branches, design, buildings, consumers, distances, 1, material, 1, 2)
 
@@ -191,7 +191,7 @@ def service_row(ampacity_drop, selected_drop, selected="NAYY_4_50", ampacity="NA
 
 
 def test_the_service_summary_of_a_grid_without_services_is_empty_but_complete():
-    summary = GridGenerator._summarize_service_diagnostics([])
+    summary = NetworkBuilder._summarize_service_diagnostics([])
 
     assert summary == {
         "ampacity_max_service_voltage_drop_percent": 0.0, "selected_max_service_voltage_drop_percent": 0.0,
@@ -200,7 +200,7 @@ def test_the_service_summary_of_a_grid_without_services_is_empty_but_complete():
 
 
 def test_the_service_summary_takes_the_worst_drop_and_counts_upgrades_and_long_services():
-    summary = GridGenerator._summarize_service_diagnostics([
+    summary = NetworkBuilder._summarize_service_diagnostics([
         service_row(0.4, 0.4, total=2.0),
         service_row(1.6, 0.9, selected="NAYY_4_70", met=True, review=True, total=None),
         service_row(2.5, 1.5, selected="NAYY_4_150", ampacity="NAYY_4_70", met=False, total=4.5),

@@ -1,4 +1,4 @@
-"""Merging of greenfield clusters after the split (``GridGenerator._merge_feasible_greenfield_clusters``)."""
+"""Merging of greenfield clusters after the split (``GreenfieldAreas._merge_feasible``)."""
 
 import logging
 
@@ -7,8 +7,10 @@ import pandas as pd
 import pytest
 
 from pylovo import utils
-from pylovo import grid_generator
 from pylovo.database.clustering_mixin import ClusteringMixin
+from pylovo.lv_grid import greenfield_areas
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.greenfield_areas import GreenfieldAreas
 
 CONSUMER_CATEGORIES = pd.DataFrame(
     {"definition": ["Commercial", "Public", "Residential"], "sim_factor": [0.5, 0.6, 0.07]}
@@ -40,10 +42,10 @@ class StreetGraph:
 
 
 def merge(monkeypatch, max_buildings, distance_limit=None):
-    monkeypatch.setattr(grid_generator, "MERGE_GREENFIELD_CLUSTERS", True)
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [400, 630])
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", max_buildings)
-    monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(greenfield_areas, "MERGE_GREENFIELD_CLUSTERS", True)
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [400, 630])
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", max_buildings)
+    monkeypatch.setattr(greenfield_areas, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
 
     vertices, offset = {}, 100
@@ -66,12 +68,11 @@ def merge(monkeypatch, max_buildings, distance_limit=None):
     cluster_ids = {name: i for i, name in enumerate(POSITIONS)}
     clusters = {cluster_ids[name]: (vertices[name], 400) for name in POSITIONS}
 
-    generator = object.__new__(grid_generator.GridGenerator)
-    generator.dbc = StreetGraph(cluster_ids)
+    graph = StreetGraph(cluster_ids)
     if distance_limit is not None:
-        generator.dbc.greenfield_distance_limit = distance_limit
-    generator.logger = logging.getLogger(__name__)
-    merged = generator._merge_feasible_greenfield_clusters(
+        graph.greenfield_distance_limit = distance_limit
+    areas = GreenfieldAreas(GenerationContext(plz=1, dbc=graph, logger=logging.getLogger(__name__)))
+    merged = areas._merge_feasible(
         clusters, buildings, CONSUMER_CATEGORIES, np.array([250, 400, 630]), dist_mat, vid2localid, 1, 1
     )
     names = {v: name for name, vids in vertices.items() for v in vids}

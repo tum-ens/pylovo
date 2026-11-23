@@ -5,8 +5,10 @@ import logging
 import numpy as np
 import pandas as pd
 
-from pylovo import grid_generator, utils
-from pylovo.grid_generator import GridGenerator
+from pylovo import utils
+from pylovo.lv_grid import station_planning
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
 
 
 class FakeDb:
@@ -50,14 +52,13 @@ class FakeLoads:
 
 
 def fill(monkeypatch, kw, known=None):
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(FakeLoads, "kw", kw)
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.dbc, generator.logger = FakeDb(known), logging.getLogger("brownfield-rating-boundary-test")
-    generator.consumer_categories = None     # FakeLoads ignores them
-    generator.position_brownfield_transformers(84000, 1, [100])
+    generator = StationPlanner(GenerationContext(plz=84000, dbc=FakeDb(known),       # FakeLoads ignores the categories
+                                                 logger=logging.getLogger("brownfield-rating-boundary-test")))
+    generator.assign_to_existing_stations(84000, 1, [100])
     return generator.dbc.clusters
 
 

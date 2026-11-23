@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylovo import grid_generator, utils
-from pylovo.grid_generator import GridGenerator
+from pylovo import utils
+from pylovo.lv_grid import station_planning
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
 
 
 class FakeDb:
@@ -51,12 +53,11 @@ class FakeLoads:
     [(2, 200, 10.0), (1, 200, 10.0), (1, 100, 10.0), (2, 100, 10.0)],
 ])
 def test_equal_distances_are_visited_by_consumer_then_station(monkeypatch, costs):
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(utils, "CoincidentLoads", FakeLoads)
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.dbc, generator.logger = FakeDb(costs), logging.getLogger("brownfield-fill-order-test")
-    generator.consumer_categories = None     # FakeLoads ignores them
-    generator.position_brownfield_transformers(84000, 1, [100, 200])
+    generator = StationPlanner(GenerationContext(plz=84000, dbc=FakeDb(costs),      # FakeLoads ignores the categories
+                                                 logger=logging.getLogger("brownfield-fill-order-test")))
+    generator.assign_to_existing_stations(84000, 1, [100, 200])
     # the same answer for every row order of the routing result: consumer 1 takes station 100 first
     assert generator.dbc.clusters == {100: [1], 200: [2]}

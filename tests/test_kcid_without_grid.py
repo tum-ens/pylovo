@@ -5,7 +5,9 @@ import logging
 import numpy as np
 import pandas as pd
 
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
+from pylovo.lv_grid.greenfield_areas import GreenfieldAreas
 
 
 class FakeDb:
@@ -48,7 +50,7 @@ class FakeDb:
 
 def test_a_skipped_kcid_does_not_hold_back_the_kcids_after_it(monkeypatch):
     dimensioned = []
-    real_dimension = GridGenerator.dimension_bcid_for_kcid
+    real_dimension = GreenfieldAreas.split
 
     def dimension(self, plz, kcid):
         dimensioned.append(kcid)
@@ -56,9 +58,6 @@ def test_a_skipped_kcid_does_not_hold_back_the_kcids_after_it(monkeypatch):
             return real_dimension(self, plz, kcid)          # the "empty distance vector" branch
         self.dbc.graded.add(kcid)                           # every other kcid gets its grid
 
-    monkeypatch.setattr(GridGenerator, "dimension_bcid_for_kcid", dimension)
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.dbc, generator.logger, generator.plz = FakeDb(), logging.getLogger("kcid-without-grid-test"), 91301
-    generator.consumer_categories = None
-    generator.position_all_transformers()
+    monkeypatch.setattr(GreenfieldAreas, "split", dimension)
+    StationPlanner(GenerationContext(plz=91301, dbc=FakeDb(), logger=logging.getLogger("kcid-without-grid-test"))).run()
     assert dimensioned == [1, 2, 3]

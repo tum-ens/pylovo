@@ -686,7 +686,7 @@ GREENFIELD_TRAFO_POSITION_TOLERANCE = float(CONFIG_GENERATION["GREENFIELD_TRAFO_
 # GRID GENERATION PARAMETERS (from CONFIG_GENERATION)
 # =============================================================================
 MAX_BROWNFIELD_TRAFO_DISTANCE = CONFIG_GENERATION["MAX_BROWNFIELD_TRAFO_DISTANCE"]
-# How often a grid whose validation power flow leaves the voltage band is planned again (GridGenerator.install_cables);
+# How often a grid whose validation power flow leaves the voltage band is planned again (NetworkBuilder.run);
 # 0 stores it as it is.
 MAX_VOLTAGE_REPAIRS = CONFIG_GENERATION["MAX_VOLTAGE_REPAIRS"]
 if isinstance(MAX_VOLTAGE_REPAIRS, bool) or not isinstance(MAX_VOLTAGE_REPAIRS, int) or MAX_VOLTAGE_REPAIRS < 0:

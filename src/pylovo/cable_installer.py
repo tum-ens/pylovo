@@ -85,7 +85,7 @@ class CableInstaller:
     """Builds the backend network of one LV grid and records its lines.
 
     One instance is created per grid. The optional keyword arguments are bulk
-    lookups prepared once per PLZ (or per grid) by ``GridGenerator.install_cables``;
+    lookups prepared once per PLZ (or per grid) by ``NetworkBuilder.run``;
     without them the installer falls back to one database query per element.
     Lines are queued in memory and written with :meth:`flush_line_records`.
     """

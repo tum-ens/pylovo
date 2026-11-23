@@ -1,6 +1,6 @@
 """Per-grid figures derived from data pylovo already stores (no new power flow is run).
 
-When pylovo saves a grid (``GridGenerator.save_net``) it first runs a *validation power flow*
+When pylovo saves a grid (``GridStorage.save_net``) it first runs a *validation power flow*
 at the synthetic transformer-coincident operating point: the loads stored with the grid. It
 stores the status (``grid_result.power_flow_status``), the LV voltage drops measured from the
 LV busbar (``max_*_voltage_drop_pu``) and the solved pandapower net itself, including its

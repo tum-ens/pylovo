@@ -6,10 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pylovo import grid_generator, supply_areas, utils
+from pylovo import supply_areas, utils
 from pylovo.database import clustering_mixin
 from pylovo.database.clustering_mixin import ClusteringMixin
-from pylovo.grid_generator import GridGenerator
+from pylovo.lv_grid import greenfield_areas, station_planning
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.station_planning import StationPlanner
 from pylovo.supply_areas import AreaContiguity, is_contiguous
 from pylovo.version_snapshot import compare_snapshots
 
@@ -28,11 +30,8 @@ UTM = np.array([691_000.0, 5_335_000.0])   # projected coordinates (EPSG:25832) 
 WALL = np.array([[100.0 + (5 if i % 2 else -5), y] for i, y in enumerate(range(-60, 61, 15))], dtype=float)
 
 
-def generator_with(dbc):
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.plz, generator.dbc, generator.logger = 80803, dbc, LOGGER
-    generator.consumer_categories = CONSUMERS
-    return generator
+def planner_with(dbc):
+    return StationPlanner(GenerationContext(plz=80803, dbc=dbc, logger=LOGGER, consumer_categories=CONSUMERS))
 
 
 def test_a_row_of_other_buildings_between_two_groups_separates_them():
@@ -126,12 +125,15 @@ class Street(ClusteringMixin):
 def test_the_gaps_on_both_sides_of_an_existing_area_get_one_station_each(monkeypatch):
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(clustering_mixin, "MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0)
-    monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
-    monkeypatch.setattr(grid_generator, "MERGE_GREENFIELD_CLUSTERS", True)
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [250, 400])
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", None)
+    monkeypatch.setattr(greenfield_areas, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(greenfield_areas, "MERGE_GREENFIELD_CLUSTERS", True)
+    monkeypatch.setattr(station_planning, "MERGE_GREENFIELD_CLUSTERS", True)
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_TRANSFORMER_KVA", [250, 400])
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", None)
+    monkeypatch.setattr(station_planning, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", None)
     street = Street()
-    generator_with(street).dimension_bcid_for_kcid(80803, 4)
+    planner_with(street).areas.split(80803, 4)
     # load and distance would allow one area across the existing station's area: one area on each side, also
     # after the merge
     assert street.written == [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]
@@ -141,9 +143,10 @@ def test_an_area_that_load_and_distance_allow_is_split_when_it_lies_in_pieces(mo
     # the cut of the voltage repair for buildings an existing station gave up: one area if it is feasible
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
     monkeypatch.setattr(clustering_mixin, "MAX_GREENFIELD_TRAFO_DISTANCE_STD", 0)
-    monkeypatch.setattr(grid_generator, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(greenfield_areas, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(station_planning, "MAX_GREENFIELD_TRAFO_DISTANCE", 1000)
     street = Street()
-    generator_with(street).dimension_bcid_for_kcid(80803, 4, first_bcid=5, merge=False, replace=False, first_cut=1)
+    planner_with(street).areas.split(80803, 4, first_bcid=5, merge=False, replace=False, first_cut=1)
     assert street.written == [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]
 
 
@@ -186,12 +189,13 @@ class Stations:
 
 
 def test_a_small_cluster_joins_no_station_across_another_grid(monkeypatch):
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 1)
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 1)
+    monkeypatch.setattr(station_planning, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 1)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "planning_nodes", lambda buildings: buildings["connection_point"])
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda buildings, categories, nodes: 100.0 * len(nodes))
-    generator = generator_with(Stations())
-    assert generator.merge_small_greenfield_into_brownfield(84000, 1) == 1
+    generator = planner_with(Stations())
+    assert generator.merge_small_areas_into_stations(84000, 1) == 1
     # -1 is the nearest station by street, but its area and the cluster would be two pieces with -2's area between
     assert generator.dbc.moves == [(1, -2)]
 
@@ -244,10 +248,11 @@ class Chain(Stations):
 
 
 def test_a_cluster_that_joined_a_station_counts_as_its_area_for_the_next_cluster(monkeypatch):
-    monkeypatch.setattr(grid_generator, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 1)
-    monkeypatch.setattr(grid_generator, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
+    monkeypatch.setattr(greenfield_areas, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 1)
+    monkeypatch.setattr(station_planning, "GREENFIELD_CLUSTER_MERGE_MAX_BUILDINGS", 1)
+    monkeypatch.setattr(station_planning, "MAX_BROWNFIELD_TRAFO_DISTANCE", 1000)
     monkeypatch.setattr(utils, "planning_nodes", lambda buildings: buildings["connection_point"])
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda buildings, categories, nodes: 100.0 * len(nodes))
-    generator = generator_with(Chain())
-    assert generator.merge_small_greenfield_into_brownfield(84000, 1) == 2
+    generator = planner_with(Chain())
+    assert generator.merge_small_areas_into_stations(84000, 1) == 2
     assert generator.dbc.moves == [(1, -1), (2, -1)]

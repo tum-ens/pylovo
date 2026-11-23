@@ -1,7 +1,7 @@
 """Voltage repair (``MAX_VOLTAGE_REPAIRS``): which consumers move, how the grids are changed and built again (no database).
 
-``GridGenerator.install_cables`` validates every grid before anything of it is stored; a grid outside the voltage band
-goes to ``repair_voltage_violation``, which releases the buildings that are below the band because of the feeders
+``NetworkBuilder.run`` validates every grid before anything of it is stored; a grid outside the voltage band
+goes to ``VoltageRepair.repair``, which releases the buildings that are below the band because of the feeders
 (all of them for a greenfield grid), clusters them into new greenfield grids and returns the grids to build again. A
 building below the band because of its own house cable becomes its own planning node: its connection line is a feeder
 section then, and if that is not enough either, it gets a station of its own at the building.
@@ -12,8 +12,13 @@ import logging
 import pandas as pd
 import pytest
 
-from pylovo import grid_generator, utils
-from pylovo.grid_generator import GridGenerator
+from pylovo import utils
+from pylovo.lv_grid import network_builder, voltage_repair
+from pylovo.lv_grid.context import GenerationContext
+from pylovo.lv_grid.greenfield_areas import GreenfieldAreas
+from pylovo.lv_grid.grid_storage import GridStorage
+from pylovo.lv_grid.station_planning import StationPlanner
+from pylovo.lv_grid.voltage_repair import VoltageRepair
 from test_install_cables import BUILDINGS, FakeDbc, install, pinned_configuration  # noqa: F401 (autouse fixture)
 from test_install_cables import stored_net
 
@@ -34,8 +39,8 @@ class Backend:
 
 @pytest.fixture(autouse=True)
 def band(monkeypatch):
-    monkeypatch.setattr(grid_generator, "POWER_FLOW_MIN_VM_PU", 0.90)
-    monkeypatch.setattr(grid_generator, "MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", 1.0)
+    monkeypatch.setattr(voltage_repair, "POWER_FLOW_MIN_VM_PU", 0.90)
+    monkeypatch.setattr(voltage_repair, "MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT", 1.0)
     monkeypatch.setattr(utils, "TRANSFORMER_PLANNING_UTILIZATION", 0.8)
 
 
@@ -44,14 +49,16 @@ def buildings(*rows):
     return pd.DataFrame({"vertice_id": [v for v, _ in rows], "connection_point": [c for _, c in rows]})
 
 
+def repair_stage(dbc=None):
+    return VoltageRepair(GenerationContext(plz=80803, dbc=dbc, logger=LOGGER))
+
+
 def targets(backend, rows, ont_vertice=5):
-    generator = GridGenerator.__new__(GridGenerator)
-    return generator._repair_targets(backend, buildings(*rows), ont_vertice=ont_vertice)
+    return repair_stage().targets(backend, buildings(*rows), ont_vertice=ont_vertice)
 
 
 # --- which consumers move ------------------------------------------------------------------------------------------
 def test_the_far_end_of_a_feeder_moves_when_a_consumer_there_is_below_the_band():
-    generator = GridGenerator.__new__(GridGenerator)
     backend = Backend({
         "Consumer Nodebus 11": 0.95, "Connection Nodebus 1": 0.93,      # in the band
         "Consumer Nodebus 21": 0.89, "Connection Nodebus 2": 0.905,     # node below 0.91: the feeders took too much
@@ -60,7 +67,7 @@ def test_the_far_end_of_a_feeder_moves_when_a_consumer_there_is_below_the_band()
         "Consumer Nodebus 41": 0.85,                                    # no bus at its node (cabinet network)
         "Consumer Nodebus 51": 0.89, "LVbus 1": 0.96,                   # at the station vertex itself
     })
-    far, connections = generator._repair_targets(
+    far, connections = repair_stage().targets(
         backend, buildings((11, 1), (21, 2), (22, 6), (31, 3), (41, 4), (51, 5)), ont_vertice=5)
     assert far == [2, 4, 6]
     # below the band because of their own house cables: at a street node within the feeder share (31) and at the
@@ -119,10 +126,8 @@ class ClusterDb:
 
 
 def repaired(monkeypatch, bcid, building_rows, low_points, rated=None, new_bcids=(4,), connections=(), ont=900):
-    generator = GridGenerator.__new__(GridGenerator)
-    generator.plz, generator.dbc, generator.logger = 80803, ClusterDb(rated), LOGGER
-    generator.consumer_categories = None
-    monkeypatch.setattr(GridGenerator, "_repair_targets",
+    stage = repair_stage(ClusterDb(rated))
+    monkeypatch.setattr(VoltageRepair, "targets",
                         lambda self, backend, df, ont_vertice: (list(low_points), list(connections)))
     dimensioned = []
 
@@ -130,13 +135,13 @@ def repaired(monkeypatch, bcid, building_rows, low_points, rated=None, new_bcids
         dimensioned.append({"first_bcid": first_bcid, "merge": merge, "replace": replace, "first_cut": first_cut})
         return list(new_bcids)
 
-    monkeypatch.setattr(GridGenerator, "dimension_bcid_for_kcid", dimension)
-    monkeypatch.setattr(GridGenerator, "position_greenfield_transformers",
+    monkeypatch.setattr(GreenfieldAreas, "split", dimension)
+    monkeypatch.setattr(StationPlanner, "place_station",
                         lambda self, plz, kcid, b: self.dbc.calls.append(("station", b)))
     # 100 kW per connection point
     monkeypatch.setattr(utils, "simultaneous_peak_load", lambda df, categories, nodes: 100.0 * len(nodes))
-    rebuild = generator.repair_voltage_violation(2, bcid, None, buildings(*building_rows), ont_vertice=ont)
-    return rebuild, generator.dbc.calls, dimensioned
+    rebuild = stage.repair(2, bcid, None, buildings(*building_rows), ont_vertice=ont)
+    return rebuild, stage.dbc.calls, dimensioned
 
 
 def test_an_existing_station_keeps_its_other_buildings_and_is_sized_again(monkeypatch):
@@ -197,15 +202,15 @@ def test_house_connections_and_far_ends_are_repaired_together(monkeypatch):
 # --- the grids are built again -------------------------------------------------------------------------------------
 def test_a_grid_outside_the_band_is_planned_again_before_anything_of_it_is_stored(monkeypatch):
     statuses = iter(["voltage_violation", "converged", "converged"])
-    monkeypatch.setattr(GridGenerator, "validate_net", lambda self, backend, kcid, bcid: (next(statuses), NO_DROPS))
+    monkeypatch.setattr(GridStorage, "validate_net", lambda self, backend, kcid, bcid: (next(statuses), NO_DROPS))
     repairs = []
 
     def repair(self, kcid, bcid, backend, buildings_df, ont_vertice):
         repairs.append((kcid, bcid, ont_vertice, len(buildings_df)))
         return [(kcid, bcid), (kcid, 7)]
 
-    monkeypatch.setattr(GridGenerator, "repair_voltage_violation", repair)
-    monkeypatch.setattr(grid_generator, "MAX_VOLTAGE_REPAIRS", 5)
+    monkeypatch.setattr(VoltageRepair, "repair", repair)
+    monkeypatch.setattr(network_builder, "MAX_VOLTAGE_REPAIRS", 5)
     dbc = FakeDbc()
     install(dbc)
 
@@ -216,11 +221,11 @@ def test_a_grid_outside_the_band_is_planned_again_before_anything_of_it_is_store
 
 @pytest.mark.parametrize("limit", [0, 2])
 def test_repairs_stop_after_max_voltage_repairs(monkeypatch, limit):
-    monkeypatch.setattr(GridGenerator, "validate_net", lambda self, backend, kcid, bcid: ("voltage_violation", NO_DROPS))
+    monkeypatch.setattr(GridStorage, "validate_net", lambda self, backend, kcid, bcid: ("voltage_violation", NO_DROPS))
     repairs = []
-    monkeypatch.setattr(GridGenerator, "repair_voltage_violation",
+    monkeypatch.setattr(VoltageRepair, "repair",
                         lambda self, kcid, bcid, *args: repairs.append(bcid) or [(kcid, bcid)])
-    monkeypatch.setattr(grid_generator, "MAX_VOLTAGE_REPAIRS", limit)
+    monkeypatch.setattr(network_builder, "MAX_VOLTAGE_REPAIRS", limit)
     dbc = FakeDbc()
     install(dbc)
 

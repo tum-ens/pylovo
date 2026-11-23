@@ -5,9 +5,9 @@ feeders of a station run along the streets and pass the buildings they supply. T
 building clusters keep the areas in one piece:
 
 * an existing station takes only the buildings for which it is the nearest station
-  (``GridGenerator.position_brownfield_transformers``), so its area is connected along the streets. Only a small
+  (``StationPlanner.assign_to_existing_stations``), so its area is connected along the streets. Only a small
   greenfield cluster that is left over may still join the next station in reach, if the joined area is in one piece
-  (``GridGenerator.merge_small_greenfield_into_brownfield``);
+  (``StationPlanner.merge_small_areas_into_stations``);
 * a greenfield area must form one piece among the buildings that other grids supply already
   (:func:`is_contiguous`). The buildings left over for greenfield stations lie in the gaps between the
   existing areas, and the greenfield clustering (average linkage on street distances) would otherwise
