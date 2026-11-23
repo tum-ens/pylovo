@@ -83,8 +83,10 @@ Modules
        version, writes an audit row to ``load_edit`` and can undo the edit exactly. Used by
        ``pylovo-api`` (:ref:`http-api-load-editing`).
    * - :mod:`pylovo.analysis`
-     - :class:`~pylovo.analysis.parameter_calculation.ParameterCalculator` for postcode and
-       per-grid key figures, coverage and border diagnostics, power-flow helpers.
+     - :class:`~pylovo.analysis.parameter_calculation.ParameterCalculator` computes and stores the
+       postcode statistics and the key figures of every grid; the figures of one net come from the
+       functions of ``net_metrics``, ``impedance_metrics`` and ``grid_analysis``, which need no
+       database. Also coverage and border diagnostics and the comparison metrics.
    * - ``pylovo.classification``
      - Grid classification (``pylovo-classify``, :doc:`../user_guide/classification`): sampling,
        clustering and its database interface. It is not part of the API reference.
