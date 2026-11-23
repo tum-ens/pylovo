@@ -17,10 +17,7 @@ from pylovo.config_loader import (
     MAX_GREENFIELD_TRAFO_DISTANCE,
     MERGE_GREENFIELD_CLUSTERS,
 )
-
-from pylovo.lv_grid.context import GenerationContext
-
-from pylovo.lv_grid.context import Stage
+from pylovo.lv_grid.context import GenerationContext, Stage
 from pylovo.lv_grid.greenfield_areas import GreenfieldAreas
 
 

@@ -15,11 +15,9 @@ from pylovo.config_loader import (
     SAVE_GRID_FOLDER,
     VERSION_ID,
 )
-
 from pylovo.electrical_backend import IElectricalBackend
-from pylovo.station_voltage import validate_operating_point
-
 from pylovo.lv_grid.context import Stage
+from pylovo.station_voltage import validate_operating_point
 
 
 class GridStorage(Stage):

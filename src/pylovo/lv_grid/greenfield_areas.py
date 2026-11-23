@@ -18,7 +18,6 @@ from pylovo.config_loader import (
     MAX_GREENFIELD_TRAFO_DISTANCE,
     MERGE_GREENFIELD_CLUSTERS,
 )
-
 from pylovo.lv_grid.context import Stage
 
 
@@ -26,7 +25,7 @@ class GreenfieldAreas(Stage):
     """Split the unassigned buildings of a ``kcid`` into feasible greenfield supply areas (:meth:`split`)."""
 
     def split(self, plz: int, kcid: int, first_bcid: int = 1, merge: bool = True,
-                                replace: bool = True, first_cut: int = 2) -> list[int]:
+              replace: bool = True, first_cut: int = 2) -> list[int]:
         """Split the unassigned buildings of a kcid into greenfield transformer areas (bcids).
 
         Average-linkage hierarchical clustering on the routed distance matrix is cut

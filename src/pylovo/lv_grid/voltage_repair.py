@@ -9,15 +9,9 @@ and a house connection that is too long is planned as a feeder.
 import pandas as pd  # type: ignore
 
 from pylovo import utils
-from pylovo.config_loader import (
-    MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT,
-    POWER_FLOW_MIN_VM_PU,
-)
-
+from pylovo.config_loader import MAX_SERVICE_DESIGN_VOLTAGE_DROP_PERCENT, POWER_FLOW_MIN_VM_PU
 from pylovo.electrical_backend import IElectricalBackend
-from pylovo.lv_grid.context import GenerationContext
-
-from pylovo.lv_grid.context import Stage
+from pylovo.lv_grid.context import GenerationContext, Stage
 from pylovo.lv_grid.station_planning import StationPlanner
 
 
@@ -30,7 +24,7 @@ class VoltageRepair(Stage):
         self.areas = self.stations.areas
 
     def targets(self, backend: IElectricalBackend, buildings_df: pd.DataFrame,
-                        ont_vertice: int) -> tuple[list[int], list[int]]:
+                ont_vertice: int) -> tuple[list[int], list[int]]:
         """What a voltage repair changes in a grid (after ``GridStorage.validate_net``).
 
         The feeders may use the band down to ``POWER_FLOW_MIN_VM_PU`` plus the share of the house
@@ -68,7 +62,7 @@ class VoltageRepair(Stage):
         return (sorted(far) if triggered else []), sorted(connections)
 
     def repair(self, kcid: int, bcid: int, backend: IElectricalBackend, buildings_df: pd.DataFrame,
-                                 ont_vertice: int) -> list[tuple[int, int]]:
+               ont_vertice: int) -> list[tuple[int, int]]:
         """Plan a grid again whose validation power flow left the voltage band (``MAX_VOLTAGE_REPAIRS``).
 
         :meth:`targets` gives what changes. A building below the band because of its own house

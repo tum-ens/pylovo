@@ -11,7 +11,7 @@ from pylovo.cable_installer import CableInstaller
 from pylovo.electrical_backend import BusSpec, ExtGridSpec, LineSpec
 from pylovo.feeder_planning import FeederBranch
 from pylovo.lv_grid.context import GenerationContext
-from pylovo.lv_grid.network_builder import NetworkBuilder
+from pylovo.lv_grid.network_builder import GridInput, NetworkBuilder
 
 LOGGER = logging.getLogger("installer-components-test")
 LON, LAT = 11.5, 48.1
@@ -164,9 +164,11 @@ def test_feeder_lines_follow_the_branches_one_by_one_and_start_at_the_busbar_or_
     branches = [FeederBranch(0, [3, 2], 1), FeederBranch(1, [4], 2)]
     design = feeder_planning.size_feeder_tree(installer, branches, 1, distances, buildings, consumers, LOGGER, 80803)
 
-    generator = NetworkBuilder(GenerationContext(plz=80803, dbc=None, logger=LOGGER))
+    builder = NetworkBuilder(GenerationContext(plz=80803, dbc=None, logger=LOGGER, consumer_categories=consumers))
+    grid = GridInput(kcid=1, bcid=2, distance_by_vertex=distances, station_vertex=1, buildings=buildings,
+                     consumers=[12, 13, 14], connection_nodes=[2, 3, 4], paths_to_station={})
     material = {name: 0.0 for name, *_ in CABLES}
-    material = generator._install_feeder_lines(installer, branches, design, buildings, consumers, distances, 1, material, 1, 2)
+    material = builder._install_feeder_lines(installer, branches, design, buildings, grid, material)
 
     lines = {spec.name: (spec.bus1, spec.bus2, spec.cable_name, spec.parallel) for spec in backend.components}
     assert lines == {

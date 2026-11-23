@@ -4,7 +4,7 @@
 and the settlement type, adds the candidate transformers and builds the routable street network.
 """
 
-from pylovo.infdb.infdb_client import address_filter_warning
+from pylovo import postcode_border
 from pylovo.config_loader import (
     AGGREGATE_NEARBY_CONNECTION_POINTS,
     CONFIG_EQUIPMENT_DATA,
@@ -22,9 +22,7 @@ from pylovo.config_loader import (
     USE_MANUAL_TRANSFORMER_POSITIONS,
     USE_OPEN_TRANSFORMER_POSITIONS,
 )
-
-from pylovo import postcode_border
-
+from pylovo.infdb.infdb_client import address_filter_warning
 from pylovo.lv_grid.context import Stage
 
 

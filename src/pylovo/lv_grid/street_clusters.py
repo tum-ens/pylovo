@@ -11,11 +11,7 @@ import warnings
 import numpy as np
 from sklearn.cluster import KMeans
 
-from pylovo.config_loader import (
-    K_MEANS_SEED,
-    MAX_BUILDINGS_PER_KCID,
-)
-
+from pylovo.config_loader import K_MEANS_SEED, MAX_BUILDINGS_PER_KCID
 from pylovo.lv_grid.context import Stage
 
 
