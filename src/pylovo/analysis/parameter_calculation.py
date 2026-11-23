@@ -29,6 +29,10 @@ TRANSFORMER_ANALYSIS_TABLES = frozenset({
     "bus", "bus_dc", "load", "trafo", "trafo3w", "line", "line_dc", "impedance", "tcsc", "dcline", "vsc", "switch",
 })
 
+# Tables the key figures of a grid (step 4 of pylovo-classify, grid_analysis.key_figures) read: those of the
+# per-transformer analysis and the external grid (the root bus). Deserialising only these halves the time of step 4.
+CLUSTERING_ANALYSIS_TABLES = TRANSFORMER_ANALYSIS_TABLES | {"ext_grid"}
+
 
 class GridParameterCounts(NamedTuple):
     """What the per-grid analysis of one PLZ did (:meth:`ParameterCalculator.calculate_grid_parameters`)."""
@@ -209,7 +213,7 @@ class ParameterCalculator:
         self.kcid = kcid
         osm_trafo = self.has_osm_trafo()
 
-        net = self.dbc.read_net_db(self.plz, self.kcid, self.bcid)
+        net = self.dbc.read_net_db(self.plz, self.kcid, self.bcid, tables=CLUSTERING_ANALYSIS_TABLES)
         params = key_figures(net)
         params.update({
             "version_id": self.version_id,

@@ -14,7 +14,7 @@ import pandapower as pp
 import pandapower.topology as top
 import pytest
 
-from pylovo.analysis import grid_analysis, impedance_metrics, net_metrics
+from pylovo.analysis import grid_analysis, impedance_metrics, net_metrics, parameter_calculation
 from pylovo.analysis.net_metrics import station_mva
 from pylovo.analysis.parameter_calculation import ParameterCalculator
 from pylovo.database.analysis_mixin import AnalysisMixin
@@ -433,7 +433,9 @@ def test_the_per_grid_analysis_needs_the_plz_analysis_first(monkeypatch):
 def test_a_single_grid_is_stored_with_its_context_and_the_origin_of_its_transformer():
     stored = []
     pc = calculator(plz=80803)
-    pc.dbc = type("Dbc", (), {"logger": LOGGER, "read_net_db": lambda s, plz, kcid, bcid: build(),
+    seen_tables = []
+    pc.dbc = type("Dbc", (), {"logger": LOGGER,
+                              "read_net_db": lambda s, plz, kcid, bcid, tables=None: seen_tables.append(tables) or build(),
                               "insert_clustering_parameters": lambda s, params: stored.append(params)})()
     pc.analyze_single_grid(-3, 7)       # a negative bcid is a grid around an existing (OSM) transformer
     pc.analyze_single_grid(4, 7)
@@ -442,3 +444,14 @@ def test_a_single_grid_is_stored_with_its_context_and_the_origin_of_its_transfor
         (80803, 7, -3, True, "1"), (80803, 7, 4, False, "1")]
     assert all(p["key_figures_version"] == grid_analysis.KEY_FIGURES_VERSION for p in stored)
     assert stored[0]["no_house_connections"] == 4
+    assert seen_tables == [parameter_calculation.CLUSTERING_ANALYSIS_TABLES] * 2     # only the tables the key figures read
+
+
+@pytest.mark.parametrize("options", [{}, {"busbar": (31,)}, {"f2_at_busbar": True, "busbar": (31, 32)},
+                                     {"parallel_feeder": 2, "parallel_trafo": 2}, {"street": False, "busbar": (31, 32, 33)},
+                                     {"f2_at_busbar": True, "drop": (24,)}])
+def test_the_key_figures_of_the_pruned_read_equal_those_of_the_full_read(options):
+    client = Client({(1, 1): build(**options)})
+    full = grid_analysis.key_figures(client.read_net_db(1, 1, 1))
+    pruned = grid_analysis.key_figures(client.read_net_db(1, 1, 1, tables=parameter_calculation.CLUSTERING_ANALYSIS_TABLES))
+    assert pruned == full
