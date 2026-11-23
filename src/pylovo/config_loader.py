@@ -788,6 +788,9 @@ CLASSIFICATION_VERSION_COMMENT = CONFIG_CLASSIFICATION["CLASSIFICATION_VERSION_C
 CLASSIFICATION_REGION = CONFIG_CLASSIFICATION["CLASSIFICATION_REGION"]
 NO_OF_CLUSTERS_ALLOWED = CONFIG_CLASSIFICATION["NO_OF_CLUSTERS_ALLOWED"]
 N_SAMPLES = CONFIG_CLASSIFICATION["N_SAMPLES"]
+# a positive whole number of PLZ, or "all": every PLZ of the pool
+if N_SAMPLES != "all" and (isinstance(N_SAMPLES, bool) or not isinstance(N_SAMPLES, int) or N_SAMPLES < 1):
+    raise ValueError(f'N_SAMPLES must be a positive whole number or "all", got {N_SAMPLES!r}')
 # PLZ bootstrap resamples of the selection report of pylovo-classify (0: the report of the sample only)
 SELECTION_BOOTSTRAP = CONFIG_CLASSIFICATION["SELECTION_BOOTSTRAP"]
 if isinstance(SELECTION_BOOTSTRAP, bool) or not isinstance(SELECTION_BOOTSTRAP, int) or SELECTION_BOOTSTRAP < 0:

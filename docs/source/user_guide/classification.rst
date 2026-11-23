@@ -101,7 +101,8 @@ it writes and keeps the comments and everything else in the file.
      - ``Germany`` or one value of ``REGION_DICT`` (``Bayern``, ``Hessen``, ...). It limits the PLZ that can be drawn.
    * - ``N_SAMPLES``
      - Approximate number of PLZ in the sample. The shipped ``7`` is a test value that leaves small RegioStaR
-       classes empty. Use at least 100 for automatic choices, for example 500 for a federal state.
+       classes empty. Use at least 100 for automatic choices, for example 500 for a federal state. ``all`` takes
+       every PLZ of the pool (with the restriction to ``postcode_result``: all generated PLZ of ``VERSION_ID``).
    * - ``SELECTION_BOOTSTRAP``
      - PLZ bootstrap resamples of the selection report (shipped ``100``, also when the key is missing; ``0``
        reports the sample only). One resample takes about 5 s for 500 PLZ.

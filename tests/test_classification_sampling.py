@@ -1,4 +1,9 @@
 """Tests of ``classification/sampling/sample.py`` with a synthetic municipal register and a fake database client."""
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -159,6 +164,30 @@ def test_failed_sampling_leaves_no_registered_version(monkeypatch, written):
     with pytest.raises(IndexError):
         sample.create_sample_set()
     assert not inserted_versions(client) and client.conn.commits == 0 and not written
+
+
+def test_n_samples_all_takes_every_plz_of_the_pool(monkeypatch, written):
+    reg = register()
+    pool = reg["plz"].iloc[:150]
+    monkeypatch.setattr(sample, "_db_client", FakeClient(reg, available_plz=pool))
+    monkeypatch.setattr(sample, "N_SAMPLES", "all")
+    sample.create_sample_set(restrict_to_postcode_result=True)
+    frame = written["frame"]
+    assert sorted(frame["plz"]) == sorted(pool) and frame["perc"].notna().all()
+
+
+@pytest.mark.parametrize("value, accepted", [("all", True), ("500", True), ("0", False), ("-3", False),
+                                             ("2.5", False), ("true", False), ("some", False)])
+def test_n_samples_is_a_positive_whole_number_or_all(tmp_path, value, accepted):
+    shutil.copytree(Path(__file__).resolve().parents[1] / "config", tmp_path / "config")
+    config = tmp_path / "config" / "config_classification.yaml"
+    text = "".join(line for line in config.read_text().splitlines(keepends=True) if not line.startswith("N_SAMPLES:"))
+    config.write_text(text.rstrip("\n") + f"\nN_SAMPLES: {value}\n")
+    proc = subprocess.run([sys.executable, "-c", "import pylovo.config_loader as c; print(c.N_SAMPLES)"],
+                          cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert (proc.returncode == 0) == accepted
+    if not accepted:
+        assert "N_SAMPLES must be a positive whole number" in proc.stderr
 
 
 def test_quota_above_the_number_of_plz_of_a_class_is_reported_before_anything_is_written(monkeypatch, written):

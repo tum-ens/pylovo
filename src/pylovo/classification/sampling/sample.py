@@ -4,7 +4,8 @@ The number of samples per RegioStaR 7 class is proportional to the population of
 the class (``N_SAMPLES`` in ``config_classification.yaml``). Within a class, PLZ
 are drawn with probabilities that follow the population-density distribution, with a
 generator seeded by ``CLASSIFICATION_VERSION``: the same version, register and ``N_SAMPLES``
-give the same sample. The sample set is stored in ``pylovo.sample_set`` under ``CLASSIFICATION_VERSION``.
+give the same sample. ``N_SAMPLES: all`` takes every PLZ of the pool instead. The sample set is stored in
+``pylovo.sample_set`` under ``CLASSIFICATION_VERSION``.
 """
 import numpy as np
 import pandas as pd
@@ -182,7 +183,8 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
 
     Draws the sample from the municipal register (Germany or one federal state),
     registers ``CLASSIFICATION_VERSION`` and writes the sample to ``pylovo.sample_set``.
-    The draw is seeded with ``CLASSIFICATION_VERSION`` (a non-negative integer).
+    The draw is seeded with ``CLASSIFICATION_VERSION`` (a non-negative integer). ``N_SAMPLES: all`` takes every PLZ
+    of the pool (all PLZ of every RegioStaR 7 class), e.g. to classify all generated grids of a version.
 
     Args:
         restrict_to_postcode_result: Only sample PLZ that already have a
@@ -214,8 +216,11 @@ def create_sample_set(restrict_to_postcode_result: bool = False):
         federal_state_id = get_federal_state_id()
         regiostar_plz = regiostar_plz[regiostar_plz['fed_state'] == federal_state_id]
 
-    # create sample dataset
-    samples = perc_of_pop_per_class(regiostar_plz)
+    # create sample dataset: every PLZ of the pool with N_SAMPLES "all", else a population-proportional quota
+    if N_SAMPLES == "all":
+        samples = {k: int(v) for k, v in regiostar_plz.groupby("regio7").size().items()}
+    else:
+        samples = perc_of_pop_per_class(regiostar_plz)
     regiostar_samples_result = get_samples_with_regiostar(samples, regiostar_plz)
     regiostar_samples_result = regiostar_samples_result.reset_index()
     regiostar_samples_result = regiostar_samples_result.rename(columns={'index': 'classification_id'})

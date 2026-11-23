@@ -2,7 +2,7 @@ CLASSIFICATION_VERSION: 1
 CLASSIFICATION_VERSION_COMMENT: "describe the idea and parameters of the classification"
 CLASSIFICATION_REGION: Bayern
 NO_OF_CLUSTERS_ALLOWED: [3, 4, 5, 6, 7]
-N_SAMPLES: 7  # default value
+N_SAMPLES: 7  # default value; all: every PLZ of the pool (e.g. all generated PLZ of VERSION_ID)
 # PLZ bootstrap resamples of the selection report (0: the report of the sample only); about 5 s each for 500 PLZ
 SELECTION_BOOTSTRAP: 100
 
