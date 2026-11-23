@@ -2,8 +2,10 @@ Database schema
 ===============
 
 All pylovo tables are in the schema ``pylovo``. They are defined in
-:mod:`pylovo.database.config_table_structure` and created by ``pylovo-setup``. The
-:doc:`database_tables` lists every column. The schema needs PostgreSQL 15 or newer.
+:mod:`pylovo.database.config_table_structure` and created by ``pylovo-setup``. These definitions
+are the complete schema of a new database, with every key, check and index; the migrations only bring
+older databases to the same state. The :doc:`database_tables` lists every column. The schema needs
+PostgreSQL 15 or newer.
 
 .. figure:: /images/diagrams/database_schema.*
    :alt: Entity diagram of the pylovo schema with reference tables, per-postcode and per-grid results

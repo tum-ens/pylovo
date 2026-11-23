@@ -3,8 +3,8 @@
 Database table reference
 ========================
 
-Generated from ``src/pylovo/database/config_table_structure.py`` and the constraint changes of
-``src/pylovo/database/migrations.py``: the keys and checks are those of a database after all migrations.
+Generated from ``src/pylovo/database/config_table_structure.py``, the complete schema of a new database
+(the migrations of ``src/pylovo/database/migrations.py`` bring older databases to the same keys and checks).
 All tables live in the schema ``pylovo``; ``<TARGET_EPSG>`` is the projected CRS from ``.env`` (default
 25832). Tables used only by the classification and validation modules are not listed.
 
@@ -998,9 +998,9 @@ Check ``chk_lines_result_parallel``: ``parallel IS NULL OR parallel > 0``.
 
 Offset helper geometries that make parallel and split feeders visible in GIS.
 
-Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
-
 Foreign key (grid_result_id, source_lines_result_id) references ``lines_result`` (grid_result_id, lines_result_id), ON DELETE CASCADE.
+
+Foreign key (grid_result_id) references ``grid_result`` (grid_result_id), ON DELETE CASCADE.
 
 .. list-table::
    :header-rows: 1
@@ -1018,7 +1018,7 @@ Foreign key (grid_result_id, source_lines_result_id) references ``lines_result``
      - FK → ``lines_result``
    * - ``grid_result_id``
      - ``bigint``
-     - FK → ``grid_result``, FK → ``lines_result``
+     - FK → ``lines_result``, FK → ``grid_result``
    * - ``geom``
      - ``geometry(Geometry,<TARGET_EPSG>)``
      -

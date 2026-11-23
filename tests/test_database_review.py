@@ -487,6 +487,70 @@ def test_blocked_migration_names_the_dependent_and_changes_nothing():
         admin.close()
 
 
+#: The catalog of the ``pylovo`` schema without the migration ledger. Columns by their rank in the table: the
+#: position number itself keeps a gap where a migration dropped a column of an older database.
+_CATALOG = {
+    "columns": """SELECT c.relname, row_number() OVER (PARTITION BY c.oid ORDER BY a.attnum), a.attname,
+                         format_type(a.atttypid, a.atttypmod), a.attnotnull, pg_get_expr(d.adbin, d.adrelid),
+                         a.attidentity::text
+                  FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+                  LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+                  WHERE c.relnamespace = 'pylovo'::regnamespace AND c.relkind IN ('r', 'v', 'm')
+                    AND a.attnum > 0 AND NOT a.attisdropped AND c.relname <> 'schema_migrations'""",
+    "constraints": """SELECT conrelid::regclass::text, conname, pg_get_constraintdef(oid), convalidated
+                      FROM pg_constraint
+                      WHERE connamespace = 'pylovo'::regnamespace
+                        AND conrelid IS DISTINCT FROM to_regclass('pylovo.schema_migrations')""",
+    "indexes": """SELECT indexname, indexdef FROM pg_indexes
+                  WHERE schemaname = 'pylovo' AND tablename <> 'schema_migrations'""",
+    "views": """SELECT relname, relkind::text, pg_get_viewdef(oid) FROM pg_class
+                WHERE relnamespace = 'pylovo'::regnamespace AND relkind IN ('v', 'm')""",
+    "functions": "SELECT proname, md5(prosrc) FROM pg_proc WHERE pronamespace = 'pylovo'::regnamespace",
+}
+
+
+def _catalog(db) -> dict[str, set[tuple]]:
+    catalog = {}
+    for name, query in _CATALOG.items():
+        db.cur.execute(query)
+        catalog[name] = set(db.cur.fetchall())
+    return catalog
+
+
+def test_the_table_definitions_alone_are_the_schema_that_setup_builds():
+    """CREATE_QUERIES are the complete schema: the migrations add no key, check or index to a new database."""
+    from psycopg2 import sql
+
+    names = ["pylovo_review_" + uuid.uuid4().hex[:8] for _ in range(2)]
+    admin = admin_connection()
+    try:
+        with admin.cursor() as cur:
+            for name in names:
+                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        with client(names[0]) as db:                       # only the table definitions
+            constructor = DatabaseConstructor(db)
+            constructor.create_schema()
+            constructor.create_table("all")
+            created = _catalog(db)
+            db.conn.rollback()
+        with client(names[1]) as db:                       # what pylovo-setup does on a new database
+            DatabaseConstructor(db).migrate_schema()
+            migrated = _catalog(db)
+            db.conn.rollback()
+        assert len(created["constraints"]) > 100 and len(created["indexes"]) > 90
+        for part in _CATALOG:
+            assert created[part] == migrated[part], (part, sorted(created[part] ^ migrated[part], key=str)[:10])
+        with client(names[0]) as db:                       # the migrations run on the created tables: no change
+            DatabaseConstructor(db).migrate_schema()
+            assert _catalog(db) == created
+            db.conn.rollback()
+    finally:
+        with admin.cursor() as cur:
+            for name in names:
+                cur.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+        admin.close()
+
+
 def test_legacy_building_columns_and_key_migrate_without_reset():
     """Exercise the pre-baseline path in a separate disposable database."""
     from psycopg2 import sql

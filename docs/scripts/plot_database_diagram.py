@@ -1,9 +1,8 @@
 """Database diagram and column reference generated from the table definitions.
 
 The script parses ``src/pylovo/database/config_table_structure.py`` statically
-(no import, so neither a database nor a ``.env`` file is needed) and applies the constraint
-changes of the migrations in ``src/pylovo/database/migrations.py`` (``ALTER TABLE ... ADD/DROP
-CONSTRAINT``), so the constraints shown are those of a database after all migrations. It writes
+(no import, so neither a database nor a ``.env`` file is needed). The table definitions are the
+complete schema: the migrations only bring older databases to it. It writes
 
 * ``docs/source/images/diagrams/database_schema.{svg,png}`` - entity diagram
 * ``docs/source/concepts/database_tables.rst`` - generated column reference
@@ -24,7 +23,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 TABLE_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "config_table_structure.py"
-MIGRATIONS_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "migrations.py"
 CONSTRUCTOR_MODULE = st.REPO_ROOT / "src" / "pylovo" / "database" / "database_constructor.py"
 RST_OUTPUT = st.REPO_ROOT / "docs" / "source" / "concepts" / "database_tables.rst"
 
@@ -136,16 +134,6 @@ class Table:
     checks: dict[str, str] = field(default_factory=dict)         # constraint name -> condition
     temporary: bool = False
 
-    def set_foreign_key(self, fk: ForeignKey) -> None:
-        """Add a foreign key, or replace the one of the same name."""
-        self.foreign_keys = [old for old in self.foreign_keys if old.name != fk.name] + [fk]
-
-    def drop_constraint(self, name: str) -> None:
-        """Remove the foreign key, unique or check constraint of this name (nothing happens if there is none)."""
-        self.foreign_keys = [fk for fk in self.foreign_keys if fk.name != name]
-        self.unique.pop(name, None)
-        self.checks.pop(name, None)
-
 
 def _string_dict(tree: ast.Module, name: str) -> dict[str, str]:
     """Return the first dict literal of string constants assigned to ``name``."""
@@ -246,47 +234,6 @@ def _parse_table(name: str, sql: str, temporary: bool = False) -> Table | None:
     return table
 
 
-def _migration_statements() -> list[str]:
-    """Return the SQL texts of the post-schema migrations that contain ``ALTER TABLE``, in migration order.
-
-    The migrations are listed in ``POST_SCHEMA_MIGRATIONS`` (name, function); the pre-schema migrations run before
-    the baseline tables exist and are not applied here.
-    """
-    tree = ast.parse(MIGRATIONS_MODULE.read_text(encoding="utf-8"))
-    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-    order = []
-    for node in tree.body:
-        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "POST_SCHEMA_MIGRATIONS":
-            order = [entry.elts[1].id for entry in node.value.elts]
-    texts = []
-    for function in order:
-        texts += [" ".join(const.value.split()) for const in ast.walk(functions[function])
-                  if isinstance(const, ast.Constant) and isinstance(const.value, str) and "ALTER TABLE" in const.value]
-    return texts
-
-
-def apply_migrations(tables: dict[str, Table]) -> None:
-    """Apply the ``ALTER TABLE ... DROP/ADD CONSTRAINT`` statements of the migrations to the parsed tables.
-
-    Only foreign keys, unique and check constraints are modelled (other statements, such as indexes and
-    ``VALIDATE CONSTRAINT``, do not change what the reference shows).
-    """
-    alter = r"ALTER TABLE (?:ONLY )?pylovo\.(\w+) "
-    for sql in _migration_statements():
-        for match in re.finditer(alter + r"DROP CONSTRAINT (?:IF EXISTS )?(\w+)", sql):
-            if match.group(1) in tables:
-                tables[match.group(1)].drop_constraint(match.group(2))
-        for match in re.finditer(alter + r"ADD CONSTRAINT (\w+) FOREIGN KEY \(([^)]*)\) " + _REFERENCES, sql):
-            if match.group(1) in tables:
-                tables[match.group(1)].set_foreign_key(_foreign_key(match.group(2), match.group(3), match.groups()[3:]))
-        for match in re.finditer(alter + r"ADD CONSTRAINT (\w+) UNIQUE \(([^)]*)\)", sql):
-            if match.group(1) in tables:
-                tables[match.group(1)].unique[match.group(2)] = _columns(match.group(3))
-        for match in re.finditer(alter + r"ADD CONSTRAINT (\w+) CHECK \(", sql):
-            if match.group(1) in tables:
-                tables[match.group(1)].checks[match.group(2)] = _group(sql, match.end() - 1)[0]
-
-
 def _constructor_table(name: str) -> Table:
     """Parse the ``CREATE TABLE`` of ``pylovo.<name>`` that ``DatabaseConstructor`` runs outside ``CREATE_QUERIES``."""
     tree = ast.parse(CONSTRUCTOR_MODULE.read_text(encoding="utf-8"))
@@ -311,7 +258,6 @@ def parse_schema() -> tuple[dict[str, Table], list[str]]:
         else:
             tables[name] = table
     tables["schema_migrations"] = _constructor_table("schema_migrations")
-    apply_migrations(tables)
     for name, sql in temp.items():
         tables[name] = _parse_table(name, sql, temporary=True)
     return tables, views
@@ -539,8 +485,8 @@ def write_rst(tables: dict[str, Table], views: list[str]) -> None:
         "Database table reference",
         "========================",
         "",
-        "Generated from ``src/pylovo/database/config_table_structure.py`` and the constraint changes of",
-        "``src/pylovo/database/migrations.py``: the keys and checks are those of a database after all migrations.",
+        "Generated from ``src/pylovo/database/config_table_structure.py``, the complete schema of a new database",
+        "(the migrations of ``src/pylovo/database/migrations.py`` bring older databases to the same keys and checks).",
         "All tables live in the schema ``pylovo``; ``<TARGET_EPSG>`` is the projected CRS from ``.env`` (default",
         "25832). Tables used only by the classification and validation modules are not listed.",
         "",

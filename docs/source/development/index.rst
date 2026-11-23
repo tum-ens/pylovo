@@ -65,8 +65,11 @@ Code conventions
 * Docstrings in Google style (``Args:``, ``Returns:``, ``Raises:``); they are rendered in the
   :doc:`../api_reference` with napoleon.
 * Import configuration values explicitly (``from pylovo.config_loader import VERSION_ID, ...``).
-* All SQL of the pipeline lives in the mixins of :mod:`pylovo.database`; table changes go into
-  :mod:`pylovo.database.config_table_structure`.
+* All SQL of the pipeline lives in the mixins of :mod:`pylovo.database`. A table change goes into
+  :mod:`pylovo.database.config_table_structure`, which is the complete schema of a new database
+  (columns, keys, checks and indexes), and into a migration of :mod:`pylovo.database.migrations` that
+  brings older databases to the same state and changes nothing on a new one. A database test compares a
+  created and a migrated schema.
 * A change that alters generated grids must be reproducible with a new ``VERSION_ID``; parameters
   that influence the result belong into the version snapshot
   (``PreprocessingMixin._generation_parameters_snapshot``).
