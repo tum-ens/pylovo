@@ -37,13 +37,38 @@ def test_yeo_johnson_makes_every_key_figure_close_to_symmetric_and_keeps_its_exp
     assert abs(skew(transform_key_figures(frame, "log1p")["km"])) > 0.5 * abs(skew(frame["km"]))
 
 
+def test_median_yeo_johnson_is_free_of_the_unit_of_a_key_figure():
+    """S6: Yeo-Johnson of x >= 0 is Box-Cox of x + 1 and changes with the unit; divided by the median first, it does not."""
+    frame = long_tailed()
+    metres = frame.assign(km=frame["km"] * 1000)
+    plain = transform_key_figures(frame, "yeo-johnson"), transform_key_figures(metres, "yeo-johnson")
+    assert abs(plain[0].attrs["lambdas"]["km"] - plain[1].attrs["lambdas"]["km"]) > 0.3
+    scaled = transform_key_figures(frame, "median-yeo-johnson"), transform_key_figures(metres, "median-yeo-johnson")
+    assert np.allclose(scaled[0], scaled[1], rtol=1e-6, atol=1e-9)
+    assert scaled[0].attrs["lambdas"]["km"] == pytest.approx(scaled[1].attrs["lambdas"]["km"], rel=1e-6)
+    assert scaled[1].attrs["medians"]["km"] == pytest.approx(1000 * scaled[0].attrs["medians"]["km"])
+    assert (abs(skew(scaled[0])) < 0.3).all()
+
+
+def test_a_key_figure_with_median_zero_is_divided_by_its_mean():
+    from pylovo.classification.clustering.transform import median_divisors
+
+    frame = pd.DataFrame({"mostly_zero": [0, 0, 0, 2, 6], "all_zero": [0.0] * 5, "plain": [1, 2, 3, 4, 50]})
+    medians, divisors, rules = median_divisors(frame)
+    assert medians == {"mostly_zero": 0.0, "all_zero": 0.0, "plain": 3.0}
+    assert divisors == {"mostly_zero": pytest.approx(1.6), "all_zero": 1.0, "plain": 3.0}
+    assert rules == {"mostly_zero": "mean", "all_zero": "one", "plain": "median"}
+    out = transform_key_figures(frame, "median-yeo-johnson")
+    assert out.attrs["divisor_rules"] == rules and np.isfinite(out.to_numpy()).all()
+
+
 def test_an_unknown_transform_is_rejected():
-    assert TRANSFORMS == ("none", "log1p", "yeo-johnson")
-    with pytest.raises(ValueError, match="Unknown transform 'rank', use one of: none, log1p, yeo-johnson"):
+    assert TRANSFORMS == ("none", "log1p", "yeo-johnson", "median-yeo-johnson")
+    with pytest.raises(ValueError, match="Unknown transform 'rank', use one of: none, log1p, yeo-johnson, median-yeo-johnson"):
         transform_key_figures(long_tailed(), "rank")
 
 
-@pytest.mark.parametrize("transform", ["none", "log1p", "yeo-johnson"])
+@pytest.mark.parametrize("transform", ["none", "log1p", "yeo-johnson", "median-yeo-johnson"])
 def test_kmeans_clusters_the_transformed_and_standardised_parameters(transform):
     frame = synthetic_clustering_parameters()
     out, _ = clustering_algorithms.kmeans_clustering(frame.copy(), PARAMS, 4, transform=transform)

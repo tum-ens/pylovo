@@ -824,7 +824,7 @@ N_CLUSTERS_KMEANS = CONFIG_CLUSTERING["N_CLUSTERS_KMEANS"]
 N_CLUSTERS_GMM = CONFIG_CLUSTERING["N_CLUSTERS_GMM"]
 
 # Transform of the key figures before the factor analysis and the clustering
-TRANSFORMS = ("none", "log1p", "yeo-johnson")
+TRANSFORMS = ("none", "log1p", "yeo-johnson", "median-yeo-johnson")
 TRANSFORM = CONFIG_CLUSTERING["TRANSFORM"]
 if TRANSFORM not in TRANSFORMS:
     raise ValueError(f"TRANSFORM must be one of {', '.join(TRANSFORMS)}, got {TRANSFORM!r}")

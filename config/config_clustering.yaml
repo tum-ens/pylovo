@@ -12,9 +12,11 @@ LIST_OF_CLUSTERING_PARAMETERS:
 - max_trafo_dis
 N_CLUSTERS_KMEANS: 4
 N_CLUSTERS_GMM: 6
-# Transform of the key figures before the factor analysis and the clustering: yeo-johnson (one power transform per
-# key figure, against their long tails), log1p (log(1 + x) in the unit of the figure) or none (standardisation only)
-TRANSFORM: yeo-johnson
+# Transform of the key figures before the factor analysis and the clustering: median-yeo-johnson (every key figure
+# divided by its median, then one power transform per key figure against their long tails; free of the units),
+# yeo-johnson (the power transform in the unit of the figure, classification 2), log1p (log(1 + x) in the unit of the
+# figure) or none (standardisation only)
+TRANSFORM: median-yeo-johnson
 # Also filter the grids below the four lower limits (pylovo-classify writes the answer of its question)
 ADDITIONAL_FILTERING: false
 # Leave out the grids whose power flow violates the voltage limits or does not converge: the generation could not

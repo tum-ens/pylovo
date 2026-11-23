@@ -107,7 +107,8 @@ def selection_report(df_parameters: pd.DataFrame, list_of_clustering_parameters:
         seed: Seed of the resampling.
 
     Returns:
-        dict: JSON-ready report: ``grids``, ``plz``, ``transform``, ``lambdas``, ``adequacy``, ``eigenvalues``,
+        dict: JSON-ready report: ``grids``, ``plz``, ``transform``, ``lambdas``, ``medians``, ``divisors``,
+        ``adequacy``, ``eigenvalues``,
         ``factors``, ``explained_variance``, ``factor_analysis``, ``picks``, ``parameters``, ``clusters``,
         ``bootstrap`` and ``warnings``.
     """
@@ -214,6 +215,10 @@ def selection_report(df_parameters: pd.DataFrame, list_of_clustering_parameters:
     return {
         "grids": int(len(df_parameters)), "plz": int(df_parameters["plz"].nunique()), "transform": transform,
         "lambdas": {name: round(value, 3) for name, value in full["candidates"].attrs.get("lambdas", {}).items()},
+        # median-yeo-johnson: the median and the divisor (median, or the fallback of median_divisors) of every candidate
+        "medians": {name: float(value) for name, value in full["candidates"].attrs.get("medians", {}).items()},
+        "divisors": {name: {"value": float(value), "rule": full["candidates"].attrs["divisor_rules"][name]}
+                     for name, value in full["candidates"].attrs.get("divisors", {}).items()},
         "adequacy": {"bartlett_chi2": round(float(chi2), 1), "bartlett_p": float(p_value), "kmo": round(float(kmo), 3)},
         "eigenvalues": [round(float(value), 3) for value in eigenvalues],
         "factors": n_factors,
@@ -246,6 +251,10 @@ def format_selection_report(report: dict, classification_id: int | None = None) 
              "uniqueness: " + ", ".join(f"{name} {value}"
                                         for name, value in report["factor_analysis"]["smallest_uniqueness"].items())
              + "."]
+    if report.get("divisors"):
+        lines.append("- Divisors before Yeo-Johnson (median, or the mean where the median is 0): "
+                     + ", ".join(f"{name} {d['value']:.6g}" + ("" if d["rule"] == "median" else f" ({d['rule']})")
+                                 for name, d in report["divisors"].items()) + ".")
     if report["lambdas"]:
         lines.append("- Yeo-Johnson exponents: " + ", ".join(f"{name} {value}" for name, value in report["lambdas"].items())
                      + ".")

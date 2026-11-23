@@ -28,7 +28,7 @@ def report(frame):
     return sr.selection_report(frame, None, "yeo-johnson", resamples=4, no_of_clusters_allowed=ALLOWED)
 
 
-@pytest.mark.parametrize("transform", ["none", "yeo-johnson"])
+@pytest.mark.parametrize("transform", ["none", "yeo-johnson", "median-yeo-johnson"])
 def test_the_report_repeats_the_choices_of_the_pipeline(frame, transform):
     candidates = transform_key_figures(get_params.factor_analysis_input(frame), transform)
     with warnings.catch_warnings():
@@ -98,6 +98,16 @@ def test_the_report_is_json_and_markdown(report):
     for heading in ("## Factor analysis", "## Number of clusters", "## Bootstrap", "## Warnings"):
         assert heading in text
     assert all(warning in text for warning in report["warnings"])
+
+
+def test_the_report_names_the_medians_and_divisors_of_median_yeo_johnson(frame):
+    result = sr.selection_report(frame, None, "median-yeo-johnson", resamples=0, no_of_clusters_allowed=ALLOWED)
+    candidates = get_params.factor_analysis_input(frame)
+    assert result["medians"] == {name: float(candidates[name].median()) for name in candidates}
+    assert set(result["divisors"]) == set(candidates) and all(d["value"] > 0 for d in result["divisors"].values())
+    assert json.loads(json.dumps(result)) == result
+    assert "- Divisors before Yeo-Johnson" in sr.format_selection_report(result)
+    assert sr.selection_report(frame, None, "yeo-johnson", resamples=0, no_of_clusters_allowed=ALLOWED)["divisors"] == {}
 
 
 def test_the_chosen_parameters_set_the_curves(frame):

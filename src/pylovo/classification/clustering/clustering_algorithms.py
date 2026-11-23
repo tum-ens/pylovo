@@ -39,7 +39,8 @@ def scaling_record(df_parameters_of_grids: pd.DataFrame, list_of_clustering_para
                    transform: str | None = None) -> dict:
     """Return the transform and the standardisation of :func:`scaled_key_figures` as JSON-ready values.
 
-    ``transform`` holds the method and, for ``yeo-johnson``, the fitted exponent of every parameter at full precision;
+    ``transform`` holds the method and, for ``yeo-johnson``, the fitted exponent of every parameter at full precision
+    (``median-yeo-johnson``: also the medians and the divisors applied before it, :func:`~pylovo.classification.clustering.transform.median_divisors`);
     ``scaler`` the mean and standard deviation of the transformed values (``(t - mean) / scale`` gives the rows that
     were clustered, to about 1e-15). With them a grid outside the clustered set can be placed in the same space
     (:func:`assign_clusters`).
@@ -49,8 +50,9 @@ def scaling_record(df_parameters_of_grids: pd.DataFrame, list_of_clustering_para
     transformed = transform_key_figures(df_parameters_of_grids[parameters], method)
     values = transformed.to_numpy(dtype=float)
     record = {"method": method}
-    if "lambdas" in transformed.attrs:
-        record["lambdas"] = {name: float(transformed.attrs["lambdas"][name]) for name in parameters}
+    for key in ("medians", "divisors", "divisor_rules", "lambdas"):
+        if key in transformed.attrs:
+            record[key] = {name: transformed.attrs[key][name] for name in parameters}
     return {"parameters": parameters, "transform": record,
             "scaler": {"mean": values.mean(axis=0).tolist(), "scale": values.std(axis=0).tolist()}}
 
@@ -85,7 +87,9 @@ def assign_clusters(df_parameters: pd.DataFrame, model: dict, algorithm: str = "
     parameters = model["parameters"]
     values = df_parameters[parameters].to_numpy(dtype=float)
     transform = model["transform"]
-    if transform["method"] == "yeo-johnson":
+    if "divisors" in transform:
+        values = values / np.array([transform["divisors"][name] for name in parameters])
+    if transform["method"] in ("yeo-johnson", "median-yeo-johnson"):
         values = np.column_stack([_yeo_johnson(values[:, i], transform["lambdas"][name])
                                   for i, name in enumerate(parameters)])
     elif transform["method"] == "log1p":

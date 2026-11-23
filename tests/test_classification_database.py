@@ -302,7 +302,7 @@ def test_the_values_used_are_stored_with_the_classification_in_the_same_transact
     assert isinstance(model, str) and json.loads(model)["parameters"] == PARAMS
 
 
-@pytest.mark.parametrize("transform", ["none", "log1p", "yeo-johnson"])
+@pytest.mark.parametrize("transform", ["none", "log1p", "yeo-johnson", "median-yeo-johnson"])
 def test_the_stored_model_reproduces_the_clusters_of_every_grid(monkeypatch, transform):
     """S5: transform, scaler, centres, GMM parameters and label maps stored in the step-7 transaction place every
     clustered grid in its stored cluster again."""
@@ -313,7 +313,10 @@ def test_the_stored_model_reproduces_the_clusters_of_every_grid(monkeypatch, tra
     model = json.loads(dc.dbc.sqla_engine.log[3][2]["model"])
     assert model["format"] == 1 and model["scikit_learn"] == dcm.sklearn.__version__
     assert model["parameters"] == PARAMS and model["transform"]["method"] == transform and model["grids"] == len(df)
-    assert ("lambdas" in model["transform"]) is (transform == "yeo-johnson")
+    assert ("lambdas" in model["transform"]) is transform.endswith("yeo-johnson")
+    assert ("divisors" in model["transform"]) is (transform == "median-yeo-johnson")
+    if transform == "median-yeo-johnson":
+        assert model["transform"]["medians"] == {name: float(df[name].median()) for name in PARAMS}
     assert model["kmeans"]["n_init"] == 10 and model["gmm_tied"]["n_init"] == 5
     assert len(model["kmeans"]["centers"]) == 4 and len(model["gmm_tied"]["weights"]) == 3
     frame = captured["frame"]

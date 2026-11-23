@@ -128,8 +128,9 @@ it writes and keeps the comments and everything else in the file.
    * - ``N_CLUSTERS_KMEANS``, ``N_CLUSTERS_GMM``
      - Number of clusters of the two algorithms. ``pylovo-classify`` writes them.
    * - ``TRANSFORM``
-     - Transform of the key figures before the factor analysis and the clustering (step 6a): ``yeo-johnson``
-       (shipped, also when the key is missing), ``log1p`` or ``none``. Step 7 stores it with the classification.
+     - Transform of the key figures before the factor analysis and the clustering (step 6a):
+       ``median-yeo-johnson`` (shipped, also when the key is missing), ``yeo-johnson`` (classification 2),
+       ``log1p`` or ``none``. Step 7 stores it with the classification.
    * - ``EXCLUDE_INFEASIBLE``
      - ``true`` (shipped, also when the key is missing) or ``false``. Whether grids with a voltage violation or a
        power flow that did not converge are filtered (step 5). Step 7 stores the choice with the classification.
@@ -358,6 +359,17 @@ the clustering. ``yeo-johnson`` fits one power transform per key figure (scikit-
 also takes zeros), so that each one is close to symmetric. The same transform applies in steps 6b and 7. ``log1p``
 is ``log(1 + x)`` in the unit of the key figure, so figures in km hardly change. ``none`` standardises only, as
 pylovo 1.0.0 did.
+
+For values of 0 or more, Yeo-Johnson is a Box-Cox transform of ``x + 1``, so it depends on the unit of a key figure:
+with ``max_trafo_dis`` in m instead of km the exponent changes from about -1.9 to +0.3, and on the grids of
+classification 2 the k-means classes change (adjusted Rand index 0.95, GMM 0.86). ``median-yeo-johnson``, the shipped
+transform, therefore divides every key figure by its median before the power transform, so the result is the same in
+any unit. A key figure whose median is 0 (more than half of the grids have 0) is divided by the mean of its absolute
+values instead, and one that is 0 in every grid by 1. The mean keeps such a figure in the order of its non-zero values,
+where the interquartile range could be 0 as well. The medians, the divisors and their rule (``median``, ``mean`` or
+``one``) are in the selection report (``medians``, ``divisors``) and with the exponents in the stored model of
+step 7 (``model.transform``). ``yeo-johnson`` without the scaling remains for the classifications made with it
+(classification 2): reading or clustering them again uses their stored transform.
 
 The names are printed and written to ``LIST_OF_CLUSTERING_PARAMETERS``. You can overrule them: the notebook
 ``01_sample_and_key_figures`` shows the correlations and the loadings, and other considerations may decide. The
