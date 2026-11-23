@@ -308,8 +308,16 @@ classification of the same PLZ, reading it stops with a message: its result in `
 but it cannot be clustered again. Classifications clustered before migration ``0017_key_figures_version`` are
 version 1.
 
+A classification also belongs to one grid version. Step 1 stores ``VERSION_ID`` in ``classification_version.version_id``
+when it registers the classification, and every reader (steps 5 to 7, the summary and the notebooks) takes the grids of
+that version, whatever ``VERSION_ID`` the configuration names later. A reader given another version
+(``DatabaseCommunication(classification_id, version_id)``) stops with a message instead of reading or clustering the
+grids of that version under the classification. Migration ``0021_classification_grid_version`` filled the column for
+the classifications before it: a classification whose clustered grids all belong to one version gets that version,
+one without clusters or with several versions keeps it empty and reads the configured ``VERSION_ID``.
+
 Step 5 stores nothing. The filters are applied each time the grids are read, by steps 6 and 7 and by the notebooks, to
-the grids of the sampled PLZ and of ``VERSION_ID``. A grid is left out if
+the grids of the sampled PLZ and of the grid version of the classification. A grid is left out if
 
 * ``max_trafo_dis > THRESHOLD_MAX_TRAFO_DIS``,
 * it has a building with more than ``THRESHOLD_HOUSEHOLDS_PER_BUILDING`` households,
@@ -485,8 +493,8 @@ Load one of them as a pandapower net with
 
 The notebooks in ``notebook_tutorials/classification`` walk through the steps. They need the ``notebooks`` extra and
 only read. The two notebooks below answer one question each; their parameter cell selects the classification
-(``classification_id``) and the grid version (``version_id``), ``None`` takes ``CLASSIFICATION_VERSION`` and
-``VERSION_ID`` of the configuration. Their stored outputs show a classification of 501 Bavarian PLZ drawn from all
+(``classification_id``) and the grid version (``version_id``), ``None`` takes ``CLASSIFICATION_VERSION`` and the grid
+version stored with the classification. Their stored outputs show a classification of 501 Bavarian PLZ drawn from all
 generated PLZ of the state (``N_SAMPLES: 500``).
 
 .. list-table::
@@ -565,7 +573,8 @@ classification ``CLASSIFICATION_VERSION``; a classification without stored value
 that enter the clustering, and ``DatabaseCommunication.get_classification_choices()`` the parameters, the numbers of
 clusters and ``additional_filtering`` of the classification (the clustering notebooks use both).
 ``DatabaseCommunication(classification_id, version_id)`` and ``get_sample_set(classification_id)`` read another
-classification or grid version than the configured one (``None`` keeps the configuration). Step 6a is split into
+classification than the configured one (``None`` keeps the configuration). The grid version defaults to the one
+stored with the classification and must match it. Step 6a is split into
 ``factor_analysis_input`` (the candidate key figures), ``candidate_eigenvalues`` and ``number_of_factors``
 (eigenvalues above 1) in ``pylovo.classification.clustering.get_parameters_for_clustering``, and
 ``transform_key_figures`` in ``pylovo.classification.clustering.transform`` applies ``TRANSFORM``. ``kmeans_clustering`` and ``gmm_tied_clustering`` in

@@ -268,7 +268,7 @@ def test_migration_0019_drops_the_tables_and_functions_of_the_removed_file_based
 def test_migration_0020_drops_the_unused_columns_and_rebuilds_the_classified_view():
     from pylovo.database.migrations import MIGRATION_NAMES, unused_columns
 
-    assert MIGRATION_NAMES[-1] == "0020_unused_columns"
+    assert MIGRATION_NAMES.index("0020_unused_columns") == MIGRATION_NAMES.index("0019_file_input_removed") + 1
 
     class Answering(Cursor):
         def fetchone(self):
@@ -288,3 +288,20 @@ def test_migration_0020_drops_the_unused_columns_and_rebuilds_the_classified_vie
     rebuild = next(i for i, s in enumerate(sql) if "CREATE MATERIALIZED VIEW IF NOT EXISTS pylovo.transformer_classified_with_grid" in s)
     assert drop_view < drop_cols < rebuild
     assert not any("CASCADE" in s for s in sql)
+
+
+def test_migration_0021_adds_the_grid_version_of_a_classification_with_a_backfill_from_its_clusters():
+    """Additive: one column of a fresh setup, filled only where the clustered grids name a single version."""
+    from pylovo.database.migrations import MIGRATION_NAMES, POST_SCHEMA_MIGRATIONS, classification_grid_version
+
+    assert ("0021_classification_grid_version", classification_grid_version) in POST_SCHEMA_MIGRATIONS
+    assert MIGRATION_NAMES.index("0021_classification_grid_version") == MIGRATION_NAMES.index("0020_unused_columns") + 1
+    conn = Connection()
+    classification_grid_version(Cursor(conn))
+    sql = " ".join(conn.log)
+    assert "ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS version_id varchar(10);" in sql
+    assert re.search(r"^\s*version_id varchar\(10\),", CREATE_QUERIES["classification_version"], re.M)
+    assert "HAVING count(DISTINCT gr.version_id) = 1" in sql and "AND cv.version_id IS NULL;" in sql
+    assert not re.search(r"\b(DROP|DELETE|TRUNCATE)\b", sql) and sql.count("UPDATE ") == 1
+    assert "UPDATE pylovo.classification_version cv" in sql
+    assert len(conn.log) == 1                                # one statement batch: it commits with its ledger row

@@ -132,13 +132,65 @@ def test_the_readers_default_to_the_filter_choice_stored_with_the_classification
     assert ("cp.avg_trafo_dis < %(avg_trafo_dis)s" in query) is lower
 
 
+def choice_lookups(dc) -> list:
+    return [entry for entry in dc.dbc.cur.executed if not entry[0].startswith("SELECT version_id ")]
+
+
 def test_explicit_filter_choices_need_no_lookup(monkeypatch):
     capture_queries(monkeypatch)
-    dc = stored_dc((["no_branches"], 4, 4, True, "none", True))
+    dc = make_dc()
+    dc.dbc.cur = FakeCursor(fetchone_values=[("1",), (["no_branches"], 4, 4, True, "none", True)])
     dc.get_clustering_parameters_for_classification_version(False, False)
-    assert dc.dbc.cur.executed == []
+    assert choice_lookups(dc) == []
     dc.get_clustering_parameters_for_classification_version(False)
-    assert len(dc.dbc.cur.executed) == 1, "the power-flow filter of the classification is looked up once"
+    assert len(choice_lookups(dc)) == 1, "the power-flow filter of the classification is looked up once"
+
+
+# ---------------------------------------------------------------------------------------- grid version of a classification
+def versioned_dc(stored, given=None) -> dcm.DatabaseCommunication:
+    """A ``DatabaseCommunication`` whose classification stores the grid version ``stored`` (``None``: none)."""
+    dc = make_dc()
+    dc.dbc.cur = FakeCursor(fetchone_values=[(stored,)])
+    dc._version_id = given
+    return dc
+
+
+@pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])
+def test_the_readers_default_to_the_grid_version_stored_with_the_classification(monkeypatch, reader):
+    monkeypatch.setattr(dcm, "VERSION_ID", "1")                 # the configuration names another version
+    seen = capture_queries(monkeypatch)
+    dc = versioned_dc("2")
+    getattr(dc, reader)(False, False)
+    ((_, params),) = seen
+    assert params["v"] == "2" and dc.version_id == "2"
+    assert dc.dbc.cur.executed == [("SELECT version_id FROM pylovo.classification_version WHERE classification_id = %(c)s",
+                                    {"c": dcm.CLASSIFICATION_VERSION})], "looked up once"
+
+
+def test_a_classification_without_a_stored_grid_version_reads_the_configured_one(monkeypatch):
+    monkeypatch.setattr(dcm, "VERSION_ID", "v9")
+    assert versioned_dc(None).version_id == "v9"
+    assert versioned_dc(None, given="7").version_id == "7"
+
+
+@pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])
+def test_the_readers_refuse_another_grid_version_than_the_stored_one(monkeypatch, reader):
+    capture_queries(monkeypatch)
+    with pytest.raises(ValueError, match="holds the grids of version 2, not of version 1"):
+        getattr(versioned_dc("2", given=1), reader)(False, False)
+    assert versioned_dc("2", given="2").version_id == "2"
+
+
+def test_step_7_reads_the_positions_and_grids_of_the_stored_version(monkeypatch):
+    dc, _, _ = prepare_save(monkeypatch)
+    versions = []
+    for module, name in ((dcm.gpd, "read_postgis"), (dcm.pd, "read_sql_query")):
+        faked = getattr(module, name)
+        monkeypatch.setattr(module, name, lambda *a, faked=faked, **k: versions.append(k["params"]["v"]) or faked(*a, **k))
+    monkeypatch.setattr(dcm, "VERSION_ID", "other")
+    dc.__dict__["_stored_versions"] = {dc.classification_id: "1"}
+    dc.save_transformers_with_classification_info(PARAMS, 4, 4)
+    assert versions == ["1", "1"]
 
 
 @pytest.mark.parametrize("reader", READERS + ["get_grid_status_of_sample_set"])

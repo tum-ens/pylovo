@@ -58,6 +58,8 @@ CREATE_QUERIES = {
         transform text,
         exclude_infeasible boolean,
         selection_report jsonb,
+        -- the grid version of the sample and the clusters (0021); NULL for a classification of several versions
+        version_id varchar(10),
         CONSTRAINT classification_pkey PRIMARY KEY (classification_id)
     )
     """,

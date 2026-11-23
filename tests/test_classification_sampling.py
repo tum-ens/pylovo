@@ -157,6 +157,15 @@ def inserted_versions(client):
     return [s for s in client.cur.executed if s[0].startswith("INSERT INTO pylovo.classification_version")]
 
 
+def test_the_classification_is_registered_with_the_grid_version(monkeypatch, written):
+    client = FakeClient(register())
+    monkeypatch.setattr(sample, "_db_client", client)
+    monkeypatch.setattr(sample, "VERSION_ID", "2")
+    sample.create_sample_set()
+    ((sql, params),) = inserted_versions(client)
+    assert "version_id" in sql and params["v"] == "2"
+
+
 def test_failed_sampling_leaves_no_registered_version(monkeypatch, written):
     client = FakeClient(register())
     monkeypatch.setattr(sample, "_db_client", client)

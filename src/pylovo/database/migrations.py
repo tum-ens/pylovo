@@ -667,6 +667,29 @@ def unused_columns(cur: cursor) -> None:
         cur.execute(CREATE_QUERIES["transformer_classified_with_grid"])
 
 
+def classification_grid_version(cur: cursor) -> None:
+    """Store the grid version of a classification in ``classification_version.version_id``.
+
+    The sample set and the clusters of a classification were tied to a grid version only through the configured
+    ``VERSION_ID`` of whoever read them, so a reader with another version read or re-clustered the grids of that
+    version under the classification without an error. Step 1 now stores the version, and the readers default to it
+    and refuse another. Backfill: a classification whose clustered grids (``transformer_classified``) all belong to one
+    version gets that version; one without clusters, or with grids of several versions, keeps NULL (the readers then
+    use the configured ``VERSION_ID``, as before). Adds a column and fills it, nothing else. A no-op on a fresh schema.
+    """
+    cur.execute("""
+        ALTER TABLE pylovo.classification_version ADD COLUMN IF NOT EXISTS version_id varchar(10);
+        UPDATE pylovo.classification_version cv
+        SET version_id = clustered.version_id
+        FROM (SELECT tc.classification_id, min(gr.version_id) AS version_id
+              FROM pylovo.transformer_classified tc
+              JOIN pylovo.grid_result gr ON gr.grid_result_id = tc.grid_result_id
+              GROUP BY tc.classification_id
+              HAVING count(DISTINCT gr.version_id) = 1) clustered
+        WHERE cv.classification_id = clustered.classification_id AND cv.version_id IS NULL;
+    """)
+
+
 PRE_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0001_legacy_buildings", legacy_buildings),
     ("0001a_line_cache_rename", rename_line_cache),
@@ -691,6 +714,7 @@ POST_SCHEMA_MIGRATIONS: tuple[tuple[str, Callable[[cursor], None]], ...] = (
     ("0018_building_load_class", building_load_class),
     ("0019_file_input_removed", file_input_removed),
     ("0020_unused_columns", unused_columns),
+    ("0021_classification_grid_version", classification_grid_version),
 )
 LEGACY_COLUMNS_MIGRATION = "0002_legacy_columns"
 MIGRATION_NAMES: tuple[str, ...] = (

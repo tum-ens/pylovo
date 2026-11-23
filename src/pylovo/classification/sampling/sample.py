@@ -43,7 +43,8 @@ def classification_version_exists() -> bool:
 
 
 def register_classification_version(commit: bool = True) -> None:
-    """Register ``CLASSIFICATION_VERSION`` with ``CLASSIFICATION_VERSION_COMMENT`` and ``CLASSIFICATION_REGION``.
+    """Register ``CLASSIFICATION_VERSION`` with ``CLASSIFICATION_VERSION_COMMENT``, ``CLASSIFICATION_REGION`` and the
+    grid version ``VERSION_ID`` (the readers of the classification default to it and refuse another).
 
     Args:
         commit: Commit at once; ``False`` leaves the commit to the caller's transaction.
@@ -52,9 +53,10 @@ def register_classification_version(commit: bool = True) -> None:
     cur = db_client.cur
     cur.execute(
         """INSERT INTO pylovo.classification_version
-               (classification_id, classification_version_comment, classification_region)
-           VALUES (%(c)s, %(comment)s, %(region)s)""",
-        {"c": CLASSIFICATION_VERSION, "comment": CLASSIFICATION_VERSION_COMMENT, "region": CLASSIFICATION_REGION},
+               (classification_id, classification_version_comment, classification_region, version_id)
+           VALUES (%(c)s, %(comment)s, %(region)s, %(v)s)""",
+        {"c": CLASSIFICATION_VERSION, "comment": CLASSIFICATION_VERSION_COMMENT, "region": CLASSIFICATION_REGION,
+         "v": str(VERSION_ID)},
     )
     print(cur.statusmessage)
     if commit:

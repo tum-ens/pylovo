@@ -8,7 +8,7 @@ from pylovo.config_loader import CLASSIFICATION_VERSION, VERSION_ID
 
 
 def summarize_grid_counts(
-    grids: pd.DataFrame, filters: Sequence[str], plz_without_grids: Sequence[int] = ()
+    grids: pd.DataFrame, filters: Sequence[str], plz_without_grids: Sequence[int] = (), version_id: str | None = None
 ) -> tuple[dict, list[str]]:
     """Count the grids of the sample per stage and describe every loss that the filters do not explain.
 
@@ -18,6 +18,7 @@ def summarize_grid_counts(
         filters: Labels of the filters that applied (boolean columns of ``grids``).
         plz_without_grids: PLZ that were drawn but removed from the sample set because no grids could be
             generated.
+        version_id: The grid version of the classification, for the messages; ``None`` names ``VERSION_ID``.
 
     Returns:
         The counts (``plz_drawn``, ``plz_in_sample``, ``grids``, ``analysed``, ``filtered``, ``filtered_by``
@@ -44,7 +45,7 @@ def summarize_grid_counts(
                         f"removed from the sample set: {sorted(int(plz) for plz in plz_without_grids)}")
     no_grid_plz = sorted(int(plz) for plz in set(grids["plz"]) - set(grids.loc[has_grid, "plz"]))
     if no_grid_plz:
-        warnings.append(f"Sampled PLZ without any grid for VERSION_ID {VERSION_ID}: {no_grid_plz}")
+        warnings.append(f"Sampled PLZ without any grid for VERSION_ID {version_id or VERSION_ID}: {no_grid_plz}")
     without_figures = has_grid & ~analysed
     if without_figures.any():
         no_plz_analysis = without_figures & ~grids["plz_analysed"].astype(bool)
@@ -127,7 +128,7 @@ def report_grid_counts(additional_filtering: bool | None = None, plz_without_gri
     exclude_infeasible = choices["exclude_infeasible"]
     grids = dc.get_grid_status_of_sample_set(additional_filtering, exclude_infeasible)
     filters = list(filter_reasons(additional_filtering, exclude_infeasible))
-    counts, warnings = summarize_grid_counts(grids, filters, plz_without_grids)
+    counts, warnings = summarize_grid_counts(grids, filters, plz_without_grids, dc.version_id)
     counts["by_class"] = filtered_by_class(grids, filters)
     rows = [("PLZ drawn", counts["plz_drawn"]), ("PLZ in the sample set", counts["plz_in_sample"]),
             ("Grids of these PLZ", counts["grids"]), ("Grids with key figures", counts["analysed"]),
@@ -135,7 +136,7 @@ def report_grid_counts(additional_filtering: bool | None = None, plz_without_gri
     rows += [(f"  by {label}", n) for label, n in counts["filtered_by"].items() if n]
     rows.append(("Grids clustered", counts["clustered"]))
     width = max(len(label) for label, _ in rows)
-    print(f"\nGrids of classification {CLASSIFICATION_VERSION} (VERSION_ID {VERSION_ID})")
+    print(f"\nGrids of classification {dc.classification_id} (VERSION_ID {dc.version_id})")
     print("\n".join(f"  {label:<{width}}  {value:>6}" for label, value in rows))
     print("\nGrids with key figures per RegioStaR 7 class: left out by the filters (grids, buildings, households, "
           "per filter F) and kept with one building or without households")

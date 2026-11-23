@@ -130,12 +130,14 @@ class DatabaseCommunication:
 
     Wraps its own :class:`~pylovo.database.database_client.DatabaseClient`. Queries
     use the classification :attr:`classification_id` and the grids of :attr:`version_id`, by default
-    ``CLASSIFICATION_VERSION`` and ``VERSION_ID`` of the configuration files.
+    ``CLASSIFICATION_VERSION`` of the configuration and the grid version stored with the classification
+    (``VERSION_ID`` of the configuration for a classification without one).
 
     Args:
         classification_id: Classification to read, and to write in step 7. ``None`` uses
             ``CLASSIFICATION_VERSION`` of ``config_classification.yaml``.
-        version_id: Version of the grids to read. ``None`` uses ``VERSION_ID`` of ``config_generation_lv.yaml``.
+        version_id: Version of the grids to read; it must be the version stored with the classification. ``None``
+            uses the stored version, else ``VERSION_ID`` of ``config_generation_lv.yaml``.
 
     Note:
         The grids that enter the clustering are selected when they are read: the readers apply the filters
@@ -168,8 +170,40 @@ class DatabaseCommunication:
 
     @property
     def version_id(self) -> str:
-        """The version whose grids the readers read (``VERSION_ID`` by default)."""
-        return VERSION_ID if self._version_id is None else str(self._version_id)
+        """The version whose grids the readers read.
+
+        The grid version stored with the classification (:meth:`stored_version_id`), else ``VERSION_ID`` of the
+        configuration. A version given to the constructor must be the stored one.
+
+        Raises:
+            ValueError: If the version given to the constructor is not the version stored with the classification.
+        """
+        stored = self.stored_version_id()
+        if self._version_id is not None:
+            given = str(self._version_id)
+            if stored is not None and given != stored:
+                raise ValueError(f"Classification {self.classification_id} holds the grids of version {stored}, not of "
+                                 f"version {given}: read it with version {stored} (or without a version), or classify "
+                                 f"the grids of version {given} in a new classification.")
+            return given
+        return VERSION_ID if stored is None else stored
+
+    def stored_version_id(self) -> str | None:
+        """Return the grid version stored with the classification (``classification_version.version_id``).
+
+        Step 1 stores ``VERSION_ID`` when it registers the classification. ``None`` for a classification without a
+        stored version (several versions, or not registered yet), whose readers use the configured ``VERSION_ID``.
+        A found version is kept for the instance.
+        """
+        cache = self.__dict__.setdefault("_stored_versions", {})
+        if self.classification_id not in cache:
+            self.dbc.cur.execute("SELECT version_id FROM pylovo.classification_version WHERE classification_id = %(c)s",
+                                 {"c": self.classification_id})
+            row = self.dbc.cur.fetchone()
+            if not row or row[0] is None:
+                return None
+            cache[self.classification_id] = str(row[0])
+        return cache[self.classification_id]
 
     def get_classification_choices(self) -> dict:
         """Return the choices that the classification was clustered with.
